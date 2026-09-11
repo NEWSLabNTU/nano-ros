@@ -74,6 +74,19 @@ int main(void) {
     nros_ret_t (*p_since)(const struct nros_timer_t*, uint64_t*) =
         nros_timer_get_time_since_last_call;
 
+    /* phase-417 stage 3 (issue 1049, and the deleted ledger row
+     * `c:timer_get_time_until_next_call`) — status return + a SIGNED out-param,
+     * which is `rcl_timer_get_time_until_next_call`'s shape exactly. It was
+     * `uint64_t f(const struct nros_timer_t *, uint64_t current_time_ns)`:
+     * unsigned cannot express OVERDUE (rcl's header: "a negative value
+     * indicates the timer call is overdue by that amount"), and the bare return
+     * spent `0` on five distinct cases at once. Both regressions are a build
+     * failure on this line — `int64_t*` against `uint64_t*` is the pointer
+     * mismatch C only warns about, so the assignment is to a FUNCTION POINTER,
+     * where the types must match exactly. */
+    nros_ret_t (*p_until)(const struct nros_timer_t*, int64_t*) =
+        nros_timer_get_time_until_next_call;
+
     /* --- nros_difference_times: Time - Time -> Duration ------------------ */
 
     /* A `static inline` in <nros/timer.h>, so there is no exported symbol and
@@ -103,6 +116,7 @@ int main(void) {
     (void)p_canceled;
     (void)p_ready;
     (void)p_since;
+    (void)p_until;
     (void)p_difference;
     (void)delta;
 

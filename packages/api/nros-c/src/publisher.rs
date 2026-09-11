@@ -782,13 +782,33 @@ pub unsafe extern "C" fn nros_publisher_fini(publisher: *mut nros_publisher_t) -
     NROS_RET_OK
 }
 
+impl nros_publisher_t {
+    /// Can this handle be USED? — the one predicate behind both
+    /// `rcl_publisher_is_valid` and `rcl_publisher_get_topic_name`.
+    ///
+    /// phase-417 stage 3. The publisher is the one member of the `is_valid`
+    /// family whose ANSWER did not change: `nros_publisher_state_t` has no
+    /// third live value, so `INITIALIZED` really is the whole of "usable"
+    /// here. It carries the helper anyway so the class has ONE spelling and a
+    /// future state has one place to be added — the sibling entities each grew
+    /// a `POLLING` (and the client a `REGISTERED`) that their predicates were
+    /// never taught about.
+    pub(crate) const fn is_usable(&self) -> bool {
+        matches!(
+            self.state,
+            nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
+        )
+    }
+}
+
 /// Get the topic name of a publisher.
 ///
 /// # Parameters
 /// * `publisher` - Pointer to a publisher
 ///
 /// # Returns
-/// * Pointer to topic name (null-terminated), or NULL if invalid
+/// * Pointer to topic name (null-terminated), or NULL if the handle is not
+///   usable (see [`nros_publisher_t::is_usable`]) or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_publisher_get_topic_name(
     publisher: *const nros_publisher_t,
@@ -798,28 +818,31 @@ pub unsafe extern "C" fn rcl_publisher_get_topic_name(
     }
 
     let publisher = &*publisher;
-    if publisher.state != nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
+    if !publisher.is_usable() {
         return ptr::null();
     }
 
     publisher.topic_name.as_ptr() as *const c_char
 }
 
-/// Check if publisher is valid (initialized).
+/// Is this publisher handle usable?
+///
+/// rcl's `rcl_publisher_is_valid`, whose contract is "true for any handle that
+/// can be used" — the ported idiom is a guard. See
+/// [`nros_publisher_t::is_usable`] for which states those are.
 ///
 /// # Parameters
 /// * `publisher` - Pointer to a publisher
 ///
 /// # Returns
-/// * `true` if valid, `false` if invalid or NULL
+/// * `true` if usable, `false` if finalised, uninitialised or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_publisher_is_valid(publisher: *const nros_publisher_t) -> bool {
     if publisher.is_null() {
         return false;
     }
 
-    let publisher = &*publisher;
-    publisher.state == nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
+    (*publisher).is_usable()
 }
 
 #[cfg(kani)]

@@ -894,18 +894,33 @@ unsafe fn write_cstr_out(s: &str, out: *mut c_char, out_size: usize) -> nros_ret
 /// `nros_support_is_valid` for the support object; the node had no predicate
 /// that read its own state, which is the whole of gap `c:node_is_valid`.
 ///
-/// Two questions, both answered, because either one alone is a lie:
+/// THREE questions, all answered, because any one alone is a lie (the count was
+/// two until phase-417 stage 3 — ledger row `c:node_is_valid` — and the missing
+/// one is the one that separates this from `rcl_node_is_valid_except_context`):
 ///
 /// * the handle's own state is `INITIALIZED` — `rcl_node_fini` sets
-///   `SHUTDOWN`, so a finalised node reports false; and
+///   `SHUTDOWN`, so a finalised node reports false;
+/// * the CONTEXT it names is still valid. `rcl_node_is_valid` is false once the
+///   node's context is invalid; that is the whole of what
+///   `rcl_node_is_valid_except_context` exists to opt out of, and we decline
+///   that name precisely because this one answers the context question.
+///   `rclc_support_fini` drops the inline session, zeroes `_opaque` and marks
+///   the SUPPORT shut down while touching no node, so a node built by
+///   `rclc_node_init_default` still reads `INITIALIZED` over a dead session —
+///   the guard passed and the next publish dereferenced the zeroed `_opaque`.
+///   [`crate::support::nros_support_is_valid`] is the predicate that knows, so
+///   it is consulted rather than re-derived; and
 /// * the executor slot it is bound to still carries the generation it was
 ///   bound at (phase-379 W4). C has no move semantics, so
 ///   `nros_node_t copy = original;` is legal and silent — the copy keeps
 ///   `state == INITIALIZED` after the original is finalised, and only the
 ///   generation catches that.
 ///
-/// A legacy (`rclc_node_init_default`) node is not executor-bound, so only the first
-/// question applies to it.
+/// The last two apply to different SHAPES of node and neither is skipped
+/// silently: a legacy (`rclc_node_init_default`) node records its support and
+/// is not executor-bound, while `nros_executor_add_node` leaves `support` NULL
+/// on purpose (the multi-Node paths key off `node_id` + executor, phase-156
+/// sub-bug D) and the generation is what stands in for the context there.
 ///
 /// # Safety
 /// * `node` must be NULL or point to a valid `nros_node_t`.
@@ -916,6 +931,9 @@ pub unsafe extern "C" fn rcl_node_is_valid(node: *const nros_node_t) -> bool {
     }
     let node_ref = &*node;
     if node_ref.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+        return false;
+    }
+    if !node_ref.support.is_null() && !crate::support::nros_support_is_valid(node_ref.support) {
         return false;
     }
     if node_ref.is_multi_session() {
@@ -1376,7 +1394,7 @@ mod fqn_tests {
         let ret = unsafe {
             nros_get_fully_qualified_name(
                 core::ptr::null(),
-                b"/\0".as_ptr() as *const c_char,
+                c"/".as_ptr(),
                 buf.as_mut_ptr() as *mut c_char,
                 buf.len(),
                 &mut n,
@@ -1566,6 +1584,44 @@ mod accessor_tests {
 
         assert!(!unsafe { rcl_node_is_valid(core::ptr::null()) });
         assert!(!unsafe { rcl_node_is_valid(&nros_node_t::default()) });
+    }
+
+    /// phase-417 stage 3, ledger row `c:node_is_valid` — what separates
+    /// `rcl_node_is_valid` from `rcl_node_is_valid_except_context`.
+    ///
+    /// `rclc_support_fini` drops the inline session, zeroes `_opaque` and marks
+    /// the SUPPORT shut down while touching no node. The node keeps reading
+    /// `INITIALIZED`, so a predicate that reads only the node's own state says
+    /// TRUE over a dropped session — the ported guard passes and the next
+    /// publish dereferences the zeroed `_opaque`.
+    #[test]
+    fn a_node_over_a_finalised_support_is_not_valid() {
+        let mut support = crate::support::nros_support_get_zero_initialized();
+        support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
+
+        let mut node = unbound_node("talker", "/");
+        node.support = &support;
+        assert!(
+            unsafe { rcl_node_is_valid(&node) },
+            "a node over a live support is usable"
+        );
+
+        // What `rclc_support_fini` leaves behind, without needing an RMW.
+        support.state = nros_support_state_t::NROS_SUPPORT_STATE_SHUTDOWN;
+        support._opaque = [0u64; crate::constants::SESSION_OPAQUE_U64S];
+        assert!(
+            !unsafe { crate::support::nros_support_is_valid(&support) },
+            "precondition: the support predicate must already know"
+        );
+        assert!(
+            !unsafe { rcl_node_is_valid(&node) },
+            "rcl_node_is_valid is false once the node's CONTEXT is invalid"
+        );
+
+        // And an uninitialised context is no context either.
+        let never_started = crate::support::nros_support_get_zero_initialized();
+        node.support = &never_started;
+        assert!(!unsafe { rcl_node_is_valid(&node) });
     }
 
     /// The FQN is namespace + name, normalised by the SAME seam entity names

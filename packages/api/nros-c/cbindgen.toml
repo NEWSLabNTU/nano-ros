@@ -87,6 +87,14 @@ exclude = [
     # Cbindgen would re-emit the enum + functions under their
     # mangled forms and collide with the hand-written header.
     "nros_log_severity_t",
+    # phase-417 stage 3 — the seven `NROS_LOG_SEVERITY_*` levels are ASSOCIATED
+    # CONSTS on that type now, and EXCLUDING THE TYPE DOES NOT EXCLUDE THEM:
+    # cbindgen sees seven separate constant items whose value is a struct
+    # literal it cannot render, and emits a blank line for each. Neither their
+    # bare names nor the `nros_log_severity_t_`-prefixed spelling match here
+    # (both were measured); the annotation that does work is a
+    # `/// cbindgen:ignore` doc line on each const, which is where they carry
+    # it. Look there, not here, if they ever reappear in the header.
     "nros_log_emit",
     "nros_log_emit_fmt",
     "nros_log_init",

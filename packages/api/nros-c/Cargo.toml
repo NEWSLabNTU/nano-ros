@@ -367,7 +367,20 @@ nros-build-helpers = { workspace = true }
 # explicitly (`std,rmw-cffi,platform-posix,ros-humble`, `platform-threadx,alloc`,
 # …); the featureless configuration is the one nobody built.
 [dev-dependencies]
-nros-c = { path = ".", features = ["std"] }
+# phase-417 stage 3 — `rmw-cffi` joined `std` here, and the reason is issue
+# 1226's rule: a test that WORKS is not a test that RUNS. Eleven of this crate's
+# modules — `node`, `service`, `subscription`, `publisher`, `timer`, `executor`,
+# … — are behind `#[cfg(feature = "rmw-cffi")]` (see `rmw_modules!` in `lib.rs`),
+# and `just test-unit` is `cargo nextest run --workspace` with NO `--features`,
+# which resolves this crate to `default, panic-platform, std, alloc, env` and
+# nothing else (measured with `cargo tree --workspace -i nros-c -e features`).
+# So every unit test in those modules compiled, passed locally under an explicit
+# `--features rmw-cffi`, and was built by no merge-gating lane: 95 of this
+# crate's 126 lib tests, including phase-417 W5.c's timer accessors and this
+# stage's `is_valid` family. It costs the lane the cffi vtable registry and no
+# backend — `rmw-cffi` is `nros/rmw-cffi`, not `rmw-zenoh`, so no vendored
+# source is pulled in.
+nros-c = { path = ".", features = ["std", "rmw-cffi"] }
 # issue 0619 — same reason as `nros-cpp`'s: a lib TEST is a final artifact and
 # links no platform port, so `nros-log`'s `PlatformSink` leaves
 # `nros_platform_log_write` / `_flush` declared and never defined.

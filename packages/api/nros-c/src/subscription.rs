@@ -970,13 +970,32 @@ pub unsafe extern "C" fn nros_subscription_fini(
     NROS_RET_OK
 }
 
+impl nros_subscription_t {
+    /// Can this handle be USED? — the one predicate behind both
+    /// `rcl_subscription_is_valid` and `rcl_subscription_get_topic_name`.
+    ///
+    /// phase-417 stage 3, ledger row `c:subscription_is_valid`. `POLLING` is an
+    /// L1 subscription (`nros_subscription_init_polling` / `_with_qos`) whose
+    /// subscriber entity is live inline in `_opaque`; testing
+    /// `state == INITIALIZED` exactly made the ported guard reject it and made
+    /// the accessor hand back NULL for it.
+    pub(crate) const fn is_usable(&self) -> bool {
+        matches!(
+            self.state,
+            nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+                | nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_POLLING
+        )
+    }
+}
+
 /// Get the topic name of a subscription.
 ///
 /// # Parameters
 /// * `subscription` - Pointer to a subscription
 ///
 /// # Returns
-/// * Pointer to topic name (null-terminated), or NULL if invalid
+/// * Pointer to topic name (null-terminated), or NULL if the handle is not
+///   usable (see [`nros_subscription_t::is_usable`]) or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_subscription_get_topic_name(
     subscription: *const nros_subscription_t,
@@ -986,20 +1005,24 @@ pub unsafe extern "C" fn rcl_subscription_get_topic_name(
     }
 
     let subscription = &*subscription;
-    if subscription.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
+    if !subscription.is_usable() {
         return ptr::null();
     }
 
     subscription.topic_name.as_ptr() as *const c_char
 }
 
-/// Check if subscription is valid (initialized).
+/// Is this subscription handle usable?
+///
+/// rcl's `rcl_subscription_is_valid`, whose contract is "true for any handle
+/// that can be used" — the ported idiom is a guard. See
+/// [`nros_subscription_t::is_usable`] for which states those are.
 ///
 /// # Parameters
 /// * `subscription` - Pointer to a subscription
 ///
 /// # Returns
-/// * `true` if valid, `false` if invalid or NULL
+/// * `true` if usable, `false` if finalised, uninitialised or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_subscription_is_valid(
     subscription: *const nros_subscription_t,
@@ -1008,8 +1031,7 @@ pub unsafe extern "C" fn rcl_subscription_is_valid(
         return false;
     }
 
-    let subscription = &*subscription;
-    subscription.state == nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+    (*subscription).is_usable()
 }
 
 // Internal helper methods for executor
@@ -1032,5 +1054,103 @@ impl nros_subscription_t {
     /// Set the handle ID from executor registration
     pub(crate) fn set_handle_id(&mut self, id: nros_node::HandleId) {
         self.handle_id = id.0;
+    }
+}
+
+// ============================================================================
+// phase-417 stage 3 — the subscription half of the `is_valid` family.
+//
+// Ledger rows `c:subscription_is_valid` / `c:subscription_get_topic_name`;
+// the contract lives on `c:client_is_valid`.
+// ============================================================================
+
+#[cfg(test)]
+mod validity_tests {
+    use super::*;
+
+    /// `POLLING` is `nros_subscription_init_polling` / `_with_qos` — an L1
+    /// subscription whose transport entity is live in `_opaque`.
+    const LIVE_STATES: [nros_subscription_state_t; 2] = [
+        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED,
+        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_POLLING,
+    ];
+
+    const DEAD_STATES: [nros_subscription_state_t; 2] = [
+        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED,
+        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_SHUTDOWN,
+    ];
+
+    fn named_subscription(state: nros_subscription_state_t) -> nros_subscription_t {
+        let mut s = nros_subscription_t::default();
+        s.topic_name[..6].copy_from_slice(b"/chatt");
+        s.topic_name_len = 6;
+        s.state = state;
+        s
+    }
+
+    #[test]
+    fn subscription_is_valid_accepts_every_state_a_subscription_works_in() {
+        for state in LIVE_STATES {
+            let s = named_subscription(state);
+            assert!(
+                unsafe { rcl_subscription_is_valid(&s) },
+                "{state:?} is a state a subscription receives in"
+            );
+        }
+        for state in DEAD_STATES {
+            let s = named_subscription(state);
+            assert!(!unsafe { rcl_subscription_is_valid(&s) }, "{state:?}");
+        }
+        assert!(!unsafe { rcl_subscription_is_valid(ptr::null()) });
+    }
+
+    #[test]
+    fn subscription_name_is_readable_in_every_state_it_works_in() {
+        for state in LIVE_STATES {
+            let s = named_subscription(state);
+            assert!(
+                !unsafe { rcl_subscription_get_topic_name(&s) }.is_null(),
+                "{state:?}"
+            );
+        }
+        for state in DEAD_STATES {
+            let s = named_subscription(state);
+            assert!(
+                unsafe { rcl_subscription_get_topic_name(&s) }.is_null(),
+                "{state:?}"
+            );
+        }
+        assert!(unsafe { rcl_subscription_get_topic_name(ptr::null()) }.is_null());
+    }
+
+    #[test]
+    fn the_subscription_predicate_and_its_accessor_agree_in_every_state() {
+        for state in LIVE_STATES.iter().chain(DEAD_STATES.iter()) {
+            let s = named_subscription(*state);
+            assert_eq!(
+                unsafe { rcl_subscription_is_valid(&s) },
+                !unsafe { rcl_subscription_get_topic_name(&s) }.is_null(),
+                "{state:?}: is_valid and get_topic_name must answer alike"
+            );
+        }
+    }
+
+    /// The publisher is the CONTROL for this class: its state enum has no
+    /// third live value, so `INITIALIZED` really is the whole of "usable" and
+    /// its predicate is correct as written. Pinned so a future state added to
+    /// `nros_publisher_state_t` cannot quietly re-create the defect.
+    #[test]
+    fn the_publisher_has_no_third_live_state_to_miss() {
+        use crate::publisher::{nros_publisher_state_t, nros_publisher_t, rcl_publisher_is_valid};
+        let mut p = nros_publisher_t::default();
+        for state in [
+            nros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED,
+            nros_publisher_state_t::NROS_PUBLISHER_STATE_SHUTDOWN,
+        ] {
+            p.state = state;
+            assert!(!unsafe { rcl_publisher_is_valid(&p) }, "{state:?}");
+        }
+        p.state = nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED;
+        assert!(unsafe { rcl_publisher_is_valid(&p) });
     }
 }

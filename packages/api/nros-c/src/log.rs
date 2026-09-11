@@ -11,30 +11,82 @@
 
 use core::ffi::{c_char, c_void};
 
-/// C severity mirror of `nros_log::Severity`. Discriminants match
-/// `Severity::as_u8()`.
+/// C severity mirror of `nros_log::Severity`, on **rcutils's number line**.
+///
+/// phase-417 stage 3, ledger row `c:log_severity_t`. Two things were wrong at
+/// once and each is fixed here.
+///
+/// **The NUMBERS.** rcutils — which `rcl_log_severity_t` mirrors — numbers
+/// `UNSET=0, DEBUG=10, INFO=20, WARN=30, ERROR=40, FATAL=50`. These values cross
+/// ABIs as integers: they are read from configuration files and from the
+/// environment, and a ported file spells them as rcutils constants. Ours were a
+/// dense `0..=5`, so our `0` collided with rcutils's `UNSET` and no rcutils
+/// value mapped onto ours at all — a ported `RCUTILS_LOG_SEVERITY_UNSET` meant
+/// TRACE, the most verbose level, silently. The gaps are deliberate: they are
+/// how a caller writes a THRESHOLD between two named levels, so
+/// [`Self::to_facade`] resolves by band rather than by equality. Our extra
+/// `TRACE` (rcutils has none) takes `5`, a value inside rcutils's own gap
+/// between `UNSET` and `DEBUG`, which is what that gap is for.
+///
+/// **The WIDTH.** The hand-written `<nros/log.h>` declares a plain C `enum` —
+/// implementation-defined underlying type, `int`-sized on every ABI we target —
+/// and this was `#[repr(u8)]`, so one side passed a byte where the other passed
+/// four. That is the hand-mirrored-FFI class one layer over from
+/// `check-ffi-struct-mirrors`; the header now carries a `static_assert` on the
+/// width and this side is a transparent newtype over `c_int`.
+///
+/// **Why a newtype and not an `enum`.** The C declaration is an unfixed `enum`,
+/// so C accepts any `int` there. Arriving as an out-of-range discriminant of a
+/// Rust `enum` is instant UB — and the old `to_facade` matched exhaustively
+/// over six variants with no `_` arm, so there was nowhere for such a value to
+/// land. Every `c_int` is representable here, and `to_facade` is total.
 ///
 /// cbindgen:ignore
-#[repr(u8)]
-#[derive(Copy, Clone)]
-pub enum nros_log_severity_t {
-    NROS_LOG_SEVERITY_TRACE = 0,
-    NROS_LOG_SEVERITY_DEBUG = 1,
-    NROS_LOG_SEVERITY_INFO = 2,
-    NROS_LOG_SEVERITY_WARN = 3,
-    NROS_LOG_SEVERITY_ERROR = 4,
-    NROS_LOG_SEVERITY_FATAL = 5,
-}
+#[repr(transparent)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct nros_log_severity_t(pub core::ffi::c_int);
 
 impl nros_log_severity_t {
+    /// rcutils's "no level set". Not a level to emit AT; see
+    /// [`Self::to_facade`] for how it resolves.
+    /// cbindgen:ignore
+    pub const NROS_LOG_SEVERITY_UNSET: Self = Self(0);
+    /// Ours, in rcutils's `UNSET`..`DEBUG` gap — rcutils has no trace level.
+    /// cbindgen:ignore
+    pub const NROS_LOG_SEVERITY_TRACE: Self = Self(5);
+    /// cbindgen:ignore
+    pub const NROS_LOG_SEVERITY_DEBUG: Self = Self(10);
+    /// cbindgen:ignore
+    pub const NROS_LOG_SEVERITY_INFO: Self = Self(20);
+    /// cbindgen:ignore
+    pub const NROS_LOG_SEVERITY_WARN: Self = Self(30);
+    /// cbindgen:ignore
+    pub const NROS_LOG_SEVERITY_ERROR: Self = Self(40);
+    /// cbindgen:ignore
+    pub const NROS_LOG_SEVERITY_FATAL: Self = Self(50);
+
+    /// The integer this severity crosses the ABI as.
+    #[must_use]
+    pub const fn value(self) -> core::ffi::c_int {
+        self.0
+    }
+
+    /// Resolve to the facade severity, by BAND and TOTALLY.
+    ///
+    /// By band, because rcutils's gaps exist so a caller can write a threshold
+    /// between two named levels: such a value resolves to the named level at or
+    /// below it. Totally, because the C type is an unfixed `enum` and any `int`
+    /// can arrive — including `UNSET` (0) and negatives, which are below every
+    /// named level and therefore resolve to the lowest band we have. That is
+    /// rcutils's own treatment of `UNSET`, which is numerically its floor.
     fn to_facade(self) -> nros_log::Severity {
-        match self {
-            Self::NROS_LOG_SEVERITY_TRACE => nros_log::Severity::Trace,
-            Self::NROS_LOG_SEVERITY_DEBUG => nros_log::Severity::Debug,
-            Self::NROS_LOG_SEVERITY_INFO => nros_log::Severity::Info,
-            Self::NROS_LOG_SEVERITY_WARN => nros_log::Severity::Warn,
-            Self::NROS_LOG_SEVERITY_ERROR => nros_log::Severity::Error,
-            Self::NROS_LOG_SEVERITY_FATAL => nros_log::Severity::Fatal,
+        match self.0 {
+            v if v >= Self::NROS_LOG_SEVERITY_FATAL.0 => nros_log::Severity::Fatal,
+            v if v >= Self::NROS_LOG_SEVERITY_ERROR.0 => nros_log::Severity::Error,
+            v if v >= Self::NROS_LOG_SEVERITY_WARN.0 => nros_log::Severity::Warn,
+            v if v >= Self::NROS_LOG_SEVERITY_INFO.0 => nros_log::Severity::Info,
+            v if v >= Self::NROS_LOG_SEVERITY_DEBUG.0 => nros_log::Severity::Debug,
+            _ => nros_log::Severity::Trace,
         }
     }
 }
@@ -590,3 +642,120 @@ static _ANCHOR_GET_LOGGER: unsafe extern "C" fn(*const c_char) -> *const c_void 
     nros_log_get_logger;
 #[used]
 static _ANCHOR_THROTTLE: unsafe extern "C" fn(*mut u64, u64) -> bool = nros_log_throttle_admit;
+
+// ============================================================================
+// phase-417 stage 3 — ledger row `c:log_severity_t`.
+//
+// Two claims, both measured: the NUMBER LINE is rcutils's, and the Rust mirror
+// is the size the hand-written C `enum` in <nros/log.h> is. The header carries
+// the C half of the second claim as a `static_assert`.
+// ============================================================================
+
+#[cfg(test)]
+mod severity_tests {
+    use super::*;
+    use core::mem::size_of;
+
+    /// rcutils's own numbering, which these values cross ABIs as — read from
+    /// configuration, from the environment, or written by a ported file.
+    #[test]
+    fn the_c_severities_sit_on_rcutils_number_line() {
+        for (severity, want) in [
+            (nros_log_severity_t::NROS_LOG_SEVERITY_UNSET, 0),
+            (nros_log_severity_t::NROS_LOG_SEVERITY_TRACE, 5),
+            (nros_log_severity_t::NROS_LOG_SEVERITY_DEBUG, 10),
+            (nros_log_severity_t::NROS_LOG_SEVERITY_INFO, 20),
+            (nros_log_severity_t::NROS_LOG_SEVERITY_WARN, 30),
+            (nros_log_severity_t::NROS_LOG_SEVERITY_ERROR, 40),
+            (nros_log_severity_t::NROS_LOG_SEVERITY_FATAL, 50),
+        ] {
+            assert_eq!(severity.value(), want, "{severity:?}");
+        }
+    }
+
+    /// The hand-mirrored C declaration is a plain `enum` — `int`-sized on every
+    /// ABI we target. A `#[repr(u8)]` Rust mirror passes one byte where the
+    /// caller passes four; the values 0-50 survived only by how the ABIs in
+    /// play happen to pass small integers.
+    #[test]
+    fn the_rust_mirror_is_the_width_of_a_c_enum() {
+        assert_eq!(
+            size_of::<nros_log_severity_t>(),
+            size_of::<core::ffi::c_int>()
+        );
+    }
+
+    /// The gaps are deliberate: they are how a caller writes a threshold
+    /// BETWEEN two named levels. Such a value must resolve to the named level
+    /// at or below it, never be rejected and never be UB.
+    #[test]
+    fn a_value_in_a_gap_resolves_to_the_level_at_or_below_it() {
+        for (raw, want) in [
+            (11, nros_log::Severity::Debug),
+            (19, nros_log::Severity::Debug),
+            (20, nros_log::Severity::Info),
+            (29, nros_log::Severity::Info),
+            (31, nros_log::Severity::Warn),
+            (41, nros_log::Severity::Error),
+            (49, nros_log::Severity::Error),
+            (50, nros_log::Severity::Fatal),
+            (51, nros_log::Severity::Fatal),
+            (5, nros_log::Severity::Trace),
+            (9, nros_log::Severity::Trace),
+        ] {
+            assert_eq!(
+                nros_log_severity_t(raw).to_facade(),
+                want,
+                "raw severity {raw}"
+            );
+        }
+    }
+
+    /// No integer is an invalid discriminant, so nothing a C caller can pass —
+    /// a ported rcutils constant, a config file, an environment variable — is
+    /// UB at the boundary. This is the whole reason the mirror is a transparent
+    /// newtype rather than a Rust `enum`.
+    #[test]
+    fn every_integer_resolves_rather_than_being_an_invalid_discriminant() {
+        for raw in [
+            core::ffi::c_int::MIN,
+            -1,
+            0,
+            1,
+            7,
+            11,
+            25,
+            49,
+            51,
+            1_000,
+            core::ffi::c_int::MAX,
+        ] {
+            // The point is that this is a total function: no arm is missing,
+            // so no value reaches an unreachable match.
+            let resolved = nros_log_severity_t(raw).to_facade();
+            assert!(
+                resolved.as_u8() <= nros_log::Severity::Fatal.as_u8(),
+                "raw {raw} resolved out of range"
+            );
+        }
+    }
+
+    /// Every facade severity has a C spelling, and it maps back unchanged —
+    /// `nros_logger_get_level` and the sink shim both round-trip through here.
+    #[test]
+    fn every_facade_severity_round_trips_through_the_c_mirror() {
+        for severity in [
+            nros_log::Severity::Trace,
+            nros_log::Severity::Debug,
+            nros_log::Severity::Info,
+            nros_log::Severity::Warn,
+            nros_log::Severity::Error,
+            nros_log::Severity::Fatal,
+        ] {
+            assert_eq!(
+                nros_log_severity_t::from_facade(severity).to_facade(),
+                severity
+            );
+        }
+    }
+}

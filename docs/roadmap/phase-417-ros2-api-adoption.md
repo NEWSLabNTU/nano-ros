@@ -176,6 +176,51 @@ ways a ported program can compile and differ.
   timer is polled from `Node::pump()`, not driven by the executor).
 * W3.e — a gate: no adopted upstream name may lack a disposition, and no
   `adopt` row may carry a known contract inversion.
+* W3.g — **LANDED 2026-09-11. The C half: five measured behaviour defects behind
+  adopted rcl names.** Every one compiled exactly as upstream's does and
+  differed, which is the case this stage exists for; each is now fixed with a
+  unit test that failed against the code it replaced.
+  * **The `is_valid` FAMILY and its name accessors** (rows `c:client_is_valid`,
+    `c:service_is_valid`, `c:subscription_is_valid` + the three
+    `get_service_name`/`get_topic_name` halves, all six DELETED). All six tested
+    `state == ..._INITIALIZED` exactly while three entity kinds have further
+    LIVE states — client `REGISTERED` (the ordinary `nros_executor_add_client`
+    path) and `POLLING`, service `POLLING`, subscription `POLLING` — so the
+    upstream guard `if (!rcl_client_is_valid(&c)) bail;` rejected a working
+    entity and the accessor handed NULL to whatever `%s` printed it. Fixed as a
+    CLASS: one `is_usable()` per entity type, consumed by both the predicate and
+    the accessor, on the publisher too (whose answer does not change — it has no
+    third live state — so that a future state has one place to be added).
+  * **`c:node_is_valid`** (DELETED) — it read the node's own state and, only
+    when multi-session, the executor generation, and never `node.support`, so it
+    returned TRUE over a session `rclc_support_fini` had dropped. It consults
+    `nros_support_is_valid` now. The doc comment said "two questions" where there
+    are three; both moved together. `c:node_is_valid_except_context` was declined
+    on the reason "the split state is not reachable" — it IS, which is what this
+    measured, so that row's `why` is corrected rather than its verdict.
+  * **`c:timer_fini`** (DELETED) — `rcl/timer.h` promises verbatim that a NULL or
+    already-invalid timer "will not fail"; ours returned `INVALID_ARGUMENT` and
+    `NOT_INIT`, two values upstream promises never to produce, to a caller
+    `RCL_WARN_UNUSED` asks to check. Idempotent now. The sibling
+    `c:guard_condition_fini` is the other member of this class and is somebody
+    else's change.
+  * **`c:log_severity_t`** (AMENDED to `adopt-bounded`) — rcutils numbers
+    `UNSET=0, DEBUG=10 … FATAL=50` with deliberate gaps, and ours was a dense
+    `0..=5` with no catch-all, so a ported rcutils constant arrived as an invalid
+    `#[repr(u8)]` discriminant into an exhaustive match: instant UB, and `0`
+    meaning `UNSET` silently meant TRACE. Now on rcutils's line, mirrored
+    `#[repr(transparent)]` over `c_int` against the header's `int`-sized `enum`
+    (with the `static_assert` that was missing anywhere in `include/` or `src/`),
+    resolved by band so every integer is defined. The row stays open for one
+    envelope: rcutils's `UNSET` means *inherit*, and our facade has no
+    inheritable level.
+  * **`c:timer_get_time_until_next_call`** (DELETED, closes issue 1049) — it
+    returned `uint64_t` and took the clock IN, so the error channel was gone
+    (five cases shared the value `0`) and overdue was not expressible; it also
+    computed from `nros_timer_t::last_call_time_ns`, which no dispatch path
+    updates, so the answer was permanently `0` for any timer the executor was
+    running. It has upstream's shape now — `nros_ret_t (const timer *, int64_t *)`
+    — and forwards to the arena like its three W5.c siblings.
 
 **Acceptance:** every upstream name we define either behaves or fails to
 compile. Demonstrated by an expected-failure probe per REFUSE-LOUD item, in the
