@@ -123,50 +123,94 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
     })
 }
 
+/// Every board key the Rust pack resolves, and the board ZST it names.
+///
+/// Issue 1285 — a TABLE rather than a `match`, so the key set is data: the
+/// proc-macro's "Known boards" message is derived from it rather than
+/// hand-written beside it, and `nros-cli-core/tests/board_key_table.rs` checks
+/// every key here against `nros_entry_lower::BOARD_KEYS` (the key → family
+/// table) so the two cannot disagree about which RTOS a key names. The ZST
+/// PATH stays here: it is Rust-pack spelling, not a neutral fact.
+///
+/// Rows, grouped:
+/// - FreeRTOS — MPS2-AN385 Cortex-M3 (the only FreeRTOS board today). The RTOS
+///   calls `main()`; the board ZST impls `BoardEntry`.
+/// - NuttX — phase-337 W3: ONE crate, two witnesses. Both keys resolve to the
+///   SAME ZST: the board marker only selects trait impls, and those never
+///   differed between arm virt and rv-virt (the arch delta is defconfig +
+///   toolchain DATA). The keys stay distinct because they select the
+///   `[[board]]` descriptor — and therefore the target triple — not the type.
+/// - ESP32 — Phase 225.O: CI-runnable ESP32-C3 QEMU (OpenETH) board, routed
+///   through `Framework::Esp32` emit shape in the proc-macro.
+/// - Zephyr — Phase 225.P: Zephyr owns `main`; the board ZST impls
+///   `NetworkWait` only (NOT `BoardEntry`). The proc-macro routes through
+///   `Framework::Zephyr` and emits a `rust_main` staticlib export.
+/// - RTIC — phase-337 W6.a: the RTIC entry surface moved INTO
+///   `nros-board-mps2-an385` (its `rtic` feature); the ZST kept its name. The
+///   deploy key stays distinct because the two entry shapes are distinct — this
+///   one routes through the RTIC framework emit.
+/// - Bare metal — Phase 244.D1: pure (no-RTOS) MPS2-AN385 direct-exec board.
+///   Board ZST impls `nros_platform::BoardEntry`. Distinct from
+///   `rtic-mps2-an385`, which routes through the RTIC framework emit.
+///
+/// phase-337 W7.a — the three STM32F4 keys (`stm32f4`, `rtic-stm32f4`,
+/// `embassy-stm32f4`) left with their board crates. Unlike W6.a's
+/// `rtic-mps2-an385`, no key survives: the ZSTs are gone, not moved, so an
+/// entry naming one must fail to resolve rather than silently pick another
+/// board. Out-of-tree replacements supply their own `board_crate` — see
+/// `book/src/porting/stm32f4-out-of-tree.md`.
+pub const BOARD_PATHS: &[(&str, &str)] = &[
+    ("native", "::nros_board_linux::LinuxBoard"),
+    ("posix", "::nros_board_linux::LinuxBoard"),
+    ("freertos", "::nros_board_mps2_an385_freertos::Mps2An385"),
+    (
+        "freertos-qemu-mps2-an385",
+        "::nros_board_mps2_an385_freertos::Mps2An385",
+    ),
+    (
+        "mps2-an385-freertos",
+        "::nros_board_mps2_an385_freertos::Mps2An385",
+    ),
+    ("threadx-linux", "::nros_board_threadx_linux::ThreadxLinux"),
+    (
+        "threadx-qemu-riscv64",
+        "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64",
+    ),
+    (
+        "rv-virt-threadx",
+        "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64",
+    ),
+    ("nuttx", "::nros_board_nuttx_qemu::NuttxQemu"),
+    ("qemu-armv7a-nuttx", "::nros_board_nuttx_qemu::NuttxQemu"),
+    ("nuttx-riscv", "::nros_board_nuttx_qemu::NuttxQemu"),
+    ("rv-virt-nuttx", "::nros_board_nuttx_qemu::NuttxQemu"),
+    ("esp32-qemu", "::nros_board_esp32_qemu::Esp32QemuEntry"),
+    (
+        "esp32-c3-baremetal",
+        "::nros_board_esp32_qemu::Esp32QemuEntry",
+    ),
+    ("zephyr", "::nros_board_zephyr::ZephyrBoard"),
+    ("rtic-mps2-an385", "::nros_board_mps2_an385::RticMps2An385"),
+    (
+        "qemu-rtic-mps2-an385",
+        "::nros_board_mps2_an385::RticMps2An385",
+    ),
+    ("qemu-mps2-an385", "::nros_board_mps2_an385::Mps2An385"),
+    ("mps2-an385", "::nros_board_mps2_an385::Mps2An385"),
+];
+
+/// The board ZST the Rust pack names for `key`, or `None` for a key it does
+/// not know. See [`BOARD_PATHS`].
 pub fn board_path_for(key: &str) -> Option<&'static str> {
-    Some(match key {
-        "native" | "posix" => "::nros_board_linux::LinuxBoard",
-        // FreeRTOS — MPS2-AN385 Cortex-M3 (the only FreeRTOS board today).
-        // The RTOS calls `main()`; the board ZST impls `BoardEntry`.
-        "freertos" | "freertos-qemu-mps2-an385" | "mps2-an385-freertos" => {
-            "::nros_board_mps2_an385_freertos::Mps2An385"
-        }
-        "threadx-linux" => "::nros_board_threadx_linux::ThreadxLinux",
-        "threadx-qemu-riscv64" | "rv-virt-threadx" => {
-            "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64"
-        }
-        // phase-337 W3 — ONE crate, two witnesses. Both keys resolve to the
-        // SAME ZST: the board marker only selects trait impls, and those never
-        // differed between arm virt and rv-virt (the arch delta is defconfig +
-        // toolchain DATA). The keys stay distinct because they select the
-        // `[[board]]` descriptor — and therefore the target triple — not the type.
-        "nuttx" | "qemu-armv7a-nuttx" | "nuttx-riscv" | "rv-virt-nuttx" => {
-            "::nros_board_nuttx_qemu::NuttxQemu"
-        }
-        // Phase 225.O — CI-runnable ESP32-C3 QEMU (OpenETH) board. Routed
-        // through `Framework::Esp32` emit shape in the proc-macro.
-        "esp32-qemu" | "esp32-c3-baremetal" => "::nros_board_esp32_qemu::Esp32QemuEntry",
-        // Phase 225.P — Zephyr owns `main`; the board ZST impls `NetworkWait`
-        // only (NOT `BoardEntry`). The proc-macro routes through
-        // `Framework::Zephyr` and emits a `rust_main` staticlib export.
-        "zephyr" => "::nros_board_zephyr::ZephyrBoard",
-        // phase-337 W6.a — the RTIC entry surface moved INTO
-        // `nros-board-mps2-an385` (its `rtic` feature); the ZST kept its name.
-        // The deploy key stays distinct because the two entry shapes are
-        // distinct — this one routes through the RTIC framework emit.
-        "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => "::nros_board_mps2_an385::RticMps2An385",
-        // Phase 244.D1 — pure bare-metal (no-RTOS) MPS2-AN385 direct-exec
-        // board. Board ZST impls `nros_platform::BoardEntry`. Distinct from
-        // `rtic-mps2-an385`, which routes through the RTIC framework emit.
-        "qemu-mps2-an385" | "mps2-an385" => "::nros_board_mps2_an385::Mps2An385",
-        // phase-337 W7.a — the three STM32F4 keys (`stm32f4`, `rtic-stm32f4`,
-        // `embassy-stm32f4`) left with their board crates. Unlike W6.a's
-        // `rtic-mps2-an385`, no key survives: the ZSTs are gone, not moved, so
-        // an entry naming one must fail to resolve rather than silently pick
-        // another board. Out-of-tree replacements supply their own
-        // `board_crate` — see `book/src/porting/stm32f4-out-of-tree.md`.
-        _ => return None,
-    })
+    BOARD_PATHS
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, path)| *path)
+}
+
+/// The keys of [`BOARD_PATHS`], in table order.
+pub fn board_path_keys() -> impl Iterator<Item = &'static str> {
+    BOARD_PATHS.iter().map(|(key, _)| *key)
 }
 
 // =============================================================================

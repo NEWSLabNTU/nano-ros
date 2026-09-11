@@ -637,6 +637,14 @@ pack today does not (it calls `nros_board_native_run_components_named`). The
 NEUTRAL fact is the board IDENTITY plus its boot shape; how that becomes a call
 is a pack's business — a class path in C++, a function symbol in C and Zig.
 
+**Status: fixed.** `LoweredEntry` carries only the board KEY. Each pack spells
+the call: C++ `board_cpp_path`, and Rust `nros_orchestration_ir::BOARD_PATHS`.
+C reads `BoardFamily::c_abi_runners`, because a C symbol name is part of the C
+ABI, not of any one template. The fact underneath, key → family, was still
+derived four times after that fix, and the four disagreed. Issue 1285 made it
+one table, `nros_entry_lower::BOARD_KEYS`, and an unknown key is now an error
+rather than the host.
+
 ### Defect 2 — escaping cannot be done in Stage 2
 
 §4 says Stage 2 escapes every literal, on the grounds that quoting is a

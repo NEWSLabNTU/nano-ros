@@ -169,7 +169,9 @@ fn c_default_tier_plan(board: &str) -> Plan {
     let mut telem = c_node("telem_pkg", "telem");
     telem.callback_groups = vec!["telem_grp".into()];
     let mut p = plan(board, vec![ctrl, telem]);
-    let rtos = super::board_to_rtos(board).to_string();
+    let rtos = super::board_to_rtos(board)
+        .expect("the golden matrix names only board keys in the family table")
+        .to_string();
     super::resolve_plan_sched(&mut p, &rtos).expect("default-tier resolution");
     assert!(
         p.resolved_tiers

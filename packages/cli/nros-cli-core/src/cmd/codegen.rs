@@ -96,9 +96,11 @@ pub enum Sub {
     ///
     /// This exists so `NanoRosEntry.cmake` stops re-deriving them. It used to
     /// key on `NANO_ROS_PLATFORM != "posix"` while the dispatch keyed on the
-    /// BOARD, and `board_family()` answers `native` for any key it does not
-    /// know — so an unlearned board is embedded to one and native to the
-    /// other, and the CLI writes a C TU into a file CMake named `.cpp`.
+    /// BOARD, and `board_family()` answered `native` for any key it did not
+    /// know — so an unlearned board was embedded to one and native to the
+    /// other, and the CLI wrote a C TU into a file CMake named `.cpp`. An
+    /// unknown key is now an error naming the known ones (issue 1285), which
+    /// CMake reports as a FATAL_ERROR at configure.
     #[command(name = "entry-pack")]
     EntryPack(EntryPackArgs),
 }
@@ -362,8 +364,11 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         entry_codegen::metadata::enrich_plan(&mut plan, &index)?;
         // Phase 269 (W4) — resolve tiers + stamp PlanNode.sched_context after
         // enrich_plan has populated PlanNode.callback_groups from cmake metadata.
-        let target_rtos = entry_codegen::board_to_rtos(&plan.board).to_string();
-        entry_codegen::resolve_plan_sched(&mut plan, &target_rtos)?;
+        // Issue 1285 — a typed C/C++ entry needs the board's FAMILY (its
+        // runner, its boot shape, its tier sub-table), so an unknown key stops
+        // here, naming the known ones, instead of reading as `posix`/`native`.
+        let family = nros_entry_lower::board_family(&plan.board).map_err(|e| eyre!("{e}"))?;
+        entry_codegen::resolve_plan_sched(&mut plan, family.tier_rtos_key())?;
         match lang {
             // phase-263 C2 (issue 0097) — the C emitter is native-only (it emits a
             // pure-`.c` TU calling the C `nros_board_native_run_components`). The
@@ -373,9 +378,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             // — exactly the single-node `threadx_entry_main_c_typed.cpp.in` shape). The
             // cmake side (`nano_ros_entry`) gives the `.out` a `.cpp` extension + links
             // `NanoRosCpp` for an embedded C entry.
-            entry_codegen::Lang::C
-                if nros_entry_lower::board_family(&plan.board).has_c_run_components() =>
-            {
+            entry_codegen::Lang::C if family.has_c_run_components() => {
                 entry_codegen::emit_c::emit_typed(&plan).map_err(|e| eyre!("{e}"))?
             }
             // phase-432 W3.1 — SAY that the routing fired.

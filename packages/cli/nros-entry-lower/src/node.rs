@@ -121,8 +121,9 @@ pub struct LoweredEntry {
 }
 
 impl LoweredEntry {
-    /// The family this entry's board key names.
-    pub fn family(&self) -> crate::BoardFamily {
+    /// The family this entry's board key names, or an error naming the known
+    /// keys (issue 1285).
+    pub fn family(&self) -> Result<crate::BoardFamily, crate::UnknownBoard> {
         crate::board_family(&self.board)
     }
 }
@@ -236,6 +237,6 @@ mod tests {
             nodes: vec![LoweredNode::bare("talker_pkg")],
             ..Default::default()
         };
-        assert_eq!(e.family(), crate::BoardFamily::Freertos);
+        assert_eq!(e.family(), Ok(crate::BoardFamily::Freertos));
     }
 }

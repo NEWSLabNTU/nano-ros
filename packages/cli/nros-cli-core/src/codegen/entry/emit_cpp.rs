@@ -40,7 +40,7 @@ use super::{
 /// in the lowering. RFC-0091 §8b found the first draft leaking exactly this
 /// string into the IR, where a pure-C or Zig pack could not use it.
 fn board_cpp_path(board: &str) -> &'static str {
-    match nros_entry_lower::board_family(board) {
+    match family(board) {
         nros_entry_lower::BoardFamily::Native => "::nros::board::LinuxBoard",
         nros_entry_lower::BoardFamily::Zephyr => "::nros::board::ZephyrBoard",
         nros_entry_lower::BoardFamily::Nuttx => "::nros::board::NuttxBoard",
@@ -57,13 +57,24 @@ fn board_cpp_path(board: &str) -> &'static str {
 /// afford is what lets both stop.
 pub(crate) use nros_entry_lower::BootShape;
 
+/// The family of a board key this emitter has already VALIDATED.
+///
+/// Issue 1285 — `board_family` refuses an unknown key rather than answering
+/// `Native`. Every public entry point funnels through `emit_typed_with_tail`,
+/// which refuses an unknown `plan.board` with the known-keys message before
+/// any helper below runs, so a miss here is a broken invariant, not user input.
+fn family(board: &str) -> nros_entry_lower::BoardFamily {
+    nros_entry_lower::board_family(board)
+        .unwrap_or_else(|e| panic!("emit_cpp: board not validated at entry: {e}"))
+}
+
 /// The boot shape for a board key.
 pub(crate) fn boot_shape(board: &str) -> BootShape {
-    nros_entry_lower::board_family(board).boot_shape()
+    family(board).boot_shape()
 }
 
 pub(crate) fn board_is_embedded(board: &str) -> bool {
-    nros_entry_lower::board_family(board).is_embedded()
+    family(board).is_embedded()
 }
 
 /// phase-263 C2d — Zephyr is the exception among embedded boards: the Zephyr kernel
@@ -75,7 +86,7 @@ pub(crate) fn board_is_embedded(board: &str) -> bool {
 /// in via the compile-time `CONFIG_NROS_ZENOH_LOCATOR` Kconfig (read through the
 /// `NROS_ENTRY_LOCATOR` default in `<nros/main.hpp>`), not a baked `-D`.
 pub(crate) fn board_is_zephyr(board: &str) -> bool {
-    nros_entry_lower::board_family(board) == nros_entry_lower::BoardFamily::Zephyr
+    family(board) == nros_entry_lower::BoardFamily::Zephyr
 }
 
 // issue 1283 — `board_is_freertos_embedded` / `board_is_nuttx` existed only to
@@ -298,6 +309,9 @@ fn node_view(n: &super::PlanNode, i: usize, on_executor: usize, tiered: bool) ->
 }
 
 pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String, String> {
+    // Issue 1285 — refuse an unknown board key HERE, naming the known ones.
+    // Every board helper in this module relies on it (see `family`).
+    nros_entry_lower::board_family(&plan.board).map_err(|e| format!("typed entry emit: {e}"))?;
     for n in &plan.nodes {
         // phase-432 W2.6 — the exemption is the SAME one the `class_header`
         // guard below already applies, and it was missing here alone.
