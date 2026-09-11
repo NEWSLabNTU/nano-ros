@@ -76,6 +76,44 @@ fn main() {
         return;
     }
 
+    // issue 1309 — A VARIABLE THAT RESOLVES IS NOT A TREE THAT EXISTS.
+    // `activate.sh` exports `FREERTOS_DIR` unconditionally, so the guard above
+    // passes in every checkout — including one where `third-party/freertos/
+    // kernel` is an EMPTY DIRECTORY because the submodule was never
+    // initialised. That is the normal state of the CI gate job, which
+    // initialises exactly `packages/cli/third-party/play_launch`, and it only
+    // became reachable when phase-451 W4 promoted this crate out of `exclude`
+    // and into the workspace, where `check::workspace-embedded` compiles it.
+    //
+    // The failure it produced named neither the submodule nor the remedy:
+    //     sccache: error: while hashing the input file '.../kernel/tasks.c'
+    //
+    // Skipping is right rather than a hard error: a `cargo check` of this
+    // crate's RUST is exactly what 1309 promoted it for, and it needs no
+    // kernel. An image that actually links the archive still fails, in the same
+    // build log, with this warning three lines up.
+    //
+    // `tasks.c` rather than the directory: an uninitialised submodule IS a
+    // directory, so `freertos_dir.exists()` answers yes and measures nothing.
+    // `nros-board-threadx` carries the same shape untouched — a set-variable
+    // guard and an `assert!` that panics — and has not failed only because no
+    // lane compiles it. That is 1309 again, one crate over.
+    let freertos_probe = nros_build_paths::canonical(&PathBuf::from(
+        env::var("FREERTOS_DIR").expect("checked above"),
+    ))
+    .join("tasks.c");
+    if !freertos_probe.exists() {
+        println!(
+            "cargo:warning=nros-board-freertos: FREERTOS_DIR is set but its \
+             kernel sources are absent ({} not found); skipping kernel / lwIP \
+             / glue compile. The submodule is not initialised here — run \
+             `git submodule update --init third-party/freertos/kernel`. A link \
+             of this board will fail until you do.",
+            freertos_probe.display()
+        );
+        return;
+    }
+
     // Canonical, so the `rerun-if-changed` lines these feed at the bottom read
     // the same from every consumer (issue 0491).
     let freertos_dir = env_path("FREERTOS_DIR");
