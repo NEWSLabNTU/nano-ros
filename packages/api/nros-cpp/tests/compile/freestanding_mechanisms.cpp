@@ -13,6 +13,7 @@
 #include "nros/traits.hpp"
 #include "nros/handle.hpp"
 #include "nros/inplace_fn.hpp"
+#include "nros/owned.hpp"
 
 namespace tr = nros::tr;
 static_assert(tr::is_same<tr::decay<const int&>::type, int>::value, "decay cv-ref");
@@ -71,4 +72,80 @@ extern "C" int nros_w3_probe(const Msg& m) {
     }
     moved.clear();
     return g_sub.n + static_cast<int>(moved.valid());
+}
+
+// --- Owned<T>: an entity kept BY VALUE, spoken to as a pointer (W8) ---------
+//
+// The stand-in carries the same move contract the real entities do: a
+// relocation that the C ABI documents as `ptr::read` + `ptr::write`, counted
+// here so the probe measures the move rather than assuming it.
+static int g_relocations = 0;
+
+class FakePublisher {
+  public:
+    FakePublisher() : initialized_(false) { storage_[0] = 0; }
+    FakePublisher(FakePublisher&& o) : initialized_(o.initialized_) {
+        if (o.initialized_) {
+            ++g_relocations;
+            storage_[0] = o.storage_[0];
+            o.initialized_ = false;
+        }
+    }
+    FakePublisher& operator=(FakePublisher&& o) {
+        if (this != &o) {
+            initialized_ = o.initialized_;
+            if (o.initialized_) {
+                ++g_relocations;
+                storage_[0] = o.storage_[0];
+                o.initialized_ = false;
+            }
+        }
+        return *this;
+    }
+    FakePublisher(const FakePublisher&) = delete;
+    FakePublisher& operator=(const FakePublisher&) = delete;
+
+    void publish(const Msg&) {}
+    void mark_live() { initialized_ = true; }
+
+    using SharedPtr = nros::Owned<FakePublisher>;
+
+  private:
+    alignas(8) unsigned char storage_[64];
+    bool initialized_;
+};
+
+// The ported shape: a member holds the entity, and the factory returns it.
+class PortedNode {
+  public:
+    PortedNode() { pub_ = make(); }
+    void tick() {
+        Msg m{1};
+        pub_->publish(m);
+        if (pub_) {
+            (*pub_).publish(m);
+        }
+    }
+
+  private:
+    static FakePublisher::SharedPtr make() {
+        FakePublisher p;
+        p.mark_live();
+        return FakePublisher::SharedPtr(static_cast<FakePublisher&&>(p));
+    }
+    FakePublisher::SharedPtr pub_;
+};
+
+static_assert(!nros::tr::is_same<FakePublisher::SharedPtr, FakePublisher*>::value,
+              "Owned is not a raw pointer");
+
+extern "C" int nros_w8_owned_probe() {
+    PortedNode n;
+    n.tick();
+    nros::Owned<FakePublisher> empty;
+    if (empty != nullptr) {
+        return -1;
+    }
+    empty.reset();
+    return g_relocations;
 }

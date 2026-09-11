@@ -1,8 +1,8 @@
 ---
 id: 1335
-title: "One entity concept, three storage shapes: the C++ timer lives in the
-  Rust arena, the other seven C++ entities live in a caller buffer, and the C
-  API puts all of them in caller structs — no recorded decision says why"
+title: "The C++ API uses the POLL path where it means the DISPATCH path, and
+  carries entity storage for both — an 888-byte `Subscription<M>` beside an
+  arena entry that already holds the subscriber"
 status: open
 type: question
 area: [api, api-c, core, docs]
@@ -11,33 +11,72 @@ related: [rfc-0022, rfc-0054, rfc-0096, phase-409, phase-412, phase-442]
 
 ## The question
 
-Where an entity's memory lives is answered three different ways in this tree for
-one concept, and the difference is not recorded anywhere as a decision.
+The C++ API reaches the runtime by two paths for the same entity, and carries
+storage for both.
 
-Measured on `nros_cpp_ffi.h` — every `create` entry point, classified by whether
-it returns an arena index or writes into a caller buffer:
+**Correction to this issue's first version, which is also the point.** The table
+originally here was built from the generated `nros_cpp_ffi.h` and listed only the
+`*_create` family, concluding that the timer was the sole arena-shaped entity.
+That reach was too narrow: the DISPATCH entry points are hand-declared
+`extern "C"` in the entity headers, not in the generated header, so the scan
+never saw them. They exist:
 
-| entry point | shape |
-| --- | --- |
-| `nros_cpp_timer_create` | **arena** — `size_t *out_handle_id` |
-| `nros_cpp_timer_create_on_clock` | **arena** |
-| `nros_cpp_timer_create_oneshot` | **arena** |
-| `nros_cpp_timer_create_in_group` | **arena** |
-| `nros_cpp_publisher_create` | caller storage — `void *storage` |
-| `nros_cpp_subscription_create` | caller storage |
-| `nros_cpp_service_server_create` | caller storage |
-| `nros_cpp_service_client_create` | caller storage |
-| `nros_cpp_action_server_create` | caller storage |
-| `nros_cpp_action_client_create` | caller storage |
-| `nros_cpp_guard_condition_create` | caller storage |
+```c
+/* subscription.hpp */
+nros_cpp_ret_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* topic,
+                                              const char* type_name, const char* type_hash,
+                                              nros_cpp_qos_t qos,
+                                              nros_cpp_subscription_message_callback_t callback,
+                                              void* context, size_t* out_handle_id,
+                                              const nros_cpp_subscription_options_t* options);
+```
 
-And the C API is a third shape again: `nros_publisher_init_with_qos` and
-`nros_timer_init` both take a pointer to a caller-declared
-`struct nros_publisher_t` / `struct nros_timer_t`, so there the TIMER is
-caller-storage too.
+and `subscription.rs` states what they mean:
 
-So: C++ timer in the Rust arena, C++ everything-else in a C++ buffer, C timer
-and C publisher in a C struct. Three answers, one concept.
+> arena (rclcpp dispatch model), as opposed to the poll-style
+> `nros_cpp_subscription_create` above. **The arena owns the subscriber**; spin …
+
+So per entity there are two paths, and the C++ API uses both at once:
+
+| path | entry point | owner |
+| --- | --- | --- |
+| poll-style | `nros_cpp_subscription_create(…, void *storage)` | the caller |
+| dispatch | `nros_cpp_subscription_register(…, out_handle_id)` | the arena |
+
+The arena's C-facing entry already holds everything a dispatch subscription
+needs:
+
+```rust
+pub(crate) struct SubBufferedRawCEntry {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) buffer: BufferStrategy,
+    pub(crate) callback: RawSubscriptionCallback,
+    pub(crate) context: *mut core::ffi::c_void,
+}
+```
+
+**And yet the C++ object still carries its own.** `Subscription<M>` is 888 bytes,
+of which `alignas(8) uint8_t storage_[NROS_SUBSCRIBER_SIZE]` is unused on the
+dispatch path. The returning `create_subscription` in `nros.hpp` adds a third
+copy: a heap `detail::SubscriptionCallback<M>` cell whose only job is to hold a
+`std::function` that the arena entry's own `callback` + `context` fields already
+model.
+
+`component.hpp` shows the shape the rest of the API could have had — its own
+comment calls it a *"Thin wrapper over `nros_cpp_subscription_register`"* — and
+it keeps nothing.
+
+Services are the same one step less far along: `nros_cpp_service_server_register`
+returns a handle id, so the slot exists, but it is handed `&out` — the C++
+object — as its trampoline context. That back-reference is exactly what
+`service.hpp`'s move constructor warns about:
+
+> A callback-style service must NOT be moved after register — the arena holds
+> `this` as the trampoline context (Phase 189.M3.3.e); the move only transfers
+> bookkeeping and leaves that pointer stale, so don't.
+
+A hazard that exists only because the C++ side kept an object the arena did not
+need.
 
 ## Why it matters, in numbers
 
@@ -96,16 +135,60 @@ which side holds the bytes.
 
 So this may be accreted rather than decided. That is what the issue asks.
 
-## What it blocks
+## RE-SCOPED 2026-09-12 — it does not block phase-442, and the question is sharper
 
-phase-442 W8, directly. RFC-0096 D9 has to say where a returned
-`X::SharedPtr` handle's entity lives, and the answer is different depending on
-this: if entity storage moves into a Rust-side arena the way the timer's
-already has, every C++ entity becomes handle-shaped, `nros::Handle<T>` is
-trivially correct because C++ owns nothing, and D9 dissolves instead of being
-answered. If caller storage is the deliberate design, D9 has to pick among
-pools, node template parameters, or derived counts — all of which are heavier
-and none of which delete the 4 672.
+The first filing asked "where should entity storage live". That was the wrong
+question, and RFC-0096 D9 revision 3 answers it: for the rclcpp DISPATCH model
+the Rust arena already owns the entity, and `subscription.rs` says so —
+
+> arena (rclcpp dispatch model), as opposed to the poll-style
+> `nros_cpp_subscription_create` above. **The arena owns the subscriber**; spin …
+
+So there are TWO ABI paths per entity, not one shape to choose:
+
+| path | entry point | owner |
+| --- | --- | --- |
+| poll-style | `nros_cpp_subscription_create(…, void *storage)` | the caller |
+| dispatch | `nros_cpp_subscription_register(…, out_handle_id)` | the arena |
+
+and the arena's C-facing entry already holds everything a dispatch subscription
+needs:
+
+```rust
+pub(crate) struct SubBufferedRawCEntry {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) buffer: BufferStrategy,
+    pub(crate) callback: RawSubscriptionCallback,
+    pub(crate) context: *mut core::ffi::c_void,
+}
+```
+
+**The real defect is that the C++ API does not pick one.** `create_subscription`
+registers through the arena path AND keeps an 888-byte `Subscription<M>` whose
+`storage_` is unused there, AND heap-allocates a `detail::SubscriptionCallback<M>`
+cell to hold a `std::function` that duplicates the entry's own `callback` +
+`context`. Three copies of one subscription's identity.
+
+The same shape, one step less advanced, in services:
+`nros_cpp_service_server_register` returns a handle id — so the arena slot
+exists — but is handed `&out`, the C++ object, as its trampoline context. That
+back-reference is what `service.hpp`'s move constructor warns about:
+
+> A callback-style service must NOT be moved after register — the arena holds
+> `this` as the trampoline context (Phase 189.M3.3.e); the move only transfers
+> bookkeeping and leaves that pointer stale, so don't.
+
+A hazard that exists only because the C++ side kept an object the arena did not
+need.
+
+**So the question is now:** per entity kind, should the C++ dispatch path carry
+any storage of its own at all, and where a capture does not fit the single
+`context` pointer, should its bytes live in the arena's trailing allocation
+(which already exists for the rx buffer, `arena_alloc_with_trailing`)?
+
+phase-442 W8 does not wait on this. It can take the handle shape for
+subscriptions with the entry point that already exists. What this issue governs
+is the remaining kinds and whether the poll-path storage stays where it is.
 
 ## What would answer it
 

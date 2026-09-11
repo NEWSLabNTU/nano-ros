@@ -346,6 +346,14 @@ an edit, and every one is a compile error naming the exact site:
    the bulk of any port, is what must be drop-in and is.
 3. **A lambda capture larger than the declared budget**, which is a
    `static_assert` naming the knob.
+4. **Copying a PUBLISHER handle** (phase-442 W8). A dispatch entity's
+   `X::SharedPtr` is `nros::Handle`, which copies like upstream's. A publisher
+   has no arena slot, so its handle is `nros::Owned<T>` and is MOVE-ONLY; a copy
+   is a compile error at the call site. The W0 census found no entity handle
+   copied anywhere in this tree or in the porting corpus — handles are stored as
+   members, and the one by-value pass is a NODE handle, which is
+   `nros::Handle<Node>` and copyable — so this is on the list because it is a
+   difference, not because it has cost anything measured.
 
 What this does not promise: an arbitrary third-party ROS 2 package that uses
 `std::string` internally will not become freestanding because our API is. The
@@ -561,6 +569,88 @@ answer belongs and it is larger than phase-442.**
    executor storage size. Keeps the user's spelling identical to upstream's and
    costs them nothing to write; the heaviest of the three, and the closest to
    the primary candidate without the ABI change.
+
+#### RESOLVED (revision 3, 2026-09-12): the Rust arena already owns the dispatch entities
+
+The question was *where does a returned `X::SharedPtr` handle's entity live*, and
+two revisions of this section looked for somewhere in C++ to put it — a pool,
+then a Rust arena to be built. Both were the wrong question. The C/C++ API is a
+thin wrapper over the Rust API, entity lifetime is a Rust data structure's, and
+**for the rclcpp dispatch model the Rust side already owns the entity.** The
+tree documents this at `packages/api/nros-cpp/src/subscription.rs`:
+
+> arena (rclcpp dispatch model), as opposed to the poll-style
+> `nros_cpp_subscription_create` above. **The arena owns the subscriber**; spin …
+
+There are two ABI paths per entity, and only one of them is caller-storage:
+
+| path | entry point | owner |
+| --- | --- | --- |
+| poll-style | `nros_cpp_subscription_create(…, void *storage)` | the caller |
+| **rclcpp dispatch** | `nros_cpp_subscription_register(…, out_handle_id)` | **the arena** |
+
+and the arena's C-facing entry already holds everything:
+
+```rust
+pub(crate) struct SubBufferedRawCEntry {
+    pub(crate) handle: session::RmwSubscriber,      // the subscriber
+    pub(crate) buffer: BufferStrategy,              // the rx buffer
+    pub(crate) callback: RawSubscriptionCallback,
+    pub(crate) context: *mut core::ffi::c_void,
+}
+```
+
+**So `X::SharedPtr` for a dispatch entity is `nros::Handle` over
+`{executor, handle_id}`** — exactly what `Timer` is today, and exactly what W3
+already built. The C++ `Subscription<M>`'s 888 bytes of `storage_`, and the
+heap `detail::SubscriptionCallback<M>` cell that today holds a `std::function`,
+are a second copy of state the arena already keeps. They accumulated; they were
+not decided.
+
+Four things follow, and every one of them is a simplification:
+
+* **No ABI addition, no new arena, no pool, no node template parameter.** The
+  entry point exists and returns a handle id.
+* **`X::SharedPtr` is COPYABLE**, because a handle is. That removes the
+  move-only difference from D5 rather than adding one.
+* **The "must not move after register" hazard loses its subject.**
+  `service.hpp`'s warning — *"the arena holds `this` as the trampoline context…
+  the move only transfers bookkeeping and leaves that pointer stale, so don't"*
+  — is about a C++ object that, under this shape, does not exist.
+* **`sizeof` stops being a design input.** The 4 672-byte `Client<int>` that made
+  every pooling answer look unaffordable was the C++ object holding the reply
+  buffer; as a handle it is two words.
+
+**The one genuinely new piece.** `context` is a single pointer. That carries a
+`[this]` capture — 7 of the 11 capture sites the W0 census found — and does not
+carry `[obj, method]`, which is three pointers. So a capturing lambda needs
+somewhere for its bytes, and by the same principle that somewhere is the
+registration, in Rust. The mechanism is already there: the arena allocates
+trailing bytes today for the rx buffer
+(`arena_alloc_with_trailing::<SubBufferedRawCEntry>(trailing_bytes)`), so the
+capture is the same allocation with a larger tail and `InplaceFn`'s invoker
+becomes the `callback` field. That is the only Rust-side work this design needs.
+
+**What `nros::Owned<T>` is for, then.** The entities with NO dispatch, where no
+arena slot exists and the C++ object genuinely is the entity: publishers, and
+the poll-style forms. It is a fallback for one kind, not the shape of the API,
+and `nros/owned.hpp` says so at the top. Whether publishers should get an arena
+slot too, for uniformity, is open and small.
+
+**What remains per entity kind.** `nros_cpp_service_server_register` already
+returns a handle id, so the slot exists — but it is handed `&out`, the C++
+object, as its context. Moving that state into the arena entry the way
+subscriptions would removes the back-reference. Same audit for the action forms.
+
+Issue **1335** narrows accordingly: not "where should entity storage live", but
+"the C++ API uses the poll path where it means the dispatch path, and carries
+storage for both".
+
+#### What the alternatives above are now for
+
+They are the record of two wrong framings, kept because the question that
+retired them — *why is the C++ API inventing storage when it is a thin wrapper
+over a Rust API that already has it?* — is the one worth asking first next time.
 
 #### W8 does not start until this is answered
 
