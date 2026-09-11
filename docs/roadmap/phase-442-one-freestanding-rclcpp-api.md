@@ -71,12 +71,21 @@ the rest and do not depend on each other.
   `detail::HostedBlockBase`, lifted out of `node.hpp` into
   `nros/hosted_block.hpp` so the three owners share one spelling.
 
-* **W2 [cpp] — delete `std_compat.hpp`.** 275 lines, 71 `std::` occurrences,
+* **W2 [cpp] — delete `std_compat.hpp`. LANDED 2026-09-11.** 275 lines, 71 `std::` occurrences,
   entirely behind `#ifdef NROS_CPP_STD`, included from exactly one place itself
   behind the same guard, and nothing that ships defines that macro. Dead in
   every shipping configuration; a third orphaned vocabulary predating the
   phase-427 merge.
-  *Acceptance:* the tree builds; `just check cpp` green.
+  *Acceptance:* the tree builds; `just check cpp` green. **Met**, and the
+  delete surfaced two things worth recording. `nros::create_publisher`'s free
+  factory has a return-type divergence from `rclcpp::create_publisher` —
+  `ResultOf<Publisher<M>>` against `std::shared_ptr<Publisher<MessageT>>`,
+  both halves forced by RFC-0018 — which the deleted overload's differing
+  ARITY had been masking from `--require-disposition`; it carries a ledger row
+  now. And `check-api-parity` stayed green over **ten ledger rows describing
+  deleted entities**, because the ledger ratchets in one direction only: a
+  difference with no row fails, a row with no difference does not. Filed as
+  issue 1323; the ten were removed and four surviving rows amended by hand.
 
 * **W3 [cpp] — the two freestanding mechanisms**, sized by W0: a handle type
   behind the `X::SharedPtr` aliases, and a fixed-capacity inplace callable,

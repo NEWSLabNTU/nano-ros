@@ -287,7 +287,7 @@ if [ "$violations" -ne 0 ]; then
     printf '%s' "$unlisted" >&2
     echo >&2
     echo "Fix: wrap the hosted section in a guard — \`#ifdef NROS_CPP_STD\` for nros-cpp" >&2
-    echo "(std_compat.hpp / bridge.hpp), or a platform \`#if\` for a backend TU" >&2
+    echo "(bridge.hpp), or a platform \`#if\` for a backend TU" >&2
     echo "(nros-rmw-cyclonedds/src/internal.hpp does the latter for <chrono>/<thread>)." >&2
     echo "If neither fits, the header is not available on that board: do without it." >&2
     echo >&2

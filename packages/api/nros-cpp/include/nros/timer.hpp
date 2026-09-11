@@ -141,9 +141,8 @@ class Timer {
     /// @internal Take ownership of a closure block for this timer.
     ///
     /// `block` must be the address of the `detail::HostedBlockBase` subobject
-    /// of a block allocated by the caller, or null. Called by the
-    /// `NROS_CPP_STD` convenience wrappers in `std_compat.hpp` *after* the
-    /// runtime registered a raw callback pointing into the same block. The
+    /// of a block allocated by the caller, or null. It is called *after* the
+    /// runtime has registered a raw callback pointing into that same block. The
     /// Timer frees it on destruction, so the raw pointer the runtime holds is
     /// never dereferenced after free — the destructor cancels first.
     ///

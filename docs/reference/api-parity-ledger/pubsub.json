@@ -1045,6 +1045,11 @@
     "disposition": "absent",
     "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
   },
+  "cpp:create_publisher": {
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "why": "the free value-returning publisher factory, `nros::create_publisher<M>(node, topic, qos)`. Same name and same arity as `rclcpp::create_publisher`, and the RETURN TYPE differs: ours is `ResultOf<Publisher<M>>`, upstream's is `std::shared_ptr<Publisher<MessageT>>`. Both halves of that are forced. We do not return a `shared_ptr` because a freestanding target has none (RFC-0018, RFC-0096), and we do not signal failure by throwing because the API does not throw -- so the value has to carry the error, which is what `ResultOf` is. A ported file that discards the result compiles either way and silently loses the failure report, which is exactly why a return-only difference is `same:ret` and needs a disposition rather than passing as a match.\n\nThe row is AUTHORED HERE rather than earlier because until phase-442 W2 the name carried TWO overloads -- this one and the now-DELETED `std_compat.hpp`'s `Result create_publisher(Node&, Publisher<M>&, const std::string&, QoS)` -- whose differing arities put the key outside the `same` bucket and so outside `--require-disposition`'s reach. Deleting the dead std vocabulary did not create the divergence; it stopped masking it. Two rows already pointed here -- `cpp:create_subscription` and `cpp:create_publisher_factory` both say 'see `cpp:create_publisher`' -- against a key that did not exist.\n\nThe always-available spelling with no return-shape question is the method `Node::create_publisher(out, topic, qos)` (`cpp:Node::create_publisher`), which is what the factory wraps."
+  },
   "cpp:create_publisher_factory": {
     "verdict": "declined",
     "disposition": "absent",
@@ -1052,7 +1057,7 @@
   },
   "cpp:create_subscription": {
     "verdict": "rename",
-    "why": "LANDED 2026-08-26 (phase-379 W5) — ours now carries this name; see `cpp:create_publisher` for the pre-existing `std_compat.hpp` overload this shares a name with. see `cpp:create_publisher`.",
+    "why": "LANDED 2026-08-26 (phase-379 W5) — ours now carries this name; see `cpp:create_publisher` for the pre-existing overload this shared a name with, in the since-DELETED `std_compat.hpp`. see `cpp:create_publisher`.\n\nphase-442 W2 (2026-09-11) — `std_compat.hpp` is DELETED, so any sentence above naming that header describes a spelling that no longer exists. It was a third orphaned vocabulary: free functions shadowing the `Node` methods a ported file calls, dead in every shipping configuration, and RFC-0096 removed the layer it belonged to. The always-available spelling is the method.",
     "rename": {
       "from": "make_subscription",
       "to": "create_subscription",

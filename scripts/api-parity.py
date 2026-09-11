@@ -272,6 +272,11 @@ RCLC_SOURCE = (
 #     separate TU is still FOR now that it no longer supplies anything.
 #   * `std_compat.hpp` IS included, but behind `#ifdef NROS_CPP_STD`, which this
 #     extractor never defined — so its eleven free functions were invisible.
+#     EXPIRED 2026-09-11 (phase-442 W2): that header is DELETED. It was a third
+#     orphaned vocabulary — free functions shadowing the `Node` methods a ported
+#     file calls — dead in every shipping configuration, and RFC-0096 removed
+#     the layer it belonged to. The history stays because the two wrong ledger
+#     rows below are the reason the std flavour is extracted at all.
 #
 # Two wrong ledger rows came out of that in one day: W5 group A renamed
 # `make_publisher` -> `create_publisher` against a row recording no collision
