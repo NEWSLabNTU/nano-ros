@@ -3373,16 +3373,17 @@ mod tests {
     /// `mrm_handler`'s real ones.
     #[inline(never)]
     fn island_node_names() -> AllocVec<alloc::string::String> {
-        let mut v = AllocVec::new();
-        v.push(name_of("minimum_risk_maneuver_state", 35));
-        // The one dotted name: `turning_hazard_on` is the 17-byte prefix.
-        v.push(alloc::string::String::from("turning_hazard_on.duration"));
-        v.push(alloc::string::String::from("use_sim_time"));
-        v.push(name_of("comfortable_stop", 22));
-        v.push(name_of("emergency_stop", 22));
-        v.push(name_of("pull_over_ok", 19));
-        v.push(name_of("timeout_ms", 17));
-        v.push(name_of("retry_count", 17));
+        let v: AllocVec<alloc::string::String> = alloc::vec![
+            name_of("minimum_risk_maneuver_state", 35),
+            // The one dotted name: `turning_hazard_on` is the 17-byte prefix.
+            alloc::string::String::from("turning_hazard_on.duration"),
+            alloc::string::String::from("use_sim_time"),
+            name_of("comfortable_stop", 22),
+            name_of("emergency_stop", 22),
+            name_of("pull_over_ok", 19),
+            name_of("timeout_ms", 17),
+            name_of("retry_count", 17),
+        ];
         assert_eq!(v.len(), ISLAND_SHAPES[2][SHAPE_PARAMS]);
         let bytes: usize = v.iter().map(|n| n.len()).sum();
         assert_eq!(bytes, ISLAND_SHAPES[2][SHAPE_NAME_BYTES]);
