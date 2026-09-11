@@ -67,8 +67,32 @@ config source first, rather than adding three more literals.
 
 ## Acceptance
 
-- The inventory carries all four fields per endpoint; an unknown value is an
-  error, never a skip.
-- KEEP_ALL without a stated cap refuses at build time, naming the endpoint.
-- The declared-QoS header and boot check cover reliability and durability.
-- ROS default values are read from one config source, not from code literals.
+- **DONE** (phase-454 W1) — ROS default values are read from one config source,
+  not from code literals. `QoSProfile`'s `qos_profiles!` table is the one
+  authored site; every site that can read Rust reads it, and the six that cannot
+  (a Kconfig `default`, two C headers, a C++ header, a C source) are compared
+  field by field by `check-qos-profile-ssot.py`.
+- **DONE** (phase-454 W3) — the inventory carries all four fields per endpoint.
+  `EntityDecl` gained `reliability` / `durability` / `history` beside `depth`,
+  `EntityInventory::from_model` reads all four out of both endpoint maps, and
+  they reach a build through `NROS_ENTITY_DECLARED_{RELIABILITY,DURABILITY,
+  HISTORY}[_PUBLISHER]` with a per-policy, per-kind undeclared count.
+- **DONE** (phase-454 W3) — an unknown value is an error, never a skip.
+  `reject_unknown_qos_values` refuses at the two places a model reaches
+  `from_model`, naming the endpoint, what was written and what is accepted.
+  Both roads, because a check on one of two is issue 1199's shape.
+- **DONE** (phase-454 W3) — KEEP_ALL refuses at build time, naming the endpoint.
+  Stronger than this line asked: it refuses **whether or not** a cap is stated
+  beside it, because a `depth:` written next to KEEP_ALL is not a cap on the
+  queue (RFC-0100 D6). The refusal is per fact — the depth-derived numbers go,
+  the entity counts, the type sets and the policy table itself stay.
+- **OPEN** — the declared-QoS header and boot check cover reliability and
+  durability. This one is NOT W3's. `NROS_ASSERT_DECLARED_DEPTH` compares a
+  call site's QoS against a generated `(type, topic) -> depth` table, and
+  widening that table is the same edit as widening it to the languages it does
+  not reach today (`_nros_declared_qos_arm` returns early for Rust and INTERFACE
+  targets, and C has no equivalent macro at all). Both halves are phase-454 W10,
+  which exists for exactly that surface. Note what this bullet is and is not: a
+  code/contract disagreement on reliability or durability is an INTEROP failure
+  (an incompatible-QoS match never delivers), not a sizing one, so it does not
+  hold up any of the derivations above.

@@ -1,0 +1,42 @@
+# phase-454 W3 (issue 1256) -- the live defect, as a fixture.
+#
+# `/listener/chatter` asks for `history: keep_all` AND states `depth: 1`. That
+# pair is exactly the shape that was priced wrongly: the depth reached the
+# arena and the history did not, so the build budgeted ONE sample for a queue
+# DDS will let grow to the resource limits. Too small, not too large -- the
+# direction that ships `NodeError::BufferTooSmall` at a registration the sizing
+# model had passed.
+#
+# The other subscription declares an ordinary `keep_last` depth, so the fixture
+# also shows that the refusal is about the IMAGE's depth table and not about
+# one row: a table missing the keep_all endpoint would read as "nobody declared
+# it" and the remaining rows would size the arena from a subset of the image.
+
+version: 1
+
+nodes:
+  talker:
+    pub:
+      chatter: {}
+      quiet: {}
+
+  listener:
+    sub:
+      chatter:
+        qos:
+          depth: 1
+          history: keep_all
+      quiet:
+        qos:
+          depth: 5
+          history: keep_last
+
+topics:
+  /chatter:
+    type: std_msgs/msg/Int32
+    pub: [talker/chatter]
+    sub: [listener/chatter]
+  /quiet:
+    type: std_msgs/msg/Int32
+    pub: [talker/quiet]
+    sub: [listener/quiet]
