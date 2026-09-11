@@ -75,6 +75,16 @@ the rest and do not depend on each other.
 * **W3 [cpp] — the two freestanding mechanisms**, sized by W0: a handle type
   behind the `X::SharedPtr` aliases, and a fixed-capacity inplace callable,
   both carrying the API's own minimal traits (RFC-0096 D3).
+  **The MECHANISMS landed 2026-09-12** — `nros/traits.hpp` (`nros::tr`),
+  `nros/handle.hpp` (`nros::Handle<T>`, one pointer, copyable, converts to
+  `Handle<const T>`) and `nros/inplace_fn.hpp`
+  (`nros::InplaceFn<Sig, Cap = NROS_CPP_CALLBACK_CAPACITY>`), gated by
+  `check-cpp-freestanding-mechanisms` on the fast line: three toolchain arms
+  and an over-budget probe whose DIAGNOSTIC TEXT is checked, not merely its
+  failure. **Putting them BEHIND the `X::SharedPtr` aliases and the callback
+  parameters is W8's job**, because it is the same edit — one API — and doing
+  half of it would leave the tree with two spellings of a handle, which is the
+  state this phase exists to end.
   *Acceptance:* an rclcpp-shaped node body — derived `rclcpp::Node`, a
   capturing-lambda subscription callback, and `Publisher<M>::SharedPtr` /
   `Subscription<M>::SharedPtr` / `TimerBase::SharedPtr` members — compiles in

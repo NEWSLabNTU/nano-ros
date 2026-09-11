@@ -188,6 +188,22 @@ cxx-compat-shim-coverage:
 cxx-compat-shim-facilities:
     @python3 scripts/check-cxx-compat-shim-facilities.py
 
+# phase-442 W3 — RFC-0096's claim is that one API can be freestanding AND be the
+# rclcpp API, and it rests on two mechanisms: a copyable non-owning handle behind
+# `X::SharedPtr`, and a fixed-capacity inplace callable behind a capturing-lambda
+# callback. A claim like that is worth the compile that backs it. Three arms,
+# each removing something different, and the 32-bit one is not redundant: the
+# capacity default and the storage alignment are expressed in POINTERS precisely
+# because a byte count is right on one word size and wrong on the other, and only
+# that arm catches a regression to a literal. The negative control is the design,
+# not a formality — an over-budget capture must be a compile error NAMING the
+# knob, and the diagnostic text is checked, because a probe that merely fails
+# passes on a typo. Fast line, not `check cpp`, for issue 1225's reason: that
+# lane is `build-serial` and no merge-gating event reaches it.
+[private]
+cpp-freestanding-mechanisms:
+    @python3 scripts/check-cpp-freestanding-mechanisms.py
+
 # phase-417 / issue 1225 — a capability probe may gate a METHOD, never `sizeof`.
 # MEASURED, not grepped: one `sizeof` probe TU per capability configuration over
 # every public type the umbrella exports, DERIVED from a clang AST rather than
