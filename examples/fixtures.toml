@@ -31,8 +31,20 @@
 #   # --- rust (cargo) ---
 #   features            optional  string[] passed as --features a,b
 #   no_default_features optional  bool      adds --no-default-features
-#   target_dir          optional  --target-dir <dir> (relative to `dir`)
 #   target              optional  --target <triple> (cross)
+#   # NO `target_dir` here: the column was DELETED for `[[fixture]]` rows by
+#   # issue 0517 step 3 (all 41 keys), and `core_only_predicate.sh` fails any row
+#   # that re-adds it. A row's identity is its CONFIGURATION, never a directory
+#   # somebody invented for it (RFC-0070 R2) — to tell two rows of one leaf
+#   # apart, give them different `features` / `no_default_features` / `env` and
+#   # select with `groups::select_row(dir, FixtureVariant::…)`. Several rows of
+#   # a leaf deliberately share `<dir>/target`.
+#   #
+#   # `[[workspace_fixture]]` rows below DO still author `target_dir`, where it
+#   # is a genuine build input. This line listed it for `[[fixture]]` too until
+#   # issue 1268 tripped over it — the gate's own comment predicted exactly that
+#   # ("re-adding the key is the natural thing to do … and it would work"),
+#   # which it is, partly because this schema said you may.
 #   env                 optional  { KEY = "VAL" } exported for the build
 #   # --- cmake (c/cpp) — rollout pending; see C/C++ section below ---
 #   cmake_defs          optional  { NROS_RMW = "zenoh", ... } -> -D<K>=<V>
@@ -1486,6 +1498,30 @@ id = "param-two-node-talker"
 platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/param-two-node-talker"
+
+# issue 1268 / phase-444 W6 — the SAME two-node image on Cyclone.
+#
+# Cyclone creates a service only if its request and reply types have a registered
+# descriptor, and nothing registered `rcl_interfaces`: every parameter service
+# failed to create with UNSUPPORTED, the executor retried that permanent failure
+# on every spin, and `ros2 param` found nothing on an image that had declared all
+# of its parameters. The zenoh row above stayed green throughout, which is why
+# there is a second row rather than a wider one — the same shape issue 1269 used
+# for `native-multinode-rust-cyclone`.
+#
+# No `target_dir`: the column was deleted in issue 0517 step 3 and a row's
+# identity IS its configuration. These two rows are told apart by
+# `no_default_features` + `features`, and selected with
+# `groups::select_row(dir, FixtureVariant::rmw(Cyclonedds))` — several rows of a
+# leaf deliberately share `<dir>/target`.
+[[fixture]]
+id = "param-two-node-talker-cyclone"
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "packages/testing/nros-tests/bins/param-two-node-talker"
+no_default_features = true
+features = ["rmw-cyclonedds"]
 
 # phase-381 acceptance — the graph probe. Enumerates the ROS graph and prints
 # what it can SEE, so `graph_interop.rs` can compare it against `ros2 node

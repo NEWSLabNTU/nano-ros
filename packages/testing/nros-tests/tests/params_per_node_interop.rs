@@ -30,7 +30,8 @@
 use nros_tests::{
     fixtures::{
         ManagedProcess, RequireFixture, ZenohRouter, build_native_param_two_node_talker,
-        require_ros2, require_zenohd, zenohd_unique,
+        build_native_param_two_node_talker_cyclonedds, require_ros2, require_zenohd,
+        zenohd_unique,
     },
     output::PARAM_SERVICE_NODE_PREFIX,
     ros2::DEFAULT_ROS_DISTRO,
@@ -373,6 +374,120 @@ fn ros2_param_set_refuses_undeclared_and_off_step(zenohd_unique: ZenohRouter) {
 // phase-329 W3 — bind this test to `interop::CELLS`. The coordinate below must
 // equal what the list declares for `params_per_node_interop`; drift turns this
 // RED. Needs no fixtures, so it runs in tier 1.
+/// issue 1268 / phase-444 W6 — the SAME claim on CYCLONE.
+///
+/// THE DEFECT. Cyclone creates a service only if its request and reply types
+/// have a registered descriptor. Nothing registered `rcl_interfaces`, so all six
+/// parameter services failed to create with UNSUPPORTED, the executor retried
+/// that permanent failure on every spin, and `ros2 param` found nothing on an
+/// image that had declared every one of its parameters — while the zenoh cases
+/// above stayed green throughout. That is why this is a SECOND test rather than
+/// a wider one: a green zenoh case says nothing about Cyclone (issue 1269 gave
+/// the same reason for `native-multinode-rust-cyclone`).
+///
+/// Addressed by DOMAIN, not a locator: Cyclone discovers by SPDP. Its own domain,
+/// because a shared one would let another test's nodes into the listing; and
+/// pinned to loopback on BOTH sides — `dds_isolation::apply_to_command` for ours,
+/// the env string for the peer's — since half a pin is no discovery and reads as
+/// an empty graph rather than as a failure (issues 1009 / 1137).
+#[test]
+fn ros2_param_cli_addresses_each_node_on_cyclonedds() -> nros_tests::TestResult<()> {
+    if !nros_tests::ros2::require_ros2_cyclonedds() {
+        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
+    }
+    let binary = build_native_param_two_node_talker_cyclonedds()
+        .unwrap_or_else(|e| panic!("param-two-node-talker-cyclone fixture not built: {e}"));
+
+    let domain = nros_tests::unique_ros_domain_id();
+    let mut cmd = Command::new(binary);
+    cmd.env("RUST_LOG", "info")
+        .env("ROS_DOMAIN_ID", domain.to_string())
+        .env("NROS_DOMAIN_ID", domain.to_string())
+        // The registered backend NAME, never an ambient lane token (AGENTS.md
+        // "`NROS_RMW` footgun").
+        .env("NROS_RMW", "cyclonedds");
+    nros_tests::dds_isolation::apply_to_command(&mut cmd);
+
+    let mut proc = ManagedProcess::spawn_command(cmd, "param-two-node-cyclone")
+        .expect("failed to start fixture");
+    let (output, diag) =
+        proc.collect_until_count(PARAM_SERVICE_NODE_PREFIX, 2, Duration::from_secs(20));
+    let fqns: Vec<String> = output
+        .lines()
+        .filter_map(|l| l.split_once(PARAM_SERVICE_NODE_PREFIX))
+        .map(|(_, fqn)| fqn.trim().to_string())
+        .collect();
+    if let Some(diag) = diag {
+        proc.kill();
+        panic!(
+            "the image composes two nodes, so it must register two sets of \
+             parameter services and print two `{PARAM_SERVICE_NODE_PREFIX}` lines. \
+             On Cyclone this is ALSO where issue 1268 shows: a registration that \
+             fails with UNSUPPORTED prints no marker at all.\n{diag}"
+        );
+    }
+    assert_eq!(
+        fqns.len(),
+        2,
+        "expected two registered node FQNs, got {fqns:?}"
+    );
+    let (alpha, beta) = (fqns[0].clone(), fqns[1].clone());
+
+    // THE ASSERTION 1268 IS ABOUT: the six services exist on the wire. Before the
+    // descriptors were baked this listing carried the image's own services and
+    // none of the `rcl_interfaces` ones.
+    let mut services = String::new();
+    for attempt in 1..=6 {
+        services = nros_tests::ros2::ros2_service_list_rmw_with_domain(
+            DEFAULT_ROS_DISTRO,
+            "rmw_cyclonedds_cpp",
+            domain,
+        )
+        .unwrap_or_default();
+        if services.contains(&format!("{alpha}/list_parameters")) {
+            break;
+        }
+        if attempt < 6 {
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    }
+    println!("=== ros2 service list (cyclonedds) ===\n{services}");
+    for node in [&alpha, &beta] {
+        for svc in [
+            "list_parameters",
+            "get_parameters",
+            "set_parameters",
+            "set_parameters_atomically",
+            "describe_parameters",
+            "get_parameter_types",
+        ] {
+            assert!(
+                services.contains(&format!("{node}/{svc}")),
+                "cyclonedds: `{node}/{svc}` is missing from `ros2 service list`. \
+                 That is issue 1268: the service create fails UNSUPPORTED when the \
+                 `rcl_interfaces` type has no registered descriptor.\n{services}"
+            );
+        }
+    }
+
+    // And the round trip the issue's Acceptance names.
+    let got = nros_tests::ros2::ros2_param_get_rmw_with_domain(
+        &alpha,
+        "rate",
+        DEFAULT_ROS_DISTRO,
+        "rmw_cyclonedds_cpp",
+        domain,
+    )
+    .expect("failed to run ros2 param get");
+    proc.kill();
+    println!("=== ros2 param get {alpha} rate (cyclonedds) ===\n{got}");
+    assert!(
+        got.contains("Double value is") || got.contains("Integer value is"),
+        "cyclonedds: `ros2 param get {alpha} rate` returned no value:\n{got}"
+    );
+    Ok(())
+}
+
 #[test]
 fn cases_bound_to_interop_cells() {
     #[allow(unused_imports)]

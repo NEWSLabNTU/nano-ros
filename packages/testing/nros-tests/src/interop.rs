@@ -486,6 +486,16 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-params-per-node-rust-zenoh",
        c(Linux, Rust, Zenoh, Params, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), BiDir, "params_per_node_interop"),
+    // Issue 1268 — the SAME test against the SAME image on Cyclone (row
+    // `param-two-node-talker-cyclone`). Cyclone creates a service only if its
+    // request and reply types have a registered descriptor, and nothing
+    // registered `rcl_interfaces`: every parameter service failed to create with
+    // UNSUPPORTED while this cell's zenoh sibling stayed green, so a green zenoh
+    // case says nothing about it — the reason issue 1269 gave for
+    // `native-multinode-rust-cyclone` two entries down, and the same shape.
+    ic("native-params-per-node-rust-cyclone",
+       c(Linux, Rust, Cyclonedds, Params, Interop, Runtime),
+       NativeFixtures, RosEdition(Cyclonedds), BiDir, "params_per_node_interop"),
     // tests/rust_multi_node_per_node_graph.rs — a multi-node Rust entry shows
     // one graph node per launch component in `ros2 node list` (#104/phase-268).
     ic("native-multinode-rust-zenoh",
@@ -686,6 +696,15 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     co("interop_e2e", "interop::case_7_cyclone_pubsub_ros2_to_nano",    "native-pubsub-c-cyclone-n2r"),
     co("interop_e2e", "interop::case_8_cyclone_service_nano_server",    "native-service-c-cyclone-r2n"),
     co("interop_e2e", "interop::case_9_zenoh_lifecycle_full_cycle",     "native-lifecycle-rust-zenoh"),
+
+    // ── params_per_node_interop — issue 1268 gave it a second cell ──────
+    // Two zenoh cases and one Cyclone case. Before the Cyclone cell existed this
+    // binary needed no rows (one cell owns every case); adding it is exactly the
+    // moment issue 1191 says the map becomes necessary — otherwise the Cyclone
+    // case would be counter-evidence for the zenoh cell and vice versa.
+    co("params_per_node_interop", "ros2_param_cli_addresses_each_node_by_its_own_fqn", "native-params-per-node-rust-zenoh"),
+    co("params_per_node_interop", "ros2_param_set_refuses_undeclared_and_off_step",    "native-params-per-node-rust-zenoh"),
+    co("params_per_node_interop", "ros2_param_cli_addresses_each_node_on_cyclonedds",  "native-params-per-node-rust-cyclone"),
 
     // ── graph_interop — one case per RMW, and the RMW is in the body ────
     // (`require_ros2()` vs `require_ros2_cyclonedds()`), not only in the name.

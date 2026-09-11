@@ -3740,8 +3740,40 @@ pub fn build_native_param_two_node_talker() -> TestResult<&'static Path> {
     static NATIVE_PARAM_TWO_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NATIVE_PARAM_TWO_NODE_BINARY
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_sole_row(
+            // issue 1268 — `select_row(.., plain())`, not `select_sole_row`: the
+            // leaf has TWO rows now (the Cyclone sibling below), and the sole-row
+            // selector refuses a multi-row leaf rather than guessing. `plain()` is
+            // the zenoh row precisely because it authors no `rmw` and no features
+            // — its default features select zenoh.
+            let row = crate::fixtures::groups::select_row(
                 "packages/testing/nros-tests/bins/param-two-node-talker",
+                &crate::fixtures::groups::FixtureVariant::plain(),
+            )?;
+            let profile = cargo_target_profile_dir();
+            let rel = PathBuf::from(format!("{profile}/param-two-node-talker"));
+            require_prebuilt_row_binary_fresh(row, &rel)
+        })
+        .map(|p| p.as_path())
+}
+
+/// The same two-node image built for CYCLONE (issue 1268 / phase-444 W6).
+///
+/// Row `param-two-node-talker-cyclone`: `no_default_features` + `rmw-cyclonedds`,
+/// its own `target_dir` because the two rows differ only in features and a shared
+/// cargo dir would thrash the dependency chain between them.
+///
+/// Its reason for existing is that the zenoh sibling cannot answer the question:
+/// Cyclone creates a service only if its request and reply types have a
+/// registered descriptor, nothing registered `rcl_interfaces`, and so every
+/// parameter service failed to create with UNSUPPORTED while the zenoh cell
+/// stayed green.
+pub fn build_native_param_two_node_talker_cyclonedds() -> TestResult<&'static Path> {
+    static NATIVE_PARAM_TWO_NODE_CYCLONE_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    NATIVE_PARAM_TWO_NODE_CYCLONE_BINARY
+        .get_or_try_init(|| {
+            let row = crate::fixtures::groups::select_row(
+                "packages/testing/nros-tests/bins/param-two-node-talker",
+                &crate::fixtures::groups::FixtureVariant::rmw(crate::fixtures::Rmw::Cyclonedds),
             )?;
             let profile = cargo_target_profile_dir();
             let rel = PathBuf::from(format!("{profile}/param-two-node-talker"));

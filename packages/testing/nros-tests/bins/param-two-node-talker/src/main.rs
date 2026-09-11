@@ -43,9 +43,13 @@ const PARAM_SERVICE_NODE_PREFIX: &str = "param services registered for node: ";
 
 fn main() {
     env_logger::init();
-    // Zenoh-only fixture: register the backend explicitly (the examples route
-    // this through `nros_board_linux::register_linked_rmw()`).
-    nros_rmw_zenoh::register().expect("register zenoh backend");
+    // issue 1268 / phase-444 W6 — register whichever backend the `rmw-*` feature
+    // linked, through the same seam the examples and `graph-probe` use. This was
+    // a hardcoded `nros_rmw_zenoh::register()`, which pinned the fixture to one
+    // RMW; a parameter fixture that can only speak zenoh cannot answer whether
+    // CYCLONE serves the six `rcl_interfaces` services — and Cyclone did not,
+    // for want of a type descriptor, while the zenoh cell stayed green.
+    nros_board_linux::register_linked_rmw();
 
     info!("nros two-node parameter fixture");
 
