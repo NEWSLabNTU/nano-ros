@@ -1143,3 +1143,152 @@ node split it exposes (`create_executor`, `create_node`) is W10. The two
 `rename` rows move from `blocked-needs-decision` to `decided` with W9 named as
 the resolution; their dispositions flip when the code lands, not before.
 
+
+
+## W7, W8, W11, W12 — landed (2026-09-11/12)
+
+All four are about an AUTHORED list drifting from a measured reality, which is
+this campaign's shape. Where a drift was fixed, the question asked each time was
+whether the list should be DERIVED instead; the answers are recorded per item.
+
+### W7 — pin every deviation. DONE, and re-verified independently.
+
+The work landed as phase-444 W4.a (`3f579290b`, issue 1092 resolved): `ADDED`
+entries are `Added(ret, args, why)` and each key must be a live slot whose shape
+equals the pin; `ARG_DEVIATIONS` / `RET_DEVIATIONS` entries are
+`ArgPin(upstream, ours, why)` / `RetPin(...)` in the normalised spelling the
+comparison uses; grouped-only targets are compared against the symbol grouped
+onto them. Coverage moved from 15 exactly-enforced slots of 68 to **68 of 68
+compared with no licence to vary**.
+
+**Acceptance re-run here rather than taken from the record.** The script's
+`--self-test` replays the seven mutations on every run, but a self-test that
+replays its own mutations is the same object asserting about itself, so all
+seven were applied to the REAL `rmw_vtable.h` by an independent script and
+every RMW gate run against each. Baseline green; header restored
+byte-identically afterwards.
+
+| # | mutation (issue 1092) | verdict | caught by |
+| --- | --- | --- | --- |
+| 1 | `has_data` gutted — `void` return, publisher handle, two junk args | CAUGHT | `rmw-abi-shape` |
+| 2 | `has_data` deleted entirely | CAUGHT | `rmw-abi-shape`, `rmw-vtable-order`, its self-test |
+| 3 | `create_node` return `rmw_ret_t` -> `void` | CAUGHT | `rmw-abi-shape`, its self-test |
+| 4 | `take` gains `uint64_t bogus_extra` | CAUGHT | `rmw-abi-shape` |
+| 5 | `take`'s handle -> `const rmw_publisher_t *` | CAUGHT | `rmw-abi-shape`, its self-test |
+| 6 | `create_session` -> `void(int, char)` | CAUGHT | `rmw-abi-shape`, its self-test |
+| 7 | `subscription_take_event` -> `void(rmw_publisher_t *, int)` | CAUGHT | `rmw-abi-shape`, its self-test |
+
+Seven of seven. Worth noting which gate does the work: `rmw-abi-shape` catches
+all seven ALONE, and two of them (1 and 4) are caught by nothing else — so this
+axis rests on one gate on the fast line, which is the reason it is there.
+
+### W8 — a slot is covered when something READS it. DONE.
+
+`check-rmw-slot-producers` asked `produced` before `consumed`, so a slot some
+backend filled classified `produced` whatever the runtime did with it. Issue
+0800's own confusion, displaced one step: not a declared slot with no body, but
+a body with no caller.
+
+**The 17 in the work item was a stale snapshot and is re-measured: 11 of 68.**
+Six were already `inert`; five appear under the new ordering, hand-counted
+(`produced - consumed`) and matched by the tool, which is the acceptance.
+
+Per slot, decided rather than counted:
+
+* **The four `{client,service}_{request,response}_*_get_actual_qos` — a
+  CONSUMER, not a withdrawal.** Cyclonedds fills all four. Issue 0823 closed
+  the publisher and subscription halves (`create_publisher` reads the slot and
+  calls `report_qos_downgrade`) and listed these as "not done here"; they were
+  filled afterwards and never wired, so the fix for the bug 0823 describes is
+  sitting in the tree unreached. The consumer belongs at `create_client` /
+  `create_service`, which **phase-428 W9 is changing under a sibling agent** —
+  so this is SEQUENCED behind W9 rather than merely unscheduled, and tracked as
+  **issue 1327**. Their map rows move from a derived `same` to
+  `not-implemented` with `issue = 1327`, because a body no caller reaches does
+  not deliver the capability.
+* **`required_rx_bytes` — reserved, not withdrawn.** Its own header block says
+  "Nothing calls this yet" and names phase-403 W3/W5 as the owner of the
+  dispatch site, which is open work, and records the 2026-08-31 ruling that the
+  slot stays OPTIONAL permanently — so a NULL one is an answer, not a gap.
+
+Nothing was withdrawn. Two things the same edit surfaced:
+
+* the consumer pattern was narrow on the OPERATOR (`.`) where it meant to be
+  narrow on the RECEIVER, so a C or C++ consumer — which can only call through
+  a pointer — was invisible. Widened to `vt->slot`; measured, no slot moves
+  today, so it is a closed false negative rather than a recount.
+* `INERT_FAMILIES` grew a structured `defer` field rather than a reason people
+  read for an issue id — W7's principle ("a declaration pins what it licenses")
+  one table over.
+
+### W11 — resolve every issue reference. DONE.
+
+Half of this landed with issue 1092 (`scripts/lib/issue_status.py`, a `gap`
+reason and a `not-implemented` row's `issue =` both bound). What was left is
+the shape this campaign keeps finding: **the rule had two implementations and
+therefore two reaches.** One place judges it now — `why_not_open`, with
+`deferral` for the prose form and `refused_deferrals` for the structured one —
+and three call sites use it.
+
+Measured, and this is the part worth recording because it is a clean result:
+**every `issue NNNN` in the RMW tooling and the vtable header resolves to a
+file. Zero dangling.** 41 distinct ids across 11 files, all present; the great
+majority name `resolved` issues and all of those are correct historical
+citations, several of which say "now RESOLVED" in the same sentence. So the
+sweep found no dangling reference to fix — and a gate over prose ids would have
+been wrong, because a reason is MADE of history.
+
+Two reach defects were real:
+
+* the parity map's `issue =` was resolved only on the `not-implemented` arm,
+  which is narrower than the rule it enforces (the 0196 shape). It reaches
+  every row now, with the mutation that restores the old `elif` failing in the
+  self-test.
+* **the whole mechanism was VACUOUS**: no map row carried an `issue` at all, so
+  a gate whose subject disappeared was passing for free. W8's four rows give it
+  one.
+
+### W12 — the prose. DONE, and the gate is the durable half.
+
+Deleted, with what each claimed recorded in place rather than silently: the
+retired sign contract in `rmw_ret.h` (wrong four ways at once); the two stacked
+pre-W3.d doc blocks on `take_loaned_message` and `take_sequence`, which bindgen
+was concatenating into `generated.rs` so the Rust side shipped the contract AND
+its contradiction (the third stacked pair, on `process_raw_in_place`, is two
+true blocks and stays); four fictional NULL-slot fallbacks; and five retired
+slot names cited as live.
+
+The two fallback fictions worth naming, because both are F2 — a fix landing
+only where the symptom was seen:
+
+* `borrow_loaned_message` promised "a per-publisher staging arena". Issue 0782
+  corrected exactly that fiction 200 lines below, on `publish_streamed`, and
+  left this one standing. It is a per-LOAN `Vec`, and with no `alloc` there is
+  no fallback at all but a permanent refusal (issue 0814).
+* `feature_supported` and `take_with_info` each promised a runtime fallback for
+  a slot NOTHING DISPATCHES — the same fiction phase-393 W2 had already
+  corrected 60 lines above on `get_implementation_identifier`.
+
+And one that is its own class: `publish_streamed`'s cap was documented as "the
+configured `NROS_MAX_STREAM_CHUNK`", a setting that has never existed in any
+form. The real cap is a 4096 constant, so a reader looking for the knob to
+raise found nothing and had no way to learn the limit.
+
+**`check-rmw-doc-slot-names` is the gate.** A backtick in these headers means
+THIS IDENTIFIER EXISTS; all 362 are resolved against three derived sources — the
+headers' own code with comments stripped (so prose cannot vouch for itself),
+tracked non-markdown sources, and the recorded upstream snapshot. The subject
+list is derived on every run. Seven exemptions remain, each a name another
+project owns (zenoh-c, micro-ROS, an Iron-only upstream field, upstream
+constants and types the snapshot does not carry), in a ratchet baseline with the
+owning project named per row — the shape `check-prose-issue-refs` already uses
+for a correct reference the tree cannot resolve offline. A retired slot name
+does NOT go in that file: those are written without ticks, which is the
+convention that keeps the exemption list from growing.
+
+### Left for someone else
+
+* `NROS_MAX_STREAM_CHUNK` is also named in
+  `packages/core/nros-rmw/src/traits.rs:2141`, which phase-428 W13 and the
+  phase-426 parameters work are both touching; corrected in the header only.
+* The consumer for the four QoS read-backs is issue 1327, sequenced behind W9.
