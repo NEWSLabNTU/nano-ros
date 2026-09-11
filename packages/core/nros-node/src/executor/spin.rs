@@ -1973,6 +1973,34 @@ impl Executor<'static> {
     }
 }
 
+/// The two cadences a `period_us` timer alternates between under a `spin_us`
+/// spin period, or `None` when the audit (issue #515) has nothing to say.
+///
+/// Split out of `audit_spin_quantization` so the decision can be asserted:
+/// the audit only LOGS, so a regression in what it decides is otherwise
+/// invisible to a test.
+///
+/// `None` for a period of zero, for a period that divides the spin period —
+/// and, since issue 1321, for a timer whose activations are NOT paced by the
+/// spin period at all. The warning's arithmetic is wall microseconds on both
+/// sides; a `Ros` timer's activations are quantised by the `/clock` STEP, so
+/// the sentence it would print ("activations will alternate between X and Y
+/// us") is about nothing.
+pub(crate) fn spin_quantization_span(
+    clock_source: TimerClockSource,
+    period_us: u64,
+    spin_us: u64,
+) -> Option<(u64, u64)> {
+    if spin_us == 0 || period_us == 0 || period_us.is_multiple_of(spin_us) {
+        return None;
+    }
+    if !clock_source.remaining_is_wall_time() {
+        return None;
+    }
+    let early_us = (period_us / spin_us) * spin_us;
+    Some((early_us, early_us.saturating_add(spin_us)))
+}
+
 /// phase-436 — which deadline source bounded the last park.
 ///
 /// Attribution is what turns "why did we wake" from a guess into a number.
@@ -2835,6 +2863,14 @@ impl<'s> Executor<'s> {
     /// A timer that is cancelled, or a one-shot that already fired, owes
     /// nothing and must not hold the park short — otherwise the executor keeps
     /// waking on a deadline nobody is waiting for.
+    ///
+    /// So does a timer whose remainder is not WALL microseconds
+    /// ([`TimerClockSource::remaining_is_wall_time`], issue 1321): the number
+    /// this returns is handed to the port's park primitive, so a ROS-time
+    /// timer's simulated remainder would be a units error — and on a paused
+    /// `/clock` a frozen one, waking the image once per timer period forever.
+    /// Its wake source is a `/clock` message, which reaches `drive_io` like
+    /// any sample.
     pub(crate) fn next_timer_deadline_us(&self) -> Option<u64> {
         let arena_ptr = self.arena.as_ptr() as *const u8;
         let mut soonest: Option<u64> = None;
@@ -2850,6 +2886,11 @@ impl<'s> Executor<'s> {
                 continue;
             }
             if header.oneshot && header.fired {
+                continue;
+            }
+            // Issue 1321 — the park is WALL microseconds, so only a timer
+            // whose own clock runs in them may bound it.
+            if !header.clock_source.remaining_is_wall_time() {
                 continue;
             }
             // Already due: the bound is zero, and no other timer can beat it.
@@ -2881,12 +2922,11 @@ impl<'s> Executor<'s> {
             // whose leading layout is `TimerHeader`.
             let header = unsafe { &*(arena_ptr.add(meta.offset) as *const TimerHeader) };
             let period_us = header.period_us;
-            if period_us == 0 || period_us % spin_us == 0 {
+            let Some((early_us, late_us)) =
+                spin_quantization_span(header.clock_source, period_us, spin_us)
+            else {
                 continue;
-            }
-            // The two periods the timer will actually alternate between.
-            let early_us = (period_us / spin_us) * spin_us;
-            let late_us = early_us.saturating_add(spin_us);
+            };
             nros_log::log_warn!(
                 nros_log::get_logger("nros"),
                 "timer period {} us is not a multiple of the {} us spin period: activations will alternate between {} us and {} us (mean cadence preserved)",
@@ -7593,7 +7633,16 @@ impl<'s> Executor<'s> {
                         // one screen up already relies on.
                         let header =
                             unsafe { &mut *(arena_ptr.add(meta.offset) as *mut TimerHeader) };
-                        header.elapsed_us = header.elapsed_us.saturating_add(delta_us);
+                        // Issue 1321 — on the TIMER'S clock, not the
+                        // executor's. This line read
+                        // `header.elapsed_us += delta_us`, which is wall
+                        // microseconds: for a `Ros` timer that advanced a
+                        // simulated-time counter by wall time, so a paused
+                        // `/clock` no longer paused the timer — the one
+                        // property a ROS-time timer has. Unbounded, unlike
+                        // 1321's park bound, because it can fire a callback
+                        // that no clock step earned.
+                        super::arena::timer_advance_without_dispatch(header, delta_us);
                     }
                     // issue 0736 — a budget skip used to be a bare `continue`,
                     // which is the silent-drop shape 0737 gated one layer out:

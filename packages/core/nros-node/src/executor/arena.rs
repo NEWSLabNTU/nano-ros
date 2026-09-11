@@ -2183,6 +2183,70 @@ pub(crate) unsafe fn drop_entry<T>(ptr: *mut u8) {
     unsafe { core::ptr::drop_in_place(ptr as *mut T) };
 }
 
+/// What one executor cycle does to a timer's own `elapsed_us`.
+pub(crate) enum TimerStep {
+    /// Add this many microseconds, measured on the TIMER'S clock.
+    Advance(u64),
+    /// The timer's clock jumped BACKWARDS — a bag looping, a simulator reset,
+    /// an NTP step. Restart the period rather than stalling the timer for the
+    /// length of the jump, which is what accumulating a negative delta would
+    /// amount to. rclcpp gets here through a jump callback; we need the
+    /// behaviour, not (yet) the callback surface
+    /// (`c:clock_add_jump_callback` stays declined).
+    Restart,
+}
+
+/// One cycle's advance for a timer, in the timer's OWN clock — phase-425 W4,
+/// made shared by issue 1321.
+///
+/// `Steady` consumes the executor's spin delta, unchanged and free. The other
+/// two READ their clock and diff against the last reading, which is what makes
+/// a paused simulator pause the timer: `/clock` stops advancing, so the delta
+/// is zero. A FORWARD jump is deliberately NOT special-cased: it lands in
+/// `elapsed_us` as a backlog, and the overrun policy is the documented
+/// mechanism for deciding whether a backlog replays (`CatchUp`) or coalesces
+/// (`Skip`).
+///
+/// One spelling, because there are two callers: the dispatcher below, and the
+/// budget-skip path in `spin_once`. That second one had the delta computation
+/// open-coded as "add the executor's `delta_us`", which is a WALL quantity —
+/// the same units error as issue 1321's park bound, but unbounded: it advanced
+/// a `Ros` timer while `/clock` was paused, which is the one thing a ROS-time
+/// timer must never do.
+pub(crate) fn timer_clock_step(
+    clock_source: TimerClockSource,
+    last_clock_ns: &mut i64,
+    spin_delta_us: u64,
+) -> TimerStep {
+    match clock_source {
+        TimerClockSource::Steady => TimerStep::Advance(spin_delta_us),
+        source => {
+            let now_ns = source.now_ns();
+            let step_ns = now_ns - *last_clock_ns;
+            *last_clock_ns = now_ns;
+            if step_ns < 0 {
+                return TimerStep::Restart;
+            }
+            TimerStep::Advance((step_ns as u64) / 1_000)
+        }
+    }
+}
+
+/// Advance a timer's own sense of time by one cycle WITHOUT dispatching it —
+/// issue 0736's accounting, on issue 1321's clock.
+///
+/// Type-erased because its caller has a `TimerHeader`, not a `TimerEntry<F>`.
+pub(crate) fn timer_advance_without_dispatch(header: &mut TimerHeader, spin_delta_us: u64) {
+    match timer_clock_step(
+        header.clock_source,
+        &mut header.last_clock_ns,
+        spin_delta_us,
+    ) {
+        TimerStep::Advance(us) => header.elapsed_us = header.elapsed_us.saturating_add(us),
+        TimerStep::Restart => header.elapsed_us = 0,
+    }
+}
+
 /// Monomorphized timer dispatch function.
 ///
 /// # Safety
@@ -2202,31 +2266,15 @@ where
         return Ok(false);
     }
 
-    // phase-425 W4 — which clock advanced, and by how much. `Steady` is the
-    // executor's spin delta, unchanged and free. The other two READ their clock
-    // and diff against the last reading, which is what makes a paused simulator
-    // pause the timer: `/clock` stops advancing, so the delta is zero.
-    let delta_us = match entry.clock_source {
-        TimerClockSource::Steady => delta_us,
-        source => {
-            let now_ns = source.now_ns();
-            let step_ns = now_ns - entry.last_clock_ns;
-            entry.last_clock_ns = now_ns;
-            if step_ns < 0 {
-                // A BACKWARDS jump — a bag looping, a simulator reset, an NTP
-                // step. Restart the period rather than stalling the timer for
-                // the length of the jump, which is what accumulating a negative
-                // delta would amount to. rclcpp gets here through a jump
-                // callback; we need the behaviour, not (yet) the callback
-                // surface (`c:clock_add_jump_callback` stays declined).
-                entry.elapsed_us = 0;
-                return Ok(false);
-            }
-            // A FORWARD jump is deliberately NOT special-cased: it lands in
-            // `elapsed_us` as a backlog, and the overrun policy below is the
-            // documented mechanism for deciding whether a backlog replays
-            // (`CatchUp`) or coalesces (`Skip`).
-            (step_ns as u64) / 1_000
+    // phase-425 W4 — which clock advanced, and by how much. Shared with the
+    // budget-skip path in `spin_once`, which advances the same counter without
+    // dispatching (issue 0736): there is ONE answer to "which clock moves this
+    // timer", and it is `timer_clock_step`.
+    let delta_us = match timer_clock_step(entry.clock_source, &mut entry.last_clock_ns, delta_us) {
+        TimerStep::Advance(us) => us,
+        TimerStep::Restart => {
+            entry.elapsed_us = 0;
+            return Ok(false);
         }
     };
 

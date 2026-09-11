@@ -2292,6 +2292,271 @@ fn a_timer_still_competes_with_platform_sources() {
     assert_eq!(winner, super::spin::WakeSourceId::Timer);
 }
 
+// ==========================================================================
+// Issue 1321 — which timers may bound a WALL park
+// ==========================================================================
+
+/// A `TimerClockSource::System` timer DOES bound the park, and it is decided
+/// separately from `Ros` rather than by "not `Steady`".
+///
+/// Its clock is wall time, so `period_us - elapsed_us` is already in the
+/// units the park primitive waits in. Nothing can hold a system clock still,
+/// which is the property `Ros` lacks; a step (NTP) makes the bound an
+/// estimate, but one that can only shorten a park by a bounded amount and
+/// never fire a callback early.
+#[test]
+fn a_system_time_timer_bounds_the_park() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor
+        .register_timer_on_clock(
+            TimerDuration::from_millis(100),
+            super::arena::TimerClockSource::System,
+            || {},
+        )
+        .unwrap();
+
+    let (bound_us, winner) = executor.next_wake_bound_attributed_us(500_000, None);
+    assert_eq!(
+        bound_us, 100_000,
+        "a system-time timer's remaining time IS wall microseconds"
+    );
+    assert_eq!(winner, super::spin::WakeSourceId::Timer);
+}
+
+/// Issue 1321 — a ROS-time timer contributes NOTHING to the wall park bound.
+///
+/// `/clock` is held still, which is a paused bag. Before the fix the timer
+/// offered `period_us - elapsed_us` — 100 ms of SIMULATED time — as a bound of
+/// WALL microseconds, so the park collapsed from the caller's 500 ms budget to
+/// 100 ms and stayed there for as long as the simulator was paused.
+#[cfg(feature = "sim-time")]
+#[test]
+fn a_paused_ros_clock_does_not_bound_the_wall_park() {
+    let _sim_time = SimTimeGuard::acquire();
+    use nros_core::clock::Clock;
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    Clock::set_ros_time_override(10_000 * 1_000_000);
+    executor
+        .register_timer_on_clock(
+            TimerDuration::from_millis(100),
+            super::arena::TimerClockSource::Ros,
+            || {},
+        )
+        .unwrap();
+
+    let (bound_us, winner) = executor.next_wake_bound_attributed_us(500_000, None);
+    assert_eq!(
+        winner,
+        super::spin::WakeSourceId::CallerBudget,
+        "a ROS-time timer's next activation is a /clock MESSAGE, which wakes \
+         drive_io like any sample; its simulated remainder is not a wall deadline"
+    );
+    assert!(
+        bound_us >= 500_000,
+        "the park must not be SHORTENED below the caller's budget by a timer \
+         measured on another clock; got {bound_us} us"
+    );
+    assert_eq!(bound_us, 500_000);
+}
+
+/// ... and the one thing that costs: the image must not wake once per timer
+/// period while the simulator is paused.
+///
+/// Four consecutive spins with `/clock` held still. Each park is asserted from
+/// BELOW — `>= budget` — because an upper bound alone is satisfied by a park
+/// that never waited at all, and shortening is precisely the failure here.
+#[cfg(feature = "sim-time")]
+#[test]
+fn a_paused_ros_clock_does_not_wake_the_image_once_per_timer_period() {
+    use nros_core::clock::Clock;
+    use portable_atomic::{AtomicU64, AtomicUsize, Ordering};
+
+    static SHORTEST_US: AtomicU64 = AtomicU64::new(u64::MAX);
+    static PARKS: AtomicUsize = AtomicUsize::new(0);
+
+    unsafe extern "C" fn recording_park(_c: *mut core::ffi::c_void, deadline_us: u64) -> i8 {
+        SHORTEST_US.fetch_min(deadline_us, Ordering::SeqCst);
+        PARKS.fetch_add(1, Ordering::SeqCst);
+        1
+    }
+
+    let _sim_time = SimTimeGuard::acquire();
+    SHORTEST_US.store(u64::MAX, Ordering::SeqCst);
+    PARKS.store(0, Ordering::SeqCst);
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_park_primitive(recording_park, core::ptr::null_mut(), 1_000);
+    Clock::set_ros_time_override(10_000 * 1_000_000);
+
+    let ticks = std::sync::Arc::new(AtomicUsize::new(0));
+    let t = ticks.clone();
+    executor
+        .register_timer_on_clock(
+            TimerDuration::from_millis(100),
+            super::arena::TimerClockSource::Ros,
+            move || {
+                t.fetch_add(1, Ordering::SeqCst);
+            },
+        )
+        .unwrap();
+
+    const BUDGET_US: u64 = 500_000;
+    for _ in 0..4 {
+        executor.spin_once(core::time::Duration::from_micros(BUDGET_US));
+    }
+
+    assert_eq!(
+        PARKS.load(Ordering::SeqCst),
+        4,
+        "each spin must reach the park primitive, or this measures nothing"
+    );
+    assert!(
+        SHORTEST_US.load(Ordering::SeqCst) >= BUDGET_US,
+        "a paused /clock made the image park {} us instead of the {} us budget \
+         — once per timer period, forever",
+        SHORTEST_US.load(Ordering::SeqCst),
+        BUDGET_US
+    );
+    assert_eq!(
+        ticks.load(Ordering::SeqCst),
+        0,
+        "and the timer itself must still not fire while /clock is paused"
+    );
+    assert_eq!(
+        executor.last_park(),
+        (BUDGET_US, super::spin::WakeSourceId::CallerBudget)
+    );
+}
+
+/// phase-436 W1's property, unchanged: a WALL timer beside the ROS-time one
+/// still wins the park at its own period. The fix skips one clock source, not
+/// the timer deadline source.
+#[cfg(feature = "sim-time")]
+#[test]
+fn a_wall_timer_still_bounds_the_park_beside_a_paused_ros_timer() {
+    let _sim_time = SimTimeGuard::acquire();
+    use nros_core::clock::Clock;
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    Clock::set_ros_time_override(10_000 * 1_000_000);
+    executor
+        .register_timer_on_clock(
+            TimerDuration::from_millis(100),
+            super::arena::TimerClockSource::Ros,
+            || {},
+        )
+        .unwrap();
+    executor
+        .register_timer(TimerDuration::from_millis(10), || {})
+        .unwrap();
+
+    let (bound_us, winner) = executor.next_wake_bound_attributed_us(500_000, None);
+    assert_eq!(
+        bound_us, 10_000,
+        "the wall timer keeps its phase-436 W1 bound"
+    );
+    assert_eq!(winner, super::spin::WakeSourceId::Timer);
+}
+
+/// Issue 1321, one function over: the spin-quantization audit (issue #515)
+/// compares a timer's period against the declared spin period, both in wall
+/// microseconds. A ROS-time timer's activations are quantised by the `/clock`
+/// STEP instead, so the sentence the audit would print is about nothing.
+///
+/// Asserted on the decision rather than on the log line, because the audit
+/// only LOGS — the same reason `spin_quantization_us` is recorded at all.
+#[test]
+fn the_spin_quantization_audit_speaks_only_of_wall_timers() {
+    use super::{arena::TimerClockSource, spin::spin_quantization_span};
+
+    assert_eq!(
+        spin_quantization_span(TimerClockSource::Steady, 25_000, 10_000),
+        Some((20_000, 30_000)),
+        "a wall timer whose period is not a multiple of the spin period still \
+         gets issue #515's warning"
+    );
+    assert_eq!(
+        spin_quantization_span(TimerClockSource::System, 25_000, 10_000),
+        Some((20_000, 30_000)),
+        "so does a system-time timer: its activations ARE paced by the spin"
+    );
+    assert_eq!(
+        spin_quantization_span(TimerClockSource::Ros, 25_000, 10_000),
+        None,
+        "a ROS-time timer's period and the spin period are in different clocks"
+    );
+    assert_eq!(
+        spin_quantization_span(TimerClockSource::Steady, 20_000, 10_000),
+        None,
+        "an exact multiple has nothing to warn about"
+    );
+    assert_eq!(
+        spin_quantization_span(TimerClockSource::Steady, 0, 10_000),
+        None
+    );
+    assert_eq!(
+        spin_quantization_span(TimerClockSource::Steady, 25_000, 0),
+        None
+    );
+}
+
+/// Issue 1321's third site, and the one that is NOT bounded: issue 0736's
+/// budget-skip path advanced every timer's `elapsed_us` by the executor's WALL
+/// delta, so a ROS-time timer bound to a starved sporadic context kept
+/// accumulating while `/clock` was paused — and would eventually fire an
+/// activation that no simulated time paid for.
+#[cfg(all(feature = "sim-time", feature = "std"))] // the budget is spent in wall time
+#[test]
+fn a_budget_skipped_ros_timer_does_not_advance_on_wall_time() {
+    use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
+    use nros_core::clock::Clock;
+
+    let _sim_time = SimTimeGuard::acquire();
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    Clock::set_ros_time_override(10_000 * 1_000_000);
+
+    // A wall timer that COSTS: callback runtime is what consumes a sporadic
+    // budget, and one dispatch of this exhausts 1 us for the next 60 s.
+    let spender = executor
+        .register_timer(TimerDuration::from_millis(1), || {
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        })
+        .unwrap();
+    let ros = executor
+        .register_timer_on_clock(
+            TimerDuration::from_millis(100),
+            super::arena::TimerClockSource::Ros,
+            || {},
+        )
+        .unwrap();
+
+    let sc_id = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Sporadic,
+            budget_us: OptUs::from_us(1),
+            period_us: OptUs::from_us(60_000_000),
+            ..Default::default()
+        })
+        .unwrap();
+    executor
+        .bind_handle_to_sched_context(spender, sc_id)
+        .unwrap();
+    executor.bind_handle_to_sched_context(ros, sc_id).unwrap();
+
+    // Cycle 1 spends the budget; cycles 2..5 are the skipped ones.
+    for _ in 0..5 {
+        let _ = elapse_then_spin_once(&mut executor, 50);
+    }
+
+    assert_eq!(
+        executor.timer_elapsed_us(ros),
+        Some(0),
+        "a ROS-time timer skipped for want of budget must be advanced on ITS \
+         clock, which did not move — not by the executor's wall delta"
+    );
+}
+
 /// The table is fixed-capacity (no alloc). Overflow is an error, not a silent
 /// drop — a source that was quietly discarded would leave the executor
 /// sleeping past a deadline it was told about.
