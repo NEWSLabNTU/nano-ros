@@ -340,3 +340,24 @@ The files OUTSIDE `examples/templates/**` that must move in the same commit:
 6. `just check gate-lists`, `just check fixture-groups` and `just check
    fixture-binary-names` green; the four fixture rows build and their tests
    pass.
+
+## Progress — phase-445 W5 (2026-09-11)
+
+- **1, 2, 3, 5 done.** The three C/C++ `robot_entry` packages and all five
+  root `CMakeLists.txt` are deleted, each bringup declares `[image.native]`
+  (pure-c also its two `[[component]]` rows), `nros new --workspace --lang cpp`
+  scaffolds neither a root nor an entry, and `check-no-tracked-workspace-roots`
+  covers `examples/templates/` (both directions in its self-test, plus the
+  single-package templates it must leave alone).
+- **The rows did not become `[[workspace_fixture]]`s.** They stay
+  `compile_check_fixture` / `cmake-configure`; for a workspace template (a
+  `.colcon_workspace` and no root build file) that builder now runs `nros sync`
+  + `nros build` in a staged copy, so the tests only changed their relative
+  paths. `local-msg-package` / `workspace-shadowing` build through the new
+  bringup-less package mode.
+- **The esp32 lead is closed**: `examples/workspaces/rust/src/esp32_entry` is
+  generated now; its locator is `[image.esp32] locator`, and the
+  `[profile.release]` block turned out not to shape the fixture image at all —
+  the lane builds `nros-relwithdebinfo`, which sets every key that block set.
+- **Still open**: 4 (`multi-node-workspace`, the Rust template, has no lane),
+  and the book pages (issue 1107).

@@ -187,6 +187,40 @@ setting from `--config`. Negative control: adding a root `[workspace]`
 in a workspace when it's not`. No example package uses `x.workspace = true`
 inheritance (0 matches), the one feature that would need a root.
 
+## Amendment — phase-445 W5 (2026-09-11)
+
+Three things the decisions above did not say, found by deleting the last
+hand-written entries and the manifest fallback that served them:
+
+- **A workspace entry's deployment is the image that CLAIMS it.** D3/D5 give a
+  single-package leaf a `system.toml`, but a workspace entry cannot have one: a
+  package with a `system.toml` is read as a second bringup by `nros build`
+  (`collect_images`), and `nros check` refuses a `system.toml` beside a
+  workspace `Cargo.toml`. The generated entry (D6) also had to state its board
+  somewhere, and wrote the very `[package.metadata.nros.entry] deploy` D5
+  retires — so the fallback was not "only for the hand-written entries", every
+  generated entry resolved through it too. The rule now: an `[image.<id>]`
+  claims an entry by `entry = "<pkg>"`, else by being the image the builder
+  generates `<id>_entry` for, and `nros_orchestration_ir::leaf_system::for_entry`
+  is the one reader — `nros::main!`, `nros sync`'s board projection,
+  `nros ws board-facts` (the Zephyr lane) and `nros build`'s entry
+  classification all ask it. The retired keys are now REFUSED wherever they
+  appear, naming the file to write.
+- **A workspace with no bringup has a build.** D9 makes a workspace "a
+  directory of packages, like colcon", but only a workspace with an
+  `[image.*]` had any `nros build` path; `local-msg-package` and
+  `workspace-shadowing` were built only by their hand-written roots. With no
+  bringup, `nros build` now builds every package in dependency order, each with
+  its own driver into `build/<pkg>/` (a generated cmake root per C/C++ package;
+  cargo from the package's own directory).
+- **D6 does not hold on Zephyr yet.** "No user manifest names a board crate"
+  is still false for the eight Rust west entries: the entry is derivable, the
+  west application around it is not generated (issue 1288). And the phase's
+  acceptance `rg '^\[package\.metadata\.nros\.(deploy|entry|node|component)'
+  examples` cannot return nothing while the selection facade keys on the entry
+  table's presence and workspace node packages declare their class in the
+  manifest (issue 1289); `deploy` returns nothing.
+
 ## What is NOT decided here
 
 - The C/C++ leaves' CMake side. They take their board from `system.toml` under

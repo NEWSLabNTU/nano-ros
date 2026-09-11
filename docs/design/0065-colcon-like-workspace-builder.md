@@ -1052,6 +1052,17 @@ rejected here, because neither has a derivation to perform.
 
 ## Changelog
 
+- **2026-09-11** — phase-445 W5 (RFC-0098 amendment). D4/D13: every
+  hand-written CARGO workspace entry is gone (`examples/workspaces/rust`'s
+  `esp32_entry` was the last; its `esp-hal` dependency is the esp32
+  descriptor's `[board.entry] crate_root_deps`, its locator the image's), and
+  the C/C++ templates' `robot_entry` packages with them. What stays
+  hand-written is D5's hold-out, the west applications (issue 1288), whose
+  deployment is now read from the claiming image too
+  (`leaf_system::for_entry`). D1: a workspace with NO bringup is built package
+  by package — colcon's shape — instead of being refused for declaring no
+  `[image.*]`.
+
 - **2026-08-02** — created as Draft; problem statement + the "front of colcon,
   not the back" framing; four open questions.
 - **2026-08-26 (f)** — **D3 corrected while implementing it** (phase-383 W3.a):
