@@ -427,6 +427,24 @@ static volatile uint32_t g_diag_gck_too_big = 0;
 static volatile uint32_t g_diag_gck_timeout = 0;
 static volatile uint32_t g_diag_gck_pending = 0;
 static volatile uint32_t g_diag_handler_ctx_addr = 0;
+
+/* issue 0902 / phase-455 W2 — the reply-slot refusal count with NO session
+ * argument.
+ *
+ * This is a SECOND reader of the W1 counters, not a replacement, because it
+ * answers a DIFFERENT question. `zpico_reply_slot_stats` answers "which server
+ * saturated, and how badly" and needs the session handle and the queryable
+ * handle to do it. A probe binary holds neither: it owns an `Executor` and a
+ * node, and the zenoh `Context` is several layers below the API it was written
+ * against. So the question it can actually ask is "did ANY reply slot get
+ * refused in this process" — which is exactly the acceptance phase-455 W2
+ * needs, and exactly what a process-global counter can carry.
+ *
+ * Deliberately NOT folded into `zpico_get_diag_counters`: that array's length
+ * lives only in its C prototype (Rust binds it as a bare `*mut u32`), so
+ * growing it is an undiagnosable overrun for any caller not recompiled with
+ * it. A named accessor cannot be got wrong that way. */
+static volatile uint32_t g_reply_slot_refusals_total = 0;
 static volatile uint32_t g_diag_check_ctx_addr = 0;
 static volatile uint32_t g_diag_start_ctx_addr = 0;
 
@@ -1037,6 +1055,12 @@ static void query_handler(z_loaned_query_t* query, void* arg) {
             s->stored_query_valid[idx][slot] = true;
             reply_seq = slot;
         }
+    }
+    if (slot == ZPICO_ERR_FULL && g_reply_slot_refusals_total != 0xFFFFFFFFu) {
+        /* phase-455 W2 — the same event the per-queryable counter records,
+         * summed for a reader that has no session handle. Saturates rather
+         * than wrapping, for the reason the per-queryable count does. */
+        g_reply_slot_refusals_total++;
     }
     if (announce) {
         /* Latched here, said by the RUST side (`shim/service.rs`). `printk` is
@@ -3231,6 +3255,18 @@ int32_t zpico_reply_slot_stats(zpico_session_t* session, int32_t queryable_handl
  * `zpico_reply_slot_stats`: a stats read must not consume the event, or the
  * probe that samples the counter silences the log line.
  */
+/* issue 0902 / phase-455 W2 — every reply-slot refusal in this process, summed.
+ *
+ * The companion to `zpico_reply_slot_stats` for a caller that holds no session:
+ * "did any server here ever run out of reply slots?" Zero is the statement the
+ * W2 completion probe asserts, and it is a statement — not the absence of one —
+ * because a refusal is counted whether or not anything later reads it.
+ *
+ * NEVER reset. A counter a caller can zero is one a caller can zero by
+ * accident, and the only consumer wants a monotone "has it happened yet".
+ */
+uint32_t zpico_reply_slot_refusals_total(void) { return g_reply_slot_refusals_total; }
+
 int32_t zpico_reply_slot_take_announcement(zpico_session_t* session, int32_t queryable_handle) {
     struct zpico_session* s = (struct zpico_session*)session;
     if (s == NULL || queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {

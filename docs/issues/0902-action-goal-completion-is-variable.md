@@ -5,7 +5,7 @@ title: "action goals complete between 20 % and 90 % of the time on the same buil
 status: open
 type: bug
 area: rmw
-related: [issue-0912, issue-0882, issue-0879, issue-0852, phase-444, phase-455]
+related: [issue-0912, issue-0882, issue-0879, issue-0852, issue-1332, phase-444, phase-455]
 ---
 
 ## Measurement
@@ -350,3 +350,54 @@ left for the next reader to search for.
 **What still stands.** Item 1's measurement — the completion rate on a fresh
 image — is phase-455 W2. Item 4, the `buffer_index`/queryable-handle desync,
 is unchanged.
+
+## Status 2026-09-12 — the completion rate, measured (phase-455 W2)
+
+Item 1 above asked for the completion rate on a freshly built image, over enough
+runs to separate it from 20–90 %. Measured on the **native host lane** — a
+`rmw_zenohd` router, `bins/action-server-concurrent`, and
+`bins/action-client-multigoal` extended to await each goal's RESULT rather than
+only its acceptance:
+
+```
+phase-455 W2 evidence: completed 3/3 after a 10000 ms soak with 3 peer up/down
+cycles; server says `reply-slot: refusals=0`
+```
+
+Runner: `just native test-action-completion`. The rate is recorded as EVIDENCE;
+the assertions are `completed == sent` and `reply-slot: refusals=0`, which are
+statements rather than samples — that is what this issue asked for when it said
+a spread with no observable cause is not measurable as a regression gate.
+
+**But the green is narrower than it reads, and this is the important part.**
+Three further runs say the native lane cannot exercise the leak at all:
+
+| tree under test | refusals | completed |
+| --- | ---: | ---: |
+| both leak arms fixed | 0 | 3/3 |
+| `1a032a10b` REVERTED (declined queries keep their slot for ever) | 0 | 3/3 |
+| same, with 10 peer up/down cycles | 0 | — |
+| `-DZPICO_MAX_PENDING_REPLIES=1` (a ONE-slot table) | 0 | 3/3 |
+
+A one-slot table that refuses nothing is decisive: on this lane the action
+server's queryable never holds more than one query at a time, so the allocation
+never fails and the counter can never move. Reverting the fix changes no
+observable here, so **the negative control this measurement was supposed to
+carry does not exist on this lane** — filed as
+[issue 1332](1332-native-lane-cannot-exercise-zenoh-reply-slot-table.md) with
+the three routes that would create one.
+
+Why (read off the code, not instrumented): the declined-query shape that feeds
+the leak is the empty-payload liveliness probe at `shim/service.rs:220-227`, and
+graph discovery on this lane is a liveliness SUBSCRIBER rather than a query
+(phase-381 / issue 0903), while both action-client paths are single-in-flight.
+This issue measured its spread on a bare-metal serial board inside a REAL ROS 2
+graph; that peer population is what the native lane lacks.
+
+**So this issue does NOT close here.** What it gains: the completion path is now
+gated end to end (accepted → executed → RESULT received), the failure has an
+observable the next run can read instead of infer, and the reason a green native
+run is not evidence about the mechanism is written down rather than assumed.
+What it still needs is item 1 on a population that can refuse a slot —
+phase-444 W2's board run, phase-455 W3's live ROS 2 zenoh action cells, or issue
+1332's declined-query fixture.

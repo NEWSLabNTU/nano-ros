@@ -702,6 +702,13 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
+    /// issue 0902 / phase-455 W2 — every reply-slot refusal in this process,
+    /// summed, for a reader that holds no session handle.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_reply_slot_refusals_total() -> u32 {
+        0 // stub: not available
+    }
+
     /// issue 0902 / phase-455 W1 — the PURE half of the reply-slot
     /// allocation: pick a free slot and account for a refusal. Split out like
     /// `zpico_entry_at` so the accounting is testable without a session.
