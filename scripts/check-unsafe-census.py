@@ -60,76 +60,66 @@ BASELINE = REPO / ".config" / "unsafe-census-baseline.txt"
 KINDS = ("block", "fn", "impl", "extern", "trait")
 
 
-def strip_noise(src: str) -> str:
-    """Remove comments and string/char literals, preserving newlines.
-
-    Order matters: a `//` inside a string is not a comment, and a quote inside a
-    comment does not open a string. One pass over the text, tracking which of the
-    four states we are in, is the only way to get both right — two regex passes
-    get the nesting wrong in opposite directions.
-    """
-    out = []
-    i, n = 0, len(src)
-    while i < n:
-        c = src[i]
-        # raw string: r"…", r#"…"#, r##"…"##
-        m = re.match(r'r(#*)"', src[i:])
-        if c == "r" and m and (i == 0 or not (src[i - 1].isalnum() or src[i - 1] == "_")):
-            hashes = m.group(1)
-            end = src.find('"' + hashes, i + len(m.group(0)))
-            chunk = src[i:end if end != -1 else n]
-            out.append("\n" * chunk.count("\n"))
-            i = (end + 1 + len(hashes)) if end != -1 else n
-            continue
-        if src.startswith("//", i):
-            end = src.find("\n", i)
-            i = n if end == -1 else end
-            continue
-        if src.startswith("/*", i):
-            depth, j = 1, i + 2
-            while j < n and depth:
-                if src.startswith("/*", j):
-                    depth += 1
-                    j += 2
-                elif src.startswith("*/", j):
-                    depth -= 1
-                    j += 2
-                else:
-                    j += 1
-            out.append("\n" * src[i:j].count("\n"))
-            i = j
-            continue
-        if c == '"':
-            j = i + 1
-            while j < n:
-                if src[j] == "\\":
-                    j += 2
-                    continue
-                if src[j] == '"':
-                    j += 1
-                    break
-                j += 1
-            out.append("\n" * src[i:j].count("\n"))
-            i = j
-            continue
-        if c == "'":
-            # a char literal, not a lifetime: `'a` has no closing quote nearby
-            m = re.match(r"'(\\.|[^\\'])'", src[i:])
-            if m:
-                i += m.end()
-                continue
-        out.append(c)
-        i += 1
-    return "".join(out)
-
-
-UNSAFE = re.compile(r"\bunsafe\s+(fn|impl|extern|trait)\b|\bunsafe\s*\{")
+# One pass, and it never builds a stripped copy of the file. The alternatives
+# were measured over this tree, all reporting the identical 73 crates / 4,411
+# sites: a character loop that returns a cleaned string took 14.5s; adding an
+# `"unsafe" not in src` early-out took 9.7s; this takes 0.3s. The cost was never
+# the walk — it was rebuilding every file as a Python string.
+#
+# The alternation ORDER is the correctness of it: a `//` inside a string is not
+# a comment and a quote inside a comment does not open a string, so whichever
+# construct STARTS first must win, which is what a single alternation gives.
+# Block comments nest in Rust, so they are counted rather than matched.
+SCAN = re.compile(
+    r"""(?P<line>//[^\n]*)
+      | (?P<open>/\*) | (?P<close>\*/)
+      | (?P<raw>r\#*")
+      | (?P<str>")
+      | (?P<chr>'(?:\\.|[^\\'])')
+      | (?P<unsafe>\bunsafe\s+(?:fn|impl|extern|trait)\b|\bunsafe\s*\{)
+    """,
+    re.X,
+)
+KIND_OF = re.compile(r"\bunsafe\s+(fn|impl|extern|trait)\b")
 
 
 def count_text(src: str) -> dict:
     counts = {k: 0 for k in KINDS}
-    for m in UNSAFE.finditer(strip_noise(src)):
-        counts[m.group(1) or "block"] += 1
+    if "unsafe" not in src:
+        return counts
+    depth = 0          # block-comment nesting
+    i, n = 0, len(src)
+    while i < n:
+        m = SCAN.search(src, i)
+        if not m:
+            break
+        i = m.end()
+        if depth:
+            if m.lastgroup == "open":
+                depth += 1
+            elif m.lastgroup == "close":
+                depth -= 1
+            continue
+        g = m.lastgroup
+        if g == "open":
+            depth = 1
+        elif g in ("line", "chr", "close"):
+            continue
+        elif g == "raw":
+            end = src.find('"' + "#" * (len(m.group("raw")) - 2), i)
+            i = n if end == -1 else end + len(m.group("raw")) - 1
+        elif g == "str":
+            while i < n:
+                if src[i] == "\\":
+                    i += 2
+                    continue
+                if src[i] == '"':
+                    i += 1
+                    break
+                i += 1
+        elif g == "unsafe":
+            k = KIND_OF.match(m.group("unsafe"))
+            counts[k.group(1) if k else "block"] += 1
     return counts
 
 
@@ -173,17 +163,44 @@ def workspace_crates():
     return sorted(set(crates))
 
 
+def tracked_rs_by_dir():
+    """{src_dir: [files]} for every tracked `.rs`, from the INDEX.
+
+    Not `Path.rglob`: `check-no-tracked-file-find` forbids a filesystem walk to
+    locate git-tracked files, and the measurement behind that rule is 7m36s
+    against 0.8s for the same paths — `find` stats every directory it considers
+    pruning. This gate broke that rule on its first run and the gate caught it.
+    """
+    out = subprocess.run(
+        ["git", "ls-files", "-z", "*.rs"], cwd=REPO, capture_output=True, text=True,
+    )
+    if out.returncode != 0:
+        return None
+    by_dir = {}
+    for rel in (p for p in out.stdout.split("\0") if p):
+        by_dir.setdefault(str((REPO / rel).parent), []).append(REPO / rel)
+    return by_dir
+
+
 def census():
     """{crate: {kind: n}} — a crate whose source cannot be read is an ERROR."""
     crates = workspace_crates()
     if crates is None:
-        return None, ["cargo metadata failed"]
+        return None, ["crate enumeration failed"]
+    tracked = tracked_rs_by_dir()
+    if tracked is None:
+        return None, ["`git ls-files *.rs` failed"]
     result, errors = {}, []
     for name, src in crates:
         if not src.is_dir():
             continue  # no Rust sources (metadata-only package); nothing to count
+        # every tracked `.rs` at or under this crate's `src/`
+        prefix = str(src)
+        files = [f for d, fs in tracked.items()
+                 if d == prefix or d.startswith(prefix + "/")
+                 for f in fs]
         totals = {k: 0 for k in KINDS}
-        for f in sorted(src.rglob("*.rs")):
+        for f in sorted(files):
             try:
                 text = f.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as e:

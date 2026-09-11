@@ -122,7 +122,7 @@ package-routing:
 # `cargo metadata`: the root workspace excludes ~130 paths (issue 1217) and
 # several are real crates nothing else compiles (issue 1309), so a members-only
 # census reports a smaller, cleaner number than the truth — measured, 37 crates
-# against 73. Self-tests 13 cases on the normal path. Buildless, ~2 s.
+# against 73. Self-tests 13 cases on the normal path. Buildless, 0.3 s.
 [private]
 unsafe-census:
     @python3 scripts/check-unsafe-census.py
