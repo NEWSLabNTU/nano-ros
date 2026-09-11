@@ -44,9 +44,10 @@ use zpico_sys::{
     zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
     zpico_is_open, zpico_open, zpico_publish, zpico_publish_with_attachment,
     zpico_publish_with_attachment_aliased, zpico_query_reply, zpico_queryable_take_reply_seq,
-    zpico_session_acquire, zpico_session_release, zpico_session_t, zpico_spin_once,
-    zpico_undeclare_liveliness, zpico_undeclare_publisher, zpico_undeclare_queryable,
-    zpico_undeclare_subscriber, zpico_uses_polling,
+    zpico_reply_slot_stats, zpico_reply_slot_take_announcement, zpico_session_acquire,
+    zpico_session_release, zpico_session_t, zpico_spin_once, zpico_undeclare_liveliness,
+    zpico_undeclare_publisher, zpico_undeclare_queryable, zpico_undeclare_subscriber,
+    zpico_uses_polling,
 };
 
 // ============================================================================
@@ -842,6 +843,40 @@ impl Context {
     /// synchronous query callback; -1 if the reply table was full.
     pub fn queryable_take_reply_seq(&self, queryable_handle: i32) -> i64 {
         unsafe { zpico_queryable_take_reply_seq(self.handle, queryable_handle) }
+    }
+
+    /// issue 0902 / phase-455 W1 — one queryable's reply-slot table:
+    /// `(held, refusals, capacity)`, or `None` for an invalid handle.
+    ///
+    /// `refusals` is the count of allocations the C shim refused because every
+    /// slot was held. Zero means this server has never run out; the -1 that
+    /// `queryable_take_reply_seq` returns cannot say that, and that conflation
+    /// is what made issue 0902's 20-90 % completion spread unfalsifiable.
+    /// `capacity` is `ZPICO_MAX_PENDING_REPLIES` as the C TU was compiled with
+    /// it, so a caller reads the effective size instead of assuming a `-D`
+    /// arrived.
+    pub fn reply_slot_stats(&self, queryable_handle: i32) -> Option<(u32, u32, u32)> {
+        let mut refusals: u32 = 0;
+        let mut capacity: u32 = 0;
+        let held = unsafe {
+            zpico_reply_slot_stats(self.handle, queryable_handle, &mut refusals, &mut capacity)
+        };
+        if held < 0 {
+            return None;
+        }
+        Some((held as u32, refusals, capacity))
+    }
+
+    /// issue 0902 / phase-455 W1 — true exactly once per TRANSITION of this
+    /// queryable's reply-slot table into exhaustion; the pending flag is
+    /// cleared by the read.
+    ///
+    /// The once-ness lives in the C shim (`zpico_reply_slot_pick`), which is
+    /// the only place that sees the allocation. Latching again here would be a
+    /// second spelling of one rule, which is how a permanent failure ends up
+    /// reported per spin (phase-444 W6, on the Cyclone parameter services).
+    pub fn take_reply_slot_announcement(&self, queryable_handle: i32) -> bool {
+        unsafe { zpico_reply_slot_take_announcement(self.handle, queryable_handle) == 1 }
     }
 
     /// Start a non-blocking query (for async service client).

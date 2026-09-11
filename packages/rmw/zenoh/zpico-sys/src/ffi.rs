@@ -679,6 +679,43 @@ mod cbindgen_stubs {
         -1
     }
 
+    /// issue 0902 / phase-455 W1 — how many reply slots this queryable holds,
+    /// and how many allocations it has refused because the table was full.
+    /// `out_capacity` reports `ZPICO_MAX_PENDING_REPLIES` as the C TU sees it.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_reply_slot_stats(
+        _session: *mut zpico_session_t,
+        _queryable_handle: i32,
+        _out_refusals: *mut u32,
+        _out_capacity: *mut u32,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
+    /// issue 0902 / phase-455 W1 — take the pending "this reply-slot table
+    /// just saturated" announcement, clearing it. 1 = announce, 0 = nothing.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_reply_slot_take_announcement(
+        _session: *mut zpico_session_t,
+        _queryable_handle: i32,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
+    /// issue 0902 / phase-455 W1 — the PURE half of the reply-slot
+    /// allocation: pick a free slot and account for a refusal. Split out like
+    /// `zpico_entry_at` so the accounting is testable without a session.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_reply_slot_pick(
+        _valid: *const bool,
+        _cap: u32,
+        _refusals: *mut u32,
+        _saturated: *mut bool,
+        _out_announce: *mut bool,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
     /// Send a query and wait for reply (blocking, for service client).
     ///
     /// # Parameters

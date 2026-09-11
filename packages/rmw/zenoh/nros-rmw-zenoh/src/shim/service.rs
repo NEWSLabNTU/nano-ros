@@ -530,6 +530,50 @@ impl ServiceTrait for ZenohServiceServer {
         // Get context reference
         let context = unsafe { &*self.context };
 
+        /* issue 0902 / phase-455 W1 — a NEGATIVE seq is not "the reply
+         * failed"; it is "there was never a reply slot to fail with". The C
+         * shim clones each query into one of `ZPICO_MAX_PENDING_REPLIES`
+         * slots BEFORE the callback runs, and hands -1 on when the table is
+         * full. Folding that into `ServiceReplyFailed` is what made a
+         * saturated server read as a broken one — the same conflation issue
+         * 1088 removed one layer up (`arena.rs`, where a `WouldBlock` from a
+         * saturated `take_request` stopped being rewritten), and the reason
+         * 0902's 20-90 % completion spread had no observable cause.
+         *
+         * Say it ONCE. The transition is latched in the C shim, which is the
+         * only place that sees the allocation, and taken here — so a
+         * permanently saturated table costs one line, not one per spin
+         * (phase-444 W6 landed exactly this on the Cyclone parameter
+         * services). `nros_log`, never `eprintln!`: this crate reaches
+         * `no_std` targets, and std stdio SIGSEGVs a Zephyr native_sim image
+         * (issue 0589). The C shim does not print it either — `printk`
+         * compiles to a no-op under `ZPICO_SMOLTCP` / `ZPICO_SERIAL`, which is
+         * the bare-metal serial board 0902 was measured on. */
+        if sequence_number < 0 {
+            let handle = self._queryable.handle();
+            if context.take_reply_slot_announcement(handle) {
+                let (held, refusals, capacity) =
+                    context.reply_slot_stats(handle).unwrap_or((0, 0, 0));
+                nros_log::log_error!(
+                    nros_log::get_logger("nros_rmw_zenoh"),
+                    "zenoh reply-slot table exhausted on queryable {}: {}/{} slots held by \
+                     deferred replies, {} request(s) refused. Every later request on this \
+                     server is accepted and never answered until a slot is released. Raise \
+                     ZPICO_MAX_PENDING_REPLIES if this server fields more concurrent \
+                     in-flight requests than that.",
+                    handle,
+                    held,
+                    capacity,
+                    refusals
+                );
+            }
+            return Err(TransportError::Backend(
+                "zenoh reply-slot table exhausted — the query this reply answers was never \
+                 cloned into one of ZPICO_MAX_PENDING_REPLIES slots, so there is nothing to \
+                 reply to. Distinct from a failed reply: nothing was attempted.",
+            ));
+        }
+
         // Phase 237 — `sequence_number` selects the cloned query the C shim is
         // holding for this request (the reply-slot index from `take_request`),
         // so a deferred get_result reply reaches the original requester even

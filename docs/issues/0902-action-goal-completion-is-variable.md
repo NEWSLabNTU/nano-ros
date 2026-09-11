@@ -5,7 +5,7 @@ title: "action goals complete between 20 % and 90 % of the time on the same buil
 status: open
 type: bug
 area: rmw
-related: [issue-0912, issue-0882, issue-0879, issue-0852, phase-444]
+related: [issue-0912, issue-0882, issue-0879, issue-0852, phase-444, phase-455]
 ---
 
 ## Measurement
@@ -298,3 +298,55 @@ together with phase-444.
 **What would close it:** item 1's measurement at or near 10/10 on a fresh image
 closes the issue. A residual failure rate reopens the second candidate, and
 items 2 and 3 are what would make that residual diagnosable.
+
+## Status 2026-09-12 — the failure has an observable now (phase-455 W1)
+
+Item 3 above said there is no regression test, and gave the reason: reaching
+either leak arm needs a query delivered to a queryable, which needs a router.
+Item 1 said the symptom was never re-measured. Those two are the same problem
+seen from opposite ends — the only evidence available was a RATE, and a rate
+answers "did results arrive", never "did a slot run out".
+
+**The image says it now.** `query_handler`'s reply-slot allocation is
+`zpico_reply_slot_pick`, which COUNTS a refusal and latches the transition
+into exhaustion:
+
+* `zpico_reply_slot_stats(session, handle, *refusals, *capacity)` — slots
+  currently held as the return value, cumulative refusals beside it, shaped
+  after `zpico_graph_entry_count`'s `out_dropped`. **Zero refusals is a
+  statement** — "this server has never run out" — which `last_reply_seq == -1`
+  could not make, because that value also means "no query pending". That
+  conflation is the whole of this issue.
+* `zpico_reply_slot_take_announcement(session, handle)` — take-and-clear, so
+  the saturation is reported ONCE per transition rather than once per spin
+  (phase-444 W6's correction, on the Cyclone parameter services).
+* `send_response` no longer folds a negative seq into
+  `TransportError::ServiceReplyFailed`. Nothing was attempted, so "the reply
+  failed" was false; it returns a `Backend` diagnostic naming the knob, and
+  `nros_log` emits one line at the transition. The log is on the RUST side
+  deliberately: `printk` is a no-op under `ZPICO_SMOLTCP`/`ZPICO_SERIAL`, the
+  bare-metal serial board this issue was measured on, so a C-side print would
+  have reached nothing on the one target where the defect was found.
+
+The four swallow sites (`action_core.rs:695`, `:706-710`, `arena.rs:1925`,
+`nros-cpp/src/action.rs:529-532`) are unchanged and still recorded here.
+
+**Item 5 re-measured rather than re-read.** `ZPICO_MAX_PENDING_REPLIES` is
+still `#ifndef`-guarded and a raw `-D` still overrides it:
+`CFLAGS="-DZPICO_MAX_PENDING_REPLIES=0" cargo build -p zpico-sys` fails on the
+file's own `#error "ZPICO_MAX_PENDING_REPLIES must be >= 1"` (zpico.c:383),
+with the flag visible last on the cc-rs command line. Still no Kconfig, cmake
+or env producer sets it. The regression test does not rely on it — the pure
+pick takes `cap` as a parameter, so any capacity is drivable without a rebuild.
+
+**The tool this issue cites was never in version control.**
+`experiments/serial-interop/serial-tap.py` appears in no commit in full
+history, under no other name, and in no checkout on this disk; the captured
+dumps are likewise absent. So the "two free checks, before any hardware" in the
+09-04 section read data that nobody now has, and item 2 above cannot be
+discharged by anyone but the person who ran the tap. Recorded here rather than
+left for the next reader to search for.
+
+**What still stands.** Item 1's measurement — the completion rate on a fresh
+image — is phase-455 W2. Item 4, the `buffer_index`/queryable-handle desync,
+is unchanged.
