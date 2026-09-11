@@ -155,6 +155,18 @@ _PROV_LARGE = "which types drove MAX_LARGE"
 
 # `ZPICO_MAX_QUERYABLES` is off both cargo roads for one stated reason, and the
 # leaf sidecar is where that reason is written down at length.
+_FACTS_CMAKE = "cmake/NanoRosEntityFacts.cmake"
+_NROS_BUILD = "packages/api/nros/build.rs"
+
+# phase-412 W2 / issue 1130 -- the two facts whose roads are deliberately
+# fewer than three, each quoted where that was decided.
+_LIVELINESS_NEEDS_INFRA_COUNT = (
+    "inventory cannot see those families, so the count would be SHORT for any")
+_LIVELINESS_NOT_ON_DECLARED = (
+    "`NROS_DERIVED_MAX_LIVELINESS` is NOT carried on this road (phase-412 W2)")
+_CELLS_NOT_ON_RESOLVER = (
+    "The Zephyr RESOLVER road carries no such fact and wants no Kconfig")
+
 _QUERYABLES_NOT_DERIVED = "`ZPICO_MAX_QUERYABLES` is never stated here as a COUNT"
 _QUERYABLES_COMPLETED = "sizes the queryable table from"
 
@@ -194,14 +206,29 @@ FACT_DISPOSITION = {
     # `ZPICO_MAX_LIVELINESS` is floored from the resolved value.
     "NROS_DERIVED_MAX_LIVELINESS": {
         "resolver": ("NROS_RESOLVED_NROS_MAX_LIVELINESS",),
-        "sidecar": ("NROS_MAX_LIVELINESS",),
-        "declared": ("NROS_DECLARED_MAX_LIVELINESS",),
+        "sidecar": NotCarried(
+            _LEAF, _LIVELINESS_NEEDS_INFRA_COUNT,
+            "a session token is declared per parameter and lifecycle service "
+            "server too, and this road's inventory cannot see those families, "
+            "so a sidecar count would be SHORT -- the silent graph outage "
+            "issue 0283 exists to prevent, where the crate default (16) is "
+            "larger and safe"),
+        "declared": NotCarried(
+            _FACTS_CMAKE, _LIVELINESS_NOT_ON_DECLARED,
+            "the same families, one level over: the fragment knows them only "
+            "from the model it was composed with, and unlike the queryable "
+            "sizing no consumer completes a liveliness pool from per-entry "
+            "facts, so the road abstains and the zpico default stands"),
     },
     # issue 1130 -- the knob-capped cell registries. Per-IMAGE, composed across
     # entries by MAX; an explicit per-CLASS `ENTITY_BOUNDS` is always tighter
     # and keeps winning.
     "NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES": {
-        "resolver": ("NROS_RESOLVED_NROS_RUNTIME_MAX_CELL_ENTITIES",),
+        "resolver": NotCarried(
+            _NROS_BUILD, _CELLS_NOT_ON_RESOLVER,
+            "a Zephyr entry is a CMake image, so it already receives this "
+            "fact on the declared road; a CONFIG_ spelling would be a second "
+            "rung for one number"),
         "sidecar": ("NROS_RUNTIME_MAX_CELL_ENTITIES",),
         "declared": ("NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES",),
     },
