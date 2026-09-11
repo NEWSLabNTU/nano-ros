@@ -1,0 +1,19 @@
+# Backticked identifiers in the RMW ABI headers' prose that name
+# something OUTSIDE this tree and outside the recorded upstream
+# snapshot, so `check-rmw-doc-slot-names` cannot resolve them
+# offline. EXEMPTIONS, not the subject list — the subject is every
+# backticked identifier, derived on each run.
+#
+# A retired slot name does NOT belong here: those are written
+# without code ticks, which is the convention that keeps this file
+# short. Add a row only for a name another project owns, and say
+# which project.
+#
+# Regenerate: scripts/check-rmw-doc-slot-names.py --write-baseline
+RMW_RET_INCORRECT_RMW_IMPLEMENTATION  upstream rmw — a CONSTANT, and the recorded snapshot carries symbols and types, not macro names
+discovery_options  upstream rmw, IRON only — the recorded contract is Humble, which is the point the citation makes
+rcutils_uint8_array_t  rcutils — a type no contract symbol takes, so it is in no signature row
+rmw_localhost_only_t  upstream rmw (Humble) — an `rmw_init_options_t` field type; no contract symbol takes it
+rmw_uros_set_continous_serialization_callbacks  micro-ROS — cited as prior art for the streamed-publish shape
+whatami  zenoh — the session-role concept `create_session`'s `mode` is closest to
+z_session  zenoh-c — the session handle the zenoh backend holds

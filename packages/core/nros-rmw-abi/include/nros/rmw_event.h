@@ -84,7 +84,7 @@ typedef union rmw_event_payload_t {
  * inside `drive_io` on the executor thread" until 2026-08-25; no backend did
  * that, and the claim was load-bearing — it was the stated reason
  * `rmw_take_event` could be declined (issue 0780). zenoh fires from
- * `try_recv_raw` and `has_data`; a DDS backend's listeners fire on its own
+ * `take` and `has_data`; a DDS backend's listeners fire on its own
  * worker thread.
  *
  * So: must not block, and must assume it may be running concurrently with the
