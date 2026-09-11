@@ -60,14 +60,24 @@ NROS_LOCATOR='isotp/vcan0#tx_id=0x200;rx_id=0x201' \
 NODE=$!
 sleep 10
 
-echo "=== ros2 node list ==="  ; timeout 30 ros2 node list          2>&1 | tee "$OUT/nodes.log" | tail -5
-echo "=== ros2 param list ===" ; timeout 30 ros2 param list /param_talker 2>&1 | tee "$OUT/list.log" | tail -8
-echo "=== get (initial) ==="   ; timeout 30 ros2 param get /param_talker publish_period_ms 2>&1 | tee "$OUT/get1.log"
-echo "=== set 250 ==="         ; timeout 30 ros2 param set /param_talker publish_period_ms 250 2>&1 | tee "$OUT/set.log"
-echo "=== get (after set) ===" ; timeout 30 ros2 param get /param_talker publish_period_ms 2>&1 | tee "$OUT/get2.log"
+# `--no-daemon` on every graph query -- issue 1333. The ros2cli daemon is keyed
+# on ROS_DOMAIN_ID ALONE (`11511 + ROS_DOMAIN_ID`); the DISCOVERY CONFIGURATION
+# is not in that key, so a daemon another run left on this domain answers from
+# whatever CYCLONEDDS_URI / ZENOH_SESSION_CONFIG_URI ITS starter held. Measured:
+# that returns an empty `node list` and `Node not found` from `param list` for a
+# node that is live and that the same command finds with the flag. This script
+# is a hand-run diagnostic, i.e. exactly the situation where a false negative is
+# read as "the node is broken" -- which cost one investigation four consecutive
+# wrong conclusions.
+echo "=== ros2 node list ==="  ; timeout 30 ros2 node list --no-daemon 2>&1 | tee "$OUT/nodes.log" | tail -5
+echo "=== ros2 param list ===" ; timeout 30 ros2 param list /param_talker --no-daemon 2>&1 | tee "$OUT/list.log" | tail -8
+echo "=== get (initial) ==="   ; timeout 30 ros2 param get /param_talker publish_period_ms --no-daemon 2>&1 | tee "$OUT/get1.log"
+echo "=== set 250 ==="         ; timeout 30 ros2 param set /param_talker publish_period_ms 250 --no-daemon 2>&1 | tee "$OUT/set.log"
+echo "=== get (after set) ===" ; timeout 30 ros2 param get /param_talker publish_period_ms --no-daemon 2>&1 | tee "$OUT/get2.log"
 
 kill -9 $NODE $RTR $CD 2>/dev/null
-ros2 daemon stop >/dev/null 2>&1 || true
+# No `ros2 daemon stop` -- issue 0763. Nothing above starts a daemon now, and
+# stopping a shared one is a cross-run kill rather than a reset.
 echo "=== bus ==="
 echo "frames: $(wc -l <"$OUT/dump.log")  FF: $(grep -cE '\[8\]  1[0-9A-F] ' "$OUT/dump.log")  FC: $(grep -cE '\[3\]  3[0-9A-F] ' "$OUT/dump.log")"
 
