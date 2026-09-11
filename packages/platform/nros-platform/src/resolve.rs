@@ -12,40 +12,33 @@
 // itself all route through CffiPlatform. Bare-metal net surface is
 // backed by `nros_smoltcp::define_smoltcp_platform!` (PlatformTcp /
 // Udp / SocketHelpers / UdpMulticast) emitted by each platform crate.
-#[cfg(feature = "platform-posix")]
-pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
-
-#[cfg(feature = "platform-cffi")]
-pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
-
-#[cfg(feature = "platform-mps2-an385")]
-pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
-
-#[cfg(feature = "platform-stm32f4")]
-pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
-
-#[cfg(feature = "platform-esp32-qemu")]
-pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
-
-// Phase 121.3.deprecate-rust-migrate: the four deprecated RTOS
-// platforms resolve to `CffiPlatform` and reach their kernel impl
-// through the deprecated Rust crate's `cffi-export` macro emission
-// (enabled transitively by the `platform-<rtos>` feature). Same
-// runtime behaviour as before — every Rust trait call now hops one
-// extra `extern "C"` indirection. The deprecated Rust crates stay
-// for that transitive emission until consumers move to a C-side
-// symbol provider (`nros-platform-<rtos>-c`) and we drop the Rust
-// kernel crates entirely.
-#[cfg(feature = "platform-nuttx")]
-pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
-
-#[cfg(feature = "platform-freertos")]
-pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
-
-#[cfg(feature = "platform-threadx")]
-pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
-
-#[cfg(feature = "platform-zephyr")]
+// issue 1315 / phase-451 W4 — ONE arm, because all nine define the SAME type.
+//
+// These were nine separate `#[cfg(feature = "platform-<x>")]` blocks, each
+// `pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;` — identical
+// right-hand sides, mutually exclusive only by CONVENTION. Turning on two
+// platform features at once is then E0428, "defined multiple times", and
+// nothing in the tree did that until three crates became workspace members:
+// `cargo check --workspace` UNIFIES features across every member, so one
+// member wanting `platform-freertos` beside another wanting `platform-posix`
+// broke a crate neither of them names.
+//
+// `any(...)` is not a widening: nine arms that produce one type ARE one arm,
+// and writing them separately only bought a collision. A future platform whose
+// ConcretePlatform is NOT `CffiPlatform` gets its own `cfg` with a
+// `not(...)` on this one — which is the point at which the exclusivity becomes
+// real and should be stated, rather than assumed nine times.
+#[cfg(any(
+    feature = "platform-posix",
+    feature = "platform-cffi",
+    feature = "platform-mps2-an385",
+    feature = "platform-stm32f4",
+    feature = "platform-esp32-qemu",
+    feature = "platform-nuttx",
+    feature = "platform-freertos",
+    feature = "platform-threadx",
+    feature = "platform-zephyr",
+))]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 // ============================================================================

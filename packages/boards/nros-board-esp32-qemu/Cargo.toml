@@ -5,6 +5,14 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "ESP32-C3 QEMU board crate for nros (platform init + run() entry point)"
 
+[package.metadata.nros]
+# issue 1315 / phase-451 W4 — `host-only`'s mirror. Before it existed the
+# only way to keep a crate out of the HOST lane was to keep it out of the
+# workspace, where no lane compiled, linted, tested or formatted it
+# (issue 1309). Declaring the fact keeps it a member.
+embedded-only = true
+embedded-only-reason = "esp-hal + esp-backtrace + esp-println; no host build"
+
 [lib]
 name = "nros_board_esp32_qemu"
 

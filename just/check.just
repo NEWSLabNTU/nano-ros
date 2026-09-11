@@ -30,10 +30,19 @@ set working-directory := '..'
 # they all answer from `tools/rust-toolchain.toml`.
 NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-toolchain.toml`
 
-# Workspace members that cannot be checked on the host: staticlib/cdylib crates
-# whose link step needs a target toolchain. Used only by the gates, so it lives
-# here now — the root had no other user.
-HOST_UNCHECKABLE := "--exclude nros-c --exclude nros-cpp --exclude nros-rmw-zenoh-staticlib --exclude nros-rmw-xrce-cffi --exclude nros-rmw-xrce-cffi-staticlib --exclude nros-build-helpers --exclude nros-zpico-build --exclude nros-build-paths"
+# Workspace members that cannot be checked on the host — DERIVED, since issue
+# 1315 / phase-451 W4, from `[package.metadata.nros] embedded-only = true` in
+# each crate's own manifest. The mirror of `host-only` (issue 0287), which the
+# embedded lane has had since its own 20-line hand list was retired.
+#
+# This was that hand list, surviving on the host side: eight crates, no reasons,
+# nothing tying an entry to the crate it excluded. Measured 2026-09-11 with the
+# per-crate command the lane itself runs, FIVE of the eight were stale — `nros-c`,
+# `nros-rmw-xrce-cffi`, `nros-build-helpers`, `nros-zpico-build` and
+# `nros-build-paths` all clippy clean on the host and were excluded anyway. The
+# three that remain share one cause and it is a MANIFEST fact: a `staticlib` with
+# no host panic runtime.
+HOST_UNCHECKABLE := `bash scripts/build/embedded-only-members.sh`
 
 # The feature set `nros-c` / `nros-cpp` SHIP in on the host — what every
 # consumer selects with `default-features = false` and what cmake's

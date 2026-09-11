@@ -49,6 +49,13 @@ panic-halt = ["dep:panic-halt"]
 [package.metadata.nros]
 host-only = true
 host-only-reason = "staticlib wrapper, built per-platform by cmake"
+# issue 1315 / phase-451 W4 — the MIRROR. This crate was `host-only`
+# (out of the embedded lane) AND in the justfile's `HOST_UNCHECKABLE`
+# string (out of the host lane), so it was a workspace member that NO
+# lane compiled. Declaring both sides here is what makes that legible
+# instead of split across a manifest and a hand-written variable.
+embedded-only = true
+embedded-only-reason = "staticlib with no host panic runtime (`#[panic_handler]` function required)"
 
 [dependencies]
 nros-rmw-xrce-cffi = { workspace = true, default-features = false }

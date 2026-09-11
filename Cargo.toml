@@ -337,6 +337,18 @@ exclude = [
     "packages/testing/qemu-smoltcp-bridge",
     # smoltcp network provider (embedded-only, requires cross-compilation)
     "packages/drivers/net/nros-smoltcp",
+    # issue 1315 / phase-451 W4 — MEASURED, and it refutes what issue 1309
+    # assumed. These four are not excluded for want of an `embedded-only`
+    # mirror (that now exists). `cortex-m` and `esp-hal` each select a
+    # `critical-section` restore-state width, `nros-platform-critical-section`
+    # selects another, and critical-section REFUSES more than one: "You must
+    # set at most one of these Cargo features". Upstream exclusivity, so no
+    # workspace build can contain them — tried, and the embedded lane fails
+    # in `critical-section` itself, a crate none of them names.
+    "packages/platform/nros-platform-mps2-an385",
+    "packages/platform/nros-platform-stm32f4",
+    "packages/platform/nros-platform-esp32-qemu",
+    "packages/boards/nros-board-esp32-qemu",
     # Shared bare-metal helpers (PRNG, sleep, libc stubs) — embedded-only
     # Serial (UART) link layer (embedded-only, requires cross-compilation)
     "packages/rmw/zenoh/zpico-serial",
@@ -361,10 +373,6 @@ exclude = [
     "packages/reference/stm32f4-porting/rtic",
     # phase-337 W6.a — `nros-board-rtic-mps2-an385` was folded into
     # `nros-board-mps2-an385` behind its `rtic` feature (listed above).
-    "packages/platform/nros-platform-mps2-an385",
-    "packages/platform/nros-platform-stm32f4",
-    "packages/platform/nros-platform-esp32-qemu",
-    "packages/boards/nros-board-esp32-qemu",
     # phase-337 W7.a — the three STM32F4 board crates
     # (`nros-board-{stm32f4,rtic-stm32f4,embassy-stm32f4}`) and their examples
     # left the supported matrix: 0 Runtime cells, no CI lane that could boot
