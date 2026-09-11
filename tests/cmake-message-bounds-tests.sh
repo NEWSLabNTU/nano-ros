@@ -182,7 +182,7 @@ derive() {
 entity_frag() {
     local path="$1" inv_status="$2" sub_status="$3"; shift 3
     {
-        echo "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 4)"
+        echo "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 5)"
         echo "set(NROS_ENTITY_INVENTORY_STATUS \"$inv_status\")"
         echo "set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 1)"
         echo "set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS \"$sub_status\")"
@@ -761,7 +761,7 @@ fi
 
 log_header "M -- a current schema that states no subscribed set REFUSES"
 {
-    echo "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 4)"
+    echo "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 5)"
     echo "set(NROS_ENTITY_INVENTORY_STATUS \"derived\")"
 } > "$T/m3-ents.cmake"
 OUT="$(derive "$T/l1.cmake" -DNROS_BOUNDS_ENTITY_INVENTORY="$T/m3-ents.cmake")"
@@ -877,7 +877,7 @@ EOF
 # for the wrong reason. It did, on the first run of this test.
 _o_frag() {
     {
-        printf 'set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 4)\n'
+        printf 'set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 5)\n'
         printf 'set(NROS_ENTITY_INVENTORY_STATUS "derived")\n'
         printf 'set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS "resolved")\n'
         printf 'set(NROS_ENTITY_SUBSCRIBED_TYPES "%s")\n' "$1"
@@ -956,7 +956,7 @@ set(NROS_MESSAGE_BOUND_demo_msg_Open_REASON "unbounded member: data (string)")
 EOF
 # Subscribes to the BOUNDED type only. The unbounded one is linked, never received.
 {
-    printf 'set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 4)\n'
+    printf 'set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 5)\n'
     printf 'set(NROS_ENTITY_INVENTORY_STATUS "derived")\n'
     printf 'set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS "resolved")\n'
     printf 'set(NROS_ENTITY_SUBSCRIBED_TYPES "std_msgs/msg/Int32")\n'

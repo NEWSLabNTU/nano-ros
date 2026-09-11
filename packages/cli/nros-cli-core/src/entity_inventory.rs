@@ -110,6 +110,14 @@
 
 use std::collections::BTreeMap;
 
+// phase-454 W3 -- the QoS VALUE vocabulary, taken from the module that already
+// owned it for `qos_overrides.*`. Parsing `best_effort` a second time here is
+// how a second vocabulary starts; see that module's header.
+use nros_orchestration_ir::qos_override::{
+    QoSDurabilityPolicy, QoSHistoryPolicy, QoSReliabilityPolicy, durability_spelling,
+    history_spelling, parse_durability, parse_history, parse_reliability, reliability_spelling,
+};
+
 /// Bumped when the shape of the emitted inventory changes incompatibly.
 /// A consumer that does not recognise the version must refuse, never guess.
 ///
@@ -140,7 +148,20 @@ use std::collections::BTreeMap;
 /// depth-carrying kind, and while no in-tree producer ever put a non-
 /// subscription row in one, the variable's DEFINITION changed and a reader
 /// cannot tell which definition it is holding without the version.
-pub const ENTITY_INVENTORY_SCHEMA_VERSION: u32 = 4;
+///
+/// **5** (phase-454 W3, issue 1256): the OTHER THREE QoS policies. The contract
+/// has been able to state `reliability`, `durability` and `history` per endpoint
+/// for four phases; `depth_of` read the depth and dropped them. They now travel
+/// as `NROS_ENTITY_DECLARED_{RELIABILITY,DURABILITY,HISTORY}[_PUBLISHER]` with
+/// per-kind undeclared counts and their own `_QOS_POLICY_STATUS`. Bumps for the
+/// familiar reason -- absence of a list in a version-4 fragment is an older
+/// CLI's silence, not "no endpoint declared" -- and for a second one that is
+/// NOT merely additive: `NROS_ENTITY_DECLARED_DEPTH_STATUS` can now read
+/// `refused` for a reason a version-4 reader has never seen, `history =
+/// keep_all` on some endpoint. A KEEP_ALL queue has no static bound, so a depth
+/// stated beside it prices nothing (RFC-0100 D6), and a reader that kept using
+/// the old list would size from a number that has stopped meaning what it said.
+pub const ENTITY_INVENTORY_SCHEMA_VERSION: u32 = 5;
 
 /// Canonical artifact name.
 pub const ENTITY_INVENTORY_JSON_NAME: &str = "nros_entity_inventory.json";
@@ -336,15 +357,57 @@ impl EntityKind {
 /// default 10 inflates an image that states 1 tenfold, and assuming 1
 /// UNDER-sizes one that took the default. `None` means NOBODY SAID, and a
 /// consumer that needs a depth must refuse on it. It must never read as 0.
+///
+/// # The other three policies (phase-454 W3, issue 1256)
+///
+/// `reliability`, `durability` and `history` ride here for the same reason and
+/// under the same rule. Each is `Option` and `None` means NOBODY SAID: an
+/// undeclared `reliability` is NOT `best_effort`, and a consumer that needs one
+/// -- XRCE's two 64 KiB `*_reliable_buf` are the first -- must refuse rather
+/// than assume, on the safe side of its own question.
+///
+/// They were stated, resolved and dropped for four phases: the contract schema
+/// has carried all four since `QosDecl` existed, `effective_qos` resolves them
+/// per endpoint into the SystemModel, and `from_model` read `qos.depth` and
+/// nothing else. The one with a live defect behind it is `history`: a
+/// `keep_all` endpoint was priced at whatever `depth` said, which is a silent
+/// UNDER-size (RFC-0100 D6) -- see [`EntityInventory::declared_depths`], which
+/// refuses on it now.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityDecl {
     pub kind: EntityKind,
     pub type_name: Option<String>,
     pub name: Option<String>,
     pub depth: Option<u32>,
+    /// phase-454 W3 -- `reliable` / `best_effort`, or `None` for "nobody said".
+    pub reliability: Option<QoSReliabilityPolicy>,
+    /// phase-454 W3 -- `volatile` / `transient_local`, or `None`.
+    pub durability: Option<QoSDurabilityPolicy>,
+    /// phase-454 W3 -- `keep_last` / `keep_all`, or `None`.
+    pub history: Option<QoSHistoryPolicy>,
 }
 
 impl EntityDecl {
+    /// A row that states no QoS policy at all.
+    ///
+    /// Every producer but `from_model` builds one of these -- the `ENTITIES`
+    /// grammar models only `@depth=`, and the timer/service rows carry no QoS
+    /// by construction. Spelled once so that adding a fifth policy is one
+    /// signature change rather than a sweep over thirteen struct literals, and
+    /// so that a site which MEANT to state one is the site that does not call
+    /// this.
+    pub fn bare(kind: EntityKind, type_name: Option<String>, name: Option<String>) -> Self {
+        Self {
+            kind,
+            type_name,
+            name,
+            depth: None,
+            reliability: None,
+            durability: None,
+            history: None,
+        }
+    }
+
     /// Parse the declaration spelling:
     /// `<kind>[:<type>[:<name>]][@<attr>=<value>...]`.
     ///
@@ -458,10 +521,17 @@ impl EntityDecl {
         }
         Ok((0..repeat)
             .map(|_| EntityDecl {
-                kind,
-                type_name: type_name.map(str::to_string),
-                name: name.map(str::to_string),
+                // phase-454 W3 -- the other three policies stay `None` on this
+                // road. The grammar models `@depth=` and nothing else, and the
+                // contract is the surface that carries the rest (RFC-0100 D3);
+                // inventing `@reliability=` here would add a second producer to
+                // a grammar phase-454 W9 retires.
                 depth,
+                ..EntityDecl::bare(
+                    kind,
+                    type_name.map(str::to_string),
+                    name.map(str::to_string),
+                )
             })
             .collect())
     }
@@ -997,6 +1067,149 @@ impl DeclaredDepths {
     }
 }
 
+/// The three QoS policies that are NOT a depth -- phase-454 W3, issue 1256.
+///
+/// One enumerated once, so a consumer that prices only one of them still reads
+/// a table with the join key ([`DeclaredDepth`]'s `(kind, type, topic)`) and
+/// still has to answer "did every endpoint state it?" for its own policy. The
+/// three are separate questions and the counts below are kept separately for
+/// exactly that reason: an image where every subscription states `reliability`
+/// and none states `durability` can size XRCE's reliable buffers and must
+/// refuse a transient-local retention budget, and one count over "any policy"
+/// would answer neither.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QosPolicyKind {
+    Reliability,
+    Durability,
+    History,
+}
+
+/// Every policy in [`QosPolicyKind`], for a consumer that walks them.
+pub const ALL_QOS_POLICY_KINDS: &[QosPolicyKind] = &[
+    QosPolicyKind::Reliability,
+    QosPolicyKind::Durability,
+    QosPolicyKind::History,
+];
+
+impl QosPolicyKind {
+    /// The lower-case name, as it is written in a contract and in the JSON.
+    pub fn tag(self) -> &'static str {
+        match self {
+            QosPolicyKind::Reliability => "reliability",
+            QosPolicyKind::Durability => "durability",
+            QosPolicyKind::History => "history",
+        }
+    }
+
+    /// The CMake variable INFIX -- `NROS_ENTITY_DECLARED_<INFIX>` and
+    /// `NROS_ENTITY_UNDECLARED_<INFIX>_COUNT_<KIND>`.
+    pub fn cmake_infix(self) -> &'static str {
+        match self {
+            QosPolicyKind::Reliability => "RELIABILITY",
+            QosPolicyKind::Durability => "DURABILITY",
+            QosPolicyKind::History => "HISTORY",
+        }
+    }
+}
+
+/// One endpoint's stated QoS policies, other than the depth.
+///
+/// Keyed exactly as [`DeclaredDepth`] is, so the two tables join without a
+/// second naming convention -- and an endpoint appears here whenever it states
+/// ANY of the three, which is not the same set as the endpoints that state a
+/// depth. A field is `None` when that policy was not stated; that is the
+/// `undeclared` half of the view, per policy and per kind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredQosPolicies {
+    pub kind: EntityKind,
+    pub type_name: String,
+    pub topic: String,
+    pub reliability: Option<QoSReliabilityPolicy>,
+    pub durability: Option<QoSDurabilityPolicy>,
+    pub history: Option<QoSHistoryPolicy>,
+}
+
+impl DeclaredQosPolicies {
+    /// The stated value of one policy, in the contract's own spelling.
+    pub fn spelling(&self, policy: QosPolicyKind) -> Option<&'static str> {
+        match policy {
+            QosPolicyKind::Reliability => self.reliability.map(reliability_spelling),
+            QosPolicyKind::Durability => self.durability.map(durability_spelling),
+            QosPolicyKind::History => self.history.map(history_spelling),
+        }
+    }
+}
+
+/// Every stated non-depth QoS policy in an image, plus what stayed silent.
+///
+/// Same three-state discipline as [`DeclaredDepths`], and refused for the same
+/// one reason: the inventory itself did not compose, so whole components are
+/// missing and a missing row reads as "nobody declared this endpoint".
+///
+/// It does NOT refuse on `history = keep_all`. That refusal is per-FACT
+/// (RFC-0100 D6) and the fact it kills is the DEPTH-derived one: a KEEP_ALL
+/// queue has no static bound, so a depth beside it prices nothing. The
+/// statement "this endpoint asked for KEEP_ALL" is itself perfectly well
+/// declared, and a consumer -- an XRCE `STREAM_HISTORY`, a Cyclone resource
+/// limit -- must be able to read it. Degrading it would be the global refusal
+/// D6 exists to forbid.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclaredQos {
+    Resolved {
+        /// Sorted by `(kind, type_name, topic)`, like the depth table.
+        rows: Vec<DeclaredQosPolicies>,
+        /// Per policy, per kind: endpoints of that kind that COULD have stated
+        /// the policy and did not. `[(policy, kind) -> count]`, flattened into
+        /// two small maps so the render stays a loop rather than nine fields.
+        undeclared_subscriptions: [usize; 3],
+        undeclared_publishers: [usize; 3],
+    },
+    Refused {
+        reason: String,
+    },
+}
+
+impl DeclaredQos {
+    pub fn tag(&self) -> &'static str {
+        match self {
+            DeclaredQos::Resolved { .. } => "resolved",
+            DeclaredQos::Refused { .. } => "refused",
+        }
+    }
+
+    pub fn rows(&self) -> Option<&[DeclaredQosPolicies]> {
+        match self {
+            DeclaredQos::Resolved { rows, .. } => Some(rows),
+            DeclaredQos::Refused { .. } => None,
+        }
+    }
+
+    /// How many endpoints of `kind` did NOT state `policy`.
+    ///
+    /// `None` on a refusal, and that is the point: zero and "no answer" are the
+    /// two things this view exists to keep apart.
+    pub fn undeclared(&self, policy: QosPolicyKind, kind: EntityKind) -> Option<usize> {
+        let DeclaredQos::Resolved {
+            undeclared_subscriptions,
+            undeclared_publishers,
+            ..
+        } = self
+        else {
+            return None;
+        };
+        let i = ALL_QOS_POLICY_KINDS.iter().position(|p| *p == policy)?;
+        match kind {
+            EntityKind::Subscription => Some(undeclared_subscriptions[i]),
+            EntityKind::Publisher => Some(undeclared_publishers[i]),
+            // Only the two topic kinds are counted. A service server states no
+            // `reliability:` in any contract schema, so a count over it would
+            // be a number nothing can ever move off its maximum -- issue 1227's
+            // finding, which is why the depth counts are per kind too.
+            _ => None,
+        }
+    }
+}
+
 /// phase-446 W4 -- the parameter every node carries without declaring it.
 ///
 /// `Executor::seed_use_sim_time_default` declares `use_sim_time` on EVERY node
@@ -1497,21 +1710,83 @@ impl EntityInventory {
                 .and_then(|q| q.depth)
         };
 
+        // phase-454 W3 (issue 1256) -- the OTHER THREE policies, from whichever
+        // endpoint map the kind lives in.
+        //
+        // `Qos` in the model carries `reliability`, `durability` and `history`
+        // beside `depth`; this function read the fourth and dropped the other
+        // three, which is the whole of issue 1256. They arrive as free-form
+        // strings, so each is parsed through the ONE vocabulary
+        // (`nros_orchestration_ir::qos_override`) the `qos_overrides.*` lowering
+        // already uses.
+        //
+        // An UNRECOGNISED spelling parses to `None` here, which reads as "not
+        // declared" -- and that would be the silent drop this module exists to
+        // refuse. It cannot happen on the road a build takes: `nros ws
+        // entity-inventory` runs `reject_unknown_qos_values` over the same model
+        // BEFORE this, and that is where the error channel is (`from_model`
+        // returns `Option` to say "no wiring described", which has no room for
+        // "what you wrote is wrong" -- the same split issue 1084 made for
+        // `depth: 0`). The refusal is checked, not assumed:
+        // `an_unknown_qos_spelling_is_rejected_before_it_can_be_dropped` is the
+        // test that binds the two halves.
+        let sub_qos = |ep: &str| -> Option<&ros_launch_manifest_model::Qos> {
+            model
+                .contracts
+                .sub_endpoints
+                .get(ep)
+                .and_then(|c| c.qos.as_ref())
+        };
+        let pub_qos = |ep: &str| -> Option<&ros_launch_manifest_model::Qos> {
+            model
+                .contracts
+                .pub_endpoints
+                .get(ep)
+                .and_then(|c| c.qos.as_ref())
+        };
+        fn policies(
+            q: Option<&ros_launch_manifest_model::Qos>,
+        ) -> (
+            Option<QoSReliabilityPolicy>,
+            Option<QoSDurabilityPolicy>,
+            Option<QoSHistoryPolicy>,
+        ) {
+            (
+                q.and_then(|q| q.reliability.as_deref())
+                    .and_then(parse_reliability),
+                q.and_then(|q| q.durability.as_deref())
+                    .and_then(parse_durability),
+                q.and_then(|q| q.history.as_deref()).and_then(parse_history),
+            )
+        }
+
         for (topic, wiring) in &model.structure.topics {
             for ep in &wiring.subscribers {
+                let (reliability, durability, history) = policies(sub_qos(ep));
                 per_node.entry(node_of(ep)).or_default().push(EntityDecl {
-                    kind: EntityKind::Subscription,
-                    type_name: Some(wiring.msg_type.clone()),
-                    name: Some(topic.clone()),
                     depth: sub_depth_of(ep),
+                    reliability,
+                    durability,
+                    history,
+                    ..EntityDecl::bare(
+                        EntityKind::Subscription,
+                        Some(wiring.msg_type.clone()),
+                        Some(topic.clone()),
+                    )
                 });
             }
             for ep in &wiring.publishers {
+                let (reliability, durability, history) = policies(pub_qos(ep));
                 per_node.entry(node_of(ep)).or_default().push(EntityDecl {
-                    kind: EntityKind::Publisher,
-                    type_name: Some(wiring.msg_type.clone()),
-                    name: Some(topic.clone()),
                     depth: pub_depth_of(ep),
+                    reliability,
+                    durability,
+                    history,
+                    ..EntityDecl::bare(
+                        EntityKind::Publisher,
+                        Some(wiring.msg_type.clone()),
+                        Some(topic.clone()),
+                    )
                 });
             }
         }
@@ -1534,15 +1809,17 @@ impl EntityInventory {
             for (service, wiring) in wirings {
                 for (kind, eps) in [(server_kind, &wiring.server), (client_kind, &wiring.client)] {
                     for ep in eps {
-                        per_node.entry(node_of(ep)).or_default().push(EntityDecl {
-                            kind,
-                            type_name: Some(wiring.srv_type.clone()),
-                            // The SERVICE / ACTION name, for the same reason
-                            // the topic is used above: it is the string the
-                            // call site writes.
-                            name: Some(service.clone()),
-                            depth: None,
-                        });
+                        per_node
+                            .entry(node_of(ep))
+                            .or_default()
+                            .push(EntityDecl::bare(
+                                kind,
+                                Some(wiring.srv_type.clone()),
+                                // The SERVICE / ACTION name, for the same reason
+                                // the topic is used above: it is the string the
+                                // call site writes.
+                                Some(service.clone()),
+                            ));
                     }
                 }
             }
@@ -1563,12 +1840,11 @@ impl EntityInventory {
             per_node
                 .entry(node_of(path_key))
                 .or_default()
-                .push(EntityDecl {
-                    kind: EntityKind::Timer,
-                    type_name: None,
-                    name: Some(path_key.clone()),
-                    depth: None,
-                });
+                .push(EntityDecl::bare(
+                    EntityKind::Timer,
+                    None,
+                    Some(path_key.clone()),
+                ));
         }
 
         let mut inv = Self::new(source);
@@ -2012,6 +2288,37 @@ impl EntityInventory {
     /// has not opted in, which is not an error. The arena (step 3) refuses on a
     /// non-zero `undeclared` the way W8 refuses on an unbounded type; the
     /// compile-time check sees no row and asserts nothing.
+    ///
+    /// # …and it DOES refuse on `history = keep_all` (phase-454 W3, RFC-0100 D6)
+    ///
+    /// This is the one live defect behind that wave, and it is the only trigger
+    /// in the whole sizing model that could ship a buffer that is too SMALL
+    /// rather than too large.
+    ///
+    /// `KEEP_LAST(n)` bounds a queue at `n` samples. `KEEP_ALL` bounds it at
+    /// nothing -- DDS keeps every sample the resource limits allow, and no
+    /// number in a contract says how many that is. A `keep_all` endpoint that
+    /// also states `depth: 1` was priced at 1 here: the depth reached the table,
+    /// the history did not, and the arena budgeted one sample for a queue with
+    /// no bound. That is a silent UNDER-size, and it lands as
+    /// `NodeError::BufferTooSmall` at a registration the arena oracle passed.
+    ///
+    /// So the DEPTH-derived facts refuse, and they refuse whether or not a depth
+    /// was stated beside the `keep_all` -- a stated depth is not a cap on a
+    /// KEEP_ALL queue, it is a number that has stopped meaning what it says.
+    ///
+    /// The refusal is PER FACT and stops here. A `keep_all` subscription says
+    /// nothing about Cyclone's type table, about the entity counts, or about the
+    /// parameter store, and D6 forbids degrading them: *"a `keep_all`
+    /// subscription says nothing about Cyclone's type table, and a global
+    /// refusal would degrade it anyway."* [`EntityInventory::declared_qos`] keeps
+    /// resolving too, including the `keep_all` row itself -- the statement is
+    /// well declared, it is only the DEPTH arithmetic that has no answer.
+    ///
+    /// And it does not fall back to a number. RFC-0100 D6: a refused fact never
+    /// silently widens its basis, because *"that publishes the wrong row while
+    /// every status still reads 'derived', which is the shape that looks like it
+    /// worked."*
     pub fn declared_depths(&self) -> DeclaredDepths {
         if let Derivation::Refused { reason } = self.derive() {
             return DeclaredDepths::Refused {
@@ -2020,6 +2327,48 @@ impl EntityInventory {
                      would be missing whole components -- and a missing row reads as \"nobody \
                      declared this endpoint\", which is the one thing the table must never \
                      say wrongly:\n{reason}"
+                ),
+            };
+        }
+
+        // phase-454 W3 -- KEEP_ALL first, because every number below it would be
+        // an answer to a question that has none. Named endpoints, not a count: a
+        // refusal a user cannot act on is a refusal they work around.
+        let keep_all: Vec<String> = self
+            .components()
+            .iter()
+            .flat_map(|c| {
+                c.declaration
+                    .entities()
+                    .iter()
+                    .filter(|e| e.history == Some(QoSHistoryPolicy::KeepAll))
+                    .map(move |e| {
+                        format!(
+                            "    {}::{} declares a `{}` on `{}`{}",
+                            c.pkg,
+                            c.component,
+                            e.kind.tag(),
+                            e.name.as_deref().unwrap_or("<unnamed>"),
+                            match e.depth {
+                                Some(d) => format!(" with `depth: {d}` beside it"),
+                                None => String::new(),
+                            }
+                        )
+                    })
+            })
+            .collect();
+        if !keep_all.is_empty() {
+            return DeclaredDepths::Refused {
+                reason: format!(
+                    "{} endpoint(s) declare `history: keep_all`, which has NO STATIC BOUND -- \
+                     KEEP_ALL keeps every sample the resource limits allow, and no number in a \
+                     contract says how many that is:\n{}\nA depth stated beside KEEP_ALL is not \
+                     a cap on the queue, so pricing from it would UNDER-size the buffer and ship \
+                     `BufferTooSmall` at a registration this table had passed. Declare \
+                     `history: keep_last` with the `depth:` you mean, which is the pair every \
+                     size consumer here can derive from.",
+                    keep_all.len(),
+                    keep_all.join("\n")
                 ),
             };
         }
@@ -2068,6 +2417,98 @@ impl EntityInventory {
         DeclaredDepths::Resolved {
             rows,
             undeclared,
+            undeclared_subscriptions,
+            undeclared_publishers,
+        }
+    }
+
+    /// The other three QoS policies -- phase-454 W3, issue 1256.
+    ///
+    /// Sibling of [`Self::declared_depths`], and deliberately a SEPARATE view
+    /// rather than three more columns on that one. Two reasons:
+    ///
+    /// 1. **Its population differs.** A depth row exists only where a depth was
+    ///    stated; an endpoint can state `reliability: best_effort` and no depth
+    ///    at all, and it has to appear somewhere.
+    /// 2. **Its status differs, and that is the whole of RFC-0100 D6.** A
+    ///    `keep_all` endpoint makes the depth table REFUSE and leaves this one
+    ///    resolved, because the policy is well declared and only the depth
+    ///    arithmetic has no answer. Folding them into one view would make the
+    ///    per-fact refusal impossible to express.
+    ///
+    /// Refuses on exactly the one condition the depth table refuses on and no
+    /// other: the inventory itself did not compose, so whole components are
+    /// missing and an absent row would read as "nobody declared this endpoint".
+    pub fn declared_qos(&self) -> DeclaredQos {
+        if let Derivation::Refused { reason } = self.derive() {
+            return DeclaredQos::Refused {
+                reason: format!(
+                    "the entity inventory itself did not compose, so the declared-QoS table \
+                     would be missing whole components -- and a missing row reads as \"nobody \
+                     declared this endpoint\", which is the one thing the table must never \
+                     say wrongly:\n{reason}"
+                ),
+            };
+        }
+
+        let mut rows: Vec<DeclaredQosPolicies> = Vec::new();
+        let mut undeclared_subscriptions = [0usize; 3];
+        let mut undeclared_publishers = [0usize; 3];
+        for c in self.components() {
+            for e in c.declaration.entities() {
+                // The same population the depth view walks: a timer and a guard
+                // condition carry no QoS at all, so counting them as "did not
+                // state a reliability" would pin every consumer on its worst
+                // case for endpoints that cannot ever state one.
+                if !e.kind.carries_qos_depth() {
+                    continue;
+                }
+                let counts = match e.kind {
+                    EntityKind::Subscription => Some(&mut undeclared_subscriptions),
+                    EntityKind::Publisher => Some(&mut undeclared_publishers),
+                    // Services and actions carry QoS in ROS, but no contract
+                    // schema states one for them and `from_model` has no map to
+                    // read it from. Counting them would make every count
+                    // permanently non-zero -- issue 1227's defect exactly.
+                    _ => None,
+                };
+                if let Some(counts) = counts {
+                    for (i, policy) in ALL_QOS_POLICY_KINDS.iter().enumerate() {
+                        let stated = match policy {
+                            QosPolicyKind::Reliability => e.reliability.is_some(),
+                            QosPolicyKind::Durability => e.durability.is_some(),
+                            QosPolicyKind::History => e.history.is_some(),
+                        };
+                        // A policy stated on an endpoint with no type or no
+                        // topic cannot be JOINED to anything, so it counts as
+                        // undeclared rather than being dropped -- the rule the
+                        // depth view applies to the same shape.
+                        if !stated || e.type_name.is_none() || e.name.is_none() {
+                            counts[i] += 1;
+                        }
+                    }
+                }
+                let (Some(t), Some(n)) = (&e.type_name, &e.name) else {
+                    continue;
+                };
+                if e.reliability.is_none() && e.durability.is_none() && e.history.is_none() {
+                    continue;
+                }
+                rows.push(DeclaredQosPolicies {
+                    kind: e.kind,
+                    type_name: t.clone(),
+                    topic: n.clone(),
+                    reliability: e.reliability,
+                    durability: e.durability,
+                    history: e.history,
+                });
+            }
+        }
+        rows.sort_by(|a, b| {
+            (a.kind.tag(), &a.type_name, &a.topic).cmp(&(b.kind.tag(), &b.type_name, &b.topic))
+        });
+        DeclaredQos::Resolved {
+            rows,
             undeclared_subscriptions,
             undeclared_publishers,
         }
@@ -2359,6 +2800,69 @@ impl EntityInventory {
             }
             doc.insert("declared_depths".into(), serde_json::Value::Object(m));
         }
+        // phase-454 W3 (issue 1256) -- the OTHER THREE policies, as their own
+        // view with its own status. Its own, and not three more columns on the
+        // block above, because the two statuses genuinely differ: `history:
+        // keep_all` REFUSES the depth table and leaves this one resolved
+        // (RFC-0100 D6 -- refusal is per fact), and a reader that found the
+        // policies inside a refused `declared_depths` would lose the only
+        // statement that explains the refusal.
+        {
+            let qos = self.declared_qos();
+            let mut m = serde_json::Map::new();
+            m.insert("status".into(), qos.tag().into());
+            match &qos {
+                DeclaredQos::Refused { reason } => {
+                    m.insert("reason".into(), reason.clone().into());
+                }
+                DeclaredQos::Resolved { rows, .. } => {
+                    // Per policy AND per kind. One "undeclared" number over
+                    // three independent questions would answer none of them:
+                    // an image can state `reliability` on every subscription
+                    // and `durability` on none, which lets XRCE size its
+                    // reliable buffers and must still refuse a transient-local
+                    // retention budget.
+                    for policy in ALL_QOS_POLICY_KINDS {
+                        for (kind, suffix) in [
+                            (EntityKind::Subscription, "subscriptions"),
+                            (EntityKind::Publisher, "publishers"),
+                        ] {
+                            if let Some(n) = qos.undeclared(*policy, kind) {
+                                m.insert(format!("undeclared_{}_{suffix}", policy.tag()), n.into());
+                            }
+                        }
+                    }
+                    m.insert(
+                        "endpoints".into(),
+                        rows.iter()
+                            .map(|r| {
+                                let mut o = serde_json::Map::new();
+                                o.insert("kind".into(), r.kind.tag().into());
+                                o.insert("type_name".into(), r.type_name.clone().into());
+                                o.insert(
+                                    "dds_type_name".into(),
+                                    dds_type_name(&r.type_name).into(),
+                                );
+                                o.insert("name".into(), r.topic.clone().into());
+                                // A policy this endpoint did not state is
+                                // ABSENT from its object, never `null` and
+                                // never a default: "nobody said" is the claim,
+                                // and a defaulted `"volatile"` here would be
+                                // the silent drop this wave exists to end.
+                                for policy in ALL_QOS_POLICY_KINDS {
+                                    if let Some(v) = r.spelling(*policy) {
+                                        o.insert(policy.tag().into(), v.into());
+                                    }
+                                }
+                                serde_json::Value::Object(o)
+                            })
+                            .collect::<Vec<_>>()
+                            .into(),
+                    );
+                }
+            }
+            doc.insert("declared_qos".into(), serde_json::Value::Object(m));
+        }
         // phase-446 W4 -- the parameter store, same three-state shape: a
         // `status` always, the numbers only when every node declared.
         {
@@ -2643,6 +3147,11 @@ impl EntityInventory {
         // without it. Emitted in both branches for the same reason they are: an
         // absent variable would read as "every endpoint is depth 0".
         s.push_str(&render_declared_depths(&self.declared_depths()));
+        // phase-454 W3 -- the other three QoS policies. Rendered in both
+        // branches for the same reason every view above is: an absent list
+        // would read as "no endpoint stated a reliability", which is the claim
+        // a refusal must never make on an image's behalf.
+        s.push_str(&render_declared_qos(&self.declared_qos()));
         // phase-446 W4 -- the PARAMETER STORE. Independent of the entity
         // derivation above, so it renders in either branch.
         s.push_str(&render_param_store(&self.params));
@@ -2835,6 +3344,113 @@ fn render_declared_depths(d: &DeclaredDepths) -> String {
             s.push_str(&format!(
                 "set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER {undeclared_publishers})\n"
             ));
+        }
+    }
+    s
+}
+
+/// The other three QoS policies, as CMake -- phase-454 W3, issue 1256.
+///
+/// Publishes, per policy P in {RELIABILITY, DURABILITY, HISTORY}:
+///
+///   `NROS_ENTITY_DECLARED_QOS_STATUS`            resolved | refused
+///   `NROS_ENTITY_DECLARED_QOS_REASON`            prose, when refused
+///   `NROS_ENTITY_DECLARED_<P>`                   SUBSCRIPTION `type|topic=value`
+///   `NROS_ENTITY_DECLARED_<P>_PUBLISHER`         the publisher list
+///   `NROS_ENTITY_UNDECLARED_<P>_COUNT_SUBSCRIPTION`
+///   `NROS_ENTITY_UNDECLARED_<P>_COUNT_PUBLISHER`
+///
+/// # Why one list per policy, and per kind
+///
+/// The grammar is `type|topic=value`, the SAME one the depth lists use, so a
+/// consumer already has the parse. Packing three policies into one row would
+/// need a second separator inside a field whose separator is already `|`, and
+/// a cmake list whose elements contain the list separator is the class of bug
+/// that reads as working until one topic is unusual.
+///
+/// Per KIND for the reason phase-454 W2 split the depth lists and issue 1227
+/// split the counts before it: a consumer prices ONE kind, and a count over
+/// both means one unannotated endpoint of the other kind pins it on its worst
+/// case forever. The first consumer here will be XRCE's, whose two 64 KiB
+/// `*_reliable_buf` are a per-SESSION cost gated on whether anything in the
+/// image asked for `reliable` -- and that is a question about this image's
+/// endpoints, not about a default.
+///
+/// Nothing reads these yet. They are wave W6's inputs, and W3's job is that the
+/// fact stated in the contract reaches the build at all; see the module header
+/// on why a declaration that is legal to write and silently dropped is the
+/// worst of the three possible outcomes.
+fn render_declared_qos(q: &DeclaredQos) -> String {
+    let mut s = String::from(
+        "# phase-454 W3 (issue 1256) -- the DECLARED QoS policies other than the depth.\n\
+         # A contract has been able to state `reliability`, `durability` and `history`\n\
+         # per endpoint since the schema had a `qos:` key; nano-ros read `depth` and\n\
+         # dropped the rest, so `reliability: best_effort` was legal to write, legal to\n\
+         # resolve, and read by nobody.\n\
+         #\n\
+         # ABSENCE IS NOT A VALUE. An endpoint missing from a list did not state that\n\
+         # policy; it did not state `volatile`. A consumer that sizes from one must\n\
+         # read the UNDECLARED count for ITS OWN policy and ITS OWN kind, and refuse on\n\
+         # the safe side of its own question -- for XRCE's two 64 KiB reliable buffers\n\
+         # the safe side is to assume RELIABLE and pay them (RFC-0100 D6).\n\
+         #\n\
+         # `history: keep_all` is NOT refused here. It refuses the DEPTH table above,\n\
+         # because a KEEP_ALL queue has no static bound and a depth stated beside it\n\
+         # prices nothing. The statement itself is well declared and a consumer that\n\
+         # reads history (an XRCE STREAM_HISTORY, a Cyclone resource limit) must see\n\
+         # it -- refusal is per fact, never global.\n",
+    );
+    s.push_str(&format!(
+        "set(NROS_ENTITY_DECLARED_QOS_STATUS \"{}\")\n",
+        q.tag()
+    ));
+    match q {
+        DeclaredQos::Refused { reason } => {
+            s.push_str(&format!(
+                "set(NROS_ENTITY_DECLARED_QOS_REASON \"{}\")\n",
+                cmake_escape(reason)
+            ));
+            s.push_str(
+                "# No policy table. A consumer that needs one must REFUSE -- a partial table\n\
+                 # is indistinguishable from an image whose endpoints all took the default.\n",
+            );
+        }
+        DeclaredQos::Resolved { rows, .. } => {
+            for policy in ALL_QOS_POLICY_KINDS {
+                let infix = policy.cmake_infix();
+                for (kind, suffix) in [
+                    (EntityKind::Subscription, ""),
+                    (EntityKind::Publisher, "_PUBLISHER"),
+                ] {
+                    let triples: Vec<String> = rows
+                        .iter()
+                        .filter(|r| r.kind == kind)
+                        .filter_map(|r| {
+                            r.spelling(*policy)
+                                .map(|v| format!("{}|{}={v}", r.type_name, r.topic))
+                        })
+                        .collect();
+                    s.push_str(&format!(
+                        "set(NROS_ENTITY_DECLARED_{infix}{suffix} \"{}\")\n",
+                        triples.join(";")
+                    ));
+                }
+                for (kind, suffix) in [
+                    (EntityKind::Subscription, "SUBSCRIPTION"),
+                    (EntityKind::Publisher, "PUBLISHER"),
+                ] {
+                    // `undeclared` returns `None` only on a refusal, and this
+                    // arm is the resolved one -- so the `unwrap_or` never fires
+                    // and a 0 it wrote would be a lie. Spelled as a match so a
+                    // future kind cannot silently become "0 undeclared".
+                    let n = q
+                        .undeclared(*policy, kind)
+                        .expect("a resolved table counts both topic kinds");
+                    s.push_str(&format!(
+                        "set(NROS_ENTITY_UNDECLARED_{infix}_COUNT_{suffix} {n})\n"
+                    ));
+                }
+            }
         }
     }
     s
@@ -4426,12 +5042,11 @@ structure:
             pkg: "p".into(),
             component: "talker".into(),
             class: "Talker".into(),
-            declaration: Declaration::Stated(vec![EntityDecl {
-                kind: EntityKind::Publisher,
-                type_name: Some("std_msgs/msg/String".into()),
-                name: Some("/chatter".into()),
-                depth: None,
-            }]),
+            declaration: Declaration::Stated(vec![EntityDecl::bare(
+                EntityKind::Publisher,
+                Some("std_msgs/msg/String".into()),
+                Some("/chatter".into()),
+            )]),
         });
         let d = inv.derive();
         let k = d.knobs().expect("a stated declaration derives");
@@ -4462,18 +5077,12 @@ structure:
             component: "mrm_handler".into(),
             class: "MrmHandler".into(),
             declaration: Declaration::Stated(vec![
-                EntityDecl {
-                    kind: EntityKind::Subscription,
-                    type_name: Some("a/msg/A".into()),
-                    name: Some("/one".into()),
-                    depth: None,
-                },
-                EntityDecl {
-                    kind: EntityKind::Timer,
-                    type_name: None,
-                    name: None,
-                    depth: None,
-                },
+                EntityDecl::bare(
+                    EntityKind::Subscription,
+                    Some("a/msg/A".into()),
+                    Some("/one".into()),
+                ),
+                EntityDecl::bare(EntityKind::Timer, None, None),
             ]),
         });
 
@@ -4483,18 +5092,16 @@ structure:
             component: "mrm_handler".into(),
             class: String::new(),
             declaration: Declaration::Stated(vec![
-                EntityDecl {
-                    kind: EntityKind::Subscription,
-                    type_name: Some("a/msg/A".into()),
-                    name: Some("/one".into()),
-                    depth: None,
-                },
-                EntityDecl {
-                    kind: EntityKind::Subscription,
-                    type_name: Some("b/msg/B".into()),
-                    name: Some("/two".into()),
-                    depth: None,
-                },
+                EntityDecl::bare(
+                    EntityKind::Subscription,
+                    Some("a/msg/A".into()),
+                    Some("/one".into()),
+                ),
+                EntityDecl::bare(
+                    EntityKind::Subscription,
+                    Some("b/msg/B".into()),
+                    Some("/two".into()),
+                ),
             ]),
         });
 
@@ -4956,6 +5563,634 @@ contracts:
         );
     }
 
+    // -----------------------------------------------------------------
+    // phase-454 W3 (issue 1256) -- the other three QoS policies.
+    // -----------------------------------------------------------------
+
+    /// One topic, both sides stating all four policies, and a silent pair
+    /// beside it.
+    fn model_with_four_policies() -> ros_launch_manifest_model::SystemModel {
+        model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: s.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+      sub: [/listener/chatter]
+    /quiet:
+      type: std_msgs/msg/Int32
+      pub: [/talker/quiet]
+      sub: [/listener/quiet]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      qos:
+        depth: 8
+        reliability: reliable
+        durability: transient_local
+        history: keep_last
+  sub_endpoints:
+    /listener/chatter:
+      qos:
+        depth: 3
+        reliability: best_effort
+        durability: volatile
+        history: keep_last
+"#,
+        )
+    }
+
+    /// One entity row as the acceptance below reads it: `(kind, topic, depth,
+    /// reliability, durability, history)` -- the FOUR policies plus what
+    /// identifies the endpoint. Every field is `Option` because "nobody said"
+    /// is the claim this whole module exists to keep distinguishable from a
+    /// value.
+    type DeclaredRow = (
+        &'static str,
+        Option<String>,
+        Option<u32>,
+        Option<QoSReliabilityPolicy>,
+        Option<QoSDurabilityPolicy>,
+        Option<QoSHistoryPolicy>,
+    );
+
+    /// phase-454 W3 -- all four policies reach the entity rows, and the two
+    /// sides keep their OWN profiles.
+    ///
+    /// `from_model` read `qos.depth` and dropped the other three, so a contract
+    /// saying `reliability: best_effort` parsed, resolved, and was read by
+    /// nobody -- issue 1256. The two endpoints state different profiles on
+    /// purpose: a reader that looked in the wrong endpoint map would pass a
+    /// fixture where both sides agree.
+    #[test]
+    fn all_four_declared_policies_reach_the_inventory() {
+        let inv = EntityInventory::from_model("test", &model_with_four_policies())
+            .expect("model describes wiring");
+        let mut rows: Vec<DeclaredRow> = inv
+            .components()
+            .iter()
+            .flat_map(|c| c.declaration.entities())
+            .filter(|e| e.kind == EntityKind::Publisher || e.kind == EntityKind::Subscription)
+            .map(|e| {
+                (
+                    e.kind.tag(),
+                    e.name.clone(),
+                    e.depth,
+                    e.reliability,
+                    e.durability,
+                    e.history,
+                )
+            })
+            .collect();
+        rows.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    "publisher",
+                    Some("/chatter".to_string()),
+                    Some(8),
+                    Some(QoSReliabilityPolicy::Reliable),
+                    Some(QoSDurabilityPolicy::TransientLocal),
+                    Some(QoSHistoryPolicy::KeepLast),
+                ),
+                // ABSENCE IS NOT A VALUE. The silent publisher is `None` on
+                // every policy, never `Volatile` and never `Reliable`: those
+                // are ROS's defaults for an endpoint that did not choose, and
+                // recording one here would make "took the default" and "asked
+                // for it" the same row.
+                (
+                    "publisher",
+                    Some("/quiet".to_string()),
+                    None,
+                    None,
+                    None,
+                    None
+                ),
+                (
+                    "subscription",
+                    Some("/chatter".to_string()),
+                    Some(3),
+                    Some(QoSReliabilityPolicy::BestEffort),
+                    Some(QoSDurabilityPolicy::Volatile),
+                    Some(QoSHistoryPolicy::KeepLast),
+                ),
+                (
+                    "subscription",
+                    Some("/quiet".to_string()),
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+            ]
+        );
+    }
+
+    /// phase-454 W3 -- and into the policy VIEW, with a per-policy, per-kind
+    /// count of what stayed silent.
+    ///
+    /// Three counts and not one, for the reason issue 1227 gave the depth
+    /// counts one per kind: an image can state `reliability` on every
+    /// subscription and `durability` on none, and a single "some policy is
+    /// missing" number would pin the reliability consumer on its worst case for
+    /// a gap that is not its own.
+    #[test]
+    fn the_policy_view_counts_what_stayed_silent_per_policy_and_per_kind() {
+        let inv = EntityInventory::from_model("test", &model_with_four_policies())
+            .expect("model describes wiring");
+        let qos = inv.declared_qos();
+        let rows = qos.rows().expect("a composed inventory resolves");
+        assert_eq!(
+            rows.iter()
+                .map(|r| (
+                    r.kind.tag(),
+                    r.topic.as_str(),
+                    r.spelling(QosPolicyKind::Reliability)
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                ("publisher", "/chatter", Some("reliable")),
+                ("subscription", "/chatter", Some("best_effort")),
+            ],
+            "only the endpoints that stated SOMETHING get a row"
+        );
+        for policy in ALL_QOS_POLICY_KINDS {
+            assert_eq!(
+                qos.undeclared(*policy, EntityKind::Subscription),
+                Some(1),
+                "{}",
+                policy.tag()
+            );
+            assert_eq!(
+                qos.undeclared(*policy, EntityKind::Publisher),
+                Some(1),
+                "{}",
+                policy.tag()
+            );
+        }
+    }
+
+    /// phase-454 W3 -- a policy declared on only ONE of the three axes leaves
+    /// the other two counted as silent.
+    ///
+    /// The case the three-counts-in-one shape would get wrong, isolated: an
+    /// image that states `reliability` everywhere and nothing else can size
+    /// XRCE's reliable buffers and must still refuse a transient-local
+    /// retention budget.
+    #[test]
+    fn one_stated_policy_does_not_answer_for_the_other_two() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      sub: [/listener/chatter]
+contracts:
+  sub_endpoints:
+    /listener/chatter:
+      qos: { reliability: best_effort }
+"#,
+        );
+        let inv = EntityInventory::from_model("test", &m).expect("model describes wiring");
+        let qos = inv.declared_qos();
+        assert_eq!(
+            qos.undeclared(QosPolicyKind::Reliability, EntityKind::Subscription),
+            Some(0),
+            "every subscription stated one, so a reliability consumer may size"
+        );
+        assert_eq!(
+            qos.undeclared(QosPolicyKind::Durability, EntityKind::Subscription),
+            Some(1)
+        );
+        assert_eq!(
+            qos.undeclared(QosPolicyKind::History, EntityKind::Subscription),
+            Some(1)
+        );
+        // The row exists because SOMETHING was stated, and it carries only what
+        // was: the two absent policies are absent from it, never defaulted.
+        let row = &qos.rows().expect("resolved")[0];
+        assert_eq!(
+            row.spelling(QosPolicyKind::Reliability),
+            Some("best_effort")
+        );
+        assert_eq!(row.spelling(QosPolicyKind::Durability), None);
+        assert_eq!(row.spelling(QosPolicyKind::History), None);
+        // ...and no depth was stated either, so the depth table still refuses
+        // through its own count. Two views, two independent answers.
+        let DeclaredDepths::Resolved {
+            undeclared_subscriptions,
+            ..
+        } = inv.declared_depths()
+        else {
+            panic!("no keep_all here");
+        };
+        assert_eq!(undeclared_subscriptions, 1);
+    }
+
+    /// phase-454 W3 -- `history: keep_all` REFUSES the depth-derived facts, and
+    /// the refusal names the endpoint.
+    ///
+    /// THE defect of this wave. A KEEP_ALL queue has no static bound; the depth
+    /// stated beside it was read and the history was not, so the arena budgeted
+    /// one sample for a queue DDS will let grow to the resource limits. That is
+    /// an UNDER-size, the direction that ships `NodeError::BufferTooSmall` at a
+    /// registration the sizing model had passed -- and RFC-0100 D6's only
+    /// trigger that can.
+    #[test]
+    fn a_keep_all_endpoint_refuses_the_depth_table_by_name() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      sub: [/listener/chatter]
+    /quiet:
+      type: std_msgs/msg/Int32
+      sub: [/listener/quiet]
+contracts:
+  sub_endpoints:
+    /listener/chatter:
+      qos: { depth: 1, history: keep_all }
+    /listener/quiet:
+      qos: { depth: 5, history: keep_last }
+"#,
+        );
+        let inv = EntityInventory::from_model("test", &m).expect("model describes wiring");
+        let DeclaredDepths::Refused { reason } = inv.declared_depths() else {
+            panic!("keep_all has no static bound, so the depth table must refuse");
+        };
+        assert!(reason.contains("/chatter"), "names the endpoint: {reason}");
+        assert!(reason.contains("keep_all"), "{reason}");
+        assert!(
+            reason.contains("depth: 1"),
+            "and quotes the number that would have been believed: {reason}"
+        );
+        assert!(
+            reason.contains("keep_last"),
+            "and names the remedy (RFC-0065 D2): {reason}"
+        );
+
+        // No fallback and no partial table. The OTHER subscription's `depth: 5`
+        // is a real declaration and it must not survive alone: a table over the
+        // endpoints that happen to be priceable sizes an image from a subset of
+        // itself, which is the under-report this module exists to prevent.
+        let cmake = inv.to_cmake();
+        assert!(
+            cmake.contains("set(NROS_ENTITY_DECLARED_DEPTH_STATUS \"refused\")\n"),
+            "{cmake}"
+        );
+        assert!(
+            !cmake.contains("set(NROS_ENTITY_DECLARED_DEPTHS "),
+            "not even an empty list, which reads as \"nobody declared\": {cmake}"
+        );
+    }
+
+    /// phase-454 W3 -- a `keep_all` with NO depth beside it refuses just the
+    /// same.
+    ///
+    /// The refusal is a property of KEEP_ALL, not of the pair. Without this the
+    /// obvious implementation -- "refuse when a depth is stated beside a
+    /// keep_all" -- would pass every other test here while leaving the arena to
+    /// fall back to the ROS default 10 for an unbounded queue, which is the
+    /// same under-size one rung quieter.
+    #[test]
+    fn a_keep_all_with_no_depth_beside_it_refuses_too() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      sub: [/listener/chatter]
+contracts:
+  sub_endpoints:
+    /listener/chatter:
+      qos: { history: keep_all }
+"#,
+        );
+        let inv = EntityInventory::from_model("test", &m).expect("model describes wiring");
+        assert!(
+            matches!(inv.declared_depths(), DeclaredDepths::Refused { .. }),
+            "KEEP_ALL has no bound whether or not a depth was written beside it"
+        );
+    }
+
+    /// phase-454 W3 -- and a PUBLISHER's `keep_all` refuses too.
+    ///
+    /// Publisher-side history is a real queue with a real cost (it is what
+    /// `transient_local` retention is sized from), and W2 made a publisher's
+    /// depth travel. A refusal that read only `sub_endpoints` would be issue
+    /// 1084's defect one map over, for the third time.
+    #[test]
+    fn a_publisher_keep_all_refuses_the_depth_table_too() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: s.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      qos: { depth: 4, history: keep_all }
+"#,
+        );
+        let inv = EntityInventory::from_model("test", &m).expect("model describes wiring");
+        let DeclaredDepths::Refused { reason } = inv.declared_depths() else {
+            panic!("a publisher's keep_all queue has no bound either");
+        };
+        assert!(reason.contains("publisher"), "{reason}");
+        assert!(reason.contains("/chatter"), "{reason}");
+    }
+
+    /// phase-454 W3 -- the refusal is PER FACT (RFC-0100 D6) and reaches
+    /// nothing else.
+    ///
+    /// D6's own words: *"a `keep_all` subscription says nothing about Cyclone's
+    /// type table, and a global refusal would degrade it anyway."* The entity
+    /// counts, the subscribed-type set and the POLICY table all keep resolving
+    /// -- including the `keep_all` row itself, because the statement is well
+    /// declared and a consumer that reads history (an XRCE `STREAM_HISTORY`, a
+    /// Cyclone resource limit) must be able to see it. Only the DEPTH
+    /// arithmetic has no answer.
+    #[test]
+    fn the_keep_all_refusal_is_per_fact_and_degrades_nothing_else() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      sub: [/listener/chatter]
+contracts:
+  sub_endpoints:
+    /listener/chatter:
+      qos: { depth: 1, history: keep_all, reliability: best_effort }
+"#,
+        );
+        let inv = EntityInventory::from_model("test", &m).expect("model describes wiring");
+        assert!(
+            matches!(inv.declared_depths(), DeclaredDepths::Refused { .. }),
+            "the depth-derived fact refuses"
+        );
+        assert!(
+            inv.derive().knobs().is_some(),
+            "an entity COUNT does not depend on a queue depth"
+        );
+        assert!(
+            inv.subscribed_types().types().is_some(),
+            "a payload class is a property of the TYPE"
+        );
+        let qos = inv.declared_qos();
+        let row = &qos.rows().expect("the policy table resolves")[0];
+        assert_eq!(row.spelling(QosPolicyKind::History), Some("keep_all"));
+        assert_eq!(
+            row.spelling(QosPolicyKind::Reliability),
+            Some("best_effort")
+        );
+        let cmake = inv.to_cmake();
+        assert!(
+            cmake.contains("set(NROS_ENTITY_DECLARED_QOS_STATUS \"resolved\")\n"),
+            "{cmake}"
+        );
+        assert!(
+            cmake.contains(
+                "set(NROS_ENTITY_DECLARED_HISTORY \
+                            \"std_msgs/msg/Int32|/chatter=keep_all\")\n"
+            ),
+            "{cmake}"
+        );
+    }
+
+    /// phase-454 W3 -- THE ARENA IS UNCHANGED for an image that declares only
+    /// depths.
+    ///
+    /// The same acceptance W2 measured, against this wave's addition: take one
+    /// image, read every input `nros-node/build.rs::subs_arena` and
+    /// `_nros_qos_depth_env` use to size the subscription arena, then add the
+    /// three policies to the SAME image and read them again. Every line must be
+    /// byte-identical.
+    ///
+    /// Byte-identical is the right bar rather than "the number is the same",
+    /// because the two consumers PARSE those lines: `subs_arena` splits the
+    /// list on `;`/`,` and takes the depth after the last `=`, and its whole
+    /// guard is `declared.len() == subs`. A policy value that leaked into that
+    /// list would not change any number here and would silently break the
+    /// equality, dropping every declaring image back to
+    /// `subs * pubsub_entry_at_default` -- 207,096 bytes of arena against
+    /// 71,664 on the reference island.
+    ///
+    /// The read set below is W2's, unchanged, and deliberately does NOT include
+    /// the broad `NROS_ENTITY_UNDECLARED_DEPTH_COUNT`: that is the coupling W2
+    /// removed, and re-asserting it here would re-create it.
+    #[test]
+    fn a_policy_declaration_moves_no_input_the_subscription_arena_reads() {
+        fn arena_inputs(model: &ros_launch_manifest_model::SystemModel) -> Vec<String> {
+            let cmake = EntityInventory::from_model("test", model)
+                .expect("model describes wiring")
+                .to_cmake();
+            cmake
+                .lines()
+                .filter(|l| {
+                    l.starts_with("set(NROS_ENTITY_DECLARED_DEPTHS ")
+                        || l.starts_with("set(NROS_ENTITY_DECLARED_DEPTH_COUNT ")
+                        || l.starts_with("set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION ")
+                        || l.starts_with("set(NROS_ENTITY_DECLARED_DEPTH_STATUS ")
+                })
+                .map(str::to_string)
+                .collect()
+        }
+
+        let depths_only = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: s.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+      sub: [/listener/chatter]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      qos: { depth: 8 }
+  sub_endpoints:
+    /listener/chatter:
+      qos: { depth: 3 }
+"#,
+        );
+        let with_policies = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: s.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+      sub: [/listener/chatter]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      qos:
+        depth: 8
+        reliability: reliable
+        durability: transient_local
+        history: keep_last
+  sub_endpoints:
+    /listener/chatter:
+      qos:
+        depth: 3
+        reliability: best_effort
+        durability: volatile
+        history: keep_last
+"#,
+        );
+        let before = arena_inputs(&depths_only);
+        let after = arena_inputs(&with_policies);
+        assert_eq!(
+            before, after,
+            "stating reliability/durability/history must not move any value a \
+             subscription depth term reads"
+        );
+
+        // ...and `subs_arena`'s own parse still finds exactly one triple for
+        // the one subscription, which is the guard those inputs feed. Its
+        // reader, transcribed: split on `;`/`,`, depth after the LAST `=`.
+        let depths = after
+            .iter()
+            .find_map(|l| l.strip_prefix("set(NROS_ENTITY_DECLARED_DEPTHS \""))
+            .and_then(|l| l.strip_suffix("\")"))
+            .expect("the subscription list is published");
+        let declared: Vec<(&str, usize)> = depths
+            .split([';', ','])
+            .filter_map(|t| t.rsplit_once('='))
+            .filter_map(|(head, d)| {
+                let ty = head.split_once('|').map_or(head, |(ty, _topic)| ty).trim();
+                d.trim().parse::<usize>().ok().map(|d| (ty, d))
+            })
+            .collect();
+        assert_eq!(
+            declared,
+            vec![("std_msgs/msg/Int32", 3)],
+            "`declared.len() == subs` is subs_arena's whole guard, and a policy \
+             value in this list would break it without moving a number"
+        );
+    }
+
+    /// phase-454 W3 -- and the image that declares NOTHING new is byte-identical
+    /// in the WHOLE fragment except for what W3 added.
+    ///
+    /// The stronger half of the arena acceptance: not "the depth lines agree"
+    /// but "nothing else moved either". Every line an existing image's fragment
+    /// carried before this wave must still be there, verbatim -- so a build that
+    /// reads any of them reads the same bytes, and the only difference is the
+    /// new block.
+    #[test]
+    fn an_image_that_declares_no_policy_gains_only_the_new_block() {
+        let m = model_with_publisher_depths();
+        let inv = EntityInventory::from_model("test", &m).expect("model describes wiring");
+        let cmake = inv.to_cmake();
+        let new_block: Vec<&str> = cmake
+            .lines()
+            .filter(|l| {
+                l.contains("DECLARED_QOS_")
+                    || l.contains("DECLARED_RELIABILITY")
+                    || l.contains("DECLARED_DURABILITY")
+                    || l.contains("DECLARED_HISTORY")
+                    || l.contains("UNDECLARED_RELIABILITY")
+                    || l.contains("UNDECLARED_DURABILITY")
+                    || l.contains("UNDECLARED_HISTORY")
+            })
+            .collect();
+        // Six lists and six counts and one status, all of them EMPTY or the
+        // full endpoint count: this image states no policy at all.
+        assert_eq!(
+            new_block,
+            vec![
+                "set(NROS_ENTITY_DECLARED_QOS_STATUS \"resolved\")",
+                "set(NROS_ENTITY_DECLARED_RELIABILITY \"\")",
+                "set(NROS_ENTITY_DECLARED_RELIABILITY_PUBLISHER \"\")",
+                "set(NROS_ENTITY_UNDECLARED_RELIABILITY_COUNT_SUBSCRIPTION 2)",
+                "set(NROS_ENTITY_UNDECLARED_RELIABILITY_COUNT_PUBLISHER 2)",
+                "set(NROS_ENTITY_DECLARED_DURABILITY \"\")",
+                "set(NROS_ENTITY_DECLARED_DURABILITY_PUBLISHER \"\")",
+                "set(NROS_ENTITY_UNDECLARED_DURABILITY_COUNT_SUBSCRIPTION 2)",
+                "set(NROS_ENTITY_UNDECLARED_DURABILITY_COUNT_PUBLISHER 2)",
+                "set(NROS_ENTITY_DECLARED_HISTORY \"\")",
+                "set(NROS_ENTITY_DECLARED_HISTORY_PUBLISHER \"\")",
+                "set(NROS_ENTITY_UNDECLARED_HISTORY_COUNT_SUBSCRIPTION 2)",
+                "set(NROS_ENTITY_UNDECLARED_HISTORY_COUNT_PUBLISHER 2)",
+            ],
+            "an empty list is NOT the same claim as a missing one -- it says \
+             \"this image stated none\", which is exactly what the counts beside \
+             it quantify"
+        );
+        // And every `set(` line that is NOT in the new block is one the schema
+        // version aside, a version-4 fragment carried too.
+        let carried: Vec<&str> = cmake
+            .lines()
+            .filter(|l| l.starts_with("set(") && !new_block.contains(l))
+            .collect();
+        assert!(
+            carried.contains(&"set(NROS_ENTITY_DECLARED_DEPTHS \"std_msgs/msg/Int32|/chatter=3\")"),
+            "{carried:?}"
+        );
+        assert!(
+            carried.contains(
+                &"set(NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER \"std_msgs/msg/Int32|/chatter=8\")"
+            ),
+            "{carried:?}"
+        );
+    }
+
     /// issue 1084 -- the depth table a contract produces is keyed on the string
     /// a `NROS_SUBSCRIBE` call site writes, all the way through the renderer.
     ///
@@ -5008,12 +6243,7 @@ contracts:
             pkg: "p".into(),
             component: "only_declared".into(),
             class: "C".into(),
-            declaration: Declaration::Stated(vec![EntityDecl {
-                kind: EntityKind::Timer,
-                type_name: None,
-                name: None,
-                depth: None,
-            }]),
+            declaration: Declaration::Stated(vec![EntityDecl::bare(EntityKind::Timer, None, None)]),
         });
         let merged = decl.merged_per_kind_max(&EntityInventory::new("model"));
         assert_eq!(merged.len(), 1);

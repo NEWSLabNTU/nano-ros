@@ -2422,6 +2422,16 @@ fn resolve_image(
             .map_err(|e| format!("reading {}: {e}", model_path.display()))?;
         let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
             .map_err(|e| format!("parsing {}: {e}", model_path.display()))?;
+        // phase-454 W3 -- a QoS value this build cannot read refuses the SEED
+        // too. `from_model` parses `reliability:` / `durability:` / `history:`
+        // and an unreadable spelling parses to `None`, which is the spelling
+        // for NOBODY SAID -- so without this the seed would compose an image
+        // whose declaration had been silently dropped. The verb fatals on the
+        // same model a moment later; here it is a refusal reason, because a
+        // seed that cannot answer is a normal state and a seed that answers
+        // WRONGLY is not.
+        crate::cmd::entity_inventory::reject_unknown_qos_values(&model)
+            .map_err(|e| format!("{e}"))?;
         // `None` is "no wiring described", which is a DECLARATION GAP and not
         // an error: 5 of the tree's 114 resolvable models describe wiring, and
         // they are exactly the 5 with a contract sidecar (issue 0973).

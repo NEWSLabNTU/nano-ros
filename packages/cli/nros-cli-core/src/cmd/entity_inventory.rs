@@ -231,6 +231,11 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
         let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
             .wrap_err_with(|| format!("parse model `{}`", model_path.display()))?;
         reject_zero_depths(&model).wrap_err_with(|| format!("model `{}`", model_path.display()))?;
+        // phase-454 W3 -- and a QoS VALUE this build does not model. Same place
+        // and same reason as the zero depth above: this is the one point a model
+        // enters the verb and the only one with an error channel.
+        reject_unknown_qos_values(&model)
+            .wrap_err_with(|| format!("model `{}`", model_path.display()))?;
         if args.output_params_header.is_some() {
             params_header = Some(crate::declared_params_header::render(
                 Some(&model),
@@ -345,6 +350,98 @@ fn reject_zero_depths(model: &ros_launch_manifest_model::SystemModel) -> Result<
                  of 0 states nothing -- KEEP_LAST(0) holds no sample. Omit `depth:` to say \
                  \"not declared\", which is a different claim and the one that makes a size \
                  consumer REFUSE rather than guess."
+            );
+        }
+    }
+    Ok(())
+}
+
+/// A contract may not state a QoS value this build does not model
+/// (phase-454 W3, issue 1256).
+///
+/// The issue's own acceptance says it: *"an unknown value is an error, never a
+/// skip."* `Qos::{reliability, durability, history}` are free-form `String`s in
+/// the model -- the resolver carries whatever the contract wrote -- so
+/// `reliability: best-effort` (a hyphen) or `reliability: BestEffort` parses,
+/// resolves, and would reach [`EntityInventory::from_model`]'s
+/// `parse_reliability` as `None`, which is the spelling for NOBODY SAID. A
+/// misspelling would then be indistinguishable from silence: the endpoint would
+/// be counted as undeclared, every consumer would refuse on the safe side, and
+/// the author would never learn that the line they wrote does nothing.
+///
+/// Refused HERE and not in `from_model`, for exactly the reason
+/// [`reject_zero_depths`] is: that function returns `Option` to say "no wiring
+/// described" and has no channel for "what you wrote is wrong".
+///
+/// The accepted spellings come from `nros_orchestration_ir::qos_override`, the
+/// module that already owned this vocabulary for `qos_overrides.*` parameters.
+/// One vocabulary, two surfaces -- which is also what will let phase-454 W7
+/// compare the two statements for agreement (RFC-0100 D8) rather than compare
+/// two spellings of two parsers.
+/// `pub(crate)` because the verb is not the only road a model reaches
+/// `from_model` on: `nros build`'s stage-3.5 seed (`cmd::build`) composes the
+/// same inventory from the same model, and a check that guards one of two roads
+/// is the shape issue 1199 names. That road records the refusal rather than
+/// failing the process, because a seed that cannot answer is a normal state --
+/// the configure-time producer is where the same value becomes fatal.
+pub(crate) fn reject_unknown_qos_values(
+    model: &ros_launch_manifest_model::SystemModel,
+) -> Result<()> {
+    use nros_orchestration_ir::qos_override as qos;
+
+    let subs = model
+        .contracts
+        .sub_endpoints
+        .iter()
+        .map(|(ep, c)| ("subscriber", ep, c.qos.as_ref()));
+    let pubs = model
+        .contracts
+        .pub_endpoints
+        .iter()
+        .map(|(ep, c)| ("publisher", ep, c.qos.as_ref()));
+    for (side, ep, q) in subs.chain(pubs) {
+        let Some(q) = q else { continue };
+        // `(policy name, what the contract wrote, did it parse, accepted)`.
+        // Written as a table so a fourth policy is a row, and so that no policy
+        // can be checked in one place and forgotten in the other -- the
+        // `filter_map`-away shape `qos_override`'s own header warns about.
+        let checks: [(&str, Option<&str>, bool, &str); 3] = [
+            (
+                "reliability",
+                q.reliability.as_deref(),
+                q.reliability
+                    .as_deref()
+                    .is_none_or(|v| qos::parse_reliability(v).is_some()),
+                qos::RELIABILITY_VALUES,
+            ),
+            (
+                "durability",
+                q.durability.as_deref(),
+                q.durability
+                    .as_deref()
+                    .is_none_or(|v| qos::parse_durability(v).is_some()),
+                qos::DURABILITY_VALUES,
+            ),
+            (
+                "history",
+                q.history.as_deref(),
+                q.history
+                    .as_deref()
+                    .is_none_or(|v| qos::parse_history(v).is_some()),
+                qos::HISTORY_VALUES,
+            ),
+        ];
+        for (policy, written, ok, accepted) in checks {
+            if ok {
+                continue;
+            }
+            bail!(
+                "contract {side} endpoint `{ep}` states `qos: {{ {policy}: {} }}`, which is not \
+                 a {policy} this build models (expected {accepted}). It is REFUSED rather than \
+                 ignored: an unreadable value would be counted as \"not declared\", every size \
+                 consumer would refuse on the safe side, and you would never learn that the \
+                 line does nothing.",
+                written.unwrap_or("")
             );
         }
     }
@@ -645,6 +742,209 @@ contracts:
         )
         .expect("model fixture parses");
         reject_zero_depths(&model).expect("a stated depth and a silent endpoint are both legal");
+    }
+
+    /// phase-454 W3 (issue 1256) -- an unknown QoS VALUE is an error, never a
+    /// skip.
+    ///
+    /// The issue's acceptance in one sentence, and the reason it has to be an
+    /// error: `reliability:` is a free-form `String` in the model, so a
+    /// misspelling parses to `None` inside `from_model`, which is the spelling
+    /// for NOBODY SAID. Silence and a typo would then be the same fact -- every
+    /// size consumer would refuse on the safe side, the build would succeed,
+    /// and the author would never learn that the line does nothing.
+    ///
+    /// All three policies, because a check written once per policy is a check
+    /// that gets written for two of them (`qos_override`'s own header: both
+    /// producers `filter_map`ed an unrecognised policy away, and the copies
+    /// disagreed).
+    #[test]
+    fn an_unknown_qos_spelling_is_rejected_before_it_can_be_dropped() {
+        // (the line to write, the fragment the message must name, the accepted
+        // spellings it must offer)
+        let cases: &[(&str, &str, &str)] = &[
+            (
+                "reliability: best-effort",
+                "best-effort",
+                "`best_effort` or `reliable`",
+            ),
+            (
+                "durability: TransientLocal",
+                "TransientLocal",
+                "`volatile` or `transient_local`",
+            ),
+            ("history: keep-all", "keep-all", "`keep_last` or `keep_all`"),
+        ];
+        for (line, written, accepted) in cases {
+            let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&format!(
+                r#"
+meta: {{ version: 1 }}
+structure:
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      sub: [/listener/chatter]
+contracts:
+  sub_endpoints:
+    /listener/chatter:
+      qos: {{ {line} }}
+"#
+            ))
+            .expect("model fixture parses");
+            let err = reject_unknown_qos_values(&model).unwrap_err().to_string();
+            assert!(
+                err.contains("/listener/chatter"),
+                "names the endpoint: {err}"
+            );
+            assert!(err.contains(written), "quotes what was written: {err}");
+            assert!(err.contains(accepted), "names what is accepted: {err}");
+            assert!(
+                err.contains("not declared"),
+                "and says what the silent drop would have looked like: {err}"
+            );
+        }
+    }
+
+    /// ...on the PUBLISHER side too. W2 made a publisher's QoS travel; a check
+    /// reading only `sub_endpoints` is issue 1084's defect one map over.
+    #[test]
+    fn an_unknown_qos_spelling_on_a_publisher_is_rejected_too() {
+        let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(
+            r#"
+meta: { version: 1 }
+structure:
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      qos: { durability: transient-local }
+"#,
+        )
+        .expect("model fixture parses");
+        let err = reject_unknown_qos_values(&model).unwrap_err().to_string();
+        assert!(err.contains("/talker/chatter"), "{err}");
+        assert!(err.contains("publisher"), "names which side: {err}");
+    }
+
+    /// ...and the VERB reaches that check, not just the function.
+    ///
+    /// The two tests above call `reject_unknown_qos_values` directly, which
+    /// proves the rule and says nothing about whether anything runs it -- the
+    /// exact shape issue 1226 names ("a gate that WORKS is not a gate that
+    /// RUNS"). This one drives [`run`] end to end over a real metadata file and
+    /// a real model, so deleting the call site is a red rather than a silent
+    /// return to the drop this wave fixed.
+    #[test]
+    fn the_verb_itself_refuses_an_unreadable_qos_value() {
+        let dir = scratch_dir("qos-verb");
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        let metadata = dir.join("nros-metadata.json");
+        std::fs::write(
+            &metadata,
+            r#"{"components": [
+                 {"name": "listener", "pkg": "demo", "class": "demo::Listener",
+                  "entities": ["sub:std_msgs/msg/Int32:/chatter"]}
+               ]}"#,
+        )
+        .expect("write metadata");
+        let model = dir.join("system_model.yaml");
+        std::fs::write(
+            &model,
+            r#"
+meta: { version: 1 }
+structure:
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      sub: [/listener/chatter]
+contracts:
+  sub_endpoints:
+    /listener/chatter:
+      qos: { reliability: best-effort }
+"#,
+        )
+        .expect("write model");
+
+        let args = |model: Option<&std::path::Path>| EntityInventoryArgs {
+            metadata: Some(metadata.clone()),
+            model: model.map(|p| p.to_path_buf()),
+            output_json: None,
+            output_cmake: None,
+            output_dir: None,
+            output_header: None,
+            output_params_header: None,
+            component: None,
+            require_derived: false,
+        };
+        // The whole CHAIN: the verb wraps the check's message in "model
+        // `<path>`", so the outermost `to_string()` alone would pass on any
+        // model-shaped failure at all.
+        let err =
+            run(args(Some(&model))).expect_err("the verb must refuse a QoS value it cannot read");
+        let chain: String = err
+            .chain()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join(" | ");
+        assert!(
+            chain.contains("best-effort"),
+            "the verb's error must carry the check's message: {chain}"
+        );
+        assert!(chain.contains("/listener/chatter"), "{chain}");
+
+        // The control: the SAME image with no model at all is fine, so the
+        // failure above is the check firing and not the fixture being broken.
+        run(args(None)).expect("a metadata-only run has no contract to check");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Unique scratch dir under the repo's gitignored `tmp/` (repo rule: temp
+    /// files live in `$project/tmp/`, not the system temp dir).
+    fn scratch_dir(name: &str) -> PathBuf {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root");
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        repo.join("tmp")
+            .join(format!("{name}-{}-{stamp}", std::process::id()))
+    }
+
+    /// ...and every spelling this build DOES model passes, including the one
+    /// that will make a size consumer refuse.
+    ///
+    /// `keep_all` is legal to WRITE. It refuses the depth-derived facts
+    /// (RFC-0100 D6) and it is not a contract error, which is the distinction
+    /// this test pins: a build that rejected it outright would be telling
+    /// authors they may not ask for an unbounded queue.
+    #[test]
+    fn every_modelled_qos_spelling_is_accepted_keep_all_included() {
+        let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(
+            r#"
+meta: { version: 1 }
+structure:
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+      sub: [/listener/chatter]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      qos: { reliability: reliable, durability: transient_local, history: keep_last }
+  sub_endpoints:
+    /listener/chatter:
+      qos: { reliability: best_effort, durability: volatile, history: keep_all }
+"#,
+        )
+        .expect("model fixture parses");
+        reject_unknown_qos_values(&model).expect("every spelling here is one this build models");
     }
 
     /// The committed C++ compile fixture is exactly what this emitter renders.
