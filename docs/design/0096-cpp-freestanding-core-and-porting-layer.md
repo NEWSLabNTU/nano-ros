@@ -494,18 +494,31 @@ To be cut into a phase. Ordered so that each step is independently green.
 
 ## Open questions
 
-1. **What is the default inplace-callable capacity?** Too small and idiomatic
-   `[this]`-plus-one-member captures fail to compile; too large and every
-   subscription pays for it in `.bss`. **W0 answers this by measurement** — it
-   is listed here as well because the answer is a number this RFC does not yet
-   carry, and reviewers should see that it is owed rather than assumed.
+1. ~~**What is the default inplace-callable capacity?**~~ **ANSWERED by W0,
+   2026-09-11: `NROS_CPP_CALLBACK_CAPACITY`, default `4 * sizeof(void*)`** — 16
+   bytes on a 32-bit target, 32 on a 64-bit one. Every capture in the tree and
+   the porting corpus measures a whole number of pointers, and the widest is
+   three (`[obj, method]`, where the pointer-to-member-function is itself two
+   words on the Itanium ABI), so the default is the widest plus one pointer of
+   headroom and is spelled in pointers rather than bytes. Cost, measured on
+   eight registered callbacks: 192 bytes of `.bss` on cortex-m3, 320 on
+   riscv64, with `.text` flat across every candidate capacity. The full tables
+   are in phase-442's "W0's measurements".
 2. **Is `NuttX`'s missing `-ffreestanding` deliberate?** Traced: both toolchain
    files were created in one commit, FreeRTOS got the flag, and neither NuttX
    file has ever carried it. That reads as an inconsistency rather than a
    decision, but intent and capability come apart here — NuttX ships a fuller
    libc than FreeRTOS. Under this RFC it stops changing the API either way; the
    flag should still be made deliberate.
-3. **Does `X::SharedPtr` need to be copyable?** Upstream's is. The corpus stores
-   handles as members and passes one by value (`diagnostic_updater`), so a
-   copyable non-owning handle satisfies it and a move-only one would not —
-   inferred from the signature, not prototyped.
+3. ~~**Does `X::SharedPtr` need to be copyable?**~~ **ANSWERED by W0,
+   2026-09-11: yes, and a copyable NON-OWNING handle is sufficient.** It is no
+   longer inferred from a signature. The corpus stores handles as members and
+   passes exactly one by value (`diagnostic_updater::Updater`'s constructor),
+   and it contains no `weak_ptr`, no `use_count()` and no `reset()` outside our
+   own headers. The decisive measurement is that shared ownership is already
+   fiction at the one site where it looked real: `Node::shared_from_this()`
+   returns `std::shared_ptr<Node>(std::shared_ptr<void>(), this)` — the
+   aliasing constructor with an empty owner — so what the corpus compiles
+   against today is already a non-owning handle wearing `shared_ptr`'s
+   spelling. W3 must reproduce copy, assign, `->`, `*`, default-construct and a
+   null test, and needs no control block.

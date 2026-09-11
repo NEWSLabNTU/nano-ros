@@ -56,7 +56,8 @@ the rest and do not depend on each other.
     `just mem-report`, so the default is chosen against a number.
   *Acceptance:* a table of measured capture sizes; a chosen default with the
   image-size cost of that choice stated; the knob named, so the `static_assert`
-  has something to point at.
+  has something to point at. **Met 2026-09-11 — the answers are in
+  "W0's measurements" below.**
 
 * **W1 [cpp] — `Timer::closure_` and `GuardCondition::closure_` unconditional.
   LANDED 2026-09-11.** Ends the shipping px4 mixed-layout exposure. The member
@@ -135,6 +136,14 @@ the rest and do not depend on each other.
   gained a CONSUMER probe: it now compiles `nros/component.hpp` against the
   Zephyr shim, not only a synthetic TU. The synthetic probe stayed green
   through the whole collision, which is the argument for the second probe.
+  **W0 measured the trap the workaround falls into:** declaring the placement
+  form by hand is not a one-liner, because its first parameter must be the
+  implementation's `size_t`. `inline void* operator new(unsigned long, void*)`
+  is accepted on x86_64 and riscv64 and REJECTED on cortex-m3 —
+  `'operator new' takes type 'size_t' ('unsigned int') as first parameter` —
+  so a hand-rolled declaration is right on two of our three toolchains and
+  silently wrong on the embedded one. `__SIZE_TYPE__` is the portable spelling;
+  shipping the guaranteed `<new>` is the real fix.
 
 * **W5 [cpp] — un-gate `NodeOptions` and `Rate`/`WallRate`. LANDED
   2026-09-12.** 22 of `NodeOptions`' 23 members are `static_assert`-only and
@@ -195,6 +204,138 @@ the rest and do not depend on each other.
   rather than a review question.
   *Acceptance:* both gates fail on a mutation that reintroduces a `std` type in
   a public signature, and the mutation is in the selftest.
+
+## W0's measurements
+
+Three questions, measured rather than argued. Reproduce with the probes under
+`tmp/w0/` (gitignored scratch — the commands are here so the next person can
+re-run them, not the files).
+
+### 1. Capture sizes — a distribution, and it is narrow
+
+Census first: `git ls-files "*.cpp" "*.hpp"` minus `third-party/`, 308 files,
+every capturing lambda.
+
+| capture | sites | what it is |
+| --- | --- | --- |
+| `[this]` | 7 | the dominant rclcpp idiom |
+| `[&]` | 10 | **none of them an rclcpp callback** — `std::thread` bodies and local string helpers in the Cyclone backend |
+| `[state]` | 1 | a raw `TopicState*`, `topic-state-monitor-port` |
+| `[this, state]` | 1 | same file |
+| `[this, &state]` | 1 | same file |
+| `[obj, method]` | 1 | `diagnostic_updater`'s `add(name, obj, method)` |
+
+Then `sizeof(decltype(lambda))` for each shape, on all three toolchains the
+project ships:
+
+| capture | hosted x86_64 | arm-none-eabi 13.2 cortex-m3 | riscv64 ThreadX |
+| --- | --- | --- | --- |
+| `[]` | 1 | 1 | 1 |
+| `[this]` | 8 | 4 | 8 |
+| `[state]` | 8 | 4 | 8 |
+| `[this, state]` | 16 | 8 | 16 |
+| **`[obj, method]`** | **24** | **12** | **24** |
+| `sizeof(void*)` | 8 | 4 | 8 |
+| pointer-to-member-function | 16 | 8 | 16 |
+
+The widest shape in the corpus is `[obj, method]`, and it is wide for a reason
+worth stating: a pointer-to-member-function is TWO words on the Itanium ABI (a
+function address plus a this-adjustment), so that one capture costs three
+pointers where every other costs one or two. **Every measured capture is a
+whole number of pointers**, which is why the knob is spelled in pointers below
+and not in bytes — a byte count would be right on one word size and wrong on
+the other.
+
+### 2. `X::SharedPtr` — a copyable non-owning handle suffices, and is already what ships
+
+The corpus's use sites are members (`rclcpp::Publisher<M>::SharedPtr pub_;` and
+the explicit `std::shared_ptr<rclcpp::Publisher<M>>` spelling, which W9 folds
+into the alias) plus exactly one by-value pass, `diagnostic_updater::Updater`'s
+`Updater(std::shared_ptr<rclcpp::Node> node, double)`. No `weak_ptr`, no
+`use_count()`, no `reset()`, nothing that observes a reference count, anywhere
+outside the API's own headers.
+
+The decisive measurement is that shared ownership is already fiction at the one
+site where it looked real. `node.hpp`'s `shared_from_this()` returns
+
+```cpp
+::std::shared_ptr<Node>(::std::shared_ptr<void>(), this);
+```
+
+— the aliasing constructor with an EMPTY owner. It observes the node and does
+not extend its lifetime. So what the corpus is already compiling against is a
+copyable non-owning handle wearing `shared_ptr`'s spelling, and the handle W3
+builds has to reproduce copy, assign, `->`, `*`, default-construct and a null
+test. Nothing needs a control block.
+
+### 3. The capacity knob, and what it costs
+
+**`NROS_CPP_CALLBACK_CAPACITY`, default `4 * sizeof(void*)`** — 16 bytes on a
+32-bit target, 32 on a 64-bit one. That is the widest measured capture
+(`[obj, method]`, three pointers) plus the one pointer of headroom this work
+item asked for, and it is expressed in pointers so one default is correct on
+both word sizes.
+
+`.bss` measured on eight registered callbacks — the scale of a realistic node,
+a timer plus a few subscriptions plus a service — at `-Os`, freestanding, no
+allocator:
+
+| capacity | arm-none-eabi cortex-m3 `.bss` | per callback | riscv64 `.bss` | per callback |
+| --- | --- | --- | --- | --- |
+| 8 | 132 | 16 | — | — |
+| 12 | 132 | 16 | — | — |
+| **16** | **196** | **24** | 196 | 24 |
+| 24 | 260 | 32 | **260** | **32** |
+| **32** | 324 | 40 | **324** | **40** |
+| 48 | 452 | 56 | 452 | 56 |
+| 64 | — | — | 580 | 72 |
+
+Per callback the storage is `align8(Cap) + 8`: the capacity, rounded up for
+alignment, plus the invoker pointer. Two things the table settles that
+arithmetic alone would not:
+
+* **`.text` is flat.** 256 -> 276 bytes across capacities 8 to 48 on
+  cortex-m3, 324 -> 338 across 16 to 64 on riscv64. Capacity is a `.bss` knob;
+  choosing generously does not grow code.
+* **A capacity below two pointers buys nothing on 32-bit.** Cap 8 and cap 12
+  both measure 16 bytes per callback, because the storage is
+  `alignas(long long)` — which it must be, since a capture may contain a
+  `double` or a `long long` even though none in the corpus does.
+
+At the chosen default the eight callbacks cost **192 bytes on 32-bit, 320 on
+64-bit**. For scale, the C++ config a shipping Zephyr image generates declares
+`NROS_CPP_EXECUTOR_STORAGE_SIZE 89352`, so this is ~0.2-0.36% of the executor's
+own static footprint.
+
+The honest comparison is against what the freestanding path stores TODAY, which
+is the `(void (*)(void*), void* ctx)` pair — two pointers, 8 bytes on 32-bit and
+16 on 64-bit. So the mechanism's real delta per entity with a callback is **+16
+bytes on 32-bit and +24 on 64-bit**, and what it buys is that the capturing
+lambda a ported file writes compiles there at all.
+
+### The over-budget failure is a compile error naming the knob
+
+Measured, not intended:
+
+```
+tmp/w0/overbudget.cpp:24:33: error: static assertion failed:
+callback capture too large -- raise NROS_CPP_CALLBACK_CAPACITY
+```
+
+### How to re-run
+
+```sh
+# capture sizes, all three toolchains (report comes out as compile errors)
+g++ -std=c++17 -fsyntax-only tmp/w0/capture_sizes.cpp
+~/.nros/sdk/arm-none-eabi-gcc/13.2-nros1/bin/arm-none-eabi-g++ \
+    -std=c++14 -ffreestanding -fno-exceptions -fno-rtti -mcpu=cortex-m3 -mthumb \
+    -fsyntax-only tmp/w0/capture_sizes.cpp
+riscv64-unknown-elf-g++ -std=c++14 -ffreestanding -fno-exceptions -fno-rtti \
+    -fsyntax-only tmp/w0/capture_sizes.cpp
+
+# .bss per capacity
+for cap in 8 12 16 24 32 48; do ... -DNROS_W0_CAP=$cap -c tmp/w0/bss_cost.cpp ...; done
+```
 
 ## What this phase does not do
 
