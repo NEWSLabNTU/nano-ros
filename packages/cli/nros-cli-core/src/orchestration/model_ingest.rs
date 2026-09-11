@@ -568,7 +568,12 @@ pub fn resolve_cyclonedds_max_types_with(
 ) -> Result<Option<usize>> {
     use nros_orchestration_ir::cyclonedds_type_sizing as ty;
 
-    let counted = ty::count_dds_types(model, |_| true);
+    // Issue 1268 — the model names what an ENTRY wires; the six parameter
+    // services are the EXECUTOR's, so they are counted from the same feature
+    // predicate `entity_facts` and the queryable counts use, not from a second
+    // reading of `execution.features`.
+    let infra = crate::entity_inventory::InfraServices::from_model(model);
+    let counted = ty::count_dds_types(model, |_| true) + ty::infra_types(infra.param_services);
     if counted == 0 {
         return Ok(None);
     }

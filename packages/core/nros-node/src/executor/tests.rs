@@ -3396,6 +3396,74 @@ fn use_sim_time_is_declared_on_a_node_that_never_named_it() {
     );
 }
 
+/// Issue 1268 — a backend that will NEVER serve the parameter services is
+/// asked once, not once per spin, and the report names the node and the
+/// service.
+///
+/// The real one is Cyclone: it keys a topic on a registered type descriptor,
+/// nothing registered the `rcl_interfaces` ones, and `create_service` answered
+/// `Unsupported` forever while the image's own services worked. The executor
+/// retried all six on every spin and (before 1271) discarded the result, so an
+/// image with no `ros2 param` access said nothing at all about it.
+///
+/// `Unsupported` is the case that cannot change without a rebuild. A transport
+/// that is merely late still gets retried — that is what `permanent` decides,
+/// and why this test asserts the ATTEMPT COUNT rather than just the log.
+#[cfg(feature = "param-services")]
+#[test]
+fn a_permanent_parameter_service_failure_is_asked_once_and_names_what_failed() {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    static ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
+    ATTEMPTS.store(0, Ordering::SeqCst);
+
+    let session = MockSession::with_failing_service_create(TransportError::Unsupported, &ATTEMPTS);
+    let cfg = ExecutorConfig::default();
+    let mut executor: Executor = Executor::from_session_with(session, &cfg);
+    executor.set_node_identity("bare", "/");
+    executor
+        .register_parameter_services()
+        .expect("the request is recorded even with no node yet");
+
+    for _ in 0..5 {
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    }
+
+    let attempts = ATTEMPTS.load(Ordering::SeqCst);
+    assert_eq!(
+        attempts, 1,
+        "a failure that cannot change must be asked ONCE: five spins made \
+         {attempts} create_service call(s). Before issue 1268 this was six per spin, \
+         for the life of the image."
+    );
+
+    let params = executor.params.as_ref().expect("the store exists");
+    assert!(
+        params.services.is_empty(),
+        "no set of six can be serving when every create_service failed"
+    );
+    let failure = params
+        .reconcile_failure
+        .as_ref()
+        .expect("the failure must be recorded, or the log can name neither node nor service");
+    assert_eq!(
+        failure.node_fqn.as_str(),
+        "/bare",
+        "the report must name the node `ros2 param` could not reach"
+    );
+    assert_eq!(
+        failure.service, "get_parameters",
+        "the report must name the service a tool would have called"
+    );
+    assert!(
+        failure.permanent,
+        "Unsupported is a property of the build; a retry asks the same question"
+    );
+    assert!(
+        !executor.parameter_services_pending(),
+        "a permanent failure is not pending work — that predicate is what stops the retry"
+    );
+}
+
 /// phase-430 W2 — the same, for a node that declares NOTHING WHATEVER and only
 /// registers the six parameter services.
 ///

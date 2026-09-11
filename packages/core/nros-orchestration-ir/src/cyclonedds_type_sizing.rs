@@ -64,6 +64,41 @@ const TYPES_PER_ACTION: usize = 8;
 /// action (`CancelGoal_{Request,Response}`, `GoalStatusArray`).
 const ACTION_MSGS_SHARED: usize = 3;
 
+/// Issue 1268 — distinct DDS type names the SIX parameter services register.
+///
+/// They are the executor's own, not the model's: `param_services` puts a set of
+/// six on every node, and each service registers `_Request` + `_Response`, so
+/// twelve names — `rcl_interfaces::srv::dds_::{Get,Set,SetAtomically,List,
+/// Describe,GetTypes}Parameters_{Request,Response}_`. Shared across every node
+/// of the image (one descriptor per TYPE, not per node), so the count does not
+/// scale with node count.
+///
+/// Counted here because the model names only what an entry WIRES, and these are
+/// wired by the runtime. Before 1268 they registered nothing at all — the six
+/// `create_service` calls went straight to the backend, which refused each — so
+/// they cost no registry slots and the omission could not be observed.
+pub const PARAM_SERVICE_TYPES: usize = 6 * TYPES_PER_SRV;
+
+/// The lifecycle services' types are NOT counted, and that is issue 1293: three
+/// of their request types are EMPTY, the descriptor builder refuses an empty
+/// schema, and `create_lc_srv` therefore still registers nothing. When 1293
+/// gives an empty message its `structure_needs_at_least_one_member` byte in
+/// BOTH the descriptor and the serializer, this becomes `5 * TYPES_PER_SRV`
+/// minus the shared `GetAvailableTransitions` pair — i.e. 8 — and joins
+/// [`infra_types`].
+pub const LIFECYCLE_SERVICE_TYPES_WHEN_1293_LANDS: usize = 8;
+
+/// Distinct DDS type names the executor's OWN services add, given what the
+/// bringup declares. `param_services` is the caller's answer to
+/// `InfraServices::from_model`, so the feature predicate has one spelling.
+pub fn infra_types(param_services: bool) -> usize {
+    if param_services {
+        PARAM_SERVICE_TYPES
+    } else {
+        0
+    }
+}
+
 /// Node FQN owning an endpoint ref (`"/ns/node/endpoint"` → `"/ns/node"`).
 fn endpoint_node(ep: &str) -> &str {
     ep.rsplit_once('/').map(|(node, _)| node).unwrap_or(ep)
@@ -272,5 +307,19 @@ mod tests {
         assert_eq!(derive_max_types(33), 64);
         assert_eq!(derive_max_types(65), 128);
         assert!(derive_max_types(200).is_power_of_two());
+    }
+
+    /// Issue 1268 — the six parameter services register twelve types, and the
+    /// sizing has to see them: they are the executor's, so no model wiring
+    /// names them, and an image whose own types already fill the table would
+    /// meet `RegistryFull` at runtime rather than a sized knob at bake time.
+    #[test]
+    fn infra_types_counts_the_parameter_services_only_when_declared() {
+        assert_eq!(infra_types(false), 0, "an image without them pays nothing");
+        assert_eq!(
+            infra_types(true),
+            12,
+            "six services x (_Request + _Response); the lifecycle five are issue 1293"
+        );
     }
 }

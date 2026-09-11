@@ -8356,9 +8356,18 @@ impl<'s> Executor<'s> {
     /// it without carrying the reconcile's frame (see below).
     #[inline]
     pub(crate) fn parameter_services_pending(&self) -> bool {
-        self.params
-            .as_ref()
-            .is_some_and(|p| p.requested && p.services.len() < self.nodes.len().max(1))
+        self.params.as_ref().is_some_and(|p| {
+            p.requested
+                && p.services.len() < self.nodes.len().max(1)
+                // Issue 1268 — a failure that cannot change is not pending
+                // work. This used to retry six `create_service` calls on EVERY
+                // spin, for the life of an image that would never serve them,
+                // and the result was discarded; 1271 made it say so once, which
+                // left the retrying. An explicit
+                // `register_parameter_services()` still tries, because that is
+                // a caller asking rather than the spin guessing.
+                && p.reconcile_failure.as_ref().is_none_or(|f| !f.permanent)
+        })
     }
 
     /// Issue 1271 -- say, once, that the parameter services could not be
@@ -8378,14 +8387,27 @@ impl<'s> Executor<'s> {
             return;
         }
         params.reconcile_failure_reported = true;
+        // Issue 1268 — name the node and the service. "could not be created
+        // ({:?})" named neither, so a reader could not tell a name too long for
+        // one node from a backend that will serve none of the six.
+        let (node_fqn, service, permanent) = match params.reconcile_failure.as_ref() {
+            Some(f) => (f.node_fqn.as_str(), f.service, f.permanent),
+            None => ("<unknown node>", "<unknown service>", false),
+        };
         nros_log::log_error!(
             nros_log::get_logger("nros"),
-            "parameter services could not be created ({:?}): `ros2 param` cannot reach \
-             {} of this image's {} node(s). Retrying on every spin; logged once (issue 1271, \
-             and issue 1268 for the Cyclone case).",
+            "parameter services could not be created for node {} at service {}: {:?}. \
+             `ros2 param` cannot reach {} of this image's {} node(s). {} (issues 1271, 1268).",
+            node_fqn,
+            service,
             e,
             self.nodes.len().max(1) - params.services.len(),
-            self.nodes.len().max(1)
+            self.nodes.len().max(1),
+            if permanent {
+                "Not retrying: this failure cannot change without a rebuild."
+            } else {
+                "Retrying on every spin; logged once."
+            }
         );
     }
 
@@ -8471,11 +8493,35 @@ impl<'s> Executor<'s> {
             );
         }
         for (index, name, namespace) in todo {
-            let servers = self.build_parameter_service_set(
+            let servers = match self.build_parameter_service_set(
                 nros_params::NodeKey::new(index),
                 &name,
                 &namespace,
-            )?;
+            ) {
+                Ok(servers) => servers,
+                Err((e, service)) => {
+                    // Issue 1268 — keep WHAT failed and WHERE, for the one log
+                    // line, and decide once whether retrying could ever help.
+                    // `Unsupported` from the transport is a property of the
+                    // build (the backend has no descriptor for the
+                    // `rcl_interfaces` types), so a later spin asks the same
+                    // question and gets the same answer.
+                    let permanent = matches!(e, NodeError::Transport(TransportError::Unsupported));
+                    if let Some(params) = self.params.as_mut() {
+                        let mut node_fqn = heapless::String::<256>::new();
+                        if let Ok(fqn) = crate::names::fully_qualified_name(&name, &namespace) {
+                            let _ = node_fqn.push_str(fqn.as_str());
+                        }
+                        params.reconcile_failure =
+                            Some(crate::parameter_services::ParamServiceReconcileFailure {
+                                node_fqn,
+                                service,
+                                permanent,
+                            });
+                    }
+                    return Err(e);
+                }
+            };
             let services_box: alloc::boxed::Box<
                 dyn crate::parameter_services::ParamServiceProcessor,
             > = alloc::boxed::Box::new(servers);
@@ -8515,6 +8561,9 @@ impl<'s> Executor<'s> {
         // registered after this one) is news again and earns its own line.
         if let Some(params) = self.params.as_mut() {
             params.reconcile_failure_reported = false;
+            // Issue 1268 -- and drop the record with it, so a later failure is
+            // reported against the node it actually happened on.
+            params.reconcile_failure = None;
         }
         Ok(())
     }
@@ -8532,7 +8581,7 @@ impl<'s> Executor<'s> {
         node: nros_params::NodeKey,
         node_name: &str,
         namespace: &str,
-    ) -> Result<crate::parameter_services::ParameterServiceServers, NodeError> {
+    ) -> Result<crate::parameter_services::ParameterServiceServers, (NodeError, &'static str)> {
         use crate::parameter_services::{
             DescribeParameters, GetParameterTypes, GetParameters, ListParameters,
             ParamServiceHandle as PSrv, ParameterServiceServers, SetParameters,
@@ -8547,25 +8596,52 @@ impl<'s> Executor<'s> {
         // did not. A join with three spellings has no answer to "what does the
         // tree do with `my_ns`".
         let node_fqn = crate::names::fully_qualified_name(node_name, namespace)
-            .map_err(|()| NodeError::NameTooLong)?;
+            .map_err(|()| (NodeError::NameTooLong, "get_parameters"))?;
         // The service names below still take the two halves separately.
         let ns: &str = namespace;
         let nn: &str = node_name;
 
         /// Build a service name like `{node_fqn}/{suffix}` and create the server handle.
-        fn create_param_srv<Svc: RosService>(
+        ///
+        /// Issue 1268 — the error carries the SUFFIX, so a failure can name the
+        /// service a tool would have called instead of "one of six".
+        fn create_param_srv<Svc>(
             session: &mut session::ConcreteSession,
             domain_id: u32,
             node_fqn: &str,
             namespace: &str,
             node_name: &str,
-            suffix: &str,
-        ) -> Result<session::RmwServiceServer, NodeError> {
+            suffix: &'static str,
+        ) -> Result<session::RmwServiceServer, (NodeError, &'static str)>
+        where
+            Svc: RosService,
+            Svc::Request: crate::rmw_type_registry::MessageForRmw,
+            Svc::Reply: crate::rmw_type_registry::MessageForRmw,
+        {
+            // Issue 1268 — REGISTER THE TYPES FIRST, exactly as a typed user
+            // service does (`register_service_sized`). A backend that keys
+            // topics on a registered type descriptor — Cyclone does — fails
+            // `create_service` with `Unsupported` for a type it has never been
+            // told about, and nothing else in the image registers the
+            // `rcl_interfaces` service types: the generated typesupport of a
+            // downstream covers ITS OWN message packages, and the backend bakes
+            // in only `ParticipantEntitiesInfo` for the graph. So the six
+            // parameter services failed on every spin while the image's own
+            // services worked, which is what made the cause look like "no
+            // service support" for two phases (the issue-0745 comment).
+            //
+            // A no-op on backends that need no descriptors (zenoh, xrce), which
+            // is why zenoh served this same image all along.
+            let register = |e: NodeError| (e, suffix);
+            crate::rmw_type_registry::register_type::<Svc::Request>().map_err(register)?;
+            crate::rmw_type_registry::register_type::<Svc::Reply>().map_err(register)?;
             let mut name = heapless::String::<256>::new();
             name.push_str(node_fqn)
-                .map_err(|_| NodeError::NameTooLong)?;
-            name.push_str("/").map_err(|_| NodeError::NameTooLong)?;
-            name.push_str(suffix).map_err(|_| NodeError::NameTooLong)?;
+                .map_err(|_| (NodeError::NameTooLong, suffix))?;
+            name.push_str("/")
+                .map_err(|_| (NodeError::NameTooLong, suffix))?;
+            name.push_str(suffix)
+                .map_err(|_| (NodeError::NameTooLong, suffix))?;
             let mut info = ServiceInfo::new(&name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
                 // issue 0824 follow-up — `domain_id` is a PARAMETER, not `self.domain_id`:
                 // this is a nested `fn`, not a method, so `self` is not in scope and
@@ -8586,7 +8662,7 @@ impl<'s> Executor<'s> {
             // the deep queue is for.
             session
                 .create_service(&info, QoSProfile::parameters_default())
-                .map_err(NodeError::Transport)
+                .map_err(|e| (NodeError::Transport(e), suffix))
         }
 
         let get_handle = create_param_srv::<GetParameters>(
@@ -9076,6 +9152,7 @@ impl<'s> Executor<'s> {
             // Issue 1270 -- allocated with the first set of services, not here.
             buffers: None,
             reconcile_failure_reported: false,
+            reconcile_failure: None,
             // phase-430 W2 — no node has been auto-declared yet; the caller
             // (`ensure_parameter_store`) seeds PRIMARY immediately after.
             #[cfg(feature = "sim-time")]

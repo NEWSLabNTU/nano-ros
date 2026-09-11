@@ -1901,6 +1901,23 @@ impl ParamServiceProcessor for ParameterServiceServers {
     }
 }
 
+/// Issue 1268 -- why a node has no parameter services.
+///
+/// Recorded where the failure happens, because that is the only place that
+/// knows both the node and which of the six was being created. `permanent`
+/// asks one question: can a retry change this? A transport that refuses the
+/// TYPE (`Unsupported`) answers no — the descriptor set is a property of the
+/// build, not of when you ask — so the spin stops retrying rather than running
+/// six `create_service` calls per spin for the life of the image.
+pub(crate) struct ParamServiceReconcileFailure {
+    /// The node the six would have been published under.
+    pub(crate) node_fqn: heapless::String<256>,
+    /// Which of the six, as its service-name suffix (`"list_parameters"`).
+    pub(crate) service: &'static str,
+    /// Whether a later spin could succeed where this one failed.
+    pub(crate) permanent: bool,
+}
+
 /// Holds parameter server state for the executor.
 ///
 /// Stored outside the arena so it doesn't consume `MAX_CBS` slots.
@@ -1945,6 +1962,15 @@ pub(crate) struct ParamState<'s> {
     /// image said so. One line per run of failures; cleared once every node
     /// is served, so a later failure is news again.
     pub(crate) reconcile_failure_reported: bool,
+    /// Issue 1268 -- WHICH node and WHICH service the last reconcile failed on,
+    /// and whether that failure can change.
+    ///
+    /// The 1271 log said only "could not be created ({:?})", which names
+    /// neither, so the reader could not tell a name too long for one node from
+    /// a backend that will never serve any of the six. Both halves of the
+    /// answer are known at the `create_service` call and nowhere above it, so
+    /// they are recorded here as the call fails.
+    pub(crate) reconcile_failure: Option<ParamServiceReconcileFailure>,
     /// phase-430 W2 — for each node key, whether that node's `use_sim_time`
     /// entry is the AUTO-DECLARED `false` the executor seeded (as rclcpp does
     /// in every node constructor) rather than a value the application named.
