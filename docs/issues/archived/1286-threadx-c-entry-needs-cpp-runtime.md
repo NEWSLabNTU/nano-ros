@@ -167,3 +167,58 @@ built for this run.
 The 15 skips are cells whose fixtures this worktree did not build: Zephyr,
 FreeRTOS, NuttX, and the threadx-linux C++ and mixed cells. rv-virt has no C
 workspace cell, so its runtime is untested.
+
+## Follow-up (2026-09-11): the rv-virt C workspace entry
+
+The gap above is closed. A C workspace row now exists for rv-virt-threadx, and it
+has been built and run.
+
+**Declared.**
+- `examples/workspaces/c` `system.toml`: `[image.riscv_threadx]` with
+  `board = "rv-virt-threadx"` (the `riscv_nuttx` spelling), plus its
+  `board_config`.
+- `examples/fixtures.toml`: `workspace-c-threadx-riscv64`, a migrated image row.
+  Its locator is `tcp/10.0.2.2:9530`, which is
+  `alloc::port_of(ThreadxRiscv64, C, EntryPubsub)`. Its `build_subdir` is
+  `build/threadx-riscv64-zenoh-rv-virt-threadx/cmake`, the name `nros build`'s
+  `cmake_coordinate` gives this image.
+- `matrix::CELLS`: `cell(ThreadxRiscv64, C, Zenoh, EntryPubsub, Workspace, Runtime)`,
+  claimed by `entry_e2e` in `w1_consumer_of`. `entry_e2e` gained
+  `Boot::ThreadxRiscv64`: `QemuProcess::start_riscv64_virt(entry, 0)`, user-mode
+  slirp, router bound on 0.0.0.0.
+- `just threadx_riscv64 build-fixture-extras` builds the row.
+
+**Built** with the repo's builder, xPack `riscv-none-elf-gcc` 14.2.0, newlib:
+`NROS_FIXTURE_ID=workspace-c-threadx-riscv64 scripts/build/workspace-fixtures-build.sh threadx-riscv64 c`
+- `nros codegen entry-pack --lang c --board rv-virt-threadx` answers `pack=c`,
+  `routed=0`. The build log has no "C++ pack" line.
+- The entry TU is `riscv_threadx_entry_nros_main_generated.c`. The build dir
+  holds 0 C++ objects, and the link line names no `stdc++`, `supc++` or `g++`.
+- `riscv_threadx_entry` linked, a static RV64 ELF.
+  `riscv-none-elf-nm` shows `app_main`, `nros_app_main` and
+  `nros_board_rtos_run_components` all as `T`. There are 0 matches for
+  `__cxa_|_ZSt|_ZN9__gnu_cxx|__gxx_personality`, and no undefined symbols.
+- The runner (`CMakeFiles/riscv_threadx_entry.dir/…/nros_rtos_run_components.c.obj`)
+  compiled in the app target, as `THREADX_STARTUP_SOURCE` intends. Its depfile
+  names `…/cmake/nano_ros/packages/api/nros-cpp/include/nros/nros_cpp_config_generated.h`,
+  where `NROS_CPP_EXECUTOR_STORAGE_SIZE` is 90424, not the 81920 fallback. In
+  `flags.make` that mirror's `-I` comes before the in-tree stub's
+  `packages/api/nros-cpp/include`, so a missing header is the stub's `#error`.
+
+**Runtime.** PASSED, solo:
+`cargo test -p nros-tests --test entry_e2e entry_matrix` printed
+`entry_matrix: 1 ran, 16 skipped, 0 failed (of 17 cells)`. The cell that ran is
+`threadx-riscv64/c/entry_pubsub`. The pure-C entry boots in QEMU riscv64 virt
+(NetX Duo over virtio-net, 10.0.2.40) and publishes `/chatter` through the slirp
+gateway. The native C listener (`native_robot2_entry`, built for this run) logged
+`INT32_LISTENER_LOG_PREFIX` at least 3 times within 90 s. The 16 skips are
+fixtures this worktree did not build: Zephyr, FreeRTOS, NuttX, and threadx-linux.
+
+All of this was measured twice. The first pass ran on the original base with
+this fix cherry-picked. The second ran after rebasing onto the `main` that merged
+it, which had also moved the CLI, `nros-entry-lower` and the rmw cffi bindings.
+For the second pass the CLI was rebuilt first, then both fixtures, and the image
+was built at 16:03:33, after the rebased HEAD (15:48:44). Every fact above
+reproduced unchanged: the same symbols at the same addresses, 90424, and the
+same include order. The cell passed again: 1 ran, 16 skipped, 0 failed, in
+12.7 s (80 s on the first, cold run).
