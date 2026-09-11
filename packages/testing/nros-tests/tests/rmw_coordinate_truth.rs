@@ -36,6 +36,21 @@
 //!
 //! **Reads PREBUILT artifacts only** (AGENTS.md "No compilation inside tests").
 //! A lane that built no readable artifact SKIPS loudly, never passes silently.
+//!
+//! ## Symbols are not behaviour (issue 1310)
+//!
+//! Issue 0831's prescription — "add a runtime assertion rather than trusting
+//! the coordinate — the artifact knows" — was read as *inspect the artifact*,
+//! and `nm` proves only that a backend was LINKED. Issue 1295 then hit these
+//! same two rows: `workspace-rust-native-cyclonedds` linked Cyclone (this gate
+//! green, 350+ `dds_` symbols) and could not create a publisher, because the
+//! `nros` umbrella never got the `rmw-cyclonedds` MARKER that forwards
+//! `needs-type-descriptors`. Two bugs, one gate, the same two rows, and the
+//! second was invisible to it.
+//!
+//! So the second test below RUNS the row's binary. The split is deliberate:
+//! `nm` answers "was it linked" for every row cheaply, and the run answers
+//! "does it work" for the rows this host can start.
 
 use std::{
     collections::BTreeMap,
@@ -285,4 +300,165 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
         wrong.len(),
         wrong.join("\n  ")
     );
+}
+
+/// How long an entry gets to reach its own exit.
+///
+/// A hosted entry from these rows registers its nodes and returns; it does not
+/// spin forever. Generous because a Cyclone entry does discovery first, and a
+/// loaded CI box is slow — but bounded, because a HANG is a finding too and
+/// must not become a hung suite.
+const RUN_BUDGET: std::time::Duration = std::time::Duration::from_secs(45);
+
+/// Run one entry to completion, or kill it at [`RUN_BUDGET`].
+///
+/// Returns `(exit status if it exited on its own, combined output)`.
+fn run_entry(bin: &Path) -> (Option<std::process::ExitStatus>, String) {
+    let mut cmd = Command::new(bin);
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    // The DDS bus is pinned to loopback by a profile FILE, never by a variable
+    // a test exports (issue 1009), and OUR half needs it as much as a `ros2`
+    // peer does (issue 1137) — without it this test would discover whatever
+    // else is on the LAN and report its findings as ours.
+    nros_tests::dds_isolation::apply_to_command(&mut cmd);
+    // Each row on its own domain, so two rows running at once cannot see each
+    // other and read a neighbour's traffic as their own.
+    cmd.env(
+        "ROS_DOMAIN_ID",
+        nros_tests::unique_ros_domain_id().to_string(),
+    );
+    nros_tests::process::set_new_process_group(&mut cmd);
+
+    let Ok(mut child) = cmd.spawn() else {
+        return (None, String::new());
+    };
+    let deadline = std::time::Instant::now() + RUN_BUDGET;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break Some(st),
+            Ok(None) if std::time::Instant::now() >= deadline => {
+                nros_tests::process::kill_process_group(&mut child);
+                break None;
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+            Err(_) => break None,
+        }
+    };
+    let out = child.wait_with_output().ok();
+    let text = out
+        .map(|o| {
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&o.stdout),
+                String::from_utf8_lossy(&o.stderr)
+            )
+        })
+        .unwrap_or_default();
+    (status, text)
+}
+
+/// Issue 1310 — a row's entry must actually REGISTER ITS NODES, not merely
+/// link the backend its coordinate names.
+///
+/// The assertion is deliberately narrow, and the narrowing is what makes it
+/// runnable with no peer: an entry that reaches
+/// [`ENTRY_NODE_REGISTER_ERROR`](nros_tests::output::ENTRY_NODE_REGISTER_ERROR)
+/// FAILS, because that is a defect in the image regardless of what else is on
+/// the bus. An entry that never got that far — no router, no XRCE Agent — is a
+/// PRECONDITION this host does not meet and is reported as such, per row, so a
+/// skip can never read as coverage.
+#[test]
+fn a_rows_entry_registers_its_nodes_at_runtime() {
+    let mut ran = 0usize;
+    let mut no_peer: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+
+    for row in nros_tests::fixtures::lane::manifest_rows() {
+        if row.kind != "workspace_fixture" {
+            continue;
+        }
+        let root = nros_tests::project_root().join(&row.artifact_root);
+        if !root.is_dir() {
+            continue; // not built for this lane
+        }
+        let Some(bin) = row_binary(&row.id, &root) else {
+            continue; // not built for this lane
+        };
+
+        let (status, text) = run_entry(&bin);
+        let registered_ok = status.map(|s| s.success()).unwrap_or(false)
+            && text.contains(nros_tests::output::ENTRY_COMPLETE_MARKER);
+        if registered_ok {
+            ran += 1;
+            continue;
+        }
+        // The SESSION is what separates a defect from an absent peer, and
+        // `NodeRegister` alone cannot: an xrce entry with no Agent fails
+        // session open and then reports the SAME `NodeRegister` line the real
+        // defect ends with (it proceeds on a NullNodeRuntime). Keying on the
+        // consequence would have accused xrce of issue 1295's bug on every host
+        // without an Agent — measured while writing this test.
+        let session_up = text.contains(nros_tests::output::SESSION_OPEN_MARKER)
+            && !text.contains(nros_tests::output::SESSION_OPEN_FAILED_MARKER);
+        if session_up && text.contains(nros_tests::output::ENTRY_NODE_REGISTER_ERROR) {
+            failed.push(format!(
+                "  {} ({}) — {}\n      {}",
+                row.id,
+                row.coord.2,
+                bin.display(),
+                text.lines()
+                    .filter(|l| l.contains(nros_tests::output::ENTRY_ERROR_MARKER)
+                        || l.contains(nros_tests::output::ENTRY_NODE_REGISTER_ERROR))
+                    .collect::<Vec<_>>()
+                    .join("\n      ")
+            ));
+            continue;
+        }
+        // The session never came up (no router, no Agent), or the entry
+        // stopped somewhere else entirely: this host owes it a peer. Reported
+        // per row with the reason, never counted as coverage.
+        no_peer.push(format!(
+            "  {} ({}) — {}",
+            row.id,
+            row.coord.2,
+            if status.is_none() {
+                "no exit within the budget"
+            } else if text.contains(nros_tests::output::SESSION_OPEN_FAILED_MARKER) {
+                "the backend refused the session (this host runs no peer for it)"
+            } else {
+                "did not reach node registration"
+            }
+        ));
+    }
+
+    assert!(
+        failed.is_empty(),
+        "{} generated entr{} opened a session and could NOT register {} nodes \
+         (issue 1295's shape — the coordinate and the symbols are both green here):\n{}",
+        failed.len(),
+        if failed.len() == 1 { "y" } else { "ies" },
+        if failed.len() == 1 { "its" } else { "their" },
+        failed.join("\n"),
+    );
+
+    if ran == 0 {
+        let why = if no_peer.is_empty() {
+            "no workspace_fixture row has a built artifact in this lane".to_string()
+        } else {
+            format!(
+                "every row needs a peer this host lacks:\n{}",
+                no_peer.join("\n")
+            )
+        };
+        nros_tests::skip!("no generated entry could be RUN here — {why}");
+    }
+    if !no_peer.is_empty() {
+        eprintln!(
+            "rmw-coordinate-truth: ran {ran} entr{}; {} reported a missing peer:\n{}",
+            if ran == 1 { "y" } else { "ies" },
+            no_peer.len(),
+            no_peer.join("\n"),
+        );
+    }
 }

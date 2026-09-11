@@ -61,11 +61,11 @@ whose scaffold declares `rmw = "cyclonedds"`) syncs, builds and runs clean.
 Controls: the `native` (zenoh) and `native_xrce` rows still emit
 `nros = features ["ros-humble"]` with the backend on the board, and both build.
 
-**Still true, and not fixed here:** nothing RUNS a generated Rust workspace
-entry in CI — `rmw_coordinate_truth` checks symbols, the matrix cells run the
-hand-written per-example binaries, and neither scaffold journey builds a
-`--workspace --lang rust` scaffold. That gap is what let this ship; it is worth
-its own lane.
+**The gap that let this ship is issue 1310**, filed and fixed alongside: a
+generated entry was built and symbol-checked but only ever RUN for zenoh, so
+cyclonedds and xrce stopped at "it linked". `rmw_coordinate_truth` now runs each
+row's binary as well as reading its symbols. Still open there: no CI lane builds
+a `--workspace --lang rust` scaffold, which was this issue's first repro.
 
 # Why (read from the tree, before the fix)
 

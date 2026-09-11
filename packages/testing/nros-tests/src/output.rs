@@ -279,6 +279,46 @@ pub fn talker_line(n: impl std::fmt::Display) -> String {
 /// its `NROS_ENTRY_SPIN_MS` budget elapses.
 pub const HOSTED_SPIN_COMPLETE_MARKER: &str = "hosted spin complete";
 
+/// What a hosted entry prints when `main` returned `Ok(())`.
+///
+/// `nros-board-linux` (and every other hosted board) prints this and exits
+/// SUCCESS; the `Err` arm prints [`ENTRY_ERROR_MARKER`] and exits failure. The
+/// status is the authority — these exist so a failure REPORT can quote the
+/// line rather than hand the reader an exit code (issues 0157/0164: a test
+/// greps a constant, never a literal, because banners get slimmed).
+pub const ENTRY_COMPLETE_MARKER: &str = "nros: application complete";
+
+/// What a hosted entry prints when `main` returned `Err`.
+pub const ENTRY_ERROR_MARKER: &str = "nros: application error:";
+
+/// The `Err` an entry reports when a node could not be declared.
+///
+/// Issue 1295's whole signature: the session opens, then the first node fails
+/// with `NodeError::Transport(PublisherCreationFailed)` because the backend
+/// never got its type descriptors. Distinguishing THIS from "the session could
+/// not open at all" is what lets a run-test tell a real defect from an absent
+/// peer.
+pub const ENTRY_NODE_REGISTER_ERROR: &str = "NodeRegister";
+
+/// The line an executor prints once its RMW session is up.
+///
+/// `nros-node`'s `spin.rs` carries a STABILITY CONTRACT on this exact leading
+/// text ("test harnesses grep for it verbatim"); the trailing `(rmw=…)` detail
+/// is not part of it, so match a PREFIX.
+pub const SESSION_OPEN_MARKER: &str = "nros: session open";
+
+/// The line an executor prints when the backend refused the session.
+///
+/// This is what separates a DEFECT from an absent peer, and the separation is
+/// not cosmetic: an image with no XRCE Agent fails session open and THEN
+/// reports [`ENTRY_NODE_REGISTER_ERROR`] as a consequence, which reads
+/// identically to issue 1295 (session up, registration refused) unless you look
+/// here first. Measured: the xrce entry with no Agent prints
+/// `RMW session open failed — Backend("rmw_ret error")`, then
+/// `proceeding with NullNodeRuntime`, then the same `NodeRegister` line the
+/// real defect ends with.
+pub const SESSION_OPEN_FAILED_MARKER: &str = "RMW session open failed";
+
 /// Counter key inside the hosted-spin exit line (`"message_callbacks=N"`) —
 /// N is how many subscription callbacks fired during the spin.
 pub const HOSTED_SPIN_MESSAGE_CALLBACKS_KEY: &str = "message_callbacks=";
