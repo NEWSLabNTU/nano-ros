@@ -137,6 +137,9 @@ NOT_SIZING = {
     "NROS_EXECUTOR_BACKING_SECTION": "placement only, not size",
     "NROS_BOOT_REPORT": "a cfg, no size",
     "NROS_PARAM_SERVICE_BUFFER_SIZE": "emitted as a const, not in the arena sum",
+    "NROS_DECLARED_PARAM_SERVICE_SHAPE":
+        "the declared rung of that same buffer (phase-446 F3): it sizes a "
+        "runtime `ParamServiceBuffers`, never a term of the arena sum",
     "NROS_EXECUTOR_MAX_SHUTDOWN_CBS": "sizes the Executor HEADER, not the backing",
 }
 # Not knobs, but inputs that move a knob's resolution in build.rs: the Kconfig
