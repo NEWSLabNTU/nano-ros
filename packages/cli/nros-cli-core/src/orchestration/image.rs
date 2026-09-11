@@ -485,6 +485,47 @@ pub fn validate_panic(policy: Option<&str>) -> Result<(), String> {
     }
 }
 
+/// Validate an image's `transport` against the link kinds
+/// (`nros_orchestration_ir::leaf_system::TRANSPORT_KINDS`).
+///
+/// phase-445 W6. The leaf road already refuses an unknown value — that reader
+/// is `leaf_system`, the one RFC-0098 D5 names — and this is the WORKSPACE
+/// road's half of it. Two readers of one file with one of them validating is
+/// how `examples/mps2-an385-baremetal/rust/talker-xrce` carried
+/// `transport = "xrce"` (the RMW name, in the slot that names the link) for
+/// four phases with nothing to say so.
+///
+/// The value is load-bearing now: it IMPLIES `ZPICO_NO_SMOLTCP` and
+/// `NROS_LINK_IP`, so a typo would leave both unapplied and the image would
+/// build with the wrong links on — RFC-0086 D2's own reason for making an
+/// unknown transport an error rather than a pass-through.
+pub fn validate_transport(kind: Option<&str>) -> Result<(), String> {
+    use nros_orchestration_ir::leaf_system::TRANSPORT_KINDS;
+    match kind {
+        None => Ok(()),
+        Some(k) if TRANSPORT_KINDS.contains(&k) => Ok(()),
+        Some(other) => Err(format!(
+            "`transport = \"{other}\"` is not a link kind (expected one of: {}). \
+             The RMW is `rmw = \"…\"`, which is a different choice.",
+            TRANSPORT_KINDS.join(" | ")
+        )),
+    }
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::*;
+
+    #[test]
+    fn a_link_kind_passes_and_an_rmw_name_does_not() {
+        assert!(validate_transport(None).is_ok());
+        assert!(validate_transport(Some("serial")).is_ok());
+        let e = validate_transport(Some("xrce")).unwrap_err();
+        assert!(e.contains("serial | tcp | udp"), "{e}");
+        assert!(e.contains("rmw"), "names the key that DOES take it: {e}");
+    }
+}
+
 #[cfg(test)]
 mod selection_tests {
     use super::*;
