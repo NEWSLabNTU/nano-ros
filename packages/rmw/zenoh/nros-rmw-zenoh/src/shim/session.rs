@@ -1120,6 +1120,10 @@ impl Session for ZenohSession {
         // `best_available_qos` before the token exists, so its tokens never
         // carry a sentinel and neither may ours.
         let qos = qos.resolve_system_default(&ZENOH_SYSTEM_DEFAULTS);
+        // phase-428 W9 — and the GRANT before the keyexpr, for the same reason
+        // the resolve comes first: the token must carry what this backend does,
+        // not what it was asked to do.
+        let qos = super::qos::admit(super::qos::EntityKind::Publisher, topic.name, &qos)?;
         let mut publisher = ZenohPublisher::new(&self.context, topic, None, &qos)?;
         // Phase 268 W2 — ensure a per-node NN token for this publisher's node.
         if let Some(node_name) = topic.node_name {
@@ -1154,6 +1158,9 @@ impl Session for ZenohSession {
     ) -> Result<Self::SubscriptionHandle, Self::Error> {
         // issue 0829 — see `create_publisher`: resolve before the keyexpr.
         let qos = qos.resolve_system_default(&ZENOH_SYSTEM_DEFAULTS);
+        // phase-428 W9 — see `create_publisher`. This is the entity whose ring
+        // a depth actually meets.
+        let qos = super::qos::admit(super::qos::EntityKind::Subscription, topic.name, &qos)?;
         let mut subscriber = ZenohSubscriber::new(&self.context, topic, None, &qos)?;
         // Phase 268 W2 — ensure a per-node NN token for this subscriber's node.
         if let Some(node_name) = topic.node_name {
@@ -1186,11 +1193,17 @@ impl Session for ZenohSession {
         service: &ServiceInfo,
         qos: QoSProfile,
     ) -> Result<Self::ServiceHandle, Self::Error> {
-        // TODO(193.1b): zenoh-pico services have no endpoint-level QoS
-        // slot (the `None` below is the liveliness token, not QoS) — the
-        // requested service QoS cannot be applied to the queryable yet.
-        // Thread it through once zenoh-pico exposes per-endpoint QoS.
-        let _ = qos;
+        // phase-428 W9 — this was `let _ = qos;` under a TODO(193.1b), and a
+        // discarded argument is a silent lie about what was honoured. What is
+        // true is narrower than "cannot be applied": zenoh-pico has no
+        // per-endpoint QoS slot on a queryable, so nothing reaches the WIRE —
+        // but the request ring is ours, the refusals are ours, and the graph
+        // declaration is ours. All three are applied here, and the token below
+        // now carries the caller's granted profile instead of a hardcoded
+        // `QoSProfile::services_default()` that had nothing to do with what
+        // was asked for.
+        let qos = qos.resolve_system_default(&ZENOH_SYSTEM_DEFAULTS);
+        let qos = super::qos::admit(super::qos::EntityKind::Service, service.name, &qos)?;
         let mut server = ZenohServiceServer::new(&self.context, service, None)?;
         // Phase 268 W2 — ensure a per-node NN token for this server's node.
         if let Some(node_name) = service.node_name {
@@ -1209,7 +1222,7 @@ impl Session for ZenohSession {
                             service.namespace,
                             node_name,
                             service,
-                            &QoSProfile::services_default(),
+                            &qos,
                         )
                     })
                 })
@@ -1223,10 +1236,10 @@ impl Session for ZenohSession {
         service: &ServiceInfo,
         qos: QoSProfile,
     ) -> Result<Self::ClientHandle, Self::Error> {
-        // TODO(193.1b): zenoh-pico services have no endpoint-level QoS
-        // slot — the requested service QoS cannot be applied to the
-        // querier yet. Thread it once zenoh-pico exposes per-endpoint QoS.
-        let _ = qos;
+        // phase-428 W9 — see `create_service`: applied where it is ours to
+        // apply (refusals, request ring, graph declaration), not discarded.
+        let qos = qos.resolve_system_default(&ZENOH_SYSTEM_DEFAULTS);
+        let qos = super::qos::admit(super::qos::EntityKind::Client, service.name, &qos)?;
         // Phase 268 W2 — ensure a per-node NN token for this client's node.
         if let Some(node_name) = service.node_name {
             self.ensure_node_liveliness(service.domain_id, service.namespace, node_name);
@@ -1244,7 +1257,7 @@ impl Session for ZenohSession {
                             service.namespace,
                             node_name,
                             service,
-                            &QoSProfile::services_default(),
+                            &qos,
                         )
                     })
                 })
@@ -1474,36 +1487,38 @@ impl Session for ZenohSession {
         r
     }
 
+    /// phase-428 W9 — DERIVED. Every bit below is backed by a
+    /// `nros-qos-honours:` claim sited on the code that honours it, and
+    /// `check-qos-mask-derivation` re-measures them on every push; a claim
+    /// whose code is deleted takes the bit with it.
+    ///
+    /// What the comment here used to say, and what W9 measured:
+    ///
+    /// * *"Reliability maps to zenoh congestion-control"* — it did not.
+    ///   `zpico.c` sets `Z_CONGESTION_CONTROL_BLOCK` unconditionally and the
+    ///   field reached no publisher option. `shim/qos.rs` reads it now and
+    ///   GRANTS reliable, reporting the over-delivery.
+    /// * *"Durability VOLATILE / History / Depth honoured at the subscriber
+    ///   buffer level"* — none of the three were read outside the discovery
+    ///   keyexpr. The ring is KEEP_LAST at a build-time depth whatever was
+    ///   asked. `shim/qos.rs` refuses KEEP_ALL and TRANSIENT_LOCAL, grants the
+    ///   depth the ring can hold, and puts the GRANT in the token.
+    /// * `LIVELINESS_MANUAL_BY_NODE` is **withdrawn**. It was advertised here
+    ///   and folded onto MANUAL_BY_TOPIC — cyclonedds folds the same value in
+    ///   `qos.cpp`, and xrce drops liveliness entirely, so the policy was
+    ///   advertised by every backend in the tree and implemented by none
+    ///   (issue 1328). Asserting per publisher where the caller asked for per
+    ///   node expires publishers the application believed it had kept alive.
+    ///
+    /// AVOID_ROS_NAMESPACE_CONVENTIONS stays absent: key generation always
+    /// applies the ROS conventions and nothing reads the flag.
     fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {
-        // Phase 108.B/C — zenoh-pico's wire protocol has no native
-        // DDS QoS, so the shim emulates everything:
-        // - Reliability maps to zenoh congestion-control (CORE).
-        // - Durability VOLATILE / History / Depth honoured at the
-        //   subscriber buffer level (CORE).
-        // - DEADLINE: clock-based check at take_serialized (sub) /
-        //   publish_raw (pub). 108.C.zenoh.2.
-        // - LIFESPAN: subscriber filters samples whose attachment
-        //   timestamp is older than `now - lifespan_ms`. 108.C.zenoh.3.
-        // - LIVELINESS_AUTOMATIC: zenoh runtime declares the token
-        //   automatically when the publisher is created
-        //   (`Ros2Liveliness::publisher_keyexpr`); subscribers track
-        //   alive-state via a periodic poll of the wildcard liveliness
-        //   keyexpr. Per-publisher count surfaced via
-        //   `zpico_liveliness_get_count` (108.C.zenoh.4-followup).
-        // - LIVELINESS_MANUAL_BY_TOPIC / MANUAL_BY_NODE: shim-side
-        //   keepalive timer. `Publisher::assert_liveliness()`
-        //   refreshes the lease; `publish_raw` checks for expiry and
-        //   fires `LivelinessLost` rate-limited to ≤ 1 per lease.
-        //   (108.C.zenoh.4-followup).
-        // - LIVELINESS_LEASE: caller-supplied lease duration honoured
-        //   for all liveliness kinds.
         use nros_rmw::QoSPolicyMask;
         QoSPolicyMask::CORE
             | QoSPolicyMask::DEADLINE
             | QoSPolicyMask::LIFESPAN
             | QoSPolicyMask::LIVELINESS_AUTOMATIC
             | QoSPolicyMask::LIVELINESS_MANUAL_BY_TOPIC
-            | QoSPolicyMask::LIVELINESS_MANUAL_BY_NODE
             | QoSPolicyMask::LIVELINESS_LEASE
     }
 }

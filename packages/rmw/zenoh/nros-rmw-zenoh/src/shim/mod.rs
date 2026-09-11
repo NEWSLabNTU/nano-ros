@@ -40,6 +40,7 @@
 //! ```
 
 pub mod publisher;
+pub mod qos;
 pub mod service;
 pub mod session;
 pub mod subscriber;

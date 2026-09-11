@@ -1049,7 +1049,12 @@ impl ZenohSubscriber {
             msg_lost_total: core::cell::Cell::new(0),
             msg_lost_cb: core::cell::Cell::new(None),
             pending_too_small: core::cell::Cell::new(false),
+            // nros-qos-honours: LIFESPAN — `take_serialized` drops a sample
+            // whose attachment timestamp is older than `now - lifespan_ms`
+            // instead of delivering it.
             lifespan_ms: qos.lifespan_ms,
+            // nros-qos-honours: DEADLINE — `check_deadline_and_fire` fires
+            // `RequestedDeadlineMissed` when no sample arrives in the window.
             deadline_ms: qos.deadline_ms,
             last_msg_at_ms: core::cell::Cell::new(now),
             last_deadline_fire_ms: core::cell::Cell::new(now),

@@ -182,6 +182,15 @@ pub trait QosKeyExpr {
     fn to_qos_string<const N: usize>(&self) -> heapless::String<N>;
 }
 
+// nros-qos-discovery-only: this serialiser puts a profile into the `@ros2_lv`
+// keyexpr for a peer's graph parser. It APPLIES nothing — phase-428 W9 found
+// four policies whose only read in the whole backend was this function, read
+// as evidence that the shim honoured them. `check-qos-mask-derivation` does
+// not count a read inside this region, so a policy cannot earn a mask bit by
+// being mentioned to somebody else.
+//
+// The profile reaching here is the GRANTED one (`shim/qos.rs`), so what a peer
+// reads is what this image does.
 impl QosKeyExpr for QoSProfile {
     fn to_qos_string<const N: usize>(&self) -> heapless::String<N> {
         let mut s = heapless::String::new();
