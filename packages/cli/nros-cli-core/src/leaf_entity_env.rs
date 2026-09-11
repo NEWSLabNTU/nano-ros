@@ -966,14 +966,6 @@ mod tests {
         assert_eq!(out["NROS_DECLARED_SERVICE_SERVERS"], "2");
     }
 
-    /// `manifest_infra` reads the MANIFEST, so this writes one directly rather
-    /// than through `write_leaf` (which writes a `system.toml` leaf and a fixed
-    /// manifest — the two cherry-picked waves that met here each had their own
-    /// helper of that name, with different signatures).
-    fn write_manifest(dir: &std::path::Path, body: &str) {
-        std::fs::write(dir.join("Cargo.toml"), body).unwrap();
-    }
-
     #[test]
     fn manifest_infra_reads_dependency_and_feature_tables() {
         let td = tempfile::tempdir().unwrap();
