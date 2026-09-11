@@ -372,6 +372,72 @@ making it unconditional removes all five divergent subjects at zero cost and
 ends the px4 mixed-layout exposure immediately. Independent of everything else;
 land it first.
 
+### D8 — A name parameter is DEDUCED, so `std::string` stays drop-in (amendment, 2026-09-12)
+
+This decision was missing, and implementing W6 is what surfaced it. Stated here
+because W7 and W8 cannot proceed without it.
+
+**The gap.** Every hosted `create_*` in `nros.hpp` takes `const std::string&`,
+which is upstream's spelling, and the whole family sits behind
+`NROS_CPP_NODE_HOSTED`. W8's acceptance is zero `NROS_CPP_HAS_*` in the tree, so
+those overloads cannot survive as gated methods. But D5 — "what is NOT drop-in,
+enumerated" — does not list `std::string` arguments, and deleting the overloads
+would silently add a fourth item to that list: every ported call site holding a
+`std::string` name would need `.c_str()`.
+
+Three candidate answers, and only one satisfies both halves of the goal:
+
+| | freestanding-clean | `std::string` call site still compiles |
+| --- | --- | --- |
+| keep the overloads, gated | no | yes |
+| delete them, require `.c_str()` | yes | **no** — a fourth D5 item |
+| **deduce the parameter** | **yes** | **yes** |
+
+**The decision: the parameter is deduced, and one overload set converts it.**
+
+```cpp
+namespace nros { namespace detail {
+inline const char* as_c_str(const char* s) { return s; }
+template <typename S> auto as_c_str(const S& s) -> decltype(s.c_str()) { return s.c_str(); }
+}}
+
+template <typename M, typename S>
+Publisher<M>::SharedPtr create_publisher(const S& topic, const QoS& qos);
+```
+
+The header names no `std` type. A caller passing a string literal, a
+`std::string`, our `FixedString`, our `HeapString`, or anything else with
+`c_str()` all bind. This is the same move W5 already made for
+`NodeOptions::arguments()`, generalised — and there it was measured to be
+strictly better for a porting user as well, because the refusal could speak
+where an overload-resolution failure used to happen first.
+
+**Measured**, not reasoned — one probe, three configurations:
+
+```
+hosted g++ -std=c++17, caller passes std::string          rc=0
+ThreadX shim -nostdinc++, no <string> reachable at all    rc=0
+arm-none-eabi -std=c++14 -ffreestanding (32-bit)          rc=0
+```
+
+**One cost, stated.** An argument that is neither a `const char*` nor a type
+with `c_str()` produces a diagnostic one frame inside the template rather than
+at the call site:
+
+```
+error: no matching function for call to 'as_c_str(const NotAName&)'
+note: required from here    <-- the call site, one frame up
+```
+
+`as_c_str` is an overload SET rather than a trait precisely to keep that to one
+frame; W8 should add a `static_assert` in front of it so the first line names
+the parameter instead.
+
+**What this does not do.** It does not make a `std::string` RETURN drop-in —
+`get_fully_qualified_name` and friends are a separate question, and they are
+returns rather than parameters, so a caller writing `auto` is unaffected while a
+caller writing `std::string s = ...` is not. That is W8's to enumerate.
+
 ## What this corrects in existing documents
 
 Three statements are wrong in the tree today and are corrected here rather than
