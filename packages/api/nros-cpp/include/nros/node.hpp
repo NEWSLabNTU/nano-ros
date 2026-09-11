@@ -889,7 +889,7 @@ class Node {
     ///
     /// A buffer rather than rclcpp's returned string: rclcpp hands back a
     /// `const std::string &` it already stores, and there is no allocator here
-    /// to build one with. `nros::get_fully_qualified_name` (std_compat.hpp) is
+    /// to build one with. `nros_get_fully_qualified_name` (the C entry point) is
     /// the `std::string` spelling where `NROS_CPP_STD` is on.
     ///
     /// @param out_len Receives the length written, excluding the terminator —

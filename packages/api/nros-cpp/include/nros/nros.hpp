@@ -204,10 +204,6 @@ inline Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
 
 } // namespace nros
 
-#ifdef NROS_CPP_STD
-#include "nros/std_compat.hpp"
-#endif
-
 // ============================================================================
 // rclcpp:: — the process-level surface (RFC-0089 stage 6, step A)
 // ============================================================================
