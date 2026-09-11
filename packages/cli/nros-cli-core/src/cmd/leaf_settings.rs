@@ -329,6 +329,10 @@ mod tests {
                 .iter()
                 .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
                 .collect(),
+            // Issue 1142's `[system] features`. ABSENT MEANS NONE, and no test
+            // in here asks about the runtime service families, so the helper
+            // states the empty claim once instead of per test.
+            features: Vec::new(),
         }
     }
 
