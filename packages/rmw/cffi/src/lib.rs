@@ -2288,6 +2288,46 @@ fn report_qos_downgrade(kind: &str, name: &str, requested: &NrosRmwQos, granted:
     }
 }
 
+/// Read a granted QoS back off one entity and report what changed.
+///
+/// The read-back is SIX slots — publisher, subscription, and the four
+/// service/client directions — and every one of them is the same three steps:
+/// pre-load the out-struct with the REQUEST (the slot's own contract: a field
+/// the backend does not report must read back as asked, not as zero), call the
+/// slot, compare. `create_publisher` carried those three steps inline, and
+/// issue 1327 needed four more copies of them — which is how the sizes-header
+/// mirror reached six sites. One helper instead, generic over the entity type,
+/// since the slots differ only in which handle they take.
+///
+/// Returns the GRANTED profile, so a caller — and a test — can see what the
+/// backend answered rather than only that a line was logged. `None` means the
+/// backend has no read-back for this entity (NULL slot) or declined this one
+/// (a non-OK return), which is a declared absence and not a downgrade.
+///
+/// # Safety
+/// `entity` must point at a live view of an entity this session created, and
+/// `slot` must be a slot the registered vtable installed for that entity type.
+#[cfg(feature = "alloc")]
+unsafe fn report_granted_qos<E>(
+    kind: &str,
+    name: &str,
+    requested: &NrosRmwQos,
+    entity: *const E,
+    slot: Option<unsafe extern "C" fn(*const E, *mut NrosRmwQos) -> NrosRmwRet>,
+) -> Option<NrosRmwQos> {
+    let read = slot?;
+    // The out-struct arrives carrying the request — see the slot's header
+    // block. A zeroed one would make an unreported field indistinguishable
+    // from a real grant of zero.
+    let mut granted = *requested;
+    // SAFETY: the caller's contract, above.
+    if unsafe { read(entity, &mut granted) } != NROS_RMW_RET_OK {
+        return None;
+    }
+    report_qos_downgrade(kind, name, requested, &granted);
+    Some(granted)
+}
+
 impl Session for CffiSession {
     /// The backend is chosen at run time here, so the trait's compile-time
     /// default would be a guess. Ask the vtable, and fall back to the constant
@@ -2408,13 +2448,11 @@ impl Session for CffiSession {
         pub_state.can_loan_messages = pub_state.vtable.borrow_loaned_message.is_some();
         // phase-393 W1 — say so when the backend granted something else.
         #[cfg(feature = "alloc")]
-        if let Some(read) = pub_state.vtable.publisher_get_actual_qos {
-            let mut granted = qos_struct;
+        {
             let mut v = pub_state.make_view();
+            let slot = pub_state.vtable.publisher_get_actual_qos;
             // SAFETY: the entity was created above and `v` describes it.
-            if unsafe { read(&v, &mut granted) } == NROS_RMW_RET_OK {
-                report_qos_downgrade("publisher", topic.name, &qos_struct, &granted);
-            }
+            unsafe { report_granted_qos("publisher", topic.name, &qos_struct, &v, slot) };
             let _ = &mut v;
         }
         Ok(pub_state)
@@ -2579,6 +2617,39 @@ impl Session for CffiSession {
             return Err(TransportError::ServiceServerCreationFailed);
         }
         srv_state.backend_data = view.backend_data;
+        // issue 1327 — the service half of the publisher site above.
+        //
+        // `create_service` takes ONE profile and builds TWO endpoints from it,
+        // and `rmw_service_t` has no `qos` field, so the granted per-direction
+        // profile is observable through these slots and nowhere else. Both are
+        // read: the request endpoint and the response endpoint negotiate
+        // against different peers and may be granted different things.
+        #[cfg(feature = "alloc")]
+        {
+            let mut v = srv_state.make_view();
+            let req = srv_state
+                .vtable
+                .service_request_subscription_get_actual_qos;
+            let resp = srv_state.vtable.service_response_publisher_get_actual_qos;
+            // SAFETY: the entity was created above and `v` describes it.
+            unsafe {
+                report_granted_qos(
+                    "service request subscription",
+                    service.name,
+                    &qos_struct,
+                    &v,
+                    req,
+                );
+                report_granted_qos(
+                    "service response publisher",
+                    service.name,
+                    &qos_struct,
+                    &v,
+                    resp,
+                );
+            }
+            let _ = &mut v;
+        }
         Ok(srv_state)
     }
 
@@ -2637,6 +2708,34 @@ impl Session for CffiSession {
             return Err(TransportError::ServiceClientCreationFailed);
         }
         cli_state.backend_data = view.backend_data;
+        // issue 1327 — the client half; see `create_service` for why both
+        // directions are read.
+        #[cfg(feature = "alloc")]
+        {
+            let mut v = cli_state.make_view();
+            let req = cli_state.vtable.client_request_publisher_get_actual_qos;
+            let resp = cli_state
+                .vtable
+                .client_response_subscription_get_actual_qos;
+            // SAFETY: the entity was created above and `v` describes it.
+            unsafe {
+                report_granted_qos(
+                    "client request publisher",
+                    service.name,
+                    &qos_struct,
+                    &v,
+                    req,
+                );
+                report_granted_qos(
+                    "client response subscription",
+                    service.name,
+                    &qos_struct,
+                    &v,
+                    resp,
+                );
+            }
+            let _ = &mut v;
+        }
         Ok(cli_state)
     }
 
@@ -5547,6 +5646,198 @@ mod tests {
         // "this really does register now" proof is
         // `nros-rmw-xrce-cffi`'s `register_smoke`, which is exactly the
         // backend this over-strict list was refusing.
+    }
+
+    // ------------------------------------------------------------------
+    // issue 1327 — the four service/client `*_get_actual_qos` slots.
+    //
+    // Cyclonedds filled all four and NOTHING dispatched them, so the fix for
+    // the bug issue 0823 describes sat unreached in the tree. These tests are
+    // about the CONSUMER: that a `create_service` / `create_client` reaches
+    // each direction's slot, and that it hands the slot the REQUEST rather
+    // than a zeroed struct.
+    //
+    // They refuse to pass vacuously the same way 0823's ctest does: the
+    // scripted backend writes values the requested profile cannot have, so an
+    // implementation that echoes its input and one that zeroes it both fail.
+    // ------------------------------------------------------------------
+
+    /// Four counters, indexed [service-request, service-response,
+    /// client-request, client-response].
+    #[cfg(feature = "alloc")]
+    static mut QOS_READBACK_CALLS: [u32; 4] = [0; 4];
+    /// What each slot was HANDED — the pre-loaded out-struct.
+    #[cfg(feature = "alloc")]
+    static mut QOS_READBACK_SAW: [Option<NrosRmwQos>; 4] = [None; 4];
+
+    /// A depth no request in these tests states, so reading it back proves the
+    /// value came from the entity.
+    #[cfg(feature = "alloc")]
+    const GRANTED_DEPTH: u16 = 3;
+
+    #[cfg(feature = "alloc")]
+    unsafe fn record_and_grant(idx: usize, qos: *mut NrosRmwQos) -> NrosRmwRet {
+        unsafe {
+            QOS_READBACK_CALLS[idx] += 1;
+            QOS_READBACK_SAW[idx] = Some(*qos);
+            // Grant something the caller did not ask for, on the two fields
+            // `report_qos_downgrade` reads.
+            (*qos).reliability = NROS_RMW_RELIABILITY_BEST_EFFORT as u8;
+            (*qos).depth = GRANTED_DEPTH;
+        }
+        NROS_RMW_RET_OK
+    }
+
+    #[cfg(feature = "alloc")]
+    unsafe extern "C" fn stub_service_request_qos(
+        _: *const NrosRmwService,
+        qos: *mut NrosRmwQos,
+    ) -> NrosRmwRet {
+        unsafe { record_and_grant(0, qos) }
+    }
+    #[cfg(feature = "alloc")]
+    unsafe extern "C" fn stub_service_response_qos(
+        _: *const NrosRmwService,
+        qos: *mut NrosRmwQos,
+    ) -> NrosRmwRet {
+        unsafe { record_and_grant(1, qos) }
+    }
+    #[cfg(feature = "alloc")]
+    unsafe extern "C" fn stub_client_request_qos(
+        _: *const NrosRmwClient,
+        qos: *mut NrosRmwQos,
+    ) -> NrosRmwRet {
+        unsafe { record_and_grant(2, qos) }
+    }
+    #[cfg(feature = "alloc")]
+    unsafe extern "C" fn stub_client_response_qos(
+        _: *const NrosRmwClient,
+        qos: *mut NrosRmwQos,
+    ) -> NrosRmwRet {
+        unsafe { record_and_grant(3, qos) }
+    }
+
+    /// The two create slots plus all four read-backs, and nothing else — the
+    /// shape a backend gets from designated init. `..EMPTY_VTABLE` keeps this
+    /// from costing a line per slot the next time the struct grows.
+    #[cfg(feature = "alloc")]
+    static READBACK_VTABLE: NrosRmwVtable = NrosRmwVtable {
+        destroy_session: Some(stub_destroy_session),
+        create_service: Some(stub_create_service),
+        destroy_service: Some(stub_destroy_service),
+        create_client: Some(stub_create_client),
+        destroy_client: Some(stub_destroy_client),
+        service_request_subscription_get_actual_qos: Some(stub_service_request_qos),
+        service_response_publisher_get_actual_qos: Some(stub_service_response_qos),
+        client_request_publisher_get_actual_qos: Some(stub_client_request_qos),
+        client_response_subscription_get_actual_qos: Some(stub_client_response_qos),
+        ..EMPTY_VTABLE
+    };
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn service_and_client_create_read_the_granted_qos_back() {
+        use nros_rmw::{ServiceInfo, Session};
+
+        let mut session = CffiSession {
+            vtable: &READBACK_VTABLE,
+            node_name_buf: [0u8; NAME_BUF_LEN],
+            namespace_buf: [0u8; NAME_BUF_LEN],
+            backend_data: core::ptr::dangling_mut::<c_void>(),
+            domain_id: 0,
+        };
+
+        unsafe {
+            QOS_READBACK_CALLS = [0; 4];
+            QOS_READBACK_SAW = [None; 4];
+        }
+
+        // A request the scripted grant differs from on both reported fields.
+        let requested = nros_rmw::QoSProfile::default().reliable().keep_last(10);
+        let lowered = NrosRmwQos::try_from(requested).expect("profile lowers");
+        assert_ne!(lowered.depth, GRANTED_DEPTH, "the test's own premise");
+
+        let info = ServiceInfo::new("/add_two_ints", "example_interfaces/srv/AddTwoInts", "RIHS01");
+        let _srv = Session::create_service(&mut session, &info, requested).expect("service");
+        let _cli = Session::create_client(&mut session, &info, requested).expect("client");
+
+        // 1327's acceptance: the four stop being inert.
+        assert_eq!(
+            unsafe { QOS_READBACK_CALLS },
+            [1, 1, 1, 1],
+            "every service/client direction's read-back must be dispatched once"
+        );
+
+        // …and each was handed the REQUEST, not a zeroed struct. A backend
+        // that cannot report a field leaves it as it arrived, so a zeroed
+        // out-struct would turn "unreported" into a confident grant of 0.
+        for (i, saw) in unsafe { QOS_READBACK_SAW }.iter().enumerate() {
+            let saw = saw.expect("slot recorded nothing");
+            assert_eq!(
+                saw.depth, lowered.depth,
+                "slot {i} was handed depth {} rather than the requested {}",
+                saw.depth, lowered.depth
+            );
+            assert_eq!(saw.reliability, lowered.reliability, "slot {i} reliability");
+        }
+    }
+
+    /// The helper the four sites share: it returns what the BACKEND answered.
+    /// An implementation that echoed its input would return the request, and a
+    /// zeroing one would return zeros; only a real read returns the grant.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn the_read_back_helper_returns_the_grant_not_the_request() {
+        unsafe {
+            QOS_READBACK_CALLS = [0; 4];
+            QOS_READBACK_SAW = [None; 4];
+        }
+        let requested =
+            NrosRmwQos::try_from(nros_rmw::QoSProfile::default().reliable().keep_last(10))
+                .expect("profile lowers");
+        let entity = NrosRmwClient {
+            service_name: core::ptr::null(),
+            type_name: core::ptr::null(),
+            _reserved: [0u8; 8],
+            backend_data: core::ptr::null_mut(),
+        };
+        // SAFETY: the scripted slot reads and writes only `qos`.
+        let granted = unsafe {
+            report_granted_qos(
+                "client request publisher",
+                "/add_two_ints",
+                &requested,
+                &entity,
+                Some(stub_client_request_qos),
+            )
+        }
+        .expect("a filled slot returning OK must yield a grant");
+        assert_eq!(granted.depth, GRANTED_DEPTH);
+        assert_eq!(
+            granted.reliability,
+            NROS_RMW_RELIABILITY_BEST_EFFORT as u8,
+            "the grant, not the request"
+        );
+        assert_ne!(granted.depth, requested.depth);
+    }
+
+    /// A NULL slot is a declared absence — no read, no report, no error.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn a_null_read_back_slot_reports_nothing() {
+        let requested = NrosRmwQos::try_from(nros_rmw::QoSProfile::default()).expect("lowers");
+        let entity = NrosRmwClient {
+            service_name: core::ptr::null(),
+            type_name: core::ptr::null(),
+            _reserved: [0u8; 8],
+            backend_data: core::ptr::null_mut(),
+        };
+        // SAFETY: no slot is called.
+        let granted =
+            unsafe { report_granted_qos("client", "/x", &requested, &entity, None::<
+                unsafe extern "C" fn(*const NrosRmwClient, *mut NrosRmwQos) -> NrosRmwRet,
+            >) };
+        assert!(granted.is_none());
     }
 
     // And a required slot must STILL be refused even when everything else is
