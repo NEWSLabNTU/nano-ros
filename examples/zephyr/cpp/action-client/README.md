@@ -7,9 +7,12 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 
 ```bash
 cp -r examples/zephyr/cpp/action-client ~/my-action-client && cd ~/my-action-client
-cmake -S . -B build -DNANO_ROS_ROOT=/path/to/nano-ros   # or: export NROS_REPO_DIR=…
-cmake --build build
 ```
+
+Zephyr is the carve-out: the build verb is `west`, and the board plus the
+`CONF_FILE` RMW overlay are west arguments — see the [zephyr README](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/README.md).
+No `nros sync` here: a C/C++ leaf's message bindings are a build-system
+output, generated while the project configures.
 
 ## Run
 
@@ -18,6 +21,10 @@ QEMU / flashing steps live in the [zephyr README](https://github.com/NEWSLabNTU/
 
 ## Config
 
-See `CMakeLists.txt`; select the backend with `-DNROS_RMW=<backend>`.
+Board, RMW, domain and locator: `system.toml` beside `CMakeLists.txt`
+(`[image.zephyr]` + `[system]`, RFC-0098 D3/D5). `find_package(nano_ros)`
+reads it while CMake configures, so switching board is editing that one
+line and re-configuring (`cmake -B build`); no build command and no
+manifest names a board.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

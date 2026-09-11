@@ -28,13 +28,14 @@ is exercised inside a single workspace rather than across four copies of one.
 
 ## Building
 
-The workspace builds ONE platform per configure, like every other workspace
-here (RFC-0026):
-
 ```sh
-cmake -S . -B build -DNANO_ROS_PLATFORM=posix
-cmake --build build
+nros sync
+nros build                       # every [image.*]
+nros build native_rust_qos       # or one capability at a time
 ```
+
+Each image names its own board, so each is built into its own `build/<coord>/`;
+the Zephyr images keep `west build` as their verb, with `nros sync` before it.
 
 A capability's model comes from its launch file — `nros sync` resolves one per
 entry. `[[model]]` declarations in `demo_bringup/system.toml` cover the variants

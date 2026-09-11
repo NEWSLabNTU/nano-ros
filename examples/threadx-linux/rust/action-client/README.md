@@ -7,21 +7,27 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 
 ```bash
 cp -r examples/threadx-linux/rust/action-client ~/my-action-client && cd ~/my-action-client
-NROS_REPO_DIR=/path/to/nano-ros nros sync   # msg crates + [patch.crates-io]
-cargo build
+export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros checkout
+nros sync     # generated/ message crates + build/<image>/nros-cargo.toml
+nros build    # or: nros build threadx-linux
 ```
 
 ## Run
 
-Needs a zenoh router (`just native zenohd` in the nano-ros checkout):
-
-```bash
-cargo run
-```
+Needs a zenoh router (`ros2 run rmw_zenoh_cpp rmw_zenohd`).
+`nros build` leaves the binary at `build/threadx-linux/target/debug/action-client`.
 
 ## Config
 
 Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`
-(`[image.<id>]` + `[system]`, RFC-0098 D3/D5).
+(`[image.threadx-linux]` + `[system]`, RFC-0098 D3/D5). No build command
+carries any of them.
+
+Switching board is two edits today, not one: the `[image.*] board` line
+and the board crate this leaf names in `Cargo.toml`'s `[dependencies]`. A
+single-package leaf is its own entry, and RFC-0098 D6's generated board
+dependency reaches only a workspace entry — leave the two disagreeing and
+`nros sync` reports success while the build fails in your own crate
+([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

@@ -32,24 +32,25 @@ src/
   demo_bringup/                    one launch file per (role × language)
   {c,cpp,rust}_safety_talker_pkg/  the node packages
   {c,cpp,rust}_safety_listener_pkg/
-  native_<lang>_safety_<role>_entry/   native entries, six of them
-  zephyr_rust_safety_entry/            the embedded entry
+  zephyr_rust_safety_entry/        the one entry written by hand (west app)
 ```
 
 Languages sit side by side so the language seam is exercised inside one
-workspace rather than across three copies of it.
+workspace rather than across three copies of it. The six native entries are not
+in `src/`: the bringup declares six `[image.native_*_safety_*]`, and each one's
+entry is generated (RFC-0098 D9).
 
 ## Building
 
-One platform per configure, like every workspace here (RFC-0026):
-
 ```sh
-cmake -S . -B build -DNANO_ROS_PLATFORM=posix
-cmake --build build
+nros sync
+nros build                              # every [image.*]
+nros build native_rust_safety_talker    # or just one
 ```
 
 Each entry's model comes from its launch file; `nros sync` resolves one per
-entry.
+entry, alongside the build settings each image's board implies. The Zephyr image
+keeps `west build` as its verb, with `nros sync` before it.
 
 Do NOT pass `-DNANO_ROS_SAFETY_E2E=ON` by hand. The declaration above is the
 source of truth and reaches the build on its own (phase-323); forcing the knob

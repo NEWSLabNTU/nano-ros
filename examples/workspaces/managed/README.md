@@ -18,16 +18,19 @@ services twice.
 
 ```
 src/
-  demo_bringup/          system.toml + launch/system.launch.xml
+  demo_bringup/               system.toml + launch/system.launch.xml
   cpp_lifecycle_talker_pkg/   the self-managing node
-  native_managed_entry/       entry: boots + spins, no lifecycle wiring
 ```
+
+There is no entry package to write: `[image.native_managed]` in the bringup
+declares the image, and its entry — which boots and spins, with no lifecycle
+wiring — is generated (RFC-0098 D9).
 
 ## Building
 
 ```sh
-cmake -S . -B build -DNANO_ROS_PLATFORM=posix
-cmake --build build
+nros sync
+nros build native_managed
 ```
 
 ## Why it stayed out of `features`

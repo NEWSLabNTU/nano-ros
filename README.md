@@ -22,7 +22,7 @@ The project integrates formal verification (Kani bounded model checking, CBMC fo
 - **Formal verification ready**: Kani proofs for panic-freedom, CBMC harnesses for C API pointer safety, DWT cycle counting for WCET baselines
 - **Zero-copy CDR serialization**: `no_std` serializer with compile-time buffer bounds
 - **C and C++ APIs**: rclc-style C interface and an rclcpp-style C++ layer for integration with C/C++ projects
-- **Code generation**: `nros generate rust` produces Rust bindings from `.msg`/`.srv`/`.action` files
+- **Code generation**: `nros sync` produces Rust/C/C++ bindings from the `.msg`/`.srv`/`.action` packages your project depends on
 
 ## Status
 
@@ -100,14 +100,26 @@ targets (Zephyr, FreeRTOS, NuttX, ThreadX, ESP32, bare-metal).
 
 ```bash
 # Terminal 1: Zenoh router (resolves the install from step 3 automatically)
-just native zenohd
+ros2 run rmw_zenoh_cpp rmw_zenohd      # contributor shortcut: just native zenohd
 
 # Terminal 2: Talker
-cd examples/native/rust/talker && RUST_LOG=info cargo run
+cd examples/native/rust/talker
+nros sync && nros build                # generated msg crates, then the image
+RUST_LOG=info ./build/native/target/debug/talker
 
 # Terminal 3: Listener
-cd examples/native/rust/listener && RUST_LOG=info cargo run
+cd examples/native/rust/listener
+nros sync && nros build
+RUST_LOG=info ./build/native/target/debug/listener
 ```
+
+`nros sync` reads the example's `system.toml` — the one place a board, an RMW
+and a domain are named — and writes everything that choice implies under
+`build/`; `nros build` then builds the image it declares. In a *workspace*, or a
+C/C++ example, switching board is that one `[image.*] board` line. In a
+single-package **Rust** example it is still two edits, because such a leaf is its
+own entry and names its board crate in `[dependencies]` —
+[issue 1305](docs/issues/1305-single-package-board-crate-dep-not-generated.md).
 
 See [Installation](book/src/getting-started/installation.md) and
 [First Node — Rust](book/src/getting-started/first-node-rust.md) for the
@@ -129,24 +141,38 @@ cmake --build build
 cmake -B build -S . -DNANO_ROS_ROOT=<path-to-nano-ros>
 ```
 
-The example's `CMakeLists.txt` resolves the nano-ros checkout root once
-(`-DNANO_ROS_ROOT` cache var → `NROS_REPO_DIR` env var → in-repo
-walk-up), pulls in the workspace helpers, then declares the app in a
-few lines:
+No `nros sync` step here: a single-package C/C++ leaf generates its message
+bindings while CMake configures. `-DNANO_ROS_ROOT` says where the checkout is
+and nothing more — the board, the RMW, the domain and the network identity come
+from the example's `system.toml`, which `find_package(nano_ros)` reads
+(RFC-0098 D3/D5). The whole `CMakeLists.txt` is:
 
 ```cmake
-include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
-nano_ros_workspace_pkg_guard()
+cmake_minimum_required(VERSION 3.22)
+project(c_talker LANGUAGES C CXX)
 
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)   # generated msg bindings
+find_package(nano_ros REQUIRED)
+find_package(std_msgs REQUIRED)
 
-nano_ros_entry(
-    NAME c_talker
-    SOURCES src/main.c
-    DEPLOY native)
+nano_ros_add_executable(c_talker src/main.c)
+ament_target_dependencies(c_talker std_msgs)
+```
 
-target_link_libraries(c_talker PRIVATE std_msgs__nano_ros_c)
-nros_platform_link_app(c_talker)
+beside a `system.toml` that names the deployment:
+
+```toml
+[system]
+name      = "native_c_talker"
+rmw       = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg   = "native_c_talker"
+class = "native_c_talker::Talker"
+name  = "talker"
+
+[image.native]
+board = "native"
 ```
 
 See [First Node — C](book/src/getting-started/first-node-c.md) for a complete C walkthrough.
@@ -166,10 +192,11 @@ nano-ros communicates with ROS 2 nodes via the rmw_zenoh protocol:
 
 ```bash
 # Terminal 1: zenohd (installed by `nros setup native --rmw zenoh`)
-just native zenohd
+ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: nano-ros talker
-cd examples/native/rust/talker && RUST_LOG=info cargo run
+cd examples/native/rust/talker && nros sync && nros build
+RUST_LOG=info ./build/native/target/debug/talker
 
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash
@@ -209,7 +236,7 @@ packages/
 
 ## Message Generation
 
-nano-ros uses `nros generate rust` to create Rust bindings from ROS 2 `.msg`/`.srv`/`.action` files. See [Message Generation](docs/guides/message-generation.md) for details.
+nano-ros generates its bindings from ROS 2 `.msg`/`.srv`/`.action` packages — never hand-written. `nros sync` is the command a project runs: it writes the `generated/` message crates alongside the build settings the project's `system.toml` implies. See [Message Generation](docs/guides/message-generation.md) for details.
 
 ## Documentation
 

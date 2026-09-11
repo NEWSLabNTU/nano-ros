@@ -6,26 +6,26 @@ documented in the book:
 - `src/*_pkg/`: Node packages with reusable node code only.
 - `src/demo_bringup/`: Bringup package with `package.xml`, `system.toml`,
   `launch/`, and optional config files. It has no build file.
-- `src/*_entry/`: Entry packages with the `main()` for each target platform.
-  Multiple entries may share the same Node and Bringup packages.
+- `src/zephyr_entry/`: the one Entry package still written by hand — a west
+  application's Kconfig overlays are not derivable (RFC-0065 D5). Every other
+  image's entry is generated.
 
-Build them with the user workflow:
+A workspace is a directory of packages, like a colcon workspace: there is no
+root `Cargo.toml` and no root `CMakeLists.txt`, and no entry package to write
+(RFC-0098 D9). Everything generated lands under `build/`, `dist/` and `log/`.
+Build one with the user workflow:
 
 ```bash
 source ./activate.sh
 cd examples/workspaces/<rust|c|cpp|mixed>
 nros setup native
 nros sync
-nros codegen-system --bringup demo_bringup
+nros build              # every [image.*]; or: nros build <image-id>
 ```
 
-Then use the platform build tool:
-
-```bash
-cargo build -p native_entry
-# or
-cmake -S . -B build && cmake --build build
-```
+`nros sync` resolves `demo_bringup/system.toml` plus the launch files into the
+generated inputs — the message crates, the entry, and the build settings each
+image's board implies — so no build command carries a board, an RMW or a domain.
 
 The Rust workspace's images all reuse the same Node and Bringup packages, and
 every one but Zephyr has NO entry package in `src/`: `nros build <image>`

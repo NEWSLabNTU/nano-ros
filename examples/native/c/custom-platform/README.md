@@ -16,8 +16,9 @@ embedded targets.
 
 ## How it is built (important)
 
-The executable `baremetal_demo` runs on the **Rust POSIX platform port** (linked
-via `DEPLOY native`), so it builds and runs on a desktop. `src/platform_impl.c`
+The executable `baremetal_demo` runs on the **Rust POSIX platform port** — the
+one `[image.native] board = "native"` in `system.toml` selects — so it builds and
+runs on a desktop. `src/platform_impl.c`
 implements the **same** `nros_platform_*` symbols, so it cannot be linked into
 that binary too — two implementations of one ABI is a duplicate-definition
 error. Instead CMake compiles it into a stand-alone `baremetal_platform_ref`
@@ -32,15 +33,16 @@ your firmware. See the header comment in `src/platform_impl.c`.
 ## Building
 
 ```bash
-# First, build the nros-c library
-cargo build --release -p nros-c
-
-# Then build the example
 cd examples/native/c/custom-platform
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 ```
+
+Nothing to build by hand first: `find_package(nano_ros)` builds the `nros-c`
+library the example links. No `nros sync` either — a single-package C leaf's
+message bindings are a CMake-time output. The board, the RMW and the domain come
+from `system.toml` beside `CMakeLists.txt` (`[image.native]` + `[system]`,
+RFC-0098 D3/D5), not from a `-D` flag.
 
 ## Running
 
@@ -49,7 +51,7 @@ make
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 
 # Run the demo
-./baremetal_demo
+./build/baremetal_demo
 ```
 
 ## Platform Implementation
