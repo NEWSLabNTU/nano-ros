@@ -115,7 +115,13 @@ configure() {
     if [ "$pathov" = "-" ]; then
         cmake -S "$WORK" -B "$WORK/b" -DNROS_REPO="$REPO" "$@" >"$log" 2>&1 || rc=$?
     else
-        PATH="$pathov" cmake -S "$WORK" -B "$WORK/b" -DNROS_REPO="$REPO" "$@" >"$log" 2>&1 || rc=$?
+        # A rustc-free PATH is no longer a rustc-free HOST: issue 1304's
+        # `nros_rust_tool` falls back to the rustup proxies in `$CARGO_HOME/bin`
+        # and `$HOME/.cargo/bin`, which is how an installed toolchain with no
+        # PATH edit reaches rustc. Hide those too, or the arm measures rustup.
+        mkdir -p "$WORK/nohome"
+        PATH="$pathov" HOME="$WORK/nohome" CARGO_HOME="$WORK/nohome/.cargo" \
+            cmake -S "$WORK" -B "$WORK/b" -DNROS_REPO="$REPO" "$@" >"$log" 2>&1 || rc=$?
     fi
     if [ "$expect" = "expect-pass" ]; then
         if [ "$rc" -ne 0 ]; then
