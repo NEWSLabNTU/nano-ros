@@ -192,3 +192,14 @@ or an agent writes what actually happened.
 * issue 1029 (`1029-zephyr-nightly-never-produces-a-verdict`, filed in PR #320 and not yet on `main` — link it once that lands) —
   found by chasing phase-196's stranded acceptance criterion, and the reason
   this phase is worth its cost.
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1205](../issues/1205-doc-commit-citations-local-fetch-state.md) | `check-doc-commit-citations` resolves hashes against whatever the local tree can see, so the ratchet answers 'in my object store' rather than 'in this history'. The doc-gate family is W1's |

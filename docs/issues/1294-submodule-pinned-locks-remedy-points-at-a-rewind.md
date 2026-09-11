@@ -7,7 +7,7 @@ type: bug
 area: build, ci
 severity: medium
 found: 2026-09-11
-related: [issue-0560, issue-0409, rfc-0099]
+related: [issue-0560, issue-0409, rfc-0099, issue-1051, phase-450]
 ---
 
 ## What happens

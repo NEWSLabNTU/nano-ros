@@ -888,3 +888,14 @@ holds the evidence, the item is *close it*.
 | [#0986](../issues/archived/0986-pre-push-hook-corrupts-the-repo-it-guards.md) | **CLOSED 2026-09-06** — the pre-push hook wrote into the repository it was guarding. One clearing helper (`nros_clear_inherited_git_env`, list taken from `git rev-parse --local-env-vars`) replaces four divergent hand-written `unset`s |
 | [#0988](../issues/archived/0988-hook-scripts-never-exercised-under-a-hook-environment.md) | **CLOSED 2026-09-06** — no gate ran a hook the way git runs it. `check-hook-repo-side-effects` now runs the hook and every `git init`-ing script under both hook environments against a victim repo compared byte for byte |
 
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0854](../issues/0854-action-raw-goal-flaky-under-load.md) | `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo. W5 names it as quarantine entry #1 — a quarantine entry with no owner and no expiry is a permanent one |
+| [#1053](../issues/1053-rfc-ids-have-no-reservation.md) | RFC ids have no reservation, so two sessions both wrote 0087 and two more wrote 0089. W1 already solved this race for issues and phases; the third series is the same fix, not a new one |

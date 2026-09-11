@@ -445,3 +445,16 @@ through `register_timer_on_clock` (W4–W6) whatever the spin verbs are called,
 and no acceptance here names a spin verb. This paragraph exists so that "it
 closes in phase-427 W11" has an answer in both documents rather than only in the
 one that raised it.
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1041](../issues/1041-timer-missed-deadline-policy-differs-from-rcl.md) | a repeating timer CATCHES UP after a stall where rcl SKIPS. Partly fixed already — the executor arena defaults to `Skip`; `nros-node/src/timer.rs:354` is the unswept sibling, which is the fix-the-class shape, not a new defect |
+| [#1049](../issues/1049-timer-time-until-next-call-always-zero.md) | `nros_timer_get_time_until_next_call` returns 0 for every registered timer — a broken accessor on exactly the C surface W5 reshapes |
+| [#1203](../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s `ParameterBuilder` declares straight into the store, bypassing the reserved-parameter hook W3 fixed on the other two paths. Sequence it with #1049: both are a value channel that silently lies |

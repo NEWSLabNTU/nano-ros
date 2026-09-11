@@ -7,7 +7,7 @@ type: bug
 area: cmake, build, cli
 severity: medium
 found: 2026-09-06
-related: [0500, 0774, 1113]
+related: [0500, 0774, 1113, phase-445]
 ---
 
 ## Symptom

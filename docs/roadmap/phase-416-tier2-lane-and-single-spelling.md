@@ -92,3 +92,14 @@ It does not chase the runtime failures the lane then reveals. Those go to
 [phase-391](phase-391-allocation-unification-and-tier-model.md) (#1010). The
 distinction is worth keeping: this phase is about whether the lane can produce a
 verdict at all, not about whether the verdict is green.
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1158](../issues/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) | the tier-2 lane has produced no runtime verdict in six consecutive scheduled runs. 'The tier-2 lane runs end to end' is this phase's thesis; phase-441 cites the issue only in passing |

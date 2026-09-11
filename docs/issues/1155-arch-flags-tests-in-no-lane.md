@@ -6,7 +6,7 @@ type: bug
 area: testing, build
 severity: low
 found: 2026-09-06
-related: [0652, phase-418]
+related: [0652, phase-418, phase-413]
 ---
 
 # Six tests that only run when someone asks for them by name

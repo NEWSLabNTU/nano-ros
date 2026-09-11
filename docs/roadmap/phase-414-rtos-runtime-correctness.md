@@ -310,3 +310,14 @@ image builds, links and boots, and then does the wrong thing.
 retracted issues CLAUDE.md records from a sweep whose fixtures predated the fix,
 are the standing reason to check artifact mtimes against the code being blamed
 before writing a cause down.
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1281](../issues/1281-riscv-nuttx-c-talker-router-drops-session.md) | `c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest connects and the router never sees it. An image that boots and then misbehaves on an RTOS is this phase's admission test, and it is the sibling of the three issues already adopted above |

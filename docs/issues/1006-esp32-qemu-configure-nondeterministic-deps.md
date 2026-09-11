@@ -5,7 +5,7 @@ title: "esp32-qemu's configure does not disable the backends it never uses, so i
 status: open
 type: bug
 area: tooling, build
-related: [0926, 0500]
+related: [0926, 0500, phase-423]
 ---
 
 `[tool.esp32-qemu]` is **source-built with no dist** — every user runs the

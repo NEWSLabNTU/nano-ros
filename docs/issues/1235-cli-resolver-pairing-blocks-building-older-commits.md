@@ -6,7 +6,7 @@ status: open
 type: bug
 area: build
 severity: high
-related: [issue-0409, issue-0419, issue-0561, issue-1177, issue-1227]
+related: [issue-0409, issue-0419, issue-0561, issue-1177, issue-1227, phase-424]
 ---
 
 ## Symptom

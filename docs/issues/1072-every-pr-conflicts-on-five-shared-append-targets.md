@@ -5,7 +5,7 @@ title: "22 of 51 open pull requests conflicted, none of them on code — five
 status: open
 type: tech-debt
 area: tooling, ci
-related: [0883, 0884, 1071]
+related: [0883, 0884, 1071, phase-396]
 ---
 
 ## The measurement

@@ -420,3 +420,14 @@ platform's shape is different enough to be its own phase:
 - [Jetson Sensor Processing Engine (SPE) Developer Guide — R36.4](https://docs.nvidia.com/jetson/archives/r36.4/spe/index.html)
 - [SPE IVC — R36.4.3](https://docs.nvidia.com/jetson/archives/r36.4.3/spe/md__home_jenkins_workspace_Utilities_rt_aux_cpu_demo_fsp_docs_work_rt_aux_cpu_demo_fsp_doc_ivc.html)
 - [Cortex-R52 and Cortex-R5 cores in Jetson AGX Orin — NVIDIA Developer Forums](https://forums.developer.nvidia.com/t/cortex-r52-and-cortex-r5-cores-in-jetson-agx-orin/239914)
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1154](../issues/1154-bare-metal-arch-profiles-unreachable.md) | `config/bare-metal` defines `cortex-m4f` and `riscv32gc` and lists neither. 418.3 owns `check-arch-profile-resolution` and its KNOWN_UNREACHABLE/KNOWN_INERT allowlist, which is where an unlisted profile has to be answered |

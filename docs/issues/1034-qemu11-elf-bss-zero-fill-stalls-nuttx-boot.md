@@ -8,7 +8,7 @@ type: bug
 area: testing, tooling
 severity: high
 found: 2026-09-04
-related: [issue-0870, issue-0930, phase-414]
+related: [issue-0870, issue-0930, phase-414, phase-424]
 ---
 
 ## Symptom

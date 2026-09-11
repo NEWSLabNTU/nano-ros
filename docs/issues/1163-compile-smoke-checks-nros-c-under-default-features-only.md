@@ -5,7 +5,7 @@ status: open
 type: bug
 area: ci, c
 severity: high
-related: [1040, 1059, 1102, 1162, RFC-0061]
+related: [1040, 1059, 1102, 1162, RFC-0061, phase-413]
 found: 2026-09-06
 ---
 

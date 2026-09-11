@@ -6,7 +6,7 @@ title: "`nano_ros_add_node` has two language readers that disagree — cmake
 status: open
 type: bug
 area: tooling
-related: [issue-0939, issue-0641, rfc-0057]
+related: [issue-0939, issue-0641, rfc-0057, phase-432]
 ---
 
 ## Symptom

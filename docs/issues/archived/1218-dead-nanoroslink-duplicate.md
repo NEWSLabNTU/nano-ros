@@ -5,7 +5,7 @@ status: resolved
 area: cmake, docs
 severity: medium
 found: 2026-09-08
-related: [1215, 1216, 0475, RFC-0071]
+related: [1215, 1216, 0475, RFC-0071, phase-451]
 ---
 
 # A dead duplicate that reads as authoritative, with measured cost

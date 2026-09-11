@@ -5,7 +5,7 @@ status: open
 area: orchestration
 severity: low
 found: 2026-09-06
-related: [0973, 0900, 1120, 1121, RFC-0060]
+related: [0973, 0900, 1120, 1121, RFC-0060, phase-412]
 ---
 
 # `describes_wiring` reads `structure` only; `from_model` also reads `contracts.node_paths`

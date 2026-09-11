@@ -5,7 +5,7 @@ title: "`check-api-parity` is run by NO workflow on any event, and cannot run in
 status: open
 type: bug
 area: ci
-related: [issue-1059, phase-379, phase-417, rfc-0089]
+related: [issue-1059, phase-379, phase-417, rfc-0089, phase-413]
 ---
 
 ## Problem

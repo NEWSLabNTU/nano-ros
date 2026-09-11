@@ -6,7 +6,7 @@ status: open
 type: bug
 area: testing, rmw-cyclonedds
 severity: medium
-related: [issue-1009, issue-0741]
+related: [issue-1009, issue-0741, phase-441]
 ---
 
 ## What happens

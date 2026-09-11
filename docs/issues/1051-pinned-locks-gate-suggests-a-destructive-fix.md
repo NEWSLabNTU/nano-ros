@@ -5,6 +5,7 @@ title: "`check-submodule-pinned-locks` blames the lock for a drifted CHECKOUT, a
 status: open
 type: bug
 area: tooling, ci
+related: [phase-450, issue-1294]
 ---
 
 ## Problem

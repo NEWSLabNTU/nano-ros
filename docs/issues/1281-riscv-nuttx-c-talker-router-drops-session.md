@@ -4,7 +4,7 @@ title: "`c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest con
 status: open
 type: bug
 area: [testing, rmw, nuttx]
-related: [0820, 0801, 1280, phase-445]
+related: [0820, 0801, 1280, phase-445, phase-414]
 ---
 
 ## Symptom (as reported, not yet reproduced by the filer)

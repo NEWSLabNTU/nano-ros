@@ -1,7 +1,7 @@
 ---
 id: 1095
 title: "The api-parity ledger's schema doc is copied into all 17 shards, so a schema change conflicts in 17 files at once"
-status: open
+status: resolved
 type: bug
 area: tooling
 related: [issue-0883, issue-0884]
@@ -74,3 +74,14 @@ Then a schema change is one file, and the three phase-417 PRs conflict on
 * The schema description exists in exactly one file.
 * No shard's `_doc` contains the schema vocabulary; a gate fails if one does.
 * `scripts/api-parity.py --self-test` and `just check api-parity` still pass.
+
+## Resolved (verified 2026-09-11)
+
+`docs/reference/api-parity-ledger/SCHEMA.md` is the single home. All 17 shards
+carry a two-line `_doc` pointer — 16 at 159 bytes, `qos` at 1,345 because it
+keeps its phase-379 addendum, which is what this issue specified.
+
+The gate exists and is wired, which was the part that mattered:
+`scripts/check-ledger-doc-single-home.py`, recipe `ledger-doc-single-home` at
+`just/check/docs.just:190`, imported by `just/check.just:65`. A live run prints
+`self-test: OK / OK — 17 shard(s) point at one SCHEMA.md.`

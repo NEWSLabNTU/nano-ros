@@ -4,7 +4,7 @@ title: "58 more sites launder a fixture-resolver `Err` into a `skip!`, and 54 of
 status: open
 area: testing
 severity: medium
-related: [0584, 1112, 1124, 0196]
+related: [0584, 1112, 1124, 0196, phase-450]
 ---
 
 ## What

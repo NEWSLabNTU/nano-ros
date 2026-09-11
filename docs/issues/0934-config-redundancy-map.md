@@ -5,7 +5,7 @@ status: open
 area: build, api
 severity: medium
 found: 2026-08-30
-related: [0931, RFC-0065, RFC-0048, RFC-0046, RFC-0014, RFC-0033]
+related: [0931, RFC-0065, RFC-0048, RFC-0046, RFC-0014, RFC-0033, phase-405]
 ---
 
 # Config redundancy map

@@ -256,3 +256,14 @@ $ grep -rl 'pub fn sched_setaffinity' ~/.cargo/registry/src/*/libc-0.2.189/src
 
 Counts across both keys, re-measured (the first count used `board =` alone and
 missed `deploy =`): `native` 33, `posix` 1, `linux` 0.
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1109](../issues/1109-board-native-vs-linux-naming-sweep.md) | 77 `board = "native"` selectors predate the native/linux split and some are true of neither. They are the remainder of this phase's own vocabulary audit, which fixed the crates and not the selectors |

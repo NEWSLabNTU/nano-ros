@@ -6,7 +6,7 @@ status: resolved
 type: bug
 area: api
 resolved: 2026-09-11
-related: [phase-417, issue-1008, rfc-0087, rfc-0089]
+related: [phase-417, issue-1008, rfc-0087, rfc-0089, phase-430]
 ---
 
 ## Resolution (phase-417 stage 3, 2026-09-11)

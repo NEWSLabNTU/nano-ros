@@ -5,7 +5,7 @@ title: "A repeating timer CATCHES UP after a stall where rcl SKIPS — N callbac
 status: open
 type: bug
 area: api, core
-related: [phase-417, rfc-0087, rfc-0002]
+related: [phase-417, rfc-0087, rfc-0002, phase-430]
 ---
 
 ## Problem

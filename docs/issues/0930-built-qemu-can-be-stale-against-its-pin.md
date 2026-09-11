@@ -4,7 +4,7 @@ title: "The built QEMU can be older than the commit `third-party/qemu/qemu` pins
 status: open
 type: bug
 area: testing, tooling
-related: [issue-0196, issue-0917]
+related: [issue-0196, issue-0917, phase-413]
 ---
 
 ## What happens

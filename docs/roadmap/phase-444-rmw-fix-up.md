@@ -302,3 +302,15 @@ The other 116 rows record a missing name and nothing else.
 * Change the contract. 0 gap stays 0; the 20 declined stay declined with their reasons.
 * Verify produced slots against live peers in general — phases 433 and 441.
 * Platform build issues (#1039 NuttX, #0852 Zephyr priorities).
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1268](../issues/1268-cyclone-param-services-unsupported-silently-dropped.md) | parameter services never start on Cyclone. phase-426 states this is 'owned by phase-444 W6' and **this phase has no W6** — W1 through W5 only. The owner it names does not exist, which is worse than no owner because it reads as settled |
+| [#1269](../issues/1269-graph-node-set-differs-across-rmws.md) | the ROS graph shows a different node set for the same image on each RMW. It sits beside W3's Cyclone graph reader, and phase-446 excludes it by name |

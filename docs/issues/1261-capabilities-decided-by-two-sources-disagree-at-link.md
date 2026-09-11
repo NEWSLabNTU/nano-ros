@@ -7,7 +7,7 @@ status: open
 type: bug
 area: build, zephyr
 severity: medium
-related: [issue-1260, issue-0745, issue-0353]
+related: [issue-1260, issue-0745, issue-0353, phase-445]
 ---
 
 ## Symptom

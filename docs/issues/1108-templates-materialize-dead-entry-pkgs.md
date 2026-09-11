@@ -6,7 +6,7 @@ type: tech-debt
 area: examples, tooling, docs
 severity: high
 found: 2026-09-06
-related: [1107, 1109, rfc-0065, phase-383]
+related: [1107, 1109, rfc-0065, phase-383, phase-452]
 ---
 
 # A template is the costliest place for a retired shape
