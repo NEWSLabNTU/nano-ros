@@ -365,7 +365,13 @@ Filed as **issue 1225** rather than fixed here, because the mechanical fix (the
 `hosted_` trick) costs a FREESTANDING target +8 bytes per timer and per guard
 condition and +64 per `ComponentNode`, and the cheaper alternative — making the
 closure caller-owned, the shape `rclcpp::detail::WallTimer` already uses — is a
-design question this phase did not ask. `nros::Node` (200/200), `QoS`,
+design question this phase did not ask.
+
+**Closed by phase-442 W1 (2026-09-11)**, which paid the +8 rather than making
+the closure caller-owned: `void* closure_`, unconditional, pointing at a block
+whose head is `detail::HostedBlockBase` — the same shape `hosted_` uses, now
+written once in `nros/hosted_block.hpp`. Transitional; phase-442 W3 replaces the
+block with a fixed-capacity inplace callable and the pointer goes with it. `nros::Node` (200/200), `QoS`,
 `Executor`, `Clock`, `Time`, `Duration`, `CallbackGroup`, `NodeBuilder`,
 `LifecycleNode` and `rclcpp::NodeOptions` are clean.
 

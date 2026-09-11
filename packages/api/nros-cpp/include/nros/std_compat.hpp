@@ -21,8 +21,10 @@
 
 #include <chrono>
 #include <functional>
-#include <memory>
 #include <string>
+#include <utility> // std::move — the closure block owns the callable
+
+#include "nros/hosted_block.hpp"
 
 namespace nros {
 
@@ -30,12 +32,16 @@ namespace nros {
 // A) std::function callback wrappers for Timer and GuardCondition
 // ============================================================================
 //
-// Lifetime: the heap-allocated std::function is owned by the Timer /
-// GuardCondition instance via `attach_std_closure(unique_ptr)`. The
-// runtime receives a raw pointer into the same std::function; the
-// Timer's destructor cancels the runtime callback before the
-// unique_ptr is dropped, so the raw pointer is never dereferenced
-// after free.
+// Lifetime: the heap-allocated std::function lives inside a closure BLOCK,
+// owned by the Timer / GuardCondition instance via
+// `attach_closure_block(detail::HostedBlockBase*)`. The runtime receives a raw
+// pointer to the block's `std::function` member; the Timer's destructor
+// cancels the runtime callback before the block is freed, so the raw pointer
+// is never dereferenced after free.
+//
+// The block rather than a bare `std::unique_ptr<std::function<void()>>` member
+// because the OWNER's member is unconditional and cannot name a hosted type
+// (issue 1225, phase-442 W1). `detail::HostedBlockBase` carries the argument.
 
 namespace detail {
 
@@ -44,6 +50,22 @@ inline void std_function_trampoline(void* context) {
     auto* fn = static_cast<std::function<void()>*>(context);
     (*fn)();
 }
+
+/// A `std::function<void()>` behind the unconditional closure pointer.
+///
+/// Carries its own destroyer, so `~Timer()` and `~GuardCondition()` — which
+/// are compiled in both configurations — free it without naming it.
+struct StdClosureBlock : HostedBlockBase {
+    std::function<void()> fn;
+
+    static void destroy_fn(void* p) {
+        delete static_cast<StdClosureBlock*>(static_cast<HostedBlockBase*>(p));
+    }
+
+    explicit StdClosureBlock(std::function<void()> f) : fn(std::move(f)) {
+        this->destroy = &StdClosureBlock::destroy_fn;
+    }
+};
 
 } // namespace detail
 
@@ -81,14 +103,14 @@ inline std::string get_fully_qualified_name(const char* node_name, const char* n
 /// @return Result indicating success or failure.
 inline Result create_wall_timer(::rclcpp::Node& node, Timer& out, std::chrono::milliseconds period,
                                 std::function<void()> callback) {
-    auto fn =
-        std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
-    auto* raw = fn.get();
+    auto* block = new detail::StdClosureBlock(std::move(callback));
     Result r = node.create_wall_timer(out, static_cast<uint64_t>(period.count()),
-                                      detail::std_function_trampoline, raw);
-    if (r.ok()) {
-        out.attach_std_closure(std::move(fn));
+                                      detail::std_function_trampoline, &block->fn);
+    if (!r.ok()) {
+        delete block;
+        return r;
     }
+    out.attach_closure_block(static_cast<detail::HostedBlockBase*>(block));
     return r;
 }
 
@@ -110,14 +132,14 @@ inline Result create_wall_timer(::rclcpp::Node& node, Timer& out, std::chrono::m
 /// @return Result indicating success or failure.
 inline Result create_timer(::rclcpp::Node& node, Timer& out, const Clock& clock,
                            std::chrono::milliseconds period, std::function<void()> callback) {
-    auto fn =
-        std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
-    auto* raw = fn.get();
+    auto* block = new detail::StdClosureBlock(std::move(callback));
     Result r = node.create_timer(out, clock, static_cast<uint64_t>(period.count()),
-                                 detail::std_function_trampoline, raw);
-    if (r.ok()) {
-        out.attach_std_closure(std::move(fn));
+                                 detail::std_function_trampoline, &block->fn);
+    if (!r.ok()) {
+        delete block;
+        return r;
     }
+    out.attach_closure_block(static_cast<detail::HostedBlockBase*>(block));
     return r;
 }
 
@@ -128,14 +150,14 @@ inline Result create_timer(::rclcpp::Node& node, Timer& out, const Clock& clock,
 inline Result create_timer_oneshot(::rclcpp::Node& node, Timer& out,
                                    std::chrono::milliseconds delay,
                                    std::function<void()> callback) {
-    auto fn =
-        std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
-    auto* raw = fn.get();
+    auto* block = new detail::StdClosureBlock(std::move(callback));
     Result r = node.create_timer_oneshot(out, static_cast<uint64_t>(delay.count()),
-                                         detail::std_function_trampoline, raw);
-    if (r.ok()) {
-        out.attach_std_closure(std::move(fn));
+                                         detail::std_function_trampoline, &block->fn);
+    if (!r.ok()) {
+        delete block;
+        return r;
     }
+    out.attach_closure_block(static_cast<detail::HostedBlockBase*>(block));
     return r;
 }
 
@@ -144,13 +166,13 @@ inline Result create_timer_oneshot(::rclcpp::Node& node, Timer& out,
 /// Same ownership rules as `create_wall_timer`.
 inline Result create_guard_condition(::rclcpp::Node& node, GuardCondition& out,
                                      std::function<void()> callback) {
-    auto fn =
-        std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
-    auto* raw = fn.get();
-    Result r = node.create_guard_condition(out, detail::std_function_trampoline, raw);
-    if (r.ok()) {
-        out.attach_std_closure(std::move(fn));
+    auto* block = new detail::StdClosureBlock(std::move(callback));
+    Result r = node.create_guard_condition(out, detail::std_function_trampoline, &block->fn);
+    if (!r.ok()) {
+        delete block;
+        return r;
     }
+    out.attach_closure_block(static_cast<detail::HostedBlockBase*>(block));
     return r;
 }
 

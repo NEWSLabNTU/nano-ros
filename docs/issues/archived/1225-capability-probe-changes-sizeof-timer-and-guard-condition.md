@@ -3,10 +3,11 @@ id: 1225
 title: "`sizeof(nros::Timer)` follows `NROS_CPP_STD` — 24 vs 32 — and so do
   `GuardCondition` and `ComponentNode`; the layout gate's TYPES list never
   measured them"
-status: open
+status: resolved
 type: bug
 area: api
-related: [phase-427, phase-430, rfc-0089, 0135, 0460, 0196, 1204]
+related: [phase-427, phase-430, phase-442, rfc-0089, rfc-0096, 0135, 0460, 0196, 1204]
+resolved_in: "phase-442 W1"
 ---
 
 ## Problem
@@ -238,3 +239,46 @@ python3 scripts/check-cpp-capability-layout.py --report   # every subject, all a
 python3 scripts/check/cpp_capability_subjects.py          # the derived list
 just check cpp-capability-layout                          # the gate
 ```
+
+## RESOLVED 2026-09-11 — phase-442 W1
+
+The member is unconditional, and the five `diverges` rows are gone from
+`.config/cpp-capability-layout-baseline.txt` in the same commit.
+
+Spelling, exactly as the decision above required — an opaque pointer plus a
+destroyer that lives in the POINTEE, so the member is one pointer rather than
+two:
+
+```cpp
+// timer.hpp, and its twin in guard_condition.hpp
+    /// Owns the closure block (if any) -- `detail::HostedBlockBase*`, erased.
+    void* closure_;
+```
+
+`detail::HostedBlockBase` was `rclcpp::Node`'s private `detail::NodeHostedBase`,
+lifted to `nros/hosted_block.hpp` with the argument for the shape as its
+doc-comment, plus a `destroy_hosted_block(void*&)` that nulls before it calls
+the destroyer. `node.hpp` uses the shared one and its two hand-written destroy
+sequences become that call — one spelling, not a second one (the "fix the class,
+not the site" rule; three owners would otherwise have written it three ways).
+
+`std_compat.hpp`'s four wrappers allocate `detail::StdClosureBlock`, which
+derives the base and holds the `std::function<void()>`; the runtime still gets
+a raw pointer to that member, so the trampoline is unchanged. The wrappers gain
+an explicit `delete block` on the failure path, which the old `unique_ptr` did
+for free.
+
+Measured, all three arms of `check-cpp-capability-layout` (hosted, hosted
+without `-DNROS_CPP_STD`, `-nostdinc++` freestanding against the ThreadX shim):
+
+| subject | before | after |
+| --- | --- | --- |
+| `::nros::Timer` | 24 / 32 | **32 everywhere** |
+| `::nros::GuardCondition` | 32 / 40 | **40 everywhere** |
+| `::nros::NodeWithTimers<4>` | 328 / 360 | **360 everywhere** |
+| `::rclcpp::Timer`, `::rclcpp::TimerBase` | with `nros::Timer` | **32 everywhere** |
+
+The 8 bytes are transitional rather than permanent: phase-442 W3 replaces the
+block with a fixed-capacity inplace callable, at which point the pointer goes
+too. W1 lands first because it ends a shipping mixed-layout exposure and depends
+on nothing.

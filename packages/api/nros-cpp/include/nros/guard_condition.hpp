@@ -15,11 +15,7 @@
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
-
-#ifdef NROS_CPP_STD
-#include <functional>
-#include <memory>
-#endif
+#include "nros/hosted_block.hpp"
 
 #include "nros_cpp_ffi.h"
 
@@ -70,22 +66,19 @@ class GuardCondition {
             nros_cpp_guard_condition_destroy(storage_);
             initialized_ = false;
         }
-        // closure_ (if any) destructs here.
+        // The closure block (if any) is freed here.
+        detail::destroy_hosted_block(closure_);
     }
 
     // Move semantics (non-copyable). Relocation goes through the
     // `nros_cpp_guard_condition_relocate` runtime call (Phase 84.C1).
     GuardCondition(GuardCondition&& other)
-        : initialized_(other.initialized_)
-#ifdef NROS_CPP_STD
-          ,
-          closure_(std::move(other.closure_))
-#endif
-    {
+        : initialized_(other.initialized_), closure_(other.closure_) {
         if (other.initialized_) {
             nros_cpp_guard_condition_relocate(other.storage_, storage_);
             other.initialized_ = false;
         }
+        other.closure_ = nullptr;
     }
 
     GuardCondition& operator=(GuardCondition&& other) {
@@ -99,25 +92,24 @@ class GuardCondition {
                 initialized_ = true;
                 other.initialized_ = false;
             }
-#ifdef NROS_CPP_STD
-            closure_ = std::move(other.closure_);
-#endif
+            detail::destroy_hosted_block(closure_);
+            closure_ = other.closure_;
+            other.closure_ = nullptr;
         }
         return *this;
     }
 
     /// Default constructor — creates an uninitialized guard condition.
     /// Use `Node::create_guard_condition()` to initialize.
-    GuardCondition() : storage_(), initialized_(false) {}
+    GuardCondition() : storage_(), initialized_(false), closure_(nullptr) {}
 
-#ifdef NROS_CPP_STD
-    /// @internal Attach a heap-allocated std::function closure. See
-    /// `Timer::attach_std_closure` for rationale. Not intended for user
-    /// code — called by the NROS_CPP_STD convenience wrappers.
-    void attach_std_closure(std::unique_ptr<std::function<void()>> closure) {
-        closure_ = std::move(closure);
+    /// @internal Take ownership of a closure block. See
+    /// `Timer::attach_closure_block` for rationale. Not intended for user
+    /// code — called by the `NROS_CPP_STD` convenience wrappers.
+    void attach_closure_block(detail::HostedBlockBase* block) {
+        detail::destroy_hosted_block(closure_);
+        closure_ = block;
     }
-#endif
 
   private:
     GuardCondition(const GuardCondition&) = delete;
@@ -128,9 +120,9 @@ class GuardCondition {
     alignas(8) uint8_t storage_[NROS_GUARD_CONDITION_SIZE];
     bool initialized_;
 
-#ifdef NROS_CPP_STD
-    std::unique_ptr<std::function<void()>> closure_;
-#endif
+    /// Owns the closure block (if any) — `detail::HostedBlockBase*`, erased.
+    /// UNCONDITIONAL: see `Timer::closure_` and issue 1225.
+    void* closure_;
 };
 
 } // namespace nros

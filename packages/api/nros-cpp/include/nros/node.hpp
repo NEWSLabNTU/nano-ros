@@ -26,6 +26,7 @@
 #include "nros_cpp_ffi.h"
 
 #include "nros/result.hpp"
+#include "nros/hosted_block.hpp"
 #include "nros/nros_cpp_config_generated.h"
 #include "nros/qos.hpp"
 // Phase 189.M3.1 — rclcpp-style named-options structs
@@ -317,24 +318,10 @@ inline void report_declared_param_mismatch(const char* fqn, const char* param, c
 #endif
 }
 
-/// Type-erased head of `Node`'s hosted block — phase-427 W1.
-///
-/// `Node::hosted_` is ONE unconditional `void*`, so `sizeof(Node)` cannot
-/// follow a capability probe. But the pointee's type is hosted-only, and
-/// `~Node()` is compiled in BOTH configurations, so the destructor cannot name
-/// it: a `#if`-gated `delete` would give two translation units of one image two
-/// different inline destructors, which is the ODR half of the same defect.
-///
-/// So the block carries its own destroyer. `~Node()` is byte-identical in every
-/// configuration — it calls through this function pointer when the pointer is
-/// non-null, and a freestanding TU never sets it, because nothing there can
-/// allocate the block in the first place.
-///
-/// `Node::hosted_` stores the address of the BASE subobject (the cast is
-/// written out at the allocation site), so the round trip is exact.
-struct NodeHostedBase {
-    void (*destroy)(void*);
-};
+// `Node`'s hosted block — phase-427 W1 — takes the shape every out-of-line
+// block here takes: `detail::HostedBlockBase` from `nros/hosted_block.hpp`,
+// which carries the rationale. `Timer` and `GuardCondition` hold their closure
+// blocks the same way (phase-442 W1, issue 1225).
 
 #ifdef NROS_CPP_NODE_HOSTED
 /// Every member that used to live on the separate hosted `rclcpp::Node`.
@@ -344,7 +331,7 @@ struct NodeHostedBase {
 /// affordable on an image with no allocator. A node constructed with
 /// `Node("talker")` and driven through the out-ref `create_*` family never
 /// touches `operator new`.
-struct NodeHosted : NodeHostedBase {
+struct NodeHosted : HostedBlockBase {
     /// `rclcpp::Node::get_node_options()`. Ten of its accessors are
     /// REFUSE-LOUD (`options.hpp`); the object is stored so the getter can
     /// hand back what the constructor was given.
@@ -358,7 +345,7 @@ struct NodeHosted : NodeHostedBase {
     ::std::vector<::std::shared_ptr<void>> owned_entities;
 
     static void destroy_fn(void* p) {
-        delete static_cast<NodeHosted*>(static_cast<NodeHostedBase*>(p));
+        delete static_cast<NodeHosted*>(static_cast<HostedBlockBase*>(p));
     }
     NodeHosted() { this->destroy = &NodeHosted::destroy_fn; }
 };
@@ -1843,12 +1830,7 @@ class Node {
     /// destructor. A `#if`-gated `delete` here would be the ODR half of exactly
     /// the defect the layout rule exists to prevent.
     ~Node() {
-        if (hosted_ != nullptr) {
-            ::nros::detail::NodeHostedBase* h =
-                static_cast<::nros::detail::NodeHostedBase*>(hosted_);
-            hosted_ = nullptr;
-            h->destroy(h);
-        }
+        ::nros::detail::destroy_hosted_block(hosted_);
         if (initialized_) {
             nros_cpp_node_destroy(&handle_);
             initialized_ = false;
@@ -1871,12 +1853,7 @@ class Node {
 
     Node& operator=(Node&& other) {
         if (this != &other) {
-            if (hosted_ != nullptr) {
-                ::nros::detail::NodeHostedBase* h =
-                    static_cast<::nros::detail::NodeHostedBase*>(hosted_);
-                hosted_ = nullptr;
-                h->destroy(h);
-            }
+            ::nros::detail::destroy_hosted_block(hosted_);
             if (initialized_) {
                 nros_cpp_node_destroy(&handle_);
             }
@@ -1916,15 +1893,15 @@ class Node {
     ::nros::detail::NodeHosted& hosted() const {
         if (hosted_ == nullptr) {
             const_cast<Node*>(this)->hosted_ =
-                static_cast<::nros::detail::NodeHostedBase*>(new ::nros::detail::NodeHosted());
+                static_cast<::nros::detail::HostedBlockBase*>(new ::nros::detail::NodeHosted());
         }
         return *static_cast<::nros::detail::NodeHosted*>(
-            static_cast<::nros::detail::NodeHostedBase*>(hosted_));
+            static_cast<::nros::detail::HostedBlockBase*>(hosted_));
     }
 #endif
 
     /// phase-427 W1 — `detail::NodeHosted*`, held as the address of its
-    /// `NodeHostedBase` subobject. UNCONDITIONAL, and null on a freestanding
+    /// `HostedBlockBase` subobject. UNCONDITIONAL, and null on a freestanding
     /// target and on any hosted node that never made a hosted-shape call. One
     /// pointer is what the whole hosted surface costs a node that does not use
     /// it; the alternative — the members themselves behind a `#if` — is the
