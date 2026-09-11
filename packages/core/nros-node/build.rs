@@ -477,11 +477,18 @@ fn main() {
     // wrong for one that declared depth 1 everywhere: `buffered_region` gives
     // the latter a 3-slot TripleBuffer and the constant bills it 11 slots.
     //
-    // cmake refuses to publish this unless every endpoint that COULD state a
-    // depth did (`NROS_ENTITY_UNDECLARED_DEPTH_COUNT == 0`), so an absent
-    // variable means "some endpoint said nothing" and the default stands. That
-    // guard belongs there rather than here: the count is a property of the
-    // declaration, and this lane cannot see it.
+    // cmake refuses to publish this unless every SUBSCRIPTION that could state
+    // a depth did (`NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION == 0`), so
+    // an absent variable means "some subscription said nothing" and the default
+    // stands. That guard belongs there rather than here: the count is a
+    // property of the declaration, and this lane cannot see it.
+    //
+    // SUBSCRIPTION-scoped and not the broad count, for the two reasons
+    // `_nros_qos_depth_env` states: the broad count spans kinds this number
+    // does not price (issue 1227's measurement, 18 against 11), and since
+    // phase-454 W2 a PUBLISHER's contract can move it -- so guarding a
+    // subscription price on it would let a publisher declaration resize a
+    // subscription.
     // phase-412 W3b — and this is the whole ladder, in one expression.
     //
     // `env_usize` supplies the three rungs above the builtin (an environment

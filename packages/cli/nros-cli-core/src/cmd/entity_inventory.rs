@@ -318,14 +318,30 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
 /// Refused here, at the one place a model enters this verb, rather than in
 /// `from_model` -- which returns `Option` to say "no wiring described" and has
 /// no channel for "what you wrote is wrong".
+///
+/// phase-454 W2 -- BOTH endpoint maps. The rule is a property of `KEEP_LAST(0)`
+/// and not of which side of a topic states it, and the `ENTITIES` grammar it
+/// inherits refuses `@depth=0` on every kind that carries a depth at all
+/// ([`EntityKind::carries_qos_depth`], publishers included). Reading only
+/// `sub_endpoints` was correct for exactly as long as a publisher's depth could
+/// not travel; now that it does, a `pub: { qos: { depth: 0 } }` would reach
+/// `EntityDecl::depth` as `Some(0)` and render a row stating a number no author
+/// meant -- the same defect issue 1084 fixed one map over.
 fn reject_zero_depths(model: &ros_launch_manifest_model::SystemModel) -> Result<()> {
-    for (ep, contract) in &model.contracts.sub_endpoints {
-        let Some(qos) = contract.qos.as_ref() else {
-            continue;
-        };
-        if qos.depth == Some(0) {
+    let subs = model
+        .contracts
+        .sub_endpoints
+        .iter()
+        .map(|(ep, c)| ("subscriber", ep, c.qos.as_ref().and_then(|q| q.depth)));
+    let pubs = model
+        .contracts
+        .pub_endpoints
+        .iter()
+        .map(|(ep, c)| ("publisher", ep, c.qos.as_ref().and_then(|q| q.depth)));
+    for (side, ep, depth) in subs.chain(pubs) {
+        if depth == Some(0) {
             bail!(
-                "contract subscriber endpoint `{ep}` states `qos: {{ depth: 0 }}`. A QoS depth \
+                "contract {side} endpoint `{ep}` states `qos: {{ depth: 0 }}`. A QoS depth \
                  of 0 states nothing -- KEEP_LAST(0) holds no sample. Omit `depth:` to say \
                  \"not declared\", which is a different claim and the one that makes a size \
                  consumer REFUSE rather than guess."
@@ -573,6 +589,39 @@ contracts:
         );
         assert!(err.contains("states nothing"), "{err}");
         assert!(err.contains("REFUSE"), "names what absence buys: {err}");
+    }
+
+    /// phase-454 W2 -- and the same rule on the PUBLISHER side, now that a
+    /// publisher's depth travels.
+    ///
+    /// `KEEP_LAST(0)` holds no sample whichever side of the topic states it,
+    /// and the `ENTITIES` grammar this inherits refuses `@depth=0` on every
+    /// kind that carries a depth. Reading only `sub_endpoints` was correct for
+    /// exactly as long as `from_model` dropped publisher depths.
+    #[test]
+    fn a_publisher_contract_depth_of_zero_is_rejected_too() {
+        let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(
+            r#"
+meta: { version: 1 }
+structure:
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      qos: { depth: 0 }
+"#,
+        )
+        .expect("model fixture parses");
+        let err = reject_zero_depths(&model).unwrap_err().to_string();
+        assert!(err.contains("/talker/chatter"), "names the endpoint: {err}");
+        assert!(
+            err.contains("publisher"),
+            "names which side stated it: {err}"
+        );
+        assert!(err.contains("states nothing"), "{err}");
     }
 
     /// ...and a contract that states a real depth, or none at all, passes.
