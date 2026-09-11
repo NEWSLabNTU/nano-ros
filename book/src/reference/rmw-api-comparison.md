@@ -208,7 +208,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <span class=pu>)</span></pre></td>
 <td class=why><div class='st s-re-shaped'>● re-shaped</div><b>types are resolved at BUILD time</b> — Upstream resolves a type through a runtime typesupport pointer. Ours are resolved by codegen before the image exists, so the seam carries bytes and a type hash rather than a pointer to a type description that would have to be walked at runtime.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_client_request_publisher_get_actual_qos</span><span class=pu>(</span>
   <span class='ty'>const rmw_client_t * client</span><span class=pu>,</span>
@@ -219,9 +219,9 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_client_t *client</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div><b>inert</b> — declared and READ BY NOTHING, though a backend fills it.</td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div></td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_client_response_subscription_get_actual_qos</span><span class=pu>(</span>
   <span class='ty'>const rmw_client_t * client</span><span class=pu>,</span>
@@ -232,7 +232,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_client_t *client</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div><b>inert</b> — declared and READ BY NOTHING, though a backend fills it.</td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -993,7 +993,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <td class=c><span class=nosig>—</span></td>
 <td class=why><div class='st s-re-mapped'>◆ re-mapped · 1 → 2</div><div class=answers><div class=ans>nros-serdes: Serialize</div><div class=ans>codegen packs</div></div>nros-serdes (`Serialize`/`Deserialize`/`DeserializeView`) plus the per-language codegen packs; CDR for an IDL type is fixed by ROS interop, so a per-backend answer would be a DEFECT. Not a slot for the same reason it is not per-backend, and because upstream&#x27;s parameters are two things this ABI declined anyway — a typesupport pointer and an `rmw_serialized_message_t`, which is an `rcutils_uint8_array_t` carrying an ALLOCATOR, at a seam with no allocator</td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_service_request_subscription_get_actual_qos</span><span class=pu>(</span>
   <span class='ty'>const rmw_service_t * service</span><span class=pu>,</span>
@@ -1004,9 +1004,9 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_service_t *service</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div><b>inert</b> — declared and READ BY NOTHING, though a backend fills it.</td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div></td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_service_response_publisher_get_actual_qos</span><span class=pu>(</span>
   <span class='ty'>const rmw_service_t * service</span><span class=pu>,</span>
@@ -1017,7 +1017,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_service_t *service</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div><b>inert</b> — declared and READ BY NOTHING, though a backend fills it.</td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>

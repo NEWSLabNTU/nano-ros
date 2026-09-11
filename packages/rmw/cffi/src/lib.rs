@@ -2329,8 +2329,7 @@ const QOS_POLICY_ALL: u32 = (NROS_RMW_QOS_POLICY_RELIABILITY
     | NROS_RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_TOPIC
     | NROS_RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_NODE
     | NROS_RMW_QOS_POLICY_LIVELINESS_LEASE
-    | NROS_RMW_QOS_POLICY_AVOID_ROS_NAMESPACE_CONVENTIONS)
-    as u32;
+    | NROS_RMW_QOS_POLICY_AVOID_ROS_NAMESPACE_CONVENTIONS) as u32;
 
 /// Report a QoS DOWNGRADE — the granted profile differing from the requested
 /// one — once per entity, at creation.
@@ -2734,9 +2733,7 @@ impl Session for CffiSession {
         #[cfg(feature = "alloc")]
         {
             let mut v = srv_state.make_view();
-            let req = srv_state
-                .vtable
-                .service_request_subscription_get_actual_qos;
+            let req = srv_state.vtable.service_request_subscription_get_actual_qos;
             let resp = srv_state.vtable.service_response_publisher_get_actual_qos;
             // SAFETY: the entity was created above and `v` describes it.
             unsafe {
@@ -2821,9 +2818,7 @@ impl Session for CffiSession {
         {
             let mut v = cli_state.make_view();
             let req = cli_state.vtable.client_request_publisher_get_actual_qos;
-            let resp = cli_state
-                .vtable
-                .client_response_subscription_get_actual_qos;
+            let resp = cli_state.vtable.client_response_subscription_get_actual_qos;
             // SAFETY: the entity was created above and `v` describes it.
             unsafe {
                 report_granted_qos(
@@ -5705,6 +5700,9 @@ mod tests {
             namespace_buf: [0u8; NAME_BUF_LEN],
             backend_data: core::ptr::dangling_mut::<c_void>(),
             domain_id: 0,
+            // Not exercised here: the QoS mask decides ADMISSION, which the
+            // runtime layer does, and these tests script the vtable directly.
+            qos_policies: nros_rmw::QoSPolicyMask::NONE,
         };
         let mut seen = 0usize;
         let mut visit = |_n: &str, _ns: &str, _e: Option<&str>| {
@@ -5841,6 +5839,9 @@ mod tests {
             namespace_buf: [0u8; NAME_BUF_LEN],
             backend_data: core::ptr::dangling_mut::<c_void>(),
             domain_id: 0,
+            // Not exercised here: the QoS mask decides ADMISSION, which the
+            // runtime layer does, and these tests script the vtable directly.
+            qos_policies: nros_rmw::QoSPolicyMask::NONE,
         };
 
         unsafe {
@@ -5853,7 +5854,11 @@ mod tests {
         let lowered = NrosRmwQos::try_from(requested).expect("profile lowers");
         assert_ne!(lowered.depth, GRANTED_DEPTH, "the test's own premise");
 
-        let info = ServiceInfo::new("/add_two_ints", "example_interfaces/srv/AddTwoInts", "RIHS01");
+        let info = ServiceInfo::new(
+            "/add_two_ints",
+            "example_interfaces/srv/AddTwoInts",
+            "RIHS01",
+        );
         let _srv = Session::create_service(&mut session, &info, requested).expect("service");
         let _cli = Session::create_client(&mut session, &info, requested).expect("client");
 
@@ -5910,11 +5915,74 @@ mod tests {
         .expect("a filled slot returning OK must yield a grant");
         assert_eq!(granted.depth, GRANTED_DEPTH);
         assert_eq!(
-            granted.reliability,
-            NROS_RMW_RELIABILITY_BEST_EFFORT as u8,
+            granted.reliability, NROS_RMW_RELIABILITY_BEST_EFFORT as u8,
             "the grant, not the request"
         );
         assert_ne!(granted.depth, requested.depth);
+    }
+
+    // ------------------------------------------------------------------
+    // issue 1329 — the route answers the REGISTERED backend, not a union.
+    // ------------------------------------------------------------------
+
+    unsafe extern "C" fn stub_supported_qos_policies(
+        _: *const NrosRmwSession,
+        out_mask: *mut u32,
+    ) -> NrosRmwRet {
+        // A mask no union in the tree ever produced, so passing this cannot be
+        // an accident of the old constant still being returned.
+        unsafe {
+            *out_mask = (NROS_RMW_QOS_POLICY_RELIABILITY | NROS_RMW_QOS_POLICY_LIFESPAN) as u32
+        };
+        NROS_RMW_RET_OK
+    }
+
+    /// Only what `open_with_vtable` and `Drop` reach, plus the slot under
+    /// test — the shape a C backend gets from designated init.
+    static QOS_ROUTE_VTABLE: NrosRmwVtable = NrosRmwVtable {
+        create_session: Some(stub_create_session),
+        destroy_session: Some(stub_destroy_session),
+        supported_qos_policies: Some(stub_supported_qos_policies),
+        ..EMPTY_VTABLE
+    };
+
+    /// The same, with the slot left NULL.
+    static QOS_NO_SLOT_VTABLE: NrosRmwVtable = NrosRmwVtable {
+        create_session: Some(stub_create_session),
+        destroy_session: Some(stub_destroy_session),
+        ..EMPTY_VTABLE
+    };
+
+    #[test]
+    fn the_route_returns_the_registered_backends_mask() {
+        use nros_rmw::{QoSPolicyMask, Session};
+
+        let session =
+            CffiSession::open_with_vtable(&QOS_ROUTE_VTABLE, "", 0, 0, "n", core::ptr::null())
+                .expect("session open");
+        assert_eq!(
+            Session::supported_qos_policies(&session),
+            QoSPolicyMask::RELIABILITY | QoSPolicyMask::LIFESPAN,
+            "the route must report what the backend said, not a union over every backend"
+        );
+    }
+
+    /// A NULL slot is the backend declining to say, and the ABI reads that as
+    /// honouring nothing. Asserted rather than assumed, because the two
+    /// tempting alternatives — the union, or "skip validation" — are both the
+    /// bug, and only a test distinguishes this answer from them.
+    #[test]
+    fn a_backend_that_fills_no_mask_slot_honours_nothing() {
+        use nros_rmw::{QoSPolicyMask, Session};
+
+        let session =
+            CffiSession::open_with_vtable(&QOS_NO_SLOT_VTABLE, "", 0, 0, "n", core::ptr::null())
+                .expect("session open");
+        assert_eq!(
+            Session::supported_qos_policies(&session),
+            QoSPolicyMask::NONE,
+            "a NULL slot is `has not said`, which is not `honours everything`"
+        );
     }
 
     /// A NULL slot is a declared absence — no read, no report, no error.
@@ -5929,10 +5997,15 @@ mod tests {
             backend_data: core::ptr::null_mut(),
         };
         // SAFETY: no slot is called.
-        let granted =
-            unsafe { report_granted_qos("client", "/x", &requested, &entity, None::<
-                unsafe extern "C" fn(*const NrosRmwClient, *mut NrosRmwQos) -> NrosRmwRet,
-            >) };
+        let granted = unsafe {
+            report_granted_qos(
+                "client",
+                "/x",
+                &requested,
+                &entity,
+                None::<unsafe extern "C" fn(*const NrosRmwClient, *mut NrosRmwQos) -> NrosRmwRet>,
+            )
+        };
         assert!(granted.is_none());
     }
 
