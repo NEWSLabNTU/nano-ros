@@ -471,4 +471,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1225](../issues/1225-capability-probe-changes-sizeof-timer-and-guard-condition.md) | `sizeof(nros::Timer)` follows `NROS_CPP_STD` — 24 against 32 — and so do its siblings. phase-427 filed it rather than fixing it and phase-438 is complete, so the freestanding-safe spelling is this phase's job |
+| [#1225](../issues/archived/1225-capability-probe-changes-sizeof-timer-and-guard-condition.md) | `sizeof(nros::Timer)` follows `NROS_CPP_STD` — 24 against 32 — and so do its siblings. phase-427 filed it rather than fixing it and phase-438 is complete, so the freestanding-safe spelling is this phase's job |
