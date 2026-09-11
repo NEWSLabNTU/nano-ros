@@ -95,6 +95,43 @@ def declared_rows():
             m = re.match(r'target\s*=\s*"([^"]+)"', s)
             if m:
                 rows.append((triple_of_build_target(m.group(1)), rel))
+
+    # issue 1153 / phase-450 W3 — the two sites this gate did not scan.
+    #
+    # It collected "every declaration" from three globs and there are five. The
+    # cost was measured, not theorised: `armv7r-none-eabi` was declared at
+    # `zephyr/cmake/nros_cargo_build.cmake` and had NO row in
+    # `config/rust-targets.txt` and no `[rust.target.*]` in the SDK index, so a
+    # Zephyr Cortex-R build without `CONFIG_FPU` selected a triple the tree
+    # never listed and provisions nothing for — for as long as that branch
+    # existed, with a green gate the whole time.
+    #
+    # `NROS_RUST_TARGET` rather than `Rust_CARGO_TARGET`: a different variable
+    # name is all it took to be invisible, which is why this reads the VALUE
+    # shape (a triple in a `set(...)`) per known variable rather than one name.
+    for rel in tracked("zephyr/cmake/*.cmake", "scripts/zephyr/*.sh"):
+        text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(r'set\(\s*NROS_RUST_TARGET\s+"([^"]+)"', text):
+            value = m.group(1)
+            # `set(NROS_RUST_TARGET "${_nros_host_triple}")` names the HOST at
+            # configure time; it is not a cross target and has no row to want.
+            if "${" in value or "@" in value:
+                continue
+            rows.append((value, rel))
+        # the shell mirror writes the same assignment without cmake's `set(`
+        for m in re.finditer(r'NROS_RUST_TARGET=["\']?([A-Za-z0-9_.]+-[A-Za-z0-9_.-]+)', text):
+            rows.append((m.group(1), rel))
+
+    # NOT scanned, deliberately: `rustup target add` in `ci/docker/*/Dockerfile`.
+    # Issue 1153 names it as a third missed site and it is not one. That image
+    # installs a hardcoded set AND then the SSoT's own rows
+    # (`nros_rust_targets rustup | xargs -r rustup target add`), and its comment
+    # states the asymmetry on purpose: *"Additive on purpose: the list above
+    # carries targets the SSoT does not declare, and dropping them here would be
+    # a silent capability loss."* An image that can build MORE than the tree
+    # declares is a capability, not a drift — the direction that would be a
+    # defect (an SSoT row the image lacks) is already closed by the derived line.
+    # Scanning it anyway reported 4 "undeclared" targets that are all intentional.
     return rows
 
 

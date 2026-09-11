@@ -26,4 +26,11 @@ targets = [
     "aarch64-unknown-none",
     "armv7a-none-eabi",
     "armv7a-none-eabihf",
+    # issue 1153 / phase-450 W3 — the no-FPU and alternate-profile siblings a
+    # Zephyr board reaches via `NROS_RUST_TARGET`, which the coverage gate did
+    # not scan until now.
+    "thumbv7em-none-eabi",
+    "thumbv8m.main-none-eabi",
+    "thumbv8m.main-none-eabihf",
+    "i686-unknown-linux-gnu",
 ]
