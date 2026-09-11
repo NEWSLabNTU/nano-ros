@@ -1463,15 +1463,20 @@ cpp: cpp-fmt
     cargo clippy --quiet -p nros-cpp --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
     echo "All C++ checks passed!"
 
-# Phase 104.A.4 — assert `nros` + `nros-node` Cargo deps stay free of
-# concrete RMW / platform crates. The umbrella must consume only the
-# generic ABI (`nros-rmw-cffi` vtable + `nros-platform-cffi` C header);
-# selecting a backend or platform is the outer build system's job.
+# `decoupling` is REWRITTEN, not retired (phase-444 W4.b, issue 1219, which
+# asked for one or the other). Phase 104.A.4's guard asserted that `nros` +
+# `nros-node` carry no concrete RMW *or platform* Cargo dep, and its header had
+# said since 2026-06-09 that RFC-0031 reversed the goal, that it was EXPECTED TO
+# FAIL, and that it was therefore un-wired. Measured on 2026-09-11: it PASSES.
+# So what shipped was an un-wired gate nobody could read a verdict from.
 #
-# Today this guard is EXPECTED TO FAIL — Phase 104.A is the migration
-# that brings it to green. Wire it as a required check once the
-# migration completes.
-[group("debug")]
+# The RMW half IS gone by design (RFC-0031 restored `?/` forwarding and optional
+# backend deps) — and is covered from the other side anyway: `rmw-agnostic`
+# reads both of those manifests among 13 files and refuses a NEW backend name in
+# either. The PLATFORM half is a live rule with no other gate, so that is what
+# the script asserts now, and it is ON this lane instead of advisory in a
+# workflow step no merge-gating event ran.
+[group("check")]
 decoupling:
     @bash scripts/check-decoupling.sh
 

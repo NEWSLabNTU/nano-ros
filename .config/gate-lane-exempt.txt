@@ -43,7 +43,6 @@ build  # lane verb: fans `build-serial` out through run-gates-parallel.sh
 build-serial  # the build-tier registry, still an authored dependency list
 cli-clippy  # called by `check-cli-fmt`'s body, not run standalone
 compile-smoke  # gate.yml runs it by name on pull_request; needs a compile
-decoupling  # RFC-0031 superseded its goal; kept runnable, must not gate (see the file header)
 default  # lane verb: `cli-fresh` + `fast` + `build` + `api-parity`
 dep-chain  # post-submit.yml runs it by name; needs codegen output
 dist-runtime-deps  # re-implemented inline by `just workspace doctor`; no lane

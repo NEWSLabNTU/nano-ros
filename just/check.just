@@ -72,12 +72,13 @@ import 'check/tools.just'
 import 'check/workflows.just'
 
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
-# `decoupling` is intentionally NOT in this gate: it guards the Phase-104.A
-# "no concrete backend/platform refs in nros/nros-node" goal, which RFC-0031
-# (Stable) superseded — the `?/` forwarding + optional backend deps were
-# deliberately restored (Phase 214.S / 227.3) as the unified RMW-selection model.
-# The recipe stays runnable (`just decoupling`) for anyone revisiting the
-# bridge-decoupling track, but it must not fail the green `default` gate.
+# `decoupling` is IN this gate now (phase-444 W4.b, issue 1219). It guarded the
+# Phase-104.A "no concrete backend/platform refs in nros/nros-node" goal; its
+# RMW half is what RFC-0031 (Stable) superseded — the `?/` forwarding + optional
+# backend deps were deliberately restored (Phase 214.S / 227.3) — and its
+# PLATFORM half is live, unguarded elsewhere, and measured GREEN, so it stopped
+# being an advisory "expected to fail" recipe and joined the lane. The RMW axis
+# is `rmw-agnostic` (RFC-0071), also on this line.
 # Full static gate = the fast (buildless) tier + the build tier. `just default`
 # runs both (local default + the PR/nightly CI lane). The per-push CI lane runs
 # only `fast` so it completes under a rapid push cadence (the build tier's

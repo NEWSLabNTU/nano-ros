@@ -443,3 +443,24 @@ zenoh-lane-ownership:
 # archive with no XRCE in it. Buildless, ~0.05 s.
 xrce-one-vendored-compile:
     @python3 scripts/check-xrce-one-vendored-compile.py
+
+# RFC-0071 § Verification, written at last (issue 1219): `packages/core/**`,
+# `packages/api/nros{,-c,-cpp}/**` and `cmake/NanoRosRmwDispatch.cmake` name no
+# backend outside prose/comments. The RFC said the design is "falsifiable by
+# grep, which is how it should be gated", and then the gate was not written —
+# so while its other waves landed the closed backend lists grew from three to
+# five, two of them in neither Rust nor a manifest, which is why this reads
+# every language in the reach rather than Cargo files (the retired
+# `check-decoupling.sh` read two manifests and could not have caught them).
+#
+# The calibration is what killed the first attempt (1219 measured 93 files, 39
+# on the build surface, ~40 % noise): names come from
+# `check-entry-rmw-vocabulary.cmake_known()` and match as token PARTS but never
+# inside another word; comments, PROSE strings (a literal with whitespace) and
+# TEST code (`tests/`, `#[cfg(test)]` items) are not code. Debt is a per-file
+# ratchet whose every row names an OPEN issue and may only fall; an exemption
+# is per `(path, name)` and fails if it matches nothing.
+#
+# Buildless (`git ls-files` + a read), ~0.4 s, self-test on the normal path.
+rmw-agnostic:
+    @python3 scripts/check-rmw-agnostic.py

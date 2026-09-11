@@ -1157,13 +1157,6 @@ jobs:
             { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
           fi
 
-      - name: just check decoupling (advisory until Phase 104.A)
-        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
-        continue-on-error: true
-        run: |
-          source ./activate.sh
-          just check decoupling
-
   # ----- scaffold-journey (RFC-0040 resolve-only) -----
   # phase-422 follow-up — WARM the compile-tier caches on `main`, so the
   # pull_request and merge_group runs can actually restore them.
