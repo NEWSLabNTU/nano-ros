@@ -3221,8 +3221,9 @@ impl Session for CffiSession {
     /// Every `no` in that table was admitted here and then ignored downstream
     /// — the no-silent-downgrade contract broken one layer below where it is
     /// enforced. The answer is now the registered backend's own, read once at
-    /// `open` (see [`CffiSession::qos_policies`]); the union is gone and no
-    /// second copy of it survives to drift.
+    /// `open` (`read_supported_qos_policies`, cached in this session's
+    /// `qos_policies` field); the union is gone and no second copy of it
+    /// survives to drift.
     ///
     /// A backend that fills no slot has declared nothing, and this answers
     /// `NONE` for it — loudly, with one WARN at open. See the slot's header
