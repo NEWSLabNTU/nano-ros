@@ -435,11 +435,17 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
         .env_remove("RUSTUP_TOOLCHAIN")
         // phase-359 W7 — `[unstable] build-std` is the SIBLING of the `--target`
         // override above, and it comes from the same place for the same reason:
-        // the board's `.cargo/nros-board.toml`, inherited by the config walk-up
-        // the `[patch.crates-io]` entries require. `--target` had to be
-        // overridden because the board's is wrong for a HOST probe; `build-std`
-        // is wrong for exactly the same reason, and an env var beats config the
-        // way an explicit flag does.
+        // the board's `cargo_config`, which a leaf inherits through cargo's
+        // config walk-up. `--target` had to be overridden because the board's
+        // is wrong for a HOST probe; `build-std` is wrong for exactly the same
+        // reason, and an env var beats config the way an explicit flag does.
+        //
+        // phase-445 W6 note: the file that carried it into the walk-up used to
+        // be the committed `<leaf>/.cargo/nros-board.toml` projection, which is
+        // gone. The override is not: this probe may be invoked from a tree
+        // where a parent config or a `--config` file still supplies one, and an
+        // override that is now usually redundant costs nothing while removing
+        // it would be a wrong-`core` link failure the day it is not.
         //
         // It stayed invisible while the NuttX boards said `build-std = ["std",
         // …]`: cargo then built `std` from source for the host too, which is

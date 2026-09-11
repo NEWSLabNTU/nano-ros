@@ -10,7 +10,7 @@
 #     nros ws providers --index <file> --lines
 #     kind<TAB>name<TAB>package<TAB>root_index<TAB>dir
 #
-# Same role as `nros ws model-dims` and `ws check-board-projections` — a gate or
+# Same role as `nros ws model-dims` — a gate or
 # a configure ASKS rather than re-implementing the read. A second parser of the
 # same file is the two-derivations defect this repo keeps paying for; the index
 # is JSON precisely so that hand-rolling a cmake reader is unattractive.

@@ -100,7 +100,13 @@ cli_stale=$failed   # non-zero ⇒ everything that EXECS the CLI below would onl
 
 # 3. Leaves must be sync'd or cargo cannot even PARSE them (#463) — the error
 #    surfaces as "failed to parse manifest", four frames deep, never naming sync.
-probe "leaf .cargo/config.toml includes an unwritten sync target" \
+#
+#    Two shapes, and phase-445 W6 changed which one is the live half for
+#    `examples/`: the `include` arm now only covers the 23 tracked configs
+#    outside `examples/`, because an example tracks no `.cargo/` file at all
+#    (RFC-0098 D1). What still bites an example is the OTHER shape — a `path =`
+#    dep into a `generated/` tree `nros sync` has not produced.
+probe "a leaf names a sync-written path that does not exist yet" \
     "nros sync   in the named leaf   (bypass: NROS_SKIP_LEAF_INCLUDE_CHECK=1)" \
     python3 scripts/build/leaf-config-includes.py
 

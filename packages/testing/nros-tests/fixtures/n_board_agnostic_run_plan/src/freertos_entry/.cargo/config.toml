@@ -1,6 +1,0 @@
-# issue 0683 — EIGHT `../`, not seven: this leaf moved from
-# `<fixture>/freertos_entry/` to `<fixture>/src/freertos_entry/`, one level
-# deeper, and the include is resolved relative to THIS file's directory.
-# Cargo treats a missing include as a hard error during manifest parse, so a
-# stale depth makes the leaf unreadable rather than merely unpatched.
-include = ["../../../../../../../../nros-patch.toml", "nros-board.toml"]

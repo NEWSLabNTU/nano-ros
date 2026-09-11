@@ -7,7 +7,7 @@
 #
 # WHY THIS EXISTS. Several `check-fast` gates shell out to the in-tree CLI —
 # `check-provider-index`, `check-workspace-order`,
-# `check-board-cargo-config-applied`. Each already treated an ABSENT binary as
+# `check-board-cargo-config-applied` (retired, phase-445 W6). Each already treated an ABSENT binary as
 # a skip, correctly: a fresh clone has none, and `check-fast` must stay green on
 # a bare worktree.
 #

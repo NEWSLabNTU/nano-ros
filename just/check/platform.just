@@ -80,52 +80,18 @@ arch-profile-resolution:
 archive-lang-items:
     @bash scripts/check-archive-lang-items.sh
 
-# issue 0440 — a leaf that deploys to a board must carry that board's STATIC
-# link args. `nros-board.toml`'s `cargo_config` is the SSoT (RFC-0032 third
-# leg), the leaf `.cargo/config.toml` is TRACKED and `nros sync` leaves it
-# alone, so the two drift by hand. phase-338 W2's `-entry` collapse kept the
-# node package's config and dropped the whole `-l<kernel lib>` group — valid
-# TOML, happy cargo, and every NuttX Rust entry failing at LINK time.
-[private]
-board-cargo-config-applied:
-    #!/usr/bin/env bash
-    # phase-341 W4 — REPLACED. The old gate (a shell script of this name,
-    # deleted 2026-08-21 once nothing invoked it) asked whether a leaf still
-    # carried a REPRESENTATIVE `-l` arg copied from its board, because the leaf
-    # mirrored the descriptor BY HAND. It caught a lost GROUP (issue 0440) but
-    # not a lost argument, and it covered 8 leaves of the 59 that carried a
-    # board block.
-    #
-    # The block is now a generated projection, so the question changes from "did
-    # a human copy enough of it" to "is the committed file what the descriptor
-    # renders to" — an EXACT comparison, which makes drift uncommittable rather
-    # than detectable. `nros ws check-board-projections` answers it by sharing
-    # the renderer with `nros sync`; a second implementation in shell is the
-    # drift this phase exists to remove.
-    set -euo pipefail
-    nros="packages/cli/target/release/nros"
-    # ABSENT and STALE are one verdict: this lane is contractually source-free
-    # and CLI-free, so it cannot demand a CLI, and asserting against a binary
-    # built from other sources is worse than not asserting. One restaled stamp
-    # used to surface as three red gates naming one remedy.
-    # shellcheck source=scripts/build/cli-usable.sh
-    source scripts/build/cli-usable.sh
-    if ! nros_cli_usable "$nros"; then
-        # shellcheck source=scripts/build/check-skip.sh
-        source scripts/build/check-skip.sh
-        nros_check_skip board-projections "$nros_cli_unusable_reason"
-        exit 0
-    fi
-    fail=0
-    while IFS= read -r cfg; do
-        leaf="$(dirname "$(dirname "$cfg")")"
-        NROS_REPO_DIR="$PWD" "$nros" ws check-board-projections "$leaf" >/dev/null 2>&1 || {
-            NROS_REPO_DIR="$PWD" "$nros" ws check-board-projections "$leaf" 2>&1 | sed 's/^/  /' >&2
-            fail=1
-        }
-    done < <(git ls-files '*/.cargo/nros-board.toml')
-    [ "$fail" = 0 ] || exit 1
-    echo "board projections OK ($(git ls-files '*/.cargo/nros-board.toml' | wc -l) leaf/leaves match their descriptor)"
+# issue 0440's `board-cargo-config-applied` (renamed `board-projections` in
+# phase-341 W4) stood here: it asked `nros ws check-board-projections` whether
+# every committed `.cargo/nros-board.toml` still matched a fresh render of its
+# descriptor.
+#
+# RETIRED by phase-445 W6 with the projection itself (RFC-0098 D1). A board's
+# `cargo_config` now reaches a leaf through `build/<image>/nros-cargo.toml`,
+# which `nros sync` and `nros build` rewrite from the descriptor every time, so
+# there is no committed mirror left that CAN drift — and the gate's own
+# enumeration would have gone empty, printing `board projections OK (0
+# leaf/leaves)` forever, which is what a check that can never fail looks like.
+# `check-example-cargo-dirs` is what stops the file coming back.
 
 [private]
 board-facts-delivery:

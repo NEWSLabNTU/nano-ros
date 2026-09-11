@@ -1,5 +1,0 @@
-include = ["../../../../../../nros-patch.toml", "nros-board.toml"]
-
-[patch.crates-io]
-nros-board-mps2-an385 = { path = "../../../../boards/nros-board-mps2-an385" }  # nros-managed
-nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh" }  # nros-managed

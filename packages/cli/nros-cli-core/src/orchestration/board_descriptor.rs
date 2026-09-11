@@ -43,7 +43,7 @@ impl PlatformKind {
     ///
     /// phase-341 W2 needs it because a leaf's `[package.metadata.nros.entry]
     /// deploy` is matched against the descriptor's `platform` (the mapping
-    /// `scripts/check-board-cargo-config-applied.sh` already uses). Written as
+    /// the retired `check-board-cargo-config-applied` gate used). Written as
     /// an exhaustive match rather than a serde round-trip so adding a variant
     /// is a compile error here instead of a silently unmatched board;
     /// `platform_kebab_round_trips` proves the two spellings agree.
@@ -1206,7 +1206,7 @@ impl BoardCatalog {
     ///    apart, and `target_contains` — [`resolve`]'s discriminator — is
     ///    useless without a target to test it against.
     /// 2. **`platform`** — the mapping
-    ///    `scripts/check-board-cargo-config-applied.sh` uses (it matches a
+    ///    the retired `check-board-cargo-config-applied` gate used (it matched a
     ///    leaf's `deploy` against each `platform = "…"`). Reached only when no
     ///    board CLAIMS the name, and only when exactly one board declares that
     ///    platform — `nuttx` is declared by two, so a deploy token that reached
@@ -2057,7 +2057,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
     }
 
     /// The `platform` fallback — the mapping
-    /// `check-board-cargo-config-applied.sh` uses — resolves a token no board
+    /// the retired `check-board-cargo-config-applied` gate used — resolves a token no board
     /// NAMES, and only when a single board declares that platform.
     #[test]
     fn deploy_falls_back_to_platform_when_unique() {

@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
-"""Issue 0463 — check that every tracked leaf `.cargo/config.toml` `include`
-target exists, before cargo turns their absence into an unreadable trace.
+"""Issue 0463 — check that every sync-written path a tracked leaf NAMES exists,
+before cargo turns its absence into an unreadable trace.
+
+phase-445 W6 moved the weight between this gate's two shapes, and the OK line
+says which is which. `examples/**` tracks no `.cargo/` file at all now
+(RFC-0098 D1) — its build configuration is generated into
+`build/<image>/nros-cargo.toml` — so the `include` arm covers only the leaves
+outside `examples/`. The arm that still fronts `just format` and
+`build-test-fixtures` for an example is the SECOND one: a `path =` dep into a
+`generated/` tree that `nros sync` has not produced.
 
 Why this needs a guard at all
 -----------------------------
