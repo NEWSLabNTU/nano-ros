@@ -197,9 +197,9 @@ fn run_cell(cell: &MCell) {
     let lang = cell.lang;
     let prefix = listener_prefix(lang);
     let talker = resolve(lang, "talker", talker_bin(lang), cell.rmw)
-        .unwrap_or_else(|e| nros_tests::skip!("{} talker fixture not built: {e}", lang.as_str()));
+        .unwrap_or_else(|e| panic!("{} talker fixture not built: {e}", lang.as_str()));
     let listener = resolve(lang, "listener", listener_bin(lang), cell.rmw)
-        .unwrap_or_else(|e| nros_tests::skip!("{} listener fixture not built: {e}", lang.as_str()));
+        .unwrap_or_else(|e| panic!("{} listener fixture not built: {e}", lang.as_str()));
 
     // Per-RMW isolation + env. Keep the router/agent guard alive for the cell.
     let mut talker_cmd = Command::new(&talker);

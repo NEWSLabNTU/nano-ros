@@ -189,7 +189,7 @@ fn spawn_nano_zenoh(bin: &Path, name: &str, locator: &str) -> ManagedProcess {
 /// when the fixtures aren't set up (`just cyclonedds setup`).
 fn nano_cyclone_c_binary(case: &str, binary: &str) -> std::path::PathBuf {
     build_native_c_example_rmw(case, binary, FixtureRmw::Cyclonedds).unwrap_or_else(|e| {
-        skip!("native/c/{case} cyclonedds fixture not built (run `just cyclonedds setup`): {e:?}")
+        panic!("native/c/{case} cyclonedds fixture not built (run `just cyclonedds setup`): {e:?}")
     })
 }
 

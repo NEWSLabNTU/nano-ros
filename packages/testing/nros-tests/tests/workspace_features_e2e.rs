@@ -407,7 +407,7 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 
 /// Resolve a cell entry, skipping when the fixture is not built.
 fn resolve(r: Resolver, lang: &str, workload: &str, role: &str) -> PathBuf {
-    r().unwrap_or_else(|e| nros_tests::skip!("{lang} {workload} {role} entry not built: {e}"))
+    r().unwrap_or_else(|e| panic!("{lang} {workload} {role} entry not built: {e}"))
 }
 
 // =============================================================================

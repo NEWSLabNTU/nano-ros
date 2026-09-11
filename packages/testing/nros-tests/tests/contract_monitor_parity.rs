@@ -68,7 +68,7 @@ fn contract_monitor_violations_report_on_diagnostics(zenohd_unique: ZenohRouter)
     }
     let pub_bin = match build_contract_monitor_pub() {
         Ok(p) => p,
-        Err(e) => nros_tests::skip!("contract-monitor-pub fixture not built: {e}"),
+        Err(e) => panic!("contract-monitor-pub fixture not built: {e}"),
     };
     let sub_bin = build_contract_monitor_sub().require("contract-monitor-sub");
     let diagsink_bin = build_contract_monitor_diagsink().require("contract-monitor-diagsink");
@@ -158,7 +158,7 @@ fn contract_monitor_compliant_pair_stays_silent(zenohd_unique: ZenohRouter) {
     }
     let pub_bin = match build_contract_monitor_pub() {
         Ok(p) => p,
-        Err(e) => nros_tests::skip!("contract-monitor-pub fixture not built: {e}"),
+        Err(e) => panic!("contract-monitor-pub fixture not built: {e}"),
     };
     let sub_bin = build_contract_monitor_sub().require("contract-monitor-sub");
     let diagsink_bin = build_contract_monitor_diagsink().require("contract-monitor-diagsink");

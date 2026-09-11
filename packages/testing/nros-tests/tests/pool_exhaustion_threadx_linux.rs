@@ -38,7 +38,7 @@ use std::{process::Command, time::Duration};
 fn zenoh_pool_exhaustion_reports_full_and_says_why_on_firmware() {
     let bin = match build_pool_exhaustion_threadx_linux() {
         Ok(p) => p,
-        Err(e) => nros_tests::skip!("pool-exhaustion fixture not built: {e}"),
+        Err(e) => panic!("pool-exhaustion fixture not built: {e}"),
     };
 
     let mut proc = ManagedProcess::spawn_command(Command::new(bin), "pool-exhaustion")

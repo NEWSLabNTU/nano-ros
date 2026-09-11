@@ -73,7 +73,7 @@ fn qos_override_best_effort_honored_and_delivers(zenohd_unique: ZenohRouter) {
     }
     let bin = match build_qos_override_pubsub() {
         Ok(p) => p.to_path_buf(),
-        Err(e) => nros_tests::skip!("qos-override-pubsub fixture not built: {e}"),
+        Err(e) => panic!("qos-override-pubsub fixture not built: {e}"),
     };
     let locator = zenohd_unique.locator();
 
@@ -150,7 +150,7 @@ fn qos_default_without_override_is_reliable(zenohd_unique: ZenohRouter) {
     }
     let bin = match build_qos_override_pubsub() {
         Ok(p) => p.to_path_buf(),
-        Err(e) => nros_tests::skip!("qos-override-pubsub fixture not built: {e}"),
+        Err(e) => panic!("qos-override-pubsub fixture not built: {e}"),
     };
     let locator = zenohd_unique.locator();
 
