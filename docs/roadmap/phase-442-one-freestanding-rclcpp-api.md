@@ -263,12 +263,22 @@ the rest and do not depend on each other.
   into `owned_entities`, and the census established that models ADDRESS
   STABILITY rather than shared ownership — but address stability is a real
   requirement, because the executor arena holds a raw dispatch pointer and has
-  no unregister path. RFC-0096 D9 states the three candidates and the measured
-  sizes that make the choice consequential (`Client<int>` is 4 672 bytes against
-  `Timer`'s 32, so a uniform worst-case pool is wrong by an order of magnitude).
-  The direction that fits this repository is entity counts DERIVED the way
-  phase-412 already derives `NROS_CPP_EXECUTOR_STORAGE_SIZE`, and it needs a
-  `just mem-report` before/after rather than a decision at the keyboard.
+  no unregister path. RFC-0096 D9 states the candidates and the measured sizes.
+  **D9 was revised the same day, and the revision changes the answer.** It had
+  been framed as a C++ storage problem; measuring the C ABI showed the intended
+  layering — a thin C++ wrapper over a Rust-owned entity — holds for ONE entity
+  kind out of eight. `nros_cpp_timer_create` returns an arena `handle_id`, and
+  `Timer` is 32 bytes; `publisher`, `subscription`, `service_server`,
+  `service_client`, `action_server`, `action_client` and `guard_condition` all
+  take `void *storage`, and the Rust object is constructed INTO the C++ object —
+  which is why `Client<int>` is **4 672 bytes** against `Timer`'s 32. The size
+  follows from the shape, not from the entity.
+  So the primary candidate is now to make the other seven look like the timer:
+  an arena for the type-erased `Rmw*` entities, sized by the counts that already
+  produce `NROS_CPP_EXECUTOR_STORAGE_SIZE`. That DISSOLVES D9 — `Handle<T>` is
+  trivially correct when C++ owns nothing — and it is an ABI and Rust-core
+  change rather than a C++ one, so it is **issue 1335**, against RFC-0022, where
+  the answer belongs.
   *Nothing mechanical in W8 should start before that is answered*: the rest is
   substitution, and substitution on top of an unanswered lifetime question is
   how a use-after-free ships.

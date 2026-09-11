@@ -438,63 +438,136 @@ the parameter instead.
 returns rather than parameters, so a caller writing `auto` is unaffected while a
 caller writing `std::string s = ...` is not. That is W8's to enumerate.
 
-### D9 — Entity STORAGE is the open problem W8 has to solve first (amendment, 2026-09-12)
+### D9 — Entity STORAGE is W8's first decision, and it is an ABI question, not a C++ one (amendment, 2026-09-12; revised the same day)
 
 The handle in D2 answers *what `X::SharedPtr` is*. It does not answer *what the
-handle points at*, and on the hosted path today that second question has an
-answer this design removes.
+handle points at*, and the hosted path's current answer — `std::make_shared`
+plus `detail::NodeHosted::owned_entities` — is one this design removes.
 
-**What the hosted path does now.** `create_publisher<M>(topic, qos)` calls
-`std::make_shared<Publisher<M>>(...)` and pushes the result into
-`detail::NodeHosted::owned_entities`, a `std::vector<std::shared_ptr<void>>`
-with eight `push_back` sites across `nros.hpp`, `node.hpp` and `timer.hpp`, no
-`erase`, no `clear`, and one drain in `~Node()`. The census already established
-that this models ADDRESS STABILITY rather than shared ownership. But address
-stability is a real requirement, not a fiction: the executor arena holds a raw
-pointer as its dispatch context and has no unregister path, so the entity must
-outlive the caller's handle whatever the caller does with it.
+**Revision note.** The first version of D9 framed this as a C++ storage problem
+and offered three C++-side answers. That framing was wrong, and the correction
+came from the obvious question: *isn't the C++ API a thin wrapper over Rust,
+with the entity lifetime owned by a Rust data structure?* That is the stated
+intent, and measuring the ABI showed it is true of one entity kind out of eight.
+The primary candidate below is the consequence.
 
-**So a freestanding `create_*` needs somewhere to put the entity**, and neither
-`make_shared` nor an unbounded vector is available. This is not a detail of W8;
-it is W8's first decision, and the sizes make it consequential:
+#### What the C ABI actually does
 
-| entity | `sizeof` (all three arms) |
+Every `create` entry point in `nros_cpp_ffi.h`, classified:
+
+| entry point | shape |
 | --- | --- |
-| `Timer` | 32 |
-| `Service<int>` | 560 |
-| `Publisher<int>` | 824 |
-| `Subscription<int>` | 888 |
-| `Client<int>` | **4 672** |
+| `nros_cpp_timer_create` (and `_on_clock`, `_oneshot`, `_in_group`) | **arena** — returns `size_t *out_handle_id` |
+| `publisher`, `subscription`, `service_server`, `service_client`, `action_server`, `action_client`, `guard_condition` | **caller storage** — takes `void *storage` |
 
-A fixed pool sized for the worst case in every node would be the wrong default
-by an order of magnitude — one unused `Client` slot costs more than a node.
+The header states the caller-storage contract in as many words: *"`storage` must
+point to a buffer of at least `NROS_PUBLISHER_SIZE` bytes… the `RmwPublisher`
+handle is written directly into this buffer."*
 
-**Three candidates, and the tree already contains material for the third.**
+So the C++ object is not a handle to a Rust-owned entity; it IS the entity's
+memory:
 
-1. *Caller-owned storage, no pool.* The out-ref family
-   (`create_publisher(out, topic, qos)`) already works this way and is ungated
-   today. It is the cheapest and it is NOT drop-in: the ported spelling is
-   `auto pub = node->create_publisher<M>(...)`, which needs a returned handle.
-2. *One fixed pool per entity kind, a template parameter on the node.*
-   `nros::NodeWithTimers<N>` is exactly this shape already, and phase-427 W4
-   introduced it for exactly this reason. Generalising it means the node type a
-   user writes carries its entity counts, which upstream's does not.
-3. *Counts DERIVED from the contract, not authored.* phase-412's derived-counts
-   machinery already computes per-image entity counts from declarations, and
-   `NROS_CPP_EXECUTOR_STORAGE_SIZE` is already a generated number in
-   `nros_cpp_config_generated.h`. An entity arena sized the same way costs the
-   user nothing to write and is measured per image rather than guessed.
+```cpp
+class Publisher {                        // 824 bytes
+    alignas(8) uint8_t storage_[NROS_PUBLISHER_SIZE];   // the RmwPublisher lives HERE
+    char topic_name_[PUBLISHER_TOPIC_NAME_MAX];
+    bool initialized_;
+};
 
-(3) is the direction that fits what this repository already does, and it is the
-one that keeps `auto pub = node->create_publisher<M>(...)` drop-in. It is also
-the one with a real cost to measure — `just mem-report` on a node before and
-after — which is why it is stated here as a decision to make with numbers rather
-than made here.
+class Timer {                            // 32 bytes -- the intended shape
+    void* executor_;
+    size_t handle_id_;
+    bool initialized_;
+    void* closure_;
+};
+```
 
-**W8 does not start until this is settled.** Recording it as an open decision is
-deliberate: the rest of W8 is mechanical once it is answered, and mechanical
-work done on top of an unanswered lifetime question is how a use-after-free
-ships.
+And the sizes follow from the shape, not from the entities:
+
+| entity | bytes | shape |
+| --- | --- | --- |
+| `Timer` | 32 | arena handle |
+| `Service<int>` | 560 | caller storage |
+| `Publisher<int>` | 824 | caller storage |
+| `Subscription<int>` | 888 | caller storage |
+| `Client<int>` | **4 672** | caller storage |
+
+`Client<int>` is not large because a client is large. It is large because the
+C++ object holds the reply buffer.
+
+#### The requirement that survives either way
+
+Whatever holds the bytes, **address stability is a contract, not a fiction.**
+The census was right that `owned_entities` — a `std::vector<std::shared_ptr<void>>`
+with eight `push_back` sites, no `erase`, no `clear`, one drain in `~Node()` —
+models address stability rather than shared ownership. But the executor arena
+stores a raw pointer as its dispatch context and has **no unregister path**, so
+an entity destroyed while the arena still holds its address turns the next
+`spin_once()` into a dispatch through freed memory. Removing `make_shared`
+removes the mechanism; it does not remove the requirement.
+
+#### The primary candidate: make the other seven look like the timer
+
+Give the Rust side an arena for the type-erased `Rmw*` entities, sized by the
+same derived counts that already produce `NROS_CPP_EXECUTOR_STORAGE_SIZE`. Every
+C++ entity then becomes `{node_or_executor, handle_id}`.
+
+This dissolves D9 rather than answering it:
+
+* `nros::Handle<T>` is trivially correct, because C++ owns nothing to begin with;
+* the lifetime is a Rust data structure's, which is what the layering intends;
+* the sizing is already derived, so no new knob and no new authored number;
+* `Client<int>` stops being 4 672 bytes of C++ object, which is what made every
+  pooling answer look unaffordable.
+
+**Why the obvious objection does not hold.** The natural reading is that the
+arena's entries are generic and so cannot cross a C ABI — and the Rust-native
+entries genuinely are (`SubInfoEntry<M, F, const RX_BUF: usize>`,
+`SrvEntry<Svc, F, REQ_BUF, REPLY_BUF>`). But the C++ path does not use those. It
+creates TYPE-ERASED `Rmw*` objects selected by `type_name` / `type_hash`
+strings, and those are not generic. `nros_cpp_timer_create` is the existence
+proof that an arena slot works on this path.
+
+**Two things that must be settled before it is adopted, and neither is ours
+alone.** First, whether caller storage was CHOSEN or accreted — RFC-0022's
+nearest line is that C "can't size inline storage at runtime", which argues for
+derived sizes and says nothing about which side holds the bytes. Second, the
+cost: the entity bytes do not vanish, they move from the C++ object into the
+arena, and the subtraction has to be MEASURED — issues 1145 and 1171 record
+exactly this trap for the executor backing, where bytes leaving the allocator
+arena and becoming linker-visible were reported as growth by everyone who
+forgot to subtract what they replaced.
+
+It is also not a C++ change: it touches the C ABI, the committed bindgen output
+(RFC-0054), the Rust core, and arguably `nros-c`, which puts BOTH its publisher
+and its timer in caller-declared structs and so is a third shape for one
+concept. **Filed as issue 1335, against RFC-0022, because that is where the
+answer belongs and it is larger than phase-442.**
+
+#### The alternatives, if caller storage turns out to be deliberate
+
+1. *Caller-owned storage, no pool.* Already ungated and already works —
+   `Result create_publisher(Publisher<M>& out, const char* topic, const QoS&)`.
+   Cheapest, and NOT drop-in: ported code writes
+   `auto pub = node->create_publisher<M>(...)`, so making this the only form
+   adds a fifth item to D5's list and changes the shape of every node body,
+   which is the code this RFC promises is drop-in.
+2. *A fixed pool per entity kind, as a node template parameter.*
+   `nros::NodeWithTimers<N>` is this shape already (phase-427 W4). It puts
+   entity counts in the type the USER writes, which upstream's `rclcpp::Node`
+   does not have, so `: public rclcpp::NodeWith<1, 0, 1>` is not a mechanical
+   edit of `: public rclcpp::Node`.
+3. *Counts derived from the contract*, the way phase-412 already derives the
+   executor storage size. Keeps the user's spelling identical to upstream's and
+   costs them nothing to write; the heaviest of the three, and the closest to
+   the primary candidate without the ABI change.
+
+#### W8 does not start until this is answered
+
+The remaining 129 gated sites are substitution once it is. Substitution on top
+of an unanswered lifetime question is how a use-after-free ships — and here the
+failure mode is a raw arena pointer into freed memory, surfacing inside
+`spin_once()` several frames from the cause.
 
 ## What this corrects in existing documents
 
