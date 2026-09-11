@@ -405,16 +405,22 @@ const nros_rmw_vtable_t kVtable = {
     /*take_with_info*/ nullptr,
     /*take_loaned_message_with_info*/ nullptr,
     /*get_node_names*/ cyclone_get_node_names,
-    /*get_topic_names_and_types*/ nullptr,
-    /*get_service_names_and_types*/ nullptr,
-    /*get_publisher_names_and_types_by_node*/ nullptr,
-    /*get_subscriber_names_and_types_by_node*/ nullptr,
-    /*get_service_names_and_types_by_node*/ nullptr,
-    /*get_client_names_and_types_by_node*/ nullptr,
-    /*get_publishers_info_by_topic*/ nullptr,
-    /*get_subscriptions_info_by_topic*/ nullptr,
-    /*count_publishers*/ nullptr,
-    /*count_subscribers*/ nullptr,
+    /* phase-444 W3 — the other eleven-twelfths of the graph family, from the
+     * DDS builtin topics (what endpoints exist, on what topic, with what type
+     * and QoS) crossed with `ros_discovery_info` (which node owns each). These
+     * were NULL since phase-376 W4, so Cyclone — the backend that meets real
+     * ROS 2 peers — answered UNSUPPORTED to every graph question but
+     * `get_node_names`. Bodies in `graph_query.cpp`. */
+    /*get_topic_names_and_types*/ graph_get_topic_names_and_types,
+    /*get_service_names_and_types*/ graph_get_service_names_and_types,
+    /*get_publisher_names_and_types_by_node*/ graph_get_publisher_names_and_types_by_node,
+    /*get_subscriber_names_and_types_by_node*/ graph_get_subscriber_names_and_types_by_node,
+    /*get_service_names_and_types_by_node*/ graph_get_service_names_and_types_by_node,
+    /*get_client_names_and_types_by_node*/ graph_get_client_names_and_types_by_node,
+    /*get_publishers_info_by_topic*/ graph_get_publishers_info_by_topic,
+    /*get_subscriptions_info_by_topic*/ graph_get_subscriptions_info_by_topic,
+    /*count_publishers*/ graph_count_publishers,
+    /*count_subscribers*/ graph_count_subscribers,
     /*node_get_graph_guard_condition*/ nullptr,
     /* Issue 1269 — one `ros_discovery_info` NodeEntitiesInfo per node. NULL
      * here made every endpoint in the image belong to the session's one

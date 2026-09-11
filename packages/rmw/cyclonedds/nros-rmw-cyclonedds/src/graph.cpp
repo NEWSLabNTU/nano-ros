@@ -172,8 +172,11 @@ void graph_fini(GraphState* g) {
     g->writer = 0;
     g->topic = 0;
     // phase-381 W5 — the graph reader cascades from the participant like the
-    // writer does; only the handle is reset here.
+    // writer does; only the handle is reset here. phase-444 W3's builtin-topic
+    // readers are the participant's children too, and go the same way.
     g->graph_reader = 0;
+    g->builtin_pub_reader = 0;
+    g->builtin_sub_reader = 0;
     g->active = false;
     g->n_readers = 0;
     g->n_writers = 0;
@@ -318,11 +321,17 @@ void graph_publish(GraphState* g) {
     ddsrt_free(infos);
 }
 
-/// phase-381 W5 — the READER half. Contract in graph.hpp.
-bool graph_visit_nodes(GraphState* g, void* ctx,
-                       bool (*visit)(void* ctx, const char* node_name,
-                                     const char* node_namespace)) {
-    if (g == nullptr || visit == nullptr || !g->active || g->topic <= 0) {
+namespace {
+
+/// phase-381 W5 — the READER half, and phase-444 W3's node ATTRIBUTION, over
+/// ONE read of `ros_discovery_info`.
+///
+/// `on_node(const NodeEntitiesInfo_&)` per discovered node record, returning
+/// `false` to stop. Both public visitors below go through here: the sample
+/// read, the loan return and the newest-wins dedup are one path, not two
+/// transcriptions of one protocol.
+template <typename F> bool visit_graph_records(GraphState* g, F&& on_node) {
+    if (g == nullptr || !g->active || g->topic <= 0) {
         return false;
     }
 
@@ -442,7 +451,7 @@ bool graph_visit_nodes(GraphState* g, void* ctx,
             continue;
         }
         for (uint32_t j = 0; j < count; ++j) {
-            if (!visit(ctx, nodes[j].node_name, nodes[j].node_namespace)) {
+            if (!on_node(nodes[j])) {
                 (void)dds_return_loan(g->graph_reader, raw, n);
                 return true;
             }
@@ -452,6 +461,46 @@ bool graph_visit_nodes(GraphState* g, void* ctx,
     // The samples are LOANED from the reader; returning them is not optional.
     (void)dds_return_loan(g->graph_reader, raw, n);
     return true;
+}
+
+} // namespace
+
+/// phase-381 W5 — the READER half. Contract in graph.hpp.
+bool graph_visit_nodes(GraphState* g, void* ctx,
+                       bool (*visit)(void* ctx, const char* node_name,
+                                     const char* node_namespace)) {
+    if (visit == nullptr) {
+        return false;
+    }
+    return visit_graph_records(g, [&](const rmw_dds_common_msg_dds__NodeEntitiesInfo_& n) {
+        return visit(ctx, n.node_name, n.node_namespace);
+    });
+}
+
+/// phase-444 W3 — every ENDPOINT the graph attributes to a node. Contract in
+/// graph.hpp.
+bool graph_visit_endpoints(GraphState* g, void* ctx,
+                           bool (*visit)(void* ctx, const char* node_name,
+                                         const char* node_namespace, const uint8_t gid[24],
+                                         bool is_writer)) {
+    if (visit == nullptr) {
+        return false;
+    }
+    return visit_graph_records(g, [&](const rmw_dds_common_msg_dds__NodeEntitiesInfo_& n) {
+        for (uint32_t i = 0; i < n.reader_gid_seq._length; ++i) {
+            if (!visit(ctx, n.node_name, n.node_namespace, n.reader_gid_seq._buffer[i].data,
+                       false)) {
+                return false;
+            }
+        }
+        for (uint32_t i = 0; i < n.writer_gid_seq._length; ++i) {
+            if (!visit(ctx, n.node_name, n.node_namespace, n.writer_gid_seq._buffer[i].data,
+                       true)) {
+                return false;
+            }
+        }
+        return true;
+    });
 }
 
 } // namespace nros_rmw_cyclonedds

@@ -137,17 +137,9 @@ dds_qos_t *make_dds_qos(const rmw_qos_profile_t *src) {
  * the caller passed in, so an unreported field reads as "unchanged" rather than
  * as zero — a zeroed `depth` would look like a legitimate answer.
  */
-rmw_ret_t read_entity_qos(dds_entity_t entity, rmw_qos_profile_t *out) {
-    if (entity <= 0 || out == nullptr) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
-    }
-    dds_qos_t *q = dds_create_qos();
-    if (q == nullptr) {
-        return NROS_RMW_RET_BAD_ALLOC;
-    }
-    if (dds_get_qos(entity, q) != DDS_RETCODE_OK) {
-        dds_delete_qos(q);
-        return NROS_RMW_RET_ERROR;
+void qos_from_dds(const dds_qos_t *q, rmw_qos_profile_t *out) {
+    if (q == nullptr || out == nullptr) {
+        return;
     }
 
     dds_reliability_kind_t rel;
@@ -202,7 +194,21 @@ rmw_ret_t read_entity_qos(dds_entity_t entity, rmw_qos_profile_t *out) {
                                        ? NROS_RMW_DURATION_INFINITE_MS
                                        : (uint32_t)(lease / DDS_NSECS_IN_MSEC);
     }
+}
 
+rmw_ret_t read_entity_qos(dds_entity_t entity, rmw_qos_profile_t *out) {
+    if (entity <= 0 || out == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    dds_qos_t *q = dds_create_qos();
+    if (q == nullptr) {
+        return NROS_RMW_RET_BAD_ALLOC;
+    }
+    if (dds_get_qos(entity, q) != DDS_RETCODE_OK) {
+        dds_delete_qos(q);
+        return NROS_RMW_RET_ERROR;
+    }
+    qos_from_dds(q, out);
     dds_delete_qos(q);
     return NROS_RMW_RET_OK;
 }

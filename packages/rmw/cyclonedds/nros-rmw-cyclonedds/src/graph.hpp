@@ -62,6 +62,12 @@ struct GraphState {
     /// Created lazily on the first graph query: a node that never asks pays
     /// nothing, which matters because most embedded images never ask.
     dds_entity_t graph_reader{0};
+    /// phase-444 W3 — the DDS BUILTIN-topic readers the graph QUERIES read
+    /// (`DCPSPublication` / `DCPSSubscription`). Lazily created on the first
+    /// query for the same reason `graph_reader` is: an image that never asks
+    /// pays no reader and no history.
+    dds_entity_t builtin_pub_reader{0};
+    dds_entity_t builtin_sub_reader{0};
     uint8_t participant_gid[24]{};
 
     /// Slots are STABLE: a released record is marked unused and never moved,
@@ -142,6 +148,23 @@ void graph_publish(GraphState* g);
 /// the caller reports as `UNSUPPORTED` — distinct from an empty graph.
 bool graph_visit_nodes(GraphState* g, void* ctx,
                        bool (*visit)(void* ctx, const char* node_name, const char* node_namespace));
+
+/// phase-444 W3 — every ENDPOINT the graph attributes to a node, across every
+/// participant that has published `ros_discovery_info`.
+///
+/// `visit(ctx, node_name, node_namespace, gid, is_writer)` per listed GID;
+/// return `false` to stop. Strings and `gid` are BORROWED for the call.
+///
+/// This is the ATTRIBUTION half of the graph queries: the DDS builtin topics
+/// say which endpoints exist, on what topic, with what type and QoS, and say
+/// nothing about nodes — ROS's node layer exists only in this message. Same
+/// read, same dedup and the same "reports what has been DISCOVERED" contract as
+/// `graph_visit_nodes`; `false` means the graph is inactive, which the caller
+/// reports as UNSUPPORTED.
+bool graph_visit_endpoints(GraphState* g, void* ctx,
+                           bool (*visit)(void* ctx, const char* node_name,
+                                         const char* node_namespace, const uint8_t gid[24],
+                                         bool is_writer));
 
 } // namespace nros_rmw_cyclonedds
 
