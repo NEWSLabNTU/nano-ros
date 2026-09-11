@@ -68,6 +68,39 @@ build without a checkout. That is why A1/A2 could ship broken.
 *Acceptance:* `just probe bootstrap` runs scaffold -> build -> run in a clean
 container with no checkout; it fails before A1+A2 and passes after.
 
+*Status (2026-09-11): the gate landed and is RED — on a defect A1+A2 did not
+reach, filed as [issue 1304](../issues/1304-installed-setup-cannot-provision-submodule-sources.md).*
+
+- **What runs.** `just probe bootstrap` runs both front doors; the new
+  `installed` track (`just probe installed`) installs a release into a pristine
+  container with nothing mounted but the asset, then runs `installation.md`'s
+  install + `nros setup` blocks and `first-project.md`'s scaffold and build
+  blocks (`track=` tags), then the entry.
+- **Where the asset comes from.** No release exists, so the probe builds the
+  one `release-nros.yml` would publish — by running that workflow's own
+  `run:` steps, extracted from the commit under test
+  (`scripts/probe/extract-workflow-steps.py`), on the image its `runs-on`
+  names. A probe with its own staging list would be a second definition of
+  "what a release contains", green on the day the workflow dropped a line
+  (R5's first version). `PROBE_ASSET=<dir>` installs a runner-built artifact
+  instead.
+- **The two directions, measured.** With A1+A2 the no-checkout / shipped-root
+  check passes (`nros sdk-root` answers "via this toolchain's own
+  share/nano-ros") and the run stops at `nros setup` — issue 1304: every
+  source `native` needs is a submodule, and a release has no gitlink to read.
+  With A1+A2 reverted the run stops right after the install, at that check:
+  `nros sdk-root` has no answer. Configuring the scaffold by hand on each
+  snapshot agrees: reverted, cmake cannot find `cmake/NanoRosWorkspace.cmake`;
+  intact, it resolves the release's SDK root, passes Corrosion once a Rust
+  toolchain exists, and stops at Cyclone (1304 again).
+- **Why the check sits after the install step.** First version checked at the
+  END, so both directions died at `nros setup` with the same message — a
+  regression of A1+A2 would have been indistinguishable from the open 1304
+  red. `extract-book-steps.py --after-step` splices it in where it becomes
+  checkable.
+- **Still open:** "passes after" — blocked on 1304 (sources, a Rust toolchain
+  on the installed path, a configure that finds the installed Cyclone dist).
+
 ### B1 — the submodule arm skips what is already there
 
 `git submodule status --recursive -- <path>`: skip iff every line's prefix is a

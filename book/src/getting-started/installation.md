@@ -108,7 +108,7 @@ in a section below.
 > from the checkout is how everyone gets `nros`. `install.sh` says so itself if
 > you run it early, and points you back here.
 
-```sh probe=20
+```sh probe=20 track=checkout
 # 1. Pull the source at a pinned version (or `main` for latest):
 git clone --branch nros-v0.5.0 https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
@@ -315,8 +315,9 @@ both vendored submodules) and no daemon at all.
 **If you only want to use nano-ros**, install a release — no checkout,
 no cargo, no `just`:
 
-```sh
+```sh probe=20 track=installed
 curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"   # install.sh prints this line too
 ```
 
 It verifies the download's sha256 (and refuses an asset it cannot
@@ -382,7 +383,7 @@ Cyclone included — does NOT require ROS 2, only the pip-installable
 
 ### 3. Provision a board (+ RMW)
 
-```bash
+```bash probe=25 track=installed
 nros setup <board> --rmw <zenoh|xrce|cyclonedds>
 ```
 
