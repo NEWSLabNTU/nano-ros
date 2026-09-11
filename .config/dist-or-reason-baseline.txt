@@ -1,0 +1,21 @@
+# `[tool.*]` entries in nros-sdk-index.toml with no `dist.<host>` row, each
+# with the reason it has none. A RATCHET, not an allowlist: RFC-0099 D4 says a
+# source build never means "this tool must be compiled" — it means the index
+# has no dist row for the host — so every name below is a standing decision
+# recorded in the index's own comment beside `[tool.<name>]`, never a TODO.
+#
+# `check-dist-or-reason` fails when a tool here GAINS a `dist.<host>` (remove
+# its line) or a dist-less tool appears with NO line at all (add one, with the
+# reason written in the index next to the entry, not only here) — so the debt
+# can only shrink and a fixed gap cannot silently linger, the issue-0743 class
+# one ratchet over.
+#
+# Regenerate: python3 scripts/sdk/check-dist-or-reason.py --write-baseline
+cargo-show-asm    # upstream (pacak/cargo-show-asm) publishes no GitHub Releases at all
+corrosion         # upstream (corrosion-rs/corrosion) ships source tarballs only, no binaries
+esp32-qemu        # upstream's matching asset is a full GUI QEMU build (~55 libs); measured and declined
+genromfs          # upstream (chexum/genromfs) publishes no GitHub Releases at all
+make              # DECIDED (RFC-0099 D4): stays [tool.*]; GNU ftp ships source tarballs only
+nros              # circular: no nros release exists yet to point a dist at (phase-431 W5)
+play_launch_parser # DECIDED (issue 1273): we build + publish this dist ourselves; not seeded yet
+rustfilt          # upstream's only release asset is a macOS-only Homebrew bottle

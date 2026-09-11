@@ -11,6 +11,18 @@
 # `dist.<host>` out — `nros setup` falls back to the `[tool.*.source]` recipe.
 #
 # host keys: linux-x86_64 · linux-arm64 · macos-arm64  (matches sdk_index::host_key)
+#
+# A source build is not what it means for `[tool.*.source]` to be present —
+# `plan_install` already prefers `dist_for(host)` over it — it means the index
+# has no `dist.<host>` row for that host. Every `[tool.*]` here either carries
+# one or is named, with its reason, in `.config/dist-or-reason-baseline.txt`
+# (the dist-or-reason ratchet, issue 1273 / RFC-0099 D4 / phase-447 C2,
+# `check-dist-or-reason`); the list may only shrink. NOT `cargo-binstall` as a
+# third acquisition path beside `dist` and `source` — it resolves at RUN time
+# against unpinned crates.io/GitHub metadata, where this index's contract is a
+# pinned `url` + `sha256` verified before unpack (issue 1273 records the case
+# for it, and why maintainer-side/offline is the only shape that would keep
+# both properties).
 
 # --- the repo's own build-stage source union (issue 0390) ---
 # The `[source.*]` names `just test` (links every RMW's `-sys`) and
@@ -93,6 +105,12 @@ packages = ["cmake", "clang"]
 # below (the index's documented behaviour, top of file). Linux only for now —
 # the tree defers macOS support, and an asset for it would be a support claim
 # we do not make.
+#
+# This is the dist-or-reason ratchet's (issue 1273 / RFC-0099 D4,
+# `.config/dist-or-reason-baseline.txt`) one genuinely CIRCULAR case: `nros`
+# cannot have a dist row until `nros` has a release, and cutting the release is
+# phase-431 W5's job, not C2's. Every other entry there is a standing decision;
+# this one is a placeholder that the ratchet must shed the day W5 lands.
 [tool.nros]
 version = "0.5.0-nros1"
 front = ["bin/nros"]
@@ -276,12 +294,27 @@ dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/
 # `RUSTC_WRAPPER := sccache` (and the zephyr fixture build uses it as a CMake
 # COMPILER_LAUNCHER) when it is on PATH, so provisioning it halves clean / CI
 # rebuilds (measured ~46% host, ~22% embedded — docs/development/build-ux-audit.md).
-# Source-only for now: `dist.<host>` is left out until a prebuilt asset is seeded
-# on NEWSLabNTU/nano-ros-sdk, so `nros setup --tool sccache` falls back to the
-# source recipe (`cargo install sccache`).
+#
+# PREBUILT (issue 1273 / RFC-0099 D4): upstream publishes musl-linked release
+# assets — `-unknown-linux-musl` on both Linux arches — so the dist is
+# STATICALLY linked and carries no runtime closure at all (`ldd` on the
+# downloaded x86_64 binary prints `statically linked`; verified 2026-09-11).
+# That is strictly better than the `[tool.mdbook]` musl choice: there is no
+# glibc floor to worry about (RFC-0099 D5) because there is no dynamic libc
+# dependency in the first place. Each archive holds a `<triple>/{sccache,
+# LICENSE,README.md}` directory rather than the `<prefix>/bin` shape the
+# mirror's own dists use, so `install` extracts just the binary by member
+# path (the `-O` stdout-extract form works identically under GNU and BSD
+# tar, unlike a glob that needs `--wildcards` on GNU only).
 [tool.sccache]
 version = "0.17.0-nros1"
 upstream = "0.17.0" # = source.ref (mozilla/sccache release tag, without the `v`)
+smoke = [
+    { run = "bin/sccache --version", expect = "sccache 0.17.0" },
+]
+dist.linux-x86_64 = { url = "https://github.com/mozilla/sccache/releases/download/v0.17.0/sccache-v0.17.0-x86_64-unknown-linux-musl.tar.gz", sha256 = "67c4a96dd237c1f518f6b36083f270f9976d516f1e57fce891755ea782e50006", install = "mkdir -p {prefix}/bin && tar -xOf {archive} sccache-v0.17.0-x86_64-unknown-linux-musl/sccache > {prefix}/bin/sccache && chmod +x {prefix}/bin/sccache" }
+dist.linux-arm64 = { url = "https://github.com/mozilla/sccache/releases/download/v0.17.0/sccache-v0.17.0-aarch64-unknown-linux-musl.tar.gz", sha256 = "821a86343191aa1cbab74bd42f9e93c9a63bf85e4742945f40d3ae84193c1c77", install = "mkdir -p {prefix}/bin && tar -xOf {archive} sccache-v0.17.0-aarch64-unknown-linux-musl/sccache > {prefix}/bin/sccache && chmod +x {prefix}/bin/sccache" }
+dist.macos-arm64 = { url = "https://github.com/mozilla/sccache/releases/download/v0.17.0/sccache-v0.17.0-aarch64-apple-darwin.tar.gz", sha256 = "0c560bfba31aef5bdfb4fb3d2677f6e61d71c5c00952f2a83344f47aa31f00f1", install = "mkdir -p {prefix}/bin && tar -xOf {archive} sccache-v0.17.0-aarch64-apple-darwin/sccache > {prefix}/bin/sccache && chmod +x {prefix}/bin/sccache" }
 [tool.sccache.source]
 git = "https://github.com/mozilla/sccache"
 ref = "v0.17.0"
@@ -362,8 +395,14 @@ git = "https://github.com/taiki-e/cargo-llvm-cov"
 ref = "v0.9.0"
 install = "cargo install --path . --root {prefix} --locked"
 
-# Demangles Rust symbols in `mem-report` / profiling output. Small, and upstream
-# publishes no binaries, so source only — the `[tool.sccache]` shape.
+# Demangles Rust symbols in `mem-report` / profiling output. Small, and
+# source-only (issue 1273 / RFC-0099 D4 survey, verified 2026-09-11 against the
+# GitHub releases API): `luser/rustfilt`'s one release, `0.2.1`, carries exactly
+# one asset, a Homebrew bottle for macOS `big_sur` (x86_64) — no Linux binary
+# of any kind, and not even a matching macOS arch for this index's
+# `macos-arm64` host key. On the dist-or-reason ratchet
+# (`.config/dist-or-reason-baseline.txt`), not the `[tool.sccache]` shape —
+# that entry now carries a dist.
 [tool.rustfilt]
 version = "0.2.1-nros1"
 upstream = "0.2.1" # = source.ref (luser/rustfilt release tag)
@@ -376,7 +415,10 @@ ref = "0.2.1"
 install = "cargo install --path . --root {prefix} --locked"
 
 # Reads the generated assembly for a function — a debugging tool, not a build
-# input. Source only, like rustfilt.
+# input. Source only (issue 1273 / RFC-0099 D4, verified 2026-09-11):
+# `pacak/cargo-show-asm` is a real, unarchived repo with tags but publishes no
+# GitHub Releases at all — the releases API returns an empty list, so there is
+# no asset of any kind to point a dist row at. On the dist-or-reason ratchet.
 [tool.cargo-show-asm]
 version = "0.2.9-nros1"
 upstream = "0.2.9" # = source.ref (pacak/cargo-show-asm release tag)
@@ -498,6 +540,17 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # fetches nothing; this row remains so `nros setup --tool play_launch_parser`
 # and `nros sdk-path` keep working for an out-of-tree consumer, and its `ref` is
 # the submodule pin so the two cannot disagree.
+#
+# STILL SOURCE-ONLY (issue 1273 / RFC-0099 D4) — DECIDED, not a gap: we build
+# this dist ourselves and publish it into `NEWSLabNTU/nano-ros-sdk`, on our own
+# schedule, rather than waiting on an upstream release cycle for a repo we own
+# (`play_launch` has none to wait on). A `nano-ros-sdk` build script for it
+# exists now (phase-447 C2), but no release asset does yet — adding a
+# `dist.<host>` row that names an asset nobody has published is exactly the
+# lie `check-vendor-fetch-pinned`-style verification exists to catch, so this
+# entry stays on the dist-or-reason ratchet
+# (`.config/dist-or-reason-baseline.txt`) until that asset is seeded and this
+# row gains a `dist.linux-x86_64`.
 [tool.play_launch_parser]
 version = "0.1.0-nros1"
 system = ["libexpat1", "libpython310", "libz1"]
@@ -516,7 +569,10 @@ install = "cargo install --path src/ros-launch-resolve/parser/crates/play_launch
 # `docs/development/sdk-tiers.md`, idempotent — `just workspace install-corrosion`
 # already gates on a `.installed-version` stamp). Source-built only — upstream
 # `corrosion-rs/corrosion` releases ship source tarballs, not prebuilt binaries
-# we mirror, so no `dist.<host>` rows. Pinned to the same `v0.6.1` tag the
+# we mirror, so no `dist.<host>` rows (re-verified 2026-09-11 for issue 1273 /
+# RFC-0099 D4: the releases API lists tags with no assets at all — the same
+# shape as `[tool.cargo-show-asm]`. On the dist-or-reason ratchet,
+# `.config/dist-or-reason-baseline.txt`). Pinned to the same `v0.6.1` tag the
 # `just workspace install-corrosion` recipe uses, so a `nros setup --tool corrosion`
 # and a `just workspace install-corrosion` land the same Corrosion version at the
 # same prefix. The Phase 212 `cmake_mixed_corrosion_bridge_builds` test (and the
@@ -567,6 +623,23 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # Phase 197.3 — Espressif's QEMU fork (provides the `esp32c3` machine the ESP32
 # emulator tests need; stock qemu-system-riscv32 only knows `virt`). Source-built
 # only (not hosted) — `just esp32 setup` → `nros setup --tool esp32-qemu`.
+#
+# NOT switched to a dist for issue 1273 / RFC-0099 D4, and this is the survey's
+# one MEASURED-AND-DECLINED case rather than a "nothing to point at" one:
+# `espressif/qemu` DOES publish a prebuilt `qemu-riscv32-softmmu-*` asset for
+# every host this index keys, at the EXACT pinned tag
+# (`esp-develop-9.2.2-20260417`, matching `[tool.esp32-qemu.source].ref`) — so
+# the obvious move is "point at it, the `[tool.zephyr-sdk]` pattern". Verified
+# 2026-09-11 by downloading the `x86_64-linux-gnu` asset and running `ldd`
+# with `LD_LIBRARY_PATH` unset: it is a FULL GUI QEMU build — SDL2, X11,
+# Wayland, PulseAudio, D-Bus, systemd, libdecor, 55 shared libraries in total —
+# the opposite of what the `--disable-*` recipe below exists to produce. That
+# recipe's own header already measured `check-dist-runtime-deps` finding 69
+# undeclared sonames on an unpinned configure; taking this asset would not
+# avoid that work, it would make it PERMANENT — every one of those 55 libraries
+# becoming a `[prereq.*]` this index carries forever, to remove one source
+# build. Declared on the dist-or-reason ratchet
+# (`.config/dist-or-reason-baseline.txt`) rather than silently left off it.
 [tool.esp32-qemu]
 version = "esp-develop-nros1"
 # Source-built (no dist): the first three are BUILD deps of qemu's meson
@@ -663,13 +736,24 @@ install = "ninja -C build -j$(nproc) && ninja -C build install"
 # because a documented-provisioned host could not COMPILE the example; this is
 # the same claim about the PACK step.
 #
-# Source-built and pinned like every other cargo tool here (`[tool.sccache]`,
-# `[tool.play_launch_parser]`) rather than a bare `cargo install espflash`, which
-# would resolve against crates.io at whatever version is current that day — the
-# drift the pinning convention and the project-wide `--locked` shim exist to
-# prevent. The binary lives in the `espflash/` subdir of the workspace
-# (`cargo-espflash/` is the separate cargo-subcommand front end and is not
-# wanted here).
+# PREBUILT (issue 1273 / RFC-0099 D4): esp-rs publishes release binaries —
+# a bare `espflash` at the zip root, the `[tool.ninja]` shape. linux-x86_64
+# takes the `-musl` asset (statically linked — `ldd` prints "statically
+# linked", so like the sccache dist above there is no glibc floor to track at
+# all); no musl asset is published for aarch64, so linux-arm64 takes the `-gnu`
+# one (dynamic, but glibc/libgcc/libm only — no `system` declaration needed,
+# matching the source recipe's own "NO system" finding below). Every asset's
+# `--version` was run after download and printed `espflash 4.5.0`, verified
+# 2026-09-11.
+#
+# The SOURCE recipe stays as the fallback and its own rationale, since a host
+# off the three built arches still needs it: pinned like every other cargo
+# tool here (`[tool.sccache]`, `[tool.play_launch_parser]`) rather than a bare
+# `cargo install espflash`, which would resolve against crates.io at whatever
+# version is current that day — the drift the pinning convention and the
+# project-wide `--locked` shim exist to prevent. The binary lives in the
+# `espflash/` subdir of the workspace (`cargo-espflash/` is the separate
+# cargo-subcommand front end and is not wanted here).
 #
 # NO `system = [...]`: verified by building it on a clean host 2026-08-10 —
 # `serialport v4.9.0` compiles with no libudev dev package present, so the
@@ -679,6 +763,13 @@ install = "ninja -C build -j$(nproc) && ninja -C build install"
 [tool.espflash]
 version = "4.5.0-nros1"
 upstream = "v4.5.0" # = source.ref (esp-rs/espflash release tag)
+smoke = [
+    { run = "bin/espflash --version", expect = "espflash 4.5.0" },
+]
+dist.linux-x86_64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-x86_64-unknown-linux-musl.zip", sha256 = "542c5cc81f0cca384cbead1cacb7ccc9f35072a989b2de0fb95333d814272c22", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash" }
+dist.linux-arm64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-aarch64-unknown-linux-gnu.zip", sha256 = "2d5972b9c18fc89bf253e60fe6df6a4f8db3aee5db0166b2c97b53bd21c01f09", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash" }
+dist.macos-arm64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-aarch64-apple-darwin.zip", sha256 = "6614ff70e523a6bce5f4ccc6459b77275f5e7e900429004bb7eec463c95db28a", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash" }
+system = ["unzip"]
 [tool.espflash.source]
 git = "https://github.com/esp-rs/espflash"
 ref = "v4.5.0"
@@ -690,6 +781,11 @@ install = "cargo install --path espflash --root {prefix} --locked"
 # arm doesn't. Source-built (tiny single-file C tool; not apt — keeps "everything
 # via nros setup"). Installs to {prefix}/bin/genromfs; activate puts the SDK-store
 # bins on PATH. Only the rv-virt-nuttx board lists it.
+#
+# No dist row (issue 1273 / RFC-0099 D4, verified 2026-09-11): `chexum/genromfs`
+# publishes no GitHub Releases at all — tags only, no assets, nothing to point
+# a `dist.<host>` at. On the dist-or-reason ratchet
+# (`.config/dist-or-reason-baseline.txt`).
 [tool.genromfs]
 version = "0.5.7-nros1"
 upstream = "0.5.7"
@@ -755,6 +851,12 @@ install = "cmake --build build -j$(nproc) && install -D -m 0755 build/ninja {pre
 # make — the jobserver SERVER half. Source-built because upstream ships NO
 # prebuilt binary: ftp.gnu.org carries release tarballs only, so the policy's
 # fallback arm is the only arm available here.
+#
+# `make` and `ninja` stay `[tool.*]` rather than routing to apt — DECIDED,
+# RFC-0099 D4 / phase-447 C2. This entry is surveyed like every other one, not
+# exempted from the survey: it has no `dist.<host>` because there is nothing
+# upstream to point one at, not because the tool is special. On the
+# dist-or-reason ratchet (`.config/dist-or-reason-baseline.txt`).
 #
 # A TARBALL and not `git`, because GNU make's git tree at 4.4.1 ships no
 # `configure` — only `bootstrap`, which wants autoconf/automake/gettext and
@@ -2148,7 +2250,15 @@ check = { sharedlib = "libpcre2-8.so.0" }
 
 [prereq.libpython310]
 role = "infra"
-why = "runtime dep of the play_launch_parser dist(s) (issue 0926)"
+# Corrected for issue 1273 / RFC-0099 D4 — `play_launch_parser` has no dist (it
+# is on the dist-or-reason ratchet, `.config/dist-or-reason-baseline.txt`), so
+# that could never have been the true reason. The real one: PR #896
+# (phase-447 A1) made `nros-launch-resolve` ship in the release
+# (`.github/workflows/release-nros.yml`'s "Stage the prefix" step), and it
+# links `libpython3.10.so.1.0` as a hard `DT_NEEDED` (pyo3's
+# `auto-initialize`) — this prereq exists for THAT binary, not for a dist that
+# does not exist.
+why = "runtime dep of the nros-launch-resolve release binary (pyo3 auto-initialize links libpython3.10.so.1.0; phase-447 A1 / PR #896)"
 apt = ["libpython3.10"]
 dnf = ["python3.10-libs"]
 pacman = ["python310"]
