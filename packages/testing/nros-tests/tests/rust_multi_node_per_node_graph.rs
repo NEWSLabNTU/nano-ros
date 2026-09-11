@@ -111,7 +111,7 @@ fn rust_multi_node_entry_per_node_graph_nodes(
     let entry = match build_native_workspace_rust_entry() {
         Ok(p) => p.to_path_buf(),
         Err(e) => {
-            nros_tests::skip!("workspace-rust-native native_entry fixture not built: {e}")
+            panic!("workspace-rust-native native_entry fixture not built: {e}")
         }
     };
 

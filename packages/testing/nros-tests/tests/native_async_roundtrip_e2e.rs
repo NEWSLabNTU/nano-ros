@@ -40,9 +40,7 @@ fn native_async_service_client_awaits_reply(zenohd_unique: ZenohRouter) {
         .require("native service-server");
     let client = build_native_async_service_client()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| {
-            nros_tests::skip!("native async service-client fixture not built: {e}")
-        });
+        .unwrap_or_else(|e| panic!("native async service-client fixture not built: {e}"));
     let locator = zenohd_unique.locator();
 
     // Server first, so its queryable is discoverable before the client calls.

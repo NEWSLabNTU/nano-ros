@@ -254,9 +254,9 @@ fn run_cell(cell: &MCell) {
     let lang = cell.lang;
     let (srv_case, srv_bin, cli_case, cli_bin, ready, result) = roles(lang, cell.workload);
     let server = resolve(lang, srv_case, srv_bin, cell.rmw)
-        .unwrap_or_else(|e| nros_tests::skip!("{} server fixture not built: {e}", lang.as_str()));
+        .unwrap_or_else(|e| panic!("{} server fixture not built: {e}", lang.as_str()));
     let client = resolve(lang, cli_case, cli_bin, cell.rmw)
-        .unwrap_or_else(|e| nros_tests::skip!("{} client fixture not built: {e}", lang.as_str()));
+        .unwrap_or_else(|e| panic!("{} client fixture not built: {e}", lang.as_str()));
 
     let mut server_cmd = Command::new(&server);
     let mut client_cmd = Command::new(&client);

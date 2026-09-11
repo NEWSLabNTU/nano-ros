@@ -182,7 +182,7 @@ fn test_declarative_safety_listener_receives_integrity(zenohd_unique: ZenohRoute
 
     let listener_path = match build_native_declarative_safety_listener() {
         Ok(p) => p,
-        Err(e) => nros_tests::skip!("declarative-safety-listener fixture not built: {e}"),
+        Err(e) => panic!("declarative-safety-listener fixture not built: {e}"),
     };
     let talker_path = build_native_talker_safety().require("safety talker");
     let locator = zenohd_unique.locator();
@@ -268,7 +268,7 @@ fn test_c_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
     let listener =
         match build_native_c_example_rmw("safety-listener", "c_safety_listener", Rmw::Zenoh) {
             Ok(p) => p,
-            Err(e) => nros_tests::skip!("c safety-listener fixture not built: {e}"),
+            Err(e) => panic!("c safety-listener fixture not built: {e}"),
         };
     let talker = build_native_talker_safety().require("safety talker");
     let locator = zenohd_unique.locator();
@@ -320,7 +320,7 @@ fn test_cpp_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
     let listener =
         match build_native_cpp_example_rmw("safety-listener", "cpp_safety_listener", Rmw::Zenoh) {
             Ok(p) => p,
-            Err(e) => nros_tests::skip!("cpp safety-listener fixture not built: {e}"),
+            Err(e) => panic!("cpp safety-listener fixture not built: {e}"),
         };
     let talker = build_native_talker_safety().require("safety talker");
     let locator = zenohd_unique.locator();
