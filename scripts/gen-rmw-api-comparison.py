@@ -400,6 +400,10 @@ def build():
     slots_named = vtable_slots_named()
     visitors = visitor_payloads()
     kinds = parity._slot_kinds()
+    # phase-428 W8 — `inert` means NOTHING READS IT, so the per-row note has
+    # to say which of the two costs it is: a shape nobody has filled, or a
+    # body nobody calls. Both are inert; only the second is wasted work.
+    slot_bodies = parity._slot_producers()
     rules = arg_rules()
 
     rows, unexplained = [], {}
@@ -419,12 +423,14 @@ def build():
         status = "absent"
         causes = []
         inert = False
+        inert_body = False
         note = detail if where in ("layer", "declined") else ""
 
         if where in ("vtable", "global"):
             if where == "vtable":
                 name = re.split(r"[ ,(]", detail.strip())[0]
                 inert = kinds.get(name) == "inert"
+                inert_body = inert and name in slot_bodies
                 our_ret, our_params = rets.get(name, "?"), slots.get(name, [])
                 our_display = annotate_visitors(
                     slots_named.get(name, our_params), visitors
@@ -474,6 +480,7 @@ def build():
         rows.append({
             "sym": sym, "where": where, "up": up_html, "ours": our_html,
             "status": status, "causes": causes, "note": note, "inert": inert,
+            "inert_body": inert_body,
             "cstatus": cstatus, "answers": answers, "surface": surface,
             "issue": map_row.get("issue"),
             "merge_n": _claims.get(name, 0) if where == "vtable" else 0,
@@ -564,8 +571,10 @@ def render(contract, rows, tally, matrix, _un):
     w("absent, or *answered elsewhere* when the capability ships outside the RMW seam —")
     w("in the executor, in codegen, or inside a backend. Both carry the reason.")
     w("")
-    w("**A dimmed right-hand cell** is an *inert* slot: declared in the vtable, written")
-    w("and read by nothing. A reserved shape, not a working capability (issue 0800).")
+    w("**A dimmed right-hand cell** is an *inert* slot: declared in the vtable and")
+    w("**read by nothing**. A reserved shape, not a working capability (issue 0800) —")
+    w("and some of them ARE filled by a backend, which is an implementation no caller")
+    w("reaches rather than a capability (phase-428 W8).")
     w("")
     w("## What is being compared")
     w("")
@@ -680,7 +689,12 @@ def render(contract, rows, tally, matrix, _un):
         if r["renamed_to"]:
             bits.append(f"<b>renamed</b> — the slot is <code>{e(r['renamed_to'])}</code>.")
         if r["inert"]:
-            bits.append("<b>inert</b> — declared, written and read by nothing.")
+            bits.append(
+                "<b>inert</b> — declared and READ BY NOTHING"
+                + (", though a backend fills it" if r["inert_body"] else
+                   ", and filled by nothing")
+                + "."
+            )
         for title, why in r["causes"]:
             bits.append(f"<b>{e(title)}</b> — {e(why)}")
         if r["note"]:
@@ -877,9 +891,10 @@ def main():
             file=sys.stderr,
         )
         return 1
-    # An inert slot is declared and unfilled. Under the old taxonomy it counted
-    # as ANSWERED, which is the state this axis exists to stop being invisible:
-    # say whether it is a plan, a decision, or a gap.
+    # An inert slot is one NOTHING READS — a backend body does not change that
+    # (phase-428 W8). Under the old taxonomy it counted as ANSWERED, which is
+    # the state this axis exists to stop being invisible: say whether it is a
+    # plan, a decision, or a gap.
     silent = [
         r["sym"] for r in rows
         if r["inert"] and r["cstatus"] in ("same", "re-shaped")
@@ -892,7 +907,8 @@ def main():
         for sym in silent:
             print("  %s" % sym, file=sys.stderr)
         print(
-            "\n  An inert slot is DECLARED and nothing fills it. Give each a `status`\n"
+            "\n  An inert slot is one NOTHING READS — a backend body does not make it\n"
+            "  a capability, only an unreachable implementation. Give each a `status`\n"
             "  in docs/reference/rmw-api-map.toml:\n"
             "    re-mapped       the capability ships elsewhere; `answers` names where\n"
             "    not-supported   a decision, permanent, with a reason\n"

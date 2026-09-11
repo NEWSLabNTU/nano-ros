@@ -11,27 +11,39 @@ So this splits by the two questions that actually differ, both derived from the
 tree rather than declared:
 
   producer — some backend's vtable initializer assigns it something non-NULL
-  consumer — some non-generated source reads `vtable.<slot>` / `(*vt).<slot>`
+  consumer — some non-generated source reads `vtable.<slot>` / `vt->slot`
 
-and classifies every slot:
+**CONSUMPTION IS ASKED FIRST (phase-428 W8).** A slot is covered when something
+READS it; a backend BODY does not satisfy that. The order used to be the other
+way — `produced` was tested before `consumed`, so a slot some backend filled was
+`produced` whatever the runtime did with it, and a body no dispatch site can
+reach counted as a working capability. That is issue 0800's own confusion
+("the slot exists" reading as "the capability works") displaced one step: not a
+declared slot with no body, but a body with no caller. Five slots were in that
+state and none of them showed up anywhere — four `*_get_actual_qos` variants
+cyclonedds filled when issue 0823 closed, plus `required_rx_bytes`, filled for
+zenoh-pico by phase-403 W4 while the header itself says "Nothing calls this yet".
 
-  produced      a backend fills it. Nothing to declare.
-  default       consumed, no producer, and the header documents what a NULL
-                slot means — so a caller gets a defined answer. The header IS
-                the reason; this tool only checks it is there.
-  unimplemented consumed, no producer, and NO documented NULL behaviour. A
-                caller can reach it and the ABI does not say what happens.
-                Must be declared, with a tracked issue.
-  inert         no producer AND no consumer. Nothing in the tree writes or
-                reads it: pure ABI surface. Legitimate — an ABI that mirrors
-                upstream reserves a slot's position and shape before anything
-                fills it — but it must be a DECISION, so every inert slot
-                belongs to a declared family with a reason.
+  produced      something reads it AND a backend fills it. Nothing to declare.
+  default       read, no producer, and the header documents what a NULL slot
+                means — so a caller gets a defined answer. The header IS the
+                reason; this tool only checks it is there.
+  unimplemented read, no producer, and NO documented NULL behaviour. A caller
+                can reach it and the ABI does not say what happens. Must be
+                declared, with a tracked issue.
+  inert         NOTHING READS IT. Pure ABI surface, whether or not a backend
+                fills it. Legitimate — an ABI that mirrors upstream reserves a
+                slot's position and shape before anything calls it — but it
+                must be a DECISION, so every inert slot belongs to a declared
+                family with a reason. The report says which of them have a
+                body, because an unreachable body is a different cost from an
+                unreserved shape: it is code somebody wrote and tests.
 
 `inert` is the one worth staring at. It was 35 of 74 when this tool was written
 (2026-08-26) — half the vtable reserved rather than working, and before this
-tool nothing said so. It is 6 of 68 as of 2026-09-04. Re-run the report rather
-than trusting this sentence; the number is a snapshot and the tool is not.
+tool nothing said so. Under the old ordering it read 6 of 68 on 2026-09-04; the
+consumption-first count is 11 of 68 on 2026-09-11. Re-run the report rather than
+trusting either sentence; the number is a snapshot and the tool is not.
 
 The families exist because 35 individual essays is how issue 0777 happened —
 reasons written to fill a table, never checked. These slots are inert in groups,
@@ -51,6 +63,7 @@ Usage:
 """
 
 import argparse
+import collections
 import importlib.util
 import os
 import re
@@ -58,6 +71,9 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from issue_status import refused_deferrals  # noqa: E402
+
 VTABLE_H = os.path.join(
     ROOT, "packages", "core", "nros-rmw-abi", "include", "nros", "rmw_vtable.h"
 )
@@ -112,8 +128,11 @@ DOC_WINDOW = 2600
 
 # Inert slots, grouped by why. Every inert slot must appear in exactly one
 # family, and a family that names a slot which is no longer inert is stale.
+Family = collections.namedtuple("Family", "members reason defer")
+Family.__new__.__defaults__ = (None,)
+
 INERT_FAMILIES = {
-    "identity": (
+    "identity": Family(
         ("get_implementation_identifier",),
         "the identity that is load-bearing is the one a backend stamps into "
         "`rmw_gid_t`, which `rmw_compare_gids_equal` reads before the bytes — so "
@@ -124,30 +143,57 @@ INERT_FAMILIES = {
         "written for both, and it stopped being true for the format the moment "
         "uORB answered `\"uorb\"` where the others answer `\"cdr\"`",
     ),
-    "capability-probe": (
+    "capability-probe": Family(
         ("feature_supported",),
         "a generic probe with no caller. The capabilities the runtime actually "
         "branches on are each their own slot, answered by nullity or a dedicated "
         "probe, which is a narrower and checkable mechanism",
     ),
-    "acks": (
+    "acks": Family(
         ("publisher_wait_for_all_acked",),
         "a blocking wait for reliable delivery to be acknowledged. Blocking is the "
         "problem: this ABI's waiting is decomposed into `has_data` / `drive_io` / "
         "`next_deadline_ms` so one executor can drive several backends, and a slot "
         "that blocks inside one backend does not fit that",
     ),
-    "with-info-takes": (
+    "with-info-takes": Family(
         ("take_with_info", "take_loaned_message_with_info"),
         "metadata-carrying variants of takes whose plain forms are live. The "
         "runtime gets publisher GID and timestamps from the attachment on the "
         "message it already took, so it has never needed the variant",
     ),
-    "graph-guard": (
+    "graph-guard": Family(
         ("node_get_graph_guard_condition",),
         "a guard condition fired on graph change. Guard conditions here are a "
         "platform primitive the executor owns, not something a backend hands out, "
         "and nothing consumes graph change events",
+    ),
+    # The two families below are slots a backend FILLS. They became visible
+    # when phase-428 W8 made consumption the first question; under the old
+    # ordering a body was enough to read as covered.
+    "granted-qos-service-side": Family(
+        (
+            "client_request_publisher_get_actual_qos",
+            "client_response_subscription_get_actual_qos",
+            "service_request_subscription_get_actual_qos",
+            "service_response_publisher_get_actual_qos",
+        ),
+        "cyclonedds FILLS all four — issue 0823's \"not done here\" tail, landed "
+        "— and nothing reads them, so the read-back exists and no diagnostic "
+        "consults it. The consumer is the client/service half of "
+        "`report_qos_downgrade`, which the publisher side already has at "
+        "`cffi/src/lib.rs`; it needs the granted profile compared against the "
+        "requested one at `create_client` / `create_service`, which is where "
+        "phase-428 W9 is deciding what those two do with a QoS profile at all",
+        defer=1327,
+    ),
+    "rx-sizing": Family(
+        ("required_rx_bytes",),
+        "zenoh-pico fills it (phase-403 W4) and no dispatch site exists: the "
+        "slot's own header block says so and names phase-403 W3/W5 as the owner "
+        "of that site, which is still open work. Reserved deliberately — the "
+        "header also records the 2026-08-31 ruling that the slot stays OPTIONAL "
+        "permanently, so a NULL one is an answer and not a gap",
     ),
 }
 
@@ -196,17 +242,24 @@ def producers_in(text, slots):
     return got
 
 
-CONSUME = r"(?:vtable|\(\*vt\)|vt)\s*\.\s*{}\b"
+CONSUME = r"(?:vtable|vtbl|\(\*vt\)|vt)\s*(?:\.|->)\s*{}\b"
 
 
 def consumers_in(text, slots):
     """Slots this source READS off a vtable.
 
-    Deliberately narrow. A looser pattern (any `.slot` or `->slot`) reported
-    `create_node` as consumed because an unrelated C ops table in
-    `orchestration_e2e` has a member of that name, and reported `destroy_node`
-    as consumed for the same kind of reason — which would have hidden the leak
-    this tool was written to find.
+    Narrow on the RECEIVER, not on the operator. A looser pattern (any `.slot`
+    or `->slot`) reported `create_node` as consumed because an unrelated C ops
+    table in `orchestration_e2e` has a member of that name, and reported
+    `destroy_node` as consumed for the same kind of reason — which would have
+    hidden the leak this tool was written to find. Pinning the receiver to
+    `vt` / `vtbl` / `vtable` keeps that out (`context->ops->publish` has
+    receiver `ops`) while letting `->` back in: a C or C++ consumer calls
+    through a POINTER, so `vt->take(...)` is the only spelling available to it
+    and the `.`-only pattern could not see one. Measured 2026-09-11: widening
+    it moves no slot today, because every arrow consumer is a smoke test for a
+    slot the Rust runtime already reads — a closed false-negative, not a
+    recount.
     """
     return {s for s in slots if re.search(CONSUME.format(re.escape(s)), text)}
 
@@ -251,16 +304,17 @@ def producers_by_backend(slots):
     return out
 
 
-def scan():
-    slots = header_slots()
-
+def _producers(slots):
     produced = set()
     for rel in _git("ls-files", *PRODUCER_GLOBS):
         try:
             produced |= producers_in(open(os.path.join(ROOT, rel), encoding="utf-8").read(), slots)
         except OSError:
             continue
+    return produced
 
+
+def _consumers(slots):
     consumed = set()
     for rel in _git("ls-files", "packages"):
         if not rel.endswith((".rs", ".c", ".cpp")):
@@ -273,24 +327,48 @@ def scan():
             )
         except OSError:
             continue
+    return consumed
 
+
+def scan():
+    return scan_detail()[0]
+
+
+def classify(slots, produced, consumed, documents_null):
+    """The four kinds, with CONSUMPTION asked first (phase-428 W8).
+
+    Split out of `scan()` so the self-test can drive it with planted sets: the
+    ordering is the whole content of this function and a negative control over
+    it must not need a tree to disagree with.
+    """
+    out = {}
+    for s in slots:
+        if s not in consumed:
+            # Nothing reads it. A backend body does not change that — it only
+            # changes what the inert slot COSTS, which the report says.
+            out[s] = "inert"
+        elif s in produced:
+            out[s] = "produced"
+        elif documents_null(s):
+            out[s] = "default"
+        else:
+            out[s] = "unimplemented"
+    return out
+
+
+def scan_detail():
+    """`(kinds, produced, consumed)` — for a caller that needs to say WHY a
+    slot is inert. `scan()` stays `{slot: kind}` because that is what
+    `rmw-api-parity` imports."""
+    slots = header_slots()
+    produced, consumed = _producers(slots), _consumers(slots)
     header = open(VTABLE_H, encoding="utf-8").read()
 
     def documents_null(slot):
         i = header.find("(*" + slot + ")")
         return i >= 0 and bool(NULL_DOC.search(header[max(0, i - DOC_WINDOW):i]))
 
-    out = {}
-    for s in slots:
-        if s in produced:
-            out[s] = "produced"
-        elif s not in consumed:
-            out[s] = "inert"
-        elif documents_null(s):
-            out[s] = "default"
-        else:
-            out[s] = "unimplemented"
-    return out
+    return classify(slots, produced, consumed, documents_null), produced, consumed
 
 
 def self_test():
@@ -335,7 +413,8 @@ def self_test():
     # Every family member is a real slot, and no slot is in two families.
     real = set(header_slots())
     seen = set()
-    for fam, (members, _reason) in INERT_FAMILIES.items():
+    for fam, fam_def in INERT_FAMILIES.items():
+        members = fam_def.members
         for m in members:
             if m not in real:
                 bad.append(f"family {fam} names {m}, which is not a slot")
@@ -343,11 +422,49 @@ def self_test():
                 bad.append(f"{m} appears in more than one family")
             seen.add(m)
 
+    # phase-428 W8 — CONSUMPTION FIRST. The negative control for the ordering
+    # itself, planted, because the tree is only ever one arrangement: a slot a
+    # backend fills and nothing reads must classify `inert`, and the mutation
+    # that reverses the two branches must fail here.
+    planted = classify(
+        ["filled_and_read", "filled_unread", "read_only_doc", "read_only_nodoc", "neither"],
+        produced={"filled_and_read", "filled_unread"},
+        consumed={"filled_and_read", "read_only_doc", "read_only_nodoc"},
+        documents_null=lambda s: s == "read_only_doc",
+    )
+    want = {
+        "filled_and_read": "produced",
+        "filled_unread": "inert",
+        "read_only_doc": "default",
+        "read_only_nodoc": "unimplemented",
+        "neither": "inert",
+    }
+    for slot, expect in want.items():
+        if planted[slot] != expect:
+            bad.append(
+                f"classify: {slot} read as {planted[slot]!r}, want {expect!r}"
+                + (" — a backend BODY must not satisfy the check"
+                   if slot == "filled_unread" else "")
+            )
+
+    # A family may DEFER — "reserved until somebody does X" — and then the
+    # `defer` field must name an OPEN issue (phase-428 W11). Structured, not
+    # parsed out of the reason: a reason legitimately cites resolved issues,
+    # because history is what a reason is made of, and only the `defer` claim
+    # says the work is still tracked. The subject list is every family, so one
+    # added later is covered with no edit here.
+    for fam, fam_def in sorted(INERT_FAMILIES.items()):
+        for num, why in refused_deferrals(fam_def.defer):
+            bad.append(f"family {fam}: `defer = {num}` {why}")
+
     if bad:
         for b in bad:
             sys.stderr.write("check-rmw-slot-producers --self-test: " + b + "\n")
         return 2
-    print(f"check-rmw-slot-producers --self-test: OK ({len(seen)} family member(s), 8 case(s))")
+    print(
+        f"check-rmw-slot-producers --self-test: OK ({len(seen)} family member(s), "
+        "13 case(s))"
+    )
     return 0
 
 
@@ -360,7 +477,7 @@ def main(argv):
     if args.self_test:
         return self_test()
 
-    kinds = scan()
+    kinds, produced, _consumed = scan_detail()
     counts = {}
     for k in kinds.values():
         counts[k] = counts.get(k, 0) + 1
@@ -405,18 +522,25 @@ def main(argv):
         if not members:
             continue
         print(f"\n## {k} ({len(members)})\n")
+        if k == "inert":
+            print(
+                "  Nothing READS these. `+body` marks one a backend nonetheless\n"
+                "  fills: an unreachable implementation, which costs more than an\n"
+                "  unreserved shape because somebody wrote and maintains it.\n"
+            )
         for s in members:
             fam = next(
-                (f for f, (ms, _r) in INERT_FAMILIES.items() if s in ms), ""
+                (f for f, d in INERT_FAMILIES.items() if s in d.members), ""
             )
-            print(f"  {s}{('  [' + fam + ']') if fam else ''}")
+            body = "  +body" if (k == "inert" and s in produced) else ""
+            print(f"  {s}{('  [' + fam + ']') if fam else ''}{body}")
 
     if not args.check:
         return 0
 
     rc = 0
     inert = {s for s, v in kinds.items() if v == "inert"}
-    claimed = {m for ms, _r in INERT_FAMILIES.values() for m in ms}
+    claimed = {m for d in INERT_FAMILIES.values() for m in d.members}
 
     undeclared = sorted(inert - claimed)
     if undeclared:
@@ -425,8 +549,10 @@ def main(argv):
         for s in undeclared:
             sys.stderr.write(f"  {s}\n")
         sys.stderr.write(
-            "Nothing writes or reads it. Put it in an INERT_FAMILIES group with the\n"
-            "reason it is reserved, or wire it — but do not leave it undecided.\n"
+            "NOTHING READS IT — a backend filling it does not change that, it only\n"
+            "adds an unreachable body. Put it in an INERT_FAMILIES group with the\n"
+            "reason it is reserved (and a `defer =` issue if the reason is 'not\n"
+            "yet'), or give it a consumer — but do not leave it undecided.\n"
         )
 
     stale = sorted(claimed - inert)
@@ -435,7 +561,10 @@ def main(argv):
         sys.stderr.write("\nERROR: a family claims a slot that is no longer inert:\n")
         for s in stale:
             sys.stderr.write(f"  {s}  (now: {kinds.get(s, 'not a slot')})\n")
-        sys.stderr.write("Remove it — the reason it carries has stopped being true.\n")
+        sys.stderr.write(
+            "Something READS it now. Remove it — the reason it carries was\n"
+            "written about a slot nothing could reach.\n"
+        )
 
     unimpl = sorted(s for s, v in kinds.items() if v == "unimplemented")
     if unimpl:
