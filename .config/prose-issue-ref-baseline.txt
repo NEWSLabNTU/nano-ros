@@ -31,9 +31,15 @@
 #         0319/0896 class — is still worth reading, and `refs/issue-ids/1110`
 #         is claimed either way.
 #
+#   1319  IN FLIGHT — filed on `feat/448-w7-w8-arena-model` (PR #951). phase-448
+#         names it because it is the one UNDER-size in the arena model, and
+#         anyone editing W7's term must read it before lowering that term
+#         further. REMOVE THIS ROW when #951 merges.
+#
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 docs/roadmap/phase-445-board-choice-generates-leaf-config.md:1296
 docs/roadmap/phase-445-board-choice-generates-leaf-config.md:1305
+docs/roadmap/phase-448-exact-executor-backing-on-every-port.md:1319
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110

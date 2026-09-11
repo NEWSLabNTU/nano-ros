@@ -646,3 +646,57 @@ and forfeits the speculative build for it.
    only the Zephyr `.bss` backing has that property
    (`check-executor-backing-arena-pairing`); the heap arm and the caller-supplied
    arms have nothing.
+
+## CHECKPOINT 2026-09-11 — the 09-09 queue drained; two items done, one grew
+
+The checkpoint above listed seven pull requests in the queue and four items
+left. Two of those four have since landed and one has grown. Written because the
+same recovery cost was about to be paid twice: a survey on 2026-09-11 read the
+`#4` / `#7` / `#1130` commit subjects, found them on no branch it checked, and
+recorded a "shadow backlog" that had in fact merged hours earlier. Commit
+subjects are not a work ledger; this is.
+
+### Landed since, verified with `git merge-base --is-ancestor <sha> origin/main`
+
+| item from "Left" | commit(s) | what it was |
+| --- | --- | --- |
+| 3. `NROS_MAX_LIVELINESS` | `27fae2b65`, `1e9b98ea0` | W2 / issue 1130 — the liveliness pool and the cell registry bound derive |
+| 4. the arena's host oracle | `d8e324570` | `#4` — the arena's requirement stopped at the derivation, so a short arena was a runtime death |
+| (W7's registries) | `ab5194116`, `8a9988195` | `#7` — one fact, three roads, three registries |
+
+So the "arena sized PRECISELY" question the 09-09 checkpoint called half-open is
+now answered on the host road as well as the Zephyr `.bss` one.
+
+### Still open
+
+| what | where | note |
+| --- | --- | --- |
+| W5 — a standalone CMake leaf sizes its pools from its own declaration | PR #942 (`feat/1142-standalone-cmake-entity-facts`), issue 1142 | genuinely not on `main` — `git cherry` reports both commits unmatched |
+| 1. the producerless knobs (`#6`) | — | unchanged |
+| 2. the sizing knobs off the RFC-0049 ladder | — | **grew from 5 to 7.** `config-knob-census` now counts 44 ladder knobs and 7 "sizing knobs still to migrate". A migration list that grows while nobody is migrating is the shape worth naming |
+
+### Issue 1233 is correctly still OPEN, and PR #779 merging did not close it
+
+PR #779 merged, and `git cherry` shows three of the four `work/1233-road-gaps`
+commits already on `main`. The issue stays open because its acceptance is
+measurable and does not pass — `just check declared-fact-carriers` on `main`
+today prints **4 road(s) OPEN and unexplained**, two facts on two roads each:
+
+* `NROS_DERIVED_EXECUTOR_MAX_NODES` — sidecar and declared roads
+* `NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE` — sidecar and declared roads
+
+The branch is stale debris, not unmerged work; the remaining gap is real.
+
+### A third way to close 1233, from RFC-0100
+
+Issue 1233 offers two closures: put the fact on the road, or write the reason
+where the decision lives. RFC-0100 (in flight, PR #959 — not linked until it lands on `main`)
+adds a third — **remove the roads**. Both facts it still names are exactly what
+that RFC's single descriptor carries, and `check-declared-fact-carriers` exists
+only to keep two roads agreeing. One road has no pairing to drift, so the gate
+and its `ROAD_PAIRS` map retire by construction rather than by being satisfied.
+
+That also settles this phase's **W5 design question** — *"what a standalone leaf
+derives FROM … and it is this phase's to make."* It is made, in RFC-0100 D3: the
+contract file, always. The code half stays here (PR #942); the decision moves to
+phase-454 (same PR).

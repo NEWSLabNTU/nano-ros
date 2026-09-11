@@ -4,6 +4,25 @@
 this phase has landed; W1–W8 are open. Zephyr's pairing (issue 1145, landed
 2026-09-06) predates the phase and is the template the other ports follow.**
 
+**Three waves are IN FLIGHT and the doc did not say so**, which cost a survey on
+2026-09-11 an hour of re-deriving what two open pull requests already carried —
+and nearly cost a duplicate implementation of W7 and W8:
+
+| wave | PR | branch | carries |
+| --- | --- | --- | --- |
+| W6 | #957 | `feat/448-w6-node-sc-slots` | issue 1198 — the two fixed tables shrink to what the image declares |
+| W7 | #951 | `feat/448-w7-w8-arena-model` | issue 1255 — each subscription priced at its own type |
+| W8 | #951 | same | issue 1290 — `arena_size_for` stopped scaling a declared model by `cbs / MAX_CBS` |
+
+"Nothing has landed" stays true of `main` and is not the problem; the problem is
+that a wave with an open PR reads identically to a wave nobody has started. When
+a wave gains a PR, name it here.
+
+#951 also files **issue 1319**, which is the one UNDER-size in the arena model —
+a Rust typed registration against a schemaless backend claims `RX_BUF` while the
+model budgets the type's bound. Anyone touching W7's term must read it first:
+lowering the term further makes 1319 worse.
+
 ## Why this phase exists
 
 [Phase 392 W6](phase-392-static-memory-space-campaign.md) moved the executor
