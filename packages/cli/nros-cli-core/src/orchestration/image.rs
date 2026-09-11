@@ -164,6 +164,22 @@ pub struct ImageBlock {
     /// Capability axes for this image, over the system's own list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
+
+    /// `env = { KEY = "VALUE" }` — the RFC-0049 APP rung for a build knob this
+    /// IMAGE states (RFC-0098 D4, phase-445 W6).
+    ///
+    /// The rung that replaces the `[env]` block a leaf used to hand-write in
+    /// its own `.cargo/config.toml`. The key is the knob's env front-end, so
+    /// nothing needs a second name; the value lands in
+    /// `build/<image>/nros-cargo.toml` WITHOUT `force`, so a lane that exports
+    /// the variable still wins.
+    ///
+    /// Board facts belong in the board descriptor's `[board.knobs]`, not here:
+    /// this is for a number that differs between two images of the SAME board.
+    /// The ONE reader is `nros_orchestration_ir::leaf_system`, the same reader
+    /// that answers for the deployment identity beside it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
 }
 
 impl ImageBlock {
@@ -216,6 +232,14 @@ impl ImageBlock {
                 .chain(self.features.iter())
                 .cloned()
                 .collect(),
+            // Map, so it MERGES like `args`: a base `env` is a default knob
+            // SET, and an image that names a key it also names is overriding
+            // that one knob, not replacing the table.
+            env: {
+                let mut merged = base.env.clone();
+                merged.extend(self.env.clone());
+                merged
+            },
         }
     }
 }

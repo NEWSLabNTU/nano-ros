@@ -46,7 +46,10 @@
 //! workspace NODE package are the metadata pipeline's (`nros sync`), not a
 //! deployment, and are not this reader's business.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 /// The file a single-package leaf states its deployment in.
 pub const SYSTEM_TOML: &str = "system.toml";
@@ -72,6 +75,20 @@ pub enum Origin {
 pub fn entry_package_name(image_id: &str) -> String {
     format!("{}_entry", image_id.replace(['-', '.', '/'], "_"))
 }
+
+/// The link kinds `[image.<id>] transport` may name — the same three
+/// `nros_platform_config::platform_config::TRANSPORT_KINDS` defines
+/// (RFC-0086 D2).
+///
+/// Restated rather than imported: this crate is what the `nros::main!`
+/// proc-macro reads, so it carries no dependencies. An unknown value is an
+/// ERROR here for RFC-0086 D2's own reason — a typo that silently selected
+/// nothing would leave every implication unapplied and the image would build
+/// with the wrong links on, which is exactly what
+/// `examples/mps2-an385-baremetal/rust/talker-xrce` did: it named the RMW
+/// (`transport = "xrce"`) where the link kind goes, and nothing read the key,
+/// so nothing said so.
+pub const TRANSPORT_KINDS: &[&str] = &["serial", "tcp", "udp"];
 
 /// Deployment identity (RFC-0098 D5): what the image dials and what it is.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -116,6 +133,25 @@ pub struct LeafSystem {
     pub rmw: Option<String>,
     pub network: Network,
     pub components: Vec<LeafComponent>,
+    /// `[image.<id>] env` — the RFC-0049 APP rung, stated per image
+    /// (RFC-0098 D4, phase-445 W6).
+    ///
+    /// A build knob whose value is neither a board fact (it differs between two
+    /// images of the same board) nor derivable from the declarations. The KEY is
+    /// the knob's env front-end — the spelling `executor_env_key` /
+    /// `xrce_env_key` already publish and every build script already reads — so
+    /// this rung needs no second name for anything.
+    ///
+    /// It replaces the `[env]` block a leaf used to hand-write in its own
+    /// `.cargo/config.toml`, and it lands in `build/<image>/nros-cargo.toml`'s
+    /// `[env]` WITHOUT `force`, so the ladder still holds: a lane that exports
+    /// the variable outranks it.
+    ///
+    /// Reach for a board `[board.knobs]` FIRST. This is the rung for a fact
+    /// that is genuinely this image's — `examples/mps2-an385-baremetal/rust/
+    /// talker-xrce`'s XRCE transport budget, on a board whose other twelve
+    /// images want the defaults.
+    pub env: BTreeMap<String, String>,
 }
 
 impl LeafSystem {
@@ -377,13 +413,24 @@ fn image_system(
             None => u32_key(system, "domain_id", path)?,
         },
     };
+    let transport = pick("transport");
+    if let Some(t) = &transport
+        && !TRANSPORT_KINDS.contains(&t.as_str())
+    {
+        return Err(format!(
+            "{}: `[image.{id}] transport = \"{t}\"` is not a link kind — it is one of {} \
+             (RFC-0086 D2). The RMW is `rmw = \"…\"`, which is a different choice.",
+            path.display(),
+            TRANSPORT_KINDS.join(", ")
+        ));
+    }
     let network = Network {
         domain_id,
         locator: pick("locator").or_else(|| str_key(system, "locator")),
         ip: pick("ip"),
         gateway: pick("gateway"),
         netmask: pick("netmask"),
-        transport: pick("transport"),
+        transport,
     };
 
     let mut components = Vec::new();
@@ -408,6 +455,12 @@ fn image_system(
         }
     }
 
+    // `[image.<id>] env` over `[image_defaults] env`, key by key — the same
+    // overlay `ImageBlock::with_base` gives a map: the base is a default SET,
+    // and the image overwrites only what it also names.
+    let mut env = env_table(defaults, path, id)?;
+    env.extend(env_table(image, path, id)?);
+
     Ok(LeafSystem {
         origin,
         image: Some(id.to_string()),
@@ -415,7 +468,42 @@ fn image_system(
         rmw,
         network,
         components,
+        env,
     })
+}
+
+/// `env = { KEY = "VALUE" }` of one image block.
+///
+/// Values are strings, always: an environment variable IS a string, and
+/// accepting an integer here would make `X = 2` and `X = "2"` two spellings of
+/// one row that a later `deny_unknown_fields` schema would have to keep
+/// agreeing about. The error says which spelling to write.
+fn env_table(
+    block: Option<&toml::Table>,
+    path: &Path,
+    id: &str,
+) -> Result<BTreeMap<String, String>, String> {
+    let Some(t) = block.and_then(|b| b.get("env")) else {
+        return Ok(BTreeMap::new());
+    };
+    let t = t.as_table().ok_or_else(|| {
+        format!(
+            "{}: `[image.{id}] env` must be a TABLE of `KEY = \"VALUE\"` rows",
+            path.display()
+        )
+    })?;
+    t.iter()
+        .map(|(k, v)| {
+            v.as_str().map(|s| (k.clone(), s.to_string())).ok_or_else(|| {
+                format!(
+                    "{}: `[image.{id}] env` row `{k}` is a {}, not a string — an environment \
+                     value is a string, so write `{k} = \"{v}\"`",
+                    path.display(),
+                    v.type_str()
+                )
+            })
+        })
+        .collect()
 }
 
 /// The retired DEPLOYMENT keys a manifest table still carries, by name.
@@ -783,6 +871,63 @@ domain_id = 4
         let l = read(d.path()).unwrap().unwrap();
         assert_eq!(l.rmw.as_deref(), Some("xrce"));
         assert_eq!(l.network.netmask.as_deref(), Some("255.255.255.0"));
+    }
+
+    /// phase-445 W6 — the APP rung. `[image.<id>] env` is what replaced the
+    /// `[env]` block a leaf hand-wrote in its own `.cargo/config.toml`.
+    #[test]
+    fn an_image_states_its_own_build_knobs() {
+        let with_env = format!(
+            "{SYSTEM}\nenv = {{ NROS_XRCE_BUFFER_SIZE = \"256\", \
+             NROS_XRCE_CUSTOM_TRANSPORT_MTU = \"512\" }}\n"
+        );
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &with_env)]);
+        let l = read(d.path()).unwrap().unwrap();
+        assert_eq!(l.env["NROS_XRCE_BUFFER_SIZE"], "256");
+        assert_eq!(l.env["NROS_XRCE_CUSTOM_TRANSPORT_MTU"], "512");
+        // A leaf that states none has an empty table, never an absent one.
+        let plain = leaf(&[("Cargo.toml", CARGO), ("system.toml", SYSTEM)]);
+        assert!(read(plain.path()).unwrap().unwrap().env.is_empty());
+    }
+
+    #[test]
+    fn image_defaults_env_is_a_default_set_the_image_overrides_key_by_key() {
+        let both = format!(
+            "{SYSTEM}\nenv = {{ A = \"image\" }}\n\n\
+             [image_defaults]\nenv = {{ A = \"base\", B = \"base\" }}\n"
+        );
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &both)]);
+        let l = read(d.path()).unwrap().unwrap();
+        assert_eq!(l.env["A"], "image", "the image wins the key it also names");
+        assert_eq!(l.env["B"], "base", "and inherits the one it does not");
+    }
+
+    #[test]
+    fn a_non_string_env_value_names_the_spelling_to_write() {
+        let bad = format!("{SYSTEM}\nenv = {{ N = 256 }}\n");
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &bad)]);
+        let e = read(d.path()).unwrap_err();
+        assert!(e.contains("N = \"256\""), "{e}");
+    }
+
+    /// RFC-0086 D2 — a transport that is not a link kind is an ERROR, not a
+    /// pass-through. `talker-xrce` named its RMW here for four phases.
+    #[test]
+    fn a_transport_that_is_not_a_link_kind_is_refused() {
+        let bad = SYSTEM.replace(
+            "[image.esp32]",
+            "[image.esp32]\ntransport = \"xrce\"\n#",
+        );
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &bad)]);
+        let e = read(d.path()).unwrap_err();
+        assert!(e.contains("serial, tcp, udp"), "{e}");
+
+        let good = bad.replace("transport = \"xrce\"", "transport = \"serial\"");
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &good)]);
+        assert_eq!(
+            read(d.path()).unwrap().unwrap().network.transport.as_deref(),
+            Some("serial")
+        );
     }
 
     #[test]

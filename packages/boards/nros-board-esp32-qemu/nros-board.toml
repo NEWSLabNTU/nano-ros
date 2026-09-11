@@ -65,3 +65,21 @@ threads = true
 # front-end `NROS_SMOLTCP_MAX_UDP_SOCKETS` still wins over it.
 [board.knobs.net]
 max_udp_sockets = 2
+
+# phase-445 W6 — the executor arena, the second hardware budget this board
+# states once. Both esp32 leaves (`rust/talker`, `rust/listener`) hand-set the
+# identical `NROS_EXECUTOR_ARENA_SIZE = "16384"` in their own
+# `.cargo/config.toml` `[env]`, and so does the `workspaces/rust` esp32 entry:
+# three copies of one number about this board's DRAM.
+#
+# It is a BOARD fact and not an image's: on esp32-c3 the stack is the LINKER
+# LEFTOVER after `.bss` (`link.x` fills DRAM up to `_stack_start`), so an arena
+# sized for a bigger part costs stack with no runtime guard — the image writes
+# frames into `.bss` and dies later as a wild jump. The number is the same for
+# every image on the board because the DRAM is.
+#
+# Read by `nros-node/build.rs` through `BuildRungs::executor_rungs`; the env
+# front-end `NROS_EXECUTOR_ARENA_SIZE` still outranks it (RFC-0049), and an
+# image that needs its own writes `[image.<id>] env`.
+[board.knobs.executor]
+arena_size = 16384

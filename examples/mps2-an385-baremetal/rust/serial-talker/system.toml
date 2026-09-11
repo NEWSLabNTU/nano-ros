@@ -21,3 +21,21 @@ dispatch = "deferred"
 [image.mps2-an385-baremetal]
 board = "qemu-mps2-an385"
 locator = "serial/UART_0#baudrate=115200"
+# Serial-only firmware (phase-132 / phase-204.7), stated ONCE (phase-445 W6).
+# `nros sync` derives both knobs the build scripts ask for into
+# `build/<image>/nros-cargo.toml`: `ZPICO_NO_SMOLTCP=1`, so `nros-zpico-build`
+# compiles `ZPICO_SERIAL` instead of the smoltcp glue, and `NROS_LINK_IP=0`,
+# which drops the vendor TCP/UDP link C that `--gc-sections` then removes. Both
+# used to be hand-written in this leaf's `.cargo/config.toml` `[env]`.
+#
+# What it is worth, MEASURED on this leaf (2026-09-11, thumbv7m, dev profile)
+# by deleting this one line and rebuilding — and the measurement corrects the
+# claim the old config carried. Phase 132's note said the bare-metal link
+# FAILS without the opt-out; it does not, today: the image builds either way.
+# What it costs is size.
+#
+#            text     data      bss
+#   serial  301592     1448   526544
+#   without 310388     1496   534848
+#   delta    -8796      -48    -8304
+transport = "serial"
