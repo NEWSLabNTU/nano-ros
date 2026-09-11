@@ -15,6 +15,14 @@ domain_id = 0
 pkg = "nuttx_cpp_talker"
 class = "nuttx_cpp_talker::Talker"
 name = "talker"
+# What this component creates (RFC-0098 D8, issue 1142) — read from src/, in the
+# `nano_ros_node_register(... ENTITIES ...)` grammar. A standalone leaf has no
+# bringup and no SystemModel, so this is the ONLY thing that can size its pools;
+# without it the RMW guesses (`if hosted { 32 } else { 8 }`).
+entities = [
+    "publisher:std_msgs/msg/String:/chatter",
+    "timer",
+]
 
 # NuttX on the QEMU ARM virt machine.
 [image.qemu-armv7a-nuttx]

@@ -70,6 +70,22 @@ pub struct EntityFactsArgs {
     /// model variant.
     #[arg(long = "arg", value_name = "K=V", requires = "bringup_dir")]
     pub args: Vec<String>,
+
+    /// Issue 1142 — a STANDALONE leaf directory (`system.toml` beside its
+    /// `CMakeLists.txt` / `Cargo.toml`), answered from what that file
+    /// DECLARES rather than from a resolved model.
+    ///
+    /// Prints NOTHING and exits 0 when the leaf declares no entities: the
+    /// caller then has no facts to carry, which is the state every standalone
+    /// leaf was in before this. An absent or unreadable `system.toml` is an
+    /// error, because the caller named one.
+    #[arg(
+        long,
+        value_name = "DIR",
+        conflicts_with = "model",
+        conflicts_with = "bringup_dir"
+    )]
+    pub leaf: Option<PathBuf>,
 }
 
 /// The two facts, in emission order.
@@ -201,17 +217,93 @@ fn declared_service_servers(model: &SystemModel) -> Option<usize> {
 fn declared_infra(model: &SystemModel) -> &'static str {
     // Issue 1270 -- the SAME predicate the entity inventory counts from, so
     // the cmake road and the inventory cannot disagree about whether a family
-    // is in the image.
-    let infra = crate::entity_inventory::InfraServices::from_model(model);
-    match (infra.param_services, infra.lifecycle) {
-        (true, true) => "param+lifecycle",
-        (true, false) => "param",
-        (false, true) => "lifecycle",
-        (false, false) => "none",
-    }
+    // is in the image. Issue 1142 moved the four SPELLINGS there too, for the
+    // same reason one level down: the leaf road emits them as well.
+    crate::entity_inventory::InfraServices::from_model(model).token()
+}
+
+/// Issue 1142 — the same three facts, for a STANDALONE leaf that has no model.
+///
+/// A copy-out CMake project (`find_package(nano_ros)` +
+/// `nano_ros_add_executable`) has no bringup and no resolved SystemModel, so
+/// `nros_record_entity_facts` returns early and the RMW sizes its queryable
+/// table from `if hosted { 32 } else { 8 }` — a guess by construction. RFC-0098
+/// D8 already decided where such a leaf states its surface: `entities = [...]`
+/// on its `system.toml` `[[component]]` rows, in the `EntityDecl::parse`
+/// grammar, read by the same reader every other road uses.
+///
+/// **The counting rule is the model road's, not a second one.** A service
+/// server is one queryable and an action server is [`ACTION_SERVER_QUERYABLES`]
+/// of them — the same constant `declared_service_servers` applies to a model's
+/// `structure.services` / `structure.actions`. A client of either costs no
+/// queryable, here as there.
+///
+/// **`Ok(None)` is the leaf that declares nothing**, and it is not an error:
+/// the caller carries no facts and the fallback decides, which is exactly where
+/// every standalone leaf already was. The CMake side says so out loud rather
+/// than saying nothing (`nros_record_leaf_entity_facts`).
+///
+/// **Nodes** are the `[[component]]` rows: one component is one
+/// `Node::create`, which is the same thing `structure.nodes` counts. The
+/// consumer floors it at one.
+pub fn facts_from_leaf(dir: &std::path::Path) -> Result<Option<BTreeMap<String, String>>> {
+    let leaf = nros_orchestration_ir::leaf_system::read(dir)
+        .map_err(|e| eyre::eyre!(e))?
+        .ok_or_else(|| {
+            eyre::eyre!(
+                "{}: declares no deployment — write {} (RFC-0098 D3)",
+                dir.display(),
+                dir.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+                    .display()
+            )
+        })?;
+    // The DECLARATION is the opt-in. Without it this verb would be stating an
+    // infrastructure answer ("none") about a hand-written `main` nobody
+    // described, and a queryable table short of what an image registers is a
+    // boot failure rather than a smaller pool (issue 0460).
+    let Some(decls) = crate::leaf_entity_env::declared_entities(dir)? else {
+        return Ok(None);
+    };
+
+    let servers: usize = decls
+        .iter()
+        .map(|d| match d.kind {
+            crate::entity_inventory::EntityKind::ServiceServer => 1,
+            crate::entity_inventory::EntityKind::ActionServer => ACTION_SERVER_QUERYABLES,
+            _ => 0,
+        })
+        .sum();
+    let nodes = leaf.components.len();
+    let infra = crate::entity_inventory::InfraServices::from_features(&leaf.features, nodes);
+
+    let mut out = BTreeMap::new();
+    out.insert(
+        "NROS_DECLARED_SERVICE_SERVERS".to_string(),
+        servers.to_string(),
+    );
+    out.insert(
+        "NROS_DECLARED_INFRA_QUERYABLES".to_string(),
+        infra.token().to_string(),
+    );
+    out.insert("NROS_DECLARED_NODES".to_string(), nodes.to_string());
+    Ok(Some(out))
 }
 
 pub fn run(args: EntityFactsArgs) -> Result<()> {
+    // Issue 1142 — the standalone-leaf road. Handled before the model paths
+    // because it reads a different input, not a different location of the same
+    // one.
+    if let Some(leaf) = &args.leaf {
+        let dir = leaf
+            .canonicalize()
+            .wrap_err_with(|| format!("leaf dir `{}`", leaf.display()))?;
+        if let Some(facts) = facts_from_leaf(&dir)? {
+            for (k, v) in facts {
+                println!("{k}={v}");
+            }
+        }
+        return Ok(());
+    }
     let model_path = match (&args.model, &args.bringup_dir) {
         (Some(m), _) => m.clone(),
         (None, Some(b)) => {
@@ -233,7 +325,9 @@ pub fn run(args: EntityFactsArgs) -> Result<()> {
             .map_err(|e| eyre::eyre!(e))?;
             nros_orchestration_ir::model_location::resolve_model_path(&bringup, &rel)
         }
-        (None, None) => bail!("entity-facts needs --model <path> or --bringup-dir <dir>"),
+        (None, None) => {
+            bail!("entity-facts needs --model <path>, --bringup-dir <dir> or --leaf <dir>")
+        }
     };
 
     let model = crate::orchestration::model_ingest::load_model(&model_path)?;
@@ -378,6 +472,109 @@ mod tests {
         let f = facts_from_model(&m);
         assert_eq!(f["NROS_DECLARED_NODES"], "2");
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "param");
+    }
+
+    // ---- issue 1142: the standalone-leaf road ---------------------------
+
+    fn leaf_dir(system: &str) -> tempfile::TempDir {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("CMakeLists.txt"), "project(x C)\n").unwrap();
+        std::fs::write(td.path().join("system.toml"), system).unwrap();
+        td
+    }
+
+    const LEAF_HEAD: &str = "[system]\nname = \"x\"\nrmw = \"zenoh\"\n";
+    const LEAF_IMAGE: &str = "\n[image.i]\nboard = \"qemu-armv7a-nuttx\"\n";
+
+    /// The image issue 1142 opened on: one node, one ACTION CLIENT. A client
+    /// opens no queryable, so the application count is zero — which is an
+    /// ANSWER, and the whole difference from the guessed budget.
+    #[test]
+    fn an_action_client_leaf_declares_zero_service_servers() {
+        let td = leaf_dir(&format!(
+            "{LEAF_HEAD}\n[[component]]\npkg = \"p\"\nname = \"fibonacci_action_client\"\n\
+             entities = [\"action_client:example_interfaces/action/Fibonacci:/fibonacci\"]\n\
+             {LEAF_IMAGE}"
+        ));
+        let f = facts_from_leaf(td.path()).unwrap().expect("declared");
+        assert_eq!(f["NROS_DECLARED_SERVICE_SERVERS"], "0");
+        assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "none");
+        assert_eq!(f["NROS_DECLARED_NODES"], "1");
+        assert_eq!(f.len(), 3, "the leaf road emits the model road's three");
+    }
+
+    /// The counting rule is the model road's: a service server is one
+    /// queryable, an action server is three, and both clients are zero.
+    #[test]
+    fn the_leaf_road_counts_servers_exactly_as_the_model_road_does() {
+        let td = leaf_dir(&format!(
+            "{LEAF_HEAD}\n[[component]]\npkg = \"p\"\nname = \"n\"\n\
+             entities = [\"service_server\", \"action_server\", \"service_client\", \
+             \"action_client\", \"publisher\", \"sub\", \"timer\"]\n{LEAF_IMAGE}"
+        ));
+        let f = facts_from_leaf(td.path()).unwrap().expect("declared");
+        assert_eq!(
+            f["NROS_DECLARED_SERVICE_SERVERS"],
+            (1 + ACTION_SERVER_QUERYABLES).to_string()
+        );
+    }
+
+    /// `[system] features` is the infrastructure half, the same key and the
+    /// same four tokens the model road emits.
+    #[test]
+    fn the_leaf_states_its_infrastructure_families_in_system_features() {
+        for (feats, want) in [
+            ("[\"param_services\", \"lifecycle\"]", "param+lifecycle"),
+            ("[\"param_services\"]", "param"),
+            ("[\"lifecycle\"]", "lifecycle"),
+            // An unrecognised feature is not one of these and is ignored, as
+            // the model road has always done.
+            ("[\"safety\"]", "none"),
+            ("[]", "none"),
+        ] {
+            let td = leaf_dir(&format!(
+                "{LEAF_HEAD}features = {feats}\n\n[[component]]\npkg = \"p\"\nname = \"n\"\n\
+                 entities = [\"timer\"]\n{LEAF_IMAGE}"
+            ));
+            let f = facts_from_leaf(td.path()).unwrap().expect("declared");
+            assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], want, "{feats}");
+        }
+    }
+
+    /// A leaf that declares NOTHING says nothing. Not a zero: an entity list is
+    /// what opts a leaf into stating its own surface, and without it an
+    /// infrastructure answer would be a claim about a hand-written `main`
+    /// nobody described.
+    #[test]
+    fn a_leaf_with_no_entity_declaration_abstains_entirely() {
+        let td = leaf_dir(&format!(
+            "{LEAF_HEAD}\n[[component]]\npkg = \"p\"\nname = \"n\"\n{LEAF_IMAGE}"
+        ));
+        assert!(facts_from_leaf(td.path()).unwrap().is_none());
+    }
+
+    /// One node per `[[component]]`, so a two-component leaf pays the
+    /// parameter family twice — the consumer multiplies.
+    #[test]
+    fn the_node_count_is_the_component_count() {
+        let td = leaf_dir(&format!(
+            "{LEAF_HEAD}\n[[component]]\npkg = \"p\"\nname = \"a\"\nentities = [\"timer\"]\n\
+             \n[[component]]\npkg = \"p\"\nname = \"b\"\nentities = [\"timer\"]\n{LEAF_IMAGE}"
+        ));
+        let f = facts_from_leaf(td.path()).unwrap().expect("declared");
+        assert_eq!(f["NROS_DECLARED_NODES"], "2");
+    }
+
+    /// A malformed entity string names the entry rather than deriving a budget
+    /// from the rows it could read.
+    #[test]
+    fn a_malformed_leaf_declaration_refuses() {
+        let td = leaf_dir(&format!(
+            "{LEAF_HEAD}\n[[component]]\npkg = \"p\"\nname = \"n\"\n\
+             entities = [\"nonsense\"]\n{LEAF_IMAGE}"
+        ));
+        let e = facts_from_leaf(td.path()).unwrap_err().to_string();
+        assert!(e.contains("nonsense"), "{e}");
     }
 
     /// It is a COUNT, not a cost. This verb never states

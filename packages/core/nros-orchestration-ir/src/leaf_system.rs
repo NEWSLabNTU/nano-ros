@@ -152,6 +152,22 @@ pub struct LeafSystem {
     /// talker-xrce`'s XRCE transport budget, on a board whose other twelve
     /// images want the defaults.
     pub env: BTreeMap<String, String>,
+    /// Issue 1142 — `[system] features`, the SAME key a workspace bringup's
+    /// `system.toml` carries (`features = ["param_services"]`, which reaches a
+    /// resolved model as `execution.features`).
+    ///
+    /// It answers the half of the queryable budget no entity declaration can:
+    /// the runtime's own parameter and lifecycle service families are service
+    /// servers nobody writes a `create_service` for. On the workspace road the
+    /// resolved model states them; a standalone leaf has no model, so it states
+    /// them here, in the file it already states everything else in.
+    ///
+    /// ABSENT MEANS NONE, exactly as it does for a bringup —
+    /// `cmd::entity_facts::declared_infra` reads an empty `execution.features`
+    /// as `"none"` for every model in this tree. The claim is worth exactly as
+    /// much as the `entities` declaration beside it, which is why it is read
+    /// only where that declaration exists.
+    pub features: Vec<String>,
 }
 
 impl LeafSystem {
@@ -297,6 +313,33 @@ fn u32_key(t: Option<&toml::Table>, key: &str, file: &Path) -> Result<Option<u32
     u32::try_from(i)
         .map(Some)
         .map_err(|_| format!("{}: `{key}` = {i} is out of range", file.display()))
+}
+
+/// Issue 1142 — `[system] features`, an array of capability names.
+///
+/// Absent is an empty list and NOT an error: a bringup that names no feature
+/// carries none, and one schema means one reading.
+fn features_key(t: Option<&toml::Table>, file: &Path) -> Result<Vec<String>, String> {
+    let Some(v) = t.and_then(|t| t.get("features")) else {
+        return Ok(Vec::new());
+    };
+    let arr = v.as_array().ok_or_else(|| {
+        format!(
+            "{}: `[system] features` must be an ARRAY of strings, e.g. \
+             [\"param_services\", \"lifecycle\"]",
+            file.display()
+        )
+    })?;
+    arr.iter()
+        .map(|item| {
+            item.as_str().map(str::to_string).ok_or_else(|| {
+                format!(
+                    "{}: every `[system] features` element must be a string; found {item}",
+                    file.display()
+                )
+            })
+        })
+        .collect()
 }
 
 fn entities_key(t: &toml::Table, file: &Path) -> Result<Option<Vec<String>>, String> {
@@ -469,6 +512,7 @@ fn image_system(
         network,
         components,
         env,
+        features: features_key(system, path)?,
     })
 }
 
@@ -647,6 +691,37 @@ locator = "tcp/10.0.2.2:9800"
             l.declared_entities().unwrap(),
             vec!["publisher:std_msgs/msg/String:/chatter", "timer"]
         );
+        // Issue 1142 — a leaf that names no feature carries none, exactly as a
+        // bringup with an empty `execution.features` does.
+        assert!(l.features.is_empty());
+    }
+
+    /// Issue 1142 — `[system] features` is the leaf's channel for the service
+    /// families the runtime creates on its behalf. Same key, same spelling and
+    /// same meaning as a workspace bringup's.
+    #[test]
+    fn the_system_features_list_is_read_and_a_non_array_names_the_file() {
+        let d = leaf(&[
+            ("Cargo.toml", CARGO),
+            (
+                "system.toml",
+                "[system]\nname = \"t\"\nfeatures = [\"param_services\", \"lifecycle\"]\n\
+                 \n[image.i]\nboard = \"native\"\n",
+            ),
+        ]);
+        let l = read(d.path()).unwrap().expect("declared");
+        assert_eq!(l.features, vec!["param_services", "lifecycle"]);
+
+        let d = leaf(&[
+            ("Cargo.toml", CARGO),
+            (
+                "system.toml",
+                "[system]\nname = \"t\"\nfeatures = \"param_services\"\n\
+                 \n[image.i]\nboard = \"native\"\n",
+            ),
+        ]);
+        let e = read(d.path()).unwrap_err();
+        assert!(e.contains("ARRAY") && e.contains("system.toml"), "{e}");
     }
 
     #[test]

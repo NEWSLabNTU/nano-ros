@@ -15,6 +15,13 @@ domain_id = 0
 pkg = "nuttx_cpp_service_server"
 class = "nuttx_cpp_service_server::ServiceServer"
 name = "add_two_ints_server"
+# What this component creates (RFC-0098 D8, issue 1142) — read from src/, in the
+# `nano_ros_node_register(... ENTITIES ...)` grammar. A standalone leaf has no
+# bringup and no SystemModel, so this is the ONLY thing that can size its pools;
+# without it the RMW guesses (`if hosted { 32 } else { 8 }`).
+entities = [
+    "service_server:example_interfaces/srv/AddTwoInts:/add_two_ints",
+]
 
 # NuttX on the QEMU ARM virt machine.
 [image.qemu-armv7a-nuttx]

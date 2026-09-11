@@ -608,11 +608,35 @@ impl InfraServices {
     /// What a resolved model declares. An unrecognised feature is not one of
     /// these and is ignored, as `entity_facts` has always done.
     pub fn from_model(model: &ros_launch_manifest_model::SystemModel) -> Self {
-        let has = |name: &str| model.execution.features.iter().any(|f| f == name);
+        Self::from_features(&model.execution.features, model.structure.nodes.len())
+    }
+
+    /// Issue 1142 -- the same two names, read from a feature LIST.
+    ///
+    /// A standalone leaf has no resolved model and states its features in the
+    /// SAME key a bringup does (`[system] features`, reaching a model as
+    /// `execution.features`). [`Self::from_model`] delegates here so the two
+    /// roads cannot come to disagree about which spelling turns a family on.
+    pub fn from_features<S: AsRef<str>>(features: &[S], nodes: usize) -> Self {
+        let has = |name: &str| features.iter().any(|f| f.as_ref() == name);
         Self {
             param_services: has("param_services"),
             lifecycle: has("lifecycle"),
-            model_nodes: model.structure.nodes.len(),
+            model_nodes: nodes,
+        }
+    }
+
+    /// The `NROS_DECLARED_INFRA_QUERYABLES` spelling.
+    ///
+    /// The consumer PANICS on a token it does not know
+    /// (`nros-zpico-build::infra_queryables`), so these four strings are a
+    /// contract -- written in exactly one place, on every road.
+    pub fn token(self) -> &'static str {
+        match (self.param_services, self.lifecycle) {
+            (true, true) => "param+lifecycle",
+            (true, false) => "param",
+            (false, true) => "lifecycle",
+            (false, false) => "none",
         }
     }
 

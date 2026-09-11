@@ -1626,4 +1626,7 @@ holds the evidence, the item is *close it*.
   example reaches none of the three declaration channels — no SystemModel, not
   Zephyr, not a cargo leaf — so the guess is the only budget it can get. That
   gap is
-  [#1142](../issues/1142-nuttx-standalone-example-has-no-entity-declaration.md).
+  [#1142](../issues/archived/1142-nuttx-standalone-example-has-no-entity-declaration.md)
+  — CLOSED 2026-09-11 (phase-412 W5): a standalone CMake leaf declares its
+  entities in its `system.toml`, and the NuttX C++ action-client's
+  `SERVICE_BUFFERS` went 35,584 B to 4,448 B.
