@@ -214,6 +214,42 @@ the rest and do not depend on each other.
   (`Span`, `StringView`, `FixedString`, `Seq`, `Duration`). Includes the one gap
   the census found: `ComponentNode` has no `Seq<T,N>` parameter overload, so its
   `std::vector` form has no sibling to fall back to and one must be added.
+  **MET BY MEASUREMENT 2026-09-12, and the measurement is the deliverable**, so
+  this is recorded rather than claimed as work done.
+
+  After W6, the remaining 134 `std::` sites in `nros-cpp/include` split like
+  this — a comment-stripping scan that tracks `#if` nesting, so a site inside a
+  capability gate is counted as gated:
+
+  | | sites |
+  | --- | --- |
+  | behind `NROS_CPP_STD` / `NROS_CPP_HAS_*` / `NROS_CPP_NODE_HOSTED` | **129** |
+  | ungated | **5** |
+
+  And all five ungated are legitimate:
+
+  * `log.hpp:237-238` — string LITERALS inside a diagnostic message, not uses.
+  * `nros.hpp:319,363` — `std::abort()`, which `[compliance]` puts in the
+    freestanding subset and both shims export.
+  * `parameter.hpp:85` — `std::initializer_list`, whose header is
+    freestanding-guaranteed because it is core language support for braced
+    initialisation, not a library convenience.
+
+  So **the freestanding API is already `std`-free**, and there is nothing on
+  that path left to replace. The census's 27 "replaceable" already have their
+  siblings, checked pair by pair in `parameter.hpp`: `declare_parameter` has
+  `Seq<T,N>` at :274 beside `std::vector<T>` at :284, `get_parameter` :322
+  beside :350, `set_parameter` :372 beside :378, and the string form's
+  freestanding sibling is the `char* out, size_t max_len` overload at :308. The
+  gap the census predicted — a missing `Seq` form — does not exist; and
+  `ComponentNode`, which the census named as the holder of it, was deleted by
+  phase-427 W7.
+
+  *What this hands W8.* The remaining work is not "replace 27 types" but
+  "collapse 129 gated sites into one ungated API", using RFC-0096 D8's deduced
+  parameter and W3's two mechanisms. That is a different and larger job than
+  W7's text describes, and naming it here is the point of recording the
+  measurement.
 
 * **W8 [cpp] — the remaining `rclcpp::` surface moves onto the mechanisms**, and
   the nine gates and `cmake/compat/` are deleted. This is where the API becomes
