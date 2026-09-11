@@ -135,6 +135,37 @@ registered with Cyclone whenever `param-services` is on; a failed registration i
 reported once through `nros_log` and not retried; a Cyclone cell reads a parameter back
 with `ros2 param get` against a live peer.
 
+**Progress 2026-09-12 — all three done; the mechanism is upstream's, the
+acceptance is this branch's.**
+
+- [x] **Registered.** `5572267bb` (on `main`) made `create_param_srv` call
+      `register_type::<Svc::Request>()` / `::<Svc::Reply>()` before
+      `create_service`, exactly as a typed user service does. That was chosen
+      over baking the descriptors into the backend the way
+      `ParticipantEntitiesInfo` is: the generic seam already existed, every
+      other service uses it, and it stays a no-op on zenoh and xrce. This
+      branch had built the baked variant in parallel and **dropped it** — two
+      mechanisms for one job would register the twelve twice against the same
+      `NROS_CYCLONEDDS_MAX_TYPES` budget that `cyclonedds_type_sizing::infra_types`
+      now sizes.
+- [x] **Reported once, not retried** — landed with issue 1271
+      (`ParamState::reconcile_failure_reported`), extended by `5572267bb` to
+      name the node FQN and the service suffix and to mark `Unsupported`
+      permanent. Verified, not re-done.
+- [x] The 0745 comment's stated cause is corrected — `emit_c.rs` upstream, and
+      both `service_trailer.jinja` packs plus three goldens here, which is what
+      a generated entry actually carries.
+- [x] **The live-peer half, which is what the issue's own Acceptance asks for.**
+      `ros2 param get` reads a parameter back from a two-node Cyclone image
+      against this host's ROS 2 Humble peer. A SIBLING, not a new harness:
+      `param-two-node-talker` takes an `rmw-*` feature and registers through
+      `register_linked_rmw()`, row `param-two-node-talker-cyclone` and cell
+      `native-params-per-node-rust-cyclone` sit beside their zenoh twins, and
+      the four domain-addressed `ros2` helpers share one capture body with the
+      locator-addressed originals. A second cell rather than a wider one, for
+      issue 1269's stated reason — the zenoh case stayed green for the whole
+      time every Cyclone parameter service failed to create.
+
 ### W7 — #1269, the same image shows a different node set on each RMW
 
 The requirement is that `ros2 node list` (and everything that addresses a node by name:
