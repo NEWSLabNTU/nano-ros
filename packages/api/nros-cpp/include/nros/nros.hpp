@@ -1090,7 +1090,25 @@ inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node,
 //
 // Gated on `<chrono>` alone: the duration constructor and `period()` are spelled
 // in `std::chrono`, and everything else it touches is an integer.
-#ifdef NROS_CPP_HAS_STD_CHRONO
+// phase-442 W5 — `Rate` EXISTS ON EVERY TARGET.
+//
+// It used to sit inside `#ifdef NROS_CPP_HAS_STD_CHRONO`, which made the whole
+// type a property of the toolchain: a node written against `rclcpp::Rate`
+// compiled on a host and vanished on ThreadX. Measured, the gate was paying for
+// two members out of five — `Rate(double)`, `sleep()` and `reset()` are integer
+// arithmetic over `nros_cpp_time_ns()` and never needed `<chrono>` at all.
+//
+// The two that did are handled differently, and the difference is the rule
+// RFC-0096 D1 states. `period()` returns `nros::Duration`, which is ours and
+// exists everywhere, so the type's SHAPE no longer follows a probe. The
+// `std::chrono` CONSTRUCTOR stays behind the capability macro, which is a gate
+// on a METHOD — permitted, since `sizeof(Rate)` is `int64_t` + `uint64_t` in
+// every configuration and two translation units cannot disagree about it.
+//
+// That constructor is the one thing here W8 still has to resolve: its parameter
+// names `std::chrono::duration`, and W8's acceptance is zero `NROS_CPP_HAS_*` in
+// the tree. Recorded rather than quietly left, because a gated method is exactly
+// the kind of residue that reads as finished work.
 
 namespace rclcpp {
 
@@ -1105,13 +1123,26 @@ class Rate {
         reset();
     }
 
+    /// Construct from a period — `rclcpp::Rate(nros::Duration::from_nanoseconds(n))`.
+    /// The always-available spelling, on every target.
+    explicit Rate(::nros::Duration period) : period_ns_(period.nanoseconds()) {
+        if (period_ns_ < 0) period_ns_ = 0;
+        reset();
+    }
+
+#ifdef NROS_CPP_HAS_STD_CHRONO
     /// Construct from a period — `rclcpp::Rate(std::chrono::milliseconds(100))`.
+    ///
+    /// A gated METHOD, not a gated type: `sizeof(Rate)` is the same in every
+    /// configuration. Where `<chrono>` is absent, the `nros::Duration` overload
+    /// above is the same operation.
     template <typename Rep, typename Period>
     explicit Rate(std::chrono::duration<Rep, Period> period)
         : period_ns_(std::chrono::duration_cast<std::chrono::nanoseconds>(period).count()) {
         if (period_ns_ < 0) period_ns_ = 0;
         reset();
     }
+#endif
 
     /// Spin the executor until the next tick is due.
     ///
@@ -1147,7 +1178,12 @@ class Rate {
     void reset() { next_tick_ns_ = nros_cpp_time_ns() + static_cast<uint64_t>(period_ns_); }
 
     /// The configured period.
-    std::chrono::nanoseconds period() const { return std::chrono::nanoseconds(period_ns_); }
+    ///
+    /// `nros::Duration` rather than `std::chrono::nanoseconds` (phase-442 W5):
+    /// a return type that exists only where `<chrono>` does would keep the whole
+    /// class hostage to the toolchain, which is what this work item removed.
+    /// `.nanoseconds()` is the same number upstream's `.count()` gives.
+    ::nros::Duration period() const { return ::nros::Duration::from_nanoseconds(period_ns_); }
 
   private:
     int64_t period_ns_;
@@ -1159,7 +1195,5 @@ class Rate {
 using WallRate = Rate;
 
 } // namespace rclcpp
-
-#endif // NROS_CPP_HAS_STD_CHRONO
 
 #endif // NROS_CPP_HPP

@@ -66,44 +66,40 @@
 # the indirection, one stable layout, no one-definition hazard, and no
 # dereference on the hot path.
 #
-# --- the `hosted-only` entries ----------------------------------------------
+# --- the `hosted-only` and `std-only` entries: NONE --------------------------
 #
-# `rclcpp::Rate` (and `WallRate`, its alias) sit inside `#ifdef
-# NROS_CPP_HAS_STD_CHRONO` at nros.hpp:936 -- the duration constructor and
-# `period()` are spelled in `std::chrono`. `rclcpp::NodeOptions` sits inside
-# `#if defined(NROS_CPP_HAS_STD_STRING) && defined(NROS_CPP_HAS_STD_VECTOR)` at
-# options.hpp:217. All three are absent against the ThreadX shim, which is the
-# correct outcome for a type whose whole surface is hosted, and none of them is
-# a layout that two TUs can disagree about.
+# There were six, three types under two kinds. `rclcpp::Rate` (and `WallRate`,
+# its alias) sat inside `#ifdef NROS_CPP_HAS_STD_CHRONO`; `rclcpp::NodeOptions`
+# sat inside `#if defined(NROS_CPP_HAS_STD_STRING) &&
+# defined(NROS_CPP_HAS_STD_VECTOR)`. Absence is not a layout divergence -- no
+# freestanding TU could name the type, so no two TUs could disagree about its
+# shape -- but it is a whole type appearing and disappearing with a toolchain,
+# which RFC-0096 D1 is the decision against.
+#
+# phase-442 W5 removed both gates, and the measurement is why they were
+# affordable: `Rate`'s gate was paying for two members out of five, and
+# `NodeOptions`' for ONE out of 23. `Rate::period()` returns `nros::Duration`
+# instead of `std::chrono::nanoseconds`; `NodeOptions::arguments()` takes a
+# DEDUCED parameter instead of `const std::vector<std::string>&`, which is
+# strictly better for a porting user too -- the same call site binds, and a
+# caller passing something else still gets the migration message rather than
+# "no matching function". Both refusals are unchanged.
+#
+# Measured after: NodeOptions 1, Rate 16, WallRate 16, identical on all three
+# arms.
+#
+# One residue, recorded rather than hidden: `Rate`'s `std::chrono` CONSTRUCTOR
+# is still behind `NROS_CPP_HAS_STD_CHRONO`. That is a gate on a METHOD, which
+# this rule permits -- `sizeof(Rate)` is `int64_t` + `uint64_t` everywhere -- but
+# W8's acceptance is zero `NROS_CPP_HAS_*` in the tree, so it is W8's to resolve.
 
-# --- the `std-only` entries -------------------------------------------------
-#
-# The same three types on the other axis, and for a DIFFERENT reason -- which
-# is why the kinds are separate rather than one line excusing both arms.
-# `hosted-only` is about a toolchain that cannot reach the standard library;
-# `std-only` is about a consumer that did not ASK for the porting surface.
-# Since phase-438 W2 the `NROS_CPP_HAS_*` macros are defined by `NROS_CPP_STD`
-# and by nothing else, so a hosted TU that withholds the flag has none of them
-# and the same three guards close for it.
-#
-# `Rate` / `WallRate` were NOT on this arm when W4 first ran it, and the reason
-# is worth recording. `NROS_CPP_HAS_STD_CHRONO` had a SECOND definition in
-# `node.hpp`, still carrying the `__STDC_HOSTED__ && __has_include(<chrono>)`
-# discovery that W2 deleted from the shared site -- so a hosted TU kept the
-# macro from the copy W2 never reached, and the two `<chrono>`-guarded types
-# went on existing without the flag. phase-438 W1 as it landed on `main`
-# (`cf4b0048a`) folds that copy into `std_detect.hpp`, which is what lets this
-# arm measure the flag rather than the include path. Two definitions of one
-# capability macro is issue 0135's shape; one site is the fix.
+# The `diverges` rows below are phase-442 W1's, and they come off in the commit
+# that fixes the member -- see the section above. They are listed here, after the
+# two kinds that are now empty, only because this file's rows all live at the
+# end.
 
 diverges ::nros::GuardCondition
 diverges ::nros::NodeWithTimers<4>
 diverges ::nros::Timer
 diverges ::rclcpp::Timer
 diverges ::rclcpp::TimerBase
-hosted-only ::rclcpp::NodeOptions
-hosted-only ::rclcpp::Rate
-hosted-only ::rclcpp::WallRate
-std-only ::rclcpp::NodeOptions
-std-only ::rclcpp::Rate
-std-only ::rclcpp::WallRate
