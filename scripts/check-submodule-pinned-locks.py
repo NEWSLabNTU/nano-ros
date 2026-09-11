@@ -38,10 +38,14 @@ resolving inside a path registered in `.gitmodules`. Today that is one leaf; the
 rule is what matters.
 """
 import configparser
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 PATH_DEP = re.compile(r'path\s*=\s*"([^"]+)"')
@@ -86,6 +90,52 @@ def exposed_leaves():
                 found.append((leaf, target))
                 break
     return found
+
+
+def _submodule_drift(target):
+    """The THIRD cause (issues 1051 + 1294): the pin did not move, the CHECKOUT did.
+
+    `cargo`'s failure is identical either way — a lock that does not satisfy its
+    manifest — so the gate reported both as 0560 and printed `lock-update`. That
+    remedy is correct for a moved pointer and DESTRUCTIVE here: it re-resolves a
+    byte-correct lock against a tree the superproject does not record, and issue
+    1294 measured the worse half — following it records a submodule REWIND, the
+    thing `check-submodule-pins` and the `pre-push` hook exist to refuse.
+
+    The two are distinguishable by MEASURING, which is the whole of phase-450:
+    compare the submodule's `HEAD` against the gitlink the superproject records.
+
+    The git environment is cleared first. This gate runs under `pre-push`, where
+    `GIT_DIR` is set — and `GIT_DIR` overrides `git -C`, so without this the
+    probe would read the SUPERPROJECT's HEAD and report no drift, always
+    (issues 0986/0988).
+    """
+    env = nros_clear_inherited_git_env(dict(os.environ))
+    for sub in submodule_paths():
+        if not (target == sub or sub in target.parents):
+            continue
+        rel = sub.relative_to(REPO).as_posix()
+        ls = subprocess.run(
+            ["git", "ls-tree", "HEAD", "--", rel],
+            cwd=REPO, capture_output=True, text=True, env=env,
+        )
+        if ls.returncode != 0 or not ls.stdout.strip():
+            return None
+        fields = ls.stdout.split()
+        if len(fields) < 3 or fields[0] != "160000":
+            return None
+        recorded = fields[2]
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=sub, capture_output=True, text=True, env=env,
+        )
+        if head.returncode != 0:
+            return None
+        actual = head.stdout.strip()
+        if actual and recorded and actual != recorded:
+            return (rel, recorded, actual)
+        return None
+    return None
 
 
 # issue 0600 — cargo's own words separate the two causes. An `--offline` run
@@ -158,14 +208,22 @@ def main():
             # Reporting both as 0560 told an operator to `lock-update` a
             # byte-correct lock, which is precisely the churn 0359/0378 exist to
             # prevent — in the imperative, to a reader with no reason to doubt.
-            kind = "cold-cache" if _is_offline_cache_miss(proc.stderr) else "mismatch"
-            failures.append((rel, proc.stderr.strip().splitlines(), kind))
+            if _is_offline_cache_miss(proc.stderr):
+                kind = "cold-cache"
+                drift = None
+            else:
+                # issues 1051 + 1294 — before blaming the LOCK, ask whether the
+                # CHECKOUT is what moved. Same cargo error, opposite remedy.
+                drift = _submodule_drift(target)
+                kind = "drifted-checkout" if drift else "mismatch"
+            failures.append((rel, proc.stderr.strip().splitlines(), kind, drift))
         else:
             print(f"  ok   {rel} resolves under --locked")
 
     if failures:
         mismatched = [f for f in failures if f[2] == "mismatch"]
         cold = [f for f in failures if f[2] == "cold-cache"]
+        drifted = [f for f in failures if f[2] == "drifted-checkout"]
         print("", file=sys.stderr)
 
         if cold:
@@ -174,7 +232,7 @@ def main():
                 f"— NOT a failure, and NOT a pass:",
                 file=sys.stderr,
             )
-            for rel, err, _ in cold:
+            for rel, err, _, _d in cold:
                 print(f"\n  {rel}", file=sys.stderr)
                 # HEAD, not tail: `no matching package named X` is the first
                 # line and names the crate. Printing `err[-4:]` discarded it,
@@ -198,12 +256,39 @@ def main():
                 file=sys.stderr,
             )
 
+        if drifted:
+            print(
+                f"\n[FAIL] {len(drifted)} lock(s) cannot resolve because the SUBMODULE "
+                f"CHECKOUT drifted from the pin — the lock is fine:", file=sys.stderr,
+            )
+            for rel, err, _, d in drifted:
+                sub_rel, recorded, actual = d
+                print(f"\n  {rel}", file=sys.stderr)
+                print(f"      submodule   {sub_rel}", file=sys.stderr)
+                print(f"      recorded    {recorded}   (what this commit pins)", file=sys.stderr)
+                print(f"      checked out {actual}   (what your tree has)", file=sys.stderr)
+                for line in err[:4]:
+                    print(f"      {line}", file=sys.stderr)
+                print(f"      restore:    git submodule update {sub_rel}", file=sys.stderr)
+            print(
+                "\n  The pointer did NOT move; your checkout did. Restore it with the\n"
+                "  `git submodule update` line printed against each leaf above — one per\n"
+                "  submodule, because two leaves can drift in different ones.\n"
+                "\n  Do NOT run `lock-update` for this. The lock matches the RECORDED\n"
+                "  pin, so re-resolving it would rewrite a correct file to match a tree\n"
+                "  this commit does not pin — and issue 1294 measured the worse half:\n"
+                "  following that remedy records a submodule REWIND, which is what\n"
+                "  `check-submodule-pins` and the `pre-push` hook exist to refuse.\n"
+                "  (issues 1051 + 1294)",
+                file=sys.stderr,
+            )
+
         if mismatched:
             print(
                 f"\n[FAIL] {len(mismatched)} lock(s) pinned by a submodule manifest no "
                 f"longer resolve:", file=sys.stderr,
             )
-            for rel, err, _ in mismatched:
+            for rel, err, _, _d in mismatched:
                 print(f"\n  {rel}", file=sys.stderr)
                 for line in err[:6]:
                     print(f"      {line}", file=sys.stderr)
@@ -218,7 +303,7 @@ def main():
         # Only a MISMATCH is a defect in this repo. A cold cache says nothing
         # about the lock, so it cannot be a red — but it is not a pass either,
         # and the line above says so rather than letting it read as coverage.
-        if mismatched:
+        if mismatched or drifted:
             return 1
 
     verified = checked - len([f for f in failures if f[2] == "cold-cache"])
