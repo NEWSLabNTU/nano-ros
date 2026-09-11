@@ -219,10 +219,6 @@
     "verdict": "divergence",
     "why": "the same adapter for `std::vector<std::string>` -> `std::vector<const char *>`; neither header is available in the freestanding profile, and the return value allocates. See `cpp:get_c_string`."
   },
-  "cpp:global_handle": {
-    "verdict": "extension",
-    "why": "the executor handle behind the free-function `nros::init()` / `nros::spin_once()` convenience path, so a caller using it can still hand an executor to `Future::wait` / `Stream::wait_next` -- which they must, because RFC-0021 makes every blocking helper take the executor. rclcpp needs no equivalent: `spin_until_future_complete` takes a node or executor the caller already holds. Returns `nullptr` before `init()`."
-  },
   "cpp:has_derived_size_bound": {
     "verdict": "extension",
     "why": "phase-408 / issue 0964. Asks whether a message type carries a DERIVED serialized-size bound, as opposed to the estimate `SERIALIZED_SIZE_MAX` states for every type including unbounded ones. It is the predicate the receive buffers branch on: derived -> use it, not derived -> keep today's behaviour. rclcpp has nothing to compare because with an allocator the question does not arise."

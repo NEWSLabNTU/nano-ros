@@ -51,14 +51,18 @@ nros_cpp_ret_t nros_cpp_action_client_set_callbacks(
     nros_cpp_action_client_result_callback_t result, void* context);
 } // extern "C"
 
-namespace nros {
-// `nros::Node` is named by the friend declaration below and by the out-of-line
-// `Node::create_action_client` body further down. `nros/node.hpp` (included
-// below, after the class) has the definition; a qualified friend needs the name
-// to EXIST first, which an unqualified `friend class Node;` used to supply
-// implicitly.
+/// `rclcpp::Node` is named by the friend declaration below and by the
+/// out-of-line `Node::create_*` bodies further down. `nros/node.hpp` (included
+/// below, after the class, so a consumer pays only for the entities it uses)
+/// has the definition; a qualified friend needs the name to EXIST first, which
+/// an unqualified `friend class Node;` used to supply implicitly.
+///
+/// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
+/// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
+/// class and collide with the `nros::Node` alias.
+namespace rclcpp {
 class Node;
-} // namespace nros
+}
 
 // ============================================================================
 // `rclcpp_action::Client<A>` -- DEFINED here (RFC-0089: rclcpp_action:: is the home)
@@ -516,7 +520,7 @@ template <typename A> class Client {
     Client(const Client&) = delete;
     Client& operator=(const Client&) = delete;
 
-    friend class ::nros::Node;
+    friend class ::rclcpp::Node;
 
     alignas(8) uint8_t storage_[NROS_CPP_ACTION_CLIENT_STORAGE_SIZE];
     void* executor_; // Stashed executor handle (Phase 82) for blocking helpers
@@ -542,12 +546,14 @@ template <typename A> using ActionClient = ::rclcpp_action::Client<A>;
 // Phase 84.G8: out-of-line definition of Node::create_action_client<A>().
 #include "nros/node.hpp"
 
-namespace nros {
+namespace nros {} // namespace nros
 
+namespace rclcpp {
 template <typename A>
-Result Node::create_action_client(ActionClient<A>& out, const char* action_name, const QoS& qos) {
-    if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+Result Node::create_action_client(::nros::ActionClient<A>& out, const char* action_name,
+                                  const ::nros::QoS& qos) {
+    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret = nros_cpp_action_client_create(&handle_, action_name, A::TYPE_NAME,
                                                        A::Goal::TYPE_HASH, ffi_qos, out.storage_);
     if (ret == 0) {
@@ -556,7 +562,8 @@ Result Node::create_action_client(ActionClient<A>& out, const char* action_name,
     }
     return Result(ret);
 }
+} // namespace rclcpp
 
-} // namespace nros
+namespace nros {} // namespace nros
 
 #endif // NROS_CPP_ACTION_CLIENT_HPP

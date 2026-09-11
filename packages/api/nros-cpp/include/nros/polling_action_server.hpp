@@ -30,6 +30,15 @@
 
 #include "nros_cpp_ffi.h"
 
+// phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
+// the home). The friend declaration below is qualified, and a qualified friend
+// names an existing entity rather than introducing one, so the name has to be
+// declared first — and in `rclcpp::`, because an elaborated `class Node;` in
+// `nros::` would declare a second, distinct class.
+namespace rclcpp {
+class Node;
+}
+
 namespace nros {
 
 /// Typed L1 polling-mode action server.
@@ -311,7 +320,7 @@ template <typename A> class PollingActionServer {
     }
 
   private:
-    friend class Node;
+    friend class ::rclcpp::Node;
 
     static constexpr size_t kStorageU64s = NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S;
     alignas(8) uint64_t storage_[kStorageU64s];
@@ -323,11 +332,13 @@ template <typename A> class PollingActionServer {
 
 #include "nros/node.hpp"
 
-namespace nros {
+namespace nros {} // namespace nros
 
+namespace rclcpp {
 template <typename A>
-Result Node::create_polling_action_server(PollingActionServer<A>& out, const char* action_name) {
-    if (!initialized_) return Result(ErrorCode::NotInitialized);
+Result Node::create_polling_action_server(::nros::PollingActionServer<A>& out,
+                                          const char* action_name) {
+    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
     nros_cpp_ret_t ret =
         nros_cpp_action_server_init_polling(&handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH,
                                             reinterpret_cast<void*>(out.storage_));
@@ -341,7 +352,8 @@ Result Node::create_polling_action_server(PollingActionServer<A>& out, const cha
     out.initialized_ = true;
     return Result::success();
 }
+} // namespace rclcpp
 
-} // namespace nros
+namespace nros {} // namespace nros
 
 #endif // NROS_CPP_POLLING_ACTION_SERVER_HPP

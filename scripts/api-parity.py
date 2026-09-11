@@ -1618,6 +1618,20 @@ def self_test():
         "same",
     )
     check("type noise", correlate.canon_type("const std::string &"), "string&")
+    # phase-427 W7 -- a LEADING `::` is the same type. The namespace strips are
+    # `^`-anchored, so before this the two spellings canonicalised differently
+    # and SEVEN C++ rows read `systematic` for nothing but a `::`: our hosted
+    # overloads are written `::std::string` and upstream's are `std::string`, so
+    # `Node::declare_parameter` and five siblings reported `rule:cstr-not-string`
+    # over an overload we actually ship. Both directions pinned, because a fix
+    # that stripped `::` from EVERY position would also erase the difference
+    # between `A::B` and `B`.
+    check("leading :: is the same type",
+          correlate.canon_type("const ::std::string &"), "string&")
+    check("leading :: on our namespace",
+          correlate.canon_type("const ::nros::QoS &"), "QoS&")
+    check("an inner :: is not noise",
+          correlate.canon_type("Node::SharedPtr"), "Node::SharedPtr")
 
     ours = correlate.flatten(
         [

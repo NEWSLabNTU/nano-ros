@@ -45,14 +45,20 @@ namespace nros {
 /// implementation bound of one of them, not a name upstream declares.
 static constexpr size_t PUBLISHER_TOPIC_NAME_MAX = 256;
 
-/// `nros::Node` is named by the friend declaration below and by the out-of-line
-/// `Node::create_*` bodies further down. `nros/node.hpp` (included below, after
-/// the class, so a consumer pays only for the entities it uses) has the
-/// definition; a qualified friend needs the name to EXIST first, which an
-/// unqualified `friend class Node;` used to supply implicitly.
-class Node;
-
 } // namespace nros
+
+/// `rclcpp::Node` is named by the friend declaration below and by the
+/// out-of-line `Node::create_*` bodies further down. `nros/node.hpp` (included
+/// below, after the class, so a consumer pays only for the entities it uses)
+/// has the definition; a qualified friend needs the name to EXIST first, which
+/// an unqualified `friend class Node;` used to supply implicitly.
+///
+/// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
+/// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
+/// class and collide with the `nros::Node` alias.
+namespace rclcpp {
+class Node;
+}
 
 // ============================================================================
 // `rclcpp::Publisher<M>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
@@ -308,7 +314,7 @@ template <typename M> class Publisher {
     Publisher(const Publisher&) = delete;
     Publisher& operator=(const Publisher&) = delete;
 
-    friend class ::nros::Node;
+    friend class ::rclcpp::Node;
 
     alignas(8) uint8_t storage_[NROS_PUBLISHER_SIZE];
     char topic_name_[::nros::PUBLISHER_TOPIC_NAME_MAX];
@@ -332,15 +338,16 @@ template <typename M> using Publisher = ::rclcpp::Publisher<M>;
 // every entity's code path.
 #include "nros/node.hpp"
 
-namespace nros {
+namespace nros {} // namespace nros
 
+namespace rclcpp {
 template <typename M>
-Result Node::create_publisher(Publisher<M>& out, const char* topic, const QoS& qos) {
+Result Node::create_publisher(Publisher<M>& out, const char* topic, const ::nros::QoS& qos) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
-    if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret = nros_cpp_publisher_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
                                                    ffi_qos, out.storage_);
     if (ret == 0) {
@@ -356,18 +363,27 @@ Result Node::create_publisher(Publisher<M>& out, const char* topic, const QoS& q
     }
     return Result(ret);
 }
+} // namespace rclcpp
+
+namespace nros {
 
 /// Phase 189.M3.1 — named-options overload. `PublisherOptions` is a
 /// reserved/empty struct (a publisher has no callback ⇒ no sched-context
 /// or message-info axis), so this simply forwards to the qos-only create.
 /// It exists for rclcpp symmetry and as the seam for future intra-process
 /// / loaned-message knobs.
+} // namespace nros
+
+namespace rclcpp {
 template <typename M>
-Result Node::create_publisher(Publisher<M>& out, const char* topic, const QoS& qos,
-                              const PublisherOptions& options) {
+Result Node::create_publisher(Publisher<M>& out, const char* topic, const ::nros::QoS& qos,
+                              const ::nros::PublisherOptions& options) {
     (void)options; // reserved — no live fields today
     return create_publisher<M>(out, topic, qos);
 }
+} // namespace rclcpp
+
+namespace nros {
 
 /// Phase 123.B.4 — value-returning publisher factory. Wraps the
 /// out-param `Node::create_publisher` in `ResultOf<Publisher<M>>`

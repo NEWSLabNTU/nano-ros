@@ -599,10 +599,6 @@
     "verdict": "extension",
     "why": "the `NROS_CPP_STD` `std::chrono::milliseconds` overload of `Executor::spin_once`, spelled as a free function taking the executor first for the reason given at `cpp:create_executor` -- `std_compat.hpp` cannot add a member to `Executor`. It is a UNIT overload, not a new operation: the method it forwards to correlates as `same` against rclcpp's `Executor::spin_once`. rclcpp needs no equivalent because it takes `std::chrono` natively; ours takes `int32_t` milliseconds so the method is reachable from a freestanding build with no `<chrono>`. A `no_std` consumer does not get this spelling. Note the naming caveat at `cpp:spin_once`: our one-cycle verb has rclcpp's `spin_some` semantics."
   },
-  "cpp:spin_once": {
-    "verdict": "divergence",
-    "why": "rclcpp's free spin functions take the node to spin (`rclcpp::spin(node)`); ours take no node, because a node is not a unit of dispatch (see `cpp:Executor::spin_node_once`) and the global session is singular (see `cpp:Context`). `nros::spin_once(timeout_ms)` drives the one global executor `nros::init()` created. rclcpp has no free `spin_once` at all -- and note this one has `spin_some` semantics, not rclcpp's `spin_once` semantics; see `cpp:Executor::spin_some`. OUR LANGUAGES DISAGREE: the one-cycle verb is `spin_once` in C++ and Rust and `nros_executor_spin_some` in C (matching rclc), so a reader moving between our own surfaces meets the same operation under rclcpp's name for a different operation."
-  },
   "cpp:spin_some": {
     "verdict": "rename",
     "why": "the free form of `cpp:Executor::spin_some`; ours is `nros::spin_once(0)`. RE-VERDICTED 2026-09-04 (phase-417), declined -> rename, for the same reason and with the same blocker -- the capability is present under another word, which is not what `declined` means. See that row.",

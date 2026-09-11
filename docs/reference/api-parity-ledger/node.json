@@ -222,6 +222,10 @@
     "verdict": "declined",
     "why": "the free function behind `create_sub_node`."
   },
+  "cpp:global_handle": {
+    "verdict": "extension",
+    "why": "the executor handle behind the free-function `nros::init()` / `nros::spin_once()` convenience path, so a caller using it can still hand an executor to `Future::wait` / `Stream::wait_next` -- which they must, because RFC-0021 makes every blocking helper take the executor. rclcpp needs no equivalent: `spin_until_future_complete` takes a node or executor the caller already holds. Returns `nullptr` before `init()`."
+  },
   "cpp:init_with_launch": {
     "verdict": "extension",
     "why": "initialises from a resolved launch SystemModel rather than from arguments (RFC-0046: launch is authoritative for node identity). rclcpp reads the same information from argv, which a device does not have."
@@ -237,6 +241,10 @@
   "cpp:make_node": {
     "verdict": "extension",
     "why": "the value-returning spelling of `create_node`, kept for entry points that can take the move."
+  },
+  "cpp:spin_once": {
+    "verdict": "divergence",
+    "why": "rclcpp's free spin functions take the node to spin (`rclcpp::spin(node)`); ours take no node, because a node is not a unit of dispatch (see `cpp:Executor::spin_node_once`) and the global session is singular (see `cpp:Context`). `nros::spin_once(timeout_ms)` drives the one global executor `nros::init()` created. rclcpp has no free `spin_once` at all -- and note this one has `spin_some` semantics, not rclcpp's `spin_once` semantics; see `cpp:Executor::spin_some`. OUR LANGUAGES DISAGREE: the one-cycle verb is `spin_once` in C++ and Rust and `nros_executor_spin_some` in C (matching rclc), so a reader moving between our own surfaces meets the same operation under rclcpp's name for a different operation."
   },
   "rust:ActionExecutor": {
     "verdict": "extension",

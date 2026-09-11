@@ -28,6 +28,15 @@
 
 #include "nros_cpp_ffi.h"
 
+// phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
+// the home). The friend declaration below is qualified, and a qualified friend
+// names an existing entity rather than introducing one, so the name has to be
+// declared first — and in `rclcpp::`, because an elaborated `class Node;` in
+// `nros::` would declare a second, distinct class.
+namespace rclcpp {
+class Node;
+}
+
 namespace nros {
 
 /// Repeating or one-shot timer registered with the executor.
@@ -151,7 +160,7 @@ class Timer {
     Timer(const Timer&) = delete;
     Timer& operator=(const Timer&) = delete;
 
-    friend class Node;
+    friend class ::rclcpp::Node;
 
     void* executor_;
     size_t handle_id_;

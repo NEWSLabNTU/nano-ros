@@ -300,6 +300,10 @@ _TYPE_NOISE = [
     (re.compile(r"\s*&\s*"), "&"),
     (re.compile(r"\s*\*\s*"), "*"),
     (re.compile(r"\s+"), " "),
+    # phase-427 W7 -- a LEADING `::` is the same type, and the namespace strips
+    # below are `^`-anchored, so without this `::nros::QoS` and `nros::QoS`
+    # canonicalise to two different strings.
+    (re.compile(r"^::"), ""),
     (re.compile(r"^rclcpp::"), ""),
     (re.compile(r"^rclcpp_action::"), ""),
     (re.compile(r"^rclrs::"), ""),
