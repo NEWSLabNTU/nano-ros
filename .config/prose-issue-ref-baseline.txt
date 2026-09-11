@@ -31,9 +31,20 @@
 #         0319/0896 class — is still worth reading, and `refs/issue-ids/1110`
 #         is claimed either way.
 #
+#   1319  IN FLIGHT — the genuine case this baseline was built for. The issue
+#         file is on `feat/448-w7-w8-arena-model` (PR #951) and RFC-0100 /
+#         phase-454 cite it from `main`. It is load-bearing in both: 1319
+#         measures the one UNDER-size in the sizing model (1,848 bytes per
+#         subscription on a Rust typed registration against a schemaless
+#         backend), and phase-454 W5.b exists to close it. Deleting the
+#         citation would delete the reason that wave is ordered where it is.
+#         REMOVE THESE TWO ROWS when #951 merges.
+#
+docs/design/0100-rmw-agnostic-sizing-model.md:1319
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 docs/roadmap/phase-445-board-choice-generates-leaf-config.md:1296
 docs/roadmap/phase-445-board-choice-generates-leaf-config.md:1305
+docs/roadmap/phase-454-contract-states-facts-backends-derive.md:1319
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
