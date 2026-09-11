@@ -419,7 +419,10 @@ function(_nros_param_store_env _out_var)
             "NROS_DECLARED_MAX_BYTE_ARRAY_LEN;NROS_DERIVED_MAX_BYTE_ARRAY_LEN"
             "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN;NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN"
             "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN;NROS_PARAM_NEEDS_MAX_ARRAY_LEN"
-            "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN;NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN")
+            "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN;NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN"
+            # phase-446 F3 -- the parameter services' shape; nros-node's
+            # build script bounds the service buffer from it.
+            "NROS_DECLARED_PARAM_SERVICE_SHAPE;NROS_PARAM_SERVICE_SHAPE")
         list(GET _pair 0 _name)
         list(GET _pair 1 _src)
         if(DEFINED ${_src})

@@ -226,6 +226,10 @@ KNOB_CLASS = {
     "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": ("infra", "names a declared parameter, not a knob"),
     "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": ("infra", "names a declared parameter, not a knob"),
     "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": ("infra", "names a declared parameter, not a knob"),
+    # phase-446 F3 -- the parameter services' half of the declaration: per
+    # node, counts the contract decides. nros-node bounds its service buffer
+    # from it and the store's resolved capacities.
+    "NROS_DECLARED_PARAM_SERVICE_SHAPE": ("infra", "a SHAPE the resolver passes down, not a knob"),
     "NROS_PICOLIBC_SYSROOT": ("infra", "path"),
     "NROS_RISCV64_PREFIX": ("infra", "toolchain prefix"),
     "NROS_SDK_STORE": ("infra", "path"),
@@ -472,6 +476,9 @@ READ_CALLEES = {
     # capacity over the stated rungs; `declared` and `needs` read what the
     # contract declared, as a number and as the parameter that needs one.
     "capacity", "declared", "needs",
+    # phase-446 F3 -- nros-node's reader for the same DECLARED road: the
+    # parameter services' shape, a string the entity inventory writes.
+    "declared_fact",
     "env", "env_get", "env_bool", "env_usize", "env_usize_min",
     "env_usize_compat", "env_or_repo_path", "env_path_or", "flag", "knob",
     "knob_usize", "knob_bool", "req", "list", "var", "var_os",

@@ -1251,11 +1251,20 @@ config NROS_EXECUTOR_MAX_NODES
       Phase 104.C.2).
 
 config NROS_PARAM_SERVICE_BUFFER_SIZE
-    int "Parameter service request/reply buffer size (bytes)"
-    default 4096
+    int "Parameter service request/reply buffer size (bytes) (-1 = derive)"
+    default -1
     help
-      Buffer for parameter service requests/replies (nros-node build.rs
-      PARAM_SERVICE_BUFFER_SIZE).
+      Each half of the one request/reply buffer pair an executor's
+      parameter services share (nros-node build.rs PARAM_SERVICE_BUFFER_SIZE).
+
+      phase-446 F3 -- -1 DERIVES it: when the contract's `params:` declare
+      every node's parameters, nros-node sizes the buffer for the largest
+      message those names and types can produce at the store's capacities
+      (CONFIG_NROS_MAX_STRING_VALUE_LEN, CONFIG_NROS_MAX_ARRAY_LEN,
+      CONFIG_NROS_MAX_BYTE_ARRAY_LEN, CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN).
+      Without a declaration the crate default of 4096 stands. Stating a
+      number here WINS; a request or reply past it is dropped and logged
+      once per service.
 
 config NROS_RMW_SUBSCRIBER_SLOTS
     int "Static subscription-handle slots (no_std targets) (-1 = derive)"

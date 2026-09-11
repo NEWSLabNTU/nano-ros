@@ -358,6 +358,8 @@ for _fact in (
     "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN",
     "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN",
     "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN",
+    # phase-446 F3 -- the parameter services' shape, same source, same road.
+    "NROS_DECLARED_PARAM_SERVICE_SHAPE",
 ):
     ROAD_UNPAIRED[_fact] = _PARAM_STORE_REASON
 

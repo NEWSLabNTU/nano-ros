@@ -87,7 +87,10 @@ pub enum ValueConversionError {
 
 impl ValueConversionError {
     /// Human-readable reason for a `SetParametersResult`.
-    pub fn reason(&self) -> &'static str {
+    ///
+    /// `const` so the service-buffer bound can price the longest one
+    /// (phase-446 F3, `LONGEST_SET_REASON`).
+    pub const fn reason(&self) -> &'static str {
         match self {
             Self::CapacityExceeded => "Value exceeds this node's parameter capacity",
             Self::UnknownType(_) => "Unknown parameter type",
@@ -616,7 +619,7 @@ fn write_set_result(
 /// The reason string every `SetParametersResult` carries for each outcome —
 /// the ONE table, used by the streaming handlers and `to_rcl_set_result`.
 #[inline]
-fn set_result_reason(result: SetParameterResult) -> &'static str {
+const fn set_result_reason(result: SetParameterResult) -> &'static str {
     match result {
         SetParameterResult::Success => "",
         SetParameterResult::ReadOnly => "Parameter is read-only",
@@ -771,8 +774,7 @@ pub(crate) fn stream_set_parameters_atomically(
         }
         write_set_result(writer, true, "").map_err(ser_failed)
     } else {
-        write_set_result(writer, false, "One or more parameters could not be set")
-            .map_err(ser_failed)
+        write_set_result(writer, false, ATOMIC_FAILURE_REASON).map_err(ser_failed)
     }
 }
 
@@ -1234,19 +1236,307 @@ pub use crate::config::PARAM_SERVICE_BUFFER_SIZE;
 /// `check-infra-queryable-counts` holds it to the number of creation sites.
 pub const PARAM_SERVICE_QUERYABLES: usize = 6;
 
-/// Issue 1270 -- how many bytes EACH half of the shared buffer pair holds.
+/// Issue 1270 / phase-446 F3 -- how many bytes EACH half of the shared buffer
+/// pair holds.
 ///
-/// The one seam the size goes through. Today it is the build knob
-/// (`NROS_PARAM_SERVICE_BUFFER_SIZE`, default 4096); phase-446 W4 derives it
-/// from the parameters the contract declares -- the largest reply those names
-/// and types can produce -- and needs to change nothing but this.
+/// A size a rung STATES wins: `NROS_PARAM_SERVICE_BUFFER_SIZE` in the
+/// environment, in Kconfig, or in the board's executor rung. Otherwise, when
+/// the contract declares every node's parameters, it is the largest message
+/// those declarations can put through one of the six services
+/// ([`param_service_bound`]). With no declaration, or a refused one, the
+/// configured default stands.
+///
+/// Finished HERE and not in the entity inventory, because the bound depends on
+/// the store's capacities -- how long a string, an array or a description may
+/// be. Those are board facts, resolved in exactly one place: `nros-params`'
+/// build script, where the environment, Kconfig and the `[knobs.params]`
+/// board rung meet (phase-446 W4 put the capacity refusal there for the same
+/// reason). `nros_params::MAX_*` IS that resolution, so a `const fn` over them
+/// sees every rung with no second reader of any knob. The inventory carries
+/// the half only the contract decides (`DECLARED_PARAM_SERVICE_SHAPES`), and
+/// the formula sits beside the serializers it bounds, where the test that
+/// serializes the worst messages holds the two together.
 ///
 /// A function rather than a second constant because the buffers are sized at
-/// run time ([`ParamServiceBuffers::with_capacity`]): their size is no longer
-/// part of any type, so a derived size can arrive late.
+/// run time ([`ParamServiceBuffers::with_capacity`]).
 #[inline]
 pub(crate) const fn param_service_buffer_bytes() -> usize {
-    PARAM_SERVICE_BUFFER_SIZE
+    match crate::config::DECLARED_PARAM_SERVICE_SHAPES {
+        Some(shapes) if !crate::config::PARAM_SERVICE_BUFFER_STATED => {
+            param_service_bound(shapes, ParamWireCaps::THIS_BUILD).total()
+        }
+        _ => PARAM_SERVICE_BUFFER_SIZE,
+    }
+}
+
+/// phase-446 F3 -- whether [`param_service_buffer_bytes`] was derived from the
+/// contract rather than configured.
+pub(crate) const fn param_service_buffer_derived() -> bool {
+    crate::config::DECLARED_PARAM_SERVICE_SHAPES.is_some()
+        && !crate::config::PARAM_SERVICE_BUFFER_STATED
+}
+
+/// The overflow log's account of where the buffer's size came from.
+const fn param_service_buffer_origin() -> &'static str {
+    if param_service_buffer_derived() {
+        " The size was DERIVED from the contract's declared parameters (phase-446 F3), so \
+         this message carries more, or longer, parameters than the contract declares."
+    } else {
+        ""
+    }
+}
+
+// -- phase-446 F3: the bound ------------------------------------------------
+//
+// Field indices of one `DECLARED_PARAM_SERVICE_SHAPES` row, in the order
+// `ParamServiceShape::token` (nros-cli-core) writes them.
+const SHAPE_PARAMS: usize = 0;
+const SHAPE_NAME_BYTES: usize = 1;
+const SHAPE_PREFIXES: usize = 2;
+const SHAPE_PREFIX_BYTES: usize = 3;
+const SHAPE_STRINGS: usize = 4;
+const SHAPE_BYTE_ARRAYS: usize = 5;
+const SHAPE_BOOL_ARRAYS: usize = 6;
+const SHAPE_WORD_ARRAYS: usize = 7;
+const SHAPE_STRING_ARRAYS: usize = 8;
+
+/// The capacities a value or a descriptor reaches the wire at: the store's,
+/// clamped to the `rcl_interfaces` message's own caps. A stored value past
+/// those replies NOT_SET ([`value_fits_wire`]), and a request past them is
+/// refused before any handler runs ([`read_wire_string`], [`read_wire_seq_len`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ParamWireCaps {
+    pub(crate) string: usize,
+    pub(crate) array: usize,
+    pub(crate) byte_array: usize,
+    pub(crate) description: usize,
+}
+
+const fn min_usize(a: usize, b: usize) -> usize {
+    if a < b { a } else { b }
+}
+
+impl ParamWireCaps {
+    /// This build's store capacities -- `nros_params::MAX_*`, every rung
+    /// resolved -- at the wire caps. The description needs no clamp: F2's
+    /// compile-time assertion above keeps it within [`WIRE_STRING_CAP`].
+    pub(crate) const THIS_BUILD: Self = Self {
+        string: min_usize(MAX_STRING_VALUE_LEN, WIRE_STRING_CAP),
+        array: min_usize(nros_params::MAX_ARRAY_LEN, WIRE_SEQ_CAP),
+        byte_array: min_usize(nros_params::MAX_BYTE_ARRAY_LEN, WIRE_SEQ_CAP),
+        description: nros_params::MAX_PARAM_DESCRIPTION_LEN,
+    };
+}
+
+// CDR costs, XCDR1: the service writer emits it (`CdrWriter::new_with_header`
+// in `handle_request_raw`), and it pads more than XCDR2 -- 8-byte fields align
+// to 8, not 4 -- so a bound on it bounds a request in either.
+/// The 4-byte encapsulation header both halves begin with.
+const CDR_HEADER: usize = 4;
+/// A sequence length: up to 3 bytes of padding to 4, then a `u32`.
+const CDR_SEQ: usize = 3 + 4;
+/// A string beyond its bytes: up to 3 bytes of padding, the `u32` length
+/// (which counts the NUL), and the NUL.
+const CDR_STR: usize = 3 + 4 + 1;
+/// An 8-byte field after anything: up to 7 bytes of padding, then 8.
+const CDR_WORD: usize = 7 + 8;
+/// One `ParameterValue` with no data in it, field for field as
+/// [`write_parameter_value`] writes it: `type` and `bool_value` (1 + 1), an
+/// `integer_value` (padding + 8), a `double_value` (8, already aligned), an
+/// empty `string_value`, and five empty sequences.
+///
+/// Summing the per-field worsts (`1 + 1 + CDR_WORD + 8 + CDR_STR + 5*CDR_SEQ`
+/// = 68) is 15 bytes loose, because those paddings are NOT independent: a
+/// start that costs the `integer_value` its full 7 bytes of alignment leaves
+/// the `string_value` and the sequences already aligned, and vice versa. 53
+/// is the worst over all eight start alignments -- reached at an offset of 7
+/// mod 8, where `integer_value` pads to +9 and the trailing `align(4)` still
+/// costs 3 -- and a value's DATA is added on top of it by [`node_bound`],
+/// which is exact because that trailing `align(4)` is already priced at its
+/// maximum here. Held by `the_worst_messages_fit_the_derived_bound`.
+const CDR_VALUE_BASE: usize = 53;
+/// One `ParameterDescriptor` less the bytes of its name and description, as
+/// [`write_descriptor`] writes it: the name, `type`, the description, an empty
+/// `additional_constraints`, two flags, both range sequences, and ONE range (a
+/// descriptor holds at most one): padding, then three 8-byte fields.
+///
+/// A descriptor always STARTS 4-aligned -- every field it ends on is a
+/// sequence length or an 8-byte range word -- so its own leading `align(4)` is
+/// free, and the `align(4)` before the second range sequence is free too when
+/// the first carried 24 bytes of 8-aligned words. That leaves four paddings
+/// that can really cost, and the fields come to `4 + 1` (name), `1` (type),
+/// `3 + 4 + 1` (description), `3 + 4 + 1` (additional_constraints), `2`
+/// (flags), `3 + 4` (a sequence length), `4 + 24` (align(8) and the three
+/// range words) and `4` (the other sequence length): 64 in all. The name's
+/// and the description's BYTES are added by [`node_bound`].
+const CDR_DESCRIPTOR_BASE: usize = 64;
+
+/// The one reason a failed `SetParametersAtomically` carries.
+const ATOMIC_FAILURE_REASON: &str = "One or more parameters could not be set";
+
+/// The longest reason a `SetParametersResult` can carry: every
+/// [`set_result_reason`] arm and every [`ValueConversionError::reason`].
+/// Listed by variant: `set_result_reason`'s match is exhaustive, so a new
+/// variant stops the build there first -- add it here beside it.
+const LONGEST_SET_REASON: usize = {
+    let reasons = [
+        set_result_reason(SetParameterResult::Success),
+        set_result_reason(SetParameterResult::ReadOnly),
+        set_result_reason(SetParameterResult::TypeMismatch),
+        set_result_reason(SetParameterResult::OutOfRange),
+        set_result_reason(SetParameterResult::NotFound),
+        set_result_reason(SetParameterResult::StorageFull),
+        set_result_reason(SetParameterResult::Undeclared),
+        set_result_reason(SetParameterResult::InvalidRange),
+        ValueConversionError::CapacityExceeded.reason(),
+        ValueConversionError::UnknownType(0).reason(),
+    ];
+    let mut longest = 0;
+    let mut i = 0;
+    while i < reasons.len() {
+        if reasons[i].len() > longest {
+            longest = reasons[i].len();
+        }
+        i += 1;
+    }
+    longest
+};
+
+/// phase-446 F3 -- the worst case of each message the six services exchange
+/// over one executor's declared parameters. Each field is a whole CDR message,
+/// encapsulation header included: what one half of the buffer pair must hold.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ParamServiceBound {
+    /// A `get_parameters` / `describe_parameters` / `get_parameter_types`
+    /// request naming every declared parameter.
+    pub(crate) names_request: usize,
+    /// The `get_parameters` reply: every declared value at capacity.
+    pub(crate) get_reply: usize,
+    /// The `describe_parameters` reply: every descriptor, its description at
+    /// capacity and one range.
+    pub(crate) describe_reply: usize,
+    /// The `get_parameter_types` reply.
+    pub(crate) types_reply: usize,
+    /// A `list_parameters` request filtering on every declared prefix.
+    pub(crate) list_request: usize,
+    /// The `list_parameters` reply: every name and every prefix.
+    pub(crate) list_reply: usize,
+    /// A `set_parameters` or `set_parameters_atomically` request setting every
+    /// declared value at capacity (the two requests are the same message).
+    pub(crate) set_request: usize,
+    /// The `set_parameters` reply with the longest reason on every result, or
+    /// the atomic reply, whichever is larger.
+    pub(crate) set_reply: usize,
+}
+
+impl ParamServiceBound {
+    /// Every field, for the field-wise operations below.
+    const fn fields(&self) -> [usize; 8] {
+        [
+            self.names_request,
+            self.get_reply,
+            self.describe_reply,
+            self.types_reply,
+            self.list_request,
+            self.list_reply,
+            self.set_request,
+            self.set_reply,
+        ]
+    }
+
+    /// The largest message of all: one half of the buffer pair.
+    pub(crate) const fn total(&self) -> usize {
+        let f = self.fields();
+        let mut max = 0;
+        let mut i = 0;
+        while i < f.len() {
+            if f[i] > max {
+                max = f[i];
+            }
+            i += 1;
+        }
+        max
+    }
+
+    const fn max_with(self, o: Self) -> Self {
+        Self {
+            names_request: max_usize(self.names_request, o.names_request),
+            get_reply: max_usize(self.get_reply, o.get_reply),
+            describe_reply: max_usize(self.describe_reply, o.describe_reply),
+            types_reply: max_usize(self.types_reply, o.types_reply),
+            list_request: max_usize(self.list_request, o.list_request),
+            list_reply: max_usize(self.list_reply, o.list_reply),
+            set_request: max_usize(self.set_request, o.set_request),
+            set_reply: max_usize(self.set_reply, o.set_reply),
+        }
+    }
+}
+
+const fn max_usize(a: usize, b: usize) -> usize {
+    if a > b { a } else { b }
+}
+
+/// phase-446 F3 -- the largest message each service can carry for these
+/// declared parameters at these capacities, over every node: each request
+/// addresses ONE node's six, so the worst node decides each message.
+///
+/// The executor's one buffer pair serves every node it spins, and the shapes
+/// are the whole image's, so an image with several executors sizes each for
+/// the worst node anywhere -- an upper bound, never an under-size. A request
+/// naming what the image does not declare can be larger; it is refused and
+/// logged by the issue-1271 path rather than sized for.
+pub(crate) const fn param_service_bound(
+    shapes: &[[usize; 9]],
+    caps: ParamWireCaps,
+) -> ParamServiceBound {
+    let mut out = ParamServiceBound {
+        names_request: 0,
+        get_reply: 0,
+        describe_reply: 0,
+        types_reply: 0,
+        list_request: 0,
+        list_reply: 0,
+        set_request: 0,
+        set_reply: 0,
+    };
+    let mut i = 0;
+    while i < shapes.len() {
+        out = out.max_with(node_bound(&shapes[i], caps));
+        i += 1;
+    }
+    out
+}
+
+/// One node's worst messages. Every line mirrors a serializer above; the
+/// serialize-and-compare test (`the_worst_messages_fit_the_derived_bound`)
+/// is what keeps it honest.
+const fn node_bound(s: &[usize; 9], c: ParamWireCaps) -> ParamServiceBound {
+    let n = s[SHAPE_PARAMS];
+    // Every declared name as a CDR string, and every prefix.
+    let names = s[SHAPE_NAME_BYTES] + n * CDR_STR;
+    let prefixes = s[SHAPE_PREFIX_BYTES] + s[SHAPE_PREFIXES] * CDR_STR;
+    // Every declared value at capacity: the base, plus the one member each
+    // type fills. Integer and double arrays pad to 8 before their words.
+    let values = n * CDR_VALUE_BASE
+        + s[SHAPE_STRINGS] * c.string
+        + s[SHAPE_BYTE_ARRAYS] * c.byte_array
+        + s[SHAPE_BOOL_ARRAYS] * c.array
+        + s[SHAPE_WORD_ARRAYS] * (7 + 8 * c.array)
+        + s[SHAPE_STRING_ARRAYS] * c.array * (CDR_STR + c.string);
+    // The header, then the outer sequence's length.
+    let head = CDR_HEADER + CDR_SEQ;
+    let set_reply = head + n * (1 + CDR_STR + LONGEST_SET_REASON);
+    let atomic_reply = CDR_HEADER + 1 + CDR_STR + ATOMIC_FAILURE_REASON.len();
+    ParamServiceBound {
+        names_request: head + names,
+        get_reply: head + values,
+        describe_reply: head + s[SHAPE_NAME_BYTES] + n * (CDR_DESCRIPTOR_BASE + c.description),
+        types_reply: head + n,
+        list_request: head + prefixes + CDR_WORD,
+        list_reply: head + names + CDR_SEQ + prefixes,
+        set_request: head + names + values,
+        set_reply: max_usize(set_reply, atomic_reply),
+    }
 }
 
 /// Issue 1270 -- ONE request buffer and ONE reply buffer, shared by every
@@ -1537,21 +1827,23 @@ impl ParameterServiceServers {
             ParamServiceFailure::RequestTooLarge => nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "parameter service {}/{}: a request was dropped with no reply -- it is larger \
-                 than the {}-byte request buffer. Raise NROS_PARAM_SERVICE_BUFFER_SIZE. The \
+                 than the {}-byte request buffer. Raise NROS_PARAM_SERVICE_BUFFER_SIZE.{} The \
                  client times out. Logged once for this service (issue 1271).",
                 fqn,
                 svc,
-                cap
+                cap,
+                param_service_buffer_origin()
             ),
             ParamServiceFailure::ReplyTooLarge => nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "parameter service {}/{}: a request was dropped with no reply -- the reply does \
                  not fit the {}-byte reply buffer. Raise NROS_PARAM_SERVICE_BUFFER_SIZE, or ask \
-                 for fewer parameters per call. The client times out. Logged once for this \
+                 for fewer parameters per call.{} The client times out. Logged once for this \
                  service (issue 1271).",
                 fqn,
                 svc,
-                cap
+                cap,
+                param_service_buffer_origin()
             ),
             ParamServiceFailure::Transport => nros_log::log_error!(
                 nros_log::get_logger("nros"),
@@ -2988,5 +3280,308 @@ mod tests {
             reply / internal >= 100,
             "reply {reply} / internal {internal}"
         );
+    }
+
+    // =======================================================================
+    // phase-446 F3 -- THE SERVICE BUFFER, DERIVED FROM THE DECLARATIONS
+    // =======================================================================
+
+    /// The island's four nodes, as the entity inventory writes
+    /// `NROS_PARAM_SERVICE_SHAPE` for them: 21 declared scalars plus one
+    /// `use_sim_time` each, and `mrm_handler`'s single dotted prefix
+    /// (`turning_hazard_on`, 17 bytes). nros-cli-core's
+    /// `each_node_carries_its_parameter_service_shape` is where that token is
+    /// produced; here is where it becomes a size.
+    const ISLAND_SHAPES: [[usize; 9]; 4] = [
+        [4, 40, 0, 0, 0, 0, 0, 0, 0],
+        [6, 69, 0, 0, 0, 0, 0, 0, 0],
+        [8, 170, 1, 17, 0, 0, 0, 0, 0],
+        [7, 103, 0, 0, 0, 0, 0, 0, 0],
+    ];
+
+    /// The island's capacities. phase-446 W4 derives the string, array and
+    /// byte-array limits to 0 from the same contract -- every declared
+    /// parameter is a scalar -- so the only one still open is the description,
+    /// which F2 made a board fact.
+    const fn island_caps(description: usize) -> ParamWireCaps {
+        ParamWireCaps {
+            string: 0,
+            array: 0,
+            byte_array: 0,
+            description,
+        }
+    }
+
+    /// phase-446 F3 -- what the island's declarations size its buffer to, at
+    /// both ends of the one capacity the contract does not decide.
+    #[test]
+    fn the_island_s_declarations_size_its_service_buffer() {
+        // At F2's default description capacity the DESCRIBE reply dominates:
+        // 256 bytes of free text per parameter outweighs everything else.
+        let at_default = param_service_bound(&ISLAND_SHAPES, island_caps(256));
+        assert_eq!(at_default.describe_reply, 2741);
+        assert_eq!(at_default.total(), 2741);
+
+        // Stating `NROS_MAX_PARAM_DESCRIPTION_LEN=0` -- what an image that
+        // declares no descriptions should say -- takes 2048 bytes of free text
+        // out of the describe reply. It still decides the size, but only just:
+        // the set request, which carries every declared name AND value, is 24
+        // bytes behind it.
+        let bare = param_service_bound(&ISLAND_SHAPES, island_caps(0));
+        assert_eq!(bare.describe_reply, 693);
+        assert_eq!(bare.set_request, 669);
+        assert_eq!(bare.total(), 693);
+
+        // The whole point of deriving it: both are under the configured 4096,
+        // and the pair is sized twice over.
+        assert!(
+            at_default.total() < PARAM_SERVICE_BUFFER_SIZE,
+            "{} derived against {PARAM_SERVICE_BUFFER_SIZE} configured",
+            at_default.total()
+        );
+
+        // The worst NODE decides each message -- the shapes are not summed.
+        // Every request addresses one node's six, so the 8-parameter node is
+        // the whole image's bound and the 4-parameter node adds nothing.
+        let worst_alone = param_service_bound(&ISLAND_SHAPES[2..3], island_caps(256));
+        assert_eq!(worst_alone.total(), at_default.total());
+        let smallest_alone = param_service_bound(&ISLAND_SHAPES[..1], island_caps(256));
+        assert!(smallest_alone.total() < at_default.total());
+    }
+
+    /// With no declaration -- this crate's own test build, which reads no
+    /// contract -- the configured size stands and nothing is derived.
+    #[test]
+    fn no_declaration_keeps_the_configured_buffer() {
+        assert!(!param_service_buffer_derived());
+        assert_eq!(param_service_buffer_bytes(), PARAM_SERVICE_BUFFER_SIZE);
+    }
+
+    /// A distinct parameter name of exactly `len` bytes, from a readable stem.
+    fn name_of(stem: &str, len: usize) -> alloc::string::String {
+        let mut s = alloc::string::String::from(stem);
+        assert!(s.len() <= len && len <= MAX_PARAM_NAME_LEN);
+        while s.len() < len {
+            s.push('_');
+        }
+        s
+    }
+
+    /// The island's WORST node, name for name: 8 parameters, 170 bytes of
+    /// names, one 17-byte dotted prefix, the longest name 35 bytes. Only the
+    /// lengths matter to the bound, so the stems are readable stand-ins for
+    /// `mrm_handler`'s real ones.
+    #[inline(never)]
+    fn island_node_names() -> AllocVec<alloc::string::String> {
+        let mut v = AllocVec::new();
+        v.push(name_of("minimum_risk_maneuver_state", 35));
+        // The one dotted name: `turning_hazard_on` is the 17-byte prefix.
+        v.push(alloc::string::String::from("turning_hazard_on.duration"));
+        v.push(alloc::string::String::from("use_sim_time"));
+        v.push(name_of("comfortable_stop", 22));
+        v.push(name_of("emergency_stop", 22));
+        v.push(name_of("pull_over_ok", 19));
+        v.push(name_of("timeout_ms", 17));
+        v.push(name_of("retry_count", 17));
+        assert_eq!(v.len(), ISLAND_SHAPES[2][SHAPE_PARAMS]);
+        let bytes: usize = v.iter().map(|n| n.len()).sum();
+        assert_eq!(bytes, ISLAND_SHAPES[2][SHAPE_NAME_BYTES]);
+        v
+    }
+
+    /// That node declared: every parameter a scalar, every descriptor carrying
+    /// a description AT CAPACITY and, where its type admits one, a range --
+    /// the largest store the island's declaration can produce.
+    #[inline(never)]
+    fn island_node_server() -> (ParameterServer<'static>, AllocVec<alloc::string::String>) {
+        let mut server = leaked_server();
+        let names = island_node_names();
+        let desc = "d".repeat(nros_params::MAX_PARAM_DESCRIPTION_LEN);
+        for (i, name) in names.iter().enumerate() {
+            let (value, descriptor) = if name.as_str() == "use_sim_time" {
+                // A bool takes neither kind of range, so this one descriptor
+                // is 31 bytes under the bound's worst case -- see MARGIN below.
+                (
+                    InternalValue::Bool(true),
+                    InternalDescriptor::new(name, InternalType::Bool).expect("name fits"),
+                )
+            } else if i % 2 == 0 {
+                (
+                    InternalValue::Integer(0),
+                    InternalDescriptor::new(name, InternalType::Integer)
+                        .expect("name fits")
+                        .with_integer_range(-1000, 1000, 1),
+                )
+            } else {
+                (
+                    InternalValue::Double(1.0),
+                    InternalDescriptor::new(name, InternalType::Double)
+                        .expect("name fits")
+                        .with_float_range(0.0, 10.0, 0.0),
+                )
+            };
+            let descriptor = descriptor.with_description(&desc).with_dynamic_typing(true);
+            assert!(
+                server.declare_with_descriptor(NODE, name, value, Some(descriptor)),
+                "the fixture lost `{name}`, which would make every comparison below vacuous"
+            );
+        }
+        (server, names)
+    }
+
+    /// phase-446 F3 -- SERIALIZE the worst message of every service for a
+    /// declared set, and prove each one fits the size derived from that set's
+    /// shape.
+    ///
+    /// This is what keeps [`node_bound`] honest: it mirrors the serializers
+    /// line for line, and nothing in the compiler ties the two together. The
+    /// derivation prices CDR padding at its WORST (every string may cost 3
+    /// bytes of alignment, every 8-byte field 7) and gives every descriptor a
+    /// range, so a real message always lands somewhat under the bound.
+    /// `MARGIN` is how far, and it is asserted in BOTH directions: a bound
+    /// that drifted far above what the messages need would have stopped being
+    /// a derivation and become a guess.
+    #[test]
+    fn the_worst_messages_fit_the_derived_bound() {
+        /// Every message must land within this many bytes of its bound.
+        ///
+        /// Measured gaps, largest first: describe reply 85, set request 53,
+        /// get reply 43, list reply 23, names request 19, set reply 10, list
+        /// request 7, types reply 3. The describe reply's 85 is 3% of its
+        /// 2741, and 28 of those bytes are the one `use_sim_time` parameter,
+        /// which is a bool and so can carry NEITHER kind of range; the rest is
+        /// CDR padding the derivation prices at its worst.
+        const MARGIN: usize = 96;
+
+        let (mut server, owned) = island_node_server();
+        let names: AllocVec<&str> = owned.iter().map(|n| n.as_str()).collect();
+        let bound = param_service_bound(&ISLAND_SHAPES[2..3], ParamWireCaps::THIS_BUILD);
+        // The host build's string and array capacities differ from the
+        // island's, but this shape declares none of those types, so the two
+        // bounds coincide: the numbers below ARE the island's.
+        assert_eq!(
+            bound,
+            param_service_bound(
+                &ISLAND_SHAPES[2..3],
+                island_caps(nros_params::MAX_PARAM_DESCRIPTION_LEN)
+            )
+        );
+
+        let check = |what: &str, actual: usize, bound: usize| {
+            assert!(
+                actual <= bound,
+                "{what}: {actual} serialized bytes do NOT fit the derived bound of {bound}"
+            );
+            assert!(
+                bound - actual <= MARGIN,
+                "{what}: the bound {bound} is {} bytes above the {actual} a real message \
+                 needs, past the stated margin of {MARGIN}",
+                bound - actual
+            );
+        };
+
+        // The request every one of get / describe / get_types takes: one name
+        // per declared parameter.
+        let names_request = encode(&*names_request!(GetParametersRequest, &names));
+        check("names request", names_request.len(), bound.names_request);
+
+        let get_reply = run_streaming(&names_request, |r, w| {
+            stream_get_parameters(&server, NODE, r, w)
+        });
+        check("get_parameters reply", get_reply.len(), bound.get_reply);
+
+        let describe_request = encode(&*names_request!(DescribeParametersRequest, &names));
+        let describe_reply = run_streaming(&describe_request, |r, w| {
+            stream_describe_parameters(&server, NODE, r, w)
+        });
+        check(
+            "describe_parameters reply",
+            describe_reply.len(),
+            bound.describe_reply,
+        );
+
+        let types_request = encode(&*names_request!(GetParameterTypesRequest, &names));
+        let types_reply = run_streaming(&types_request, |r, w| {
+            stream_get_parameter_types(&server, NODE, r, w)
+        });
+        check(
+            "get_parameter_types reply",
+            types_reply.len(),
+            bound.types_reply,
+        );
+
+        // list_parameters, filtered on the one prefix the declaration has.
+        #[inline(never)]
+        fn list_request(prefixes: &[&str]) -> Box<ListParametersRequest> {
+            let mut req = Box::new(ListParametersRequest::default());
+            for p in prefixes {
+                req.prefixes.push(wire_string(p)).expect("64 prefixes fit");
+            }
+            req
+        }
+        let list_req = encode(&*list_request(&["turning_hazard_on"]));
+        check(
+            "list_parameters request",
+            list_req.len(),
+            bound.list_request,
+        );
+
+        // The worst list REPLY is the unfiltered one: every name and every
+        // prefix.
+        let list_reply = run_streaming(&encode(&*list_request(&[])), |r, w| {
+            stream_list_parameters(&server, NODE, r, w)
+        });
+        check("list_parameters reply", list_reply.len(), bound.list_reply);
+
+        // The set request: every declared name carrying a value of its
+        // declared type.
+        #[inline(never)]
+        fn set_request(names: &[&str]) -> Box<SetParametersRequest> {
+            let mut req = Box::new(SetParametersRequest::default());
+            for (i, name) in names.iter().enumerate() {
+                let mut v = wire_value_of(if i % 2 == 0 { 2 } else { 3 });
+                v.integer_value = i64::MIN;
+                v.double_value = f64::MIN;
+                push_param!(req, *name, v);
+            }
+            req
+        }
+        let set_req = encode(&*set_request(&names));
+        check("set_parameters request", set_req.len(), bound.set_request);
+
+        // The worst set REPLY carries the longest reason on every result.
+        // That reason is the issue-1151 refusal, so run the very same request
+        // against a node that has declared NOTHING: same request bytes, eight
+        // results each carrying `UNDECLARED_REASON`.
+        assert_eq!(LONGEST_SET_REASON, UNDECLARED_REASON.len());
+        let set_reply = run_streaming(&set_req, |r, w| {
+            stream_set_parameters(&mut server, NodeKey::new(1), r, w)
+        });
+        check("set_parameters reply", set_reply.len(), bound.set_reply);
+
+        // The atomic reply is a single result, so it never decides the size.
+        let atomic_reply = run_streaming(&set_req, |r, w| {
+            stream_set_parameters_atomically(&mut server, NodeKey::new(1), r, w)
+        });
+        assert!(atomic_reply.len() <= bound.set_reply);
+
+        // Every message fits ONE half of the pair, which is what the executor
+        // actually allocates.
+        let half = bound.total();
+        for (what, len) in [
+            ("names request", names_request.len()),
+            ("get reply", get_reply.len()),
+            ("describe reply", describe_reply.len()),
+            ("types reply", types_reply.len()),
+            ("list request", list_req.len()),
+            ("list reply", list_reply.len()),
+            ("set request", set_req.len()),
+            ("set reply", set_reply.len()),
+        ] {
+            assert!(
+                len <= half,
+                "{what} ({len}) does not fit the {half}-byte half"
+            );
+        }
     }
 }

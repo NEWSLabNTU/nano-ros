@@ -333,6 +333,62 @@ from what can actually cross it:
 a unit test serializes the worst describe reply for a declared set and
 asserts it fits the derived size and is within a small margin of it.
 
+**Landed** (F3 PR, on top of F2). The buffer is derived, but NOT as a number
+computed by the entity inventory, which is where this section assumed it would
+be computed. Every one of these messages is linear in two kinds of number:
+what the CONTRACT decides (how many parameters, how long their names, which
+types) and what the BOARD decides (how long a string, an array, a byte array
+or a description may be). The board's half is resolved in exactly one place --
+`nros-params`' build script, where the environment, Kconfig and the
+`[knobs.params]` rung meet, which is where W4 put the capacity refusal for the
+same reason. For cmake to finish the size it would have to re-resolve that
+ladder itself, which is a second reader of four knobs and what
+`check-knob-single-reader` exists to forbid. So the inventory carries only the
+contract's half and nros-node finishes the bound against the capacities
+nros-params has already resolved:
+
+- `NROS_PARAM_SERVICE_SHAPE` / `NROS_DECLARED_PARAM_SERVICE_SHAPE` -- per
+  node, nine `:`-separated counts (`params`, `name_bytes`, `prefixes`,
+  `prefix_bytes`, then one count per wire-costly type), nodes joined by `,`.
+  It travels the same road as W4's declared facts, and nros-node's build
+  script REFUSES a malformed one rather than sizing the buffer wrongly;
+- `param_service_bound()` in `parameter_services.rs` turns that plus
+  `nros_params::MAX_*` into the worst case of each of the eight messages the
+  six services exchange, and `param_service_buffer_bytes()` takes the largest.
+  It sits beside the serializers it bounds, so the test that serializes the
+  worst messages holds the two together;
+- a size a rung STATES still wins -- env, Kconfig, or the board's executor
+  rung. `CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE` defaults to the `-1` DERIVE
+  sentinel, like W4's knobs; with no declaration, or a refused one, the 4,096
+  crate default stands, and the issue-1271 overflow log now says which of the
+  two the size came from.
+
+Each request addresses ONE node's six, so the worst NODE decides each message;
+the shapes are not summed. The island's four nodes (25 parameters, 21 declared
+scalars plus one `use_sim_time` each, longest name 35, one dotted prefix) size
+it from the 8-parameter node:
+
+| `NROS_MAX_PARAM_DESCRIPTION_LEN` | derived, per half | configured |
+| --- | --- | --- |
+| 256 (the F2 default) | 2,741 B | 4,096 B |
+| 0 (what the C++ board should state) | 693 B | 4,096 B |
+
+The describe reply decides the size at both ends -- 256 bytes of free text per
+parameter is most of the first row -- with the set request 24 B behind it in
+the second. The pair is two of these, so the island saves 2,710 B at the
+default and 6,806 B stating 0.
+
+`the_worst_messages_fit_the_derived_bound` serializes all eight worst messages
+for an island-shaped declaration through the real streaming handlers and
+asserts each fits. Measured gaps, largest first: describe reply 85, set
+request 53, get reply 43, list reply 23, names request 19, set reply 10, list
+request 7, types reply 3 -- all within a stated 96 B. The describe reply's 85
+is 3% of its bound, and 28 of those bytes are `use_sim_time` being a bool,
+which can carry neither kind of range. Pricing the CDR paddings per field
+independently was 15 B per value and 8 B per descriptor looser than that,
+because the paddings interact; both constants are now derived over every start
+alignment, which is what makes the numbers above as small as they are.
+
 ## Order
 
 W1 -> W2 -> W4 and W6; W3 and W5 do not depend on the schema and can start at
