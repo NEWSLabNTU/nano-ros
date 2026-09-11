@@ -148,11 +148,34 @@ else
         exit 1
     fi
 
-    # --- Detect target triple from .cargo/config.toml ---
+    # --- Detect the target triple from the GENERATED settings file ---
+    #
+    # phase-445 W6 — this read `$EXAMPLE_DIR/.cargo/config.toml`, which no
+    # longer exists: an example's `[build] target` comes from the board its
+    # `system.toml` names, rendered into `build/<image>/nros-cargo.toml`
+    # (RFC-0098 D1). The old read is not merely stale, it FAILS OPEN — a
+    # missing file fell through to `$HOST_TRIPLE`, so a cross example would
+    # have been analysed against a host binary that does not exist, or worse,
+    # one that does.
+    #
+    # So: read the settings file when it is there, and when it is NOT, say so
+    # rather than guessing. A native leaf has no `[build] target` in either
+    # place, which is why the host fallback survives — but only for a leaf
+    # whose settings file exists and states no triple.
     TARGET=""
-    CONFIG_FILE="$EXAMPLE_DIR/.cargo/config.toml"
-    if [[ -f "$CONFIG_FILE" ]]; then
-        TARGET="$(grep -E '^\s*target\s*=' "$CONFIG_FILE" | head -1 | sed 's/.*=\s*"\(.*\)".*/\1/' || true)"
+    SETTINGS=""
+    for _s in "$EXAMPLE_DIR"/build/*/nros-cargo.toml; do
+        [[ -f "$_s" ]] && SETTINGS="$_s" && break
+    done
+    if [[ -n "$SETTINGS" ]]; then
+        TARGET="$(sed -n '/^\[build\]/,/^\[/p' "$SETTINGS" |
+            grep -E '^\s*target\s*=' | head -1 |
+            sed 's/.*=\s*"\(.*\)".*/\1/' || true)"
+    elif [[ -f "$EXAMPLE_DIR/system.toml" ]]; then
+        echo "Error: no build/<image>/nros-cargo.toml in '$EXAMPLE_DIR' — run" >&2
+        echo "       \`nros sync $EXAMPLE_DIR\` first (RFC-0098 D2). Guessing the" >&2
+        echo "       host triple here would analyse the wrong binary." >&2
+        exit 1
     fi
 
     # Fall back to host triple for native examples
