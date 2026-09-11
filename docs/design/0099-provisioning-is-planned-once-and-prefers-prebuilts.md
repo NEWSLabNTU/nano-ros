@@ -268,6 +268,22 @@ also why D4 comes first.
 `--tool` becomes repeatable. `--source` already is, and that asymmetry is the
 whole reason `ninja` and `make` are two processes in `workspace.just`.
 
+**How "one ask per session" is reached with D6's several processes**
+(phase-447 E2). Within a process the plan asks once, for the union. Across
+processes the ask is DEDUPLICATED rather than merged: the session's driver —
+`just setup`, or `runner-provision.sh` around it — opens a ledger named by
+`NROS_SETUP_SESSION`, and each ask records its keys there, so a key asked for
+once is not asked again while a key nobody has asked for still is. This is not
+the rejected cache: it has no TTL and no persistence past the driver, it never
+hides a need (only a repeat of one), and with the variable unset every command
+answers exactly as it did. `--sudo` never reads it.
+
+A missing key whose provider chain ends in the store is not an OS ask at all:
+it is offered as `nros setup --tool …`, and omitted when the plan installs that
+tool itself. One bootstrap's first ask carried `make ninja-build` for exactly
+that reason — keys the session then provisioned from the store, and whose apt
+packages are below the version floor on Ubuntu 22.04 anyway.
+
 ## D8 — rosdep: adopt neither the syntax nor the resolver; vendor a PINNED snapshot
 
 RFC-0062's amendment rejected rosdep as a resolver for three reasons — it answers

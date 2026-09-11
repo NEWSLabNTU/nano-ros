@@ -4209,6 +4209,14 @@ setup target="" tier="" *extra:
           "  source ./activate.sh         # get nano-ros binaries on PATH"
         exit 0
     fi
+    # phase-447 E2 / issue 1274 — ONE system-package ask per session. Every
+    # `nros setup` below reads the ledger this opens, so a key asked for once
+    # is not asked again by the next platform verb. Joins a session a parent
+    # driver (runner-provision.sh) already opened. The arms below therefore
+    # RUN their child rather than `exec` it: the ledger is removed on exit.
+    # shellcheck source=scripts/lib/setup-session.sh
+    source scripts/lib/setup-session.sh
+    nros_setup_session_begin "$PWD"
     if [[ -n "$target" ]]; then
         case "$target" in
             tier=*)
@@ -4228,8 +4236,12 @@ setup target="" tier="" *extra:
             # deliberately NOT scope tokens (see scripts/build/scope.sh) but
             # they do have `setup`, and `just setup workspace` predates 407.
             workspace | verification | rmw_zenoh)
+                # Every role: `just workspace setup` asks for the whole
+                # closure itself (`apt-packages`), so asking it here only moves
+                # that ask to the front — where it is ONE line, not two.
                 just _setup-common
-                exec just "$target" setup $extra_args
+                just "$target" setup $extra_args
+                exit 0
                 ;;
             *)
                 # shellcheck source=scripts/build/scope.sh
@@ -4238,8 +4250,11 @@ setup target="" tier="" *extra:
                    && nros_scope_module_has_verb "$target" setup; then
                     # Focused platform setup may still shell `nros setup …`;
                     # provision the CLI + resolver first so the binaries exist.
-                    just _setup-common
-                    exec just "$target" setup $extra_args
+                    # The HOST roles only: a platform's own setup asks for the
+                    # infra keys its tools declare, once, if any are missing.
+                    just _setup-common package workspace
+                    just "$target" setup $extra_args
+                    exit 0
                 fi
                 # phase-411 W4 — a PRESET provisions the set it names.
                 #
@@ -4271,7 +4286,7 @@ setup target="" tier="" *extra:
                         exit 1
                     fi
                     printf 'setup: preset %s -> %s\n' "$target" "$(echo $mods)"
-                    just _setup-common
+                    just _setup-common package workspace
                     for m in $mods; do
                         if nros_scope_module_has_verb "$m" setup; then
                             printf '\n=== just setup %s ===\n' "$m"
@@ -4282,7 +4297,8 @@ setup target="" tier="" *extra:
                     done
                     exit 0
                 fi
-                exec "$(pwd)/tools/setup.sh" --target="$target"
+                "$(pwd)/tools/setup.sh" --target="$target"
+                exit 0
                 ;;
         esac
     fi
@@ -4325,8 +4341,12 @@ setup target="" tier="" *extra:
 # without it and prints this exact command; a provisioning verb should run it
 # rather than print it. It is a no-op once the tree is populated, so a
 # developer never sees it.
+#
+# `roles` narrows the system-package ask (phase-447 E2): empty is every role —
+# the tier path, whose `workspace setup` asks for the whole closure anyway —
+# and a platform or preset passes the HOST roles, `package workspace`.
 [private]
-_setup-common:
+_setup-common *roles:
     #!/usr/bin/env bash
     set -e
     sub="packages/cli/third-party/play_launch"
@@ -4405,16 +4425,23 @@ _setup-common:
     # Non-fatal on purpose: `--check` exits 1 when anything is missing, and setup
     # must not die for a package it is not allowed to install.
     #
-    # `--check` is a doctor, so it exits 1 and eyre prints `Error:` with a
-    # source Location. Correct for a doctor, wrong here: an "Error:" plus a
-    # stack location in a path that deliberately continues is how people learn
-    # to scroll past errors. Capture and re-print without the backtrace.
-    if ! _sysout="$(nros setup --system --check --role package --role workspace 2>&1)"; then
-        printf '%s\n' "$_sysout" | grep -vE '^(Error:|Location:|\s+nros-cli-core/src|\s*$)' || true
-        printf '\nsetup: system package(s) above are MISSING; nothing here installs them.\n'
-        printf 'setup: NOT fatal — provisioning continues. Run the command shown, or\n'
-        printf '       `nros setup --system --sudo` to execute it.\n\n'
-    fi
+    # phase-447 E2 / issue 1274 — this is the session's ask: the PRINT form
+    # (`--system`, not the `--check` doctor), which composes ONE command and
+    # records what it asked in the session ledger, so no later `nros setup` of
+    # this session repeats it. The print form exits 0 when it asks — it is not
+    # a doctor — so there is no `Error:` + source Location to strip.
+    _role_args=()
+    for _r in {{roles}}; do _role_args+=(--role "$_r"); done
+    _sysout="$(nros setup --system "${_role_args[@]}" 2>&1)" || true
+    case "$_sysout" in
+        *"Install with"*|*"Sudo-less, from the store"*)
+            printf '%s\n' "$_sysout"
+            printf '\nsetup: NOT fatal — provisioning continues, and nothing here installs system\n'
+            printf '       packages. Run the command shown, or `nros setup --system --sudo`.\n\n'
+            ;;
+        *"is present."*|"") ;;
+        *) printf '%s\n' "$_sysout" ;;
+    esac
 
 # Focused platform setup. Equivalent to `just <platform> setup`.
 [group("setup")]

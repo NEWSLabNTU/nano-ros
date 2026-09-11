@@ -1765,22 +1765,22 @@ check = { cmd = "ninja", version = { run = "ninja --version", min = "1.13" } }
 
 # make — the jobserver SERVER half, and the only half that hands out tokens.
 #
-# NOT `providers = ["system", "sdk"]` like ninja above, because there is no
-# `[tool.make]` to fall through TO yet. `ToolSource` is git-only, and GNU
-# make's git tree ships no `configure` — only `bootstrap`, which wants
-# autoconf/automake/gettext and pulls gnulib. The repo already solved this the
-# other way: the retired `just workspace install-make` built 4.4.1 from the RELEASE
-# TARBALL into `third-party/make/`, carrying two hard-won details (`--without-guile`,
-# and bootstrapping with a make that is not the one being replaced).
+# The same chain as ninja above: a system make is fine WHEN new enough, and
+# otherwise this falls through to the store's `[tool.make]`. Ubuntu 22.04
+# ships 4.3, below the 4.4 floor, so on that distro `apt install make` could
+# never satisfy the probe — which is why the chain matters for the ASK, not
+# only for the probe (phase-447 E2 / issue 1274): a missing chain entry is
+# offered as the sudo-less `nros setup --tool make`, never as an apt package.
 #
-# So this entry is deliberately DIAGNOSIS ONLY: it makes `just doctor` say that
-# the system make is too old for `--jobserver-style=fifo`, instead of leaving a
-# silently-unbounded build. Provisioning it through `nros setup` needs tarball
-# support in `[tool.*.source]` (`url` + `sha256` beside `git` + `ref`); adding a
-# SECOND make provisioning path before then would be the drift this repo keeps
-# paying for.
+# This entry used to be DIAGNOSIS ONLY, for one stated reason: `ToolSource` was
+# git-only, GNU make's git tree ships no `configure`, and provisioning it needed
+# tarball support in `[tool.*.source]`. That support landed (`[tool.make]`
+# builds the 4.4.1 RELEASE TARBALL, keeping the retired recipe's two hard-won
+# details — `--without-guile`, and bootstrapping with `build.sh` rather than
+# the make being replaced), so the reason is gone and so is the exception.
 [prereq.make]
 role = "workspace"
+providers = ["system", "sdk"]
 why = "GNU make >=4.4 serves `--jobserver-style=fifo`, the only jobserver flavour ninja 1.13 can join; 4.3 and older serve a pipe-fd jobserver that ninja ignores. install with `nros setup --tool make`"
 apt = ["make"]
 dnf = ["make"]

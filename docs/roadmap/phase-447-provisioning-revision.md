@@ -1,6 +1,6 @@
 # Phase 447 — provisioning revision
 
-**Status (2026-09-11). All work items open.** Implements
+**Status (2026-09-11). E1 and E2 landed (below); other items as marked.** Implements
 [RFC-0099](../design/0099-provisioning-is-planned-once-and-prefers-prebuilts.md).
 Makes the installed path reach a build, makes a repeated `nros setup` cheap, and
 makes "prefer a prebuilt" a rule instead of an intention.
@@ -258,6 +258,11 @@ the same tree resolves the same way on two machines.
 `--source` already is. Merge the adjacent call sites (`workspace.just:64-65`
 ninja+make, `:693-694` nextest+llvm-cov).
 
+**Landed.** `--tool` is `Vec<String>`; both call-site pairs are one invocation.
+`--prefix` still places ONE tool and refuses two. `--tool a --tool b --check`
+asks each and fails if any is off its pin. `nros setup board`'s (a2) loop, which
+loaded the index and wrote the lock once PER TOOL, is one plan too.
+
 ### E2 — the session's plan is resolved once
 
 One plan before any fetch; one apt ask for the union (closes 1274); one lock
@@ -265,6 +270,47 @@ write; one index read.
 
 *Acceptance:* a bootstrap prints ONE `apt install` line, not three overlapping
 ones with different subsets. Still no sudo by default.
+
+**Landed** — `cmd/setup/session.rs`. Every install path (`nros setup <board>`,
+`--tool …`, the lazy `ensure_tools`) builds a `SessionPlan` first — every
+`plan_install` and ONE `SystemAsk` over the union of its tools' `system = [..]` —
+then `run_sequential` executes it and `SessionRun::finish` is the lock's only
+writer. Resolution takes an injected probe, so it stays pure (issue 0374).
+
+Three findings changed the fix from "batch the ask":
+
+* **The subsets differed because the first ask was WRONG, not because it was
+  early.** Its extra `make ninja-build` were keys the same session then
+  provisioned from the store — and on Ubuntu 22.04 neither apt package meets
+  its version floor, so the ask could never be satisfied. A chain key
+  (`providers = ["system", "sdk"]`) that is missing is now `PrereqState::Store`:
+  offered as `nros setup --tool …`, never as an apt package, and not asked at
+  all when the plan installs it. `[prereq.make]` gained the chain ninja already
+  had — its "diagnosis only" note named one blocker, tarball sources, which
+  `[tool.make]` has since removed.
+* **`--system`'s print mode ignored `--role`** — it re-read `index.prereqs()` —
+  and ran each entry's bare probe rather than the chain. It now shares one
+  classification (`classify_prereq`) with `--check` and the install paths.
+* **Across processes the ask is deduplicated by a ledger, not merged.** RFC-0099
+  D6 keeps one process per platform verb, so `NROS_SETUP_SESSION` names a file
+  the DRIVER opens (`scripts/lib/setup-session.sh`, used by `just setup` and
+  `runner-provision.sh`; a nested driver joins). A key asked once is not asked
+  again; a key nobody asked still is. Unset, nothing changes; `--sudo` never
+  reads it.
+
+*Test gap C1 left, closed:* `a_board_install_smokes_every_package_and_a_broken_one_stops_nothing`
+drives the real executor over `file://` dists. Mutation — `run_sequential`
+calling `sdk_store::execute` instead of `execute_and_probe` — turns it red at
+`smoke.passed`, and C1's own e2e test with it.
+
+*For E3:* replace `run_sequential` and nothing else. The four ordered things are
+properties of the types — `finish` is the only lock writer and walks plan order;
+a plan holds one step per package (so `front_newest` never races itself);
+`bin_dirs()` is derived from step order; `OrderedLog` releases a step's lines
+only after every earlier step closes, and is tested with out-of-order
+completion. Each step owns its `SmokeFailures`; `finish` folds them in plan
+order. One thing E3 must still take care of: `sdk_store::execute` prints its own
+progress directly, outside `OrderedLog`.
 
 ### E3 — the plan executes as a pipeline, bounded by CPU count
 

@@ -60,9 +60,10 @@ setup:
     # cascade into zephyr/esp32/px4).
     # make + ninja: store tools, not bespoke recipes (see the note where those
     # recipes used to be). `--tool` so a `just workspace setup` still provisions
-    # the jobserver pair without the user knowing they moved.
-    @nros setup --tool ninja
-    @nros setup --tool make
+    # the jobserver pair without the user knowing they moved. ONE invocation —
+    # `--tool` repeats (phase-447 E1), so the pair is one plan: one system ask
+    # for both, one lock write.
+    @nros setup --tool ninja --tool make
     @just workspace install-corrosion
     @just workspace install-play-launch-parser
     @just workspace rust-pinned-toolchains
@@ -690,8 +691,10 @@ cargo-tools:
     # tool here with no pin at all while `.config/nextest.toml` is
     # version-sensitive enough that a stale filter kills every nextest run
     # (issue 0743).
-    nros setup --tool cargo-nextest
-    nros setup --tool cargo-llvm-cov
+    # One plan for the pair (phase-447 E1). The three below stay separate on
+    # purpose: each is individually NON-fatal, and one plan would make the
+    # whole set's exit status the only verdict.
+    nros setup --tool cargo-nextest --tool cargo-llvm-cov
     # phase-422 W5 — FORWARDER, not a second producer. `espflash` is
     # `[tool.espflash]` in the index, pinned to `v4.5.0` with a source recipe
     # that installs into the versioned store prefix; `cargo install` put a

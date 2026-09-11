@@ -13,13 +13,15 @@ use std::{
 use clap::{Args as ClapArgs, Subcommand};
 use eyre::{Result, WrapErr, bail};
 
+mod session;
+
+use self::session::{Mode, PlanInputs, PrereqState, SessionLedger, SessionPlan, run_sequential};
 use crate::{
     cmd::board::find_workspace_root,
     orchestration::{
         sdk_index::{SdkIndex, ToolPackage, ZephyrModule, host_key},
         sdk_store::{
-            InstallAction, LOCK_FILE, SdkLock, SourceDisposition, execute, plan_install,
-            provision_source, store_root, tool_prefix,
+            InstallAction, LOCK_FILE, SourceDisposition, execute, provision_source, store_root,
         },
     },
 };
@@ -45,10 +47,12 @@ pub struct Args {
     #[arg(long)]
     pub licenses: bool,
 
-    /// Install a single tool by name (instead of a board's whole set), e.g.
-    /// `--tool qemu`. The `just <module> setup` recipes call this.
-    #[arg(long)]
-    pub tool: Option<String>,
+    /// Install tools by name (instead of a board's whole set), e.g.
+    /// `--tool qemu`. Repeatable, like `--source`: `--tool ninja --tool make`
+    /// is ONE plan — one system-package ask for the union, one lock write
+    /// (phase-447 E1). The `just <module> setup` recipes call this.
+    #[arg(long = "tool", value_name = "NAME")]
+    pub tools: Vec<String>,
 
     /// Provision a single `[source.*]` package by name from the index (Phase
     /// 195.B), e.g. `--source freertos-kernel`. Repeatable. The index is the
@@ -235,7 +239,7 @@ pub fn run(args: Args) -> Result<()> {
     // `[tool.<name>] system = [..]` build deps (`--tool`). Alone it names no
     // target. Checked here rather than as `requires = "system"` on the arg,
     // which is what made the `--tool` form unreachable (issue 1038).
-    if args.sudo && !args.system && args.tool.is_none() {
+    if args.sudo && !args.system && args.tools.is_empty() {
         bail!(
             "`--sudo` executes an install and needs to know WHAT to install.\n               --system --sudo   the `[system.*]` OS-package closure\n               --tool <name> --sudo   that tool's own `[tool.<name>] system = [..]` build deps"
         );
@@ -263,8 +267,34 @@ pub fn run(args: Args) -> Result<()> {
     // `--check` below swallowed it and walked everything, so the targeted
     // question issue 0466 asks for ("is THIS tool at its pin?") could not be
     // put — which is why a drifted tool kept being discovered downstream.
-    if args.check && args.tool.is_some() {
-        return run_check_tool(&index, args.tool.as_deref().unwrap());
+    //
+    // Repeatable since phase-447 E1: each named tool is asked, every answer is
+    // printed, and the run fails if any one is off its pin.
+    if args.check && !args.tools.is_empty() {
+        if let [one] = args.tools.as_slice() {
+            return run_check_tool(&index, one);
+        }
+        let off: Vec<&str> = args
+            .tools
+            .iter()
+            .filter(|t| match run_check_tool(&index, t) {
+                Ok(()) => false,
+                Err(e) => {
+                    eprintln!("{e:#}");
+                    true
+                }
+            })
+            .map(String::as_str)
+            .collect();
+        if !off.is_empty() {
+            bail!(
+                "{} of {} tool(s) not at their pin: {}",
+                off.len(),
+                args.tools.len(),
+                off.join(", ")
+            );
+        }
+        return Ok(());
     }
     if args.check {
         // phase-422 W7 — a BOARD given here must still resolve, even though the
@@ -290,10 +320,21 @@ pub fn run(args: Args) -> Result<()> {
         return run_check_all(&index, &index_workspace(&index_path));
     }
 
-    if let Some(tool) = args.tool.as_deref() {
-        return install_single_tool(
+    if !args.tools.is_empty() {
+        // `--prefix` names ONE place; two tools unpacked into it would overwrite
+        // each other's `bin/` and provenance marker.
+        if args.prefix.is_some() && args.tools.len() > 1 {
+            bail!(
+                "nros setup: `--prefix` places ONE tool outside the store; got {} `--tool`s \
+                 ({}). Give each its own invocation.",
+                args.tools.len(),
+                args.tools.join(", ")
+            );
+        }
+        let names: Vec<&str> = args.tools.iter().map(String::as_str).collect();
+        return install_tools(
             &index,
-            tool,
+            &names,
             args.prefix.as_deref(),
             args.dry_run,
             args.sudo,
@@ -334,95 +375,81 @@ pub fn run(args: Args) -> Result<()> {
     let root = store_root();
     let workspace = index_workspace(&index_path);
     let lock_path = PathBuf::from(LOCK_FILE);
-    let mut lock = SdkLock::load(&lock_path)?;
-    let mut installed = false;
-    // RFC-0048 §6 / phase-287 W5 — store bin dirs to fold onto the emitted
-    // CMakePreset's environment.PATH (so the cross-compiler resolves).
-    let mut bin_dirs: Vec<PathBuf> = Vec::new();
-    // phase-447 C1 / RFC-0099 D5 — every package this run UNPACKS is asked
-    // whether it runs, and the answers are reported together at the end.
-    let mut smoke = SmokeFailures::default();
+    let ledger = SessionLedger::from_env();
+    let prereqs = index.prereqs();
+    let repo_root = index_path.parent().map(Path::to_path_buf);
+    let offline = std::env::var_os("NROS_OFFLINE").is_some();
 
-    // issue 0374 — resolve the whole plan first so the source builds can be
-    // announced together, before the first fetch. The loop below prints and
-    // installs one package at a time, so without this pre-pass the user learns
-    // about a long build only as it starts.
-    let source_builds = source_build_names(&index, &packages, &root, &host);
-    warn_source_builds(&source_builds, &host);
-
-    for name in &packages {
-        // `[tool.*]` packages install into the shared store; `[source.*]` are
-        // provisioned into their index-declared `dest` (Phase 195.B);
-        // `[gated.*]` are user-installed.
-        let Some(tool) = index.tool.get(*name) else {
-            if let Some(src) = index.source.get(*name) {
-                let disp =
-                    provision_source(name, src, &workspace, args.dry_run, shallow_override(&args))
-                        .wrap_err_with(|| format!("provision source {name}"))?;
-                eprintln!(
-                    "  {:<22} {}",
-                    name,
-                    describe_source(name, src, &workspace, &disp)
-                );
-                if matches!(disp, SourceDisposition::Provisioned) {
-                    installed = true;
-                }
-            } else {
-                eprintln!("  {:<22} {}", name, disposition(&index, name, &host));
-            }
-            continue;
-        };
-        let prefix = tool_prefix(&root, name, &tool.version);
-        bin_dirs.push(prefix.join("bin"));
-        let action = plan_install(tool, &host, &prefix);
-        eprintln!("  {:<22} {}", name, describe(&action, &tool.version, &host));
-
-        if args.dry_run {
-            continue;
-        }
-        match action {
-            InstallAction::Unavailable => {
-                bail!(
-                    "nros setup: {name} {} has no prebuilt for {host} and no source recipe \
-                     (add one to the index, or set up that host's toolchain manually)",
-                    tool.version
-                );
-            }
-            other => {
-                // phase-447 C1 — the probe is COLLECTED, not raised: the other
-                // packages in this board's set are still worth installing, and
-                // the report at the end names every one that cannot run.
-                let provenance = smoke
-                    .execute_and_probe(&other, name, tool, &prefix)
-                    .wrap_err_with(|| format!("install {name} {}", tool.version))?;
-                lock.record(name, &provenance);
-                installed = true;
-                eprintln!("    → {}", prefix.display());
-            }
-        }
+    // phase-447 E2 / RFC-0099 D7 — the WHOLE set is resolved before anything is
+    // fetched: every `plan_install`, and one system-package ask for the union of
+    // what its tools declare. The loop that used to interleave deciding with
+    // downloading is `run_sequential` now, over this plan.
+    let plan = SessionPlan::resolve(
+        &index,
+        &packages,
+        &PlanInputs {
+            root: &root,
+            host: &host,
+            prefix_override: None,
+            mode: Mode::Board,
+        },
+        &mut |k| prereq_state(&index, &prereqs, k, repo_root.as_deref(), offline),
+        &ledger.asked(),
+    )?;
+    // issue 0374 — announce the source builds together, before the first fetch.
+    warn_source_builds(&plan.source_builds(), &host);
+    announce_system_ask(
+        &index,
+        &plan.system,
+        &ledger,
+        &format!(
+            "nros setup: {board}'s tools need system package(s) this host is missing — \
+             asked once, before any download (not fatal here: the tools still install, and \
+             one that cannot load a library fails its smoke check):"
+        ),
+    );
+    let unavailable = plan.unavailable();
+    if !args.dry_run && !unavailable.is_empty() {
+        bail!(
+            "nros setup: {} has no prebuilt for {host} and no source recipe (add one to the \
+             index, or set up that host's toolchain manually) — refused before anything was \
+             fetched",
+            unavailable
+                .iter()
+                .map(|(n, v)| format!("{n} {v}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
+
+    let lock = (!args.dry_run).then_some(lock_path.as_path());
+    let report =
+        run_sequential(&plan, &workspace, shallow_override(&args), args.dry_run).finish(lock)?;
 
     if args.dry_run {
         eprintln!("(--dry-run: nothing installed)");
-    } else if installed {
-        lock.save(&lock_path)?;
+    } else {
+        let installed = report.installed;
         // phase-447 C1 — BEFORE the `ready` line, because a set containing a
         // package that cannot run is not ready and must never say so. The lock
-        // is saved first: those files are on disk whatever the probes say.
-        smoke.report(&index)?;
-        eprintln!(
-            "nros setup: {board} ready; locked in {}",
-            lock_path.display()
-        );
-    } else {
-        eprintln!("nros setup: {board} — all packages already present");
+        // is already saved: those files are on disk whatever the probes say.
+        report.conclude(&index)?;
+        if installed {
+            eprintln!(
+                "nros setup: {board} ready; locked in {}",
+                lock_path.display()
+            );
+        } else {
+            eprintln!("nros setup: {board} — all packages already present");
+        }
     }
 
     // RFC-0048 §6 / phase-287 W5 — emit the CMakePreset for this board so
     // `nros init` + `cmake --preset <board>` cross-configure with no hand-set
-    // toolchain. Best-effort: a failure here never fails provisioning.
+    // toolchain. Best-effort: a failure here never fails provisioning. The store
+    // bin dirs fold onto its PATH in PLAN order (RFC-0099 D7).
     if !args.dry_run
-        && let Err(e) = emit_board_cmake_preset(board, &workspace, &bin_dirs)
+        && let Err(e) = emit_board_cmake_preset(board, &workspace, &plan.bin_dirs())
     {
         eprintln!("nros setup: CMakePreset not written: {e:#}");
     }
@@ -659,19 +686,25 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
             root.join(&args.index)
         };
         eprintln!("  (a2) board tools: {}", meta.tools.join(", "));
-        for tool in &meta.tools {
-            if args.dry_run {
+        if args.dry_run {
+            for tool in &meta.tools {
                 eprintln!("      nros setup --tool {tool}  (--dry-run: skipped)");
-                continue;
             }
+        } else if !meta.tools.is_empty() {
+            // phase-447 E1/E2 — ONE plan for the board's tools: one index read,
+            // one system ask for their union, one lock write. This loaded the
+            // index and wrote the lock once PER TOOL.
             let index = SdkIndex::load(&tools_index_path)
                 .wrap_err_with(|| format!("load SDK index from {}", tools_index_path.display()))?;
+            let names: Vec<&str> = meta.tools.iter().map(String::as_str).collect();
             // A tool with no dist for this host is a WARNING, not a failure:
             // the Arm FVP is x86_64-Linux-only, and an aarch64 developer can
             // still provision the rest of the tree and build the image — they
             // just cannot run it here. Failing would deny them the build too.
-            if let Err(e) = install_single_tool(&index, tool, None, false, false) {
-                eprintln!("      WARNING: {tool} not installed: {e}");
+            // The plan collects per tool, so one that cannot install does not
+            // stop the others, and the error names each.
+            if let Err(e) = install_tools(&index, &names, None, false, false) {
+                eprintln!("      WARNING: board tool(s) not installed: {e:#}");
                 eprintln!("      The board's other provisioning steps continue.");
             }
         }
@@ -776,139 +809,110 @@ fn ensure_lang_rust_module(crate_dir: &Path, zephyr_ws: &Path) {
     );
 }
 
-/// Install one tool by name (`nros setup --tool <name>`). `prefix_override`
-/// (from `--prefix`) places it outside the shared store — e.g. `build/qemu`, the
-/// location the test harness already reads, so `just <module> setup` can delegate
-/// here with no harness change and no script-side path resolution. Prebuilt-or-
-/// source per the index (187.3); the lockfile is only updated for shared-store
-/// installs (a `--prefix` placement is workspace-local).
-fn install_single_tool(
+/// Install the named tools as ONE plan — `nros setup --tool a --tool b …`
+/// (phase-447 E1/E2). `prefix_override` (from `--prefix`, one tool only) places
+/// a tool outside the shared store — e.g. `build/qemu`, where the test harness
+/// already reads — and such a placement is workspace-local, so the lock does not
+/// track it.
+///
+/// Every name is resolved before anything is fetched, so a typo in the third
+/// `--tool` fails before the first one downloads; the tools' declared system
+/// deps are asked for ONCE, as a union; the lock is written once.
+///
+/// phase-327 W4 (issue 0368 F3) — a tool's `[tool.<name>] system = [..]` is a
+/// dist's RUNTIME libs (libslirp) or a source recipe's BUILD deps (glib for
+/// qemu's meson). Probed BEFORE any work, so the failure surface is "install
+/// these packages" rather than a bare loader error out of a later smoke check —
+/// or a dead configure 40 minutes into a source build. A tool whose deps are
+/// missing is not installed; the tools beside it still are.
+///
+/// issue 1038 — `--sudo` INSTALLS them, exactly as it does for `--system`: one
+/// command for the union, run once, before anything downloads. Without it the
+/// command is printed and never run — installing system packages behind
+/// someone's back is not a thing a build tool does uninvited.
+fn install_tools(
     index: &SdkIndex,
-    name: &str,
+    names: &[&str],
     prefix_override: Option<&Path>,
     dry_run: bool,
     run_sudo: bool,
 ) -> Result<()> {
     let host = host_key();
-    let tool = index
-        .tool
-        .get(name)
-        .ok_or_else(|| eyre::eyre!("nros setup --tool: no [tool.{name}] in the index"))?;
     let root = store_root();
-    let prefix = prefix_override
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| tool_prefix(&root, name, &tool.version));
-
-    let action = plan_install(tool, &host, &prefix);
-    eprintln!(
-        "nros setup --tool {name}: {} → {}",
-        describe(&action, &tool.version, &host),
-        prefix.display()
-    );
-    // issue 0374 — same heads-up as the board path; a single `--tool` install
-    // hits the identical source-build cost (sccache, play_launch_parser, …).
-    if matches!(action, InstallAction::Source { .. }) {
-        warn_source_builds(&[name], &host);
-    }
-    if dry_run {
-        eprintln!("(--dry-run: nothing installed)");
-        return Ok(());
-    }
-    // phase-327 W4 (issue 0368 F3) — the tool's declared system deps: a
-    // dist's RUNTIME libs (libslirp) or a source recipe's BUILD deps (glib
-    // for qemu's meson). Probe BEFORE doing any work, so the failure surface
-    // is "install these packages" rather than a bare loader error out of a
-    // later smoke check — or a dead configure 40 minutes into a source build.
-    // Through `prereqs()`, never `index.system` — a consumer reading one table
-    // sees half the SSoT while `[prereq.*]` and `[system.*]` coexist.
     let prereqs = index.prereqs();
-    let mut missing_sys: Vec<&str> = Vec::new();
-    for key in &tool.system {
-        if let Some(dep) = prereqs.get(key)
-            && run_probe(dep.check.as_ref()) == ProbeResult::Missing
-        {
-            missing_sys.push(key);
-        }
-    }
-    if !missing_sys.is_empty() {
+    let offline = std::env::var_os("NROS_OFFLINE").is_some();
+    let ledger = SessionLedger::from_env();
+    // `--sudo` never consults the ledger: "you were told" is not "installed".
+    let asked = if run_sudo {
+        Default::default()
+    } else {
+        ledger.asked()
+    };
+    let inputs = PlanInputs {
+        root: &root,
+        host: &host,
+        prefix_override,
+        mode: Mode::Tools,
+    };
+    let mut state = |k: &str| prereq_state(index, &prereqs, k, None, offline);
+    let mut plan = SessionPlan::resolve(index, names, &inputs, &mut state, &asked)?;
+    warn_source_builds(&plan.source_builds(), &host);
+
+    if run_sudo && !dry_run && !plan.system.is_empty() {
         let ctx = crate::orchestration::sdk_index::PrereqContext::from_env();
-        let entries: Vec<(&String, &crate::orchestration::sdk_index::PrereqDep)> = prereqs
-            .iter()
-            .filter(|(k, _)| missing_sys.contains(&k.as_str()))
-            .collect();
-        let hint = detect_package_manager()
-            .map(|mgr| native_install_command(mgr, &compose_packages(&entries, mgr, &ctx)))
-            .unwrap_or_else(|| "<no supported package manager detected>".to_string());
-        // issue 1038 — `--sudo` INSTALLS them, exactly as it does for
-        // `--system`. Without this the flag reached only the global
-        // `[system.*]` closure, so a tool whose deps live in its own
-        // `[tool.<name>] system = [..]` could be DIAGNOSED and never
-        // provisioned: `esp32-qemu` needs glib/pixman/gcrypt for qemu's meson
-        // build, they are declared in the index, and the only way to act on
-        // that was for a human to copy the printed line. A workflow's remaining
-        // option was to `apt-get install` them itself — which is the
-        // index-restating that phase-413 W3 exists to forbid.
-        //
-        // Default is unchanged and stays safe for a developer tree: without
-        // `--sudo` this still bails with the command to run, because installing
-        // system packages behind someone's back is not a thing a build tool
-        // should do uninvited.
-        if run_sudo {
-            let Some(mgr) = detect_package_manager() else {
-                bail!(
-                    "nros setup --tool {name} --sudo: {} system package(s) missing ({}) \
-                     and no supported package manager detected",
-                    missing_sys.len(),
-                    missing_sys.join(", "),
-                );
-            };
-            let cmd = native_install_command(mgr, &compose_packages(&entries, mgr, &ctx));
-            println!("nros setup --tool {name} --sudo: running:\n  {cmd}");
+        let Some(mgr) = detect_package_manager() else {
+            bail!(
+                "nros setup --tool --sudo: system package(s) missing ({}) and no supported \
+                 package manager detected",
+                plan.system.asked_keys().collect::<Vec<_>>().join(", ")
+            );
+        };
+        if let Some(cmd) = plan.system.os_command(&prereqs, mgr, &ctx) {
+            println!("nros setup --tool --sudo: running:\n  {cmd}");
             let status = std::process::Command::new("sh")
                 .args(["-c", &cmd])
                 .status()
                 .wrap_err("spawn the native package manager")?;
             if !status.success() {
-                bail!("system package install for [tool.{name}] failed ({status})");
+                bail!("system package install for the plan's tools failed ({status})");
             }
-        } else {
-            bail!(
-                "nros setup --tool {name}: needs {} system package(s) this host is \
-                 missing: {}.\n  Install with:  {hint}\n  \
-                 (or re-run with --sudo)\n  \
-                 (declared as [tool.{name}] system = [..]; probes via [system.*].check)",
-                missing_sys.len(),
-                missing_sys.join(", "),
-            );
         }
+        // Re-resolve: what the probes answer NOW decides what is still blocked
+        // — including a store-provided key, which `--sudo` cannot install.
+        plan = SessionPlan::resolve(index, names, &inputs, &mut state, &asked)?;
     }
-    match action {
-        InstallAction::Present => {}
-        InstallAction::Unavailable => bail!(
-            "nros setup --tool {name} {}: no prebuilt for {host} and no source recipe",
-            tool.version
-        ),
-        other => {
-            // phase-447 C1 — installed AND probed, in one call, at the prefix
-            // this invocation chose (which `--prefix` moves out of the store).
-            let mut smoke = SmokeFailures::default();
-            let prov = smoke
-                .execute_and_probe(&other, name, tool, &prefix)
-                .wrap_err_with(|| format!("install {name} {}", tool.version))?;
-            // Only the shared store is tracked by the lock; --prefix is local.
-            // Recorded BEFORE the verdict on purpose: the files really are
-            // there, and a lock that omitted them would make the next run
-            // re-download the same broken dist to reach the same answer.
-            if prefix_override.is_none() {
-                let lock_path = PathBuf::from(LOCK_FILE);
-                let mut lock = SdkLock::load(&lock_path)?;
-                lock.record(name, &prov);
-                lock.save(&lock_path)?;
-            }
-            smoke.report(index)?;
-        }
+    announce_system_ask(
+        index,
+        &plan.system,
+        &ledger,
+        "nros setup --tool: system package(s) this host is missing — asked once, before any \
+         download; a tool that needs them is not installed (declared as [tool.<name>] \
+         system = [..]; re-run with --sudo to install them first):",
+    );
+
+    let report =
+        run_sequential(&plan, Path::new("."), None, dry_run).finish(Some(Path::new(LOCK_FILE)))?;
+    if dry_run {
+        eprintln!("(--dry-run: nothing installed)");
+        return Ok(());
     }
-    Ok(())
+    report.conclude(index)
+}
+
+/// Print one plan's system-package ask and record it in the session ledger —
+/// the one way an ask reaches the user from an install path (issue 1274).
+fn announce_system_ask(
+    index: &SdkIndex,
+    ask: &session::SystemAsk,
+    ledger: &SessionLedger,
+    headline: &str,
+) {
+    let ctx = crate::orchestration::sdk_index::PrereqContext::from_env();
+    let text = ask.render(&index.prereqs(), detect_package_manager(), &ctx, headline);
+    if !text.is_empty() {
+        eprint!("{text}");
+    }
+    ledger.record(ask.asked_keys());
 }
 
 /// Provision one or more `[source.*]` packages by name (`nros setup --source
@@ -976,7 +980,7 @@ fn source_present(
 ///   configured host, which is worse than not reporting at all.
 ///
 /// Returned rather than printed so the selection is unit-testable — the same
-/// split `source_build_names` uses for issue 0374's reason.
+/// split `SessionPlan::source_builds` uses for issue 0374's reason.
 fn build_stage_report(index: &SdkIndex, workspace: &Path) -> Vec<(String, ProbeResult, String)> {
     index
         .source
@@ -1079,12 +1083,6 @@ pub fn ensure_tools(board: &str, workspace: Option<&Path>) -> Result<Vec<PathBuf
     let host = host_key();
     let root = store_root();
     let ws = index_workspace(&index_path);
-    let lock_path = PathBuf::from(LOCK_FILE);
-    let mut lock = SdkLock::load(&lock_path)?;
-    let mut installed = false;
-    let mut bin_dirs = Vec::new();
-    // phase-447 C1 / RFC-0099 D5 — same contract as `nros setup <board>`.
-    let mut smoke = SmokeFailures::default();
 
     // Unknown board ⇒ no known package set — warn + skip (lazy auto-setup is
     // best-effort; the user provides tools). `nros setup` errors instead.
@@ -1100,71 +1098,28 @@ pub fn ensure_tools(board: &str, workspace: Option<&Path>) -> Result<Vec<PathBuf
             return Ok(Vec::new());
         }
     };
-    for name in packages {
-        let Some(tool) = index.tool.get(name) else {
-            // Phase 195.B — provision `[source.*]` into its index `dest` so a
-            // first build/deploy gets the kernel/lib source with no `just`.
-            if let Some(src) = index.source.get(name) {
-                // Lazy auto-setup uses the index per-source default (no
-                // `--full`/`--shallow` to thread here).
-                match provision_source(name, src, &ws, false, None) {
-                    Ok(SourceDisposition::Provisioned) => {
-                        eprintln!(
-                            "nros: provisioned source {name} → {}",
-                            crate::orchestration::sdk_store::source_dir_of(name, src, &ws)
-                                .map(|d| d.display().to_string())
-                                .unwrap_or_else(|| "<no location>".to_string())
-                        );
-                        installed = true;
-                    }
-                    Ok(_) => {}
-                    Err(e) => eprintln!(
-                        "nros: source {name} provisioning failed ({e}) — provide it yourself if the build needs it"
-                    ),
-                }
-            }
-            continue; // gated / not-in-index — not a store tool
-        };
-        let prefix = tool_prefix(&root, name, &tool.version);
-        match plan_install(tool, &host, &prefix) {
-            InstallAction::Present => {}
-            InstallAction::Unavailable => {
-                eprintln!(
-                    "nros: {name} {} unavailable for {host} (no prebuilt, no source) — \
-                     install it yourself if the build needs it",
-                    tool.version
-                );
-                continue; // not in the store → nothing to add to PATH
-            }
-            action => {
-                eprintln!(
-                    "nros: auto-installing {name} {} (set NROS_NO_AUTO_SETUP to skip)",
-                    tool.version
-                );
-                // phase-447 C1 — the lazy path unpacks the same dists, so it
-                // owes the same answer. Auto-setup is best-effort about what it
-                // CANNOT install (an unavailable tool warns and continues); a
-                // tool it DID install and that cannot run is not that case —
-                // it is the silent success D5 exists to remove, and the build
-                // about to start is what would otherwise report it, worse.
-                let prov = smoke
-                    .execute_and_probe(&action, name, tool, &prefix)
-                    .wrap_err_with(|| format!("auto-setup {name} {}", tool.version))?;
-                lock.record(name, &prov);
-                installed = true;
-                eprintln!("    → {}", prefix.display());
-            }
-        }
-        let bin = prefix.join("bin");
-        if bin.is_dir() {
-            bin_dirs.push(bin);
-        }
-    }
-    if installed {
-        lock.save(&lock_path)?;
-    }
-    smoke.report(&index)?;
-    Ok(bin_dirs)
+    // phase-447 E2 — the same plan every install path builds. `Mode::Lazy`: an
+    // unavailable tool warns and is skipped (auto-setup is best-effort about
+    // what it CANNOT install), nothing is printed about what is already there,
+    // and no system ask interrupts the build about to start. A tool it DID
+    // install still owes its smoke answer (phase-447 C1 / RFC-0099 D5): that is
+    // not the best-effort case, it is the silent success D5 exists to remove.
+    let plan = SessionPlan::resolve(
+        &index,
+        &packages,
+        &PlanInputs {
+            root: &root,
+            host: &host,
+            prefix_override: None,
+            mode: Mode::Lazy,
+        },
+        &mut |_| PrereqState::Present,
+        &Default::default(),
+    )?;
+    run_sequential(&plan, &ws, None, false)
+        .finish(Some(Path::new(LOCK_FILE)))?
+        .conclude(&index)?;
+    Ok(plan.bin_dirs().into_iter().filter(|b| b.is_dir()).collect())
 }
 
 /// Method A — prepend the store `bin/` dirs (from [`ensure_tools`]) to this
@@ -1503,32 +1458,6 @@ fn describe_source(
         // a run fails.
         .unwrap_or_else(|| "<no location>".to_string());
     format!("source {} — {mode} → {where_} [{outcome}]", src.version)
-}
-
-/// Names of the `[tool.*]` packages in `packages` that this host will BUILD
-/// FROM SOURCE — no `dist.<host>` row in the index, and not already installed.
-/// `[source.*]` submodule packages are excluded: they are a git checkout, not a
-/// compile. Split out of the board path so the selection is unit-testable
-/// (issue 0374).
-fn source_build_names<'p>(
-    index: &SdkIndex,
-    packages: &[&'p str],
-    root: &Path,
-    host: &str,
-) -> Vec<&'p str> {
-    packages
-        .iter()
-        .filter(|name| {
-            index.tool.get(**name).is_some_and(|tool| {
-                let prefix = tool_prefix(root, name, &tool.version);
-                matches!(
-                    plan_install(tool, host, &prefix),
-                    InstallAction::Source { .. }
-                )
-            })
-        })
-        .copied()
-        .collect()
 }
 
 /// Heads-up printed BEFORE any fetching starts when the index has no prebuilt
@@ -2307,34 +2236,53 @@ fn run_system(
         return Ok(());
     }
     let manager = detect_package_manager();
-
-    let mut missing: Vec<(&String, &crate::orchestration::sdk_index::PrereqDep)> = Vec::new();
-    let mut unknown: Vec<&String> = Vec::new();
-    let mut present = 0usize;
+    let ctx = crate::orchestration::sdk_index::PrereqContext::from_env();
     let offline = std::env::var_os("NROS_OFFLINE").is_some();
-    let mut by_provider: Vec<(&String, String)> = Vec::new();
-    for (key, dep) in &prereqs {
-        let base = repo_root.and_then(|r| index.prereq_checkout_dir(key, dep, r));
-        // phase-404 W2 — a chain entry resolves through `satisfied_by`; a
-        // single-provider entry keeps its original probe, unchanged.
-        if !dep.providers.is_empty() {
-            match satisfied_by(index, key, dep, base.as_deref(), offline) {
-                Some((p, v)) => {
-                    present += 1;
-                    by_provider.push((key, provider_label(p, v.as_deref())));
-                }
-                None => missing.push((key, dep)),
-            }
-            continue;
-        }
-        match run_probe_in(dep.check.as_ref(), base.as_deref()) {
-            ProbeResult::Present => present += 1,
-            ProbeResult::Missing => missing.push((key, dep)),
-            ProbeResult::Unknown => unknown.push(key),
-        }
-    }
+    // phase-447 E2 — ONE classification per entry, shared with the install
+    // paths (`prereq_state`), so `--system` and a tool's own gate cannot
+    // disagree about whether a key is missing or who provides it.
+    type Row<'a> = (
+        &'a String,
+        &'a crate::orchestration::sdk_index::PrereqDep,
+        PrereqState,
+        Option<String>,
+    );
+    let states: Vec<Row<'_>> = prereqs
+        .iter()
+        .map(|(key, dep)| {
+            let base = repo_root.and_then(|r| index.prereq_checkout_dir(key, dep, r));
+            let (state, label) = classify_prereq(index, key, dep, base.as_deref(), offline);
+            (key, dep, state, label)
+        })
+        .collect();
+    let mut state_of = |k: &str| {
+        states
+            .iter()
+            .find(|(key, ..)| key.as_str() == k)
+            .map(|(_, _, s, _)| s.clone())
+            .unwrap_or(PrereqState::Present)
+    };
+    let ledger = SessionLedger::from_env();
+    // `--sudo` never consults the ledger: "you were told" is not "installed".
+    let asked = if run_sudo {
+        Default::default()
+    } else {
+        ledger.asked()
+    };
 
     if check_only {
+        let present = states
+            .iter()
+            .filter(|s| s.2 == PrereqState::Present)
+            .count();
+        let missing: Vec<&Row<'_>> = states
+            .iter()
+            .filter(|s| matches!(s.2, PrereqState::Missing | PrereqState::Store(_)))
+            .collect();
+        let unknown: Vec<&Row<'_>> = states
+            .iter()
+            .filter(|s| s.2 == PrereqState::Unknown)
+            .collect();
         println!(
             "nros setup --system --check: {present} present, {} missing, {} unprobed",
             missing.len(),
@@ -2343,40 +2291,49 @@ fn run_system(
         // phase-404 W3 — say WHICH provider won, for every entry that had a
         // choice. Printed even when everything is green: the interesting case
         // is a green run whose provider is not the one you expected.
-        for (key, label) in &by_provider {
-            println!("  [OK]      {key} — via {label}");
+        for (key, _, _, label) in &states {
+            if let Some(label) = label {
+                println!("  [OK]      {key} — via {label}");
+            }
         }
-        for (key, dep) in &missing {
+        for (key, dep, state, _) in &missing {
+            let via = match state {
+                PrereqState::Store(t) => format!(" (sudo-less: nros setup --tool {t})"),
+                _ => String::new(),
+            };
             println!(
-                "  [MISSING] {key}{}",
+                "  [MISSING] {key}{}{via}",
                 dep.why
                     .as_deref()
                     .map(|w| format!(" — {w}"))
                     .unwrap_or_default()
             );
         }
-        for key in &unknown {
+        for (key, ..) in &unknown {
             println!("  [UNPROBED] {key} (no check declared / not answerable here)");
         }
-        if !missing.is_empty() {
-            let Some(mgr) = manager else {
-                bail!(
-                    "{} system package(s) missing and no package manager detected",
-                    missing.len()
-                );
-            };
-            let pkgs = compose_packages(
-                &missing,
-                mgr,
-                &crate::orchestration::sdk_index::PrereqContext::from_env(),
-            );
+        if missing.is_empty() {
+            return Ok(());
+        }
+        let ask = session::SystemAsk::collect(
+            missing.iter().map(|(k, ..)| (k.as_str(), "--system")),
+            &mut state_of,
+            &Default::default(),
+            &asked,
+            false,
+        );
+        if !ask.os.is_empty() && manager.is_none() {
             bail!(
-                "{} system package(s) missing. Install with:\n  {}",
-                missing.len(),
-                native_install_command(mgr, &pkgs)
+                "{} system package(s) missing and no package manager detected",
+                missing.len()
             );
         }
-        return Ok(());
+        ledger.record(ask.asked_keys());
+        bail!(
+            "{} system package(s) missing.\n{}",
+            missing.len(),
+            ask.remedy(&prereqs, manager, &ctx).trim_end()
+        );
     }
 
     let Some(mgr) = manager else {
@@ -2389,75 +2346,105 @@ fn run_system(
         return Ok(());
     };
 
-    // Compose over the entries not already present (probe-first, so re-runs
-    // shrink the command instead of repeating it).
-    let prereqs = index.prereqs();
-    let to_install: Vec<(&String, &crate::orchestration::sdk_index::PrereqDep)> = prereqs
+    // Compose over the entries not confirmed present (probe-first, so re-runs
+    // shrink the command instead of repeating it). Since phase-447 E2 this is
+    // the ROLE-FILTERED set, through the same chain-aware classification —
+    // before, this arm re-read `index.prereqs()` and ran each entry's bare probe,
+    // so `--role` narrowed `--check` only and a chain entry (ninja, which the
+    // store provides) was asked of apt.
+    //
+    // phase-398 W5 — the rosdep backend that used to fill an unmapped manager
+    // here is DELETED (RFC-0062, amended 2026-08-29). A key this index does
+    // not map for this host is simply unmapped, and says so.
+    let to_ask: Vec<&str> = states
         .iter()
-        .filter(|(_, dep)| run_probe(dep.check.as_ref()) != ProbeResult::Present)
+        .filter(|s| s.2 != PrereqState::Present)
+        .map(|s| s.0.as_str())
         .collect();
-    if to_install.is_empty() {
+    if to_ask.is_empty() {
         println!("nros setup --system: every probed [system.*] entry is present.");
         return Ok(());
     }
-    // phase-398 W5 — the rosdep backend that used to fill an unmapped manager
-    // here is DELETED (RFC-0062, amended 2026-08-29). It answered for one
-    // provider of four, could not carry a `check`, and being consulted only
-    // where it happened to be installed made one tree resolve two ways. A key
-    // this index does not map for this host is now simply unmapped, and says so.
-    // Issue 1128 — the environment is read ONCE, here, and the expansion below
-    // is a pure function of it.
-    let ctx = crate::orchestration::sdk_index::PrereqContext::from_env();
-    let mut unmapped: Vec<&String> = Vec::new();
-    for (key, dep) in &to_install {
-        if dep.packages_for(mgr, &ctx).is_empty() {
-            unmapped.push(key);
-        }
-    }
-    let mut pkgs = compose_packages(&to_install, mgr, &ctx);
-    pkgs.sort();
-    pkgs.dedup();
-
-    println!(
-        "nros setup --system ({mgr}): {} entr(ies) not confirmed present:",
-        to_install.len()
+    let ask = session::SystemAsk::collect(
+        to_ask.iter().map(|k| (*k, "--system")),
+        &mut state_of,
+        &Default::default(),
+        &asked,
+        true,
     );
-    for (key, dep) in &to_install {
-        println!(
-            "  {key:<28} {}",
-            dep.why.as_deref().unwrap_or("(no why recorded)")
-        );
+    let headline = format!(
+        "nros setup --system ({mgr}): {} entr(ies) not confirmed present:",
+        ask.os.len() + ask.store.len()
+    );
+    let text = ask.render(&prereqs, Some(mgr), &ctx, &headline);
+    if !text.is_empty() {
+        print!("{text}");
     }
-    if !unmapped.is_empty() {
-        println!(
-            "  ({} entr(ies) have no {mgr} mapping and are omitted: {} — map them \
-             in nros-sdk-index.toml)",
-            unmapped.len(),
-            unmapped
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-    }
-    if pkgs.is_empty() {
-        println!("nros setup --system: nothing to compose for {mgr}.");
-        return Ok(());
-    }
-    let cmd = native_install_command(mgr, &pkgs);
     if run_sudo {
-        println!("nros setup --system --sudo: running:\n  {cmd}");
-        let status = std::process::Command::new("sh")
-            .args(["-c", &cmd])
-            .status()
-            .wrap_err("spawn the native package manager")?;
-        if !status.success() {
-            bail!("system package install failed ({status})");
+        match ask.os_command(&prereqs, mgr, &ctx) {
+            Some(cmd) => {
+                println!("nros setup --system --sudo: running:\n  {cmd}");
+                let status = std::process::Command::new("sh")
+                    .args(["-c", &cmd])
+                    .status()
+                    .wrap_err("spawn the native package manager")?;
+                if !status.success() {
+                    bail!("system package install failed ({status})");
+                }
+            }
+            None => println!("nros setup --system: nothing to compose for {mgr}."),
         }
     } else {
-        println!("Install with (or re-run with --sudo):\n  {cmd}");
+        ledger.record(ask.asked_keys());
     }
     Ok(())
+}
+
+/// One entry's state for the ask (phase-447 E2): present, missing from the OS,
+/// unanswerable here — or missing from the system with a provider chain that
+/// falls through to a store tool, which is a sudo-less remedy and never an apt
+/// line. The provider label comes back too when a chain satisfied the entry,
+/// for `--check`'s `[OK] … via` line (phase-404 W3).
+fn classify_prereq(
+    index: &SdkIndex,
+    key: &str,
+    dep: &crate::orchestration::sdk_index::PrereqDep,
+    base: Option<&Path>,
+    offline: bool,
+) -> (PrereqState, Option<String>) {
+    use crate::orchestration::sdk_index::Provider;
+    if dep.providers.is_empty() {
+        let state = match run_probe_in(dep.check.as_ref(), base) {
+            ProbeResult::Present => PrereqState::Present,
+            ProbeResult::Missing => PrereqState::Missing,
+            ProbeResult::Unknown => PrereqState::Unknown,
+        };
+        return (state, None);
+    }
+    if let Some((p, v)) = satisfied_by(index, key, dep, base, offline) {
+        return (PrereqState::Present, Some(provider_label(p, v.as_deref())));
+    }
+    let tool_key = dep.source.as_deref().unwrap_or(key);
+    if dep.provider_chain().contains(&Provider::Sdk) && index.tool.contains_key(tool_key) {
+        return (PrereqState::Store(tool_key.to_string()), None);
+    }
+    (PrereqState::Missing, None)
+}
+
+/// [`classify_prereq`] by key, for a plan's injected probe. A key the index
+/// does not declare is `Unknown` — never invented as missing.
+fn prereq_state(
+    index: &SdkIndex,
+    prereqs: &std::collections::BTreeMap<String, crate::orchestration::sdk_index::PrereqDep>,
+    key: &str,
+    repo_root: Option<&Path>,
+    offline: bool,
+) -> PrereqState {
+    let Some(dep) = prereqs.get(key) else {
+        return PrereqState::Unknown;
+    };
+    let base = repo_root.and_then(|r| index.prereq_checkout_dir(key, dep, r));
+    classify_prereq(index, key, dep, base.as_deref(), offline).0
 }
 
 /// Is `[tool.<name>]` installed at the version the index pins? — issue 0466.
@@ -2736,19 +2723,21 @@ impl SmokeFailures {
         Ok(prov)
     }
 
-    /// Print the report; non-zero when anything failed.
-    fn report(self, index: &SdkIndex) -> Result<()> {
-        let text = self.render(index);
-        if !text.is_empty() {
-            eprint!("{text}");
-        }
-        if self.rows.is_empty() {
-            return Ok(());
-        }
-        bail!(
-            "{} newly installed package(s) failed their smoke check",
-            self.rows.len()
-        );
+    /// Fold another collector's verdicts in after this one's. A session gives
+    /// each step its own collector and folds them in PLAN order at the end
+    /// (phase-447 E2), so the report cannot depend on which install finished
+    /// first once E3 runs them concurrently.
+    fn absorb(&mut self, other: SmokeFailures) {
+        self.rows.extend(other.rows);
+        self.passed.extend(other.passed);
+        self.unprobed.extend(other.unprobed);
+    }
+
+    /// How many newly installed packages failed their probe. The verdict
+    /// itself is `session::SessionReport::conclude`, which reports these
+    /// together with any install that failed outright.
+    fn broken(&self) -> usize {
+        self.rows.len()
     }
 }
 
@@ -3759,7 +3748,7 @@ mod tests {
     /// stall the issue was filed for, a spurious one trains users to ignore the
     /// warning.
     #[test]
-    fn source_build_names_lists_only_host_source_builds() {
+    fn source_builds_lists_only_this_hosts_source_builds() {
         // qemu: dist for linux + a source fallback — prebuilt on linux, built
         // on any other host. zenohd: source only, built everywhere (the real
         // [tool.zenohd] shape that prompted this issue).
@@ -3772,23 +3761,41 @@ mod tests {
         .unwrap();
         // An empty store, so nothing resolves to `Present`.
         let root = crate::test_support::scratch_dir("source-build-names");
+        // Through the session plan (phase-447 E2), which is where the board
+        // path reads it from — the heads-up and the install see ONE resolution.
+        let builds = |pkgs: &[&'static str], host: &str| -> Vec<String> {
+            SessionPlan::resolve(
+                &idx,
+                pkgs,
+                &PlanInputs {
+                    root: &root,
+                    host,
+                    prefix_override: None,
+                    mode: Mode::Board,
+                },
+                &mut |_| PrereqState::Present,
+                &Default::default(),
+            )
+            .unwrap()
+            .source_builds()
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+        };
 
         let pkgs = ["qemu", "zenohd", "mbedtls"];
         assert_eq!(
-            source_build_names(&idx, &pkgs, &root, "linux-x86_64"),
+            builds(&pkgs, "linux-x86_64"),
             vec!["zenohd"],
             "only the dist-less [tool.*] entry is a source build on this host"
         );
 
         // Same index, a host the prebuilt does not cover: qemu joins the list.
-        assert_eq!(
-            source_build_names(&idx, &pkgs, &root, "macos-arm64"),
-            vec!["qemu", "zenohd"]
-        );
+        assert_eq!(builds(&pkgs, "macos-arm64"), vec!["qemu", "zenohd"]);
 
         // Nothing to build => nothing to warn about (warn_source_builds is a
         // no-op on an empty slice).
-        assert!(source_build_names(&idx, &["mbedtls"], &root, "linux-x86_64").is_empty());
+        assert!(builds(&["mbedtls"], "linux-x86_64").is_empty());
     }
 
     // ---- phase-404 W2/W3 ----
@@ -4006,7 +4013,14 @@ mod tests {
         assert!(text.contains("cannot open shared object file"), "{text}");
         // A remedy that knows whether one exists. `broken` has no source recipe.
         assert!(text.contains("has no source recipe"), "{text}");
-        assert!(smoke.report(&index).is_err(), "the run must exit non-zero");
+        let report = session::SessionReport {
+            smoke,
+            ..Default::default()
+        };
+        assert!(
+            report.conclude(&index).is_err(),
+            "the run must exit non-zero"
+        );
     }
 
     /// A package with a `source` recipe is told so — the remedy differs, and
@@ -4033,7 +4047,7 @@ mod tests {
     /// that downloads, verifies and unpacks and then does not run fails HERE,
     /// at unpack, not at first use.
     ///
-    /// It drives `install_single_tool` with a `file://` dist, so download →
+    /// It drives `install_tools` with a `file://` dist, so download →
     /// sha256 → `tar -xf` → provenance all really happen. A test that called
     /// the collector directly would prove the collector works and say nothing
     /// about whether anything calls it — which is the whole of C1.
@@ -4092,9 +4106,9 @@ mod tests {
         // C1 while measuring a broken tarball.
         let (archive, sha) = pack("widget 1.0", "good");
         let good_prefix = dir.join("good-prefix");
-        install_single_tool(
+        install_tools(
             &index_for(&archive, &sha),
-            "widget",
+            &["widget"],
             Some(&good_prefix),
             false,
             false,
@@ -4105,9 +4119,9 @@ mod tests {
         // The case: same shape, and the binary does not do what it claims.
         let (archive, sha) = pack("widget: error while loading shared libraries", "bad");
         let bad_prefix = dir.join("bad-prefix");
-        let err = install_single_tool(
+        let err = install_tools(
             &index_for(&archive, &sha),
-            "widget",
+            &["widget"],
             Some(&bad_prefix),
             false,
             false,
@@ -4141,7 +4155,11 @@ mod tests {
         assert!(text.contains("declare no `smoke` probe"), "{text}");
         assert!(text.contains("silent"), "{text}");
         // …and it does not fail the install: no opinion means no verdict.
-        assert!(smoke.report(&index).is_ok());
+        let report = session::SessionReport {
+            smoke,
+            ..Default::default()
+        };
+        assert!(report.conclude(&index).is_ok());
     }
 }
 
@@ -4857,7 +4875,7 @@ mod workspace_scan_tests {
         let tool = Cli::try_parse_from(["nros", "--tool", "esp32-qemu", "--sudo"])
             .expect("`--tool <name> --sudo` must parse (issue 1038)");
         assert!(tool.args.sudo);
-        assert_eq!(tool.args.tool.as_deref(), Some("esp32-qemu"));
+        assert_eq!(tool.args.tools, ["esp32-qemu"]);
 
         let system = Cli::try_parse_from(["nros", "--system", "--sudo"])
             .expect("`--system --sudo` must parse");
@@ -4869,5 +4887,28 @@ mod workspace_scan_tests {
         // `--sudo` alone parses now — it is rejected in `run()` with a message
         // naming both valid forms, which a clap `requires` cannot express.
         assert!(Cli::try_parse_from(["nros", "--sudo"]).is_ok());
+    }
+
+    /// phase-447 E1 — `--tool` repeats, like `--source` always has. That
+    /// asymmetry was the only reason `ninja` and `make` were two processes (two
+    /// index reads, two lock writes, two system asks), and the order given is
+    /// the plan's order.
+    #[test]
+    fn tool_repeats_like_source_and_keeps_its_order() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(flatten)]
+            args: Args,
+        }
+
+        let cli = Cli::try_parse_from(["nros", "--tool", "ninja", "--tool", "make"])
+            .expect("a repeated --tool must parse");
+        assert_eq!(cli.args.tools, ["ninja", "make"]);
+        let one = Cli::try_parse_from(["nros", "--tool", "ninja"]).unwrap();
+        assert_eq!(one.args.tools, ["ninja"]);
+        let none = Cli::try_parse_from(["nros", "--system"]).unwrap();
+        assert!(none.args.tools.is_empty());
     }
 }
