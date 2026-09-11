@@ -168,25 +168,16 @@ INERT_FAMILIES = {
         "platform primitive the executor owns, not something a backend hands out, "
         "and nothing consumes graph change events",
     ),
-    # The two families below are slots a backend FILLS. They became visible
-    # when phase-428 W8 made consumption the first question; under the old
-    # ordering a body was enough to read as covered.
-    "granted-qos-service-side": Family(
-        (
-            "client_request_publisher_get_actual_qos",
-            "client_response_subscription_get_actual_qos",
-            "service_request_subscription_get_actual_qos",
-            "service_response_publisher_get_actual_qos",
-        ),
-        "cyclonedds FILLS all four — issue 0823's \"not done here\" tail, landed "
-        "— and nothing reads them, so the read-back exists and no diagnostic "
-        "consults it. The consumer is the client/service half of "
-        "`report_qos_downgrade`, which the publisher side already has at "
-        "`cffi/src/lib.rs`; it needs the granted profile compared against the "
-        "requested one at `create_client` / `create_service`, which is where "
-        "phase-428 W9 is deciding what those two do with a QoS profile at all",
-        defer=1327,
-    ),
+    # The family below is a slot a backend FILLS. It became visible when
+    # phase-428 W8 made consumption the first question; under the old ordering
+    # a body was enough to read as covered.
+    #
+    # Its former family-mate `granted-qos-service-side` — the four
+    # `{client,service}_{request,response}_*_get_actual_qos` — is GONE, and
+    # deliberately not replaced by a narrower reason: issue 1327 gave the four
+    # a consumer at `create_client` / `create_service` in `cffi/src/lib.rs`,
+    # so they classify `produced` and a family entry for them would be the
+    # stale-claim shape this table checks for.
     "rx-sizing": Family(
         ("required_rx_bytes",),
         "zenoh-pico fills it (phase-403 W4) and no dispatch site exists: the "
