@@ -25,41 +25,43 @@
 //! every relative path against that base — the writer is shared, not re-spelled.
 //!
 //! **The working directory still decides which `.cargo/config.toml` files cargo
-//! DISCOVERS.** Two consequences, handled separately:
+//! DISCOVERS**, and the nano-ros `--profile nros-*` presets used to come only
+//! from the checkout's root one, i.e. only when cargo ran inside the checkout.
+//! The writer carries them now, so the working directory carries no build fact.
 //!
-//! * The nano-ros `--profile nros-*` presets used to come only from the
-//!   checkout's root `.cargo/config.toml`, i.e. only when cargo ran inside the
-//!   checkout. The writer now carries them, so the working directory carries no
-//!   build fact.
-//! * Until phase-445 W6 deletes it, the leaf still has its own
-//!   `.cargo/config.toml`, whose `include` of the board projection repeats the
-//!   board's `[target.<triple>] rustflags`. cargo JOINS arrays across config
-//!   files, so reading both doubles the link script — measured on the mps2
-//!   bare-metal talker: `rust-lld: error: memory.x:19: region 'FLASH' already
-//!   defined`. So this road runs cargo from the directory ABOVE the leaf: every
-//!   ancestor config (a user's own preference, RFC-0098 D1) is still read, the
-//!   leaf's own is not. Once W6 has deleted the leaf `.cargo/`, running from the
-//!   leaf is equivalent.
+//! This road still runs cargo from the directory ABOVE the leaf. That was
+//! REQUIRED while the leaf had its own `.cargo/config.toml`: its `include` of
+//! the board projection repeated the board's `[target.<triple>] rustflags`, and
+//! cargo JOINS arrays across config files, so reading both doubled the link
+//! script — measured on the mps2 bare-metal talker, `rust-lld: error:
+//! memory.x:19: region 'FLASH' already defined`. phase-445 W6 deleted every
+//! `examples/**/.cargo/`, so running from the leaf is now equivalent; the
+//! invocation stays where it is because the fixture lane and its staleness
+//! probe share it, and a second spelling is a permanent false-STALE.
 //!
 //! ## What the file carries
 //!
 //! Lowest precedence first, each later layer overriding a key the earlier one
 //! also sets:
 //!
-//! 1. the board descriptor's `cargo_config` (triple, link group, build-std);
+//! 1. the board descriptor's `cargo_config` (triple, link group, build-std)
+//!    and its `[board.knobs]`, reached through `NROS_BOARD_TOML`;
 //! 2. the derived pool knobs and the image's entity FACTS
-//!    ([`crate::leaf_entity_env::leaf_env`] — the same computation the per-leaf
-//!    sidecar uses);
+//!    ([`crate::leaf_entity_env::leaf_env`]);
 //! 3. the board facts (`nros ws board-facts`: `NROS_BOARD_TOML`,
 //!    `NROS_PLATFORM_NAME`, site config), which the fixture lane used to export
 //!    per invocation;
-//! 4. **transitional**: the `[env]` rows the leaf's tracked `.cargo/config.toml`
-//!    still AUTHORS (esp32's arena and large-buffer budgets, the XRCE pool
-//!    sizes, the FreeRTOS provisioning paths). They have no other home yet, and
-//!    running from above the leaf means cargo would not see them otherwise. W6
-//!    has to re-home each before it can delete the file; this layer then empties.
+//! 4. what this image's declared TRANSPORT implies
+//!    ([`transport_implications`]);
+//! 5. the APP rung — `[image.<id>] env` in the leaf's `system.toml`
+//!    (RFC-0049's `app` level, RFC-0098 D4, phase-445 W6). This is what
+//!    replaced the `[env]` block a leaf used to hand-write in its own
+//!    `.cargo/config.toml`.
 //!
 //! Plus the in-repo `[patch.crates-io]` rows the graph names registry-style.
+//!
+//! No row is written with `force`, so the ladder's top rung — a value the
+//! calling lane exports — still outranks all five.
 
 use std::{
     collections::BTreeMap,
@@ -208,67 +210,33 @@ fn is_path_value(value: &str) -> bool {
     p.is_absolute() && p.exists()
 }
 
-/// Layer 4 — the `[env]` rows the leaf's tracked `.cargo/config.toml` still
-/// authors. See the module docs; W6 re-homes each and deletes the file.
+/// Layer 3.5 — what an image's declared TRANSPORT implies (phase-445 W6).
 ///
-/// A `relative = true` row is resolved against the LEAF (cargo resolves it
-/// against the parent of `.cargo/`) and re-expressed against the settings
-/// file's own base by the writer. A `force` row is refused: this file never
-/// forces, because a lane that sets the variable must win (RFC-0049), and a
-/// leaf that relied on overriding its caller has to say so somewhere W6 can
-/// see rather than have it silently weakened here.
-fn authored_leaf_env(
-    leaf: &Path,
-    env: &mut BTreeMap<String, String>,
-    path_env: &mut BTreeMap<String, PathBuf>,
-) -> Result<Vec<String>> {
-    let cfg = leaf.join(".cargo").join("config.toml");
-    let Ok(text) = std::fs::read_to_string(&cfg) else {
-        return Ok(Vec::new());
-    };
-    let doc: toml::Table = text
-        .parse()
-        .map_err(|e| eyre!("{}: does not parse: {e}", cfg.display()))?;
-    let Some(rows) = doc.get("env").and_then(|e| e.as_table()) else {
-        return Ok(Vec::new());
-    };
-    let mut carried = Vec::new();
-    for (k, v) in rows {
-        match v {
-            toml::Value::String(s) => {
-                path_env.remove(k);
-                env.insert(k.clone(), s.clone());
-            }
-            toml::Value::Table(t) => {
-                if t.get("force").and_then(|f| f.as_bool()) == Some(true) {
-                    bail!(
-                        "{}: `[env] {k}` sets `force = true`. The generated settings file never \
-                         forces (a lane's value must win, RFC-0049); move this row to its home \
-                         (the board descriptor's `[board.knobs]`, the image, or a derivation) \
-                         before building through `build/<image>/nros-cargo.toml`.",
-                        cfg.display()
-                    );
-                }
-                let Some(value) = t.get("value").and_then(|v| v.as_str()) else {
-                    bail!("{}: `[env] {k}` has no string `value`", cfg.display());
-                };
-                if t.get("relative").and_then(|r| r.as_bool()) == Some(true) {
-                    env.remove(k);
-                    path_env.insert(k.clone(), leaf.join(value));
-                } else {
-                    path_env.remove(k);
-                    env.insert(k.clone(), value.to_string());
-                }
-            }
-            other => bail!(
-                "{}: `[env] {k}` is a {}, not a string or a table",
-                cfg.display(),
-                other.type_str()
-            ),
-        }
-        carried.push(k.clone());
+/// `[image.<id>] transport = "serial"` is a link-set choice, and two build
+/// scripts already ask for it in their own spelling:
+///
+/// * `ZPICO_NO_SMOLTCP=1` — `nros-zpico-build`'s runner skips the smoltcp glue
+///   and defines `ZPICO_SERIAL` instead; without it a bare-metal serial link
+///   does not resolve (`smoltcp_init` / `smoltcp_cleanup`).
+/// * `NROS_LINK_IP=0` — `nros-zpico-build` and `nros-rmw-xrce-cffi` drop the
+///   vendor TCP/UDP link C, which `--gc-sections` then removes entirely.
+///
+/// Three mps2 leaves hand-wrote BOTH into their `.cargo/config.toml` `[env]`,
+/// which is two restatements of one fact — and the same rule already exists one
+/// layer up, as `PlanBuildOptions::drops_ip_link` ("every declared transport is
+/// serial or CAN ⇒ no IP link"). Stating the transport once and deriving the
+/// two knobs is that rule, applied to a leaf.
+///
+/// IMPLIES, never forces: these go in the `[env]` table with everything else,
+/// so a lane that exports `NROS_LINK_IP=1` still wins (RFC-0086 D2's `imply`
+/// strength, and the reason an image may still name either knob explicitly in
+/// its `[image.<id>] env`, which is applied AFTER this).
+fn transport_implications(decl: &LeafSystem, env: &mut BTreeMap<String, String>) {
+    if decl.network.transport.as_deref() != Some("serial") {
+        return;
     }
-    Ok(carried)
+    env.insert("ZPICO_NO_SMOLTCP".to_string(), "1".to_string());
+    env.insert("NROS_LINK_IP".to_string(), "0".to_string());
 }
 
 /// Write `<leaf>/build/<image>/nros-cargo.toml`, or return `None` when `leaf`
@@ -301,8 +269,16 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
         }
     }
 
-    // Layer 4 — transitional, until W6.
-    authored_leaf_env(leaf, &mut env, &mut path_env)?;
+    // Layer 3.5 — what the image's declared transport implies.
+    transport_implications(&img.decl, &mut env);
+
+    // Layer 4 — the APP rung: what this IMAGE states (`[image.<id>] env`).
+    // Last, so it outranks the board and the implications above and is
+    // outranked only by the calling environment.
+    for (k, v) in &img.decl.env {
+        path_env.remove(k);
+        env.insert(k.clone(), v.clone());
+    }
 
     // No absolute path in the hint: the file is otherwise checkout-independent,
     // and the command is written relative to the directory it names.
@@ -337,19 +313,23 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
 mod tests {
     use super::*;
 
-    fn leaf(system: &str, cargo_env: Option<&str>) -> tempfile::TempDir {
-        let td = tempfile::tempdir().unwrap();
-        std::fs::write(
-            td.path().join("Cargo.toml"),
-            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n",
-        )
-        .unwrap();
-        std::fs::write(td.path().join("system.toml"), system).unwrap();
-        if let Some(env) = cargo_env {
-            std::fs::create_dir_all(td.path().join(".cargo")).unwrap();
-            std::fs::write(td.path().join(".cargo/config.toml"), env).unwrap();
+    /// A `LeafSystem` with only the fields a test cares about set.
+    fn decl(transport: Option<&str>, env: &[(&str, &str)]) -> LeafSystem {
+        LeafSystem {
+            origin: leaf_system::Origin::SystemToml("/w/talker/system.toml".into()),
+            image: Some("native".into()),
+            board: Some("native".into()),
+            rmw: None,
+            network: leaf_system::Network {
+                transport: transport.map(str::to_string),
+                ..Default::default()
+            },
+            components: Vec::new(),
+            env: env
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                .collect(),
         }
-        td
     }
 
     #[test]
@@ -360,33 +340,39 @@ mod tests {
         );
     }
 
+    /// phase-445 W6 — one declared transport, both knobs the build scripts ask
+    /// for. Three mps2 leaves used to hand-write the pair.
     #[test]
-    fn authored_rows_are_carried_and_a_relative_one_is_rebased_on_the_leaf() {
-        let td = leaf(
-            "",
-            Some(
-                "[env]\nNROS_EXECUTOR_ARENA_SIZE = \"16384\"\n\
-                 SRC = { value = \"../../src\", relative = true }\n",
-            ),
-        );
-        let (mut env, mut paths) = (BTreeMap::new(), BTreeMap::new());
-        env.insert("NROS_EXECUTOR_ARENA_SIZE".to_string(), "8192".to_string());
-        let carried = authored_leaf_env(td.path(), &mut env, &mut paths).unwrap();
-        assert_eq!(carried.len(), 2);
-        assert_eq!(
-            env["NROS_EXECUTOR_ARENA_SIZE"], "16384",
-            "the leaf's own row wins over a derived one, as its `include` order did"
-        );
-        assert_eq!(paths["SRC"], td.path().join("../../src"));
+    fn a_serial_transport_implies_the_two_link_knobs() {
+        let mut env = BTreeMap::new();
+        transport_implications(&decl(Some("serial"), &[]), &mut env);
+        assert_eq!(env["ZPICO_NO_SMOLTCP"], "1");
+        assert_eq!(env["NROS_LINK_IP"], "0");
     }
 
+    /// IMPLIES, not selects: an image that names either knob itself still wins,
+    /// because the app rung is applied after the implication (RFC-0086 D2).
     #[test]
-    fn a_forced_authored_row_is_refused_not_weakened() {
-        let td = leaf("", Some("[env]\nX = { value = \"1\", force = true }\n"));
-        let e = authored_leaf_env(td.path(), &mut BTreeMap::new(), &mut BTreeMap::new())
-            .unwrap_err()
-            .to_string();
-        assert!(e.contains("force"), "{e}");
+    fn an_image_that_states_a_link_knob_overrides_the_implication() {
+        let d = decl(Some("serial"), &[("NROS_LINK_IP", "1")]);
+        let mut env = BTreeMap::new();
+        transport_implications(&d, &mut env);
+        for (k, v) in &d.env {
+            env.insert(k.clone(), v.clone());
+        }
+        assert_eq!(env["NROS_LINK_IP"], "1", "the image's own row wins");
+        assert_eq!(env["ZPICO_NO_SMOLTCP"], "1", "the other half still applies");
+    }
+
+    /// Absent or IP-bearing transport implies nothing — a leaf that says
+    /// nothing keeps the board's default link set.
+    #[test]
+    fn a_non_serial_transport_implies_nothing() {
+        for t in [None, Some("udp"), Some("tcp")] {
+            let mut env = BTreeMap::new();
+            transport_implications(&decl(t, &[]), &mut env);
+            assert!(env.is_empty(), "{t:?} implied {env:?}");
+        }
     }
 
     #[test]
@@ -405,14 +391,7 @@ mod tests {
         let img = LeafImage {
             leaf: PathBuf::from("/w/examples/talker"),
             package: "demo".into(),
-            decl: LeafSystem {
-                origin: leaf_system::Origin::SystemToml("/w/examples/talker/system.toml".into()),
-                image: Some("native".into()),
-                board: Some("native".into()),
-                rmw: None,
-                network: Default::default(),
-                components: Vec::new(),
-            },
+            decl: decl(None, &[]),
             image_id: "native".into(),
             board: "native".into(),
             platform: "posix".into(),

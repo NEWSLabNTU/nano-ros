@@ -22,3 +22,24 @@ board = "esp32-c3-baremetal"
 ip = "10.0.2.51"
 gateway = "10.0.2.2"
 locator = "tcp/10.0.2.2:9800"
+
+# The APP rung (RFC-0049, RFC-0098 D4), phase-445 W6 — and it belongs to THIS
+# image, not to the board.
+#
+# `ZPICO_SUBSCRIBER_LARGE_SIZE` is normally DERIVED per image
+# (`leaf_payload_classes`): the sibling talker gets
+# `ZPICO_MAX_LARGE_SUBSCRIBERS = 0` — every type it handles fits the small
+# class — so its large pool is zero bytes and a size for it would be inventing
+# a number. It hand-set 4096 anyway, and that row is gone.
+#
+# This image cannot derive it: it subscribes to `std_msgs/msg/String`, which
+# carries no bound, so the derivation REFUSES and the consumer keeps its 16 KiB
+# default over the default 2 large blocks × 4 ring slots = 128 KiB of `.bss`,
+# which overflows esp32-c3 DRAM by ~54 KiB (issue 0024). 4096 cuts the block to
+# 32 KiB and stays above the 2048 small/large threshold, so the split holds.
+#
+# The real fix is to BOUND the member (`string<=64` in the `.msg`, or `inline`
+# in the package's `nros-codegen.toml` — RFC-0033); the derivation then answers
+# and this row can go.
+[image.esp32-c3-baremetal.env]
+ZPICO_SUBSCRIBER_LARGE_SIZE = "4096"

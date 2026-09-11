@@ -21,4 +21,33 @@ dispatch = "deferred"
 [image.mps2-an385-baremetal]
 board = "qemu-mps2-an385"
 locator = "custom://uart"
-transport = "xrce"
+# Serial-only firmware (phase-132 / phase-204.7), stated ONCE (phase-445 W6):
+# `nros sync` derives `ZPICO_NO_SMOLTCP=1` + `NROS_LINK_IP=0` from it, and
+# `NROS_LINK_IP=0` is what drops the XRCE UDP/TCP transports too
+# (`nros-rmw-xrce-cffi/build.rs`, issue 1068). Both were hand-written in this
+# leaf's `.cargo/config.toml` `[env]`. What the pair is worth is measured on
+# the sibling `serial-talker`, whose `system.toml` carries the numbers.
+#
+# This key read `transport = "xrce"` until phase-445 W6 — the RMW name, which
+# is `[system] rmw`, in the slot that names the LINK. Nothing read the key, so
+# nothing said so; it is refused now (`leaf_system::TRANSPORT_KINDS`).
+transport = "serial"
+
+# The APP rung (RFC-0049, RFC-0098 D4) — the XRCE session pools, stated by the
+# IMAGE that needs them tight. Phase 207.6 shrank `xrce_session_state_t` from
+# ~390 KB at the defaults to ~12 KB at these, so the calloc fits a small heap.
+#
+# Not a board fact: the other twelve `qemu-mps2-an385` images want the
+# defaults. Not derivable either — the XRCE pools take no part in the entity
+# derivation the zenoh ones do (RFC-0098 D7 covers `ZPICO_*`).
+#
+# `NROS_XRCE_STREAM_HISTORY = "4"` and `NROS_XRCE_SUBSCRIBER_RING_DEPTH = "1"`
+# were beside these in the leaf config and are GONE: both equal the default
+# `packages/rmw/xrce/xrce-config.txt` already states, so they said nothing.
+[image.mps2-an385-baremetal.env]
+# MTU matches the serial transport's; the default is 4096.
+NROS_XRCE_CUSTOM_TRANSPORT_MTU = "512"
+NROS_XRCE_BUFFER_SIZE = "256"
+NROS_XRCE_MAX_SUBSCRIBERS = "1"
+NROS_XRCE_MAX_SERVICE_SERVERS = "1"
+NROS_XRCE_MAX_SERVICE_CLIENTS = "1"

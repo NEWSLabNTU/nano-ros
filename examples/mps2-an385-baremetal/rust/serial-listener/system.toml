@@ -21,3 +21,6 @@ dispatch = "deferred"
 [image.mps2-an385-baremetal]
 board = "qemu-mps2-an385"
 locator = "serial/UART_0#baudrate=115200"
+# Serial-only firmware (phase-132 / phase-204.7), stated ONCE (phase-445 W6) —
+# see `serial-talker/system.toml` for what `nros sync` derives from it.
+transport = "serial"
