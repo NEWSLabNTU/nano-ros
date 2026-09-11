@@ -361,6 +361,16 @@ sdk-index:
     ./scripts/sdk/check-qemu-configure.sh
     python3 scripts/sdk/check-qemu-source-features.py nros-sdk-index.toml
 
+# The dist-or-reason ratchet (issue 1273 / RFC-0099 D4 / phase-447 C2):
+# `plan_install` already prefers a `dist.<host>` over `[tool.*.source]`, so a
+# tool that source-builds means the index carries no dist row for it, not that
+# it must be compiled. Every `[tool.*]` here carries a dist or is named, with
+# its reason, in `.config/dist-or-reason-baseline.txt` — a list that may only
+# shrink. Buildless + fast, like `sdk-index` above; a separate recipe because
+# it is a ratchet over the index's SHAPE, not a structural/network check of it.
+dist-or-reason:
+    @python3 scripts/sdk/check-dist-or-reason.py
+
 # phase-365 W4 / issue 0625 — the SDK store is CONSTRUCTED from the project's
 # pin, never enumerated. A wildcard where the version belongs means a consumer
 # is picking a version by searching a store SHARED between projects, to answer a
