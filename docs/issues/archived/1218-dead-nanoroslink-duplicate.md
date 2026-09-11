@@ -1,7 +1,7 @@
 ---
 id: 1218
 title: "The dead `packages/api/nros-c/cmake/NanoRosLink.cmake` misled two of four independent readers in one session — it holds a fourth closed rmw list and a force-link that does not happen"
-status: open
+status: resolved
 area: cmake, docs
 severity: medium
 found: 2026-09-08
@@ -93,3 +93,21 @@ Delete `packages/api/nros-c/cmake/NanoRosLink.cmake`. If any of its content is
 still wanted (the `-u` force-link is arguably the general mechanism the live file
 lacks — see issue 1216), move that content into the live file in the same commit
 rather than leaving the duplicate as its record.
+
+## Resolution — deleted (2026-09-11, phase-444 W4.b)
+
+`packages/api/nros-c/cmake/NanoRosLink.cmake` is gone. Re-verified before
+deleting: **no `include()` anywhere reaches it** — every platform file includes
+the LIVE `cmake/NanoRosLink.cmake` as
+`${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake` (esp_idf, freertos, nuttx,
+posix, threadx), the only other mentions are prose in `CMakeLists.txt`,
+`NanoRosRmwDispatch.cmake`, `NanoRosPx4Module.cmake` and the book, all naming
+the live path, and `packages/api/nros-c/CMakeLists.txt` has carried no
+`install()` rules since phase 140. Nothing of the dead copy's content was
+moved, because none of it was reachable; issue 1216 (resolved) is where the
+`-u` force-link question was settled.
+
+It was also the fourth closed backend list issue 1219 counted, and the new
+`check-rmw-agnostic` gate reported it — 4 code lines, `if(RMW STREQUAL
+"zenoh")` / `"xrce"` / `"cyclonedds"` — on its first run. Deleting it is why
+that gate starts with 13 baselined files rather than 14.

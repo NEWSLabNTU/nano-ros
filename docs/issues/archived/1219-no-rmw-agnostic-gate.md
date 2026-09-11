@@ -1,7 +1,7 @@
 ---
 id: 1219
 title: "RFC-0071's `check-rmw-agnostic` gate was never written, so the closed backend lists grew from three to at least five while the RFC's other waves landed (phase-439 W4 removed three of the five; the GATE is still unwritten)"
-status: open
+status: resolved
 area: ci, rmw, api
 severity: medium
 found: 2026-09-08
@@ -191,3 +191,99 @@ The api-manifest leaks (`packages/api/nros-{c,cpp}/Cargo.toml`), the core leaks
 `board.knobs.zenoh.tx`, `workspace_scaffold.rs`, `colcon_nano_ros`'s
 `RMW_BACKENDS`, and `scripts/check-decoupling.sh` (still documented as testing
 a goal the project abandoned).
+
+---
+
+## Resolution — the gate is written, with the RFC's reach (2026-09-11, phase-444 W4.b)
+
+`just check rmw-agnostic` (`scripts/check-rmw-agnostic.py`,
+`just/check/rmw.just`) enforces RFC-0071 § Verification as stated:
+`packages/core/**`, `packages/api/nros{,-c,-cpp}/**` and
+`cmake/NanoRosRmwDispatch.cmake` name no backend outside prose/comments. It is
+a fast-line gate — buildless, ~0.4 s, `git ls-files` plus a read — so it runs
+on every pull request inside `check-fast`, and on no lane that needs
+provisioning.
+
+### The calibration the first attempt lacked
+
+* **Names** are imported from `check-entry-rmw-vocabulary.cmake_known()`
+  (`cyclonedds uorb xrce zenoh`) — a gate against second spellings must not
+  carry one. They match as token PARTS (`nros_rmw_zenoh`,
+  `CONFIG_NROS_ZENOH_LOCATOR`, `rmw-cyclonedds`) but never inside another word,
+  so PX4's `uxrce_dds_client` does not match.
+* **Not code**: comments per language; PROSE strings — a literal containing
+  whitespace is a message to a human (`"E2E message-integrity (CRC) — zenoh
+  only"`), while a whitespace-free one (`"zenoh"`, `"nros-rmw-zenoh?/…"`) is a
+  value; and TEST code (`tests/` directories, Rust items under `#[cfg(test)]`).
+  That is this issue's own measurement applied: a raw census of 421 hits became
+  30 files / 151 lines, and then **13 files / 70 lines**, every one of which is
+  a real code site. Nothing is baselined that a reader would have to learn to
+  skip.
+* **Exemptions** are per `(path, name)` with a reason — three, all `uorb` as the
+  SERIALIZATION FORMAT (RFC-0088), which this issue counted and explicitly did
+  not indict. The same file naming `zenoh` is still caught, and an exemption
+  that matches nothing FAILS. That rule earned its place on the first run: a
+  fourth entry for `nros-node/src/format_check.rs` was deleted by it, because
+  those uses are all inside `#[cfg(test)]`.
+* **Debt** is a per-file ratchet: a count may only fall, a fall must lower the
+  row in the same change, and every row names an OPEN issue — resolved through
+  `scripts/lib/issue_status.py`, so a closed issue cannot hold debt.
+
+### Self-test, on the normal path, every run
+
+14 planted scan cases across Rust (raw strings, char literals, lifetimes,
+`#[cfg(test)]` items and a `#[cfg(test)] use …;`), CMake, TOML, C and Python;
+the per-name exemption in both directions; the scope predicate; the ratchet
+(at baseline / grew / shrank / gone / a new file / a row naming a resolved
+issue); and the real tree mutated in memory — `"zenoh"` appended to
+`packages/core/nros-rmw/src/lib.rs` must add exactly one line.
+
+Negative controls run against the real worktree, then reverted:
+
+```
+$ printf 'pub const BACKEND_NAME: &str = "zenoh";\n' >> packages/core/nros-node/src/lib.rs
+packages/core/nros-node/src/lib.rs: 1 code line(s) name a backend, and it is not baselined
+    305: [zenoh] pub const BACKEND_NAME: &str = "zenoh";
+
+$ printf 'const EXTRA_RMW: &str = "xrce";\n' >> packages/core/nros-macros/src/main_macro.rs
+packages/core/nros-macros/src/main_macro.rs: 6 code line(s) name a backend, baseline 5 (issue 1298) — the debt GREW
+```
+
+### Fixed rather than baselined
+
+* `packages/api/nros-c/cmake/NanoRosLink.cmake` — the dead duplicate holding a
+  fourth closed list — **deleted** (issue 1218). The gate reported it (4 lines)
+  on its first run, so the tree starts one baseline row lighter.
+* `scripts/check-decoupling.sh` — this issue asked to "retire or rewrite" it,
+  and the MEASUREMENT chose: **it passes today** (`rc=0`, both manifests clean),
+  so what shipped was not a gate testing an abandoned goal but an UN-WIRED gate
+  nobody could read a verdict from. It is **rewritten and wired**, not deleted:
+  - its RMW half is genuinely superseded by RFC-0031 (the `?/` forwarding and
+    optional backend deps were deliberately restored) — and is covered from the
+    other direction anyway, since `check-rmw-agnostic` reads both manifests it
+    read (`packages/api/nros/Cargo.toml`, `packages/core/nros-node/Cargo.toml`)
+    and refuses any NEW backend name in either;
+  - its PLATFORM half — neither crate may carry a dep / `dep:` / `?/` on a
+    concrete `nros-platform-*` — is a live rule with **no other gate**, so
+    deleting the file would have dropped it. Narrowed to that half, given a
+    self-test on the normal path (one clean manifest, three leak shapes), and
+    moved from an advisory `gate.yml` step that only `merge_group`/`schedule`
+    ran onto the fast line, where every pull request runs it.
+
+  So nothing it caught goes unchecked: the RMW axis moved to a gate with wider
+  reach, the platform axis stayed where it was and now actually runs.
+
+### Baselined, and where each line is tracked
+
+| issue | files | lines |
+| --- | --- | ---: |
+| 1297 — the API crates select and register backends by name | `nros-c`/`nros-cpp` `Cargo.toml`, `src/lib.rs`, `src/rmw_backend.rs`, `node.hpp`, `nros/Cargo.toml` | 46 |
+| 1298 — core names backends | `main_macro.rs`, `nros-orchestration-ir/src/lib.rs` | 6 |
+| 1299 — backend-named config in the API crates (D8) | `entry_config.h`, `zephyr/app_config.h`, `nros/src/env.rs` | 18 |
+
+The closed lists OUTSIDE the RFC's reach — `workspace_scaffold.rs`, colcon's
+`RMW_BACKENDS`, `board.knobs.zenoh.tx`, `bridge_gen.rs` — are a DIFFERENT rule
+("no tool enumerates the backends"), and this issue's own measurement is why
+they are not folded in here: 39 files on the build surface, ~40 % of them test
+plans, bridge demos and help text, needing the classification pass first. They
+are carried by **issue 1300** rather than dropped when this one closed.
