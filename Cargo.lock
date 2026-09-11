@@ -1654,6 +1654,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-board-freertos"
+version = "0.4.0"
+dependencies = [
+ "cc",
+ "log",
+ "nros",
+ "nros-board-common",
+ "nros-cc-flags",
+ "nros-log",
+ "nros-platform",
+ "nros-platform-cffi",
+ "nros-rmw-zenoh",
+]
+
+[[package]]
 name = "nros-board-linux"
 version = "0.5.0"
 dependencies = [

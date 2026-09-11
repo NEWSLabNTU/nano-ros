@@ -8,7 +8,7 @@ type: bug
 area: [build, ci, testing]
 severity: medium
 found: 2026-09-11
-related: [1217, 1155, 0287, 0957, phase-450, phase-451]
+related: [1217, 1155, 0287, 0957, 1146, phase-450, phase-451]
 ---
 
 ## What
@@ -155,3 +155,86 @@ complementary hole: a leaf in NEITHER `members` nor `exclude`. Both are
 questions about the same two lists being complete and meaningful, and both are
 currently answered by different code. Worth folding together when either is
 worked.
+
+## Progress (phase-451 W4, 2026-09-11) — three of nine closed, and the cost measured
+
+**Three crates are workspace members now**, each verified against BOTH lanes
+(`just check workspace-embedded` and `cargo clippy --all-targets -D warnings`):
+
+| crate | what it needed |
+| --- | --- |
+| `packages/rmw/transport-callbacks` | member + `[package.metadata.nros] host-only = true`, so 0287's derived exclude keeps it out of the thumb lane |
+| `packages/platform/nros-baremetal-common` | nothing — it built clean on the host as it stood |
+| `packages/boards/nros-board-freertos` | a dead back-edge removed first, see below |
+
+### The freertos case is the whole issue in one crate
+
+It could not be a member because `cargo check` refused it outright:
+
+```
+error: cyclic package dependency: package `nros-board-freertos` depends on itself. Cycle:
+  nros-board-freertos
+    ... which satisfies path dependency `nros-board-freertos` of nros-board-mps2-an385-freertos
+    ... which satisfies path dependency `nros-board-mps2-an385-freertos` of nros-board-freertos
+```
+
+The back-edge was `reference-mps2 = ["dep:nros-board-mps2-an385-freertos"]`, a
+152.1.A convenience feature. Its only user — a re-export of the per-board free
+`run` — was **retired by phase-313 W-freertos (#0243)**, which left a comment
+saying exactly that and left the dependency in place. Nothing enabled the
+feature; no `cfg` read it. Its entire remaining effect was to make a package
+cycle that kept the crate out of every workspace, and therefore out of every
+lane.
+
+That is phase-451's own subject — a declaration whose only remaining effect is
+on belief — except this one's effect was on COVERAGE.
+
+**It had never been FORMATTED either.** `check-workspace-fmt` runs
+`cargo +nightly fmt --check`, which reaches workspace members. Making the crate
+a member produced a fmt diff in code nobody had touched — `add_freertos_includes(...)`
+and a `glue.file(...)` call in `build.rs` were both wrapped in a shape rustfmt
+does not produce. So "no lane builds it" understated the reach: no lane built
+it, linted it, tested it or formatted it.
+
+**What the coverage was worth: 8 latent `-D warnings` errors**, sitting in a
+crate every FreeRTOS image links, invisible because nothing compiled it:
+
+* `build.rs:118` — `then(|| 2048_usize)` → `then_some`.
+* `src/entry.rs` ×5 — `b"net_poll\0".as_ptr()` and friends →
+  `c"net_poll".as_ptr().cast::<u8>()`.
+* `src/entry.rs:306` — a doc line beginning `+ netif wait`, read as an
+  unindented markdown list item.
+* `src/entry.rs:153` — **an orphaned doc block**. `1778ba8c0` (issue 1146's
+  fix, three days earlier) inserted `report_stack_peak` between
+  `app_task_entry_runtime`'s doc comment and the function, so the `# Safety`
+  contract for a raw-pointer `extern "C"` entry point documented nothing at
+  all. Reattached. No lane could have caught it and none did.
+
+### What remains
+
+* **`nros-board-threadx` and `nros-board-nuttx` have the SAME cycle** — optional
+  deps on `nros-board-threadx-{linux,qemu-riscv64}` / `nros-board-nuttx-qemu`,
+  which depend back. Unlike freertos these are not dead: `reference-qemu` has
+  live `cfg` readers in `nros-board-nuttx/src/lib.rs` (`:83`, `:366`, `:446`),
+  and `nros-board-nuttx-qemu/Cargo.toml:52` documents that it deliberately does
+  NOT enable the feature. Untangling them is a real change, not a deletion.
+  Both now carry the measured reason in
+  `.config/workspace-exclude-reasons.txt` instead of the guess ("generic
+  facade") this issue's first pass recorded.
+* **The four cross-dep crates are blocked on a missing mirror.**
+  `nros-platform-{mps2-an385,stm32f4,esp32-qemu}` and `nros-board-esp32-qemu`
+  depend on `cortex-m` / `esp-hal`, so they cannot build for the host — and
+  there is no derived way to say so. The host lane's exclusions are
+  `HOST_UNCHECKABLE` in `just/check.just:36`: **a hand-written 8-crate string**,
+  which is precisely the 20-line hand list that issue 0287 retired on the
+  embedded side and nobody retired on this one. Until `host-only`'s mirror
+  exists — call it `embedded-only`, derived the same way — these four cannot be
+  members without breaking host clippy, and so stay unbuilt.
+* **`nros-platform-stm32f4`'s three `#[test]`s still run nowhere.** They are the
+  measurable cost of the bullet above, and they close when it does.
+
+So the shape of the remaining work is one mechanism, not six crates: **make the
+host lane's exclusion derived, the way the embedded lane's already is.** Then
+every one of these is a member that declares which lane it cannot enter, and
+"excluded" stops meaning "unbuilt".
+

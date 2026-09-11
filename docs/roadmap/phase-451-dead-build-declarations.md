@@ -1,7 +1,9 @@
 # Phase 451 — a dead build declaration that reads as authoritative
 
-**Status (2026-09-11). COMPLETE — W1, W2 and W3 all landed the day the phase was
-opened, and all three issues are resolved and archived.** Each work item found
+**Status (2026-09-11). W1, W2 and W3 landed the day the phase was opened; all
+three of its original issues are resolved and archived. W4 is OPEN — it was
+opened BY W3's fallout (issue 1309), three of its nine crates are done and the
+rest wait on one missing mechanism.** Each work item found
 its subject understated: the dead cmake module could not have RUN had anything
 included it (its `find_package` targets were deleted years apart), the dead
 `cargo:` carriers were two of three rather than a stray, and the exclude list
@@ -142,6 +144,42 @@ glue is not a cargo fact. They are DECLARED in
 given an invented derivation. A gate that asserts a reason it did not measure is
 the defect [phase-450](phase-450-gate-reach-narrower-than-its-rule.md) exists
 for, and this phase is not the place to add a sixteenth instance of it.
+
+### W4 — an excluded crate is a crate no lane builds (issue 1309)
+
+Opened by W3's own fallout, and it is the same defect one level up. Promoting
+`packages/rmw/transport-callbacks` to a member broke `check::workspace-all`
+(`can't find crate for std`), which revealed that exclusion is not "checked by
+the other lane" but **checked by no lane at all**: not host clippy, not embedded
+clippy, not `cargo test`.
+
+[Issue 1309](../issues/1309-excluded-crate-is-built-by-no-lane.md) has the
+measurement. Of 55 `packages/` exclusions, 20 have neither their own workspace
+nor their own lock; 11 of those are fixture leaves and eight are real crates
+reached only as somebody else's path dependency.
+
+- [x] `transport-callbacks` — member + `host-only = true` (issue 0287's derived
+      embedded exclude), both lanes green.
+- [x] `nros-baremetal-common` — member; it built clean on the host as it stood.
+- [x] `nros-board-freertos` — member, after removing the dead `reference-mps2`
+      back-edge. That optional dep formed a package CYCLE, which is why cargo
+      refused the crate anywhere; its only user was retired by phase-313 and the
+      dep outlived it. **Entering the lanes surfaced 8 latent `-D warnings`
+      errors**, including an orphaned `# Safety` doc block that `1778ba8c0`
+      (issue 1146, three days earlier) had detached from a raw-pointer
+      `extern "C"` entry point.
+- [ ] `nros-board-threadx` / `nros-board-nuttx` — same cycle, but their
+      `reference-*` features have live `cfg` readers, so it is a change rather
+      than a deletion.
+- [ ] The four `cortex-m` / `esp-hal` crates — blocked on a missing mirror. The
+      host lane's exclusions are `HOST_UNCHECKABLE` in `just/check.just:36`, a
+      hand-written string: the 20-line hand list 0287 retired on the embedded
+      side and nobody retired on this one. `nros-platform-stm32f4`'s three
+      `#[test]`s over `detect_phy_type` stay unreachable until it is derived.
+
+The remaining work is one mechanism, not six crates: make the host lane's
+exclusion derived the way the embedded lane's already is, so "excluded" stops
+meaning "unbuilt".
 
 ## Acceptance for the phase
 

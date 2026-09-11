@@ -42,7 +42,14 @@ nros-log = { path = "../../core/nros-log", default-features = false }
 nros-board-common = { path = "../nros-board-common", default-features = false, features = [
     "deploy-overlay",
 ] }
-nros-board-mps2-an385-freertos = { path = "../nros-board-mps2-an385-freertos", default-features = false, optional = true }
+# issue 1309 / phase-451 — the 152.1.A back-edge to
+# `nros-board-mps2-an385-freertos` is GONE. That crate depends on this one
+# unconditionally, so this optional dep made a package cycle, and cargo refuses
+# a cycle whether or not the feature enabling it is on. The cycle is the reason
+# this crate could not be a workspace member, which is the reason NO lane
+# compiled it. Its only user — the `reference-mps2` re-export of the per-board
+# free `run` — was retired by phase-313 W-freertos (#0243); the dep and its
+# feature outlived it with nothing enabling them and no `cfg` reading them.
 # Phase 173.5 — `TransportConfig` trait the generator writes nros.toml
 # `[[transport]]` IP into. Trait-only; no_std, default-features off.
 # Phase 248 C5c-platform (#60 T3, RFC-0031 platform amendment) — the FreeRTOS
@@ -92,10 +99,9 @@ nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
 
 [features]
 default = []
-# Convenience feature for downstream overlays that want the
-# existing reference-board glue without naming the underlying
-# crate. Will become unnecessary once 152.1.B finishes.
-reference-mps2 = ["dep:nros-board-mps2-an385-freertos"]
+# `reference-mps2` removed (issue 1309). It named an optional dep that formed a
+# package cycle; its re-export was retired by phase-313 and nothing enabled the
+# feature afterwards.
 
 # 152.1.B.5 — when an overlay forwards its own `rmw-zenoh`
 # feature here, the generic `run<B>`'s `app_task_entry` calls

@@ -12,8 +12,12 @@
 # instead, or should gain the manifest fact that justifies it.
 #
 # Format: <path>  # <reason>
+#
+# Shrunk 4 -> 2 on 2026-09-11 (issue 1309): `nros-baremetal-common` and
+# `nros-board-freertos` are workspace MEMBERS now. The second needed a dead
+# `reference-mps2` back-edge removed first — it formed a package cycle, which
+# is what had kept the crate out of every workspace and therefore out of every
+# lane. Entering the lanes surfaced 8 latent `-D warnings` errors in it.
 
-packages/boards/nros-board-freertos    # generic FreeRTOS+lwIP facade; the kernel and lwIP build glue is not a cargo fact, and a host `cargo check` of it links nothing
-packages/boards/nros-board-threadx     # generic ThreadX+NetX-Duo facade; same shape as nros-board-freertos
-packages/boards/nros-board-nuttx       # thin NuttX facade — NuttX owns the kernel build through its own apps/external + Make.defs
-packages/platform/nros-baremetal-common # shared bare-metal helpers (PRNG, sleep, libc stubs); embedded-only, with no cross-only dependency naming it
+packages/boards/nros-board-threadx     # package CYCLE, like nros-board-freertos had: it optionally deps nros-board-threadx-{linux,qemu-riscv64}, which dep it back. Unlike freertos, its `reference-*` features still have live `cfg` readers (issue 1309)
+packages/boards/nros-board-nuttx       # package CYCLE via the optional nros-board-nuttx-qemu dep; `reference-qemu` has live `cfg` readers in src/lib.rs, so removing it is not the one-line change freertos was (issue 1309)
