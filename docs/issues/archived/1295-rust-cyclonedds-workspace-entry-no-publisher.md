@@ -1,12 +1,13 @@
 ---
 id: 1295
 title: "A generated Rust workspace entry on CycloneDDS cannot create a publisher — the selection facade never names `nros/rmw-cyclonedds`"
-status: open
+status: resolved
 type: bug
 area: tooling, rmw-cyclonedds, examples
 severity: high
 found: 2026-09-11
 related: [0831, 0937, rfc-0065, phase-445]
+resolved_in: "the facade offers each linked backend's `rmw-X` name to the umbrella too"
 ---
 
 # What happens
@@ -35,7 +36,38 @@ phase-445 W5 branch:
 The C++ quick start (same scaffold shape, CMake driver) publishes and receives
 on CycloneDDS, so the backend itself is fine.
 
-# Why (read from the tree, not yet proven by a fix)
+# FIXED — the umbrella takes the marker it declares
+
+The read below was right. The fix is the rule the board dep already used one
+block down in `facade.rs`: offer each linked backend's `rmw-X` name to BOTH
+crates and let each take it only if it DECLARES it. Nothing is enumerated —
+zenoh and xrce have no umbrella feature and stay silent (naming one is a hard
+cargo error, not a no-op), a bridge's second backend is covered because the
+marker loop reads `image_backends`, and a backend that grows a marker later
+needs no edit. `rmw_resolver`'s header claim that "the `nros` umbrella stays
+RMW-agnostic" — the sentence that made this invisible — is corrected to
+SELECTION-agnostic.
+
+Measured A/B on one tree, `workspace-rust-native-cyclonedds`:
+
+| facade `nros` features | run |
+| --- | --- |
+| `["rmw-cyclonedds", "ros-humble"]` | `session open` → `application complete` |
+| `["ros-humble"]` (rebuilt from the same tree) | `PublisherCreationFailed` |
+
+The zenoh `native_entry` prints the same two lines, so that is this fixture's
+healthy shape rather than a silent pass. Repro 1 (the book's Rust quick start,
+whose scaffold declares `rmw = "cyclonedds"`) syncs, builds and runs clean.
+Controls: the `native` (zenoh) and `native_xrce` rows still emit
+`nros = features ["ros-humble"]` with the backend on the board, and both build.
+
+**Still true, and not fixed here:** nothing RUNS a generated Rust workspace
+entry in CI — `rmw_coordinate_truth` checks symbols, the matrix cells run the
+hand-written per-example binaries, and neither scaffold journey builds a
+`--workspace --lang rust` scaffold. That gap is what let this ship; it is worth
+its own lane.
+
+# Why (read from the tree, before the fix)
 
 A typed Cyclone publisher needs the `nros` crate's `rmw-cyclonedds` feature:
 
