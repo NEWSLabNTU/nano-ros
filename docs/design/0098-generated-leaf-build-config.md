@@ -1,6 +1,6 @@
 # RFC-0098 — A leaf's build configuration is generated from one board choice
 
-**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4)
+**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6)
 
 Home phase: [phase-445](../roadmap/phase-445-board-choice-generates-leaf-config.md).
 
@@ -30,7 +30,7 @@ files, the 70 Rust example manifests, the 14 board descriptors and the 20
 | C | `NROS_PLATFORM_FREERTOS_SRC`, `NROS_PLATFORM_CFFI_INCLUDE` | leaf `[env]` | 6 | in-tree paths, already exported by `just/sdk-env.just` | provisioning environment, never a leaf |
 | D | `NROS_HEAP_SIZE`, `ZPICO_SUBSCRIBER_LARGE_SIZE`, `NROS_SMOLTCP_MAX_UDP_SOCKETS`, `ZPICO_NO_SMOLTCP`, `ESP_LOG` | leaf `[env]`, `fixtures.toml` | 2–3 each | hardware budgets, netstack choice | board descriptor `[knobs]` (RFC-0049 duty rule) |
 | E | `ZPICO_MAX_SUBSCRIBERS/QUERYABLES`, `NROS_EXECUTOR_ARENA_SIZE`, `NROS_XRCE_MAX_*` | leaf `[env]`, `fixtures.toml` | 2 + 7 | entity-derived pools | derived by `nros sync` (issue 0827's sidecar, already) |
-| F | `ip`, `gateway`, `netmask`, `locator`, `domain_id`, `rmw`; `NROS_LINK_IP` (the six `NROS_LOCAL_IPV4` rows were read by nothing since phase-169 and are deleted, phase-412) | `Cargo.toml [package.metadata.nros.deploy.<board>]`, leaf `[env]` | 24 / 0 / 3 | deployment identity | `system.toml` |
+| F | `ip`, `gateway`, `netmask`, `locator`, `domain_id`, `rmw`; `NROS_LINK_IP` (the six `NROS_LOCAL_IPV4` rows were read by nothing since phase-169 and are deleted, phase-412) | `Cargo.toml [package.metadata.nros.deploy.<board>]`, leaf `[env]` | 24 / 0 / 3 | deployment identity | `system.toml` `NROS_LINK_IP` is derived from `[image.<id>] transport` (D4). |
 | G | `deploy`, node `class/name/default_namespace`, `component.entities` | `Cargo.toml [package.metadata.nros.*]` | 75 / 72 / — | board choice, node declaration | `system.toml` `[image.*] board`, `[[component]]` |
 | H | in-repo `[patch.crates-io]` rows | leaf config, `# nros-managed` | 47 | repo layout | generated (already) |
 | I | `include = [...]` | leaf config | 47 | an artifact of splitting one file | gone |
@@ -111,6 +111,31 @@ budgets move to the descriptor's `[knobs]` and resolve through RFC-0049's ladder
 (`built-in < platform < board < app < lane front-end`); `system.toml` is the
 app rung. `nros config explain` stays the provenance tool — a generated file is
 inspectable by where each value came from.
+
+**The app rung is spelled `[image.<id>] env = { KEY = "VALUE" }`** (phase-445
+W6). The key is the knob's ENV FRONT-END — the spelling `executor_env_key` /
+`xrce_env_key` already publish and every build script already reads — so the
+rung needs no second name for anything, and a knob with no ladder tenant yet
+(`NROS_XRCE_BUFFER_SIZE`) is reachable the same way as one that has one. It
+lands in the generated file's `[env]` WITHOUT `force`, which is what keeps it
+BELOW the lane front-end.
+
+Reach for `[board.knobs]` first. The test is not "is it a number" but **does it
+differ between two images of the same board**: the esp32 executor arena is the
+same on every image because the DRAM is, so it is a board fact;
+`ZPICO_SUBSCRIBER_LARGE_SIZE` differs between the esp32 talker (whose pool the
+derivation sizes to zero blocks) and the esp32 listener (whose subscribed type
+carries no bound, so the derivation refuses), so it is an image fact.
+
+**Implications come before the app rung, not instead of it.** `[image.<id>]
+transport = "serial"` implies `ZPICO_NO_SMOLTCP=1` and `NROS_LINK_IP=0` —
+one declared fact, two knobs the build scripts each ask for in their own
+spelling, and the same rule `PlanBuildOptions::drops_ip_link` states one layer
+up for a workspace. IMPLIES has RFC-0086 D2's strength: an image that names
+either knob in its own `env` still wins. `transport` is validated against the
+three link kinds for that decision's sake — `examples/mps2-an385-baremetal/
+rust/talker-xrce` had `transport = "xrce"`, the RMW name in the slot that names
+the link, and nothing read the key so nothing said so.
 
 **D5 — deployment identity is nros-native.** `ip`, `gateway`, `netmask`,
 `locator`, `domain_id`, `rmw` live in `system.toml`. `[package.metadata.nros.deploy.<board>]`,

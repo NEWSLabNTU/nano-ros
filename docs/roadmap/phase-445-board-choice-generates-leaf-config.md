@@ -256,7 +256,7 @@ esp32 stack budgets.
     packages are deleted, `check-no-tracked-workspace-roots` covers
     `examples/templates/`, and `nros new --workspace --lang cpp` scaffolds no
     root and no entry.
-- [ ] **W6 — delete and gate (D1, D2).** `git rm` the 47 leaf
+- [x] **W6 — delete and gate (D1, D2).** `git rm` the 47 leaf
   `.cargo/config.toml` files and the 34 `nros-board.toml` projections. Gates:
   refuse any tracked `examples/**/.cargo/*`; refuse a workspace-root
   `Cargo.toml`/`CMakeLists.txt` under `examples/workspaces/` and
@@ -264,6 +264,55 @@ esp32 stack budgets.
   `check-board-projections` retire with the files they guarded; the build
   preflight says `nros sync`. CLAUDE.md's 0457 / "never commit the include
   line" entries go with them.
+
+  **Landed (2026-09-11, `feat/phase-445-w6-delete-and-gate`).** 81 tracked
+  files deleted: 45 `examples/**/.cargo/config.toml`, 33 example board
+  projections, and the 3 projections that lived outside `examples/` (two
+  `nros-tests` bins and the `n_board_agnostic_run_plan` freertos entry — all
+  three already state their board in `system.toml`, so they take the same
+  generated settings file). Plus the 3 now-pure-sync configs beside them.
+
+  Where each `[env]` row went — measured, not reasoned:
+
+  | knob | leaves | home | how proved |
+  |---|---|---|---|
+  | `NROS_PLATFORM_FREERTOS_SRC`, `NROS_PLATFORM_CFFI_INCLUDE` | 6 | nowhere — `just/sdk-env.just` already exports both | the FreeRTOS images build with the rows gone |
+  | `NROS_LOCAL_IPV4`, `NROS_LOCAL_IPV4_BYTES` | 6 | nowhere — DEAD | zero readers in the tree; the last one (`nros-rmw-dds/build.rs`) was deleted with its crate in `f3f88cbaa`, 2026-05-19 |
+  | `NROS_SMOLTCP_MAX_UDP_SOCKETS` | 2 | already `[board.knobs.net] max_udp_sockets` (W2) | a duplicate; the constant is unchanged with the row gone |
+  | `NROS_EXECUTOR_ARENA_SIZE` | 2 | `[board.knobs.executor] arena_size = 16384` | same value on every image of the board, and it is about the board's DRAM |
+  | `ZPICO_SUBSCRIBER_LARGE_SIZE` | 2 | `[image.<id>] env` on the LISTENER only | the talker derives `ZPICO_MAX_LARGE_SUBSCRIBERS = 0`, so its row sized a zero-byte pool; only the listener's unbounded `std_msgs/String` makes the derivation refuse |
+  | `NROS_HEAP_SIZE` | 3 | nowhere — DEAD | `131072` IS `DEFAULT_HEAP_SIZE` (`128 * 1024`) in `nros-platform-mps2-an385`, and none of the three leaves enables `dds-heap` / `link-tls` |
+  | `ZPICO_NO_SMOLTCP`, `NROS_LINK_IP` | 3 | DERIVED from `[image.<id>] transport = "serial"` | the same rule `PlanBuildOptions::drops_ip_link` already states one layer up |
+  | `NROS_XRCE_STREAM_HISTORY`, `NROS_XRCE_SUBSCRIBER_RING_DEPTH` | 1 | nowhere — DEAD | both equal the default `packages/rmw/xrce/xrce-config.txt` already states (4 and 1) |
+  | the other five `NROS_XRCE_*` | 1 | `[image.<id>] env` | not board facts (the board's other twelve images want the defaults) and not derivable (the XRCE pools take no part in RFC-0098 D7's derivation) |
+
+  New in the schema: **`[image.<id>] env`, the RFC-0049 APP rung**, read by the
+  one deployment reader (`leaf_system`) and landing in the settings file's
+  `[env]` WITHOUT `force`, so a lane still outranks it. And
+  `[image.<id>] transport` is now VALIDATED against the three link kinds —
+  `talker-xrce` had named its RMW there for four phases and nothing read the
+  key, so nothing said so.
+
+  Deleted from the CLI: `BOARD_CONFIG_FILE` and the whole projection
+  writer/checker (`project_board_config`, `render_board_config`,
+  `board_projection_conflicts`, `render_board_include`, `BoardProjection`,
+  `write_board_projection`, `render_board_projection_body`,
+  `check_board_projection`, `project_board_configs{,_with}`), the
+  `nros ws check-board-projections` verb, `mod board_projection_tests`,
+  `MANAGED_ENV_FILE` + `render_leaf_env_sidecar` (issue 0827's derived `[env]`
+  sidecar — layer 2 of the settings file now), and `authored_leaf_env`, the
+  transitional layer W4b left for this item.
+
+  NOT deleted, and why: `write_patch_config` and `MANAGED_PATCH_FILE`. The
+  patch AUTHORITY for a workspace is `<ws>/.cargo/config.toml` (gitignored),
+  and a leaf that a plain `cargo` or the metadata probe runs INSIDE still
+  resolves its registry-named nros crates through one. The six Zephyr Rust
+  leaves are the case with no alternative: west drives their cargo through
+  zephyr-lang-rust's `rust_cargo_application`, which passes no `--config`
+  (issue 1288). Their files are untracked now and sync regenerates them
+  gitignored, which is what the gate asks; making Zephyr take a `--config`
+  would need a west build to accept it, and no west build is possible from an
+  agent worktree (the module is a symlink to another checkout — W3b's note).
 - [ ] **W7 — the user flow in the book.** `nros build <image>`, and
   `nros sync` + `cargo build --config build/<image>/nros-cargo.toml` for a user
   driving cargo, for each board family.
