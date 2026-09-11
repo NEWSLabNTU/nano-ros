@@ -46,6 +46,8 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+from tracked import tracked  # noqa: E402 — issue 0721: index lookup, not a walk
 
 # `just` at a command position: line start, after `&&`/`||`/`;`/`(`, or after a
 # leading `@`/`-` recipe prefix. Captures the first argument.
@@ -145,7 +147,12 @@ TEST_FLAG = re.compile(r"--test\s+([A-Za-z0-9_-]+)")
 def package_dirs():
     """{package name: directory} for in-repo crates, from their manifests."""
     out = {}
-    for man in REPO.glob("packages/**/Cargo.toml"):
+    # The index, not `REPO.glob("packages/**/Cargo.toml")`: that walked every
+    # cargo `target/` under `packages/` and discarded them AFTER descending, the
+    # same post-hoc filter that made `check-example-leaf-target-dirs` the
+    # 27-minute tail of `check fast`. The filter below stays for `generated/`,
+    # which a committed interface package can legitimately track.
+    for man in tracked("packages", name="Cargo.toml"):
         if any(part in ("target", "third-party", "generated") for part in man.parts):
             continue
         m = re.search(r'^\s*name\s*=\s*"([^"]+)"', man.read_text(errors="replace"), re.M)

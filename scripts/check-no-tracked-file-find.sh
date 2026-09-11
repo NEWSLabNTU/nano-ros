@@ -148,17 +148,24 @@ for f in FILES:
 # `check-site-config` had the same shape. Matching `recursive=True` catches the
 # spelling regardless of where the pattern or the root came from — which is the
 # property the other three alternatives lack.
-PY_WALK = re.compile(r"\.rglob\(|\.glob\(\s*[\"']\*\*|\bos\.walk\(|recursive\s*=\s*True")
+# The literal alternative still required the `**` to LEAD the pattern:
+# `\.glob\(\s*["']\*\*` sees `glob("**/x")` and not `glob("packages/**/x")`,
+# which recurses exactly as hard. Two gates wrote the second form over
+# `packages/` — `check-config-header-single-writer` (714 files returned, 65% of
+# them build output, 37 MINUTES inside a loaded `check fast`) and
+# `check-just-recipe-refs`. The alternative now takes a `**` anywhere in the
+# literal. This gate had no selftest, which is how a regex that could not see
+# the common spelling stayed green; it has one now.
+PY_WALK = re.compile(r"\.rglob\(|\.glob\(\s*[\"'][^\"']*\*\*|\bos\.walk\(|recursive\s*=\s*True")
 PY_ALLOW = re.compile(r"walk-ok:")
 
-PY_FILES = [f for f in FILES if f.endswith(".py")]
-for f in PY_FILES:
-    if f.endswith("check-no-tracked-file-find.py"):
-        continue
-    try:
-        lines = open(f).read().split("\n")
-    except OSError:
-        continue
+def _py_walk_hits(lines):
+    """Line numbers of UNMARKED recursive walks in one file's lines.
+
+    Factored out of the scan so the selftest drives the same predicate the
+    gate runs — a check whose test exercises a copy is a check nobody tested.
+    """
+    hits = []
     # Triple-quoted blocks are PROSE, not code. `scripts/lib/tracked.py` — the
     # helper this rule exists to send people to — documents the antipattern by
     # showing it, so the gate flagged its own remedy and `just check` went red
@@ -198,8 +205,57 @@ for f in PY_FILES:
                 break
             j -= 1
         if not allowed:
-            bad.append(f"  {f}:{n}: recursive walk — use `git ls-files`, "
-                       f"or mark it `# walk-ok: <reason>`")
+            hits.append(n)
+    return hits
+
+
+def self_test():
+    """Both directions, on the normal path, over synthetic lines.
+
+    This gate had none, and that is how `\.glob\(\s*["']\*\*` — blind to a
+    `**` anywhere but the start of the pattern — stayed green while two gates
+    walked 20 G of build output under `packages/`.
+    """
+    must_flag = [
+        ('files = list(REPO.glob("packages/**/CMakeLists.txt"))', "dir/** glob"),
+        ('files = list(REPO.glob("**/Cargo.toml"))', "leading ** glob"),
+        ("for c in root.rglob('*.c'):", "rglob"),
+        ("glob.glob(os.path.join(ROOT, pat), recursive=True)", "recursive=True"),
+        ("for dirpath, _, names in os.walk(root):", "os.walk"),
+    ]
+    must_pass = [
+        ('files = list(REPO.glob("cmake/*.cmake"))', "non-recursive glob"),
+        ("for c in root.rglob('*.c'):  # walk-ok: build dir", "trailing marker"),
+        ("# for c in root.rglob('*.c'):", "a comment is not code"),
+    ]
+    bad_cases = []
+    for line, label in must_flag:
+        if _py_walk_hits([line]) != [1]:
+            bad_cases.append(f"self-test: expected a violation for {label!r}")
+    for line, label in must_pass:
+        if _py_walk_hits([line]):
+            bad_cases.append(f"self-test: unexpected violation for {label!r}")
+    marked = ["# walk-ok: build output, untracked by definition", "for d in os.walk(b):"]
+    if _py_walk_hits(marked):
+        bad_cases.append("self-test: a walk-ok in the comment block above must exempt it")
+    if bad_cases:
+        print("\n".join(bad_cases), file=sys.stderr)
+        sys.exit(2)
+
+
+self_test()
+
+PY_FILES = [f for f in FILES if f.endswith(".py")]
+for f in PY_FILES:
+    if f.endswith("check-no-tracked-file-find.py"):
+        continue
+    try:
+        lines = open(f).read().split("\n")
+    except OSError:
+        continue
+    for n in _py_walk_hits(lines):
+        bad.append(f"  {f}:{n}: recursive walk — use `git ls-files`, "
+                   f"or mark it `# walk-ok: <reason>`")
 
 if bad:
     print("FAIL: filesystem walk used to locate git-tracked files:")

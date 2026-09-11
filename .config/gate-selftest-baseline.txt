@@ -56,7 +56,6 @@ scripts/check-no-allow-multiple-def.sh
 scripts/check-no-board-init.sh
 scripts/check-no-direct-kernel-alloc.sh
 scripts/check-no-silent-sample-drop.py
-scripts/check-no-tracked-file-find.sh
 scripts/check-no-tracked-models.sh
 scripts/check-nuttx-integration-makefile.sh
 scripts/check-nuttx-libc-struct-sizes.py

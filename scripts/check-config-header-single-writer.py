@@ -33,6 +33,8 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+from tracked import tracked  # noqa: E402 — issue 0721: index lookup, not a walk
 HEADER = "config_generated"
 WRITER = "mirror-generated-header.sh"
 
@@ -120,12 +122,17 @@ def self_test() -> None:
 def main() -> int:
     self_test()
 
+    # The INDEX, not a filesystem glob. The rule is about AUTHORED cmake, which
+    # is tracked by definition; `REPO.glob("packages/**/...")` walked every cargo
+    # `target/` and build dir under `packages/` (20 G on disk against 5.6 MB
+    # tracked). Measured on the walk it replaced: 714 files returned, 461 of
+    # them (65%) generated build output this gate had no business reading, and
+    # 37 minutes inside a loaded `check fast` — the tail of every push — for a
+    # scan the index answers instantly. `check-no-tracked-file-find` missed it
+    # because its regex required the `**` to lead the pattern.
     files = sorted(
-        list(REPO.glob("cmake/**/*.cmake"))
-        + list(REPO.glob("packages/**/CMakeLists.txt"))
-        + list(REPO.glob("packages/**/*.cmake"))
-        + list(REPO.glob("zephyr/**/*.cmake"))
-        + list(REPO.glob("integrations/**/*.cmake"))
+        set(tracked("cmake", "packages", "zephyr", "integrations", suffix=".cmake"))
+        | set(tracked("packages", name="CMakeLists.txt"))
     )
     # RELATIVE to the repo. Against the ABSOLUTE path this skipped every file
     # whenever the checkout itself lived under a directory called
