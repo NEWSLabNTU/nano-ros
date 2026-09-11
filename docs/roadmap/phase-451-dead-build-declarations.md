@@ -72,6 +72,15 @@ nothing and is not installed.
       the R1 dispatch manifest, so the dead three-entry map was strictly
       narrower — it predates `uorb`.
 
+**Landed TWICE on the same day, independently.** phase-444 W4.b deleted this
+file too, reached from the RMW-agnostic side (its `check-rmw-agnostic` gate
+counted the dead copy as the fourth closed backend list). Neither session knew
+of the other; the rebase merged both resolution notes into issue 1218 rather
+than picking one. That is not a process failure to tidy away — it is issue
+1309's thesis with a second witness: nothing in this tree asks whether a
+declaration is REACHABLE, so the same dead one can be found twice in one day by
+two people looking for different things.
+
 **What the deletion found.** The file was filed as a dead DUPLICATE, which
 implies it would have worked. It would not have: `_nano_ros_rmw_targets` maps
 `zenoh`/`xrce`/`cyclonedds` onto cmake packages `NrosRmwZenoh` / `NrosRmwXrce` /
