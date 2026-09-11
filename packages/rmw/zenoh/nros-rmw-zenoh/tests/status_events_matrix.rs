@@ -103,7 +103,7 @@ fn zenoh_event_matrix() {
     // tier 1 rewrites [SKIPPED] panics to <skipped> and passes, while a real
     // failure still fails.
     let Some(mut sess) = open_session() else {
-        let why = nros_tests::zenohd_unavailable_reason()
+        let why = nros_tests::process::zenohd_unavailable_reason()
             .unwrap_or_else(|| "the router resolved but the session did not open".to_string());
         nros_tests::skip!("{why}");
     };

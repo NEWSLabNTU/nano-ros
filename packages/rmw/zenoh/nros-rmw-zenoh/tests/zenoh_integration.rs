@@ -32,7 +32,7 @@ use std::{thread, time::Duration};
 /// Returns `None` when zenohd is absent so the test can skip rather than fail
 /// on a machine that never provisioned it.
 fn router() -> Option<ZenohRouter> {
-    if let Some(why) = nros_tests::zenohd_unavailable_reason() {
+    if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
         eprintln!("[SKIP] {why}");
         return None;
     }
@@ -669,7 +669,7 @@ fn default_locator_port() -> u16 {
 /// stomping) if something else on this host already holds it.
 #[test]
 fn client_session_with_absent_locator_dials_backend_default() {
-    if let Some(why) = nros_tests::zenohd_unavailable_reason() {
+    if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
         nros_tests::skip!("{why}");
     }
 
