@@ -242,10 +242,13 @@ whether the build was told what it registers.
 
 ## Explicitly not in this phase
 
-* **cffi's `SLOT_SIZE`.** A hard 1024 where `insert::<T>()` returns `None` if
-  `size_of::<T>() > 1024`, so a backend growing its per-subscription state
-  silently fails `create_subscription`. No user fact answers it; it needs a
-  compile-time assertion in cffi. Separate issue.
+* **cffi's `SLOT_SIZE`.** A hard 1024 where a size overflow and a full pool both
+  return `NROS_RMW_RET_BAD_ALLOC`, and only one of the two has a knob. No user
+  fact answers "how big is a backend's private state struct", so it is not a
+  sizing input; it wants a `const` assertion. Filed as
+  [issue 1322](../issues/1322-cffi-slot-size-overflow-reads-as-pool-exhaustion.md).
+  Worth landing in the same window as W3, since adding per-endpoint QoS to a
+  handle is exactly what would grow that struct past 1 KiB.
 * **A static pool for Cyclone.** D11 gives it a heap budget and a boot
   assertion; inventing a pool would touch the vendored fork's ddsrt allocator.
 * **`lifespan`, `deadline`, `liveliness`.** They bound occupancy or liveness, not
