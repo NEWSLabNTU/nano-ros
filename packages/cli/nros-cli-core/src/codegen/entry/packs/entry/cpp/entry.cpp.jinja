@@ -163,8 +163,14 @@ static int32_t __nros_entry_setup() {
     {
         void* __exec = ::nros::global_handle();
         if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+{#- A bind that does not fit is REFUSED by the runtime, never dropped (issue
+    1172); ignoring the refusal here would drop it anyway, one level up. Each
+    is checked like the context it names, and a failure aborts setup. #}
 {%- for b in sched.node_binds %}
-        nros_cpp_bind_node_name_sched(__exec, "{{ b.name | c_str }}", "{{ b.namespace | c_str }}", __nros_sc_ids[{{ b.sched_context }}]);
+        {
+            nros_cpp_ret_t __nbr{{ loop.index0 }} = nros_cpp_bind_node_name_sched(__exec, "{{ b.name | c_str }}", "{{ b.namespace | c_str }}", __nros_sc_ids[{{ b.sched_context }}]);
+            if (__nbr{{ loop.index0 }} != NROS_CPP_RET_OK) return static_cast<int32_t>(__nbr{{ loop.index0 }});
+        }
 {%- endfor %}
     }
     /* Phase 273 (W2) — seed group → sched-context table (RFC-0047). */
@@ -172,7 +178,10 @@ static int32_t __nros_entry_setup() {
         void* __exec = ::nros::global_handle();
         if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
 {%- for b in sched.group_binds %}
-        nros_cpp_bind_group_sched(__exec, "{{ b.name | c_str }}", "{{ b.namespace | c_str }}", "{{ b.group | c_str }}", __nros_sc_ids[{{ b.tier_index }}]);
+        {
+            nros_cpp_ret_t __gbr{{ loop.index0 }} = nros_cpp_bind_group_sched(__exec, "{{ b.name | c_str }}", "{{ b.namespace | c_str }}", "{{ b.group | c_str }}", __nros_sc_ids[{{ b.tier_index }}]);
+            if (__gbr{{ loop.index0 }} != NROS_CPP_RET_OK) return static_cast<int32_t>(__gbr{{ loop.index0 }});
+        }
 {%- endfor %}
     }
 {%- endif %}

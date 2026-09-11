@@ -42,15 +42,27 @@ static int32_t __nros_entry_setup() {
     {
         void* __exec = ::nros::global_handle();
         if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
-        nros_cpp_bind_node_name_sched(__exec, "ctrl", "/", __nros_sc_ids[0]);
-        nros_cpp_bind_node_name_sched(__exec, "telem", "/", __nros_sc_ids[1]);
+        {
+            nros_cpp_ret_t __nbr0 = nros_cpp_bind_node_name_sched(__exec, "ctrl", "/", __nros_sc_ids[0]);
+            if (__nbr0 != NROS_CPP_RET_OK) return static_cast<int32_t>(__nbr0);
+        }
+        {
+            nros_cpp_ret_t __nbr1 = nros_cpp_bind_node_name_sched(__exec, "telem", "/", __nros_sc_ids[1]);
+            if (__nbr1 != NROS_CPP_RET_OK) return static_cast<int32_t>(__nbr1);
+        }
     }
     /* Phase 273 (W2) — seed group → sched-context table (RFC-0047). */
     {
         void* __exec = ::nros::global_handle();
         if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
-        nros_cpp_bind_group_sched(__exec, "ctrl", "/", "ctrl_grp", __nros_sc_ids[0]);
-        nros_cpp_bind_group_sched(__exec, "telem", "/", "telem_grp", __nros_sc_ids[1]);
+        {
+            nros_cpp_ret_t __gbr0 = nros_cpp_bind_group_sched(__exec, "ctrl", "/", "ctrl_grp", __nros_sc_ids[0]);
+            if (__gbr0 != NROS_CPP_RET_OK) return static_cast<int32_t>(__gbr0);
+        }
+        {
+            nros_cpp_ret_t __gbr1 = nros_cpp_bind_group_sched(__exec, "telem", "/", "telem_grp", __nros_sc_ids[1]);
+            if (__gbr1 != NROS_CPP_RET_OK) return static_cast<int32_t>(__gbr1);
+        }
     }
     {
         ::nros::Result r = ::nros::create_node(__nros_node_0, "ctrl");
