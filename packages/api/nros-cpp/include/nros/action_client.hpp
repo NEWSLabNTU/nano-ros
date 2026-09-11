@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "nros/config.hpp"
+#include "nros/log.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "nros/result.hpp"
 #include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 #include "nros/future.hpp"
@@ -142,9 +143,23 @@ template <typename A> class Client {
     /// after the wait starts is still seen.
     ///
     /// Spins the executor while probing — not for use inside a callback.
-    ::nros::Result wait_for_action_server(uint32_t timeout_ms = 5000) {
+    ///
+    /// **The budget is REQUIRED** — phase-417 stage 3, the same defect and the
+    /// same fix as `Client::wait_for_service`; they were found together and are
+    /// corrected together, under one message. Upstream's
+    /// `rclcpp_action::Client::wait_for_action_server(timeout = -1)` waits
+    /// forever; this used to substitute 5000 ms for an argument-free call,
+    /// silently. RFC-0021 is why the unbounded form does not exist here, and
+    /// `NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT` is what a ported caller now reads.
+    ::nros::Result wait_for_action_server(uint32_t timeout_ms) {
         if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
         return ::nros::Result(nros_cpp_action_client_wait_for_action_server(storage_, timeout_ms));
+    }
+
+    /// **REFUSED** — `wait_for_action_server()` with no budget.
+    template <typename T = void>::nros::Result wait_for_action_server() {
+        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT);
+        return ::nros::Result(::nros::ErrorCode::Unsupported);
     }
 
     ::nros::Result send_goal(const GoalType& goal, uint8_t goal_id[16]) {

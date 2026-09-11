@@ -14,6 +14,7 @@
 #include <cstddef>
 
 #include "nros/config.hpp"
+#include "nros/log.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "nros/result.hpp"
 #include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 #include "nros/future.hpp"
@@ -272,9 +273,29 @@ template <typename S> class Client {
     ///
     /// Returns ok when the server is visible, `Timeout` when the budget
     /// elapses.
-    Result wait_for_service(uint32_t timeout_ms = 5000) {
+    ///
+    /// **The budget is REQUIRED** — phase-417 stage 3. Upstream's default is
+    /// `-1`, WAIT FOREVER; this call cannot (RFC-0021: it drives the executor
+    /// cooperatively, and a wait that never returns starves every other entity
+    /// on a single-threaded transport), and `uint32_t` has no value to port -1
+    /// to. It used to default to 5000, so a ported argument-free
+    /// `client->wait_for_service()` returned `Timeout` after five seconds where
+    /// upstream was still waiting — and `[[nodiscard]]` does not catch
+    /// `if (!client->wait_for_service())`, which is what upstream code writes.
+    /// The no-argument form is now a compile error carrying
+    /// `NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT`.
+    Result wait_for_service(uint32_t timeout_ms) {
         if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         return Result(nros_cpp_service_client_wait_for_service(storage_, executor_, timeout_ms));
+    }
+
+    /// **REFUSED** — `wait_for_service()` with no budget. phase-417 stage 3.
+    ///
+    /// A member template rather than `= delete` for the C++14 reason given on
+    /// `Executor::spin_once()`: a deleted function carries no message there.
+    template <typename T = void> Result wait_for_service() {
+        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT);
+        return Result(::nros::ErrorCode::Unsupported);
     }
 
     /// Phase 189.M3.3.f — callback-style async send. Only valid on a

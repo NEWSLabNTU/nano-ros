@@ -982,9 +982,11 @@ parity CLAIM and the parity MEASUREMENT disagree.
   returns `Ok(true)` immediately on every real backend. The API is present and
   the behaviour is not, which is the exact failure mode a parity ledger exists to
   catch and did not.
-* **[#1019](../issues/1019-rclcpp-compat-log-macros-discard-output.md)** — every
+* **[#1019](../issues/archived/1019-rclcpp-compat-log-macros-discard-output.md)** — every
   `RCLCPP_*` log call in a ported C++ node is discarded on embedded targets. A
-  port that compiles and says nothing.
+  port that compiles and says nothing. RESOLVED 2026-09-11 (phase-417 stage 3
+  W3.a): the family routes at `NROS_LOG_*` and reaches `nros_log` on every
+  target.
 * **[#1020](../issues/1020-parity-cpp-lane-cannot-see-the-compat-shim.md)** — the
   C++ parity lane measures the NATIVE API against rclcpp and cannot see the
   compat shim, so the number it reports is about the wrong surface.
