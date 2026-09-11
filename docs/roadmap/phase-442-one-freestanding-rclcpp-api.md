@@ -93,10 +93,33 @@ the rest and do not depend on each other.
   *Acceptance:* placement new compiles against the shim; a probe using the
   freestanding-guaranteed `<type_traits>` contents compiles.
 
-* **W5 [cpp] — un-gate `NodeOptions` and `Rate`/`WallRate`.** 22 of
-  `NodeOptions`' 23 members are `static_assert`-only and need no `std`; `Rate`'s
-  `Rate(double)`, `sleep()` and `reset()` are pure integer arithmetic. Replace
-  the two genuinely-`std` members with `Span<StringView>` and `nros::Duration`.
+* **W5 [cpp] — un-gate `NodeOptions` and `Rate`/`WallRate`. LANDED
+  2026-09-12.** 22 of `NodeOptions`' 23 members are `static_assert`-only and
+  need no `std`; `Rate`'s `Rate(double)`, `sleep()` and `reset()` are pure
+  integer arithmetic. Replace the two genuinely-`std` members with
+  `Span<StringView>` and `nros::Duration`.
+  *Landed as:* `Rate::period()` returns `nros::Duration`, and `Rate` gains a
+  `Rate(nros::Duration)` constructor as the always-available spelling.
+  `NodeOptions::arguments()` takes a DEDUCED parameter rather than
+  `const std::vector<std::string>&` — which is strictly better for a porting
+  user as well as freestanding-clean, because the same call site binds and a
+  caller passing anything else still gets the migration message instead of "no
+  matching function"; the refusal was what the parameter type was decorating.
+  The six `hosted-only` / `std-only` rows are gone from
+  `.config/cpp-capability-layout-baseline.txt`, measured: NodeOptions 1, Rate
+  16, WallRate 16, identical on all three arms.
+  *Two departures from the RFC's suggestion, both measured.* The getter returns
+  `const char* const*` (argv's own shape, null here) rather than
+  `Span<StringView>`: `graph.hpp:105` had already ruled that pulling `span.hpp`
+  into these headers would newly expose `Span` / `StringView` / `LeSpan` on the
+  public C++ surface as a side effect, and doing it costs **16 unledgered
+  API-parity items**. That classification is someone's decision, not a
+  consequence of un-gating this class. And `Rate`'s `std::chrono` CONSTRUCTOR
+  stays behind `NROS_CPP_HAS_STD_CHRONO` — a gate on a METHOD, which the
+  layout rule permits since `sizeof(Rate)` is `int64_t` + `uint64_t`
+  everywhere, but W8's acceptance is zero `NROS_CPP_HAS_*`, so it is W8's to
+  resolve. Recorded rather than left, because a gated method is exactly the
+  residue that reads as finished work.
 
 * **W6 [cpp] — delete the 50 removable entities.** Each has an ungated
   freestanding sibling already, or is body-only. No consumer loses a capability.

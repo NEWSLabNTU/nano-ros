@@ -189,13 +189,34 @@ struct ClientOptions {
 // claim about a switch that does not exist — the same silent difference one
 // step further from the call site.
 //
-// `<string>` / `<vector>` are GATED, because this header is on the freestanding
-// path. Upstream's `arguments()` signature is spelled in terms of
-// `std::vector<std::string>`, so where those types are absent the class is too;
-// a freestanding build has no `rclcpp::Node` to hand it to either.
+// phase-442 W5 — `NodeOptions` EXISTS ON EVERY TARGET.
+//
+// It used to sit inside `#if defined(NROS_CPP_HAS_STD_STRING) &&
+// defined(NROS_CPP_HAS_STD_VECTOR)`, on the argument that upstream's
+// `arguments()` is spelled in `std::vector<std::string>`. Measured, that gate
+// was paying for ONE member out of 23: every other accessor is
+// `static_assert`-only and mentions no `std` type whatsoever. A whole type
+// disappearing on a toolchain, to keep one decorative parameter type, is the
+// shape RFC-0096 exists to remove — a node written against `rclcpp::NodeOptions`
+// compiled on a host and vanished on ThreadX.
+//
+// And the parameter type WAS decorative. `arguments()` is REFUSE-LOUD: the
+// `static_assert` fires before anything looks at the argument, so the spelling
+// never reached a conversion. It is a deduced template parameter now, which is
+// strictly better for a porting user as well as freestanding-clean: ANY argument
+// binds, including the `std::vector<std::string>` upstream code passes, and the
+// diagnostic is still the migration message rather than "no matching function".
+//
+// The getter returns `const char* const*` — argv's own shape, null here — for
+// the same reason its predecessor returned a reference to a static empty
+// vector: so the refusal is ONE diagnostic rather than two. Deliberately NOT
+// `nros::Span<StringView>`, which RFC-0096 D6 suggested: `span.hpp` is reached
+// by nothing else in these headers, and `graph.hpp:105` already ruled that
+// pulling it in would newly expose `Span` / `StringView` / `LeSpan` on the
+// public C++ surface as a side effect of an unrelated change. Measured: doing
+// it costs 16 unledgered API-parity items. That classification is a decision
+// for whoever makes it, not a consequence of un-gating this class.
 #include "nros/std_detect.hpp"
-
-#if defined(NROS_CPP_HAS_STD_STRING) && defined(NROS_CPP_HAS_STD_VECTOR)
 
 namespace rclcpp {
 
@@ -210,11 +231,15 @@ class NodeOptions {
     // include. Callers write them exactly as upstream does; deduction picks
     // `T = void` and the assertion reports the migration.
 
-    template <typename T = void> NodeOptions& arguments(const std::vector<std::string>&) {
+    /// Upstream takes `const std::vector<std::string>&`. Deduced here, so the
+    /// same call site binds without this header naming a `std` type — and a
+    /// caller passing anything else still gets the migration message rather
+    /// than an overload-resolution failure.
+    template <typename T> NodeOptions& arguments(const T&) {
         static_assert(detail::refuse<T>::value, NROS_RCLCPP_REFUSE_NODE_OPTIONS);
         return *this;
     }
-    template <typename T = void> const std::vector<std::string>& arguments() const {
+    template <typename T = void> const char* const* arguments() const {
         static_assert(detail::refuse<T>::value, NROS_RCLCPP_REFUSE_NODE_OPTIONS);
         return no_arguments_();
     }
@@ -305,14 +330,9 @@ class NodeOptions {
     /// Never reached — the `static_assert` above fires first. It exists only so
     /// the refused `arguments()` has a return expression of the right type,
     /// keeping the diagnostic to ONE error instead of two.
-    static const std::vector<std::string>& no_arguments_() {
-        static const std::vector<std::string> empty;
-        return empty;
-    }
+    static const char* const* no_arguments_() { return nullptr; }
 };
 
 } // namespace rclcpp
-
-#endif // NROS_CPP_HAS_STD_STRING && NROS_CPP_HAS_STD_VECTOR
 
 #endif // NROS_CPP_OPTIONS_HPP
