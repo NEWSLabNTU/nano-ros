@@ -33,5 +33,7 @@
 #
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
+docs/roadmap/phase-445-board-choice-generates-leaf-config.md:1296
+docs/roadmap/phase-445-board-choice-generates-leaf-config.md:1305
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110

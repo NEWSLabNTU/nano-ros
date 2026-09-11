@@ -1,8 +1,30 @@
 # Phase 445 — one board choice generates the leaf's build configuration
 
-**Status (2026-09-11). W1, W2, W3b, W4b, W5 and W6 landed; W3 stays open for the
-workspace members, W7 (the book's user flow) is the remainder.** The tree now has
-no `examples/**/.cargo/` at all and no workspace root build file, both gated.
+**Status (2026-09-11). Every wave is WRITTEN; the phase is NOT complete, and
+two of its five acceptance bullets are measured NOT MET.** W1, W2, W3b, W4b, W5
+and W6 landed. W7 is PR #926. W3's single-package half landed as W3b; its
+workspace members moved under W5, so the box stays open rather than claiming
+work that changed hands. The tree now has no `examples/**/.cargo/` at all and no
+workspace root build file, both gated.
+
+**What is not true yet, and why the phase stays here rather than in
+`archived/`.** The headline — pick a board in `system.toml`, run `nros build`,
+get an image — holds for Rust and not for the other two roads:
+
+* **issue 1305** — the one-line board switch is FALSE for a single-package RUST
+  leaf. It is its own entry, so it still names its board crate in
+  `[dependencies]`; RFC-0098 D6's generation reaches the generated WORKSPACE
+  entry only. Everything else (triple, link group, runner, cross compiler) does
+  follow the one line.
+* **issue 1296** — `nros build` does not resolve a single-package C/C++ leaf
+  (the synthesised bringup is named for the directory, the cmake driver asks for
+  `[system] name`). Those leaves keep their `cmake` pair, which is green.
+  Issue 1308 is the same seam from the other side.
+
+Both were found by RUNNING the documented commands (W7), not by reading, and
+both are recorded against the acceptance bullets they falsify rather than
+ticked. Archiving before they are answered would assert a claim the tree
+contradicts — the stale-status class phase-413 exists to remove.
 Opened 2026-09-10; revised the same day to the colcon shape (RFC-0098 D1/D9). Implements
 [RFC-0098](../design/0098-generated-leaf-build-config.md).
 
