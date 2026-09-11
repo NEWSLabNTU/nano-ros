@@ -286,6 +286,8 @@ struct ServerState {
     const dds_topic_descriptor_t* req_desc{nullptr};
     const dds_topic_descriptor_t* rep_desc{nullptr};
     RequestSlot slots[kRequestSlots];
+    /// Issue 1269 — the graph both endpoints are listed in.
+    GraphState* graph{nullptr};
 };
 
 struct ClientState {
@@ -316,7 +318,18 @@ struct ClientState {
     uint8_t pending_request[kWireScratch]{};
     std::size_t pending_request_len{0};
     int64_t pending_request_seq{-1};
+    /// Issue 1269 — the graph both endpoints are listed in.
+    GraphState* graph{nullptr};
 };
+
+/// Issue 1269 — take a service/client pair back out of the graph on destroy.
+/// Only while each entity is live, which implies its participant — and so the
+/// session state `graph` points into — still is.
+void untrack_pair(GraphState* graph, dds_entity_t reader, dds_entity_t writer) {
+    if (graph == nullptr) return;
+    if (reader > 0 && dds_get_participant(reader) > 0) graph_untrack_reader(graph, reader);
+    if (writer > 0 && dds_get_participant(writer) > 0) graph_untrack_writer(graph, writer);
+}
 
 bool service_topic_name(const char* service_name, const char* prefix, const char* suffix, char* out,
                         std::size_t out_cap) {
@@ -803,8 +816,13 @@ rmw_ret_t service_create(const rmw_node_t* node, const rmw_service_type_support_
     out->backend_data = state;
     // Phase 177.36 — register both endpoints with the node graph (server:
     // request reader + reply writer; client: request writer + reply reader).
-    graph_track_reader(session_graph(session), state->reader);
-    graph_track_writer(session_graph(session), state->writer);
+    // Issue 1269 — both listed under the node that created the pair.
+    state->graph = session_graph(session);
+    {
+        const int owner = graph_node_of(node);
+        graph_track_reader(state->graph, owner, state->reader);
+        graph_track_writer(state->graph, owner, state->writer);
+    }
     return NROS_RMW_RET_OK;
 }
 
@@ -813,6 +831,7 @@ rmw_ret_t service_destroy(rmw_service_t* server) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     auto* state = static_cast<ServerState*>(server->backend_data);
+    untrack_pair(state->graph, state->reader, state->writer);
     dds_return_t rc = DDS_RETCODE_OK;
     if (state->reader > 0 && dds_delete(state->reader) < 0) rc = DDS_RETCODE_ERROR;
     if (state->writer > 0 && dds_delete(state->writer) < 0) rc = DDS_RETCODE_ERROR;
@@ -1108,8 +1127,13 @@ rmw_ret_t client_create(const rmw_node_t* node, const rmw_service_type_support_t
     out->backend_data = state;
     // Phase 177.36 — register both endpoints with the node graph (server:
     // request reader + reply writer; client: request writer + reply reader).
-    graph_track_reader(session_graph(session), state->reader);
-    graph_track_writer(session_graph(session), state->writer);
+    // Issue 1269 — both listed under the node that created the pair.
+    state->graph = session_graph(session);
+    {
+        const int owner = graph_node_of(node);
+        graph_track_reader(state->graph, owner, state->reader);
+        graph_track_writer(state->graph, owner, state->writer);
+    }
     return NROS_RMW_RET_OK;
 }
 
@@ -1118,6 +1142,7 @@ rmw_ret_t client_destroy(rmw_client_t* client) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     auto* state = static_cast<ClientState*>(client->backend_data);
+    untrack_pair(state->graph, state->reader, state->writer);
     dds_return_t rc = DDS_RETCODE_OK;
     if (state->writer > 0 && dds_delete(state->writer) < 0) rc = DDS_RETCODE_ERROR;
     if (state->reader > 0 && dds_delete(state->reader) < 0) rc = DDS_RETCODE_ERROR;

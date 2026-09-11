@@ -218,6 +218,7 @@ static C_XRCE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native Rust workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_RUST_CYCLONEDDS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Phase 264 W4c — cached path to the parameterised workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -2085,6 +2086,23 @@ pub fn build_native_workspace_rust_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_rust_entry("workspace-rust-native", "rust", "native_entry")
+        })
+        .map(|p| p.as_path())
+}
+
+/// Issue 1269 — the SAME `examples/workspaces/rust` image as
+/// [`build_native_workspace_rust_entry`] (default launch, talker + listener),
+/// built on CycloneDDS: `[image.native_cyclonedds]`, row
+/// `workspace-rust-native-cyclonedds`. The multi-node graph test runs both, so
+/// the node set `ros2 node list` shows is compared across RMWs on one image.
+pub fn build_native_workspace_rust_cyclonedds_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_CYCLONEDDS_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-cyclonedds",
+                "rust",
+                "native_cyclonedds_entry",
+            )
         })
         .map(|p| p.as_path())
 }

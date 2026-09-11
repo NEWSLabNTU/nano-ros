@@ -462,6 +462,25 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-multinode-rust-zenoh",
        c(Linux, Rust, Zenoh, EntryPubsub, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), NanoToRos, "rust_multi_node_per_node_graph"),
+    // Issue 1269 — the SAME image on Cyclone (`[image.native_cyclonedds]`,
+    // row `workspace-rust-native-cyclonedds`), asserting the SAME node set.
+    // Cyclone announces nodes through `ros_discovery_info`, not liveliness
+    // tokens, and published one session-named node for the whole image until
+    // 1269 — so a green zenoh case says nothing about it.
+    ic("native-multinode-rust-cyclone",
+       c(Linux, Rust, Cyclonedds, EntryPubsub, Interop, Runtime),
+       NativeFixtures, RosEdition(Cyclonedds), NanoToRos, "rust_multi_node_per_node_graph"),
+    // And XRCE's third, carved: the backend publishes no `ros_discovery_info`
+    // at all, so a stock graph cache learns none of its nodes. The fixture
+    // exists (`workspace-rust-native-xrce`); the missing piece is the backend.
+    ic("native-multinode-rust-xrce-CARVED",
+       c(Linux, Rust, Xrce, EntryPubsub, Interop,
+         CarveOut("nros-rmw-xrce writes no `ros_discovery_info` and leaves \
+                   `create_node` NULL, so `ros2 node list` has no source for \
+                   an XRCE image's nodes — reasoned from session.c, not yet \
+                   measured. A live Agent + peer would only confirm the gap. \
+                   Issue 1292.")),
+       NativeFixtures, XrceAgent, NanoToRos, NO_TEST),
     // tests/cpp_multi_node_entry.rs — the C++ typed multi-node entry's pubsub +
     // per-node graph visibility against a stock ROS 2 peer (phase-257/268).
     ic("native-multinode-cpp-zenoh",
@@ -637,6 +656,14 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     // (`require_ros2()` vs `require_ros2_cyclonedds()`), not only in the name.
     co("graph_interop", "nano_ros_enumerates_a_stock_ros2_node", "native-graph-rust-zenoh-r2n"),
     co("graph_interop", "cyclone_enumerates_a_stock_ros2_node",  "native-graph-rust-cyclone-r2n"),
+
+    // ── rust_multi_node_per_node_graph — one image, one case per RMW ────
+    // Issue 1269. Each case names its backend in the body (the fixture it
+    // resolves and the `ros2` env it lists through), not only in the name.
+    co("rust_multi_node_per_node_graph", "rust_multi_node_entry_per_node_graph_nodes",
+       "native-multinode-rust-zenoh"),
+    co("rust_multi_node_per_node_graph", "rust_multi_node_entry_per_node_graph_nodes_cyclonedds",
+       "native-multinode-rust-cyclone"),
 
     // ── ros2_action_e2e — ONE coordinate, two directions ────────────────
     // The pair no coordinate can separate: which side drives is the whole

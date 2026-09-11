@@ -63,6 +63,9 @@ struct PubState {
     // allocation on a keepalive path. Same shape as the zenoh shim's
     // `liveliness_kind` field.
     bool manual_liveliness{false};
+    /// Issue 1269 — the graph this writer is listed in, so destroying the
+    /// publisher takes its GID back out of `ros_discovery_info`.
+    GraphState* graph{nullptr};
 };
 
 inline PubState* as_state(const rmw_publisher_t* p) {
@@ -189,7 +192,9 @@ rmw_ret_t publisher_create(const rmw_node_t* node, const rmw_message_type_suppor
     state->writer = writer;
 
     out->backend_data = state;
-    graph_track_writer(session_graph(session), writer); // Phase 177.36
+    // Phase 177.36 / issue 1269 — listed under the node that created it.
+    state->graph = session_graph(session);
+    graph_track_writer(state->graph, graph_node_of(node), writer);
     return NROS_RMW_RET_OK;
 }
 
@@ -204,6 +209,14 @@ rmw_ret_t publisher_destroy(rmw_publisher_t* publisher) {
     // refuses to delete is the leak the caller now gets to hear about; the
     // teardown still runs to completion either way, because leaving the C++
     // state behind would turn one leak into two.
+    //
+    // Issue 1269 — out of the graph first. Nothing ever untracked, so a
+    // destroyed publisher stayed in `ros_discovery_info` for the life of the
+    // session. Only while the writer is still a live entity: that implies its
+    // participant is, and so the session state `graph` points into.
+    if (state->graph != nullptr && state->writer > 0 && dds_get_participant(state->writer) > 0) {
+        graph_untrack_writer(state->graph, state->writer);
+    }
     dds_return_t writer_rc = state->writer > 0 ? dds_delete(state->writer) : DDS_RETCODE_OK;
     dds_return_t topic_rc = state->topic > 0 ? dds_delete(state->topic) : DDS_RETCODE_OK;
     delete state;

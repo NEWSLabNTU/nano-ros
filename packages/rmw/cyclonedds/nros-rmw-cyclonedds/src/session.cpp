@@ -68,10 +68,13 @@ SessionState* alloc_session_state() {
     if (mem == nullptr) {
         return nullptr;
     }
-    auto* state = static_cast<SessionState*>(mem);
-    state->domain = 0;
-    state->participant = 0;
-    return state;
+    // Placement-new, so EVERY member gets its initialiser. This used to set
+    // `domain` and `participant` by hand and leave the rest as whatever the
+    // allocator returned — the wake pair and `listener` included, which
+    // `session_destroy` reads (`listener != nullptr` -> dds_delete_listener).
+    // `SessionState`'s destructor is trivial, so `free_session_state`'s plain
+    // dealloc stays correct.
+    return new (mem) SessionState();
 #else
     return new (std::nothrow) SessionState();
 #endif
@@ -350,10 +353,19 @@ if (NROS_CYC_COMPOSE_DOMAIN || has_user_cyclone_config()) {
     out->backend_data = state;
 
     // Phase 177.36 — stand up the ros_discovery_info graph publisher so stock
-    // ROS 2 sees this participant as a node. Best-effort: if the descriptor /
+    // ROS 2 sees this participant's nodes. Best-effort: if the descriptor /
     // writer can't be created the graph stays inactive and interop degrades to
     // endpoint-only (pre-177.36) behaviour.
-    graph_init(&state->graph, pp, node_name, "/");
+    //
+    // Issue 1269 — `node_name` is NOT registered as a node here. It is the
+    // session's open-time name, and in a multi-node image it names no
+    // component: publishing it is what put a phantom `/node` in
+    // `ros2 node list` beside (in fact instead of) the image's real nodes.
+    // Nodes arrive through `node_create`, once per distinct node; a caller that
+    // never names one still gets its endpoints attributed, via
+    // `graph_node_of`'s fallback.
+    (void)node_name;
+    graph_init(&state->graph, pp);
     return NROS_RMW_RET_OK;
 }
 
@@ -362,6 +374,57 @@ if (NROS_CYC_COMPOSE_DOMAIN || has_user_cyclone_config()) {
 GraphState* session_graph(rmw_session_t* session) {
     if (session == nullptr || session->backend_data == nullptr) return nullptr;
     return &as_state(session)->graph;
+}
+
+int graph_node_of(const rmw_node_t* node) {
+    if (node == nullptr) return -1;
+    GraphState* g = session_graph(node->session);
+    if (g == nullptr) return -1;
+    // The runtime's path: `create_node` ran and `backend_data` is our record.
+    const int idx = graph_node_index(g, node->backend_data);
+    if (idx >= 0) return idx;
+    // A caller that drives the vtable directly may hand an endpoint a node it
+    // never declared (NULL `backend_data` is what the ABI calls a pure
+    // identity carrier). The node's name and namespace are still its identity,
+    // so record it by them rather than attribute the endpoint to nobody.
+    return graph_add_node(g, node->name, node->namespace_);
+}
+
+/* Issue 1269 — the `create_node` slot. The runtime calls it once per distinct
+ * `(name, namespace_)` (`nros-rmw-cffi`'s node table), BEFORE handing the node
+ * to any `create_*`, so this is where a node becomes visible on the graph. */
+rmw_ret_t node_create(rmw_session_t* session, const char* name, const char* namespace_,
+                      rmw_node_t* out) {
+    if (session == nullptr || out == nullptr || name == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    GraphState* g = session_graph(session);
+    if (g == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    const int idx = graph_add_node(g, name, namespace_);
+    if (idx == kGraphNodeInvalid) return NROS_RMW_RET_INVALID_ARGUMENT;
+    // Refused, not dropped: a node the graph cannot hold is a node
+    // `ros2 node list` would silently lack, which is the defect itself. The
+    // table is sized to the runtime's largest node count, so reaching this
+    // means a caller outside the runtime declared more nodes than it can.
+    if (idx == kGraphNodeFull) return NROS_RMW_RET_BAD_ALLOC;
+    out->backend_data = &g->nodes[idx];
+    return NROS_RMW_RET_OK;
+}
+
+/* The `destroy_node` slot — the pair `create_node` requires (`rmw_vtable.h`:
+ * a backend that fills `backend_data` in create must fill this too). Called
+ * from `close()`, before `destroy_session`, so the session is still open. */
+rmw_ret_t node_destroy(rmw_node_t* node) {
+    if (node == nullptr || node->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    GraphState* g = session_graph(node->session);
+    if (g == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    const int idx = graph_node_index(g, node->backend_data);
+    if (idx < 0) return NROS_RMW_RET_INVALID_ARGUMENT;
+    graph_remove_node(g, idx);
+    node->backend_data = nullptr;
+    return NROS_RMW_RET_OK;
 }
 
 rmw_ret_t session_destroy(rmw_session_t* session) {
