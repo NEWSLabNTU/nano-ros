@@ -3,10 +3,24 @@
 // The system `riscv64-unknown-elf-g++` + picolibc ships no C++ standard
 // library headers, so the freestanding nros-cpp build (`-ffreestanding`,
 // `-isystem .../cxx-compat`) has no `<type_traits>`. nros-cpp `node.hpp` pulls
-// it (Phase 189.M3.3.e — SFINAE on the callback-style `create_service`). Only
-// `std::enable_if` and `std::is_convertible` are used; provide exactly those
-// (+ the `integral_constant` base) with a version-portable SFINAE
-// `is_convertible` (no GCC `__is_convertible` builtin dependency).
+// it (Phase 189.M3.3.e — SFINAE on the callback-style `create_service`). It carries
+// `enable_if`, `is_convertible` and the `integral_constant` base with a
+// version-portable SFINAE `is_convertible` (no GCC `__is_convertible` builtin
+// dependency), plus the small set below.
+//
+// phase-442 W4 — `is_same`, `remove_cv`, `conditional`, `remove_reference` and
+// `decay` were MISSING, and their absence was a trap rather than a limit: a shim
+// that answers some trait queries and not others reads as a `<type_traits>`, and
+// the omission surfaces only on this one cross build. `remove_reference` was the
+// sharpest case — it existed, in `<utility>`, which is not where the standard
+// puts it, so a source including only `<type_traits>` found nothing. It is
+// defined HERE now, and `<utility>` includes this header rather than carrying a
+// second definition.
+//
+// This does not make the API depend on the shim: RFC-0096 D3 has nros-cpp carry
+// its own traits precisely because a freestanding API cannot assume a shim's
+// shape. The gaps are still worth closing, because the next person to reach for
+// `std::decay` on this target should get it rather than a puzzle.
 #ifndef NROS_THREADX_RISCV64_CXX_COMPAT_TYPE_TRAITS
 #define NROS_THREADX_RISCV64_CXX_COMPAT_TYPE_TRAITS
 
@@ -52,6 +66,115 @@ struct is_convertible<
 
 template <class From, class To>
 constexpr bool is_convertible_v = is_convertible<From, To>::value;
+
+template <class T, class U>
+struct is_same : false_type {};
+template <class T>
+struct is_same<T, T> : true_type {};
+template <class T, class U>
+constexpr bool is_same_v = is_same<T, U>::value;
+
+template <bool B, class T, class F>
+struct conditional {
+    using type = T;
+};
+template <class T, class F>
+struct conditional<false, T, F> {
+    using type = F;
+};
+template <bool B, class T, class F>
+using conditional_t = typename conditional<B, T, F>::type;
+
+template <class T>
+struct remove_reference {
+    using type = T;
+};
+template <class T>
+struct remove_reference<T&> {
+    using type = T;
+};
+template <class T>
+struct remove_reference<T&&> {
+    using type = T;
+};
+template <class T>
+using remove_reference_t = typename remove_reference<T>::type;
+
+template <class T>
+struct remove_const {
+    using type = T;
+};
+template <class T>
+struct remove_const<const T> {
+    using type = T;
+};
+
+template <class T>
+struct remove_volatile {
+    using type = T;
+};
+template <class T>
+struct remove_volatile<volatile T> {
+    using type = T;
+};
+
+template <class T>
+struct remove_cv {
+    using type = typename remove_const<typename remove_volatile<T>::type>::type;
+};
+template <class T>
+using remove_cv_t = typename remove_cv<T>::type;
+
+template <class T>
+struct remove_extent {
+    using type = T;
+};
+template <class T>
+struct remove_extent<T[]> {
+    using type = T;
+};
+template <class T, decltype(sizeof(0)) N>
+struct remove_extent<T[N]> {
+    using type = T;
+};
+
+template <class T>
+struct is_array : false_type {};
+template <class T>
+struct is_array<T[]> : true_type {};
+template <class T, decltype(sizeof(0)) N>
+struct is_array<T[N]> : true_type {};
+
+template <class T>
+struct is_function : false_type {};
+template <class R, class... A>
+struct is_function<R(A...)> : true_type {};
+template <class R, class... A>
+struct is_function<R(A..., ...)> : true_type {};
+
+template <class T>
+struct add_pointer {
+    using type = typename remove_reference<T>::type*;
+};
+
+// `decay` -- the conversion a by-value parameter performs. Written out rather
+// than approximated as `remove_cv_t<remove_reference_t<T>>`, because the two
+// differ exactly where a callback signature is most likely to be written (a
+// function type, or an array), and an approximation that is right for scalars
+// is the kind of gap this header already had.
+template <class T>
+struct decay {
+  private:
+    using U = typename remove_reference<T>::type;
+
+  public:
+    using type = typename conditional<
+        is_array<U>::value, typename remove_extent<U>::type*,
+        typename conditional<is_function<U>::value, typename add_pointer<U>::type,
+                             typename remove_cv<U>::type>::type>::type;
+};
+template <class T>
+using decay_t = typename decay<T>::type;
 
 }  // namespace std
 

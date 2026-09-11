@@ -173,6 +173,21 @@ cpp-freestanding-includes:
 cxx-compat-shim-coverage:
     @python3 scripts/check-cxx-compat-shim-coverage.py
 
+# phase-442 W4 — the other half of the shim question. `cxx-compat-shim-coverage`
+# asks whether every `std::` C-library name a served SOURCE spells is exported;
+# this asks whether the shim supplies what the LANGUAGE guarantees freestanding,
+# whether or not a source spells it today. The two fail differently: a missing
+# `memchr` stops the line that wants it, while a missing placement `operator new`
+# stops code written months later against a header that looked complete, on a
+# cross build nobody runs per-push. Neither shim had the placement forms, and
+# `<type_traits>` had no `is_same` and no `decay`. MEASURED by compiling a probe,
+# not by scanning text: a trait can be present and wrong, and `decay` written as
+# `remove_cv_t<remove_reference_t<T>>` is right for scalars and wrong for exactly
+# the function and array types a callback signature uses.
+[private]
+cxx-compat-shim-facilities:
+    @python3 scripts/check-cxx-compat-shim-facilities.py
+
 # phase-417 / issue 1225 — a capability probe may gate a METHOD, never `sizeof`.
 # MEASURED, not grepped: one `sizeof` probe TU per capability configuration over
 # every public type the umbrella exports, DERIVED from a clang AST rather than

@@ -15,36 +15,71 @@ inline const nothrow_t nothrow{};
 
 } // namespace std
 
-inline void *operator new(size_t size) noexcept(false) {
+inline void* operator new(size_t size) noexcept(false) {
     return nros_platform_alloc(size);
 }
 
-inline void *operator new[](size_t size) noexcept(false) {
+inline void* operator new[](size_t size) noexcept(false) {
     return nros_platform_alloc(size);
 }
 
-inline void *operator new(size_t size, const std::nothrow_t &) noexcept {
+inline void* operator new(size_t size, const std::nothrow_t&) noexcept {
     return nros_platform_alloc(size);
 }
 
-inline void *operator new[](size_t size, const std::nothrow_t &) noexcept {
+inline void* operator new[](size_t size, const std::nothrow_t&) noexcept {
     return nros_platform_alloc(size);
 }
 
-inline void operator delete(void *ptr) noexcept {
+inline void operator delete(void* ptr) noexcept {
     nros_platform_dealloc(ptr);
 }
 
-inline void operator delete[](void *ptr) noexcept {
+inline void operator delete[](void* ptr) noexcept {
     nros_platform_dealloc(ptr);
 }
 
-inline void operator delete(void *ptr, size_t) noexcept {
+inline void operator delete(void* ptr, size_t) noexcept {
     nros_platform_dealloc(ptr);
 }
 
-inline void operator delete[](void *ptr, size_t) noexcept {
+inline void operator delete[](void* ptr, size_t) noexcept {
     nros_platform_dealloc(ptr);
 }
+
+// The PLACEMENT forms. These are not a convenience: [new.delete.placement] puts
+// them in the freestanding subset of `<new>`, so a conforming freestanding
+// implementation has them and code targeting freestanding is entitled to assume
+// it. This shim did not, so placement new did not compile against it at all —
+// which is a trap for any in-place construction, and phase-442 W3's inplace
+// callable is exactly that.
+//
+// `size_t` rather than a hand-written width, deliberately. Declaring these with
+// the wrong first parameter type is accepted on a 64-bit target and REJECTED on
+// a 32-bit one:
+//
+//     error: 'operator new' takes type 'size_t' ('unsigned int')
+//            as first parameter
+//
+// so the mistake is right on two of this project's three toolchains and silently
+// wrong on the embedded one (measured, phase-442 W0). `<stddef.h>` above is what
+// makes `size_t` the implementation's own.
+//
+// They allocate nothing and do nothing, by definition: the caller supplies the
+// storage. The placement DELETES exist so that a constructor throwing during a
+// placement new has a matching deallocation function to unwind through; every
+// build here is `-fno-exceptions`, so they are never called, and their absence
+// would still be a diagnostic on any build that is not.
+inline void* operator new(size_t, void* place) noexcept {
+    return place;
+}
+
+inline void* operator new[](size_t, void* place) noexcept {
+    return place;
+}
+
+inline void operator delete(void*, void*) noexcept {}
+
+inline void operator delete[](void*, void*) noexcept {}
 
 #endif // NROS_THREADX_RISCV64_CXX_COMPAT_NEW
