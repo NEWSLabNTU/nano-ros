@@ -192,6 +192,6 @@ tier fixture work, so it is called out here rather than quietly dropped.
 
 ## Related
 
-- phase-432 (`docs/roadmap/phase-432-codegen-one-producer-many-packs.md`) — W2.3.
+- phase-432 (`docs/roadmap/archived/phase-432-codegen-one-producer-many-packs.md`) — W2.3.
 - RFC-0091 — one entry-codegen producer, many language packs.
 - RFC-0047 — callback groups and tiers.
