@@ -271,7 +271,20 @@ inline void rate_loop() {
     // adapter, for a ported file that must keep a chrono type, is one call:
     // `std::chrono::nanoseconds(rate.period().nanoseconds())`.
     const nros::Duration period = rate.period();
+    // ...and PINNED, because a comment that states a divergence does not fail
+    // when the divergence moves. `just check cpp` was red on `main` for exactly
+    // that reason: W5 changed this return type and the prose describing it was
+    // elsewhere. A `static_assert` is the version of this note that a future
+    // change has to argue with.
+    static_assert(std::is_same<decltype(rate.period()), ::nros::Duration>::value,
+                  "Rate::period() returns nros::Duration (RFC-0096 D1), not "
+                  "std::chrono::nanoseconds as upstream does");
+    // The adapter the comment above names, COMPILED rather than described: the
+    // round trip is exact, so a ported file keeping a chrono type loses nothing
+    // but the implicit assignment.
+    const std::chrono::nanoseconds period_ns{period.nanoseconds()};
     (void)period;
+    (void)period_ns;
     while (rclcpp::ok()) {
         const bool on_time = rate.sleep();
         if (!on_time) break;
