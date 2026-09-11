@@ -23,9 +23,9 @@ The Entry pkg is GENERATED (RFC-0065 D4): `nros build native` writes it to
 
 | Role        | What it is | Marker |
 | ----------- | ---------- | ------ |
-| **Node pkg**    | A library implementing `nros::Node` (+ optional `ExecutableNode`), stamped with `nros::node!(T)`. One per node. | `Cargo.toml [package.metadata.nros.node]` |
-| **Bringup pkg** | Pure declarative — owns the launch topology + per-target deploy config. No compiled code. **Optional**: required only when ≥2 Entry pkgs share one topology; a single-Entry workspace folds `launch/` + `system.toml` into the Entry pkg. | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) |
-| **Entry pkg**   | A binary that boots a topology against a `Board`, via `nros::main!(...)`. One per deploy target. | `Cargo.toml [package.metadata.nros.entry] deploy = "<board>"` |
+| **Node pkg**    | A library implementing `nros::Node` (+ optional `ExecutableNode`), stamped with `nros::node!(T)`. One per node. | a `[[component]]` row in the bringup's `system.toml` (`pkg` / `class` / `name`). The same class/name still appears in the package's own `[package.metadata.nros.node]`, which RFC-0098 D5 retires — [issue 1289](../../../docs/issues/1289-workspace-node-tables-still-in-manifests.md) |
+| **Bringup pkg** | Pure declarative — owns the launch topology and every image the workspace deploys. No compiled code. | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) |
+| **Entry pkg**   | A binary that boots a topology against a `Board`, via `nros::main!(...)`. One per image — **generated, never written**. | `[image.<id>] board = "<board>"` in `system.toml` |
 
 ## ROS 2 ↔ nano-ros map
 
@@ -33,7 +33,7 @@ The Entry pkg is GENERATED (RFC-0065 D4): `nros build native` writes it to
 | ------------------------------------------- | --------------------------------------------------- |
 | Composable node (`rclcpp_components`)       | **Node pkg** (`nros::node!`)                         |
 | `<pkg>_bringup` with `launch/*.launch.xml`  | **Bringup pkg** (declarative — same launch XML)     |
-| Per-target launch + deploy config           | `system.toml` (`[system]`, `[[component]]`, `[deploy.*]`) |
+| Per-target launch + deploy config           | `system.toml` (`[system]`, `[[component]]`, `[image.<id>]`) |
 | `ros2 launch <pkg> <file>` (ament install)  | `nros build <image>`, then run the generated Entry binary; it is the launch product |
 | Composition container / main               | **Entry pkg** (`nros::main!(launch = "...")`)        |
 

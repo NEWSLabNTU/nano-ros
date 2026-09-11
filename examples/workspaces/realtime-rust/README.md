@@ -8,20 +8,31 @@ declared in config, no node-code change to retune.
 src/ctrl_pkg/      — Node pkg, 10 ms control loop, callback group `ctrl` → tier `high`.
 src/telem_pkg/     — Node pkg, 100 ms telemetry,  callback group `telem` → tier `low`.
 src/demo_bringup/  — Bringup: system.toml declares [tiers.high] / [tiers.low].
-src/native_entry/  — Entry, resolves the 2-tier table → run_tiers.
+src/zephyr_entry/  — the one hand-written entry (a west application).
 ```
+
+Every other image's entry is generated from its `[image.*]`, so `src/` holds no
+`native_entry` to read.
 
 ## How tiers are declared
 
-1. Each Node pkg names its callback group + the tier it maps to, in Cargo metadata:
+1. The bringup binds each node's callback group to a tier, in the
+   `[[component]]` row that declares the node:
 
    ```toml
-   # ctrl_pkg/Cargo.toml
-   [package.metadata.nros.node]
-   callback_groups = [{ id = "ctrl", tier = "high" }]
+   # demo_bringup/system.toml
+   [[component]]
+   pkg = "ctrl_pkg"
+   class = "ctrl_pkg::Control"
+   name = "control_node"
+   group_tiers = { ctrl = "high" }
    ```
 
-   …and labels its entities at runtime: `node.callback_group("ctrl")?`.
+   …and the node labels its entities at runtime: `node.callback_group("ctrl")?`.
+   (`ctrl_pkg/Cargo.toml` still carries the same binding as
+   `[package.metadata.nros.node] callback_groups`, which the `nros::main!`
+   proc-macro reads today. The `[[component]]` row is the source of truth; the
+   manifest copy is deprecated — RFC-0047 / phase-273 W2.)
 
 2. The bringup gives each tier its per-RTOS knobs:
 
@@ -46,5 +57,6 @@ source ./activate.sh
 cd examples/workspaces/realtime-rust
 nros setup native
 nros sync
-cargo run -p native_entry
+nros build native
+./build/posix/native_entry/target/debug/native_entry
 ```

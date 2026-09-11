@@ -15,17 +15,21 @@ multi-package-workspace/
     ├── pkg_c_talker/              # C package — publishes /chatter
     │   ├── package.xml
     │   ├── CMakeLists.txt
-    │   └── src/main.c
+    │   └── src/Talker.c
     ├── pkg_cpp_listener/          # C++ package — subscribes /chatter
     │   ├── package.xml
     │   ├── CMakeLists.txt
-    │   └── src/main.cpp
+    │   └── src/{Listener.cpp,Listener.hpp}
     └── pkg_rust_publisher/        # Rust package — alt publisher
         ├── package.xml
         ├── Cargo.toml
-        ├── .cargo/config.toml
-        └── src/main.rs
+        ├── system.toml            # the board/RMW/domain it deploys to
+        └── src/{lib.rs,main.rs}
 ```
+
+There is no `.cargo/config.toml` in the Rust package and no workspace-root
+`Cargo.toml` (RFC-0098 D1/D9): `nros sync` writes what the board choice implies
+into `build/<image>/`, and the build reads it from there.
 
 In a real Pattern A workspace, `src/nano-ros/` is the nano-ros checkout
 (or symlink) alongside the user packages. This in-repo demo
@@ -37,8 +41,9 @@ self-contained inside the nano-ros source repo.
 
 * **One nano-ros source per workspace.** Both CMake packages
   `add_subdirectory(<path-to-nano-ros>)` (Phase 140) — there is no
-  install prefix to populate up front. The Rust package consumes
-  nano-ros via `[patch.crates-io]` against the same checkout.
+  install prefix to populate up front. The Rust package names nano-ros
+  crates registry-style and `nros sync` resolves them against the same
+  checkout — the resolution is generated, never hand-written.
 * **Three audiences, one entry.** C (rclc-shaped), C++ (rclcpp-shaped),
   Rust (rclrs-shaped) packages co-exist; their build files differ by
   ~10 lines of CMake / Cargo each.
@@ -57,29 +62,44 @@ Bootstrap the nano-ros checkout once:
 
 ```bash
 cd <nano-ros-checkout>
-./tools/setup.sh --target=posix-zenoh        # one-time submodule + toolchain fetch
+./scripts/bootstrap.sh                  # builds the `nros` CLI from source
+source ./activate.sh
+nros setup native --rmw zenoh           # host toolchains + the zenoh router
 ```
 
 No install step — Phase 140 removed `just install-local`. The
 source tree IS the consumption surface.
 
-## Build all three packages
+## Build the three packages
+
+Each package is built by its own language's driver; the board, the RMW and the
+domain are never on a command line.
 
 ```bash
-cd examples/multi-package-workspace
-./build-all.sh
+cd examples/templates/multi-package-workspace
+
+# C and C++ — their own CMake. No `nros sync`: a C/C++ package's message
+# bindings are a CMake-time output.
+cmake -S src/pkg_c_talker -B src/pkg_c_talker/build \
+      -DNANO_ROS_GEN_CACHE_DIR="$PWD/build/nros-gen-cache"
+cmake --build src/pkg_c_talker/build
+cmake -S src/pkg_cpp_listener -B src/pkg_cpp_listener/build \
+      -DNANO_ROS_GEN_CACHE_DIR="$PWD/build/nros-gen-cache"
+cmake --build src/pkg_cpp_listener/build
+
+# Rust — its `system.toml` declares `[image.native]`.
+cd src/pkg_rust_publisher && nros sync && nros build
 ```
 
-`build-all.sh` configures each CMake package
-(`add_subdirectory(<nano-ros-checkout>)` happens inside each
-`CMakeLists.txt`) + sets `NANO_ROS_GEN_CACHE_DIR` to a shared
-scratch dir, then builds the Rust package via `cargo build`.
+`build-all.sh` is the one-shot driver for the same three builds; it also sets
+`NANO_ROS_GEN_CACHE_DIR` to a shared scratch dir so the `std_msgs` C/C++
+bindings are generated once across both CMake packages.
 
 Per-package output:
 
 * `src/pkg_c_talker/build/pkg_c_talker`
 * `src/pkg_cpp_listener/build/pkg_cpp_listener`
-* `src/pkg_rust_publisher/target/release/pkg_rust_publisher`
+* `src/pkg_rust_publisher/build/native/target/debug/pkg_rust_publisher`
 
 ## Run
 
@@ -101,7 +121,7 @@ Each listener should print `received: N` once per second.
 For a Rust↔C interop demo, swap step 2 with:
 
 ```bash
-./src/pkg_rust_publisher/target/release/pkg_rust_publisher
+./src/pkg_rust_publisher/build/native/target/debug/pkg_rust_publisher
 ```
 
 The C++ listener picks up either publisher's stream — both round-trip
@@ -118,9 +138,11 @@ ROS 2 distro on hand (or who don't want to install colcon).
 
 ## Open follow-ups
 
-* `tools/setup.sh --rust-workspace` writes a workspace-level
-  `Cargo.toml` + `[patch.crates-io]` so the per-package
-  `.cargo/config.toml` shim isn't needed. Currently the Rust
-  package carries its own patch table for the standalone-build
-  path. See Phase 123.A.3's `--rust-workspace` flag (impl
-  deferred).
+* A workspace-level `Cargo.toml` is **not** the plan and will not
+  arrive: RFC-0098 D9 makes a workspace a directory of packages with
+  no root build file, and the cargo settings a package needs are
+  generated per image under `build/`. The old `.cargo/config.toml`
+  shim this template used to carry is gone for the same reason.
+* Rust codegen is still per-package — the `NANO_ROS_GEN_CACHE_DIR`
+  sharing that the C and C++ packages get has no cargo-side
+  equivalent yet (Phase 123.A.7 follow-up).

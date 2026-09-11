@@ -14,10 +14,14 @@ and the entry opens the executor at the derived size.
 
 ```sh
 source ./activate.sh
-nros sync examples/workspaces/sizing     # produces the sidecar
-cargo build --manifest-path examples/workspaces/sizing/Cargo.toml
-NROS_ENTRY_SPIN_MS=3000 ./target/debug/native_entry
+cd examples/workspaces/sizing
+nros sync            # produces the sidecar, the generated entry and its settings
+nros build native
+NROS_ENTRY_SPIN_MS=3000 ./build/posix/native_entry/target/debug/native_entry
 ```
+
+There is no `Cargo.toml` at the workspace root to build — the cargo root is the
+entry `nros build` generates under `build/` (RFC-0098 D9).
 
 Delete the sidecar and rebuild to see the pre-307 failure — the sizing falls
 back to the model bound and the sixth `create_wall_timer` returns `Full`.
