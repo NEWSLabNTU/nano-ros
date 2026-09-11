@@ -699,6 +699,24 @@ typedef uint32_t nros_cpp_shutdown_callback_handle_t;
 #define NROS_CPP_RET_TRANSPORT_ERROR -100
 
 /**
+ * phase-454 W10 — a subscription's QoS depth disagrees with the depth its
+ * system's contract DECLARES for that topic.
+ *
+ * The same number `nros::detail::DECLARED_DEPTH_MISMATCH` carries in
+ * `nros/node.hpp`, which is the C++ BOOT-time half of the same check, and for
+ * the reason recorded there: this is not a backend failure, it is the image
+ * contradicting its own manifest, and a code that also means "the RMW said no"
+ * would send the reader to the wrong half of the tree.
+ *
+ * Reached by the C component surface as well as by C++, because
+ * `nros_cpp_subscription_register` is what a C component's configure function
+ * calls — C's compile-time `NROS_ASSERT_DECLARED_DEPTH` only answers where the
+ * depth is a constant expression, and a `nros_cpp_qos_t` built at run time is
+ * not one.
+ */
+#define NROS_CPP_RET_DECLARED_DEPTH_MISMATCH -403
+
+/**
  * The value no successful registration ever produces.
  */
 #define NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID 4294967295
