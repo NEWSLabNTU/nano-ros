@@ -66,8 +66,12 @@ fn workspace_std_msgs_shadows_ament_in_consumer_binary() -> nros_tests::TestResu
     );
 
     // The prebuilt consumer (build stage). Absent → tier-aware skip/fail.
-    let consumer =
-        nros_tests::fixtures::require_cmake_fixture("shadowing", "src/consumer/consumer")?;
+    // phase-445 W5 — the template has no root build file (RFC-0098 D9); `nros
+    // build` builds each package into its own `build/<pkg>/` (package mode).
+    let consumer = nros_tests::fixtures::require_cmake_fixture(
+        "shadowing",
+        "build/consumer/cmake/pkg/consumer/consumer",
+    )?;
     assert!(
         consumer.is_file(),
         "consumer binary missing at {}",

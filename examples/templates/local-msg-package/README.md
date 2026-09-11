@@ -28,18 +28,22 @@ Demonstrates the **ROS-convention codegen** Phase 210 ships:
   consumer. Same four-msg-family coverage. Builds via `nros sync` +
   plain `cargo build`. See the "Build — Rust" section below.
 
-* `CMakeLists.txt` (this dir) — the **only** nano-ros-specific file. Pulls
-  nano-ros, points `NROS_INTERFACE_SEARCH_PATH` at `./src/`, includes
-  `NrosRclcppCompat.cmake`, calls `nros_workspace_interfaces()` to bulk-
-  build the workspace msg pkgs (one line instead of N
-  `add_subdirectory(src/<pkg>)`), then `add_subdirectory(src/consumer)`.
+* No root build file (RFC-0098 D9, phase-445 W5). The umbrella
+  `CMakeLists.txt` that used to be the only nano-ros-specific file is gone:
+  this workspace has no bringup, so `nros build` builds it the way colcon
+  does — every package, in dependency order, each with its own driver and its
+  own `build/<pkg>/`. For the C++ consumer it GENERATES the root the umbrella
+  used to spell out (nano-ros, `NROS_INTERFACE_SEARCH_PATH` at `./src/`, the
+  rclcpp compat surface); the msg pkgs are not built on their own — their
+  bindings are generated into the packages that use them.
 
-## Build — C++ (cmake umbrella)
+## Build — everything (`nros build`)
 
 ```sh
-cmake -B build -S .
-cmake --build build -j
-./build/src/consumer/consumer        # publishes on /greetings via zenoh
+export NROS_REPO_DIR=/path/to/nano-ros
+nros sync
+nros build
+./build/consumer/cmake/pkg/consumer/consumer   # publishes on /greetings via zenoh
 ```
 
 ## Build — Rust (`nros sync` + plain cargo)

@@ -1280,9 +1280,6 @@ fn leaf_system_summaries(
     else {
         return Ok(Vec::new());
     };
-    if decl.is_fallback() {
-        return Ok(Vec::new());
-    }
     let rows: Vec<_> = decl
         .components
         .iter()

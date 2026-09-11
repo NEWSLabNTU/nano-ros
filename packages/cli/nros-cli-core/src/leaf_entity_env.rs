@@ -1022,10 +1022,27 @@ nros = { version = "*", features = ["std", "param-services"] }
         );
     }
 
-    // ---- issue 1061: the manifest declaration --------------------------
+    // ---- issue 1061: the leaf's declaration ----------------------------
+    //
+    // Stated on the leaf's `system.toml` `[[component]]` rows (RFC-0098 D8).
+    // The manifest spelling (`[package.metadata.nros.component] entities`) was
+    // read through a fallback phase-445 W5 deleted.
 
-    fn write_leaf(dir: &std::path::Path, manifest: &str) {
-        std::fs::write(dir.join("Cargo.toml"), manifest).unwrap();
+    /// A leaf whose `system.toml` declares one component with `entities`
+    /// (`None` = the key absent).
+    fn write_leaf(dir: &std::path::Path, entities: Option<&str>) {
+        std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"p\"\n").unwrap();
+        let decl = entities
+            .map(|e| format!("entities = {e}\n"))
+            .unwrap_or_default();
+        std::fs::write(
+            dir.join("system.toml"),
+            format!(
+                "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[[component]]\npkg = \"p\"\n{decl}\n\
+                 [image.native]\nboard = \"native\"\n"
+            ),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1033,12 +1050,7 @@ nros = { version = "*", features = ["std", "param-services"] }
         let td = tempfile::tempdir().unwrap();
         write_leaf(
             td.path(),
-            r#"
-[package]
-name = "p"
-[package.metadata.nros.component]
-entities = ["publisher:std_msgs/msg/String:/chatter", "timer", "sub*2"]
-"#,
+            Some(r#"["publisher:std_msgs/msg/String:/chatter", "timer", "sub*2"]"#),
         );
         let d = declared_entities(td.path()).unwrap().expect("declared");
         // `sub*2` is the repeat suffix -- the SHARED grammar's, not a second one.
@@ -1055,30 +1067,21 @@ entities = ["publisher:std_msgs/msg/String:/chatter", "timer", "sub*2"]
     #[test]
     fn an_absent_key_is_none_and_an_empty_list_is_some_empty() {
         let td = tempfile::tempdir().unwrap();
-        write_leaf(td.path(), "[package]\nname = \"p\"\n");
+        write_leaf(td.path(), None);
         assert!(declared_entities(td.path()).unwrap().is_none());
 
-        write_leaf(
-            td.path(),
-            "[package]\nname = \"p\"\n[package.metadata.nros.component]\nentities = []\n",
-        );
+        write_leaf(td.path(), Some("[]"));
         assert_eq!(declared_entities(td.path()).unwrap(), Some(vec![]));
     }
 
     #[test]
     fn a_malformed_declaration_names_the_entry() {
         let td = tempfile::tempdir().unwrap();
-        write_leaf(
-            td.path(),
-            "[package]\nname = \"p\"\n[package.metadata.nros.component]\nentities = [\"nonsense\"]\n",
-        );
+        write_leaf(td.path(), Some("[\"nonsense\"]"));
         let e = declared_entities(td.path()).unwrap_err().to_string();
         assert!(e.contains("nonsense"), "{e}");
 
-        write_leaf(
-            td.path(),
-            "[package]\nname = \"p\"\n[package.metadata.nros.component]\nentities = \"timer\"\n",
-        );
+        write_leaf(td.path(), Some("\"timer\""));
         let e = declared_entities(td.path()).unwrap_err().to_string();
         assert!(e.contains("ARRAY"), "{e}");
     }

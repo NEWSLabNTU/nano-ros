@@ -1,10 +1,12 @@
 # §212.M-F.3 self-pkg bringup fixture (issue 0041, "self" layout).
 #
-# A single Node pkg carrying `[package.metadata.nros.component]` +
-# `[package.metadata.nros.deploy.zephyr]` and NO sibling `system.toml` — the
-# L.7 self-pkg shape the M-F.3 shim teaches `nros_system_generate(.)` to accept.
-# Promoted from the in-test `fs::write` body so the west build runs in the
-# build stage (see scripts/build/west-fixtures.sh).
+# A single Node pkg that is its own bringup: it states its node and its
+# deployment in the `system.toml` BESIDE this manifest (RFC-0098 D3, the shape
+# the W3b-converted Zephyr leaves use) — the self-pkg shape the M-F.3 shim
+# teaches `nros_system_generate(.)` to accept. phase-445 W5 moved the
+# `[package.metadata.nros.{component,deploy.zephyr}]` tables that used to live
+# here into it. Promoted from the in-test `fs::write` body so the west build
+# runs in the build stage (see scripts/build/west-fixtures.sh).
 [package]
 name = "alpha_pkg"
 version = "0.1.0"
@@ -13,15 +15,5 @@ edition = "2021"
 [lib]
 name = "rustapp"
 crate-type = ["rlib", "staticlib"]
-
-[package.metadata.nros.component]
-class = "alpha_pkg::Node"
-name = "selfpkg"
-default_namespace = "/"
-
-[package.metadata.nros.deploy.zephyr]
-board = "native_sim/native/64"
-rmw = "zenoh"
-domain_id = 0
 
 [workspace]

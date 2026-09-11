@@ -93,6 +93,12 @@ rmw = "zenoh"
 [image.esp32]
 board = "esp32-c3-baremetal"
 panic = "own"
+# phase-445 W5 — the allocator's (esp32, rust, EntryPubsub) slot, dialed
+# through the QEMU slirp gateway. It was the hand-written entry's
+# `[package.metadata.nros.deploy.esp32-c3-baremetal] locator`; the entry is
+# generated now (`build/<coord>/esp32_entry/`), so the image states it.
+# `esp32_emulator.rs`'s `ESP32_WS_ENTRY_PORT` must agree.
+locator = "tcp/10.0.2.2:9830"
 
 [image.freertos]
 board = "mps2-an385-freertos"
@@ -158,10 +164,16 @@ panic = "platform"
 [image.threadx]
 board = "threadx-linux"
 
+# The two Zephyr entries stay hand-written west applications (their Kconfig
+# overlays are not derivable, RFC-0065 D5), but their deployment is the
+# image's: `nros::main!` finds the image that names the entry
+# (`leaf_system::for_entry`, phase-445 W5). The locators were the entries'
+# `[package.metadata.nros.deploy.zephyr]` tables.
 [image.zephyr]
 board = "native_sim/native/64"
 entry = "zephyr_entry"
 conf = ["prj-zenoh.conf"]
+locator = "tcp/10.0.2.2:7430"
 
 [image.zephyr_robot1]
 board = "native_sim/native/64"
@@ -169,6 +181,7 @@ entry = "zephyr_entry_robot1"
 conf = ["prj-zenoh.conf"]
 launch = "multihost.launch.xml"
 args = { host = "robot1" }
+locator = "tcp/10.0.2.2:7469"
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

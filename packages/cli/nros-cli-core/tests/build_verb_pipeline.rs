@@ -558,6 +558,94 @@ fn entries_for_other_boards_are_not_listed() {
     );
 }
 
+/// A workspace with NO bringup builds package by package (RFC-0065 D1,
+/// RFC-0098 D9, phase-445 W5) — `local-msg-package` / `workspace-shadowing`'s
+/// shape. Before this, `nros build` refused it ("declares no `[image.*]`"), and
+/// deleting their hand-written roots would have left them unbuildable.
+#[test]
+fn a_workspace_with_no_bringup_builds_each_package_in_its_own_build_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path();
+    write(&ws.join(".colcon_workspace"), "");
+    // A C++ package, a cargo package, and an interface package.
+    write(&ws.join("src/consumer/package.xml"), &pkg_xml("consumer"));
+    write(
+        &ws.join("src/consumer/CMakeLists.txt"),
+        "cmake_minimum_required(VERSION 3.22)\nproject(consumer CXX)\n",
+    );
+    write(&ws.join("src/tool/package.xml"), &pkg_xml("tool"));
+    write(
+        &ws.join("src/tool/Cargo.toml"),
+        "[package]\nname = \"tool\"\nversion = \"0.0.0\"\n",
+    );
+    write(
+        &ws.join("src/my_msgs/package.xml"),
+        "<?xml version=\"1.0\"?>\n<package format=\"3\">\n<name>my_msgs</name>\n\
+         <version>0.0.0</version>\n<description>t</description>\n\
+         <maintainer email=\"a@b.c\">m</maintainer>\n<license>Apache-2.0</license>\n\
+         <member_of_group>rosidl_interface_packages</member_of_group>\n</package>\n",
+    );
+    write(&ws.join("src/my_msgs/msg/Ping.msg"), "int32 x\n");
+    write(
+        &ws.join("src/my_msgs/CMakeLists.txt"),
+        "cmake_minimum_required(VERSION 3.22)\nproject(my_msgs)\n",
+    );
+
+    let plans = plan_builds(&args(ws, &[])).expect("a bringup-less workspace plans");
+    let names: Vec<&str> = plans.iter().map(|p| p.qualified.as_str()).collect();
+    assert_eq!(
+        names.len(),
+        2,
+        "the interface package is not built alone: {names:?}"
+    );
+    assert!(
+        names.contains(&"consumer") && names.contains(&"tool"),
+        "{names:?}"
+    );
+
+    let cmake = plans.iter().find(|p| p.qualified == "consumer").unwrap();
+    assert_eq!(cmake.driver, Driver::CMake);
+    let cfg = cmake
+        .configure
+        .as_ref()
+        .expect("cmake configures first")
+        .display();
+    assert!(
+        cfg.contains("-S build/consumer -B build/consumer/cmake"),
+        "{cfg}"
+    );
+    let root = std::fs::read_to_string(ws.join("build/consumer/CMakeLists.txt"))
+        .expect("the package's generated root");
+    assert!(root.contains("\"src/consumer\""), "{root}");
+    assert!(
+        !root.contains("src/tool") && !root.contains("src/my_msgs"),
+        "{root}"
+    );
+    assert!(!root.contains("SYSTEM"), "no bringup, no SYSTEM: {root}");
+
+    let cargo = plans.iter().find(|p| p.qualified == "tool").unwrap();
+    assert_eq!(cargo.driver, Driver::Cargo);
+    let hand = cargo.handoff.as_ref().expect("handoff").display();
+    assert!(hand.contains("--target-dir"), "{hand}");
+    assert!(
+        hand.contains("build/tool/target"),
+        "its own build dir: {hand}"
+    );
+    assert!(!ws.join("CMakeLists.txt").exists() && !ws.join("Cargo.toml").exists());
+}
+
+/// A bringup keeps image mode, even with no image asked for by name: package
+/// mode is for the workspace that has NO bringup, not a fallback for one that
+/// forgot to declare an image.
+#[test]
+fn a_workspace_with_a_bringup_is_never_built_package_by_package() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let e = plan_builds(&args(tmp.path(), &[])).expect_err("two images, no default");
+    let msg = format!("{e:#}");
+    assert!(msg.contains("native") && msg.contains("zephyr"), "{msg}");
+}
+
 #[test]
 fn a_framework_entrys_cmakelists_does_not_make_a_workspace_mixed() {
     // phase-383 W8.a — nano-ros-rt-eval is pure Rust and holds exactly one
@@ -568,10 +656,14 @@ fn a_framework_entrys_cmakelists_does_not_make_a_workspace_mixed() {
     let z = tmp.path().join("src/zephyr_entry");
     write(&z.join("package.xml"), &pkg_xml("zephyr_entry"));
     write(&z.join("CMakeLists.txt"), "find_package(Zephyr REQUIRED)\n");
+    // No `deploy` — retired (RFC-0098 D5). The fixture bringup's
+    // `[image.zephyr]` claims this entry by the name `nros build` gives it
+    // (`zephyr_entry`), and that image's board is what makes it a WEST entry
+    // (`leaf_system::for_entry`, phase-445 W5).
     write(
         &z.join("Cargo.toml"),
         "[package]\nname = \"zephyr_entry\"\nversion = \"0.0.0\"\n\n\
-         [package.metadata.nros.entry]\ndeploy = \"zephyr\"\n",
+         [package.metadata.nros.entry]\n",
     );
 
     let plans = plan_builds(&args(tmp.path(), &["native"])).expect("resolves");
@@ -668,10 +760,10 @@ fn a_relative_workspace_root_plans_the_same_as_an_absolute_one() {
 /// A HAND-WRITTEN cargo entry is built as its own root, with the image's
 /// settings file.
 ///
-/// `examples/workspaces/rust/src/esp32_entry` is the in-tree case: its
-/// generated replacement needs a board dependency (`esp-hal`) and a locator
-/// home that are not declarable yet (phase-445 W2/W3), so it stays — and with no
-/// workspace root to `-p` into (RFC-0098 D9) the build names its manifest.
+/// A materialised entry (`nros materialize`, RFC-0065 D5) is the lasting case,
+/// and so was `examples/workspaces/rust/src/esp32_entry` until phase-445 W5
+/// generated it. With no workspace root to `-p` into (RFC-0098 D9) the build
+/// names its manifest.
 #[test]
 fn a_hand_written_entry_is_built_through_its_own_manifest_and_the_image_settings() {
     let tmp = tempfile::tempdir().unwrap();

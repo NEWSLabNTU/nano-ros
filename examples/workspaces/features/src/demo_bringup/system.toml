@@ -312,20 +312,26 @@ launch = "rust_qos.launch.xml"
 board = "native"
 launch = "rust_remap.launch.xml"
 
+# The Zephyr entries stay hand-written west applications, and their locators
+# live here — `nros::main!` reads the image that names the entry (phase-445
+# W5); they were the entries' `[package.metadata.nros.deploy.zephyr]` tables.
 [image.zephyr_rust_lifecycle]
 board = "zephyr"
 entry = "zephyr_rust_lifecycle_entry"
 conf = ["prj-zenoh.conf"]
 launch = "rust_lifecycle.launch.xml"
+locator = "tcp/10.0.2.2:7463"
 
 [image.zephyr_rust_params]
 board = "zephyr"
 entry = "zephyr_rust_params_entry"
 conf = ["prj-zenoh.conf"]
 launch = "rust_params.launch.xml"
+locator = "tcp/10.0.2.2:7461"
 
 [image.zephyr_rust_qos]
 board = "zephyr"
 entry = "zephyr_rust_qos_entry"
 conf = ["prj-zenoh.conf"]
 launch = "rust_qos.launch.xml"
+locator = "tcp/10.0.2.2:7465"

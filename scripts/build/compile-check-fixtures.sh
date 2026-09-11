@@ -305,6 +305,24 @@ build_cmake_fixture() {
     echo "== cmake-fixture: $id =="
     rm -rf "$bld"
     mkdir -p "$bld"
+    # phase-445 W5 (RFC-0098 D9) — a WORKSPACE template has no root build file,
+    # so there is nothing to `cmake -S`. It builds the way its README says and a
+    # user does: `nros sync` + `nros build`, in a STAGED copy so neither the
+    # generated roots under `build/` nor sync's output touch the source tree.
+    # `nros build` with no image picks the bringup's one image, or builds every
+    # package when there is no bringup (package mode); its outputs land under
+    # `<id>/build/<coord-or-pkg>/cmake/`, which is what the rows' `output` name.
+    # The RMW is the image's (`zenoh` in every template), so the old
+    # `-DNROS_RMW=zenoh` pin below has nothing to override here.
+    if [ ! -f "$repo_root/$src/CMakeLists.txt" ] && [ -f "$repo_root/$src/.colcon_workspace" ]; then
+        cp -r "$repo_root/$src/." "$bld/"
+        rm -rf "$bld/build" "$bld/generated"
+        ( cd "$bld" \
+            && NROS_REPO_DIR="$repo_root" "$NROS_CLI_BIN" sync >/dev/null \
+            && NROS_REPO_DIR="$repo_root" "$NROS_CLI_BIN" build --workspace . --offline )
+        echo "   built $bld (nros build)"
+        return 0
+    fi
     # The SDK-Corrosion prefix was derived HERE, inline, and in no other builder
     # — see `scripts/build/cmake-prefix.sh` for what that cost (issue 0493). It
     # is exported once at script scope now; this configure inherits it.

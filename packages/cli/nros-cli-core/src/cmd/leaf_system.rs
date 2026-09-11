@@ -73,10 +73,6 @@ pub fn rows(
                 .unwrap_or_default(),
         ),
         ("NROS_LEAF_ORIGIN", leaf.origin_path().display().to_string()),
-        (
-            "NROS_LEAF_FALLBACK",
-            if leaf.is_fallback() { "1" } else { "0" }.into(),
-        ),
         ("NROS_LEAF_IMAGE", s(&leaf.image)),
         ("NROS_LEAF_BOARD", s(&leaf.board)),
         ("NROS_LEAF_DEPLOY", deploy.to_string()),
@@ -114,9 +110,6 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             leaf.origin_path().display()
         )
     })?;
-    if let Some(w) = leaf.deprecation() {
-        eprintln!("{w}");
-    }
     let root = args
         .nano_ros_path
         .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
@@ -163,7 +156,9 @@ mod tests {
         assert_eq!(rows["NROS_LEAF_RMW"], "zenoh");
         assert_eq!(rows["NROS_LEAF_DOMAIN_ID"], "0");
         assert_eq!(rows["NROS_LEAF_LOCATOR"], "tcp/192.0.3.1:7447");
-        assert_eq!(rows["NROS_LEAF_FALLBACK"], "0");
+        // No fallback row: the manifest fallback it reported is deleted
+        // (phase-445 W5), so it could only ever print `0`.
+        assert!(!rows.contains_key("NROS_LEAF_FALLBACK"));
         // Absent keys are printed empty, never omitted.
         assert_eq!(rows["NROS_LEAF_IP"], "");
     }

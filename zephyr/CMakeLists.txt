@@ -42,7 +42,8 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
 # the module tree — reached only by the `${NROS_BOARD_FACTS_ENV}` the
 # cargo-features patch injects there. Resolving here means the cache entry
 # exists before either runs; the app's `APPLICATION_SOURCE_DIR` (an entry leaf,
-# carrying `[package.metadata.nros.entry] deploy`) is what it resolves FROM.
+# whose board is its own `system.toml` image or the bringup image that claims
+# it — phase-445 W5) is what it resolves FROM.
 nros_resolve_board_facts()
 # Phase 212.H.1 — nros_system_generate(<bringup-pkg>) shells the
 # `nros codegen-system` host-time bake at zephyr cmake configure

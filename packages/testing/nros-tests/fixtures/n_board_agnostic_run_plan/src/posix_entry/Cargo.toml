@@ -16,12 +16,9 @@ publish = false
 name = "posix_entry"
 path = "src/main.rs"
 
+# Marks this package as an ENTRY; its board is the `system.toml` beside this
+# manifest (phase-445 W5 retired the `deploy` key that lived here).
 [package.metadata.nros.entry]
-# `native`, not `posix`: this board's reach is Linux — `apply_tier_affinity`
-# calls `sched_setaffinity`, which libc does not define for apple. `native`
-# is the ROLE word (host build, not cross), which is what this fixture is
-# actually contrasting against its `freertos_entry` sibling.
-deploy = "native"
 
 [dependencies]
 # Board impl for the POSIX family.

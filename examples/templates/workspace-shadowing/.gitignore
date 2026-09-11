@@ -1,1 +1,6 @@
 /build/
+/generated/
+# RFC-0098 D9 — a workspace has no root build file; `nros build` generates the
+# roots its packages need under `build/`.
+/Cargo.toml
+/CMakeLists.txt

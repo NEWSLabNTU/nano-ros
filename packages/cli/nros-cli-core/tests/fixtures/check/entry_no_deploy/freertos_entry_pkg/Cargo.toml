@@ -1,6 +1,8 @@
-# Phase 212.O.2 fixture — Entry pkg declaring [package.metadata.nros.entry]
-# but missing the required `deploy = "<board>"` field. `nros check
-# --workspace` MUST reject this with the `entry-deploy-missing` diagnostic.
+# Phase 212.O.2 fixture, inverted by phase-445 W5 — an Entry pkg declaring
+# [package.metadata.nros.entry] with NO `deploy` key. That used to be the
+# offending shape (`entry-deploy-missing`); since RFC-0098 D5 retired the key it
+# is the correct one, and `nros check --workspace` accepts it. The test adds the
+# key back to prove the lint now refuses it (`entry-deploy-retired`).
 
 [package]
 name = "freertos_entry_pkg"
@@ -8,4 +10,3 @@ version = "0.1.0"
 edition = "2021"
 
 [package.metadata.nros.entry]
-# (no `deploy =` key on purpose — this is the offending shape)

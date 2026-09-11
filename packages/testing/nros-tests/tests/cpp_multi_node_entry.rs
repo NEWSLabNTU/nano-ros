@@ -39,7 +39,7 @@ where
 fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestResult<()> {
     let exe = nros_tests::fixtures::require_cmake_fixture(
         "cpp_robot_entry",
-        "src/robot_entry/robot_entry",
+        "build/posix-native/cmake/native_entry",
     )?;
     assert!(
         exe.is_file(),
@@ -47,9 +47,12 @@ fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestRes
         exe.display()
     );
 
-    let robot_dir = exe.parent().expect("robot_entry dir");
-    let gen_tu = robot_dir.join("robot_entry_nros_main_generated.cpp");
-    let link_libs = robot_dir.join("robot_entry_link_libs.cmake");
+    // phase-445 W5 — the entry is GENERATED for `[image.native]` (`native_entry`,
+    // at the top of the generated root's build tree); the hand-written
+    // `src/robot_entry` it replaced is gone with the template's root (RFC-0098 D9).
+    let robot_dir = exe.parent().expect("native_entry dir");
+    let gen_tu = robot_dir.join("native_entry_nros_main_generated.cpp");
+    let link_libs = robot_dir.join("native_entry_link_libs.cmake");
     assert!(
         gen_tu.is_file(),
         "missing generated TU at {}",
@@ -163,7 +166,7 @@ fn multi_node_workspace_cpp_typed_pubsub_e2e(
     }
     let exe = nros_tests::fixtures::require_cmake_fixture(
         "cpp_robot_entry",
-        "src/robot_entry/robot_entry",
+        "build/posix-native/cmake/native_entry",
     )?;
     let locator = zenohd.locator();
 
@@ -242,7 +245,7 @@ fn multi_node_workspace_cpp_per_node_graph_nodes(
 
     let exe = nros_tests::fixtures::require_cmake_fixture(
         "cpp_robot_entry",
-        "src/robot_entry/robot_entry",
+        "build/posix-native/cmake/native_entry",
     )?;
 
     let locator = zenohd_unique.locator();

@@ -1816,7 +1816,7 @@ fn synthesise_leaf_launch(leaf: &Path) -> Result<Option<PathBuf>> {
     let Some(decl) = leaf_system::read(leaf).map_err(|e| eyre::eyre!(e))? else {
         return Ok(None);
     };
-    if decl.is_fallback() || decl.components.is_empty() {
+    if decl.components.is_empty() {
         return Ok(None);
     }
     let pkg_name = crate::orchestration::launch_synth::discover_pkg_name(leaf).ok();
@@ -2847,17 +2847,11 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     if single_pkg_mode {
         scan_one_pkg_dir(&src_root, &mut scan)?;
         // phase-445 W3 (RFC-0098 D3/D5) — a single-package leaf's deployment,
-        // through the ONE reader. A leaf stating it in both `system.toml` and
-        // the retiring manifest keys is refused HERE, before anything is
-        // written; one still on the retiring keys says which file to write.
-        match nros_orchestration_ir::leaf_system::read(&ws_root) {
-            Err(e) => bail!("sync: {e}"),
-            Ok(Some(leaf)) => {
-                if let Some(w) = leaf.deprecation() {
-                    eprintln!("{w}");
-                }
-            }
-            Ok(None) => {}
+        // through the ONE reader. A leaf still carrying a retired manifest key
+        // is refused HERE, before anything is written, naming the file to
+        // write (phase-445 W5 deleted the fallback that read those keys).
+        if let Err(e) = nros_orchestration_ir::leaf_system::read(&ws_root) {
+            bail!("sync: {e}");
         }
     } else {
         scan_workspace(&src_root, &mut scan)?;
@@ -4916,23 +4910,80 @@ const BOARD_CONFIG_FILE: &str = "nros-board.toml";
 /// The board a Rust leaf deploys to, for the board `cargo_config` projection
 /// and its patch rows.
 ///
-/// phase-445 W3 — read through the ONE leaf reader
-/// (`nros_orchestration_ir::leaf_system`): `[image.<id>] board` from the leaf's
-/// `system.toml`, else the retiring `[package.metadata.nros.entry] deploy`.
-/// A lone `[package.metadata.nros.deploy.<key>]` table never selected a
-/// projection and still does not (`BoardFrom::DeployTable`) — those are the
-/// west-built Zephyr leaves, whose cargo config is not this projection's to
-/// write. `None` for a node/library crate or a manifest-less directory; a leaf
-/// stating its board in BOTH places is an error, not a guess.
+/// Read through the ONE deployment reader (`nros_orchestration_ir::
+/// leaf_system`): `[image.<id>] board` from the leaf's own `system.toml`, else —
+/// for an ENTRY inside a workspace — the bringup image that claims it
+/// ([`workspace_entry_system`], phase-445 W5). A retired manifest key is an
+/// error naming the file to write, never a guess. `None` for a node/library
+/// crate, an entry no image claims, or a manifest-less directory.
 fn leaf_projection_board(leaf_dir: &Path) -> Result<Option<String>> {
-    use nros_orchestration_ir::leaf_system::{BoardFrom, read};
-    if !leaf_dir.join("Cargo.toml").is_file() {
+    use nros_orchestration_ir::leaf_system::read;
+    let manifest = leaf_dir.join("Cargo.toml");
+    if !manifest.is_file() {
         return Ok(None);
     }
-    Ok(read(leaf_dir)
-        .map_err(|e| eyre::eyre!(e))?
-        .filter(|l| l.board_from != Some(BoardFrom::DeployTable))
-        .and_then(|l| l.board))
+    if let Some(l) = read(leaf_dir).map_err(|e| eyre::eyre!(e))? {
+        return Ok(l.board);
+    }
+    let Some(pkg) = entry_package_name_of(&manifest) else {
+        return Ok(None); // a node / library crate: its board is its entry's
+    };
+    Ok(workspace_entry_system(leaf_dir, &pkg)?.and_then(|l| l.board))
+}
+
+/// The package name of the ENTRY manifest at `manifest`, or `None` when it is
+/// not an entry (no `[package.metadata.nros.entry]` table) or unreadable.
+pub(crate) fn entry_package_name_of(manifest: &Path) -> Option<String> {
+    let doc = std::fs::read_to_string(manifest)
+        .ok()?
+        .parse::<toml::Table>()
+        .ok()?;
+    let package = doc.get("package")?;
+    package.get("metadata")?.get("nros")?.get("entry")?;
+    package.get("name")?.as_str().map(str::to_string)
+}
+
+/// The bringup image that claims the workspace ENTRY at `entry_dir`
+/// (`leaf_system::for_entry`, phase-445 W5), searched over every bringup of
+/// the workspace the entry sits in.
+///
+/// The bringups are found the way `nros::main!` finds its own — the pkg-index
+/// of the enclosing workspace root — so the macro and sync cannot disagree
+/// about which file states an entry's board. A workspace this cannot index
+/// answers `None`: the projection is conservative (see
+/// [`project_board_configs`]), and skipping one is always safe. Two bringups
+/// claiming one entry is an error, not a first match.
+pub(crate) fn workspace_entry_system(
+    entry_dir: &Path,
+    entry_pkg: &str,
+) -> Result<Option<nros_orchestration_ir::leaf_system::LeafSystem>> {
+    use nros_orchestration_ir::leaf_system;
+    let Ok(ws) = nros_pkg_index::detect_workspace_root(entry_dir) else {
+        return Ok(None);
+    };
+    let Ok(index) = nros_pkg_index::build_pkg_index(&ws) else {
+        return Ok(None);
+    };
+    let mut hit: Option<(PathBuf, leaf_system::LeafSystem)> = None;
+    for (_, dir) in index.pkgs() {
+        if !dir.join(leaf_system::SYSTEM_TOML).is_file() || leaf_system::is_package_dir(dir) {
+            continue; // not a bringup
+        }
+        let Some(l) = leaf_system::for_entry(entry_dir, entry_pkg, dir).map_err(|e| eyre!(e))?
+        else {
+            continue;
+        };
+        if let Some((prev, _)) = &hit {
+            bail!(
+                "entry `{entry_pkg}` is claimed by images in two bringups ({} and {}) — an \
+                 entry is ONE image's program",
+                prev.display(),
+                dir.display()
+            );
+        }
+        hit = Some((dir.to_path_buf(), l));
+    }
+    Ok(hit.map(|(_, l)| l))
 }
 
 /// The leaf-relative prefix that reaches the nano-ros root — `"../"` per path
@@ -7245,29 +7296,10 @@ rustflags = [
             leaf_projection_board(td.path())
         };
         let pkg = "[package]\nname = \"x\"\nversion = \"0.1.0\"\n";
+        let system = "[system]\nname = \"x\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+                      [image.a]\nboard = \"nuttx\"\n";
         // phase-445 W3 — the leaf's `system.toml` image names it.
-        assert_eq!(
-            board(
-                pkg,
-                Some(
-                    "[system]\nname = \"x\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
-                     [image.a]\nboard = \"nuttx\"\n"
-                )
-            )
-            .unwrap()
-            .as_deref(),
-            Some("nuttx")
-        );
-        // The retiring entry key still does, through the reader's fallback.
-        assert_eq!(
-            board(
-                &format!("{pkg}\n[package.metadata.nros.entry]\ndeploy = \"nuttx\"\n"),
-                None
-            )
-            .unwrap()
-            .as_deref(),
-            Some("nuttx")
-        );
+        assert_eq!(board(pkg, Some(system)).unwrap().as_deref(), Some("nuttx"));
         // A node pkg with no entry table is not an Entry leaf.
         assert_eq!(
             board(
@@ -7277,32 +7309,69 @@ rustflags = [
             .unwrap(),
             None
         );
-        // An empty key is not a board (`entry-deploy-missing` is nros check's job).
+        // phase-445 W5 — the retired keys no longer select a board; they are
+        // REFUSED, naming the file to write, whether or not a system.toml is
+        // beside them. (A lone Zephyr deploy table used to be silently skipped.)
+        for retired in [
+            "[package.metadata.nros.entry]\ndeploy = \"nuttx\"\n",
+            "[package.metadata.nros.entry]\ndeploy = \"\"\n",
+            "[package.metadata.nros.deploy.zephyr]\nrmw = \"zenoh\"\n",
+        ] {
+            assert!(
+                board(&format!("{pkg}\n{retired}"), None).is_err(),
+                "{retired}"
+            );
+            assert!(
+                board(&format!("{pkg}\n{retired}"), Some(system)).is_err(),
+                "{retired}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_workspace_entry_takes_its_board_from_the_bringup_image_that_claims_it() {
+        // phase-445 W5 — `examples/workspaces/rust/src/zephyr_entry` shape: an
+        // entry table, no board of its own, and `[image.<id>] entry = "<pkg>"`
+        // in the bringup. The same lookup `nros::main!` makes.
+        let td = tempfile::tempdir().unwrap();
+        let ws = td.path();
+        std::fs::write(ws.join(".colcon_workspace"), "").unwrap();
+        let bringup = ws.join("src/demo_bringup");
+        let entry = ws.join("src/zephyr_entry");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::create_dir_all(&entry).unwrap();
+        let xml = |n: &str| {
+            format!(
+                "<?xml version=\"1.0\"?>\n<package format=\"3\"><name>{n}</name>\
+                 <version>0.1.0</version><description>x</description>\
+                 <maintainer email=\"a@b.c\">a</maintainer><license>MIT</license></package>\n"
+            )
+        };
+        std::fs::write(bringup.join("package.xml"), xml("demo_bringup")).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"d\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+             [image.zephyr]\nboard = \"zephyr\"\nentry = \"zephyr_entry\"\n",
+        )
+        .unwrap();
+        std::fs::write(entry.join("package.xml"), xml("zephyr_entry")).unwrap();
+        std::fs::write(
+            entry.join("Cargo.toml"),
+            "[package]\nname = \"zephyr_entry\"\nversion = \"0.1.0\"\n\n\
+             [package.metadata.nros.entry]\n",
+        )
+        .unwrap();
         assert_eq!(
-            board(
-                &format!("{pkg}\n[package.metadata.nros.entry]\ndeploy = \"\"\n"),
-                None
-            )
-            .unwrap(),
-            None
+            leaf_projection_board(&entry).unwrap().as_deref(),
+            Some("zephyr")
         );
-        // A lone deploy table (the west-built Zephyr leaves) never selected one.
-        assert_eq!(
-            board(
-                &format!("{pkg}\n[package.metadata.nros.deploy.zephyr]\nrmw = \"zenoh\"\n"),
-                None
-            )
-            .unwrap(),
-            None
-        );
-        // Both spellings: refused, not guessed.
-        assert!(
-            board(
-                &format!("{pkg}\n[package.metadata.nros.entry]\ndeploy = \"nuttx\"\n"),
-                Some("[system]\nname = \"x\"\nrmw = \"zenoh\"\ndomain_id = 0\n[image.a]\nboard = \"nuttx\"\n")
-            )
-            .is_err()
-        );
+        // Unclaimed, it has no board to project — silence, the safe direction.
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"d\"\nrmw = \"zenoh\"\ndomain_id = 0\n",
+        )
+        .unwrap();
+        assert_eq!(leaf_projection_board(&entry).unwrap(), None);
     }
 
     /// The generated file must say who owns it and which descriptor it came

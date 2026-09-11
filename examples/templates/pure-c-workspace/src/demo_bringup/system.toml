@@ -3,3 +3,26 @@ name = "pure_c_demo"
 rmw = "zenoh"
 domain_id = 0
 default_launch = "system.launch.xml"
+
+# The two C components the launch file names (issue 1108: this file declared
+# none, which only the hand-written root's `nano_ros_entry(... BRINGUP ...)`
+# could build around).
+[[component]]
+pkg = "c_talker_pkg"
+class = "c_talker_pkg::Talker"
+name = "talker"
+
+[[component]]
+pkg = "c_listener_pkg"
+class = "c_listener_pkg::Listener"
+name = "listener"
+
+# The implicit machine this system runs on (issue 0951).
+[host.native]
+
+# The buildable unit (RFC-0065 D6). `nros build native` generates the cmake root
+# and this image's entry (`native_entry`) under `build/posix-native/` —
+# the hand-written root `CMakeLists.txt` and `src/robot_entry` it replaces are
+# gone (RFC-0098 D9, phase-445 W5).
+[image.native]
+board = "native"

@@ -4,8 +4,8 @@
 # `main`, so this is a `staticlib` exporting `rust_main` (consumed by
 # `zephyr-lang-rust`'s `rust_cargo_application()`), NOT a `[[bin]]`. The
 # Entry source is the same one-line `nros::main!(launch = ...)` the
-# native / freertos / threadx entries use — the macro routes
-# `deploy = "zephyr"` to the `Framework::Zephyr` emit shape that exports
+# native / freertos / threadx entries use — the macro routes its image's
+# Zephyr board to the `Framework::Zephyr` emit shape that exports
 # `rust_main` instead of a (Zephyr-forbidden) Rust `fn main`.
 #
 # RMW selection flows Kconfig overlay (`prj-<rmw>.conf`) →
@@ -46,24 +46,21 @@ default = ["rmw-zenoh"]
 # links or registers the backend (`nros-board-zephyr` is NetworkWait-only and
 # `.init_array` ctors are compiled out on `target_os = "none"`), so the entry
 # carries the direct `nros-rmw-zenoh` dep and the `nros::main!` Zephyr arm
-# emits the explicit `register()` from the deploy metadata's `rmw` key. The
+# emits the explicit `register()` from its image's `rmw`. The
 # C6g "the CMake C-port links the backend" premise only ever held for C/C++
 # entries; the Rust lane silently lost its backend (masked by stale fixtures).
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-cyclonedds = []
 rmw-xrce = []
 
-# Entry pkg metadata — `deploy = "zephyr"` routes the `nros::main!()`
-# proc-macro onto the `Framework::Zephyr` emit branch and feeds
-# `nros check`.
+# Marks this package as an ENTRY. Its board, RMW, domain and locator are the
+# bringup's `[image.<id>]` that names it (`entry = "<pkg>"`, or the image
+# whose `<id>_entry` is this package): `nros::main!` reads them from there
+# (`leaf_system::for_entry`, phase-445 W5), which is also what routes it onto
+# the `Framework::Zephyr` emit branch. The `deploy = "zephyr"` key and the
+# `[package.metadata.nros.deploy.zephyr]` table that used to live here are
+# retired (RFC-0098 D5).
 [package.metadata.nros.entry]
-deploy = "zephyr"
-
-[package.metadata.nros.deploy.zephyr]
-board = "native_sim/native/64"
-rmw = "zenoh"
-domain_id = 0
-locator = "tcp/10.0.2.2:7430"
 
 [package.metadata.ament]
 exec_depend = ["talker_pkg", "listener_pkg", "demo_bringup"]

@@ -238,14 +238,17 @@ pub fn lint_class_pkg_prefix(bringup_dir: &Path, bringup_pkg_name: &str) -> Resu
 /// `[package.metadata.nros]` table and run the Entry / Application shape
 /// lints.
 ///
-/// * **O.2 `entry-deploy-missing`** — `[package.metadata.nros.entry]` MUST
-///   carry `deploy = "<board>"` (non-empty string). Phase 212.L.2 / N.7.
+/// * **O.2 `entry-deploy-retired`** — a manifest must NOT carry
+///   `[package.metadata.nros.entry] deploy` or `[package.metadata.nros.deploy.*]`
+///   (RFC-0098 D5, phase-445 W5). Until W5 this lint REQUIRED the key
+///   (`entry-deploy-missing`, phase 212.L.2 / N.7); the board now lives in a
+///   `system.toml` image, and nothing reads the key.
 /// * **O.6 `application-rtos-deploy-forbidden`** — every entry in
 ///   `[package.metadata.nros.application].deploy` MUST be `"native"`. Phase
 ///   212.L.2 / M-F.1 — Application pkgs are native-only orchestration roots.
 ///
 /// Both lints bail with an eyre error whose diagnostic id is embedded in the
-/// message body (`entry-deploy-missing` / `application-rtos-deploy-forbidden`).
+/// message body (`entry-deploy-retired` / `application-rtos-deploy-forbidden`).
 /// Diagnostic IDs are part of the stable contract used by `nros check`
 /// integration tests + downstream tooling.
 fn lint_cargo_metadata_nros(cargo_toml_path: &Path, pkg_name: &str) -> Result<()> {
@@ -268,21 +271,28 @@ fn lint_cargo_metadata_nros(cargo_toml_path: &Path, pkg_name: &str) -> Result<()
         return Ok(());
     };
 
-    // ---- O.2 entry-deploy-missing -----------------------------------------
-    if let Some(entry) = nros.get("entry") {
-        // `deploy` must be present, a string, and non-empty.
-        let deploy_ok = entry
-            .get("deploy")
-            .and_then(|v| v.as_str())
-            .is_some_and(|s| !s.trim().is_empty());
-        if !deploy_ok {
-            bail!(
-                "{pkg_name}: [package.metadata.nros.entry] missing or empty \
-                 'deploy' field — Entry pkg must name a board target (e.g. \
-                 deploy = \"native\" or deploy = \"qemu-mps2-an385-freertos\") \
-                 [diagnostic: entry-deploy-missing]"
-            );
-        }
+    // ---- O.2 entry-deploy-retired (phase-445 W5) -----------------------------
+    //
+    // This lint used to REQUIRE `[package.metadata.nros.entry] deploy`
+    // (`entry-deploy-missing`). RFC-0098 D5 retired the key: an entry's board is
+    // its `system.toml` image (a single-package example) or the workspace
+    // bringup's image that builds it (`leaf_system::for_entry`), and the reader
+    // that understood the key is deleted. So the same shape check now points the
+    // other way — the key's PRESENCE is the defect, because nothing reads it.
+    // Same key list as the reader's refusal, so the two cannot disagree.
+    let retired = nros
+        .as_table()
+        .map(nros_orchestration_ir::leaf_system::retired_deployment_keys)
+        .unwrap_or_default();
+    if !retired.is_empty() {
+        bail!(
+            "{pkg_name}: {} — retired (RFC-0098 D5, phase-445 W5): nothing reads it. \
+             State the board as `[image.<id>] board = \"<board>\"` in a `system.toml` \
+             beside the package (a single-package example), or in the workspace \
+             bringup's image that builds this entry (`entry = \"{pkg_name}\"`), and \
+             delete the key. [diagnostic: entry-deploy-retired]",
+            retired.join(", ")
+        );
     }
 
     // ---- O.6 application-rtos-deploy-forbidden ----------------------------
@@ -482,7 +492,7 @@ fn read_node_dispatch_strategy(node_cargo_toml: &Path) -> Result<Option<Dispatch
         else {
             return Ok(None);
         };
-        if leaf.is_fallback() || leaf.components.is_empty() {
+        if leaf.components.is_empty() {
             return Ok(None);
         }
         // A leaf declares ONE node here; with several, the first stated
@@ -881,60 +891,66 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Phase 212.O.2 — `entry-deploy-missing`
+    // Phase 212.O.2, inverted by phase-445 W5 — `entry-deploy-retired`
     // ------------------------------------------------------------------
 
     #[test]
-    fn nros_check_workspace_rejects_entry_pkg_without_deploy_field() {
+    fn nros_check_workspace_accepts_an_entry_table_with_no_deploy() {
+        // The board lives in a `system.toml` image now; an entry table with no
+        // `deploy` is the correct shape, not a defect.
         let root = temp_root("o2_entry_no_deploy");
-        let pkg = root.join("freertos_entry_pkg");
+        let pkg = root.join("native_entry_pkg");
         fs::create_dir_all(pkg.join("src")).unwrap();
-        // Empty [package.metadata.nros.entry] table — no `deploy =` key.
         fs::write(
             pkg.join("Cargo.toml"),
-            "[package]\nname=\"freertos_entry_pkg\"\nversion=\"0.1.0\"\n\
+            "[package]\nname=\"native_entry_pkg\"\nversion=\"0.1.0\"\n\
              [package.metadata.nros.entry]\n",
         )
         .unwrap();
         fs::write(pkg.join("src/main.rs"), "fn main() {}").unwrap();
-        let err = check_workspace(&root).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("entry-deploy-missing"), "diag: {msg}");
-        assert!(msg.contains("freertos_entry_pkg"), "diag: {msg}");
-        assert!(msg.contains("'deploy'"), "diag: {msg}");
-    }
-
-    #[test]
-    fn nros_check_workspace_rejects_entry_pkg_with_empty_deploy() {
-        let root = temp_root("o2_entry_empty_deploy");
-        let pkg = root.join("native_entry_pkg");
-        fs::create_dir_all(pkg.join("src")).unwrap();
-        fs::write(
-            pkg.join("Cargo.toml"),
-            "[package]\nname=\"native_entry_pkg\"\nversion=\"0.1.0\"\n\
-             [package.metadata.nros.entry]\ndeploy = \"\"\n",
-        )
-        .unwrap();
-        fs::write(pkg.join("src/main.rs"), "fn main() {}").unwrap();
-        let err = check_workspace(&root).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("entry-deploy-missing"), "diag: {msg}");
-    }
-
-    #[test]
-    fn nros_check_workspace_accepts_entry_pkg_with_deploy() {
-        let root = temp_root("o2_entry_ok");
-        let pkg = root.join("native_entry_pkg");
-        fs::create_dir_all(pkg.join("src")).unwrap();
-        fs::write(
-            pkg.join("Cargo.toml"),
-            "[package]\nname=\"native_entry_pkg\"\nversion=\"0.1.0\"\n\
-             [package.metadata.nros.entry]\ndeploy = \"native\"\n",
-        )
-        .unwrap();
-        fs::write(pkg.join("src/main.rs"), "fn main() {}").unwrap();
-        let report = check_workspace(&root).expect("entry+deploy passes");
+        let report = check_workspace(&root).expect("an entry without deploy passes");
         assert_eq!(report.pkgs_visited, 1);
+    }
+
+    #[test]
+    fn nros_check_workspace_rejects_a_retired_entry_deploy_key() {
+        let root = temp_root("o2_entry_deploy_retired");
+        let pkg = root.join("freertos_entry_pkg");
+        fs::create_dir_all(pkg.join("src")).unwrap();
+        fs::write(
+            pkg.join("Cargo.toml"),
+            "[package]\nname=\"freertos_entry_pkg\"\nversion=\"0.1.0\"\n\
+             [package.metadata.nros.entry]\ndeploy = \"freertos\"\n",
+        )
+        .unwrap();
+        fs::write(pkg.join("src/main.rs"), "fn main() {}").unwrap();
+        let msg = check_workspace(&root).unwrap_err().to_string();
+        assert!(msg.contains("entry-deploy-retired"), "diag: {msg}");
+        assert!(msg.contains("freertos_entry_pkg"), "diag: {msg}");
+        assert!(
+            msg.contains("system.toml"),
+            "names where the board goes: {msg}"
+        );
+    }
+
+    #[test]
+    fn nros_check_workspace_rejects_a_retired_deploy_table() {
+        let root = temp_root("o2_deploy_table_retired");
+        let pkg = root.join("zephyr_entry_pkg");
+        fs::create_dir_all(pkg.join("src")).unwrap();
+        fs::write(
+            pkg.join("Cargo.toml"),
+            "[package]\nname=\"zephyr_entry_pkg\"\nversion=\"0.1.0\"\n\
+             [package.metadata.nros.deploy.zephyr]\nrmw = \"zenoh\"\n",
+        )
+        .unwrap();
+        fs::write(pkg.join("src/main.rs"), "fn main() {}").unwrap();
+        let msg = check_workspace(&root).unwrap_err().to_string();
+        assert!(msg.contains("entry-deploy-retired"), "diag: {msg}");
+        assert!(
+            msg.contains("[package.metadata.nros.deploy.zephyr]"),
+            "diag: {msg}"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -1056,10 +1072,15 @@ mod tests {
         .unwrap();
     }
 
-    /// Stamp an Entry pkg at `<root>/<entry_dir>/Cargo.toml` with `deploy
-    /// = "<deploy>"` and the listed path-deps (each entry = (dep_name,
-    /// rel_path)).
-    fn write_entry_pkg(root: &Path, entry_dir: &str, deploy: &str, path_deps: &[(&str, &str)]) {
+    /// Stamp an Entry pkg at `<root>/<entry_dir>/Cargo.toml` with the listed
+    /// path-deps (each entry = (dep_name, rel_path)).
+    ///
+    /// `_board` names the board the entry is FOR, which reads well at the call
+    /// sites and is all it does: the manifest key it used to become retired
+    /// (RFC-0098 D5, phase-445 W5), a workspace entry's board is its bringup
+    /// image's, and the dispatch lint takes the framework from the board
+    /// CRATE's `[package.metadata.nros.board]`, never from a board name.
+    fn write_entry_pkg(root: &Path, entry_dir: &str, _board: &str, path_deps: &[(&str, &str)]) {
         let p = root.join(entry_dir);
         fs::create_dir_all(p.join("src")).unwrap();
         fs::write(p.join("src/main.rs"), "fn main() {}").unwrap();
@@ -1071,7 +1092,7 @@ mod tests {
             p.join("Cargo.toml"),
             format!(
                 "[package]\nname=\"{entry_dir}\"\nversion=\"0.1.0\"\n\
-                 [package.metadata.nros.entry]\ndeploy = \"{deploy}\"\n\
+                 [package.metadata.nros.entry]\n\
                  {deps}"
             ),
         )

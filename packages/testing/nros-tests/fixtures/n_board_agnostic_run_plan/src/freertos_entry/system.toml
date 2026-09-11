@@ -1,0 +1,13 @@
+# What this entry deploys to (RFC-0098 D3/D5). It was the manifest's
+# `[package.metadata.nros.entry] deploy = "freertos"` until phase-445 W5
+# retired the key; `nros sync` projects the FreeRTOS board's `cargo_config`
+# into `.cargo/nros-board.toml` from this. `shared_bringup` is a launch file
+# only, so each entry states its own board.
+
+[system]
+name = "freertos_entry"
+rmw = "zenoh"
+domain_id = 0
+
+[image.freertos]
+board = "freertos"

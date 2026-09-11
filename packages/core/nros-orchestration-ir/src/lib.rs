@@ -193,6 +193,13 @@ pub const BOARD_PATHS: &[(&str, &str)] = &[
         "::nros_board_esp32_qemu::Esp32QemuEntry",
     ),
     ("zephyr", "::nros_board_zephyr::ZephyrBoard"),
+    // The SAME board under the zephyr descriptor's second name
+    // (`names = ["zephyr", "native_sim/native/64"]`). It became a key in
+    // phase-445 W5, when a Zephyr entry's board stopped being a hand-written
+    // `deploy = "zephyr"` token and started being read from the image that
+    // builds it — and `examples/workspaces/rust` spells that image's board
+    // this way.
+    ("native_sim/native/64", "::nros_board_zephyr::ZephyrBoard"),
     ("rtic-mps2-an385", "::nros_board_mps2_an385::RticMps2An385"),
     (
         "qemu-rtic-mps2-an385",

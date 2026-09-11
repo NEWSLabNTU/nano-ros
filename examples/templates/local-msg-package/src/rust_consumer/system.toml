@@ -1,0 +1,19 @@
+# What this package deploys to (RFC-0098 D3/D5) — the same schema a workspace
+# bringup uses. It is its own image: `nros::main!()` (Form 1) boots the node
+# declared below. Formerly `[package.metadata.nros.{entry,node,deploy.native}]`
+# in the manifest (phase-445 W5).
+
+[system]
+name = "rust_consumer"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "rust_consumer"
+class = "rust_consumer::Consumer"
+name = "rust_consumer"
+
+# Host build. The locator and domain stay runtime env on native
+# (`NROS_LOCATOR` / `ROS_DOMAIN_ID`); the board applies only the node name.
+[image.native]
+board = "native"

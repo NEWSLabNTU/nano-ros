@@ -31,8 +31,16 @@ ROOT = subprocess.run(
     capture_output=True, text=True, check=True,
 ).stdout.strip()
 
-# One level below `examples/workspaces/` — the workspace ROOT, not its packages.
-ROOT_RE = re.compile(r"^examples/workspaces/[^/]+/(Cargo\.toml|CMakeLists\.txt)$")
+# One level below `examples/workspaces/` or `examples/templates/` — the
+# workspace ROOT, not its packages. phase-445 W5 (RFC-0098 D9, issue 1108
+# acceptance 5) extended it to the templates: they are what `nros new` copies
+# and what a user reads first, and they had kept hand-written roots after every
+# example workspace lost its own. A template that is a single PACKAGE (a
+# `package.xml` beside its root build file — `cpp-port-minimal-publisher`,
+# `rclcpp-compat-smoke`, `topic-state-monitor-port`) is not a workspace and its
+# build file is its own; those are exempted by name below, by checking the
+# index for the `package.xml`.
+ROOT_RE = re.compile(r"^examples/(workspaces|templates)/[^/]+/(Cargo\.toml|CMakeLists\.txt)$")
 
 MARKER = ".colcon_workspace"
 
@@ -45,7 +53,14 @@ def tracked_files():
 
 
 def offenders(files):
-    return sorted(f for f in files if ROOT_RE.match(f))
+    """Tracked root build files of a WORKSPACE. A directory that is itself one
+    package (its `package.xml` beside the build file) is a package, not a
+    workspace root."""
+    present = set(files)
+    return sorted(
+        f for f in files
+        if ROOT_RE.match(f) and f"{f.rsplit('/', 1)[0]}/package.xml" not in present
+    )
 
 
 def self_test():
@@ -53,17 +68,25 @@ def self_test():
     must_flag = [
         "examples/workspaces/rust/Cargo.toml",
         "examples/workspaces/bridge-xrce/CMakeLists.txt",
+        # phase-445 W5 — the templates are workspaces too (issue 1108).
+        "examples/templates/multi-node-workspace/Cargo.toml",
+        "examples/templates/pure-c-workspace/CMakeLists.txt",
     ]
     must_not_flag = [
         # Package manifests, one level deeper — the common case, and the one a
         # sloppier pattern would sweep up with the roots.
         "examples/workspaces/rust/src/talker_pkg/Cargo.toml",
         "examples/workspaces/c/src/zephyr_entry/CMakeLists.txt",
+        "examples/templates/local-msg-package/src/consumer/CMakeLists.txt",
         # The tracked marker that says this dir IS a workspace root.
         f"examples/workspaces/rust/{MARKER}",
-        # Not an example workspace at all.
-        "examples/templates/multi-node-workspace/Cargo.toml",
+        # Not an example at all.
         "packages/api/nros/Cargo.toml",
+    ]
+    # A single-PACKAGE template: its build file is its own, not a root.
+    package_template = [
+        "examples/templates/cpp-port-minimal-publisher/CMakeLists.txt",
+        "examples/templates/cpp-port-minimal-publisher/package.xml",
     ]
     bad = []
     for f in must_flag:
@@ -72,13 +95,19 @@ def self_test():
     for f in must_not_flag:
         if offenders([f]):
             bad.append(f"WRONGLY flagged: {f}")
+    if offenders(package_template):
+        bad.append(f"WRONGLY flagged a single-package template: {package_template[0]}")
+    # ...and the same file IS flagged once its package.xml is gone — the
+    # exemption is the manifest, not the directory name.
+    if not offenders(package_template[:1]):
+        bad.append(f"MISSED a root once its package.xml is gone: {package_template[0]}")
     if bad:
         print("check-no-tracked-workspace-roots SELF-TEST FAILED:", file=sys.stderr)
         for b in bad:
             print(f"  {b}", file=sys.stderr)
         return 1
     print("check-no-tracked-workspace-roots self-test: OK "
-          f"({len(must_flag)} flagged, {len(must_not_flag)} left alone)")
+          f"({len(must_flag)} flagged, {len(must_not_flag) + 1} left alone)")
     return 0
 
 
@@ -108,10 +137,11 @@ def main():
         )
         return 1
 
-    n = len({f.split("/")[2] for f in files
-             if f.startswith("examples/workspaces/") and len(f.split("/")) > 3})
-    print(f"check-no-tracked-workspace-roots: OK ({n} example workspace(s), "
-          "no tracked root)")
+    n = len({"/".join(f.split("/")[:3]) for f in files
+             if f.startswith(("examples/workspaces/", "examples/templates/"))
+             and len(f.split("/")) > 3})
+    print(f"check-no-tracked-workspace-roots: OK ({n} example workspace(s) and "
+          "template(s), no tracked root)")
     return 0
 
 
