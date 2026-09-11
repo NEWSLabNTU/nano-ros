@@ -39,10 +39,11 @@ RESOLUTION SOURCES, all derived:
      headers cite `rmw_take_with_info` or `rosidl_message_type_support_t`
      without a ROS install.
 
-Measured on the tree it was written for: 364 backticked identifiers, 9
-unresolved, of which 2 were real defects (`RET_UNSUPPORTED`, an abbreviation of
-a constant that does exist, and a hypothetical slot name written as though it
-were one).
+Measured on the tree it was written for, BEFORE the W12 corrections: 364
+backticked identifiers, 9 unresolved, of which 2 were real defects —
+`RET_UNSUPPORTED`, an abbreviation of a constant that does exist, and a
+hypothetical slot name written as though it were one. After them: 362 cited,
+7 unresolved, all 7 external.
 
 WHAT THE BASELINE IS FOR, AND WHAT IT IS NOT
 
@@ -123,14 +124,28 @@ def upstream_identifiers():
     return got
 
 
-def in_tree(name):
-    """Source 2 — tracked non-markdown sources naming this identifier.
+# Files whose mention of a name must NOT count as resolving it, because each
+# of them CONTAINS the prose under test or a name invented to test it:
+#
+#   * the ABI headers — source 1 reads their CODE, and their prose must not
+#     vouch for itself;
+#   * `generated.rs` — bindgen copies that same prose into it verbatim, so a
+#     fiction would resolve against its own reflection;
+#   * THIS SCRIPT — its self-test plants a name that exists nowhere, and the
+#     plant is a string literal here. Committing this file therefore made the
+#     probe resolve and the self-test stop failing on a fiction it had just
+#     been shown. Measured: green run after run while the file was untracked,
+#     red on the first run after the commit. A gate that is part of its own
+#     corpus is the same defect one level up from the one it checks.
+SELF_EXCLUDE = (
+    "nros-rmw-abi/include",
+    "generated.rs",
+    os.path.basename(__file__),
+)
 
-    `generated.rs` is excluded because bindgen copies the very prose being
-    checked into it: a fictional name would vouch for itself. The ABI headers
-    are excluded for the same reason — source 1 reads their CODE, and their
-    prose must not count.
-    """
+
+def in_tree(name):
+    """Source 2 — tracked non-markdown sources naming this identifier."""
     r = subprocess.run(
         ["git", "-C", ROOT, "grep", "-l", "-w", "-F", name, "--",
          "packages", "examples", "cmake", "scripts", "zephyr", "third-party"],
@@ -138,9 +153,7 @@ def in_tree(name):
     )
     return [
         h for h in r.stdout.split()
-        if not h.endswith(".md")
-        and "nros-rmw-abi/include" not in h
-        and not h.endswith("generated.rs")
+        if not h.endswith(".md") and not any(x in h for x in SELF_EXCLUDE)
     ]
 
 
@@ -210,15 +223,21 @@ def self_test():
         bad.append("a declared name was not read as code")
 
     # An unresolvable name in planted prose is REPORTED — the whole gate, in
-    # one assertion, with no tree mutation.
-    plant = dict(real)
-    plant["probe.h"] = "/** `nros_slot_that_never_existed` */\n"
-    names = [n for n, _ in unresolved(plant)]
-    if "nros_slot_that_never_existed" not in names:
-        bad.append("a fictional name in header prose was NOT reported")
-    base = [n for n, _ in unresolved(real)]
-    if "nros_slot_that_never_existed" in base:
+    # one assertion, with no tree mutation. ONE pass, not two: `plant` is
+    # `real` plus a file whose only content is a comment, and a comment
+    # contributes no code identifiers, so `unresolved(real)` is exactly this
+    # minus the probe.
+    probe = "nros_slot_that_never_existed"
+    if any(probe in t for t in real.values()):
         bad.append("the real headers cite the probe name — pick another")
+    plant = dict(real)
+    plant["probe.h"] = "/** `%s` */\n" % probe
+    names = [n for n, _ in unresolved(plant)]
+    if probe not in names:
+        bad.append(
+            "a fictional name in header prose was NOT reported — something in "
+            "the resolution corpus vouches for it (see SELF_EXCLUDE)"
+        )
 
     # The baseline is exemptions over a DERIVED subject, so every entry in it
     # must still be cited by some header. One that is not is stale.
