@@ -116,6 +116,20 @@ rmw-abi-shape:
     @python3 scripts/rmw-abi-shape.py --self-test
     @python3 scripts/rmw-abi-shape.py --check
 
+# phase-428 W12 — a doc naming a slot that does not exist is checkable.
+#
+# The shape gates all compare DECLARATIONS and none of them read what the
+# header SAYS about itself, so its prose went stale exactly as the parity map
+# once did: `rmw_ret.h`'s file block stated the pre-W3.d return contract as
+# current, two slots carried a complete retired doc block stacked above their
+# live one, and five names W3.b renamed were still cited as live. A backtick
+# in these headers means THIS IDENTIFIER EXISTS; this holds every one of them
+# to that, resolving against the headers' own code, tracked non-markdown
+# sources, and the recorded upstream snapshot. Source-only, offline, fast line.
+rmw-doc-slot-names:
+    @python3 scripts/check-rmw-doc-slot-names.py --self-test
+    @python3 scripts/check-rmw-doc-slot-names.py --check
+
 # `book/src/reference/rmw-api-comparison.md` is GENERATED from the ROS 2
 # signature extract, the nano-ros ABI headers, and the same reason map
 # `rmw-api-parity` enforces — so the book cannot drift from the headers. A

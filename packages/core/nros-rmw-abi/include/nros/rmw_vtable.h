@@ -65,11 +65,13 @@ extern "C" {
  *
  * This paragraph described the PRE-W3.d ABI until 2026-08-24 and was wrong on
  * five counts at once: it promised NEGATIVE error constants (step B adopted
- * upstream's positive numbering), it said `try_recv_*` returned a byte count
+ * upstream's positive numbering), it said try_recv_* returned a byte count
  * and `has_data` returned 1-or-0 (step A moved both to out-parameters), it said
  * `destroy_*` returned void (W5 gave all six a status), and it named five slots
- * that no longer exist — `publish_raw`, `send_reply`, `try_recv_raw`,
- * `try_recv_request`, `try_recv_reply_raw`, all renamed by W3.b. Prose in the
+ * that no longer exist — publish_raw, send_reply, try_recv_raw,
+ * try_recv_request, try_recv_reply_raw, all renamed by W3.b (written without
+ * code ticks on purpose: a backtick in this header means "this identifier
+ * exists", and `check-rmw-doc-slot-names` reads it that way). Prose in the
  * SSoT header is not covered by any of the shape gates, which compare
  * DECLARATIONS against the header and never read what the header says about
  * itself.
@@ -344,7 +346,7 @@ typedef struct nros_rmw_vtable_t {
 
     /** Phase 130.4 — non-blocking send_request_raw. Phase-301: the
      *  deprecated blocking `call_raw` slot is DELETED (rmw has no
-     *  blocking call); this + `try_recv_reply_raw` is the ONE
+     *  blocking call); this + `take_response` is the ONE
      *  request/reply path and both slots are now REQUIRED for a backend
      *  that supports services.
      *
@@ -430,7 +432,7 @@ typedef struct nros_rmw_vtable_t {
      *   "Our callback already runs on the safe context — from inside
      *   `drive_io`, on the executor thread, never an ISR or a transport
      *   thread."
-     *      — True of no backend. zenoh fires from `try_recv_raw` and
+     *      — True of no backend. zenoh fires from `take` and
      *        `has_data`; cyclonedds' DDS listeners fire on Cyclone's own
      *        worker thread while its `drive_io` is a sleep with no callback
      *        path at all. So a cyclonedds status event has nowhere safe to be
@@ -546,9 +548,19 @@ typedef struct nros_rmw_vtable_t {
      *  `*out_token` is an opaque per-loan handle the backend uses to
      *  match commit / discard back to the right slot.
      *
-     *  NULL function pointer = backend doesn't natively lend; the
-     *  runtime falls back to a per-publisher staging arena and emits
-     *  a single memcpy on commit. */
+     *  NULL function pointer = backend doesn't natively lend. The
+     *  fallback then depends on whether the image has an allocator:
+     *  with `alloc`, `try_lend_slot` allocates a staging `Vec` PER
+     *  LOAN, hands its pointer back as the slot, and commit memcpys
+     *  it into `publish`; without `alloc` there is no fallback at
+     *  all and the loan is refused PERMANENTLY, not "try again"
+     *  (issue 0814 — both facts are about the image and the vtable,
+     *  neither can change while the publisher lives).
+     *
+     *  This said "a per-publisher staging arena" until 2026-09-11.
+     *  There is no per-publisher buffer anywhere in this tree — the
+     *  same fiction issue 0782 corrected 200 lines below, on
+     *  `publish_streamed`, and left standing here. */
     rmw_ret_t (*borrow_loaned_message)(const rmw_publisher_t *publisher,
                                 size_t                 requested_len,
                                 rmw_mut_byte_span_t   *out_slot,
@@ -574,20 +586,6 @@ typedef struct nros_rmw_vtable_t {
      *  NULL = paired NULL with `pub_loan`. */
     rmw_ret_t (*return_loaned_message_from_publisher)(const rmw_publisher_t *publisher, rmw_loan_token_t *token);
 
-    /** Phase 124.A — zero-copy subscription borrow.
-     *
-     *  Borrow a read-only view of the next available message in
-     *  place, without copying into a caller buffer. Returns:
-     *    * `>= 0` — message length; writes `*out_buf` / `*out_token`.
-     *    * `0` — no message ready (subscription empty).
-     *    * `< 0` — error (see `rmw_ret_t` codes negated).
-     *
-     *  The view is valid until the matching `sub_release` runs.
-     *  Only one borrow may be outstanding per subscription at a time —
-     *  callers MUST release before requesting another borrow.
-     *
-     *  NULL function pointer = backend doesn't natively borrow; the
-     *  runtime falls back to `try_recv_raw` into a staging buffer. */
     /** Upstream `rmw_take_loaned_message`. Phase 376 W3.b/W3.d step A.
      *
      *  `*taken` says whether a view was handed out; `*out_buf`,
@@ -630,9 +628,12 @@ typedef struct nros_rmw_vtable_t {
 
     /** Phase 124.C.1 — service-server availability probe.
      *
-     *  Returns `1` if ≥ 1 matching server has been discovered on the
-     *  RMW graph, `0` if none yet, or a negative `rmw_ret_t`
-     *  constant on backend error. The runtime exposes this to user
+     *  `*out_available` says whether ≥ 1 matching server has been
+     *  discovered on the RMW graph; the return is a plain status.
+     *  (This opened by describing the answer as the RETURN — `1`,
+     *  `0`, or a negative code — the pre-W3.d shape that the rest of
+     *  this same block goes on to explain was retired. Corrected
+     *  2026-09-11, phase-428 W12.) The runtime exposes this to user
      *  code as `nros_client_server_available()` /
      *  `Client<S>::server_available()` — clients use it to gate the
      *  first request so a startup-ordering race doesn't surface as
@@ -671,7 +672,11 @@ typedef struct nros_rmw_vtable_t {
         const rmw_client_t *client,
         bool *out_available);
 
-    /** Phase 124.D.1 — burst-take.
+    /** Upstream `rmw_take_sequence`. Phase 376 W3.b/W3.d step A —
+     *  the COUNT moves to `*taken`, matching upstream's
+     *  `size_t *taken`, and the return carries only a status.
+     *  `*taken` is written only on `NROS_RMW_RET_OK`; a partial
+     *  drain reports what it got rather than erroring.
      *
      *  Drains up to `max_msgs` queued messages into a contiguous
      *  caller buffer in a single backend call, avoiding N × vtable
@@ -684,21 +689,10 @@ typedef struct nros_rmw_vtable_t {
      *      and has byte length `out_lens[i]`.
      *    * `out_lens` is at least `max_msgs` entries long.
      *
-     *  Returns:
-     *    * `>= 0` — count of messages taken (0..=max_msgs).
-     *    * `< 0` — `rmw_ret_t` error code; partial drains MUST
-     *      use the count form, not error-out.
-     *
-     *  NULL function pointer = backend doesn't natively batch; the
-     *  runtime emits a `try_recv_raw` loop fallback in
-     *  `CffiSubscriber::try_recv_sequence`. The fallback gives
-     *  identical observable behaviour (each call still costs N
-     *  vtable hops) but lets user code commit to the batched API. */
-    /** Upstream `rmw_take_sequence`. Phase 376 W3.b/W3.d step A —
-     *  the COUNT moves to `*taken`, matching upstream's
-     *  `size_t *taken`, and the return carries only a status.
-     *  `*taken` is written only on `NROS_RMW_RET_OK`; a partial
-     *  drain reports what it got rather than erroring.
+     *  NULL slot = the backend does not natively batch; the runtime
+     *  loops the single `take` instead, which gives identical
+     *  observable behaviour (each message still costs one vtable hop)
+     *  while letting user code commit to the batched API.
      *
      *  Issue 0971 — which leaves a question the count alone cannot
      *  answer: WHY the drain stopped. A batch that ends because a
@@ -707,7 +701,7 @@ typedef struct nros_rmw_vtable_t {
      *  is consumed — deliberately, for the reason the single take
      *  consumes it too: a sample left behind that no caller can
      *  ever take is a stuck subscription
-     *  (`nros-verification`'s `try_recv_post_fix` /
+     *  (`nros-verification`'s `take_post_fix` /
      *  `no_silent_truncation`).
      *
      *  So a backend that stops a drain for a reason the caller must
@@ -715,7 +709,7 @@ typedef struct nros_rmw_vtable_t {
      *  from the NEXT `take` or `take_sequence`, which takes nothing
      *  else that call. That rule is what makes the fallback note
      *  above true rather than aspirational: without it the runtime's
-     *  `try_recv_raw` loop and a native batch answer the same
+     *  `take` loop and a native batch answer the same
      *  condition differently — the loop erroring out and discarding
      *  the count it had already earned, the native path reporting a
      *  count and no reason. */
@@ -765,8 +759,14 @@ typedef struct nros_rmw_vtable_t {
      *  different serialisation strategies.
      *
      *  NULL function pointer = backend doesn't stream; the runtime
-     *  falls back to a one-shot staging buffer (capped at the
-     *  configured `NROS_MAX_STREAM_CHUNK`) + `publish_raw`. */
+     *  stages into a 4 KiB buffer on the CALLER's stack and then
+     *  `publish`es it, refusing a total larger than that with
+     *  `NROS_RMW_RET_BUFFER_TOO_SMALL`. The cap is a constant in
+     *  `CffiPublisher::publish_streamed`, not a knob: this said
+     *  "the configured NROS_MAX_STREAM_CHUNK" until 2026-09-11 and
+     *  no such setting has ever existed, so a reader looking for
+     *  the knob to raise found nothing and had no way to know the
+     *  limit was 4096 (phase-428 W12). */
     rmw_ret_t (*publish_streamed)(
         rmw_publisher_t *publisher,
         void (*size_cb)(size_t *out_total_len, void *user_ctx),
@@ -788,13 +788,15 @@ typedef struct nros_rmw_vtable_t {
      *    * `NROS_RMW_RET_TIMEOUT` — no reply before `timeout_ms`.
      *    * `NROS_RMW_RET_UNSUPPORTED` — backend can't probe (DDS
      *      with no participant introspection).
-     *    * other negative — backend error.
+     *    * any other named constant — backend error. (This read
+     *      "other negative" until 2026-09-11; W3.d step B made every
+     *      error positive.)
      *
      *  Implementation notes per backend:
      *  - **Zenoh**: `z_send_ping` (or session keep-alive piggyback).
      *  - **XRCE**: `uxr_ping_agent_session_until_timeout`.
      *  - **DDS**: built-in participant ping if available, else
-     *    `RET_UNSUPPORTED`.
+     *    `NROS_RMW_RET_UNSUPPORTED`.
      *
      *  NULL function pointer = runtime surfaces
      *  `NROS_RMW_RET_UNSUPPORTED` to the caller. */
@@ -938,7 +940,14 @@ typedef struct nros_rmw_vtable_t {
      *  perform an OPERATION, which is a different question from whether the
      *  data an implemented operation returns is populated.
      *
-     *  NULL slot: the runtime answers `false` for every feature. */
+     *  NULL slot: there is NOTHING TO ANSWER — no code in this tree
+     *  reads this slot, so a NULL one is not "answered elsewhere as
+     *  false", it is unreachable. This doc promised the `false`
+     *  fallback until 2026-09-11 and no such code was ever written:
+     *  the same fiction corrected 60 lines above on
+     *  `get_implementation_identifier`, and left standing here
+     *  (phase-428 W12). It earns a dispatch site when a caller
+     *  exists. */
     bool (*feature_supported)(rmw_feature_t feature);
 
     /** Upstream `rmw_get_gid_for_publisher`. Exact parity.
@@ -1047,8 +1056,14 @@ typedef struct nros_rmw_vtable_t {
      *  `rmw_subscription_allocation_t` — see `take`, which carries the full
      *  reason and the two wrong ones that preceded it.
      *
-     *  NULL slot: the runtime falls back to `take`, and the caller gets no
-     *  metadata — which is exactly today's behaviour for every C backend. */
+     *  NULL slot: nothing dispatches this slot at all, so a NULL one
+     *  changes nothing — the runtime calls `take` because `take` is
+     *  the only take it calls, not because it fell back. The
+     *  observable result ("no metadata, for every backend") is the
+     *  same either way, which is exactly why the fallback prose
+     *  survived unchallenged; the mechanism it described did not
+     *  exist (phase-428 W12). Filling this slot on a backend today
+     *  changes no behaviour. */
     rmw_ret_t (*take_with_info)(const rmw_subscription_t *subscription,
         rmw_mut_byte_span_t *message, bool *taken, rmw_message_info_t *message_info);
 
@@ -1141,8 +1156,9 @@ typedef struct nros_rmw_vtable_t {
      *  afford.
      *
      *  Named after upstream mechanically, per the campaign's rule, but the
-     *  honest name for this shape is `set_on_graph_change_callback` — flagged
-     *  for W5 rather than decided quietly here. */
+     *  honest name for this shape would be set-on-graph-change-callback —
+     *  flagged for W5 rather than decided quietly here. (Unticked: no such
+     *  slot exists, and a backtick in this header means it does.) */
     rmw_ret_t (*node_get_graph_guard_condition)(rmw_session_t *session,
         rmw_event_callback_t callback, const void *user_data);
 

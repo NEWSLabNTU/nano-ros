@@ -9,25 +9,39 @@
  *
  * Functions in `nros_rmw_vtable_t` and the public C entry points
  * (`nros_rmw_cffi_register`, …) report status as a signed 32-bit
- * integer. Zero means success; every error code is negative and
- * named by one of the macros below.
+ * integer. Zero is success; every other value is a POSITIVE named
+ * constant below — upstream rmw's number where upstream has one, and
+ * one above `NROS_RMW_RET_EXTENSION_BASE` where it does not.
  *
- * Two return-shape conventions exist:
- *
- *  - **Status only.** `rmw_ret_t` returned directly. `0` =
- *    success, negative = one of the named error codes.
- *  - **Byte count + error.** A non-negative return is the number of
- *    bytes produced; a negative return is one of the named error
- *    codes. Used by `try_recv_raw`, `try_recv_request`, `try_recv_reply_raw`.
- *
- * Pointer-returning calls (`open`, `create_publisher`, …) signal
- * failure with `NULL`; if the caller needs the specific failure
- * cause, it polls the session via the runtime API.
+ * There is ONE return shape: the status is the return value and the
+ * ANSWER is an out-parameter. No slot multiplexes a byte count or a
+ * flag with a status, and no caller may test a status by its SIGN —
+ * gated by `scripts/check-rmw-ret-sign.py`. Entity constructors are
+ * the same shape: they return `rmw_ret_t` and write the entity through
+ * an out-parameter, so there is no pointer-returning failure
+ * convention either.
  *
  * No thread-local error string is exposed by the RMW layer — that
  * pattern requires thread-local heap storage which embedded targets
  * cannot afford. Backends log diagnostic strings at the failure
  * site via the platform's `printk`-equivalent.
+ *
+ * This block stated the PRE-W3.d contract as current until 2026-09-11
+ * and was wrong four ways at once, which is why it is worth recording
+ * rather than simply deleting (phase-428 W12): it promised NEGATIVE
+ * error codes, where step B adopted upstream's positive numbering; it
+ * described a second "byte count + error" convention, which step A
+ * retired by moving every count to an out-parameter; it named three
+ * slots that have not existed since W3.b renamed them (try_recv_raw,
+ * try_recv_request, try_recv_reply_raw — written WITHOUT code ticks
+ * on purpose: a backtick in this header means "this identifier
+ * exists", which is the convention `check-rmw-doc-slot-names` reads);
+ * and it described `create_publisher` as pointer-returning, which it
+ * never was after W5. The correct contract was stated 30 lines below,
+ * on `rmw_ret_t` itself, the whole time. Prose in the SSoT header is not covered by
+ * the shape gates, which compare DECLARATIONS and never read what a
+ * header says about itself — `check-rmw-doc-slot-names` now covers the
+ * part of that which is mechanical, the slot names.
  */
 
 /** Status code. Zero on success.
