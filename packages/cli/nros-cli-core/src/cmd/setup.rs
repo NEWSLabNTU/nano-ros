@@ -15,7 +15,9 @@ use eyre::{Result, WrapErr, bail};
 
 mod session;
 
-use self::session::{Mode, PlanInputs, PrereqState, SessionLedger, SessionPlan, run_sequential};
+use self::session::{
+    Jobs, Mode, PlanInputs, PrereqState, SessionLedger, SessionPlan, run_pipelined,
+};
 use crate::{
     cmd::board::find_workspace_root,
     orchestration::{
@@ -158,6 +160,18 @@ pub struct Args {
     /// the message can say which of the two flags is missing.
     #[arg(long, conflicts_with = "check")]
     pub sudo: bool,
+
+    /// How many packages to install at once (phase-447 E3 / RFC-0099 D7).
+    /// Default: this host's CPU count; `NROS_SETUP_JOBS` overrides the default,
+    /// and this overrides both.
+    ///
+    /// Expect less than N times faster: the link saturates long before the
+    /// cores do, and a tool built from source already uses the whole machine,
+    /// so source builds run one at a time and the overlap that pays is one
+    /// package's build or unpack beside another's download. Output stays per
+    /// package and in plan order whatever the value.
+    #[arg(long, short = 'j', value_name = "N")]
+    pub jobs: Option<usize>,
 }
 
 /// `nros setup <subcommand>` (Phase 215.J.2).
@@ -338,6 +352,7 @@ pub fn run(args: Args) -> Result<()> {
             args.prefix.as_deref(),
             args.dry_run,
             args.sudo,
+            Jobs::from_env(args.jobs)?,
         );
     }
 
@@ -383,7 +398,7 @@ pub fn run(args: Args) -> Result<()> {
     // phase-447 E2 / RFC-0099 D7 — the WHOLE set is resolved before anything is
     // fetched: every `plan_install`, and one system-package ask for the union of
     // what its tools declare. The loop that used to interleave deciding with
-    // downloading is `run_sequential` now, over this plan.
+    // downloading is `run_pipelined` now, over this plan (E3).
     let plan = SessionPlan::resolve(
         &index,
         &packages,
@@ -423,8 +438,18 @@ pub fn run(args: Args) -> Result<()> {
     }
 
     let lock = (!args.dry_run).then_some(lock_path.as_path());
-    let report =
-        run_sequential(&plan, &workspace, shallow_override(&args), args.dry_run).finish(lock)?;
+    let jobs = Jobs::from_env(args.jobs)?;
+    let mut report = run_pipelined(
+        &plan,
+        &workspace,
+        shallow_override(&args),
+        args.dry_run,
+        jobs,
+    )
+    .finish(lock)?;
+    // Folded by `finish` in PLAN order, with the lock — never in the order the
+    // installs happened to complete (RFC-0099 D7).
+    let bin_dirs = std::mem::take(&mut report.bin_dirs);
 
     if args.dry_run {
         eprintln!("(--dry-run: nothing installed)");
@@ -449,7 +474,7 @@ pub fn run(args: Args) -> Result<()> {
     // toolchain. Best-effort: a failure here never fails provisioning. The store
     // bin dirs fold onto its PATH in PLAN order (RFC-0099 D7).
     if !args.dry_run
-        && let Err(e) = emit_board_cmake_preset(board, &workspace, &plan.bin_dirs())
+        && let Err(e) = emit_board_cmake_preset(board, &workspace, &bin_dirs)
     {
         eprintln!("nros setup: CMakePreset not written: {e:#}");
     }
@@ -703,7 +728,9 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
             // just cannot run it here. Failing would deny them the build too.
             // The plan collects per tool, so one that cannot install does not
             // stop the others, and the error names each.
-            if let Err(e) = install_tools(&index, &names, None, false, false) {
+            if let Err(e) = Jobs::from_env(None)
+                .and_then(|jobs| install_tools(&index, &names, None, false, false, jobs))
+            {
                 eprintln!("      WARNING: board tool(s) not installed: {e:#}");
                 eprintln!("      The board's other provisioning steps continue.");
             }
@@ -836,6 +863,7 @@ fn install_tools(
     prefix_override: Option<&Path>,
     dry_run: bool,
     run_sudo: bool,
+    jobs: Jobs,
 ) -> Result<()> {
     let host = host_key();
     let root = store_root();
@@ -890,8 +918,8 @@ fn install_tools(
          system = [..]; re-run with --sudo to install them first):",
     );
 
-    let report =
-        run_sequential(&plan, Path::new("."), None, dry_run).finish(Some(Path::new(LOCK_FILE)))?;
+    let report = run_pipelined(&plan, Path::new("."), None, dry_run, jobs)
+        .finish(Some(Path::new(LOCK_FILE)))?;
     if dry_run {
         eprintln!("(--dry-run: nothing installed)");
         return Ok(());
@@ -1116,10 +1144,11 @@ pub fn ensure_tools(board: &str, workspace: Option<&Path>) -> Result<Vec<PathBuf
         &mut |_| PrereqState::Present,
         &Default::default(),
     )?;
-    run_sequential(&plan, &ws, None, false)
-        .finish(Some(Path::new(LOCK_FILE)))?
-        .conclude(&index)?;
-    Ok(plan.bin_dirs().into_iter().filter(|b| b.is_dir()).collect())
+    let mut report = run_pipelined(&plan, &ws, None, false, Jobs::from_env(None)?)
+        .finish(Some(Path::new(LOCK_FILE)))?;
+    let bin_dirs = std::mem::take(&mut report.bin_dirs);
+    report.conclude(&index)?;
+    Ok(bin_dirs.into_iter().filter(|b| b.is_dir()).collect())
 }
 
 /// Method A — prepend the store `bin/` dirs (from [`ensure_tools`]) to this
@@ -4112,6 +4141,7 @@ mod tests {
             Some(&good_prefix),
             false,
             false,
+            Jobs::resolve(Some(2), None, None).unwrap(),
         )
         .expect("a dist that runs must install cleanly");
         assert!(good_prefix.join("bin/widget").is_file());
@@ -4125,6 +4155,7 @@ mod tests {
             Some(&bad_prefix),
             false,
             false,
+            Jobs::resolve(Some(2), None, None).unwrap(),
         )
         .expect_err("a dist that cannot run must NOT install successfully");
         assert!(

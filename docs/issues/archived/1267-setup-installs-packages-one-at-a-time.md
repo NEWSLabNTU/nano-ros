@@ -2,12 +2,13 @@
 id: 1267
 title: "`nros setup` installs its packages one at a time — the loop is
   sequential in the CLI, so no caller can parallelise it"
-status: open
+status: resolved
 type: tech-debt
 area: cli, build
 severity: medium
 found: 2026-09-10
-related: [issue-1266, issue-1273, issue-1274, issue-0374, issue-0500, rfc-0014]
+resolved: 2026-09-11
+related: [issue-1266, issue-1273, issue-1274, issue-0374, issue-0500, rfc-0014, rfc-0099, phase-447]
 ---
 
 ## What this is
@@ -110,3 +111,41 @@ A contained self-hosted runner bootstrap on this workstation, 2026-09-10: 24
 `nros setup` invocations across 11 distinct tools, plus the Zephyr SDK and two
 source builds. The same loop is every contributor's first hour, not only a
 runner's.
+
+## Resolution (2026-09-11, phase-447 E3 / RFC-0099 D7)
+
+`cmd/setup/session.rs::run_pipelined` replaced E2's sequential loop and nothing
+else. A bounded worker pool executes the resolved plan. **The bound is the host's
+CPU count, not the 4 proposed above** — a user decision recorded in RFC-0099 D7 —
+overridable with `nros setup -j/--jobs N` or `NROS_SETUP_JOBS` (the lazy
+`ensure_tools` path and the `just` recipes pass no flag). Zero or a non-number is
+refused by name.
+
+The four shared things, decided as the issue asked:
+
+1. **The lock** — join-then-record: no step touches it; `SessionRun::finish` is
+   its one writer and walks PLAN order.
+2. **`front_newest`** — a plan holds one step per package, and the scheduler
+   hands each step out exactly once, so the same tool is never installed (and
+   fronted) twice concurrently.
+3. **`bin_dirs`** — folded by `finish` from plan order into
+   `SessionReport::bin_dirs`, which is what the CMakePreset `PATH` and
+   `ensure_tools` now read.
+4. **Output** — every line of a step goes through the plan-order `OrderedLog`,
+   including what `sdk_store` prints and what its children (`curl`, `tar`,
+   `git`, `configure`, `make`) write: `orchestration/step_log.rs` installs a
+   per-step sink on the worker thread and routes child stdio through it. The
+   earliest unfinished step streams live; the ones ahead of it buffer.
+
+The "two further limits" became two LANES rather than a smaller pool: `[tool.*]`
+source builds run one at a time (each already uses the whole machine), and
+`[source.*]` steps run one at a time (the submodule arm takes the
+superproject's `index.lock` and rewrites `.git/config`). The scheduler hands out
+the earliest step whose lane is free, so a queue of source builds never holds a
+worker idle while a download behind it could be moving. Expect less than the
+package count — the link saturates first; the overlap that pays is one build or
+unpack beside other downloads.
+
+Every ordered property is tested UNDER concurrency, with completion forced out of
+plan order by handshake and a failing and a panicking step among the siblings;
+see phase-447 E3 for the tests and the mutation table.

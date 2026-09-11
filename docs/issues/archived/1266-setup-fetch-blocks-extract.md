@@ -3,12 +3,13 @@ id: 1266
 title: "`nros setup` downloads, verifies and unpacks one package strictly in
   series, and the download is silent — a 1.4 GB fetch is 15 minutes of a log
   that looks hung"
-status: open
+status: resolved
 type: tech-debt
 area: cli, build
 severity: medium
 found: 2026-09-10
-related: [issue-1267, issue-1273, issue-1274, issue-1275, issue-0374, issue-0385, rfc-0014]
+resolved: 2026-09-11
+related: [issue-1267, issue-1273, issue-1274, issue-1275, issue-0374, issue-0385, rfc-0014, rfc-0099, phase-447]
 ---
 
 ## What this is
@@ -83,3 +84,25 @@ A contained self-hosted runner bootstrap on this workstation: 24 `nros setup`
 invocations across 11 distinct tools, plus the Zephyr SDK, plus source builds
 for `play_launch_parser` and `espflash`. The pre-Zephyr steps ran mostly warm
 (the store already held them) and the Zephyr SDK fetch was cold.
+
+## Resolution (2026-09-11, phase-447 E3 / RFC-0099 D7)
+
+Both halves, as the fix section asked, with the overlap taken further than the
+one-deep pipeline proposed: the session plan (phase-447 E2) is executed by a
+bounded worker pool, so fetch, verify and unpack of DIFFERENT packages overlap —
+package *n+1* downloads while package *n* verifies and unpacks. Within one
+package they stay serial, which they must: the sha256 needs the whole archive.
+
+**Progress.** The two `curl` copies in `sdk_store.rs` (prebuilt dist, source
+tarball) are one helper, `download`. curl stays `--silent --show-error` — its
+own bar is a carriage-return repaint, one very long line in a CI log — and
+`orchestration/step_log.rs::watch_download` watches the archive's size instead:
+nothing for the first 10 s (so a short fetch prints nothing at all), then one
+plain line every 30 s, `… downloading <file>: 412.3 MB in 8m35s (0.80 MB/s)`,
+and a closing `fetched` line if it ever spoke. `cmd/setup.rs::fetch_index`
+stays silent on purpose: it fetches a small TOML with fail-fast timeouts.
+
+The policy is a pure function of (elapsed, last line), tested at synthetic
+instants; the watcher is tested by handshake, never by sleeping.
+
+The "What NOT to do" held: no second downloader, `aria2` untouched.
