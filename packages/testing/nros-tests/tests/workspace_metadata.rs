@@ -31,7 +31,13 @@ fn cmake_workspace_metadata_emits_components_cmake() -> nros_tests::TestResult<(
     // the §212.L cmake fns emit nros-metadata.json. This test inspects the
     // prebuilt JSON instead of running cmake at run time (issue 0034 / 0041).
     let metadata =
-        nros_tests::fixtures::require_cmake_fixture("metadata_cpp", "nros-metadata.json")?;
+        // `nros build` writes the cmake root under `build/<coord>/cmake`, and
+        // `nros-metadata.json` lands in that binary dir (phase-445 W5 removed
+        // the template's own root, which used to put it at the fixture root).
+        nros_tests::fixtures::require_cmake_fixture(
+            "metadata_cpp",
+            "build/posix-native/cmake/nros-metadata.json",
+        )?;
     assert!(
         metadata.is_file(),
         "expected {} to be emitted by the §212.L cmake fns",
