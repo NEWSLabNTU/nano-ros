@@ -1,11 +1,14 @@
 ---
 id: 1193
 title: "A sub-millisecond spin timeout truncates to zero and silently becomes a busy loop"
-status: open
+status: resolved
+resolved_in: "phase-436 W2, landed on main via #849"
 type: bug
 area: executor
 related: [issue-0515, issue-1192, issue-1194, phase-436]
 ---
+
+> **Resolved (phase-436 W2, landed on main via #849).** Spin budgets are carried in microseconds and rounded UP to what the installed park primitive can express (`round_park_up_us`), never truncated. A sub-millisecond request no longer becomes a zero wait, which was a busy loop. The rounded value is reported beside the request (`last_park_achieved_us`).
 
 ## Problem
 

@@ -1,5 +1,36 @@
 # Phase 436 — The poll/wake revision: a deadline-driven, platform-agnostic executor
 
+**Checkpoint (2026-09-11), for whoever picks this up next.** Everything
+through A3's clear accessor is on `main`: W1-W7 (#849), A2 (#871), E3 + E4
+(#881), A3 (#899). What remains, in the order I would take it:
+
+1. **E5: make the stack-headroom query cheap when the stack has not grown.**
+   E4's once-a-second scan still costs ~33 ms on ASI's FVP image. The Zephyr
+   port's `k_thread_stack_space_get` walks every unused byte, and FreeRTOS's
+   `uxTaskGetStackHighWaterMark` does the same. ThreadX is already O(1)
+   (`tx_thread_stack_highest_ptr`). ASI reverted `CONFIG_INIT_STACKS` in its
+   default image because of this (ASI ff12002), and turns it back on once E5
+   lands. Design and evidence are under Path E below.
+2. **A2c: make `late_wakes` respect the granularity the executor reports.**
+3. **A3, the loaded run on ASI, is blocked on ASI's side.** Every nano-ros
+   commit with the A3 accessor also carries phase-427 W4's `ComponentNode`
+   deletion (`1f3b88aec`, ~40 commits before `64a350ce4`), and ASI's
+   controller derives from `ComponentNode`. So ASI has to port to the one node
+   type before it can pin past `af14492fe`. The readout itself is written and
+   verified; it waits on ASI branch `wip/a3-rt-probe-readout`. ASI's
+   `docs/roadmap/phase-11-executor-evidence.md` carries the ASI side.
+4. Then Path B (B2, smoltcp `poll_at`), Path C (C1 FreeRTOS, C2 POSIX/NuttX;
+   C3 bare metal deferred), Path D (D1 measure 1195, D2 close 1196), E1
+   (issue 1232), and A2b.
+
+Two process lessons that cost time here:
+- **When a parent PR merges, rebase its child before anyone queues it.** A
+  queued branch is frozen (GH006), and a child still carrying the parent's
+  commits goes UNMERGEABLE (#879, #899).
+- **Parallel sessions share `~/.cargo`.** Any step that runs cargo can block
+  for minutes on the package-cache lock; ASI's `build.sh --run` no longer
+  does (ASI 0281ab1, 051178f).
+
 **Status (2026-09-10). W1-W7 IMPLEMENTED for both entry shapes; the remaining
 per-port work is DEADLINE SOURCES, and one of the two named below does not
 exist under the name this doc gave it.** The executor computes a park deadline
@@ -41,12 +72,9 @@ Five things the work changed about the phase as written:
   answer *when*, not *call me later*. That is a design question still open,
   not an adapter waiting to be written.
 
-All six of this phase's issues (1192-1196, 1242) are still `status: open`,
-and that is not an oversight: the work lives on the phase-436 stack, which is
-queued to merge as one PR. Four close when it lands — 1192, 1193, 1194, 1242.
-Two do NOT, because the stack delivers only part of each: 1195 keeps its larger
-half (Path D1) and 1196 its closing condition (Path D2). Archiving them on
-merge would be a branch saying DONE for work it did not do.
+Issues 1192, 1193, 1194 and 1242 are resolved and archived (W1-W3 landed via #849; 1242 via
+W7.b). 1195 and 1196 stay open on purpose: the stack delivered only part of each. 1195's
+remaining consequence is Path D1, and 1196's closing condition is Path D2.
 
 Deferred deliberately: the `wake_wait_ns` platform slot (the rounding contract
 fixes issue 1193's harm without making five ports grow a required symbol) and
@@ -369,17 +397,17 @@ cannot be answered wrongly by a caller who never reads the doc comment.
 
 Each is a filed issue; the issue holds the evidence.
 
-* **W1 — [issue 1192](../issues/1192-executor-wait-ignores-next-timer-deadline.md):
+* **W1 — [issue 1192](../issues/archived/1192-executor-wait-ignores-next-timer-deadline.md):
   the wait is not bounded by the next timer deadline.** The `TimerSource` of
   §2, and the highest-value item — it is the one place the executor sleeps past
   a deadline it owns. Distinct from resolved issues 0505 (overrun policy) and
   0515 (grid quantization), both of which take the spin boundary as fixed;
   this moves the boundary.
-* **W2 — [issue 1193](../issues/1193-spin-timeout-truncates-to-milliseconds.md):
+* **W2 — [issue 1193](../issues/archived/1193-spin-timeout-truncates-to-milliseconds.md):
   sub-ms timeouts truncate to a busy loop.** §1. Latent today — nros-cpp clamps
   `max(1_000)` and ASI runs `spin_period_us = 5000` — but `spin_period_us` is a
   microsecond field accepting values it cannot honour.
-* **W3 — [issue 1194](../issues/1194-jitter-measured-in-microseconds-waited-in-milliseconds.md):
+* **W3 — [issue 1194](../issues/archived/1194-jitter-measured-in-microseconds-waited-in-milliseconds.md):
   jitter measured in µs, waited in ms.** Falls out of W2; the deliverable is
   the declared-granularity contract, not a coarser statistic.
 * **W4 — [issue 1195](../issues/1195-promise-wait-polls-instead-of-using-the-waker.md):
@@ -547,6 +575,50 @@ watched run.
   trace's activation lateness must agree within `granularity_us` on the shared
   counter, and any disagreement must be explained, not averaged away.
 
+  **Loaded runs (2026-09-11) and two corrections.** Evidence is under ASI's
+  gitignored `log/a3/` (CTF capture, island logs, `a3-analyze.sh`,
+  `probe-phases.py`).
+
+  | phase | traced run: wakes/s | worst late wake per 1 s window (median) | untraced run: wakes/s | worst late wake per window (median) |
+  |---|---|---|---|---|
+  | before Autoware traffic | 164 | 33 ms | 165 | 33 ms |
+  | traffic onset (traced only) | 12.5 | 316 ms (max 649) | | |
+  | driving under load | 32.5 | 91 ms | 8.9 | 115 ms |
+
+  * **The readout agrees with two independent sources.** During the traced
+    run's 28-42 s collapse the probe showed ~300 ms spin intervals. The
+    controller's own per-cycle log lines came 295-366 ms apart in the same
+    span, so the 30 ms control timer was effectively running at 3.3 Hz. The
+    CTF trace agrees: `idle` never runs from 28 s, and `main` is preempted by
+    `rx_q[0]` and `recvUC`. Both of the log's clocks advance identically, so
+    the intervals are not a counter artifact.
+  * **Neither CTF nor the network burst causes the collapse.** Without CTF,
+    and with no RX-buffer errors, the loop still ran at ~9 wakes/s under load.
+    Still untested: the controller's three synchronous INFO lines per cycle
+    (immediate log mode at 115200 baud, on the control thread) and MPC cost
+    under preemption. The test needs a run in which autonomous mode engages
+    (2 of 3 attempts did).
+  * **Correction: the ~33 ms outlier in every window is E4's scan, not the
+    readout's print.** The first reading blamed the `rt-probe` line itself. In
+    deferred log mode the outlier is unchanged, and the trace shows `main`
+    holding the CPU for ~32.6 ms about every 1.003 s during the quiet phase.
+    That is E4's once-a-second scan of the painted stack, and it is why E5
+    exists.
+  * **Correction: deferred logging is not a fix on this image.** It crashed
+    at ~108 s: `ASSERTION FAIL [out_ctx->control_block->offset <=
+    out_ctx->size] @ zephyr/subsys/logging/log_output.c:122`, on two CPUs.
+    `out_func` checks for a full buffer and then advances the offset as two
+    separate steps, which is safe only with a single writer.
+    `CONFIG_ASSERT=y` from nano-ros's Cyclone snippet makes the overflow
+    fatal. That snippet also forces `CONFIG_LOG_MODE_IMMEDIATE=y` "to keep
+    Cyclone init failures legible", so every Cyclone Zephyr image logs
+    synchronously on whichever thread logs.
+  * **Tooling fixed on ASI along the way.** The CTF contract check picked
+    the last `timer@` handle (the 1 s readout timer) and compared periods as
+    strings (b8378ae). The demo and `build.sh --run` re-entered cargo on
+    every launch (0281ab1, 051178f).
+
+
 ### Path B — Deadline sources: the unused half of the seam.
 
 `set_park_primitive` has three callers; `register_wake_source` has none
@@ -680,6 +752,20 @@ wired, so every other port parks on the millisecond `wake_wait_ms` floor.
   build with no clock. Setting a new bound re-arms an immediate check. This
   is what makes enabling `CONFIG_INIT_STACKS` on ASI's default build
   affordable (E2's exit).
+
+* **E5 — make the query O(1) when the stack has not grown. OPEN, next.**
+  E4 made the scan rare, not cheap: one ~33 ms scan per second on ASI's FVP
+  image (458 992 unused bytes, measured in the CTF capture as a 32.6 ms
+  `main` slice every ~1.003 s). Zephyr (`k_thread_stack_space_get`) and
+  FreeRTOS (`uxTaskGetStackHighWaterMark`) both walk every unused byte;
+  ThreadX reads a kernel-maintained pointer. A Zephyr port can reach
+  `k_current_get()->stack_info.{start,size}`, so it can re-check only around
+  the last known high-water mark and fall back to a full scan when that
+  window is dirty. Stacks are not written contiguously, which is why Zephyr
+  counts from the base, so the design needs a guard window and a periodic
+  full re-scan to bound staleness. **Exit:** a painted image with no
+  per-second stall in the CTF trace; then ASI turns `CONFIG_INIT_STACKS` back
+  on.
 
 ### Order
 

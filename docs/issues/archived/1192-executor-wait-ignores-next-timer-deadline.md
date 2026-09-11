@@ -1,11 +1,14 @@
 ---
 id: 1192
 title: "The executor's blocking wait is not bounded by the next timer deadline, so it sleeps past a deadline it owns"
-status: open
+status: resolved
+resolved_in: "phase-436 W1, landed on main via #849"
 type: bug
 area: executor
 related: [issue-0505, issue-0515, phase-436]
 ---
+
+> **Resolved (phase-436 W1, landed on main via #849).** The executor's park is now bounded by the next TIMER deadline (`next_timer_deadline_us`), and a park the timer wins is attributed as `WakeSourceId::Timer` in `last_park()`. `spin_default()`'s 50 ms no longer sleeps past a 10 ms timer it owns.
 
 ## Problem
 
