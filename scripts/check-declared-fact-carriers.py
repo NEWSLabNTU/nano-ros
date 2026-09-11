@@ -288,6 +288,27 @@ def _carried(entry, road):
     return tuple(v) if isinstance(v, (tuple, list)) else ()
 
 
+# phase-446 W4 -- the parameter-store facts, from the contract's `params:`.
+# Carried by the resolver and the declared road; the leaf road reads no
+# SystemModel, so it has nothing to carry (the reason is quoted from
+# `cmake/NanoRosEntityFacts.cmake`, where the decision lives).
+for _fact, _knob in (
+    ("NROS_DERIVED_MAX_PARAMETERS", "NROS_MAX_PARAMETERS"),
+    ("NROS_DERIVED_MAX_PARAM_NAME_LEN", "NROS_MAX_PARAM_NAME_LEN"),
+    ("NROS_DERIVED_MAX_STRING_VALUE_LEN", "NROS_MAX_STRING_VALUE_LEN"),
+    ("NROS_DERIVED_MAX_ARRAY_LEN", "NROS_MAX_ARRAY_LEN"),
+    ("NROS_DERIVED_MAX_BYTE_ARRAY_LEN", "NROS_MAX_BYTE_ARRAY_LEN"),
+):
+    FACT_DISPOSITION[_fact] = {
+        "resolver": ("NROS_RESOLVED_" + _knob,),
+        "sidecar": NotCarried(
+            "cmake/NanoRosEntityFacts.cmake",
+            "The cargo-LEAF road carries none of this",
+            "the leaf sidecar comes from a metadata probe that sees no "
+            "SystemModel, so it has no parameter declaration to forward"),
+        "declared": ("NROS_DECLARED_" + _knob[len("NROS_"):],),
+    }
+
 # Derived, not authored twice (issue 1199's map). The leaf-road <-> CMake-road
 # pairing is a PROJECTION of the disposition table: a fact carried on both
 # cargo roads pairs the name it takes on each.
@@ -326,19 +347,15 @@ ROAD_UNPAIRED = {
 }
 
 # phase-446 W4 -- the parameter-store facts come from the SystemModel's
-# `contracts.node_params`. The leaf sidecar is derived from a metadata probe
-# that sees no model, so the leaf road has no declaration to forward and its
-# store keeps the crate defaults: absence, not a smaller store.
+# `contracts.node_params`. The five capacities are PUBLISHED `NROS_DERIVED_*`
+# facts, so they live in FACT_DISPOSITION above (declared-carried, sidecar
+# NotCarried). The three `PARAM_NEEDS_*` are raw inputs no inventory publishes
+# as a derived fact, so they have no leaf twin and are recorded here.
 _PARAM_STORE_REASON = (
     "the parameter store, from the contract's `params:` (phase-446 W4). The "
     "leaf road reads no SystemModel, so it has no declaration to carry."
 )
 for _fact in (
-    "NROS_DECLARED_MAX_PARAMETERS",
-    "NROS_DECLARED_MAX_PARAM_NAME_LEN",
-    "NROS_DECLARED_MAX_STRING_VALUE_LEN",
-    "NROS_DECLARED_MAX_ARRAY_LEN",
-    "NROS_DECLARED_MAX_BYTE_ARRAY_LEN",
     "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN",
     "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN",
     "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN",
