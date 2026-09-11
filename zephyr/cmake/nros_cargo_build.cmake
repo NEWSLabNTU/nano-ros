@@ -889,6 +889,23 @@ function(nros_resolve_knobs)
         # The UDP MTU stayed at its 4096 default and the two per-session stream
         # buffers cost 2 x 4096 x 16 = 131072 bytes against a 65536-byte heap.
         _nros_resolve_knob(NROS_XRCE_TRANSPORT_MTU "${CONFIG_NROS_XRCE_TRANSPORT_MTU}")
+        # issue 1010 — and 0968's fix was still not the whole knob. The line
+        # above forwards the MTU of the IP transports, and a Zephyr image links
+        # NEITHER: both macros it binds sit inside `#ifdef UCLIENT_PROFILE_UDP`,
+        # which xrce-config.txt gates on the `posix_ip` condition, and the
+        # generated `uxr/client/config.h` in every Zephyr build dir reads
+        # `/* #undef UCLIENT_PROFILE_UDP */`. The transport a Zephyr image
+        # actually links is `transport_nros_udp.c` through
+        # UCLIENT_PROFILE_CUSTOM_TRANSPORT, so the LIVE MTU is this knob — which
+        # had no Kconfig symbol and no line here, so it kept its unstated 4096
+        # and the two per-session reliable stream buffers cost 2 x 4096 x 16 =
+        # 131072 bytes against the 65536-byte platform heap. Twice the arena,
+        # before a single entity slot. Exactly the RING_DEPTH shape below (issue
+        # 1033): read by a build script since phase-207, documented in the book,
+        # forwarded by nobody — so no Zephyr image could set it by any means and
+        # setting it looked like it had worked.
+        _nros_resolve_knob(NROS_XRCE_CUSTOM_TRANSPORT_MTU
+            "${CONFIG_NROS_XRCE_CUSTOM_TRANSPORT_MTU}")
         # issue 1033 — the subscriber cap joins the DERIVABLE ladder, on the
         # SAME `NROS_DERIVED_MAX_SUBSCRIBERS` the zenoh pools use. Reusing that
         # value rather than counting `sub:` entries here is the point: it

@@ -1018,8 +1018,9 @@ config NROS_XRCE_TRANSPORT_MTU
     int "XRCE transport MTU"
     default 512
     help
-      Custom transport MTU for XRCE-DDS. Also sizes stream buffers
-      (4x MTU) and UDP staging.
+      MTU of the IP transports, and the value NROS_XRCE_CUSTOM_TRANSPORT_MTU
+      below defaults to. Also sizes the two per-session reliable stream
+      buffers (MTU x NROS_XRCE_STREAM_HISTORY each).
       Maps to UCLIENT_UDP_TRANSPORT_MTU, UCLIENT_TCP_TRANSPORT_MTU.
 
       phase-420 W9 — the old "Maps to XRCE_TRANSPORT_MTU" named a macro that
@@ -1027,6 +1028,35 @@ config NROS_XRCE_TRANSPORT_MTU
       against packages/rmw/xrce/xrce-config.txt by check-xrce-config-manifest,
       so a knob wired to the wrong token fails a gate instead of reading
       plausibly.
+
+      issue 1010 — this option used to say "Custom transport MTU", which it
+      was not. Both macros it maps to are declared inside
+      `#ifdef UCLIENT_PROFILE_UDP` and NO Zephyr image defines that profile:
+      the Zephyr transport is `transport_nros_udp.c` registered as a CUSTOM
+      transport (xrce-config.txt binds UCLIENT_PROFILE_UDP to the `posix_ip`
+      condition). So on Zephyr this option reached nothing at all, and the
+      live MTU was UCLIENT_CUSTOM_TRANSPORT_MTU's unstated 4096 — 2 x 4096 x
+      16 = 131,072 bytes of stream buffer, twice the whole 65,536-byte
+      platform heap, before a single entity slot. Same shape as issue 0968,
+      which swept the OTHER way (it taught UDP/TCP to honour this knob) and
+      as issue 1033's RING_DEPTH, which was read by a build script with no
+      Kconfig symbol to reach it.
+
+config NROS_XRCE_CUSTOM_TRANSPORT_MTU
+    int "XRCE custom-transport MTU"
+    default NROS_XRCE_TRANSPORT_MTU
+    range 128 65535
+    help
+      MTU of the CUSTOM transport, which on Zephyr is the ONLY transport
+      compiled in (see NROS_XRCE_TRANSPORT_MTU above for why). It sizes the
+      two per-session reliable stream buffers, so the session struct carries
+      2 x this x NROS_XRCE_STREAM_HISTORY bytes.
+      Maps to UCLIENT_CUSTOM_TRANSPORT_MTU.
+
+      Defaults to NROS_XRCE_TRANSPORT_MTU so an image states ONE MTU and gets
+      it on whichever transport it actually links. Set this separately only
+      when an image links both an IP transport and a custom one and they need
+      different frame budgets.
 
 config NROS_XRCE_MAX_SUBSCRIBERS
     int "Maximum concurrent subscribers"

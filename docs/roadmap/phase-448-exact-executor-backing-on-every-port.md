@@ -58,7 +58,7 @@ knob move.
 
 ### W1 — answer which allocator a Zephyr XRCE image has
 
-[Issue 1189](../issues/1189-xrce-leaf-sets-an-arena-knob-its-image-lacks.md).
+[Issue 1189](../issues/archived/1189-xrce-leaf-sets-an-arena-knob-its-image-lacks.md).
 The six Zephyr XRCE Rust leaves set `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`, and
 their images do not select picolibc, so the knob never reaches the resolved
 `.config` and the comment above it describes another image. The issue refuses
@@ -75,7 +75,7 @@ It comes first because it decides which heap W2 has to size.
 
 ### W2 — every Zephyr XRCE image boots
 
-[Issue 1010](../issues/1010-zephyr-xrce-executor-arena-exceeds-heap.md). The
+[Issue 1010](../issues/archived/1010-zephyr-xrce-executor-arena-exceeds-heap.md). The
 only item in this phase where an image does not run: every Zephyr XRCE example
 dies at boot. The 2026-09-04 correction located the allocation — it is not the
 executor arena but `xrce_session_state`, dominated by

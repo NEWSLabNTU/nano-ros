@@ -2,12 +2,14 @@
 id: 1010
 title: "Every zephyr XRCE example dies at boot allocating the XRCE session
   struct — 81% of it is `subscriber_slots` at ring depth 32"
-status: open
+status: resolved
 type: bug
 area: zephyr, platform, examples
 severity: high
 found: 2026-09-03
-related: [issue-0968, issue-1003, phase-448]
+resolved_in: phase-448 W2 — per-leaf entity caps on the twelve C/Rust overlays,
+  plus the custom-transport MTU made reachable from Kconfig
+related: [issue-0968, issue-1003, issue-1033, issue-0460, issue-1189, phase-448]
 ---
 
 ## Measured
@@ -233,3 +235,149 @@ that has ever run, so no claim is made about what happens once they boot.
 * [ ] Size it (or the heap) so the session fits, remembering ring depth alone
       does not.
 * [ ] The nine zephyr XRCE cells boot.
+
+## Resolution (phase-448 W2, 2026-09-11)
+
+All nine cells now PASS — not merely boot. Measured, `cargo nextest run -p
+nros-tests --test zephyr -E 'test(example_e2e) and test(xrce)'`:
+
+```
+Summary [48.185s] 9 tests run: 9 passed, 45 skipped
+```
+
+against fixtures built from this tree (`NROS_ZEPHYR_BUILD_ROOT` and the west
+module both pointed at the worktree — see "Method" below, it matters).
+
+### The allocation needed TWO things, and the 2026-09-04 identification only
+### found one of them
+
+That section named `subscriber_slots` and warned that ring depth alone is not
+enough. Both are right, and the arithmetic behind them was taken at
+`UXR_CONFIG_CUSTOM_TRANSPORT_MTU=512` — which is **not what a Zephyr image
+compiles**. Measured by `sizeof` against the generated `uxr/client/config.h`
+out of a real `build-rust-listener-xrce`, at the defaults the six Rust and six C
+overlays actually had:
+
+| member | bytes | share |
+| --- | ---: | ---: |
+| `subscriber_slots[8]` | 266,368 | 62.9 % |
+| two reliable stream buffers (2 x 4096 x 16) | **131,072** | **30.9 %** |
+| `service_server_slots[4]` | 17,536 | 4.1 % |
+| `service_client_slots[4]` | 4,160 | 1.0 % |
+| `uxrSession` + transports + bookkeeping | 4,688 | 1.1 % |
+| **`sizeof(xrce_session_state_t)`** | **423,824** | |
+
+and the runtime agrees to the byte:
+
+```
+nros: HEAP EXHAUSTED: request 423824 bytes, arena 66048 bytes, caller 0x4419cd
+```
+
+So the stream buffers alone are **twice the whole platform arena**, before a
+single entity slot. Capping the entity pools took the listener from 423,824 to
+169,056 — still 2.6x the arena, which is exactly the "changing one knob and
+re-running is how this looks fixed and is not" trap this issue warned about, met
+from the other side.
+
+### Part 1 — the MTU knob no Zephyr image could reach (issue 0460's class)
+
+`CONFIG_NROS_XRCE_TRANSPORT_MTU` (default 512) is the only MTU a Zephyr conf
+could state, and its help said "Custom transport MTU ... also sizes stream
+buffers". It does neither. `xrce-config.txt` binds it to
+`UCLIENT_UDP_TRANSPORT_MTU` and `UCLIENT_TCP_TRANSPORT_MTU`, both declared
+inside `#ifdef UCLIENT_PROFILE_UDP`, and every Zephyr build's generated header
+reads `/* #undef UCLIENT_PROFILE_UDP */` — the profile is bound to the
+`posix_ip` condition, which a Zephyr build does not answer. The transport a
+Zephyr image links is `transport_nros_udp.c` through
+`UCLIENT_PROFILE_CUSTOM_TRANSPORT`, so the LIVE macro is
+`UCLIENT_CUSTOM_TRANSPORT_MTU` ← `NROS_XRCE_CUSTOM_TRANSPORT_MTU`, which had no
+Kconfig option and no `_nros_resolve_knob` line. It therefore kept its unstated
+4096 whatever any conf said.
+
+This is the direct sibling of what issue 1033 found for
+`NROS_XRCE_SUBSCRIBER_RING_DEPTH`: read by `nros-rmw-xrce-cffi/build.rs` since
+phase-207, documented in the book, forwarded by nobody — so setting it looked
+like it had worked. And it is the half issue 0968's sweep missed: 0968 taught
+UDP and TCP to honour the general knob, on the premise that the Zephyr examples
+"all dial an agent over UDP". They do — through the CUSTOM transport.
+
+Fixed as a class, not a site: `config NROS_XRCE_CUSTOM_TRANSPORT_MTU` in
+`zephyr/Kconfig` with `default NROS_XRCE_TRANSPORT_MTU`, forwarded by
+`_nros_resolve_knob` in `zephyr/cmake/nros_cargo_build.cmake`. An image states
+ONE MTU and gets it on the transport it actually links; no conf changed, and
+every Zephyr XRCE image drops 114,688 bytes. `check-xrce-config-manifest`'s
+`NO_KCONFIG_OPTION` exemption list is now empty — both of its entries had gone
+stale in the direction that reads as OK.
+
+### Part 2 — the entity caps the C and Rust overlays never stated
+
+Issue 1033 gave the six **C++** overlays their `MAX_SUBSCRIBERS` /
+`MAX_SERVICE_SERVERS` / `MAX_SERVICE_CLIENTS`, with the reason: a standalone
+Zephyr application reaches no entity inventory, so the `-1` DERIVE sentinel
+falls through to the crate default of 8/4/4. The six C and six Rust overlays
+were not swept. Confirmed from the build's own configure output:
+
+```
+-- nros: NROS_XRCE_MAX_SUBSCRIBERS left to its crate default -- no value stated
+   and none derivable (see the refusal reason in .../nros/entity_inventory.cmake)
+```
+
+They now state them, the same per-role table the C++ overlays carry (verified
+role by role against each leaf's sources, not by analogy):
+
+| leaf | subs | service servers | service clients | session bytes |
+| --- | ---: | ---: | ---: | ---: |
+| talker | 0 | 0 | 0 | 17,488 |
+| listener | 1 | 0 | 0 | 50,784 |
+| service-server | 0 | 1 | 0 | 21,872 |
+| service-client | 0 | 0 | 1 | 18,528 |
+| action-server | 0 | 3 | 0 | 30,640 |
+| action-client | 1 | 0 | 3 | 53,904 |
+
+against a 65,536-byte arena. Neither lever alone is enough: caps-only leaves the
+listener at 169,056 and MTU-only leaves it at 309,136.
+
+Nothing was added to `EntityInventory::derive` — the images that need these
+numbers reach no inventory at all, so a floor there would have been the
+1015/1033 mistake (a consumer's problem solved in the shared derivation).
+
+### Verified on the wire, not only in `sizeof`
+
+MTU 512 is a behaviour change, so it was run rather than reasoned about. The
+Rust talker/listener pair against a live `MicroXRCEAgent`, 15 of 15 delivered:
+
+```
+[00:00:05.023,000] <inf> rust: rustapp: Publishing: 'Hello World: 1'
+[00:00:04.409,000] <inf> rust: rustapp: I heard: [Hello World: 1]
+...
+[00:00:19.023,000] <inf> rust: rustapp: Publishing: 'Hello World: 15'
+[00:00:13.627,000] <inf> rust: rustapp: I heard: [Hello World: 15]
+```
+
+and then the nine cells, which cover pub/sub, service and action in all three
+languages.
+
+### Method note, because it nearly produced a false baseline
+
+The first "before" build of this issue was a two-tree image: Zephyr's cmake runs
+`west list` with `WORKING_DIRECTORY ${ZEPHYR_BASE}`, python's `getcwd()` returns
+the PHYSICAL path, and the shared workspace's `nano-ros` module is a symlink to
+a DIFFERENT checkout — so `zephyr/Kconfig` and `nros_cargo_build.cmake` came
+from that checkout while the Rust lane compiled this worktree, and the new
+Kconfig option silently never appeared in `.config`. Issue 1171 records the same
+trap and rejects a symlinked private workspace for it. What worked here was a
+private workspace whose `zephyr/` is a real COPY (287 MB) with `nano-ros`
+symlinked at this worktree: `west topdir` from inside `zephyr/` then resolves to
+the private workspace, and `NROS_REPO_DIR:PATH` in the build's own `CMakeCache`
+names this worktree. Check that cache line before trusting any Zephyr
+measurement taken on a shared workspace.
+
+### Acceptance
+
+* [x] Identify the XRCE-side allocation — `xrce_session_state_t`, dominated by
+      `subscriber_slots` AND, unrecorded until now, the two reliable stream
+      buffers at the unreachable 4096 MTU.
+* [x] Size it so the session fits — both levers, per leaf, with the numbers above.
+* [x] The nine zephyr XRCE cells boot. They pass: 9 passed, 0 failed.
+* [ ] 0968's zephyr section re-measured against images that boot — still open,
+      and now possible for the first time.
