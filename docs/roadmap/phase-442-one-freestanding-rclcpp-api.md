@@ -254,6 +254,24 @@ the rest and do not depend on each other.
 * **W8 [cpp] — the remaining `rclcpp::` surface moves onto the mechanisms**, and
   the nine gates and `cmake/compat/` are deleted. This is where the API becomes
   one API.
+  **BLOCKED on one decision, and the block is deliberate (2026-09-12).** W7's
+  measurement says the job is to collapse **129 gated sites** into one ungated
+  API. Two of the three things that needs are done — RFC-0096 D8 settles how a
+  name parameter is typed, W3 built the handle and the inplace callable. The
+  third is not: **where does the entity a returned handle points AT live?**
+  Today `create_publisher<M>(topic, qos)` does `std::make_shared` and pushes
+  into `owned_entities`, and the census established that models ADDRESS
+  STABILITY rather than shared ownership — but address stability is a real
+  requirement, because the executor arena holds a raw dispatch pointer and has
+  no unregister path. RFC-0096 D9 states the three candidates and the measured
+  sizes that make the choice consequential (`Client<int>` is 4 672 bytes against
+  `Timer`'s 32, so a uniform worst-case pool is wrong by an order of magnitude).
+  The direction that fits this repository is entity counts DERIVED the way
+  phase-412 already derives `NROS_CPP_EXECUTOR_STORAGE_SIZE`, and it needs a
+  `just mem-report` before/after rather than a decision at the keyboard.
+  *Nothing mechanical in W8 should start before that is answered*: the rest is
+  substitution, and substitution on top of an unanswered lifetime question is
+  how a use-after-free ships.
   *Acceptance:* zero `NROS_CPP_HAS_*`, zero `NROS_CPP_STD`, zero
   `NROS_CPP_NODE_HOSTED` in the tree; the per-header parse loop at `fail=0` on
   every toolchain; the FreeRTOS, Zephyr, NuttX and ThreadX C++ builds green.
