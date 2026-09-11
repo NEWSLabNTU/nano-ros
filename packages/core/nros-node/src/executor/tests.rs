@@ -5503,6 +5503,121 @@ fn test_guard_condition_clears_after_trigger() {
 // Phase 49: Raw subscription callback tests
 // ====================================================================
 
+// ====================================================================
+// phase-456 W1: the arena holds the callback's CAPTURE
+// ====================================================================
+
+/// The capture survives the death of everything the caller owned.
+///
+/// This is the property the whole work item exists for. The pre-existing
+/// registration passes `context` through untouched, so the caller must keep it
+/// alive and unmoved for as long as the executor runs -- which is why a
+/// callback-style entity was immovable after registration and why the C++
+/// returning `create_subscription` had to heap-allocate a cell.
+///
+/// So the test drops the caller's buffer before spinning. If the arena were
+/// still referencing it, this would read freed stack.
+#[test]
+fn test_arena_subscription_capture_outlives_the_caller() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    static SEEN: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
+
+    // The "capture": a magic number the callback reads back OUT of its context.
+    const MAGIC: usize = 0x5AFE_D00D;
+
+    unsafe extern "C" fn capturing_cb(
+        _data: *const u8,
+        _len: usize,
+        context: *mut core::ffi::c_void,
+    ) {
+        // The context is the arena's own copy of the capture, not the
+        // caller's buffer.
+        let value = unsafe { core::ptr::read_unaligned(context as *const usize) };
+        SEEN.store(value, portable_atomic::Ordering::SeqCst);
+    }
+
+    SEEN.store(0, portable_atomic::Ordering::SeqCst);
+
+    // A NON-NULL decoy context, so that a regression which forgets to repoint
+    // `context` at the arena's copy reads THIS and fails the assertion with a
+    // legible difference, rather than dereferencing null and dying on a signal.
+    // Verified by mutation: with the repoint removed the test reports
+    // `DECOY != MAGIC`.
+    static DECOY: usize = 0xDEAD_BEEF;
+
+    {
+        // Deliberately scoped: this is gone before the first spin.
+        let capture = MAGIC.to_ne_bytes();
+        executor
+            .add_arena_subscription_c_callback_with_capture::<{
+                crate::config::DEFAULT_RX_BUF_SIZE
+            }>(
+                None,
+                "/capture",
+                "test/msg/TestMsg",
+                "test_hash",
+                QoSProfile::default().keep_last(1),
+                capturing_cb,
+                &DECOY as *const usize as *mut core::ffi::c_void,
+                None,
+                0,
+                Some(&capture),
+            )
+            .unwrap();
+    }
+
+    let (data, len) = encode_test_msg(7);
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    unsafe {
+        let sub_ptr = arena_ptr.add(meta.offset) as *const MockSubscriber;
+        (*sub_ptr).load(data, len);
+    }
+    executor.spin_once(core::time::Duration::from_millis(0));
+
+    assert_eq!(
+        SEEN.load(portable_atomic::Ordering::SeqCst),
+        MAGIC,
+        "the dispatch context must be the ARENA's copy of the capture; reading \
+         anything else means the caller's buffer was referenced after it died"
+    );
+}
+
+/// A capture the arena cannot hold is REJECTED, not truncated.
+///
+/// The C++ side asserts the same bound at compile time
+/// (`NROS_CPP_CALLBACK_CAPACITY`), so reaching this means the two constants
+/// have drifted -- and storing part of a closure would be a corrupted dispatch
+/// rather than a failed registration.
+#[test]
+fn test_arena_subscription_capture_over_budget_is_refused() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    unsafe extern "C" fn unused_cb(_d: *const u8, _l: usize, _c: *mut core::ffi::c_void) {}
+
+    let too_big = [0u8; crate::executor::arena::CALLBACK_CAPTURE_BYTES + 1];
+    let result = executor
+        .add_arena_subscription_c_callback_with_capture::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+            None,
+            "/too-big",
+            "test/msg/TestMsg",
+            "test_hash",
+            QoSProfile::default().keep_last(1),
+            unused_cb,
+            core::ptr::null_mut(),
+            None,
+            0,
+            Some(&too_big),
+        );
+    assert!(
+        result.is_err(),
+        "an over-budget capture must fail the registration, never be truncated into it"
+    );
+}
+
 #[test]
 fn test_raw_subscription_callback() {
     let session = MockSession::new();

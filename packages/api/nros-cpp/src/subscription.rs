@@ -215,7 +215,7 @@ unsafe fn read_subscription_options(
 /// exactly what callers used to get by passing `0` and NULL here.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
-pub unsafe extern "C" fn nros_cpp_subscription_register(
+unsafe fn subscription_register_impl(
     node: *const nros_cpp_node_t,
     topic: *const c_char,
     type_name: *const c_char,
@@ -225,6 +225,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
     context: *mut c_void,
     out_handle_id: *mut usize,
     options: *const nros_cpp_subscription_options_t,
+    capture: Option<&[u8]>,
 ) -> nros_cpp_ret_t {
     // phase-402 — ONE reader for all three variants; see
     // `read_subscription_options`.
@@ -286,20 +287,23 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
     // registration below fell back to the executor's own (empty) node name and
     // the subscription never got a liveliness token.
     let node_id = crate::node_id_opt(node_ref);
-    let result = ctx.executor.add_arena_subscription_c_callback::<BUF>(
-        node_id,
-        topic_str,
-        type_str,
-        hash_str,
-        qos.to_qos_settings(),
-        callback,
-        context,
-        group_str,
-        // phase-402 W2 / issue 0896 — THE point of the options struct: the
-        // caller's per-type receive bound finally reaches the backend, which
-        // routes the payload size class on it. 0 = no opinion, same as before.
-        rx_buffer_hint as usize,
-    );
+    let result = ctx
+        .executor
+        .add_arena_subscription_c_callback_with_capture::<BUF>(
+            node_id,
+            topic_str,
+            type_str,
+            hash_str,
+            qos.to_qos_settings(),
+            callback,
+            context,
+            group_str,
+            // phase-402 W2 / issue 0896 — THE point of the options struct: the
+            // caller's per-type receive bound finally reaches the backend, which
+            // routes the payload size class on it. 0 = no opinion, same as before.
+            rx_buffer_hint as usize,
+            capture,
+        );
 
     match result {
         Ok(handle_id) => {
@@ -321,6 +325,105 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
             NROS_CPP_RET_OK
         }
         Err(e) => crate::node_error_to_cpp_ret(e),
+    }
+}
+
+/// Phase 189.M3.x — the callback-style registration, unchanged.
+///
+/// `context` is passed through to the dispatch as-is, so the caller owns
+/// whatever it points at and the old contract applies: no move after register.
+/// `nros_cpp_subscription_register_capturing` is the variant that lifts that.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_cpp_subscription_register(
+    node: *const nros_cpp_node_t,
+    topic: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    qos: nros_cpp_qos_t,
+    callback: nros_node::RawSubscriptionCallback,
+    context: *mut c_void,
+    out_handle_id: *mut usize,
+    options: *const nros_cpp_subscription_options_t,
+) -> nros_cpp_ret_t {
+    unsafe {
+        subscription_register_impl(
+            node,
+            topic,
+            type_name,
+            type_hash,
+            qos,
+            callback,
+            context,
+            out_handle_id,
+            options,
+            None,
+        )
+    }
+}
+
+/// phase-456 W1 — register a callback-style subscription whose CAPTURE the
+/// arena holds.
+///
+/// The difference from `nros_cpp_subscription_register` is the lifetime, not
+/// the dispatch. There, `context` is the caller's and the caller must keep it
+/// alive and unmoved for as long as the executor runs — which is why a C++
+/// `Subscription<M>` had to be immovable after registration, and why the
+/// returning `create_subscription` had to heap-allocate a cell to hold a
+/// capturing lambda at a stable address.
+///
+/// Here the first `capture_len` bytes at `capture` are COPIED into the arena
+/// entry, and the dispatch context becomes the entry's own copy. Nothing of the
+/// caller's is referenced after this returns, so the caller may keep nothing at
+/// all — which is the point: the C++ side becomes a handle.
+///
+/// `capture_len` must not exceed the arena's per-entry capture budget
+/// (`CALLBACK_CAPTURE_BYTES`, `4 * size_of::<*const ()>()`, the same expression
+/// as the C++ `NROS_CPP_CALLBACK_CAPACITY`). A longer capture is REJECTED with
+/// `INVALID_ARGUMENT` rather than truncated: the C++ side asserts the same
+/// bound at compile time, so reaching that check means the two constants have
+/// drifted, and storing part of a closure would be a corrupted dispatch rather
+/// than a failed registration.
+///
+/// `capture_len == 0` (or a NULL `capture`) is exactly
+/// `nros_cpp_subscription_register`.
+///
+/// # Safety
+/// All non-NULL pointers must be valid; `callback` must be a valid trampoline
+/// whose context is the captured bytes; `capture` must point to `capture_len`
+/// readable bytes for the duration of THIS CALL only.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_cpp_subscription_register_capturing(
+    node: *const nros_cpp_node_t,
+    topic: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    qos: nros_cpp_qos_t,
+    callback: nros_node::RawSubscriptionCallback,
+    capture: *const u8,
+    capture_len: usize,
+    out_handle_id: *mut usize,
+    options: *const nros_cpp_subscription_options_t,
+) -> nros_cpp_ret_t {
+    let bytes = if capture.is_null() || capture_len == 0 {
+        None
+    } else {
+        Some(unsafe { core::slice::from_raw_parts(capture, capture_len) })
+    };
+    unsafe {
+        subscription_register_impl(
+            node,
+            topic,
+            type_name,
+            type_hash,
+            qos,
+            callback,
+            core::ptr::null_mut(),
+            out_handle_id,
+            options,
+            bytes,
+        )
     }
 }
 

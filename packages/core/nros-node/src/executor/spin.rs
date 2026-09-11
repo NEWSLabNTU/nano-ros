@@ -17,22 +17,22 @@ use super::types::ExecutorConfig;
 // `alloc`-gated (a bare-metal entry is exactly the caller that needs it).
 use super::{
     arena::{
-        BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientCallbackEntry,
-        ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry, SrvRawEntry,
-        SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry, SubBufferedRawInfoCEntry,
-        SubBufferedRawInfoEntry, SubBufferedTypedCEntry, SubBufferedViewEntry, SubInfoEntry,
-        SubInplaceEntry, TimerClockSource, TimerEntry, TimerHeader, TimerOverrunPolicy, TraceName,
-        always_ready, buffered_region_size, drop_entry, guard_has_data, guard_try_process,
-        no_pre_sample, service_client_callback_try_process, service_client_raw_try_process,
-        srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process,
-        sub_buffered_has_data, sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process,
-        sub_buffered_raw_has_data, sub_buffered_raw_info_c_has_data,
-        sub_buffered_raw_info_c_try_process, sub_buffered_raw_info_has_data,
-        sub_buffered_raw_info_try_process, sub_buffered_raw_try_process, sub_buffered_try_process,
-        sub_buffered_typed_c_has_data, sub_buffered_typed_c_try_process,
-        sub_buffered_view_has_data, sub_buffered_view_try_process, sub_info_has_data,
-        sub_info_pre_sample, sub_info_try_process, sub_inplace_has_data, sub_inplace_try_process,
-        timer_try_process,
+        BufferStrategy, CALLBACK_CAPTURE_BYTES, CallbackMeta, EntryKind, GuardConditionEntry,
+        ServiceClientCallbackEntry, ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry,
+        SrvRawEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
+        SubBufferedRawInfoCEntry, SubBufferedRawInfoEntry, SubBufferedTypedCEntry,
+        SubBufferedViewEntry, SubInfoEntry, SubInplaceEntry, TimerClockSource, TimerEntry,
+        TimerHeader, TimerOverrunPolicy, TraceName, always_ready, buffered_region_size, drop_entry,
+        guard_has_data, guard_try_process, no_pre_sample, service_client_callback_try_process,
+        service_client_raw_try_process, srv_has_data, srv_raw_has_data, srv_raw_try_process,
+        srv_try_process, sub_buffered_has_data, sub_buffered_raw_c_has_data,
+        sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
+        sub_buffered_raw_info_c_has_data, sub_buffered_raw_info_c_try_process,
+        sub_buffered_raw_info_has_data, sub_buffered_raw_info_try_process,
+        sub_buffered_raw_try_process, sub_buffered_try_process, sub_buffered_typed_c_has_data,
+        sub_buffered_typed_c_try_process, sub_buffered_view_has_data,
+        sub_buffered_view_try_process, sub_info_has_data, sub_info_pre_sample,
+        sub_info_try_process, sub_inplace_has_data, sub_inplace_try_process, timer_try_process,
     },
     node::NodeHandle,
     spsc_ring::SpscRing,
@@ -5913,13 +5913,62 @@ impl<'s> Executor<'s> {
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
         group: Option<&str>,
+        rx_buffer_hint: usize,
+    ) -> Result<HandleId, NodeError> {
+        self.add_arena_subscription_c_callback_with_capture::<RX_BUF>(
+            node_id,
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            callback,
+            context,
+            group,
+            rx_buffer_hint,
+            None,
+        )
+    }
+
+    /// The same registration, with the caller's CAPTURE held by the arena —
+    /// phase-456 W1.
+    ///
+    /// `context` is one pointer, which carries a C++ `[this]` capture and not a
+    /// `[this, state]` or a `[obj, method]`. When `capture` is `Some`, its
+    /// bytes are copied into the entry and `context` is repointed at the
+    /// entry's own copy, so the caller keeps nothing and nothing the caller
+    /// owns is referenced after this returns. When it is `None` the behaviour
+    /// is exactly the pre-existing one, which is why the plain entry point
+    /// above is a wrapper rather than a second implementation.
+    ///
+    /// A capture longer than `CALLBACK_CAPTURE_BYTES` is rejected rather than
+    /// truncated: the C++ side asserts the same bound at compile time
+    /// (`NROS_CPP_CALLBACK_CAPACITY`), so reaching this check means the two
+    /// sides disagree about the constant, and silently storing part of a
+    /// closure would be a corrupted dispatch rather than a failed one.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_arena_subscription_c_callback_with_capture<const RX_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QoSProfile,
+        callback: RawSubscriptionCallback,
+        context: *mut core::ffi::c_void,
+        group: Option<&str>,
         // phase-402 W2 / issue 0896 — bytes the caller expects to receive; 0 =
         // no opinion. A size-classing backend (zenoh-pico) routes on this, and
         // a subscription that states nothing takes the SMALL class whatever its
         // message type. The C path had no way to say it until the options
         // struct existed.
         rx_buffer_hint: usize,
+        capture: Option<&[u8]>,
     ) -> Result<HandleId, NodeError> {
+        if let Some(bytes) = capture {
+            if bytes.len() > CALLBACK_CAPTURE_BYTES {
+                return Err(NodeError::BufferTooSmall);
+            }
+        }
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = match node_id {
             Some(id) => {
@@ -5997,8 +6046,17 @@ impl<'s> Executor<'s> {
                     buffer,
                     callback,
                     context,
+                    capture: [0u8; CALLBACK_CAPTURE_BYTES],
                 },
             );
+            // The entry never moves once allocated, so its own bytes are a
+            // stable home for the caller's capture -- which is the whole point
+            // of holding it here rather than on the caller's side.
+            if let Some(bytes) = capture {
+                let dst = (*entry_ptr).capture.as_mut_ptr();
+                core::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
+                (*entry_ptr).context = dst as *mut core::ffi::c_void;
+            }
         }
 
         let meta = CallbackMeta {

@@ -49,6 +49,29 @@ nros_cpp_ret_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const
                                               void* context, size_t* out_handle_id,
                                               const nros_cpp_subscription_options_t* options);
 
+/// phase-456 W1 — the same registration, with the callback's CAPTURE held by
+/// the ARENA rather than by the caller.
+///
+/// The difference is the lifetime, not the dispatch. `..._register` above
+/// passes `context` through untouched, so the caller must keep whatever it
+/// points at alive AND unmoved for as long as the executor runs — which is why
+/// a callback-style entity was immovable after registration, and why the
+/// returning `create_subscription` had to heap-allocate a cell to give a
+/// capturing lambda a stable address.
+///
+/// Here the first `capture_len` bytes at `capture` are COPIED into the arena
+/// entry and the dispatch context becomes the entry's own copy. Nothing of the
+/// caller's is referenced after the call returns, so the caller may keep
+/// nothing at all — which is what lets the C++ object become a handle.
+///
+/// `capture_len` must not exceed `NROS_CPP_CALLBACK_CAPACITY`; a longer capture
+/// is rejected rather than truncated, and the C++ side asserts the same bound at
+/// compile time so that never reaches the runtime.
+nros_cpp_ret_t nros_cpp_subscription_register_capturing(
+    const nros_cpp_node_t* node, const char* topic, const char* type_name, const char* type_hash,
+    nros_cpp_qos_t qos, nros_cpp_subscription_message_callback_t callback, const uint8_t* capture,
+    size_t capture_len, size_t* out_handle_id, const nros_cpp_subscription_options_t* options);
+
 // Phase 189.M3.4 — callback-style register that also delivers the sample's wire
 // attachment (5-arg trampoline). Same cbindgen-exclusion reason as above.
 typedef void (*nros_cpp_subscription_message_info_callback_t)(const uint8_t* data, size_t len,

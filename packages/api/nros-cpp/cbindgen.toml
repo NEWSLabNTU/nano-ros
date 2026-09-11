@@ -55,6 +55,9 @@ exclude = [
     # register — takes `RawSubscriptionCallback` (external nros-node alias).
     # Declared locally in subscription.hpp with a matching plain fn-ptr typedef.
     "nros_cpp_subscription_register",
+    # phase-456 W1 — the capturing variant, same reason
+    # (`RawSubscriptionCallback` alias). Declared locally in subscription.hpp.
+    "nros_cpp_subscription_register_capturing",
     # Phase 189.M3.4 — callback-style subscription with attachment; takes
     # `RawSubscriptionInfoCallback` (external nros-node alias). Declared locally
     # in subscription.hpp with a matching 5-arg plain fn-ptr typedef.
