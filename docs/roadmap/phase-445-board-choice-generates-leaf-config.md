@@ -338,17 +338,77 @@ esp32 stack budgets.
   gitignored, which is what the gate asks; making Zephyr take a `--config`
   would need a west build to accept it, and no west build is possible from an
   agent worktree (the module is a symlink to another checkout — W3b's note).
-- [ ] **W7 — the user flow in the book.** `nros build <image>`, and
+- [x] **W7 — the user flow in the book.** `nros build <image>`, and
   `nros sync` + `cargo build --config build/<image>/nros-cargo.toml` for a user
   driving cargo, for each board family.
+  **Landed (2026-09-11, `docs/phase-445-w7-book`, on top of W4b + W5.)**
+
+  41 book pages, 9 `docs/guides`/`docs/reference` files, the root `README.md`,
+  167 example READMEs (153 of them through `scripts/docs/gen-example-readmes.py`,
+  which gains `--force`) and the zenoh probe's verifier. Every retired surface
+  is gone from the user track: a hand-written leaf `.cargo/config.toml` or
+  `.cargo/nros-board.toml`, `[package.metadata.nros.{entry,deploy.*,node,
+  component}]`, the `package.xml` `<nano_ros deploy= board= rmw=/>` tuple, a
+  workspace-root build file (generated or otherwise), `cargo`/`cmake` shown
+  with no `nros sync`, a hand-passed `--target`, `-p <entry>`,
+  `nros codegen-system`, `-DNROS_RMW=`/`-DNANO_ROS_BOARD=`, and `just` on a
+  user-track page.
+
+  Built, from clean, with the commands the book prints:
+  - native Rust, mps2 bare-metal and mps2 FreeRTOS — `nros sync` + `nros build`,
+    then the same three images again through
+    `cargo build --manifest-path <leaf>/Cargo.toml --config
+    <leaf>/build/<image>/nros-cargo.toml` from each leaf's PARENT;
+  - `cargo run` through the generated runner boots the mps2 image in QEMU;
+  - native C — `cmake -B build && cmake --build build`, and the same from a
+    copy outside the checkout with NO `nros sync`;
+  - a copy-out of the native Rust talker syncs and builds outside the checkout
+    with only `NROS_REPO_DIR` on the command line.
+
+  Three things the runs corrected that reading would not have, all now in the
+  text:
+  - the three ways a missing `nros sync` fails read very differently, and
+    `cargo --config <path that does not exist>` is unrecognisable — cargo
+    parses the argument as a dotted key and reports "key with no value,
+    expected `=`". `workflow-by-platform.md` quotes all three.
+  - **the one-line board switch is not true yet for a single-package Rust
+    leaf** — issue 1305. It IS true for a C/C++ leaf and for a workspace, and
+    the pages say why that differs.
+  - **`nros build` does not resolve a single-package C/C++ leaf** — issue 1296.
+    Those pages keep the leaf's own `cmake` pair.
+
+  NOT done: `just probe bootstrap` was not run (/home at 99 %, and a container
+  that clones + bootstraps rustup + builds the runtime would risk filling it).
+  Both tracks were validated by extraction instead — the quickstart track
+  renders steps 10/20/40, the zenoh track 10/20/30 — and
+  `verify-zenoh-interop.sh` was fixed, because it still started the talker with
+  `cargo run` after step 30 stopped teaching it.
+
+  Also fixed here, because W4b and W5 were written in parallel and their code
+  met for the first time on this branch: `LeafSystem::is_fallback` and
+  `board_from` (deleted by W5, still called by W4b), and two helpers spelled
+  `write_leaf` with one name and two meanings. All three were invisible to
+  `just setup-cli` and to every runtime build — only a `--lib` test target
+  compiles them, which is what `check-build` is for.
 
 ## Acceptance
 
 - A fresh clone, then `nros build <image>`, builds one image per board family —
   a BUILD, not a gate (#393). `nros sync` + plain `cargo build --config
   build/<image>/nros-cargo.toml` builds the same image.
+  **MET for Rust (native, mps2 bare-metal, mps2 FreeRTOS, both roads, W7).
+  NOT MET for C/C++: `nros build` does not resolve a single-package C/C++
+  leaf — issue 1296. Their leaf `cmake` pair is green.**
 - Switching a single-package example to another board is ONE line in
   `system.toml`; `git diff` afterwards shows that line only.
+  **NOT MET for a Rust leaf — issue 1305.** Measured: one line changed,
+  `nros sync` reported `done.`, `nros build` failed with
+  `cannot find nros_board_<new_board> in the crate root`. A single-package
+  leaf is its own entry, so it still names its board crate in
+  `[dependencies]`; D6's generation reaches the generated workspace entry
+  only. Everything else — the triple, the link group, the runner, the cross
+  compiler — did follow the one line. Met for a C/C++ leaf (no board crate)
+  and for a workspace (generated entry).
 - `git status` is clean after `just ci gate` and after a fixture build.
 - `find examples -path '*/.cargo/*'` returns nothing, and no directory under
   `examples/workspaces/` or `examples/templates/` has a root `Cargo.toml` or
