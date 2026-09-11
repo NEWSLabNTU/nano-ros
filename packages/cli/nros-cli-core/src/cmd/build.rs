@@ -1983,19 +1983,22 @@ fn entity_facts_at(model_path: &std::path::Path) -> std::collections::BTreeMap<S
 /// re-spelled here: that renderer is where the knob NAMES, the consumer floors
 /// (issue 1015) and the deliberate omission of `ZPICO_MAX_QUERYABLES` live, and
 /// a second list would be the drift this repository keeps paying for. Payload
-/// classes are not derived on this road (they need a leaf's message-bound
-/// inventory), so the crate defaults stand for them.
+/// classes and the take buffer are not derived on this road (both need a
+/// leaf's message-bound inventory), so the crate defaults stand for them.
 fn derived_pool_env(
     resolved: &crate::resolve::Resolved,
 ) -> std::collections::BTreeMap<String, String> {
     let Some(knobs) = resolved.knobs() else {
         return std::collections::BTreeMap::new();
     };
+    const NOT_DERIVED: &str = "not derived for a workspace image (no leaf message-bound inventory)";
     let body = crate::leaf_entity_env::render_env_sidecar(
         knobs,
         &crate::leaf_payload_classes::PayloadClasses::Refused {
-            reason: "not derived for a workspace image (no leaf message-bound inventory)"
-                .to_string(),
+            reason: NOT_DERIVED.to_string(),
+        },
+        &crate::leaf_take_buffer::TakeBuffer::Refused {
+            reason: NOT_DERIVED.to_string(),
         },
         &resolved.source,
     );
