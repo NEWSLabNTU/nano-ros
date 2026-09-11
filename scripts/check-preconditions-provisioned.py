@@ -181,7 +181,11 @@ def setup_closure(justfile_text, _just_files):
     chains `just workspace setup`) left corrosion unprovisioned. That is the
     original bug, reading green. Caught by mutation-testing this gate.
     """
-    m = re.search(r"^_setup-common:\n(.*?)(?=\n^[a-zA-Z_@\[])", justfile_text, re.M | re.S)
+    # The header may carry parameters (`_setup-common *roles:` — phase-447 E2),
+    # so match up to the recipe's colon rather than requiring it immediately.
+    m = re.search(
+        r"^_setup-common\b[^:\n]*:\n(.*?)(?=\n^[a-zA-Z_@\[])", justfile_text, re.M | re.S
+    )
     return m.group(1) if m else ""
 
 

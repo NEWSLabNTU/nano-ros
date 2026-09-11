@@ -77,7 +77,7 @@ nros setup zephyr                        # Zephyr west workspace + SDK bits
 |---|---|
 | `<board>` | resolve + fetch this board's package set (see [Supported Boards](supported-boards.md)) |
 | `--rmw <zenoh\|xrce\|cyclonedds>` | also provision the RMW's host daemon/tool (default `zenoh`); resolves `board ∪ rmw` packages |
-| `--tool <name>` | install a single tool by name (e.g. `--tool qemu`) |
+| `--tool <name>` | install tools by name (e.g. `--tool qemu`); repeatable — `--tool ninja --tool make` is one plan, with one system-package ask for the union |
 | `--source <name>` | provision a single source package by name (repeatable) |
 | `--prefix <dir>` | install a `--tool` here instead of the shared store |
 | `--list` | list every package in the index + its version |

@@ -271,6 +271,15 @@ _run() {
     fi
 }
 
+# phase-447 E2 / issue 1274 — the steps below are ONE provisioning session, so
+# they share one system-package ask. Measured before: this plan printed three
+# overlapping `apt install` lines with different subsets and acted on none. The
+# ledger makes each key asked for once — by whichever step meets it first —
+# and the helper is the same one `just setup` uses (nested, it joins this one).
+# shellcheck source=scripts/lib/setup-session.sh
+. "$repo_root/scripts/lib/setup-session.sh"
+nros_setup_session_begin "$repo_root"
+
 failed=()
 if [ "${#base_plan[@]}" -gt 0 ]; then
     for cmd in "${base_plan[@]}"; do
