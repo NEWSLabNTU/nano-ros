@@ -1068,9 +1068,32 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   never shipped, so codegen emits a CONSTANT `version = "0.0.0"` (the ament version moves to
   `[package.metadata.nros] ament_version`) — otherwise a committed lock asserts which ROS install
   built it and every other host reads as drift.
-- **Rust leaf `.cargo/config.toml` is `nros sync`-managed (RFC-0048 W9)**: one
-  `include = ["…/nros-patch.toml"]` (central, gitignored, absolute paths) + leaf-local
-  `generated/*`/platform patches. Never hand-edit; moved checkout → re-run `nros sync`. Central
+- **An EXAMPLE's build configuration is GENERATED, and `examples/**/.cargo/` is EMPTY**
+  (RFC-0098 D1, phase-445 W6). A leaf states its board once — `[image.<id>] board` in
+  `system.toml` — and `nros sync` / `nros build` render everything that implies into
+  `<leaf>/build/<image>/nros-cargo.toml`: the descriptor's `cargo_config` (triple, link
+  group, build-std), the derived pools + entity facts, the board facts, and the in-repo
+  `[patch.crates-io]` rows. Cargo reads it with `--config`; the road runs cargo from the
+  directory ABOVE the leaf. **78 tracked files went** (45 `config.toml`, 33 board
+  projections, plus 3 projections outside `examples/`), and with them phase-341's
+  `.cargo/nros-board.toml`, issue 0827's `nros-managed-env.toml`, `nros ws
+  check-board-projections`, the `board-projections` gate, and CLAUDE.md's own "never commit
+  the sidecar include line" rule — a rule that had already been broken twice, which is what
+  a rule guarding a generated file in git looks like. Where a leaf `[env]` row goes now:
+  a hardware budget → the board descriptor's `[board.knobs]`; a link-set choice →
+  `[image.<id>] transport = "serial"`, which IMPLIES `ZPICO_NO_SMOLTCP=1` + `NROS_LINK_IP=0`;
+  a knob only this image wants → **`[image.<id>] env`, the RFC-0049 APP rung**; a pool the
+  declarations answer → nothing, it is derived. Gates: `check-example-cargo-dirs` (no tracked
+  `examples/**/.cargo/*`) and `check-workspace-root-build-files` (no workspace-root
+  `Cargo.toml`/`CMakeLists.txt` under `examples/{workspaces,templates}`; a single-package
+  template is exempt BY SHAPE — a `package.xml` at its root — never by name).
+  **A leaf may still hold a gitignored `.cargo/config.toml` on disk**: sync writes the central
+  patch `include` for a leaf a plain `cargo` or the metadata probe runs INSIDE, and the Zephyr
+  west lane has no `--config` seam of its own (issue 1288). The gate is about TRACKED files,
+  which is the invariant a clone and CI see.
+- **Outside `examples/`, a leaf `.cargo/config.toml` is still `nros sync`-managed (RFC-0048 W9)**:
+  one `include = ["…/nros-patch.toml"]` (central, gitignored, absolute paths) + leaf-local
+  `generated/*` patches. Never hand-edit; moved checkout → re-run `nros sync`. Central
   membership = only crates registry-named in EVERY graph (else cargo "unused patch" warnings).
   **Sync's `[patch.crates-io]` rows split by ORIGIN, not by "sync wrote it" (issues 0457/0463):**
   IN-REPO rows (`nros-log`, board crates, `mps2-an385-pac` — relative paths, identical in every
@@ -1081,16 +1104,15 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   set to the sidecar; that stranded every leaf on `no matching package named 'mps2-an385-pac'`,
   an in-repo patch a clone needs.) The authored half (`[build] target`, a QEMU `runner`, link
   rustflags, a user `libc` patch) stays tracked because a clone cannot regenerate it. Corollary,
-  gated by `check-cargo-config-tracked`: **a tracked config must never patch an uncommitted
-  `generated/` tree** (`packages/interfaces/*` are exempt — they commit theirs). An out-of-tree
-  consumer keeps everything INLINE: no `include` outside this checkout (#272).
-  **After a sync the tracked config legitimately gains the sidecar `include` on disk — NEVER commit
-  that line** (`git add -u` scoops it up; it did twice). The invariant is about the COMMITTED blob,
-  so the gate reads `git show HEAD:<path>`, not the worktree. **A missing `include` target is a HARD cargo error during MANIFEST PARSE — not the
-  silent drop #272 and #457 both assumed (issue 0463).** Both generated targets are gitignored, so
-  before `nros sync` these leaves cannot even be READ (`cargo metadata` fails too, four frames deep,
-  never naming sync). Guarded by `_require-leaf-includes`; `check-cargo-config-tracked` also rejects
-  an include naming a target no generator writes. → AGENTS.md Rust Consumption.
+  gated by `check-cargo-config-tracked` (now `packages/` + `tests/` only): **a tracked config must
+  never patch an uncommitted `generated/` tree** (`packages/interfaces/*` are exempt — they commit
+  theirs). An out-of-tree consumer keeps everything INLINE: no `include` outside this checkout
+  (#272). **A missing `include` target is a HARD cargo error during MANIFEST PARSE — not the
+  silent drop #272 and #457 both assumed (issue 0463).** The sidecar is gitignored, so before
+  `nros sync` such a leaf cannot even be READ (`cargo metadata` fails too, four frames deep,
+  never naming sync). Guarded by `_require-leaf-includes`, whose LIVE arm for `examples/` is now
+  the other shape it checks — a `path =` dep into an unbuilt `generated/` tree.
+  → AGENTS.md Rust Consumption.
 - **The CLI freshness closure is GENERATED, not walked** (issue 0627). `packages/cli/
   cli-source-dirs.txt` names the in-repo dirs outside `packages/cli` that the `nros` binary
   compiles; `source_stamp.rs` hashes those plus all of `packages/cli`, and a stale CLI re-stales

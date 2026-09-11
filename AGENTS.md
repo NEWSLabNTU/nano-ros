@@ -734,6 +734,18 @@ and verified.
 
 ### Rust Consumption (RFC-0048 W9)
 
+- **An EXAMPLE has no `.cargo/` at all — phase-445 W6 / RFC-0098 D1.** Everything
+  below is about the leaves OUTSIDE `examples/` (23 tracked configs under
+  `packages/**` and `tests/simple-workspace`). An example's build configuration
+  is generated from the one board its `system.toml` names, into
+  `<leaf>/build/<image>/nros-cargo.toml`, and cargo reads it with `--config`.
+  78 tracked files went with that change, along with the per-leaf board
+  projection (`.cargo/nros-board.toml`, phase-341) and the derived `[env]`
+  sidecar (`.cargo/nros-managed-env.toml`, issue 0827). `check-example-cargo-dirs`
+  refuses a tracked `examples/**/.cargo/*`; `check-cargo-config-tracked` keeps
+  the rest. A leaf may still hold a GITIGNORED `config.toml` on disk: sync writes
+  the central patch include for a leaf a plain `cargo` or the metadata probe runs
+  inside, and the Zephyr west lane has no `--config` seam (issue 1288).
 - **`nros sync` owns each Rust leaf's `.cargo/config.toml` managed surface**: one
   `include = ["…/nros-patch.toml"]` line (the central, gitignored, absolute-path
   patch file at the checkout root) + the leaf-local
@@ -759,10 +771,12 @@ and verified.
   stabilised in 1.93; measured false on 1.96/1.97. `_require-leaf-includes` is the
   preflight that says "run `nros sync`" first, and `check-cargo-config-tracked`
   rejects an include naming a target no generator writes.
-- **After a sync the tracked config gains the sidecar `include` on disk — never
-  commit that line.** `git add -u` scoops it up (it did, twice). The invariant is
-  about the COMMITTED blob, so the gate reads `git show HEAD:<path>` rather than
-  the working copy.
+- The rule "after a sync the tracked config gains the sidecar `include` on disk —
+  never commit that line" RETIRED with phase-445 W6. It was about the 45 tracked
+  example configs, which are gone; the tracked configs that remain outside
+  `examples/` have no `generated/` dep and so gain no sidecar include. A rule
+  guarding a generated file that lives in git is a rule that gets broken — this
+  one was, twice — and deleting the file is the structural fix.
 - **Central-patch membership rule:** a crate may live in `nros-patch.toml` only
   if it is registry-named in EVERY consumer's dependency graph — cargo emits
   "patch `X` was not used in the crate graph" per unused entry, and the file is
