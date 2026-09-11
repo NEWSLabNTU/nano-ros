@@ -9,7 +9,7 @@ your PATH, `nros setup native --rmw cyclonedds` run once).
 
 ## Scaffold
 
-```bash
+```bash probe=50
 nros new my_robot --workspace
 cd my_robot
 ```
@@ -31,15 +31,35 @@ What each directory is *for* is the next chapter,
 
 ## Build
 
-```bash
-cmake -S . -B build -DNANO_ROS_ROOT=<path-to-your-nano-ros-checkout>
+```bash probe=60
+cmake -S . -B build
 cmake --build build
 ```
 
 The first configure compiles nano-ros's runtime into the build tree
-(~3 minutes); rebuilds are seconds. If you use `direnv`/`activate.sh`
-from the nano-ros checkout, `-DNANO_ROS_ROOT` can be omitted — the
-`NROS_REPO_DIR` env it exports is picked up automatically.
+(~3 minutes); rebuilds are seconds.
+
+Configure has to find the nano-ros SDK root — the cmake modules, board
+descriptors and runtime crates your project compiles against. The
+scaffolded `CMakeLists.txt` asks, in order: `-DNANO_ROS_ROOT`, then
+`$NROS_REPO_DIR`, then `nros sdk-root`. Which one answers depends on how
+you got `nros`, so this page has two paths:
+
+- **Installed from a release** — pass nothing. A release carries its own
+  SDK root, and `nros sdk-root` prints it. The two commands above are
+  the whole build.
+- **Built from a checkout** — which, until the first release is cut, is
+  everyone. In a shell where you sourced `activate.sh` (or ran
+  `direnv allow`), the two commands above work as written, because it
+  exports `NROS_REPO_DIR`. In any other shell, name the checkout:
+
+  ```bash
+  cmake -S . -B build -DNANO_ROS_ROOT=<path-to-your-nano-ros-checkout>
+  cmake --build build
+  ```
+
+`nros sdk-root --explain` prints the root it would use and which of the
+two it came from.
 
 ## Run
 

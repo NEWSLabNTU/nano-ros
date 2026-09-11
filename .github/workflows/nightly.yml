@@ -1056,6 +1056,47 @@ jobs:
       - name: Run bootstrap probe
         run: PROBE_BRANCH=probe-under-test ./scripts/probe/run-bootstrap-probe.sh
 
+  # phase-447 A3 — the same probe down the USER's front door: build the asset
+  # `release-nros.yml` would publish (its own steps, extracted from this commit,
+  # on its own `runs-on` image), install it into a second pristine container
+  # that has no checkout mounted, then run first-project.md's scaffold -> build
+  # -> run. The released `nros` could not build anything (RFC-0099 D1) and
+  # nothing noticed, because every host that ever ran it had a checkout the
+  # SDK-root ladder reached first.
+  #
+  # Its OWN job, not a step after the checkout track: a red here and a red there
+  # are different defects on different machines, and one job carrying both
+  # would report the first and hide the second.
+  installed-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 7 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    concurrency:
+      group: nightly-installed-probe-${{ github.ref }}-${{ github.event_name }}
+    permissions:
+      contents: read
+    steps:
+      # Full history: the asset builder fetches the commit under test from this
+      # checkout's git dir, and fetching from a shallow repo fails.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reclaim host disk
+        run: |
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+              /usr/share/dotnet /usr/local/.ghcup 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
+      - name: Name the commit under test
+        run: git switch -c probe-under-test 2>/dev/null || git checkout -b probe-under-test
+
+      # Cold, as a release runner is: the named cache volumes would only be
+      # empty on a hosted runner anyway, and saying so keeps the verdict honest.
+      - name: Run installed-path probe
+        run: PROBE_BRANCH=probe-under-test PROBE_RELEASE_CACHE=0 PROBE_TRACK=installed ./scripts/probe/run-bootstrap-probe.sh
+
   # phase-411 — tier 2 NIGHTLY, actually invoked.
   #
   # This file's header has said "the 07:00 cron is also where
