@@ -481,13 +481,13 @@ where it matters.
 | PR | item | note |
 | --- | --- | --- |
 | #927 | E1+E2 session plan | closes 1274. Re-armed by the poller once #918 landed; rebased onto main, 2 -> 1 commit |
-| #933 | E3 pipelined executor | closes 1266 and 1267. Rebased 4 -> 2 (C1 and its fix dropped by patch-id); still carries E1+E2 until #927 lands. Armed |
+| #933 | E3 pipelined executor | closes 1266 and 1267. Rebased 4 -> 1: C1 and its fix, then E1+E2 itself, all dropped by patch-id once they landed on main. Armed |
 
 ### In flight at this checkpoint
 
 | work | branch | state |
 | --- | --- | --- |
-| #1304 (A4) | `work/1304-installed-setup-provisions-without-a-checkout` | the agent stopped at the API session limit mid-change. Its tree is pushed as-is: A3's probe commit `b7ec5e55a`, two `wip(#1304)` commits (unreviewed, untested), and a fix to `cargo-target-spelling`'s no-triple arm — the WIP's rustup fallback defeated that PATH-only negative control, which is what first refused the push. No PR yet |
+| #1304 (A4) | `work/1304-installed-setup-provisions-without-a-checkout` | the agent stopped at the API session limit mid-change. Its tree is pushed as-is: A3's probe commit, two `wip(#1304)` commits (unreviewed, untested), and a fix to `cargo-target-spelling`'s no-triple arm — the WIP's rustup fallback defeated that PATH-only negative control, which is what first refused the push. No PR yet |
 
 ### What is left
 
