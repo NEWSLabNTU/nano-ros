@@ -118,6 +118,13 @@ use nros_orchestration_ir::qos_override::{
     history_spelling, parse_durability, parse_history, parse_reliability, reliability_spelling,
 };
 
+// phase-454 W8 -- `buffer:` and the derivation it selects. NOT in the module
+// above: `buffer` never reaches a `qos_overrides.*` parameter, no runtime folds
+// it into a `QoSProfile`, and it is not a QoS policy at all (RFC-0100 D9).
+use crate::queue_depth::{
+    BufferDiagnostic, BufferDiscipline, NoDefault, RateMilliHz, depth_default, diagnose,
+};
+
 /// Bumped when the shape of the emitted inventory changes incompatibly.
 /// A consumer that does not recognise the version must refuse, never guess.
 ///
@@ -161,7 +168,24 @@ use nros_orchestration_ir::qos_override::{
 /// keep_all` on some endpoint. A KEEP_ALL queue has no static bound, so a depth
 /// stated beside it prices nothing (RFC-0100 D6), and a reader that kept using
 /// the old list would size from a number that has stopped meaning what it said.
-pub const ENTITY_INVENTORY_SCHEMA_VERSION: u32 = 5;
+///
+/// **6** (phase-454 W8, RFC-0100 D9): the depth table's rows now have a
+/// PROVENANCE, and `NROS_ENTITY_DERIVED_DEPTHS` / `_COUNT` publish it. Bumps for
+/// the familiar reason and for one that is, again, not additive.
+///
+/// The familiar half: an absent `NROS_ENTITY_DERIVED_DEPTHS` in a version-5
+/// fragment is an older CLI's silence, not "this image derived no depth", and a
+/// reader that took it for the second would report a derived number as stated.
+///
+/// The half that is not additive: `NROS_ENTITY_DECLARED_DEPTHS`'s DEFINITION
+/// moved again. In version 5 every entry in it was a number a contract author
+/// wrote; from version 6 an entry may be one this CLI derived from a
+/// `buffer: queue` endpoint's publish and drain rates. Same variable, same
+/// shape, different warrant -- and a consumer that asserts against the list
+/// (rather than sizing from it) must now read the derived subset and exclude
+/// it. The in-tree asserting consumer already does, one function over: see
+/// [`EntityInventory::to_declared_qos_header`] and [`DepthSource`].
+pub const ENTITY_INVENTORY_SCHEMA_VERSION: u32 = 6;
 
 /// Canonical artifact name.
 pub const ENTITY_INVENTORY_JSON_NAME: &str = "nros_entity_inventory.json";
@@ -385,6 +409,27 @@ pub struct EntityDecl {
     pub durability: Option<QoSDurabilityPolicy>,
     /// phase-454 W3 -- `keep_last` / `keep_all`, or `None`.
     pub history: Option<QoSHistoryPolicy>,
+    /// phase-454 W8 -- `latest` / `queue`, or `None` for "nobody said".
+    ///
+    /// NOT a QoS policy and not a size (RFC-0100 D9): it is the FAULT MODE the
+    /// author declared for a `state: true` subscription. `None` must never read
+    /// as `Latest` even though `latest` is the schema's default when the key is
+    /// absent -- see [`crate::queue_depth::BufferDiscipline`].
+    pub buffer: Option<BufferDiscipline>,
+    /// phase-454 W8 -- how fast this endpoint's topic is published.
+    ///
+    /// The numerator of the queue-depth derivation. Read from the model's
+    /// `contracts.topics.<topic>.rate_hz`, or failing that from the
+    /// `min_rate_hz` the topic's publishers promise.
+    pub publish_rate: Option<RateMilliHz>,
+    /// phase-454 W8 -- how fast the consuming timer drains it.
+    ///
+    /// The denominator. Authored as `paths.<p>.trigger: { timer: { rate_hz } }`
+    /// and NOT carried by the SystemModel (issue 1339); what reaches this
+    /// reader today is the `min_rate_hz` of what the node's timer paths
+    /// publish, which is the model's own convention for a periodic path's rate
+    /// (`nros_orchestration_ir::mapper_input::pub_rate_hz`).
+    pub drain_rate: Option<RateMilliHz>,
 }
 
 impl EntityDecl {
@@ -405,6 +450,9 @@ impl EntityDecl {
             reliability: None,
             durability: None,
             history: None,
+            buffer: None,
+            publish_rate: None,
+            drain_rate: None,
         }
     }
 
@@ -1002,6 +1050,89 @@ pub struct DeclaredDepth {
     pub type_name: String,
     pub topic: String,
     pub depth: u32,
+    /// Where this number came from -- phase-454 W8.
+    pub source: DepthSource,
+}
+
+/// Which rung of RFC-0049's ladder a depth row came from -- phase-454 W8.
+///
+/// # Why a row has to carry this, and what breaks without it
+///
+/// The depth table has two consumers and they want OPPOSITE things from a
+/// derived default:
+///
+/// * `nros-node/build.rs::subs_arena` SIZES from it. A default is exactly what
+///   it wants -- that is the point of deriving one.
+/// * [`EntityInventory::to_declared_qos_header`] ASSERTS from it. Every row it
+///   emits becomes a `static_assert` that `NROS_SUBSCRIBE`'s own QoS must match,
+///   and a row that disagrees fails the BUILD naming the topic and both numbers.
+///
+/// A derived default reaching the second consumer would turn a default into a
+/// REQUIREMENT: an image that never stated a depth would suddenly have to spell
+/// this module's arithmetic at every call site or not compile, and raising the
+/// margin by one would break every such image. That is the ladder inverted --
+/// the derived rung dictating to the code instead of filling in behind it.
+///
+/// So the header filters to [`DepthSource::Stated`] and the arena does not.
+/// One column, two consumers, and the difference is stated rather than implied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DepthSource {
+    /// The contract stated `qos: { depth: N }` on this endpoint.
+    Stated,
+    /// Nobody stated one, and it was derived from the endpoint's publish and
+    /// drain rates because it declared `buffer: queue` (RFC-0100 D9).
+    DerivedFromRates,
+}
+
+impl DepthSource {
+    pub fn tag(self) -> &'static str {
+        match self {
+            DepthSource::Stated => "stated",
+            DepthSource::DerivedFromRates => "derived_from_rates",
+        }
+    }
+}
+
+/// One subscription's queue-depth default and what decided it -- phase-454 W8.
+///
+/// Carries the INPUTS beside the outcome on purpose. A row saying only "no
+/// default" sends an author to read the contract and guess which of three facts
+/// was missing; a row that also shows which rates arrived answers it. This is
+/// the same rule the `keep_all` refusal follows one view over -- name the
+/// endpoints, not the count.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueueDepthDefault {
+    pub topic: String,
+    pub type_name: Option<String>,
+    pub buffer: Option<BufferDiscipline>,
+    pub stated_depth: Option<u32>,
+    pub publish_rate: Option<RateMilliHz>,
+    pub drain_rate: Option<RateMilliHz>,
+    /// `Ok(depth)` when a default was derived; `Err` naming which rung stopped
+    /// it -- a stated depth above, a discipline that is not `queue`, or a rate
+    /// that never arrived.
+    pub outcome: Result<u32, NoDefault>,
+}
+
+impl QueueDepthDefault {
+    /// One line an author can act on. Names the topic, the outcome and, on a
+    /// refusal, the reason [`NoDefault`] gives for it.
+    pub fn line(&self) -> String {
+        match &self.outcome {
+            Ok(depth) => format!(
+                "{}: depth {depth} derived from {} in / {} drained ({})",
+                self.topic,
+                self.publish_rate
+                    .map(|r| r.to_string())
+                    .unwrap_or_else(|| "?".into()),
+                self.drain_rate
+                    .map(|r| r.to_string())
+                    .unwrap_or_else(|| "?".into()),
+                DepthSource::DerivedFromRates.tag(),
+            ),
+            Err(reason) => format!("{}: no derived depth -- {}", self.topic, reason.reason()),
+        }
+    }
 }
 
 /// Every declared depth in an image, plus how many endpoints did NOT state one.
@@ -1760,7 +1891,89 @@ impl EntityInventory {
             )
         }
 
+        // phase-454 W8 (RFC-0100 D9) -- the two RATES the queue-depth default
+        // divides, read from the model's own conventions.
+        //
+        // PUBLISH rate: the channel's negotiated rate first
+        // (`contracts.topics.<t>.rate_hz`), and the strongest promise its
+        // publishers make second (`min_rate_hz`). The topic rate leads because
+        // it is the CHANNEL's fact -- a topic with three publishers has one
+        // arrival rate at the subscriber and three promises upstream -- and
+        // `max` over the promises is the safe direction when there is no
+        // channel rate: over-stating the arrival rate over-sizes the queue,
+        // and under-stating it is the direction that ships a backlog.
+        //
+        // DRAIN rate: see `drain_rate_of` below. The model does not carry a
+        // path's trigger (issue 1339), so this is a derivation from what the
+        // node's timer paths PUBLISH, which is the same convention
+        // `nros_orchestration_ir::mapper_input::pub_rate_hz` already uses to
+        // give a periodic path its fire rate.
+        let min_rate_of = |ep: &str| -> Option<f64> {
+            model
+                .contracts
+                .pub_endpoints
+                .get(ep)
+                .and_then(|c| c.min_rate_hz)
+        };
+        let publish_rate_of =
+            |topic: &str, wiring: &ros_launch_manifest_model::TopicWiring| -> Option<RateMilliHz> {
+                if let Some(r) = model
+                    .contracts
+                    .topics
+                    .get(topic)
+                    .and_then(|t| t.rate_hz)
+                    .and_then(RateMilliHz::from_hz)
+                {
+                    return Some(r);
+                }
+                wiring
+                    .publishers
+                    .iter()
+                    .filter_map(|ep| min_rate_of(ep))
+                    .filter_map(RateMilliHz::from_hz)
+                    .max()
+            };
+        // A node's DRAIN rate: the rate of the timer paths it runs.
+        //
+        // A `node_paths` entry with an EMPTY `input` IS the periodic callback
+        // -- the model's own definition, and the same test `from_model` already
+        // uses to count a timer entity. Its RATE is not carried, so it is taken
+        // from what the path publishes, exactly as `mapper_input` takes it.
+        //
+        // `min` over a node's timer paths, and the direction is the opposite of
+        // the one above for the same reason: the SLOWEST drain is the one that
+        // lets the most backlog accumulate, so it is the conservative
+        // denominator. A node with one timer -- which is the shape the contract
+        // describes when it says "drained batch-wise by the consuming timer" --
+        // has one answer either way.
+        //
+        // Pairing a node's timer with a node's queue subscription is the layer
+        // 2 rule, not an invention here: the resolver's own `queue-drain-rate`
+        // check reads "node 'listener' timer path 'drain' rate_hz ... its
+        // 'buffer: queue' subscriptions' producer rates".
+        let mut drain_rate_by_node: std::collections::BTreeMap<String, RateMilliHz> =
+            std::collections::BTreeMap::new();
+        for (path_key, path) in &model.contracts.node_paths {
+            if !path.input.is_empty() {
+                continue;
+            }
+            let Some(rate) = path
+                .output
+                .iter()
+                .filter_map(|ep| min_rate_of(ep))
+                .filter_map(RateMilliHz::from_hz)
+                .min()
+            else {
+                continue;
+            };
+            drain_rate_by_node
+                .entry(node_of(path_key))
+                .and_modify(|r| *r = (*r).min(rate))
+                .or_insert(rate);
+        }
+
         for (topic, wiring) in &model.structure.topics {
+            let publish_rate = publish_rate_of(topic, wiring);
             for ep in &wiring.subscribers {
                 let (reliability, durability, history) = policies(sub_qos(ep));
                 per_node.entry(node_of(ep)).or_default().push(EntityDecl {
@@ -1768,6 +1981,26 @@ impl EntityInventory {
                     reliability,
                     durability,
                     history,
+                    // phase-454 W8 -- `buffer:` is NOT read here, because there
+                    // is nothing to read. `SubContract` in the pinned
+                    // `ros-launch-manifest` (v0.1.35) has no `buffer` field:
+                    // the contract states it, the parser validates it, the
+                    // resolver REASONS about it -- it emits a
+                    // `[queue-drain-rate]` warning comparing exactly the two
+                    // rates above -- and then writes a `sub_endpoints` entry
+                    // without it. Issue 1339; the tripwire that goes red the
+                    // day it lands is
+                    // `tests/contract_queue_buffer_reaches_the_model.rs`.
+                    //
+                    // Left explicitly `None` and NOT defaulted to `Latest`
+                    // even though `latest` is the schema's default for an
+                    // absent key: "the author wrote latest" and "this reader
+                    // cannot see what the author wrote" are different claims,
+                    // and defaulting here would make the second one silently
+                    // print as the first in every diagnostic below.
+                    buffer: None,
+                    publish_rate,
+                    drain_rate: drain_rate_by_node.get(&node_of(ep)).copied(),
                     ..EntityDecl::bare(
                         EntityKind::Subscription,
                         Some(wiring.msg_type.clone()),
@@ -2382,12 +2615,34 @@ impl EntityInventory {
                 if !e.kind.carries_qos_depth() {
                     continue;
                 }
-                match (e.depth, &e.type_name, &e.name) {
-                    (Some(depth), Some(t), Some(n)) => rows.push(DeclaredDepth {
+                // phase-454 W8 -- RFC-0049's ladder, in order. A STATED depth
+                // is taken first and nothing below it runs; only where nobody
+                // stated one does the rate derivation get a turn, and only for
+                // an endpoint that declared `buffer: queue`. Every other
+                // endpoint takes the `None` arm exactly as it did before this
+                // wave, which is what makes an image with no queue endpoint
+                // byte-identical (`depth_default` returns `NotAQueue` for a
+                // `latest` endpoint and for one that stated no discipline).
+                //
+                // `keep_all` never reaches here: the refusal above returns
+                // first, for the whole table. That ordering is the W3 contract
+                // this wave has to honour -- a KEEP_ALL queue has no static
+                // bound, and deriving a number for one would be the same
+                // UNDER-size W3 refuses, arrived at by arithmetic instead of by
+                // believing a stated depth.
+                let resolved = match e.depth {
+                    Some(depth) => Some((depth, DepthSource::Stated)),
+                    None => depth_default(e.buffer, None, e.publish_rate, e.drain_rate)
+                        .ok()
+                        .map(|depth| (depth, DepthSource::DerivedFromRates)),
+                };
+                match (resolved, &e.type_name, &e.name) {
+                    (Some((depth, source)), Some(t), Some(n)) => rows.push(DeclaredDepth {
                         kind: e.kind,
                         type_name: t.clone(),
                         topic: n.clone(),
                         depth,
+                        source,
                     }),
                     // A depth with no type or no topic cannot be JOINED to
                     // anything -- the table is keyed `(type, topic)` and the
@@ -2420,6 +2675,77 @@ impl EntityInventory {
             undeclared_subscriptions,
             undeclared_publishers,
         }
+    }
+
+    /// Every endpoint's queue-depth default, DERIVED OR NOT -- phase-454 W8.
+    ///
+    /// Sibling of [`Self::declared_depths`] and deliberately not folded into
+    /// it, for the reason [`Self::declared_qos`] is separate: this view's
+    /// population is different. The depth table carries the endpoints that HAVE
+    /// a depth; this one carries the endpoints that could have been defaulted
+    /// and says, for each, what happened -- which is the only place an author
+    /// can read WHY an endpoint got no default.
+    ///
+    /// That "why" is the whole of RFC-0100 D9's acceptance 3. Where either rate
+    /// is absent there is no default, and the absence has to be VISIBLE: a
+    /// derivation that silently declines is indistinguishable from one that was
+    /// never asked, which is the shape this campaign keeps paying for.
+    ///
+    /// Restricted to SUBSCRIPTIONS. `buffer:` is defined only on a subscriber
+    /// endpoint (`parse_buffer` in the manifest is a parse-time error anywhere
+    /// else), and a publisher has no queue a timer drains.
+    pub fn queue_depth_defaults(&self) -> Vec<QueueDepthDefault> {
+        let mut out = Vec::new();
+        for c in self.components() {
+            for e in c.declaration.entities() {
+                if e.kind != EntityKind::Subscription {
+                    continue;
+                }
+                let Some(topic) = e.name.as_deref() else {
+                    continue;
+                };
+                out.push(QueueDepthDefault {
+                    topic: topic.to_string(),
+                    type_name: e.type_name.clone(),
+                    buffer: e.buffer,
+                    stated_depth: e.depth,
+                    publish_rate: e.publish_rate,
+                    drain_rate: e.drain_rate,
+                    outcome: depth_default(e.buffer, e.depth, e.publish_rate, e.drain_rate),
+                });
+            }
+        }
+        out.sort_by(|a, b| a.topic.cmp(&b.topic));
+        out
+    }
+
+    /// The two `buffer:` diagnostics -- phase-454 W8, RFC-0100 D9.
+    ///
+    /// WARNINGS, never errors. See [`BufferDiagnostic`]: both shapes are legal
+    /// and a legitimate image can want either, so this returns prose for a
+    /// caller to print and has no error channel at all. Making either fatal
+    /// would be the build deciding an application question.
+    ///
+    /// Empty for every image that states no `buffer:` -- which is every image
+    /// in this tree today, because the SystemModel does not carry the key
+    /// (issue 1339). That is why nothing in the warning stream moves and why
+    /// the byte-identical proof holds.
+    pub fn buffer_diagnostics(&self) -> Vec<BufferDiagnostic> {
+        let mut out = Vec::new();
+        for c in self.components() {
+            for e in c.declaration.entities() {
+                if !e.kind.carries_qos_depth() {
+                    continue;
+                }
+                let Some(topic) = e.name.as_deref() else {
+                    continue;
+                };
+                if let Some(d) = diagnose(e.kind.tag(), topic, e.buffer, e.depth) {
+                    out.push(d);
+                }
+            }
+        }
+        out
     }
 
     /// The other three QoS policies -- phase-454 W3, issue 1256.
@@ -2581,9 +2907,16 @@ impl EntityInventory {
             DeclaredDepths::Resolved {
                 rows, undeclared, ..
             } => {
+                // phase-454 W8 -- STATED rows only. A derived default sizes the
+                // arena and must never become a `static_assert`: an image that
+                // declared no depth would then have to spell this CLI's
+                // arithmetic at every `NROS_SUBSCRIBE` or fail to compile, and
+                // moving the margin by one slot would break every such image.
+                // See [`DepthSource`], which exists for exactly this split.
                 let subs: Vec<&DeclaredDepth> = rows
                     .iter()
                     .filter(|r| r.kind == EntityKind::Subscription)
+                    .filter(|r| r.source == DepthSource::Stated)
                     .collect();
                 s.push_str("#define NROS_DECLARED_QOS_STATUS \"resolved\"\n");
                 s.push_str(&format!(
@@ -2675,6 +3008,24 @@ impl EntityInventory {
                             // is built to avoid.
                             if let Some(d) = e.depth {
                                 r.insert("depth".into(), d.into());
+                            }
+                            // phase-454 W8 -- present ONLY when the endpoint
+                            // carries them, for the reason `depth` is: a
+                            // `"buffer": null` on every row would make "nobody
+                            // said" and "said latest" the same JSON, and
+                            // `latest` is the schema's DEFAULT, so that
+                            // collapse would read as a statement.
+                            if let Some(b) = e.buffer {
+                                r.insert(
+                                    "buffer".into(),
+                                    crate::queue_depth::buffer_spelling(b).into(),
+                                );
+                            }
+                            if let Some(p) = e.publish_rate {
+                                r.insert("publish_rate_hz".into(), p.hz().into());
+                            }
+                            if let Some(d) = e.drain_rate {
+                                r.insert("drain_rate_hz".into(), d.hz().into());
                             }
                             serde_json::Value::Object(r)
                         })
@@ -3309,6 +3660,17 @@ fn render_declared_depths(d: &DeclaredDepths) -> String {
                     .collect()
             };
             let subs = triples(EntityKind::Subscription);
+            // phase-454 W8 -- which of those rows were DERIVED rather than
+            // stated. The main list keeps carrying both, because its one
+            // consumer (`subs_arena`) wants the size and a default is exactly
+            // what a default is for. This is the provenance beside it, so a
+            // reader that needs to distinguish them can, and nobody has to
+            // recover it by diffing against the contract.
+            let derived: Vec<String> = rows
+                .iter()
+                .filter(|r| r.source == DepthSource::DerivedFromRates)
+                .map(|r| format!("{}|{}={}", r.type_name, r.topic, r.depth))
+                .collect();
             s.push_str(&format!(
                 "set(NROS_ENTITY_DECLARED_DEPTHS \"{}\")\n",
                 subs.join(";")
@@ -3343,6 +3705,28 @@ fn render_declared_depths(d: &DeclaredDepths) -> String {
             ));
             s.push_str(&format!(
                 "set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER {undeclared_publishers})\n"
+            ));
+            // phase-454 W8 (RFC-0100 D9) -- the DERIVED subset, always emitted.
+            //
+            // Emitted even when empty, which is every image today: an empty
+            // list is the published fact "this image derived none", and leaving
+            // the variable out would make it indistinguishable from an older
+            // CLI that could not derive any. That distinction is the whole
+            // reason the schema version below bumps.
+            s.push_str(
+                "# phase-454 W8 -- which rows above were DERIVED from a `buffer: queue`\n\
+                 # endpoint's publish and drain rates rather than STATED by the contract\n\
+                 # (RFC-0100 D9). They are in the list above because a default is what the\n\
+                 # arena wants; they are NOT in the declared-QoS header, because a default\n\
+                 # must never become a `static_assert` a call site has to match.\n",
+            );
+            s.push_str(&format!(
+                "set(NROS_ENTITY_DERIVED_DEPTHS \"{}\")\n",
+                derived.join(";")
+            ));
+            s.push_str(&format!(
+                "set(NROS_ENTITY_DERIVED_DEPTH_COUNT {})\n",
+                derived.len()
             ));
         }
     }
@@ -6272,5 +6656,450 @@ structure:
             EntityInventory::from_model("test", &m).is_none(),
             "no contract authored means unanswered, not zero"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // phase-454 W8 (RFC-0100 D9) -- `buffer:` earns its keep.
+    // -----------------------------------------------------------------------
+
+    /// An image of one subscription, stated field by field.
+    ///
+    /// Built by hand rather than resolved, and that is a STATEMENT about what
+    /// can be resolved: `SubContract` in the pinned `ros-launch-manifest` has no
+    /// `buffer` field, so no contract on earth produces a `queue` endpoint in a
+    /// SystemModel today (issue 1339, and
+    /// `tests/contract_queue_buffer_reaches_the_model.rs` measures it against
+    /// the real resolver). These tests exercise the ladder, the arithmetic and
+    /// both diagnostics over the rows the reader WILL build the day the field
+    /// travels; the rate halves of the same rows are resolved for real, from a
+    /// contract, in `the_model_supplies_both_rates_a_queue_default_would_divide`
+    /// below.
+    fn queue_image(
+        buffer: Option<BufferDiscipline>,
+        depth: Option<u32>,
+        publish_hz: Option<f64>,
+        drain_hz: Option<f64>,
+    ) -> EntityInventory {
+        queue_image_with_history(
+            buffer,
+            depth,
+            publish_hz,
+            drain_hz,
+            QoSHistoryPolicy::KeepLast,
+        )
+    }
+
+    fn queue_image_with_history(
+        buffer: Option<BufferDiscipline>,
+        depth: Option<u32>,
+        publish_hz: Option<f64>,
+        drain_hz: Option<f64>,
+        history: QoSHistoryPolicy,
+    ) -> EntityInventory {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(ComponentEntities {
+            pkg: "listener_pkg".into(),
+            component: "listener".into(),
+            class: String::new(),
+            declaration: Declaration::Stated(vec![EntityDecl {
+                depth,
+                history: Some(history),
+                buffer,
+                publish_rate: publish_hz.and_then(RateMilliHz::from_hz),
+                drain_rate: drain_hz.and_then(RateMilliHz::from_hz),
+                ..EntityDecl::bare(
+                    EntityKind::Subscription,
+                    Some("std_msgs/msg/Int32".into()),
+                    Some("/chatter".into()),
+                )
+            }]),
+        });
+        inv
+    }
+
+    fn only_row(inv: &EntityInventory) -> DeclaredDepth {
+        inv.declared_depths()
+            .rows()
+            .expect("the table resolves")
+            .first()
+            .expect("the image has one depth-carrying row")
+            .clone()
+    }
+
+    /// Every `set(` line of an image's fragment, for a byte comparison.
+    fn set_lines(inv: &EntityInventory) -> Vec<String> {
+        inv.to_cmake()
+            .lines()
+            .filter(|l| l.starts_with("set("))
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// ACCEPTANCE 1 -- a `queue` endpoint with both rates and no stated depth
+    /// gets the derived default, and it reaches the DEPTH TABLE the arena
+    /// sizes from.
+    ///
+    /// 50 Hz in, 10 Hz drained: five arrivals a period plus the straggler slot
+    /// the unaligned-window bound forces, so 6. The arithmetic is asserted on
+    /// the ROW rather than on `derive_queue_depth` alone, because a correct
+    /// function nothing calls is the vacuous shape this campaign keeps finding.
+    #[test]
+    fn a_queue_endpoint_with_both_rates_gets_the_derived_default() {
+        let inv = queue_image(Some(BufferDiscipline::Queue), None, Some(50.0), Some(10.0));
+        let row = only_row(&inv);
+        assert_eq!(row.depth, 6, "ceil(50 / 10) + 1");
+        assert_eq!(
+            row.source,
+            DepthSource::DerivedFromRates,
+            "the row must say it was derived, or a consumer that asserts will assert on it"
+        );
+        // ...and it is NOT counted as undeclared any more: the endpoint has a
+        // depth now, which is the point of a default.
+        let DeclaredDepths::Resolved {
+            undeclared_subscriptions,
+            ..
+        } = inv.declared_depths()
+        else {
+            panic!("the table resolves");
+        };
+        assert_eq!(undeclared_subscriptions, 0);
+        let cmake = inv.to_cmake();
+        assert!(
+            cmake.contains("set(NROS_ENTITY_DECLARED_DEPTHS \"std_msgs/msg/Int32|/chatter=6\")\n"),
+            "{cmake}"
+        );
+        assert!(
+            cmake.contains("set(NROS_ENTITY_DERIVED_DEPTHS \"std_msgs/msg/Int32|/chatter=6\")\n"),
+            "the provenance is published beside it: {cmake}"
+        );
+    }
+
+    /// ACCEPTANCE 2 -- a stated depth beats the derived default, ALL THE WAY
+    /// THROUGH.
+    ///
+    /// The unit test in `queue_depth` proves the ladder at the arithmetic; this
+    /// one proves nothing downstream undoes it. The rates are the same pair
+    /// that derives 6, so a reader that consulted them at all would be visible.
+    #[test]
+    fn a_stated_depth_beats_the_derived_default_in_the_table() {
+        let inv = queue_image(
+            Some(BufferDiscipline::Queue),
+            Some(3),
+            Some(50.0),
+            Some(10.0),
+        );
+        let row = only_row(&inv);
+        assert_eq!(row.depth, 3, "the stated 3, not the derived 6");
+        assert_eq!(row.source, DepthSource::Stated);
+    }
+
+    /// ACCEPTANCE 3 -- either rate absent means NO default, and the reason is
+    /// VISIBLE rather than merely true.
+    ///
+    /// "Visible" is the bar this campaign sets: a derivation that declines
+    /// quietly is indistinguishable from one that never ran, which is how a
+    /// green vacuous check survives. So the assertion is on the prose a user
+    /// reads, not only on the absence of a row.
+    #[test]
+    fn a_missing_rate_leaves_the_endpoint_undeclared_with_a_readable_reason() {
+        for (publish, drain, want) in [
+            (None, Some(10.0), NoDefault::NoPublishRate),
+            (Some(50.0), None, NoDefault::NoDrainRate),
+        ] {
+            let inv = queue_image(Some(BufferDiscipline::Queue), None, publish, drain);
+            let DeclaredDepths::Resolved {
+                rows,
+                undeclared_subscriptions,
+                ..
+            } = inv.declared_depths()
+            else {
+                panic!("the table resolves");
+            };
+            assert!(rows.is_empty(), "no default may be invented: {rows:?}");
+            assert_eq!(
+                undeclared_subscriptions, 1,
+                "the endpoint stays counted as undeclared, so a size consumer still refuses"
+            );
+
+            let report = inv.queue_depth_defaults();
+            let row = report.first().expect("the endpoint is reported");
+            assert_eq!(row.outcome, Err(want.clone()));
+            let line = row.line();
+            assert!(line.contains("/chatter"), "{line}");
+            assert!(
+                line.contains("no derived depth"),
+                "the line must say a default was not produced: {line}"
+            );
+            assert!(
+                line.contains("rate_hz"),
+                "and name the contract key that would produce one: {line}"
+            );
+        }
+    }
+
+    /// ACCEPTANCE 4 -- both diagnostics fire on their shapes, and both are
+    /// WARNINGS: `buffer_diagnostics` has no error channel, and neither shape
+    /// changes any number the image sizes from.
+    #[test]
+    fn both_buffer_diagnostics_fire_and_neither_is_an_error() {
+        let queue_at_one = queue_image(Some(BufferDiscipline::Queue), Some(1), None, None);
+        let d = queue_at_one.buffer_diagnostics();
+        assert_eq!(d.len(), 1, "{d:?}");
+        assert!(d[0].message().contains("buffer: queue"), "{:?}", d[0]);
+        assert!(d[0].message().contains("Not an error"), "{:?}", d[0]);
+        // The stated 1 still sizes the image -- a diagnostic is not a refusal.
+        assert_eq!(only_row(&queue_at_one).depth, 1);
+        assert_eq!(queue_at_one.declared_depths().tag(), "resolved");
+
+        let latest_at_ten = queue_image(Some(BufferDiscipline::Latest), Some(10), None, None);
+        let d = latest_at_ten.buffer_diagnostics();
+        assert_eq!(d.len(), 1, "{d:?}");
+        assert!(d[0].message().contains("buffer: latest"), "{:?}", d[0]);
+        assert!(d[0].message().contains("Not an error"), "{:?}", d[0]);
+        assert_eq!(only_row(&latest_at_ten).depth, 10);
+        assert_eq!(latest_at_ten.declared_depths().tag(), "resolved");
+
+        // The agreeing shapes are silent, which is what keeps the warning
+        // stream worth reading.
+        for (buffer, depth) in [(BufferDiscipline::Queue, 6), (BufferDiscipline::Latest, 1)] {
+            assert!(
+                queue_image(Some(buffer), Some(depth), None, None)
+                    .buffer_diagnostics()
+                    .is_empty(),
+                "{buffer:?} at depth {depth} is not a contradiction"
+            );
+        }
+    }
+
+    /// A `keep_all` endpoint gets NO derived depth -- the W3 refusal comes
+    /// first, for the whole table.
+    ///
+    /// The one case where this wave could have re-created the defect W3 fixed,
+    /// by a different route. W3 refuses a depth STATED beside `keep_all`
+    /// because a KEEP_ALL queue has no static bound; a depth this CLI DERIVED
+    /// for one would be the same under-size arrived at by arithmetic, and it
+    /// would carry more authority, not less.
+    #[test]
+    fn a_keep_all_queue_endpoint_is_refused_and_never_derived() {
+        let inv = queue_image_with_history(
+            Some(BufferDiscipline::Queue),
+            None,
+            Some(50.0),
+            Some(10.0),
+            QoSHistoryPolicy::KeepAll,
+        );
+        let d = inv.declared_depths();
+        assert_eq!(d.tag(), "refused", "keep_all refuses the whole depth table");
+        assert!(d.rows().is_none(), "and publishes no rows at all");
+        let DeclaredDepths::Refused { reason } = d else {
+            panic!("refused above");
+        };
+        assert!(
+            reason.contains("keep_all") && reason.contains("NO STATIC BOUND"),
+            "the W3 reason, not a W8 one: {reason}"
+        );
+        // The control: the identical image with `keep_last` DOES derive, so the
+        // refusal above is the history and not a missing input.
+        assert_eq!(
+            only_row(&queue_image(
+                Some(BufferDiscipline::Queue),
+                None,
+                Some(50.0),
+                Some(10.0)
+            ))
+            .depth,
+            6
+        );
+    }
+
+    /// ACCEPTANCE 5 -- an image with NO `queue` endpoint is byte-identical.
+    ///
+    /// The strong form, on the whole fragment rather than on the depth lines:
+    /// every `set(` line the image emitted must agree, and the only variables
+    /// that may differ are the two W8 adds. This is W3's own proof shape, which
+    /// caught the coupling it existed to rule out.
+    ///
+    /// The CONTROLS matter more than the base case. An image with no rates is
+    /// trivially unchanged; the ones that could regress are the image that HAS
+    /// both rates and no `buffer:` -- which is every image in this tree today,
+    /// since the model drops the key -- and the image that declared
+    /// `buffer: latest`. Both must emit the same bytes as the image with no
+    /// rates at all, or a default is leaking into endpoints that never asked.
+    #[test]
+    fn an_image_with_no_queue_endpoint_is_byte_identical() {
+        let base = set_lines(&queue_image(None, Some(3), None, None));
+        for (label, inv) in [
+            (
+                "rates, no discipline",
+                queue_image(None, Some(3), Some(50.0), Some(10.0)),
+            ),
+            (
+                "buffer: latest with rates",
+                queue_image(
+                    Some(BufferDiscipline::Latest),
+                    Some(3),
+                    Some(50.0),
+                    Some(10.0),
+                ),
+            ),
+            (
+                "no depth and no discipline, rates present",
+                queue_image(None, None, Some(50.0), Some(10.0)),
+            ),
+        ] {
+            if label.starts_with("no depth") {
+                // This one legitimately differs from `base` (no depth stated),
+                // so it is compared against its own pre-W8 shape instead: the
+                // endpoint must stay UNDECLARED, with no row and no derived
+                // entry.
+                let DeclaredDepths::Resolved {
+                    rows,
+                    undeclared_subscriptions,
+                    ..
+                } = inv.declared_depths()
+                else {
+                    panic!("the table resolves");
+                };
+                assert!(rows.is_empty(), "{label}: {rows:?}");
+                assert_eq!(undeclared_subscriptions, 1, "{label}");
+                continue;
+            }
+            assert_eq!(
+                set_lines(&inv),
+                base,
+                "{label}: an image with no `buffer: queue` endpoint must emit the same bytes"
+            );
+        }
+
+        // And the new variables are PRESENT and EMPTY on such an image rather
+        // than absent: an absent list would be indistinguishable from an older
+        // CLI's silence, which is exactly why the schema version bumped.
+        assert!(
+            base.iter()
+                .any(|l| l == "set(NROS_ENTITY_DERIVED_DEPTHS \"\")"),
+            "{base:?}"
+        );
+        assert!(
+            base.iter()
+                .any(|l| l == "set(NROS_ENTITY_DERIVED_DEPTH_COUNT 0)"),
+            "{base:?}"
+        );
+    }
+
+    /// A DERIVED depth sizes the arena and never reaches the compile-time
+    /// assertion table.
+    ///
+    /// The hazard this wave had to avoid, and it is not hypothetical: every row
+    /// `to_declared_qos_header` emits becomes a `static_assert` that
+    /// `NROS_SUBSCRIBE`'s own QoS must match. A derived default landing there
+    /// would turn a DEFAULT into a REQUIREMENT -- an image that stated no depth
+    /// would have to spell this CLI's arithmetic at every call site or fail to
+    /// compile, and moving `QUEUE_DEPTH_MARGIN` by one slot would break every
+    /// such image at once. The ladder inverted.
+    #[test]
+    fn a_derived_depth_sizes_but_never_asserts() {
+        let derived = queue_image(Some(BufferDiscipline::Queue), None, Some(50.0), Some(10.0));
+        assert_eq!(only_row(&derived).depth, 6, "it DID size");
+        let h = derived.to_declared_qos_header();
+        // `#define`, not the bare name: the "no table" branch's own prose says
+        // "NROS_DECLARED_QOS_ROWS stays undefined", and matching that sentence
+        // would make this assertion pass on a header that DID define the macro.
+        assert!(
+            !h.contains("#define NROS_DECLARED_QOS_ROWS"),
+            "a derived depth must emit NO assertion row: {h}"
+        );
+        assert!(
+            h.contains("stays undefined"),
+            "and it takes the no-table branch, which says so: {h}"
+        );
+        assert!(
+            h.contains("NROS_DECLARED_QOS_STATUS \"resolved\""),
+            "the table still resolved -- it is the ROWS that are withheld: {h}"
+        );
+        // The control: the same image with the depth STATED does emit one, so
+        // the assertion above cannot pass merely because the header is broken.
+        let h = queue_image(Some(BufferDiscipline::Queue), Some(6), None, None)
+            .to_declared_qos_header();
+        assert!(h.contains("#define NROS_DECLARED_QOS_ROWS"), "{h}");
+        assert!(h.contains(", 6)"), "{h}");
+    }
+
+    /// The two rates the MODEL does carry reach the endpoint row.
+    ///
+    /// Not the whole derivation -- `buffer` cannot arrive (issue 1339) -- but
+    /// the two halves that can, read by the model's own conventions: the
+    /// channel's `contracts.topics.<t>.rate_hz` for the publish rate, and the
+    /// `min_rate_hz` of what the node's timer path publishes for the drain
+    /// rate. Without this, every `NoDefault` in this wave would read
+    /// `NoPublishRate` forever -- a reason that is true and useless.
+    #[test]
+    fn the_model_supplies_both_rates_a_queue_default_would_divide() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: s.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+      sub: [/listener/chatter]
+    /status:
+      type: std_msgs/msg/Int32
+      pub: [/listener/status]
+      sub: []
+contracts:
+  pub_endpoints:
+    /listener/status:
+      min_rate_hz: 10.0
+  sub_endpoints:
+    /listener/chatter:
+      state: true
+  node_paths:
+    /listener/drain:
+      output: [/listener/status]
+  topics:
+    /chatter:
+      rate_hz: 50.0
+"#,
+        );
+        let inv = EntityInventory::from_model("test", &m).expect("model describes wiring");
+        let sub = inv
+            .components()
+            .iter()
+            .flat_map(|c| c.declaration.entities())
+            .find(|e| e.kind == EntityKind::Subscription)
+            .expect("the listener subscribes")
+            .clone();
+        assert_eq!(
+            sub.publish_rate,
+            RateMilliHz::from_hz(50.0),
+            "the channel rate is the publish rate"
+        );
+        assert_eq!(
+            sub.drain_rate,
+            RateMilliHz::from_hz(10.0),
+            "the node's timer path publishes at 10 Hz, so that is its drain rate"
+        );
+        // And the discipline is the half that did NOT arrive, which is the
+        // whole of issue 1339. Asserted here so that the day it does arrive,
+        // this test says where to wire it.
+        assert_eq!(
+            sub.buffer, None,
+            "SubContract carries no `buffer` -- see issue 1339"
+        );
+        // So there is no default, and the REASON names the discipline rather
+        // than a rate, because both rates are present.
+        let row = inv
+            .queue_depth_defaults()
+            .into_iter()
+            .find(|r| r.topic == "/chatter")
+            .expect("the subscription is reported");
+        assert_eq!(row.outcome, Err(NoDefault::NotAQueue));
     }
 }

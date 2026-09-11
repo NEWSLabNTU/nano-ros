@@ -241,7 +241,19 @@ include_guard(GLOBAL)
 # can now say `refused` because an endpoint declared `history: keep_all`, and a
 # version-4 reader that had never seen that reason would keep sizing from a
 # depth that has stopped bounding anything.
-set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED 5 CACHE INTERNAL
+# **6** (phase-454 W8, RFC-0100 D9) gave the depth rows a PROVENANCE.
+# `NROS_ENTITY_DERIVED_DEPTHS` and `NROS_ENTITY_DERIVED_DEPTH_COUNT` name the
+# subset of `NROS_ENTITY_DECLARED_DEPTHS` that this CLI DERIVED, from a
+# `buffer: queue` endpoint's publish and drain rates, rather than read off a
+# contract. Bumps for the usual reason -- an absent list in a version-5 fragment
+# is an older CLI's silence, not "nothing was derived" -- and for one that is
+# not additive: `NROS_ENTITY_DECLARED_DEPTHS`' own DEFINITION widened, from "the
+# numbers an author wrote" to "the numbers this image will size from, however
+# they were arrived at". A consumer that SIZES from the list is unaffected and
+# is the reason the derived rows are in it at all; a consumer that ASSERTS
+# against it must subtract the derived subset, or it turns a default into a
+# requirement every call site has to match.
+set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED 6 CACHE INTERNAL
     "phase-403 W9: the nros_entity_inventory fragment schema this tree reads")
 
 # nros_entity_inventory_knobs_file(<out_var>)
