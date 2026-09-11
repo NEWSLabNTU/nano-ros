@@ -49,6 +49,12 @@ pub mod leaf_take_buffer;
 /// that decides an image's declared counts, run BEFORE any configure so a
 /// reader early in one sees the final answer on its first pass.
 pub mod resolve;
+/// phase-454 W4 (RFC-0100 D4) — the PRODUCER of `build/nros/sizing/<entry>.toml`.
+///
+/// Joins the three inventories above into the one artifact every backend reads.
+/// The schema and the reader are `nros-sizing-descriptor`, a leaf crate, because
+/// most of the consumers are build scripts that cannot depend on this one.
+pub mod sizing_descriptor;
 // Issue 0363 — the freshness predicate, shared verbatim with `build.rs` via
 // `include!`. One implementation: the build embeds a stamp, the runtime
 // recomputes it. Replaces the mtime comparison that fired on every rebase.
@@ -134,12 +140,16 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
         // cwd question is meaningless there; the STALENESS guard still applies.
         // phase-445 W3 added `LeafSystem`: `find_package(nano_ros)` asks it for
         // a C/C++ leaf's deployment from its build directory.
+        // phase-454 W4 added `SizingDescriptor`: `nros_sizing_descriptor_read()`
+        // asks it for the RFC-0100 D4 artifact at configure time, from whatever
+        // build directory the consumer configured in.
         cmd::ws::Sub::Providers(_)
         | cmd::ws::Sub::Order(_)
         | cmd::ws::Sub::BoardFacts(_)
         | cmd::ws::Sub::EntityFacts(_)
         | cmd::ws::Sub::EntityInventory(_)
         | cmd::ws::Sub::LeafSystem(_)
+        | cmd::ws::Sub::SizingDescriptor(_)
         | cmd::ws::Sub::RmwDispatch(_) => "ws-build",
         _ => "ws",
     }

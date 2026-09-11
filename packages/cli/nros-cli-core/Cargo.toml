@@ -80,6 +80,11 @@ nros-orchestration-ir = { path = "../../core/nros-orchestration-ir" }
 # the workspace boundary, same as nros-orchestration-ir above: ONE table, read
 # by this verb, by nros-tests, and (through the verb) by cmake and bash.
 nros-cargo-profile = { path = "../../tooling/nros-cargo-profile" }
+# phase-454 W4 (RFC-0100 D4) — the sizing descriptor's SCHEMA and reader. Same
+# boundary crossing and the same reason: this crate WRITES the artifact and
+# every consumer (the executor's build script, each backend's, cmake through the
+# verb) READS it, so the schema cannot live in either of them.
+nros-sizing-descriptor = { path = "../../tooling/nros-sizing-descriptor" }
 # phase-290 W4 — the RFC-0049 platform/board knob resolver for `nros config explain`.
 nros-board-common = { path = "../../boards/nros-board-common", features = ["build-helpers"] }
 
