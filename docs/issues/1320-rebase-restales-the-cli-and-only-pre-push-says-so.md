@@ -74,6 +74,18 @@ commits, then 29, then 10):
 The second and third incidents cost a push cycle each, and neither message said
 so.
 
+**A fourth, later the same day, and it corrects the framing above.** It was not
+a rebase: editing `nros-cli-core/src/codegen/entry/emit_c.rs` and two jinja packs
+(phase-444 W6) is a CLI-source change, so the CLI went stale by ordinary work.
+`check-fast` reported the same `NanoRosNodeRegister.cmake:1542`, and
+`just setup-cli` cleared it.
+
+So the trigger is **any change to a CLI source**, not just a rebase — which
+widens the case for fix (1) below rather than narrowing it. A contributor
+editing codegen is exactly the person who should be told "your CLI is stale" in
+the lane they are about to push through, and is exactly the person who gets a
+cmake error about the QoS header machinery instead.
+
 ## Why this is the phase-450 shape and not just an annoyance
 
 A gate whose reach is narrower than its rule is green while its defect is
