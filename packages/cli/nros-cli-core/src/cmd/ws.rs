@@ -4862,7 +4862,6 @@ fn leaf_to_root_prefix(leaf_dir: &Path, nano_ros_root: &Path) -> Option<String> 
     Some("../".repeat(depth))
 }
 
-
 /// The `[patch.crates-io]` rows a board descriptor declares, as
 /// `(crate, leaf-relative path)` — sync's managed-entry shape.
 ///
@@ -4895,16 +4894,6 @@ fn board_patch_rows(cargo_config: &str, leaf_prefix: &str) -> Result<Vec<(String
     out.sort();
     Ok(out)
 }
-
-
-
-
-
-
-
-
-
-
 
 /// Pure DOM transform behind [`write_patch_config`]: given the existing
 /// `.cargo/config.toml` text (empty string if absent) + the managed entries, return
@@ -6471,26 +6460,18 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
         // identical. Both spellings are therefore stable, and the old
         // tight/spaced distinction is moot.
         let spaced_single = "include = [ \"../nros-patch.toml\"]\n";
-        let only_managed = render_patch_config_with(
-            spaced_single,
-            &mng(&[]),
-            Some("../nros-patch.toml"),
-            false,
-        )
-        .unwrap();
+        let only_managed =
+            render_patch_config_with(spaced_single, &mng(&[]), Some("../nros-patch.toml"), false)
+                .unwrap();
         assert!(
             only_managed.starts_with(spaced_single.trim_end()),
             "membership unchanged: sync must not renormalise the spelling:\n{only_managed}"
         );
 
         let spaced_pair = "include = [ \"../nros-patch.toml\", \"mine.toml\"]\n";
-        let with_survivor = render_patch_config_with(
-            spaced_pair,
-            &mng(&[]),
-            Some("../nros-patch.toml"),
-            false,
-        )
-        .unwrap();
+        let with_survivor =
+            render_patch_config_with(spaced_pair, &mng(&[]), Some("../nros-patch.toml"), false)
+                .unwrap();
         assert!(
             with_survivor.starts_with(spaced_pair.trim_end()),
             "a survivor keeps the array's decor, so this leaf never churns:\n{with_survivor}"
@@ -6505,8 +6486,7 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
         // output). Membership is unchanged here, so the bytes must be too.
         let tight = "include = [\"../nros-patch.toml\", \"mine.toml\"]\n";
         let unchanged =
-            render_patch_config_with(tight, &mng(&[]), Some("../nros-patch.toml"), false)
-                .unwrap();
+            render_patch_config_with(tight, &mng(&[]), Some("../nros-patch.toml"), false).unwrap();
         assert!(
             unchanged.starts_with(tight.trim_end()),
             "membership unchanged, so the array must be byte-identical:\n  was: {tight}  now: {unchanged}"
@@ -7046,8 +7026,7 @@ mod search_path_tests {
             assert!(!out.contains(stale), "stale include survived:\n{out}");
         }
         // A user's own include entry is not a retired one and survives.
-        let out =
-            render_patch_config_with("include = [\"mine.toml\"]\n", &[], None, true).unwrap();
+        let out = render_patch_config_with("include = [\"mine.toml\"]\n", &[], None, true).unwrap();
         assert!(out.contains("mine.toml"), "{out}");
     }
 }

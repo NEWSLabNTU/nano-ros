@@ -494,14 +494,16 @@ fn env_table(
     })?;
     t.iter()
         .map(|(k, v)| {
-            v.as_str().map(|s| (k.clone(), s.to_string())).ok_or_else(|| {
-                format!(
-                    "{}: `[image.{id}] env` row `{k}` is a {}, not a string — an environment \
+            v.as_str()
+                .map(|s| (k.clone(), s.to_string()))
+                .ok_or_else(|| {
+                    format!(
+                        "{}: `[image.{id}] env` row `{k}` is a {}, not a string — an environment \
                      value is a string, so write `{k} = \"{v}\"`",
-                    path.display(),
-                    v.type_str()
-                )
-            })
+                        path.display(),
+                        v.type_str()
+                    )
+                })
         })
         .collect()
 }
@@ -914,10 +916,7 @@ domain_id = 4
     /// pass-through. `talker-xrce` named its RMW here for four phases.
     #[test]
     fn a_transport_that_is_not_a_link_kind_is_refused() {
-        let bad = SYSTEM.replace(
-            "[image.esp32]",
-            "[image.esp32]\ntransport = \"xrce\"\n#",
-        );
+        let bad = SYSTEM.replace("[image.esp32]", "[image.esp32]\ntransport = \"xrce\"\n#");
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &bad)]);
         let e = read(d.path()).unwrap_err();
         assert!(e.contains("serial, tcp, udp"), "{e}");
@@ -925,7 +924,12 @@ domain_id = 4
         let good = bad.replace("transport = \"xrce\"", "transport = \"serial\"");
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &good)]);
         assert_eq!(
-            read(d.path()).unwrap().unwrap().network.transport.as_deref(),
+            read(d.path())
+                .unwrap()
+                .unwrap()
+                .network
+                .transport
+                .as_deref(),
             Some("serial")
         );
     }

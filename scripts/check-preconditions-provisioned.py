@@ -95,7 +95,11 @@ CLASSIFICATION = {
         "setup",
         "`just setup-cli`, run by `_setup-common` on every setup path.",
     ),
-    "leaf .cargo/config.toml includes": (
+    # phase-445 W6 renamed the probe. It used to say "leaf .cargo/config.toml
+    # includes an unwritten sync target"; an example tracks no `.cargo/` file
+    # any more (RFC-0098 D1), so the live half is the OTHER shape the same
+    # gate checks — a `path =` dep into a `generated/` tree.
+    "a leaf names a sync-written path": (
         "build",
         "`nros sync` writes the generated targets; it is part of the build "
         "stage, and the fixture builds run it.",
