@@ -232,10 +232,17 @@ maintainer of that backend reads it.
 | cffi | subscription count; node count; backend count | `RMW_SUBSCRIBER_SLOTS`, `MAX_NODES`, `MAX_BACKENDS` | slots derived; `max_nodes = components().len()` computed and discarded |
 
 **Not a derivation, and must not be modelled as one:** cffi's `SLOT_SIZE` is a
-hard 1024 and `insert::<T>()` returns `None` when `size_of::<T>() > 1024`, so a
-backend growing its per-subscription state **silently fails
-`create_subscription`**. No user fact answers that; it needs a compile-time
-assertion in cffi, tracked separately.
+hard 1024, and `insert::<T>()` returns `None` both when every slot is claimed and
+when `size_of::<T>() > 1024`. The caller maps both to `NROS_RMW_RET_BAD_ALLOC`,
+so a backend whose per-subscription state outgrows the slot reports the same
+code as a full pool — and only one of those has a knob. Raising
+`NROS_RMW_SUBSCRIBER_SLOTS` against the size cause buys nothing and costs 1 KiB
+a slot on the platform with the least RAM.
+
+No user fact answers "how big is a backend's private state struct", so this is
+**not** a sizing input. `size_of::<T>()` is a compile-time quantity, so it wants
+a `const` assertion rather than a runtime return. Tracked as
+[issue 1322](../issues/1322-cffi-slot-size-overflow-reads-as-pool-exhaustion.md).
 
 ## D6 — refusal is per-fact, never global
 
