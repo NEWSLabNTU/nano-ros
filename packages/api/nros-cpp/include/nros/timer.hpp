@@ -14,11 +14,7 @@
 #include <cstddef>
 
 #include "nros/result.hpp"
-
-#ifdef NROS_CPP_STD
-#include <functional>
-#include <memory>
-#endif
+#include "nros/hosted_block.hpp"
 
 // phase-417 W1.a — `<memory>` for the nested pointer aliases below.
 // `NROS_CPP_HAS_SHARED_PTR` and the other five capability macros have ONE
@@ -107,20 +103,18 @@ class Timer {
             nros_cpp_timer_cancel(executor_, handle_id_);
             initialized_ = false;
         }
-        // closure_ (if any) destructs here; the runtime no longer
-        // holds a raw pointer to it because we cancelled above.
+        // The closure block (if any) is freed here; the runtime no longer
+        // holds a raw pointer into it because we cancelled above.
+        detail::destroy_hosted_block(closure_);
     }
 
     // Move semantics (non-copyable)
     Timer(Timer&& other)
-        : executor_(other.executor_), handle_id_(other.handle_id_), initialized_(other.initialized_)
-#ifdef NROS_CPP_STD
-          ,
-          closure_(std::move(other.closure_))
-#endif
-    {
+        : executor_(other.executor_), handle_id_(other.handle_id_),
+          initialized_(other.initialized_), closure_(other.closure_) {
         other.executor_ = nullptr;
         other.initialized_ = false;
+        other.closure_ = nullptr;
     }
 
     Timer& operator=(Timer&& other) {
@@ -131,30 +125,35 @@ class Timer {
             executor_ = other.executor_;
             handle_id_ = other.handle_id_;
             initialized_ = other.initialized_;
-#ifdef NROS_CPP_STD
-            closure_ = std::move(other.closure_);
-#endif
+            detail::destroy_hosted_block(closure_);
+            closure_ = other.closure_;
             other.executor_ = nullptr;
             other.initialized_ = false;
+            other.closure_ = nullptr;
         }
         return *this;
     }
 
     /// Default constructor — creates an uninitialized timer.
     /// Use `Node::create_wall_timer()` to initialize.
-    Timer() : executor_(nullptr), handle_id_(0), initialized_(false) {}
+    Timer() : executor_(nullptr), handle_id_(0), initialized_(false), closure_(nullptr) {}
 
-#ifdef NROS_CPP_STD
-    /// @internal Attach a heap-allocated std::function closure to this
-    /// timer. Called by the `NROS_CPP_STD` convenience wrappers in
-    /// `std_compat.hpp` *after* the runtime registered a raw callback
-    /// pointing into the same closure. The unique_ptr keeps the closure
-    /// alive for the lifetime of the Timer, freeing it automatically on
-    /// destruction. Not intended for user code.
-    void attach_std_closure(std::unique_ptr<std::function<void()>> closure) {
-        closure_ = std::move(closure);
+    /// @internal Take ownership of a closure block for this timer.
+    ///
+    /// `block` must be the address of the `detail::HostedBlockBase` subobject
+    /// of a block allocated by the caller, or null. Called by the
+    /// `NROS_CPP_STD` convenience wrappers in `std_compat.hpp` *after* the
+    /// runtime registered a raw callback pointing into the same block. The
+    /// Timer frees it on destruction, so the raw pointer the runtime holds is
+    /// never dereferenced after free — the destructor cancels first.
+    ///
+    /// Unconditional, and takes a `void*`, because the MEMBER is
+    /// unconditional: see `detail::HostedBlockBase`. Not intended for user
+    /// code.
+    void attach_closure_block(detail::HostedBlockBase* block) {
+        detail::destroy_hosted_block(closure_);
+        closure_ = block;
     }
-#endif
 
   private:
     Timer(const Timer&) = delete;
@@ -166,14 +165,19 @@ class Timer {
     size_t handle_id_;
     bool initialized_;
 
-#ifdef NROS_CPP_STD
-    /// Owns the heap-allocated `std::function<void()>` closure (if any).
+    /// Owns the closure block (if any) — `detail::HostedBlockBase*`, erased.
     ///
-    /// Only populated when the Timer was created through the
-    /// `NROS_CPP_STD` convenience wrapper. Freed automatically when the
-    /// Timer is destroyed or moved-from.
-    std::unique_ptr<std::function<void()>> closure_;
-#endif
+    /// Only populated when the Timer was created through a convenience
+    /// wrapper that had a closure to keep alive; a timer created with a plain
+    /// C callback leaves it null. Freed automatically when the Timer is
+    /// destroyed or moved-from.
+    ///
+    /// UNCONDITIONAL, and that is the point (issue 1225, phase-442 W1): a
+    /// member behind `NROS_CPP_STD` made `sizeof(nros::Timer)` 24 or 32
+    /// depending on a flag one module of an image may set on its own, and
+    /// carried `nros::ComponentNode` (`Timer timers_[8]`) and the
+    /// `rclcpp::Timer` / `rclcpp::TimerBase` aliases with it.
+    void* closure_;
 };
 
 } // namespace nros

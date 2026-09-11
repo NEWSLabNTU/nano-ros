@@ -58,12 +58,17 @@ the rest and do not depend on each other.
   image-size cost of that choice stated; the knob named, so the `static_assert`
   has something to point at.
 
-* **W1 [cpp] — `Timer::closure_` and `GuardCondition::closure_` unconditional.**
-  Ends the shipping px4 mixed-layout exposure. The member is 8 bytes either way,
-  so this costs nothing on the types that matter. Independent of everything else.
+* **W1 [cpp] — `Timer::closure_` and `GuardCondition::closure_` unconditional.
+  LANDED 2026-09-11.** Ends the shipping px4 mixed-layout exposure. The member
+  is 8 bytes either way, so this costs nothing on the types that matter.
+  Independent of everything else.
   *Acceptance:* `.config/cpp-capability-layout-baseline.txt` has no `diverges`
   row; `sizeof` of all five affected subjects identical in all nine
-  configurations the layout gate measures.
+  configurations the layout gate measures. **Met** — Timer 32, GuardCondition
+  40, `NodeWithTimers<4>` 360 on every arm, baseline's five `diverges` rows
+  deleted, issue 1225 archived. The member is `void*` at a block headed by
+  `detail::HostedBlockBase`, lifted out of `node.hpp` into
+  `nros/hosted_block.hpp` so the three owners share one spelling.
 
 * **W2 [cpp] — delete `std_compat.hpp`.** 275 lines, 71 `std::` occurrences,
   entirely behind `#ifdef NROS_CPP_STD`, included from exactly one place itself

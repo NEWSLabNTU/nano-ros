@@ -30,42 +30,32 @@
 # derivation no longer produces is a failure, so a renamed type cannot leave a
 # dead exemption behind.
 #
-# --- the `diverges` entries: issue 1225, and why they are here not fixed -----
+# --- the `diverges` entries: NONE, and that is issue 1225 closed -------------
 #
-# Three types, five spellings, ONE member. `nros::Timer` and
-# `nros::GuardCondition` each hold an `#ifdef NROS_CPP_STD`
-# `std::unique_ptr<std::function<void()>> closure_` that `attach_std_closure`
-# writes and only `std_compat.hpp`'s four wrappers reach; the type that holds a
-# `Timer` array follows it, its delta being exactly 8 x the pool depth.
-# `rclcpp::Timer` and `rclcpp::TimerBase` are ALIASES of `nros::Timer` -- the
-# same layout under the spellings a ported file writes, listed separately
-# because the gate measures spellings and a porting user depends on those two.
+# There were five, spelling three types and ONE member: `nros::Timer` and
+# `nros::GuardCondition` each held an `#ifdef NROS_CPP_STD`
+# `std::unique_ptr<std::function<void()>> closure_`, the timer-array holder
+# `nros::NodeWithTimers<N>` followed it at 8 x the pool depth, and
+# `rclcpp::Timer` / `rclcpp::TimerBase` are aliases of `nros::Timer`, which is
+# the spelling a ported file writes.
 #
 #     nros::Timer               24 -> 32   with -DNROS_CPP_STD=1
 #     nros::GuardCondition      32 -> 40
 #     nros::NodeWithTimers<4>  328 -> 360
 #
-# phase-427 W4 — the array-holding entry was `nros::ComponentNode` (55784 ->
-# 55848, `Timer timers_[8]`). That type is DELETED; its timer pool is the
-# opt-in `nros::NodeWithTimers<N>`, which the derivation now produces at the
-# default depth the probe instantiates. The row follows its subject rather
-# than going stale: same one member, same cause, one line either way. `Node`
-# itself holds no timer array and does not diverge.
+# phase-442 W1 took the decision issue 1225 had already made -- STATE HIDES
+# BEHIND A POINTER ONLY WHEN IT EXCEEDS A POINTER. These differ by exactly 8
+# bytes, which IS a pointer, so the member is UNCONDITIONAL and spelled
+# `void*`: the same 8 bytes the freestanding arm would have paid for an
+# indirection, one stable layout, and no dereference on the hot path. The
+# pointee is a block whose head is `detail::HostedBlockBase`, carrying its own
+# destroyer so that `~Timer()` -- compiled in both configurations -- frees it
+# without naming a hosted type. `rclcpp::Node::hosted_` already had that shape;
+# `nros/hosted_block.hpp` is now the one place it is written.
 #
-# `packages/api/nros-cpp/**` is owned by PR #755, in flight, so this change
-# lands the WIDER gate with the debt it can finally see recorded here rather
-# than editing headers underneath it. The gate protects every other subject
-# from today; these five come off as #755's wave fixes them.
-#
-# The decision that wave carries, so it is not re-litigated at the keyboard:
-# STATE HIDES BEHIND A POINTER ONLY WHEN IT EXCEEDS A POINTER. The node's
-# hosted block is far larger than a pointer, so `rclcpp::Node`'s indirection is
-# right there. The timer and the guard condition differ by exactly 8 bytes,
-# which IS a pointer -- so they take the member UNCONDITIONALLY in both
-# configurations: the same 8 bytes a freestanding target would have paid for
-# the indirection, one stable layout, no one-definition hazard, and no
-# dereference on the hot path.
-#
+# Measured after the fix, all three arms: Timer 32, GuardCondition 40,
+# NodeWithTimers<4> 360.
+
 # --- the `hosted-only` and `std-only` entries: NONE --------------------------
 #
 # There were six, three types under two kinds. `rclcpp::Rate` (and `WallRate`,
@@ -93,13 +83,8 @@
 # this rule permits -- `sizeof(Rate)` is `int64_t` + `uint64_t` everywhere -- but
 # W8's acceptance is zero `NROS_CPP_HAS_*` in the tree, so it is W8's to resolve.
 
-# The `diverges` rows below are phase-442 W1's, and they come off in the commit
-# that fixes the member -- see the section above. They are listed here, after the
-# two kinds that are now empty, only because this file's rows all live at the
-# end.
+# No rows remain in any of the three kinds. W1's `diverges` rows came off in
+# the commit that fixed the member (see the section above), and W5's
+# `hosted-only` / `std-only` rows came off with the gates they recorded. The
+# file stays as the ratchet's own record of what was measured and why.
 
-diverges ::nros::GuardCondition
-diverges ::nros::NodeWithTimers<4>
-diverges ::nros::Timer
-diverges ::rclcpp::Timer
-diverges ::rclcpp::TimerBase

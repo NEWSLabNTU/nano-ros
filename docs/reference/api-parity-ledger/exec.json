@@ -481,9 +481,9 @@
     "disposition": "absent",
     "why": "rclcpp's wait-set protocol; the reason is stated in full at `cpp:WaitSet`."
   },
-  "cpp:GuardCondition::attach_std_closure": {
+  "cpp:GuardCondition::attach_closure_block": {
     "verdict": "extension",
-    "why": "INTERNAL, not user API, `NROS_CPP_STD`-only -- 'Not intended for user code', in the header's own words. The guard-condition twin of `cpp:Timer::attach_std_closure`, and that row carries the reasoning: our runtime callback is a raw C function pointer, so the heap-allocated `std::function<void()>` it points into needs an owner with the right lifetime on this side. Reported at all only because the extractor now compiles a `-DNROS_CPP_STD=1` translation unit (issue 0818)."
+    "why": "INTERNAL, not user API -- 'Not intended for user code', in the header's own words. The guard-condition twin of `cpp:Timer::attach_closure_block`, and that row carries the reasoning: our runtime callback is a raw C function pointer, so the heap-allocated `std::function<void()>` it points into needs an owner with the right lifetime on this side, and the owning member is unconditional (phase-442 W1, issue 1225) so that `sizeof` cannot follow a capability probe."
   },
   "cpp:GuardCondition::exchange_in_use_by_wait_set_state": {
     "verdict": "declined",
@@ -606,7 +606,7 @@
   },
   "cpp:create_guard_condition": {
     "verdict": "extension",
-    "why": "the `NROS_CPP_STD` `std::function<void()>` free-function form of `Node::create_guard_condition`, whose reason for existing is recorded at `cpp:Node::create_guard_condition` -- the cross-thread / ISR wake source, created on the node so it lands in the owning executor's arena. This overload adds only the closure: the runtime takes a raw `void(*)(void*)`, so the `std::function` is heap-owned and parked on the object by `cpp:GuardCondition::attach_std_closure`. A `no_std` consumer does not get it; the always-available spelling takes a plain callback and a `void* ctx`."
+    "why": "the `NROS_CPP_STD` `std::function<void()>` free-function form of `Node::create_guard_condition`, whose reason for existing is recorded at `cpp:Node::create_guard_condition` -- the cross-thread / ISR wake source, created on the node so it lands in the owning executor's arena. This overload adds only the closure: the runtime takes a raw `void(*)(void*)`, so the `std::function` is heap-owned and parked on the object by `cpp:GuardCondition::attach_closure_block`. A `no_std` consumer does not get it; the always-available spelling takes a plain callback and a `void* ctx`."
   },
   "cpp:executor_spin": {
     "verdict": "extension",
