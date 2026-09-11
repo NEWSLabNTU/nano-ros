@@ -121,6 +121,7 @@ xrce_subscription_create(const rmw_node_t* node, const rmw_message_type_support_
     uxrObjectId sub_oid = xrce_alloc_entity_id(st, UXR_SUBSCRIBER_ID);
     uxrObjectId dr_oid = xrce_alloc_entity_id(st, UXR_DATAREADER_ID);
 
+    /* nros-qos-honours: AVOID_ROS_NAMESPACE_CONVENTIONS — see publisher.c. */
     int avoid_ros = 0;
     if (qos != NULL) {
         avoid_ros = qos->avoid_ros_namespace_conventions != 0;

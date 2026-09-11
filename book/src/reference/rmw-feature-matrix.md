@@ -68,7 +68,7 @@ downgrade**. Per-policy semantics: [RMW vs upstream §7](../design/rmw-vs-upstre
 | `LIFESPAN` | ✓ | ✓ |
 | `LIVELINESS_AUTOMATIC` | ✓ | ✓ |
 | `LIVELINESS_MANUAL_BY_TOPIC` | ✓ | ✓ |
-| `LIVELINESS_MANUAL_BY_NODE` | ✓ | ✓ |
+| `LIVELINESS_MANUAL_BY_NODE` | — | — |
 | `LIVELINESS_LEASE` | ✓ | ✓ |
 | `AVOID_ROS_NAMESPACE_CONVENTIONS` | — | ✓ |
 
