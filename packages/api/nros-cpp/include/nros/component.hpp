@@ -392,8 +392,11 @@ inline Result bind_action_client(Node& node, ActionClientStorage& storage, Timer
 // The second one below is both — a group form of the storage-free shape — and
 // its name says the half a reader cannot infer from the argument list.
 
+} // namespace nros
+
+namespace rclcpp {
 template <typename M, class C, void (C::*Method)(const M& msg)>
-inline void Node::create_subscription_in(const char* topic, const QoS& qos) {
+inline void Node::create_subscription_in(const char* topic, const ::nros::QoS& qos) {
     if (!this->check_declared_depth(M::TYPE_NAME, topic, qos)) {
         return;
     }
@@ -402,10 +405,14 @@ inline void Node::create_subscription_in(const char* topic, const QoS& qos) {
         this->set_error("create_subscription_in", r.raw());
     }
 }
+} // namespace rclcpp
 
+namespace nros {} // namespace nros
+
+namespace rclcpp {
 template <typename M, class C, void (C::*Method)(const M& msg)>
-inline void Node::create_subscription_in_group(const CallbackGroup& group, const char* topic,
-                                               const QoS& qos) {
+inline void Node::create_subscription_in_group(const ::nros::CallbackGroup& group,
+                                               const char* topic, const ::nros::QoS& qos) {
     // phase-403 step 2 — the same boot-time check as the ungrouped form. A
     // grouped subscription costs the arena exactly what an ungrouped one does,
     // so leaving this path out would make the declared depth enforceable
@@ -418,7 +425,7 @@ inline void Node::create_subscription_in_group(const CallbackGroup& group, const
         this->set_error("create_subscription_in_group", -3);
         return;
     }
-    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
     C* self = static_cast<C*>(this);
     size_t handle = static_cast<size_t>(-1);
     // phase-402: the group name is a FIELD now, not a trailing argument. Start
@@ -438,6 +445,9 @@ inline void Node::create_subscription_in_group(const CallbackGroup& group, const
         this->set_error("create_subscription_in_group", ret);
     }
 }
+} // namespace rclcpp
+
+namespace nros {
 
 namespace detail {
 

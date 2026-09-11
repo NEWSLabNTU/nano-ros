@@ -43,14 +43,18 @@ nros_cpp_ret_t nros_cpp_service_server_register(const nros_cpp_node_t* node,
                                                 size_t* out_handle_id);
 } // extern "C"
 
-namespace nros {
-// `nros::Node` is named by the friend declaration below and by the out-of-line
-// `Node::create_*` bodies further down. `nros/node.hpp` (included below, after
-// the class, so a consumer pays only for the entities it uses) has the
-// definition; a qualified friend needs the name to EXIST first, which an
-// unqualified `friend class Node;` used to supply implicitly.
+/// `rclcpp::Node` is named by the friend declaration below and by the
+/// out-of-line `Node::create_*` bodies further down. `nros/node.hpp` (included
+/// below, after the class, so a consumer pays only for the entities it uses)
+/// has the definition; a qualified friend needs the name to EXIST first, which
+/// an unqualified `friend class Node;` used to supply implicitly.
+///
+/// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
+/// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
+/// class and collide with the `nros::Node` alias.
+namespace rclcpp {
 class Node;
-} // namespace nros
+}
 
 // ============================================================================
 // `rclcpp::Service<S>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
@@ -240,7 +244,7 @@ template <typename S> class Service {
     Service(const Service&) = delete;
     Service& operator=(const Service&) = delete;
 
-    friend class ::nros::Node;
+    friend class ::rclcpp::Node;
 
     /// Phase 189.M3.3.e — raw request trampoline matching `RawServiceCallback`
     /// (`bool(req, req_len, resp, resp_cap, resp_len, ctx)`). Deserializes the
@@ -290,12 +294,13 @@ template <typename S> using Service = ::rclcpp::Service<S>;
 // Phase 84.G8: out-of-line definition of Node::create_service<S>().
 #include "nros/node.hpp"
 
-namespace nros {
+namespace nros {} // namespace nros
 
+namespace rclcpp {
 template <typename S>
-Result Node::create_service(Service<S>& out, const char* service_name, const QoS& qos) {
-    if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+Result Node::create_service(Service<S>& out, const char* service_name, const ::nros::QoS& qos) {
+    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret = nros_cpp_service_server_create(
         &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
     if (ret == 0) {
@@ -303,22 +308,28 @@ Result Node::create_service(Service<S>& out, const char* service_name, const QoS
     }
     return Result(ret);
 }
+} // namespace rclcpp
+
+namespace nros {
 
 // Phase 189.M3.3.e — callback-style (arena-registered) service. The arena owns
 // the server + dispatches `out`'s request handler during spin_once, so the
 // handle is real and `options.sched_context` is functional.
+} // namespace nros
+
+namespace rclcpp {
 template <typename S, typename F, typename>
-Result Node::create_service(Service<S>& out, const char* service_name, F callback, const QoS& qos,
-                            const ServiceOptions& options) {
-    if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+Result Node::create_service(Service<S>& out, const char* service_name, F callback,
+                            const ::nros::QoS& qos, const ::nros::ServiceOptions& options) {
+    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
 
     // Store the user handler (compile error if F isn't convertible).
     out.user_fn_ = typename Service<S>::TypedServiceFn(callback);
     out.user_fn_ctx_ = nullptr;
     out.user_ctx_ = nullptr;
 
-    uint8_t sched = (options.sched_context == SCHED_CONTEXT_UNSET)
+    uint8_t sched = (options.sched_context == ::nros::SCHED_CONTEXT_UNSET)
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
@@ -333,7 +344,8 @@ Result Node::create_service(Service<S>& out, const char* service_name, F callbac
     }
     return Result(ret);
 }
+} // namespace rclcpp
 
-} // namespace nros
+namespace nros {} // namespace nros
 
 #endif // NROS_CPP_SERVICE_HPP

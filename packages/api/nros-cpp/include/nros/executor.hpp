@@ -18,10 +18,17 @@
 
 #include "nros_cpp_ffi.h"
 
+// phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
+// the home), so the forward declaration has to be there too: an elaborated
+// `class Node;` inside `nros::` would declare a second, distinct class and
+// collide with the `nros::Node` alias `node.hpp` declares.
+namespace rclcpp {
+class Node;
+}
+
 namespace nros {
 
 // Forward declarations
-class Node;
 class NodeBuilder;
 
 /// Signature of a shutdown callback: `void callback(void* context)`.
@@ -177,7 +184,7 @@ class Executor {
     /// @param name  Node name (null-terminated).
     /// @param ns    Node namespace (null-terminated), or nullptr for "/".
     /// @return Result indicating success or failure.
-    Result create_node(Node& out, const char* name, const char* ns = nullptr);
+    Result create_node(::rclcpp::Node& out, const char* name, const char* ns = nullptr);
 
     /// Phase 104.C.9 — chainable Node-creation builder.
     ///

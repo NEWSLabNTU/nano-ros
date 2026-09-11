@@ -88,14 +88,20 @@ namespace nros {
 /// implementation bound of one of them, not a name upstream declares.
 static constexpr size_t SUBSCRIPTION_TOPIC_NAME_MAX = 256;
 
-/// `nros::Node` is named by the friend declaration below and by the out-of-line
-/// `Node::create_*` bodies further down. `nros/node.hpp` (included below, after
-/// the class, so a consumer pays only for the entities it uses) has the
-/// definition; a qualified friend needs the name to EXIST first, which an
-/// unqualified `friend class Node;` used to supply implicitly.
-class Node;
-
 } // namespace nros
+
+/// `rclcpp::Node` is named by the friend declaration below and by the
+/// out-of-line `Node::create_*` bodies further down. `nros/node.hpp` (included
+/// below, after the class, so a consumer pays only for the entities it uses)
+/// has the definition; a qualified friend needs the name to EXIST first, which
+/// an unqualified `friend class Node;` used to supply implicitly.
+///
+/// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
+/// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
+/// class and collide with the `nros::Node` alias.
+namespace rclcpp {
+class Node;
+}
 
 // ============================================================================
 // `rclcpp::Subscription<M>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
@@ -567,7 +573,7 @@ template <typename M> class Subscription {
     Subscription(const Subscription&) = delete;
     Subscription& operator=(const Subscription&) = delete;
 
-    friend class ::nros::Node;
+    friend class ::rclcpp::Node;
 
     /// Phase 189.M3.x — raw message trampoline matching `RawSubscriptionCallback`
     /// (`void(data, len, ctx)`). Deserializes the CDR sample into `M` and runs
@@ -657,15 +663,16 @@ template <typename M> using Subscription = ::rclcpp::Subscription<M>;
 // Phase 84.G8: out-of-line definition of Node::create_subscription<M>().
 #include "nros/node.hpp"
 
-namespace nros {
+namespace nros {} // namespace nros
 
+namespace rclcpp {
 template <typename M>
-Result Node::create_subscription(Subscription<M>& out, const char* topic, const QoS& qos) {
+Result Node::create_subscription(Subscription<M>& out, const char* topic, const ::nros::QoS& qos) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
-    if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret = nros_cpp_subscription_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
                                                       ffi_qos, out.storage_);
     if (ret == 0) {
@@ -680,6 +687,9 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
     }
     return Result(ret);
 }
+} // namespace rclcpp
+
+namespace nros {
 
 /// Phase 189.M3.1 — named-options overload. Delegates to the qos-only
 /// create, then lowers the non-QoS axes:
@@ -693,15 +703,18 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
 ///    until a handle-returning create FFI lands (tracked with M3.4); the
 ///    field is honoured transparently once that exists.
 ///  * `message_info` — reserved (M3.4); ignored today.
+} // namespace nros
+
+namespace rclcpp {
 template <typename M>
-Result Node::create_subscription(Subscription<M>& out, const char* topic, const QoS& qos,
-                                 const SubscriptionOptions& options) {
+Result Node::create_subscription(Subscription<M>& out, const char* topic, const ::nros::QoS& qos,
+                                 const ::nros::SubscriptionOptions& options) {
     Result r = create_subscription<M>(out, topic, qos);
     if (!r.ok()) return r;
 
     // TODO(M3.4): honour options.message_info via the with-info arena path.
 
-    if (options.sched_context != SCHED_CONTEXT_UNSET && out.has_sched_handle()) {
+    if (options.sched_context != ::nros::SCHED_CONTEXT_UNSET && out.has_sched_handle()) {
         nros_cpp_ret_t bind = nros_cpp_bind_handle_to_sched_context(
             executor_handle_, out.sched_handle_id(), static_cast<uint8_t>(options.sched_context));
         if (bind != 0) {
@@ -715,19 +728,26 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
     }
     return Result::success();
 }
+} // namespace rclcpp
+
+namespace nros {
 
 // Phase 189.M3.x — callback-style (arena-registered) subscription. The arena
 // owns the subscriber + dispatches `out`'s message handler during spin_once, so
 // the handle is real and `options.sched_context` is functional. Mirrors the
 // callback-style `create_service` one entity over.
+} // namespace nros
+
+namespace rclcpp {
 template <typename M, typename F, typename>
 Result Node::create_subscription(Subscription<M>& out, const char* topic, F callback,
-                                 const QoS& qos, const SubscriptionOptions& options) {
+                                 const ::nros::QoS& qos,
+                                 const ::nros::SubscriptionOptions& options) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
-    if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
 
     // Store the user handler (compile error if F isn't convertible to the
     // plain-fn-ptr handler type).
@@ -735,7 +755,7 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, F call
     out.user_fn_ctx_ = nullptr;
     out.user_ctx_ = nullptr;
 
-    uint8_t sched = (options.sched_context == SCHED_CONTEXT_UNSET)
+    uint8_t sched = (options.sched_context == ::nros::SCHED_CONTEXT_UNSET)
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
@@ -753,25 +773,31 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, F call
     }
     return Result(ret);
 }
+} // namespace rclcpp
+
+namespace nros {
 
 // Phase 273 (RFC-0047) — callback-style subscription **in** a named callback group.
 // Mirrors create_subscription (callback-style) exactly but passes group.get_name()
 // as `callback_group` so the executor binds the slot via group_sched_table.
+} // namespace nros
+
+namespace rclcpp {
 template <typename M, typename F, typename>
-Result Node::create_subscription_in_group(const CallbackGroup& group, Subscription<M>& out,
-                                          const char* topic, F callback, const QoS& qos,
-                                          const SubscriptionOptions& options) {
+Result Node::create_subscription_in_group(const ::nros::CallbackGroup& group, Subscription<M>& out,
+                                          const char* topic, F callback, const ::nros::QoS& qos,
+                                          const ::nros::SubscriptionOptions& options) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
-    if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
 
     out.user_fn_ = typename Subscription<M>::TypedSubscriptionFn(callback);
     out.user_fn_ctx_ = nullptr;
     out.user_ctx_ = nullptr;
 
-    uint8_t sched = (options.sched_context == SCHED_CONTEXT_UNSET)
+    uint8_t sched = (options.sched_context == ::nros::SCHED_CONTEXT_UNSET)
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
@@ -789,26 +815,33 @@ Result Node::create_subscription_in_group(const CallbackGroup& group, Subscripti
     }
     return Result(ret);
 }
+} // namespace rclcpp
+
+namespace nros {
 
 // Phase 189.M3.4 — callback-style subscription that delivers the wire attachment.
 // Mirrors the callback `create_subscription` one step over, but stores the
 // `(const M&, attachment, att_len)` handler + registers via the with-info arena
 // path so the trampoline receives the attachment.
+} // namespace nros
+
+namespace rclcpp {
 template <typename M, typename F, typename>
 Result Node::create_subscription_with_info(Subscription<M>& out, const char* topic, F callback,
-                                           const QoS& qos, const SubscriptionOptions& options) {
+                                           const ::nros::QoS& qos,
+                                           const ::nros::SubscriptionOptions& options) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
-    if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
 
     out.user_fn_info_ = typename Subscription<M>::TypedSubscriptionInfoFn(callback);
     out.user_fn_ = nullptr;
     out.user_fn_ctx_ = nullptr;
     out.user_ctx_ = nullptr;
 
-    uint8_t sched = (options.sched_context == SCHED_CONTEXT_UNSET)
+    uint8_t sched = (options.sched_context == ::nros::SCHED_CONTEXT_UNSET)
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
@@ -825,6 +858,9 @@ Result Node::create_subscription_with_info(Subscription<M>& out, const char* top
     }
     return Result(ret);
 }
+} // namespace rclcpp
+
+namespace nros {
 
 /// Phase 123.B.4 — value-returning subscription factory. Pairs
 /// with `create_publisher` so the full pub/sub create dance is
@@ -843,14 +879,18 @@ inline ResultOf<Subscription<M>> create_subscription(Node& node, const char* top
 // Mirrors `create_subscription_with_info` one overload over, but routes through
 // `nros_cpp_subscription_register_validated` so the arena dispatches the
 // `message_safety_trampoline` on each new sample.
+} // namespace nros
+
+namespace rclcpp {
 template <typename M, typename F, typename>
 Result Node::create_subscription_with_safety(Subscription<M>& out, const char* topic, F callback,
-                                             const QoS& qos, const SubscriptionOptions& options) {
+                                             const ::nros::QoS& qos,
+                                             const ::nros::SubscriptionOptions& options) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
-    if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
 
     out.user_fn_safety_ = typename Subscription<M>::TypedSubscriptionSafetyFn(callback);
     out.user_fn_ = nullptr;
@@ -858,7 +898,7 @@ Result Node::create_subscription_with_safety(Subscription<M>& out, const char* t
     out.user_fn_info_ = nullptr;
     out.user_ctx_ = nullptr;
 
-    uint8_t sched = (options.sched_context == SCHED_CONTEXT_UNSET)
+    uint8_t sched = (options.sched_context == ::nros::SCHED_CONTEXT_UNSET)
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
@@ -875,6 +915,9 @@ Result Node::create_subscription_with_safety(Subscription<M>& out, const char* t
     }
     return Result(ret);
 }
+} // namespace rclcpp
+
+namespace nros {
 #endif // NANO_ROS_SAFETY_E2E
 
 } // namespace nros

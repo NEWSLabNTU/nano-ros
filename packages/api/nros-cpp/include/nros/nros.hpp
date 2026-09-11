@@ -515,9 +515,12 @@ namespace nros {
 
 // -- publishers ---------------------------------------------------------------
 
+} // namespace nros
+
+namespace rclcpp {
 template <typename M>
 inline ::std::shared_ptr<Publisher<M>> Node::create_publisher(const ::std::string& topic,
-                                                              const QoS& qos) {
+                                                              const ::nros::QoS& qos) {
     auto p = ::std::make_shared<Publisher<M>>();
     ::rclcpp::detail::require_created(this->create_publisher<M>(*p, topic.c_str(), qos),
                                       "create_publisher", topic.c_str());
@@ -527,12 +530,19 @@ inline ::std::shared_ptr<Publisher<M>> Node::create_publisher(const ::std::strin
     this->hosted().owned_entities.push_back(p);
     return p;
 }
+} // namespace rclcpp
 
+namespace nros {} // namespace nros
+
+namespace rclcpp {
 template <typename M>
 inline ::std::shared_ptr<Publisher<M>> Node::create_publisher(const ::std::string& topic,
                                                               ::size_t depth) {
-    return this->create_publisher<M>(topic, QoS(static_cast<uint32_t>(depth)));
+    return this->create_publisher<M>(topic, ::nros::QoS(static_cast<uint32_t>(depth)));
 }
+} // namespace rclcpp
+
+namespace nros {
 
 // -- subscriptions ------------------------------------------------------------
 //
@@ -566,9 +576,12 @@ inline ::std::shared_ptr<Publisher<M>> Node::create_publisher(const ::std::strin
 // with it (`rclcpp::Subscription<M>::SharedPtr sub_;`). The executor owns the
 // real subscriber, so `sub->take(msg)` on it answers `NotInitialized` — the
 // sample went to your callback.
+} // namespace nros
+
+namespace rclcpp {
 template <typename M, typename Cb>
 inline ::std::shared_ptr<Subscription<M>> Node::create_subscription(const ::std::string& topic,
-                                                                    const QoS& qos, Cb cb) {
+                                                                    const ::nros::QoS& qos, Cb cb) {
     auto cell = ::std::make_shared<::rclcpp::detail::SubscriptionCallback<M>>();
     cell->fn = ::std::move(cb);
     ::rclcpp::detail::require_created(
@@ -579,12 +592,20 @@ inline ::std::shared_ptr<Subscription<M>> Node::create_subscription(const ::std:
     this->hosted().owned_entities.push_back(cell);
     return ::std::shared_ptr<Subscription<M>>(cell, &cell->handle);
 }
+} // namespace rclcpp
 
+namespace nros {} // namespace nros
+
+namespace rclcpp {
 template <typename M, typename Cb>
 inline ::std::shared_ptr<Subscription<M>> Node::create_subscription(const ::std::string& topic,
                                                                     ::size_t depth, Cb cb) {
-    return this->create_subscription<M>(topic, QoS(static_cast<uint32_t>(depth)), ::std::move(cb));
+    return this->create_subscription<M>(topic, ::nros::QoS(static_cast<uint32_t>(depth)),
+                                        ::std::move(cb));
 }
+} // namespace rclcpp
+
+namespace nros {
 
 // -- wall timer ---------------------------------------------------------------
 
@@ -604,9 +625,12 @@ inline ::std::shared_ptr<Subscription<M>> Node::create_subscription(const ::std:
 /// `detail::WallTimer` cell, pointing at its `timer` member — the same shape
 /// `create_subscription` returns, which is why the cell needs no base class to
 /// be handed out.
+} // namespace nros
+
+namespace rclcpp {
 template <typename Rep, typename Period, typename Cb>
-inline ::std::shared_ptr<Timer> Node::create_wall_timer(::std::chrono::duration<Rep, Period> period,
-                                                        Cb cb) {
+inline ::std::shared_ptr<::nros::Timer>
+Node::create_wall_timer(::std::chrono::duration<Rep, Period> period, Cb cb) {
     auto t = ::std::make_shared<::rclcpp::detail::WallTimer>();
     t->callback = ::std::move(cb);
     const auto ms = ::std::chrono::duration_cast<::std::chrono::milliseconds>(period).count();
@@ -623,8 +647,11 @@ inline ::std::shared_ptr<Timer> Node::create_wall_timer(::std::chrono::duration<
     // `pump()` could iterate it, and it was the member that broke the
     // capability-layout rule.
     this->hosted().owned_entities.push_back(t);
-    return ::std::shared_ptr<Timer>(t, &t->timer);
+    return ::std::shared_ptr<::nros::Timer>(t, &t->timer);
 }
+} // namespace rclcpp
+
+namespace nros {
 #endif // NROS_CPP_HAS_STD_CHRONO
 
 // -- parameters ---------------------------------------------------------------
@@ -669,6 +696,9 @@ inline ::std::shared_ptr<Timer> Node::create_wall_timer(::std::chrono::duration<
 /// override. That adoption is now the store's own `ALREADY_EXISTS` answer
 /// followed by the read-back below, rather than a helper that copied a value
 /// between two stores. On any other failure the code default is returned.
+} // namespace nros
+
+namespace rclcpp {
 template <typename T> inline T Node::declare_parameter(const char* name, T default_value) {
     // phase-446 W6 -- a declaration the contract's `params:` does not make, or
     // makes with another type, refuses the boot through `set_error` before
@@ -687,28 +717,49 @@ template <typename T> inline T Node::declare_parameter(const char* name, T defau
     }
     return out;
 }
+} // namespace rclcpp
 
+namespace nros {} // namespace nros
+
+namespace rclcpp {
 template <typename T> inline bool Node::get_parameter(const char* name, T& out) const {
     return ::nros::detail::node_param_get(this->ffi_handle(), name, out).ok();
 }
+} // namespace rclcpp
 
+namespace nros {} // namespace nros
+
+namespace rclcpp {
 template <typename T> inline T Node::get_parameter(const char* name) const {
     T out = T();
     (void)::nros::detail::node_param_get(this->ffi_handle(), name, out);
     return out;
 }
+} // namespace rclcpp
+
+namespace nros {
 
 /// phase-426 W4 — `set_parameter` now goes through the SAME
 /// `ParameterServer::apply` a remote `ros2 param set` does, so a read-only
 /// parameter is refused here exactly as it is on the wire, and the value a
 /// service reports back is the value this wrote.
+} // namespace nros
+
+namespace rclcpp {
 template <typename T> inline Result Node::set_parameter(const char* name, T value) {
     return ::nros::detail::node_param_set(this->ffi_handle(), name, value);
 }
+} // namespace rclcpp
 
+namespace nros {} // namespace nros
+
+namespace rclcpp {
 inline bool Node::has_parameter(const char* name) const {
     return ::nros::detail::node_param_has(this->ffi_handle(), name);
 }
+} // namespace rclcpp
+
+namespace nros {
 
 // `parameters()` IS GONE (phase-426 W4). It handed out a reference to the node's
 // own `nros::ParameterServer`, described as the escape hatch for "the C-API
@@ -727,19 +778,26 @@ inline bool Node::has_parameter(const char* name) const {
 // per-request heap allocation on the delivery path, which is a second delivery
 // path, not a spelling.
 
+} // namespace nros
+
+namespace rclcpp {
 template <typename S>
 inline ::std::shared_ptr<Service<S>> Node::create_service(const ::std::string& name,
-                                                          const QoS& qos) {
+                                                          const ::nros::QoS& qos) {
     auto s = ::std::make_shared<Service<S>>();
     ::rclcpp::detail::require_created(this->template create_service<S>(*s, name.c_str(), qos),
                                       "create_service", name.c_str());
     this->hosted().owned_entities.push_back(s);
     return s;
 }
+} // namespace rclcpp
 
+namespace nros {} // namespace nros
+
+namespace rclcpp {
 template <typename S, typename F, typename>
 inline ::std::shared_ptr<Service<S>> Node::create_service(const ::std::string& name, F callback,
-                                                          const QoS& qos) {
+                                                          const ::nros::QoS& qos) {
     auto s = ::std::make_shared<Service<S>>();
     this->hosted().owned_entities.push_back(s);
     ::rclcpp::detail::require_created(
@@ -747,26 +805,40 @@ inline ::std::shared_ptr<Service<S>> Node::create_service(const ::std::string& n
         name.c_str());
     return s;
 }
+} // namespace rclcpp
 
+namespace nros {} // namespace nros
+
+namespace rclcpp {
 template <typename S, typename F, typename, typename>
-inline ::std::shared_ptr<Service<S>> Node::create_service(const ::std::string&, F, const QoS&) {
+inline ::std::shared_ptr<Service<S>> Node::create_service(const ::std::string&, F,
+                                                          const ::nros::QoS&) {
     static_assert(::rclcpp::detail::refuse<F>::value,
                   NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK);
     return ::std::shared_ptr<Service<S>>();
 }
+} // namespace rclcpp
 
+namespace nros {} // namespace nros
+
+namespace rclcpp {
 template <typename S>
-inline ::std::shared_ptr<Client<S>> Node::create_client(const ::std::string& name, const QoS& qos) {
+inline ::std::shared_ptr<Client<S>> Node::create_client(const ::std::string& name,
+                                                        const ::nros::QoS& qos) {
     auto c = ::std::make_shared<Client<S>>();
     ::rclcpp::detail::require_created(this->template create_client<S>(*c, name.c_str(), qos),
                                       "create_client", name.c_str());
     this->hosted().owned_entities.push_back(c);
     return c;
 }
+} // namespace rclcpp
 
+namespace nros {} // namespace nros
+
+namespace rclcpp {
 template <typename S, typename F, typename>
 inline ::std::shared_ptr<Client<S>> Node::create_client(const ::std::string& name, F callback,
-                                                        const QoS& qos) {
+                                                        const ::nros::QoS& qos) {
     auto c = ::std::make_shared<Client<S>>();
     this->hosted().owned_entities.push_back(c);
     ::rclcpp::detail::require_created(
@@ -774,13 +846,21 @@ inline ::std::shared_ptr<Client<S>> Node::create_client(const ::std::string& nam
         name.c_str());
     return c;
 }
+} // namespace rclcpp
 
+namespace nros {} // namespace nros
+
+namespace rclcpp {
 template <typename S, typename F, typename, typename>
-inline ::std::shared_ptr<Client<S>> Node::create_client(const ::std::string&, F, const QoS&) {
+inline ::std::shared_ptr<Client<S>> Node::create_client(const ::std::string&, F,
+                                                        const ::nros::QoS&) {
     static_assert(::rclcpp::detail::refuse<F>::value,
                   NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK);
     return ::std::shared_ptr<Client<S>>();
 }
+} // namespace rclcpp
+
+namespace nros {
 
 #endif // NROS_CPP_NODE_HOSTED
 

@@ -23,6 +23,15 @@
 
 #include "nros_cpp_ffi.h"
 
+// phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
+// the home). The friend declaration below is qualified, and a qualified friend
+// names an existing entity rather than introducing one, so the name has to be
+// declared first — and in `rclcpp::`, because an elaborated `class Node;` in
+// `nros::` would declare a second, distinct class.
+namespace rclcpp {
+class Node;
+}
+
 namespace nros {
 
 /// Guard condition for cross-thread signaling.
@@ -114,7 +123,7 @@ class GuardCondition {
     GuardCondition(const GuardCondition&) = delete;
     GuardCondition& operator=(const GuardCondition&) = delete;
 
-    friend class Node;
+    friend class ::rclcpp::Node;
 
     alignas(8) uint8_t storage_[NROS_GUARD_CONDITION_SIZE];
     bool initialized_;

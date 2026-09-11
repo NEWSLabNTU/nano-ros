@@ -178,14 +178,20 @@ enum class GoalStatus : int8_t {
     Aborted = 6,
 };
 
-// `nros::Node` is named by the friend declaration below and by the out-of-line
-// `Node::create_*` bodies further down. `nros/node.hpp` (included below, after
-// the class, so a consumer pays only for the entities it uses) has the
-// definition; a qualified friend needs the name to EXIST first, which an
-// unqualified `friend class Node;` used to supply implicitly.
-class Node;
-
 } // namespace nros
+
+/// `rclcpp::Node` is named by the friend declaration below and by the
+/// out-of-line `Node::create_*` bodies further down. `nros/node.hpp` (included
+/// below, after the class, so a consumer pays only for the entities it uses)
+/// has the definition; a qualified friend needs the name to EXIST first, which
+/// an unqualified `friend class Node;` used to supply implicitly.
+///
+/// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
+/// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
+/// class and collide with the `nros::Node` alias.
+namespace rclcpp {
+class Node;
+}
 
 // ============================================================================
 // `rclcpp_action::Server<A>` -- DEFINED here (RFC-0089: rclcpp_action:: is the home)
@@ -537,7 +543,7 @@ template <typename A> class Server {
     Server(const Server&) = delete;
     Server& operator=(const Server&) = delete;
 
-    friend class ::nros::Node;
+    friend class ::rclcpp::Node;
 
     // ── C trampolines ───────────────────────────────────────────────
     //
@@ -640,13 +646,15 @@ template <typename A> using ActionServer = ::rclcpp_action::Server<A>;
 // Phase 84.G8: out-of-line definition of Node::create_action_server<A>().
 #include "nros/node.hpp"
 
-namespace nros {
+namespace nros {} // namespace nros
 
+namespace rclcpp {
 template <typename A>
-Result Node::create_action_server(ActionServer<A>& out, const char* action_name, const QoS& qos,
-                                  const ActionServerOptions& options) {
-    if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+Result Node::create_action_server(::nros::ActionServer<A>& out, const char* action_name,
+                                  const ::nros::QoS& qos,
+                                  const ::nros::ActionServerOptions& options) {
+    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret = nros_cpp_action_server_create(&handle_, action_name, A::TYPE_NAME,
                                                        A::Goal::TYPE_HASH, ffi_qos, out.storage_);
     if (ret != 0) return Result(ret);
@@ -656,7 +664,7 @@ Result Node::create_action_server(ActionServer<A>& out, const char* action_name,
     // `nros::ActionServer<A>` class, not in the runtime struct).
     // Phase 189.M3.3.c — `sched_context` binds the action's (arena-registered)
     // goal-service handle to a scheduling context. UNSET ⇒ 0 (inherit, no-op).
-    uint8_t sched = (options.sched_context == SCHED_CONTEXT_UNSET)
+    uint8_t sched = (options.sched_context == ::nros::SCHED_CONTEXT_UNSET)
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     ret = nros_cpp_action_server_register(out.storage_, executor_handle_, action_name, A::TYPE_NAME,
@@ -667,7 +675,8 @@ Result Node::create_action_server(ActionServer<A>& out, const char* action_name,
     }
     return Result(ret);
 }
+} // namespace rclcpp
 
-} // namespace nros
+namespace nros {} // namespace nros
 
 #endif // NROS_CPP_ACTION_SERVER_HPP

@@ -34,6 +34,15 @@
 // (issues 0112, 1187, 1240) is stated there.
 #include "nros/std_detect.hpp"
 
+// phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
+// the home). The friend declaration below is qualified, and a qualified friend
+// names an existing entity rather than introducing one, so the name has to be
+// declared first — and in `rclcpp::`, because an elaborated `class Node;` in
+// `nros::` would declare a second, distinct class.
+namespace rclcpp {
+class Node;
+}
+
 namespace nros {
 
 /// Latest-value polling subscription.
@@ -120,7 +129,7 @@ template <typename M> class PollingSubscription {
     const M* peek() const { return has_ever_ ? &latest_ : nullptr; }
 
   private:
-    friend class Node;
+    friend class ::rclcpp::Node;
 
     /// Consume every pending sample, keeping the newest in `latest_`. Returns
     /// `true` iff at least one new sample was taken this call. `take`
@@ -144,16 +153,18 @@ template <typename M> class PollingSubscription {
 
 #include "nros/node.hpp"
 
-namespace nros {
+namespace nros {} // namespace nros
 
+namespace rclcpp {
 template <typename M>
-Result Node::create_polling_subscription(PollingSubscription<M>& out, const char* topic,
-                                         const QoS& qos) {
+Result Node::create_polling_subscription(::nros::PollingSubscription<M>& out, const char* topic,
+                                         const ::nros::QoS& qos) {
     // Reuse the existing poll-mode subscription factory to own storage/init/
     // destroy; the wrapper only adds the retained-latest cache (issue 0278).
     return create_subscription(out.sub_, topic, qos);
 }
+} // namespace rclcpp
 
-} // namespace nros
+namespace nros {} // namespace nros
 
 #endif // NROS_CPP_POLLING_SUBSCRIPTION_HPP
