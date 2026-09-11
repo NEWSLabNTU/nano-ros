@@ -1525,5 +1525,5 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1245](../issues/1245-cpp-free-spin-bounded-overload-outlived-issue-0338.md) | the free `nros::spin(duration_ms, poll_ms)` is the C++ half of W11's spin-family rename, deferred only because PR #755 was rewriting `nros.hpp`. The deferral reason has a shelf life; the item does not |
-| [#1257](../issues/1257-declare-parameter-must-use-red-on-main.md) | `packages/api/nros` does not compile under `-D warnings`: two `declare_parameter` results unused. Introduced by W11 (`ea96be9fb`), red on main now, same parameter store as #1203 |
+| [#1245](../../issues/1245-cpp-free-spin-bounded-overload-outlived-issue-0338.md) | the free `nros::spin(duration_ms, poll_ms)` is the C++ half of W11's spin-family rename, deferred only because PR #755 was rewriting `nros.hpp`. The deferral reason has a shelf life; the item does not |
+| [#1257](../../issues/1257-declare-parameter-must-use-red-on-main.md) | `packages/api/nros` does not compile under `-D warnings`: two `declare_parameter` results unused. Introduced by W11 (`ea96be9fb`), red on main now, same parameter store as #1203 |

@@ -3,11 +3,12 @@ id: 1268
 title: "Parameter services never start on Cyclone: the rcl_interfaces service
   types have no type descriptor, and the failure is retried and dropped on
   every spin"
-status: open
+status: resolved
 type: bug
 area: rmw, core
 severity: high
-related: [issue-0745, issue-1269, issue-1270, phase-444]
+resolved: 2026-09-12
+related: [issue-0745, issue-1269, issue-1270, issue-1293, phase-444]
 ---
 
 ## Symptom
@@ -73,7 +74,7 @@ limits (32 slots of 8,920 B), for services no ROS 2 tool can reach.
   image (this also needs issue 1269's node naming).
 - A registration failure is logged exactly once, naming the node and service.
 
-## Status — 2026-09-11 (phase-444 W6): fixed in the tree, UNVERIFIED LIVE
+## Status — 2026-09-11 (phase-444 W6): fixed in the tree, UNVERIFIED LIVE (superseded below)
 
 All three items of the Fix shape landed. The first acceptance above is NOT
 checked off: it needs a ROS 2 peer, this host has none, and the agent that made
@@ -131,3 +132,53 @@ alongside the existing `native-params-rust-zenoh` /
 with its verdict row in `.config/interop-verdicts.toml` and the lane in
 `.github/workflows/live-peer.yml`. No Cyclone params cell exists today, on any
 RMW but zenoh.
+
+## Resolution — 2026-09-12 (phase-444 W6): verified live, on a ROS 2 peer
+
+That cell exists and it ran. `native-params-per-node-rust-cyclone` in
+`interop::CELLS`, driving `ros2_param_cli_addresses_each_node_on_cyclonedds`
+(`params_per_node_interop.rs`) against this host's ROS 2 Humble
+`rmw_cyclonedds_cpp`, on a two-node image:
+
+    === ros2 service list (cyclonedds) ===
+    /alpha/describe_parameters   /beta/describe_parameters
+    /alpha/get_parameter_types   /beta/get_parameter_types
+    /alpha/get_parameters        /beta/get_parameters
+    /alpha/list_parameters       /beta/list_parameters
+    /alpha/set_parameters        /beta/set_parameters
+    /alpha/set_parameters_atomically  /beta/set_parameters_atomically
+
+    === ros2 param list /alpha ===   rate, stepped
+    === ros2 param get  /alpha rate === Integer value is: 10
+    === ros2 param set  /alpha rate 42 === Set parameter successful
+    === ros2 param get  /alpha rate === Integer value is: 42
+    (and the same four on /beta, 20 -> 42)
+
+Both Acceptance items are met. **All three verbs on BOTH nodes**, not `get`
+alone: `set` travels in the other direction and its reply comes back through
+`SetParametersResult`, a type nothing but the set path needs — and the value is
+read back afterwards, because a `set` that reports success and changes nothing
+is the same shape as the create this issue is about. The second item (logged
+once, naming node and service) landed with `5572267bb`.
+
+Two things the live run settled that the tree-only fix could not:
+
+- **All twelve services appear, not two.** A parallel branch had built the other
+  candidate mechanism — baking the six service descriptors into the Cyclone
+  backend beside `ParticipantEntitiesInfo` — and reached only
+  `get_parameters` / `list_parameters` per node. The generic `register_type`
+  seam reaches all six. That branch's baking is **dropped**, not merged
+  alongside: two mechanisms registering the same twelve would double-count them
+  against the `NROS_CYCLONEDDS_MAX_TYPES` budget `cyclonedds_type_sizing::infra_types`
+  sizes, and a second spelling of one fixed set is the issue-0135 class.
+- **The zenoh cell was green throughout.** `native-params-per-node-rust-zenoh`
+  drives these same three verbs and passed for the whole time every Cyclone
+  parameter service failed to create. That is issue 1269's argument for a
+  per-RMW cell rather than a wider one, with a second witness.
+
+The 0745 comment's stated cause is corrected in both `service_trailer.jinja`
+packs as well as `emit_c.rs` — the jinja packs are what a generated C or C++
+entry actually carries into a downstream tree.
+
+Still out of scope and still open: the **lifecycle** services (issue 1293), for
+the empty-request-type reason above.

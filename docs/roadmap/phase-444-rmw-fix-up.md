@@ -1,9 +1,10 @@
 # Phase 444 — RMW fix-up: what the contract report shows, and what the issue records hid
 
-**Status (2026-09-11). FIVE of seven items are done, not "not started" — W1, W4,
-W5 and W7 are complete and their issues archived (#1088, #1092, #1219, #1021,
-#1269), and W6 is half done. The three that remain all need a LIVE PEER, which
-is why they are the three that remain.**
+**Status (2026-09-12). SIX of seven items are done — W1, W4, W5, W6 and W7 are
+complete and their issues archived (#1088, #1092, #1219, #1021, #1269, #1268),
+and W3 landed on `main` in `43b6ec047`. Only W2 remains, and it is the one that
+needs a live peer over ENOUGH RUNS to separate a rate from a verdict, which is
+a different cost from the rest.**
 
 Re-read against the issue files rather than against this line, which had said
 "Not started" while five of its items landed:
@@ -12,18 +13,17 @@ Re-read against the issue files rather than against this line, which had said
 | --- | --- | --- |
 | W1 | #1088 | done — archived |
 | W2 | #0902 | **open** — needs a router and a live peer, over enough runs to separate the rate from the 20–90 % recorded |
-| W3 | — | **open** — a Cyclone graph READER for 11 slots; the item itself says "phase-sized and may be split out" |
+| W3 | — | done — `43b6ec047`, the Cyclone graph reader; ten more slots |
 | W4 | #1092, #1219 | done — both archived |
 | W5 | #1021 | done — archived |
-| W6 | #1268 | **half done**: the "report a failed registration once and stop retrying" half landed with issue 1271 (`ParamState::reconcile_failure_reported`, consumed at `executor/spin.rs:8377`). The remaining half is the Cyclone backend registering the six `rcl_interfaces` descriptors, and its acceptance reads a parameter back with `ros2 param get` against a live peer |
+| W6 | #1268 | done — archived. Registered through the generic `register_type` seam (`5572267bb`), and the live acceptance run on a ROS 2 Humble peer: `list`/`get`/`set` on both nodes of a two-node Cyclone image |
 | W7 | #1269 | done — archived |
 
 Opened from a review of the RMW report; supersedes phase-393, which is archived
 in the same change. Scope grew on 2026-09-11 in two ways: W6 and W7 added two
 RMW-level defects a downstream image found (#1268 and #1269), and § "The ROS 2
 gap list" gathers the user-API gap reviews in one place, after a truth pass on
-their ledger. Remaining order of work: W6's backend half, then W3 (W7 is done,
-so the reader it was waiting on is unblocked), then W2.**
+their ledger. Remaining order of work: W2, alone.**
 
 Implements RFC-0054 (the C headers are the ABI SSoT). Continues phase-393 (archived).
 
@@ -156,8 +156,12 @@ acceptance is this branch's.**
       both `service_trailer.jinja` packs plus three goldens here, which is what
       a generated entry actually carries.
 - [x] **The live-peer half, which is what the issue's own Acceptance asks for.**
-      `ros2 param get` reads a parameter back from a two-node Cyclone image
-      against this host's ROS 2 Humble peer. A SIBLING, not a new harness:
+      All three verbs on BOTH nodes of a two-node Cyclone image, against this
+      host's ROS 2 Humble peer: `ros2 param list` names `rate`, `get` reads 10
+      (20 on the second node), `set … 42` reports success, and a second `get`
+      reads 42 back — because a `set` that reports success and changes nothing
+      is the same shape as the create this issue is about. All twelve services
+      appear in `ros2 service list`, six per node. A SIBLING, not a new harness:
       `param-two-node-talker` takes an `rmw-*` feature and registers through
       `register_linked_rmw()`, row `param-two-node-talker-cyclone` and cell
       `native-params-per-node-rust-cyclone` sit beside their zenoh twins, and

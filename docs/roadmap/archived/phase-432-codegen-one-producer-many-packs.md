@@ -912,4 +912,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1062](../issues/1062-add-node-language-inference.md) | `nano_ros_add_node` has two language readers that disagree. The doc records it as 'Touches: #1062', which is not a work item; RFC-0091's one-Language work is the fix |
+| [#1062](../../issues/1062-add-node-language-inference.md) | `nano_ros_add_node` has two language readers that disagree. The doc records it as 'Touches: #1062', which is not a work item; RFC-0091's one-Language work is the fix |
