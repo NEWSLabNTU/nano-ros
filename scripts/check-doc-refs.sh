@@ -23,6 +23,29 @@
 # MOVES a resolved issue under `archived/`. So a reference resolves if the file
 # is at the named path OR in that series' `archived/` directory, which is where
 # the same basename lands.
+#
+# NOT THE SAME CHECK AS `check-prose-issue-refs.py`, AND THE SEAM MATTERS
+#
+# That gate reads the form prose actually uses — a bare id, `see issue 0940`,
+# `(issues 0883/0884)` — which has no path for this one to resolve. Its header
+# carries the measurement: on 2026-09-02 THIS gate was green while `CLAUDE.md`
+# cited three ids with no file. Complements, not duplicates; neither subsumes
+# the other, and unifying them would lose one form or the other.
+#
+# They OVERLAP on exactly one spelling, `[issue NNNN](../issues/NNNN-slug.md)`,
+# which is a path AND a prose reference, so both gates fire on it. That is
+# harmless when the file exists and awkward when it does not, because only the
+# prose gate has a baseline for an IN-FLIGHT issue — one whose file is correct
+# but still sits on an open PR. This gate has none, deliberately: a dangling
+# PATH is always wrong, whereas a dangling id may be a citation worth keeping.
+#
+# So the convention, which is the whole of the distinction:
+#
+#   CITE AN IN-FLIGHT ISSUE BY BARE ID, NEVER AS A LINK.
+#
+# Add the row to `.config/prose-issue-ref-baseline.txt` naming the PR, and
+# convert it to a link when that PR merges. A link to a file that is not on
+# `main` yet cannot be baselined here and will block the docs lane.
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
