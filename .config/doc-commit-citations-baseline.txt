@@ -81,3 +81,13 @@ ea9fbfae9
 # the "NOT environmental" argument has a live witness.
 e3786749a
 
+
+# `docs/roadmap/phase-447-provisioning-revision.md`, the "In flight at this
+# checkpoint" table (upstream `300bd0f95`). `b7ec5e55a` is A3's probe commit on
+# `work/1304-installed-setup-provisions-without-a-checkout`, a branch that is
+# pushed but NOT merged — so the commit is genuinely elsewhere, which is the
+# case this baseline exists for rather than a stale hash to rewrite. The row's
+# whole purpose is to tell the next agent what that unmerged tree contains, so
+# a PR number would not substitute: there is no PR yet, and the row says so.
+# Remove this entry when #1304's branch lands or is abandoned.
+b7ec5e55a
