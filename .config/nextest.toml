@@ -820,8 +820,53 @@ test-group = "host-dds-ros2-interop"
 slow-timeout = { period = "60s", terminate-after = 3 }
 retries = 2
 
+# phase-455 W3 — the ZENOH half of the ACTIONS live-peer lane.
+#
+# THIS OVERRIDE MUST STAY HERE, ahead of the `binary(=ros2_action_e2e)` one
+# immediately below and therefore ahead of every broader row further down
+# (`binary(interop_e2e)`, and the `binary(~zephyr)`-class blanket near the end
+# of this file). nextest applies the FIRST matching override per setting and
+# `binary(x)` is a SUBSTRING match, so an anchored-but-later row loses: the row
+# below matches `ros2_action_e2e` exactly, zenoh cases included, and would hand
+# them `host-dds-ros2-interop`. That blanket has already claimed three cells
+# this way.
+#
+# GROUP `ros2-interop`, not `host-dds-ros2-interop`, and the two cases split
+# from their Cyclone siblings for a reason the group names describe exactly:
+# these start no RTPS participant at all. Their peer is `rmw_zenoh_cpp` against
+# a `ZenohRouter::start_unique` router, so they join no DDS domain and compete
+# for none of the 232 slots that group bounds. What they DO touch is the ros2cli
+# daemon singleton, which is keyed on `ROS_DOMAIN_ID` alone — and these cases
+# must run on domain 0, because the nano side's domain is a compile-time bake
+# and the `linux/rust/zenoh` action fixtures bake no value (the test file says
+# this at length). A shared daemon on a shared domain is precisely what
+# `ros2-interop`'s `max-threads = 1` exists for, and it is where every other
+# zenoh cell in the tree already is.
+#
+# BUDGET: 90s × 3. The additive worst case is a router start, up to 20 s of
+# `ros2 action list` discovery polling and a `timeout 60` on the goal itself,
+# so the default `30s × 2` would terminate the test before its own timeout
+# fired and replace an assertion's diagnostic with a nextest timeout — the
+# shape PR #627 found on this very binary when it had no override.
+#
+# NO RETRIES, deliberately, and unlike the Cyclone row below. The question
+# these cells exist to answer is whether an action goal COMPLETES over zenoh,
+# and issue 0902 measured exactly that completing between 20 % and 90 % of the
+# time. A retry converts "failed once, passed on the second attempt" into a
+# green, which is the reading this lane exists to refuse — the same argument
+# `binary(qos_event_interop)` further down already carries. The Cyclone row's
+# `retries` is not there either; its host-DDS siblings' retries re-roll a
+# PID→domain collision, which is a hazard these cases do not have.
+[[profile.default.overrides]]
+filter = "binary(=ros2_action_e2e) and test(zenoh)"
+test-group = "ros2-interop"
+slow-timeout = { period = "90s", terminate-after = 3 }
+
 # phase-433 W6 — the ACTIONS live-peer lane, routed exactly like the cyclone
 # half of `interop_e2e` above and for the same two reasons.
+#
+# Since phase-455 W3 this row is the CYCLONE half only: the anchored
+# `and test(zenoh)` row above claims the two zenoh cases first.
 #
 # GROUP: it stands up a real RTPS participant on a `unique_ros_domain_id`
 # domain, so it competes for the same 232-slot space the group exists to bound.

@@ -21,10 +21,18 @@
 //! service half — migrating `service.cpp` to a blob sertype would change the
 //! action wire format, and nothing in the tree could tell.
 //!
-//! Interop cells: `native-action-rust-cyclone-r2n` and
-//! `native-action-rust-cyclone-n2r` (`nros_tests::interop::CELLS`). This file is
-//! the ACTIONS family's only live-peer coverage — every action row in
-//! `matrix::CELLS` is nano-to-nano.
+//! Interop cells: `native-action-rust-cyclone-{r2n,n2r}` and, since phase-455
+//! W3, `native-action-rust-zenoh-{r2n,n2r}` (`nros_tests::interop::CELLS`).
+//! This file is the ACTIONS family's only live-peer coverage — every action row
+//! in `matrix::CELLS` is nano-to-nano.
+//!
+//! **The zenoh half is a different subject, not a second copy.** Its cells were
+//! added because the reply-slot table issue 0902 exhausted lives in
+//! zenoh-pico's queryable path, which none of the Cyclone cases above touches:
+//! a service server IS a queryable there, so a SendGoal, a GetResult and a
+//! CancelGoal each consume one of four `ZPICO_MAX_PENDING_REPLIES` slots. Their
+//! setup and their `nextest` group differ accordingly; the block before those
+//! two cases says how and why.
 
 use std::{
     process::Command,
@@ -33,8 +41,9 @@ use std::{
 
 use nros_tests::{
     fixtures,
+    output::{ACTION_FEEDBACK_PREFIX, ACTION_RESULT_PREFIX},
     ros_env::{HostRosEnv, Middleware, RosEnv},
-    ros2::{DEFAULT_ROS_DISTRO, is_ros2_package_available, require_ros2_cyclonedds},
+    ros2::{DEFAULT_ROS_DISTRO, is_ros2_package_available, require_ros2, require_ros2_cyclonedds},
 };
 
 /// The stock ROS 2 action server the nano-ros CLIENT direction drives.
@@ -310,26 +319,270 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server() {
     // Fibonacci(10). Asserted as the whole sequence: a reshaped result decodes
     // to wrong numbers rather than failing, so a substring like "Result" would
     // pass on garbage.
+    //
+    // Through `nros_tests::output::*`, not a literal — this half of the string
+    // is OUR example's banner and the tree slims those (phase-277 broke ~10
+    // tests grepping retired markers). The sequence after it is the payload and
+    // stays written out here, because that is what the assertion is about.
     assert!(
-        text.contains("Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]"),
+        text.contains(&format!(
+            "{ACTION_RESULT_PREFIX} [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]"
+        )),
         "the result from a stock server must decode to Fibonacci(10).\n{text}"
     );
     // Feedback travels a different message than the result, and only the
     // feedback path exercises the server's own periodic publish.
     assert!(
-        text.contains("Next number in sequence received"),
+        text.contains(ACTION_FEEDBACK_PREFIX),
         "feedback from a stock server must reach the nano-ros client.\n{text}"
     );
 }
 
-// phase-433 W6 — bind this file to `interop::CELLS`. Both directions sit on ONE
-// coordinate (directions collapse, per `interop::coords_for`), so the list
-// below stays a single entry however many directions the file grows. Drift
-// between the cases here and the rows there turns this RED. Needs no fixtures
-// and no ROS 2 — it runs in tier 1.
+// ── phase-455 W3 — the same two directions over zenoh ───────────────────────
+//
+// Interop cells `native-action-rust-zenoh-r2n` / `-n2r`. The two Cyclone cases
+// above were the whole of the ACTIONS family's live-peer coverage, so
+// zenoh-pico — the backend whose reply-slot table phase-455 is about — had
+// never met a stock ROS 2 peer on this path at all.
+//
+// THREE things differ from the Cyclone half, and each is a property of zenoh
+// rather than a style choice:
+//
+// 1. **A router.** `rmw_zenoh_cpp` peers meet at a `rmw_zenohd`, not by
+//    multicast discovery, so every case here starts one with
+//    `ZenohRouter::start_unique` (ephemeral port, multicast off) and hands both
+//    sides the same locator. That unique port — NOT a domain — is the
+//    isolation: it is what keeps a concurrent run's traffic out.
+//
+// 2. **ROS domain 0, deliberately.** `unique_ros_domain_id()` cannot be used
+//    here: the nano side's domain is a COMPILE-TIME bake
+//    (`option_env!("NROS_DOMAIN_ID")`, read in `nros`'s build script), the
+//    `linux/rust/zenoh` action fixtures bake no value, and the domain is the
+//    FIRST segment of an `rmw_zenoh` keyexpr — so a peer on any other domain
+//    simply never sees the node. Giving the peer a unique domain would produce
+//    a silent no-discovery that reads exactly like a delivery bug. This is the
+//    same choice `interop_e2e`'s zenoh cells make through
+//    `ros2_env_setup_with_locator`, which passes 0 for the same reason.
+//
+//    The cost is that these two cases share the ros2cli daemon singleton, which
+//    is keyed on `ROS_DOMAIN_ID` alone. That is why they belong to the
+//    single-threaded `ros2-interop` nextest group rather than to
+//    `host-dds-ros2-interop` with their Cyclone siblings — see the override in
+//    `.config/nextest.toml`, which must sit ABOVE the `binary(=ros2_action_e2e)`
+//    one because nextest takes the FIRST match per setting.
+//
+// 3. **No `dds_isolation`.** Issue 1009's profile pin is a Fast-DDS / Cyclone
+//    mechanism; there is no RTPS participant anywhere in these two cases, and
+//    applying it would pin nothing while reading as if it did.
+
+/// The ROS domain the zenoh cells run on. See point 2 above — this is a
+/// CHOICE, not an omission, and `unique_ros_domain_id()` would be wrong here.
+const ZENOH_CELL_DOMAIN: u8 = 0;
+
+/// A `HostRosEnv` whose `ros2` commands speak `rmw_zenoh_cpp` through `locator`.
+fn zenoh_env(locator: &str) -> HostRosEnv {
+    HostRosEnv::new(
+        DEFAULT_ROS_DISTRO,
+        Middleware::Zenoh {
+            locator: locator.to_string(),
+            domain_id: ZENOH_CELL_DOMAIN,
+        },
+    )
+}
+
+/// A real ROS 2 client drives a goal on the nano-ros zenoh action server.
+///
+/// The zenoh twin of `a_stock_ros2_client_drives_the_nano_ros_action_server`,
+/// and not redundant with it: the two backends share no code on this path. The
+/// Cyclone cell's subject is `service.cpp`'s five CDR adapters; this one's is
+/// the zenoh-pico queryable a service server IS — where a SendGoal, a
+/// GetResult and a CancelGoal each take one of the four
+/// `ZPICO_MAX_PENDING_REPLIES` slots whose exhaustion issue 0902 measured and
+/// phase-455 W1 gives an observable.
+///
+/// Interop cell: `native-action-rust-zenoh-r2n`.
+#[test]
+fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
+    if !require_ros2() {
+        nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");
+    }
+
+    let server_bin = fixtures::build_native_rust_example_rmw(
+        "action-server",
+        "action-server",
+        fixtures::Rmw::Zenoh,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!("native rust zenoh action-server fixture: {e}");
+    });
+
+    let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
+    let locator = router.locator();
+
+    let mut server = Command::new(&server_bin)
+        .env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", &locator)
+        .spawn()
+        .expect("start the nano-ros zenoh action server");
+
+    let env = zenoh_env(&locator);
+
+    // Same discovery gate as the Cyclone half, and the same reason: a flat
+    // sleep turns a slow-discovery run into a missing `Goal accepted`, which
+    // reads as a wire-format defect.
+    await_fibonacci_action(&env, "nano-ros");
+
+    let out = env
+        .run("timeout 60 ros2 action send_goal /fibonacci example_interfaces/action/Fibonacci '{order: 5}'")
+        .expect("run ros2 action send_goal");
+
+    let died = server.try_wait().ok().flatten();
+    let _ = server.kill();
+    let _ = server.wait();
+
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(
+        died.is_none(),
+        "the nano-ros zenoh action server exited on its own ({died:?}) before \
+         the goal finished — the client output below is about a dead peer, not \
+         about the wire format.\n{text}"
+    );
+    assert!(
+        text.contains("Goal accepted"),
+        "a stock ROS 2 client must get the goal ACCEPTED over zenoh — the \
+         server has to answer the SendGoal query, which is one reply slot.\n{text}"
+    );
+    assert!(
+        text.contains("SUCCEEDED"),
+        "the goal must reach SUCCEEDED, not merely be accepted. A goal that is \
+         accepted and never completes is issue 0902's exact symptom: the result \
+         travels a SECOND query (GetResult) and therefore a second reply \
+         slot.\n{text}"
+    );
+    // Fibonacci(5), asserted as values rather than as a marker: a result that
+    // decoded wrongly produces numbers, not an error.
+    for n in ["0", "1", "2", "3", "5"] {
+        assert!(
+            text.contains(&format!("- {n}")),
+            "the result sequence must contain {n}; a reshaped result decodes \
+             to the wrong numbers rather than failing.\n{text}"
+        );
+    }
+}
+
+/// The nano-ros zenoh action CLIENT drives a stock ROS 2 action server.
+///
+/// The reverse direction, and the one where nano-ros is the QUERIER rather than
+/// the queryable — so it exercises the other half of the zenoh service path:
+/// `zpico_get*`'s own reply handling, which is what the 18 existing
+/// `zpico_get_diag_counters` entries already count, against bytes a real
+/// `rmw_zenoh_cpp` server produced.
+///
+/// Interop cell: `native-action-rust-zenoh-n2r`.
+#[test]
+fn the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh() {
+    if !require_ros2() {
+        nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");
+    }
+    // Same separate-package guard as the Cyclone n2r cell: without it a host
+    // that has ROS 2 and `rmw_zenoh_cpp` but not this peer reports a
+    // wire-format red instead of a skip.
+    if !is_ros2_package_available(DEFAULT_ROS_DISTRO, PEER_ACTION_SERVER_PKG) {
+        nros_tests::skip!(
+            "ROS 2 peer package `{PEER_ACTION_SERVER_PKG}` not installed \
+             (apt: ros-{DEFAULT_ROS_DISTRO}-examples-rclcpp-minimal-action-server)"
+        );
+    }
+
+    let client_bin = fixtures::build_native_rust_example_rmw(
+        "action-client",
+        "action-client",
+        fixtures::Rmw::Zenoh,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!("native rust zenoh action-client fixture: {e}");
+    });
+
+    let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
+    let locator = router.locator();
+    let env = zenoh_env(&locator);
+
+    // `RosPeer` kills the whole process group on drop, so a failed assertion
+    // cannot leave a `ros2` server behind for the next run to collide with.
+    let mut server = env
+        .spawn(
+            "minimal_action_server",
+            &format!("ros2 run {PEER_ACTION_SERVER_PKG} action_server_member_functions"),
+        )
+        .expect("start the stock ROS 2 action server");
+
+    await_fibonacci_action(&env, "stock ROS 2");
+
+    // Spawned DIRECTLY rather than through `env.run`, unlike the Cyclone
+    // sibling: the nano side needs `NROS_LOCATOR` and nothing whatsoever from
+    // the ROS environment, and running it under `source setup.bash` would put
+    // a `LD_LIBRARY_PATH` it does not use in front of the binary. The
+    // `timeout` is still mandatory and for the Cyclone case's reason — the
+    // client blocks on an undiscovered server and a test that cannot fail in
+    // bounded time is not a test.
+    let out = Command::new("timeout")
+        .arg("60")
+        .arg(&client_bin)
+        .env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", &locator)
+        .output()
+        .expect("run the nano-ros zenoh action client");
+
+    let peer_alive = server.is_running();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(
+        peer_alive,
+        "the stock ROS 2 action server exited before the goal finished — the \
+         client output below is about a dead peer, not about the wire \
+         format.\n{text}"
+    );
+    assert!(
+        text.contains("Goal accepted"),
+        "a real `rmw_zenoh_cpp` server must ACCEPT the goal nano-ros wrote.\n{text}"
+    );
+    assert!(
+        text.contains(&format!(
+            "{ACTION_RESULT_PREFIX} [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]"
+        )),
+        "the result from a stock server must decode to Fibonacci(10). A client \
+         that prints feedback and never a result is the nano-ros-side shape of \
+         issue 0902 — accepted, then nothing.\n{text}"
+    );
+    assert!(
+        text.contains(ACTION_FEEDBACK_PREFIX),
+        "feedback from a stock server must reach the nano-ros client.\n{text}"
+    );
+}
+
+// phase-433 W6 — bind this file to `interop::CELLS`. Directions collapse (per
+// `interop::coords_for`), so each BACKEND is one entry however many directions
+// the file grows: four cells, two coordinates. phase-455 W3 added the zenoh
+// one. Drift between the cases here and the rows there turns this RED. Needs no
+// fixtures and no ROS 2 — it runs in tier 1.
 #[test]
 fn cases_bound_to_interop_cells() {
     #[allow(unused_imports)]
     use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
-    nros_tests::interop::assert_test_bound("ros2_action_e2e", &[(Linux, Rust, Cyclonedds, Action)]);
+    nros_tests::interop::assert_test_bound(
+        "ros2_action_e2e",
+        &[
+            (Linux, Rust, Cyclonedds, Action),
+            (Linux, Rust, Zenoh, Action),
+        ],
+    );
 }

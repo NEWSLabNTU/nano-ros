@@ -915,10 +915,33 @@ test-ros2-graph verbose="":
 # added this lane predates that helper and carried its own copy of the
 # skip-accounting tail; a second spelling of the same accounting is the #282 ->
 # #326 shape, so the copy went and the helper stayed.
-# Runs `ros2_action_e2e`; needs ROS 2 + `rmw_cyclonedds_cpp` + the native action fixtures.
+# Since phase-455 W3 the binary carries FOUR cells, two per backend, and the
+# two backends have different preconditions — the zenoh pair wants
+# `rmw_zenoh_cpp` plus a `rmw_zenohd`, the cyclone pair wants
+# `rmw_cyclonedds_cpp`. This recipe still runs all four (each half skips on its
+# own); `test-ros2-action-zenoh` below aims at the zenoh half alone.
+# Runs `ros2_action_e2e`; needs ROS 2 + `rmw_cyclonedds_cpp`/`rmw_zenoh_cpp` + the native action fixtures.
 [group("debug")]
 test-ros2-action verbose="":
     @just _test-focused 'binary(=ros2_action_e2e)' {{verbose}}
+
+# The ZENOH half of the actions live-peer lane — phase-455 W3, cells
+# `native-action-rust-zenoh-{r2n,n2r}`. Until W3 the ACTIONS family had no
+# zenoh interop cell at all, so the backend whose reply-slot table issue 0902
+# exhausted had never met a stock ROS 2 peer on this path.
+#
+# Aimed separately from its Cyclone siblings because the peer is different:
+# these two need the distro's `rmw_zenoh_cpp` and a `rmw_zenohd` the fixture
+# starts (`ZenohRouter::start_unique`), where the Cyclone pair needs
+# `rmw_cyclonedds_cpp` and no router. On a host with only one of the two, the
+# blanket recipe above reports the other half as `[SKIPPED]` — readable, but
+# this is the aim you want when you are answering a question about zenoh.
+# The n2r direction additionally needs
+# `ros-<distro>-examples-rclcpp-minimal-action-server` for its peer.
+# Runs the zenoh cases of `ros2_action_e2e`; needs ROS 2 + `rmw_zenoh_cpp` + `rmw_zenohd`.
+[group("debug")]
+test-ros2-action-zenoh verbose="":
+    @just _test-focused 'binary(=ros2_action_e2e) and test(zenoh)' {{verbose}}
 
 # A QoS STATUS EVENT fires against a live peer and reaches an application
 # callback — phase-433 W6. The four event slots are `produced` and had never met
