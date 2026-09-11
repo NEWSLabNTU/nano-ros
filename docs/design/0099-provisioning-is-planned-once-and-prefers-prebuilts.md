@@ -298,8 +298,8 @@ only manifest/index data.
 
 ## D9 — The manager fields gain an OS-version dimension
 
-`apt` / `dnf` / `pacman` / `brew` are flat lists — manager-keyed, with no OS
-dimension. The tree already has a casualty:
+`apt` / `dnf` / `pacman` / `brew` were flat lists — manager-keyed, with no OS
+dimension. The tree already had a casualty:
 
 ```toml
 [prereq.libpython310]
@@ -307,12 +307,39 @@ why = "runtime dep of the play_launch_parser dist(s)"
 apt = ["libpython3.10"]
 ```
 
-Ubuntu 22.04 ships Python 3.10; 24.04 ships 3.12 and has no such package. The
-key cannot express the alternative. (It is also stale in a second way:
-`play_launch_parser` has no dist at all — it is one of D4's ten.)
+Ubuntu 22.04 ships Python 3.10; 24.04 ships 3.12 and has no such package, so
+the key could not express the alternative.
 
-`apt = [...]` stays valid and means "every version"; `apt.noble = [...]`
-overrides. Narrower than rosdep's OS-then-version nesting, because the manager is
+**The first spelling of this decision was unwritable.** It said "`apt = [...]`
+stays valid; `apt.noble = [...]` overrides", and TOML cannot hold a key as both
+an array and a table: `apt = [..]` beside `apt.noble` is a parse error. Found
+while implementing it (phase-447 D2, #931). What landed instead:
+
+```toml
+apt = ["pkg"]                                   # every release, unchanged
+apt = { default = ["pkg"], noble = ["pkg-t64"] } # per-release override
+```
+
+An explicit `noble = []` means "not packaged on that release", which is exactly
+what D5's backward half reads to refuse a dist before downloading it. Release
+keys come from `/etc/os-release` and are validated. Python reads these fields
+only through `scripts/lib/index_packages.py`, because `entry.get("apt")` on a
+table would iterate release NAMES as if they were packages. `libssl3` gained
+`noble = ["libssl3t64"]`.
+
+**And `libpython310` turned out to be two requirements under one key** — the
+rebase of D2 onto C2 exposed it, when each had traced it to a different
+consumer:
+
+* `libpython310` is the exact-library dependency of the released
+  `nros-launch-resolve` binary (a hard `DT_NEEDED` on `libpython3.10.so.1.0`,
+  shipped since phase-447 A1), so the minor version in its NAME is correct. It
+  is `jammy` only, with `noble = []`.
+* `libpython3` is the host's own Python for the `play_launch_parser` SOURCE
+  build, which links whatever minor is installed: jammy `libpython3.10`, noble
+  `libpython3.12t64`, default `libpython3-dev`.
+
+Narrower than rosdep's OS-then-version nesting, still, because the manager is
 what actually installs.
 
 **Status: landed (2026-09-11, phase-447 D2) — with the spelling corrected.**
