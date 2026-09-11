@@ -39,6 +39,7 @@ import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
+from leaf_target import leaf_target  # phase-445 W6: board -> triple, one spelling
 
 # Crates whose purpose is to define `#[panic_handler]`, plus `zephyr`, which
 # supplies the RTOS's own (see `zephyr_entry/src/lib.rs`: "Zephyr's allocator +
@@ -60,17 +61,25 @@ PANIC_ARG = re.compile(r'panic\s*=\s*"([a-z]+)"')
 def is_hosted(crate_dir: Path) -> bool:
     """Does this leaf build for a target whose libstd brings the lang item?
 
-    Read from the leaf's own `.cargo/config.toml` `[build] target`, which is
-    where every embedded example in this tree pins its triple. No `target` at all
-    means the host triple, which is hosted by definition.
+    The triple comes from the BOARD the leaf's `system.toml` names, resolved
+    through the board catalog (`scripts/lib/leaf_target.py`). A board that pins
+    no triple builds for the host, which is hosted by definition.
+
+    phase-445 W6 — this used to read the leaf's own `.cargo/config.toml`
+    `[build] target` and return `True` when the file was absent. RFC-0098 D1
+    deleted that file from every example, so the old read would have called
+    EVERY leaf hosted and quietly stopped requiring a provider anywhere: a
+    green gate over an empty set, which is the failure this whole file exists
+    to prevent one level down. An UNRESOLVED leaf is therefore treated as
+    EMBEDDED (the checking direction) rather than hosted.
     """
-    cfg = crate_dir / ".cargo" / "config.toml"
-    if not cfg.is_file():
+    triple, _why = leaf_target(crate_dir)
+    if triple is None:
+        # Says nothing about its board: check it, do not excuse it.
+        return False
+    if not triple:
         return True
-    m = re.search(r'^\s*target\s*=\s*"([^"]+)"', cfg.read_text(), re.M)
-    if not m:
-        return True
-    return any(h in m.group(1) for h in HOSTED)
+    return any(h in triple for h in HOSTED)
 
 
 def has_provider(src_dir: Path) -> bool:

@@ -16,6 +16,14 @@ this repo's most-repeated bug shape (CLAUDE.md, "fix the CLASS"):
   * cmake/toolchain/*.cmake             `set(Rust_CARGO_TARGET "<triple>" ...)`
   * **/.cargo/config.toml               `[build] target = "<triple>"`
 
+phase-445 W6 emptied the THIRD producer for `examples/**`: an example tracks no
+`.cargo/` file any more, and its triple comes from the board its `system.toml`
+names (RFC-0098 D1). That is not a coverage loss here, and the direction is why
+— every board descriptor gained its `[build] target` in W2, so the FIRST
+producer already declares every triple an example can reach, and this list is
+allowed to be a superset anyway. The third producer is kept because the ~23
+tracked configs outside `examples/` still pin triples of their own.
+
 The list is allowed to be a SUPERSET — it carries targets no board declares yet
 (armv7r for the Orin SPE board). That direction is one-way on purpose:
 over-provisioning costs a download, under-provisioning costs a red build whose
