@@ -486,6 +486,17 @@ constexpr ::nros::QoS qos_from_declared_depth(int declared) {
 // "no matching operator new(sizetype, void*&)" (first hit porting real
 // Autoware components to a Zephyr image; ASI's FVP build used a full-libcpp
 // toolchain and never saw it). Provide the standard non-allocating forms.
+//
+// Issue 1317 — `<new>` is INCLUDED here rather than waited for. The guard
+// below is Zephyr's own include guard, so it is defined only once something
+// else has already pulled `<new>` in, and a translation unit that reaches
+// this header first got the shim compiled away and the factory failing. That
+// is a property of the CONSUMER's include order, which this header cannot
+// see: measured on a downstream where three of four component sources
+// happened to include `<new>` transitively and the fourth did not.
+#ifdef __ZEPHYR__
+#include <new>
+#endif
 #ifdef ZEPHYR_SUBSYS_CPP_INCLUDE_NEW_
 inline void* operator new(::std::size_t, void* ptr) noexcept {
     return ptr;
