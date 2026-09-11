@@ -3051,18 +3051,123 @@ fn read_register_types(bridge_toml: &Path) -> Vec<(String, String)> {
 // Phase 228.G — per-tier resolution inputs (RFC-0032 §6)
 // =============================================================================
 
-/// Map the resolved board deploy string to the RTOS key `resolve_tiers` expects
-/// (picks the `[tiers.<name>.<rtos>]` sub-table). `None` (explicit `board = X`)
-/// defaults to `posix` — the native dev target.
+/// The RTOS key `resolve_tiers` expects, which picks the
+/// `[tiers.<name>.<rtos>]` sub-table, for the board this entry resolved.
+///
+/// Issue 1285 follow-up. This was a SUBSTRING match on the deploy key with a
+/// `posix` fallback. It now has two arms, and neither reads the spelling of the
+/// key:
+///
+/// - `Some(key)`: the entry named its board by key. The key has already passed
+///   `board_path_for`, since an unknown key is a compile error above, so it is
+///   a row of the Rust pack's table. Its RTOS comes from
+///   `nros_entry_lower::BOARD_KEYS` through `tier_rtos_key_for`. That is the
+///   lookup the CLI's `plan_from_model` uses for the same Rust keys, so the two
+///   Rust producers now agree.
+///
+///   A Rust key with NO RTOS family (`esp32-qemu`, `esp32-c3-baremetal`,
+///   `rtic-mps2-an385`, `qemu-rtic-mps2-an385`, `qemu-mps2-an385`,
+///   `mps2-an385`) gets `NO_RTOS_TIER_KEY`, which selects no sub-table. The
+///   substring match gave those keys the host's sub-table. An authored tier on
+///   such a board is now refused by `resolve_tiers`, and no in-tree leaf
+///   authors one.
+/// - `None`: an explicit `board = X`. There is no key to look up, and the ZST
+///   may be an out-of-tree board this macro has never seen. It keeps the
+///   documented host default, the native dev target's `posix` sub-table. That
+///   is a stated default, not a derivation. Changing it would move every
+///   explicit-`LinuxBoard` entry that authors host tiers.
 fn derive_target_rtos(deploy: Option<&str>) -> String {
     match deploy {
-        Some(d) if d.contains("freertos") => "freertos",
-        Some(d) if d.contains("threadx") => "threadx",
-        Some(d) if d.contains("nuttx") => "nuttx",
-        Some(d) if d.contains("zephyr") => "zephyr",
-        _ => "posix",
+        Some(key) => nros_entry_lower::tier_rtos_key_for(key),
+        None => nros_entry_lower::BoardFamily::Native.tier_rtos_key(),
     }
     .to_string()
+}
+
+#[cfg(test)]
+mod target_rtos_tests {
+    use super::derive_target_rtos;
+
+    /// Every key the macro can reach with `Some` is a Rust-pack key, and each
+    /// one answers from the family table.
+    #[test]
+    fn every_rust_pack_key_answers_from_the_family_table() {
+        for key in nros_orchestration_ir::board_path_keys() {
+            let want = nros_entry_lower::board_family(key).map_or(
+                nros_entry_lower::NO_RTOS_TIER_KEY,
+                nros_entry_lower::BoardFamily::tier_rtos_key,
+            );
+            assert_eq!(derive_target_rtos(Some(key)), want, "`{key}`");
+        }
+    }
+
+    /// The six keys the substring match answered `posix` for. None of them is a
+    /// host, and none has an RTOS.
+    #[test]
+    fn no_rtos_rust_keys_select_no_sub_table() {
+        for key in [
+            "esp32-qemu",
+            "esp32-c3-baremetal",
+            "rtic-mps2-an385",
+            "qemu-rtic-mps2-an385",
+            "qemu-mps2-an385",
+            "mps2-an385",
+        ] {
+            assert_eq!(
+                derive_target_rtos(Some(key)),
+                nros_entry_lower::NO_RTOS_TIER_KEY,
+                "`{key}`"
+            );
+        }
+    }
+
+    /// Every RTOS key the Rust pack knows keeps the RTOS it had.
+    #[test]
+    fn rtos_keys_keep_their_rtos() {
+        for (key, rtos) in [
+            ("native", "posix"),
+            ("posix", "posix"),
+            ("freertos", "freertos"),
+            ("mps2-an385-freertos", "freertos"),
+            ("freertos-qemu-mps2-an385", "freertos"),
+            ("zephyr", "zephyr"),
+            ("nuttx", "nuttx"),
+            ("nuttx-riscv", "nuttx"),
+            ("rv-virt-nuttx", "nuttx"),
+            ("qemu-armv7a-nuttx", "nuttx"),
+            ("threadx-linux", "threadx"),
+            ("threadx-qemu-riscv64", "threadx"),
+            ("rv-virt-threadx", "threadx"),
+        ] {
+            assert_eq!(derive_target_rtos(Some(key)), rtos, "`{key}`");
+        }
+    }
+
+    /// A name that CONTAINS an RTOS name is not that RTOS. The macro cannot
+    /// reach these with `Some` today, because `board_path_for` refuses them
+    /// first. So this pins the lookup rather than the entry: if that gate is
+    /// ever loosened, `my-freertos-board` must not be read as FreeRTOS from its
+    /// spelling.
+    #[test]
+    fn a_key_containing_an_rtos_name_is_not_that_rtos() {
+        for key in [
+            "my-freertos-board",
+            "zephyr-custom",
+            "nuttx-fork",
+            "threadx-port",
+        ] {
+            assert_eq!(
+                derive_target_rtos(Some(key)),
+                nros_entry_lower::NO_RTOS_TIER_KEY,
+                "`{key}`"
+            );
+        }
+    }
+
+    #[test]
+    fn an_explicit_board_keeps_the_documented_host_default() {
+        assert_eq!(derive_target_rtos(None), "posix");
+    }
 }
 
 /// Emit a `&[TierSpec]` literal from the resolved tier table (Phase 228.G,
@@ -3168,9 +3273,7 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
 /// keys the lookup accepted and silently omitted eight it also accepted, so the
 /// message could not be trusted as the answer to "what may I write here?".
 fn known_boards_csv() -> String {
-    nros_orchestration_ir::board_path_keys()
-        .collect::<Vec<_>>()
-        .join(", ")
+    nros_orchestration_ir::board_path_keys_csv()
 }
 
 /// Phase 244.D1 — does this deploy key name a pure bare-metal Cortex-M

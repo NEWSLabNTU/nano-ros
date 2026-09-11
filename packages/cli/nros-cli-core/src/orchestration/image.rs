@@ -625,10 +625,28 @@ pub fn resolve_image_board<'c>(
              compile for."
         ));
     };
+    resolve_board_id(catalog, &format!("[image.{image_id}] board"), board)
+}
+
+/// Resolve a board id through the catalog's ONE rule
+/// ([`BoardCatalog::resolve_deploy`]). `origin` names where the id was
+/// written (`[image.fw] board`), so a failure points at the line to fix.
+///
+/// An id no descriptor claims is an error that names every known board. So
+/// is an id several descriptors claim. Never a guess.
+///
+/// Split out of [`resolve_image_board`] (issue 1285 follow-up) so that
+/// `codegen-system`'s tier RTOS reads an image board the same way `nros build`
+/// resolves it, rather than from a substring of the id.
+pub fn resolve_board_id<'c>(
+    catalog: &'c BoardCatalog,
+    origin: &str,
+    board: &str,
+) -> Result<&'c BoardDescriptor, String> {
     match catalog.resolve_deploy(board) {
         DeployResolution::Board(d) => Ok(d),
         DeployResolution::Ambiguous(labels) => Err(format!(
-            "`[image.{image_id}] board = \"{board}\"` is ambiguous — {} descriptors claim it: {}",
+            "`{origin} = \"{board}\"` is ambiguous — {} descriptors claim it: {}",
             labels.len(),
             labels.join(", ")
         )),
@@ -641,7 +659,7 @@ pub fn resolve_image_board<'c>(
             known.sort_unstable();
             known.dedup();
             Err(format!(
-                "`[image.{image_id}] board = \"{board}\"` matches no board. \
+                "`{origin} = \"{board}\"` matches no board. \
                  Known boards: {}. Out-of-tree boards are added through \
                  `$NROS_EXTRA_BOARD_PATH`.",
                 known.join(", ")

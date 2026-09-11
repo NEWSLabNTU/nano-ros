@@ -764,7 +764,12 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // selects no sub-table) rather than from `posix`'s, which the old substring
     // fallback silently picked. Every consumer that needs the family asks
     // `board_family`/`board_to_rtos` itself and refuses the key there.
-    let target_rtos = board_to_rtos(&board).unwrap_or("");
+    //
+    // The lenient rule is one function, `tier_rtos_key_for`, shared with the
+    // `nros::main!` proc-macro, which answers the same Rust keys (issue 1285
+    // follow-up). It used to be spelled `unwrap_or("")` here and `"posix"`
+    // there.
+    let target_rtos = nros_entry_lower::tier_rtos_key_for(&board);
 
     // phase-315 / issue 0288 — does the model place ANYTHING on this board?
     //

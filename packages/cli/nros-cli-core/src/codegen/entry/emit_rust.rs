@@ -69,7 +69,10 @@ struct RustNodeView {
 /// `custom_tasks` splice. The body installs both a hosted `fn main()` and an
 /// embedded `#[unsafe(no_mangle)] extern "C" fn main()` so the same TU works
 /// for native + bare-metal targets.
-pub fn emit(plan: &Plan) -> String {
+///
+/// A board key the Rust pack has no ZST for is an error; see
+/// [`emit_lowered`].
+pub fn emit(plan: &Plan) -> Result<String, String> {
     emit_lowered(&lower(plan))
 }
 
@@ -102,20 +105,36 @@ pub fn lower(plan: &Plan) -> LoweredEntry {
 ///
 /// Public because the parity harness renders the shared corpus through it
 /// directly; the corpus is `LoweredEntry` values, which is the point.
-pub fn emit_lowered(entry: &LoweredEntry) -> String {
+///
+/// A board key with no Rust board ZST is an ERROR naming the keys the Rust
+/// pack knows. That is the message `nros::main!` gives for the same key,
+/// from the same `board_path_keys_csv`. It used to fall back to `LinuxBoard`
+/// (issue 1285 follow-up), which rendered a host `BoardEntry::run` for any key
+/// it did not know. The parity corpus had one such case: `freertos-posix`, a
+/// C-only board, rendered as `LinuxBoard`.
+pub fn emit_lowered(entry: &LoweredEntry) -> Result<String, String> {
+    let board_path = board_path_for(&entry.board).ok_or_else(|| {
+        format!(
+            "the Rust entry pack has no board ZST for `{}`. Known boards: {}.",
+            entry.board,
+            nros_orchestration_ir::board_path_keys_csv()
+        )
+    })?;
     let view = RustEntryView {
         bringup: entry.bringup.clone(),
         launch: entry.launch.clone(),
         board: entry.board.clone(),
-        board_path: board_path_for(&entry.board).unwrap_or("::nros_board_linux::LinuxBoard"),
+        board_path,
         depfiles: entry.depfiles.iter().map(|d| quote_str(d)).collect(),
         nodes: entry.nodes.iter().map(node_view).collect(),
     };
 
     // A render failure is a bug in a template compiled INTO this binary, so it
     // cannot be handled meaningfully at a call site that only has a plan.
-    crate::codegen::entry::render::render("entry_rust.rs", &view)
-        .expect("bundled rust entry template must render")
+    Ok(
+        crate::codegen::entry::render::render("entry_rust.rs", &view)
+            .expect("bundled rust entry template must render"),
+    )
 }
 
 /// A plan node's per-node runtime bake, as neutral facts (issue 0302).
@@ -267,7 +286,7 @@ mod tests {
         plan.nodes[0].namespace = Some("/ns".into());
         // node 1 deliberately left bare — it must still be RESET.
 
-        let out = emit(&plan);
+        let out = emit(&plan).expect("a board key the Rust pack knows");
 
         assert!(
             out.contains(r#"runtime.params = &[("rate", "25")];"#),
@@ -309,7 +328,7 @@ mod tests {
     fn state_is_emitted_before_the_register_call() {
         let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
         plan.nodes[0].params = vec![("rate".into(), "25".into())];
-        let out = emit(&plan);
+        let out = emit(&plan).expect("a board key the Rust pack knows");
 
         let params_at = out.find("runtime.params").expect("params emitted");
         let register_at = out
@@ -358,7 +377,7 @@ mod tests {
     #[test]
     fn emit_two_node_plan_contains_register_calls() {
         let plan = fixture_plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
-        let src = emit(&plan);
+        let src = emit(&plan).expect("a board key the Rust pack knows");
         assert!(src.contains("::talker_pkg::register(runtime)?;"));
         assert!(src.contains("::listener_pkg::register(runtime)?;"));
         assert!(src.contains("LinuxBoard"));
@@ -370,7 +389,7 @@ mod tests {
     #[test]
     fn dash_pkg_names_are_sanitised() {
         let plan = fixture_plan(&[("talker-pkg", "talker")]);
-        let src = emit(&plan);
+        let src = emit(&plan).expect("a board key the Rust pack knows");
         assert!(src.contains("::talker_pkg::register(runtime)?;"));
     }
 
@@ -378,8 +397,29 @@ mod tests {
     fn freertos_board_maps_to_correct_zst() {
         let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
         plan.board = "freertos".into();
-        let src = emit(&plan);
+        let src = emit(&plan).expect("a board key the Rust pack knows");
         assert!(src.contains("::nros_board_mps2_an385_freertos::Mps2An385"));
+    }
+
+    /// Issue 1285 follow-up — a key with no Rust board ZST is refused, naming
+    /// the keys the Rust pack knows. It used to render `LinuxBoard`. The keys
+    /// here are a C-only board (`freertos-posix`, which the parity corpus used
+    /// to name), a key the family table knows but the Rust pack does not
+    /// (`s32z270`), and one it has never heard of.
+    #[test]
+    fn a_board_with_no_rust_zst_is_refused_not_rendered_as_linux() {
+        for board in ["freertos-posix", "s32z270", "zigos"] {
+            let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+            plan.board = board.into();
+            let err = emit(&plan).expect_err(board);
+            assert!(err.contains(&format!("`{board}`")), "{err}");
+            for known in ["native", "mps2-an385-freertos", "zephyr"] {
+                assert!(
+                    err.contains(known),
+                    "`{board}`: message omits `{known}`: {err}"
+                );
+            }
+        }
     }
 
     #[test]

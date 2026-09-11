@@ -2,7 +2,7 @@
   "_why": "A package name that is not an identifier (`sanitize_pkg` must be the SAME function on both sides, or one producer emits `::talker-pkg::register`, which does not compile) and a node at the ROOT namespace. An empty-vs-`/` namespace is a fact the two producers derive from different inputs — the macro from an FQN, the CLI from a launch attribute — so it is exactly where they can disagree while both look right.",
   "bringup": "demo_bringup",
   "launch": "/tmp/system.launch.xml",
-  "board": "freertos-posix",
+  "board": "mps2-an385-freertos",
   "nodes": [
     {
       "pkg": "talker-pkg",

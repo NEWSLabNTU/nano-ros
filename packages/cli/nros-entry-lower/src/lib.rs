@@ -335,9 +335,79 @@ pub fn board_family(board: &str) -> Result<BoardFamily, UnknownBoard> {
         .ok_or_else(|| UnknownBoard { key: board.into() })
 }
 
+/// The tier key a board with NO RTOS family resolves to: the empty string,
+/// which names no `[tiers.<name>.<rtos>]` sub-table.
+///
+/// Issue 1285 follow-up. Each lenient caller used to spell its own fallback.
+/// `plan_from_model` wrote `""`, while the proc-macro and the CLI's
+/// `codegen-system` wrote `"posix"` from a SUBSTRING match. So an RTIC entry
+/// read its tiers from the host's sub-table in one Rust producer and from none
+/// in the other. What this key means downstream:
+/// - `resolve_tiers` refuses an AUTHORED tier (`TierResolveError::NoRtosFamily`):
+///   there is no sub-table to read and no task to run it. The degenerate
+///   default tier is unaffected.
+/// - `sched_caps_for` answers the bare-metal caps.
+/// - `derive_tiers_from_contracts` derives no tier, and records a degradation
+///   for each node it would have placed.
+pub const NO_RTOS_TIER_KEY: &str = "";
+
+/// The `[tiers.<name>.<rtos>]` key for an entry board key, for a caller where
+/// an UNKNOWN key is legal.
+///
+/// Read from [`BOARD_KEYS`]. A key the table does not know gets
+/// [`NO_RTOS_TIER_KEY`], never a guess from how the key is spelled. That covers
+/// a no-RTOS Rust board (`esp32-qemu`, `rtic-mps2-an385`, bare `mps2-an385`)
+/// and an out-of-tree board. The old substring match read `my-freertos-board`
+/// as FreeRTOS and `s32z270` as the host.
+///
+/// Two callers are lenient because the issue documents that the key there is
+/// any Rust or out-of-tree board: `plan_from_model` (shared with `nros build`'s
+/// Rust entry generation) and the `nros::main!` proc-macro. A caller that
+/// NEEDS the family asks [`board_family`] and refuses the key.
+pub fn tier_rtos_key_for(board: &str) -> &'static str {
+    board_family(board).map_or(NO_RTOS_TIER_KEY, BoardFamily::tier_rtos_key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1285 follow-up: the lenient lookup is the table read one way. It
+    /// is never the spelling of the key.
+    #[test]
+    fn tier_rtos_key_for_reads_the_table() {
+        for (key, family) in BOARD_KEYS {
+            assert_eq!(tier_rtos_key_for(key), family.tier_rtos_key(), "`{key}`");
+        }
+        // The old substring match's victims: none contains its RTOS's name.
+        for (key, rtos) in [
+            ("s32z270", "freertos"),
+            ("an536", "freertos"),
+            ("armfvp", "zephyr"),
+            ("fvp-aemv8r-smp", "zephyr"),
+        ] {
+            assert_eq!(tier_rtos_key_for(key), rtos, "`{key}`");
+        }
+    }
+
+    /// An unknown key names no RTOS, including one whose NAME contains an RTOS.
+    /// The substring match read those as that RTOS, and every other key as the
+    /// host.
+    #[test]
+    fn an_unknown_key_names_no_rtos() {
+        for key in [
+            "my-freertos-board",
+            "zephyr-custom",
+            "nuttx-fork",
+            "threadx-port",
+            "esp32-qemu",
+            "rtic-mps2-an385",
+            "mps2-an385",
+            "stm32f4",
+        ] {
+            assert_eq!(tier_rtos_key_for(key), NO_RTOS_TIER_KEY, "`{key}`");
+        }
+    }
 
     #[test]
     fn every_known_board_key_lands_in_its_family() {
