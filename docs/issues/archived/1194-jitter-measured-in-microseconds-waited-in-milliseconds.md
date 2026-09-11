@@ -1,11 +1,14 @@
 ---
 id: 1194
 title: "Release jitter is measured in microseconds against a cadence the executor can only wait in milliseconds"
-status: open
+status: resolved
+resolved_in: "phase-436 W3, landed on main via #849"
 type: tech-debt
 area: executor
 related: [issue-1193, phase-436]
 ---
+
+> **Resolved (phase-436 W3, landed on main via #849).** `release_jitter_granularity_us()` states what the jitter figure is worth. Since W7.b (issue 1242) that granularity comes from the installed park primitive rather than a hardcoded 1 ms. Follow-on A2c (phase-436) is still open: `late_wakes` counts overshoot below that granularity.
 
 ## Problem
 
