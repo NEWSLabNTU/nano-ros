@@ -478,10 +478,26 @@ bitfield. Policies a backend can't enforce are explicit.
 ```rust
 pub trait Session {
     fn supported_qos_policies(&self) -> QoSPolicyMask {
-        QoSPolicyMask::CORE     // reliability + durability VOLATILE + history + depth
+        QoSPolicyMask::NONE     // "I have not said", which is not "I honour the basics"
     }
 }
 ```
+
+The default is EMPTY, and that is the whole point of the mechanism
+(phase-428 W9). It was `QoSPolicyMask::CORE` — four policies granted
+by the trait to any implementation that had written no code at all —
+until measurement found the zenoh shim honouring none of the four. A
+bit is now *earned*: `check-qos-mask-derivation` requires each one to
+be backed by a claim sited on the code that reads the mapped profile
+field and either applies the request or refuses a value it cannot
+serve.
+
+A backend reached through the C ABI answers the same question through
+`nros_rmw_vtable_t::supported_qos_policies`, per backend (issue 1329).
+The cffi route used to answer the UNION of what any nano-ros-supported
+RMW honours, which over-claims for each of them; a NULL slot there
+means the backend has not said, and carries the same meaning as the
+trait default above.
 
 The runtime validates the requested QoS against the backend's mask
 at entity-create time. Requesting a policy the backend doesn't
