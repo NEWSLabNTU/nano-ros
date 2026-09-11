@@ -8,7 +8,7 @@ type: bug
 area: [build, ci, testing]
 severity: medium
 found: 2026-09-11
-related: [1217, 1155, 0287, 0957, 1146, phase-450, phase-451]
+related: [1217, 1155, 0287, 0957, 1146, 1315, phase-450, phase-451]
 ---
 
 ## What
@@ -238,3 +238,12 @@ host lane's exclusion derived, the way the embedded lane's already is.** Then
 every one of these is a member that declares which lane it cannot enter, and
 "excluded" stops meaning "unbuilt".
 
+## The missing mirror is now its own issue
+
+[Issue 1315](1315-host-uncheckable-is-a-hand-written-list.md) files the blocker
+named above, with the measurement: `HOST_UNCHECKABLE` is a hand-written string
+of 8 crates and **5 of them are already stale** — clean under the exact
+per-crate command `check::test-targets` runs. The three real ones share one
+cause (a `staticlib`/`cdylib` with no host panic runtime), which is a manifest
+fact a derived rule could read. Closing 1315 is what makes this issue's
+remaining four crates members.

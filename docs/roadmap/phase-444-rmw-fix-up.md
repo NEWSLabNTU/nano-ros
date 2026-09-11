@@ -303,14 +303,28 @@ The other 116 rows record a missing name and nothing else.
 * Verify produced slots against live peers in general — phases 433 and 441.
 * Platform build issues (#1039 NuttX, #0852 Zephyr priorities).
 
-## Issues homed here (survey 2026-09-11)
+## Issues homed here (survey 2026-09-11) — WITHDRAWN
 
-Every open issue was checked for a home phase; these had none, or were mentioned
-here only in passing. A mention is not an owner — an issue with no work item is
-an issue nobody is accountable for. Each row is a work item: the issue holds the
-evidence, the item is *close it*.
+This section listed #1268 and #1269 as homeless. **Both claims were false when
+they were written and the survey could not see it.** phase-444 gained
+`### W6 — #1268` and `### W7 — #1269` in `84926da56`, which landed on `main`
+while the survey branch was open; the branch then rebased over it, so the table
+arrived ~200 lines below the very work items it said did not exist, and #1269
+had been resolved and archived by W7.
 
-| issue | why it belongs here |
-| --- | --- |
-| [#1268](../issues/1268-cyclone-param-services-unsupported-silently-dropped.md) | parameter services never start on Cyclone. phase-426 states this is 'owned by phase-444 W6' and **this phase has no W6** — W1 through W5 only. The owner it names does not exist, which is worse than no owner because it reads as settled |
-| [#1269](../issues/archived/1269-graph-node-set-differs-across-rmws.md) (RESOLVED 2026-09-11, archived upstream while this table was being written) | the ROS graph shows a different node set for the same image on each RMW. It sits beside W3's Cyclone graph reader, and phase-446 excludes it by name |
+The rows are gone rather than corrected, because there is nothing to correct:
+W6 and W7 are the homes, and they are above.
+
+Kept from that survey: `related: [… phase-444]` in issue 1268's frontmatter,
+which was right independently of the table.
+
+**What this cost, recorded because it is the survey's own failure mode.** A
+homing survey reads the tree once and writes its conclusions as prose. Prose
+does not re-derive itself on rebase, so a conclusion about what a document
+LACKS is stale the moment someone adds it — and it lands looking authoritative.
+The three gates that guard this family all passed: `check-roadmap-claims` reads
+a phase's header against its own ticked boxes, not against a table's claim about
+another phase's headings; `check-markdown-links` only wanted the #1269 link
+repointed to `archived/`, which it got. A cross-document claim of absence has no
+gate, and on this evidence wants one — that is the shape
+[phase-450](phase-450-gate-reach-narrower-than-its-rule.md) collects.
