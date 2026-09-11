@@ -35,12 +35,12 @@
  *
  * ## Freestanding
  *
- * `<cstdint>` / `<cstddef>` and the FFI header, nothing more. The
- * `std::string` and `std::vector<T>` overloads are behind `NROS_CPP_STD`, the
- * same opt-in `nros::ParameterServer` used for them, so a `-nostdinc++` build
- * gets the scalar set and no parse error. Nothing here declares a MEMBER of
- * anything, so no capability probe can move a layout
- * (`check-cpp-capability-layout`).
+ * `<cstdint>` / `<cstddef>`, `nros/parameter.hpp` (`Seq<T, N>`, a value with
+ * no STL in it) and the FFI header, nothing more. The `std::string` and
+ * `std::vector<T>` overloads are behind `NROS_CPP_STD`, so a `-nostdinc++`
+ * build gets the scalar set, the `Seq` array set and no parse error. Nothing
+ * here declares a MEMBER of anything, so no capability probe can move a
+ * layout (`check-cpp-capability-layout`).
  *
  * ## Availability
  *
@@ -61,6 +61,7 @@
 #include <stddef.h>
 
 #include "nros/declared_params.hpp" // phase-446 W6 -- `nros::param_type`
+#include "nros/parameter.hpp"       // phase-426 W4 -- `nros::Seq<T, N>`
 #include "nros/result.hpp"
 #include "nros_cpp_ffi.h"
 
@@ -182,40 +183,28 @@ inline bool node_param_has(const nros_cpp_node_t* node, const char* name) {
     return nros_cpp_node_has_param(node, name);
 }
 
-#ifdef NROS_CPP_STD
-
-// --- std::string values -----------------------------------------------------
-
-inline Result node_param_declare(const nros_cpp_node_t* node, const char* name,
-                                 const ::std::string& v) {
-    return node_param_declare(node, name, v.c_str());
-}
-inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
-                             const ::std::string& v) {
-    return node_param_set(node, name, v.c_str());
-}
-inline Result node_param_get(const nros_cpp_node_t* node, const char* name, ::std::string& out) {
-    char buf[NROS_NODE_PARAM_STRING_BUF];
-    buf[0] = '\0';
-    Result r = node_param_get(node, name, buf, sizeof(buf));
-    if (r.ok()) {
-        out.assign(buf);
-    }
-    return r;
-}
-
-// --- std::vector<T> values --------------------------------------------------
+// --- array values, the shared half ------------------------------------------
 //
-// `nros::ComponentNode::declare_parameter<std::vector<double>>` is the caller,
-// and the reason the array half of the FFI exists: deleting the C++ store
-// without it would have turned a working weight matrix into a silently
-// defaulted one.
+// The three `*_array` FFI entry points, as an overload set on the ELEMENT
+// type. Two value types ride on them and they are available in different
+// builds, which is why this block sits OUTSIDE `NROS_CPP_STD`:
+//
+//   * `Seq<T, N>` (`nros/parameter.hpp`) - freestanding, fixed capacity, no
+//     heap. Phase-426 W4: this is what `nros::ParameterServer<Cap>` used to
+//     serve out of an inline bump pool, moved onto the one store so a
+//     sequence parameter is visible to `ros2 param get` like every scalar.
+//   * `std::vector<T>` - hosted, below, behind `NROS_CPP_STD`. A ported
+//     `declare_parameter<std::vector<double>>` (the vendored ASI weight
+//     matrix) is the caller, and the reason the array half of the FFI exists:
+//     deleting the C++ store without it would have turned a working weight
+//     matrix into a silently defaulted one.
 //
 // The store OWNS the elements (`heapless::Vec` in its slot), so there is no
-// pool to keep alive here and no borrow for the caller to outlive — which is
+// pool to keep alive here and no borrow for the caller to outlive - which is
 // what `nros::ParameterServer`'s `seq_pool_` existed to provide and why it
-// leaves with the member. `std::vector<bool>` is absent for the reason it was
-// absent before: it has no `data()`.
+// left with the class. `std::vector<bool>` is absent for the reason it was
+// absent before: it has no `data()`. `Seq<bool, N>` is NOT - its storage is a
+// plain `bool[N]`, so it has one.
 
 inline nros_cpp_ret_t node_param_declare_array_ffi(const nros_cpp_node_t* node, const char* name,
                                                    const double* d, ::size_t len) {
@@ -243,10 +232,97 @@ inline nros_cpp_ret_t node_param_get_array_ffi(const nros_cpp_node_t* node, cons
     return nros_cpp_node_get_param_bool_array(node, name, out, cap, len);
 }
 
+inline nros_cpp_ret_t node_param_set_array_ffi(const nros_cpp_node_t* node, const char* name,
+                                               const double* d, ::size_t len) {
+    return nros_cpp_node_set_param_double_array(node, name, d, len);
+}
+inline nros_cpp_ret_t node_param_set_array_ffi(const nros_cpp_node_t* node, const char* name,
+                                               const int64_t* d, ::size_t len) {
+    return nros_cpp_node_set_param_integer_array(node, name, d, len);
+}
+inline nros_cpp_ret_t node_param_set_array_ffi(const nros_cpp_node_t* node, const char* name,
+                                               const bool* d, ::size_t len) {
+    return nros_cpp_node_set_param_bool_array(node, name, d, len);
+}
+
+// --- Seq<T, N> values --------------------------------------------------------
+//
+// Freestanding, so no `#ifdef`: this is the array surface a `-nostdinc++`
+// node has. `Seq` is a VALUE - the store copies the elements in on declare
+// and out on get, and the caller's `Seq` need not outlive either call.
+
+template <typename T, ::size_t N>
+inline Result node_param_declare(const nros_cpp_node_t* node, const char* name,
+                                 const ::nros::Seq<T, N>& v) {
+    return Result(node_param_declare_array_ffi(node, name, v.data(), v.size()));
+}
+
+template <typename T, ::size_t N>
+inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
+                             const ::nros::Seq<T, N>& v) {
+    return Result(node_param_set_array_ffi(node, name, v.data(), v.size()));
+}
+
+/// Read an array parameter into a `Seq<T, N>`.
+///
+/// A stored array LONGER than `N` is refused (`ErrorCode::Full`) and `out` is
+/// left cleared, never truncated: a short weight matrix is a plausible wrong
+/// answer rather than a visible failure, which is the same reason the
+/// `std::vector` read below asks for the length first.
+template <typename T, ::size_t N>
+inline Result node_param_get(const nros_cpp_node_t* node, const char* name,
+                             ::nros::Seq<T, N>& out) {
+    T buf[N];
+    ::size_t len = 0;
+    Result r(node_param_get_array_ffi(node, name, buf, N, &len));
+    out.clear();
+    if (!r.ok()) {
+        return r;
+    }
+    for (::size_t i = 0; i < len; ++i) {
+        (void)out.push_back(buf[i]);
+    }
+    return r;
+}
+
+#ifdef NROS_CPP_STD
+
+// --- std::string values -----------------------------------------------------
+
+inline Result node_param_declare(const nros_cpp_node_t* node, const char* name,
+                                 const ::std::string& v) {
+    return node_param_declare(node, name, v.c_str());
+}
+inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
+                             const ::std::string& v) {
+    return node_param_set(node, name, v.c_str());
+}
+inline Result node_param_get(const nros_cpp_node_t* node, const char* name, ::std::string& out) {
+    char buf[NROS_NODE_PARAM_STRING_BUF];
+    buf[0] = '\0';
+    Result r = node_param_get(node, name, buf, sizeof(buf));
+    if (r.ok()) {
+        out.assign(buf);
+    }
+    return r;
+}
+
 template <typename T>
 inline Result node_param_declare(const nros_cpp_node_t* node, const char* name,
                                  const ::std::vector<T>& v) {
     return Result(node_param_declare_array_ffi(node, name, v.data(), v.size()));
+}
+
+/// Set a declared array parameter from a `std::vector<T>`.
+///
+/// phase-426 W4 -- the hosted twin of the `Seq` setter. It was missing with
+/// the rest of the array setters, so `set_parameter<std::vector<double>>` did
+/// not compile while `declare_parameter<std::vector<double>>` did: an ASI
+/// weight matrix could be declared and never updated.
+template <typename T>
+inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
+                             const ::std::vector<T>& v) {
+    return Result(node_param_set_array_ffi(node, name, v.data(), v.size()));
 }
 
 /// Read an array parameter into a `std::vector<T>`.
@@ -315,6 +391,9 @@ constexpr int node_param_array_type(int scalar) {
            : (scalar == ::nros::param_type::DOUBLE)  ? ::nros::param_type::DOUBLE_ARRAY
                                                      : ::nros::param_type::STRING_ARRAY;
 }
+template <typename T, ::size_t N> struct node_param_type<::nros::Seq<T, N>> {
+    static constexpr int value = node_param_array_type(node_param_type<T>::value);
+};
 #ifdef NROS_CPP_STD
 template <typename T, typename A> struct node_param_type<::std::vector<T, A>> {
     static constexpr int value = node_param_array_type(node_param_type<T>::value);

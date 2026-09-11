@@ -3478,6 +3478,41 @@ nros_cpp_ret_t nros_cpp_node_get_param_bool_array(const struct nros_cpp_node_t *
                                                   size_t *out_len);
 
 /**
+ * Set a declared double-array parameter on this node, copying `len` elements.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_double_array`].
+ */
+nros_cpp_ret_t nros_cpp_node_set_param_double_array(const struct nros_cpp_node_t *node,
+                                                    const char *name,
+                                                    const double *data,
+                                                    size_t len);
+
+/**
+ * Set a declared integer-array parameter on this node. See
+ * [`nros_cpp_node_set_param_double_array`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_double_array`].
+ */
+nros_cpp_ret_t nros_cpp_node_set_param_integer_array(const struct nros_cpp_node_t *node,
+                                                     const char *name,
+                                                     const int64_t *data,
+                                                     size_t len);
+
+/**
+ * Set a declared bool-array parameter on this node. See
+ * [`nros_cpp_node_set_param_double_array`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_double_array`].
+ */
+nros_cpp_ret_t nros_cpp_node_set_param_bool_array(const struct nros_cpp_node_t *node,
+                                                  const char *name,
+                                                  const bool *data,
+                                                  size_t len);
+
+/**
  * Register a hook to run BEFORE the executor's session is closed.
  *
  * On success writes the handle through `out_handle` and returns

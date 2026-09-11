@@ -1029,6 +1029,110 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_bool_array(
     }
 }
 
+// --- array setters ----------------------------------------------------------
+//
+// phase-426 W4 -- the declare/get pair above landed without a setter, so a
+// declared array parameter could be written from the WIRE (`ros2 param set`
+// reaches `ParameterServer::apply` like any other value) and from nowhere in
+// C++. `nros::ParameterServer<Cap>::set_parameter(name, Seq<T, N>)` could,
+// which made deleting that class a capability loss rather than a move -- the
+// exact shape W4's "do not delete a store before its replacement exists"
+// ordering rule exists to prevent. These are the replacement.
+//
+// They route through `set_parameter_on`, i.e. `ParameterServer::apply`, so the
+// read-only / type / range / undeclared verdicts are the ones a remote set
+// gets. `declare_*_array` above does NOT: a declare is the thing that creates
+// the slot.
+
+/// Set a declared double-array parameter on this node, copying `len` elements.
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_double_array`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_set_param_double_array(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+    data: *const f64,
+    len: usize,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let (ctx, id, name) = node_param_prologue!(node, name);
+        let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        let Some(pv) = ParameterValue::from_double_array(slice) else {
+            return NROS_CPP_RET_FULL;
+        };
+        set_result_to_ret(ctx.executor.set_parameter_on(id, name, pv))
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, name, data, len);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// Set a declared integer-array parameter on this node. See
+/// [`nros_cpp_node_set_param_double_array`].
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_double_array`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_set_param_integer_array(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+    data: *const i64,
+    len: usize,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let (ctx, id, name) = node_param_prologue!(node, name);
+        let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        let Some(pv) = ParameterValue::from_integer_array(slice) else {
+            return NROS_CPP_RET_FULL;
+        };
+        set_result_to_ret(ctx.executor.set_parameter_on(id, name, pv))
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, name, data, len);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// Set a declared bool-array parameter on this node. See
+/// [`nros_cpp_node_set_param_double_array`].
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_double_array`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_set_param_bool_array(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+    data: *const bool,
+    len: usize,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let (ctx, id, name) = node_param_prologue!(node, name);
+        let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        let Some(pv) = ParameterValue::from_bool_array(slice) else {
+            return NROS_CPP_RET_FULL;
+        };
+        set_result_to_ret(ctx.executor.set_parameter_on(id, name, pv))
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, name, data, len);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
 /// Borrow `len` elements from `data`, tolerating a null pointer at `len == 0`.
 ///
 /// An empty `std::vector` yields `data() == nullptr` on some implementations,
