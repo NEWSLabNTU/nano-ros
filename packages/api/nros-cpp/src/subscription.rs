@@ -111,6 +111,18 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
         None => ctx.executor.session_mut(),
     };
 
+    // phase-454 W10 — the REGISTRATION half of the declared-depth check, for
+    // every caller of this seam. C++ components already get a boot-time check
+    // in `Node::check_declared_depth` and a compile-time one from
+    // `NROS_SUBSCRIBE`; this catches the two that reach neither — a C
+    // component, whose configure function calls this symbol directly with a
+    // `nros_cpp_qos_t` it built at run time, and a C++ call site that names
+    // this FFI rather than the node's own verb.
+    if nros_node::declared_qos::check(topic_info.type_name, topic_info.name, qos_settings.depth)
+        .is_err()
+    {
+        return crate::NROS_CPP_RET_DECLARED_DEPTH_MISMATCH;
+    }
     match session.create_subscription(&topic_info, qos_settings) {
         Ok(handle) => {
             unsafe {

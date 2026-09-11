@@ -692,5 +692,9 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "phase-417 stage 0 — visible only because the rclcpp adapter (then `rclcpp_compat.hpp`; deleted at stage 6 step A, each declaration moved to the header owning its concept) became a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. This member is NOT declared here at all: `packages/api/nros-cpp/include/nros/options.hpp` refuses the ten option setter/getter pairs a tutorial chains (`arguments`, `use_intra_process_comms`, `enable_rosout`, ...) with a dependent `static_assert` carrying `NROS_RCLCPP_REFUSE_NODE_OPTIONS`, and declares nothing else on the type. So a ported call to THIS one gets `no member named` -- honest, and it names neither the constraint nor the alternative. phase-428 Q1 (2026-09-06): this row used to say it was a `= delete` overload; it never was, and the disposition is corrected from refuse-loud to absent. The refusal that does exist is per-CONCEPT and `cpp:NodeOptions` carries it."
+  },
+  "c:declared_qos_streq": {
+    "verdict": "extension",
+    "why": "phase-454 W10 -- `strcmp(a, b) == 0`, spelled out in `nros/declared_qos.h` so that header needs no hosted C string header. A FREESTANDING C implementation is required to provide only float / iso646 / limits / stdarg / stdbool / stddef / stdint, and this header is included by every C component on every RTOS target, so reaching for a hosted header to compare two strings would put a portability condition on the check itself. Ours-only by construction: it is an implementation detail of `c:declared_depth` that C cannot hide the way C++ hides its own `declared_qos_streq` in `nros::detail`, because C has no namespaces. rcl has no counterpart because it has no such table to search."
   }
 }

@@ -93,6 +93,66 @@ declared-qos-header:
     fi
     ./tests/cmake-declared-qos-header-tests.sh
 
+# phase-454 W10 — the RUST half of the declared-QoS depth check, end to end.
+#
+# The C and C++ halves are compile-time, so a gate can put a disagreeing call
+# site in front of a compiler and read the verdict. Rust's half cannot be: a
+# RUST component is an empty cmake INTERFACE library with no preprocessor in
+# its lane, there is no macro seam at the subscribe site, and the topic is a
+# runtime `&str`. Its check therefore runs at REGISTRATION, and the thing a
+# gate has to prove is DELIVERY: that `NROS_ENTITY_DECLARED_DEPTHS` reaches
+# `nros-node/build.rs`, that the parse keeps the rows, that both type
+# spellings are emitted, and that a disagreement is actually refused.
+#
+# Every one of those can fail silently. A carrier cmake never forwards, a
+# parse that drops every row and a table keyed on a spelling no call site
+# writes all look exactly like "no mismatch here" — which is the shape six
+# mechanisms in this campaign have already had.
+#
+# So the lane builds nros-node TWICE and asserts the difference:
+#
+#   1. WITH the variable, the `nros_declared_qos_table` cfg is on, the
+#      declared-image test exists and must PASS. That test's own control is a
+#      depth 10 registered against a declared 1.
+#   2. WITHOUT it the same filter must match NOTHING. Otherwise a cfg that was
+#      always on would make step 1 green while proving nothing about delivery.
+#
+# A separate CARGO_TARGET_DIR because the env var is part of the build
+# fingerprint: sharing the tree's would rebuild nros-node and everything above
+# it on every subsequent command.
+declared-qos-registration:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Checking the Rust declared-QoS registration check (phase-454 W10)..."
+    _dqr_dir="tmp/declared-qos-registration"
+    mkdir -p "$_dqr_dir"
+    _filter="declared_qos::tests::declared_image"
+    echo "  - WITH a declared table: the check refuses a disagreeing depth"
+    _dqr_with="$(NROS_ENTITY_DECLARED_DEPTHS='std_msgs/msg/Int32|/chatter=1' \
+        CARGO_TARGET_DIR="$_dqr_dir" \
+        cargo test -p nros-node --lib "$_filter" -- --exact \
+            declared_qos::tests::declared_image::refuses_a_disagreeing_depth_and_accepts_an_agreeing_one \
+        2>&1)"
+    case "$_dqr_with" in \
+        *"1 passed"*) ;; \
+        *) echo "ERROR: the declared-image test did not run and pass." >&2; \
+           echo "       Either NROS_ENTITY_DECLARED_DEPTHS is not reaching" >&2; \
+           echo "       nros-node/build.rs, or the rows were dropped by the parse --" >&2; \
+           echo "       in which case every Rust subscription registers unchecked." >&2; \
+           echo "--- cargo said ---" >&2; echo "$_dqr_with" >&2; exit 1 ;; \
+    esac
+    echo "  - WITHOUT one: that test does not exist, so the cfg is load-bearing"
+    _dqr_without="$(CARGO_TARGET_DIR="$_dqr_dir" \
+        cargo test -p nros-node --lib "$_filter" 2>&1)"
+    case "$_dqr_without" in \
+        *"0 passed"*) ;; \
+        *) echo "ERROR: the declared-image test ran WITHOUT a declared table." >&2; \
+           echo "       Its cfg is then always on, the step above proves nothing" >&2; \
+           echo "       about delivery, and this lane is a gate that cannot fail." >&2; \
+           echo "--- cargo said ---" >&2; echo "$_dqr_without" >&2; exit 1 ;; \
+    esac
+    echo "Rust declared-QoS registration check OK"
+
 # phase-428 W10 — the named QoS presets are upstream's, field by field.
 #
 # `QOS_PROFILE_PARAMETER_EVENTS` was KEEP_ALL/0 where upstream is

@@ -521,6 +521,57 @@ function(_nros_qos_depth_env _out_var)
     endif()
 endfunction()
 
+# _nros_declared_depth_table_env(<out-var>)
+#
+# phase-454 W10 -- carry the per-endpoint declared depths, not their maximum, on
+# the lanes with no Kconfig.
+#
+# The SAME carrier the Zephyr lane already forwards
+# (`nros_cargo_build.cmake`'s `NROS_ENTITY_DECLARED_DEPTHS`), and the same
+# `type|topic=depth` spelling, because a second name for one fact is how a
+# producer and a consumer quietly stop meeting. `nros-node/build.rs` reads it
+# twice, for two different jobs.
+#
+# ONE GUARD, where `_nros_qos_depth_env` above has two, and the difference is
+# the point. That function SIZES: the arena charges every pub/sub slot the same
+# price, so a table over the endpoints that happened to be declared would size
+# an image from a subset of itself, and it must refuse unless the UNDECLARED
+# count is zero. This function CHECKS, per endpoint: whether `/chatter`'s
+# declared depth matches the depth registered on `/chatter` is a question about
+# `/chatter`, and a silent neighbour makes it no less answerable. Requiring the
+# whole image to declare before any of it is checked would turn one unannotated
+# subscription into no checking at all -- and every in-tree contract leaves one,
+# which is exactly the measurement recorded above.
+#
+# The value is `,`-joined: cmake would split a `;`-separated list inside a
+# `NAME=VALUE` payload. `build.rs` accepts either separator, as the Zephyr lane
+# also hands it a comma-joined string.
+function(_nros_declared_depth_table_env _out_var)
+    set(${_out_var} "" PARENT_SCOPE)
+    if(NOT COMMAND nros_entity_inventory_knobs_file)
+        return()
+    endif()
+    nros_entity_inventory_knobs_file(_inv)
+    if(NOT EXISTS "${_inv}")
+        return()
+    endif()
+    include("${_inv}")
+    # A table this module did not compose is a table nobody may read: a
+    # `refused` inventory has no rows, and a partial one would check call sites
+    # against declarations that were never resolved.
+    if(NOT NROS_ENTITY_DECLARED_DEPTH_STATUS STREQUAL "resolved")
+        return()
+    endif()
+    if(NOT DEFINED NROS_ENTITY_DECLARED_DEPTHS)
+        return()
+    endif()
+    string(REPLACE ";" "," _nros_depth_table "${NROS_ENTITY_DECLARED_DEPTHS}")
+    if(_nros_depth_table STREQUAL "")
+        return()
+    endif()
+    set(${_out_var} "NROS_ENTITY_DECLARED_DEPTHS=${_nros_depth_table}" PARENT_SCOPE)
+endfunction()
+
 # _nros_param_store_env(<out-var>)
 #
 # phase-446 W4 -- carry the PARAMETER STORE sizing the contract's `params:`
@@ -620,6 +671,14 @@ function(nros_entity_facts_env _target)
     _nros_qos_depth_env(_depth_env)
     if(_depth_env)
         list(APPEND _payload_env "${_depth_env}")
+    endif()
+
+    # phase-454 W10 -- the per-endpoint table, for the REGISTRATION check.
+    # Distinct from the maximum above, which sizes; see the two functions'
+    # guards.
+    _nros_declared_depth_table_env(_depth_table_env)
+    if(_depth_table_env)
+        list(APPEND _payload_env "${_depth_table_env}")
     endif()
 
     # phase-446 W4 -- the parameter store, from the contract's `params:`.

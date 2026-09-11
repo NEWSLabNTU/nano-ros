@@ -549,6 +549,15 @@ pub unsafe extern "C" fn nros_subscription_init_polling_with_qos(
             topic_str,
             crate::qos::QOS_OVERRIDE_ROLE_SUBSCRIPTION,
         );
+        // phase-454 W10 — the REGISTRATION half of C's declared-depth check.
+        // `NROS_ASSERT_DECLARED_DEPTH` catches a C call site whose depth is a
+        // constant expression at COMPILE time; a `nros_qos_t` built at run time
+        // has no constant to assert on, and this is where it lands instead.
+        if nros_node::declared_qos::check(topic_info.type_name, topic_info.name, qos_settings.depth)
+            .is_err()
+        {
+            return NROS_RET_ERROR;
+        }
         match session.create_subscription(&topic_info, qos_settings) {
             Ok(handle) => {
                 let raw = nros_node::RawSubscription::<{ crate::config::MESSAGE_BUFFER_SIZE }>::new(

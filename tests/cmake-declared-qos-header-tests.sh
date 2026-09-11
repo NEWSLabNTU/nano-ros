@@ -93,6 +93,15 @@ quietly; a gate that examined nothing must not read as a pass"
     exit 1
 fi
 
+# phase-454 W10 — and a C compiler, for case F2. Same rule: the C half of the
+# check has its own negative control and it cannot be skipped quietly either.
+CC="${CC:-cc}"
+if ! command -v "$CC" >/dev/null 2>&1; then
+    fail "no C compiler ($CC) -- case F2 is the C negative control and cannot be skipped
+quietly; a gate that examined nothing must not read as a pass"
+    exit 1
+fi
+
 init_test_tmpdir "nros-declared-qos-header"
 trap 'cleanup_test_tmpdir' EXIT
 
@@ -362,6 +371,73 @@ the declared depth is not reaching the compiler and nothing is checked."
                 *) fail "F: the diagnostic does not contain: $_want
 It must name the TOPIC and BOTH depths, or a reader cannot tell which
 subscription is wrong or which of the two numbers to fix -- $DISAGREE_OUT" ;;
+            esac
+        done
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# F2. THE SAME NEGATIVE CONTROL, IN C (phase-454 W10).
+#
+# Case F proved the rendered table rejects a disagreeing C++ call site. That
+# says nothing about C: the C lookup reads a DIFFERENT X-macro list out of the
+# same file (`NROS_DECLARED_QOS_ROWS_Q`, which exists because C has no
+# `constexpr` and the queried pair has to travel through the list), and a
+# generator that emitted one list and not the other, or emitted them with
+# different rows, would leave every C component unchecked while case F stayed
+# green. So the C half is driven against the header this configure JUST
+# RENDERED too, agreeing site first.
+#
+# `_nros_declared_qos_arm()` already serves C — it returns early only for RUST
+# components and for INTERFACE targets, and a C component is a STATIC library
+# like a C++ one — so this exercises the production delivery path unchanged.
+# ---------------------------------------------------------------------------
+log_info "F2. the same disagreement fails to compile in C"
+c_probe_src() {
+    # `<nros/declared_qos.h>` alone, for the reason case F gives for the C++
+    # probe: pulling the whole nros-c surface in here would make this gate
+    # depend on per-build generated config headers it has no business building.
+    # `just check c` compiles the same macro through `<nros/nros.h>`.
+    cat <<EOF
+#include <nros/declared_qos.h>
+void nros_dq_case_f2(void) {
+    NROS_ASSERT_DECLARED_DEPTH("std_msgs::msg::dds_::Int32_", "/chatter", $1, "\"/chatter\"");
+}
+EOF
+}
+c_probe_compile() {
+    "$CC" -fsyntax-only -std=c11 -Wall -Wextra \
+        -I"$GEN_DIR" \
+        -I"$PROJECT_ROOT/packages/api/nros-c/include" \
+        -x c "$1" 2>&1
+}
+c_probe_src 1 > "$TEST_TMPDIR/agree.c"
+c_probe_src 10 > "$TEST_TMPDIR/disagree.c"
+check
+if ! C_AGREE_OUT="$(c_probe_compile "$TEST_TMPDIR/agree.c")"; then
+    fail "F2: the AGREEING C call site failed to compile. Something is wrong with the
+probe or the include path, and the expected-failure assertion below would then
+pass for the wrong reason -- $C_AGREE_OUT"
+else
+    check
+    if C_DISAGREE_OUT="$(c_probe_compile "$TEST_TMPDIR/disagree.c")"; then
+        fail "F2: the DISAGREEING C call site COMPILED. The contract declares depth 1 for
+/chatter and the call site passes depth 10; the _Static_assert did not fire, so
+either NROS_DECLARED_QOS_ROWS_Q is missing from the rendered header or the C
+lookup is not reading it -- and every C component compiles unchecked."
+    else
+        # Same rule as case F: the rejection must be OURS, and it must name the
+        # topic and BOTH depths. In C the topic comes from the assertion message
+        # (a `_Static_assert` message is a string literal and cannot interpolate
+        # an `int`) and the numbers from the conflicting `char[N]` declarations,
+        # which is the only part of a diagnostic a C compiler prints for you.
+        for _want in '"/chatter"' 'char[1]' 'char[10]'; do
+            check
+            case "$C_DISAGREE_OUT" in
+                *"$_want"*) ;;
+                *) fail "F2: the C diagnostic does not contain: $_want
+It must name the TOPIC and BOTH depths, or a reader cannot tell which
+subscription is wrong or which of the two numbers to fix -- $C_DISAGREE_OUT" ;;
             esac
         done
     fi

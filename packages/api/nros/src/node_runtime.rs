@@ -2726,6 +2726,16 @@ fn capability_reason(e: &nros_node::NodeError) -> &'static str {
             "ShutdownCallbacksFull (the executor's pre/on-shutdown callback table is \
              full — raise NROS_EXECUTOR_MAX_SHUTDOWN_CBS)"
         }
+        // phase-454 W10. The two numbers and the topic are already on the log
+        // by the time this renders — this string is the CLASS, and a reason
+        // that repeated the numbers without the topic would be worse than one
+        // that points at the line which has all three.
+        NodeError::DeclaredDepthMismatch => {
+            "DeclaredDepthMismatch (this subscription's QoS depth disagrees with the depth \
+             the contract sidecar declares for that topic — the log line above names the \
+             topic and both numbers; depth multiplies the executor arena, so the two must \
+             state one number)"
+        }
     }
 }
 

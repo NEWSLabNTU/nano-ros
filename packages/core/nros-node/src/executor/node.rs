@@ -400,6 +400,8 @@ impl<'a> NodeHandle<'a> {
             <M as RosMessage>::TYPE_NAME,
             <M as RosMessage>::TYPE_HASH,
         );
+        // phase-454 W10 — see the same line in `executor/spin.rs`.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = self
             .session
             .create_subscription(&topic, qos)
@@ -461,6 +463,10 @@ impl<'a> NodeHandle<'a> {
             type_name,
             type_hash,
         );
+        // phase-454 W10 — the raw path costs the arena exactly what the typed
+        // one does, so leaving it out would make the declared depth enforceable
+        // everywhere except in the images that decode bytes themselves.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = self
             .session
             .create_subscription(&topic, qos)

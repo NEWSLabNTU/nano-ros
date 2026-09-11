@@ -762,6 +762,19 @@ pub enum NodeError {
     /// `ExecutorFull` so the register seam can name the knob that is actually
     /// exhausted; the two tables are sized independently of `MAX_CBS`.
     ShutdownCallbacksFull,
+    /// phase-454 W10 — this subscription's QoS history depth disagrees with the
+    /// depth the system DECLARED for that topic in the contract sidecar.
+    ///
+    /// Depth is a multiplier on the executor arena, so a declaration and an
+    /// implementation that state two different numbers mean the image was
+    /// sized for one of them and runs the other. C++ catches this at COMPILE
+    /// time (`NROS_SUBSCRIBE`'s `static_assert`) and C at compile time where
+    /// the depth is a constant expression; Rust has no macro seam at the
+    /// subscribe site and its topic is a runtime `&str`, so this is where the
+    /// same disagreement lands — at registration, before the subscription
+    /// exists. The two numbers and the topic are logged by
+    /// [`crate::declared_qos::check`]; this variant is the refusal.
+    DeclaredDepthMismatch,
 }
 
 // phase-427 W10 — `Display` + `core::error::Error`, so a ported rclrs `main`
@@ -809,6 +822,10 @@ impl core::fmt::Display for NodeError {
             }
             NodeError::ShutdownCallbacksFull => f.write_str(
                 "the shutdown-hook table for this phase is full (NROS_EXECUTOR_MAX_SHUTDOWN_CBS)",
+            ),
+            NodeError::DeclaredDepthMismatch => f.write_str(
+                "this subscription's QoS depth disagrees with the depth its system DECLARED \
+                 for that topic in the contract sidecar",
             ),
         }
     }

@@ -101,6 +101,10 @@ extern crate alloc;
 pub mod boot_report;
 pub mod c_waker;
 pub mod config;
+/// phase-454 W10 — the DECLARED QoS history depth, and the registration check
+/// over it. Rust's half of what C++ does with `NROS_SUBSCRIBE`'s
+/// `static_assert` and C with `NROS_ASSERT_DECLARED_DEPTH`.
+pub mod declared_qos;
 /// RFC-0088 / phase-421 W1 — the compile-time message-format check.
 ///
 /// Gated exactly like [`session`], whose `IMAGE_SERIALIZATION_FORMAT_ID` it

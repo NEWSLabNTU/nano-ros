@@ -244,6 +244,21 @@ pub const NROS_CPP_RET_REENTRANT: nros_cpp_ret_t = -15;
 pub const NROS_CPP_RET_UNSUPPORTED: nros_cpp_ret_t = -16;
 /// Transport / connection error (C++-space extension; nros_ret_t stops at -16).
 pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
+/// phase-454 W10 — a subscription's QoS depth disagrees with the depth its
+/// system's contract DECLARES for that topic.
+///
+/// The same number `nros::detail::DECLARED_DEPTH_MISMATCH` carries in
+/// `nros/node.hpp`, which is the C++ BOOT-time half of the same check, and for
+/// the reason recorded there: this is not a backend failure, it is the image
+/// contradicting its own manifest, and a code that also means "the RMW said no"
+/// would send the reader to the wrong half of the tree.
+///
+/// Reached by the C component surface as well as by C++, because
+/// `nros_cpp_subscription_register` is what a C component's configure function
+/// calls — C's compile-time `NROS_ASSERT_DECLARED_DEPTH` only answers where the
+/// depth is a constant expression, and a `nros_cpp_qos_t` built at run time is
+/// not one.
+pub const NROS_CPP_RET_DECLARED_DEPTH_MISMATCH: nros_cpp_ret_t = -403;
 
 // ============================================================================
 // Inline opaque storage sizes (in u64 units)
@@ -970,6 +985,11 @@ fn node_error_class(err: &nros_node::NodeError) -> u32 {
         E::ExecutorFull => 15,
         E::BackendMismatch => 16,
         E::ShutdownCallbacksFull => 17,
+        // phase-454 W10. APPENDED, per this function's own rule: the numbering
+        // is assigned here and never taken from the discriminant, so a dump
+        // decoded against an older table still names the right error for
+        // everything below this line.
+        E::DeclaredDepthMismatch => 18,
     }
 }
 
@@ -1096,6 +1116,12 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
         E::InvalidSchedContextBinding => NROS_CPP_RET_INVALID_ARGUMENT,
         E::NodeTableFull | E::ExecutorFull | E::ShutdownCallbacksFull => NROS_CPP_RET_FULL,
         E::BackendMismatch => NROS_CPP_RET_UNSUPPORTED,
+        // phase-454 W10 — its OWN code, for the reason `nros::detail::
+        // DECLARED_DEPTH_MISMATCH` gives in `nros/node.hpp`: this is not a
+        // backend failure, it is the image contradicting its own manifest, and
+        // a code that also means "the RMW said no" would send the reader to the
+        // wrong half of the tree. Same number both C++ halves already use.
+        E::DeclaredDepthMismatch => NROS_CPP_RET_DECLARED_DEPTH_MISMATCH,
         // NO wildcard. Every `NodeError` variant is named above, and rustc
         // rejects a `_` arm here as unreachable — which is the property worth
         // keeping: adding a variant to `NodeError` now fails to compile until
