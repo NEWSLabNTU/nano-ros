@@ -547,18 +547,16 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     ),
                 )
             })?;
-            // The board as declared, else the image id: an image may be named
-            // after a board key (`[image.zephyr]`) while its `board` spells the
-            // framework's own name. The SAME order `nros build` records a
-            // generated entry's deploy token in (`builder::entry`).
-            let deploy = if board_path_for(&declared).is_some() {
-                declared
-            } else {
-                leaf.as_ref()
-                    .and_then(|l| l.image.clone())
-                    .filter(|id| board_path_for(id).is_some())
-                    .unwrap_or(declared)
-            };
+            // The board AS DECLARED, and nothing else. An earlier cut of W5 fell
+            // back to the image id when the declared board was not a table key
+            // (for a Zephyr image whose `board` spells the framework's name) —
+            // which also made a TYPO build for whatever board the image id
+            // names: `[image.native] board = "frobnicator"` compiled as native,
+            // the declared value unable to take effect and nothing saying so
+            // (`unknown_board_emits_compile_error`). The Zephyr spelling is a
+            // key of its own now (`native_sim/native/64`), so the table is
+            // the one answer, as it was before W5.
+            let deploy = declared;
             let resolved = board_path_for(&deploy).ok_or_else(|| {
                 syn::Error::new(
                     Span::call_site(),
