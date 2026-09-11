@@ -130,12 +130,25 @@ pub(super) fn admit(
     // as the other inverts behaviour, it does not weaken it.
     match requested.history {
         QoSHistoryPolicy::KeepLast => {}
-        QoSHistoryPolicy::KeepAll | QoSHistoryPolicy::SystemDefault => {
+        QoSHistoryPolicy::KeepAll => {
             refuse(
                 kind,
                 name,
                 "history",
-                "KEEP_ALL — the shim's receive ring is KEEP_LAST only",
+                "KEEP_ALL — the receive ring is KEEP_LAST only",
+            );
+            return Err(TransportError::IncompatibleQos);
+        }
+        // A sentinel HERE means the caller skipped `resolve_system_default`,
+        // which is a caller bug and not a policy this backend declines. Saying
+        // "KEEP_ALL" would aim the reader at their profile instead of at the
+        // missing resolve.
+        QoSHistoryPolicy::SystemDefault => {
+            refuse(
+                kind,
+                name,
+                "history",
+                "SYSTEM_DEFAULT reached the backend unresolved",
             );
             return Err(TransportError::IncompatibleQos);
         }
@@ -148,12 +161,22 @@ pub(super) fn admit(
     // backend directly.
     match requested.durability {
         QoSDurabilityPolicy::Volatile => {}
-        QoSDurabilityPolicy::TransientLocal | QoSDurabilityPolicy::SystemDefault => {
+        QoSDurabilityPolicy::TransientLocal => {
             refuse(
                 kind,
                 name,
                 "durability",
                 "TRANSIENT_LOCAL — the shim keeps no historical samples",
+            );
+            return Err(TransportError::IncompatibleQos);
+        }
+        // See the history arm: an unresolved sentinel is the caller's bug.
+        QoSDurabilityPolicy::SystemDefault => {
+            refuse(
+                kind,
+                name,
+                "durability",
+                "SYSTEM_DEFAULT reached the backend unresolved",
             );
             return Err(TransportError::IncompatibleQos);
         }
