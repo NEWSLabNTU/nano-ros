@@ -1251,6 +1251,91 @@ pub fn ros2_param_list_all(locator: &str, distro: &str) -> TestResult<String> {
 }
 
 /// Run `ros2 param get` for a specific parameter on a node
+// issue 1268 / phase-444 W6 — the DOMAIN-addressed siblings of the three
+// parameter verbs and the service listing, for a peer that is not zenoh.
+//
+// The originals take a `locator`, which is a zenoh concept; Cyclone discovers by
+// SPDP on a domain. `ros2_node_list_rmw_with_domain` already established this
+// shape and these are its siblings, sharing the same `ros2_env_setup_rmw_with_domain`
+// — which is also what pins the peer to loopback (issue 1009: pinning one side
+// is no discovery, and reads as an empty graph rather than as a failure).
+
+/// `ros2 service list`, addressed by RMW + domain.
+pub fn ros2_service_list_rmw_with_domain(
+    distro: &str,
+    rmw: &str,
+    domain_id: u8,
+) -> TestResult<String> {
+    let env_setup = ros2_env_setup_rmw_with_domain(distro, rmw, domain_id);
+    run_ros2_capture(
+        &format!("{env_setup} && timeout --foreground 15 ros2 service list --no-daemon 2>&1"),
+        "ros2 service list",
+    )
+}
+
+/// `ros2 param list <node>`, addressed by RMW + domain.
+pub fn ros2_param_list_rmw_with_domain(
+    node_name: &str,
+    distro: &str,
+    rmw: &str,
+    domain_id: u8,
+) -> TestResult<String> {
+    let env_setup = ros2_env_setup_rmw_with_domain(distro, rmw, domain_id);
+    run_ros2_capture(
+        &format!(
+            "{env_setup} && timeout --foreground 15 ros2 param list --no-daemon {node_name} 2>&1"
+        ),
+        "ros2 param list",
+    )
+}
+
+/// `ros2 param get <node> <name>`, addressed by RMW + domain.
+pub fn ros2_param_get_rmw_with_domain(
+    node_name: &str,
+    param_name: &str,
+    distro: &str,
+    rmw: &str,
+    domain_id: u8,
+) -> TestResult<String> {
+    let env_setup = ros2_env_setup_rmw_with_domain(distro, rmw, domain_id);
+    run_ros2_capture(
+        &format!(
+            "{env_setup} && timeout --foreground 15 ros2 param get --no-daemon \
+         {node_name} {param_name} 2>&1"
+        ),
+        "ros2 param get",
+    )
+}
+
+/// `ros2 param set <node> <name> <value>`, addressed by RMW + domain.
+pub fn ros2_param_set_rmw_with_domain(
+    node_name: &str,
+    param_name: &str,
+    value: &str,
+    distro: &str,
+    rmw: &str,
+    domain_id: u8,
+) -> TestResult<String> {
+    let env_setup = ros2_env_setup_rmw_with_domain(distro, rmw, domain_id);
+    run_ros2_capture(
+        &format!(
+            "{env_setup} && timeout --foreground 15 ros2 param set --no-daemon \
+         {node_name} {param_name} {value} 2>&1"
+        ),
+        "ros2 param set",
+    )
+}
+
+/// The one `bash -c` + capture these four share. A fifth copy of this block is
+/// how the locator-addressed originals came to differ in their error strings.
+fn run_ros2_capture(cmd: &str, what: &str) -> TestResult<String> {
+    let output = Command::new("bash")
+        .args(["-c", cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run {what}: {e}")))?;
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 pub fn ros2_param_get(
     node_name: &str,
     param_name: &str,

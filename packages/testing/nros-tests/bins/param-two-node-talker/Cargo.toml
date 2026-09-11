@@ -12,6 +12,16 @@ description = "Two-node parameter fixture (phase-426 W6). One executor composes 
 name = "param-two-node-talker"
 path = "src/main.rs"
 
+# issue 1268 / phase-444 W6 — the RMW is a FEATURE, the shape `graph-probe`
+# already uses. This fixture hardcoded zenoh, and a zenoh-only parameter fixture
+# cannot answer whether CYCLONE serves the six `rcl_interfaces` services, which
+# is the question 1268 is about: Cyclone had no descriptor for those types, so
+# every parameter service failed to create while the zenoh cell stayed green.
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-linux/rmw-cyclonedds"]
+
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
     # phase-361 W8.e — `param-services` requires the heap; it no longer enables it.
@@ -21,11 +31,15 @@ nros = { path = "../../../../api/nros", default-features = false, features = [
     "param-services",
 ] }
 nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+nros-board-linux = { path = "../../../../boards/nros-board-linux", default-features = false }
 nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "std",
     "platform-posix",
     "ros-humble",
-] }
+], optional = true }
+nros-rmw-cyclonedds-sys = { path = "../../../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = [
+    "platform-posix",
+], optional = true }
 std_msgs = { path = "generated/std_msgs", default-features = false }
 log = "0.4"
 env_logger = "0.11"
