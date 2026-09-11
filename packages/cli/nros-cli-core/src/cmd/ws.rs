@@ -4684,16 +4684,23 @@ fn write_patch_config(
         atomic_write(&managed_path, &render_managed_patch_file(&generated))?;
     }
 
-    // phase-445 W6 — the `[env]` sidecar `nros-managed-env.toml` (issue 0827)
-    // is RETIRED, and a stale one left by an older sync is removed here so the
-    // `include` this render no longer writes cannot point at a real file.
+    // phase-445 W6 — both RETIRED sidecars are removed here, so a leaf that an
+    // older sync wrote does not keep a file nothing writes beside an `include`
+    // the render above has just evicted.
     //
-    // Its content — the derived pool budgets and the image's `NROS_DECLARED_*`
-    // facts — is layer 2 of `build/<image>/nros-cargo.toml`
-    // (`cmd::leaf_settings`), from the same `leaf_entity_env::leaf_env` call.
-    // One file per IMAGE beats one per leaf: several images can share a leaf
-    // and their facts differ (RFC-0098 D1/D7).
-    let _ = std::fs::remove_file(cfg_dir.join("nros-managed-env.toml"));
+    // `nros-managed-env.toml` (issue 0827) held the derived pool budgets and
+    // the image's `NROS_DECLARED_*` facts; those are layer 2 of
+    // `build/<image>/nros-cargo.toml` (`cmd::leaf_settings`), from the same
+    // `leaf_entity_env::leaf_env` call. One file per IMAGE beats one per leaf:
+    // several images can share a leaf and their facts differ (RFC-0098 D7).
+    //
+    // `nros-board.toml` was phase-341's board `cargo_config` projection; the
+    // descriptor is rendered into the same generated settings file now
+    // (RFC-0098 D1). The name is unambiguous HERE — a board DESCRIPTOR lives at
+    // `packages/boards/*/nros-board.toml` and never inside a `.cargo/`.
+    for retired in ["nros-managed-env.toml", "nros-board.toml"] {
+        let _ = std::fs::remove_file(cfg_dir.join(retired));
+    }
 
     atomic_write(&cfg, &out)?;
     Ok(())

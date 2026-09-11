@@ -459,6 +459,11 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     crate::orchestration::image::validate_panic(Some(p))
                         .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?;
                 }
+                // phase-445 W6 — same shape, and now load-bearing: `transport`
+                // IMPLIES two link knobs below, so a typo would leave both
+                // unapplied rather than merely unread.
+                crate::orchestration::image::validate_transport(image.transport.as_deref())
+                    .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?;
 
                 // `rmw` reaches the build on this driver too, since issue 0831.
                 //
