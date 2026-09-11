@@ -65,6 +65,22 @@ function(nros_record_entity_facts _model)
         return()
     endif()
 
+    nros_fold_entity_facts("${_out}")
+endfunction()
+
+# nros_fold_entity_facts(<KEY=VALUE text>)
+#
+# Fold ONE answer — whatever produced it — into this configure's accumulated
+# view. Extracted from `nros_record_entity_facts` by issue 1142 so the
+# STANDALONE-LEAF road (`NanoRosLeafEntityFacts.cmake`) folds through the same
+# code: two readings of one `KEY=VALUE` contract is how the two roads would come
+# to size one image two ways.
+#
+# The caller decides whether there is anything to fold. A producer that
+# ABSTAINS must not reach here — an empty fold would still assert
+# `NROS_ENTITY_FACTS_SEEN` and `NROS_ENTITY_SERVERS_UNKNOWN`, which is the
+# "nobody described this image" state said in a way that reads as an answer.
+function(nros_fold_entity_facts _out)
     set_property(GLOBAL PROPERTY NROS_ENTITY_FACTS_SEEN TRUE)
 
     string(REPLACE "\n" ";" _lines "${_out}")
@@ -564,11 +580,29 @@ function(_nros_param_store_env _out_var)
     set(${_out_var} "${_out}" PARENT_SCOPE)
 endfunction()
 
-# nros_entity_facts_env(<target>)
+# nros_entity_facts_env(<target> [ENV_OUT <var>])
 #
 # Attach this configure's accumulated entity facts to a Corrosion target's cargo
 # invocation. Called once, after every entry has been processed.
+#
+# ENV_OUT <var> (issue 1142) — set <var> in the caller's scope to the same
+# `KEY=VALUE` list instead of attaching it to a Corrosion target, and ignore
+# <target>. For a lane whose cargo invocation is NOT a Corrosion target: the
+# NuttX board links its image with an env-wrapped `cargo build` of its own
+# (`packages/api/nros-c/cmake/nros-nuttx.cmake`), so `corrosion_set_env_vars`
+# reaches nothing there and every NuttX image sized its pools from the
+# backend's literal. Only the CARRIER differs — the composition above and the
+# status lines below are the same ones, deliberately, because two compositions
+# is how two lanes come to size one image two ways.
+#
+# (The wording avoids spelling that lane's command literally:
+# `check-board-facts-delivery` detects such a lane by SOURCE TEXT, comments
+# included, so naming the shape here would make this file read as one.)
 function(nros_entity_facts_env _target)
+    cmake_parse_arguments(_NEF "" "ENV_OUT" "" ${ARGN})
+    if(_NEF_ENV_OUT)
+        set(${_NEF_ENV_OUT} "" PARENT_SCOPE)
+    endif()
     # issue 1122 — the payload fact is INDEPENDENT of the entity facts below.
     # An image with no LAUNCH entry still links interface packages and still
     # gets a message-bound derivation, so this is computed before the
@@ -604,12 +638,16 @@ function(nros_entity_facts_env _target)
         # table from the backend's own default and still does. The payload
         # fact still travels, when there is one.
         if(_payload_env)
-            if(NOT COMMAND corrosion_set_env_vars)
-                message(FATAL_ERROR
-                    "nros_entity_facts_env(${_target}): Corrosion not loaded")
+            if(_NEF_ENV_OUT)
+                set(${_NEF_ENV_OUT} "${_payload_env}" PARENT_SCOPE)
+            else()
+                if(NOT COMMAND corrosion_set_env_vars)
+                    message(FATAL_ERROR
+                        "nros_entity_facts_env(${_target}): Corrosion not loaded")
+                endif()
+                nros_corrosion_env_target("${_target}" _target)
+                corrosion_set_env_vars(${_target} ${_payload_env})
             endif()
-            nros_corrosion_env_target("${_target}" _target)
-            corrosion_set_env_vars(${_target} ${_payload_env})
             message(STATUS
                 "nano-ros: large-payload class sized from the declaration — "
                 "${_payload_env} (issue 1122)")
@@ -658,15 +696,19 @@ function(nros_entity_facts_env _target)
         string(APPEND _app " <stem>.launch.xml (RFC-0060)")
     endif()
 
-    if(NOT COMMAND corrosion_set_env_vars)
-        message(FATAL_ERROR "nros_entity_facts_env(${_target}): Corrosion not loaded")
-    endif()
-    # issue 0657 — attach to the target the cargo command actually READS.
-    nros_corrosion_env_target("${_target}" _target)
     if(_payload_env)
         list(APPEND _env "${_payload_env}")
     endif()
-    corrosion_set_env_vars(${_target} ${_env})
+    if(_NEF_ENV_OUT)
+        set(${_NEF_ENV_OUT} "${_env}" PARENT_SCOPE)
+    else()
+        if(NOT COMMAND corrosion_set_env_vars)
+            message(FATAL_ERROR "nros_entity_facts_env(${_target}): Corrosion not loaded")
+        endif()
+        # issue 0657 — attach to the target the cargo command actually READS.
+        nros_corrosion_env_target("${_target}" _target)
+        corrosion_set_env_vars(${_target} ${_env})
+    endif()
     message(STATUS
         "nano-ros: queryable table sized from the declaration — "
         "infrastructure ${_infra}, ${_app} (phase-392 W5)")

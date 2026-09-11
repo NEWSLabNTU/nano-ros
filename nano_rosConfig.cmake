@@ -125,6 +125,18 @@ if(NANO_ROS_LEAF_SYSTEM)
     if(NOT NANO_ROS_LEAF_DOMAIN_ID STREQUAL "" AND NOT DEFINED NROS_DOMAIN_ID)
         set(NROS_DOMAIN_ID "${NANO_ROS_LEAF_DOMAIN_ID}")
     endif()
+    # Issue 1142 — and what the leaf DECLARES it creates (RFC-0098 D8). This is
+    # the third thing its `system.toml` answers, after the board and the
+    # deployment identity: a standalone leaf has no bringup and no SystemModel,
+    # so `nros_record_entity_facts` returns early and the RMW would size its
+    # queryable table from a literal. Recorded HERE, before nano-ros is
+    # imported, because the delivery is deferred to the end of the top-level
+    # scope (`nros_entity_facts_env_deferred`, already armed on
+    # `nros_cpp-static` / `nros_c-static`) and only needs the facts to exist by
+    # then. The Zephyr arm above does NOT call this: it has the Kconfig derive
+    # sentinel, which is its own front-end (RFC-0049).
+    include("${NANO_ROS_ROOT}/cmake/NanoRosLeafEntityFacts.cmake")
+    nros_record_leaf_entity_facts("${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 if(NANO_ROS_EXPORT_FOUND)
     # The leaf's values go into the CACHE, not directory scope. The imported

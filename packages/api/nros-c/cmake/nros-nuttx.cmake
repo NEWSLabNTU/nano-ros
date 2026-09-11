@@ -416,10 +416,34 @@ function(nros_nuttx_build_example)
                 bash "${NROS_NUTTX_PROVISION_SCRIPT}")
     endif()
 
+    # Issue 1142 — the DECLARED entity facts, on the one cargo invocation that
+    # compiles this image's Rust world.
+    #
+    # This lane is not Corrosion: `nros_entity_facts_env_deferred` arms
+    # `nros_cpp-static` / `nros_c-static`, and the root CMakeLists does not even
+    # add those subdirectories for NuttX (no `-Z build-std` through Corrosion),
+    # so `corrosion_set_env_vars` had nothing here to attach to. Every NuttX
+    # image therefore sized `ZPICO_MAX_QUERYABLES` from the backend's literal —
+    # `if hosted { 32 } else { 8 }` — whatever it declared. `ENV_OUT` is the same
+    # composition, delivered through this lane's own carrier.
+    #
+    # IMMEDIATE rather than deferred, and that is right for the road this
+    # serves: a standalone leaf records its declaration inside
+    # `find_package(nano_ros)` (`nros_record_leaf_entity_facts`), strictly
+    # before the verb that reaches here. A workspace entry records in
+    # `nano_ros_add_entry`, so on that road this may read an empty accumulator
+    # and deliver nothing — which is what this lane delivered before, never
+    # less.
+    set(_nnbe_entity_env "")
+    if(COMMAND nros_entity_facts_env)
+        nros_entity_facts_env("" ENV_OUT _nnbe_entity_env)
+    endif()
+
     add_custom_command(
         OUTPUT "${_output_binary}"
         ${_provision_cmd}
         COMMAND ${CMAKE_COMMAND} -E env
+            ${_nnbe_entity_env}
             "APP_MAIN_CPP=${_NNBE_MAIN_SOURCE}"
             "APP_INCLUDE_DIRS_FILE=${_includes_file}"
             "APP_FFI_LIBS_FILE=${_ffi_libs_file}"
