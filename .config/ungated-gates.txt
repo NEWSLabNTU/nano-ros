@@ -40,7 +40,6 @@ workspace-all
 workspace-features
 
 # --- need the in-tree CLI built, or build it ---
-cli-fresh
 cli-tests
 launch-resolve-builds
 required-features-tests

@@ -3,7 +3,7 @@ id: 1320
 title: "Every rebase re-stales the in-tree CLI, and the gate that NAMES that cause
   runs only after merge — so it arrives at `pre-push` as a cmake CONFIGURE error
   four frames from the remedy"
-status: open
+status: resolved
 type: bug
 area: [ci, build, tooling]
 severity: medium
@@ -125,3 +125,37 @@ Issue 1018 is the CONFIGURE-time emitter problem — a tool with no `DEPENDS`
 edge, so a stale CLI's OUTPUT survives. This is one layer up: the CLI itself is
 stale and the tree does say so, in a lane that runs too late and through a gate
 that describes it as something else.
+
+## Resolved (2026-09-11) — option 1, and the cost objection did not survive measurement
+
+`cli-fresh` is a FAST gate now. The fast list is DERIVED — a recipe in
+`just/check.just` is a fast gate unless `build-serial:` names it — so the change
+is removing one line from that dependency list.
+
+The objection this issue raised against option 1 was that `check-fast` is meant
+to be buildless and this asserts something about a BUILT artifact. Measured, it
+does not:
+
+* **0.024 s.** It runs `nros source-stamp` and compares two hashes; it
+  implements nothing itself (issue 0363 put the predicate in one place).
+* **It SKIPS when there is no in-tree binary** (`cli-fresh: SKIP — no in-tree
+  nros binary yet`), so a fresh clone is unaffected — which is the property that
+  made the objection wrong rather than merely outweighed.
+
+Verified by making the CLI genuinely stale and running it:
+
+    Error: source-stamp: STALE — built from 002deaa181a19a2e, sources are now d2d4a5d676f373c1.
+    Rebuild: ./scripts/bootstrap.sh   (contributors: just setup-cli)
+
+That is what `pre-push` prints now, in place of
+`CMake Error at cmake/NanoRosNodeRegister.cmake:1542`.
+
+`check-gate-lists`, `check-default-gates-run-somewhere` and
+`check-lane-contracts` all accept the move — the last one matters, because a
+gate in an affordability tier may not resolve an artifact its job does not
+build, and this one resolves nothing.
+
+Option 2 (teaching `declared-qos-header` to report a stale CLI as its own
+precondition) is NOT done and is no longer load-bearing: the gate that names the
+cause now runs first, so the one that trips second has a correct answer in front
+of it. Worth doing if another fast gate grows the same dependency.
