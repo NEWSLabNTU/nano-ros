@@ -1,0 +1,37 @@
+# phase-454 W2 -- a PUBLISHER states a QoS history depth.
+#
+# Before this wave `EntityInventory::from_model` built every publisher row with
+# `depth: None`, so the `qos: { depth: 8 }` below parsed into the SystemModel's
+# `contracts.pub_endpoints` and was then read by nobody. The grammar had
+# admitted the field since phase-403 step 2 (`EntityKind::carries_qos_depth`
+# returns true for a publisher), which made this a declaration that was legal to
+# write, legal to resolve and silently dropped.
+#
+# `/quiet` states nothing on either side on purpose: "nobody said" and "said a
+# number" license opposite actions, and a fixture that only exercised the
+# declaring case could not tell them apart.
+
+version: 1
+
+nodes:
+  talker:
+    pub:
+      chatter:
+        qos: { depth: 8 }
+      quiet: {}
+
+  listener:
+    sub:
+      chatter:
+        qos: { depth: 3 }
+      quiet: {}
+
+topics:
+  /chatter:
+    type: std_msgs/msg/Int32
+    pub: [talker/chatter]
+    sub: [listener/chatter]
+  /quiet:
+    type: std_msgs/msg/Int32
+    pub: [talker/quiet]
+    sub: [listener/quiet]

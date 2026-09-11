@@ -629,8 +629,13 @@ function(nros_resolve_knobs)
     # too small for endpoints that exist.
     #
     # Spelled out, not looped, for the reason the block above states.
+    # phase-454 W2 -- the presence test is on the count this block FORWARDS.
+    # It used to read the broad `NROS_ENTITY_UNDECLARED_DEPTH_COUNT` while
+    # handing the lane the subscription-scoped one; the two are published
+    # together so nothing moved, but a guard on a variable other than the one it
+    # guards is how a half-forwarded pair survives a review.
     if(DEFINED NROS_ENTITY_DECLARED_DEPTHS AND
-       NOT "${NROS_ENTITY_UNDECLARED_DEPTH_COUNT}" STREQUAL "")
+       NOT "${NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION}" STREQUAL "")
         # `;` is cmake's LIST separator, and the cargo env is a flat string:
         # forwarding the raw value delivers only its first element -- measured,
         # the lane received one triple of eleven and sized from the worst case
