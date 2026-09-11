@@ -10,7 +10,7 @@ If you come from ROS 2, each role is something you already know:
 |---|---|---|
 | `src/talker_pkg/`, `src/listener_pkg/` | **Node package** | a composable node (`rclcpp_components`) |
 | `src/demo_bringup/` | **Bringup package** | `<pkg>_bringup` — launch files + config, no code |
-| `src/robot_entry/` | **Entry package** | the composition container / `main()` |
+| *(generated under `build/`)* | **Entry** | the composition container / `main()` |
 
 ## Node packages — the code
 
@@ -69,23 +69,23 @@ When you later target hardware, you add an `[image.<id>]` block per
 board — the code and topology stay put, and no new directory appears. That is
 the growth rule: **configuration is a new block, never a restructure.**
 
-## The entry package — the deliverable
+## The entry — the deliverable, and it is generated
 
-`src/robot_entry/` is the binary. Its CMakeLists calls
-`nano_ros_entry(... BRINGUP ... LAUNCH default)`, which at configure
-time resolves the bringup's launch file and generates a `main()` that
-constructs each declared component, applies launch parameters and QoS
-overrides, and runs them on one executor — the launch product *is* the
-binary. There is no separate `ros2 launch` step; running the entry is
-launching the system.
+There is no entry directory under `src/`. `nros build` reads each
+`[image.<id>]` in `system.toml` and generates its entry under `build/`
+(for the scaffold's `[image.native]`, the binary is
+`build/posix-native/cmake/native_entry`). That entry resolves the
+bringup's launch file and has a `main()` that constructs each declared
+component, applies launch parameters and QoS overrides, and runs them on
+one executor — the launch product *is* the binary. There is no separate
+`ros2 launch` step; running the entry is launching the system.
 
-One binary per deployable image — but *image* is a row, not a directory. A
+One binary per deployable image — and *image* is a row, not a directory. A
 robot with a perception image and a control image is one workspace, one
 bringup, and two `[image.*]` blocks in its `system.toml`; `nros build` derives
-each entry from `(launch, args, board)` and generates it under `build/`. The
-scaffold ships this one as a package so you can read it; deleting the directory
-is what makes the next build generate it instead. See
-[Images](workspace-entry-pkg.md).
+each entry from `(launch, args, board)` and generates it under `build/`.
+Everything a hand-written entry used to carry — its board, its RMW locator —
+is a key in that block. See [Images](workspace-entry-pkg.md).
 
 ## What was generated vs. what is yours
 

@@ -17,7 +17,7 @@ cargo run
 nros metadata my_system
 nros plan my_system launch/my_system.launch.py
 nros check
-cargo run -p robot_entry
+nros build          # generates and builds one entry per [image.*]
 
 # Colcon consumer workspace (Pattern A):
 colcon build && source install/setup.bash

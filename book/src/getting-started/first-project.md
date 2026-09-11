@@ -14,37 +14,40 @@ nros new my_robot --workspace
 cd my_robot
 ```
 
-That wrote 21 files — a complete workspace, not a hello-world stub:
+That wrote a complete workspace, not a hello-world stub:
 
 ```text
 my_robot/
-├── CMakeLists.txt              # workspace root — names the packages, picks the RMW
+├── .colcon_workspace           # marks the workspace root; there is no root build file
 └── src/
     ├── talker_pkg/             # a C++ node: publishes std_msgs/Int32 on /chatter
     ├── listener_pkg/           # a C++ node: subscribes to /chatter
-    ├── demo_bringup/           # launch file + system.toml — no code
-    └── robot_entry/            # the binary: boots the launch topology
+    └── demo_bringup/           # launch file + system.toml — no code
 ```
 
-What each directory is *for* is the next chapter,
+There is no entry package and no root `CMakeLists.txt`: the binary is
+*generated* from the bringup's `system.toml` when you build. What each
+directory is *for* is the next chapter,
 [Anatomy of What You Just Built](anatomy.md). You don't need it to run.
 
 ## Build
 
 ```bash
-cmake -S . -B build -DNANO_ROS_ROOT=<path-to-your-nano-ros-checkout>
-cmake --build build
+nros sync
+nros build
 ```
 
-The first configure compiles nano-ros's runtime into the build tree
-(~3 minutes); rebuilds are seconds. If you use `direnv`/`activate.sh`
-from the nano-ros checkout, `-DNANO_ROS_ROOT` can be omitted — the
-`NROS_REPO_DIR` env it exports is picked up automatically.
+`nros sync` resolves the launch file into the system model; `nros build`
+generates the entry for each `[image.*]` in `system.toml` and drives
+CMake under `build/`. The first build compiles nano-ros's runtime into
+the build tree (~3 minutes); rebuilds are seconds. Outside a nano-ros
+checkout, `nros` finds the SDK itself; inside one, `direnv`/`activate.sh`
+exports `NROS_REPO_DIR` and that is used.
 
 ## Run
 
 ```bash
-./build/src/robot_entry/robot_entry
+./build/posix-native/cmake/native_entry
 ```
 
 ```text
@@ -73,8 +76,9 @@ one-word edit — [Switching RMW in Config](../user-guide/rmw-switching.md).
 ```bash
 nros new my_rust_robot --workspace --lang rust
 cd my_rust_robot
-NROS_REPO_DIR=<path-to-nano-ros> nros sync   # Rust-side codegen; once per checkout location
-RUST_LOG=info cargo run -p robot_entry
+nros sync
+nros build
+RUST_LOG=info ./build/posix/native_entry/target/debug/native_entry
 ```
 
 ```text
@@ -83,20 +87,24 @@ RUST_LOG=info cargo run -p robot_entry
 [INFO  talker_pkg] Publishing: 1
 ```
 
-(The workspace root is a virtual manifest — `cargo run` alone has no
-default binary, so name the entry package with `-p robot_entry`. The
-Rust talker ticks at 1 s.)
+(The Rust talker ticks at 1 s.)
 
-Same workspace shape, same `system.toml`, same launch file — only the
-node implementations and the build tool differ. The extra `nros sync`
-step is the Rust-side message codegen; C++ does the equivalent inside
-CMake, which is why the C++ path doesn't have it.
+> **Known issue ([1295](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1295-rust-cyclonedds-workspace-entry-no-publisher.md)).**
+> On CycloneDDS — the scaffold's default RMW — the generated Rust entry
+> currently stops at startup with
+> `NodeError::Transport(PublisherCreationFailed)`. The C++ path above is
+> not affected.
+
+Same workspace shape, same `system.toml`, same launch file, same two
+commands — only the node implementations and the driver `nros build`
+picks (cargo instead of CMake) differ. Neither workspace has a root build
+file: the entry is generated per image under `build/`.
 
 ## If it didn't work
 
 - `nros: RMW session open failed` on a busy machine usually means the
   DDS port range on your `ROS_DOMAIN_ID` is contended — pick another:
-  `ROS_DOMAIN_ID=57 ./build/src/robot_entry/robot_entry`.
+  `ROS_DOMAIN_ID=57 ./build/posix-native/cmake/native_entry`.
 - Everything else: [Troubleshooting — First 10 Minutes](troubleshooting-first-10-min.md).
 
 ## Where to go next

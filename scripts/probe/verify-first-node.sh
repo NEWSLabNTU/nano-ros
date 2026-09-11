@@ -31,10 +31,12 @@ ws=/tmp/probe_quickstart
 rm -rf "$ws"
 ( cd /tmp && nros new probe_quickstart --workspace )
 cd "$ws"
-cmake -S . -B build "-DNANO_ROS_ROOT=$repo_root"
-cmake --build build --parallel
+# No root build file and no hand-written entry (RFC-0098 D9, phase-445 W5):
+# the entry is generated from the bringup's `[image.native]` by `nros build`.
+NROS_REPO_DIR="$repo_root" nros sync
+NROS_REPO_DIR="$repo_root" nros build
 
-bin=build/src/robot_entry/robot_entry
+bin=build/posix-native/cmake/native_entry
 [ -x "$bin" ] || { echo "PROBE FAIL: entry binary missing at $bin"; exit 1; }
 
 # CycloneDDS: no router to start. The scaffold's talker prints `Published: N`
@@ -71,8 +73,11 @@ rm -rf "$ws_rs"
 ( cd /tmp && nros new probe_quickstart_rs --workspace --lang rust )
 cd "$ws_rs"
 NROS_REPO_DIR="$repo_root" nros sync
-cargo build
-timeout 60 ./target/debug/robot_entry >/tmp/quickstart_rs.log 2>&1 &
+NROS_REPO_DIR="$repo_root" nros build
+# Expected RED until issue 1295: on CycloneDDS the generated Rust entry
+# fails `PublisherCreationFailed` at startup. The assertion stays — a probe
+# that is green over a real bug is the thing issue 0204 exists to prevent.
+timeout 60 ./build/posix/native_entry/target/debug/native_entry >/tmp/quickstart_rs.log 2>&1 &
 rs_pid=$!
 deadline=$((SECONDS + 45))
 until grep -q "Publishing: 1" /tmp/quickstart_rs.log; do
