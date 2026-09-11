@@ -776,3 +776,108 @@ fn both_entry_packs_take_the_plans_executor_branch() {
     }
     assert_eq!(checked, 20, "every (board x plan) row must be compared");
 }
+
+/// The three sched-context calls, each of which can REFUSE (issue 1172: a full
+/// table or an over-long name is an error, never a dropped binding).
+const SCHED_CALLS: [&str; 3] = [
+    "nros_cpp_create_sched_context_from_policy(",
+    "nros_cpp_bind_node_name_sched(",
+    "nros_cpp_bind_group_sched(",
+];
+
+/// Per call in [`SCHED_CALLS`]: how many times `src` makes it, and every site
+/// whose result is NOT checked.
+///
+/// "Checked" is read structurally, not as a substring: the call's result is
+/// captured (`nros_cpp_ret_t <v> = <call>(…`), and the very next line is
+/// `if (<v> != NROS_CPP_RET_OK) return …<v>…;`. A bare call statement, a
+/// captured-but-unread result, or a check on some other variable all fail.
+fn sched_call_checks(src: &str) -> ([usize; 3], Vec<String>) {
+    let mut seen = [0usize; 3];
+    let mut unchecked = Vec::new();
+    let lines: Vec<&str> = src.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        let Some(k) = SCHED_CALLS.iter().position(|c| line.contains(c)) else {
+            continue;
+        };
+        seen[k] += 1;
+        let var = line
+            .trim()
+            .strip_prefix("nros_cpp_ret_t ")
+            .and_then(|rest| rest.split_once(" = "))
+            .filter(|(_, rhs)| rhs.starts_with(SCHED_CALLS[k]))
+            .map(|(v, _)| v.to_string());
+        // The returned expression must name `v` as a whole token: C spells it
+        // `(int32_t)v`, C++ `static_cast<int32_t>(v)`.
+        let ok = var.as_ref().is_some_and(|v| {
+            lines.get(i + 1).is_some_and(|next| {
+                next.trim()
+                    .strip_prefix(&format!("if ({v} != NROS_CPP_RET_OK) return "))
+                    .and_then(|ret| ret.strip_suffix(';'))
+                    .is_some_and(|ret| {
+                        ret.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                            .any(|tok| tok == v)
+                    })
+            })
+        });
+        if !ok {
+            unchecked.push(format!("line {}: {}", i + 1, line.trim()));
+        }
+    }
+    (seen, unchecked)
+}
+
+/// A sched-context entry fails CLOSED when a binding is refused — in BOTH
+/// packs, on every board the C pack renders for.
+///
+/// issue 1283 left this open: both packs checked
+/// `create_sched_context_from_policy` but discarded the result of the two
+/// `bind_*_sched` calls, so a full binding table still ran the group on the
+/// default sched context, silently — issue 1172's class, one level up from
+/// where 1172 fixed it. Plans: the group split (every board) and, on ThreadX,
+/// the multi-tier plan, which takes the same branch because ThreadX has no
+/// `run_tiers`.
+#[test]
+fn both_entry_packs_check_every_sched_binding() {
+    let mut rendered = 0usize;
+    for board in ["native", "zephyr", "nuttx", "freertos", "threadx"] {
+        let mut plans = vec![("group split", group_split(c_tiered_plan(board)))];
+        if board == "threadx" {
+            plans.push(("multi-tier", c_tiered_plan(board)));
+        }
+        for (what, p) in plans {
+            assert_eq!(
+                p.executor_shape(),
+                super::ExecutorShape::SchedContexts,
+                "{board} / {what}: precondition — the sched-context branch"
+            );
+            for (pack, src) in [
+                ("C", super::emit_c::emit_typed(&p)),
+                ("C++", super::emit_cpp::emit_typed(&p)),
+            ] {
+                let src =
+                    src.unwrap_or_else(|e| panic!("{board} / {what}: {pack} pack refused: {e}"));
+                let (seen, unchecked) = sched_call_checks(&src);
+                for (k, call) in SCHED_CALLS.iter().enumerate() {
+                    assert!(
+                        seen[k] > 0,
+                        "{board} / {what}: {pack} pack never calls `{call}…)`, so this \
+                         test would pass vacuously:\n{src}"
+                    );
+                }
+                assert!(
+                    unchecked.is_empty(),
+                    "{board} / {what}: {pack} pack ignores the result of a sched call — a \
+                     refused binding would run on the default sched context silently \
+                     (issues 1172/1283):\n  {}\n\n{src}",
+                    unchecked.join("\n  ")
+                );
+                rendered += 1;
+            }
+        }
+    }
+    assert_eq!(
+        rendered, 12,
+        "every (board x plan x pack) render must be checked"
+    );
+}

@@ -44,11 +44,26 @@ static int32_t __nros_entry_setup(void* executor) {
         nros_cpp_ret_t scr = nros_cpp_create_sched_context_from_policy(executor, NULL, 0ull, 0ull, 0ull, NULL, 10u, &__nros_sc_ids[1]);
         if (scr != NROS_CPP_RET_OK) return (int32_t)scr;
     }
-    nros_cpp_bind_node_name_sched(executor, "ctrl", "/", __nros_sc_ids[0]);
-    nros_cpp_bind_node_name_sched(executor, "telem", "/", __nros_sc_ids[1]);
-    nros_cpp_bind_group_sched(executor, "ctrl", "/", "ctrl_grp", __nros_sc_ids[0]);
-    nros_cpp_bind_group_sched(executor, "telem", "/", "telem_grp", __nros_sc_ids[1]);
-    nros_cpp_bind_group_sched(executor, "ctrl", "/", "telem_grp", __nros_sc_ids[1]);
+    {
+        nros_cpp_ret_t brc = nros_cpp_bind_node_name_sched(executor, "ctrl", "/", __nros_sc_ids[0]);
+        if (brc != NROS_CPP_RET_OK) return (int32_t)brc;
+    }
+    {
+        nros_cpp_ret_t brc = nros_cpp_bind_node_name_sched(executor, "telem", "/", __nros_sc_ids[1]);
+        if (brc != NROS_CPP_RET_OK) return (int32_t)brc;
+    }
+    {
+        nros_cpp_ret_t brc = nros_cpp_bind_group_sched(executor, "ctrl", "/", "ctrl_grp", __nros_sc_ids[0]);
+        if (brc != NROS_CPP_RET_OK) return (int32_t)brc;
+    }
+    {
+        nros_cpp_ret_t brc = nros_cpp_bind_group_sched(executor, "telem", "/", "telem_grp", __nros_sc_ids[1]);
+        if (brc != NROS_CPP_RET_OK) return (int32_t)brc;
+    }
+    {
+        nros_cpp_ret_t brc = nros_cpp_bind_group_sched(executor, "ctrl", "/", "telem_grp", __nros_sc_ids[1]);
+        if (brc != NROS_CPP_RET_OK) return (int32_t)brc;
+    }
     {
         nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "ctrl", "/", &__nros_node_0);
         if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;

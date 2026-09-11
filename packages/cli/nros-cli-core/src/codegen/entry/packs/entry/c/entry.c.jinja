@@ -158,11 +158,22 @@ static int32_t __nros_entry_setup(void* executor) {
         if (scr != NROS_CPP_RET_OK) return (int32_t)scr;
     }
 {%- endfor %}
+{#- A bind that does not fit (full table, over-long name) is REFUSED by the
+    runtime, never dropped (issue 1172) — and a refusal ignored here is the same
+    silent loss one level up: the node or group would run on the default sched
+    context with nothing reporting it. So each bind is checked exactly like the
+    context it names, and a failure aborts setup, which aborts boot. #}
 {%- for b in sched.node_binds %}
-    nros_cpp_bind_node_name_sched(executor, "{{ b.name|c_str }}", "{{ b.namespace|c_str }}", __nros_sc_ids[{{ b.sched_context }}]);
+    {
+        nros_cpp_ret_t brc = nros_cpp_bind_node_name_sched(executor, "{{ b.name|c_str }}", "{{ b.namespace|c_str }}", __nros_sc_ids[{{ b.sched_context }}]);
+        if (brc != NROS_CPP_RET_OK) return (int32_t)brc;
+    }
 {%- endfor %}
 {%- for b in sched.group_binds %}
-    nros_cpp_bind_group_sched(executor, "{{ b.name|c_str }}", "{{ b.namespace|c_str }}", "{{ b.group|c_str }}", __nros_sc_ids[{{ b.tier_index }}]);
+    {
+        nros_cpp_ret_t brc = nros_cpp_bind_group_sched(executor, "{{ b.name|c_str }}", "{{ b.namespace|c_str }}", "{{ b.group|c_str }}", __nros_sc_ids[{{ b.tier_index }}]);
+        if (brc != NROS_CPP_RET_OK) return (int32_t)brc;
+    }
 {%- endfor %}
 {%- endif %}
 {%- for n in setup_nodes %}

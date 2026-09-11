@@ -122,3 +122,14 @@ nros-c / nros-cpp headers.
 table would still drop a group's scheduling silently. The C pack mirrors C++
 here on purpose, so the two stay one program. Changing it means changing both
 packs and the C++ goldens, and is not this issue's scope.
+
+**Follow-up landed** — `fix(entry): both packs fail closed when a sched
+binding is refused`. Each bind's result is now captured and checked exactly
+like the `create_sched_context_from_policy` call before it: a non-`OK` return
+leaves setup with that code, and both runners abort boot with it before the
+first spin. Moved goldens: `c_native_group_split`, `c_threadx_tiers`,
+`cpp_native_group_split`, `cpp_threadx_tiers` (bind lines only). Guarded by
+`codegen::entry::golden::both_entry_packs_check_every_sched_binding`, which
+reads each of the three sched calls structurally (captured, then returned on
+the next line) through both packs on every board. It was mutation-checked in
+both directions: a bare C group bind, and a C++ node bind with its `if` removed.
