@@ -9,9 +9,11 @@
 // every hosted target and failed only on threadx-riscv64.
 #include <stdio.h>
 
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 
+#include "dds/ddsrt/heap.h"
 #include "dds/ddsrt/string.h"
 #include "descriptors.hpp"
 #include "rmw_dds_common_graph.h" // idlc-generated typed structs + descriptor
@@ -33,6 +35,16 @@ namespace {
 constexpr const char* kGraphTopic = "ros_discovery_info";
 constexpr const char* kGraphType = "rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_";
 
+// The published sequences point STRAIGHT into GraphState's `uint8_t[24]` GID
+// storage, typed as the generated `Gid_`. That is only sound while the two have
+// one layout, so it is checked rather than assumed.
+static_assert(sizeof(rmw_dds_common_msg_dds__Gid_) == 24, "Gid_ must be 24 bytes");
+static_assert(alignof(rmw_dds_common_msg_dds__Gid_) == 1, "Gid_ must be byte-aligned");
+static_assert(offsetof(rmw_dds_common_msg_dds__Gid_, data) == 0, "Gid_::data must lead");
+
+// `string<256>` in the IDL: idlc emits a fixed `char[257]`.
+constexpr std::size_t kNameCap = sizeof(rmw_dds_common_msg_dds__NodeEntitiesInfo_::node_name);
+
 // rmw_dds_common Gid is 24 bytes; a DDS GUID is 16. Stock derives the gid by
 // copying the 16-byte GUID into the first 16 bytes (rest zero) and matches the
 // same bytes from SEDP, so endpoints associate with the node. (Distinct from
@@ -53,18 +65,83 @@ int find_entity(const dds_entity_t* arr, int n, dds_entity_t e) {
     return -1;
 }
 
+/// A namespace as it goes on the wire: an absent or empty one is the root.
+const char* wire_ns(const char* ns) {
+    return (ns != nullptr && ns[0] != '\0') ? ns : "/";
+}
+
+bool same_node(const GraphNode& n, const char* name, const char* ns) {
+    return n.used && std::strcmp(n.name, name) == 0 && std::strcmp(wire_ns(n.ns), wire_ns(ns)) == 0;
+}
+
+/// Insert `e` into one endpoint table, keeping it grouped by node. Returns
+/// false if already tracked or full.
+bool insert_grouped(dds_entity_t* ents, uint8_t (*gids)[24], uint8_t* owner, int* n, int node,
+                    dds_entity_t e) {
+    if (find_entity(ents, *n, e) >= 0) return false;
+    if (*n >= GraphState::kMaxEndpoints) return false;
+    // After the last entry whose node is <= this one: stable within a node.
+    int pos = *n;
+    while (pos > 0 && owner[pos - 1] > static_cast<uint8_t>(node))
+        --pos;
+    for (int j = *n; j > pos; --j) {
+        ents[j] = ents[j - 1];
+        std::memcpy(gids[j], gids[j - 1], 24);
+        owner[j] = owner[j - 1];
+    }
+    ents[pos] = e;
+    entity_gid_24(e, gids[pos]);
+    owner[pos] = static_cast<uint8_t>(node);
+    ++*n;
+    return true;
+}
+
+void erase_at(dds_entity_t* ents, uint8_t (*gids)[24], uint8_t* owner, int* n, int i) {
+    for (int j = i; j < *n - 1; ++j) {
+        ents[j] = ents[j + 1];
+        std::memcpy(gids[j], gids[j + 1], 24);
+        owner[j] = owner[j + 1];
+    }
+    --*n;
+}
+
+void erase_node(dds_entity_t* ents, uint8_t (*gids)[24], uint8_t* owner, int* n, int node) {
+    for (int i = *n - 1; i >= 0; --i) {
+        if (owner[i] == static_cast<uint8_t>(node)) erase_at(ents, gids, owner, n, i);
+    }
+}
+
+/// The contiguous run of `node`'s endpoints in one grouped table.
+void node_run(const uint8_t* owner, int n, int node, int* start, int* len) {
+    int s = 0;
+    while (s < n && owner[s] < static_cast<uint8_t>(node))
+        ++s;
+    int e = s;
+    while (e < n && owner[e] == static_cast<uint8_t>(node))
+        ++e;
+    *start = s;
+    *len = e - s;
+}
+
+rmw_dds_common_msg_dds__Gid_* as_gids(uint8_t (*gids)[24], int start) {
+    return reinterpret_cast<rmw_dds_common_msg_dds__Gid_*>(gids[start]);
+}
+
 } // namespace
 
-void graph_init(GraphState* g, dds_entity_t participant, const char* node_name,
-                const char* node_namespace) {
-    if (g == nullptr || participant <= 0) return;
+void graph_init(GraphState* g, dds_entity_t participant) {
+    if (g == nullptr) return;
+    // A clean slate regardless of how the enclosing state was allocated —
+    // node records and endpoint counts are read on every later call. memset,
+    // not `*g = GraphState{}`: that builds a ~5 KiB temporary on the caller's
+    // stack, which is an RTOS app task. All-zero IS the default state (null
+    // pointers, false flags, zero counts), and the type is trivially copyable.
+    std::memset(static_cast<void*>(g), 0, sizeof(*g));
+    if (participant <= 0) return;
 
     register_rmw_dds_common_graph_0();
 
     entity_gid_24(participant, g->participant_gid);
-    ddsrt_strlcpy(g->node_name, node_name ? node_name : "", sizeof(g->node_name));
-    ddsrt_strlcpy(g->node_namespace, (node_namespace && node_namespace[0]) ? node_namespace : "/",
-                  sizeof(g->node_namespace));
 
     const dds_topic_descriptor_t* desc = find_descriptor(kGraphType);
     if (desc == nullptr) return; // graph stays inactive — interop degrades gracefully
@@ -100,90 +177,145 @@ void graph_fini(GraphState* g) {
     g->active = false;
     g->n_readers = 0;
     g->n_writers = 0;
+    for (GraphNode& n : g->nodes)
+        n = GraphNode{};
 }
 
-void graph_track_writer(GraphState* g, dds_entity_t writer) {
-    if (g == nullptr || !g->active || writer <= 0) return;
-    if (find_entity(g->writer_ent, g->n_writers, writer) >= 0) return;
-    if (g->n_writers >= GraphState::kMaxEndpoints) return;
-    g->writer_ent[g->n_writers] = writer;
-    entity_gid_24(writer, g->writer_gid[g->n_writers]);
-    g->n_writers++;
+int graph_add_node(GraphState* g, const char* name, const char* ns) {
+    if (g == nullptr || name == nullptr || name[0] == '\0') return kGraphNodeInvalid;
+    // Refuse rather than truncate — see graph.hpp.
+    if (std::strlen(name) >= kNameCap || std::strlen(wire_ns(ns)) >= kNameCap) {
+        return kGraphNodeInvalid;
+    }
+    int free_slot = -1;
+    for (int i = 0; i < GraphState::kMaxNodes; ++i) {
+        if (same_node(g->nodes[i], name, ns)) return i;
+        if (!g->nodes[i].used && free_slot < 0) free_slot = i;
+    }
+    if (free_slot < 0) return kGraphNodeFull;
+    g->nodes[free_slot].name = name;
+    g->nodes[free_slot].ns = ns;
+    g->nodes[free_slot].used = true;
+    // A node with no endpoints is still a node: `ros2 node list` shows it the
+    // moment it exists, which is also when zenoh declares its token.
+    graph_publish(g);
+    return free_slot;
+}
+
+int graph_node_index(const GraphState* g, const void* rec) {
+    if (g == nullptr || rec == nullptr) return -1;
+    for (int i = 0; i < GraphState::kMaxNodes; ++i) {
+        if (rec == static_cast<const void*>(&g->nodes[i])) return g->nodes[i].used ? i : -1;
+    }
+    return -1;
+}
+
+void graph_remove_node(GraphState* g, int node) {
+    if (g == nullptr || node < 0 || node >= GraphState::kMaxNodes || !g->nodes[node].used) return;
+    erase_node(g->reader_ent, g->reader_gid, g->reader_node, &g->n_readers, node);
+    erase_node(g->writer_ent, g->writer_gid, g->writer_node, &g->n_writers, node);
+    g->nodes[node] = GraphNode{};
     graph_publish(g);
 }
 
-void graph_track_reader(GraphState* g, dds_entity_t reader) {
-    if (g == nullptr || !g->active || reader <= 0) return;
-    if (find_entity(g->reader_ent, g->n_readers, reader) >= 0) return;
-    if (g->n_readers >= GraphState::kMaxEndpoints) return;
-    g->reader_ent[g->n_readers] = reader;
-    entity_gid_24(reader, g->reader_gid[g->n_readers]);
-    g->n_readers++;
-    graph_publish(g);
+void graph_track_writer(GraphState* g, int node, dds_entity_t writer) {
+    if (g == nullptr || writer <= 0 || node < 0 || node >= GraphState::kMaxNodes ||
+        !g->nodes[node].used) {
+        return;
+    }
+    if (insert_grouped(g->writer_ent, g->writer_gid, g->writer_node, &g->n_writers, node, writer)) {
+        graph_publish(g);
+    }
+}
+
+void graph_track_reader(GraphState* g, int node, dds_entity_t reader) {
+    if (g == nullptr || reader <= 0 || node < 0 || node >= GraphState::kMaxNodes ||
+        !g->nodes[node].used) {
+        return;
+    }
+    if (insert_grouped(g->reader_ent, g->reader_gid, g->reader_node, &g->n_readers, node, reader)) {
+        graph_publish(g);
+    }
 }
 
 void graph_untrack_writer(GraphState* g, dds_entity_t writer) {
-    if (g == nullptr || !g->active) return;
+    if (g == nullptr) return;
     int i = find_entity(g->writer_ent, g->n_writers, writer);
     if (i < 0) return;
-    for (int j = i; j < g->n_writers - 1; ++j) {
-        g->writer_ent[j] = g->writer_ent[j + 1];
-        std::memcpy(g->writer_gid[j], g->writer_gid[j + 1], 24);
-    }
-    g->n_writers--;
+    erase_at(g->writer_ent, g->writer_gid, g->writer_node, &g->n_writers, i);
     graph_publish(g);
 }
 
 void graph_untrack_reader(GraphState* g, dds_entity_t reader) {
-    if (g == nullptr || !g->active) return;
+    if (g == nullptr) return;
     int i = find_entity(g->reader_ent, g->n_readers, reader);
     if (i < 0) return;
-    for (int j = i; j < g->n_readers - 1; ++j) {
-        g->reader_ent[j] = g->reader_ent[j + 1];
-        std::memcpy(g->reader_gid[j], g->reader_gid[j + 1], 24);
-    }
-    g->n_readers--;
+    erase_at(g->reader_ent, g->reader_gid, g->reader_node, &g->n_readers, i);
     graph_publish(g);
 }
 
 void graph_publish(GraphState* g) {
     if (g == nullptr || !g->active || g->writer <= 0) return;
 
-    // Build the sample entirely on the stack: dds_write serializes synchronously
-    // (copies), so pointing the sequence `_buffer`s at stack arrays with
-    // `_release = false` needs no heap and no free.
-    rmw_dds_common_msg_dds__Gid_ rgids[GraphState::kMaxEndpoints];
-    rmw_dds_common_msg_dds__Gid_ wgids[GraphState::kMaxEndpoints];
-    for (int i = 0; i < g->n_readers; ++i)
-        std::memcpy(rgids[i].data, g->reader_gid[i], 24);
-    for (int i = 0; i < g->n_writers; ++i)
-        std::memcpy(wgids[i].data, g->writer_gid[i], 24);
+    int n_nodes = 0;
+    for (const GraphNode& n : g->nodes)
+        n_nodes += n.used ? 1 : 0;
 
-    rmw_dds_common_msg_dds__NodeEntitiesInfo_ node;
-    std::memset(&node, 0, sizeof(node));
-    // Bounded `string<256>` → idlc fixed `char[257]` array, so copy (not assign).
-    ddsrt_strlcpy(node.node_namespace, g->node_namespace, sizeof(node.node_namespace));
-    ddsrt_strlcpy(node.node_name, g->node_name, sizeof(node.node_name));
-    node.reader_gid_seq._length = static_cast<uint32_t>(g->n_readers);
-    node.reader_gid_seq._maximum = static_cast<uint32_t>(g->n_readers);
-    node.reader_gid_seq._buffer = g->n_readers ? rgids : nullptr;
-    node.reader_gid_seq._release = false;
-    node.writer_gid_seq._length = static_cast<uint32_t>(g->n_writers);
-    node.writer_gid_seq._maximum = static_cast<uint32_t>(g->n_writers);
-    node.writer_gid_seq._buffer = g->n_writers ? wgids : nullptr;
-    node.writer_gid_seq._release = false;
+    // One `NodeEntitiesInfo_` per node. Each carries two `char[257]` arrays, so
+    // a stack array sized for the table would be ~35 KiB — beyond what an RTOS
+    // app task can give. It is a TRANSIENT sample, so it comes from
+    // `ddsrt_malloc` (never libc: the RTOS heap is separate, see
+    // cyclonedds-known-limitations.md), sized to the nodes that exist, and is
+    // freed once `dds_write` has serialised it. The GID sequences need no
+    // allocation at all: they point into the grouped tables.
+    rmw_dds_common_msg_dds__NodeEntitiesInfo_* infos = nullptr;
+    if (n_nodes > 0) {
+        infos = static_cast<rmw_dds_common_msg_dds__NodeEntitiesInfo_*>(
+            ddsrt_malloc(static_cast<std::size_t>(n_nodes) * sizeof(*infos)));
+        if (infos == nullptr) {
+            // Keep the last published snapshot rather than publish one that
+            // drops every node. Say so: a stale graph is otherwise silent.
+            fprintf(stderr,
+                    "nros-rmw-cyclonedds: ros_discovery_info not republished "
+                    "(out of memory for %d node entries)\n",
+                    n_nodes);
+            return;
+        }
+        std::memset(infos, 0, static_cast<std::size_t>(n_nodes) * sizeof(*infos));
+    }
 
-    rmw_dds_common_msg_dds__NodeEntitiesInfo_ nodes[1] = {node};
+    int k = 0;
+    for (int i = 0; i < GraphState::kMaxNodes; ++i) {
+        const GraphNode& n = g->nodes[i];
+        if (!n.used) continue;
+        rmw_dds_common_msg_dds__NodeEntitiesInfo_& info = infos[k++];
+        // Lengths were checked in graph_add_node, so these never truncate.
+        ddsrt_strlcpy(info.node_namespace, wire_ns(n.ns), sizeof(info.node_namespace));
+        ddsrt_strlcpy(info.node_name, n.name, sizeof(info.node_name));
+
+        int rs = 0, rl = 0, ws = 0, wl = 0;
+        node_run(g->reader_node, g->n_readers, i, &rs, &rl);
+        node_run(g->writer_node, g->n_writers, i, &ws, &wl);
+        info.reader_gid_seq._length = static_cast<uint32_t>(rl);
+        info.reader_gid_seq._maximum = static_cast<uint32_t>(rl);
+        info.reader_gid_seq._buffer = rl ? as_gids(g->reader_gid, rs) : nullptr;
+        info.reader_gid_seq._release = false;
+        info.writer_gid_seq._length = static_cast<uint32_t>(wl);
+        info.writer_gid_seq._maximum = static_cast<uint32_t>(wl);
+        info.writer_gid_seq._buffer = wl ? as_gids(g->writer_gid, ws) : nullptr;
+        info.writer_gid_seq._release = false;
+    }
 
     rmw_dds_common_msg_dds__ParticipantEntitiesInfo_ sample;
     std::memset(&sample, 0, sizeof(sample));
     std::memcpy(sample.gid.data, g->participant_gid, 24);
-    sample.node_entities_info_seq._length = 1;
-    sample.node_entities_info_seq._maximum = 1;
-    sample.node_entities_info_seq._buffer = nodes;
+    sample.node_entities_info_seq._length = static_cast<uint32_t>(n_nodes);
+    sample.node_entities_info_seq._maximum = static_cast<uint32_t>(n_nodes);
+    sample.node_entities_info_seq._buffer = infos;
     sample.node_entities_info_seq._release = false;
 
     (void)dds_write(g->writer, &sample);
+    ddsrt_free(infos);
 }
 
 /// phase-381 W5 — the READER half. Contract in graph.hpp.
@@ -235,7 +367,7 @@ bool graph_visit_nodes(GraphState* g, void* ctx,
     // Env-gated and permanent, same convention as the zenoh shim's
     // `NROS_GRAPH_DUMP`: the first time this was wanted it was patched in by
     // hand, and the next person had to re-derive it.
-    // `fprintf`, NOT `fprintf` — the crate's other TU (descriptors.cpp)
+    // `fprintf`, NOT `std::fprintf` — the crate's other TU (descriptors.cpp)
     // already spells it this way and compiles everywhere. `<cstdio>` is only
     // REQUIRED to declare the name in namespace `std`; putting it in the global
     // namespace too is permitted, not guaranteed, and the minimal C++ library on
@@ -258,9 +390,8 @@ bool graph_visit_nodes(GraphState* g, void* ctx,
         // this distinguishes "incompatible" from "not there" in one number.
         dds_requested_incompatible_qos_status_t iq = {};
         if (dds_get_requested_incompatible_qos_status(g->graph_reader, &iq) == DDS_RETCODE_OK) {
-            fprintf(stderr,
-                         "GRAPH_CYCLONE incompatible_qos total=%u last_policy_id=%u\n",
-                         iq.total_count, iq.last_policy_id);
+            fprintf(stderr, "GRAPH_CYCLONE incompatible_qos total=%u last_policy_id=%u\n",
+                    iq.total_count, iq.last_policy_id);
         }
     }
 

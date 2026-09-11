@@ -7,7 +7,18 @@
 // but stock graph introspection (`ros2 node list/info`, `ros2 action info`, and
 // crucially an action client's `wait_for_server`) sees the endpoints associated
 // with NO node unless we publish this message. This tracks each node's
-// reader/writer GIDs and (re)publishes the message on every endpoint change.
+// reader/writer GIDs and (re)publishes the message on every change.
+//
+// Issue 1269 — ONE participant, MANY nodes. This used to publish exactly one
+// `NodeEntitiesInfo`, named after the SESSION, and attributed every endpoint in
+// the image to it: a four-node image showed `/node` in `ros2 node list` and
+// `ros2 param list /mrm_handler` answered "Node not found". zenoh had shown one
+// graph node per component since phase-268, so the node set a user saw
+// depended on the RMW. Now the graph holds one record per NODE (fed by the
+// `create_node` slot, which the runtime calls once per distinct
+// `(name, namespace)`), every endpoint is attributed to the node that created
+// it, and the sample carries one `NodeEntitiesInfo` per node. The session's own
+// open-time name is not a node — exactly as on zenoh.
 #ifndef NROS_RMW_CYCLONEDDS_GRAPH_HPP
 #define NROS_RMW_CYCLONEDDS_GRAPH_HPP
 
@@ -17,10 +28,30 @@
 
 namespace nros_rmw_cyclonedds {
 
-// Per-session (≈ per-participant ≈ per-node) graph state. Fixed-capacity, no
-// heap (matches the backend's alloc-light style + embedded constraints).
+/// One graph node on this participant.
+///
+/// The strings are BORROWED, not copied: `rmw_node_t` promises its `name` and
+/// `namespace_` outlive the node ("Borrowed; outlives the node",
+/// `rmw_entity.h`), and the runtime hands them out of its static node table.
+/// Copying them would cost 2 x 257 bytes per record for a bound
+/// (`string<256>`) nothing in the image comes near, and would make the table
+/// too expensive to size for the runtime's largest `NROS_RMW_MAX_NODES`.
+struct GraphNode {
+    const char* name{nullptr};
+    const char* ns{nullptr}; // NULL or "" publishes as "/"
+    bool used{false};
+};
+
+// Per-session (= per-participant) graph state. Fixed-capacity, no heap
+// (matches the backend's alloc-light style + embedded constraints).
 struct GraphState {
+    /// Reader and writer capacity for the WHOLE participant, shared by every
+    /// node on it — the same total the one-node table had.
     static constexpr int kMaxEndpoints = 32;
+    /// The upper bound `nros-rmw-cffi`'s `build.rs` accepts for
+    /// `NROS_RMW_MAX_NODES` ([1, 64]), so the runtime's own node table always
+    /// fills before this one does. A record is two pointers and a flag.
+    static constexpr int kMaxNodes = 64;
 
     dds_entity_t topic{0};
     dds_entity_t writer{0}; // latched ros_discovery_info writer
@@ -32,33 +63,62 @@ struct GraphState {
     /// nothing, which matters because most embedded images never ask.
     dds_entity_t graph_reader{0};
     uint8_t participant_gid[24]{};
-    char node_namespace[256]{};
-    char node_name[256]{};
 
+    /// Slots are STABLE: a released record is marked unused and never moved,
+    /// because `rmw_node_t::backend_data` points at it.
+    GraphNode nodes[kMaxNodes]{};
+
+    /// Endpoints are kept GROUPED BY NODE (ascending `*_node`), so each node's
+    /// GIDs are one contiguous run and the published sequence can point
+    /// straight into this storage — no per-publish copy, no stack array.
     dds_entity_t reader_ent[kMaxEndpoints]{};
     uint8_t reader_gid[kMaxEndpoints][24]{};
+    uint8_t reader_node[kMaxEndpoints]{};
     int n_readers{0};
 
     dds_entity_t writer_ent[kMaxEndpoints]{};
     uint8_t writer_gid[kMaxEndpoints][24]{};
+    uint8_t writer_node[kMaxEndpoints]{};
     int n_writers{0};
 
     bool active{false}; // false if the descriptor/topic/writer wasn't created
 };
 
-// Capture the participant GID + node identity, register + create the latched
-// `ros_discovery_info` writer, and publish the (empty) initial sample. If the
-// ParticipantEntitiesInfo descriptor or the writer can't be created the graph
-// stays inactive and every other call is a no-op (interop degrades gracefully
-// to the pre-177.36 behaviour).
-void graph_init(GraphState* g, dds_entity_t participant, const char* node_name,
-                const char* node_namespace);
+/// `graph_add_node` results that are not a slot index.
+constexpr int kGraphNodeInvalid = -1; ///< no name, or a name longer than `string<256>`
+constexpr int kGraphNodeFull = -2;    ///< every slot is taken
+
+// Reset the state, capture the participant GID, register + create the latched
+// `ros_discovery_info` writer, and publish the initial sample (no nodes yet).
+// If the ParticipantEntitiesInfo descriptor or the writer can't be created the
+// graph stays inactive: node records are still kept (they are the node's
+// identity), but nothing is published and interop degrades gracefully to the
+// pre-177.36 behaviour.
+void graph_init(GraphState* g, dds_entity_t participant);
 void graph_fini(GraphState* g);
 
-// Track/untrack an endpoint by its DDS entity (GID derived via dds_get_guid).
-// Each mutation re-publishes the full ParticipantEntitiesInfo.
-void graph_track_writer(GraphState* g, dds_entity_t writer);
-void graph_track_reader(GraphState* g, dds_entity_t reader);
+/// Find the record for `(name, ns)`, adding it if absent, and republish when a
+/// record is added. Returns the slot index, or `kGraphNodeInvalid` /
+/// `kGraphNodeFull`. A name is never truncated: two long names sharing a
+/// prefix would MERGE into one node, which is the defect this table exists to
+/// remove. `name` and `ns` must outlive the record (see `GraphNode`).
+int graph_add_node(GraphState* g, const char* name, const char* ns);
+
+/// The slot index of a record `graph_add_node` handed out as a pointer
+/// (`&g->nodes[i]`, the form `rmw_node_t::backend_data` carries), or -1 if
+/// `rec` is not one of this graph's live records.
+int graph_node_index(const GraphState* g, const void* rec);
+
+/// Release a node record and every endpoint still attributed to it, then
+/// republish. The slot becomes reusable; no other slot moves.
+void graph_remove_node(GraphState* g, int node);
+
+// Track/untrack an endpoint by its DDS entity (GID derived via dds_get_guid),
+// attributed to node slot `node`. A negative `node` is a no-op, so a caller
+// that could not resolve its node records nothing rather than guessing an
+// owner. Each mutation re-publishes the full ParticipantEntitiesInfo.
+void graph_track_writer(GraphState* g, int node, dds_entity_t writer);
+void graph_track_reader(GraphState* g, int node, dds_entity_t reader);
 void graph_untrack_writer(GraphState* g, dds_entity_t writer);
 void graph_untrack_reader(GraphState* g, dds_entity_t reader);
 
@@ -81,8 +141,7 @@ void graph_publish(GraphState* g);
 /// Returns `false` if the graph is inactive (no descriptor / no reader), which
 /// the caller reports as `UNSUPPORTED` — distinct from an empty graph.
 bool graph_visit_nodes(GraphState* g, void* ctx,
-                       bool (*visit)(void* ctx, const char* node_name,
-                                     const char* node_namespace));
+                       bool (*visit)(void* ctx, const char* node_name, const char* node_namespace));
 
 } // namespace nros_rmw_cyclonedds
 

@@ -68,6 +68,8 @@ struct SubState {
     /// take — check the flag first, clear it, return the error, take nothing —
     /// moved one call later, because that is where the contract leaves room.
     bool pending_too_small{false};
+    /// Issue 1269 — the graph this reader is listed in (see PubState::graph).
+    GraphState* graph{nullptr};
 };
 
 inline SubState* as_state(const rmw_subscription_t* s) {
@@ -185,7 +187,9 @@ rmw_ret_t subscription_create(const rmw_node_t* node,
     state->reader = reader;
 
     out->backend_data = state;
-    graph_track_reader(session_graph(session), reader); // Phase 177.36
+    // Phase 177.36 / issue 1269 — listed under the node that created it.
+    state->graph = session_graph(session);
+    graph_track_reader(state->graph, graph_node_of(node), reader);
     return NROS_RMW_RET_OK;
 }
 
@@ -193,6 +197,10 @@ rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber) {
     if (subscriber == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     SubState* state = as_state(subscriber);
     if (state == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    // Issue 1269 — see `publisher_destroy`: out of the graph while live.
+    if (state->graph != nullptr && state->reader > 0 && dds_get_participant(state->reader) > 0) {
+        graph_untrack_reader(state->graph, state->reader);
+    }
     dds_return_t reader_rc = state->reader > 0 ? dds_delete(state->reader) : DDS_RETCODE_OK;
     dds_return_t topic_rc = state->topic > 0 ? dds_delete(state->topic) : DDS_RETCODE_OK;
     delete state;

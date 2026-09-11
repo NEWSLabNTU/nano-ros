@@ -871,6 +871,27 @@ pub fn ros2_node_list(locator: &str, distro: &str) -> TestResult<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Run `ros2 node list` over a DDS RMW (`rmw_cyclonedds_cpp`, …) on `domain_id`
+/// and return the output — the DDS sibling of [`ros2_node_list`], which dials a
+/// zenoh router instead. The bus is pinned to loopback by
+/// [`ros2_env_setup_rmw_with_domain`] (issue 1009), so the nano-ros side must
+/// be pinned too (`dds_isolation::apply_to_command`) or the two never meet.
+pub fn ros2_node_list_rmw_with_domain(
+    distro: &str,
+    rmw: &str,
+    domain_id: u8,
+) -> TestResult<String> {
+    let env_setup = ros2_env_setup_rmw_with_domain(distro, rmw, domain_id);
+    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 node list --no-daemon 2>&1");
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 node list: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 /// Run `ros2 topic list` and return the output
 pub fn ros2_topic_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);

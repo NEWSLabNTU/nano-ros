@@ -416,8 +416,11 @@ const nros_rmw_vtable_t kVtable = {
     /*count_publishers*/ nullptr,
     /*count_subscribers*/ nullptr,
     /*node_get_graph_guard_condition*/ nullptr,
-    /*create_node*/ nullptr,
-    /*destroy_node*/ nullptr,
+    /* Issue 1269 — one `ros_discovery_info` NodeEntitiesInfo per node. NULL
+     * here made every endpoint in the image belong to the session's one
+     * record, so a four-node image showed a single `/node`. */
+    /*create_node*/ node_create,
+    /*destroy_node*/ node_destroy,
     /*set_log_severity*/ cyclone_set_log_severity,
 };
 

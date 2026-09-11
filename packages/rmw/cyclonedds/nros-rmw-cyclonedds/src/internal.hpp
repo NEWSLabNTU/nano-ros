@@ -122,6 +122,18 @@ dds_entity_t session_participant(const rmw_session_t *session);
  *  GIDs via graph_track_*. */
 GraphState *session_graph(rmw_session_t *session);
 
+/** Issue 1269 — the graph slot an endpoint created on `node` belongs to, or -1.
+ *  The record `create_node` stored in `backend_data` when there is one;
+ *  otherwise the node is recorded by its name + namespace (a direct vtable
+ *  caller that never declared it). */
+int graph_node_of(const rmw_node_t *node);
+
+/** Issue 1269 — the `create_node` / `destroy_node` slots: one graph record per
+ *  node, so each shows in `ros2 node list` with its own endpoints. */
+rmw_ret_t node_create(rmw_session_t *session, const char *name, const char *namespace_,
+                      rmw_node_t *out);
+rmw_ret_t node_destroy(rmw_node_t *node);
+
 /* ---- publisher.cpp / subscriber.cpp helpers ---- */
 /** Return the Cyclone writer handle for a publisher created by
  *  this backend, or 0 if the publisher is uninitialised. Used by

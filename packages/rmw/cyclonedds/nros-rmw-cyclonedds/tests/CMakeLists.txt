@@ -153,6 +153,25 @@ add_test(
     COMMAND nros_rmw_cyclonedds_graph_counts
 )
 
+# Issue 1269 — one `ros_discovery_info` NodeEntitiesInfo per node, each with its
+# own gids, republished on change. Reads the sample back from a separate
+# participant, so it needs the generated graph wire type the backend compiles.
+add_executable(nros_rmw_cyclonedds_graph_node_set
+    graph_node_set.cpp
+    ${_test_string_sources}
+)
+target_link_libraries(nros_rmw_cyclonedds_graph_node_set PRIVATE nros_rmw_cyclonedds)
+target_include_directories(nros_rmw_cyclonedds_graph_node_set
+    PRIVATE
+        ${NROS_RMW_CFFI_DIR}
+        "${CMAKE_CURRENT_BINARY_DIR}/types"
+        "${_NROS_GRAPH_TYPES_DIR}"
+)
+add_test(
+    NAME nros_rmw_cyclonedds_graph_node_set
+    COMMAND nros_rmw_cyclonedds_graph_node_set
+)
+
 # Issue 0823 — the QoS read-back. Pre-loads the out-struct with values the
 # entity cannot have, so an echoing or zeroing implementation is visible.
 add_executable(nros_rmw_cyclonedds_actual_qos
