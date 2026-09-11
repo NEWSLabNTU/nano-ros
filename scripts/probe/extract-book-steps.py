@@ -32,15 +32,28 @@ PROBE_TOKEN_RE = re.compile(r"(?:^|\s)probe=(\d+)(?:\s|$)")
 # hosts; an untagged block applies everywhere. Two blocks may then share a
 # probe order, as long as no two of them survive the same --distro filter.
 DISTRO_TOKEN_RE = re.compile(r"(?:^|\s)distro=([A-Za-z0-9_,+-]+)(?:\s|$)")
+# phase-447 A3 — a step can also be specific to HOW the reader got `nros`.
+# `installation.md` documents two front doors that must never run in one shell:
+# the contributor's clone + bootstrap (`track=checkout`) and the user's release
+# install (`track=installed`). The installed track exists to prove a build with
+# NO checkout on the machine, so a checkout step leaking into it would make it
+# pass for exactly the reason the dead-end it gates survived (RFC-0099 D1).
+#
+# Unlike `distro=`, a step missing for a track is NOT an error: the two flows
+# legitimately have different steps. What IS an error is a track name nobody
+# knows, because a typo there silently drops the step from every track.
+TRACK_TOKEN_RE = re.compile(r"(?:^|\s)track=([A-Za-z0-9_,+-]+)(?:\s|$)")
+TRACKS = {"checkout", "installed"}
 
 
 def extract_blocks(path: Path):
-    """Yield (order, lineno, body, distros) for each probe-tagged fence."""
+    """Yield (order, lineno, body, distros, tracks) for each probe-tagged fence."""
     blocks = []
     in_fence = False
     order = None
     start = None
     distros = None
+    tracks = None
     body = []
     for lineno, line in enumerate(path.read_text().splitlines(), 1):
         m = FENCE_RE.match(line)
@@ -55,6 +68,13 @@ def extract_blocks(path: Path):
                     distros = (
                         set(dtok.group(1).split(",")) if dtok else None
                     )
+                    ttok = TRACK_TOKEN_RE.search(m.group(1))
+                    tracks = set(ttok.group(1).split(",")) if ttok else None
+                    if tracks is not None and not tracks <= TRACKS:
+                        sys.exit(
+                            f"{path}:{lineno}: unknown probe track(s) "
+                            f"{sorted(tracks - TRACKS)} (known: {sorted(TRACKS)})"
+                        )
                     body = []
                 elif line.startswith("```"):
                     # untagged fence — skip to its close so an inner
@@ -67,7 +87,7 @@ def extract_blocks(path: Path):
                 in_fence = False
         else:
             if line.startswith("```"):
-                blocks.append((order, start, "\n".join(body), distros))
+                blocks.append((order, start, "\n".join(body), distros, tracks))
                 in_fence = False
             else:
                 body.append(line)
@@ -84,8 +104,26 @@ def main():
     ap.add_argument("--distro", default="debian",
                     help="host distro the steps are extracted FOR; blocks tagged "
                          "distro=<other> are skipped (default: debian)")
+    ap.add_argument("--track", default="checkout", choices=sorted(TRACKS),
+                    help="how the reader got `nros`; blocks tagged track=<other> "
+                         "are skipped (default: checkout)")
+    # phase-447 A3 — a probe-owned CHECK between two book steps. A verifier
+    # appended at the end only runs if every step before it succeeds, so two
+    # different defects that both stop the run early (a regressed SDK root, an
+    # unprovisionable source) would report as ONE failure at the same step.
+    # Checking a property the moment it becomes checkable keeps each defect
+    # failing at its own step. The named step must exist in this extraction.
+    ap.add_argument("--after-step", action="append", default=[],
+                    help="N=FILE: append FILE's text right after step N's block")
     ap.add_argument("files", nargs="+")
     args = ap.parse_args()
+
+    after = {}  # order -> (file, text)
+    for spec in args.after_step:
+        n, sep, f = spec.partition("=")
+        if not sep or not n.isdigit():
+            sys.exit(f"probe extract: bad --after-step (want N=FILE): {spec}")
+        after[int(n)] = (f, Path(f).read_text())
 
     steps = []  # (order, file, lineno, body)
     skipped = {}  # order -> distros it IS tagged for, when filtered out
@@ -93,7 +131,9 @@ def main():
         p = Path(f)
         if not p.is_file():
             sys.exit(f"probe extract: no such chapter: {f}")
-        for order, lineno, body, distros in extract_blocks(p):
+        for order, lineno, body, distros, tracks in extract_blocks(p):
+            if tracks is not None and args.track not in tracks:
+                continue
             if distros is not None and args.distro not in distros:
                 # Remember that this ORDER exists for some distro, so a
                 # requested distro nobody tagged fails loudly below instead of
@@ -120,6 +160,13 @@ def main():
             f"step(s) {dropped} — {detail}. Tag a block for this distro in the "
             "book, or probe one of the distros above."
         )
+    missing_after = sorted(set(after) - set(orders))
+    if missing_after:
+        sys.exit(
+            f"probe extract: --after-step names step(s) {missing_after}, which this "
+            "extraction does not have — the book's tags moved; the check would "
+            "silently never run"
+        )
     dupes = {o for o in orders if orders.count(o) > 1}
     if dupes:
         sys.exit(f"probe extract: duplicate probe order(s): {sorted(dupes)}")
@@ -134,6 +181,10 @@ def main():
         out.append("")
         out.append(f"echo '=== probe step {order} ({f}:{lineno}) ==='")
         out.append(body)
+        if order in after:
+            check_file, check_text = after[order]
+            out.append(f"echo '=== probe check after step {order} ({Path(check_file).name}) ==='")
+            out.append(check_text.rstrip("\n"))
     script = "\n".join(out) + "\n"
 
     for s in args.subst:
