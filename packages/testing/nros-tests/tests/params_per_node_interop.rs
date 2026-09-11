@@ -433,9 +433,9 @@ fn ros2_param_cli_addresses_each_node_on_cyclonedds() -> nros_tests::TestResult<
     );
     let (alpha, beta) = (fqns[0].clone(), fqns[1].clone());
 
-    // THE ASSERTION 1268 IS ABOUT: the six services exist on the wire. Before the
-    // descriptors were baked this listing carried the image's own services and
-    // none of the `rcl_interfaces` ones.
+    // THE ASSERTION 1268 IS ABOUT: the six services exist on the wire. Before
+    // `create_param_srv` registered the `rcl_interfaces` types this listing
+    // carried the image's own services and none of the parameter ones.
     let mut services = String::new();
     for attempt in 1..=6 {
         services = nros_tests::ros2::ros2_service_list_rmw_with_domain(
@@ -470,21 +470,71 @@ fn ros2_param_cli_addresses_each_node_on_cyclonedds() -> nros_tests::TestResult<
         }
     }
 
-    // And the round trip the issue's Acceptance names.
-    let got = nros_tests::ros2::ros2_param_get_rmw_with_domain(
-        &alpha,
-        "rate",
-        DEFAULT_ROS_DISTRO,
-        "rmw_cyclonedds_cpp",
-        domain,
-    )
-    .expect("failed to run ros2 param get");
+    // The round trips the issue's Acceptance names, ALL THREE VERBS and BOTH
+    // nodes — `list`, `get`, `set`. A `get` alone would leave `set` unmeasured,
+    // and `set` is the one that travels in the other direction: its reply comes
+    // back through `SetParametersResult`, a type nothing but the set path needs.
+    for node in [&alpha, &beta] {
+        let listed = nros_tests::ros2::ros2_param_list_rmw_with_domain(
+            node,
+            DEFAULT_ROS_DISTRO,
+            "rmw_cyclonedds_cpp",
+            domain,
+        )
+        .expect("failed to run ros2 param list");
+        println!("=== ros2 param list {node} (cyclonedds) ===\n{listed}");
+        assert!(
+            listed.contains("rate"),
+            "cyclonedds: `ros2 param list {node}` does not name `rate`:\n{listed}"
+        );
+
+        let got = nros_tests::ros2::ros2_param_get_rmw_with_domain(
+            node,
+            "rate",
+            DEFAULT_ROS_DISTRO,
+            "rmw_cyclonedds_cpp",
+            domain,
+        )
+        .expect("failed to run ros2 param get");
+        println!("=== ros2 param get {node} rate (cyclonedds) ===\n{got}");
+        assert!(
+            got.contains("Double value is") || got.contains("Integer value is"),
+            "cyclonedds: `ros2 param get {node} rate` returned no value:\n{got}"
+        );
+
+        let set = nros_tests::ros2::ros2_param_set_rmw_with_domain(
+            node,
+            "rate",
+            "42",
+            DEFAULT_ROS_DISTRO,
+            "rmw_cyclonedds_cpp",
+            domain,
+        )
+        .expect("failed to run ros2 param set");
+        println!("=== ros2 param set {node} rate 42 (cyclonedds) ===\n{set}");
+        assert!(
+            set.contains("Set parameter successful"),
+            "cyclonedds: `ros2 param set {node} rate 42` did not succeed:\n{set}"
+        );
+
+        // Read it back: a `set` that reports success and changes nothing is the
+        // same shape as the silently-dropped create this issue is about.
+        let after = nros_tests::ros2::ros2_param_get_rmw_with_domain(
+            node,
+            "rate",
+            DEFAULT_ROS_DISTRO,
+            "rmw_cyclonedds_cpp",
+            domain,
+        )
+        .expect("failed to run ros2 param get after set");
+        println!("=== ros2 param get {node} rate after set (cyclonedds) ===\n{after}");
+        assert!(
+            after.contains("42"),
+            "cyclonedds: `ros2 param set {node} rate 42` reported success and the \
+             value did not change:\n{after}"
+        );
+    }
     proc.kill();
-    println!("=== ros2 param get {alpha} rate (cyclonedds) ===\n{got}");
-    assert!(
-        got.contains("Double value is") || got.contains("Integer value is"),
-        "cyclonedds: `ros2 param get {alpha} rate` returned no value:\n{got}"
-    );
     Ok(())
 }
 
