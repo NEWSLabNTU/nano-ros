@@ -270,7 +270,7 @@ fn every_accepted_goal_returns_a_result_and_no_reply_slot_is_refused(
         peer_cmd.env("RUST_LOG", "info");
         peer_cmd.env("NROS_MULTIGOAL_GOALS", "0");
         peer_cmd.env("NROS_MULTIGOAL_SOAK_MS", "1000");
-        let mut peer = ManagedProcess::spawn_command(peer_cmd, &format!("multigoal-peer-{cycle}"))
+        let mut peer = ManagedProcess::spawn_command(peer_cmd, format!("multigoal-peer-{cycle}"))
             .expect("Failed to start the liveliness peer");
         let peer_out = peer.collect_until(MULTIGOAL_SUMMARY_PREFIX, Duration::from_secs(30));
         assert!(
@@ -312,8 +312,7 @@ fn every_accepted_goal_returns_a_result_and_no_reply_slot_is_refused(
     let server_out = server.collect_until("\u{1}never-matches\u{1}", Duration::from_secs(3));
     let refusal_line = server_out
         .lines()
-        .filter(|l| l.contains(REPLY_SLOT_REPORT_PREFIX))
-        .next_back()
+        .rfind(|l| l.contains(REPLY_SLOT_REPORT_PREFIX))
         .unwrap_or_else(|| {
             panic!(
                 "the action server printed no `{REPLY_SLOT_REPORT_PREFIX}` heartbeat, so the \
