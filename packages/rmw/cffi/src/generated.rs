@@ -842,6 +842,10 @@ pub struct nros_rmw_vtable_t {
             out_bytes: *mut usize,
         ) -> rmw_ret_t,
     >,
+    #[doc = " The `NROS_RMW_QOS_POLICY_*` bits this backend honours, for the session\n  behind @p session. RTOS addition; upstream has no counterpart, because\n  upstream links ONE rmw per process and its equivalent knowledge is\n  compiled into `rmw_qos_profile_check_compatible`.\n\n  The runtime validates a requested profile against this mask at entity\n  create and answers `NROS_RMW_RET_INCOMPATIBLE_QOS` for a policy the\n  backend cannot enforce — the no-silent-downgrade contract, decided\n  where it can still be reported.\n\n  WHY IT IS A SLOT AND NOT A CONSTANT. The cffi route multiplexes: which\n  backend it is talking to is decided at run time by\n  `nros_rmw_cffi_register_named`, and until this slot existed the route\n  had no way to ask. It therefore answered the UNION of what any\n  nano-ros-supported RMW honours — issue 1329, measured — so an\n  application asking cyclonedds for `avoid_ros_namespace_conventions`, or\n  XRCE for a deadline, was admitted and then ignored downstream. A union\n  is an over-claim for every member of it.\n\n  A BIT IS EARNED, NOT DECLARED. Setting one asserts that the backend\n  READS the mapped profile field and either applies the request or\n  refuses a value it cannot serve. Forwarding the field to somebody else\n  — a discovery keyexpr, an Agent that may ignore it — is not honouring\n  it. `check-qos-mask-derivation` holds each backend's mask equal to the\n  set of `nros-qos-honours:` claims sited in its own sources, in both\n  directions, so this slot cannot drift away from the code under it.\n\n  NULL SLOT: the backend has NOT SAID, and the runtime assumes\n  `NROS_RMW_QOS_POLICY_NONE`. The same is true of a non-OK return; @p\n  out_mask is then not read.\n\n  That choice is the one thing here worth arguing, so: the two\n  alternatives are both worse. \"NULL means the union\" reinstates issue\n  1329 with the ABI as its author — a route that cannot ask answering as\n  though every backend honoured everything. \"NULL means do not validate\"\n  is worse still: it admits even the bits no backend implements, and it\n  switches off the no-silent-downgrade contract at the one seam that\n  enforces it, invisibly. NONE is the same answer\n  `nros_rmw::Session::supported_qos_policies` gives an implementation\n  that has written no code (phase-428 W9 moved that default from `CORE`\n  to nothing for exactly this reason), so the ABI and the trait give one\n  answer to one question.\n\n  NONE is loud rather than silent: the affected creates fail with\n  `INCOMPATIBLE_QOS` at once, naming a policy, and the route logs the\n  missing slot once per session. An application cannot mistake it for\n  working, which is what the union allowed for as long as it stood.\n\n  So a backend that honours ANY policy must fill this slot — not as an\n  ABI requirement (`first_missing_vtable_slot` does not demand it, and\n  `check-rmw-required-slots` holds that set equal to what the runtime\n  `.expect()`s), but because leaving it NULL is a declaration that it\n  honours nothing. `check-qos-mask-derivation` refuses a backend that\n  carries claims and no slot.\n\n  @p session is BORROWED for the call. A backend whose answer does not\n  depend on the session ignores it; one that configures policies per\n  session (a connection-parameter-driven Agent, say) reads its own state\n  off `session->backend_data`."]
+    pub supported_qos_policies: ::core::option::Option<
+        unsafe extern "C" fn(session: *const rmw_session_t, out_mask: *mut u32) -> rmw_ret_t,
+    >,
 }
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 #[repr(C)]
@@ -914,6 +918,20 @@ pub const RMW_GID_STORAGE_SIZE: i32 = 24;
 pub const RMW_INET_ADDRSTRLEN: i32 = 48;
 pub const NROS_RMW_DURATION_INFINITE_MS: i64 = 4294967295;
 pub const RMW_SESSION_MAX_PROPERTIES: i32 = 16;
+pub const NROS_RMW_QOS_POLICY_RELIABILITY: i32 = 1;
+pub const NROS_RMW_QOS_POLICY_DURABILITY_VOLATILE: i32 = 2;
+pub const NROS_RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL: i32 = 4;
+pub const NROS_RMW_QOS_POLICY_HISTORY: i32 = 8;
+pub const NROS_RMW_QOS_POLICY_DEPTH: i32 = 16;
+pub const NROS_RMW_QOS_POLICY_DEADLINE: i32 = 32;
+pub const NROS_RMW_QOS_POLICY_LIFESPAN: i32 = 64;
+pub const NROS_RMW_QOS_POLICY_LIVELINESS_AUTOMATIC: i32 = 128;
+pub const NROS_RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_TOPIC: i32 = 256;
+pub const NROS_RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_NODE: i32 = 512;
+pub const NROS_RMW_QOS_POLICY_LIVELINESS_LEASE: i32 = 1024;
+pub const NROS_RMW_QOS_POLICY_AVOID_ROS_NAMESPACE_CONVENTIONS: i32 = 2048;
+pub const NROS_RMW_QOS_POLICY_NONE: i32 = 0;
+pub const NROS_RMW_QOS_POLICY_CORE: i32 = 27;
 pub const NROS_RMW_VISITOR_DEFINED: i32 = 1;
 #[doc = " Borrow-shaped union the backend supplies to the registered\n  callback. The `kind` argument selects which member is valid."]
 #[repr(C)]

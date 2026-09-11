@@ -155,17 +155,24 @@ rmw_ret_t xrce_service_create(const rmw_node_t* node,
     memcpy(service_buf, service_name, sn_len);
     service_buf[sn_len] = '\0';
 
-    xrce_dds_request_type(type_name, req_type_buf, sizeof(req_type_buf));
-    xrce_dds_reply_type(type_name, reply_type_buf, sizeof(reply_type_buf));
-    xrce_dds_request_topic(service_name, req_topic_buf, sizeof(req_topic_buf));
-    xrce_dds_reply_topic(service_name, reply_topic_buf, sizeof(reply_topic_buf));
-
     /* Honor the caller's QoS; fall back to the default reliable /
      * volatile / keep-last(10) profile (matches the Rust impl's
-     * `QoSProfile::services_default`) when none is supplied. */
+     * `QoSProfile::services_default`) when none is supplied.
+     *
+     * Resolved BEFORE the topic names, because issue 1329 made
+     * `avoid_ros_namespace_conventions` reach the `rq/` + `rr/` prefixes too. */
     rmw_qos_profile_t default_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
     const rmw_qos_profile_t* eff_qos = (qos != NULL) ? qos : &default_qos;
+    /* nros-qos-honours: AVOID_ROS_NAMESPACE_CONVENTIONS — drops the `rq/` +
+     * `rr/` prefixes (`xrce_dds_request_topic` / `xrce_dds_reply_topic`), the
+     * service-side counterpart of publisher.c dropping `rt/`. */
+    const int avoid_ros = eff_qos->avoid_ros_namespace_conventions != 0;
     uxrQoS_t xrce_qos = xrce_map_qos(eff_qos);
+
+    xrce_dds_request_type(type_name, req_type_buf, sizeof(req_type_buf));
+    xrce_dds_reply_type(type_name, reply_type_buf, sizeof(reply_type_buf));
+    xrce_dds_request_topic(service_name, avoid_ros, req_topic_buf, sizeof(req_topic_buf));
+    xrce_dds_reply_topic(service_name, avoid_ros, reply_topic_buf, sizeof(reply_topic_buf));
 
     uint16_t req = uxr_buffer_create_replier_bin(
         &st->session, st->output_reliable, replier_oid, st->participant_oid, service_buf,
@@ -604,14 +611,20 @@ rmw_ret_t xrce_client_create(const rmw_node_t* node, const rmw_service_type_supp
     memcpy(service_buf, service_name, sn_len);
     service_buf[sn_len] = '\0';
 
-    xrce_dds_request_type(type_name, req_type_buf, sizeof(req_type_buf));
-    xrce_dds_reply_type(type_name, reply_type_buf, sizeof(reply_type_buf));
-    xrce_dds_request_topic(service_name, req_topic_buf, sizeof(req_topic_buf));
-    xrce_dds_reply_topic(service_name, reply_topic_buf, sizeof(reply_topic_buf));
-
+    /* See `service_create` — the profile is resolved first so the topic names
+     * can honour `avoid_ros_namespace_conventions` (issue 1329). */
     rmw_qos_profile_t default_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
     const rmw_qos_profile_t* eff_qos = (qos != NULL) ? qos : &default_qos;
+    /* nros-qos-honours: AVOID_ROS_NAMESPACE_CONVENTIONS — drops the `rq/` +
+     * `rr/` prefixes (`xrce_dds_request_topic` / `xrce_dds_reply_topic`), the
+     * service-side counterpart of publisher.c dropping `rt/`. */
+    const int avoid_ros = eff_qos->avoid_ros_namespace_conventions != 0;
     uxrQoS_t xrce_qos = xrce_map_qos(eff_qos);
+
+    xrce_dds_request_type(type_name, req_type_buf, sizeof(req_type_buf));
+    xrce_dds_reply_type(type_name, reply_type_buf, sizeof(reply_type_buf));
+    xrce_dds_request_topic(service_name, avoid_ros, req_topic_buf, sizeof(req_topic_buf));
+    xrce_dds_reply_topic(service_name, avoid_ros, reply_topic_buf, sizeof(reply_topic_buf));
 
     uint16_t req = uxr_buffer_create_requester_bin(
         &st->session, st->output_reliable, requester_oid, st->participant_oid, service_buf,

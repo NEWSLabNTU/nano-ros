@@ -100,6 +100,7 @@ set(_nros_rmw_uorb_sources
     src/subscriber.cpp
     src/service.cpp
     src/topic_registry.cpp
+    src/qos.cpp
     src/callback_default.cpp
 )
 if(NROS_RMW_UORB_BUILD_PX4_GLUE)

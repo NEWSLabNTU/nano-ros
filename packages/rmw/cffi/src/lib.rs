@@ -289,6 +289,7 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     destroy_node: None,
     set_log_severity: None,
     required_rx_bytes: None,
+    supported_qos_policies: None,
 };
 
 /// Compat alias for the generated `rmw_service_t`.
@@ -1677,6 +1678,16 @@ pub struct CffiSession {
     /// fell back to domain 0 while the session itself was on another domain
     /// (issue 0801).
     domain_id: u32,
+    /// What the REGISTERED backend said it honours, read once at open through
+    /// `vtable.supported_qos_policies` (issue 1329).
+    ///
+    /// Cached rather than asked per create for two reasons, and the second is
+    /// the load-bearing one: `Session::supported_qos_policies` takes `&self`
+    /// while reaching the slot needs a `&mut` session view, and an answer that
+    /// changed between two `create_publisher` calls would make one entity's
+    /// refusal and another's acceptance depend on when they ran. The slot's
+    /// contract is per session, so once per session is when to ask.
+    qos_policies: nros_rmw::QoSPolicyMask,
 }
 
 /// phase-381 W5/W6 — the C graph visitor, turned back into a Rust closure call.
@@ -2173,6 +2184,7 @@ impl CffiSession {
             namespace_buf: [0u8; NAME_BUF_LEN],
             backend_data: core::ptr::null_mut(),
             domain_id,
+            qos_policies: nros_rmw::QoSPolicyMask::NONE,
         };
         let _ = to_c_str(node_name, &mut session.node_name_buf);
 
@@ -2221,9 +2233,104 @@ impl CffiSession {
             return Err(TransportError::ConnectionFailed);
         }
         session.backend_data = view.backend_data;
+        session.qos_policies = read_supported_qos_policies(vtable, &mut view);
         Ok(session)
     }
 }
+
+/// Ask the registered backend which QoS policies it honours (issue 1329).
+///
+/// A NULL slot, a non-OK return, or a mask carrying bits this build has no
+/// name for all resolve to what the backend has actually established, which is
+/// nothing above the bits it named. See the slot's header block for why the
+/// absence is `NONE` and not the union it replaced.
+fn read_supported_qos_policies(
+    vtable: &'static NrosRmwVtable,
+    view: &mut NrosRmwSession,
+) -> nros_rmw::QoSPolicyMask {
+    let Some(ask) = vtable.supported_qos_policies else {
+        // Once per session, not per entity: the creates that follow each fail
+        // with `IncompatibleQos` naming their own policy, and a line per
+        // entity would bury the one line that says why.
+        nros_log::log_warn!(
+            nros_log::get_logger("nros_rmw_cffi"),
+            "the registered backend fills no `supported_qos_policies` slot, so it has \
+             declared no QoS policy it honours. Every entity stating a policy will be \
+             refused with IncompatibleQos. Fill the slot in the backend's vtable."
+        );
+        return nros_rmw::QoSPolicyMask::NONE;
+    };
+    let mut mask: u32 = 0;
+    // SAFETY: `view` describes the session just created, and the slot is one
+    // the registered backend installed.
+    let rc = unsafe { ask(view as *const NrosRmwSession, &mut mask) };
+    if rc != NROS_RMW_RET_OK {
+        nros_log::log_warn!(
+            nros_log::get_logger("nros_rmw_cffi"),
+            "the backend's `supported_qos_policies` returned {rc}; treating it as \
+             'honours nothing'."
+        );
+        return nros_rmw::QoSPolicyMask::NONE;
+    }
+    // A bit outside the vocabulary this build knows is dropped rather than
+    // trusted: it can only come from a backend built against a LATER header,
+    // and admitting an unknown policy is the over-claim this slot exists to
+    // end.
+    nros_rmw::QoSPolicyMask(mask & QOS_POLICY_ALL)
+}
+
+/// The C `NROS_RMW_QOS_POLICY_*` macros and `nros_rmw::QoSPolicyMask` are one
+/// vocabulary written twice — the hand-mirror class (issue 0160), and this one
+/// decides whether an application's entity is created at all. A backend
+/// setting bit 7 and the runtime reading bit 7 as a different policy is a
+/// wrong ACCEPTANCE, which is silent, so the agreement is asserted at compile
+/// time here rather than trusted.
+///
+/// `check-qos-mask-derivation` checks the same pair without a build, for the
+/// fast lane; this is the one that cannot be skipped by a target that does not
+/// run gates.
+const _: () = {
+    use nros_rmw::QoSPolicyMask as M;
+    assert!(NROS_RMW_QOS_POLICY_RELIABILITY as u32 == M::RELIABILITY.0);
+    assert!(NROS_RMW_QOS_POLICY_DURABILITY_VOLATILE as u32 == M::DURABILITY_VOLATILE.0);
+    assert!(
+        NROS_RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL as u32 == M::DURABILITY_TRANSIENT_LOCAL.0
+    );
+    assert!(NROS_RMW_QOS_POLICY_HISTORY as u32 == M::HISTORY.0);
+    assert!(NROS_RMW_QOS_POLICY_DEPTH as u32 == M::DEPTH.0);
+    assert!(NROS_RMW_QOS_POLICY_DEADLINE as u32 == M::DEADLINE.0);
+    assert!(NROS_RMW_QOS_POLICY_LIFESPAN as u32 == M::LIFESPAN.0);
+    assert!(NROS_RMW_QOS_POLICY_LIVELINESS_AUTOMATIC as u32 == M::LIVELINESS_AUTOMATIC.0);
+    assert!(
+        NROS_RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_TOPIC as u32 == M::LIVELINESS_MANUAL_BY_TOPIC.0
+    );
+    assert!(NROS_RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_NODE as u32 == M::LIVELINESS_MANUAL_BY_NODE.0);
+    assert!(NROS_RMW_QOS_POLICY_LIVELINESS_LEASE as u32 == M::LIVELINESS_LEASE.0);
+    assert!(
+        NROS_RMW_QOS_POLICY_AVOID_ROS_NAMESPACE_CONVENTIONS as u32
+            == M::AVOID_ROS_NAMESPACE_CONVENTIONS.0
+    );
+    assert!(NROS_RMW_QOS_POLICY_NONE as u32 == M::NONE.0);
+    assert!(NROS_RMW_QOS_POLICY_CORE as u32 == M::CORE.0);
+};
+
+/// Every policy bit the C ABI names, as one mask.
+///
+/// Derived from the generated constants rather than written as a literal, so a
+/// policy added to `rmw_entity.h` joins it with no edit here.
+const QOS_POLICY_ALL: u32 = (NROS_RMW_QOS_POLICY_RELIABILITY
+    | NROS_RMW_QOS_POLICY_DURABILITY_VOLATILE
+    | NROS_RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL
+    | NROS_RMW_QOS_POLICY_HISTORY
+    | NROS_RMW_QOS_POLICY_DEPTH
+    | NROS_RMW_QOS_POLICY_DEADLINE
+    | NROS_RMW_QOS_POLICY_LIFESPAN
+    | NROS_RMW_QOS_POLICY_LIVELINESS_AUTOMATIC
+    | NROS_RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_TOPIC
+    | NROS_RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_NODE
+    | NROS_RMW_QOS_POLICY_LIVELINESS_LEASE
+    | NROS_RMW_QOS_POLICY_AVOID_ROS_NAMESPACE_CONVENTIONS)
+    as u32;
 
 /// Report a QoS DOWNGRADE — the granted profile differing from the requested
 /// one — once per entity, at creation.
@@ -3093,25 +3200,21 @@ impl Session for CffiSession {
         }
     }
 
-    /// This session MULTIPLEXES: it has no QoS behaviour of its own, and the
-    /// mask is the UNION of what the backends it routes to honour.
+    /// This session MULTIPLEXES: it has no QoS behaviour of its own, so it
+    /// ROUTES the question to whichever backend registered, through
+    /// `vtable.supported_qos_policies`, and answers what that backend said.
     ///
     /// nros-qos-mux: packages/rmw/cyclonedds packages/rmw/xrce packages/rmw/uorb
     ///
-    /// phase-428 W9 makes that union derived rather than guessed. Every bit
-    /// below is claimed by a `nros-qos-honours:` site in one of the crates
-    /// named above, and `check-qos-mask-derivation` re-measures it; the line
-    /// this replaced said the route "has to assume the registered backend
-    /// supports the union of every policy any nros-supported RMW honours",
-    /// which was an assumption nothing checked and which was wrong:
-    /// `LIVELINESS_MANUAL_BY_NODE` is advertised here and honoured by no
-    /// backend in the tree. cyclonedds folds it onto MANUAL_BY_TOPIC
-    /// (`qos.cpp`), xrce lowers no liveliness field at all, uorb reads no QoS
-    /// field whatever. It is withdrawn (issue 1328).
+    /// # This used to be a union, and a union over-claims for every member
     ///
-    /// # A union is still an OVER-claim for any one backend
-    ///
-    /// Measured 2026-09-11, per backend:
+    /// Until issue 1329 the vtable had no slot to ask through, so this method
+    /// returned the UNION of what any backend it routes to honours. phase-428
+    /// W9 made that union DERIVED — every bit was claimed by a
+    /// `nros-qos-honours:` site in one of the crates above — which caught
+    /// `LIVELINESS_MANUAL_BY_NODE`, a bit advertised here and implemented by
+    /// nobody (issue 1328), and did nothing about the shape itself. Measured
+    /// 2026-09-11, before the slot:
     ///
     /// | policy | cyclonedds | xrce | uorb |
     /// | --- | --- | --- | --- |
@@ -3120,24 +3223,17 @@ impl Session for CffiSession {
     /// | liveliness kind + lease | yes (AUTOMATIC, MANUAL_BY_TOPIC) | no | no |
     /// | avoid_ros_namespace_conventions | no | pub + sub only | no |
     ///
-    /// So an app asking cyclonedds for `avoid_ros_namespace_conventions`, or
-    /// xrce for a deadline, is admitted here and then silently ignored
-    /// downstream — the no-silent-downgrade contract broken one layer below
-    /// where it is enforced. Closing it needs a per-backend answer, and the
-    /// vtable has no slot to ask through: that is **issue 1329**, which also
-    /// records why narrowing the union without one is not the fix (xrce would
-    /// lose `LIVELINESS_AUTOMATIC`, which every C default profile states, so
-    /// every C app on xrce would fail at create).
+    /// Every `no` in that table was admitted here and then ignored downstream
+    /// — the no-silent-downgrade contract broken one layer below where it is
+    /// enforced. The answer is now the registered backend's own, read once at
+    /// `open` (see [`CffiSession::qos_policies`]); the union is gone and no
+    /// second copy of it survives to drift.
+    ///
+    /// A backend that fills no slot has declared nothing, and this answers
+    /// `NONE` for it — loudly, with one WARN at open. See the slot's header
+    /// block for why the absence resolves that way rather than to a union.
     fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {
-        use nros_rmw::QoSPolicyMask;
-        QoSPolicyMask::CORE
-            | QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL
-            | QoSPolicyMask::AVOID_ROS_NAMESPACE_CONVENTIONS
-            | QoSPolicyMask::DEADLINE
-            | QoSPolicyMask::LIFESPAN
-            | QoSPolicyMask::LIVELINESS_AUTOMATIC
-            | QoSPolicyMask::LIVELINESS_MANUAL_BY_TOPIC
-            | QoSPolicyMask::LIVELINESS_LEASE
+        self.qos_policies
     }
 }
 
