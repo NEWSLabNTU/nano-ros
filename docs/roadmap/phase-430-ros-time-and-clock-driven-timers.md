@@ -1,7 +1,17 @@
 # Phase 430 — ROS time: the delta after phase-425
 
-**Status (2026-09-07). MEASURED. Phase-425 owns sim-time and shipped it; this
-phase is exactly the delta below, and nothing else.**
+**Status (2026-09-11). W1–W8 LANDED; ONE row of the 2026-09-07 delta REGRESSED
+and is now issue 1321.** Phase-425 owns sim-time and shipped it; this phase was
+exactly the delta below and that delta is closed — the clock axis reaches every
+node-level surface (W4 Rust, W5 C, W6 C++), the loudness item and both
+parameter-semantics corrections are in, and W7 recorded the rulings. What is
+NOT closed is row 1: phase-436 W1 gave the executor a timer-derived park bound
+nine hours after this table verdicted the property "NO LONGER APPLIES", so the
+property applies again and is unmet. It is filed rather than fixed here
+([issue 1321](../issues/1321-ros-time-timer-caps-the-park-on-wall-time.md)),
+because it is an executor change and this phase is the reach delta. See
+"Re-measured (2026-09-11)" below; the 2026-09-07 table is left as it was
+written.
 
 This document was first written as if ROS time were unstarted work. It was not:
 phase-425 ([`phase-425-ros-time-clock-semantics.md`](phase-425-ros-time-clock-semantics.md))
@@ -20,6 +30,10 @@ be answered differently from what this document argued, the table says so and
 the design section is not restated to argue back.
 
 ## Delta, measured (2026-09-07)
+
+**Superseded row by row by "Re-measured (2026-09-11)" below. Kept verbatim** —
+it is the record of what was true on the day, and six of its verdicts moved
+because work landed, not because the measurement was wrong.
 
 Verdicts: **DONE** (425 shipped it — commit, file:line), **PARTIAL** (what is
 missing, one line), **NOT STARTED**, **NO LONGER APPLIES** (the design settled
@@ -54,6 +68,79 @@ then 45 commits ahead of `main` and none behind).
 | 23 | `sleep_for` / `sleep_until` / `wait_until_started` on a ROS clock | NO LONGER APPLIES | Declined by RFC-0021 (a blocking helper that does not drive the executor): ledger rows `cpp:Clock::sleep_for`, `cpp:Clock::sleep_until`, `cpp:Clock::wait_until_started`; book "Limits". `rclcpp::Rate` here is wall (`nros_cpp_time_ns()`, `nros.hpp:1228`) and so is humble's (`GenericRate<system_clock>`); a ROS-time `Rate` is a Jazzy+ surface. |
 | 24 | rosbag behaviours: rate ≠ 1, loop (time backwards), pause | DONE | Rows 2, 6, 8. One interaction the fixture found and both sides now document: each `/clock` sample is a jump of `step × rate`, so under `Skip` the TICK rate is 1x while `now()` runs at `rate` unless `step × rate ≤ period` (`sim_time_clock_e2e.rs` `STEP_MS`). |
 | 25 | The red this doc cited on 2026-09-06 (`use_sim_time_attaches_and_detaches_the_clock_source` failing at `is_active()` on pristine `main`) | DONE (fixed) | `7195c9e00` (issue 1104): the two tests that share the process-global `/clock` gate take a lock and restore what they found (`SimTimeGuard`). Green, see below. |
+
+## Re-measured (2026-09-11)
+
+Every one of the 25 rows above re-read against `origin/main` at `fa103ab94`.
+Same vocabulary. **Six moved because work landed, one moved because a DIFFERENT
+phase removed the premise its verdict rested on, and one lost its
+"contradicted elsewhere" tail.** The other seventeen stand; where a file:line
+in the 2026-09-07 column no longer resolves, the current one is given, because
+a citation that does not resolve is not evidence.
+
+The measurement above was taken on the `phase-428-w10-qos-ssot` branch; this
+one is on `main`, so a row's line numbers can move without its verdict moving.
+
+| # | 2026-09-07 | 2026-09-11 | What moved, and the evidence |
+| --- | --- | --- | --- |
+| 1 | NO LONGER APPLIES | **NOT STARTED** | **REGRESSED, and it is the one bad row in this table.** The 2026-09-07 verdict rested on "the executor derives NO wait from timers at all". `d1a1c7a32` (phase-436 W1, issue 1192) merged 2026-09-10T15:47Z — nine hours after this table's own `f447547d1` at 06:23Z — and gave it one: `next_timer_deadline_us` (`executor/spin.rs:2838`) offers `period_us - elapsed_us` as a park bound and never reads `clock_source`, which `TimerHeader` carries (`executor/arena.rs:265`). For a `Ros` timer that quantity is SIMULATED microseconds and the park primitive is handed it as WALL (`spin.rs:2711`, `:7093`–`7130`). Bounded — it can only shorten a park, so nothing fires early — but property 1 is exactly this and it is unmet. Filed as **issue 1321**, not fixed here: it is an executor change, and this phase is the reach delta. |
+| 2 | DONE | DONE | Stands. `8cfd19315`; `ros_time_timer_follows_the_simulated_clock` (`executor/tests.rs:2628`); `6ec3764f2` for `packages/testing/nros-tests/tests/sim_time_clock_e2e.rs`. |
+| 3 | DONE | DONE | Stands. `caa546fb2` (`packages/interfaces/rosgraph-msgs`), `f176079a5`. Lines moved: `Executor::install_ros_time_source` is `executor/spin.rs:10855`, `QoSProfile::clock_default` is `nros-rmw/src/traits.rs:1178`. |
+| 4 | DONE | DONE | Stands. `5200437c5`. Lines moved: `note_reserved_parameter` `executor/spin.rs:9171`, `reconcile_ros_time_source` `:10664`. |
+| 5 | PARTIAL | **DONE** | W2 landed: `004a14309`. `seed_use_sim_time_default` (`executor/spin.rs:8984`) declares `use_sim_time = Bool(false)` from `ensure_parameter_store` (`:8936`, seeded at `:8944` and `:8512`), so a node that never named it is listed and settable, as rclcpp does. An app's own declaration still wins — `yield_seeded_use_sim_time` (`:9011`) steps the placeholder aside at `:9115`, and a refused app declaration puts the default back (`:9126`). Book: `book/src/user-guide/simulated-time.md:62`. |
+| 6 | DONE | DONE | Stands. `executor/arena.rs:2215` (`step_ns < 0`) → `:2222` (`elapsed_us = 0`, no activation). |
+| 7 | DONE | DONE | Stands. `executor/arena.rs:2257` — under `TimerOverrunPolicy::Skip` a backlog coalesces into ONE activation. |
+| 8 | DONE | DONE | Stands. Test step 1 in `executor/tests.rs:2628`; `sim_time_clock_e2e.rs`. |
+| 9 | DONE | DONE | Stands. `2829ab92a` freed the name, `8cfd19315` added the verb. Lines moved: the member is `nros-cpp/include/nros/node.hpp:1446`, the free form `std_compat.hpp:111`, the one dispatch `nros-cpp/src/timer.rs:97` → `:144`. |
+| 10 | PARTIAL | **DONE** | W4 landed, both halves. Imperative: `NodeCtx::create_timer_on_clock` (`nros-node/src/executor/node.rs:1612`) and `create_timer_on_clock_in_group` (`:1636`), commit `10c8a3e52`. Declarative: `nros::Node::create_timer_on_clock` (`api/nros/src/node.rs:1176`), with `create_timer` now delegating to it under `TimerClockSource::Steady` (`:1138`), commit `6039c5c65`. A `nros::main!` component can own a ROS-time timer. Ledger rows exist: `rust:NodeCtx::create_timer_on_clock`, `rust:NodeCtx::create_timer_on_clock_in_group`, `rust:DeclaredNode::create_timer_for_callback_name_on_clock`. |
+| 11 | NOT STARTED | **DONE** | W5 landed: `592452ffe`. `nros_timer_init_on_clock(timer, clock, support, period_ns, cb, ctx)` — clock in rcl's position — at `nros-c/src/timer.rs:195`, documented at `nros-c/include/nros/rcl_compat.h:389`; both init verbs share `timer_init_inner` (`timer.rs:213`). The clock→source mapping has ONE implementation, `nros_timer_clock_source` (`nros-c/src/clock.rs:81`), which `rclc_executor_add_timer` reads at `nros-c/src/executor.rs:1949` and the C++ verb calls at `nros-cpp/src/timer.rs:126` — so the drift the work item warned about did not happen. Spelled `nros_timer_clock_source`, not the `TimerClockSource::from_clock_type` W5 proposed. Ledger row `c:timer_init_on_clock` written. |
+| 12 | NOT STARTED | **NO LONGER APPLIES** | `ComponentNode` is DELETED — `packages/api/nros-cpp/include/nros/component_node.hpp` is gone, removed by `1f3b88aec` (phase-427 W4, "it wrapped a node, and now there is one"). There is one node type, so the clock verb this row wanted IS row 9's `rclcpp::Node::create_timer`. Nothing to port; W6's `ComponentNode` half is void. |
+| 13 | NOT STARTED | **DONE** | W6's hosted half landed with `f4c5ea765`: the free `rclcpp::create_timer(node, clock, period, callback)` at `nros-cpp/include/nros/nros.hpp:935`, plus the `std::chrono` overload at `:962`, returning the same `std::shared_ptr<::nros::Timer>` cell `create_wall_timer` returns. Humble's only clock-taking form, which is what this row asked for. Ledger: `cpp:create_timer`, `disposition: adopt-bounded`. |
+| 14 | NO LONGER APPLIES | NO LONGER APPLIES | Stands, and the tree now says so at the site: `nros.hpp:908`, "NOT ADDED: a clock-less `Node::create_timer(period, callback)`" — held back until the captured surface is Iron or later, exactly as W6 required. |
+| 15 | NO LONGER APPLIES | NO LONGER APPLIES | Stands. Citation moved with the type: `TimerClockSource::Ros` is documented as "simulated time when a `/clock` source is active, and system time when none is (the same fallback `rclcpp::Clock` has…)" at `nros-node/src/timer.rs:164`–`167`. |
+| 16 | NOT STARTED | **DONE** | W1 landed: `9942827bc`. `SILENCE_WARN_US` (`nros-node/src/time_source.rs:119`) with the one-shot `SilenceWatch` (`:134`, armed at `:198`), five unit tests over the watch (`:251`–`:335`), and an executor accessor so the assertion is not a log grep. Book "Limits": `book/src/user-guide/simulated-time.md:142`, re-arm at `:154`. |
+| 17 | DONE | DONE | Stands. `sim-time = ["nros-node/sim-time"]`, `packages/api/nros/Cargo.toml:206`. |
+| 18 | PARTIAL | PARTIAL | Stands, and it is W8's recorded decision rather than owed work. `TimerEntry` still carries `clock_source` + `last_clock_ns` unconditionally (`executor/arena.rs:243`/`:246`), mirrored in `TimerHeader` (`:265`/`:266`). Not re-litigated. |
+| 19 | DONE | DONE | Stands. The enum MOVED out of the arena: `pub enum TimerClockSource { Steady, Ros, System }`, `#[repr(u8)]`, is now `packages/core/nros-node/src/timer.rs:158`, re-exported into `arena` at `arena.rs:26`. |
+| 20 | DONE, better than asked | DONE, better than asked | Stands. `nros::Timer` is still `{ void* executor_; size_t handle_id_; bool initialized_; }` — `nros-cpp/include/nros/timer.hpp:165`–`167`. The clock stayed in the arena entry. |
+| 21 | DONE by 425; contradicted elsewhere | **DONE** | The contradiction is RESOLVED by W7, and not in one direction. The HIERARCHY is deleted (`class TimerBase` with its virtual destructor, and `detail::WallTimer : TimerBase`), argued from the executor's dispatch at `nros-cpp/include/nros/timer.hpp:180`–`210`. The NAME came back as a hosted ALIAS — `using TimerBase = ::nros::Timer;` (`timer.hpp:305`) — because deleting it turned `colcon-parity` red: upstream has `TimerBase` and no `Timer`, so with no alias no spelling of a timer member compiles both against real rclcpp and here. RFC-0089 records both halves (§"AMENDED 2026-09-09", §"AMENDED 2026-09-08" item 1) and the alias rule they produced. |
+| 22 | DONE | DONE | Stands. C `nros_clock_get_now` (`nros-c/src/clock.rs:212`); C++ a `Node`'s clock is `NROS_CLOCK_ROS_TIME` (`nros-cpp/include/nros/node.hpp:539`). |
+| 23 | NO LONGER APPLIES | NO LONGER APPLIES | Stands. Ledger rows still present and still declined: `cpp:Clock::sleep_for`, `cpp:Clock::sleep_until`, `cpp:Clock::wait_until_started` (`docs/reference/api-parity-ledger/timer.json:302`, `:307`, `:312`). |
+| 24 | DONE | DONE | Stands. Rows 2, 6, 8; the `STEP_MS × RATE ≤ PERIOD_MS` interaction is documented at `packages/testing/nros-tests/tests/sim_time_clock_e2e.rs:36`. |
+| 25 | DONE (fixed) | DONE (fixed) | Stands. `7195c9e00`; `SimTimeGuard` at `nros-node/src/executor/tests.rs:31`, restoring in `Drop` at `:52`. |
+
+### What landed, per work item
+
+* **W1 [loudness] — LANDED** `9942827bc`. Row 16.
+* **W2 [params] — LANDED** `004a14309`. Row 5.
+* **W3 [correctness] — LANDED**, issue 1202. The reserved-parameter hook now
+  runs AFTER `params.server.declare(...)` and only on acceptance
+  (`executor/spin.rs:9141`–`9144`); the comment at `:9134`–`9140` records the
+  state the old order could produce — store `true`, source detached — and names
+  it as neither of the two states the parameter can express. Finding E closed.
+* **W4 [api, Rust] — LANDED** `10c8a3e52` + `6039c5c65`. Row 10.
+* **W5 [api, C] — LANDED** `592452ffe`. Row 11.
+* **W6 [api, C++] — LANDED** `f4c5ea765`, and SMALLER than written: its
+  `ComponentNode` half was voided by that type's deletion (row 12), so what
+  landed is the hosted free `rclcpp::create_timer` (row 13) beside the member
+  `rclcpp::Node::create_timer(Timer&, const Clock&, …)` (row 9). The clock-less
+  `Node::create_timer` stays refused (row 14).
+* **W7 [ledger, RFC, docs] — LANDED, with one row still owed on purpose.** The
+  `TimerBase` ruling is in RFC-0089 (§"AMENDED 2026-09-08" item 1) and at the
+  header (`timer.hpp:180`), and the rows W4–W6 name exist
+  (`rust:NodeCtx::create_timer_on_clock`, `c:timer_init_on_clock`,
+  `cpp:create_timer`). Still owed, deliberately: rows for
+  `install_ros_time_source*`, which wait on the Rust extractor building the
+  surface with `sim-time` — finding C, and the ledger says so in the same words
+  at `docs/reference/api-parity-ledger/timer.json:940`. The one thing that was
+  simply stale is fixed by this pass: RFC-0089's 2026-09-05 amendment still read
+  "phase-430 brings ROS time" four days after this document had measured that
+  phase-425 brought it.
+* **W8 [cost] — CLOSED by row 18**, unchanged.
+
+**What this phase does not close: issue 1321.** It is a phase-436 regression on
+this phase's property 1 rather than an item of the delta, and it is owned by the
+issue.
 
 ### The tests, run (2026-09-07)
 
