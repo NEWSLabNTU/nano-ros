@@ -89,12 +89,13 @@ seam, and nothing else.
 1. add its `.jinja` templates (a new `packs/<lang>/`) and its rows in `PACKS`;
 2. if it needs type spelling the existing filters don't cover, add a **filter
    set** for the language (`rosidl_codegen::filters::FILTER_SETS`) wrapping a
-   `*_spelling` function in `types.rs`. A language's Rust surface area is a
-   pack plus a filter set and nothing more; the set is keyed by the pack that
-   CALLS the filter, not by the syntax it emits — `cpp_repr_c_type` returns
-   Rust;
-3. add the generator entry that builds the view struct and calls
-   `render::render("<template-name>", &ctx)`.
+   `*_spelling` function in `types.rs`. The filter set is all the Rust that
+   type SPELLING takes; the set is keyed by the pack that CALLS the filter,
+   not by the syntax it emits — `cpp_repr_c_type` returns Rust;
+3. add a generator per kind (`generator/{msg,srv,action}.rs`, or one file like
+   `generator/cpp.rs`) that builds the context, names the output files and
+   calls `render::render("<template-name>", &ctx)`, and its arm in
+   `nros generate` (`cmd/generate.rs`).
 
 ### Step 2 — the entry pack, if the language writes entries
 
@@ -108,11 +109,21 @@ seam, and nothing else.
 3. one row in the template registry (`render.rs`), keyed
    `<artifact>_<surface>.<ext>` for an output and `*.jinja` for a partial;
 4. one variant on `Language` in `nros-lang`. Every consumer sees it — one
-   enumeration.
+   enumeration;
+5. **an emitter in Rust**, `codegen/entry/emit_<lang>.rs`, that builds the
+   pack's view of the plan (a `serde` struct the template reads) and renders
+   it. This is not a thin file: `emit_c.rs` and `emit_cpp.rs` are the models;
+6. **its dispatch arms** — `typed_entry_emitter` in `cmd/codegen.rs` and the
+   emit `match` below it, `entry_pack_for` in `pack.rs`, and `run_entry_node`
+   in the same file if the language's components register through
+   `nano_ros_add_node` (that path renders C++ for every component today).
+   Every one is an exhaustive `match`, so the compiler lists the arms your new
+   variant still needs.
 
 ### Step 3 — the goldens
 
-Add the coordinate to the entry golden harness, run
+Add the coordinate to the entry golden harness (`codegen/entry/golden.rs` has
+its own harness `Lang` and one emit arm per language), run
 `NROS_UPDATE_GOLDEN=1 cargo test -p nros-cli-core --lib codegen::entry::golden`,
 and **read the diff**. The generated source is a file, not a claim.
 
@@ -127,5 +138,7 @@ The **toolchain story** — how CMake compiles the language, how it links
 `libnros`, how its components declare themselves. The codegen cost becomes a
 pack; the build-integration cost does not. Budget for it separately.
 
-No per-language type logic lives in the builders — the packs and their filters
-own it. Implemented by phase-335 (RFC-0068) and phase-432 (RFC-0091).
+No per-language TYPE SPELLING lives in the message builders — the packs and
+their filters own it. The builders still hold per-language Rust (file and guard
+names, the context each surface needs), and an entry language brings its own
+emitter. Implemented by phase-335 (RFC-0068) and phase-432 (RFC-0091).

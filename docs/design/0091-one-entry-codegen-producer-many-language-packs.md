@@ -618,14 +618,29 @@ CMake-side property no pack can state about itself.
    surfaces and gain the rest later.
 1. `packs/entry/<lang>/entry.<ext>.jinja` — over `LoweredEntry`. Boot shape,
    board path, tier rows, QoS codes and escaped literals arrive computed.
-2. One row in the pack registry (`include_str!`).
+2. `packs/entry/<lang>/pack.toml` and one row in the pack registry
+   (`include_str!`).
 3. One variant on `Language`. Every consumer sees it — one enumeration.
-4. Goldens: add the coordinate, `NROS_UPDATE_GOLDEN=1`, **read the diff**. The
-   generated source is a file, not a claim.
-5. If the language shares a representation with another (a C ABI struct, a
+4. **An entry emitter in Rust**, `codegen/entry/emit_<lang>.rs`, that builds
+   the pack's view of the plan and renders it. `emit_c.rs` (321 non-test lines,
+   5 view structs) and `emit_cpp.rs` (559, 7) are the models.
+5. **Its dispatch arms**: `typed_entry_emitter` in `cmd/codegen.rs` (no
+   wildcard, so a new variant does not compile until it has an arm there),
+   the emit `match` below it, `entry_pack_for` in `pack.rs`, and
+   `run_entry_node` if the language's components register through
+   `nano_ros_add_node` (that path renders C++ for every component today).
+6. Goldens: add the coordinate to `golden.rs`, which has its own harness `Lang`
+   and one emit arm per language; `NROS_UPDATE_GOLDEN=1`; **read the diff**.
+   The generated source is a file, not a claim.
+7. If the language shares a representation with another (a C ABI struct, a
    message layout), add it to the cross-language size corpus in §5.
 
-No lowering code, no emitter, no dispatch arms.
+No lowering code. An entry language does bring Rust: its view-building emitter
+and its dispatch arms. *(Corrected 2026-09-11. This line used to read "no
+lowering code, no emitter, no dispatch arms", which was the goal and not the
+tree. The dispatch sent any non-C language to `emit_cpp` through a `_ =>` arm,
+so a language added by these steps got a C++ entry and nothing said so. The arm
+is gone, and the procedure now lists the Rust it takes.)*
 
 **What this does NOT make cheap, stated plainly:** the toolchain story — how
 CMake compiles it, how it links `libnros`, how its components declare
@@ -736,14 +751,33 @@ language first is what made the shortcut visible at all.
 - The template context IS `LoweredField`/`LoweredType` — no per-surface view
   struct re-derives from the parser, and no field fact is computed by Stage 2
   and then dropped before a template can read it (§6b).
-- A language contributes a pack and a FILTER SET, and nothing else in Rust.
-  `render.rs`'s "no other Rust" becomes true rather than aspirational.
+- A language's TYPE SPELLING is a pack and a FILTER SET. For messages that is
+  the whole per-language Rust for spelling types; each message surface still
+  has a Rust generator per kind (`generator/{msg,srv,action,cpp}.rs`) that
+  assembles its context and names its files, plus an arm in `nros generate`.
+  For entries, a language contributes a pack, a Rust view-building emitter
+  (`emit_<lang>.rs`) and its dispatch arms (§8).
 - The proc-macro and the CLI share lowering; a gate compares the two Rust
   renderings.
 - The tier table uses designated initialisers, and the mirror gate covers
   `nros_native_tier_spec_t` across its EIGHT sites (six declarations + the two
   entry templates; the nine was a miscount — see §5). DONE.
-- Adding a language touches no Rust beyond one `Language` variant.
+- Adding a language touches no LOWERING Rust. Its Rust is one `Language`
+  variant, a filter set, a generator per message kind, and — if it writes
+  entries — an entry emitter plus its dispatch arms. None of those can be
+  forgotten silently: every dispatch over `Language` is an exhaustive `match`,
+  so a missing arm is a compile error.
+- *(Note, 2026-09-11.)* The two bullets above read, until this date, "a
+  language contributes a pack and a FILTER SET, and nothing else in Rust" and
+  "adding a language touches no Rust beyond one `Language` variant". Both
+  overclaimed. W2.5b made the filter set the whole of TYPE SPELLING, and the
+  bullets generalised that to the whole language. The entry side never got
+  there: §6b's "`LoweredEntry` must be the context, not the seed for a
+  per-surface projection" is still a goal, because `emit_c` and `emit_cpp`
+  each build their own view in Rust. The overclaim cost something concrete: the
+  emit dispatch's `_ =>` arm sent any language that was not C to `emit_cpp`, so
+  a language added by the book's steps would have got a C++ entry with no
+  diagnostic. That arm is now an exhaustive `typed_entry_emitter`.
 - Goldens stay byte-stable across the migration — they are how each step is
   proven, and they already caught a rebase-introduced field change and three
   whitespace faults review missed.

@@ -272,6 +272,9 @@ to remove.
   This is the same "one fact, several authored spellings" defect this phase
   exists to remove, one layer above where it was found, and it is what makes
   `render.rs`'s "no other Rust" claim true instead of aspirational.
+  *(2026-09-11: true for TYPE SPELLING only. Each surface kept its Rust
+  generator per kind, so the claim in `render.rs` now names them; see W3.4's
+  correction.)*
   Do it surface by surface with the message goldens as the guard, not in one
   commit.
 
@@ -724,6 +727,14 @@ settled work.
   story is not made cheap by any of this, and a reader planning the work should
   budget for it separately.
 
+  **Correction (2026-09-11).** The entry step as written was incomplete: it
+  listed the pack, its `pack.toml`, a registry row and a `Language` variant.
+  An entry language also needs a Rust emitter that builds its view
+  (`emit_<lang>.rs`) and its dispatch arms. The gap was not only in the text:
+  the emit dispatch had a `_ =>` arm, so a language following the book got a
+  C++ entry with no diagnostic. The arm is now an exhaustive
+  `typed_entry_emitter`, and the book and RFC-0091 §8/§9 list the Rust.
+
 - **W3.5 — a reference third language. DECIDED 2026-09-08: no in-tree
   reference language, and the split is by WHO.** If the team takes on a
   language, the team takes on its toolchain and its CI lanes with it — that is
@@ -760,11 +771,14 @@ settled work.
   exactly what a paper exercise is blind to.
 
   **What a third language would cost now, after W3.2–W3.4.** The codegen half
-  is genuinely small: a message pack plus a filter set, an entry pack plus a
-  `pack.toml`, a `Language` variant, a golden coordinate — and
-  `check-entry-pack-conformance` refuses the half-wired result rather than
-  letting it emit nothing. Call it a day's work for someone who reads
-  `book/src/internals/codegen-packs.md`.
+  is smaller than it was, and not as small as this paragraph first said. It is a
+  message pack plus a filter set and a generator per message kind; an entry
+  pack plus a `pack.toml` AND a Rust emitter that builds the entry view
+  (`emit_c.rs` is 321 non-test lines) with its dispatch arms; a `Language`
+  variant; and a golden coordinate. `check-entry-pack-conformance` refuses a
+  half-wired pack, and the exhaustive `typed_entry_emitter` refuses a language
+  with no emitter at compile time. *(Corrected 2026-09-11. The first version
+  listed no emitter and called it "a day's work"; see W3.4's correction.)*
 
   The build-integration half is unchanged and is the real number: a toolchain
   CI can install, a cross-compile lane, a linked image, and a runtime cell that

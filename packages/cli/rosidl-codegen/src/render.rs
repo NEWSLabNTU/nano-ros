@@ -18,8 +18,10 @@ use std::sync::LazyLock;
 use minijinja::Environment;
 
 /// Every bundled pack template, keyed by the stable name a `render(name, …)`
-/// call and any `{% import %}` use. Adding a language = adding rows here plus its
-/// `.jinja` files — no other Rust. `include_str!` bundles them at build time.
+/// call and any `{% import %}` use. A new language adds rows here plus its
+/// `.jinja` files; its other Rust is a filter set (`crate::filters`) and a
+/// generator per kind (`crate::generator`). `include_str!` bundles them at
+/// build time.
 const PACKS: &[(&str, &str)] = &[
     // RFC-0090 / phase-429 W1 — shared by the C and C++ packs, because the
     // codegen-version stamp is about the C ABI both of them emit into. Not
