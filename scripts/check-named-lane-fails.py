@@ -91,6 +91,13 @@ PLATFORM_MODULE_FILES = (
 # Keep this list short and keep the reasons specific. "It was failing" is not a
 # reason; the fix for that is a `nros_lane_platform` line.
 NOT_A_PLATFORM_LANE = {
+    ("zephyr-setup.just", "verify-fvp-runtime"): (
+        "ARM FVP is license-gated and USER-SUPPLIED, exactly as for "
+        "`build-fvp-ws-entry` below — and this recipe only PROPAGATES that "
+        "build's skip: it chains `build-fvp-ws-entry` and re-emits its rc 78 "
+        "rather than reporting OK (check-lane-skip-protocol refused the `exit 0` "
+        "form). An absent model has no remedy a named-lane failure could name."
+    ),
     ("zephyr-setup.just", "build-fvp-ws-entry"): (
         "ARM FVP is license-gated and USER-SUPPLIED — nothing in `just zephyr "
         "setup` provisions it, so there is no remedy a failure could name."
