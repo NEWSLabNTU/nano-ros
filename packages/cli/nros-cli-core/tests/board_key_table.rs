@@ -46,9 +46,19 @@ fn every_table_key_maps_to_its_family_through_every_consumer() {
 
 /// An unknown key is an error at every consumer: never `Native`, never
 /// `posix`. The error names the known keys.
+///
+/// `native_sim/native/64` was in this list until phase-445 W5, and should not
+/// have been: it is the zephyr descriptor's SECOND NAME
+/// (`packages/boards/zephyr/nros-board.toml` `names = ["zephyr",
+/// "native_sim/native/64"]`), and five workspace bringups — C and C++ among
+/// them — spell their Zephyr image's board exactly that way. A key a bringup
+/// can write is not an unknown key; leaving it out of the family table is the
+/// shape issue 1285 fixed one spelling of. `rtic-mps2-an385` takes its place
+/// here: a real Rust key whose board has no RTOS, so asking its family is an
+/// error by design rather than by omission.
 #[test]
 fn an_unknown_key_errors_at_every_consumer() {
-    for key in ["zigos", "esp32-qemu", "mps2-an385", "native_sim/native/64"] {
+    for key in ["zigos", "esp32-qemu", "mps2-an385", "rtic-mps2-an385"] {
         let err = board_family(key).expect_err(key).to_string();
         for known in known_board_keys() {
             assert!(

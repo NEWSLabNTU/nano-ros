@@ -268,6 +268,11 @@ pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
     ("native", BoardFamily::Native),
     ("posix", BoardFamily::Native),
     ("zephyr", BoardFamily::Zephyr),
+    // The zephyr descriptor's second name, and a key since phase-445 W5:
+    // a Zephyr entry's board is now READ from the image that builds it
+    // rather than written as a `deploy = "zephyr"` token, and
+    // `examples/workspaces/rust` spells that image's board this way.
+    ("native_sim/native/64", BoardFamily::Zephyr),
     ("fvp-aemv8r-smp", BoardFamily::Zephyr),
     ("armfvp", BoardFamily::Zephyr),
     ("nuttx", BoardFamily::Nuttx),
@@ -415,10 +420,11 @@ mod tests {
             assert_eq!(board_family(key), Ok(*want), "board key `{key}`");
         }
         // 19 keys the C++ emitter knew, plus the two RTOS keys only the Rust
-        // pack knew (`nuttx-riscv`, `freertos-qemu-mps2-an385`, issue 1285).
+        // pack knew (`nuttx-riscv`, `freertos-qemu-mps2-an385`, issue 1285),
+        // plus `native_sim/native/64` (phase-445 W5).
         assert_eq!(
             BOARD_KEYS.len(),
-            21,
+            22,
             "a key was added or removed without a row"
         );
     }
