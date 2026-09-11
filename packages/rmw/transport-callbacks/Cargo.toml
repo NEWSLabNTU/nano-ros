@@ -5,6 +5,16 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Reusable custom-transport callback factories (loopback, TCP) over nros-rmw NrosTransportOps (Phase 244 E2)"
 
+[package.metadata.nros]
+# issue 0287's mechanism, reached here by phase-451 W3. This crate's factories
+# are `std::net::TcpStream` / `std::sync::Mutex` over `std::collections`, so it
+# cannot build for a thumb target and would leak `std` into every no_std member
+# through cargo's workspace feature unification. It was kept out of the embedded
+# lane by being absent from the workspace entirely — which also kept it out of
+# the HOST lane, so no lane compiled it at all.
+host-only = true
+host-only-reason = "std::net TcpStream + std::sync::Mutex custom-transport factories; host examples only"
+
 [lib]
 name = "nros_transport_callbacks"
 

@@ -1,7 +1,12 @@
 # Phase 451 — a dead build declaration that reads as authoritative
 
-**Status (2026-09-11). Opened to give three homeless issues one owner. Nothing
-in this phase has landed; W1–W3 are open.**
+**Status (2026-09-11). COMPLETE — W1, W2 and W3 all landed the day the phase was
+opened, and all three issues are resolved and archived.** Each work item found
+its subject understated: the dead cmake module could not have RUN had anything
+included it (its `find_package` targets were deleted years apart), the dead
+`cargo:` carriers were two of three rather than a stray, and the exclude list
+needed SEVEN structural reasons where the issue named five — classifying against
+five left 17 unjustified entries, not one.
 
 ## Why this phase exists
 
@@ -10,21 +15,25 @@ that a reader cannot tell is dead. They are small, and the reason to give them
 one owner rather than three is that their cost is measured in reader time, which
 is invisible per-site and adds up:
 
-* [#1218](../issues/1218-dead-nanoroslink-duplicate.md) —
+* [#1218](../issues/archived/1218-dead-nanoroslink-duplicate.md) —
   `packages/api/nros-c/cmake/NanoRosLink.cmake` defines the public verb
   `nano_ros_link_rmw` and nothing includes it. It **misled two of four
   independent readers in one session**, because it holds a fourth closed RMW
   list and a force-link that does not happen. It was already finding A1 of a
   codebase audit and had no tracked owner.
-* [#1213](../issues/1213-zpico-net-size-probe-publishes-to-a-retired-crate.md) —
+* [#1213](../issues/archived/1213-zpico-net-size-probe-publishes-to-a-retired-crate.md) —
   `probe_net_type_sizes` publishes `sizeof(_z_sys_net_socket_t)` /
   `sizeof(_z_sys_net_endpoint_t)` through three carriers, two of them aimed at
   `zpico-platform-shim`, a crate phase-129.D deleted. Its doc comment states the
   opposite of what the code does.
-* [#1217](../issues/1217-workspace-exclude-list-is-unaudited.md) — the root
-  `Cargo.toml` carries 57 `members` and **174 `exclude` entries, 36 of which
-  name directories that do not exist**, and one host-buildable crate
+* [#1217](../issues/archived/1217-workspace-exclude-list-is-unaudited.md) — the root
+  `Cargo.toml` carries **165 `exclude` entries, 36 of which name directories
+  that do not exist**, and one host-buildable crate
   (`packages/rmw/transport-callbacks`) is excluded for no discoverable reason.
+  (The issue says 57 members / 174 excludes; parsed as TOML on 2026-09-11 it is
+  58 and 165. The issue counted quoted strings with a regex, which also catches
+  the four wrapped comment lines quoting cargo's "current package believes it's
+  in a workspace" error. The 36 is the same number either way.)
 
 The pattern is one thing: **a declaration whose only remaining effect is on
 belief.** A dead `exclude` line, a dead cmake module and a dead `cargo:` carrier
@@ -38,7 +47,7 @@ four times over before anyone ran one. So each work item owes the same two
 things: the evidence that the declaration is dead, and a way for the NEXT dead
 one to be found without re-deriving it.
 
-The exclude list is where that generalises: 36 of 174 entries naming absent
+The exclude list is where that generalises: 36 of 165 entries naming absent
 directories is not three mistakes, it is an unmaintained list, and a list nobody
 maintains grows the fourth closed RMW list in #1218 all over again.
 
@@ -46,42 +55,93 @@ maintains grows the fourth closed RMW list in #1218 all over again.
 
 ### W1 — the dead `NanoRosLink.cmake` duplicate goes
 
-[Issue 1218](../issues/1218-dead-nanoroslink-duplicate.md). The live copy is
+[Issue 1218](../issues/archived/1218-dead-nanoroslink-duplicate.md). The live copy is
 `cmake/NanoRosLink.cmake`, included by five platform modules as
 `../NanoRosLink.cmake`. The `packages/api/nros-c/cmake/` copy is included by
 nothing and is not installed.
 
-- [ ] The dead copy is deleted, with the grep that establishes it in the commit
+- [x] The dead copy is deleted, with the grep that establishes it in the commit
       message.
-- [ ] The closed RMW list it carried is checked against the live one first — a
+- [x] The closed RMW list it carried is checked against the live one first — a
       fourth copy of a list is a fact about the list, and if the live one is
       missing something the dead one had, that is a finding, not debris.
+      **It carried nothing:** the live `cmake/NanoRosLink.cmake` holds no closed
+      list, resolving per-backend link data through `nros_rmw_dispatch()` and
+      the R1 dispatch manifest, so the dead three-entry map was strictly
+      narrower — it predates `uorb`.
+
+**What the deletion found.** The file was filed as a dead DUPLICATE, which
+implies it would have worked. It would not have: `_nano_ros_rmw_targets` maps
+`zenoh`/`xrce`/`cyclonedds` onto cmake packages `NrosRmwZenoh` / `NrosRmwXrce` /
+`NrosRmwCyclonedds`, and none of the three exists in the tree —
+`NrosRmwXrceConfig.cmake` was deleted by phase-140. Anything that had included
+it would have failed at its first `find_package`. Its entire remaining effect
+was on readers, which is why nothing but a reader ever reported it.
+`packages/rmw/xrce/xrce-config.txt`'s comment, which named this file as the sole
+namer of `NrosRmwXrce`, is corrected in the same change.
 
 ### W2 — the zpico size probe publishes only to a reader
 
-[Issue 1213](../issues/1213-zpico-net-size-probe-publishes-to-a-retired-crate.md).
+[Issue 1213](../issues/archived/1213-zpico-net-size-probe-publishes-to-a-retired-crate.md).
 Two of three carriers target a deleted crate; the doc comment describes the dead
 path as the live one.
 
-- [ ] The dead carriers are removed and the comment describes what remains.
-- [ ] The surviving carrier's reader is named in the comment, so the next
-      deletion of that reader makes this dead loudly.
+- [x] The dead carriers are removed and the comment describes what remains.
+      Two, not one: the `DEP_ZPICO_*` pair on both the measured and the fallback
+      path, and the `cargo:rustc-env=ZPICO_NET_SIZES_FILE` export.
+- [x] The surviving carrier's reader is named in the comment, so the next
+      deletion of that reader makes this dead loudly. The comment now says to
+      delete the probe WITH its reader rather than leave a file written for
+      nobody.
+
+One behaviour deliberately left alone: on probe failure the function writes no
+file, so the alias TU omits the defines and its `_Static_assert` is skipped —
+documented at the read site as intentional. Writing the 16/8 fallback into the
+file would have tidied the fallback into arming an assert against sizes nobody
+measured. The `cargo:warning` now says what the missing file means instead of
+naming the two variables it used to print.
 
 ### W3 — the root `exclude` list is audited and kept honest
 
-[Issue 1217](../issues/1217-workspace-exclude-list-is-unaudited.md). Every
+[Issue 1217](../issues/archived/1217-workspace-exclude-list-is-unaudited.md). Every
 legitimate exclusion in this tree satisfies one of five structural reasons — own
 `[workspace]` table, own tracked `Cargo.lock`, a `.cargo/config.toml` pinning a
 non-host `[build] target`, a cross-only dependency set, or "metadata only, no
 Rust targets". Two entries fail that audit and 36 name nothing at all.
 
-- [ ] The 36 absent entries are removed.
-- [ ] `packages/rmw/transport-callbacks` is either given a reason or made a
-      member — the issue records that it builds on the host.
-- [ ] A gate: an `exclude` entry must name an existing directory AND satisfy one
-      of the five reasons, the reason being derivable rather than a comment.
-      Without this the list is unmaintained again in a month, which is the whole
-      finding.
+- [x] The 36 absent entries are removed — six contiguous runs of six, each with
+      the comment that described only it. 165 entries to 128.
+- [x] `packages/rmw/transport-callbacks` is a member. It builds clean on the
+      host and `cargo metadata` resolves. `Cargo.lock` gains exactly one entry —
+      the package itself plus its single dep `nros-rmw`, 7 lines — and no other
+      package moves, which is the whole diff to review.
+- [x] A gate: `just check workspace-exclude-list`
+      (`scripts/check-workspace-exclude-list.py`, beside its sibling
+      `nested-workspace-excludes` in `just/check/cargo.just`). Self-tests its
+      classifier on every run; both failure arms mutation-tested.
+
+**The five reasons were not enough, and finding that out is the work item's real
+content.** Classifying all 129 surviving entries against the issue's five left
+**17 unjustified** — not the one crate the issue names. A gate shipped on the
+five would have been unlandable, and the tempting repair (widen the allowlist
+until it passes) is how the list became unaudited in the first place. Two more
+reasons are real and derivable:
+
+* **an ANCESTOR directory carries the `[workspace]` table** — a member of a
+  nested workspace. All 11 fixture leaf packages under
+  `packages/testing/nros-tests/fixtures/*/`. This alone took 17 to 7.
+* **the package declares no Rust target** — no `src/`, no `[lib]`, no `[[bin]]`.
+  `packages/interfaces/rcl-interfaces` and `lifecycle-msgs`: metadata shells
+  whose real crates are the generated ones underneath.
+
+The remaining 4 — `nros-board-{freertos,threadx,nuttx}` and
+`nros-baremetal-common` — are genuinely cross-only in a way no manifest fact
+states: no cross-only dependency, no pinned target, because the kernel build
+glue is not a cargo fact. They are DECLARED in
+`.config/workspace-exclude-reasons.txt`, a shrink-only ratchet, rather than
+given an invented derivation. A gate that asserts a reason it did not measure is
+the defect [phase-450](phase-450-gate-reach-narrower-than-its-rule.md) exists
+for, and this phase is not the place to add a sixteenth instance of it.
 
 ## Acceptance for the phase
 

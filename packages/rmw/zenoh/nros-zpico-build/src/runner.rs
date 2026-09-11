@@ -1880,10 +1880,27 @@ pub fn run() {
 
 /// Probe the sizes of `_z_sys_net_socket_t` and `_z_sys_net_endpoint_t` from C headers.
 ///
-/// Compiles `c/size_probe.c` with the same platform defines as zenoh-pico,
-/// reads the symbol sizes from the resulting .o file, and emits them as
-/// `cargo:SOCKET_SIZE=<N>` and `cargo:ENDPOINT_SIZE=<N>` DEP variables.
-/// zpico-platform-shim reads these as `DEP_ZPICO_SOCKET_SIZE` / `DEP_ZPICO_ENDPOINT_SIZE`.
+/// Compiles `c/size_probe.c` with the same platform defines as zenoh-pico and
+/// reads the symbol sizes out of the resulting archive.
+///
+/// The result is published through ONE carrier: `<OUT_DIR>/net_type_sizes.txt`,
+/// two decimal lines. Its only reader is this same crate — the bare-metal alias
+/// TU above reads it back and turns the two numbers into
+/// `NROS_ZP_VENDOR_NET_SOCKET_SIZE` / `NROS_ZP_VENDOR_NET_ENDPOINT_SIZE`, which
+/// arm a `_Static_assert` in `platform_aliases.c`. Delete that reader and this
+/// probe has no consumer at all, so delete the probe with it rather than
+/// leaving the file to be written for nobody.
+///
+/// **Not** `cargo:SOCKET_SIZE` / `cargo:ENDPOINT_SIZE` DEP variables, and not a
+/// `cargo:rustc-env=ZPICO_NET_SIZES_FILE`. Both were aimed at
+/// `zpico-platform-shim`, a crate phase-129.D deleted; they were still being
+/// emitted, and this doc comment still described them as the live path, which
+/// is what issue 1213 was filed for. Removed in phase-451 W2.
+///
+/// The absent-file case is deliberate and must stay: when the probe fails it
+/// warns and writes NOTHING, so the reader above omits the defines and the
+/// static assert is skipped. Writing guessed sizes there would arm an assert
+/// against a number nobody measured.
 #[allow(clippy::too_many_arguments)]
 fn probe_net_type_sizes(
     c_dir: &Path,
@@ -2135,10 +2152,9 @@ fn probe_net_type_sizes(
         // so a host layout change is still visible.
         println!(
             "cargo:warning=zpico-sys size_probe failed on host target ({e}); \
-             falling back to SOCKET_SIZE=16 / ENDPOINT_SIZE=8"
+             no net_type_sizes.txt written, so the vendor-layout static assert \
+             is skipped for this build"
         );
-        println!("cargo:SOCKET_SIZE=16");
-        println!("cargo:ENDPOINT_SIZE=8");
         return;
     }
 
@@ -2160,20 +2176,12 @@ fn probe_net_type_sizes(
         &host,
     );
 
-    // Emit as DEP variables (available to direct dependent crates as DEP_ZPICO_*)
-    println!("cargo:SOCKET_SIZE={}", socket_size);
-    println!("cargo:ENDPOINT_SIZE={}", endpoint_size);
-
-    // Also emit as rustc-env so zpico-platform-shim can read them.
-    // zpico-platform-shim is a dependency of zpico-sys (not the other way),
-    // so DEP variables don't flow. Instead, write a shared file.
+    // The one carrier. Read back by the bare-metal alias TU in this crate, which
+    // turns the two numbers into `NROS_ZP_VENDOR_NET_*_SIZE` defines for a
+    // `_Static_assert` against the vendor layout. See this function's doc
+    // comment for what used to be emitted here and why it is gone.
     let sizes_file = out_dir.join("net_type_sizes.txt");
     std::fs::write(&sizes_file, format!("{}\n{}\n", socket_size, endpoint_size)).unwrap();
-    // Export the path so zpico-platform-shim's build.rs can find it
-    println!(
-        "cargo:rustc-env=ZPICO_NET_SIZES_FILE={}",
-        sizes_file.display()
-    );
 }
 
 /// Compare the committed `zpico.h` against a fresh cbindgen render and warn on

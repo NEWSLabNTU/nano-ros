@@ -33,9 +33,10 @@
 #   * `zephyr/cmake/nros_rmw_xrce.cmake` is an explicit no-op — the Zephyr XRCE
 #     path compiles no C through cmake at all;
 #   * `cmake/NanoRosRmwDispatch.cmake` maps `xrce` to `nros-rmw-xrce-cffi`, the
-#     CARGO lane, for every image; `NrosRmwXrce` is named only by
-#     `packages/api/nros-c/cmake/NanoRosLink.cmake`, which nothing includes and
-#     whose `NrosRmwXrceConfig.cmake` phase-140 deleted.
+#     CARGO lane, for every image; `NrosRmwXrce` was named only by
+#     `packages/api/nros-c/cmake/NanoRosLink.cmake`, which nothing included and
+#     whose `NrosRmwXrceConfig.cmake` phase-140 deleted. That file is GONE as of
+#     phase-451 W1 (issue 1218), so `NrosRmwXrce` is now named nowhere at all.
 #
 # So the live defect was TEST FIDELITY, not corruption: the CMake lane's CTest
 # harness validated the backend at values no image compiles once a knob is set.

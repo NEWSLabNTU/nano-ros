@@ -1,8 +1,10 @@
 # Phase 450 — a gate whose reach is narrower than the rule it enforces
 
-**Status (2026-09-11). Opened to give five homeless issues one owner. Nothing in
-this phase has landed; W1–W5 are open. Every member issue is open, and each one
-was measured against the tree rather than read off the gate's own description.**
+**Status (2026-09-11). Opened to give five homeless issues one owner. W2 was
+already LANDED when the phase was written — issue 1161 closed via PR #734 on
+2026-09-08, which the opening survey read while the PR was still open. W1, W3,
+W4 and W5 are open. Every remaining member issue was measured against the tree
+rather than read off the gate's own description.**
 
 ## Why this phase exists
 
@@ -18,13 +20,14 @@ clean" from "did not look". So the finding never arrives from the gate; it
 arrives when someone re-derives the rule by hand, and that only happens by
 accident.
 
-Five open issues are that shape today:
+Five issues are that shape. Four are open; #1161 closed on 2026-09-08 and
+stays in the table as the worked example:
 
 | issue | the rule | what the instrument actually reaches |
 | --- | --- | --- |
 | [#1153](../issues/1153-rust-targets-covered-blind-to-zephyr-and-docker.md) | every declared Rust target has a row | three declaration globs of five — a target the tree builds for had no row at all |
 | [#1129](../issues/1129-fixture-err-laundered-into-skip-wider-class.md) | a fixture `Err` may not become a `skip!` | one spelling — 54 of 58 remaining sites say `not built`, which `check-skip-budget` cannot see |
-| [#1161](../issues/1161-required-features-tests-counts-skips-as-failures.md) | a lane's pass means its tests ran | a missing FIXTURE is forbidden, a missing CAPABILITY is not — the lane reported pass having run 7 of 20 |
+| [#1161](../issues/archived/1161-required-features-tests-counts-skips-as-failures.md) (RESOLVED 2026-09-08) | a lane's pass means its tests ran | a missing FIXTURE is forbidden, a missing CAPABILITY is not — the lane reported pass having run 7 of 20. Closed by PR #734 before this phase was written; W2 records it |
 | [#1051](../issues/1051-pinned-locks-gate-suggests-a-destructive-fix.md) + [#1294](../issues/1294-submodule-pinned-locks-remedy-points-at-a-rewind.md) | a red names its cause | one of two causes asserted as the only one, with a remedy that would rewrite a CORRECT lock to match a drifted checkout — and following it records a submodule REWIND |
 | [#1236](../issues/1236-unsafe-census-ratchet-for-crates-that-cannot-forbid.md) | `unsafe` does not grow unnoticed | `forbid(unsafe_code)` on the ten crates at literal zero; the 62 crates holding all 5,047 occurrences have no instrument at all |
 
@@ -68,20 +71,23 @@ that must not be fixed by adding a second spelling to the matcher.
       the thing that fails.
 - [ ] The sweep command is in the commit message and re-runs clean.
 
-### W2 — a capability skip is budgeted like a fixture skip
+### W2 — a capability skip is budgeted like a fixture skip — LANDED
 
-[Issue 1161](../issues/1161-required-features-tests-counts-skips-as-failures.md).
-Read its correction header first: the filed premise was wrong and is marked so
-in the issue. What survives is that `check-required-features-tests` reported
-pass having run **7 of its 20** tests, because issue 0584's rule names fixtures
-and not capabilities.
+[Issue 1161](../issues/archived/1161-required-features-tests-counts-skips-as-failures.md)
+(RESOLVED 2026-09-08, archived). Read its correction header: the filed premise
+was wrong and the issue marks it so. What survived was that
+`check-required-features-tests` reported pass having run **7 of its 20** tests,
+because issue 0584's rule names fixtures and not capabilities.
 
-- [ ] A lane declares the capabilities it provides; a skip for an undeclared
+- [x] A lane declares the capabilities it provides; a skip for an undeclared
       capability fails the lane.
-- [ ] The lane that reported 7 of 20 either runs 20 or fails.
+- [x] The lane that reported 7 of 20 either runs 20 or fails.
 
-PR #734 (`fix(#1161)`) is open against this issue and has two failing checks —
-check it before starting rather than opening a second line.
+Landed via PR #734 before this phase was written — the phase was drafted on
+2026-09-11 against a survey taken while that PR was still open with two failing
+checks, and it had merged by the time the branch rebased. Left here rather than
+deleted because the phase's five members are its evidence: this is the one that
+was already being worked, and it is the shape the other four should follow.
 
 ### W3 — every Rust-target declaration site is reached
 

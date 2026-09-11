@@ -314,6 +314,21 @@ manifests-parse:
 nested-workspace-excludes:
     @bash scripts/check-nested-workspace-excludes.sh
 
+# issue 1217 / phase-451 W3 — the sibling question to the gate above: not "is
+# every nested workspace excluded" but "does every exclusion still mean
+# something". An exclude line for a deleted directory costs nothing at build
+# time, so nothing else ever says so and the list only grows: 36 of 165 named
+# directories that did not exist, and `packages/rmw/transport-callbacks` was
+# excluded for no reason at all while building clean on the host. The reason is
+# DERIVED from the tree (own/ancestor `[workspace]`, tracked `Cargo.lock`,
+# pinned `[build] target`, cross-only dep, no Rust target) — a comment is what
+# drifted. Four board/platform crates that no manifest fact justifies are
+# declared in `.config/workspace-exclude-reasons.txt`, a shrink-only ratchet.
+# Self-tests its rules on every run. Buildless.
+[private]
+workspace-exclude-list:
+    @python3 scripts/check-workspace-exclude-list.py
+
 # Phase 251 — forbid `--allow-multiple-definition` in the build system (it lets
 # two same-named-but-different functions coexist → wrong-copy hazard). Fails on
 # any non-allowlisted real use; allowlist (scripts/allow-multiple-def-allowlist.txt)

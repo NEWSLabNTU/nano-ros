@@ -111,3 +111,31 @@ It was also the fourth closed backend list issue 1219 counted, and the new
 `check-rmw-agnostic` gate reported it — 4 code lines, `if(RMW STREQUAL
 "zenoh")` / `"xrce"` / `"cyclonedds"` — on its first run. Deleting it is why
 that gate starts with 13 baselined files rather than 14.
+
+### What a second, independent deletion added (phase-451 W1, same day)
+
+Two sessions deleted this file on 2026-09-11 without knowing of each other —
+phase-444 W4.b above, and phase-451 W1, whose survey reached it from the
+"dead build declaration" side. The duplication is itself a data point for issue
+1309's thesis: nothing in the tree asks whether a declaration is reachable, so
+two people can find the same dead one in one day.
+
+The second pass measured one thing the first did not. **The file could not have
+RUN, not merely "was not included".** Its `_nano_ros_rmw_targets` resolves
+`zenoh` / `xrce` / `cyclonedds` to cmake packages `NrosRmwZenoh` /
+`NrosRmwXrce` / `NrosRmwCyclonedds`, and `git ls-files` finds **no such config
+package anywhere in the tree** — `NrosRmwXrceConfig.cmake` was deleted by
+phase-140. Anything that had included this file would have failed at its first
+`find_package`. So "dead duplicate" understated it: its entire remaining effect
+was on readers, which is exactly why no gate ever reported it and two of four
+readers did.
+
+The live module was checked before deleting, per that work item's second box,
+and it carries no closed list at all: `cmake/NanoRosLink.cmake` resolves
+per-backend link data through `nros_rmw_dispatch()` and the R1 dispatch
+manifest, so the dead three-entry map was strictly NARROWER (it predates
+`uorb`) rather than a source of anything.
+
+`packages/rmw/xrce/xrce-config.txt`'s comment, which named this file as the
+sole namer of `NrosRmwXrce`, is corrected in the same change: `NrosRmwXrce` is
+now named nowhere at all.

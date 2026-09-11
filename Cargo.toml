@@ -18,6 +18,11 @@ members = [
     # registration ctor is `not(target_os = "none")`, so it cannot reach
     # firmware.
     "packages/rmw/metadata",
+    # phase-451 W3 (issue 1217) — was in `exclude` with no reason of its own,
+    # wedged between the comments belonging to its two neighbours. It builds
+    # clean on the host (`cargo check --manifest-path …`, 2026-09-11), so the
+    # exclusion satisfied none of the structural reasons and is gone.
+    "packages/rmw/transport-callbacks",
     "packages/core/nros-node",
     "packages/core/nros-executor-layout",
     "packages/core/nros-log",
@@ -253,13 +258,6 @@ exclude = [
     "examples/threadx-linux/rust/service-client",
     "examples/threadx-linux/rust/action-server",
     "examples/threadx-linux/rust/action-client",
-    # Phase 212.N.7 step-2 — Entry pkg siblings (board = ThreadxLinux).
-    "examples/threadx-linux/rust/talker-entry",
-    "examples/threadx-linux/rust/listener-entry",
-    "examples/threadx-linux/rust/service-server-entry",
-    "examples/threadx-linux/rust/service-client-entry",
-    "examples/threadx-linux/rust/action-server-entry",
-    "examples/threadx-linux/rust/action-client-entry",
     "examples/native/rust/logging",
     "examples/native/rust/custom-transport-talker",
     "examples/native/rust/custom-transport-listener",
@@ -299,22 +297,6 @@ exclude = [
     "examples/mps2-an385-baremetal/rust/serial-listener",
     # Phase 169.2 — Rust DDS examples deleted (no Rust→Cyclone
     # path yet; see Phase 169 doc work item .9).
-    # QEMU ARM FreeRTOS examples (Cortex-M3 + FreeRTOS + lwIP)
-    "examples/mps2-an385-freertos/rust/zenoh/talker",
-    "examples/mps2-an385-freertos/rust/zenoh/listener",
-    "examples/mps2-an385-freertos/rust/zenoh/service-server",
-    "examples/mps2-an385-freertos/rust/zenoh/service-client",
-    "examples/mps2-an385-freertos/rust/zenoh/action-server",
-    "examples/mps2-an385-freertos/rust/zenoh/action-client",
-    # Phase 212.N.7 step-2 — Entry pkg siblings (per board target =
-    # Mps2An385). Each shadows a Component pkg above; runs the new
-    # `<Mps2An385 as BoardEntry>::run(|ctx| run_plan(ctx))` lifecycle.
-    "examples/mps2-an385-freertos/rust/talker-entry",
-    "examples/mps2-an385-freertos/rust/listener-entry",
-    "examples/mps2-an385-freertos/rust/service-server-entry",
-    "examples/mps2-an385-freertos/rust/service-client-entry",
-    "examples/mps2-an385-freertos/rust/action-server-entry",
-    "examples/mps2-an385-freertos/rust/action-client-entry",
     # Phase 169.2 — mps2-an385-freertos rust/dds deleted.
     # QEMU ARM NuttX examples (Cortex-M3 + NuttX)
     "examples/qemu-armv7a-nuttx/rust/talker",
@@ -323,13 +305,6 @@ exclude = [
     "examples/qemu-armv7a-nuttx/rust/service-client",
     "examples/qemu-armv7a-nuttx/rust/action-server",
     "examples/qemu-armv7a-nuttx/rust/action-client",
-    # Phase 212.N.7 step-2 — Entry pkg siblings (board = QemuArmVirt).
-    "examples/qemu-armv7a-nuttx/rust/talker-entry",
-    "examples/qemu-armv7a-nuttx/rust/listener-entry",
-    "examples/qemu-armv7a-nuttx/rust/service-server-entry",
-    "examples/qemu-armv7a-nuttx/rust/service-client-entry",
-    "examples/qemu-armv7a-nuttx/rust/action-server-entry",
-    "examples/qemu-armv7a-nuttx/rust/action-client-entry",
     # Phase 169.2 — qemu-armv7a-nuttx rust/dds deleted.
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     # Zephyr examples
@@ -356,7 +331,6 @@ exclude = [
     "packages/testing/qemu-smoltcp-bridge",
     # smoltcp network provider (embedded-only, requires cross-compilation)
     "packages/drivers/net/nros-smoltcp",
-    "packages/rmw/transport-callbacks",
     # Shared bare-metal helpers (PRNG, sleep, libc stubs) — embedded-only
     "packages/platform/nros-baremetal-common",
     # Serial (UART) link layer (embedded-only, requires cross-compilation)
@@ -441,21 +415,7 @@ exclude = [
     # Phase 117.10 — ARM FVP Base_RevC AEMv8-R Cortex-A SMP under Zephyr.
     # Build via `west build -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp` from
     # an example app; cargo `check` works on host for the Rust surface.
-    # ThreadX Linux examples (require ThreadX + NetX Duo SDKs)
-    "examples/threadx-linux/rust/zenoh/talker",
-    "examples/threadx-linux/rust/zenoh/listener",
-    "examples/threadx-linux/rust/zenoh/service-server",
-    "examples/threadx-linux/rust/zenoh/service-client",
-    "examples/threadx-linux/rust/zenoh/action-server",
-    "examples/threadx-linux/rust/zenoh/action-client",
     # Phase 169.2 — threadx-linux rust/dds deleted.
-    # ThreadX QEMU RISC-V examples (require ThreadX + NetX Duo SDKs + RISC-V toolchain)
-    "examples/rv-virt-threadx/rust/zenoh/talker",
-    "examples/rv-virt-threadx/rust/zenoh/listener",
-    "examples/rv-virt-threadx/rust/zenoh/service-server",
-    "examples/rv-virt-threadx/rust/zenoh/service-client",
-    "examples/rv-virt-threadx/rust/zenoh/action-server",
-    "examples/rv-virt-threadx/rust/zenoh/action-client",
     # Phase 169.2 — rv-virt-threadx rust/dds deleted.
     # ESP32 crates (RISC-V, require nightly + esp-hal)
     "packages/drivers/net/openeth-smoltcp",
