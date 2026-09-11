@@ -229,11 +229,7 @@ pub fn declared_depends(ws_root: &Path) -> BTreeMap<String, Vec<String>> {
             let p = e.path();
             let name = e.file_name().to_string_lossy().into_owned();
             if p.is_dir() {
-                if !matches!(
-                    name.as_str(),
-                    "build" | "target" | ".git" | "external" | "third-party" | "node_modules"
-                ) && !name.starts_with("target-")
-                {
+                if !is_pruned_dir(&name, &p) {
                     stack.push(p);
                 }
             } else if name == "package.xml"
@@ -246,6 +242,47 @@ pub fn declared_depends(ws_root: &Path) -> BTreeMap<String, Vec<String>> {
         }
     }
     out
+}
+
+/// Directories a `package.xml` scan must not descend into.
+///
+/// Issue 1318 — this predicate used to be written out twice, once in each
+/// walk below, and both copies pruned `build` and `target-*` but not
+/// `build-*`. The two OTHER `package.xml` walkers in this CLI
+/// ([`crate::pkg_index::build_pkg_index`] and
+/// [`crate::builder::discover::cargo_packages_by_walk`]) both prune the
+/// `build-` prefix, so a workspace that keeps its out-of-source build trees
+/// beside `src/` was walked in full by this scan and by no other.
+///
+/// Measured on Autoware Safety Island, whose tree had accumulated 85
+/// `build-*` directories: one `nros image-facts` opened 362,782 directories,
+/// 98.7% of every open it made, to read a single file. On btrfs over a
+/// 7200 RPM disk that was 242 MB of physical reads for 27 KB of answers and
+/// minutes in uninterruptible sleep.
+///
+/// The ignore markers are the ament convention the sibling walkers already
+/// honour; a scan that skipped them here would disagree with the index about
+/// what is in the workspace.
+fn is_pruned_dir(name: &str, path: &Path) -> bool {
+    if matches!(
+        name,
+        "build"
+            | "target"
+            | ".git"
+            | ".cargo"
+            | "external"
+            | "third-party"
+            | "node_modules"
+            | "__pycache__"
+    ) {
+        return true;
+    }
+    if name.starts_with("build-") || name.starts_with("target-") {
+        return true;
+    }
+    ["COLCON_IGNORE", "AMENT_IGNORE", "NROS_IGNORE", ".nros-ignore"]
+        .iter()
+        .any(|marker| path.join(marker).exists())
 }
 
 /// `<depend>`, `<build_depend>`, `<exec_depend>`, `<test_depend>` … all of them.
@@ -351,11 +388,7 @@ fn package_xml_files(ws_root: &Path) -> Vec<(std::path::PathBuf, String)> {
             let p = e.path();
             let name = e.file_name().to_string_lossy().into_owned();
             if p.is_dir() {
-                if !matches!(
-                    name.as_str(),
-                    "build" | "target" | ".git" | "external" | "third-party" | "node_modules"
-                ) && !name.starts_with("target-")
-                {
+                if !is_pruned_dir(&name, &p) {
                     stack.push(p);
                 }
             } else if name == "package.xml"
@@ -380,6 +413,83 @@ pub fn package_name(xml: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1318 — an out-of-source build tree beside `src/` is not part of
+    /// the workspace, and a `package.xml` scan that walks into one reads a
+    /// copy of every package it already found.
+    ///
+    /// `build-*` is the shape `west build -d build-<name>` and
+    /// `cmake -B build-<name>` leave behind, and a tree accumulates one per
+    /// experiment. The scan pruned `build` and `target-*` but not `build-*`,
+    /// so every one of them was walked in full.
+    #[test]
+    fn a_build_tree_beside_src_is_not_walked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path();
+
+        std::fs::create_dir_all(ws.join("src/real_pkg")).unwrap();
+        std::fs::write(
+            ws.join("src/real_pkg/package.xml"),
+            "<package><name>real_pkg</name><depend>rclcpp</depend></package>",
+        )
+        .unwrap();
+
+        // What an out-of-source build leaves behind: a STALE copy of the same
+        // package.xml, deep enough that walking it is the expensive part.
+        let stale = ws.join("build-zephyr/real_pkg/ament_cmake_core/stamps");
+        std::fs::create_dir_all(&stale).unwrap();
+        std::fs::write(
+            stale.join("package.xml"),
+            "<package><name>real_pkg</name><depend>ghost_dep</depend></package>",
+        )
+        .unwrap();
+
+        // And the two spellings that were already pruned, to keep them pruned.
+        for pruned in ["build", "target-thumbv7em"] {
+            let d = ws.join(pruned).join("nested");
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(
+                d.join("package.xml"),
+                "<package><name>real_pkg</name><depend>ghost_dep</depend></package>",
+            )
+            .unwrap();
+        }
+
+        let found = package_xml_files(ws);
+        assert_eq!(
+            found.len(),
+            1,
+            "only the package under src/ is in the workspace, found: {:?}",
+            found.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        );
+
+        let deps = declared_depends(ws);
+        assert!(deps.contains_key("rclcpp"));
+        assert!(
+            !deps.contains_key("ghost_dep"),
+            "a dependency that exists only inside a build tree is not declared \
+             by this workspace"
+        );
+    }
+
+    /// An ament ignore marker is honoured here the same way the pkg-index and
+    /// the cargo walk honour it, so the three agree about the workspace.
+    #[test]
+    fn an_ignore_marker_prunes_a_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path();
+
+        let ignored = ws.join("vendor_drop/some_pkg");
+        std::fs::create_dir_all(&ignored).unwrap();
+        std::fs::write(ws.join("vendor_drop/COLCON_IGNORE"), "").unwrap();
+        std::fs::write(
+            ignored.join("package.xml"),
+            "<package><name>vendored</name></package>",
+        )
+        .unwrap();
+
+        assert!(package_xml_files(ws).is_empty());
+    }
 
     fn set(v: &[&str]) -> BTreeSet<String> {
         v.iter().map(|s| (*s).to_string()).collect()
