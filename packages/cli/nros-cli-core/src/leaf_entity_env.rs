@@ -977,14 +977,6 @@ mod tests {
         assert_eq!(out["NROS_DECLARED_SERVICE_SERVERS"], "2");
     }
 
-    /// `manifest_infra` reads the leaf's `Cargo.toml` and nothing else, so this
-    /// writes one directly. NOT `write_leaf`, which writes a `system.toml`
-    /// declaration over a fixed manifest — the two helpers arrived from
-    /// phase-445 W4b and W5 with one name and two meanings.
-    fn write_manifest(dir: &std::path::Path, text: &str) {
-        std::fs::write(dir.join("Cargo.toml"), text).unwrap();
-    }
-
     #[test]
     fn manifest_infra_reads_dependency_and_feature_tables() {
         let td = tempfile::tempdir().unwrap();
