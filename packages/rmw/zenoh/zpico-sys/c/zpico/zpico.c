@@ -553,6 +553,17 @@ struct zpico_session {
     bool reply_slot_saturated[ZPICO_MAX_QUERYABLES];
     bool reply_slot_announce[ZPICO_MAX_QUERYABLES];
 
+    /* issue 1332 / phase-455 W2.b — the count of queries the CALLBACK declined,
+     * i.e. the ones whose slot `query_handler` reclaims below.
+     *
+     * The companion to `reply_slot_refusals`, and it answers a different
+     * question: refusals say the table ran out, declines say the arm that used
+     * to EXHAUST it was reached at all. Without it a `refusals == 0` green is
+     * unfalsifiable — issue 1332 measured exactly that, a one-slot table that
+     * still refused nothing because no declined query ever arrived, and the
+     * lane could not tell that apart from a table being managed correctly. */
+    uint32_t reply_slot_declines[ZPICO_MAX_QUERYABLES];
+
     // Non-blocking z_get slot pool.
     pending_get_slot_t pending_gets[ZPICO_MAX_PENDING_GETS];
 
@@ -1098,7 +1109,23 @@ static void query_handler(z_loaned_query_t* query, void* arg) {
      * it, which means nobody holds this query and nobody will reply to it.
      * Drop it. A callback that DID take the seq keeps its slot for the
      * deferred reply, which is what the mechanism is for. */
-    if (reply_seq >= 0 && s->last_reply_seq[idx] >= 0) {
+    /* issue 1332 / phase-455 W2.b — the DETECTION is its own statement, above
+     * and independent of the reclaim.
+     *
+     * `refusals == 0` is the assertion this arm's fix earns, and on its own it
+     * cannot fail for the right reason: a lane where no query is ever declined
+     * reports the same zero as a lane where every declined query hands its slot
+     * back. Counting the declines separates the two, so a green states that the
+     * arm RAN. Keeping the count out of the reclaim's `if` is what lets the
+     * reclaim be reverted on its own as a negative control — with the count
+     * folded in, a revert would silence the evidence that the control works. */
+    const bool declined = (reply_seq >= 0 && s->last_reply_seq[idx] >= 0);
+    if (declined && s->reply_slot_declines[idx] != 0xFFFFFFFFu) {
+        /* Saturates rather than wrapping, for the reason the refusal count
+         * does: a wrapped counter reads as "never happened". */
+        s->reply_slot_declines[idx]++;
+    }
+    if (declined) {
         _zpico_release_reply_slot(s, idx, reply_seq);
         s->last_reply_seq[idx] = -1;
     }
@@ -1350,6 +1377,7 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
         s->reply_slot_refusals[i] = 0;
         s->reply_slot_saturated[i] = false;
         s->reply_slot_announce[i] = false;
+        s->reply_slot_declines[i] = 0;
         for (int j = 0; j < ZPICO_MAX_PENDING_REPLIES; j++) {
             z_internal_query_null(&s->stored_queries[i][j]);
         }
@@ -3195,6 +3223,7 @@ int32_t zpico_undeclare_queryable(zpico_session_t* session, int32_t handle) {
     s->reply_slot_refusals[handle] = 0;
     s->reply_slot_saturated[handle] = false;
     s->reply_slot_announce[handle] = false;
+    s->reply_slot_declines[handle] = 0;
     return ZPICO_OK;
 }
 
@@ -3239,6 +3268,37 @@ int32_t zpico_reply_slot_stats(zpico_session_t* session, int32_t queryable_handl
         }
     }
     return held;
+}
+
+/* issue 1332 / phase-455 W2.b — how many queries this queryable's callback
+ * DECLINED, i.e. how many times the reclaim arm above ran.
+ *
+ * A separate accessor rather than a fifth out-parameter on
+ * `zpico_reply_slot_stats`: that function landed in W1 and is already bound,
+ * mirrored and called, and a signature change on a live symbol is the silent
+ * half of the hand-mirror class (`check-platform-abi-mirror`'s reason for
+ * existing). Shaped like its sibling — a count as the return value,
+ * `ZPICO_ERR_INVALID` for a bad session or handle.
+ *
+ * NOT the same as "arrived and went unanswered": a query REFUSED a slot never
+ * gets a reply seq, so the decline arm cannot see it and it lands in
+ * `out_refusals` instead. `declines + refusals` is the arrival count; measured
+ * on a two-slot table with the reclaim removed, four queries read
+ * `declines=2 refusals=2`.
+ *
+ * What it is FOR: a declined query is the population issue 0902's leak fed on,
+ * and the native lane has none of it by construction (issue 1332 — graph
+ * discovery is a liveliness SUBSCRIBER since phase-381, and both action client
+ * paths are single-in-flight). So a test that means to control the leak has to
+ * state that declined queries ARRIVED, or its `refusals == 0` is a green that
+ * cannot fail.
+ */
+int32_t zpico_reply_slot_declines(zpico_session_t* session, int32_t queryable_handle) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL || queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {
+        return ZPICO_ERR_INVALID;
+    }
+    return (int32_t)s->reply_slot_declines[queryable_handle];
 }
 
 /* issue 0902 / phase-455 W1 — take the pending "this table just saturated"

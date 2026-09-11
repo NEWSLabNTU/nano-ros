@@ -384,7 +384,7 @@ server's queryable never holds more than one query at a time, so the allocation
 never fails and the counter can never move. Reverting the fix changes no
 observable here, so **the negative control this measurement was supposed to
 carry does not exist on this lane** — filed as
-[issue 1332](1332-native-lane-cannot-exercise-zenoh-reply-slot-table.md) with
+[issue 1332](archived/1332-native-lane-cannot-exercise-zenoh-reply-slot-table.md) with
 the three routes that would create one.
 
 Why (read off the code, not instrumented): the declined-query shape that feeds
@@ -401,3 +401,49 @@ run is not evidence about the mechanism is written down rather than assumed.
 What it still needs is item 1 on a population that can refuse a slot —
 phase-444 W2's board run, phase-455 W3's live ROS 2 zenoh action cells, or issue
 1332's declined-query fixture.
+
+## Status 2026-09-12 — the leak now has a negative control (phase-455 W2.b)
+
+Issue 1332's route 2, landed and **resolved**:
+`zenoh_integration::a_declined_query_hands_its_reply_slot_back`, run by
+`just native test-reply-slot-decline`. It sends `capacity + 2` EMPTY-PAYLOAD
+queries — the exact shape the shim's liveliness arm drops — to a real
+`ZenohServiceServer`'s own keyexpr, on one session, and then reads the table.
+
+Same host, same router, one scratch edit (`1a032a10b`'s reclaim removed and
+nothing else):
+
+| `ZPICO_MAX_PENDING_REPLIES` | tree | verdict | counters |
+| ---: | --- | --- | --- |
+| 4 (shipped) | reclaim present | **PASS** | `started=6 finalised=6 declines=6 held=0 refusals=0` |
+| 4 (shipped) | reclaim REVERTED | **FAIL** | `started=4 finalised=0 declines=4 held=4 refusals=0` |
+| 2 | reclaim present | **PASS** | `started=4 finalised=4 declines=4 held=0 refusals=0` |
+| 2 | reclaim REVERTED | **FAIL** | `started=4 finalised=2 declines=2 held=2 refusals=2` |
+
+So `1a032a10b` is now regression-gated: revert it and a lane goes red, which was
+not true of anything in the tree before.
+
+**Two corrections to how this issue framed the observable.**
+
+* **`refusals` is the wrong number to watch on the shipped build.** It is not
+  reachable there: `ZPICO_MAX_PENDING_REPLIES` (4) equals the querier's
+  `ZPICO_MAX_PENDING_GETS` (4), and a leaked slot holds the cloned query for
+  ever — so the query never finalises, the client's own pending-get slot is
+  never released, and the querier runs dry at exactly four, one short of a
+  refusal. What the leak looks like there is `held = 4/4`. `refusals` only moves
+  when the reply table is smaller than the querier's pool. The counter W1 added
+  is still the right thing for a REAL graph, where the queries come from other
+  processes with pools of their own; on a single-session probe, `held` is the
+  observable.
+* **A refused query is not a declined one** — it never gets a reply seq, so the
+  decline arm cannot see it. Arrival is `declines + refusals`.
+
+`zpico_reply_slot_declines` / `Context::reply_slot_declines` is the new counter
+that makes the green non-vacuous: it says the declined arm RAN, which is what
+issue 1332 measured this lane was never doing.
+
+**Still not closed, and by the same item.** This probe is a synthetic stand-in
+for one shape of a real peer's traffic, on the host lane. Item 1 on the board,
+and the live `rmw_zenoh_cpp` peer (phase-455 W3), remain what this issue is
+waiting for. Also still uncontrolled: `b56e3d50a`'s FAILED-REPLY arm — the probe
+never makes the server reply, so it never enters `zpico_query_reply`.

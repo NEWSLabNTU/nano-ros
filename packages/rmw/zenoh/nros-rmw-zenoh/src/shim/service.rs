@@ -447,6 +447,19 @@ impl ZenohServiceServer {
     pub(super) fn set_liveliness(&mut self, liveliness: Option<super::LivelinessToken>) {
         self._liveliness = liveliness;
     }
+
+    /// issue 1332 / phase-455 W2.b — this server's zenoh queryable handle, the
+    /// argument `Context::reply_slot_stats` / `reply_slot_declines` take.
+    ///
+    /// The reply-slot table is per-queryable, so reading it needs the handle of
+    /// the server that owns it. The process-global
+    /// [`crate::reply_slot_refusals_total`] exists for a caller several layers
+    /// above the `Context` (phase-455 W2's probe binary); a caller holding the
+    /// server itself should name it, so a count cannot be credited to the wrong
+    /// queryable — the runtime declares its own before an entry's do.
+    pub fn queryable_handle(&self) -> i32 {
+        self._queryable.handle()
+    }
 }
 
 impl ServiceTrait for ZenohServiceServer {

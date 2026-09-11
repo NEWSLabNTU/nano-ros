@@ -336,6 +336,22 @@ unsafe extern "C" {
         out_capacity: *mut u32,
     ) -> i32;
 
+    /// issue 1332 / phase-455 W2.b — how many queries this queryable's
+    /// callback DECLINED, or `ZPICO_ERR_INVALID` for a bad handle.
+    ///
+    /// A declined query is one the callback dropped without taking its reply
+    /// seq — in `shim/service.rs`, the empty-payload liveliness probe, and the
+    /// full request ring on an image whose reply table is larger than
+    /// `SERVICE_REQUEST_RING_DEPTH` (at the shipped 4 = 4 a query meeting a full
+    /// ring has already been refused a slot, so it holds nothing to decline).
+    /// Those are what issue 0902's leak fed on, and the
+    /// reason this count exists beside the refusal count is that the native
+    /// host lane produces NONE of them (issue 1332): a `refusals == 0` there
+    /// is the same value whether the table is managed correctly or never
+    /// pressed at all. A test that means to control the leak asserts this
+    /// moved first, and only then that refusals did not.
+    pub fn zpico_reply_slot_declines(session: *mut zpico_session_t, queryable_handle: i32) -> i32;
+
     /// issue 0902 / phase-455 W1 — take the pending "this table just
     /// saturated" announcement, clearing it. 1 = announce now, 0 = nothing
     /// pending, `ZPICO_ERR_INVALID` for a bad handle.
