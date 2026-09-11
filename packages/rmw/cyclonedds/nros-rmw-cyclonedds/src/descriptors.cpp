@@ -30,8 +30,20 @@ namespace nros_rmw_cyclonedds {
 
 namespace {
 
-// Overridable: a workspace consuming several full interface packages (the
-// autoware-safety-island example registers ~86 types — std_msgs +
+// DERIVED, as of phase-454 W6.c (RFC-0100 D5): `nros codegen-system` counts
+// the distinct DDS type names the SystemModel registers and writes this knob
+// into the workspace's cargo `[env]`, from which `nros-rmw-cyclonedds-sys`'s
+// build script turns it into a `-D` on this TU. It is the SAME count that
+// sizes the Rust registry's `NROS_CYCLONEDDS_MAX_TYPES`, and it is the same
+// count because it is the same set: `TypeRegistry::get_or_build` calls
+// `nros_rmw_cyclonedds_register_descriptor` for every type it inserts.
+//
+// The 256 below is now a FALLBACK, not the size. It applies to an image
+// nobody has run codegen-system for, which keeps compiling exactly as it did
+// (RFC-0100 D6: a consumer with no declaration keeps its own default).
+//
+// Why the cap matters: a workspace consuming several full interface packages
+// (the autoware-safety-island example registers ~86 types — std_msgs +
 // geometry_msgs alone are ~60) blows a small cap, and the overflow drops
 // types SILENTLY: publisher_create later fails UNSUPPORTED (-5) for
 // whichever pkg happened to be link-order last. 16 bytes/entry → 4 KiB at
@@ -39,6 +51,19 @@ namespace {
 #ifndef NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES
 #define NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES 256
 #endif
+
+// The FLOOR, and it lives here rather than in the derivation — RFC-0100 D7,
+// issues 1015 + 1033. Zero is a legitimate DEMAND (an image that registers
+// no DDS type), and whether zero is a legal SIZE is a property of THIS
+// storage: a zero-length array is a GCC extension ISO C++ forbids, and an
+// image built with one would have every `register_descriptor` drop on the
+// floor with the same silence this knob exists to remove. `nros
+// codegen-system` never emits a value below the fallback at all, so this
+// guard binds only a hand-passed `-D`.
+#if NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES < 1
+#error "NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES must be >= 1: g_entries is a fixed C array, and a zero-length one drops every descriptor registration silently"
+#endif
+
 constexpr std::size_t kMaxRegisteredTypes = NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES;
 
 struct Entry {
@@ -46,7 +71,22 @@ struct Entry {
     const dds_topic_descriptor_t *descriptor;
 };
 
-Entry g_entries[kMaxRegisteredTypes] = {};
+// The pool this knob sizes, in the `// nros-pool:` grammar — and NOT YET READ
+// BY ANYTHING, which is said here rather than left for the next person to
+// assume. `gen-pool-inventory.py` discovers both its sources and its knob
+// DEFAULTS from Rust only (`git ls-files "*.rs"`, and `env_usize("NAME")` call
+// sites), so every C and C++ pool in this tree is outside the inventory by
+// construction — a gate reach narrower than the rule it enforces, the
+// issue-0196 shape. The annotation is correct and becomes live the day that
+// scan widens; until then it is a declaration, not coverage.
+//
+// `sizeof(Entry)` is two pointers — 16 on a 64-bit target, 8 on a 32-bit one —
+// so the figure is the 64-bit one and over-states an RTOS build. Same direction
+// and same reason as `nros-node/build.rs` pricing a ring's length array at a
+// hard `RING_LEN_BYTES = 8`: the grammar is a product of knobs and integers and
+// has no target to ask.
+// nros-pool: DESCRIPTOR_TABLE = NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES * 16
+Entry g_entries[NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES] = {};
 std::size_t g_count = 0;
 
 // Issue 0280 residual: overflow used to be COMPLETELY silent — the

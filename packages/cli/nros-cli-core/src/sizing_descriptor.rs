@@ -50,10 +50,13 @@
 //! the rung that states it. Writing a derived number into `[policy]` now would be
 //! the exact category error D1 exists to prevent.
 //!
-//! `[types]`'s `max_fields` / `max_kinds` / `max_nested_depth` are REFUSED with a
-//! reason rather than left absent: they are derivable, from the schema walk
-//! codegen already does, and W6.c is the wave that reaches it. A refusal says
-//! that; an absence would say nobody ever asked.
+//! `[types]`'s `max_fields` / `max_kinds` / `max_nested_depth` were REFUSED here
+//! through W4, with a reason naming W6.c as the wave that would reach them.
+//! **phase-454 W6.c filled them**: codegen's own schema walk now records a
+//! per-type shape into `nros_message_bounds.json`, and [`type_facts`] takes the
+//! maximum over the image's types. The refusal survives for the case it was
+//! always for — a type whose schema codegen could not build — and now names that
+//! type instead of a wave.
 
 use nros_sizing_descriptor::{
     Basis, Durability, Endpoint, EndpointKind, History, RegistrationPath, Reliability,
@@ -103,6 +106,15 @@ pub struct DescriptorInputs<'a> {
     pub inventory: Option<&'a EntityInventory>,
     /// `pkg/msg/Name -> bound`, from the leaf's `generated/` trees.
     pub bounds: Vec<(String, BoundState)>,
+    /// phase-454 W6.c — `pkg/msg/Name -> CycloneDDS schema shape`, from the SAME
+    /// rows as [`Self::bounds`].
+    ///
+    /// The inner `Option` is the type's own answer (`None` = codegen could not
+    /// build that schema, or the tree predates the field); a type MISSING from
+    /// this table is the table-level miss `bounds` has too, and the two are
+    /// distinguished the same way — by a lookup returning `None` rather than by a
+    /// sentinel.
+    pub schema_shapes: Vec<(String, Option<rosidl_codegen::schema_value::SchemaShape>)>,
     /// Why there is no bound table, when there is none.
     pub bounds_error: Option<String>,
     /// The rustc target triple the board pins. `None` for a board that pins none
@@ -519,26 +531,79 @@ fn registration_path_refusal(inputs: &DescriptorInputs<'_>) -> String {
 }
 
 /// `[types]` — Cyclone's whole appetite (RFC-0100 D5).
+///
+/// phase-454 W6.c filled the three sub-fields W4 left REFUSED. They are the
+/// MAXIMUM over the image's distinct types of a per-type shape codegen derives
+/// from the same schema walk it prices the bound with
+/// (`schema_value::schema_shape_for`), carried through
+/// `nros_message_bounds.json`. Per field independently: the widest type and the
+/// deepest type need not be the same type.
+///
+/// A type in the endpoint set whose shape is missing REFUSES all three — it does
+/// not drop out of the maximum. A maximum over a subset is a smaller number that
+/// reads exactly like the right one, which is the shape of every silent
+/// under-size this campaign exists to remove (RFC-0100 D6).
 fn type_facts(inputs: &DescriptorInputs<'_>, endpoints: &[Endpoint]) -> Types {
     let mut t = Types::default();
-    if inputs.inventory.is_some() {
-        let mut names: Vec<&str> = endpoints.iter().map(|e| e.type_name.as_str()).collect();
-        names.sort_unstable();
-        names.dedup();
-        // UNFLOORED -- D7. An image with no endpoints declares zero distinct
-        // types, and zero is the answer rather than a number to round up.
-        t = Types::new(Some(names.len()), None, None, None);
-    } else {
-        t.refuse(
-            "distinct_count",
-            "the entity inventory did not compose, so the image's type set is not known",
-        );
+    let Some(_) = inputs.inventory else {
+        let why = "the entity inventory did not compose, so the image's type set is not known";
+        t.refuse("distinct_count", why);
+        t.refuse("max_fields", why);
+        t.refuse("max_kinds", why);
+        t.refuse("max_nested_depth", why);
+        return t;
+    };
+
+    let mut names: Vec<&str> = endpoints.iter().map(|e| e.type_name.as_str()).collect();
+    names.sort_unstable();
+    names.dedup();
+
+    // UNFLOORED -- D7. An image with no endpoints declares zero distinct
+    // types, and zero is the answer rather than a number to round up.
+    let distinct_count = names.len();
+
+    let mut shape = rosidl_codegen::schema_value::SchemaShape::default();
+    let mut unshaped: Vec<&str> = Vec::new();
+    for ty in &names {
+        match inputs
+            .schema_shapes
+            .iter()
+            .find(|(n, _)| n == ty)
+            .and_then(|(_, s)| *s)
+        {
+            Some(s) => shape = shape.max(s),
+            None => unshaped.push(ty),
+        }
     }
-    let pending = "not derived here: the per-type schema walk that prices it runs in codegen \
-                   and does not reach this writer (phase-454 W6.c)";
-    t.refuse("max_fields", pending);
-    t.refuse("max_kinds", pending);
-    t.refuse("max_nested_depth", pending);
+
+    if unshaped.is_empty() {
+        t = Types::new(
+            Some(distinct_count),
+            Some(shape.fields),
+            Some(shape.kinds),
+            Some(shape.nested_depth),
+        );
+    } else {
+        t = Types::new(Some(distinct_count), None, None, None);
+        // Name the types, not the count: the remedy differs per type (an
+        // unreachable nested package, or a `generated/` tree older than the
+        // field), and a bare "3 types" sends the reader looking for which.
+        let why = match &inputs.bounds_error {
+            Some(e) => format!(
+                "no bound inventory for this entry, so no type's schema shape is known: {e}"
+            ),
+            None => format!(
+                "no CycloneDDS schema shape recorded for {} -- either codegen could not \
+                 resolve a nested type, or the `generated/` tree predates this field. Run \
+                 `nros sync` so codegen walks them; a maximum over the types that DO have \
+                 one would under-size the descriptor builder's stack arrays silently",
+                unshaped.join(", ")
+            ),
+        };
+        t.refuse("max_fields", why.clone());
+        t.refuse("max_kinds", why.clone());
+        t.refuse("max_nested_depth", why);
+    }
     t
 }
 
@@ -599,7 +664,7 @@ pub fn write_for_leaf(
     img: &crate::cmd::leaf_settings::LeafImage,
     path_env: &std::collections::BTreeMap<String, std::path::PathBuf>,
     who: &str,
-) -> eyre::Result<std::path::PathBuf> {
+) -> eyre::Result<WrittenDescriptor> {
     let leaf = img.leaf.as_path();
     let (inventory, inv_error) = match crate::leaf_entity_env::inventory_for_leaf(leaf) {
         Ok((inv, _unprobeable)) if !inv.is_empty() => (Some(inv), None),
@@ -613,16 +678,26 @@ pub fn write_for_leaf(
             leaf.display()
         );
     }
-    let (bounds, bounds_error) = match crate::leaf_payload_classes::leaf_bound_inventory(leaf) {
-        Ok(b) => (b, None),
-        Err(e) => (Vec::new(), Some(e)),
-    };
+    // ONE read of the leaf's `generated/` trees feeds both tables. Reading them
+    // twice is how the bound and the shape come to describe different trees.
+    let (bounds, schema_shapes, bounds_error) =
+        match crate::leaf_payload_classes::leaf_bound_rows(leaf) {
+            Ok(rows) => (
+                rows.iter()
+                    .map(|r| (r.type_name.clone(), r.bound.clone()))
+                    .collect(),
+                rows.into_iter().map(|r| (r.type_name, r.shape)).collect(),
+                None,
+            ),
+            Err(e) => (Vec::new(), Vec::new(), Some(e)),
+        };
 
     let rmw = img.decl.rmw.clone();
     let inputs = DescriptorInputs {
         entry: img.image_id.clone(),
         inventory: inventory.as_ref(),
         bounds,
+        schema_shapes,
         bounds_error,
         target_triple: img.target.clone(),
         // A board that pins no rustc triple builds for the host, and that is
@@ -656,7 +731,69 @@ pub fn write_for_leaf(
     }
     crate::atomic_file::atomic_write(&path, &body)
         .map_err(|e| eyre::eyre!("write `{}`: {e}", path.display()))?;
-    Ok(path)
+    Ok(WrittenDescriptor { path, desc })
+}
+
+/// What [`write_for_leaf`] produced: the artifact, and the descriptor itself.
+///
+/// The caller needs the descriptor and not just its path because some consumers
+/// cannot read a TOML file at build time — a `cc::Build` compiling a C++ TU has
+/// only the compile line — so a few STATED facts are also forwarded as cargo
+/// `[env]` rows (see [`WrittenDescriptor::cyclonedds_env`]). Returning the built
+/// value rather than re-reading the file keeps that projection from becoming a
+/// second parse of the schema.
+pub struct WrittenDescriptor {
+    pub path: std::path::PathBuf,
+    pub desc: SizingDescriptor,
+}
+
+impl WrittenDescriptor {
+    /// phase-454 W6.c (RFC-0100 D5) — the CycloneDDS knobs this descriptor
+    /// states, as `[env]` rows for the image's cargo config.
+    ///
+    /// Cyclone reads `[types]` and `[target].heap_budget_bytes`, and nothing
+    /// else; this is that list, and it is short for exactly that reason rather
+    /// than by omission. The rows reach two halves of one backend: the Rust
+    /// descriptor builder through `option_env!`, and the C++ TUs through
+    /// `nros-rmw-cyclonedds-sys`'s build script, which turns each into a `-D`.
+    ///
+    /// **A REFUSED or ABSENT fact emits NO ROW.** That is D6 in cargo's
+    /// vocabulary: the consumer then keeps the default it already has, and there
+    /// is no value in this table that means "I looked and found nothing".
+    ///
+    /// `NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES` is deliberately NOT here. It is
+    /// derived from the SystemModel beside its `MAX_TYPES` sibling
+    /// (`model_ingest::resolve_cyclonedds_max_descriptor_types`) and written to
+    /// the WORKSPACE `.cargo/config.toml` with `force = true`; emitting it from
+    /// here as well would give one knob two writers with different precedence,
+    /// which is the drift the single-writer rule in `manage_cyclonedds_env_knob`
+    /// exists to prevent.
+    pub fn cyclonedds_env(&self) -> std::collections::BTreeMap<String, String> {
+        use nros_sizing_descriptor::Fact;
+        let mut out = std::collections::BTreeMap::new();
+        let mut put = |k: &str, f: Fact<usize>| {
+            if let Some(v) = f.stated() {
+                out.insert(k.to_string(), v.to_string());
+            }
+        };
+        put(
+            "NROS_CYCLONEDDS_MAX_FIELDS",
+            self.desc.types.max_fields().clone(),
+        );
+        put(
+            "NROS_CYCLONEDDS_MAX_KINDS",
+            self.desc.types.max_kinds().clone(),
+        );
+        put(
+            "NROS_CYCLONEDDS_MAX_NESTED_DEPTH",
+            self.desc.types.max_nested_depth().clone(),
+        );
+        put(
+            "NROS_CYCLONEDDS_HEAP_BUDGET_BYTES",
+            self.desc.target.heap_budget_bytes().clone(),
+        );
+        out
+    }
 }
 
 /// Does this backend carry type descriptors? `None` for a name this writer does
@@ -749,6 +886,24 @@ pub fn to_cmake(desc: &SizingDescriptor) -> String {
         &mut out,
         "NROS_SIZING_TYPES_DISTINCT_COUNT",
         &desc.types.distinct_count(),
+    );
+    // phase-454 W6.c -- the descriptor builder's three stack-array demands. On
+    // the cmake road as well as the cargo one: the Zephyr Cyclone lane compiles
+    // the backend into the app library per image, so it is a consumer of these.
+    emit_cmake_fact(
+        &mut out,
+        "NROS_SIZING_TYPES_MAX_FIELDS",
+        &desc.types.max_fields(),
+    );
+    emit_cmake_fact(
+        &mut out,
+        "NROS_SIZING_TYPES_MAX_KINDS",
+        &desc.types.max_kinds(),
+    );
+    emit_cmake_fact(
+        &mut out,
+        "NROS_SIZING_TYPES_MAX_NESTED_DEPTH",
+        &desc.types.max_nested_depth(),
     );
     out.push_str(&format!(
         "set(NROS_SIZING_ENDPOINT_COUNT {})\n",
@@ -854,11 +1009,28 @@ mod tests {
         (ty.into(), BoundState::Bounded { tx: rx - 4, rx })
     }
 
+    fn shaped(
+        ty: &str,
+        fields: usize,
+        kinds: usize,
+        nested_depth: usize,
+    ) -> (String, Option<rosidl_codegen::schema_value::SchemaShape>) {
+        (
+            ty.into(),
+            Some(rosidl_codegen::schema_value::SchemaShape {
+                fields,
+                kinds,
+                nested_depth,
+            }),
+        )
+    }
+
     fn base<'a>(inv: &'a EntityInventory) -> DescriptorInputs<'a> {
         DescriptorInputs {
             entry: "talker".into(),
             inventory: Some(inv),
             bounds: vec![bounded("std_msgs/msg/String", 1170)],
+            schema_shapes: vec![shaped("std_msgs/msg/String", 1, 1, 1)],
             bounds_error: None,
             target_triple: Some("thumbv7em-none-eabihf".into()),
             host_build: false,
@@ -925,6 +1097,115 @@ mod tests {
             Some(&(11 * 1170 + 11 * 4))
         );
         assert_eq!(d.types.distinct_count().stated(), Some(&2));
+    }
+
+    /// phase-454 W6.c — the three `[types]` sub-fields W4 refused are STATED,
+    /// and each is the max over the image's types of its own column.
+    #[test]
+    fn the_type_table_states_the_schema_shape_as_a_per_field_maximum() {
+        let inv = inventory(vec![
+            sub("std_msgs/msg/String", "/chatter", Some(10)),
+            sub("sensor_msgs/msg/Image", "/image", Some(4)),
+        ]);
+        let mut i = base(&inv);
+        i.bounds.push(bounded("sensor_msgs/msg/Image", 4096));
+        // The wide type and the deep type are different types, which is the
+        // whole reason the maximum is taken per column.
+        i.schema_shapes = vec![
+            shaped("std_msgs/msg/String", 7, 7, 1),
+            shaped("sensor_msgs/msg/Image", 2, 9, 4),
+        ];
+        let d = build(&i);
+        assert_eq!(d.types.distinct_count().stated(), Some(&2));
+        assert_eq!(d.types.max_fields().stated(), Some(&7), "from String");
+        assert_eq!(d.types.max_kinds().stated(), Some(&9), "from Image");
+        assert_eq!(d.types.max_nested_depth().stated(), Some(&4), "from Image");
+    }
+
+    /// A type with no recorded shape REFUSES all three and NAMES itself.
+    ///
+    /// The alternative — a maximum over the types that do have one — is a
+    /// smaller number that reads exactly like the right one, and it would
+    /// under-size the descriptor builder's stack arrays silently. `distinct_count`
+    /// is untouched, because refusal is per FIELD (RFC-0100 D6).
+    #[test]
+    fn a_type_with_no_recorded_shape_refuses_the_maximum_and_names_itself() {
+        let inv = inventory(vec![
+            sub("std_msgs/msg/String", "/chatter", Some(10)),
+            sub("sensor_msgs/msg/Image", "/image", Some(4)),
+        ]);
+        let mut i = base(&inv);
+        i.bounds.push(bounded("sensor_msgs/msg/Image", 4096));
+        i.schema_shapes = vec![
+            shaped("std_msgs/msg/String", 7, 7, 1),
+            // Codegen could not build this one's schema.
+            ("sensor_msgs/msg/Image".into(), None),
+        ];
+        let d = build(&i);
+        assert_eq!(d.types.distinct_count().stated(), Some(&2));
+        for f in [
+            d.types.max_fields().refusal(),
+            d.types.max_kinds().refusal(),
+            d.types.max_nested_depth().refusal(),
+        ] {
+            let why = f.expect("refused, not stated");
+            assert!(why.contains("sensor_msgs/msg/Image"), "{why}");
+            assert!(
+                !why.contains("W6.c"),
+                "the wave is landed; name the type: {why}"
+            );
+        }
+    }
+
+    /// The `[env]` projection carries only what the descriptor STATES.
+    ///
+    /// A refused fact emitting a row would be a silent default wearing a
+    /// derived number's clothes — the exact shape D6 forbids, one transport over.
+    #[test]
+    fn the_cyclonedds_env_projection_omits_a_refused_fact() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
+        let mut i = base(&inv);
+        i.schema_shapes = vec![shaped("std_msgs/msg/String", 3, 5, 2)];
+        let full = WrittenDescriptor {
+            path: std::path::PathBuf::from("x.toml"),
+            desc: build(&i),
+        };
+        let env = full.cyclonedds_env();
+        assert_eq!(
+            env.get("NROS_CYCLONEDDS_MAX_FIELDS").map(String::as_str),
+            Some("3")
+        );
+        assert_eq!(
+            env.get("NROS_CYCLONEDDS_MAX_KINDS").map(String::as_str),
+            Some("5")
+        );
+        assert_eq!(
+            env.get("NROS_CYCLONEDDS_MAX_NESTED_DEPTH")
+                .map(String::as_str),
+            Some("2")
+        );
+        assert_eq!(
+            env.get("NROS_CYCLONEDDS_HEAP_BUDGET_BYTES")
+                .map(String::as_str),
+            Some("65536")
+        );
+        // The knob with the OTHER writer is never emitted here -- one knob, one
+        // writer, or the two disagree about precedence.
+        assert!(!env.contains_key("NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES"));
+
+        // Now refuse the shape and the heap, and watch the rows disappear
+        // rather than turn into zeros.
+        i.schema_shapes = vec![("std_msgs/msg/String".into(), None)];
+        i.heap_budget_bytes = None;
+        let bare = WrittenDescriptor {
+            path: std::path::PathBuf::from("x.toml"),
+            desc: build(&i),
+        };
+        assert!(
+            bare.cyclonedds_env().is_empty(),
+            "a consumer with no declaration keeps its own default: {:?}",
+            bare.cyclonedds_env()
+        );
     }
 
     #[test]

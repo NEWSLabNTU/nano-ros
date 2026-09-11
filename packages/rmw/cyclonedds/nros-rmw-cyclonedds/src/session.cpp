@@ -15,11 +15,16 @@
 #include "user_config.hpp"  // phase-206 W2 — the bringup's own Cyclone XML
 
 #include "cyclone_config.hpp"  // phase-206 W1 — baked baseline + source composition
+#include "heap_budget.hpp"     // phase-454 W6.c — RFC-0100 D11, the boot assertion
 
 #include <dds/dds.h>
 
 #include "graph.hpp"  // Phase 177.36 — ros_discovery_info node graph
 
+#include <stdio.h>  // phase-454 W6.c — the heap-budget report. <stdio.h>, not
+                    // <cstdio>: the riscv64-threadx minimal libcpp does not
+                    // inject the C names into namespace std (phase-287, the
+                    // same reason `descriptors.cpp` reaches for the C headers).
 #include <stdlib.h>
 #include <cstring>
 #include <new>
@@ -219,6 +224,31 @@ rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t dom
     // through this list; when the two are joined this becomes a lookup.
     if (options != nullptr && options->property_count != 0) {
         return NROS_RMW_RET_UNSUPPORTED;
+    }
+
+    // phase-454 W6.c — RFC-0100 D11. The image's configured heap, against the
+    // floor this image's own type set needs. FIRST, before a single byte is
+    // allocated: the failure this replaces is Cyclone running out of ddsrt
+    // heap deep inside participant or entity creation, where
+    // `ddsrt_mutex_init` swallows the ENOMEM and the image dies as an
+    // anonymous `abort()` twenty seconds later somewhere else entirely
+    // (issues 0371 / 0496).
+    //
+    // A FLOOR, so this can never refuse an image that would have worked — see
+    // `heap_budget.hpp`. And silent when no budget is stated: the board that
+    // says nothing gets no judgement.
+    if (heap_budget_is_short()) {
+        fprintf(stderr,
+                "nros-rmw-cyclonedds: configured heap %zu bytes is below the %zu this "
+                "image is certain to need (%u registered type(s), largest schema %u "
+                "kinds). Raise the board's `[board.knobs.memory] heap_bytes` — "
+                "CycloneDDS allocates every payload and every type descriptor from this "
+                "heap, and exhausting it surfaces as an anonymous abort() far from the "
+                "cause.\n",
+                kHeapBudgetBytes, kRequiredHeapBytes,
+                (unsigned)NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES,
+                (unsigned)NROS_CYCLONEDDS_MAX_KINDS);
+        return NROS_RMW_RET_BAD_ALLOC;
     }
 
     NROS_CYC_TRACE("session_create: domain=%u entering", domain_id);

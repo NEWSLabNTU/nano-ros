@@ -53,6 +53,13 @@ use ros_launch_manifest_model::SystemModel;
 /// `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/type_registry.rs`.
 pub const DEFAULT_MAX_TYPES: usize = 32;
 
+/// The `descriptors.cpp` build-time default for
+/// `NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES` (`kMaxRegisteredTypes`). Mirrored here
+/// for the same reason [`DEFAULT_MAX_TYPES`] is: the bake is HOST code that runs
+/// before that TU compiles. Keep in sync with
+/// `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/descriptors.cpp`.
+pub const DEFAULT_MAX_DESCRIPTOR_TYPES: usize = 256;
+
 /// Distinct DDS type names one MESSAGE interface registers.
 const TYPES_PER_MSG: usize = 1;
 /// Distinct DDS type names one SERVICE interface registers (`_Request`,
@@ -170,6 +177,41 @@ pub fn derive_max_types(counted: usize) -> usize {
         return 0;
     }
     counted.next_power_of_two().max(DEFAULT_MAX_TYPES)
+}
+
+/// The `descriptors.cpp` static table's DEMAND for the same registered-type
+/// count — phase-454 W6.c, RFC-0100 D5.
+///
+/// # Why ONE count answers TWO tables
+///
+/// The two are not independent pools that happen to look alike. `TypeRegistry::
+/// get_or_build` (`type_registry.rs`) inserts into its own `FnvIndexMap` and then
+/// calls `nros_rmw_cyclonedds_register_descriptor` for the SAME type, so every
+/// name that reaches the Rust registry reaches the C++ table on the same line.
+/// The C++ table additionally receives the idlc-baked TUs' static-constructor
+/// registrations, and those are registrations of types this image compiled a
+/// descriptor for — i.e. the same set again, arrived at from the other side.
+/// A count that bounds one bounds the other, which is why
+/// [`count_dds_types`] + [`infra_types`] is the whole input here as it is for
+/// [`derive_max_types`].
+///
+/// # Why the arithmetic DIFFERS
+///
+/// [`derive_max_types`] rounds to a power of two because `heapless::FnvIndexMap`
+/// requires it, and floors at [`DEFAULT_MAX_TYPES`] so a small entry stays
+/// byte-identical. Neither applies to `Entry g_entries[N]`, a plain C array with
+/// no capacity constraint of its own — so this publishes the **demand,
+/// unfloored** (RFC-0100 D7, issues 1015 + 1033). Zero is a legitimate demand;
+/// whether zero is a legal SIZE is decided at the pool, where `descriptors.cpp`
+/// keeps its own `#if ... < 1` guard.
+///
+/// What this replaces is a HAND-AUTHORED 256 whose overflow drops registrations
+/// SILENTLY at static-init time and surfaces, much later and nowhere near the
+/// cause, as `publisher_create` returning UNSUPPORTED for whichever package
+/// happened to be link-order last. The autoware-safety-island workspace
+/// registers ~86 types; `std_msgs` + `geometry_msgs` alone are ~60.
+pub fn derive_max_descriptor_types(counted: usize) -> usize {
+    counted
 }
 
 #[cfg(test)]
@@ -307,6 +349,53 @@ mod tests {
         assert_eq!(derive_max_types(33), 64);
         assert_eq!(derive_max_types(65), 128);
         assert!(derive_max_types(200).is_power_of_two());
+    }
+
+    /// phase-454 W6.c — the descriptor table publishes DEMAND, unfloored.
+    ///
+    /// The contrast with the test above is the point: the registry's two
+    /// adjustments (power of two, floor at the default) are `heapless`'
+    /// constraint and a byte-identity promise, and a plain C array has neither.
+    /// Floors live at the pool (RFC-0100 D7).
+    #[test]
+    fn descriptor_demand_is_the_bare_count() {
+        assert_eq!(derive_max_descriptor_types(0), 0);
+        assert_eq!(derive_max_descriptor_types(1), 1);
+        assert_eq!(derive_max_descriptor_types(33), 33, "no power-of-two round");
+        assert_eq!(derive_max_descriptor_types(86), 86, "no floor at 256");
+    }
+
+    /// The acceptance this wave exists for: a workspace past the hand-authored
+    /// 256 cap sizes the table rather than dropping registrations silently.
+    ///
+    /// Built from the SAME count the registry uses, so this also pins the claim
+    /// that one count answers both tables — if the two derivations ever read
+    /// different inputs, the relation below stops holding.
+    #[test]
+    fn an_over_cap_workspace_sizes_the_descriptor_table() {
+        // 300 distinct message types -- past `DEFAULT_MAX_DESCRIPTOR_TYPES`,
+        // which is where `descriptors.cpp` starts dropping without a word.
+        let topics: Vec<(String, String)> = (0..300)
+            .map(|i| (format!("/t{i}"), format!("pkg/msg/M{i}")))
+            .collect();
+        let m = model_with(
+            topics
+                .iter()
+                .map(|(t, ty)| (t.as_str(), ty.as_str(), vec!["/n/e"], vec![]))
+                .collect(),
+            vec![],
+            vec![],
+        );
+        let counted = count_dds_types(&m, |_| true);
+        assert_eq!(counted, 300);
+        assert!(
+            derive_max_descriptor_types(counted) > DEFAULT_MAX_DESCRIPTOR_TYPES,
+            "an image this size must raise the cap, not silently drop 44 types"
+        );
+        assert_eq!(derive_max_descriptor_types(counted), counted);
+        // And the registry's own knob still answers the same question its own
+        // way -- one input, two arithmetics.
+        assert_eq!(derive_max_types(counted), 512);
     }
 
     /// Issue 1268 — the six parameter services register twelve types, and the

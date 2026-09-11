@@ -212,11 +212,16 @@ wire_bound_bytes = 4096
 depth = "history = keep_all on subscription /image: a KEEP_ALL queue has no static bound (RFC-0100 D6)"
 storage_bytes = "`depth` is refused (history = keep_all), and a receive region is sized from it"
 
+# All four STATED since phase-454 W6.c. The three maxima come from codegen's own
+# per-type schema walk (the one that prices the bounds), taken per column: the
+# widest type and the deepest type need not be the same type. A type whose schema
+# codegen could not build refuses all three and NAMES itself -- a maximum over a
+# subset is a smaller number that reads exactly like the right one.
 [types]
 distinct_count = 7
-
-[types.refused]
-max_fields = "not derived here: the per-type schema walk that prices it runs in codegen ..."
+max_fields = 14
+max_kinds = 63
+max_nested_depth = 4
 
 [policy]
 graph_max_entities = 64
@@ -287,7 +292,7 @@ maintainer of that backend reads it.
 | executor | counts; per-endpoint `depth`+`history`; rx class; `[target]` | `MAX_CBS`, `ARENA_SIZE`, `BACKING_U64S` | partly derived; rx class is the dead knob above |
 | zenoh | counts; `depth`; small/large bounds; service req/resp bounds; `[policy]` | `ZPICO_MAX_*`, `SUBSCRIBER_RING_DEPTH`, payload pools, `SERVICE_BUFFERS` | counts and payload classes derived; ring depth DERIVED from the declared depths (phase-454 W6.a, −124,032 B measured); `SERVICE_BUFFERS`'s slot size takes the declared service bound as its default and carries a stated non-annotation — but **no service or action type has a bound row to read** (`record_message` runs for `.msg` only), so it refuses on every image today |
 | XRCE | counts (**zero legal**); per-family bounds; `depth`; MTU; `reliability` | `MAX_*`, per-family `BUFFER_SIZE`, ring depths, `STREAM_HISTORY` | two counts derivable via `-1`; one global `BUFFER_SIZE = 1024` serves three families; reliability unread |
-| Cyclone | `[types]`, `[target].heap_budget_bytes`. **Nothing else** | `MAX_TYPES`, `MAX_DESCRIPTOR_TYPES`, `MAX_FIELDS`, `MAX_KINDS`, heap assertion | `MAX_TYPES` derived; `MAX_DESCRIPTOR_TYPES` **not** — silent-drop overflow at ~86 types |
+| Cyclone | `[types]`, `[target].heap_budget_bytes`. **Nothing else** | `MAX_TYPES`, `MAX_DESCRIPTOR_TYPES`, `MAX_FIELDS`, `MAX_KINDS`, heap assertion | **all derived, phase-454 W6.c** |
 | uORB | distinct topic count; subscription count | `REGISTRY_CAPACITY`, `PX4_MAX_CALLBACKS` | neither wired |
 | cffi | subscription count; node count; backend count | `RMW_SUBSCRIBER_SLOTS`, `MAX_NODES`, `MAX_BACKENDS` | slots derived; `max_nodes = components().len()` computed and discarded |
 
@@ -418,13 +423,47 @@ so this is where that closes.
 
 ## D11 — Cyclone gets a heap budget and asserts it at boot
 
+**Landed, phase-454 W6.c.**
+
 Cyclone sizes nothing statically and has no heap-budget knob of its own; the
 nearest thing is the platform's (`NROS_ZEPHYR_HEAP_SIZE`,
 `NROS_FREERTOS_HEAP_KB`) and a baked XML `<Sizing>` block of hard-coded
-constants. The model derives a required-heap number from the same facts, emits it
-into `[target].heap_budget_bytes`, and the image asserts its configured heap
-meets it at boot. That makes Cyclone a first-class consumer without inventing a
-static pool it does not have.
+constants. The model derives a required-heap number from the same facts, and the
+image asserts its configured heap meets it at boot. That makes Cyclone a
+first-class consumer without inventing a static pool it does not have.
+
+**Which of the two numbers `[target].heap_budget_bytes` carries — a correction.**
+An earlier draft of this decision said the derived REQUIREMENT is emitted into
+that field. It is not, and cannot be: the schema as shipped (D4) defines
+`heap_budget_bytes` as *"the heap this image is configured with"*, W4 populates
+it from the board's `[board.knobs.memory] heap_bytes`, and an assertion needs
+both numbers. So the descriptor carries the CONFIGURED heap — the thing only the
+board knows — and the BACKEND derives its own requirement from `[types]`, in its
+own build, which is what D5 says every consumer does. Nothing else would have a
+second number to compare against.
+
+**The requirement is a FLOOR, and that is what makes it safe to act on.** It is
+bytes the image is certain to need before it publishes anything, not an
+accounting of Cyclone's heap use — which depends on the graph it discovers, the
+samples in flight and the peers it meets, none of which a build can know. Three
+terms, each chosen so a real image needs at least this much:
+
+* the `<Sizing>` receive buffers, which `cyclone_config.hpp` bakes as literals;
+* one `dds_topic_descriptor_t` and one mangled type name per REGISTERED TYPE —
+  `dynamic_type_builder.cpp` allocates exactly three blocks per type and frees
+  none of them, because the registry memoises for the process lifetime;
+* the ops array of the LARGEST type, once, which is where `[types].max_kinds`
+  becomes load-bearing rather than decorative.
+
+Being a floor is what lets the check FAIL a boot: it can report a heap that is
+too small and it can never refuse an image that would have worked. A ceiling
+would have the opposite property, and the worse one. The failure it replaces is
+not a quiet one to debug — Cyclone exhausting the ddsrt heap inside entity
+creation has `ddsrt_mutex_init` swallowing the ENOMEM and the image dying as an
+anonymous `abort()` twenty seconds later somewhere else (issues 0371 / 0496).
+
+A board that states no heap gets no judgement: `kHeapBudgetStated` is the third
+state, and "nobody said" is not "too small" (D6).
 
 ## What this does not change
 

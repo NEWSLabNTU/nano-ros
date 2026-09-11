@@ -94,18 +94,24 @@ fn descriptor_text(root: &Path) -> String {
          leak",
         inv.source
     );
-    let bounds = nros_cli_core::leaf_payload_classes::leaf_bound_inventory(&leaf)
+    let rows = nros_cli_core::leaf_payload_classes::leaf_bound_rows(&leaf)
         .expect("the planted bound inventory parses");
     assert!(
-        bounds.iter().any(|(n, _)| n == "std_msgs/msg/String"),
+        rows.iter().any(|r| r.type_name == "std_msgs/msg/String"),
         "precondition: the bound table was found by walking a path under {}",
         root.display()
     );
+    let bounds = rows
+        .iter()
+        .map(|r| (r.type_name.clone(), r.bound.clone()))
+        .collect();
+    let schema_shapes = rows.into_iter().map(|r| (r.type_name, r.shape)).collect();
 
     let inputs = DescriptorInputs {
         entry: "native".into(),
         inventory: Some(&inv),
         bounds,
+        schema_shapes,
         bounds_error: None,
         target_triple: Some("thumbv7em-none-eabihf".into()),
         host_build: false,

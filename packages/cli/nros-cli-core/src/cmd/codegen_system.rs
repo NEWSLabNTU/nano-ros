@@ -263,6 +263,22 @@ pub fn run(args: Args) -> Result<()> {
                  (derived from the SystemModel; issue 0284)"
             );
         }
+        // phase-454 W6.c — the SAME count sizes the C++ `descriptors.cpp` table,
+        // which was hand-authored at 256 and drops registrations SILENTLY past
+        // it. Emitted beside its sibling, from one count, so the two tables
+        // cannot be sized from different readings of the model.
+        let max_desc_types =
+            crate::orchestration::model_ingest::resolve_cyclonedds_max_descriptor_types(&model)?;
+        if crate::orchestration::model_ingest::manage_cyclonedds_max_descriptor_types(
+            &workspace,
+            max_desc_types,
+        )? && let Some(n) = max_desc_types
+        {
+            eprintln!(
+                "codegen-system: sized NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES = {n} \
+                 (derived from the SystemModel; phase-454 W6.c)"
+            );
+        }
         let mut owned = bringup.clone();
         crate::orchestration::model_ingest::apply_model_execution(
             &mut owned.system,

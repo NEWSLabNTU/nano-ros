@@ -247,6 +247,41 @@ KNOB_CLASS = {
         "already DERIVED from the SystemModel (msg=1/srv=2/action=8+3, next_pow2) "
         "and forwarded; the env is the override, not the source",
     ),
+    # phase-454 W6.c / RFC-0100 D5 — the C++ `descriptors.cpp` table, derived
+    # from the SAME count as the Rust registry above. Read here (rather than by
+    # `option_env!`) because a C++ TU has no reach into cargo's `[env]`: the
+    # build script turns it into a `-D`.
+    "NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES": (
+        "derived",
+        "DERIVED from the SystemModel by phase-454 W6.c, from the same distinct-type "
+        "count as NROS_CYCLONEDDS_MAX_TYPES; the env is the override, not the source",
+    ),
+    # The descriptor builder's three stack arrays. DERIVED from codegen's own
+    # per-type schema walk into `[types]` of the sizing descriptor, and forwarded
+    # to the C++ half by the same build script for the same reason.
+    "NROS_CYCLONEDDS_MAX_FIELDS": (
+        "derived",
+        "DERIVED by phase-454 W6.c from codegen's schema walk (RFC-0100 [types]); "
+        "forwarded to the C++ TUs, which cannot read cargo's [env] themselves",
+    ),
+    "NROS_CYCLONEDDS_MAX_KINDS": (
+        "derived",
+        "DERIVED by phase-454 W6.c from codegen's schema walk (RFC-0100 [types]); "
+        "forwarded to the C++ TUs, which cannot read cargo's [env] themselves",
+    ),
+    "NROS_CYCLONEDDS_MAX_NESTED_DEPTH": (
+        "derived",
+        "DERIVED by phase-454 W6.c from codegen's schema walk (RFC-0100 [types]); "
+        "forwarded to the C++ TUs, which cannot read cargo's [env] themselves",
+    ),
+    # RFC-0100 D11 — the board's `[board.knobs.memory] heap_bytes`, carried to
+    # the one backend that allocates everything. A FACT the ladder resolves
+    # against, not a knob it resolves: nobody tunes it here, the board states it.
+    "NROS_CYCLONEDDS_HEAP_BUDGET_BYTES": (
+        "infra",
+        "the board's declared heap, carried so CycloneDDS can assert it at boot "
+        "(RFC-0100 D11); stated by the board rung, never set here",
+    ),
     "NROS_ENTRY_SPIN_MS": ("sizing", "entry spin period; a duration, same ladder shape"),
     # --- infra: pointers, flags and orchestration inputs ---
     "NROS_BOARD_TOML": ("infra", "the ladder's own board rung pointer"),
@@ -499,6 +534,10 @@ NON_READ_CALLEES = {
     "define",          # emits a C preprocessor macro
     "set_var", "remove_var", "with_env",  # WRITES an environment
     "push", "insert",  # builds a list / a fact map
+    # phase-454 W6.c. `WrittenDescriptor::cyclonedds_env`'s local closure: it
+    # inserts a STATED fact into the `[env]` table the image's cargo config
+    # gets, so the name is written for a consumer to read, never read here.
+    "put",
     "get", "contains", "contains_key", "starts_with",  # inspects one
     # phase-443 W5. `Some("NROS_X")` CONSTRUCTS an Option holding the name --
     # in practice an `assert_eq!(probe.env.as_deref(), Some("NROS_X"))` checking

@@ -219,7 +219,7 @@ One sub-wave per consumer; they are independent and can run in parallel.
 | --- | --- | --- |
 | W6.a | zenoh | `SUBSCRIBER_RING_DEPTH` from declared depth (authored today); `SERVICE_BUFFERS` derived from request/response bounds and given a `// nros-pool:` annotation or a stated reason — it is 144,128 B on a native talker and in neither |
 | W6.b | XRCE | `reliability` gates the two 64 KiB `*_reliable_buf`; one global `BUFFER_SIZE = 1024` splits into three per-family sizes; ring depths take declared depth as their default |
-| W6.c | Cyclone | `MAX_DESCRIPTOR_TYPES` derived from the same count as `MAX_TYPES` (silent-drop overflow at ~86 types today); `MAX_FIELDS`/`MAX_KINDS` from the schema walk codegen already does; heap budget emitted and asserted at boot (D11) |
+| W6.c | Cyclone | **LANDED** — `MAX_DESCRIPTOR_TYPES` derived from the same count as `MAX_TYPES` (silent-drop overflow at ~86 types today); `MAX_FIELDS`/`MAX_KINDS`/`MAX_NESTED_DEPTH` from the schema walk codegen already does; heap budget asserted at boot (D11) |
 | W6.d | uORB | `REGISTRY_CAPACITY` and `PX4_MAX_CALLBACKS` — both trivially derivable, neither wired |
 | W6.e | cffi | `MAX_NODES` from `components().len()`, which is already computed and discarded |
 
@@ -292,6 +292,46 @@ Three outcomes, the same three W4 established: no descriptor → byte-identical 
 every build before this wave (verified: both constants unchanged, no warning
 printed); a refused field → the builtin plus a `cargo::warning` naming the
 refusal; a corrupt descriptor → a hard build error naming the file.
+
+#### W6.c — Cyclone — **LANDED**
+
+Cyclone reads `[types]` and `[target].heap_budget_bytes`, and nothing else — no
+entity counts, no QoS depth, no MTU, no reliability. That is the model working
+rather than a carve-out, and `subscriber.cpp:78-99` is why: this backend
+allocates every payload with `ddsrt_malloc` and owns no receive buffer to class,
+so *"a Cyclone consumer can set the hint, do everything the sizing campaign asks,
+and correctly observe nothing change in this backend."*
+
+**One count, two tables.** `derive_max_descriptor_types` sits beside
+`derive_max_types` and takes the same input, because it is the same SET:
+`TypeRegistry::get_or_build` inserts into the Rust registry and then calls
+`nros_rmw_cyclonedds_register_descriptor` for that type on the next line. The
+arithmetic differs and must — the registry rounds to a power of two for
+`heapless` and floors at 32, while `Entry g_entries[N]` is a plain C array that
+wants the bare demand (D7), with the floor at the pool where a `#if ... < 1`
+now sits.
+
+**The three shape counters come from the walk that was already running.**
+`schema_value::schema_shape_for` counts fields, flattened kinds and nesting depth
+over the `&'static [Field]` graph `build_schema` produces for the bound — one
+walk, not a second derivation. It mirrors `SchemaWalker::push_field_type`, and
+three of its rules are places a plausible reading is wrong: a kind is one
+FieldType NODE and nothing dedups; `Array`/`Sequence`/`BoundedSequence` each add
+a level of depth exactly as `Nested` does; a flat message needs depth **1**, not
+0, because the guard tests on ENTRY. The counters ride
+`nros_message_bounds.json`, and `type_facts` takes the maximum PER COLUMN.
+
+**The one thing that does not reach every road.** The knobs travel as cargo
+`[env]` rows — `option_env!` for the Rust half, and a `cc::Build::define` in
+`nros-rmw-cyclonedds-sys` for the C++ half, which has no other reach. The Zephyr
+Cyclone lane compiles the backend into the app library per image and can take the
+same values through `zephyr_compile_definitions`; the NATIVE CMake road cannot,
+and that is structural rather than an omission: `nros_rmw_cyclonedds` is ONE
+static target `add_subdirectory`'d once per build tree, and a build tree is shared
+by every image at its coordinate, so a `-D` there would be last-configure-wins
+across images. That road keeps the `#ifndef` fallbacks, which is exactly what it
+had before. Wiring it needs a per-entry OBJECT library or a runtime cap, and
+neither belongs in this wave.
 
 ### W7 — contract and `qos_overrides` must agree
 
