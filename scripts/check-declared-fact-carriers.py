@@ -155,9 +155,8 @@ _PROV_LARGE = "which types drove MAX_LARGE"
 
 # `ZPICO_MAX_QUERYABLES` is off both cargo roads for one stated reason, and the
 # leaf sidecar is where that reason is written down at length.
-_QUERYABLES_NOT_DERIVED = "`ZPICO_MAX_QUERYABLES` is DELIBERATELY NOT DERIVED"
-_QUERYABLES_COMPLETED = (
-    "The CMake path completes it with `NROS_DECLARED_INFRA_QUERYABLES`")
+_QUERYABLES_NOT_DERIVED = "`ZPICO_MAX_QUERYABLES` is never stated here as a COUNT"
+_QUERYABLES_COMPLETED = "sizes the queryable table from"
 
 FACT_DISPOSITION = {
     # ---- the entity inventory's counts -----------------------------------
