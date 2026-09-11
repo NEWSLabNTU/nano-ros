@@ -407,6 +407,59 @@ A derived default under the ladder — a stated `depth` still wins — for exact
 the endpoints where a hand-typed depth is most likely wrong, using keys already
 in the schema.
 
+### The margin is ONE slot, and the argument is the phase relationship
+
+`ceil(publish / drain)` is the number of samples emitted during one drain
+period, and it is the right answer only for a queue whose drain instants are
+ALIGNED with its arrivals. They are not: a `queue` subscription and the timer
+that drains it are two independent periodic streams with no phase relationship
+the contract states, and for an unaligned window of length `T` the arrivals of a
+`p`-periodic stream are bounded by `floor(p·T) + 1`. One slot is exactly that
+straggler — the sample that landed just after a drain instant and is still
+queued when the next period's own samples arrive.
+
+Not two, and not a percentage. Every extra slot is a whole message: the arena
+charges `(depth + 1) * bound + (depth + 1) * pointer` per subscription, so
+inflating a DEFAULT is the over-size direction the table above keeps measuring.
+And the things a larger margin would absorb — timer jitter, drain overrun, a
+burst above the declared rate — are bounded by no number that reaches the
+derivation, so a margin covering them would be a guess wearing arithmetic's
+clothes, which is precisely what this decision refuses to let `buffer:` itself
+be. The contract does carry `paths.<p>.max_jitter` and `paths.<p>.miss`; when
+those travel, a jitter-aware margin can be DERIVED and the constant retired.
+
+### MEASURED: two of the three inputs do not reach the build (issue 1339)
+
+phase-454 W8 implemented this and measured what a contract actually delivers,
+resolving `packages/cli/nros-cli-core/tests/fixtures/queue_buffer/` through the
+pinned `nros-launch-resolve`. The retraction above was about what `buffer:`
+MEANS; this is about where it GOES, and it is the more immediate constraint:
+
+| fact | contract key | in the SystemModel? |
+| --- | --- | --- |
+| publish rate | `topics.<t>.rate_hz` | yes — `TopicContract::rate_hz` |
+| publish rate | `<n>.pub.<ep>.min_rate_hz` | yes — `PubContract::min_rate_hz` |
+| drain rate | `<n>.paths.<p>.trigger.timer.rate_hz` | **no** — `PathContract` has no trigger |
+| discipline | `<n>.sub.<ep>.buffer` | **no** — `SubContract` has no `buffer` |
+
+Both gaps are the MODEL SCHEMA's, not nano-ros's. The resolver parses both,
+validates `buffer` (outside `state: true` it is a parse-time error), and
+performs this decision's own division to emit a `[queue-drain-rate]` warning —
+then writes a `sub_endpoints` entry with no discipline and a `node_paths` entry
+carrying `output` alone. So the derivation ships ARMED and inert: no contract in
+this tree can produce a `queue` endpoint, and therefore no image's sizing moves.
+
+Two consequences this RFC should be read with. First, the drain rate nano-ros
+can see is a SUBSTITUTE — the `min_rate_hz` of what a node's timer paths
+publish, the convention `mapper_input::pub_rate_hz` already uses — absent for a
+drain timer that publishes nothing, and the resolver's own `[derivable-min-rate]`
+advice is to delete it. Second, a derived depth is not interchangeable with a
+stated one: `DeclaredDepth` carries a `DepthSource`, the arena reads both and the
+compile-time `NROS_ASSERT_DECLARED_DEPTH` table reads only `Stated`. A default
+that became a `static_assert` would oblige every call site to spell this CLI's
+arithmetic, and moving the margin by one slot would break every image at once —
+the ladder inverted.
+
 ## D10 — single-source the ROS QoS defaults first
 
 ROS defaults are literals in four places (`nros-node/build.rs:27`, the

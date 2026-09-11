@@ -141,7 +141,7 @@ chmod +x "$STUB"
 
 DERIVED_BODY="$TEST_TMPDIR/derived.cmake"
 cat > "$DERIVED_BODY" <<'EOF'
-set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 5)
+set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 6)
 # No NROS_ENTITY_INVENTORY_SOURCE: `to_cmake` stopped emitting it (issue 1228 --
 # it is composer-dependent content in a file whose bytes decide whether cmake
 # runs again), and this fixture mirrors what the producer writes.
@@ -207,7 +207,7 @@ EOF
 
 REFUSED_BODY="$TEST_TMPDIR/refused.cmake"
 cat > "$REFUSED_BODY" <<'EOF'
-set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 5)
+set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 6)
 set(NROS_ENTITY_INVENTORY_STATUS "refused")
 set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 4)
 set(NROS_ENTITY_INVENTORY_REASON "1 of 4 components in this image declare no entities:\n    demo::legacy (demo::Legacy)")
@@ -225,10 +225,11 @@ EOF
 # rather than a literal, because the literal was `2` until phase-403 step 1
 # made 2 the supported version -- at which point the case silently stopped
 # testing anything it claimed to. Step 2 moved it to 3/4, phase-454 W2, which
-# split the depth table by kind, to 4/5, and phase-454 W3, which added the
-# other three QoS policies, to 5/6.
+# split the depth table by kind, to 4/5, phase-454 W3, which added the
+# other three QoS policies, to 5/6, and phase-454 W8, which gave the depth rows
+# a provenance, to 6/7.
 BAD_SCHEMA_BODY="$TEST_TMPDIR/bad-schema.cmake"
-sed 's/SCHEMA_VERSION 5/SCHEMA_VERSION 6/' "$DERIVED_BODY" > "$BAD_SCHEMA_BODY"
+sed 's/SCHEMA_VERSION 6/SCHEMA_VERSION 7/' "$DERIVED_BODY" > "$BAD_SCHEMA_BODY"
 
 NO_SCHEMA_BODY="$TEST_TMPDIR/no-schema.cmake"
 grep -v SCHEMA_VERSION "$DERIVED_BODY" > "$NO_SCHEMA_BODY"
@@ -521,7 +522,7 @@ log_info "D. an unrecognised schema refuses to be read"
 flat() { tr '\n' ' ' | tr -s ' '; }
 OUT="$(derive "$BAD_SCHEMA_BODY" 0 "$META" "$TEST_TMPDIR/d1.cmake" | flat)"
 check
-if ! nros_grep_q "states entity-inventory schema version 6" <<<"$OUT"; then
+if ! nros_grep_q "states entity-inventory schema version 7" <<<"$OUT"; then
     fail "D: a future schema was read rather than refused -- $OUT"
 fi
 check

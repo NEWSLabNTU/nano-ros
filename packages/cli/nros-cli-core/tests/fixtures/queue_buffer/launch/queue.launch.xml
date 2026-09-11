@@ -1,0 +1,8 @@
+<launch>
+  <!-- phase-454 W8 (RFC-0100 D9): `talker` publishes /chatter at 50 Hz and
+       `listener` subscribes with `buffer: queue`, draining it from a 10 Hz
+       timer path that publishes /status. Three facts the contract states and
+       the SystemModel carries unevenly; see queue.contract.yaml. -->
+  <node pkg="demo_pkg" exec="talker" name="talker" />
+  <node pkg="demo_pkg" exec="listener" name="listener" />
+</launch>

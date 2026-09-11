@@ -45,6 +45,13 @@ pub mod leaf_payload_classes;
 /// `NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE` half of
 /// `cmake/NanoRosMessageBounds.cmake`.
 pub mod leaf_take_buffer;
+/// phase-454 W8 (RFC-0100 D9) — `buffer: latest | queue`, the two diagnostics
+/// it earns and the rate-derived depth default it selects.
+///
+/// Deliberately NOT a sizing input in its own right: D9 retracts the earlier
+/// draft that made it the `SLOTS` source. What it does is choose a derivation,
+/// from the two rates the contract already carries.
+pub mod queue_depth;
 /// phase-439 W2 (RFC-0094 D1/D2) — stage 3.5, the resolve phase: the one place
 /// that decides an image's declared counts, run BEFORE any configure so a
 /// reader early in one sees the final answer on its first pass.

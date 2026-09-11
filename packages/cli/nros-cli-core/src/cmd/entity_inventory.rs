@@ -299,6 +299,38 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
     // build script stays on its own default.
     print!("{}", inv.to_env());
 
+    // phase-454 W8 (RFC-0100 D9) -- the two `buffer:` diagnostics.
+    //
+    // WARNINGS, on stderr, and deliberately not gated behind `--require-derived`
+    // or anything else: both shapes are legal, so there is no flag under which
+    // they should become fatal. Stderr and not stdout because stdout is this
+    // verb's ENV TRANSPORT -- a line printed there lands in a
+    // `corrosion_set_env_vars` call site and would be parsed as a variable.
+    for d in inv.buffer_diagnostics() {
+        eprintln!("nros: warning: {}", d.message());
+    }
+
+    // ...and the visible REASON an endpoint that asked for the derivation did
+    // not get one (RFC-0100 D9, acceptance 3).
+    //
+    // Narrowed to endpoints that declared `buffer: queue`, which is the whole
+    // population that asked. A line per subscription would be noise on every
+    // build; a silent decline for an author who wrote `buffer: queue` and got
+    // no default is the failure this campaign keeps paying for -- a derivation
+    // that declines quietly is indistinguishable from one that never ran.
+    for row in inv.queue_depth_defaults() {
+        if row.buffer != Some(crate::queue_depth::BufferDiscipline::Queue) {
+            continue;
+        }
+        if let Err(reason) = &row.outcome {
+            // A stated depth is not a failure -- it is the rung above working.
+            if matches!(reason, crate::queue_depth::NoDefault::DepthStated(_)) {
+                continue;
+            }
+            eprintln!("nros: {}", row.line());
+        }
+    }
+
     let derivation = inv.derive();
     if let crate::entity_inventory::Derivation::Refused { reason } = &derivation {
         if args.require_derived {

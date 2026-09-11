@@ -346,12 +346,43 @@ cause.
 Acceptance: a divergent pair fails the build naming both; an agreeing pair
 builds; a params-only policy fails naming the contract.
 
-### W8 — `buffer:` earns its keep
+### W8 — `buffer:` earns its keep — LANDED, and ARMED rather than firing
 
-Two diagnostics (`queue` at `depth = 1`; `latest` at a large depth), and the
-rate-derived depth default for `queue` endpoints from `topics.<t>.rate_hz` and
-`paths.<p>.trigger.timer.rate_hz` — both keys already in the schema. A stated
-`depth` still wins, per the ladder.
+Two diagnostics (`queue` at `depth = 1`; `latest` at a depth of 2 or more — the
+arena's own break point, where an endpoint stops being a read-latest triple
+buffer and starts paying by the message), and the rate-derived depth default for
+`queue` endpoints. A stated `depth` still wins, per the ladder; the margin is
+**one slot**, from the unaligned-window bound, argued in RFC-0100 D9.
+
+`packages/cli/nros-cli-core/src/queue_depth.rs` is the whole vocabulary and the
+whole arithmetic; `EntityInventory::{queue_depth_defaults, buffer_diagnostics}`
+are the views, and `declared_depths()` is where the ladder runs. `DeclaredDepth`
+gained a `DepthSource`, because the depth table has two consumers that want
+opposite things from a default: `subs_arena` SIZES from it (a default is the
+point) and `to_declared_qos_header` ASSERTS from it (a default there is a
+requirement every call site must match). Schema 5 → 6, with
+`NROS_ENTITY_DERIVED_DEPTHS` publishing the provenance.
+
+**What the wave measured, and it is the finding rather than a caveat.** Of the
+three contract facts the derivation needs, ONE reaches the SystemModel. The
+resolver parses, validates and reasons about the other two — it emits a
+`[queue-drain-rate]` warning performing exactly this division — and the model
+schema has no field for either, so it writes neither. Issue **1339**; RFC-0100 D9
+carries the table. Consequences:
+
+* No contract in this tree can produce a `queue` endpoint, so **no image's
+  sizing moves**, which is acceptance 5 satisfied structurally rather than by
+  luck. The targeted controls are asserted anyway (rates present + no
+  discipline, and `buffer: latest`, both byte-identical).
+* The drain rate that does arrive is a SUBSTITUTE: the `min_rate_hz` of what a
+  node's timer paths publish (`mapper_input::pub_rate_hz`'s convention). Absent
+  for a drain timer that publishes nothing.
+* Acceptances 1, 2 and 4 are asserted over hand-built inventory rows, which is
+  the only road that can reach a `queue` endpoint today; acceptance 3 is
+  asserted end to end from a real contract through the real resolver, where the
+  reported reason is `NotAQueue` precisely because both rates DID arrive.
+* `tests/contract_queue_buffer_reaches_the_model.rs` holds two tripwires that go
+  red the day 1339 closes, each naming the one line to wire.
 
 ### W9 — retirement
 

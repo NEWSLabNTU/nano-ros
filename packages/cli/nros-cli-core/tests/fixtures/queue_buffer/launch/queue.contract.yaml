@@ -1,0 +1,63 @@
+# phase-454 W8 (RFC-0100 D9) -- the shape the rate-derived depth default is FOR.
+#
+# `/chatter` is published at 50 Hz and consumed by a subscription that declares
+# `buffer: queue` -- backlog is its failure mode -- drained batch-wise by a
+# 10 Hz timer path on the same node. Five arrivals a drain period plus the
+# straggler slot the unaligned-window bound forces is a depth of 6, and no line
+# of this file says 6: that is the whole point of deriving it.
+#
+# The fixture exists to MEASURE what survives resolution, not only to assert
+# what an author may write. Of the three facts the derivation needs:
+#
+#   * `topics./chatter.rate_hz`            -> reaches the model
+#   * `listener.paths.drain.trigger.timer` -> DOES NOT (PathContract has no
+#                                             trigger; only `output` survives)
+#   * `listener.sub.chatter.buffer`        -> DOES NOT (SubContract has no
+#                                             `buffer` field at all)
+#
+# The resolver reads both missing halves and reasons about them -- it emits a
+# `[queue-drain-rate]` warning comparing exactly the two rates below -- and then
+# writes neither. Issue 1339; `contract_queue_buffer_reaches_the_model.rs` is
+# the tripwire.
+#
+# `min_rate_hz` on `/listener/status` is not decoration. A periodic path's rate
+# is not carried either, so the drain rate this reader can see is the promise
+# the timer's OUTPUT makes -- the same convention
+# `nros_orchestration_ir::mapper_input::pub_rate_hz` already uses.
+
+version: 1
+
+nodes:
+  talker:
+    pub:
+      chatter: {}
+    paths:
+      tick:
+        output: [chatter]
+        trigger: { timer: { rate_hz: 50 } }
+
+  listener:
+    sub:
+      chatter:
+        state: true
+        buffer: queue
+        qos:
+          history: keep_last
+    pub:
+      status:
+        min_rate_hz: 10
+    paths:
+      drain:
+        output: [status]
+        trigger: { timer: { rate_hz: 10 } }
+
+topics:
+  /chatter:
+    type: std_msgs/msg/Int32
+    rate_hz: 50
+    pub: [talker/chatter]
+    sub: [listener/chatter]
+  /status:
+    type: std_msgs/msg/Int32
+    pub: [listener/status]
+    sub: []
