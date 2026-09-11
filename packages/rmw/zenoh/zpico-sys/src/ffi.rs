@@ -692,6 +692,18 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
+    /// issue 1332 / phase-455 W2.b — how many queries this queryable's
+    /// callback DECLINED, i.e. how many times the slot it had already been
+    /// given was reclaimed. The companion to the refusal count: refusals say
+    /// the table ran out, declines say the arm that used to exhaust it ran.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_reply_slot_declines(
+        _session: *mut zpico_session_t,
+        _queryable_handle: i32,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
     /// issue 0902 / phase-455 W1 — take the pending "this reply-slot table
     /// just saturated" announcement, clearing it. 1 = announce, 0 = nothing.
     #[unsafe(no_mangle)]

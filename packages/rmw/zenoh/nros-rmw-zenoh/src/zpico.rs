@@ -44,10 +44,10 @@ use zpico_sys::{
     zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
     zpico_is_open, zpico_open, zpico_publish, zpico_publish_with_attachment,
     zpico_publish_with_attachment_aliased, zpico_query_reply, zpico_queryable_take_reply_seq,
-    zpico_reply_slot_refusals_total, zpico_reply_slot_stats, zpico_reply_slot_take_announcement,
-    zpico_session_acquire, zpico_session_release, zpico_session_t, zpico_spin_once,
-    zpico_undeclare_liveliness, zpico_undeclare_publisher, zpico_undeclare_queryable,
-    zpico_undeclare_subscriber, zpico_uses_polling,
+    zpico_reply_slot_declines, zpico_reply_slot_refusals_total, zpico_reply_slot_stats,
+    zpico_reply_slot_take_announcement, zpico_session_acquire, zpico_session_release,
+    zpico_session_t, zpico_spin_once, zpico_undeclare_liveliness, zpico_undeclare_publisher,
+    zpico_undeclare_queryable, zpico_undeclare_subscriber, zpico_uses_polling,
 };
 
 // ============================================================================
@@ -882,6 +882,19 @@ impl Context {
             return None;
         }
         Some((held as u32, refusals, capacity))
+    }
+
+    /// issue 1332 / phase-455 W2.b — how many queries this queryable's
+    /// callback DECLINED, or `None` for an invalid handle.
+    ///
+    /// Read this BEFORE believing a `refusals == 0`. Issue 0902's leak is fed
+    /// by declined queries, and the native host lane produces none of them, so
+    /// zero refusals there is not evidence that the table is managed — it is
+    /// the value an unpressed table also reports. Non-zero declines is what
+    /// makes the refusal count a statement.
+    pub fn reply_slot_declines(&self, queryable_handle: i32) -> Option<u32> {
+        let declines = unsafe { zpico_reply_slot_declines(self.handle, queryable_handle) };
+        (declines >= 0).then_some(declines as u32)
     }
 
     /// issue 0902 / phase-455 W1 — true exactly once per TRANSITION of this

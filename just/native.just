@@ -960,6 +960,40 @@ test-ros2-action-zenoh verbose="":
 test-action-completion verbose="":
     @just _test-focused 'binary(=action_multigoal)' {{verbose}}
 
+# A query the service callback DECLINES hands its reply slot back — issue 0902 /
+# issue 1332 / phase-455 W2.b. The NEGATIVE CONTROL that `test-action-completion`
+# above cannot be.
+#
+# W2's probe is green and cannot fail for the right reason: issue 1332 measured
+# `refusals=0` on a tree with `1a032a10b` REVERTED, and again with a ONE-slot
+# table, because the native lane produces no declined queries at all (graph
+# discovery is a liveliness SUBSCRIBER since phase-381; both action client paths
+# are single-in-flight). This one builds the missing population instead of
+# waiting for it: `capacity + 2` empty-payload queries to the server's own
+# keyexpr, which is what the callback's liveliness arm sees.
+#
+# Its own recipe, not `_test-focused`, for two reasons: the test lives in
+# `nros-rmw-zenoh`'s `zenoh_integration` (that helper is hardwired to
+# `-p nros-tests`), and it needs `--features platform-posix`. `_nextest-tolerant`
+# because the router precondition is a `skip_class!` panic, which a bare
+# `cargo nextest` counts as a failure.
+#
+# `--success-output final` unconditionally: the run's product is the counter line
+# (`declines=… held=… refusals=…`), and suppressing it leaves a green nobody can
+# read — which is what issue 1332 is about.
+# Runs one `zenoh_integration` test; needs a zenoh router and nothing else.
+[group("debug")]
+test-reply-slot-decline verbose="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(-p nros-rmw-zenoh --features platform-posix --test zenoh_integration
+          a_declined_query_hands_its_reply_slot_back --no-fail-fast
+          --success-output final)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--failure-output "${NROS_TEST_FAILURE_OUTPUT:-final}")
+    fi
+    just _nextest-tolerant "${args[@]}"
+
 # A QoS STATUS EVENT fires against a live peer and reaches an application
 # callback — phase-433 W6. The four event slots are `produced` and had never met
 # one, and they are the family least able to be tested in isolation: a QoS

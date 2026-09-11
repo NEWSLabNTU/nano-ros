@@ -288,6 +288,22 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * two more entries in the process-global `zpico_get_diag_counters`.
  */
 /**
+ * issue 1332 / phase-455 W2.b — how many queries this queryable's
+ * callback DECLINED, or `ZPICO_ERR_INVALID` for a bad handle.
+ *
+ * A declined query is one the callback dropped without taking its reply
+ * seq — in `shim/service.rs`, the empty-payload liveliness probe, and the
+ * full request ring on an image whose reply table is larger than
+ * `SERVICE_REQUEST_RING_DEPTH` (at the shipped 4 = 4 a query meeting a full
+ * ring has already been refused a slot, so it holds nothing to decline).
+ * Those are what issue 0902's leak fed on, and the
+ * reason this count exists beside the refusal count is that the native
+ * host lane produces NONE of them (issue 1332): a `refusals == 0` there
+ * is the same value whether the table is managed correctly or never
+ * pressed at all. A test that means to control the leak asserts this
+ * moved first, and only then that refusals did not.
+ */
+/**
  * issue 0902 / phase-455 W1 — take the pending "this table just
  * saturated" announcement, clearing it. 1 = announce now, 0 = nothing
  * pending, `ZPICO_ERR_INVALID` for a bad handle.
@@ -794,6 +810,14 @@ int32_t zpico_reply_slot_stats(struct zpico_session_t *_session,
                                int32_t _queryable_handle,
                                uint32_t *_out_refusals,
                                uint32_t *_out_capacity);
+
+/**
+ * issue 1332 / phase-455 W2.b — how many queries this queryable's
+ * callback DECLINED, i.e. how many times the slot it had already been
+ * given was reclaimed. The companion to the refusal count: refusals say
+ * the table ran out, declines say the arm that used to exhaust it ran.
+ */
+int32_t zpico_reply_slot_declines(struct zpico_session_t *_session, int32_t _queryable_handle);
 
 /**
  * issue 0902 / phase-455 W1 — take the pending "this reply-slot table

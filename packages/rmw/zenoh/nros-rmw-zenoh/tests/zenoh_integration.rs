@@ -6,11 +6,12 @@
 #![cfg(feature = "platform-posix")]
 
 use nros_rmw::{
-    Publisher, QoSProfile, Session, SessionMode, Subscription, TopicInfo, Transport,
+    Publisher, QoSProfile, ServiceInfo, Session, SessionMode, Subscription, TopicInfo, Transport,
     TransportConfig,
 };
 use nros_rmw_zenoh::{
-    DEFAULT_LOCATOR, ZenohTransport, effective_client_locator, keyexpr::TopicKeyExpr,
+    DEFAULT_LOCATOR, ZenohServiceServer, ZenohTransport, effective_client_locator,
+    keyexpr::{ServiceKeyExpr, TopicKeyExpr},
     normalize_locator,
 };
 use nros_tests::fixtures::ZenohRouter;
@@ -722,6 +723,249 @@ fn client_session_with_absent_locator_dials_backend_default() {
              ({DEFAULT_LOCATOR}) and connect to the router on port {port}; got {e:?}"
         )
     });
+
+    session.close().expect("Failed to close session");
+}
+
+// ============================================================================
+// issue 0902 / issue 1332 — the declined-query probe
+// ============================================================================
+
+/// The service the probe declares. Nothing answers on this key but the server
+/// under test, and the key is built by the same [`ServiceKeyExpr`] the server
+/// uses — a hand-spelled key that MISSES is indistinguishable from a fix that
+/// works, which is the failure mode issue 1332 is about.
+const PROBE_SERVICE: ServiceInfo<'static> = ServiceInfo::new(
+    "/nros_reply_slot_decline_probe",
+    "example_interfaces/srv/AddTwoInts",
+    "TypeHashNotSupported",
+);
+
+/// How long a probe query waits for a reply that will never come.
+///
+/// The server DECLINES these, so every one of them ends in the client-side
+/// timeout; short enough that `capacity + 2` of them cost under a second.
+const PROBE_QUERY_TIMEOUT_MS: u32 = 200;
+
+/// issue 0902 / issue 1332 — a query the service callback DECLINES gives its
+/// reply slot back, and the probe proves the declined arm was reached at all.
+///
+/// ## What this controls, and why the obvious test could not
+///
+/// zenoh-pico clones a query into one of `ZPICO_MAX_PENDING_REPLIES` slots
+/// BEFORE the user callback runs. `shim/service.rs`'s callback returns early on
+/// two ordinary paths — an empty payload (what a liveliness/discovery probe
+/// looks like through a queryable) and a full request ring — and before
+/// `1a032a10b` the first of those did not return the slot. Four such queries and
+/// the table was gone for the life of the queryable: every later reply failed
+/// silently, which is issue 0902's 20-90 % goal-completion spread.
+///
+/// Issue 1332 measured that the native lane cannot exercise this AT ALL. Graph
+/// discovery here is a liveliness SUBSCRIBER (phase-381 / issue 0903), and a
+/// subscriber delivers samples, not queries; both action client paths are
+/// single-in-flight. So no declined query ever reaches a queryable, and the
+/// refusal counter reads zero on a tree WITH the fix, on a tree with the fix
+/// REVERTED, and even with a ONE-slot table. A green that cannot fail.
+///
+/// This test builds the missing population instead of hoping for it: it sends
+/// `capacity + 2` EMPTY-PAYLOAD queries to the server's own keyexpr — exactly
+/// what the callback's liveliness arm sees — and then asks, in order:
+///
+/// 1. `declines + refusals >= started` — the queries REACHED the queryable.
+///    Without this the assertions below are vacuous, which IS issue 1332.
+/// 2. `held == 0` — no slot is still held. This is the leak, read directly, and
+///    it is what goes red on a default build.
+/// 3. `refusals == 0` — no allocation was refused.
+/// 4. `started == attempts` — the querier's own pool never ran dry.
+///
+/// ## Measured, both directions (2026-09-12), with `1a032a10b`'s reclaim
+/// removed as the negative control
+///
+/// | `ZPICO_MAX_PENDING_REPLIES` | tree | verdict | counters |
+/// | ---: | --- | --- | --- |
+/// | 4 (shipped) | reclaim present | PASS | `started=6 declines=6 held=0 refusals=0` |
+/// | 4 (shipped) | reclaim REVERTED | FAIL | `started=4 declines=4 held=4 refusals=0` |
+/// | 2 | reclaim present | PASS | `started=4 declines=4 held=0 refusals=0` |
+/// | 2 | reclaim REVERTED | FAIL | `started=4 declines=2 held=2 refusals=2` |
+///
+/// `refusals` does NOT move on the shipped build, and that is a property of the
+/// sizes rather than of the fix: `ZPICO_MAX_PENDING_REPLIES` (4) equals the
+/// querier's `ZPICO_MAX_PENDING_GETS` (4), and a leaked slot holds the cloned
+/// query for ever — so it never finalises, the querier's own slot is never
+/// released, and the pool runs dry one query short of a refusal. `held` is the
+/// observable there; `refusals` is what a REAL graph, whose queries come from
+/// other processes with pools of their own, would show.
+///
+/// ## What this does NOT reach
+///
+/// The RING-FULL arm. An empty payload returns above the ring check, so the
+/// request ring stays empty. And at the shipped sizes that arm cannot leak
+/// anyway: `SERVICE_REQUEST_RING_DEPTH` (4) EQUALS `ZPICO_MAX_PENDING_REPLIES`
+/// (4) and an enqueued request consumes one of each, so a query meeting a full
+/// ring has already been refused a slot and holds nothing to reclaim. Measured
+/// with a payload-carrying scratch variant: `declines=0 held=4 refusals=8` at
+/// capacity 4, `declines=8 held=4 refusals=0` at capacity 8. Nor `b56e3d50a`'s
+/// arm, which is the FAILED-REPLY path inside `zpico_query_reply` — this probe
+/// never makes the server reply at all.
+#[test]
+fn a_declined_query_hands_its_reply_slot_back() {
+    // `skip!`, not this file's older `Option`-and-return `router()`: a bare
+    // return reports PASS, and a probe whose whole purpose is to be a negative
+    // control must never be able to pass by not running (CLAUDE.md; issue 0584
+    // for the class).
+    if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
+        nros_tests::skip_class!(capability, "{why}");
+    }
+    let _router = ZenohRouter::start_unique().expect("failed to start zenohd");
+    let router_locator = _router.locator();
+
+    let config = TransportConfig {
+        locator: Some(router_locator.as_str()),
+        mode: SessionMode::Client,
+        properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
+    };
+    let mut session = ZenohTransport::open(&config)
+        .unwrap_or_else(|e| panic!("could not open a client session on {router_locator}: {e:?}"));
+
+    // The REAL shim server, so the callback under test is the one that ships.
+    let server = ZenohServiceServer::new(session.inner(), &PROBE_SERVICE, None)
+        .expect("failed to declare the probe service server");
+    let queryable = server.queryable_handle();
+
+    let (held, refusals, capacity) = session
+        .inner()
+        .reply_slot_stats(queryable)
+        .expect("the probe server's queryable handle must address a reply-slot table");
+    assert_eq!(held, 0, "a freshly declared queryable holds no reply slot");
+    assert_eq!(refusals, 0, "a freshly declared queryable refused nothing");
+    assert!(capacity >= 1, "ZPICO_MAX_PENDING_REPLIES must be >= 1");
+
+    // One MORE than the table holds, so a tree that never reclaims runs OUT
+    // rather than merely filling up — the difference between a leak that is
+    // latent and a leak that is observable.
+    let attempts = capacity + 2;
+
+    // The key the SERVER declared, derived the same way it derives it.
+    let key: heapless::String<256> = PROBE_SERVICE.to_key();
+    let mut keyexpr = [0u8; 257];
+    assert!(key.len() < keyexpr.len(), "probe keyexpr does not fit");
+    keyexpr[..key.len()].copy_from_slice(key.as_bytes());
+
+    let mut reply = [0u8; 64];
+    let mut started = 0u32;
+    let mut finalised = 0u32;
+    let mut start_error = None;
+
+    for _ in 0..attempts {
+        // An EMPTY payload is what makes this a DECLINED query: the callback's
+        // first early return (`shim/service.rs`) drops exactly this shape.
+        //
+        // A start FAILURE is not fatal here, and the reason is the defect
+        // itself: a leaked slot holds the cloned query for ever, so the query
+        // never finalises, so the CLIENT's own pending-get slot is never
+        // released either and the pool runs dry a few queries in. That is the
+        // leak arriving one layer out, not a separate fault — record it and let
+        // the reply-slot assertions below say what happened.
+        let handle = match session
+            .inner()
+            .get_start(&keyexpr, &[], PROBE_QUERY_TIMEOUT_MS)
+        {
+            Ok(h) => h,
+            Err(e) => {
+                start_error = Some(e);
+                break;
+            }
+        };
+        started += 1;
+
+        // Best-effort drain. A declined query finalises as soon as the server
+        // drops it, which is what makes the client slot reusable; if it does
+        // not, move on rather than asserting on the client side — the table is
+        // what is under test.
+        let deadline = std::time::Instant::now()
+            + Duration::from_millis(u64::from(PROBE_QUERY_TIMEOUT_MS) * 2);
+        while std::time::Instant::now() < deadline {
+            let _ = session.spin_once(5);
+            match session.inner().get_check(handle, &mut reply) {
+                // A reply would mean the server ANSWERED an empty-payload
+                // query, which is not the arm under test.
+                Ok(Some(len)) => panic!(
+                    "a probe query was answered with {len} bytes — an empty-payload \
+                     query must be DECLINED by the service callback, not replied to"
+                ),
+                Ok(None) => {}
+                // The query ended with no reply: the declined path, completed.
+                Err(_) => {
+                    finalised += 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    let declines = session
+        .inner()
+        .reply_slot_declines(queryable)
+        .expect("the probe server's queryable handle must address a decline count");
+    let (held, refusals, _) = session
+        .inner()
+        .reply_slot_stats(queryable)
+        .expect("the probe server's queryable handle must address a reply-slot table");
+
+    println!(
+        "phase-455 W2.b: attempts={attempts} started={started} finalised={finalised} \
+         capacity={capacity} declines={declines} held={held} refusals={refusals}"
+    );
+
+    // 1 — the POSITIVE control, and the reason this test is not another green
+    // that cannot fail. Everything below is about a population that has to
+    // exist first, and on this lane nothing else creates it (issue 1332).
+    //
+    // `declines + refusals`, not `declines`: a query REFUSED a slot never gets
+    // a reply seq, so `query_handler`'s decline arm cannot see it. Both counts
+    // together are "reached this queryable and was not answered", which is what
+    // reach means here. Measured — on a two-slot table with the reclaim
+    // reverted this read `declines=2 refusals=2` for four queries, and
+    // `declines >= started` alone called that a probe that had missed.
+    assert!(
+        declines + refusals >= started && started > 0,
+        "{declines} declines + {refusals} refusals for {started} empty-payload \
+         queries started — the probe did not reach the queryable under test, so the \
+         reply-slot assertions below would say nothing (issue 1332). The server \
+         declared {key}"
+    );
+
+    // 2 — the leak, read directly off the table.
+    assert_eq!(
+        held, 0,
+        "{held} of {capacity} reply slots are still HELD after {declines} declined \
+         queries — a query the callback dropped kept its slot for the life of the \
+         queryable, which is issue 0902's leak (fixed by `1a032a10b`). \
+         started={started}, finalised={finalised}, start_error={start_error:?} \
+         (a client-side pool exhaustion here is the same leak: a held query never \
+         finalises, so the querier's slot is never released either)"
+    );
+
+    // 3 — and what the leak costs once the table is gone: from here on every
+    // reply fails silently and a goal is accepted, executed and never answered.
+    assert_eq!(
+        refusals, 0,
+        "the reply-slot table refused {refusals} allocation(s) over {declines} \
+         declined queries against a table of {capacity} (issue 0902)"
+    );
+
+    // 4 — and only now, the client side. Stated last because its failure is a
+    // CONSEQUENCE of 2: with slots reclaimed, every probe query finalises and
+    // the querier's pool recycles, so all of them start.
+    assert_eq!(
+        started, attempts,
+        "only {started} of {attempts} probe queries could be started \
+         ({start_error:?}) — with the reply slot reclaimed, a declined query \
+         finalises at once and the querier's pending-get pool recycles"
+    );
 
     session.close().expect("Failed to close session");
 }
