@@ -1,0 +1,19 @@
+# Root-workspace `exclude` entries that no manifest fact justifies.
+#
+# phase-451 W3, issue 1217. `scripts/check-workspace-exclude-list.py` derives a
+# reason for an exclusion from the tree itself (own `[workspace]`, a nested
+# workspace above it, its own tracked `Cargo.lock`, a pinned `[build] target`,
+# a cross-only dependency, or no Rust target at all). The entries below satisfy
+# none of those and are excluded anyway, for a reason that is real but is not a
+# cargo fact.
+#
+# This list is a RATCHET: it may only SHRINK. Adding a line is how the unaudited
+# list of 2026-07-28 grew back, so a new entry should be a workspace member
+# instead, or should gain the manifest fact that justifies it.
+#
+# Format: <path>  # <reason>
+
+packages/boards/nros-board-freertos    # generic FreeRTOS+lwIP facade; the kernel and lwIP build glue is not a cargo fact, and a host `cargo check` of it links nothing
+packages/boards/nros-board-threadx     # generic ThreadX+NetX-Duo facade; same shape as nros-board-freertos
+packages/boards/nros-board-nuttx       # thin NuttX facade — NuttX owns the kernel build through its own apps/external + Make.defs
+packages/platform/nros-baremetal-common # shared bare-metal helpers (PRNG, sleep, libc stubs); embedded-only, with no cross-only dependency naming it

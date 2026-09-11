@@ -2255,6 +2255,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-transport-callbacks"
+version = "0.5.0"
+dependencies = [
+ "nros-rmw",
+]
+
+[[package]]
 name = "nros-zephyr-build"
 version = "0.5.0"
 

@@ -3,7 +3,7 @@ id: 1217
 title: "The root workspace `exclude` list is unaudited: one host-buildable crate
   is excluded for no reason and 36 of its 174 entries name directories that do
   not exist"
-status: open
+status: resolved
 type: tech-debt
 area: [build, ci, rmw]
 related: [0895, 0948, 0894, 0386, phase-451]
@@ -94,3 +94,49 @@ entries that *are* in the list.
    the five structural reasons or carry an explanatory comment on its own line.
    Both halves are cheap and neither needs a build. This is deliberately *not* a
    gate on the 0895 leaf class, which is harder and separately owned.
+
+## Resolved (phase-451 W3, 2026-09-11)
+
+Three changes, and the audit found more than the filing did.
+
+**The 36 stale entries are gone.** They sat in six contiguous runs of six, each
+under a comment describing only that run, so each run and its comment were
+removed together: the `threadx-linux`, `mps2-an385-freertos` and
+`qemu-armv7a-nuttx` Entry-package siblings, and the `threadx-linux` /
+`rv-virt-threadx` zenoh example sets. 165 exclude entries to 128.
+
+**`packages/rmw/transport-callbacks` is a member.** It builds clean on the host
+(`cargo check --manifest-path packages/rmw/transport-callbacks/Cargo.toml`,
+2026-09-11), and `cargo metadata` resolves with it in `members`. `Cargo.lock`
+gains exactly one entry — `nros-transport-callbacks` and its single dep
+`nros-rmw`, seven lines — and nothing else in the lock moves. (An earlier note
+here said the lock was unchanged; that was read before the lock had been
+regenerated. The change is minimal, not absent.)
+
+**The five structural reasons this issue names were not enough — there are
+seven.** Classifying all 129 surviving entries against the five left 17
+unjustified, which is not "one crate excluded for no reason" and would have made
+the gate unlandable. Two more reasons are real and derivable:
+
+* **a package whose ANCESTOR carries the `[workspace]` table** — a member of a
+  nested workspace. This is all 11 fixture leaf packages under
+  `packages/testing/nros-tests/fixtures/*/`, and it collapsed 17 to 7.
+* **a package declaring no Rust target at all** — no `src/`, no `[lib]`, no
+  `[[bin]]`. `packages/interfaces/rcl-interfaces` and `lifecycle-msgs` are this:
+  metadata shells whose real crates are the generated ones underneath.
+
+That left 4: `nros-board-{freertos,threadx,nuttx}` and
+`nros-baremetal-common`. These are genuinely cross-only in a way no manifest
+fact states — no cross-only dependency, no pinned target; the kernel build glue
+is simply not a cargo fact. They are DECLARED in
+`.config/workspace-exclude-reasons.txt`, a shrink-only ratchet, rather than
+given an invented derivation. A gate asserting a reason it did not measure is
+the defect phase-450 exists for.
+
+**Gate:** `just check workspace-exclude-list`
+(`scripts/check-workspace-exclude-list.py`, registered in `just/check/cargo.just`
+beside its sibling `nested-workspace-excludes`). It self-tests its three
+classifier arms on every run, and both failure arms were mutation-tested: a
+fabricated stale entry and re-excluding `transport-callbacks` each exit 1, and
+the restored tree exits 0.
+

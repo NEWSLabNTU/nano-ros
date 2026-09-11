@@ -3,7 +3,7 @@ id: 1213
 title: "`probe_net_type_sizes` publishes its result through two carriers aimed at
   `zpico-platform-shim`, a crate Phase 129.D deleted — and its doc comment states
   the opposite of what the code 280 lines below it says"
-status: open
+status: resolved
 type: bug
 area: rmw, build
 severity: low
@@ -125,3 +125,35 @@ grep -rn 'ZPICO_NET_SIZES_FILE' --include='*.rs' . \
   | grep -v third-party | grep -v '/build/'
 ls packages/rmw/zenoh/          # no zpico-platform-shim
 ```
+
+## Resolved (phase-451 W2, 2026-09-11)
+
+Both dead carriers are gone from `probe_net_type_sizes`
+(`packages/rmw/zenoh/nros-zpico-build/src/runner.rs`):
+
+* `println!("cargo:SOCKET_SIZE=…")` / `cargo:ENDPOINT_SIZE=…` — the `DEP_ZPICO_*`
+  pair, on both the measured path and the host fallback.
+* `println!("cargo:rustc-env=ZPICO_NET_SIZES_FILE=…")`.
+
+Re-measured before removing, with `git grep` over `*.rs` / `*.toml` / `*.c` /
+`*.h` excluding `third-party/`: neither `DEP_ZPICO_SOCKET_SIZE`,
+`DEP_ZPICO_ENDPOINT_SIZE` nor `ZPICO_NET_SIZES_FILE` had a single reader, and
+`zpico-platform-shim` has no tracked file — phase-129.D retired it, and the
+remaining mentions of the name are comments that say so.
+
+The surviving carrier is `<OUT_DIR>/net_type_sizes.txt`, whose only reader is
+this same crate: the bare-metal alias TU reads it back into
+`NROS_ZP_VENDOR_NET_SOCKET_SIZE` / `…_ENDPOINT_SIZE` for a `_Static_assert`
+against the vendor layout. The doc comment now names that reader instead of
+describing the dead path, and says to delete the probe with the reader rather
+than leave a file written for nobody.
+
+**One behaviour deliberately NOT changed.** On probe failure the function still
+writes no file, so the reader omits the defines and the static assert is
+skipped — documented at the read site as intentional. Writing the 16/8 fallback
+into the file would have "tidied" the fallback into arming an assert against
+sizes nobody measured. The fallback's `cargo:warning` now says what the missing
+file means, instead of naming the two variables it used to print.
+
+`cargo check -p nros-zpico-build`: clean.
+
