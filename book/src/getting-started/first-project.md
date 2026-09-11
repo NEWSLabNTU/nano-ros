@@ -42,7 +42,8 @@ generates the entry for each `[image.*]` in `system.toml` and drives
 CMake under `build/`. The first build compiles nano-ros's runtime into
 the build tree (~3 minutes); rebuilds are seconds. Outside a nano-ros
 checkout, `nros` finds the SDK itself; inside one, `direnv`/`activate.sh`
-exports `NROS_REPO_DIR` and that is used.
+exports `NROS_REPO_DIR` and that is used. `nros sdk-root --explain`
+prints the root it would use and where that came from.
 
 ## Run
 
