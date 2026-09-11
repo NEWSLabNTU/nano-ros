@@ -122,6 +122,16 @@ pub enum NodeDeclError {
     /// different faults with different fixes, and one opaque variant made them
     /// the same line on a serial console.
     ParameterRejected,
+    /// A component CELL registry is full -- the class creates more entities of
+    /// one kind (publishers, service servers/clients, action servers/clients)
+    /// than its registry holds.
+    ///
+    /// issue 1130 -- split out of [`Self::Runtime`] BEFORE that capacity became
+    /// derivable. phase-412's rule: a derived count is safe only where
+    /// exhaustion NAMES the knob, and a bare "component runtime rejected
+    /// declaration" named nothing. The capacity is the class's `ENTITY_BOUNDS`
+    /// when it states one, else `NROS_RUNTIME_MAX_CELL_ENTITIES`.
+    CellRegistryFull,
 }
 
 impl NodeDeclError {
@@ -149,6 +159,11 @@ impl NodeDeclError {
                 "executor callback table full — raise NROS_EXECUTOR_MAX_CBS \
                  (build-time, default 4)"
             }
+            Self::CellRegistryFull => {
+                "component cell registry full — raise the class's ENTITY_BOUNDS, \
+                 or NROS_RUNTIME_MAX_CELL_ENTITIES (build-time, default 8) for a \
+                 class that states none"
+            }
         }
     }
 }
@@ -156,6 +171,22 @@ impl NodeDeclError {
 impl From<NodeMetadataError> for NodeDeclError {
     fn from(value: NodeMetadataError) -> Self {
         Self::Metadata(value)
+    }
+}
+
+#[cfg(test)]
+mod cell_registry_full_tests {
+    use super::NodeDeclError;
+
+    /// Issue 1130 -- the precondition for deriving the cell capacity: running
+    /// out NAMES both remedies, where it used to read "component runtime
+    /// rejected declaration".
+    #[test]
+    fn a_full_cell_registry_names_the_knob_and_the_class_bound() {
+        let m = NodeDeclError::CellRegistryFull.message();
+        assert!(m.contains("NROS_RUNTIME_MAX_CELL_ENTITIES"), "{m}");
+        assert!(m.contains("ENTITY_BOUNDS"), "{m}");
+        assert_ne!(m, NodeDeclError::Runtime.message());
     }
 }
 

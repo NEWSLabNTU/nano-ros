@@ -66,6 +66,17 @@ pub const ACTION_SERVER_PUBLISHERS: usize = 2;
 /// for.
 pub const ACTION_CLIENT_SUBSCRIPTIONS: usize = 1;
 
+/// Service CLIENTS an action CLIENT creates, per action: `send_goal`,
+/// `cancel_goal` and `get_result` (the `create_client` calls below).
+///
+/// phase-412 -- the liveliness pool needs it. Every service client the session
+/// opens declares one liveliness token (`create_client` in the zenoh shim), so
+/// an `action_client` spec is one declared entity and THREE tokens; a pool
+/// sized from the raw count is short for every image with an action client.
+/// Held to the distinct `create_client(&<name>_info` channels by
+/// `check-infra-queryable-counts`, same rule as the three above.
+pub const ACTION_CLIENT_SERVICE_CLIENTS: usize = 3;
+
 // ============================================================================
 // Raw action registration specs
 // ============================================================================

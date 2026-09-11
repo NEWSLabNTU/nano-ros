@@ -290,6 +290,7 @@ function(nros_derive_entity_inventory_knobs)
                NROS_DERIVED_MAX_SUBSCRIBERS NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
                NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES
                NROS_DERIVED_EXECUTOR_MAX_NODES
+               NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
                NROS_ENTITY_INVENTORY_ENTITY_TOTAL
                NROS_ENTITY_DECLARED_DEPTH_STATUS NROS_ENTITY_DECLARED_DEPTH_REASON
                NROS_ENTITY_DECLARED_DEPTHS NROS_ENTITY_DECLARED_DEPTH_COUNT
@@ -410,7 +411,8 @@ function(nros_derive_entity_inventory_knobs)
     # a derived value or reads nothing.
     foreach(_pool NROS_DERIVED_MAX_SUBSCRIBERS NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
                   NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES
-                  NROS_DERIVED_EXECUTOR_MAX_NODES)
+                  NROS_DERIVED_EXECUTOR_MAX_NODES
+                  NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES)
         if(DEFINED ${_pool})
             _nros_entity_publish(${_pool} "${${_pool}}")
         endif()
@@ -526,6 +528,14 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_DERIVED_MAX_PUBLISHERS
         NROS_DERIVED_MAX_QUERYABLES
         NROS_DERIVED_EXECUTOR_MAX_NODES
+        # phase-412 W2 / issue 1130 -- the liveliness pool and the cell
+        # registry bound. Listed here because this dump IS the module's own
+        # diagnostic surface and the one `tests/cmake-entity-inventory-tests.sh`
+        # reads: a value that crosses the function boundary and is not printed
+        # here is untestable and invisible, which is how the other half of a
+        # publish comes to be missing without anyone noticing.
+        NROS_DERIVED_MAX_LIVELINESS
+        NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
         NROS_ENTITY_COUNT_PUBLISHER
         NROS_ENTITY_COUNT_SUBSCRIPTION
         NROS_ENTITY_COUNT_TIMER

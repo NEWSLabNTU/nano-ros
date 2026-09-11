@@ -294,8 +294,22 @@ function(_nros_entity_budget_env _out_var)
     # failing. A constructed name is also invisible to `grep`, which is how
     # `check-declared-fact-carriers` reads this file -- so a fact spelled only
     # in pieces would be delivered and still report as unproduced.
+    #
+    # `NROS_DERIVED_MAX_LIVELINESS` is NOT carried on this road (phase-412 W2).
+    # It counts a token per parameter and lifecycle server, which the fragment
+    # knows only from the model it was composed with -- on a multi-entry
+    # configure, ONE entry's model. The queryable sizing on this road completes
+    # that infrastructure term at the consumer from per-entry facts; the
+    # liveliness pool has no such completion, so it keeps the zpico default.
     set(_out "")
     foreach(_pair
+            # issue 1130 -- the per-kind cell registry capacity for a class that
+            # states no ENTITY_BOUNDS. Composed across entries by MAX with no
+            # accumulator here: the fragment is ONE per configure, derived over
+            # every component this configure registered, so its number already
+            # is the largest component's -- and it is absent (the whole road
+            # abstains) when any component declared nothing.
+            "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES;NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES"
             "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS;NROS_DERIVED_EXECUTOR_ACTION_CLIENTS"
             "NROS_DECLARED_EXECUTOR_MAX_CBS;NROS_DERIVED_EXECUTOR_MAX_CBS"
             "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS;NROS_DERIVED_RMW_SUBSCRIBER_SLOTS"

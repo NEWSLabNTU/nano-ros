@@ -412,7 +412,8 @@ mod tests {
         // clamped by build.rs to the MAX_CBS emitted beside it.
         assert_eq!(
             inv.to_env(),
-            "NROS_EXECUTOR_MAX_CBS=2\nNROS_EXECUTOR_ACTION_CLIENTS=0\n"
+            "NROS_EXECUTOR_MAX_CBS=2\nNROS_EXECUTOR_ACTION_CLIENTS=0\n\
+             NROS_RUNTIME_MAX_CELL_ENTITIES=1\n"
         );
     }
 

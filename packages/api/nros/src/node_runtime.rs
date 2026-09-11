@@ -96,6 +96,23 @@ const MAX_SINK_NODES: usize = 4;
 // cell ~20 KB up front. 8 is per-component-shaped; a component declaring more
 // gets a loud registration error naming `NROS_RUNTIME_MAX_CELL_ENTITIES`.
 
+/// issue 1130 -- a cell registry refused an entity. ONE spelling for all six
+/// sites (four registries, three ctx slabs, minus the overlap), so none of them
+/// can go back to a bare `Runtime`. Logged as well as returned: the install
+/// seam collapses every non-`ExecutorFull` error to `NodeRegister(pkg)`, so the
+/// console line is what a board with no debugger actually shows.
+fn cell_full(kind: &str) -> NodeDeclError {
+    nros_log::log_error!(
+        nros_log::get_logger("nros"),
+        "component cell registry full: this class creates more {} than its \
+         registry holds. Raise the class's ENTITY_BOUNDS, or \
+         NROS_RUNTIME_MAX_CELL_ENTITIES (build-time, default 8; derived from \
+         the image's declared entities when nothing states it).",
+        kind
+    );
+    NodeDeclError::CellRegistryFull
+}
+
 /// Owned copy of a name-shaped `&str`, or the registration error that says
 /// which knob-less bound it burst.
 fn id_str(s: &str) -> Result<IdStr, NodeDeclError> {
@@ -1500,7 +1517,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 self.cell
                     .view()
                     .push_publisher(id_owned, handle)
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(|_| cell_full("publishers"))?;
                 Ok(())
             }
             EntityKind::Subscription => {
@@ -1601,7 +1618,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                         cell: self.cell.clone(),
                         callback_id: id_str(cb_id.as_str())?,
                     })
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(|_| cell_full("service servers"))?;
                 self.executor
                     .register_service_raw_sized_on::<1024, 1024>(
                         node,
@@ -1631,7 +1648,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 self.cell
                     .view()
                     .push_service_client(id_str(metadata.id.as_str())?, hid)
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(|_| cell_full("service clients"))?;
                 Ok(())
             }
             EntityKind::ActionServer => {
@@ -1657,7 +1674,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                         cancel_callback_id: id_str(cancel_cb.as_str())?,
                         accepted_callback_id: accepted_cb,
                     })
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(|_| cell_full("action servers"))?;
                 let handle = self
                     .executor
                     .register_action_server_raw_sized::<1024, 1024, 1024, 4>(
@@ -1677,7 +1694,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 self.cell
                     .view()
                     .push_action_server(id_str(metadata.id.as_str())?, handle)
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(|_| cell_full("action servers"))?;
                 Ok(())
             }
             EntityKind::ActionClient => {
@@ -1704,7 +1721,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                                 result_callback_id: id_str(result_cb.as_str())?,
                                 feedback_callback_id: feedback_cb.clone(),
                             })
-                            .map_err(|_| NodeDeclError::Runtime)?;
+                            .map_err(|_| cell_full("action clients"))?;
                         let fb = feedback_cb.map(|_| action_feedback_trampoline as _);
                         (Some(action_result_trampoline as _), fb, ctx)
                     }
@@ -1728,7 +1745,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 self.cell
                     .view()
                     .push_action_client(id_str(metadata.id.as_str())?, handle.entry_index())
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(|_| cell_full("action clients"))?;
                 Ok(())
             }
             EntityKind::Parameter => {

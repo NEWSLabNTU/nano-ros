@@ -545,6 +545,19 @@ const ACTION_CLIENT_SUBSCRIPTIONS: usize = 1;
 const PARAM_SERVICE_QUERYABLES: usize = 6;
 const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 
+/// MIRROR of `nros_node::executor::action::ACTION_CLIENT_SERVICE_CLIENTS`,
+/// held there by `check-infra-queryable-counts`: the three service clients an
+/// action client opens, each of which declares a liveliness token.
+const ACTION_CLIENT_SERVICE_CLIENTS: usize = 3;
+
+/// phase-412 -- the liveliness token the zenoh session declares for its OWN
+/// node name at open (`ZenohSession::new`, `node_liveliness`), before any
+/// component's per-node token. It is dropped only when a per-node token with a
+/// DIFFERENT name supersedes it; in the single-node case the component shares
+/// the primary name and the two tokens coexist for the life of the session, so
+/// this is a permanent slot and not a transient one.
+const PRIMARY_NODE_LIVELINESS_TOKENS: usize = 1;
+
 /// Issue 1270 -- the service servers the RUNTIME creates on an image's behalf.
 ///
 /// No component declares them, and for a while that was read as "this
@@ -704,6 +717,56 @@ pub struct DerivedEntityKnobs {
     /// same argument that let `MAX_CBS` derive, where the shortfall surfaces as
     /// `ExecutorFull` naming the knob. An image that bridges states this knob.
     pub max_nodes: usize,
+    /// `NROS_MAX_LIVELINESS` / `ZPICO_MAX_LIVELINESS` (phase-412 W2) -- every
+    /// liveliness token THIS session declares. Not the peer graph: a remote
+    /// node's token lives in the graph cache, and the cache's own liveliness
+    /// SUBSCRIBER takes no slot in this array.
+    ///
+    /// Read off the zenoh shim (`shim/session.rs`), term by term:
+    ///
+    /// * [`PRIMARY_NODE_LIVELINESS_TOKENS`] -- the session's own node token.
+    /// * one per node NAME (`ensure_node_liveliness`, deduplicated by name):
+    ///   the larger of [`Self::max_nodes`] and the parameter-service node
+    ///   count, plus one when the bringup declares `lifecycle`, whose five
+    ///   servers register under the EXECUTOR's node name, which need not be a
+    ///   component's.
+    /// * one per publisher, subscriber, service server and service client --
+    ///   `create_publisher` / `create_subscription` / `create_service` /
+    ///   `create_client` each call `declare_entity_liveliness` once. That is
+    ///   [`Self::max_publishers`] + [`Self::max_subscribers`] +
+    ///   [`Self::max_queryables`] (so the action multipliers and the param /
+    ///   lifecycle servers of issue 1270 are already in) + the service
+    ///   clients, three of them per action client.
+    ///
+    /// Timers and guard conditions declare nothing. Every term errs HIGH where
+    /// the shim is ambiguous (a component sharing the executor's name reuses
+    /// one token; this counts two), and exhaustion is NAMED, not silent: the
+    /// C arm printks the knob and the Rust arm logs it (phase-412, PR 749).
+    /// Short is not a boot failure -- the entity works and is invisible to
+    /// `ros2 node list` -- but it is exactly the silent graph outage issue
+    /// 0283 exists to prevent, so the derivation does not gamble on it.
+    ///
+    /// UNDER-counts only for a bridge (two runtime-named nodes and their
+    /// entities, declared nowhere) -- the `max_nodes` exception, one pool over.
+    pub max_liveliness: usize,
+    /// `NROS_RUNTIME_MAX_CELL_ENTITIES` (issue 1130) -- the per-KIND capacity of
+    /// a component cell's registries when its class states no `ENTITY_BOUNDS`.
+    ///
+    /// The max over components of the max over the five kinds a cell
+    /// registers: publishers, service servers, service clients, action
+    /// clients, action servers. Subscriptions and timers reach no cell
+    /// registry. One number because the knob is one number: every
+    /// knob-capped class gets the same capacity per kind, so it must hold the
+    /// largest single kind of the largest component.
+    ///
+    /// ZERO IS LEGAL and is published unfloored: the registries are Rust
+    /// arrays, `EntityBounds::exact(0, 1, 0, 0, 0)` is already the in-tree
+    /// spelling for "none of this kind", and an image whose components declare
+    /// none of the five simply carries empty registries. A short registry is a
+    /// `NodeDeclError::CellRegistryFull` at registration, which names this
+    /// knob. An explicit `ENTITY_BOUNDS` still wins: it is per CLASS, and the
+    /// knob only sizes the classes that state nothing.
+    pub max_cell_entities: usize,
     /// Per-kind counts across the image, in [`ALL_ENTITY_KINDS`] order.
     pub per_kind: BTreeMap<&'static str, usize>,
     /// Per-component `(pkg, component, entities, slots)`, so the output records
@@ -1489,17 +1552,33 @@ impl EntityInventory {
         let mut max_cbs = 0usize;
         let mut heavy_slots = 0usize;
         let mut entity_total = 0usize;
+        // Issue 1130 -- per COMPONENT, per KIND, over the five kinds a cell
+        // registers. Counted in this loop, beside the per-kind totals, so the
+        // cell bound and every other knob read one pass over one declaration.
+        let mut max_cell_entities = 0usize;
         for c in self.components() {
             let mut slots = 0usize;
             let mut count = 0usize;
+            let mut cell: BTreeMap<&'static str, usize> = BTreeMap::new();
             for e in c.declaration.entities() {
                 *per_kind.entry(e.kind.tag()).or_insert(0) += 1;
                 slots += e.kind.callback_slots();
                 if matches!(e.kind, EntityKind::ActionClient | EntityKind::ActionServer) {
                     heavy_slots += e.kind.callback_slots();
                 }
+                if matches!(
+                    e.kind,
+                    EntityKind::Publisher
+                        | EntityKind::ServiceServer
+                        | EntityKind::ServiceClient
+                        | EntityKind::ActionClient
+                        | EntityKind::ActionServer
+                ) {
+                    *cell.entry(e.kind.tag()).or_insert(0) += 1;
+                }
                 count += 1;
             }
+            max_cell_entities = max_cell_entities.max(cell.values().copied().max().unwrap_or(0));
             max_cbs += slots;
             entity_total += count;
             per_component.push((c.pkg.clone(), c.component.clone(), count, slots));
@@ -1556,6 +1635,16 @@ impl EntityInventory {
             + infra_queryables;
         let max_nodes = self.components().len();
 
+        // phase-412 W2 -- the liveliness pool. Terms and their call sites are
+        // on the field; every one is a count this derivation already made.
+        let service_clients = n(EntityKind::ServiceClient.tag())
+            + n(EntityKind::ActionClient.tag()) * ACTION_CLIENT_SERVICE_CLIENTS;
+        let node_tokens = max_nodes.max(param_service_nodes)
+            + PRIMARY_NODE_LIVELINESS_TOKENS
+            + usize::from(self.infra.lifecycle);
+        let max_liveliness =
+            node_tokens + max_publishers + max_subscribers + max_queryables + service_clients;
+
         Derivation::Derived(Box::new(DerivedEntityKnobs {
             max_cbs,
             heavy_slots,
@@ -1566,6 +1655,8 @@ impl EntityInventory {
             infra_queryables,
             param_service_nodes,
             max_nodes,
+            max_liveliness,
+            max_cell_entities,
             per_kind,
             per_component,
         }))
@@ -1906,6 +1997,9 @@ impl EntityInventory {
                 // runtime's share of it.
                 doc.insert("max_queryables".into(), k.max_queryables.into());
                 doc.insert("infra_queryables".into(), k.infra_queryables.into());
+                // phase-412 W2 / issue 1130 -- additive, like the two above.
+                doc.insert("max_liveliness".into(), k.max_liveliness.into());
+                doc.insert("max_cell_entities".into(), k.max_cell_entities.into());
                 doc.insert(
                     "per_kind".into(),
                     serde_json::Value::Object(
@@ -2206,6 +2300,22 @@ impl EntityInventory {
                     "set(NROS_DERIVED_EXECUTOR_MAX_NODES {})\n",
                     k.max_nodes
                 ));
+                // phase-412 W2 -- the liveliness pool. Local tokens only.
+                s.push_str(
+                    "# Liveliness tokens THIS session declares (not the peer graph): one\n                     # for the session's own node, one per node name (plus the executor's\n                     # when lifecycle is declared), and one per publisher, subscriber,\n                     # service server and service client -- the session pools above plus\n                     # three clients per action client. Exhaustion names the knob.\n",
+                );
+                s.push_str(&format!(
+                    "set(NROS_DERIVED_MAX_LIVELINESS {})\n",
+                    k.max_liveliness
+                ));
+                // Issue 1130 -- the knob-capped cell registries.
+                s.push_str(
+                    "# Per-kind cell registry capacity for a class that states no\n                     # ENTITY_BOUNDS: the largest single kind in any one component, over\n                     # publishers, service servers/clients, action servers/clients.\n                     # Zero is a legal answer; an explicit ENTITY_BOUNDS still wins.\n",
+                );
+                s.push_str(&format!(
+                    "set(NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES {})\n",
+                    k.max_cell_entities
+                ));
             }
         }
 
@@ -2256,9 +2366,16 @@ impl EntityInventory {
             // is only meaningful against the `MAX_CBS` it is clamped to, and
             // emitting one without the other would size an arena against a
             // slot count from a different rung.
+            //
+            // Issue 1130 -- the cell bound travels too. It is independent of
+            // the pair above and a cargo leaf reads it (`nros/build.rs`).
+            // `ZPICO_MAX_LIVELINESS` does NOT: like the queryable count it
+            // includes the param/lifecycle servers only when this inventory saw
+            // the model, and a bare env carrier cannot say whether it did.
             Derivation::Derived(k) => format!(
-                "NROS_EXECUTOR_MAX_CBS={}\nNROS_EXECUTOR_ACTION_CLIENTS={}\n",
-                k.max_cbs, k.heavy_slots
+                "NROS_EXECUTOR_MAX_CBS={}\nNROS_EXECUTOR_ACTION_CLIENTS={}\n\
+                 NROS_RUNTIME_MAX_CELL_ENTITIES={}\n",
+                k.max_cbs, k.heavy_slots, k.max_cell_entities
             ),
             Derivation::Refused { .. } => String::new(),
         }
@@ -2536,7 +2653,8 @@ mod tests {
         talker.insert(stated("a", "talker", &["publisher", "timer"]));
         assert_eq!(
             talker.to_env(),
-            "NROS_EXECUTOR_MAX_CBS=1\nNROS_EXECUTOR_ACTION_CLIENTS=0\n",
+            "NROS_EXECUTOR_MAX_CBS=1\nNROS_EXECUTOR_ACTION_CLIENTS=0\n\
+             NROS_RUNTIME_MAX_CELL_ENTITIES=1\n",
             "a pub/sub-only image must budget no slot at the action size"
         );
 
@@ -2930,7 +3048,8 @@ mod tests {
         // is heavy, so the arena budgets no slot at the action size.
         assert_eq!(
             inv.to_env(),
-            "NROS_EXECUTOR_MAX_CBS=3\nNROS_EXECUTOR_ACTION_CLIENTS=0\n"
+            "NROS_EXECUTOR_MAX_CBS=3\nNROS_EXECUTOR_ACTION_CLIENTS=0\n\
+             NROS_RUNTIME_MAX_CELL_ENTITIES=1\n"
         );
         inv.insert(ComponentEntities {
             pkg: "b".into(),
@@ -2939,6 +3058,140 @@ mod tests {
             declaration: Declaration::Absent,
         });
         assert_eq!(inv.to_env(), "");
+    }
+
+    /// phase-412 W2 -- the liveliness pool is every token THIS session
+    /// declares, term by term against the zenoh shim (`shim/session.rs`).
+    #[test]
+    fn liveliness_demand_counts_every_token_the_session_declares() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated(
+            "p",
+            "n",
+            &[
+                "publisher",
+                "sub",
+                "timer",
+                "service_server",
+                "service_client",
+                "action_server",
+                "action_client",
+            ],
+        ));
+        let k = inv.derive().knobs().expect("derived").clone();
+        let session_node = PRIMARY_NODE_LIVELINESS_TOKENS;
+        let node_names = 1;
+        let publishers = 1 + ACTION_SERVER_PUBLISHERS; // + feedback, status
+        let subscribers = 1 + ACTION_CLIENT_SUBSCRIPTIONS; // + feedback
+        let servers = 1 + ACTION_SERVER_QUERYABLES;
+        let clients = 1 + ACTION_CLIENT_SERVICE_CLIENTS;
+        assert_eq!(
+            k.max_liveliness,
+            session_node + node_names + publishers + subscribers + servers + clients,
+            "a timer declares no token; everything else declares exactly one"
+        );
+        assert_eq!(k.max_liveliness, 15, "the same sum, spelled as a number");
+
+        // Two components are two node names.
+        let mut two = EntityInventory::new("test");
+        two.insert(stated("a", "one", &["publisher"]));
+        two.insert(stated("b", "two", &["sub"]));
+        assert_eq!(two.derive().knobs().unwrap().max_liveliness, 1 + 2 + 1 + 1);
+
+        // Never below the session's own token plus the component's node, so a
+        // C array fed this value is never zero-length -- the consumer floors
+        // anyway (issue 1015), but the demand does not ask it to.
+        let mut clock = EntityInventory::new("test");
+        clock.insert(stated("a", "clock", &["timer"]));
+        assert_eq!(clock.derive().knobs().unwrap().max_liveliness, 2);
+        assert!(
+            clock
+                .to_cmake()
+                .contains("set(NROS_DERIVED_MAX_LIVELINESS 2)\n")
+        );
+        assert!(
+            !clock.to_env().contains("LIVELINESS"),
+            "the env carrier cannot say whether the model was seen, so it does \
+             not carry the liveliness count"
+        );
+    }
+
+    /// phase-412 W2 -- the runtime's own servers declare tokens too, and the
+    /// lifecycle family registers under the executor's node name.
+    #[test]
+    fn liveliness_counts_the_runtime_servers_the_bringup_declares() {
+        let knobs = |features: &str| {
+            EntityInventory::from_model("t", &infra_model(features))
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
+        };
+        let none = knobs("");
+        let both = knobs("param_services, lifecycle");
+        assert_eq!(
+            both.max_liveliness - none.max_liveliness,
+            both.infra_queryables + 1,
+            "one token per runtime server, plus one node name for lifecycle"
+        );
+        assert_eq!(
+            both.infra_queryables,
+            2 * PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+        );
+    }
+
+    /// Issue 1130 -- the knob-capped cell registry capacity is the largest
+    /// single kind in any ONE component, over the five kinds a cell registers.
+    #[test]
+    fn cell_bound_is_the_largest_single_kind_in_any_one_component() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated("a", "talker", &["pub*3", "sub*5", "timer*4"]));
+        inv.insert(stated(
+            "b",
+            "server",
+            &["service_server*2", "service_client", "action_server"],
+        ));
+        let k = inv.derive().knobs().expect("derived").clone();
+        assert_eq!(
+            k.max_cell_entities, 3,
+            "subscriptions and timers reach no cell registry; the largest kind \
+             is a::talker's three publishers"
+        );
+
+        // Per component, never summed across the image: each cell has its own
+        // registries, so two components with two publishers each need 2.
+        let mut split = EntityInventory::new("test");
+        split.insert(stated("a", "one", &["pub*2"]));
+        split.insert(stated("b", "two", &["pub*2"]));
+        assert_eq!(split.derive().knobs().unwrap().max_cell_entities, 2);
+
+        // Zero is an ANSWER and travels as one, unfloored.
+        let mut listener = EntityInventory::new("test");
+        listener.insert(stated("a", "listener", &["sub", "timer"]));
+        assert_eq!(listener.derive().knobs().unwrap().max_cell_entities, 0);
+        assert!(
+            listener
+                .to_cmake()
+                .contains("set(NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES 0)\n")
+        );
+        assert!(
+            listener
+                .to_env()
+                .contains("NROS_RUNTIME_MAX_CELL_ENTITIES=0\n")
+        );
+
+        // One undeclared component and no transport carries either number.
+        listener.insert(ComponentEntities {
+            pkg: "b".into(),
+            component: "two".into(),
+            class: "b::Two".into(),
+            declaration: Declaration::Absent,
+        });
+        let cmake = listener.to_cmake();
+        assert!(!cmake.contains("NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES"));
+        assert!(!cmake.contains("NROS_DERIVED_MAX_LIVELINESS"));
+        assert_eq!(listener.to_env(), "");
     }
 
     /// Registering the same component twice cannot double-count it: cmake

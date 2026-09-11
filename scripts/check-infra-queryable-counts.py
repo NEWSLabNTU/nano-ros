@@ -81,6 +81,16 @@ def action_client_topics(text):
     return {m.group(1) for m in re.finditer(r"create_subscription\(&(\w+)_topic", text)}
 
 
+def action_client_channels(text):
+    """The DISTINCT service channels one action CLIENT opens as clients.
+
+    phase-412 -- the liveliness pool counts one token per service client, and
+    an action client opens three. Same distinct-name rule as the three above:
+    the typed and raw registration arms both appear, so a call count doubles.
+    """
+    return {m.group(1) for m in re.finditer(r"create_client\(&(\w+)_info", text)}
+
+
 def declared(text, name):
     m = re.search(rf"^pub const {name}: usize = (\d+);", text, re.M)
     return int(m.group(1)) if m else None
@@ -92,7 +102,8 @@ def read(root, rel):
 
 
 MIRROR = re.compile(
-    r"^const (PARAM_SERVICE_QUERYABLES|LIFECYCLE_SERVICE_QUERYABLES|ACTION_SERVER_QUERYABLES)"
+    r"^const (PARAM_SERVICE_QUERYABLES|LIFECYCLE_SERVICE_QUERYABLES|ACTION_SERVER_QUERYABLES"
+    r"|ACTION_CLIENT_SERVICE_CLIENTS)"
     r": usize = (\d+);",
     re.M,
 )
@@ -217,6 +228,14 @@ def check(root, rmw_dir="packages/rmw"):
         )
     except OSError:
         definitions["ACTION_SERVER_QUERYABLES"] = None
+    # phase-412 -- the entity inventory mirrors the action client's service
+    # client count for the liveliness pool; held to its definition the same way.
+    try:
+        definitions["ACTION_CLIENT_SERVICE_CLIENTS"] = declared(
+            read(root, ACTION), "ACTION_CLIENT_SERVICE_CLIENTS"
+        )
+    except OSError:
+        definitions["ACTION_CLIENT_SERVICE_CLIENTS"] = None
 
     scanned = list(rmw_rust_files(root, rmw_dir))
     scanned += [r for r in EXTRA_MIRROR_FILES if os.path.isfile(os.path.join(root, r))]
@@ -258,7 +277,8 @@ def check(root, rmw_dir="packages/rmw"):
         problems.append(f"ACTION_SERVER_PUBLISHERS: cannot read {ACTION}: {e}")
     else:
         for const, fn in (("ACTION_SERVER_PUBLISHERS", action_server_topics),
-                          ("ACTION_CLIENT_SUBSCRIPTIONS", action_client_topics)):
+                          ("ACTION_CLIENT_SUBSCRIPTIONS", action_client_topics),
+                          ("ACTION_CLIENT_SERVICE_CLIENTS", action_client_channels)):
             topics = fn(action_src2)
             want = declared(action_src2, const)
             if want is None:
@@ -282,7 +302,7 @@ def check(root, rmw_dir="packages/rmw"):
 
 
 def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
-           c_cli_action=3, c_inv_param=6):
+           c_cli_action=3, c_inv_param=6, cli_chans=3, c_inv_cli=3):
     for rel in (SPIN, PARAMS, LIFECYCLE, ACTION, "packages/rmw/zenoh/x/src/service.rs"):
         os.makedirs(os.path.join(root, os.path.dirname(rel)), exist_ok=True)
     body = "".join(f"        let h{i} = create_param_srv::<T>(\n" for i in range(n_param))
@@ -301,11 +321,13 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
     # rather than to a drifted count.
     act += "pub const ACTION_SERVER_PUBLISHERS: usize = 2;\n"
     act += "pub const ACTION_CLIENT_SUBSCRIPTIONS: usize = 1;\n"
+    act += "pub const ACTION_CLIENT_SERVICE_CLIENTS: usize = 3;\n"
     for _ in range(2):
         act += "".join(f"    .create_service(&chan{i}_info, qos)\n" for i in range(chans))
         act += "    .create_publisher(&feedback_topic, qos)\n"
         act += "    .create_publisher(&status_topic, qos)\n"
         act += "    .create_subscription(&feedback_topic, qos)\n"
+        act += "".join(f"    .create_client(&cli{i}_info, qos)\n" for i in range(cli_chans))
     open(os.path.join(root, ACTION), "w").write(act)
     open(os.path.join(root, "packages/rmw/zenoh/x/src/service.rs"), "w").write(rmw_line + "\n")
     # The CLI mirror lives outside `packages/rmw`, so it is reached by a
@@ -320,7 +342,8 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
     open(os.path.join(root, inv), "w").write(
         "const ACTION_SERVER_QUERYABLES: usize = 3;\n"
         f"const PARAM_SERVICE_QUERYABLES: usize = {c_inv_param};\n"
-        "const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;\n")
+        "const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;\n"
+        f"const ACTION_CLIENT_SERVICE_CLIENTS: usize = {c_inv_cli};\n")
 
 
 def self_test():
@@ -344,6 +367,10 @@ def self_test():
          "the CLI mirror drifted — a file OUTSIDE packages/rmw"),
         ((6, 5, 6, 5, "// nothing", 3, 3, 3, 7), 1,
          "the entity inventory's parameter mirror drifted (issue 1270)"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 4, 3), 1,
+         "a fourth action-client service channel was added (phase-412 liveliness)"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 2), 1,
+         "the entity inventory's action-client mirror drifted"),
     ]
     failures = 0
     tmp = tempfile.mkdtemp()
