@@ -234,7 +234,9 @@ def check_conf(text):
             f"states {BACKING_KEY}={words} but does not set {ARENA_KEY}, so the "
             f"reservation is made and nothing is given back"
         )
-    if stated and base is not None and arena is not None:
+    # `words is not None` is implied by `stated`, but a type checker cannot see
+    # through the alias, so it is spelled out rather than suppressed.
+    if stated and words is not None and base is not None and arena is not None:
         want = base - words * BYTES_PER_WORD
         if arena != want:
             bad.append(
