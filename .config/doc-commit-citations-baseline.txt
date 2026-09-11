@@ -91,3 +91,21 @@ e3786749a
 # a PR number would not substitute: there is no PR yet, and the row says so.
 # Remove this entry when #1304's branch lands or is abandoned.
 b7ec5e55a
+
+# `docs/issues/1304-installed-setup-cannot-provision-submodule-sources.md`, the
+# "Commits on the branch, oldest first" table. Three commits on
+# `work/1304-installed-setup-provisions-without-a-checkout`, a branch that is
+# pushed and NOT merged (the issue says so: "no PR", the agent stopped at an API
+# session limit mid-change and the tree was committed so it would not be lost).
+#
+# Genuinely elsewhere, which is what this baseline is for — and rewriting them
+# would destroy the row's purpose. Its whole job is to tell the next agent what
+# that unreviewed tree contains and in what order, so "a PR number or a
+# description" is not available: there is no PR, and the description IS the
+# table these hashes index.
+#
+# Same shape as `b7ec5e55a` above and removable on the same condition: when
+# #1304's branch lands or is abandoned.
+6cdb02124
+4c5b1b0ca
+2f2707639
