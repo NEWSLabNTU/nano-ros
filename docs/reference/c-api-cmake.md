@@ -154,31 +154,47 @@ install layout it needs for *its* binaries.
 
 ## FreeRTOS / NuttX Cross-Compilation
 
-Cross-compiled examples consume nano-ros the same way as the native (host) build:
-`add_subdirectory(<repo>)` with `NANO_ROS_PLATFORM` set to the
-target RTOS. Pass `CMAKE_TOOLCHAIN_FILE` for the cross-compiler.
+The cache variables above are still the contract, and `nros build` is what sets
+them. **A user does not.** Since
+[RFC-0098](../design/0098-generated-leaf-build-config.md) D3/D5 the board, the
+RMW, the domain and the network identity come from a `system.toml` beside the
+example's `CMakeLists.txt`, and `find_package(nano_ros)` reads it through
+`nros ws leaf-system`, deriving the platform from the board. So
+`-DNANO_ROS_PLATFORM`, `-DNANO_ROS_BOARD` and `-DNROS_RMW` are retired as a
+user-facing spelling: switching board is editing `[image.*] board`.
 
-**FreeRTOS (ARM Cortex-M3, MPS2-AN385):**
+**FreeRTOS (ARM Cortex-M3, MPS2-AN385).** The board is
+`examples/mps2-an385-freertos/c/talker/system.toml`'s
+`[image.mps2-an385-freertos] board = "mps2-an385-freertos"`, and its `[system]`
+block carries `rmw = "zenoh"`. The one thing still on the command line is the
+toolchain file, because CMake pins the compiler at the first configure:
 
 ```bash
 cmake -S examples/mps2-an385-freertos/c/talker -B build/talker \
-    -DCMAKE_TOOLCHAIN_FILE=$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake \
-    -DNROS_RMW=zenoh
+    -DCMAKE_TOOLCHAIN_FILE=$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake
 cmake --build build/talker
 ```
 
-**NuttX (ARM Cortex-A7):**
+**NuttX (ARM Cortex-A7).** Same shape —
+`examples/qemu-armv7a-nuttx/cpp/talker/system.toml` names
+`[image.qemu-armv7a-nuttx] board = "qemu-armv7a-nuttx"`, from which the
+`nuttx` platform is derived:
 
 ```bash
-cmake -S examples/qemu-armv7a-nuttx/cpp/talker -B build/talker \
-    -DNANO_ROS_PLATFORM=nuttx \
-    -DNANO_ROS_BOARD=qemu-armv7a-nuttx
+cmake -S examples/qemu-armv7a-nuttx/cpp/talker -B build/talker
 cmake --build build/talker
 ```
 
-The example's own `CMakeLists.txt` add_subdirectory's nano-ros; the
-Corrosion target tree under `build/talker/cargo/` holds the
-per-build staticlib (`libnros_c.a`, `libnros_rmw_zenoh_staticlib.a`, …).
+Mapping a board to its toolchain file is `nros build`'s job (it writes the
+`CMAKE_TOOLCHAIN_FILE` into the generated cmake root before `project()`), so
+the hand-passed flag above goes away once a single-package C/C++ leaf can use
+that verb — [issue 1296](../issues/1296-nros-build-c-leaf-bringup-name-mismatch.md)
+is why it cannot today. `nros init` + `cmake --preset <board>` is the other way
+to avoid spelling the path.
+
+A single-package C/C++ leaf needs no `nros sync`: its message bindings are a
+CMake-time output. The Corrosion target tree under `build/talker/cargo/` holds
+the per-build staticlib (`libnros_c.a`, `libnros_rmw_zenoh_staticlib.a`, …).
 
 ## C++ surface selection: `NROS_CPP_STD`
 

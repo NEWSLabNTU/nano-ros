@@ -32,11 +32,6 @@ book/src/release/migration-install-local-removal.md	install-local
 book/src/start-here/setup-compared-to-ros2.md	install-local
 docs/design/0058-multi-edition-ros-test-harness.md	ros-edition-image
 docs/development/test-harness.md	orin-spe
-docs/guides/esp32-setup.md	build-examples-esp32-qemu
-docs/guides/esp32-setup.md	build-zenoh-pico-riscv
-docs/guides/quick-reference.md	build-zenoh-pico-arm
-docs/guides/quick-reference.md	build-zephyr-actions
-docs/guides/quick-reference.md	test-rust-zephyr-actions
 docs/issues/README.md	build-zenoh-pico-arm
 docs/issues/README.md	native
 docs/release/migration-install-local-removal.md	install-local

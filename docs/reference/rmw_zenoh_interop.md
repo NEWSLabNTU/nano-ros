@@ -26,8 +26,13 @@ Both nodes connect to the same Zenoh router (zenohd) or communicate directly in 
 # Terminal 1: Start zenoh router
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 
-# Terminal 2: Run nros talker
-cargo run -p native-rs-talker --features zenoh -- --tcp 127.0.0.1:7447
+# Terminal 2: Run nros talker. The example is a standalone package (no root
+# workspace to `-p` into) and its RMW comes from `system.toml`
+# (`[system] rmw = "zenoh"`), not from a cargo feature.
+cd examples/native/rust/talker
+nros sync          # generated/ msg crates + build/native/nros-cargo.toml
+nros build         # -> build/native/target/debug/talker
+NROS_LOCATOR=tcp/127.0.0.1:7447 RUST_LOG=info build/native/target/debug/talker
 
 # Terminal 3: Run ROS 2 listener
 source /opt/ros/humble/setup.bash

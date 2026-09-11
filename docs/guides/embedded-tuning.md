@@ -1,22 +1,68 @@
 # Embedded Transport Tuning
 
 This guide documents compile-time constants for tuning nano-ros transport layers
-on embedded targets. All constants are set via environment variables at build time
-and control static memory allocation — no heap is used for transport buffers.
+on embedded targets. They control static memory allocation — no heap is used for
+transport buffers.
+
+## Start here: most of this you no longer set
+
+Before reaching for a knob, know which half of this page applies to you. Since
+[RFC-0098](../design/0098-generated-leaf-build-config.md), `nros sync` sizes the
+pools that dominate static RAM from what the image's components **declare**, and
+writes the answers into `build/<image>/nros-cargo.toml`'s `[env]` table. Setting
+one of those by hand is an override, not a requirement.
+
+**Derived per image by `nros sync` — do not set these unless you know something
+the declaration does not** (`nros_cli_core::leaf_entity_env`):
+
+| knob | derived from |
+|---|---|
+| `ZPICO_MAX_PUBLISHERS` | the entity inventory (probe, or `[[component]] entities`), floored at 1 — it sizes a fixed C array where zero is not a smaller pool (issue 1015) |
+| `ZPICO_MAX_SUBSCRIBERS` | same, same floor |
+| `NROS_EXECUTOR_MAX_CBS` | same |
+| `NROS_EXECUTOR_ACTION_CLIENTS` | same |
+| `NROS_RMW_SUBSCRIBER_SLOTS` | same |
+| `NROS_SUBSCRIBER_BUFFER_SIZE` | the message-bound payload classes: the largest *small*-class type this leaf subscribes to |
+| `ZPICO_SUBSCRIBER_LARGE_SIZE` | the largest *large*-class type; emitted only when the large count is non-zero |
+| `ZPICO_MAX_LARGE_SUBSCRIBERS` | how many subscribed types fall in the large class. Zero is an **answer**, not a floor — the pool becomes zero bytes |
+| `NROS_EXECUTOR_ARENA_SIZE` | derived in `nros-node`'s build script from the same inventory; the env var is the override |
+
+`ZPICO_MAX_QUERYABLES` is a third case: `nros sync` never states it as a count.
+It carries the FACTS (`NROS_DECLARED_SERVICE_SERVERS`,
+`NROS_DECLARED_INFRA_QUERYABLES`, `NROS_DECLARED_NODES`) and
+`nros-zpico-build` adds the parameter and lifecycle costs itself, beside the
+code that registers them (issue 0460). A leaf with no readable model gets no
+facts and the consumer keeps its undeclared budget — 8 embedded, 32 hosted;
+large, never short.
+
+**Still yours to set by hand** — everything else on this page. The transport
+buffer sizes (`ZPICO_FRAG_MAX_SIZE`, `ZPICO_BATCH_*`,
+`ZPICO_SERVICE_BUFFER_SIZE`, `ZPICO_GET_REPLY_BUF_SIZE`), the remaining entity
+caps (`ZPICO_MAX_LIVELINESS`, `ZPICO_MAX_PENDING_GETS`), the smoltcp socket
+pools, every `XRCE_*` knob, and the parameter-server limits.
 
 ## Quick Start
 
-Set environment variables before building:
+Set the environment variables you still own, then build. A value in the calling
+environment **wins** over the generated `[env]` table — that table deliberately
+never uses `force = true`, because a number a human states beats a number
+derived on their behalf:
 
 ```bash
 # Example: constrained Cortex-M4 with 256KB RAM
-ZPICO_MAX_PUBLISHERS=4 \
-ZPICO_MAX_SUBSCRIBERS=4 \
+cd <leaf>
+nros sync
 ZPICO_FRAG_MAX_SIZE=1400 \
 ZPICO_BATCH_UNICAST_SIZE=1024 \
-NROS_SUBSCRIBER_BUFFER_SIZE=512 \
-cargo build --release
+ZPICO_GET_REPLY_BUF_SIZE=1024 \
+nros build
 ```
+
+A per-board hardware budget belongs in the board descriptor's `[knobs]` rather
+than in a per-build environment (RFC-0049's ladder is
+`built-in < platform < board < app < lane front-end`, and RFC-0098 D4 moved the
+budgets to the board rung). `nros config explain` reports where each resolved
+value came from.
 
 For Zephyr builds, use Kconfig instead (see [Zephyr Integration](#zephyr-integration)).
 
@@ -35,9 +81,17 @@ statically allocated — unused slots still consume memory.
 | `ZPICO_MAX_LIVELINESS` | 16 | Max concurrent liveliness tokens |
 | `ZPICO_MAX_PENDING_GETS` | 4 | Max concurrent in-flight service calls |
 
-**Sizing rule:** Set each to the exact number your application uses, plus 1-2
-spare slots for parameter services (if enabled). Over-provisioning wastes static
-memory; under-provisioning causes runtime failures.
+**Sizing rule:** the exact number your application uses, plus 1-2 spare slots
+for parameter services (if enabled). Over-provisioning wastes static memory;
+under-provisioning causes runtime failures.
+
+**You do not apply that rule by hand for the first three.**
+`ZPICO_MAX_PUBLISHERS` and `ZPICO_MAX_SUBSCRIBERS` are derived from the image's
+declared entities, and `ZPICO_MAX_QUERYABLES` is derived by the consumer from
+the facts `nros sync` carries — which is the only way the parameter and
+lifecycle families get counted, because a leaf picks those with cargo features
+the inventory cannot see (issue 0460). `ZPICO_MAX_LIVELINESS` and
+`ZPICO_MAX_PENDING_GETS` are still yours.
 
 ### Buffer Sizes
 
@@ -196,6 +250,13 @@ Total = Session blob (512 bytes)
 ```
 
 ## Recommended Configurations
+
+These are complete pictures of a working set, not shopping lists. The entity
+counts and `NROS_SUBSCRIBER_BUFFER_SIZE` in them are what a correctly declared
+image **already gets** from `nros sync` for that shape of workload — they are
+printed here so the arithmetic below is checkable, not so you export them.
+Export only the rows this page's opening section leaves to you, and reach for a
+derived one only to override a number you disagree with.
 
 ### Minimal (Cortex-M4, 256 KB RAM)
 
