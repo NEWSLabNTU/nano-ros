@@ -6,7 +6,10 @@ ran:
 - W1–W4: `f018804434`. The extractor now sees our adopted names, and four audits were filed.
 - W5: `86792f9ead`, 82 ledger rows. Six of the recorded findings were wrong and corrected there.
 - W6's gates landed: the return-type verdict, `--require-disposition`, `#[must_use]` where a bool reports failure, and the orphan-citation gate.
-- W10 (one QoS SSoT) and W13.a/b/d landed.
+- W10 (one QoS SSoT) and all of W13 landed — **W13.c too**, `fa61bde7a`:
+  cyclone fills the `service_server_is_available` slot from the DDS cache, and
+  XRCE's NULL is a settled decision rather than the omission the item was
+  written about. Re-read 2026-09-11; see W13.c below.
 
 What is left is FIXING the findings. That work is not this phase's. The 22 behaviour
 defects still live under shared names (re-read in code on 2026-09-11) are listed in
@@ -371,11 +374,58 @@ was never the deletion; it was that nothing else could answer the question.
   `subscriber.rs` is on the publisher-side `LivelinessChanged` poll, not the
   subscriber); a platform whose C shim stubs the cache gets `Err` from the same
   `count < 0` check.
-* **W13.c [cyclone, xrce]** — OPEN. Fill the `service_server_is_available`
-  vtable slot. It EXISTS and both leave it NULL, which is why they answered
-  without asking. Cyclone is cheap: DDS has the cache natively. Until it lands,
-  `wait_for_service` on those backends waits out its budget and reports
-  `false` — honest, and slower than the cache could answer.
+* **W13.c [cyclone, xrce] — DONE (2026-09-07, `fa61bde7a`).** The item was
+  written as one job for two backends; it is two answers, and only one of them
+  is code.
+
+  **Cyclone fills the slot.** `nros_rmw_cyclonedds::client_server_is_available`
+  (`packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/service.cpp:1452`,
+  declared `src/internal.hpp:168`, wired at `src/vtable.cpp:365`) mirrors
+  upstream `rmw_cyclonedds_cpp`'s `check_for_service_reader_writer`: the
+  request writer's matched readers (`dds_get_matched_subscriptions`) AND the
+  reply reader's matched writers (`dds_get_matched_publications`) must both be
+  non-empty, and where a matched reader advertises `serviceid=<guid>` in its
+  user data a matched reply writer must carry the same id, which pairs the two
+  halves to ONE server. Read from the sets Cyclone already keeps — no query
+  issued, 32 handles a side, no `std::vector`. Test:
+  `packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/service_server_available.cpp`,
+  one client over a second participant, asserting false → true → false across a
+  server's life, polled to 10 s in 20 ms steps so SEDP jitter costs time rather
+  than a red. That is "a cyclone client answers from the DDS cache", which
+  W13.d left owed here.
+
+  **XRCE keeps the slot NULL, and that is the answer, not the absence of one**
+  (`packages/rmw/xrce/nros-rmw-xrce/src/vtable.c:96`, with the reasoning at the
+  slot). The Agent owns the DDS participant, so matched-endpoint state lives
+  Agent-side and micro-XRCE-DDS-Client has no read for it: no
+  `dds_get_matched_*`, no built-in topic readers, no participant enumeration.
+  The one thing the session CAN know is that the Agent acknowledged
+  `create_requester` — which says the client's own endpoints exist and nothing
+  whatever about a server. **Answering from that would be issue 1087's
+  "yes without asking" one layer down**, which is the defect this whole item
+  exists to remove; the transport cannot supply the fact, so the honest reply
+  is "cannot know". NULL is how the ABI spells that
+  (`packages/core/nros-rmw-abi/include/nros/rmw_vtable.h:649`: "NULL function
+  pointer = backend cannot answer; the runtime surfaces
+  `NROS_RMW_RET_UNSUPPORTED`"), and the header had already named XRCE as the
+  backend that would take it (`:646`). `CffiClient::service_is_ready` then
+  returns `Err(Unsupported)` and the wait loops wait their budget rather than
+  sending into the void.
+
+  **Disposition, in RFC-0089's vocabulary: `adopt-bounded`** — the same verdict
+  the name carries in the ledger, with XRCE sitting at the bound's edge. Not
+  `refuse-loud`: that disposition is a COMPILE-time construct (a deleted
+  overload, a `static_assert`), and the backend is chosen at RUNTIME through the
+  named registry, so no spelling of the C/C++/Rust verb can refuse on one
+  backend and compile on another. Not `absent`: the name is present and
+  callable on every backend. What is weakened is the ANSWER, inside a stated
+  envelope — the three-answer contract `Ok(true)` / `Ok(false)` /
+  `Err(Unsupported)`, of which XRCE permanently occupies the third — and the
+  envelope is stated where a reader meets it, at the slot and in the ABI
+  header, which is what `adopt-bounded` requires of it.
+
+  Issue 1087's "Resolution — phase-428 W13.c" records both halves and is
+  archived.
 * **W13.d [core] — DONE**, ahead of W13.c and deliberately: with a–b in, the
   pair had no backend left that could answer through it better than
   `service_is_ready` does, so keeping it for cyclone/XRCE would have kept a
