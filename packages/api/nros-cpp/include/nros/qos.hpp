@@ -458,14 +458,22 @@ namespace detail {
 // `KEEP_LAST, 1000`. This header had the same profile right, which is exactly
 // what an ungated mirror looks like until the day it is not.
 //
-// This block does NOT bind C++ to the cross-language SSoT — it cannot. The C
-// spellings in `rmw_entity.h` are `((rmw_qos_profile_t){...})` compound
-// literals, which are C99 and not standard C++, over a struct whose field types
-// differ from `nros_cpp_qos_t`'s; and `qos.hpp` is deliberately self-contained
-// and freestanding (see issue 0112 at the top of this file), so it cannot take
-// a dependency on a build-generated header either. What the table DOES buy is
-// that the C++ side now has ONE row per profile for a cross-language gate to
-// read, instead of nine constructor bodies to parse.
+// This block cannot CONSUME the cross-language SSoT. The C spellings in
+// `rmw_entity.h` are `((rmw_qos_profile_t){...})` compound literals, which are
+// C99 and not standard C++, over a struct whose field types differ from
+// `nros_cpp_qos_t`'s; and `qos.hpp` is deliberately self-contained and
+// freestanding (see issue 0112 at the top of this file), so it cannot take a
+// dependency on a build-generated header either. What the table DOES buy is
+// that the C++ side has ONE row per profile for a cross-language gate to read,
+// instead of nine constructor bodies to parse.
+//
+// phase-454 W1 collected on that. `scripts/check-qos-profile-ssot.py` now
+// EVALUATES these rows — the ctor supplies the base profile and each chained
+// call applies its one effect — and compares every field against
+// `QoSProfile::QOS_PROFILE_*`. So the table is bound after all; what it is not
+// is DERIVED, which is the weaker of the two and the strongest available to a
+// freestanding header. A `.setter()` the gate does not model is a hard failure
+// there, not a skipped field.
 //
 // Values read 2026-09-05 against ROS 2 Humble as installed:
 //   /opt/ros/humble/include/rmw/rmw/qos_profiles.h              :25,38,51,64,77,90
@@ -477,7 +485,21 @@ namespace detail {
 //   * `avoid_ros_namespace_conventions` is `false` upstream, `0` here.
 //   * liveliness is `RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT` upstream;
 //     `nros::QoS` defaults to `LivelinessAutomatic`, which is what every
-//     reference RMW folds that sentinel to.
+//     reference RMW folds that sentinel to. Declared, not just described:
+//
+// nros-qos-mirror-deviation: profile=* field=liveliness_kind
+// ours=AUTOMATIC ssot=SYSTEM_DEFAULT ref="phase-428 W10"
+//
+//     The record above is DATA and is allowed to wrap; this paragraph is the
+//     reason, and sits behind a blank comment line so clang-format cannot
+//     reflow it into the record.
+//
+//     `profile=*` because there is ONE cause for all six rows — the ctor — not
+//     six. The fold is defensible and the divergence is still real: a C++
+//     caller's `QoS::default_profile()` and a Rust caller's
+//     `QOS_PROFILE_DEFAULT` differ in a field cyclonedds puts on the wire, so
+//     this surface and `nros-c`'s move together with the C ABI or not at all.
+//
 //   * deadline and the liveliness lease are `RMW_QOS_*_DEFAULT` (infinite)
 //     upstream and `0` here, which `qos_window_ms` above documents as infinite.
 //

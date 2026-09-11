@@ -102,7 +102,15 @@ declared-qos-header:
 # `docs/reference/rmw-qos-profiles.txt`, which is extracted from a real ROS
 # install; where one is present it re-extracts and checks the record too.
 #
-# Buildless and 0.08 s, so it belongs on the fast line — no ROS, no cargo, no
+# phase-454 W1 (issue 1256) — and the SIX OTHER SITES. W10 bound the table to
+# upstream and left every transcription of it hanging off nothing: a Kconfig
+# `default`, the `NROS_RMW_QOS_PROFILE_*` macros, `nros_c_qos_default()`,
+# `nros-c`'s statics, the C++ `qos_table` and XRCE's own no-QoS fallback all
+# restated `rmw_qos_profile_default`'s KEEP_LAST(10) independently. The Rust
+# ones now READ `QoSProfile::QOS_PROFILE_*` and the rest are compared here,
+# field by field, with divergences declared in the mirroring file.
+#
+# Buildless and 0.2 s, so it belongs on the fast line — no ROS, no cargo, no
 # fixtures, and it does NOT degrade to a pass when ROS is absent.
 [private]
 qos-profile-ssot:

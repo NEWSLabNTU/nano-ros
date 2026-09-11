@@ -732,11 +732,18 @@ typedef struct rmw_subscription_options_t {
  * embedded image cannot include `rmw/qos_profiles.h` and an offline build has
  * no ROS install to read, so the numbers have to live here. That makes them
  * exactly the kind of copy that drifts, so they are not maintained by hand
- * alone: `scripts/check-qos-profile-table.py` binds every profile below to the
+ * alone: `scripts/check-qos-profile-ssot.py` binds every profile below to the
  * Rust SSoT (`nros_rmw::QoSProfile`'s `QOS_PROFILE_*` constants) and, when a
  * ROS install is resolvable, re-derives both against
  * `<prefix>/include/rmw/rmw/qos_profiles.h`. Edit a value here without the
  * gate agreeing and the gate is what tells you.
+ *
+ * That named `scripts/check-qos-profile-table.py` from 2026-09-05 to phase-454
+ * W1, and NO SUCH SCRIPT EXISTED for any of it. Two gates were written for W10
+ * and the duplicate was deleted — correctly, one parser of one table — but this
+ * prose kept the deleted name, so the transcription claiming loudest to be
+ * checked was the one checked by nothing. W1 wrote the coverage the sentence
+ * had been describing, into the gate that survived.
  */
 
 /** Build a profile from the five policies that actually differ between

@@ -336,6 +336,589 @@ def stray_presets(text):
 
 
 # --------------------------------------------------------------------------
+# The sites that cannot READ the SSoT — phase-454 W1 / issue 1256
+# --------------------------------------------------------------------------
+#
+# A Rust consumer of the table does not need a gate: `nros-node/build.rs`,
+# `nros-rmw-cffi` and `nros-c`'s statics all name `QoSProfile::QOS_PROFILE_*`
+# now, so their numbers ARE the table's and the compiler is the binding. The
+# five sites below cannot do that — a Kconfig `default`, two C headers, a C++
+# header and a C source cannot read a Rust const — so they restate the values
+# and this is what holds them to the table.
+#
+# Six independent restatements of `rmw_qos_profile_default`'s KEEP_LAST(10)
+# existed when this was written and NONE of the five below was bound to
+# anything: `rmw_entity.h` even named a gate script for it in its own prose
+# (`scripts/check-qos-profile-table.py`) that phase-428 W10 deleted, so the
+# transcription most loudly claiming to be checked was checked by nothing.
+#
+# The comparison is field-by-field where a site states the field at all. A
+# divergence is tolerated only through a `nros-qos-mirror-deviation:` line IN
+# THE MIRRORING FILE, pinning both values with a tracking reference — the
+# reader of the divergence is the reader of that file, not of this script, and
+# an authored table here would be a seventh copy to drift. `profile=*` covers
+# every row of a mirror, for a divergence that has ONE cause (the C and C++
+# surfaces fold liveliness in a shared constructor, so their six rows share one
+# deviation rather than six).
+#
+# A deviation covering nothing is an error, same as the Rust-side one: that is
+# the issue-0743 class, an exemption that reads as tracked debt while inert.
+
+MIRROR_DEVIATION = re.compile(r"nros-qos-mirror-deviation:\s*(.+?)\s*(?:\*/)?\s*$", re.M)
+
+# A row a mirror states that the SSoT has no preset for. Each needs a REASON,
+# because "the table has no row for it" is also what a missing preset looks
+# like.
+MIRROR_UNMODELLED = {
+    ("rmw_entity.h", "UNKNOWN"): (
+        "`rmw_qos_profile_unknown` is declared absent from the SSoT "
+        "(nros-qos-absent in traits.rs): three of our four policy enums have no "
+        "`Unknown` variant to build it from."
+    ),
+    ("qos.hpp", "rosout"): (
+        "`rcl_qos_profile_rosout_default` is an rcl profile with no nano-ros "
+        "preset and no row in the upstream record — phase-428 W10 carried it "
+        "forward. The gate cannot compare what the table does not state."
+    ),
+}
+
+
+class Mirror:
+    """One non-Rust transcription of the SSoT.
+
+    `extract` returns `{row_name: {field: canonical_value}}`; `presets` maps a
+    row name to the `QOS_PROFILE_*` it claims to be. A row in neither `presets`
+    nor `MIRROR_UNMODELLED` is an error — a new profile appearing in a mirror
+    with no counterpart is exactly the drift this exists to catch.
+    """
+
+    def __init__(self, name, path, extract, presets):
+        self.name = name
+        self.path = path
+        self.extract = extract
+        self.presets = presets
+
+
+def _kconfig_pubsub_depth(text, where):
+    """`CONFIG_NROS_PUBSUB_QOS_DEPTH`'s `default` — the arena's builtin depth.
+
+    The knob's own help text says "10 is ROS 2's own default --
+    `rmw_qos_profile_default` is KEEP_LAST(10)", which is a claim about another
+    file that nothing measured.
+    """
+    body = re.search(
+        r"^config NROS_PUBSUB_QOS_DEPTH\s*$(.*?)(?=^config |\Z)", text, re.M | re.S
+    )
+    if not body:
+        raise Fail(f"{where}: `config NROS_PUBSUB_QOS_DEPTH` not found")
+    m = re.search(r"^\s+default\s+(\d+)\s*$", body.group(1), re.M)
+    if not m:
+        raise Fail(f"{where}: NROS_PUBSUB_QOS_DEPTH states no integer `default`")
+    return {"NROS_PUBSUB_QOS_DEPTH": {"depth": int(m.group(1))}}
+
+
+_RMW_ENTITY_MACRO = re.compile(
+    r"#define\s+NROS_RMW_QOS_PROFILE_([A-Z0-9_]+)\s+"
+    r"NROS_RMW_QOS_PROFILE_FROM_POLICIES\(\s*([^)]*?)\s*\)",
+    re.S,
+)
+
+
+def _unsplice(text):
+    """Join C line-continuations, so a macro is one string however it is wrapped."""
+    return re.sub(r"\\\s*\n\s*", " ", text)
+
+
+def _rmw_entity_profiles(text, where):
+    """The `NROS_RMW_QOS_PROFILE_*` compound-literal macros.
+
+    Each is one call through `FROM_POLICIES(rel, dur, hist, dep, live)`, which
+    is also the ONLY place the four fields that never vary between profiles are
+    written — so those are checked once, against the expander itself, rather
+    than per row.
+    """
+    joined = _unsplice(text)
+    expander = re.search(
+        r"#define NROS_RMW_QOS_PROFILE_FROM_POLICIES\(rel, dur, hist, dep, live\)(.*?)\}\)",
+        joined,
+        re.S,
+    )
+    if not expander:
+        raise Fail(f"{where}: NROS_RMW_QOS_PROFILE_FROM_POLICIES is not where the gate reads it")
+    shared = {}
+    for field in ("deadline_ms", "lifespan_ms", "liveliness_lease_ms",
+                  "avoid_ros_namespace_conventions"):
+        m = re.search(rf"\.{field}\s*=\s*(\w+)", expander.group(1))
+        if not m:
+            raise Fail(f"{where}: the FROM_POLICIES expander states no {field}")
+        shared[field] = int(m.group(1)) if field != "avoid_ros_namespace_conventions" \
+            else bool(int(m.group(1)))
+
+    out = {}
+    for name, args in _RMW_ENTITY_MACRO.findall(joined):
+        if name == "FROM_POLICIES":
+            continue
+        parts = [a.strip() for a in args.split(",")]
+        if len(parts) != 5:
+            raise Fail(f"{where}: NROS_RMW_QOS_PROFILE_{name} passes {len(parts)} policies, not 5")
+        rel, dur, hist, dep, live = parts
+        if not re.fullmatch(r"\d+", dep):
+            raise Fail(f"{where}: NROS_RMW_QOS_PROFILE_{name}'s depth {dep!r} is not a literal")
+        out[name] = dict(
+            shared,
+            reliability=rel,
+            durability=dur,
+            history=hist,
+            depth=int(dep),
+            liveliness_kind=live,
+        )
+    if not out:
+        raise Fail(f"{where}: no NROS_RMW_QOS_PROFILE_* macros parsed")
+    return out
+
+
+# `nros_qos_*_t` (the C application API) and `nros_c_qos_*` (the C++ FFI
+# record) spell the policies differently from upstream; both collapse onto the
+# canonical vocabulary here.
+_C_API_ENUMS = {
+    "reliability": {
+        "NROS_QOS_RELIABILITY_RELIABLE": "RELIABLE",
+        "NROS_QOS_RELIABILITY_BEST_EFFORT": "BEST_EFFORT",
+    },
+    "durability": {
+        "NROS_QOS_DURABILITY_VOLATILE": "VOLATILE",
+        "NROS_QOS_DURABILITY_TRANSIENT_LOCAL": "TRANSIENT_LOCAL",
+    },
+    "history": {
+        "NROS_QOS_HISTORY_KEEP_LAST": "KEEP_LAST",
+        "NROS_QOS_HISTORY_KEEP_ALL": "KEEP_ALL",
+    },
+    "liveliness_kind": {
+        "NROS_QOS_LIVELINESS_NONE": "SYSTEM_DEFAULT",
+        "NROS_QOS_LIVELINESS_AUTOMATIC": "AUTOMATIC",
+        "NROS_QOS_LIVELINESS_MANUAL_BY_TOPIC": "MANUAL_BY_TOPIC",
+        "NROS_QOS_LIVELINESS_MANUAL_BY_NODE": "MANUAL_BY_NODE",
+    },
+}
+
+_CPP_FFI_ENUMS = {
+    "reliability": {"NROS_C_QOS_RELIABLE": "RELIABLE", "NROS_C_QOS_BEST_EFFORT": "BEST_EFFORT"},
+    "durability": {
+        "NROS_C_QOS_VOLATILE": "VOLATILE",
+        "NROS_C_QOS_TRANSIENT_LOCAL": "TRANSIENT_LOCAL",
+    },
+    "history": {"NROS_C_QOS_KEEP_LAST": "KEEP_LAST", "NROS_C_QOS_KEEP_ALL": "KEEP_ALL"},
+    "liveliness_kind": {
+        "NROS_C_QOS_LIVELINESS_NONE": "SYSTEM_DEFAULT",
+        "NROS_C_QOS_LIVELINESS_AUTOMATIC": "AUTOMATIC",
+        "NROS_C_QOS_LIVELINESS_MANUAL_BY_TOPIC": "MANUAL_BY_TOPIC",
+        "NROS_C_QOS_LIVELINESS_MANUAL_BY_NODE": "MANUAL_BY_NODE",
+    },
+}
+
+
+def _canon(enums, field, tok, where):
+    table = enums.get(field)
+    if table is None:
+        return tok
+    if tok not in table:
+        raise Fail(f"{where}: {field} = {tok!r} is not a policy spelling the gate knows")
+    return table[tok]
+
+
+def _component_h_default(text, where):
+    """`nros_c_qos_default()` — what every generated `*_SUBSCRIBE` macro uses."""
+    body = re.search(
+        r"static inline nros_cpp_qos_t nros_c_qos_default\(void\)\s*\{(.*?)\n\}", text, re.S
+    )
+    if not body:
+        raise Fail(f"{where}: nros_c_qos_default() is not where the gate reads it")
+    fields = {}
+    for field, raw in re.findall(r"q\.([a-z_]+)\s*=\s*([A-Za-z0-9_]+)\s*;", body.group(1)):
+        if field not in UPSTREAM_FIELDS + NROS_ONLY_FIELDS:
+            continue
+        fields[field] = _c_scalar(_CPP_FFI_ENUMS, field, raw, where)
+    return {"nros_c_qos_default": fields}
+
+
+def _c_scalar(enums, field, raw, where):
+    if field in ENUM_FIELDS:
+        return _canon(enums, field, raw, where)
+    if field in INT_FIELDS:
+        if not re.fullmatch(r"\d+", raw):
+            raise Fail(f"{where}: {field} = {raw!r} is not an integer literal")
+        return int(raw)
+    if raw not in ("0", "1", "true", "false"):
+        raise Fail(f"{where}: {field} = {raw!r} is not a boolean the gate can read")
+    return raw in ("1", "true")
+
+
+def _nros_c_statics(text, where):
+    """`NROS_QOS_DEFAULT` / `_SENSOR_DATA` / `_SERVICES` in `nros-c/src/qos.rs`.
+
+    `depth` is DELIBERATELY not extracted: phase-454 W1 made these read
+    `QoSProfile::QOS_PROFILE_*.depth`, so the compiler binds them and a gate
+    here would be re-deriving a const rustc already resolved. The policies are
+    still literals, which is why the rest of the row is read.
+    """
+    out = {}
+    for name, body in re.findall(
+        r"pub static (NROS_QOS_[A-Z_]+): nros_qos_t = nros_qos_t \{(.*?)\n\};", text, re.S
+    ):
+        fields = {}
+        for field, raw in re.findall(r"^\s+([a-z_]+)\s*:\s*([^,\n]+),", body, re.M):
+            if field not in UPSTREAM_FIELDS + NROS_ONLY_FIELDS:
+                continue
+            tok = raw.strip().split("::")[-1]
+            if field == "depth":
+                continue
+            fields[field] = _c_scalar(_C_API_ENUMS, field, tok, where)
+        out[name] = fields
+    if not out:
+        raise Fail(f"{where}: no `pub static NROS_QOS_*: nros_qos_t` parsed")
+    return out
+
+
+_CPP_CTOR = re.compile(r"constexpr QoS\(\)\s*:(.*?)\{\}", re.S)
+_CPP_TABLE_ROW = re.compile(
+    r"static constexpr QoS ([a-z_]+)\(\)\s*\{\s*return\s+(.*?);\s*\}", re.S
+)
+_CPP_CALL = re.compile(r"\.([a-z_]+)\(([^()]*(?:\([^()]*(?:\([^()]*\))?[^()]*\))?[^()]*)\)")
+
+
+def _cpp_base_profile(text, where):
+    m = _CPP_CTOR.search(text)
+    if not m:
+        raise Fail(f"{where}: `constexpr QoS()`'s member-init list is not where the gate reads it")
+    init = {}
+    for field, raw in re.findall(r"([a-z_]+)_\(([^)]*)\)", m.group(1)):
+        init[field] = raw.strip()
+    base = {}
+    spellings = {
+        "reliability": {"Reliable": "RELIABLE", "BestEffort": "BEST_EFFORT"},
+        "durability": {"Volatile": "VOLATILE", "TransientLocal": "TRANSIENT_LOCAL"},
+        "history": {"KeepLast": "KEEP_LAST", "KeepAll": "KEEP_ALL"},
+        "liveliness": {
+            "LivelinessNone": "SYSTEM_DEFAULT",
+            "LivelinessAutomatic": "AUTOMATIC",
+            "LivelinessManualByTopic": "MANUAL_BY_TOPIC",
+            "LivelinessManualByNode": "MANUAL_BY_NODE",
+        },
+    }
+    for field, table in spellings.items():
+        raw = init.get(field)
+        if raw is None:
+            raise Fail(f"{where}: the QoS() ctor states no {field}")
+        tok = raw.split("::")[-1]
+        if tok not in table:
+            raise Fail(f"{where}: QoS() {field} = {raw!r} is not a spelling the gate knows")
+        base["liveliness_kind" if field == "liveliness" else field] = table[tok]
+    for field in ("depth", "deadline_ms", "lifespan_ms", "liveliness_lease_ms"):
+        raw = init.get(field)
+        if raw is None or not re.fullmatch(r"\d+", raw):
+            raise Fail(f"{where}: the QoS() ctor states no integer {field} (got {raw!r})")
+        base[field] = int(raw)
+    avoid = init.get("avoid_ros_namespace_conventions")
+    if avoid not in ("0", "1"):
+        raise Fail(f"{where}: QoS() avoid_ros_namespace_conventions = {avoid!r}")
+    base["avoid_ros_namespace_conventions"] = avoid == "1"
+    tx = init.get("tx_express")
+    if tx not in ("0", "1"):
+        raise Fail(f"{where}: QoS() tx_express = {tx!r}")
+    base["tx_express"] = tx == "1"
+    return base
+
+
+def _cpp_qos_table(text, where):
+    """`nros::detail::qos_table`, interpreted.
+
+    The rows are builder chains off `QoS()` rather than field lists, so the
+    gate evaluates them: the ctor supplies the base row and each chained call
+    applies its one documented effect. A call the gate does not model is a
+    HARD failure and not a skip — an unmodelled setter is exactly how a row
+    would silently stop meaning what its name says.
+    """
+    base = _cpp_base_profile(text, where)
+    table = re.search(r"struct qos_table \{(.*?)\n\};", text, re.S)
+    if not table:
+        raise Fail(f"{where}: `struct qos_table` is not where the gate reads it")
+
+    out = {}
+    for row, expr in _CPP_TABLE_ROW.findall(table.group(1)):
+        fields = dict(base)
+        head = expr.split(".")[0].strip()
+        if head != "QoS()":
+            raise Fail(f"{where}: qos_table::{row}() does not start from `QoS()` ({head!r})")
+        for call, arg in _CPP_CALL.findall(expr):
+            arg = " ".join(arg.split())
+            if call == "reliable":
+                fields["reliability"] = "RELIABLE"
+            elif call == "best_effort":
+                fields["reliability"] = "BEST_EFFORT"
+            elif call == "transient_local":
+                fields["durability"] = "TRANSIENT_LOCAL"
+            elif call == "durability_volatile":
+                fields["durability"] = "VOLATILE"
+            elif call == "keep_all":
+                fields["history"] = "KEEP_ALL"
+            elif call == "keep_last":
+                if not re.fullmatch(r"\d+", arg):
+                    raise Fail(f"{where}: qos_table::{row}() keep_last({arg!r}) is not a literal")
+                fields["history"] = "KEEP_LAST"
+                fields["depth"] = int(arg)
+            elif call in ("deadline", "lifespan", "liveliness_lease_duration"):
+                ns = re.fullmatch(r"::nros::Duration::from_nanoseconds\((\d+)LL?\)", arg)
+                if not ns:
+                    raise Fail(
+                        f"{where}: qos_table::{row}() {call}({arg!r}) is not a nanosecond literal"
+                    )
+                key = "liveliness_lease_ms" if call == "liveliness_lease_duration" \
+                    else f"{call}_ms"
+                fields[key] = int(ns.group(1)) // 1_000_000
+            elif call == "from_nanoseconds":
+                continue  # consumed by its enclosing window call
+            else:
+                raise Fail(
+                    f"{where}: qos_table::{row}() calls `.{call}()`, which this gate does not "
+                    "model. Teach it the field that call sets — a setter it skips is a row "
+                    "that stops meaning its own name with nothing saying so."
+                )
+        out[row] = fields
+    if not out:
+        raise Fail(f"{where}: `struct qos_table` parsed to no rows")
+    return out
+
+
+_UXR_ENUMS = {
+    "reliability": {"UXR_RELIABILITY_RELIABLE": "RELIABLE",
+                    "UXR_RELIABILITY_BEST_EFFORT": "BEST_EFFORT"},
+    "durability": {"UXR_DURABILITY_VOLATILE": "VOLATILE",
+                   "UXR_DURABILITY_TRANSIENT_LOCAL": "TRANSIENT_LOCAL"},
+    "history": {"UXR_HISTORY_KEEP_LAST": "KEEP_LAST", "UXR_HISTORY_KEEP_ALL": "KEEP_ALL"},
+}
+
+
+def _xrce_null_qos(text, where):
+    """`xrce_map_qos(NULL)` — the profile a create with no QoS gets on XRCE.
+
+    A sixth copy of KEEP_LAST(10) that the original phase-428 survey did not
+    reach, in the one backend where "the caller passed nothing" is answered
+    locally rather than deferred.
+    """
+    body = re.search(
+        r"uxrQoS_t xrce_map_qos\(const rmw_qos_profile_t\* qos\)\s*\{.*?"
+        r"if \(qos == NULL\) \{(.*?)\n    \}",
+        text,
+        re.S,
+    )
+    if not body:
+        raise Fail(f"{where}: xrce_map_qos()'s NULL branch is not where the gate reads it")
+    fields = {}
+    for field, raw in re.findall(r"out\.([a-z_]+)\s*=\s*([A-Za-z0-9_]+)\s*;", body.group(1)):
+        if field not in UPSTREAM_FIELDS:
+            continue
+        fields[field] = _c_scalar(_UXR_ENUMS, field, raw, where)
+    if "depth" not in fields:
+        raise Fail(f"{where}: xrce_map_qos()'s NULL branch states no depth")
+    return {"xrce_map_qos_null": fields}
+
+
+MIRRORS = [
+    Mirror(
+        "Kconfig",
+        ROOT / "zephyr" / "Kconfig",
+        _kconfig_pubsub_depth,
+        {"NROS_PUBSUB_QOS_DEPTH": "QOS_PROFILE_DEFAULT"},
+    ),
+    Mirror(
+        "rmw_entity.h",
+        ROOT / "packages" / "core" / "nros-rmw-abi" / "include" / "nros" / "rmw_entity.h",
+        _rmw_entity_profiles,
+        {
+            "DEFAULT": "QOS_PROFILE_DEFAULT",
+            "SENSOR_DATA": "QOS_PROFILE_SENSOR_DATA",
+            "SERVICES_DEFAULT": "QOS_PROFILE_SERVICES_DEFAULT",
+            "PARAMETERS": "QOS_PROFILE_PARAMETERS",
+            "PARAMETER_EVENTS": "QOS_PROFILE_PARAMETER_EVENTS",
+            "SYSTEM_DEFAULT": "QOS_PROFILE_SYSTEM_DEFAULT",
+        },
+    ),
+    Mirror(
+        "component.h",
+        ROOT / "packages" / "api" / "nros-c" / "include" / "nros" / "component.h",
+        _component_h_default,
+        {"nros_c_qos_default": "QOS_PROFILE_DEFAULT"},
+    ),
+    Mirror(
+        "nros-c/qos.rs",
+        ROOT / "packages" / "api" / "nros-c" / "src" / "qos.rs",
+        _nros_c_statics,
+        {
+            "NROS_QOS_DEFAULT": "QOS_PROFILE_DEFAULT",
+            "NROS_QOS_SENSOR_DATA": "QOS_PROFILE_SENSOR_DATA",
+            "NROS_QOS_SERVICES": "QOS_PROFILE_SERVICES_DEFAULT",
+        },
+    ),
+    Mirror(
+        "qos.hpp",
+        ROOT / "packages" / "api" / "nros-cpp" / "include" / "nros" / "qos.hpp",
+        _cpp_qos_table,
+        {
+            "default_profile": "QOS_PROFILE_DEFAULT",
+            "sensor_data": "QOS_PROFILE_SENSOR_DATA",
+            "services_default": "QOS_PROFILE_SERVICES_DEFAULT",
+            "parameters": "QOS_PROFILE_PARAMETERS",
+            "parameter_events": "QOS_PROFILE_PARAMETER_EVENTS",
+            "clock": "QOS_PROFILE_CLOCK",
+        },
+    ),
+    Mirror(
+        "xrce/session.c",
+        ROOT / "packages" / "rmw" / "xrce" / "nros-rmw-xrce" / "src" / "session.c",
+        _xrce_null_qos,
+        {"xrce_map_qos_null": "QOS_PROFILE_DEFAULT"},
+    ),
+]
+
+
+# A deviation record may WRAP, because clang-format reflows the comments the C
+# and C++ mirrors carry it in and the record does not fit 100 columns.
+#
+# Measured, not feared: `clang-format --style=file` on `component.h` split
+# `... ours=AUTOMATIC` / `ssot=SYSTEM_DEFAULT ref="..." Upstream's ...` and
+# pulled the following PROSE up onto the second line. A single-line parser then
+# sees a record missing `ssot` and `ref` — loud rather than silent, but red for
+# a reason that is about the formatter.
+#
+# So: the record continues over following lines while a line carries key=value
+# pairs AND NOTHING ELSE. Prose therefore ends it, which is why every mirror
+# writes the record first and the explanation after a blank comment line —
+# clang-format does not merge across one of those.
+_COMMENT_LEADER = re.compile(r"^\s*(?:\*/?|//+|#|///)?\s*")
+_ONLY_KEYVALS = re.compile(r'^(?:[a-z_]+=(?:"[^"]*"|\S+)\s*)+$')
+
+
+def _with_continuations(lines, start, first):
+    """`first`, plus the wrapped remainder of the record it starts."""
+    record = [first]
+    for line in lines[start + 1:]:
+        rest = _COMMENT_LEADER.sub("", line).rstrip()
+        rest = re.sub(r"\s*\*/\s*$", "", rest)
+        if not rest or not _ONLY_KEYVALS.match(rest):
+            break
+        record.append(rest)
+    return " ".join(record)
+
+
+def parse_mirror_deviations(text, where):
+    out = []
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        m = MIRROR_DEVIATION.search(line)
+        if not m:
+            continue
+        record = _with_continuations(lines, i, m.group(1))
+        kv = _keyvals(record)
+        missing = [k for k in ("profile", "field", "ours", "ssot", "ref") if k not in kv]
+        if missing:
+            raise Fail(
+                f"{where}: nros-qos-mirror-deviation is missing {', '.join(missing)}: "
+                f"{record!r}"
+            )
+        if not REF_OK.match(kv["ref"]):
+            raise Fail(
+                f"{where}: nros-qos-mirror-deviation ref={kv['ref']!r} is not "
+                "`issue NNNN` or `phase-NNN WN`"
+            )
+        if kv["field"] not in UPSTREAM_FIELDS + NROS_ONLY_FIELDS:
+            raise Fail(f"{where}: nros-qos-mirror-deviation names unknown field {kv['field']!r}")
+        kv["_covered"] = False
+        out.append(kv)
+    return out
+
+
+def _mirror_covering(deviations, row, field):
+    for d in deviations:
+        if d["field"] == field and d["profile"] in ("*", row):
+            return d
+    return None
+
+
+def compare_mirrors(rows, mirrors=None):
+    """Every non-Rust transcription, field by field, against the SSoT."""
+    errs = []
+    checked = 0
+    for mirror in mirrors if mirrors is not None else MIRRORS:
+        if not mirror.path.exists():
+            raise Fail(
+                f"{mirror.path} is missing. It is TRACKED, so its absence is a path bug in "
+                "this gate, not a mirror with nothing to check."
+            )
+        text = mirror.path.read_text(encoding="utf8")
+        where = mirror.name
+        deviations = parse_mirror_deviations(text, where)
+        extracted = mirror.extract(text, where)
+
+        for row, fields in sorted(extracted.items()):
+            preset = mirror.presets.get(row)
+            if preset is None:
+                if (mirror.name, row) in MIRROR_UNMODELLED:
+                    continue
+                errs.append(
+                    f"{where}: `{row}` states a QoS profile the gate cannot bind — name the "
+                    f"`QOS_PROFILE_*` it mirrors in this gate's `MIRRORS`, or record why the "
+                    f"SSoT has no row for it in `MIRROR_UNMODELLED`."
+                )
+                continue
+            if preset not in rows:
+                errs.append(
+                    f"{where}: `{row}` claims to mirror `QoSProfile::{preset}`, which the "
+                    f"`qos_profiles!` table does not define."
+                )
+                continue
+            want = rows[preset]["fields"]
+            for field, got in sorted(fields.items()):
+                expect = want[field]
+                if got == expect:
+                    continue
+                dev = _mirror_covering(deviations, row, field)
+                if dev is None:
+                    errs.append(
+                        f"{where}: {row}.{field} is {_fmt(got)}, `QoSProfile::{preset}` says "
+                        f"{_fmt(expect)}. One of the two is wrong, or the divergence is "
+                        f"deliberate and needs a `nros-qos-mirror-deviation:` line in "
+                        f"{mirror.path.name} pinning both values."
+                    )
+                    continue
+                dev["_covered"] = True
+                if dev["ours"] != _fmt(got) or dev["ssot"] != _fmt(expect):
+                    errs.append(
+                        f"{where}: the deviation on {row}.{field} pins "
+                        f"ours={dev['ours']} ssot={dev['ssot']}, and the files now say "
+                        f"ours={_fmt(got)} ssot={_fmt(expect)}. A pinned value that is no "
+                        f"longer measured is a stale exemption."
+                    )
+            checked += len(fields)
+
+        for missing in sorted(set(mirror.presets) - set(extracted)):
+            errs.append(
+                f"{where}: the gate expects a row `{missing}` "
+                f"(mirroring `QoSProfile::{mirror.presets[missing]}`) and the extractor found "
+                f"none — the site was renamed or deleted, and a mirror that parses to nothing "
+                f"is a gate that passes on nothing."
+            )
+        for d in deviations:
+            if not d["_covered"]:
+                errs.append(
+                    f"{where}: nros-qos-mirror-deviation profile={d['profile']} "
+                    f"field={d['field']} covers nothing — the values it exempts now agree, so "
+                    f"delete it (issue 0743: a stale exemption reads as tracked debt while "
+                    f"being inert)."
+                )
+    return errs, checked
+
+
+# --------------------------------------------------------------------------
 # The upstream record
 # --------------------------------------------------------------------------
 
@@ -821,6 +1404,7 @@ def self_test(verbose=False):
     # The header extractor has its own control: a mutated initialiser must not
     # silently parse to the old value.
     checks += _extractor_self_test(verbose)
+    checks += _mirror_self_test(verbose)
     checks += _stray_self_test(verbose)
 
     if verbose:
@@ -940,6 +1524,170 @@ def _extractor_self_test(verbose):
     return 3
 
 
+def _mirror_self_test(verbose=False):
+    """The mirror comparison, mutated on the LIVE files — phase-454 W1.
+
+    A gate that reads six files with six regexes has six ways to be green
+    because it parsed nothing. So the control is not synthetic: every
+    (mirror, row, field) the gate claims to check is re-run against a copy of
+    the real file with that value replaced, and every one must go red.
+
+    That is 156 mutations, and it is the only thing standing between "the
+    extractor works" and "the extractor returned {}". The first version of the
+    Kconfig extractor matched a `default` that was not the knob's; it passed
+    every positive check and this is what caught it.
+    """
+    import tempfile
+
+    rows = parse_table(TRAITS.read_text(encoding="utf8"))
+    checks = 0
+
+    # A mutant per field KIND, chosen not to collide with the live value.
+    def mutants(field, live, expect):
+        # Excluding the EXPECTED value, not just the live one. Those are the
+        # same number in a clean tree and are not while a mirror is red, so a
+        # mutant chosen against `live` alone can land exactly on what the table
+        # says and be legitimately accepted — reported as "the comparison does
+        # not reach this field", which is a claim about the gate and was a bug
+        # in the control. Found by running this gate's own acceptance mutation
+        # (SSoT depth 10 -> 17) against `live + 7` on a knob sitting at 10.
+        forbidden = {live, expect}
+        if field in INT_FIELDS:
+            return [m for m in (live + 7, live + 1, live + 3) if m not in forbidden]
+        if field in BOOL_FIELDS or field in NROS_ONLY_FIELDS:
+            return [] if (not live) in forbidden else [not live]
+        return [m for m in MUTANTS[field] if m not in forbidden]
+
+    with tempfile.TemporaryDirectory() as d:
+        for mirror in MIRRORS:
+            text = mirror.path.read_text(encoding="utf8")
+            extracted = mirror.extract(text, mirror.name)
+            deviations = parse_mirror_deviations(text, mirror.name)
+
+            # 1. The extractor found the rows the gate names. A regex that
+            #    matches nothing produces an empty dict and no complaint.
+            found = set(extracted) & set(mirror.presets)
+            if found != set(mirror.presets):
+                raise Fail(
+                    f"selftest: {mirror.name} parsed {sorted(found)}, the gate names "
+                    f"{sorted(mirror.presets)}"
+                )
+            checks += 1
+
+            # 2. Every checked value, mutated in the EXTRACTED dict, must be
+            #    reported. This exercises `compare_mirrors` rather than the
+            #    regex; (3) below exercises the regex.
+            for row, preset in sorted(mirror.presets.items()):
+                if preset not in rows:
+                    continue  # `compare` already reports it; nothing to mutate against
+                for field, live in sorted(extracted[row].items()):
+                    if _mirror_covering(deviations, row, field) is not None:
+                        continue  # a declared divergence is green by design
+                    for mutant in mutants(field, live, rows[preset]["fields"][field]):
+                        broken = {r: dict(f) for r, f in extracted.items()}
+                        broken[row][field] = mutant
+                        stub = Mirror(
+                            mirror.name, mirror.path, lambda _t, _w, b=broken: b, mirror.presets
+                        )
+                        errs, _ = compare_mirrors(rows, [stub])
+                        if not errs:
+                            raise Fail(
+                                f"selftest: {mirror.name} {row}.{field} = {_fmt(mutant)} "
+                                f"(live {_fmt(live)}) was accepted — the comparison does not "
+                                f"reach this field"
+                            )
+                        checks += 1
+                        break
+
+            # 3. And the EXTRACTOR follows the file. A gate whose regex has
+            #    stopped matching returns the same dict for a changed file, and
+            #    (2) cannot see that: it mutates the dict, not the source.
+            probe = _MIRROR_SOURCE_PROBE.get(mirror.name)
+            if probe is None:
+                raise Fail(
+                    f"selftest: {mirror.name} has no source probe. Every mirror needs one — "
+                    "mutating the parsed dict proves the comparison works, never that the "
+                    "regex still reads the file."
+                )
+            old, new, row, field, want = probe
+            if text.count(old) != 1:
+                raise Fail(
+                    f"selftest: the {mirror.name} source probe anchor {old!r} occurs "
+                    f"{text.count(old)} times, not once — it no longer identifies the value "
+                    "it means to move."
+                )
+            p = Path(d) / f"{mirror.name.replace('/', '_')}"
+            p.write_text(text.replace(old, new), encoding="utf8")
+            moved = mirror.extract(p.read_text(encoding="utf8"), mirror.name)
+            if moved[row][field] != want:
+                raise Fail(
+                    f"selftest: {mirror.name}'s extractor did not follow a changed source — "
+                    f"{row}.{field} read {_fmt(moved[row][field])}, the edited file says "
+                    f"{_fmt(want)}"
+                )
+            checks += 1
+
+    if verbose:
+        print(f"  mirror controls passed ({checks})")
+    return checks
+
+
+# One real edit per mirror: (find, replace, row, field, expected-after).
+#
+# AUTHORED, so it drifts — which is why the selftest refuses a mirror without
+# one and refuses an anchor that is not unique in its file. Both refusals fire
+# toward RED, never toward a quiet pass.
+_MIRROR_SOURCE_PROBE = {
+    "Kconfig": (
+        'config NROS_PUBSUB_QOS_DEPTH\n    int "QoS history depth the arena budgets per '
+        'subscription"\n    default 10',
+        'config NROS_PUBSUB_QOS_DEPTH\n    int "QoS history depth the arena budgets per '
+        'subscription"\n    default 17',
+        "NROS_PUBSUB_QOS_DEPTH",
+        "depth",
+        17,
+    ),
+    "rmw_entity.h": (
+        "NROS_RMW_QOS_PROFILE_FROM_POLICIES(BEST_EFFORT, VOLATILE, KEEP_LAST, 5, SYSTEM_DEFAULT)",
+        "NROS_RMW_QOS_PROFILE_FROM_POLICIES(BEST_EFFORT, VOLATILE, KEEP_LAST, 17, SYSTEM_DEFAULT)",
+        "SENSOR_DATA",
+        "depth",
+        17,
+    ),
+    "component.h": (
+        "q.depth = 10;",
+        "q.depth = 17;",
+        "nros_c_qos_default",
+        "depth",
+        17,
+    ),
+    "nros-c/qos.rs": (
+        "    history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,\n"
+        "    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC,\n"
+        "    depth: c_depth(nros_node::QoSProfile::QOS_PROFILE_SENSOR_DATA.depth),",
+        "    history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_ALL,\n"
+        "    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC,\n"
+        "    depth: c_depth(nros_node::QoSProfile::QOS_PROFILE_SENSOR_DATA.depth),",
+        "NROS_QOS_SENSOR_DATA",
+        "history",
+        "KEEP_ALL",
+    ),
+    "qos.hpp": (
+        "static constexpr QoS sensor_data() { return QoS().best_effort().keep_last(5); }",
+        "static constexpr QoS sensor_data() { return QoS().best_effort().keep_last(17); }",
+        "sensor_data",
+        "depth",
+        17,
+    ),
+    "xrce/session.c": (
+        "        out.depth = 10;",
+        "        out.depth = 17;",
+        "xrce_map_qos_null",
+        "depth",
+        17,
+    ),
+}
+
 # --------------------------------------------------------------------------
 
 
@@ -1014,6 +1762,12 @@ def main():
             TRAITS.read_text(encoding="utf8")
         ))
 
+        # phase-454 W1 — and the sites that cannot READ the table. Upstream ←
+        # record ← table is only half a chain while five transcriptions of the
+        # same numbers hang off nothing.
+        mirror_errs, mirror_fields = compare_mirrors(rows)
+        errs += mirror_errs
+
         # Where a ROS install IS present, the checked-in record must still be
         # what the headers say. Absent one, the record stands on its recorded
         # provenance — but it can never quietly rot on a machine that could
@@ -1056,7 +1810,10 @@ def main():
         )
         return 1
 
-    print(f"check-qos-profile-ssot: OK ({len(rows)} presets, {len(record)} upstream constants)")
+    print(
+        f"check-qos-profile-ssot: OK ({len(rows)} presets, {len(record)} upstream constants, "
+        f"{mirror_fields} fields across {len(MIRRORS)} non-Rust mirrors)"
+    )
     return 0
 
 
