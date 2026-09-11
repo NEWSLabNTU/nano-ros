@@ -245,6 +245,39 @@ ways a ported program can compile and differ.
     updates, so the answer was permanently `0` for any timer the executor was
     running. It has upstream's shape now — `nros_ret_t (const timer *, int64_t *)`
     — and forwards to the arena like its three W5.c siblings.
+* W3.h — **LANDED: the four C executor / guard-condition gaps, and their
+  siblings.** Each was an upstream name that compiled and differed, each is now
+  ADOPTED, and each carries a unit test that fails against the pre-fix body
+  (mutation-checked, all seven at once).
+  * `c:executor_trigger_one` — `obj` is the ENTITY POINTER now, as in rclc.
+    Getting there needed the trigger ABI to carry entity identity at all: the
+    predicate is handed `nros_executor_trigger_handle_t[]`
+    (`{ entity, data_available }`) instead of a bare `const bool *`, the C
+    executor records one entity pointer per handle slot at all ten `add_*`
+    sites, and `rclc_executor_set_trigger` installs a bridge that joins the
+    internal readiness snapshot to that table. The index form survives as
+    `nros_executor_trigger_index` — ours-only, ledgered `extension`.
+  * SIBLING found by the sweep: `rclc_executor_trigger_all` returned `false`
+    for an empty handle array where upstream's loop does not execute and
+    returns `true`.
+  * `c:executor_spin_some` — a completed cycle is `NROS_RET_OK` whether or not
+    a callback ran; rclc discards `rcl_wait`'s `RCL_RET_TIMEOUT`. The idle/busy
+    distinction is NOT re-exposed under another name: both in-tree readers of
+    it were removed as wrong (issues 0324/0355) and nothing else wanted it.
+  * `c:executor_spin_period` + `c:executor_set_timeout` — both period spins
+    wait for `timeout_ns` and spend `period_ns` on the sleep, so
+    `rclc_executor_set_timeout` is honoured by all three spin verbs.
+  * `c:guard_condition_fini` — idempotent. The row's EVIDENCE BOUND is closed:
+    `rcl/src/rcl/guard_condition.c` @ humble errors only on NULL and returns
+    `RCL_RET_OK` when `impl` is NULL. SIBLINGS, each verified against its own
+    upstream source rather than by analogy: `rcl_node_fini` (rcl says
+    "Repeat calls to fini or calling fini on a zero initialized node is ok")
+    and `rclc_executor_fini` (rclc says the same, and our `== UNINITIALIZED`
+    guard let a second call reach `drop_in_place` on zeroed storage) are now
+    idempotent too. `rcl_clock_fini` is NOT: upstream returns
+    `RCL_RET_INVALID_ARGUMENT` for an uninitialised clock, so ours erroring is
+    correct and it was left alone. `rcl_timer_fini` is the one sibling not
+    touched here — it is phase-417's other stage-3 assignment.
 
 **Acceptance:** every upstream name we define either behaves or fails to
 compile. Demonstrated by an expected-failure probe per REFUSE-LOUD item, in the

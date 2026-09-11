@@ -323,6 +323,10 @@ fn generate_config(
             &publisher_opaque_u64s.to_string(),
         )
         .replace("@EXECUTOR_OPAQUE_U64S@", &executor_opaque_u64s.to_string())
+        // phase-417 stage 3 — the same `max_cbs` the Rust-side
+        // NROS_EXECUTOR_MAX_HANDLES is built from, because cbindgen prints that
+        // constant's NAME as `nros_executor_t._handle_entities`'s array bound.
+        .replace("@NROS_EXECUTOR_MAX_HANDLES@", &max_cbs.to_string())
         .replace(
             "@GUARD_HANDLE_OPAQUE_U64S@",
             &guard_handle_opaque_u64s.to_string(),
@@ -391,6 +395,10 @@ fn generate_config(
         .replace("@EXACT_SESSION_U64S@", &exact_session_u64s.to_string())
         .replace("@EXACT_PUBLISHER_U64S@", &exact_publisher_u64s.to_string())
         .replace("@EXACT_EXECUTOR_U64S@", &exact_executor_u64s.to_string())
+        // phase-417 stage 3 — see the upper-bound template's copy. This is the
+        // template that is actually WRITTEN, so a define missing here is a
+        // `NROS_EXECUTOR_MAX_HANDLES undeclared` on `nros_executor_t`.
+        .replace("@NROS_EXECUTOR_MAX_HANDLES@", &max_cbs.to_string())
         .replace("@EXACT_GUARD_U64S@", &exact_guard_u64s.to_string())
         .replace("@EXACT_LIFECYCLE_U64S@", &exact_lifecycle_u64s.to_string())
         .replace(

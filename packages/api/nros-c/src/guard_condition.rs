@@ -253,6 +253,30 @@ pub unsafe extern "C" fn nros_guard_condition_is_valid(
 }
 
 /// Finalize a guard condition.
+///
+/// IDEMPOTENT: a zero-initialised or already-finalised handle is not an error
+/// and returns `NROS_RET_OK`. A NULL pointer is still
+/// `NROS_RET_INVALID_ARGUMENT`.
+///
+/// That is rcl's contract, MEASURED rather than assumed (phase-417 stage 3 —
+/// the ledger row carried an explicit evidence bound because the host it was
+/// written on had only the Humble headers, which do not state the guarantee in
+/// words). `rcl/src/rcl/guard_condition.c` @ humble:
+///
+/// ```text
+/// rcl_guard_condition_fini(rcl_guard_condition_t * guard_condition)
+/// {
+///   RCL_CHECK_ARGUMENT_FOR_NULL(guard_condition, RCL_RET_INVALID_ARGUMENT);
+///   rcl_ret_t result = RCL_RET_OK;
+///   if (guard_condition->impl) { … }
+///   return result;
+/// }
+/// ```
+///
+/// so NULL errors and `impl == NULL` — a zero-initialised or already-finalised
+/// handle — returns OK. Ours returned `NROS_RET_NOT_INIT` for the second case,
+/// and since `rcl_*_fini` is `RCL_WARN_UNUSED` upstream, a ported cleanup path
+/// that checks its return reported a shutdown failure that had not happened.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_guard_condition_fini(
     guard: *mut nros_guard_condition_t,
@@ -261,10 +285,10 @@ pub unsafe extern "C" fn rcl_guard_condition_fini(
 
     let guard = &mut *guard;
 
-    validate_state!(
-        guard,
-        nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED
-    );
+    if guard.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
+        // Nothing to tear down. Idempotent, per rcl.
+        return NROS_RET_OK;
+    }
 
     // Drop the inline guard handle if initialized
     if guard._guard_valid {
@@ -290,6 +314,39 @@ pub unsafe extern "C" fn rcl_guard_condition_fini(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-417 stage 3 / ledger row `c:guard_condition_fini`.
+    ///
+    /// rcl's `fini` family is idempotent: `rcl_guard_condition_fini` errors only
+    /// on a NULL pointer, and returns `RCL_RET_OK` when `impl` is NULL — a
+    /// zero-initialised or already-finalised handle. Ours returned
+    /// `NROS_RET_NOT_INIT` for the second case, so a ported cleanup path that
+    /// checks the return (it is `RCL_WARN_UNUSED` upstream) reported a shutdown
+    /// failure that had not happened.
+    #[test]
+    fn guard_condition_fini_is_idempotent() {
+        unsafe {
+            let mut guard = rcl_get_zero_initialized_guard_condition();
+            assert_eq!(
+                rcl_guard_condition_fini(&mut guard),
+                NROS_RET_OK,
+                "fini on a zero-initialised guard condition is not an error"
+            );
+
+            guard.state = nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_SHUTDOWN;
+            assert_eq!(
+                rcl_guard_condition_fini(&mut guard),
+                NROS_RET_OK,
+                "a repeated fini is not an error"
+            );
+
+            assert_eq!(
+                rcl_guard_condition_fini(ptr::null_mut()),
+                NROS_RET_INVALID_ARGUMENT,
+                "a NULL pointer is still an argument error, as in rcl"
+            );
+        }
+    }
 
     #[test]
     fn test_guard_condition_default() {
@@ -388,14 +445,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_guard_condition_fini_not_init() {
-        unsafe {
-            let mut guard = rcl_get_zero_initialized_guard_condition();
-            let ret = rcl_guard_condition_fini(&mut guard);
-            assert_eq!(ret, NROS_RET_NOT_INIT);
-        }
-    }
+    // `test_guard_condition_fini_not_init` used to live here, asserting
+    // `NROS_RET_NOT_INIT` for a zero-initialised handle. It PINNED the
+    // divergence rather than recording it — rcl returns OK for exactly that
+    // case. Replaced by `guard_condition_fini_is_idempotent` above
+    // (phase-417 stage 3).
 
     #[test]
     fn test_guard_condition_set_callback_null() {
