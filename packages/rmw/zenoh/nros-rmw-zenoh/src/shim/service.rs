@@ -104,6 +104,40 @@ impl ServiceBuffer {
 /// tables are already per-session). At the default `ZPICO_MAX_SESSIONS == 1`
 /// this is `[ServiceBuffer; ZPICO_MAX_QUERYABLES]` with `session_index == 0`,
 /// identical to the pre-0376 layout.
+///
+/// # Why there is no `// nros-pool:` annotation
+///
+/// phase-454 W6.a. This pool is the largest single consumer of static RAM in a
+/// native zenoh image — **144,128 bytes on a native talker**, a node with no
+/// service server at all — so its absence from
+/// `book/src/reference/static-pool-inventory.md` is exactly the enumeration
+/// failure issue 0271 cost ~145 KB to. It is absent on purpose, and this is the
+/// purpose, stated rather than left to be re-discovered:
+///
+/// `scripts/gen-pool-inventory.py` evaluates a pool as a PRODUCT of knobs at
+/// their literal defaults. Two independent things make that impossible here,
+/// and `scripts/nros-mem-report.py`'s own header already names the first:
+///
+/// * the element is a STRUCT, not a byte. `sizeof(ServiceBuffer)` is
+///   `SERVICE_REQUEST_RING_DEPTH × (SERVICE_BUFFER_SIZE + a length, a sequence
+///   and a flag)` **plus** a `[u8; 256]` reply keyexpr, two cursors, an
+///   `AtomicWaker` and a session pointer — a SUM with target-dependent terms,
+///   where the grammar has only products. The measured 4,504 bytes a slot is
+///   right for one build and wrong for the next appended field, which is the
+///   drift class `check-ffi-struct-mirrors` exists for one layer down;
+/// * `ZPICO_MAX_QUERYABLES` has a COMPUTED default, so there is no integer to
+///   put in the comment even for the count.
+///
+/// So this follows the three documented deliberate non-annotations —
+/// `shim/publisher.rs`'s `LendArena`, `nros_rmw_cffi`'s `MESSAGE_INFO_TABLE`,
+/// and `nros_node::executor::backing` — and their shared principle: **the size
+/// is known to the compiler, so read it from the compiler's output.**
+/// `just mem-report <elf>` prices this symbol from the ELF, exactly, with no
+/// formula to drift; `book/src/internals/measuring-static-memory.md` shows it at
+/// 40.4 % of a native talker's RAM. Both knobs that size it are still
+/// enumerated in the inventory with their defaults, which is what issue 0739
+/// asked for — the table says "no byte figure", which is true, rather than
+/// implying it is free.
 const SERVICE_BUFFER_COUNT: usize = ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES;
 static mut SERVICE_BUFFERS: [ServiceBuffer; SERVICE_BUFFER_COUNT] =
     [const { ServiceBuffer::new() }; SERVICE_BUFFER_COUNT];

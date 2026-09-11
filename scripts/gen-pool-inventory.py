@@ -117,6 +117,31 @@ def crate_of(rel):
 # silently dropped by a literal-only regex.
 KNOB_ANY = re.compile(r'\b(?:env_usize(?:_compat|_min)?|knob)\(\s*"([A-Z0-9_]+)"')
 
+# `const SUBSCRIBER_RING_DEPTH_DEFAULT: usize = 4;` — a file-local builtin that
+# a knob read reaches through `.unwrap_or(NAME)`.
+CONST_USIZE = re.compile(r"\bconst\s+([A-Z][A-Z0-9_]*)\s*:\s*usize\s*=\s*([0-9_]+)\s*;")
+
+# A knob whose default is a LADDER CHAIN ending in `.unwrap_or(<const>)` —
+# phase-454 W6.a:
+#
+#     env_usize_min("ZPICO_SUBSCRIBER_RING_DEPTH",
+#         limits.subscriber_ring_depth.or(declared(..)).unwrap_or(RING_DEPTH_DEFAULT), 1)
+#
+# Fourth entry in this family, for the third time for the same reason: a crate
+# that grows a resolution rule rewrites its READS, and the builtin stops being a
+# literal argument. Each previous time the knob silently left this table — and
+# with `ZPICO_SUBSCRIBER_RING_DEPTH` that also unprices BOTH payload pools,
+# which is the `SLOTS` regression recorded against `env_usize_min` above. The
+# builtin here is still a single number, it is just named; resolving the name
+# publishes the figure instead of a churning line number.
+#
+# `[^"]` bounds the chain: it cannot run past a string literal, so a match can
+# never pair one knob's name with the NEXT knob read's default.
+KNOB_UNWRAP_OR_CONST = re.compile(
+    r'\b(?:env_usize(?:_compat|_min|_rung)?|knob)\(\s*"([A-Z0-9_]+)"\s*,'
+    r'[^"]{0,400}?\.unwrap_or\(\s*([A-Z][A-Z0-9_]*)\s*\)'
+)
+
 # A knob whose FRONT-END NAME lives in a ladder mapping rather than a call.
 #
 # phase-400 W6 moves a knob's resolution out of its build script and into the
@@ -283,6 +308,20 @@ def scan(files=None, xrce=True):
                     knobs[name] = (knobs[name][0], knobs[name][1], knobs[name][2], True)
                     continue
                 knobs.setdefault(name, (default, rel, line, False))
+        # The named builtin, resolved in the file that names it. A const this
+        # file cannot see leaves the knob with a computed default, which is the
+        # same honest answer as before — never a guess.
+        consts = {n: int(v.replace("_", "")) for n, v in CONST_USIZE.findall(text)}
+        for m in KNOB_UNWRAP_OR_CONST.finditer(text):
+            name, ident = m.group(1), m.group(2)
+            if ident not in consts:
+                continue
+            default = consts[ident]
+            line = text[: m.start()].count("\n") + 1
+            if name in knobs and knobs[name][0] is not None and knobs[name][0] != default:
+                knobs[name] = (knobs[name][0], knobs[name][1], knobs[name][2], True)
+                continue
+            knobs.setdefault(name, (default, rel, line, False))
         for m in KNOB_ANY.finditer(text):
             name = m.group(1)
             if name not in knobs:
@@ -408,6 +447,14 @@ def self_test():
         '// nros-pool: Q = NROS_PROBE_DEPTH * NROS_PROBE_SLOTS\n'
         'let z = knob("NROS_PROBE_LADDER", rungs.thing, 9);\n'
         'let w = knob("NROS_PROBE_PLAIN", 7);\n'
+        # phase-454 W6.a's shape: the builtin is a NAMED const at the end of a
+        # ladder chain. Without a case here the spelling can be added, delete a
+        # knob and both payload-pool figures with it, and still self-test green
+        # — which is exactly how `env_usize_min` did it.
+        'const PROBE_RING_DEFAULT: usize = 5;\n'
+        'let r = env_usize_min("NROS_PROBE_RING",\n'
+        '    rungs.ring.or(declared(d)).unwrap_or(PROBE_RING_DEFAULT), 1);\n'
+        '// nros-pool: R = NROS_PROBE_RING * NROS_PROBE_SLOTS\n'
         # The RFC-0049 ladder's front-end match, verbatim in shape — the ONLY
         # place `NROS_XRCE_STREAM_HISTORY` is named in Rust, and it can state
         # no figure. It is here to pin the PRECEDENCE below.
@@ -487,6 +534,15 @@ def self_test():
     assert pool_bytes(by_name["P"], k)[0] == 96, "annotated pool bytes wrong"
     assert pool_bytes(by_name["Q"], k)[0] == 36, (
         "a pool sized by an env_usize_min knob must resolve to bytes"
+    )
+    assert k.get("NROS_PROBE_RING", (None,))[0] == 5, (
+        "a knob whose builtin is a NAMED const at the end of a `.unwrap_or(..)` "
+        "ladder chain must still publish its figure (phase-454 W6.a) — a line "
+        "number in the default column is the enumeration failure issue 0271 "
+        "measured at ~145 KB"
+    )
+    assert pool_bytes(by_name["R"], k)[0] == 60, (
+        "a pool sized by such a knob must resolve to bytes, not to `computed default`"
     )
 
     # --- issue 1078: the XRCE knobs, which have no Rust declaration site -----

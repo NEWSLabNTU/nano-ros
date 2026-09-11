@@ -158,6 +158,11 @@ nros-platform-config = { path = "../../../tooling/nros-platform-config" }
 # Zephyr, and the Rust lane never sees the cmake `set(ENV{...})` exports. One
 # spelling of the `$DOTCONFIG` fallback, shared with `nros-zpico-build`.
 nros-zephyr-build = { path = "../../../tooling/nros-zephyr-build" }
+# phase-454 W6.a (RFC-0100 D4/D5) — the image's own declarations, read BY PATH.
+# The backend owns its formula and reads the descriptor in its own build; this
+# is the reader every consumer shares, so there is no second parser and no
+# second answer to "what does an absent `depth` mean".
+nros-sizing-descriptor = { path = "../../../tooling/nros-sizing-descriptor" }
 
 [dev-dependencies]
 nros-tests = { path = "../../../testing/nros-tests" }

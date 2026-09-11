@@ -1,4 +1,14 @@
+use nros_sizing_descriptor::{EndpointKind, Fact, SizingDescriptor};
+
 fn main() {
+    // phase-454 W6.a (RFC-0100 D5) — what this IMAGE declares, read by path.
+    //
+    // NOT watched as a variable: `load_for_build_script` puts the rebuild edge
+    // on the file's CONTENT, which is the whole reason D4 chose a file. A
+    // `rerun-if-env-changed` on a path name is issue 0491, and this crate is
+    // one of the two that paid for it.
+    let sizing = sizing_descriptor();
+
     // issue 0682 — the peer-mode build input (`just test-zpico-peer`).
     println!("cargo:rerun-if-env-changed=ZPICO_MULTICAST_TRANSPORT");
     println!("cargo:rerun-if-env-changed=NROS_SUBSCRIBER_BUFFER_SIZE");
@@ -36,7 +46,15 @@ fn main() {
         declared_usize("NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE"),
         1024,
     );
-    let svc_size: usize = env_usize("ZPICO_SERVICE_BUFFER_SIZE", 1024);
+    // phase-454 W6.a — the `SLOT_BYTES` factor of `SERVICE_BUFFERS`
+    // (RFC-0100 D2's `pool = Σ COUNT × SLOTS × SLOT_BYTES + fixed`, where COUNT
+    // is `ZPICO_MAX_SESSIONS × ZPICO_MAX_QUERYABLES` and SLOTS is
+    // `SERVICE_REQUEST_RING_DEPTH`). The declared service surface supplies the
+    // DEFAULT; a stated knob, and the Kconfig rung on Zephyr, still win.
+    let svc_size: usize = env_usize(
+        "ZPICO_SERVICE_BUFFER_SIZE",
+        declared_service_request_bytes(sizing.as_ref()).unwrap_or(SERVICE_BUFFER_SIZE_DEFAULT),
+    );
     // Phase 160.C.2 — bumped 10_000 → 30_000. The original 10 s default
     // was too short for slow zenoh-pico flushes on Zephyr/NSOS where
     // each publish/query can take ~2.5 s under Z_FEATURE_INTEREST=1. An
@@ -65,9 +83,23 @@ fn main() {
     // Phase 124.D.3.c — SPSC ring depth per subscriber. Default 4
     // keeps the static-RAM bump small (4 × SUBSCRIBER_BUFFER_SIZE
     // per subscriber); raise for burst-heavy topics. Must be ≥ 1.
+    //
+    // phase-454 W6.a — the `SLOTS` factor of both payload pools, and the one
+    // factor RFC-0100 D2 names as coming from the QoS history depth:
+    //
+    //   zenoh `SMALL_PAYLOADS` | subscription count | QoS depth | small bound
+    //
+    // It was AUTHORED until this wave. What the image declares now supplies the
+    // DEFAULT, below both stated rungs: a consumer naming the env var wins, and
+    // so does a board that states `[knobs.zenoh.limits] subscriber_ring_depth`,
+    // because a board rung is a STATEMENT (RFC-0049) while a derived fact is
+    // only ever a default (RFC-0100 D1).
     let ring_depth: usize = env_usize_min(
         "ZPICO_SUBSCRIBER_RING_DEPTH",
-        limits.subscriber_ring_depth.unwrap_or(4),
+        limits
+            .subscriber_ring_depth
+            .or(declared_ring_depth(sizing.as_ref()))
+            .unwrap_or(SUBSCRIBER_RING_DEPTH_DEFAULT),
         1,
     );
     // Phase 231 (RFC-0038) — size-class receive buffers. `SUBSCRIBER_BUFFER_SIZE`
@@ -155,7 +187,8 @@ fn main() {
         format!(
             "/// Subscriber buffer size (set via NROS_SUBSCRIBER_BUFFER_SIZE, default 1024).\n\
              pub const SUBSCRIBER_BUFFER_SIZE: usize = {sub_size};\n\
-             /// Service request buffer size (set via ZPICO_SERVICE_BUFFER_SIZE, default 1024).\n\
+             /// Service request buffer size (set via ZPICO_SERVICE_BUFFER_SIZE; default is\n\
+             /// the largest declared service/action bound, floored at 1024 — phase-454 W6.a).\n\
              pub const SERVICE_BUFFER_SIZE: usize = {svc_size};\n\
              /// Default service client RPC timeout in milliseconds\n\
              /// (set via NROS_SERVICE_TIMEOUT_MS, default 30000).\n\
@@ -165,8 +198,9 @@ fn main() {
              pub const KEYEXPR_STRING_SIZE: usize = {keyexpr_string_size};\n\
              /// Key expression buffer size (KEYEXPR_STRING_SIZE + 1 for null terminator).\n\
              pub const KEYEXPR_BUFFER_SIZE: usize = {keyexpr_buf_size};\n\
-             /// Phase 124.D.3.c — per-subscriber SPSC ring depth\n\
-             /// (set via ZPICO_SUBSCRIBER_RING_DEPTH, default 4).\n\
+             /// Phase 124.D.3.c — per-subscriber SPSC ring depth (set via\n\
+             /// ZPICO_SUBSCRIBER_RING_DEPTH or the board's `subscriber_ring_depth` rung;\n\
+             /// default is the largest declared subscription depth, else 4 — phase-454 W6.a).\n\
              pub const SUBSCRIBER_RING_DEPTH: usize = {ring_depth};\n\
              /// Phase 231 (RFC-0038) — `large` size-class slot size\n\
              /// (set via ZPICO_SUBSCRIBER_LARGE_SIZE, default 16384).\n\
@@ -188,6 +222,207 @@ fn main() {
         ),
     )
     .unwrap();
+}
+
+/// The per-subscriber SPSC ring depth when nothing states or derives one.
+///
+/// Phase 124.D.3.c's number, unchanged. It is a POLICY default — a burst
+/// absorber, not a QoS depth — which is why a refused derivation falls back
+/// HERE rather than to `rmw_qos_profile_default`'s KEEP_LAST(10): the
+/// consequence of a short ring is the reported, graph-advertised downgrade in
+/// `shim/qos.rs` (`nros-qos-honours: DEPTH`), not a `BufferTooSmall`. Falling
+/// back to 10 would multiply every partially-declared image's payload pools by
+/// 2.5 for a policy nobody wrote.
+const SUBSCRIBER_RING_DEPTH_DEFAULT: usize = 4;
+
+/// The service-request slot size when nothing states or derives one.
+///
+/// Also the FLOOR of the derivation below. See
+/// [`declared_service_request_bytes`] for why the app's own declarations may
+/// raise this number and may not lower it.
+const SERVICE_BUFFER_SIZE_DEFAULT: usize = 1024;
+
+/// The descriptor this build was pointed at, or `None`.
+///
+/// Mirrors `nros-node/build.rs::sizing_descriptor`, deliberately: three
+/// outcomes, and the middle one is D6 working.
+///
+/// * **no descriptor** — nobody ran `nros sync` for this image, or nothing
+///   pointed this build at one. Every knob below keeps its builtin and the
+///   build is byte-identical to every build before this wave;
+/// * **a descriptor that refuses a field** — the builtin, plus a
+///   `cargo::warning` naming the refusal. *"Worst case when refused, always the
+///   safe direction and always loud"*;
+/// * **a descriptor that does not parse** — a hard build error naming the file.
+///   A descriptor EXISTS, so defaulting would size from numbers a user believes
+///   they supplied.
+fn sizing_descriptor() -> Option<SizingDescriptor> {
+    match nros_sizing_descriptor::from_build_env() {
+        Ok(d) => d,
+        // A path was named and nothing is there, or the file is corrupt. Both
+        // are loud: somebody pointed this build at a descriptor.
+        Err(e) => panic!("{e}"),
+    }
+}
+
+/// D6's second half: *"Worst case when refused, always the safe direction and
+/// always LOUD — the build prints what declaring would save."*
+///
+/// No crate prefix: cargo already stamps `nros-rmw-zenoh@<ver>:` on a build
+/// script's warning, and adding one prints the name twice.
+fn warn(msg: &str) {
+    println!("cargo::warning={msg}");
+}
+
+/// The ring depth this image's subscriptions declare — RFC-0100 D2's `SLOTS`.
+///
+/// One knob serves every subscriber (the ring is a build-time constant baked
+/// into `SmallPayloadBlock` / `LargePayloadBlock`), so the derived demand is the
+/// MAXIMUM over the subscriptions: a ring shorter than a declared depth is the
+/// clamp `shim/qos.rs` reports and advertises, and clamping an endpoint the
+/// image asked for is exactly what this wave exists to stop.
+///
+/// `None` — keep the builtin — in three cases, and each is a different fact:
+///
+/// * **no subscription rows.** Nothing declared a depth, so there is no demand
+///   to read. NOT zero: absence is not zero (D6), and a derived 0 here would
+///   reach `env_usize_min`'s floor as a build panic naming a knob the user
+///   never set;
+/// * **any subscription's `depth` is REFUSED.** The `keep_all` trigger, and the
+///   one the RFC names first: *"a KEEP_ALL queue has no static bound"*. The
+///   refusal is HONOURED — no number is substituted for it, here or anywhere —
+///   and the build prints what the endpoint said;
+/// * **any subscription's `depth` is ABSENT.** That endpoint gets
+///   `rmw_qos_profile_default`'s KEEP_LAST(10) at runtime, which the maximum
+///   over the OTHERS cannot see. Deriving from a subset would under-size the
+///   ring for the row that stayed silent, which is the direction that loses
+///   samples.
+fn declared_ring_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
+    let desc = desc?;
+    let subs: Vec<_> = desc
+        .endpoints
+        .iter()
+        .filter(|e| e.kind == EndpointKind::Subscription)
+        .collect();
+    if subs.is_empty() {
+        return None;
+    }
+    let mut max = 0usize;
+    for s in &subs {
+        match s.depth() {
+            Fact::Stated(d) => max = max.max(d as usize),
+            Fact::Refused(reason) => {
+                warn(&format!(
+                    "sizing descriptor refuses `depth` on subscription {}: {reason}. The \
+                     per-subscriber ring keeps {SUBSCRIBER_RING_DEPTH_DEFAULT} \
+                     (ZPICO_SUBSCRIBER_RING_DEPTH), and `shim/qos.rs` reports the clamp for \
+                     anything that asks for more",
+                    s.topic
+                ));
+                return None;
+            }
+            Fact::Absent => {
+                warn(&format!(
+                    "sizing descriptor states no `depth` for subscription {} ({}); the \
+                     per-subscriber ring keeps {SUBSCRIBER_RING_DEPTH_DEFAULT}. Declaring every \
+                     subscription's depth sizes both payload pools from what this image actually \
+                     keeps",
+                    s.topic, s.type_name
+                ));
+                return None;
+            }
+        }
+    }
+    if max == 0 {
+        // A stated KEEP_LAST(0) keeps nothing, and the ring's slot index is
+        // `counter % depth`. The DESCRIPTOR is right to carry it unfloored
+        // (D7 — zero is a legitimate demand and the floor lives at the
+        // consumer); this build script IS that consumer, and it refuses rather
+        // than silently substituting 1, which is issue 0827's rule for a value
+        // somebody stated.
+        warn(
+            "sizing descriptor states KEEP_LAST(0) on a subscription; a zero-slot receive ring \
+             cannot be indexed, so the per-subscriber ring keeps its default of \
+             ZPICO_SUBSCRIBER_RING_DEPTH",
+        );
+        return None;
+    }
+    Some(max)
+}
+
+/// The service-request slot size this image's declarations ask for.
+///
+/// RFC-0100 D2 gives `SERVICE_BUFFERS` as `sessions × queryables` slots of one
+/// request each, so `SLOT_BYTES` is the largest request or response this image
+/// can receive. `None` keeps [`SERVICE_BUFFER_SIZE_DEFAULT`].
+///
+/// # The derivation may RAISE this number and may not lower it
+///
+/// That is not timidity, it is what the descriptor can and cannot see. A zenoh
+/// service server IS a queryable, and **eleven of them exist before the app
+/// declares anything** — `[param_services]` (6) and `[lifecycle]` (5), issue
+/// 0460's measurement. Those servers receive `rcl_interfaces/srv/*` and
+/// `lifecycle_msgs/srv/*` requests through this very pool, and NOTHING in the
+/// contract declares them, so they appear in no `[[endpoint]]` row. Sizing the
+/// slot down to what the app declared would under-size a surface the
+/// declaration structurally cannot mention — the failure would land as
+/// `ServiceRequestSlot::overflow` on a parameter set, at runtime, on an image
+/// whose every knob gate read green.
+///
+/// So the app's declarations are an over-ride upward and the builtin is the
+/// floor, with the floor at the CONSUMER rather than in the descriptor (D7).
+/// Lowering it is a separate question that needs the built-in service surface
+/// to become a declared one.
+///
+/// # Why this refuses on every in-tree image today
+///
+/// The join is `(kind, type, topic)` and a service row's type is
+/// `pkg/srv/Name`. `BoundInventory::record_message` is called for `.msg` files
+/// and for nothing else, so `pkg/srv/Name_Request` and `pkg/action/Name_Result`
+/// have no bound entry — the entity inventory's own header says so, and the
+/// producer therefore writes `wire_bound_bytes` REFUSED on every service and
+/// action row. The refusal is printed rather than swallowed: it names the type,
+/// which is where the next wave has to start.
+fn declared_service_request_bytes(desc: Option<&SizingDescriptor>) -> Option<usize> {
+    let desc = desc?;
+    let svc: Vec<_> = desc
+        .endpoints
+        .iter()
+        .filter(|e| {
+            matches!(
+                e.kind,
+                EndpointKind::ServiceServer
+                    | EndpointKind::ServiceClient
+                    | EndpointKind::ActionServer
+                    | EndpointKind::ActionClient
+            )
+        })
+        .collect();
+    if svc.is_empty() {
+        return None;
+    }
+    let mut max = 0usize;
+    for e in &svc {
+        match e.wire_bound_bytes() {
+            Fact::Stated(b) => max = max.max(b),
+            // ONE unpriced row refuses the whole derivation: the slot is shared
+            // by every queryable, so a maximum over the rows that answered is
+            // not a bound on the rows that did not.
+            f => {
+                warn(&format!(
+                    "sizing descriptor states no `wire_bound_bytes` for {} {} ({}): {}. The \
+                     service request slot keeps {SERVICE_BUFFER_SIZE_DEFAULT} bytes \
+                     (ZPICO_SERVICE_BUFFER_SIZE)",
+                    e.kind.tag(),
+                    e.topic,
+                    e.type_name,
+                    f.refusal().unwrap_or("nothing derived it"),
+                ));
+                return None;
+            }
+        }
+    }
+    Some(max.max(SERVICE_BUFFER_SIZE_DEFAULT))
 }
 
 /// The Kconfig option each knob is resolved from on Zephyr. Only the two the

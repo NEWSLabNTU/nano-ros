@@ -285,7 +285,7 @@ maintainer of that backend reads it.
 | consumer | reads | computes | status today |
 | --- | --- | --- | --- |
 | executor | counts; per-endpoint `depth`+`history`; rx class; `[target]` | `MAX_CBS`, `ARENA_SIZE`, `BACKING_U64S` | partly derived; rx class is the dead knob above |
-| zenoh | counts; `depth`; small/large bounds; service req/resp bounds; `[policy]` | `ZPICO_MAX_*`, `SUBSCRIBER_RING_DEPTH`, payload pools, `SERVICE_BUFFERS` | counts and payload classes derived; **ring depth authored**; `SERVICE_BUFFERS` (144,128 B on a native talker) neither derived nor in the pool inventory |
+| zenoh | counts; `depth`; small/large bounds; service req/resp bounds; `[policy]` | `ZPICO_MAX_*`, `SUBSCRIBER_RING_DEPTH`, payload pools, `SERVICE_BUFFERS` | counts and payload classes derived; ring depth DERIVED from the declared depths (phase-454 W6.a, −124,032 B measured); `SERVICE_BUFFERS`'s slot size takes the declared service bound as its default and carries a stated non-annotation — but **no service or action type has a bound row to read** (`record_message` runs for `.msg` only), so it refuses on every image today |
 | XRCE | counts (**zero legal**); per-family bounds; `depth`; MTU; `reliability` | `MAX_*`, per-family `BUFFER_SIZE`, ring depths, `STREAM_HISTORY` | two counts derivable via `-1`; one global `BUFFER_SIZE = 1024` serves three families; reliability unread |
 | Cyclone | `[types]`, `[target].heap_budget_bytes`. **Nothing else** | `MAX_TYPES`, `MAX_DESCRIPTOR_TYPES`, `MAX_FIELDS`, `MAX_KINDS`, heap assertion | `MAX_TYPES` derived; `MAX_DESCRIPTOR_TYPES` **not** — silent-drop overflow at ~86 types |
 | uORB | distinct topic count; subscription count | `REGISTRY_CAPACITY`, `PX4_MAX_CALLBACKS` | neither wired |

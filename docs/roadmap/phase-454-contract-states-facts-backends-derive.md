@@ -231,6 +231,68 @@ silently defeated the fix.
 Acceptance per sub-wave: a measured byte delta on a named image, plus the pool
 inventory regenerated.
 
+#### W6.a — zenoh — **LANDED**
+
+`nros-rmw-zenoh/build.rs` reads the descriptor through `nros-sizing-descriptor`,
+exactly as `nros-node/build.rs` does, and owns its own formula (D5).
+
+**`ZPICO_SUBSCRIBER_RING_DEPTH` is derived.** It is D2's `SLOTS` factor for both
+payload pools, and it was AUTHORED. The demand is the MAXIMUM declared depth over
+the subscription rows — one knob serves every subscriber, so a ring shorter than
+a declared depth is the downgrade `shim/qos.rs` already reports and advertises to
+the graph.
+
+**Measured, on `packages/testing/nros-tests/bins/sim-clock-listener`** (native,
+zenoh, `--release`) — a leaf chosen because it needs neither `nros sync` nor ROS,
+so the number is reproducible anywhere:
+
+| symbol | before | after | delta |
+| --- | --- | --- | --- |
+| `LARGE_PAYLOADS` | 131,072 | 32,768 | **−98,304** |
+| `SMALL_PAYLOADS` | 32,768 | 8,192 | **−24,576** |
+| `SUBSCRIBER_BUFFERS` | 2,496 | 1,344 | −1,152 |
+| section RAM | 557,952 | 433,920 | **−124,032 (−22.2 %)** |
+
+for a descriptor stating the one thing the image keeps: `KEEP_LAST(1)` on
+`/clock`. Nothing about the running code changed.
+
+**`ZPICO_SERVICE_BUFFER_SIZE` takes the declared service/action bound as its
+default, and may only RAISE it.** The floor is the builtin 1024 and the reason is
+measured: a zenoh service server IS a queryable, and `[param_services]` (6) +
+`[lifecycle]` (5) claim eleven of them before the app declares anything (issue
+0460). Those servers receive through this very pool and appear in no
+`[[endpoint]]` row, so sizing the slot DOWN to what the app declared would
+under-size a surface the declaration structurally cannot mention. D7 is kept —
+the descriptor publishes demand unfloored and the floor lives here, at the
+consumer.
+
+**It refuses on every in-tree image today, and says why.**
+`BoundInventory::record_message` is called for `.msg` files and for nothing else,
+so `pkg/srv/Name_Request` and `pkg/action/Name_Result` have no bound row and the
+producer writes `wire_bound_bytes` REFUSED on every service and action endpoint.
+The build prints that refusal naming the type. **Pricing srv/action types is the
+prerequisite W6.b inherits** — it is a producer change (codegen records the two
+member messages; the descriptor writer joins `srv/Name` to them), not a consumer
+one, which is why it is not in this sub-wave.
+
+**`SERVICE_BUFFERS` gets a stated reason, not an annotation.** It is 144,128 B on
+a native talker — a node with no service server — and the largest single RAM
+symbol in a native zenoh image. `gen-pool-inventory.py` evaluates a pool as a
+PRODUCT of knobs at literal defaults, and this one is a struct whose size is a
+SUM with target-dependent terms (`[u8; 256]` keyexpr, four ring slots, four
+atomics) over a count whose default is itself computed. Both halves are right for
+one build and wrong for the next appended field. So it follows the three
+documented deliberate non-annotations — `LendArena`, `MESSAGE_INFO_TABLE`,
+`executor::backing` — and their shared principle: *the size is known to the
+compiler, so read it from the compiler's output*. `just mem-report` prices the
+symbol from the ELF exactly. `scripts/nros-mem-report.py`'s own header had
+already argued this; the argument now lives beside the static that needs it.
+
+Three outcomes, the same three W4 established: no descriptor → byte-identical to
+every build before this wave (verified: both constants unchanged, no warning
+printed); a refused field → the builtin plus a `cargo::warning` naming the
+refusal; a corrupt descriptor → a hard build error naming the file.
+
 ### W7 — contract and `qos_overrides` must agree
 
 Build error on any divergence, naming both sites (D8). Where an override states a
