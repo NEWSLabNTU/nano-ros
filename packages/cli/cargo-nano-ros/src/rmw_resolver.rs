@@ -10,8 +10,13 @@
 //! Phase 248 C5b (RFC-0031 amendment) — the Rust lowering target is the **board
 //! crate's** `rmw-X` feature (the board self-links + registers the concrete
 //! backend), NOT an `nros/rmw-X` feature. `cargo_feature` therefore names the
-//! `rmw-X` feature codegen places on the entry's board dep; the `nros` umbrella
-//! stays RMW-agnostic.
+//! `rmw-X` feature codegen places on the entry's board dep.
+//!
+//! The umbrella is SELECTION-agnostic, which issue 1295 showed is not the same
+//! as RMW-agnostic: `nros` declares `rmw-cyclonedds`, a marker forwarding
+//! `nros-node/needs-type-descriptors`, and an image that links Cyclone without
+//! it cannot create a publisher. So one `cargo_feature` name is offered to BOTH
+//! crates and each takes it only if it declares it (`facade.rs`).
 //!
 //! It lives in `cargo-nano-ros` (the lower crate) so both the scaffolder here
 //! and the orchestration loader in `nros-cli-core` share one mapping.

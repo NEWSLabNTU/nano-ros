@@ -197,10 +197,23 @@ pub fn write_facade(
     let rmw = crate::orchestration::rmw_resolver::resolve_rmw(&declared_rmw)
         .map_err(|e| eyre::eyre!("facade: {entry_name}: {e}"))?;
 
-    // `nros` carries the edition and the capabilities; the BOARD crate carries
+    // `nros` carries the edition and the capabilities; the BOARD crate SELECTS
     // the RMW (phase-248 C5b — its `rmw-X` feature self-links and registers the
     // backend, and brings the concrete platform impl). Splitting them is not a
     // style choice: putting `rmw-zenoh` on `nros` selects nothing.
+    //
+    // Issue 1295 — but "selects nothing" is not "is never needed". The `nros`
+    // umbrella declares `rmw-cyclonedds = ["nros-node/needs-type-descriptors"]`,
+    // a MARKER rather than a selector: without it the generic path never
+    // registers a type descriptor, and every generated Rust entry on Cyclone
+    // opened its session and then died at the first node with
+    // `NodeError::Transport(PublisherCreationFailed)`. The board's own
+    // `rmw-cyclonedds` is `dep:nros-rmw-cyclonedds-sys` — the backend — so it
+    // cannot stand in for this.
+    //
+    // Asked of the crate, never listed here, exactly like the board rule below:
+    // an RMW whose umbrella feature exists gets it, one whose does not stays
+    // silent, and a future backend that grows a marker needs no edit here.
     let mut nros_features = vec![edition.cargo_feature().to_string()];
     for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
         if !sys.capability_enabled(cap.declared) {
@@ -222,6 +235,21 @@ pub fn write_facade(
         }
         nros_features.push(cap.nros_feature.to_string());
     }
+    // Issue 1295 — the umbrella MARKER for every backend this image links (a
+    // bridge links two), for the crate that declares one.
+    let mut wanted_markers = vec![rmw.cargo_feature.to_string()];
+    for extra in image_backends(entry_name, sys) {
+        match crate::orchestration::rmw_resolver::resolve_rmw(&extra) {
+            Ok(r) => wanted_markers.push(r.cargo_feature.to_string()),
+            Err(e) => return Err(eyre::eyre!("facade: {entry_name}: {e}")),
+        }
+    }
+    for cf in wanted_markers {
+        if crate_declares_feature(&nros_path, &cf) {
+            nros_features.push(cf);
+        }
+    }
+
     nros_features.sort();
     nros_features.dedup();
 
@@ -573,6 +601,24 @@ mod tests {
             "../../../../../repo/packages/api/nros"
         );
         assert_eq!(rel_from(Path::new("/a/b"), Path::new("/a/b/c")), "c");
+    }
+
+    /// Issue 1295 — the umbrella takes a `rmw-X` feature only when it DECLARES
+    /// one, which is the whole of the marker rule. A crate that declares it
+    /// gets it (Cyclone's `needs-type-descriptors` forward); one that does not
+    /// stays silent (naming `rmw-zenoh` on `nros` is a hard cargo error, not a
+    /// no-op), and the two cases are read from the crate rather than listed.
+    #[test]
+    fn the_umbrella_takes_only_the_rmw_marker_it_declares() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"nros\"\n\n[features]\nros-humble = []\nrmw-cyclonedds = [\"nros-node/needs-type-descriptors\"]\n",
+        )
+        .unwrap();
+        assert!(crate_declares_feature(dir.path(), "rmw-cyclonedds"));
+        assert!(!crate_declares_feature(dir.path(), "rmw-zenoh"));
+        assert!(!crate_declares_feature(dir.path(), "rmw-xrce"));
     }
 
     #[test]
