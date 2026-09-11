@@ -227,6 +227,38 @@ static rmw_ret_t cyclone_subscription_get_actual_qos(const rmw_subscription_t *s
         nros_rmw_cyclonedds::subscription_reader(subscription), qos);
 }
 
+/* issue 1329 — what THIS backend honours, rather than the union the cffi route
+ * used to answer on every C backend's behalf.
+ *
+ * One bit per `nros-qos-honours:` claim in `qos.cpp`, which is where
+ * `make_dds_qos` reads each field and lowers it onto a `dds_qset_*`. Two
+ * deliberate absences:
+ *
+ *   * `AVOID_ROS_NAMESPACE_CONVENTIONS` — there is NO read site. Topic-name
+ *     mangling on this backend is decided by the environment
+ *     (`NROS_RMW_CYCLONEDDS_SKIP_PREFIX`), not by the profile, so a caller
+ *     setting the flag was admitted by the union and then ignored. Refusing it
+ *     is the honest answer until the flag reaches `topic_prefix.hpp`.
+ *   * `LIVELINESS_MANUAL_BY_NODE` — `make_dds_qos` folds it onto
+ *     MANUAL_BY_TOPIC in as many words, which asserts per topic where the
+ *     caller asked for per node. Withdrawn tree-wide by issue 1328.
+ *
+ * The session is not read: Cyclone's QoS handling is compiled in, not
+ * negotiated per session. */
+static rmw_ret_t cyclone_supported_qos_policies(const rmw_session_t * /*session*/,
+                                                uint32_t *out_mask) {
+    if (out_mask == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    *out_mask = NROS_RMW_QOS_POLICY_RELIABILITY | NROS_RMW_QOS_POLICY_DURABILITY_VOLATILE |
+                NROS_RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL | NROS_RMW_QOS_POLICY_HISTORY |
+                NROS_RMW_QOS_POLICY_DEPTH | NROS_RMW_QOS_POLICY_DEADLINE |
+                NROS_RMW_QOS_POLICY_LIFESPAN | NROS_RMW_QOS_POLICY_LIVELINESS_AUTOMATIC |
+                NROS_RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_TOPIC |
+                NROS_RMW_QOS_POLICY_LIVELINESS_LEASE;
+    return NROS_RMW_RET_OK;
+}
+
 static rmw_ret_t cyclone_set_log_severity(rmw_log_severity_t severity) {
     uint32_t mask;
     switch (severity) {
@@ -428,6 +460,10 @@ const nros_rmw_vtable_t kVtable = {
     /*create_node*/ node_create,
     /*destroy_node*/ node_destroy,
     /*set_log_severity*/ cyclone_set_log_severity,
+    /* One receive buffer, so "no opinion" is this backend's true answer and
+     * the slot's own header records that a NULL one means the hint stands. */
+    /*required_rx_bytes*/ nullptr,
+    /*supported_qos_policies*/ cyclone_supported_qos_policies,
 };
 
 } // namespace

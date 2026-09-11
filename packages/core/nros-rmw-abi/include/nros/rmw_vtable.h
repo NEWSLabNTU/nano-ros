@@ -1363,6 +1363,70 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*required_rx_bytes)(const char *type_name,
         const char *type_hash, size_t hint, size_t *out_bytes);
 
+    /* ---- issue 1329 — which QoS policies THIS backend honours ---- */
+
+    /** The `NROS_RMW_QOS_POLICY_*` bits this backend honours, for the session
+     *  behind @p session. RTOS addition; upstream has no counterpart, because
+     *  upstream links ONE rmw per process and its equivalent knowledge is
+     *  compiled into `rmw_qos_profile_check_compatible`.
+     *
+     *  The runtime validates a requested profile against this mask at entity
+     *  create and answers `NROS_RMW_RET_INCOMPATIBLE_QOS` for a policy the
+     *  backend cannot enforce — the no-silent-downgrade contract, decided
+     *  where it can still be reported.
+     *
+     *  WHY IT IS A SLOT AND NOT A CONSTANT. The cffi route multiplexes: which
+     *  backend it is talking to is decided at run time by
+     *  `nros_rmw_cffi_register_named`, and until this slot existed the route
+     *  had no way to ask. It therefore answered the UNION of what any
+     *  nano-ros-supported RMW honours — issue 1329, measured — so an
+     *  application asking cyclonedds for `avoid_ros_namespace_conventions`, or
+     *  XRCE for a deadline, was admitted and then ignored downstream. A union
+     *  is an over-claim for every member of it.
+     *
+     *  A BIT IS EARNED, NOT DECLARED. Setting one asserts that the backend
+     *  READS the mapped profile field and either applies the request or
+     *  refuses a value it cannot serve. Forwarding the field to somebody else
+     *  — a discovery keyexpr, an Agent that may ignore it — is not honouring
+     *  it. `check-qos-mask-derivation` holds each backend's mask equal to the
+     *  set of `nros-qos-honours:` claims sited in its own sources, in both
+     *  directions, so this slot cannot drift away from the code under it.
+     *
+     *  NULL SLOT: the backend has NOT SAID, and the runtime assumes
+     *  `NROS_RMW_QOS_POLICY_NONE`. The same is true of a non-OK return; @p
+     *  out_mask is then not read.
+     *
+     *  That choice is the one thing here worth arguing, so: the two
+     *  alternatives are both worse. "NULL means the union" reinstates issue
+     *  1329 with the ABI as its author — a route that cannot ask answering as
+     *  though every backend honoured everything. "NULL means do not validate"
+     *  is worse still: it admits even the bits no backend implements, and it
+     *  switches off the no-silent-downgrade contract at the one seam that
+     *  enforces it, invisibly. NONE is the same answer
+     *  `nros_rmw::Session::supported_qos_policies` gives an implementation
+     *  that has written no code (phase-428 W9 moved that default from `CORE`
+     *  to nothing for exactly this reason), so the ABI and the trait give one
+     *  answer to one question.
+     *
+     *  NONE is loud rather than silent: the affected creates fail with
+     *  `INCOMPATIBLE_QOS` at once, naming a policy, and the route logs the
+     *  missing slot once per session. An application cannot mistake it for
+     *  working, which is what the union allowed for as long as it stood.
+     *
+     *  So a backend that honours ANY policy must fill this slot — not as an
+     *  ABI requirement (`first_missing_vtable_slot` does not demand it, and
+     *  `check-rmw-required-slots` holds that set equal to what the runtime
+     *  `.expect()`s), but because leaving it NULL is a declaration that it
+     *  honours nothing. `check-qos-mask-derivation` refuses a backend that
+     *  carries claims and no slot.
+     *
+     *  @p session is BORROWED for the call. A backend whose answer does not
+     *  depend on the session ignores it; one that configures policies per
+     *  session (a connection-parameter-driven Agent, say) reads its own state
+     *  off `session->backend_data`. */
+    rmw_ret_t (*supported_qos_policies)(const rmw_session_t *session,
+        uint32_t *out_mask);
+
 } nros_rmw_vtable_t;
 
 /**

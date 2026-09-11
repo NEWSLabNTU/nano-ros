@@ -116,6 +116,10 @@ static const nros_rmw_vtable_t kVtable = {
 
     /* RFC-0088 D4 — the backend's wire encoding, per session. */
     .get_serialization_format   = xrce_get_serialization_format,
+
+    /* issue 1329 — this backend answers for ITSELF instead of the cffi
+     * route answering a union on every C backend's behalf. */
+    .supported_qos_policies     = xrce_supported_qos_policies,
 };
 
 rmw_ret_t nros_rmw_xrce_register(void) {

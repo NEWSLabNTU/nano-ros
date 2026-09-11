@@ -425,6 +425,32 @@ unsafe extern "C" fn get_serialization_format_trampoline<R: RustBackend>() -> *c
         .cast()
 }
 
+/// issue 1329 — a Rust backend reached through the C ABI answers for ITSELF.
+///
+/// `Session::supported_qos_policies` is already the Rust-side answer, derived
+/// from `nros-qos-honours:` claims in the backend's own sources (phase-428
+/// W9). Without this trampoline a Rust backend registered through the C route
+/// would answer `NONE` — the NULL-slot meaning — and every entity stating a
+/// policy on it would be refused: the mask exists and the seam could not carry
+/// it, which is issue 1329's shape one lane over.
+///
+/// # Safety
+/// Called only by the runtime, with a session view this adapter created.
+unsafe extern "C" fn supported_qos_policies_trampoline<R: RustBackend>(
+    session: *const NrosRmwSession,
+    out_mask: *mut u32,
+) -> NrosRmwRet {
+    if out_mask.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let Some(s) = (unsafe { session_ref::<R::Session>(session) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: checked non-null above.
+    unsafe { *out_mask = Session::supported_qos_policies(s).0 };
+    NROS_RMW_RET_OK
+}
+
 /// Wraps a Rust `Rmw` backend behind the canonical
 /// [`NrosRmwVtable`] C ABI. See module docs.
 pub struct RustBackendAdapter<R>(PhantomData<R>);
@@ -512,6 +538,12 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         // default is `"cdr"`; a backend that speaks something else overrides
         // it and this slot reports the override with no work here.
         get_serialization_format: Some(get_serialization_format_trampoline::<R>),
+        // issue 1329 — `R`'s own mask, so the C route stops answering a union
+        // on its behalf. Unconditional for every `R: RustBackend`: the trait
+        // default is `QoSPolicyMask::NONE`, which is the same answer a NULL
+        // slot carries, so installing it for a backend that declares nothing
+        // changes nothing.
+        supported_qos_policies: Some(supported_qos_policies_trampoline::<R>),
         ..EMPTY_VTABLE
     };
 

@@ -103,7 +103,53 @@ const nros_rmw_vtable_t kVtable = {
     /* RFC-0088 D4 — the one slot uORB answers differently from every other
      * backend, and the reason the slot stopped being decoration. */
     /*get_serialization_format*/ uorb_get_serialization_format,
-    // Everything after this point stays NULL (see header comment).
+
+    /* issue 1329 — the list now runs to the END of the struct. Positional init
+     * cannot SKIP, so reaching `supported_qos_policies` means naming every
+     * slot before it; the intervening `nullptr`s carry no new decision, each
+     * being the value C++ aggregate initialisation was already giving them,
+     * written down. `check-vtable-positional-order` holds these comments
+     * against the header's field order, so a slot inserted upstream cannot
+     * silently shift the ones below it.
+     *
+     * This is the cost the `required_rx_bytes` header block predicted for
+     * "slot 75 on a backend with a C++14 positional initialiser", and it is
+     * paid here rather than dodged, because a NULL `supported_qos_policies`
+     * DECLARES that the backend honours nothing — which would refuse every
+     * PX4 entity that states a profile. */
+    /*feature_supported*/ nullptr,
+    /*get_gid_for_publisher*/ nullptr,
+    /*publisher_count_matched_subscriptions*/ nullptr,
+    /*subscription_count_matched_publishers*/ nullptr,
+    /* issue 1329 — the depth this backend grants is the TOPIC's `o_queue`,
+     * not the caller's request; these two are how the runtime learns that and
+     * reports it instead of the grant being a silent clamp. */
+    /*publisher_get_actual_qos*/ publisher_get_actual_qos,
+    /*subscription_get_actual_qos*/ subscription_get_actual_qos,
+    /*client_request_publisher_get_actual_qos*/ nullptr,
+    /*client_response_subscription_get_actual_qos*/ nullptr,
+    /*service_request_subscription_get_actual_qos*/ nullptr,
+    /*service_response_publisher_get_actual_qos*/ nullptr,
+    /*publisher_wait_for_all_acked*/ nullptr,
+    /*take_with_info*/ nullptr,
+    /*take_loaned_message_with_info*/ nullptr,
+    /*get_node_names*/ nullptr,
+    /*get_topic_names_and_types*/ nullptr,
+    /*get_service_names_and_types*/ nullptr,
+    /*get_publisher_names_and_types_by_node*/ nullptr,
+    /*get_subscriber_names_and_types_by_node*/ nullptr,
+    /*get_service_names_and_types_by_node*/ nullptr,
+    /*get_client_names_and_types_by_node*/ nullptr,
+    /*get_publishers_info_by_topic*/ nullptr,
+    /*get_subscriptions_info_by_topic*/ nullptr,
+    /*count_publishers*/ nullptr,
+    /*count_subscribers*/ nullptr,
+    /*node_get_graph_guard_condition*/ nullptr,
+    /*create_node*/ nullptr,
+    /*destroy_node*/ nullptr,
+    /*set_log_severity*/ nullptr,
+    /*required_rx_bytes*/ nullptr,
+    /*supported_qos_policies*/ supported_qos_policies,
 };
 #pragma GCC diagnostic pop
 

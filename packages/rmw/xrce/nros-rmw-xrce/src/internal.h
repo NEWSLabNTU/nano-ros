@@ -474,13 +474,18 @@ bool xrce_stage_inbound(uint8_t* dst, size_t dst_cap, struct ucdrBuffer* ub, siz
  * unless `avoid_ros_prefix` is non-zero. Writes a NUL-terminated
  * string into `out` (capacity `out_cap`); truncates if too long. */
 void xrce_dds_topic_name(const char* topic_name, int avoid_ros_prefix, char* out, size_t out_cap);
-void xrce_dds_request_topic(const char* service_name, char* out, size_t out_cap);
-void xrce_dds_reply_topic(const char* service_name, char* out, size_t out_cap);
+void xrce_dds_request_topic(const char* service_name, int avoid_ros_prefix, char* out,
+                            size_t out_cap);
+void xrce_dds_reply_topic(const char* service_name, int avoid_ros_prefix, char* out,
+                          size_t out_cap);
 void xrce_dds_request_type(const char* type_name, char* out, size_t out_cap);
 void xrce_dds_reply_type(const char* type_name, char* out, size_t out_cap);
 
 /* QoS mapping. */
 uxrQoS_t xrce_map_qos(const rmw_qos_profile_t* qos);
+
+/* issue 1329 — the `NROS_RMW_QOS_POLICY_*` bits this backend honours. */
+rmw_ret_t xrce_supported_qos_policies(const rmw_session_t* session, uint32_t* out_mask);
 
 /* ---- Capacity diagnostics (issue 1033) ------------------------------- */
 

@@ -9,7 +9,26 @@
 #include "nros/rmw_event.h"
 #include "nros/rmw_ret.h"
 
+struct orb_metadata;
+
 namespace nros_rmw_uorb {
+
+/* ---- qos.cpp (issue 1329) ---- */
+
+/** Refuse a profile this backend cannot serve, at create time.
+ *
+ *  `NROS_RMW_RET_INCOMPATIBLE_QOS` for KEEP_ALL history or TRANSIENT_LOCAL
+ *  durability; OK otherwise, including for a NULL profile. See `qos.cpp` for
+ *  what each of the four CORE policies means on a shared-memory ring. */
+rmw_ret_t qos_admit(const rmw_qos_profile_t* qos);
+
+/** Overwrite `in_out` — which arrives carrying the REQUEST — with what this
+ *  backend actually gave, leaving every unreportable field as it came in.
+ *  The `*_get_actual_qos` slots below are one-liners over this. */
+rmw_ret_t qos_granted(const struct orb_metadata* meta, rmw_qos_profile_t* in_out);
+
+/** The `NROS_RMW_QOS_POLICY_*` bits this backend honours. */
+rmw_ret_t supported_qos_policies(const rmw_session_t* session, uint32_t* out_mask);
 
 /* ---- session.cpp ---- */
 rmw_ret_t session_create(const char* locator, uint8_t mode, uint32_t domain_id,
@@ -24,6 +43,7 @@ rmw_ret_t publisher_create(const rmw_node_t* node, const rmw_message_type_suppor
                            const rmw_publisher_options_t* options, rmw_publisher_t* out);
 rmw_ret_t publisher_destroy(rmw_publisher_t* publisher);
 rmw_ret_t publisher_publish_raw(const rmw_publisher_t* publisher, rmw_byte_span_t payload);
+rmw_ret_t publisher_get_actual_qos(const rmw_publisher_t* publisher, rmw_qos_profile_t* qos);
 
 /* ---- subscriber.cpp ---- */
 rmw_ret_t subscription_create(const rmw_node_t* node,
@@ -35,6 +55,8 @@ rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber);
 rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_span_t* message,
                             bool* taken);
 rmw_ret_t subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_data);
+rmw_ret_t subscription_get_actual_qos(const rmw_subscription_t* subscriber,
+                                      rmw_qos_profile_t* qos);
 
 /* ---- service.cpp ---- */
 rmw_ret_t service_create(const rmw_node_t* node, const rmw_service_type_support_t* type_support,

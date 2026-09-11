@@ -68,7 +68,7 @@ extern "C" void subscriber_ready_callback(void* arg) {
 rmw_ret_t subscription_create(const rmw_node_t* node,
                               const rmw_message_type_support_t* /*type_support*/,
                               const char* topic_name, uint32_t /*domain_id*/,
-                              const rmw_qos_profile_t* /*qos*/,
+                              const rmw_qos_profile_t* qos,
                               const rmw_subscription_options_t* /*options*/,
                               rmw_subscription_t* out) {
     // Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
@@ -80,6 +80,11 @@ rmw_ret_t subscription_create(const rmw_node_t* node,
     }
     if (out == nullptr || topic_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    // issue 1329 — see `publisher_create`; the profile used to go nowhere.
+    rmw_ret_t qret = qos_admit(qos);
+    if (qret != NROS_RMW_RET_OK) {
+        return qret;
     }
     const struct orb_metadata* meta = nros_rmw_uorb_lookup_topic(topic_name);
     if (meta == nullptr) {
@@ -117,6 +122,16 @@ rmw_ret_t subscription_create(const rmw_node_t* node,
     out->backend_data = state;
     out->can_loan_messages = false;
     return NROS_RMW_RET_OK;
+}
+
+/* issue 1329 — the subscription half of the read-back; see `publisher.cpp`. */
+rmw_ret_t subscription_get_actual_qos(const rmw_subscription_t* subscriber,
+                                      rmw_qos_profile_t* qos) {
+    if (subscriber == nullptr || subscriber->backend_data == nullptr || qos == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    auto* state = static_cast<SubscriberState*>(subscriber->backend_data);
+    return qos_granted(state->meta, qos);
 }
 
 rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber) {

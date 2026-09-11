@@ -876,6 +876,59 @@ typedef struct rmw_subscription_options_t {
     NROS_RMW_QOS_PROFILE_FROM_POLICIES(UNKNOWN, UNKNOWN, UNKNOWN, 0, UNKNOWN)
 
 /* ------------------------------------------------------------------ */
+/* Which QoS policies a backend honours (issue 1329)                  */
+/* ------------------------------------------------------------------ */
+
+/** One bit per policy a caller can REQUEST, for
+ *  `nros_rmw_vtable_t::supported_qos_policies`.
+ *
+ *  These mirror `nros_rmw::QoSPolicyMask`'s `pub const` block bit for bit, and
+ *  `check-qos-mask-derivation` compares the two — a hand mirror at a distance
+ *  is still a hand mirror (issue 0160), and this one decides whether an
+ *  application's entity is created.
+ *
+ *  A bit means "I read this field and either APPLY the request or REFUSE a
+ *  value I cannot serve". It does NOT mean "I pass the field along": handing a
+ *  profile to a discovery keyexpr or to an Agent that may ignore it is what
+ *  made the union over-claim in the first place. The mask is per BACKEND, not
+ *  per entity — a backend that honours a policy for publishers and ignores it
+ *  for services does not get the bit.
+ *
+ *  The granularity is a VALUE where the values differ in cost: DURABILITY has
+ *  two bits because a backend with no historical cache honours VOLATILE and
+ *  cannot serve TRANSIENT_LOCAL, and liveliness has one bit per kind plus one
+ *  for a finite lease. That is what lets a backend say what is true of it
+ *  instead of rounding to the nearest whole policy. */
+#define NROS_RMW_QOS_POLICY_RELIABILITY                  (1u << 0)
+#define NROS_RMW_QOS_POLICY_DURABILITY_VOLATILE          (1u << 1)
+#define NROS_RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL   (1u << 2)
+#define NROS_RMW_QOS_POLICY_HISTORY                      (1u << 3)
+#define NROS_RMW_QOS_POLICY_DEPTH                        (1u << 4)
+#define NROS_RMW_QOS_POLICY_DEADLINE                     (1u << 5)
+#define NROS_RMW_QOS_POLICY_LIFESPAN                     (1u << 6)
+#define NROS_RMW_QOS_POLICY_LIVELINESS_AUTOMATIC         (1u << 7)
+#define NROS_RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_TOPIC   (1u << 8)
+#define NROS_RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_NODE    (1u << 9)
+#define NROS_RMW_QOS_POLICY_LIVELINESS_LEASE             (1u << 10)
+#define NROS_RMW_QOS_POLICY_AVOID_ROS_NAMESPACE_CONVENTIONS (1u << 11)
+
+/** Honours nothing. What a backend that has not been asked, or has nothing to
+ *  say, answers — and what the runtime assumes for a NULL
+ *  `supported_qos_policies` slot. See that slot for why the absence resolves
+ *  this way and not to a union. */
+#define NROS_RMW_QOS_POLICY_NONE                         0u
+
+/** The four policies every `rmw_qos_profile_t` states a value for.
+ *
+ *  A SHAPE, not a floor: a caller who states nothing else still states these,
+ *  and a backend still has to earn each of the four. It is not
+ *  "what every backend supports" — the zenoh shim honoured none of the four
+ *  until phase-428 W9 measured it. */
+#define NROS_RMW_QOS_POLICY_CORE                                             \
+    (NROS_RMW_QOS_POLICY_RELIABILITY | NROS_RMW_QOS_POLICY_DURABILITY_VOLATILE | \
+     NROS_RMW_QOS_POLICY_HISTORY | NROS_RMW_QOS_POLICY_DEPTH)
+
+/* ------------------------------------------------------------------ */
 /* Entity structs                                                     */
 /* ------------------------------------------------------------------ */
 

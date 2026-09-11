@@ -1638,6 +1638,17 @@ pub trait Session {
     /// nothing; the failure is loud (`IncompatibleQos` at create) rather than
     /// a silent downgrade at runtime, which is the direction this trait has
     /// chosen everywhere else.
+    ///
+    /// # A C backend answers through the vtable — issue 1329
+    ///
+    /// `CffiSession` is the one implementation that cannot answer from
+    /// compile-time knowledge: which backend registered is a run-time fact. It
+    /// returned the UNION of what any C backend it routes to honours, which
+    /// over-claims for each of them; it now asks the backend through
+    /// `nros_rmw_vtable_t::supported_qos_policies` and returns what it said. A
+    /// NULL slot there carries the same meaning as this default — the backend
+    /// has not said, so it honours nothing — deliberately, so the ABI and the
+    /// trait give one answer to one question.
     fn supported_qos_policies(&self) -> QoSPolicyMask {
         QoSPolicyMask::NONE
     }

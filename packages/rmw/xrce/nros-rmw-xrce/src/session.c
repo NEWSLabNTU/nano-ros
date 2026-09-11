@@ -184,23 +184,48 @@ void xrce_dds_topic_name(const char* topic_name, int avoid_ros_prefix, char* out
     }
 }
 
-void xrce_dds_request_topic(const char* service_name, char* out, size_t out_cap) {
+/* `rq/` and `rr/` are the ROS namespace conventions on the SERVICE side, the
+ * exact counterpart of `rt/` on a topic — so `avoid_ros_namespace_conventions`
+ * drops them here too (issue 1329).
+ *
+ * It did not until then: the flag reached publishers and subscriptions only,
+ * and a service that asked for it was admitted and ignored. That is a partial
+ * honour, and the per-backend mask this issue introduces cannot express one —
+ * a bit is true of the backend or it is not. Refusing the policy outright on
+ * XRCE would have cost the pub/sub path something that works; honouring it
+ * everywhere costs nothing, because `avoid_ros_namespace_conventions` is false
+ * in every profile that ships and the argument only matters to a caller who
+ * set it deliberately. */
+void xrce_dds_request_topic(const char* service_name, int avoid_ros_prefix, char* out,
+                            size_t out_cap) {
     if (out_cap == 0) return;
     out[0] = '\0';
     const char* src = service_name;
     if (src && src[0] == '/') src += 1;
-    copy_truncating(out, out_cap, "rq/");
-    append_truncating(out, out_cap, src ? src : "");
+    /* The caller reads `qos->avoid_ros_namespace_conventions` into
+     * `avoid_ros_prefix`; the claim is sited there, on the read. */
+    if (!avoid_ros_prefix) {
+        copy_truncating(out, out_cap, "rq/");
+        append_truncating(out, out_cap, src ? src : "");
+    } else {
+        copy_truncating(out, out_cap, src ? src : "");
+    }
     append_truncating(out, out_cap, "Request");
 }
 
-void xrce_dds_reply_topic(const char* service_name, char* out, size_t out_cap) {
+void xrce_dds_reply_topic(const char* service_name, int avoid_ros_prefix, char* out,
+                          size_t out_cap) {
     if (out_cap == 0) return;
     out[0] = '\0';
     const char* src = service_name;
     if (src && src[0] == '/') src += 1;
-    copy_truncating(out, out_cap, "rr/");
-    append_truncating(out, out_cap, src ? src : "");
+    /* As above — the read is at the call site. */
+    if (!avoid_ros_prefix) {
+        copy_truncating(out, out_cap, "rr/");
+        append_truncating(out, out_cap, src ? src : "");
+    } else {
+        copy_truncating(out, out_cap, src ? src : "");
+    }
     append_truncating(out, out_cap, "Reply");
 }
 
@@ -292,6 +317,36 @@ uxrQoS_t xrce_map_qos(const rmw_qos_profile_t* qos) {
         (qos->history == NROS_RMW_HISTORY_KEEP_ALL) ? UXR_HISTORY_KEEP_ALL : UXR_HISTORY_KEEP_LAST;
     out.depth = qos->depth;
     return out;
+}
+
+/* issue 1329 — what THIS backend honours.
+ *
+ * Exactly the fields above plus the topic-name flag: the five `uxrQoS_t`
+ * carries to the Agent, and `AVOID_ROS_NAMESPACE_CONVENTIONS`, which reaches
+ * `xrce_dds_topic_name` for pub/sub and — since this issue —
+ * `xrce_dds_request_topic` / `xrce_dds_reply_topic` for services too.
+ *
+ * Deadline, lifespan and liveliness are NOT here and this is the change that
+ * matters: `uxrQoS_t` has no field for any of them, so a caller asking for a
+ * deadline on XRCE used to be admitted by the cffi route's union and then
+ * ignored all the way to the wire. It is refused at create now, naming the
+ * policy.
+ *
+ * Liveliness is the one that looks like a regression and is not. Every C and
+ * C++ default profile stated `LIVELINESS_AUTOMATIC` where upstream leaves the
+ * policy unset, so an honest mask here would have refused every C application
+ * on this backend. The fix was to stop DEMANDING a policy nobody asked for —
+ * those three surfaces now carry the sentinel, matching upstream and the Rust
+ * table — not to let this backend claim a policy it does not implement. */
+rmw_ret_t xrce_supported_qos_policies(const rmw_session_t* session, uint32_t* out_mask) {
+    (void)session; /* compiled in, not negotiated per session. */
+    if (out_mask == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    *out_mask = NROS_RMW_QOS_POLICY_RELIABILITY | NROS_RMW_QOS_POLICY_DURABILITY_VOLATILE |
+                NROS_RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL | NROS_RMW_QOS_POLICY_HISTORY |
+                NROS_RMW_QOS_POLICY_DEPTH | NROS_RMW_QOS_POLICY_AVOID_ROS_NAMESPACE_CONVENTIONS;
+    return NROS_RMW_RET_OK;
 }
 
 /* ---- Session-key hashing ------------------------------------------- */

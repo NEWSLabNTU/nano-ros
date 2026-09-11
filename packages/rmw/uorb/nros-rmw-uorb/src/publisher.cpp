@@ -39,7 +39,7 @@ rmw_ret_t publisher_create(const rmw_node_t* node,
                                 const rmw_message_type_support_t * /*type_support*/,
                                 const char *topic_name,
                                 uint32_t /*domain_id*/,
-                                const rmw_qos_profile_t * /*qos*/,
+                                const rmw_qos_profile_t *qos,
                                 const rmw_publisher_options_t * /*options*/,
                                 rmw_publisher_t *out) {
     // Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
@@ -51,6 +51,13 @@ rmw_ret_t publisher_create(const rmw_node_t* node,
     }
     if (out == nullptr || topic_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    // issue 1329 — refuse a policy this backend cannot serve, HERE, where the
+    // caller still gets an error code. The parameter was bound as
+    // `/*qos*/` and the profile went nowhere.
+    rmw_ret_t qret = qos_admit(qos);
+    if (qret != NROS_RMW_RET_OK) {
+        return qret;
     }
     const struct orb_metadata *meta = nros_rmw_uorb_lookup_topic(topic_name);
     if (meta == nullptr) {
@@ -74,6 +81,18 @@ rmw_ret_t publisher_create(const rmw_node_t* node,
     out->backend_data = state;
     out->can_loan_messages = false;
     return NROS_RMW_RET_OK;
+}
+
+/* issue 1329 — what the ring actually gives, so the runtime can report the
+ * difference from what was asked (issue 0823's machinery). Without this the
+ * depth grant in `qos_granted` would be a silent clamp, which is the bug it
+ * exists not to be. */
+rmw_ret_t publisher_get_actual_qos(const rmw_publisher_t *publisher, rmw_qos_profile_t *qos) {
+    if (publisher == nullptr || publisher->backend_data == nullptr || qos == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    auto *state = static_cast<PublisherState *>(publisher->backend_data);
+    return qos_granted(state->meta, qos);
 }
 
 rmw_ret_t publisher_destroy(rmw_publisher_t *publisher) {

@@ -315,6 +315,23 @@ ADDED = {
             "(issue 0781)"
         ),
     ),
+    "supported_qos_policies": Added(
+        ret="rmw_ret_t",
+        args=("const rmw_session_t *", "uint32_t *"),
+        why=(
+            "which QoS policies the backend honours, as a mask the runtime validates a "
+            "requested profile against at entity create. Upstream has no counterpart "
+            "because upstream links ONE rmw per process and compiles the equivalent "
+            "knowledge into `rmw_qos_profile_check_compatible`; the cffi route MULTIPLEXES "
+            "— the backend is chosen at run time by `nros_rmw_cffi_register_named` — so it "
+            "had no way to ask, and answered the UNION of what any nano-ros-supported RMW "
+            "honours. A union over-claims for every member of it (issue 1329): an "
+            "application asking cyclonedds for `avoid_ros_namespace_conventions`, or XRCE "
+            "for a deadline, was admitted and then ignored downstream. NULL means the "
+            "backend has not said, which the runtime reads as honouring NOTHING — the same "
+            "answer the Rust trait's default gives, and loud rather than silent"
+        ),
+    ),
     "required_rx_bytes": Added(
         ret="rmw_ret_t",
         args=("const char *", "const char *", "size_t", "size_t *"),
