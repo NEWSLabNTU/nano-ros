@@ -274,6 +274,41 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * deferred-reply seq); call from inside the synchronous query callback.
  */
 /**
+ * issue 0902 / phase-455 W1 — read one queryable's reply-slot table.
+ *
+ * Returns the number of slots currently HELD (cloned queries awaiting a
+ * deferred reply), or `ZPICO_ERR_INVALID`. `out_refusals` receives the
+ * cumulative count of allocations refused because the table was full —
+ * the condition `zpico_queryable_take_reply_seq`'s -1 could not
+ * distinguish from "no query pending", which is the whole of issue 0902.
+ * `out_capacity` receives `ZPICO_MAX_PENDING_REPLIES` as the C TU sees
+ * it, so a caller reads the effective capacity rather than assuming one.
+ *
+ * Per-session AND per-queryable, so it is its own accessor rather than
+ * two more entries in the process-global `zpico_get_diag_counters`.
+ */
+/**
+ * issue 0902 / phase-455 W1 — take the pending "this table just
+ * saturated" announcement, clearing it. 1 = announce now, 0 = nothing
+ * pending, `ZPICO_ERR_INVALID` for a bad handle.
+ *
+ * The once-ness lives here and nowhere else (phase-444 W6's correction:
+ * a permanent failure asked six times per spin). A second latch on the
+ * Rust side would be a second spelling of the same rule.
+ */
+/**
+ * issue 0902 / phase-455 W1 — the PURE half of the reply-slot
+ * allocation, exported like `zpico_entry_at` / `zpico_graph_set_apply` so
+ * the accounting is reachable from a host test with no session, no router
+ * and no live peer.
+ *
+ * Returns the first free index in `valid[0..cap)`, `ZPICO_ERR_FULL` when
+ * every slot is held, or `ZPICO_ERR_INVALID` for a NULL argument or
+ * `cap == 0`. Does NOT mark the slot taken. `*refusals` is incremented on
+ * a refusal (saturating at `u32::MAX`); `*saturated` latches so
+ * `*out_announce` is true exactly on the TRANSITION into exhaustion.
+ */
+/**
  * Phase 108.C.zenoh.4-followup — count of liveliness-token
  * replies on this slot. Used by the subscriber-side
  * `LivelinessChanged` bridge to surface `alive_count > 1`.
@@ -738,6 +773,34 @@ int32_t zpico_query_reply(struct zpico_session_t *_session,
  * Stub returns -1 (no slot) in the pure-Rust no-op build.
  */
 int64_t zpico_queryable_take_reply_seq(struct zpico_session_t *_session, int32_t _queryable_handle);
+
+/**
+ * issue 0902 / phase-455 W1 — how many reply slots this queryable holds,
+ * and how many allocations it has refused because the table was full.
+ * `out_capacity` reports `ZPICO_MAX_PENDING_REPLIES` as the C TU sees it.
+ */
+int32_t zpico_reply_slot_stats(struct zpico_session_t *_session,
+                               int32_t _queryable_handle,
+                               uint32_t *_out_refusals,
+                               uint32_t *_out_capacity);
+
+/**
+ * issue 0902 / phase-455 W1 — take the pending "this reply-slot table
+ * just saturated" announcement, clearing it. 1 = announce, 0 = nothing.
+ */
+int32_t zpico_reply_slot_take_announcement(struct zpico_session_t *_session,
+                                           int32_t _queryable_handle);
+
+/**
+ * issue 0902 / phase-455 W1 — the PURE half of the reply-slot
+ * allocation: pick a free slot and account for a refusal. Split out like
+ * `zpico_entry_at` so the accounting is testable without a session.
+ */
+int32_t zpico_reply_slot_pick(const bool *_valid,
+                              uint32_t _cap,
+                              uint32_t *_refusals,
+                              bool *_saturated,
+                              bool *_out_announce);
 
 /**
  * Send a query and wait for reply (blocking, for service client).

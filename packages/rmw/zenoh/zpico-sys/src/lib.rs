@@ -317,6 +317,55 @@ unsafe extern "C" {
         queryable_handle: i32,
     ) -> i64;
 
+    /// issue 0902 / phase-455 W1 — read one queryable's reply-slot table.
+    ///
+    /// Returns the number of slots currently HELD (cloned queries awaiting a
+    /// deferred reply), or `ZPICO_ERR_INVALID`. `out_refusals` receives the
+    /// cumulative count of allocations refused because the table was full —
+    /// the condition `zpico_queryable_take_reply_seq`'s -1 could not
+    /// distinguish from "no query pending", which is the whole of issue 0902.
+    /// `out_capacity` receives `ZPICO_MAX_PENDING_REPLIES` as the C TU sees
+    /// it, so a caller reads the effective capacity rather than assuming one.
+    ///
+    /// Per-session AND per-queryable, so it is its own accessor rather than
+    /// two more entries in the process-global `zpico_get_diag_counters`.
+    pub fn zpico_reply_slot_stats(
+        session: *mut zpico_session_t,
+        queryable_handle: i32,
+        out_refusals: *mut u32,
+        out_capacity: *mut u32,
+    ) -> i32;
+
+    /// issue 0902 / phase-455 W1 — take the pending "this table just
+    /// saturated" announcement, clearing it. 1 = announce now, 0 = nothing
+    /// pending, `ZPICO_ERR_INVALID` for a bad handle.
+    ///
+    /// The once-ness lives here and nowhere else (phase-444 W6's correction:
+    /// a permanent failure asked six times per spin). A second latch on the
+    /// Rust side would be a second spelling of the same rule.
+    pub fn zpico_reply_slot_take_announcement(
+        session: *mut zpico_session_t,
+        queryable_handle: i32,
+    ) -> i32;
+
+    /// issue 0902 / phase-455 W1 — the PURE half of the reply-slot
+    /// allocation, exported like `zpico_entry_at` / `zpico_graph_set_apply` so
+    /// the accounting is reachable from a host test with no session, no router
+    /// and no live peer.
+    ///
+    /// Returns the first free index in `valid[0..cap)`, `ZPICO_ERR_FULL` when
+    /// every slot is held, or `ZPICO_ERR_INVALID` for a NULL argument or
+    /// `cap == 0`. Does NOT mark the slot taken. `*refusals` is incremented on
+    /// a refusal (saturating at `u32::MAX`); `*saturated` latches so
+    /// `*out_announce` is true exactly on the TRANSITION into exhaustion.
+    pub fn zpico_reply_slot_pick(
+        valid: *const bool,
+        cap: u32,
+        refusals: *mut u32,
+        saturated: *mut bool,
+        out_announce: *mut bool,
+    ) -> i32;
+
     // Service client (queries)
     pub fn zpico_get(
         session: *mut zpico_session_t,
@@ -664,6 +713,150 @@ mod tests {
             )
         };
         assert_eq!((rc, tcount, tlen, tdropped), (0, 0, 0, 1));
+    }
+
+    /// issue 0902 / phase-455 W1 — drive a reply-slot table past its capacity
+    /// and read the refusal back, against the REAL C function.
+    ///
+    /// The defect this gates is that exhaustion and "no query pending" were
+    /// the SAME value: `query_handler` computed `reply_seq = -1` for a full
+    /// table, handed it on, and recorded nothing. A goal was then accepted,
+    /// executed and never answered, with the error discarded at four layers.
+    /// So the three properties asserted here are exactly the three the issue
+    /// says were missing — the refusal is COUNTED, the count is DISTINCT from
+    /// "nothing pending", and the announcement fires ONCE per transition
+    /// rather than per query (phase-444 W6's correction, one backend over).
+    #[test]
+    fn reply_slot_exhaustion_is_counted_and_announced_once() {
+        unsafe extern "C" {
+            fn zpico_reply_slot_pick(
+                valid: *const bool,
+                cap: u32,
+                refusals: *mut u32,
+                saturated: *mut bool,
+                out_announce: *mut bool,
+            ) -> i32;
+        }
+
+        /// One queryable's table, as `struct zpico_session` holds it.
+        struct Table {
+            valid: [bool; 4],
+            refusals: u32,
+            saturated: bool,
+        }
+
+        impl Table {
+            fn new() -> Self {
+                Self {
+                    valid: [false; 4],
+                    refusals: 0,
+                    saturated: false,
+                }
+            }
+
+            /// `(slot_or_error, announce)` — the pick, plus whether THIS call
+            /// is the one that should say something.
+            fn pick(&mut self) -> (i32, bool) {
+                let mut announce = false;
+                let rc = unsafe {
+                    zpico_reply_slot_pick(
+                        self.valid.as_ptr(),
+                        self.valid.len() as u32,
+                        &mut self.refusals,
+                        &mut self.saturated,
+                        &mut announce,
+                    )
+                };
+                (rc, announce)
+            }
+
+            /// What `query_handler` does after a successful clone.
+            fn take(&mut self, slot: i32) {
+                self.valid[slot as usize] = true;
+            }
+
+            /// What `_zpico_release_reply_slot` does when a reply goes out.
+            fn release(&mut self, slot: usize) {
+                self.valid[slot] = false;
+            }
+        }
+
+        let mut t = Table::new();
+
+        // An empty table hands out every slot and refuses nothing. This is the
+        // arm that makes the counter MEAN something: a server that has never
+        // run out reads 0, which `last_reply_seq == -1` could never say.
+        for expected in 0..4 {
+            let (slot, announce) = t.pick();
+            assert_eq!(slot, expected, "slot {expected} must be handed out");
+            assert!(!announce, "a successful pick announces nothing");
+            t.take(slot);
+        }
+        assert_eq!(t.refusals, 0, "four successful picks are not a refusal");
+
+        // Full table. The FIRST refusal is the transition, and it is the only
+        // one that announces.
+        let (rc, announce) = t.pick();
+        assert_eq!(rc, ZPICO_ERR_FULL, "a full table must refuse, not wrap");
+        assert!(announce, "the transition into exhaustion is announced");
+        assert_eq!(t.refusals, 1, "the refusal is COUNTED");
+
+        // Every later refusal counts and stays quiet. This is the property
+        // phase-444 W6 landed on the Cyclone parameter services: a PERMANENT
+        // failure asked six times per spin reported six times per spin.
+        for n in 2..=20u32 {
+            let (rc, announce) = t.pick();
+            assert_eq!(rc, ZPICO_ERR_FULL);
+            assert!(!announce, "refusal {n} must not re-announce");
+            assert_eq!(t.refusals, n, "every refusal is counted");
+        }
+
+        // A table that drains and saturates AGAIN is a new event, not a repeat
+        // of the old one, so it announces again — and the cumulative count is
+        // never reset behind the reader's back.
+        t.release(2);
+        let (slot, announce) = t.pick();
+        assert_eq!(slot, 2, "the freed slot is handed out");
+        assert!(!announce);
+        t.take(slot);
+        assert_eq!(t.refusals, 20, "a successful pick does not clear the count");
+
+        let (rc, announce) = t.pick();
+        assert_eq!(rc, ZPICO_ERR_FULL);
+        assert!(announce, "re-saturation announces again");
+        assert_eq!(t.refusals, 21);
+
+        // Argument refusals, so a NULL from a caller is a refusal rather than
+        // a write through a null pointer.
+        let mut refusals = 0u32;
+        let mut saturated = false;
+        let mut announce = true;
+        let rc = unsafe {
+            zpico_reply_slot_pick(
+                core::ptr::null(),
+                4,
+                &mut refusals,
+                &mut saturated,
+                &mut announce,
+            )
+        };
+        assert_eq!(rc, ZPICO_ERR_INVALID, "a NULL table is refused");
+        assert!(!announce, "a refused argument announces nothing");
+
+        let valid = [false; 4];
+        assert_eq!(
+            unsafe {
+                zpico_reply_slot_pick(
+                    valid.as_ptr(),
+                    0,
+                    &mut refusals,
+                    &mut saturated,
+                    core::ptr::null_mut(),
+                )
+            },
+            ZPICO_ERR_INVALID,
+            "cap 0 is refused; `out_announce` may be NULL"
+        );
     }
 
     #[test]

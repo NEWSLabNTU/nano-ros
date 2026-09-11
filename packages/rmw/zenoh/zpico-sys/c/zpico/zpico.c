@@ -521,6 +521,20 @@ struct zpico_session {
     bool stored_query_valid[ZPICO_MAX_QUERYABLES][ZPICO_MAX_PENDING_REPLIES];
     int64_t last_reply_seq[ZPICO_MAX_QUERYABLES];
 
+    /* issue 0902 / phase-455 W1 — the reply-slot table was the one bounded
+     * resource in this file with no counter. Exhaustion and "no query pending"
+     * were the SAME value (`last_reply_seq == -1`), and that IS the defect: a
+     * goal was accepted, executed and never answered, while nothing anywhere
+     * recorded that a slot had been refused. The tree already has the shape —
+     * `zpico_graph_entry_count`'s `out_dropped` and the request ring's own
+     * `dropped` both report what a bounded resource discarded.
+     *
+     * Per QUERYABLE, not per session and not process-global: each server holds
+     * its own table, so a summed number cannot say which one saturated. */
+    uint32_t reply_slot_refusals[ZPICO_MAX_QUERYABLES];
+    bool reply_slot_saturated[ZPICO_MAX_QUERYABLES];
+    bool reply_slot_announce[ZPICO_MAX_QUERYABLES];
+
     // Non-blocking z_get slot pool.
     pending_get_slot_t pending_gets[ZPICO_MAX_PENDING_GETS];
 
@@ -912,6 +926,61 @@ static void zpico_format_session_zid(char out[37], const uint8_t bytes[ZPICO_ZID
  */
 static void _zpico_release_reply_slot(struct zpico_session* s, int32_t handle, int64_t seq);
 
+/* issue 0902 / phase-455 W1 — the PURE half of `query_handler`'s reply-slot
+ * allocation, split out for exactly the reason `zpico_entry_at` and
+ * `zpico_graph_set_apply` were: it is the piece a test can drive WITHOUT a
+ * session, a router and a live peer. Issue 0902 item 3 records why that
+ * matters — both leak fixes landed with no regression test, because reaching
+ * either arm needs a query delivered to a queryable, and nothing under
+ * `packages/testing` referenced this table at all.
+ *
+ * Picks the first free slot in `valid[0..cap)` and ACCOUNTS for a refusal. It
+ * deliberately does not mark the slot taken: the caller does that only once
+ * the clone succeeds, which is the one remaining step that can fail.
+ *
+ * `*refusals` counts allocations refused because every slot was held. It is
+ * cumulative for the life of the queryable, so a reader can tell "this server
+ * has never run out" (0) from "it ran out" (>0) — the distinction the -1
+ * return value cannot carry, and the whole of what made the 20-90 % completion
+ * spread unfalsifiable. Saturates at UINT32_MAX rather than wrapping to 0,
+ * because wrapping to 0 is indistinguishable from "never happened".
+ *
+ * `*saturated` latches the state so `*out_announce` is true exactly on the
+ * TRANSITION into exhaustion, never on every refused query. phase-444 W6
+ * landed the same correction on the Cyclone parameter services, where a
+ * permanent failure was reported six times per spin. A successful pick clears
+ * the latch, so a table that drains and saturates again announces again: that
+ * is a new event, not a repeat of the old one.
+ *
+ * Returns the slot index, `ZPICO_ERR_FULL` when every slot is held, or
+ * `ZPICO_ERR_INVALID` for a NULL argument or `cap == 0`.
+ */
+int32_t zpico_reply_slot_pick(const bool* valid, uint32_t cap, uint32_t* refusals, bool* saturated,
+                              bool* out_announce) {
+    if (out_announce != NULL) {
+        *out_announce = false;
+    }
+    if (valid == NULL || refusals == NULL || saturated == NULL || cap == 0) {
+        return ZPICO_ERR_INVALID;
+    }
+    for (uint32_t j = 0; j < cap; ++j) {
+        if (!valid[j]) {
+            *saturated = false;
+            return (int32_t)j;
+        }
+    }
+    if (*refusals != 0xFFFFFFFFu) {
+        (*refusals)++;
+    }
+    if (!*saturated) {
+        *saturated = true;
+        if (out_announce != NULL) {
+            *out_announce = true;
+        }
+    }
+    return ZPICO_ERR_FULL;
+}
+
 static void query_handler(z_loaned_query_t* query, void* arg) {
     struct zpico_session* s = _zpico_unpack_session(arg);
     int idx = _zpico_unpack_slot(arg);
@@ -948,15 +1017,34 @@ static void query_handler(z_loaned_query_t* query, void* arg) {
     // reply can be sent after this callback returns (deferred get_result) even
     // if more queries land meanwhile. Record the slot index as the reply seq for
     // `zpico_queryable_take_reply_seq` to hand to the (synchronous) callback.
+    //
+    // issue 0902 / phase-455 W1 — the pick and its accounting are
+    // `zpico_reply_slot_pick`, so the refusal is COUNTED and announced ONCE,
+    // and so the state machine is reachable from a host test.
     int64_t reply_seq = -1;
-    for (int j = 0; j < ZPICO_MAX_PENDING_REPLIES; ++j) {
-        if (!s->stored_query_valid[idx][j]) {
-            if (z_query_clone(&s->stored_queries[idx][j], query) == 0) {
-                s->stored_query_valid[idx][j] = true;
-                reply_seq = j;
-            }
-            break;
+    bool announce = false;
+    int32_t slot =
+        zpico_reply_slot_pick(s->stored_query_valid[idx], (uint32_t)ZPICO_MAX_PENDING_REPLIES,
+                              &s->reply_slot_refusals[idx], &s->reply_slot_saturated[idx],
+                              &announce);
+    if (slot >= 0) {
+        /* The clone is a refcount increment, not an allocation — issue 0902
+         * ruled it out as a failure mode against `refcount.h:70-72` — so a -1
+         * reply_seq means "the table was full" and nothing else. That is what
+         * keeps the refusal counter's meaning exact, and why a clone failure
+         * is not folded into it. */
+        if (z_query_clone(&s->stored_queries[idx][slot], query) == 0) {
+            s->stored_query_valid[idx][slot] = true;
+            reply_seq = slot;
         }
+    }
+    if (announce) {
+        /* Latched here, said by the RUST side (`shim/service.rs`). `printk` is
+         * a NO-OP on `ZPICO_SMOLTCP` / `ZPICO_SERIAL` — the bare-metal serial
+         * board issue 0902 was measured on — so a C-side print would reach
+         * nothing on the one target where this was found. `nros_log` reaches
+         * every platform (issue 0589). */
+        s->reply_slot_announce[idx] = true;
     }
     s->last_reply_seq[idx] = reply_seq;
 
@@ -1233,6 +1321,11 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
     memset(s->stored_query_valid, 0, sizeof(s->stored_query_valid));
     for (int i = 0; i < ZPICO_MAX_QUERYABLES; i++) {
         s->last_reply_seq[i] = -1;
+        // issue 0902 / phase-455 W1 — the refusal counters belong to the table
+        // they describe, so they are re-armed with it.
+        s->reply_slot_refusals[i] = 0;
+        s->reply_slot_saturated[i] = false;
+        s->reply_slot_announce[i] = false;
         for (int j = 0; j < ZPICO_MAX_PENDING_REPLIES; j++) {
             z_internal_query_null(&s->stored_queries[i][j]);
         }
@@ -3072,7 +3165,80 @@ int32_t zpico_undeclare_queryable(zpico_session_t* session, int32_t handle) {
         }
     }
     s->last_reply_seq[handle] = -1;
+    // issue 0902 / phase-455 W1 — the counters describe THIS queryable's
+    // table, and the handle is reused by the next server declared into the
+    // slot; leaving them set would credit one server's exhaustion to another.
+    s->reply_slot_refusals[handle] = 0;
+    s->reply_slot_saturated[handle] = false;
+    s->reply_slot_announce[handle] = false;
     return ZPICO_OK;
+}
+
+/* issue 0902 / phase-455 W1 — read the reply-slot table of one queryable.
+ *
+ * Shaped after `zpico_graph_entry_count`, which is the file's existing answer
+ * to "a bounded resource must report what it discarded": the live count is the
+ * return value, the discard count is reported beside it rather than folded in.
+ *
+ * A new accessor rather than two more entries in `zpico_get_diag_counters`:
+ * those 18 counters are file-scope `static volatile uint32_t`, i.e. PROCESS-
+ * global and all 18 on the client-side `zpico_get*` path, while this table is
+ * per-session AND per-queryable — a summed number could not name the server
+ * that saturated. The array also binds in Rust as a bare `*mut u32` whose
+ * length lives only in the C prototype, so growing `out[18]` is an
+ * undiagnosable overrun for any caller not recompiled with it.
+ *
+ * Returns the number of slots currently HELD (cloned queries awaiting a
+ * reply), or `ZPICO_ERR_INVALID` for a bad session or handle.
+ * `out_refusals` receives the cumulative count of allocations refused because
+ * the table was full — zero means "this server has never run out", which is
+ * precisely what `last_reply_seq == -1` could not say.
+ * `out_capacity` receives `ZPICO_MAX_PENDING_REPLIES` as this TU sees it, so a
+ * caller reads the effective capacity instead of assuming a `-D` arrived.
+ */
+int32_t zpico_reply_slot_stats(zpico_session_t* session, int32_t queryable_handle,
+                               uint32_t* out_refusals, uint32_t* out_capacity) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL || queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {
+        return ZPICO_ERR_INVALID;
+    }
+    if (out_refusals != NULL) {
+        *out_refusals = s->reply_slot_refusals[queryable_handle];
+    }
+    if (out_capacity != NULL) {
+        *out_capacity = (uint32_t)ZPICO_MAX_PENDING_REPLIES;
+    }
+    int32_t held = 0;
+    for (int j = 0; j < ZPICO_MAX_PENDING_REPLIES; j++) {
+        if (s->stored_query_valid[queryable_handle][j]) {
+            held++;
+        }
+    }
+    return held;
+}
+
+/* issue 0902 / phase-455 W1 — take the pending "this table just saturated"
+ * announcement, clearing it.
+ *
+ * A take-and-clear, like `zpico_queryable_take_reply_seq`, so the once-ness
+ * lives in exactly ONE place: `zpico_reply_slot_pick` decides when a
+ * transition happened, and whoever asks first gets it. A second latch on the
+ * Rust side would be a second spelling of the same rule, which is how a
+ * permanent failure ends up reported per spin again.
+ *
+ * Returns 1 when an announcement was pending, 0 when not, `ZPICO_ERR_INVALID`
+ * for a bad session or handle. Deliberately separate from
+ * `zpico_reply_slot_stats`: a stats read must not consume the event, or the
+ * probe that samples the counter silences the log line.
+ */
+int32_t zpico_reply_slot_take_announcement(zpico_session_t* session, int32_t queryable_handle) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL || queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {
+        return ZPICO_ERR_INVALID;
+    }
+    bool pending = s->reply_slot_announce[queryable_handle];
+    s->reply_slot_announce[queryable_handle] = false;
+    return pending ? 1 : 0;
 }
 
 // ============================================================================
