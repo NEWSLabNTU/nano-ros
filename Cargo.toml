@@ -23,6 +23,12 @@ members = [
     # clean on the host (`cargo check --manifest-path …`, 2026-09-11), so the
     # exclusion satisfied none of the structural reasons and is gone.
     "packages/rmw/transport-callbacks",
+    # issue 1309 — both were in `exclude`, so NO lane compiled them.
+    # `nros-baremetal-common` builds clean on the host as-is;
+    # `nros-board-freertos` could not be a member until the dead
+    # `reference-mps2` back-edge (a package cycle) was removed.
+    "packages/platform/nros-baremetal-common",
+    "packages/boards/nros-board-freertos",
     "packages/core/nros-node",
     "packages/core/nros-executor-layout",
     "packages/core/nros-log",
@@ -332,7 +338,6 @@ exclude = [
     # smoltcp network provider (embedded-only, requires cross-compilation)
     "packages/drivers/net/nros-smoltcp",
     # Shared bare-metal helpers (PRNG, sleep, libc stubs) — embedded-only
-    "packages/platform/nros-baremetal-common",
     # Serial (UART) link layer (embedded-only, requires cross-compilation)
     "packages/rmw/zenoh/zpico-serial",
     # CMSDK UART driver (embedded-only, Cortex-M)
@@ -393,7 +398,6 @@ exclude = [
     # the `BoardEntry::run` trait surface.
     # Phase 149.1.A scaffolding — generic FreeRTOS+lwIP façade.
     # 149.1.B carves the kernel + lwIP build glue here.
-    "packages/boards/nros-board-freertos",
     # Phase 149.2.A scaffolding — generic ThreadX+NetX-Duo façade.
     # 149.2.B carves the kernel + NetX-Duo build glue here.
     "packages/boards/nros-board-threadx",

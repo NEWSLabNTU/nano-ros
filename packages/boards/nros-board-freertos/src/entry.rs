@@ -151,14 +151,6 @@ struct AppContext<F> {
 
 static mut POLL_INTERVAL_MS: u32 = 5;
 
-/// FreeRTOS task entry for the application closure (212.N flavour —
-/// hands the closure a `&mut RuntimeCtx<'_>` instead of `&Config`).
-///
-/// # Safety
-/// `arg` must point to a valid `AppContext<F>` allocated on the
-/// FreeRTOS heap by `run_entry()`, surviving until the scheduler
-/// exits.
-
 /// Say, once, how much of the task's stack the deepest point of bring-up
 /// actually used (issue 1146).
 ///
@@ -191,6 +183,13 @@ fn report_stack_peak<B: BoardPrint>(what: &str, total_bytes: u32) {
     ));
 }
 
+/// FreeRTOS task entry for the application closure (212.N flavour —
+/// hands the closure a `&mut RuntimeCtx<'_>` instead of `&Config`).
+///
+/// # Safety
+/// `arg` must point to a valid `AppContext<F>` allocated on the
+/// FreeRTOS heap by `run_entry()`, surviving until the scheduler
+/// exits.
 unsafe extern "C" fn app_task_entry_runtime<B, F, E>(arg: *mut c_void)
 where
     B: BoardPrint + BoardExit,
@@ -301,9 +300,9 @@ unsafe extern "C" fn poll_task_entry(_arg: *mut c_void) {
 // Phase 228.E.2 — per-tier multi-task entry (RFC-0032 §5, §8.2)
 // =============================================================================
 
-/// Shared boot bringup: network init + RNG seed + poll task + zenoh task config
-/// + netif wait. Extracted from `app_task_entry_runtime` so the per-tier app
-/// task reuses the exact same sequence.
+/// Shared boot bringup: network init, RNG seed, poll task, zenoh task config,
+/// then the netif wait. Extracted from `app_task_entry_runtime` so the per-tier
+/// app task reuses the exact same sequence.
 ///
 /// # Safety
 /// Runs inside a FreeRTOS task, pre-`Executor::open`. `config` must be valid.
@@ -400,7 +399,7 @@ where
     let ret = unsafe {
         nros_freertos_create_task(
             poll_task_entry,
-            b"net_poll\0".as_ptr(),
+            c"net_poll".as_ptr().cast::<u8>(),
             POLL_TASK_STACK,
             core::ptr::null_mut(),
             poll_pri,
@@ -512,7 +511,7 @@ where
     let ret = unsafe {
         nros_freertos_create_task(
             tier_task_entry::<B, F, E>,
-            b"nros_tier\0".as_ptr(),
+            c"nros_tier".as_ptr().cast::<u8>(),
             stack_words,
             ptr as *mut c_void,
             prio,
@@ -686,11 +685,7 @@ where
     // CHECKED, not assumed: a table that is not non-increasing means the
     // emitter's contract changed, and the alternative failure is silent
     // starvation seconds after boot on one platform.
-    let boot_index = if ctx
-        .tiers
-        .windows(2)
-        .any(|w| w[1].priority > w[0].priority)
-    {
+    let boot_index = if ctx.tiers.windows(2).any(|w| w[1].priority > w[0].priority) {
         B::println(format_args!(
             "nros: tier table is not sorted highest-priority-first — \
              boot tier falls back to index 0 (issue 0636)"
@@ -865,7 +860,7 @@ where
     let ret = unsafe {
         nros_freertos_create_task(
             app_task_entry_tiers::<B, F, E>,
-            b"nros_app\0".as_ptr(),
+            c"nros_app".as_ptr().cast::<u8>(),
             app_stack_words,
             ctx_ptr as *mut c_void,
             app_pri,
@@ -1072,7 +1067,7 @@ where
     let ret = unsafe {
         nros_freertos_create_task(
             app_task_entry_runtime::<B, F, E>,
-            b"nros_app\0".as_ptr(),
+            c"nros_app".as_ptr().cast::<u8>(),
             app_stack_words,
             ctx_ptr as *mut c_void,
             app_pri,
@@ -1145,7 +1140,7 @@ where
     let ret = unsafe {
         nros_freertos_create_task(
             app_task_entry_bare::<B, F, E>,
-            b"nros_app\0".as_ptr(),
+            c"nros_app".as_ptr().cast::<u8>(),
             app_stack_words,
             ctx_ptr as *mut c_void,
             app_pri,

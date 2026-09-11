@@ -114,8 +114,7 @@ fn main() {
     //
     // The knob keeps its KiB spelling at the front end and the ladder stores
     // bytes, so the define is converted back here: FreeRTOSConfig.h reads KiB.
-    let zenoh_default_kb =
-        (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()).then(|| 2048_usize);
+    let zenoh_default_kb = (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()).then_some(2048_usize);
     let heap_kb = match nros_board_common::platform_config::BuildRungs::from_build_env() {
         Some(rungs) => {
             // No lane default means "leave FreeRTOSConfig.h's 3 MiB alone",
@@ -261,10 +260,7 @@ fn main() {
     // `FreertosBoard::run_components`. SHARED with every other RTOS board
     // (`nros_board_rtos_run_components`): the single-executor path differs only
     // in a per-tick yield, so three copies would be three chances to drift.
-    glue.file(
-        manifest_dir
-            .join("../nros-board-common/c/nros_rtos_run_components.c"),
-    );
+    glue.file(manifest_dir.join("../nros-board-common/c/nros_rtos_run_components.c"));
     // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
     // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
     // through neither shared helper, so the policy has to be named here.
