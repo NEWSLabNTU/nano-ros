@@ -440,24 +440,40 @@ fn main() {
     let declared_action_clients = env_opt_usize("NROS_ENTITY_COUNT_ACTION_CLIENT");
     let declared_action_servers = env_opt_usize("NROS_ENTITY_COUNT_ACTION_SERVER");
 
-    let derived_arena = match (
+    // phase-412 #4 — the MODEL'S REQUIREMENT, kept apart from the arena it
+    // derives. `None` when the image declared nothing (or only part of it): the
+    // worst case below is then a BUDGET over `max_cbs` slots, not a claim about
+    // this image, and a stated arena below a budget is the ordinary reason the
+    // knob exists (the FreeRTOS tier fixtures state 8192 against 74,240).
+    //
+    // `Some(n)` is the sum over what the image DECLARES, before the floor --
+    // the floor is policy, not need. It is emitted as `arena_model::REQUIRED`
+    // and held against the arena every arm actually carries by
+    // `executor::arena_oracle`, at compile time, so a stated
+    // `NROS_EXECUTOR_ARENA_SIZE` below it is a build error naming both numbers
+    // instead of `NodeError::BufferTooSmall` at the first registration that
+    // does not fit.
+    let model_required = match (
         declared_subs,
         declared_timers,
         declared_services,
         declared_action_clients,
         declared_action_servers,
     ) {
-        (Some(subs), Some(timers), Some(services), Some(acl), Some(asv)) => {
-            (subs_arena(subs, pubsub_entry, rx_recv_size, PUBSUB_ENTRY_STRUCT)
+        (Some(subs), Some(timers), Some(services), Some(acl), Some(asv)) => Some(
+            subs_arena(subs, pubsub_entry, rx_recv_size, PUBSUB_ENTRY_STRUCT)
                 + timers * TIMER_ENTRY
                 + services * service_entry
                 + (acl + asv) * action_client_entry
-                + ARENA_BASE_OVERHEAD)
-                .max(ARENA_FLOOR)
-        }
+                + ARENA_BASE_OVERHEAD,
+        ),
+        _ => None,
+    };
+    let derived_arena = match model_required {
+        Some(required) => required.max(ARENA_FLOOR),
         // Nobody declared, or declared only partly: keep the pre-step-3
         // arithmetic byte for byte, so no existing image moves.
-        _ => (action_clients * action_client_entry
+        None => (action_clients * action_client_entry
             + max_cbs.saturating_sub(action_clients) * pubsub_entry
             + ARENA_BASE_OVERHEAD)
             .max(ARENA_FLOOR),
@@ -556,7 +572,12 @@ fn main() {
              /// Per-executor overhead the derivation adds once.\n    \
              pub const BASE_OVERHEAD: usize = {arena_base_overhead};\n    \
              /// Smallest arena the derivation will produce.\n    \
-             pub const FLOOR: usize = {arena_floor};\n\
+             pub const FLOOR: usize = {arena_floor};\n    \
+             /// phase-412 #4 -- what the entities this image DECLARES are \
+             modelled to need, before the floor. `0` when it declared \
+             nothing, so the derivation budgeted a worst case and there is no \
+             requirement to hold an arena to. Read by `executor::arena_oracle`.\n    \
+             pub const REQUIRED: usize = {model_required};\n\
          }}\n",
         // The RESOLVED depth, not the constant: this const is what
         // `the_modelled_qos_depth_is_the_runtime_default` in `arena.rs` reads
@@ -581,6 +602,7 @@ fn main() {
         arena_base_overhead = ARENA_BASE_OVERHEAD,
         arena_floor = ARENA_FLOOR,
         timer_entry = TIMER_ENTRY,
+        model_required = model_required.unwrap_or(0),
     );
 
     std::fs::write(Path::new(&out_dir).join("nros_node_config.rs"), contents).unwrap();

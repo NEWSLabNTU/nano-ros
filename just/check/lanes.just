@@ -1860,6 +1860,37 @@ node-std-tests:
         env NROS_BACKING_CROSS_VERIFIED="$cross_verified" \
         cargo test -p nros-node --features std,rmw-cffi --test executor_backing_claims \
         --quiet -- --ignored --exact every_stated_executor_backing_meets_the_measured_default
+
+    # phase-412 #4 — the arena's host oracle, seen to FIRE. `arena_oracle` holds
+    # the default arena to the declared model in a `const` item, and a const
+    # item nobody has watched fail reads exactly like one that passes. So: the
+    # reference island's entity shape with the arena STATED short must not
+    # build, and must say which knob and by how much; the same shape with the
+    # arena left to the derivation must build. A BUILD, not a test, because the
+    # refusal is a compile error -- and the numbers are read off the message,
+    # never restated here (a second copy of the model is the drift this is for).
+    oracle_env=(NROS_ENTITY_COUNT_SUBSCRIPTION=11 NROS_ENTITY_COUNT_TIMER=4
+        NROS_ENTITY_COUNT_SERVICE_SERVER=2 NROS_ENTITY_COUNT_ACTION_CLIENT=0
+        NROS_ENTITY_COUNT_ACTION_SERVER=0)
+    rc=0
+    out="$(env "${oracle_env[@]}" NROS_EXECUTOR_ARENA_SIZE=8192 \
+        cargo check -p nros-node --quiet 2>&1)" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        printf '%s\n' "node-std-tests: the arena oracle did NOT fire on a stated" \
+            "  8192-byte arena under a declared model. It is inert." >&2
+        exit 1
+    fi
+    for want in "NROS_EXECUTOR_ARENA_SIZE" "= 8192 B" "modelled at " "B short"; do
+        case "$out" in
+            *"$want"*) ;;
+            *) printf '%s\n' "$out" \
+                   "node-std-tests: the build failed but not with the oracle's" \
+                   "  refusal (no \"$want\") -- it failed for some other reason." >&2
+               exit 1 ;;
+        esac
+    done
+    env "${oracle_env[@]}" cargo check -p nros-node --quiet
+    echo "arena oracle: refuses a short stated arena, builds at the derived one"
     # `env,std` and NOT `rmw-cffi`: the cffi flavour makes the wall clock an
     # extern the linker wants a platform port for, and this lane links none.
     cargo test -p nros --lib --features env,std --quiet

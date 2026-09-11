@@ -27,6 +27,10 @@ pub mod action_core;
 pub(crate) mod activator;
 #[cfg(any(has_rmw, test))]
 mod arena;
+// phase-412 #4 — the compile-time half of "is the arena big enough?". Not
+// `has_rmw`-gated: it reads only `config`, and the check it carries must run in
+// every compilation of this crate, whatever the backend.
+pub mod arena_oracle;
 // phase-392 W6 — the named `.bss` static the `alloc` convenience constructors
 // serve their backing from. `alloc`-gated because it exists to replace a
 // `Box::leak`: a no-alloc entry already supplies its own `static` through
