@@ -31,8 +31,16 @@ const EXEC_SIZING: nros::ExecutorSizing = nros::ExecutorSizing {
 };
 // phase-412 #4 — this is the image's ONE executor, so its caller-supplied arena
 // must hold everything the image declares. Held at compile time against the
-// same model `nros-node/build.rs` derives the default arena from; inert (the
-// model is 0) while the image declares no entities, as it does today.
+// same model `nros-node/build.rs` derives the default arena from.
+//
+// issue 1290 — LIVE, not inert. This image declares its entities in
+// `.cargo/config.toml`'s `[env]` (all five counts, all zero: one publisher, no
+// callbacks), so `arena_model::REQUIRED` is the base overhead rather than the
+// `0` that made every comparison here trivially true. That is also what puts
+// `arena_size_for(2)` on its declared branch: while the model was 0 it returned
+// `ARENA_SIZE * 2 / MAX_CBS`, which is half of the model on an image that
+// declares one subscription, and this assertion is what refuses that at build
+// time instead of at the first registration.
 const _: () = EXEC_SIZING.assert_covers_model("EXEC_SIZING.arena");
 static mut EXEC_BACKING: [core::mem::MaybeUninit<u64>; EXEC_SIZING.u64_len()] =
     [const { core::mem::MaybeUninit::uninit() }; EXEC_SIZING.u64_len()];

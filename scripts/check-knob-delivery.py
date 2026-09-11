@@ -116,6 +116,16 @@ DERIVED_PAIRS = {
     "NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE": (
         "NROS_RESOLVED_NROS_SUBSCRIPTION_BUFFER_SIZE",
     ),
+    # issue 1255 -- the PER-TYPE table the two sizes above are maxima over. A
+    # third BASIS, not a third spelling of either: the executor arena allocates
+    # one receive region per SUBSCRIPTION, so it needs each type's own bound
+    # where a shared pool needs the maximum. Dropped, it fails in exactly the
+    # silent over-sized direction this map's first entry records -- every slot
+    # back at the class maximum, the image still correct and 25,920 bytes
+    # heavier on the island's shape.
+    "NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS": (
+        "NROS_RESOLVED_NROS_SUBSCRIBED_TYPE_BOUNDS",
+    ),
     # Issues 1122 / 1125 — the other two thirds of the payload-class trio,
     # omitted here since the trio landed. They resolve in the same
     # `if(CONFIG_NROS_RMW_ZENOH)` block as the pair above and under the ZPICO_

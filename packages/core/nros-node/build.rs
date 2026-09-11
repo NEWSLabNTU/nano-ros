@@ -49,6 +49,22 @@ const PUBSUB_QOS_DEPTH: usize = 10;
 /// carried through. The image did not fit at the first number and does at the
 /// second, and nothing about the running code changed -- only whether the build
 /// was told what it registers.
+///
+/// issue 1255 -- and each subscription is now priced at ITS OWN TYPE'S bound,
+/// not at the image-wide maximum over every subscribed type.
+///
+/// The triple already carries the type; the parse used to throw it away
+/// (`.map(|(_, d)| d)`). `NROS_SUBSCRIBED_TYPE_BOUNDS` is the other half --
+/// `type=bytes` pairs published by the message-bound inventory's JOIN, which is
+/// the one place that has both a per-type `_RX` and the set this image
+/// subscribes to (`cmake/NanoRosMessageBounds.cmake`). This lane does the join
+/// on the two, which is the only place both halves are in one scope.
+///
+/// **Absence is not zero, at either level.** A type the table does not price
+/// keeps `rx_recv_size`, today's image-wide bound -- which is what every
+/// subscription was billed before this, so a missing table reproduces the old
+/// number byte for byte and a partially-populated one is exact where it can be
+/// and unchanged where it cannot.
 fn subs_arena(
     subs: usize,
     pubsub_entry_at_default: usize,
@@ -63,11 +79,18 @@ fn subs_arena(
     // worst case for endpoints this term does not price.
     let undeclared = env_opt_usize("NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION");
     let depths = env_opt_string("NROS_ENTITY_DECLARED_DEPTHS").unwrap_or_default();
-    let declared: Vec<usize> = depths
+    let bounds = subscribed_type_bounds();
+    let declared: Vec<(&str, usize)> = depths
         // cmake hands a list over as `;`-separated; be liberal about `,` too.
         .split([';', ','])
-        .filter_map(|t| t.rsplit_once('=').map(|(_, d)| d))
-        .filter_map(|d| d.trim().parse::<usize>().ok())
+        // The depth follows the LAST `=`, so a topic containing one does not
+        // shift the field -- the same rule `_nros_qos_depth_env` states in
+        // `cmake/NanoRosEntityFacts.cmake`.
+        .filter_map(|t| t.rsplit_once('='))
+        .filter_map(|(head, d)| {
+            let ty = head.split_once('|').map_or(head, |(ty, _topic)| ty).trim();
+            d.trim().parse::<usize>().ok().map(|d| (ty, d))
+        })
         .collect();
 
     // Refuse to size from a partial picture. Either every endpoint that could
@@ -78,8 +101,45 @@ fn subs_arena(
     }
     declared
         .iter()
-        .map(|&d| buffered_region(d, rx_recv_size) + entry_struct)
+        .map(|&(ty, d)| {
+            let slot = type_bound(&bounds, ty).unwrap_or(rx_recv_size);
+            buffered_region(d, slot) + entry_struct
+        })
         .sum()
+}
+
+/// `type=bytes` pairs from `NROS_SUBSCRIBED_TYPE_BOUNDS`, in the order cmake
+/// wrote them.
+///
+/// A `Vec` and not a map: this is a handful of entries per image and the build
+/// script has no dependency to spend on one. The lookup below is linear on
+/// purpose.
+fn subscribed_type_bounds() -> Vec<(String, usize)> {
+    env_opt_string("NROS_SUBSCRIBED_TYPE_BOUNDS")
+        .unwrap_or_default()
+        .split([';', ','])
+        .filter_map(|pair| pair.rsplit_once('='))
+        .filter_map(|(ty, bytes)| {
+            bytes
+                .trim()
+                .parse::<usize>()
+                .ok()
+                // A bound of 0 is not an answer. It would price a subscription's
+                // whole receive region at nothing, which is the one direction
+                // that cannot be recovered at run time.
+                .filter(|&b| b > 0)
+                .map(|b| (ty.trim().to_string(), b))
+        })
+        .collect()
+}
+
+/// The bound for one subscribed type, or `None` when the table does not price
+/// it -- which the caller reads as "keep the image-wide bound", never as zero.
+fn type_bound(bounds: &[(String, usize)], ty: &str) -> Option<usize> {
+    bounds
+        .iter()
+        .find(|(name, _)| name == ty)
+        .map(|&(_, bytes)| bytes)
 }
 
 /// Bytes one buffered receive region claims, mirroring
@@ -368,19 +428,20 @@ fn main() {
     //
     // Falls back to the closure knob when the payload class is absent, which
     // is larger and therefore the safe direction.
-    // NOT WIRED YET, and the fallback is deliberate. The receive class is
-    // resolved into the cargo env as `ZPICO_SUBSCRIBER_BUFFER_SIZE` -- a
-    // BACKEND name, which this backend-agnostic crate must not read -- so
-    // `NROS_SUBSCRIBER_BUFFER_SIZE` is absent here and this falls back to the
-    // closure knob. Measured on the reference island: the arena derives 52,304
-    // against a hand-set 40,960, and the whole 11,344-byte difference is this
-    // term using 1,496 where the receive class is 880.
     //
-    // Giving it a backend-agnostic spelling is a DESIGN choice with two bad
-    // options -- have this crate read a ZPICO_ name, or resolve one value
-    // under two names and invite the drift that three separate double
-    // resolutions have already caused in this file's sibling. It is named in
-    // phase-403 step 3 rather than guessed at here.
+    // WIRED since phase-403's own step: `nros_cargo_build.cmake` resolves
+    // `NROS_SUBSCRIBER_BUFFER_SIZE` -- the backend-agnostic spelling, which is
+    // also what the Kconfig symbol has always been called -- so this reads the
+    // receive class and not the closure. (This comment said "NOT WIRED YET" and
+    // named `ZPICO_SUBSCRIBER_BUFFER_SIZE` for two phases after the rename;
+    // issue 1255's "Also stale".) The island's build shows it: `PUBSUB_REGION =
+    // 9768` is 11 x 880 + 88, the 880 receive class, not the 1,496 closure.
+    //
+    // issue 1255 -- this is now only the FALLBACK. It is the maximum over every
+    // type the image subscribes to, so it is an upper bound for each of them
+    // and a tight one for exactly one; `subs_arena` prices each subscription at
+    // its own type's bound and reaches this only for a type the bound table
+    // does not carry.
     let rx_recv_size = env_usize("NROS_SUBSCRIBER_BUFFER_SIZE", rx_buf_size);
     // issue 1190 -- the region a subscription's QoS history actually claims, at
     // the depth the runtime will actually use. `PUBSUB_QOS_DEPTH` is a

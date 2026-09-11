@@ -1934,6 +1934,97 @@ node-std-tests:
     done
     env "${oracle_env[@]}" cargo check -p nros-node --quiet
     echo "arena oracle: refuses a short stated arena, builds at the derived one"
+
+    # issue 1255 — each subscription priced at ITS OWN TYPE'S bound, MEASURED.
+    #
+    # The model is read off the oracle's own refusal ("modelled at N B") rather
+    # than restated here, the same way the block above reads the knob and the
+    # shortfall. The same stated 8,192-byte arena the block above uses is what
+    # makes the build print its model -- it is below every number these three
+    # runs produce, so the refusal always fires and always carries the figure.
+    #
+    # THREE runs over ONE shape (the island's: 11 subscriptions, every one
+    # KEEP_LAST(1)), differing only in the bound table:
+    #   * none        -- the pre-1255 number, because an absent table means every
+    #                    subscription keeps the image-wide bound;
+    #   * complete    -- ten small types and one at the class maximum;
+    #   * partial     -- five of the ten named, to prove ABSENCE IS NOT ZERO. It
+    #                    must land strictly between the other two; equal to the
+    #                    complete run would mean a missing bound was read as 0
+    #                    and priced a receive region at nothing.
+    arena_model_of() {
+        local rc=0 out=""
+        out="$(env "${oracle_env[@]}" "$@" NROS_SUBSCRIBER_BUFFER_SIZE=880 \
+            NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION=0 \
+            NROS_ENTITY_DECLARED_DEPTHS="$island_depths" \
+            NROS_EXECUTOR_ARENA_SIZE=8192 \
+            cargo check -p nros-node --quiet 2>&1)" || rc=$?
+        if [ "$rc" -eq 0 ]; then
+            printf '%s\n' \
+                "node-std-tests: an 8192-byte arena BUILT under a declared model." \
+                "  The oracle is inert, so no number below means anything (issue 1255)." >&2
+            return 1
+        fi
+        printf '%s\n' "$out" | sed -n 's/.*modelled at \([0-9]*\) B.*/\1/p' | head -1
+    }
+    island_depths=""
+    island_bounds=""
+    partial_bounds=""
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        island_depths="${island_depths}nros_probe/msg/Small${i}|/t${i}=1,"
+        island_bounds="${island_bounds}nros_probe/msg/Small${i}=16,"
+        if [ "$i" -le 5 ]; then
+            partial_bounds="${partial_bounds}nros_probe/msg/Small${i}=16,"
+        fi
+    done
+    island_depths="${island_depths}nros_probe/msg/Big|/t11=1"
+    island_bounds="${island_bounds}nros_probe/msg/Big=880"
+    partial_bounds="${partial_bounds}nros_probe/msg/Big=880"
+    rc=0; flat="$(arena_model_of)" || rc=$?
+    [ "$rc" -eq 0 ] || exit 1
+    rc=0; typed="$(arena_model_of NROS_SUBSCRIBED_TYPE_BOUNDS="$island_bounds")" || rc=$?
+    [ "$rc" -eq 0 ] || exit 1
+    rc=0; part="$(arena_model_of NROS_SUBSCRIBED_TYPE_BOUNDS="$partial_bounds")" || rc=$?
+    [ "$rc" -eq 0 ] || exit 1
+    for n in "$flat" "$typed" "$part"; do
+        case "$n" in
+            ''|*[!0-9]*)
+                printf '%s\n' \
+                    "node-std-tests: could not read a model size out of the oracle's" \
+                    "  refusal -- got \"$n\". The message shape changed (issue 1255)." >&2
+                exit 1 ;;
+        esac
+    done
+    if [ "$typed" -ge "$flat" ]; then
+        printf '%s\n' \
+            "node-std-tests: the per-type bound table changed nothing -- the model" \
+            "  is $typed B with it and $flat B without. Either it is not reaching" \
+            "  subs_arena or the join is not being made (issue 1255)." >&2
+        exit 1
+    fi
+    if [ "$part" -le "$typed" ] || [ "$part" -ge "$flat" ]; then
+        printf '%s\n' \
+            "node-std-tests: a PARTIAL bound table modelled $part B against $typed B" \
+            "  complete and $flat B absent. It must sit strictly between: equal to the" \
+            "  complete run means an absent bound was priced at ZERO, which sizes a" \
+            "  receive region at nothing (issue 1255)." >&2
+        exit 1
+    fi
+    printf '%s\n' \
+        "per-type arena: $flat B at one image-wide bound, $typed B per type," \
+        "  $part B with half the table absent (absence keeps the image-wide bound)"
+
+    # issue 1290 — `arena_size_for(cbs)` against the model, seen to MATTER.
+    #
+    # The test is `#[ignore]`d because it can only say anything in a build that
+    # DECLARED, and `cargo test -p nros-node` declares nothing; this is the run
+    # that declares. It asserts the old cbs/MAX_CBS scaling was SHORT of the
+    # model before asserting the new arithmetic covers it, so a pass here is a
+    # positive control and not an accident of the numbers.
+    ran_tests "the per-entry arena model test" \
+        env "${oracle_env[@]}" cargo test -p nros-node --lib --features std --quiet \
+        -- --ignored --exact \
+        config::arena_size_for_tests::the_scaling_this_replaced_was_short_of_the_declared_model
     # `env,std` and NOT `rmw-cffi`: the cffi flavour makes the wall clock an
     # extern the linker wants a platform port for, and this lane links none.
     cargo test -p nros --lib --features env,std --quiet

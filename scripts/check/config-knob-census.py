@@ -285,6 +285,11 @@ KNOB_CLASS = {
     # here so the arena stops billing a subscription at the CLOSURE buffer,
     # which is also DEFAULT_TX_BUF and therefore larger.
     "NROS_SUBSCRIBER_BUFFER_SIZE": ("derived", "receive payload class"),
+    # issue 1255 -- the per-type table the class above is the MAXIMUM over. It
+    # is infra for the same reason the depth table is: it carries a fact the
+    # message-bound inventory already derived into the arena derivation, and
+    # holds no number for anyone to state.
+    "NROS_SUBSCRIBED_TYPE_BOUNDS": ("infra", "per-type receive bound table"),
     "NROS_BOARD_ZEPHYR_ID": ("infra", "board descriptor fact"),
     "NROS_BOARD_TOOLCHAIN": ("infra", "board descriptor fact"),
     "NROS_BOARD_RUNNER": ("infra", "board descriptor fact"),

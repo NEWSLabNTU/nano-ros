@@ -2,6 +2,31 @@ include = ["../../../../../nros-patch.toml"]
 [build]
 target = "thumbv7m-none-eabi"
 
+# issue 1290 -- this bench DECLARES its entities, so `arena_size_for(2)` in
+# `src/main.rs` takes the declared branch and `EXEC_SIZING.assert_covers_model`
+# is a live check rather than an inert one (`arena_model::REQUIRED` is 0 on an
+# image that declares nothing, and a check against 0 can never fail).
+#
+# Authored here, by hand, because the cargo-LEAF road carries no entity counts:
+# the sidecar `nros sync` writes is derived from a metadata probe that sees no
+# SystemModel, and the CMake road's `NROS_ENTITY_COUNT_*` are resolved in
+# `zephyr/cmake/nros_cargo_build.cmake`, which this leaf never reaches. So this
+# is the leaf stating what it registers, in the one place a cargo-only leaf can
+# state anything to a build script.
+#
+# The numbers are this file's to keep correct: `main()` creates ONE publisher
+# and registers NO callbacks -- no subscription, no timer, no service, no
+# action -- and publishers are not an arena cost (they claim no entry and no
+# receive region). If an entity is added to `main()` and not here, the arena is
+# modelled short and the registration fails with `BufferTooSmall`; if it is
+# added here and not there, the image pays bytes it does not use.
+[env]
+NROS_ENTITY_COUNT_SUBSCRIPTION = "0"
+NROS_ENTITY_COUNT_TIMER = "0"
+NROS_ENTITY_COUNT_SERVICE_SERVER = "0"
+NROS_ENTITY_COUNT_ACTION_CLIENT = "0"
+NROS_ENTITY_COUNT_ACTION_SERVER = "0"
+
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = [

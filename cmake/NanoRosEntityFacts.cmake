@@ -194,6 +194,16 @@ endfunction()
 # a DEFAULT the build script may override rather than a value set in the child
 # environment. Setting the knob itself would silently break rung 1 of the
 # ladder: a consumer who names `ZPICO_MAX_LARGE_SUBSCRIBERS` must still win.
+#
+# WHAT IS DELIBERATELY NOT HERE, issue 1255's per-type table
+# (`NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS`). Its only consumer is the executor
+# ARENA, and the arena's per-kind sum runs only where `NROS_ENTITY_COUNT_*`
+# arrive -- which is the Zephyr resolver road alone
+# (`zephyr/cmake/nros_cargo_build.cmake`). On this road and on the cargo-leaf
+# sidecar the model is 0 and the sum is never reached, so a bound table
+# delivered here would price nothing. THE COUNTS COME FIRST on these roads; the
+# bounds follow them, in the same change, or they are a wire to a consumer that
+# is not listening. Same shape as issue 1122, one fact over.
 function(_nros_payload_facts_env _out_var)
     set(${_out_var} "" PARENT_SCOPE)
     if(NOT COMMAND nros_message_bounds_knobs_file)
