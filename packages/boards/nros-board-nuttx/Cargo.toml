@@ -18,6 +18,11 @@ name = "nros_board_nuttx"
 # Phase 152.7 `Make.defs` / `Makefile` / `Kconfig` shell). The
 # Cargo side ships `Config` + `run` shape only; no `build.rs`
 # bundles the kernel here.
+# issue 1309 / phase-451 W4 — the `nros-board-nuttx-qemu` back-edge is GONE. That
+# crate depends on this one, so the optional dep made a package CYCLE, and cargo
+# refuses a cycle whether or not the feature is on. `nros-board-nuttx-qemu` even
+# documented that it deliberately does NOT enable `reference-qemu`, which is the
+# cycle being worked around rather than removed.
 [dependencies]
 # issue 0708 — the boot funnels publish the nros_log sink list (`init_default`).
 # issue 0710 follow-up — a board IS the platform console, so it turns on the
@@ -83,7 +88,6 @@ nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-featu
 # backend at boot.
 # phase-359 W7 — was `["std", "rmw-cffi"]`.
 nros = { path = "../../api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
-nros-board-nuttx-qemu = { path = "../nros-board-nuttx-qemu", optional = true }
 # Phase 225.O — explicit RMW backend registration on NuttX. The unified-RMW
 # `nros_rmw_register_backend!` macro is a NO-OP on NuttX (linkme has no
 # NuttX support — see nros-rmw-zenoh/src/lib.rs), and the NuttX flat image
@@ -98,7 +102,6 @@ nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = f
 
 [features]
 # Reference QEMU ARM virt (Cortex-A7 + virtio-net) configuration.
-reference-qemu = ["dep:nros-board-nuttx-qemu"]
 # Link + explicitly register the zenoh RMW backend in `run_entry`.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 # Phase 252 (issue 0072) — forward a declared [safety] axis to the zenoh backend's

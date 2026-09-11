@@ -345,6 +345,13 @@ exclude = [
     # set at most one of these Cargo features". Upstream exclusivity, so no
     # workspace build can contain them — tried, and the embedded lane fails
     # in `critical-section` itself, a crate none of them names.
+    # issue 1309 / phase-451 W4 — the package CYCLE that kept these two out of
+    # every workspace is REMOVED (their dead `reference-*` back-edges are gone),
+    # so membership is now possible rather than impossible. What stops it is no
+    # longer structural and is MEASURED: entering the host lane surfaces 20
+    # latent `-D warnings` errors that no lane has ever compiled —
+    # 12 in nros-board-nuttx, 8 in nros-board-threadx, nearly all functions
+    # unused off-target. Fixing those is what promotion now costs.
     "packages/platform/nros-platform-mps2-an385",
     "packages/platform/nros-platform-stm32f4",
     "packages/platform/nros-platform-esp32-qemu",
@@ -408,10 +415,8 @@ exclude = [
     # 149.1.B carves the kernel + lwIP build glue here.
     # Phase 149.2.A scaffolding — generic ThreadX+NetX-Duo façade.
     # 149.2.B carves the kernel + NetX-Duo build glue here.
-    "packages/boards/nros-board-threadx",
     # Phase 149.4.A scaffolding — thin NuttX façade (NuttX owns
     # the kernel build via its own apps/external + Make.defs).
-    "packages/boards/nros-board-nuttx",
     # Phase 100.6 — AGX Orin SPE board crate. Excluded because it
     # links against NVIDIA's `tegra_aon_fsp.a`, which only exists on
     # an SDK-Manager-installed Orin SPE FSP tree at `$NV_SPE_FSP_DIR`.

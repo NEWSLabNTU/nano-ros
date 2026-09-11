@@ -121,10 +121,8 @@ pub use nros_board_common::ThreadxConfig;
 // working. New consumers should depend on the per-board crate
 // directly (or import `run` from here + pick the marker type
 // via turbofish).
-#[cfg(feature = "reference-linux")]
-pub use nros_board_threadx_linux::{Config as ConfigLinux, init_hardware as init_hardware_linux};
-
-#[cfg(feature = "reference-qemu-riscv64")]
-pub use nros_board_threadx_qemu_riscv64::{
-    Config as ConfigQemuRiscv64, init_hardware as init_hardware_qemu_riscv64,
-};
+// issue 1309 / phase-451 W4 — the per-board re-exports are gone with the
+// optional deps that made a package cycle. They existed so a consumer could
+// keep the generic crate name "during the .A -> .B transition"; that is over,
+// and the line above already says new consumers depend on the per-board crate
+// directly.
