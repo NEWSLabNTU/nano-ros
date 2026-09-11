@@ -652,6 +652,7 @@ dependencies = [
  "nros-platform-config",
  "nros-rmw",
  "nros-rmw-cffi",
+ "nros-sizing-descriptor",
  "nros-zephyr-build",
  "portable-atomic",
  "zpico-sys",
