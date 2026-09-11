@@ -175,7 +175,7 @@ cross-checked against `objdump -T` on `xrce-agent`: both say 2.34 / 3.4.30):
 | riscv-none-elf-gcc | 2.27, 3.4.30 | 2.27, 3.4.30 | arm64 11.0 |
 | verus | 2.34, 3.4.26 | — | arm64 11.0, x86_64 11.0 |
 | xrce-agent | 2.34, 3.4.30 | 2.34, 3.4.30 | arm64 14.0 |
-| zephyr-sdk (0.16.8) | 2.27, 3.4.21 | **debt** | **debt** (both) |
+| zephyr-sdk (0.16.8) | 2.27, 3.4.21 | 2.27, 3.4.21 | arm64 11.0, x86_64 11.0 |
 | zephyr-sdk-1-0-1 | none (self-hosted sysroot) | none (self-hosted sysroot) | arm64 14.0 |
 
 Three measurements that reading would have got wrong:
@@ -193,10 +193,14 @@ Three measurements that reading would have got wrong:
    the host-linked toolchains alone set 2.27 / 3.4.21. Measured from a local
    install of the same release (`sdk_version` 0.16.8).
 
-**Debt: 3 rows** — the zephyr-sdk 0.16.8 linux-arm64 / macos-arm64 /
-macos-x86_64 archives are 1.0-1.3 GB upstream assets that were still
-downloading at ~0.12 MB/s. Recorded in the baseline, `BASELINE_CEILING = 3`,
-and may only shrink.
+**Debt: 0.** The zephyr-sdk 0.16.8 linux-arm64 / macos-arm64 / macos-x86_64
+archives (1.0-1.3 GB, upstream) landed first as recorded debt (ceiling 3), and a
+follow-up commit measured them and took the ceiling to 0 — the ratchet shrinking
+as designed. linux-arm64 measured from the ARCHIVE came out 2.27 / 3.4.21,
+identical to the linux-x86_64 figure measured from an INSTALL, which is the
+cross-check between the two methods. All three needed a resumed download (curl
+92, an HTTP/2 stream reset mid-transfer), which is why the measuring script's
+fetch now resumes (`-C -`, `--retry`).
 
 **Not covered, deliberately.** `nros-launch-resolve` links `libpython3.10.so.1.0`
 (issue 0897) but ships INSIDE the release asset via `install.sh`, not as an index

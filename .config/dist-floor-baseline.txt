@@ -7,11 +7,3 @@
 # growing it is a visible edit, and a new dist declares its floor instead.
 #
 # Measure a floor: python3 scripts/sdk/measure-dist-floor.py <tool> --host <host>
-#
-# The three Zephyr SDK 0.16.8 artifacts below are 1.0-1.3 GB each, upstream
-# (sdk-ng), and were still downloading at the measuring host's ~0.12 MB/s when
-# the other 40 rows were measured (phase-447 D1, 2026-09-11). The linux-x86_64
-# row was measured from a local install of the same release instead.
-zephyr-sdk linux-arm64
-zephyr-sdk macos-arm64
-zephyr-sdk macos-x86_64

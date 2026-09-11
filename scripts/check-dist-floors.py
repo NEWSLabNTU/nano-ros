@@ -43,7 +43,7 @@ BASELINE = os.path.join(ROOT, ".config", "dist-floor-baseline.txt")
 
 # The number of rows `.config/dist-floor-baseline.txt` may hold. It may only go
 # DOWN: lower it in the same change that removes a row.
-BASELINE_CEILING = 3
+BASELINE_CEILING = 0
 
 LINUX_FIELDS = ("glibc", "glibcxx")
 MAC_FIELDS = ("macos",)
