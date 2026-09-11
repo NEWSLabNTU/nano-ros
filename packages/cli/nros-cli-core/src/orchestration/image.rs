@@ -252,6 +252,29 @@ mod tests {
         toml::from_str(src).expect("parses")
     }
 
+    /// phase-445 W6 - the APP rung parses, and MERGES like `args` rather than
+    /// replacing: a base `env` is a default knob set.
+    #[test]
+    fn the_app_rung_parses_and_merges_key_by_key() {
+        let specific = parse("env = { A = \"image\", C = \"image\" }\n");
+        let base = parse("env = { A = \"base\", B = \"base\" }\n");
+        let merged = specific.with_base(&base);
+        assert_eq!(merged.env["A"], "image", "the image wins the key it names");
+        assert_eq!(merged.env["B"], "base", "and inherits the one it does not");
+        assert_eq!(merged.env["C"], "image");
+        // Absent is an EMPTY table, never a missing field: a caller extends it
+        // unconditionally.
+        assert!(parse("board = \"native\"\n").env.is_empty());
+    }
+
+    /// `deny_unknown_fields` is why the key had to be added here at all - a
+    /// `system.toml` carrying it would otherwise be REFUSED by `nros sync`,
+    /// not silently ignored.
+    #[test]
+    fn a_mistyped_app_rung_key_is_still_refused() {
+        assert!(toml::from_str::<ImageBlock>("envv = { A = \"x\" }\n").is_err());
+    }
+
     /// The `examples/workspaces/safety` shape: one bringup, three languages.
     /// The workspace-wide "does it cross languages" answer was true for every
     /// image there, which routed the Rust ones through cmake.
