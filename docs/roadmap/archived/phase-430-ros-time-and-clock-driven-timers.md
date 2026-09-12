@@ -116,7 +116,7 @@ one is on `main`, so a row's line numbers can move without its verdict moving.
 | 7 | DONE | DONE | Stands. `executor/arena.rs:2257` — under `TimerOverrunPolicy::Skip` a backlog coalesces into ONE activation. |
 | 8 | DONE | DONE | Stands. Test step 1 in `executor/tests.rs:2628`; `sim_time_clock_e2e.rs`. |
 | 9 | DONE | DONE | Stands. `2829ab92a` freed the name, `8cfd19315` added the verb. Lines moved: the member is `nros-cpp/include/nros/node.hpp:1446`, the free form `std_compat.hpp:111`, the one dispatch `nros-cpp/src/timer.rs:97` → `:144`. |
-| 10 | PARTIAL | **DONE** | W4 landed, both halves. Imperative: `NodeCtx::create_timer_on_clock` (`nros-node/src/executor/node.rs:1612`) and `create_timer_on_clock_in_group` (`:1636`), commit `10c8a3e52`. Declarative: `nros::Node::create_timer_on_clock` (`api/nros/src/node.rs:1176`), with `create_timer` now delegating to it under `TimerClockSource::Steady` (`:1138`), commit `6039c5c65`. A `nros::main!` component can own a ROS-time timer. Ledger rows exist: `rust:NodeCtx::create_timer_on_clock`, `rust:NodeCtx::create_timer_on_clock_in_group`, `rust:DeclaredNode::create_timer_for_callback_name_on_clock`. |
+| 10 | PARTIAL | **DONE** | W4 landed, both halves. Imperative: `NodeCtx::create_timer_on_clock` (`nros-node/src/executor/node.rs:1612`) and `create_timer_on_clock_in_group` (`:1636`), commit `10c8a3e52`. Declarative: `nros::Node::create_timer_on_clock` (`api/nros/src/node.rs:1176`), with `create_timer` now delegating to it under `TimerClockSource::Steady` (`:1138`), commit `6039c5c65`. A `nros::main!` component can own a ROS-time timer. Ledger rows exist: `rust:Node::create_timer_on_clock`, `rust:Node::create_timer_on_clock_in_group`, `rust:DeclaredNode::create_timer_for_callback_name_on_clock`. **Re-keyed 2026-09-12 (issue 1351)** — the first two were written as `rust:NodeCtx::*`, which is a spelling the report can never print: the correlator folds `NodeCtx` onto `Node` (`TYPE_SYNONYMS`), so both rows were inert from the day they were filed. They were guessed because the extractor could not reach `NodeCtx` to be asked. |
 | 11 | NOT STARTED | **DONE** | W5 landed: `592452ffe`. `nros_timer_init_on_clock(timer, clock, support, period_ns, cb, ctx)` — clock in rcl's position — at `nros-c/src/timer.rs:195`, documented at `nros-c/include/nros/rcl_compat.h:389`; both init verbs share `timer_init_inner` (`timer.rs:213`). The clock→source mapping has ONE implementation, `nros_timer_clock_source` (`nros-c/src/clock.rs:81`), which `rclc_executor_add_timer` reads at `nros-c/src/executor.rs:1949` and the C++ verb calls at `nros-cpp/src/timer.rs:126` — so the drift the work item warned about did not happen. Spelled `nros_timer_clock_source`, not the `TimerClockSource::from_clock_type` W5 proposed. Ledger row `c:timer_init_on_clock` written. |
 | 12 | NOT STARTED | **NO LONGER APPLIES** | `ComponentNode` is DELETED — `packages/api/nros-cpp/include/nros/component_node.hpp` is gone, removed by `1f3b88aec` (phase-427 W4, "it wrapped a node, and now there is one"). There is one node type, so the clock verb this row wanted IS row 9's `rclcpp::Node::create_timer`. Nothing to port; W6's `ComponentNode` half is void. |
 | 13 | NOT STARTED | **DONE** | W6's hosted half landed with `f4c5ea765`: the free `rclcpp::create_timer(node, clock, period, callback)` at `nros-cpp/include/nros/nros.hpp:935`, plus the `std::chrono` overload at `:962`, returning the same `std::shared_ptr<::nros::Timer>` cell `create_wall_timer` returns. Humble's only clock-taking form, which is what this row asked for. Ledger: `cpp:create_timer`, `disposition: adopt-bounded`. |
@@ -149,23 +149,38 @@ one is on `main`, so a row's line numbers can move without its verdict moving.
   landed is the hosted free `rclcpp::create_timer` (row 13) beside the member
   `rclcpp::Node::create_timer(Timer&, const Clock&, …)` (row 9). The clock-less
   `Node::create_timer` stays refused (row 14).
-* **W7 [ledger, RFC, docs] — LANDED, with one row still owed on purpose.** The
+* **W7 [ledger, RFC, docs] — LANDED. The one owed row is PAID, 2026-09-12.** The
   `TimerBase` ruling is in RFC-0089 (§"AMENDED 2026-09-08" item 1) and at the
   header (`timer.hpp:180`), and the rows W4–W6 name exist
-  (`rust:NodeCtx::create_timer_on_clock`, `c:timer_init_on_clock`,
-  `cpp:create_timer`). Still owed, deliberately: rows for
+  (`rust:Node::create_timer_on_clock`, `c:timer_init_on_clock`,
+  `cpp:create_timer`).
+
+  What this bullet used to say — "still owed, deliberately: rows for
   `install_ros_time_source*`, which wait on the Rust extractor building the
-  surface with `sim-time` — finding C, and the ledger says so in the same words
-  at `docs/reference/api-parity-ledger/timer.json:940`. **TRACKED 2026-09-12 as
-  [issue 1351](../../issues/1351-rust-extractor-misses-nodectx-and-sim-time-surface.md)**,
-  because it is a property of the TOOL and not of this phase's delta: `sim-time`
-  is absent from `NROS_FEATURES` (`scripts/api_parity/extract_rust.py:41`) and
-  `NodeCtx` is not re-exported from the umbrella, so the rows are unmatchable by
-  construction rather than unwritten — two states a reader and every gate see as
-  one blank. Filed so the fact outlives this document. The one thing that was
-  simply stale is fixed by this pass: RFC-0089's 2026-09-05 amendment still read
-  "phase-430 brings ROS time" four days after this document had measured that
-  phase-425 brought it.
+  surface with `sim-time`" (finding C) — was tracked as
+  [issue 1351](../../issues/archived/1351-rust-extractor-misses-nodectx-and-sim-time-surface.md),
+  because it was a property of the TOOL rather than of this phase's delta:
+  `sim-time` was absent from `NROS_FEATURES` and `NodeCtx` was not re-exported
+  from the umbrella, so the rows were unmatchable BY CONSTRUCTION rather than
+  unwritten — two states a reader and every gate saw as one blank.
+
+  **1351 is fixed and the debt is settled.** `sim-time` joined `NROS_FEATURES`,
+  `NodeCtx` is `pub use`d from the umbrella (it was already public API by value —
+  `Executor::node_mut` returns it and the `nros` crate's own first doc example
+  calls its methods — and only the TYPE had no path), and the widening put 25
+  rows on the measured surface that had never been there. All 25 are ledgered,
+  `rust:Node::install_ros_time_source` and `_on` among them. Two corrections
+  fell out that this document could not have made: W4's two rows were keyed
+  `rust:NodeCtx::*`, a spelling the correlator can never emit, and two EXISTING
+  rows (`rust:Node::create_service`, `rust:Node::create_subscription`) argued
+  from an absence that the widening disproved with no signature moving at all.
+  The class is now gated — `check-ledger-key-spelling` refuses a key the report
+  cannot print, which is the half of "does this row have a subject?" that needs
+  no extractor (the other half is issue 1323).
+
+  The one thing that was simply stale is fixed by the same pass that wrote this:
+  RFC-0089's 2026-09-05 amendment still read "phase-430 brings ROS time" four
+  days after this document had measured that phase-425 brought it.
 * **W8 [cost] — CLOSED by row 18**, unchanged.
 
 **What this phase did not close: issue 1321** — written 2026-09-11. It is a
