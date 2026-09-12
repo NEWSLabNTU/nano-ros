@@ -2594,6 +2594,32 @@ rust-rtos-link-check: _codegen
         mapfile -t freertos_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile freertos)")
         freertos_settings="$(leaf_cargo_config examples/mps2-an385-freertos/rust/talker)"
         ( cd examples/mps2-an385-freertos/rust/talker && cargo build "${freertos_profile[@]}" --config "$freertos_settings" --target-dir target-link-check ) >/dev/null
+        # issue 0551's error, from the one lane that never provisioned what it
+        # consumes. `just/nuttx.just` states the rule this violated:
+        #
+        #   "These are prerequisites the example/board build.rs *consume* —
+        #    neither build.rs nor the C/C++ cmake triggers the kernel build"
+        #
+        # So building the nuttx leaf without provisioning NuttX first compiles
+        # against a tree whose generated `include/nuttx/config.h` does not
+        # exist, and every C TU that reaches a NuttX header dies:
+        #
+        #   third-party/nuttx/nuttx/include/stdbool.h:30:10:
+        #       fatal error: nuttx/config.h: No such file or directory
+        #
+        # It passed for anyone whose checkout had been configured by an earlier
+        # `just nuttx build` — which is every developer host and no CI runner —
+        # so the lane was green locally and red in the merge group. `queue` has
+        # 0 successes in its last 40 runs.
+        #
+        # `build-nuttx.sh` is idempotent and self-guards on the NuttX HEAD plus
+        # THIS defconfig's hash, so a provisioned tree makes this a fast no-op
+        # and only the first run pays. Deliberately NOT a skip when the tree is
+        # absent: this lane's whole job is to LINK, and a nuttx talker that
+        # links without NuttX cannot exist — a skip here would be the vacuous
+        # green the lane exists to prevent.
+        echo "  nuttx kernel (prerequisite for the leaf below):"
+        scripts/nuttx/build-nuttx.sh >/dev/null
         echo "  nuttx talker ($(nros_cargo_platform_profile nuttx)):"
         mapfile -t nuttx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile nuttx)")
         nuttx_settings="$(leaf_cargo_config examples/qemu-armv7a-nuttx/rust/talker)"
