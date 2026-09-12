@@ -39,6 +39,27 @@
 ledger-orphan-refs:
     @python3 scripts/check-ledger-orphan-refs.py
 
+# issue 1351 — a ledger key must be one the report can PRINT.
+#
+# The sibling of `ledger-orphan-refs`, one field over: that gate asks whether a
+# row's REASON names a file that exists, this one asks whether its KEY is a
+# spelling `correlate.normalize` can ever emit. Both exist because `--check`
+# walks the differences and asks the ledger, and nothing walks the ledger and
+# asks whether a row can be answered at all.
+#
+# Buildless and derived: it re-uses the correlator's own normalisation rather
+# than an authored list of bad spellings, so a new fold (`TYPE_SYNONYMS`, the
+# `*State` / `*Base` collapses) tightens it with no edit here.
+#
+# Measured 4 of 2770 rows on the day it landed and all four were real — two
+# `rust:NodeCtx::*` rows phase-430 W4 wrote while the extractor could not reach
+# `NodeCtx`, plus two C++ constructor rows that had been inert since they were
+# written. It does NOT ask whether a well-spelled key has a subject; that is
+# issue 1323 and it needs the extractor.
+[private]
+ledger-key-spelling:
+    @python3 scripts/check-ledger-key-spelling.py
+
 # Check the API-parity ledger and the correlator's matching rules.
 [group("check")]
 api-parity-ledger:
