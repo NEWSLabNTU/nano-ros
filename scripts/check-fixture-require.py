@@ -81,22 +81,56 @@ def resolvers(files):
     return out
 
 
+def statement_end(text, start):
+    """Index just past the statement whose resolver call opened at `start`.
+
+    Scoped to the STATEMENT, not to a fixed window of lines. A window is what
+    this had first, and it reported `build_entry_poc()?` as a bypassing site
+    because an unrelated `Command::new(bin).output().expect(...)` sat two lines
+    below it — a gate whose reach is wider than its rule, which is the same
+    defect in the other direction from the one this phase collects.
+
+    Begins at depth 1: the caller matched the resolver's OPENING paren.
+    """
+    depth = 1
+    i = start
+    while i < len(text):
+        c = text[i]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth < 0:
+                return i
+        elif c == ";" and depth == 0:
+            return i
+        i += 1
+    return len(text)
+
+
 def sites(files, names):
     """Call sites of a resolver whose `Err` is handled without the helper."""
     if not names:
         return []
     call = re.compile(r"\b(" + "|".join(sorted(map(re.escape, names))) + r")\s*\(")
+    decl = re.compile(r"\bfn\s+$")
     found = []
     for f in files:
-        lines = f.read_text(errors="replace").split("\n")
-        for i, line in enumerate(lines):
-            if not call.search(line):
+        text = f.read_text(errors="replace")
+        pos = 0
+        while True:
+            m = call.search(text, pos)
+            if not m:
+                break
+            # A DECLARATION is not a call site.
+            if decl.search(text[: m.start()]):
+                pos = m.end()
                 continue
-            window = "\n".join(lines[i : i + LOOKAHEAD])
-            if ".require(" in window:
-                continue
-            if BYPASS.search(window):
-                found.append(f"{f.relative_to(ROOT)}:{i + 1}")
+            end = statement_end(text, m.end())
+            stmt = text[m.start() : end]
+            if ".require(" not in stmt and BYPASS.search(stmt):
+                found.append(f"{f.relative_to(ROOT)}:{text[: m.start()].count(chr(10)) + 1}")
+            pos = max(end, m.end())
     return sorted(found)
 
 
