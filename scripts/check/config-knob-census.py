@@ -506,6 +506,13 @@ READ_CALLEES = {
     # phase-400 W6. `env_usize` with a ladder rung between the env and the
     # builtin.
     "env_usize_rung",
+    # phase-448 W5. `env_opt_usize` with the board/platform rungs spliced in
+    # below Kconfig. Option rather than a default, for
+    # `NROS_EXECUTOR_BACKING_U64S`: its "default" is a const only the TARGET
+    # compiler can evaluate, so absence has to stay absence — a sentinel would
+    # then have to be told apart from a stated `0`, which is that knob's
+    # documented opt-out.
+    "env_opt_usize_laddered",
     # issue 1199 — the DECLARED road's readers. Each takes the env NAME as a
     # parameter, so the census sees the literal at the call site rather than
     # inside the helper.

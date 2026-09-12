@@ -51,6 +51,15 @@ OWNERS: dict[str, str] = {
     "NROS_EXECUTOR_MAX_SHUTDOWN_CBS": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_ACTION_CLIENTS": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_ARENA_SIZE": "packages/core/nros-node/build.rs",
+    # phase-448 W5 / issue 1145. `nros-node` OWNS it: it sizes `EXECUTOR_BACKING`
+    # from it and carries the Kconfig rung this knob also has. The ThreadX byte
+    # pool has to subtract exactly `8 *` the same number, and does NOT parse the
+    # env for it — `threadx_sources` calls `platform_config::executor_rung_opt`,
+    # the shared front-end beside `executor_env_key`, which is the file already
+    # EXEMPT below as "the resolver names every knob; that is the map, not a
+    # second reader". Two readers of one rung cannot disagree; two env-parsing
+    # sites can, which is this gate's whole subject.
+    "NROS_EXECUTOR_BACKING_U64S": "packages/core/nros-node/build.rs",
     # Classed `derived` by the census (phase-403 makes it per-type) but still
     # ON the ladder as the fallback for a type with no declared bound, so it
     # keeps a single owner. Listed here deliberately: it is checked, and the
