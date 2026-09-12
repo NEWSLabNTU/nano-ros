@@ -17,6 +17,8 @@
 #include "nros/traits.hpp"
 #include "nros/config.hpp"
 #include "nros/result.hpp"
+#include "nros/subscription_handle.hpp"
+#include "nros/inplace_fn.hpp"
 #include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 // RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creators below.
 #include "nros/serialization_format.hpp"
@@ -157,22 +159,38 @@ namespace rclcpp {
 /// ```
 template <typename M> class Subscription {
   public:
-#ifdef NROS_CPP_HAS_SHARED_PTR
-    /// `rclcpp::Subscription<M>::SharedPtr` — phase-417 W1.a.
+    /// `rclcpp::Subscription<M>::SharedPtr` — phase-456 W2.
     ///
-    /// rclcpp indexes its entity types this way, and
     /// `rclcpp::Subscription<M>::SharedPtr member_;` is close to universal in
-    /// ported source. Ergonomics only (RFC-0089 §"Who implements an adopted
-    /// name"): a spelling for `std::shared_ptr<Subscription<M>>`, no second code path.
+    /// ported source, so this alias must exist on every target — which
+    /// `std::shared_ptr` does not.
     ///
-    /// Present only where `<memory>` is — a freestanding target has no
-    /// `std::shared_ptr` to alias.
-    using SharedPtr = std::shared_ptr<Subscription<M>>;
-    /// `rclcpp::Subscription<M>::ConstSharedPtr` — see `SharedPtr`.
-    using ConstSharedPtr = std::shared_ptr<const Subscription<M>>;
+    /// IT IS NOT A POINTER TO A `Subscription<M>`, and that is the point.
+    /// `create_subscription` with a callback registers into the executor arena,
+    /// which owns the subscriber, the rx buffer, the callback and its capture;
+    /// there is no C++ object to point at. What this names is
+    /// `nros::SubscriptionHandle<M>` — two words, copyable, and carrying only
+    /// the operations a dispatch subscription can actually perform.
+    ///
+    /// The alias and the class are therefore different things, which is a real
+    /// surprise for a reader and is recorded as such in the API-parity ledger.
+    /// It is accepted because the alternative — what shipped until now — was a
+    /// handle carrying `take()`, `take_serialized()`, `take_validated()`,
+    /// `take_sequence()` and `borrow()`, every one of them guaranteed to answer
+    /// `NotInitialized` because the sample went to the callback instead.
+    /// `nros.hpp` said so itself, in a comment, while handing the type out.
+    ///
+    /// The POLL form is untouched: `Subscription<M>` created through the
+    /// out-ref `create_subscription(out, topic, qos)` still owns its storage and
+    /// still takes. phase-456 W2b is the item that moves that API out from under
+    /// an upstream name it does not share semantics with.
+    using SharedPtr = ::nros::SubscriptionHandle<M>;
+    /// `rclcpp::Subscription<M>::ConstSharedPtr` — see `SharedPtr`. The same
+    /// handle: there is no mutable/const distinction to draw over a registration
+    /// that exposes no operation on the entity.
+    using ConstSharedPtr = ::nros::SubscriptionHandle<M>;
     /// `rclcpp::Subscription<M>::UniquePtr` — see `SharedPtr`.
-    using UniquePtr = std::unique_ptr<Subscription<M>>;
-#endif
+    using UniquePtr = ::nros::SubscriptionHandle<M>;
 
     /// Phase 189.M3.x — typed message-handler signatures for the
     /// *callback-style* subscription (rclcpp dispatch model). The executor
@@ -943,6 +961,47 @@ Result Node::create_subscription_with_safety(Subscription<M>& out, const char* t
 
 namespace nros {
 #endif // NANO_ROS_SAFETY_E2E
+
+namespace detail {
+
+/// phase-456 W2 — register a capturing callback, with the capture in the ARENA.
+///
+/// The bridge between `nros::InplaceFn` and
+/// `nros_cpp_subscription_register_capturing`: the callable's bytes are handed
+/// to the runtime, which copies them into the arena entry and makes the
+/// dispatch context its own copy. Nothing of ours survives this call, which is
+/// what lets the returned handle be two words.
+///
+/// The invoker is a non-capturing lambda, so it decays to a plain function
+/// pointer — the arena's `callback` field is one, and a capturing trampoline
+/// could not be stored there.
+template <typename M, typename Fn>
+inline Result register_subscription_capturing(::rclcpp::Node& node, const char* topic,
+                                              const QoS& qos, const Fn& fn, size_t* out_handle_id) {
+    static_assert(sizeof(Fn) <= NROS_CPP_CALLBACK_CAPACITY + 2 * sizeof(void*),
+                  "the callable does not fit the arena's per-entry capture budget -- raise "
+                  "NROS_CPP_CALLBACK_CAPACITY, and the arena's CALLBACK_CAPTURE_BYTES with it");
+    const nros_cpp_node_t* h = node.ffi_handle();
+    if (h == nullptr) return Result(ErrorCode::NotInitialized);
+
+    nros_cpp_subscription_message_callback_t invoke = [](const uint8_t* data, size_t len,
+                                                         void* ctx) {
+        // `ctx` is the ARENA's copy of `fn`, not ours.
+        const Fn* self = static_cast<const Fn*>(ctx);
+        M msg;
+        if (M::ffi_deserialize(data, len, &msg) != 0) return;
+        (*self)(msg);
+    };
+
+    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+    nros_cpp_subscription_options_t opts = {};
+    opts.rx_buffer_hint = static_cast<uint32_t>(::nros::rx_buffer_capacity<M>::value);
+    return Result(nros_cpp_subscription_register_capturing(
+        h, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, invoke,
+        reinterpret_cast<const uint8_t*>(&fn), sizeof(Fn), out_handle_id, &opts));
+}
+
+} // namespace detail
 
 } // namespace nros
 
