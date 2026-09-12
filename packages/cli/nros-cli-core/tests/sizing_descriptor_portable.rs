@@ -25,7 +25,7 @@ use std::path::Path;
 
 use nros_cli_core::{
     leaf_entity_env::inventory_for_leaf,
-    sizing_descriptor::{BackendSchema, DescriptorInputs, EntryLanguage, build},
+    sizing_descriptor::{BackendDispatch, BackendSchema, DescriptorInputs, EntryLanguage, build},
 };
 use nros_sizing_descriptor::render;
 
@@ -118,6 +118,9 @@ fn descriptor_text(root: &Path) -> String {
         heap_budget_bytes: Some(65536),
         language: Some(EntryLanguage::Rust),
         backend_schema: Some(BackendSchema::Schemaless),
+        // phase-454 W5 — zenoh dispatches IN PLACE (measured), which is the
+        // second backend half the registration path is composed from.
+        backend_dispatch: Some(BackendDispatch::InPlace),
         rmw: Some("zenoh".into()),
     };
     render(&build(&inputs))

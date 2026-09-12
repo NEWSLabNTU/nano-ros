@@ -81,6 +81,101 @@ fn sizing_descriptor() -> Option<nros_sizing_descriptor::SizingDescriptor> {
     }
 }
 
+/// One SUBSCRIPTION row of the descriptor, as the arena derivation needs it —
+/// phase-454 W5.a, RFC-0100 D4/D5.
+///
+/// The three facts a subscription's arena claim is a function of, on ONE road.
+/// Before this they arrived on three env carriers —
+/// `NROS_ENTITY_DECLARED_DEPTHS` (a `type|topic=depth` string),
+/// `NROS_SUBSCRIBED_TYPE_BOUNDS` (a `type=bytes` string) and nothing at all for
+/// the registration path — and the first two could only carry a table by
+/// encoding it in a string, which is the transport RFC-0100 D4 replaces:
+///
+/// > It is also the only transport that can carry per-endpoint structure
+/// > without encoding it in a string.
+///
+/// The env carriers are still read, BELOW this, and W9 retires them. Two roads
+/// is what issue 1199 is about, so the descriptor is preferred wherever it can
+/// answer, and an image with no descriptor derives byte-identically to before.
+struct SubEndpoint {
+    /// For diagnostics only — a refusal that does not say WHICH endpoint costs
+    /// a reader the same hand-decode `check-default-gates-run-somewhere` names.
+    topic: String,
+    /// `None` when the row states none, or `keep_all` refused it.
+    depth: Option<u32>,
+    /// Issue 1319's table, applied: the bytes this row's registration actually
+    /// claims per slot. `Refused`/`Absent` when the path is not known, never a
+    /// guess — the two closure-buffer rows are an UNDER-size.
+    slot: nros_sizing_descriptor::Fact<usize>,
+    /// Can this row claim `RX_BUF`? True for a path that does AND for one the
+    /// descriptor could not state, which price the same way.
+    may_claim_closure: bool,
+}
+
+/// The subscription rows this image's descriptor states, or `None` when they
+/// cannot be attributed per endpoint.
+///
+/// Two guards, and both are RFC-0100 D6's own:
+///
+///   * **basis** — `closure` rows describe the whole link graph, not this
+///     image's endpoints. *"Never silently widens the basis … that publishes
+///     the wrong row while every status still reads 'derived'."*
+///   * **`undeclared_endpoints`** — a non-zero count means some endpoint that
+///     could carry a per-endpoint fact carried none, so a sum over this table
+///     is a sum over PART of the image. Absence is not zero, so a refused or
+///     absent count refuses too.
+///
+/// Everything below a passed guard is per-FIELD: a row may still refuse its
+/// depth (`keep_all`) or its path, and the caller decides what that costs.
+fn descriptor_subscriptions(
+    desc: &nros_sizing_descriptor::SizingDescriptor,
+    rx_buf_size: usize,
+    rx_recv_size: usize,
+) -> Option<Vec<SubEndpoint>> {
+    use nros_sizing_descriptor::{Basis, EndpointKind};
+    if desc.meta.basis != Basis::Contract {
+        return None;
+    }
+    if desc.meta.undeclared_endpoints().get() != Some(0) {
+        return None;
+    }
+    Some(
+        desc.endpoints
+            .iter()
+            .filter(|ep| ep.kind == EndpointKind::Subscription)
+            .map(|ep| SubEndpoint {
+                topic: ep.topic.clone(),
+                depth: ep.depth().get(),
+                slot: ep.claimed_slot_bytes(rx_buf_size, rx_recv_size),
+                may_claim_closure: ep.may_claim_closure_buffer(),
+            })
+            .collect(),
+    )
+}
+
+/// The slot bytes one row is priced at, and the warning that owes the reader an
+/// explanation when it could not be derived.
+///
+/// RFC-0100 D6's second half — *"always the safe direction and always loud"* —
+/// and here the safe direction is the CLOSURE buffer: `RX_BUF` is an upper
+/// bound on every one of the five rows (`_RX <= RX_BUF`,
+/// `min(framed(bound), RX_BUF) <= RX_BUF`), so a row whose path is unknown is
+/// priced at the one number none of them can exceed.
+fn row_slot_bytes(row: &SubEndpoint, rx_buf_size: usize) -> usize {
+    let (slot, why) = row
+        .slot
+        .or_report("endpoint.registration_path", rx_buf_size);
+    if let Some(why) = why {
+        println!(
+            "cargo::warning=nros-node: subscription `{}`: {why}; its receive slot is priced at \
+             the closure buffer ({rx_buf_size} B), which over-states a typed registration rather \
+             than under-sizing a schemaless one (issue 1319)",
+            row.topic
+        );
+    }
+    slot
+}
+
 /// The QoS history depth an undeclared subscription actually gets:
 /// `QoSProfile::QOS_PROFILE_DEFAULT.depth`, i.e. `rmw_qos_profile_default`'s
 /// KEEP_LAST(10). Issue 1190 — modelling this as 1 (the triple-buffer case) is
@@ -143,6 +238,11 @@ const PUBSUB_QOS_DEPTH: usize = nros_rmw::QoSProfile::QOS_PROFILE_DEFAULT.depth 
 /// subscription was billed before this, so a missing table reproduces the old
 /// number byte for byte and a partially-populated one is exact where it can be
 /// and unchanged where it cannot.
+///
+/// phase-454 W5 -- and the SIZING DESCRIPTOR is now the road these three facts
+/// travel, when the image has one. The env carriers below are the fallback W9
+/// retires; see [`subs_arena_from_descriptor`] for what the file answers that
+/// they structurally cannot.
 fn subs_arena(
     subs: usize,
     pubsub_entry_at_default: usize,
@@ -185,6 +285,103 @@ fn subs_arena(
             buffered_region(d, slot, ring_len_bytes) + entry_struct
         })
         .sum()
+}
+
+/// The subscription half of the arena, summed from the DESCRIPTOR — phase-454
+/// W5.b, closing **issue 1319**.
+///
+/// [`subs_arena`] prices each subscription at its type's own bound. That is the
+/// right number for three of the five registration paths and 1,848 bytes per
+/// subscription too small for the other two:
+///
+/// | path | slot |
+/// | --- | --- |
+/// | `c_typed_hint` | the type's own `_RX` — matches the model |
+/// | `rust_typed_descriptors` | `min(framed(bound), RX_BUF)` — at or below it |
+/// | `rust_typed_in_place` | no region at all — the model OVER-states (issue 1340) |
+/// | **`rust_typed_schemaless`** | **`RX_BUF`** |
+/// | **`c_raw_no_hint`** | **`RX_BUF`** |
+///
+/// The last two are an UNDER-size, which lands as `NodeError::BufferTooSmall`
+/// at a registration `executor::arena_oracle` passed. It is not a repair the
+/// build could make before: which path a registration takes is composed from
+/// the entry's LANGUAGE and whether the linked backend carries type descriptors
+/// (`default_subscription_rx_bytes`'s two `cfg` arms), and a build script sees
+/// neither. The descriptor carries it as an image fact (RFC-0100 D1), which is
+/// issue 1319's second candidate fix; its first is a narrower repair that
+/// leaves the build blind, and its third — a stated per-image margin — is
+/// *"the answer that goes stale next time a path changes"*.
+///
+/// **Not "raise the term back to `RX_BUF`"**, which the issue rules out in the
+/// same breath: that gives up issue 1255's saving on the paths where the
+/// per-type bound IS what is allocated. Each row is priced at what ITS path
+/// claims, so a Cyclone image keeps the bound and a C image that registers raw
+/// gets the buffer it will actually ask for.
+///
+/// Phase-454 W5 MEASURED the table and found a fifth row: zenoh and XRCE
+/// dispatch IN PLACE, so a Rust typed registration on them allocates no region
+/// at all (672 bytes of arena on `contract-monitor-sub`, against a 9,768-byte
+/// budgeted region). That is the OVER direction, it is priced here exactly as
+/// it was before, and issue 1340 records why the saving is a separate decision.
+///
+/// `None` — keep the env road — when the table cannot answer for every
+/// subscription this image declares:
+///
+///   * the rows are not attributable at all ([`descriptor_subscriptions`]);
+///   * the row count disagrees with the declared subscription count, so the
+///     table describes a different set of endpoints than the one being summed;
+///   * some row states no `depth`. A receive region is sized from it and a
+///     default is wrong by up to 10x in either direction, which is the same
+///     refusal `set_storage_bytes` makes one layer up.
+///
+/// A refused PATH is not in that list on purpose: it has a safe direction and
+/// the row still carries its depth, so it is priced loudly at the closure
+/// buffer rather than dragging the whole image back to the worst case.
+fn subs_arena_from_descriptor(
+    rows: &[SubEndpoint],
+    subs: usize,
+    entry_struct: usize,
+    ring_len_bytes: usize,
+    rx_buf_size: usize,
+) -> Option<usize> {
+    if rows.len() != subs {
+        return None;
+    }
+    let mut total = 0usize;
+    for row in rows {
+        let depth = row.depth?;
+        total += buffered_region(
+            depth as usize,
+            row_slot_bytes(row, rx_buf_size),
+            ring_len_bytes,
+        ) + entry_struct;
+    }
+    Some(total)
+}
+
+/// The slot the DEFAULT pub/sub term is priced at — the other half of issue
+/// 1319, on the arm that does NOT sum per endpoint.
+///
+/// `arena_model::PUBSUB_ENTRY` stands for "one subscription slot" wherever the
+/// per-endpoint sum is unavailable: the fully-undeclared budget over `max_cbs`
+/// slots, the partial-declaration fallback, and the const `executor::arena`
+/// asserts against. Since issue 1255 it has been priced at `rx_recv_size`, the
+/// image-wide SUBSCRIBED class — which carries exactly the same 1,848-byte gap
+/// on a schemaless registration, and for the same reason.
+///
+/// So: the subscribed class STANDS, unless this image's descriptor says a
+/// subscription of its can claim the closure buffer — or cannot say which path
+/// it takes, which prices the same way. With no descriptor nothing says either,
+/// and the number is what it was.
+fn default_sub_slot_bytes(
+    rows: Option<&[SubEndpoint]>,
+    rx_recv_size: usize,
+    rx_buf_size: usize,
+) -> usize {
+    match rows {
+        Some(rows) if rows.iter().any(|r| r.may_claim_closure) => rx_buf_size,
+        _ => rx_recv_size,
+    }
 }
 
 /// `type=bytes` pairs from `NROS_SUBSCRIBED_TYPE_BOUNDS`, in the order cmake
@@ -556,6 +753,16 @@ fn main() {
     // its own type's bound and reaches this only for a type the bound table
     // does not carry.
     let rx_recv_size = env_usize("NROS_SUBSCRIBER_BUFFER_SIZE", rx_buf_size);
+    // phase-454 W5 -- the per-endpoint rows, on ONE road. `None` when this
+    // image has no descriptor, or when its table cannot be attributed endpoint
+    // by endpoint; both keep the env carriers below, unchanged.
+    let sub_rows = sizing
+        .as_ref()
+        .and_then(|d| descriptor_subscriptions(d, rx_buf_size, rx_recv_size));
+    // issue 1319 -- what ONE subscription slot is priced at where the sum
+    // cannot run per endpoint. The subscribed class, unless a row of this image
+    // can claim the closure buffer.
+    let pubsub_slot_bytes = default_sub_slot_bytes(sub_rows.as_deref(), rx_recv_size, rx_buf_size);
     // issue 1190 -- the region a subscription's QoS history actually claims, at
     // the depth the runtime will actually use. `PUBSUB_QOS_DEPTH` is a
     // RESTATEMENT of `QoSProfile::QOS_PROFILE_DEFAULT.depth`, which a build
@@ -613,7 +820,10 @@ fn main() {
         "NROS_PUBSUB_QOS_DEPTH",
         declared_max_qos_depth().unwrap_or(PUBSUB_QOS_DEPTH),
     );
-    let pubsub_region = buffered_region(pubsub_depth, rx_recv_size, ring_len_bytes);
+    // issue 1319 -- `pubsub_slot_bytes`, not `rx_recv_size`. The two are the
+    // same number on every image that states no registration path, so nothing
+    // moves without a descriptor saying it should.
+    let pubsub_region = buffered_region(pubsub_depth, pubsub_slot_bytes, ring_len_bytes);
     let pubsub_entry = pubsub_region + PUBSUB_ENTRY_STRUCT;
 
     // phase-403 step 3 -- SUM OVER WHAT THE IMAGE DECLARES, when it declares.
@@ -678,13 +888,30 @@ fn main() {
         declared_action_servers,
     ) {
         (Some(subs), Some(timers), Some(services), Some(acl), Some(asv)) => Some(
-            subs_arena(
-                subs,
-                pubsub_entry,
-                rx_recv_size,
-                PUBSUB_ENTRY_STRUCT,
-                ring_len_bytes,
-            ) + timers * TIMER_ENTRY
+            // phase-454 W5 -- the descriptor first, the env carriers second.
+            // ONE road wherever the file can answer (issue 1199); the second
+            // is what W9 retires, and what an image with no `nros sync` keeps.
+            sub_rows
+                .as_deref()
+                .and_then(|rows| {
+                    subs_arena_from_descriptor(
+                        rows,
+                        subs,
+                        PUBSUB_ENTRY_STRUCT,
+                        ring_len_bytes,
+                        rx_buf_size,
+                    )
+                })
+                .unwrap_or_else(|| {
+                    subs_arena(
+                        subs,
+                        pubsub_entry,
+                        rx_recv_size,
+                        PUBSUB_ENTRY_STRUCT,
+                        ring_len_bytes,
+                    )
+                })
+                + timers * TIMER_ENTRY
                 + services * service_entry
                 + (acl + asv) * action_client_entry
                 + ARENA_BASE_OVERHEAD,
@@ -803,6 +1030,19 @@ fn main() {
              resolved `NROS_PUBSUB_QOS_DEPTH`, which defaults to `QOS_DEPTH` \
              when nothing states one.\n    \
              pub const BUDGETED_QOS_DEPTH: u32 = {budgeted_qos_depth};\n    \
+             /// issue 1319 -- the per-slot receive size the pub/sub term was \
+             priced at.\n    \
+             ///\n    \
+             /// The image-wide SUBSCRIBED class, unless this image's sizing \
+             descriptor\n    \
+             /// says a subscription of its registers on a path that claims \
+             the CLOSURE\n    \
+             /// buffer (`DEFAULT_RX_BUF_SIZE`) -- a Rust typed registration \
+             on a\n    \
+             /// schemaless backend, or a C raw one with no hint. Equal to the \
+             subscribed\n    \
+             /// class on every image that states no registration path.\n    \
+             pub const PUBSUB_SLOT_BYTES: usize = {pubsub_slot_bytes};\n    \
              /// Buffered receive region for ONE subscription at that depth.\n    \
              pub const PUBSUB_REGION: usize = {pubsub_region};\n    \
              /// Allowance for the entry STRUCT beside that region.\n    \

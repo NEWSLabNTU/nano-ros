@@ -336,6 +336,80 @@ impl Endpoint {
         fact(&self.registration_path, "registration_path", &self.refused)
     }
 
+    /// **Issue 1319's table, applied to this row** — the bytes ONE receive slot
+    /// actually claims at registration.
+    ///
+    /// [`storage_bytes`](Self::storage_bytes) is the whole region priced at the
+    /// TYPE'S bound, which is the right number for two of the four registration
+    /// paths and 1,848 bytes per subscription too small for the other two. This
+    /// is the per-slot half, and it is the half that turns on the path:
+    ///
+    /// | path | slot |
+    /// | --- | --- |
+    /// | `c_typed_hint` | the type's own `_RX` |
+    /// | `rust_typed_descriptors` | `min(framed(bound), RX_BUF)` — at or below it |
+    /// | `rust_typed_schemaless` | `closure_buffer_bytes` |
+    /// | `c_raw_no_hint` | `closure_buffer_bytes` |
+    ///
+    /// `closure_buffer_bytes` is the consumer's `RX_BUF` — `DEFAULT_RX_BUF_SIZE`
+    /// in the executor, `NROS_SUBSCRIPTION_BUFFER_SIZE` on the wire. It is not a
+    /// descriptor fact and cannot be: it is derived over the whole LINK CLOSURE
+    /// by the lane that builds the image, and a type this image only publishes
+    /// still has to fit it. So the caller supplies it.
+    ///
+    /// `unpriced_type_fallback` stands in for a row whose `wire_bound_bytes` the
+    /// producer could not state — the image-wide subscribed class, which is an
+    /// upper bound over every type this image subscribes to and therefore over
+    /// this one. **Absence is not zero**, at either level.
+    ///
+    /// # Why a refused path yields no number
+    ///
+    /// The two `closure_buffer_bytes` rows are an UNDER-size, which is the
+    /// direction that ships `NodeError::BufferTooSmall` at a registration the
+    /// arena oracle passed. A reader that guessed here would guess in that
+    /// direction half the time, so this refuses and hands the refusal's prose to
+    /// the caller — which then picks the safe direction LOUDLY, the way
+    /// [`Fact::or_report`] is written for.
+    ///
+    /// `Fact::Absent` for any kind that receives no topic sample: a publisher
+    /// serializes into a per-call transmit buffer and claims no slot at all, so
+    /// there is nothing here to refuse.
+    pub fn claimed_slot_bytes(
+        &self,
+        closure_buffer_bytes: usize,
+        unpriced_type_fallback: usize,
+    ) -> Fact<usize> {
+        if !self.kind.receives_topic_sample() {
+            return Fact::Absent;
+        }
+        match self.registration_path() {
+            Fact::Stated(p) if p.claims_closure_buffer() => Fact::Stated(closure_buffer_bytes),
+            Fact::Stated(_) => Fact::Stated(
+                self.wire_bound_bytes()
+                    .get()
+                    .unwrap_or(unpriced_type_fallback),
+            ),
+            Fact::Refused(r) => Fact::Refused(r),
+            Fact::Absent => Fact::Absent,
+        }
+    }
+
+    /// Can this row's registration claim the CLOSURE buffer?
+    ///
+    /// `true` for the two paths that do — and for a path this row does not
+    /// state, because "I cannot tell" and "it does" call for the same price.
+    /// The asymmetry is issue 1319's: over-stating a slot costs bytes, and
+    /// under-stating one costs the registration.
+    ///
+    /// `false` for a kind that claims no slot.
+    pub fn may_claim_closure_buffer(&self) -> bool {
+        self.kind.receives_topic_sample()
+            && match self.registration_path() {
+                Fact::Stated(p) => p.claims_closure_buffer(),
+                Fact::Refused(_) | Fact::Absent => true,
+            }
+    }
+
     /// Bytes this endpoint's receive region claims in the executor arena.
     ///
     /// Target-ABI-dependent, so it is refused whenever `[target]` is — D6's
@@ -808,5 +882,133 @@ impl SizingDescriptor {
         self.types.validate()?;
         self.policy.validate()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod slot_table_tests {
+    use super::*;
+
+    /// `RX_BUF` and the image-wide subscribed class, as the reference island
+    /// measures them: 1,496 over the whole link closure, 880 over the types it
+    /// subscribes to. The 616-byte difference is what issue 1319 is about.
+    const CLOSURE: usize = 1496;
+    const SUBSCRIBED_CLASS: usize = 880;
+
+    fn sub(path: Option<RegistrationPath>, bound: Option<usize>) -> Endpoint {
+        let mut ep = Endpoint::new(
+            EndpointKind::Subscription,
+            "std_msgs/msg/String",
+            "/chatter",
+        );
+        ep.set_registration_path(path).set_wire_bound_bytes(bound);
+        ep
+    }
+
+    /// The whole of issue 1319, as a table. Two rows take the type's bound and
+    /// two take the closure buffer; nothing else decides it.
+    #[test]
+    fn each_registration_path_claims_what_issue_1319_measured() {
+        let bound = 700;
+        for (path, expected) in [
+            (RegistrationPath::CTypedHint, bound),
+            (RegistrationPath::RustTypedDescriptors, bound),
+            (RegistrationPath::RustTypedSchemaless, CLOSURE),
+            (RegistrationPath::CRawNoHint, CLOSURE),
+        ] {
+            let ep = sub(Some(path), Some(bound));
+            assert_eq!(
+                ep.claimed_slot_bytes(CLOSURE, SUBSCRIBED_CLASS).stated(),
+                Some(&expected),
+                "{} claims the wrong slot",
+                path.tag()
+            );
+            assert_eq!(
+                ep.may_claim_closure_buffer(),
+                expected == CLOSURE,
+                "{} disagrees with its own slot size",
+                path.tag()
+            );
+        }
+    }
+
+    /// The gap, priced. A schemaless row and a descriptor-carrying row over the
+    /// SAME type differ by exactly what the issue measured, and the model used
+    /// to charge both the smaller one.
+    #[test]
+    fn the_two_schemaless_rows_are_the_measured_gap_above_the_type_bound() {
+        let typed = sub(
+            Some(RegistrationPath::RustTypedDescriptors),
+            Some(SUBSCRIBED_CLASS),
+        );
+        let schemaless = sub(
+            Some(RegistrationPath::RustTypedSchemaless),
+            Some(SUBSCRIBED_CLASS),
+        );
+        let typed = typed.claimed_slot_bytes(CLOSURE, SUBSCRIBED_CLASS).get();
+        let schemaless = schemaless
+            .claimed_slot_bytes(CLOSURE, SUBSCRIBED_CLASS)
+            .get();
+        assert_eq!(typed, Some(SUBSCRIBED_CLASS));
+        assert_eq!(schemaless, Some(CLOSURE));
+        // 3 slots at depth 1 -> 1,848 bytes per subscription, which is the
+        // number issue 1319 reports.
+        assert_eq!(3 * (schemaless.unwrap() - typed.unwrap()), 1848);
+    }
+
+    /// A row whose type the bound inventory could not price keeps the
+    /// image-wide subscribed class -- the same "absence is not zero" rule
+    /// `nros-node/build.rs` applies to `NROS_SUBSCRIBED_TYPE_BOUNDS`.
+    #[test]
+    fn an_unpriced_type_keeps_the_image_wide_class_rather_than_zero() {
+        let mut ep = sub(Some(RegistrationPath::CTypedHint), None);
+        ep.refuse("wire_bound_bytes", "`demo_msgs/msg/Mystery` was not priced");
+        assert_eq!(
+            ep.claimed_slot_bytes(CLOSURE, SUBSCRIBED_CLASS).stated(),
+            Some(&SUBSCRIBED_CLASS)
+        );
+    }
+
+    /// The negative control for the whole fix: a path nobody could state yields
+    /// NO number, so the caller has to choose the direction in the open.
+    #[test]
+    fn a_refused_path_yields_no_number_and_carries_its_prose() {
+        let mut ep = sub(None, Some(700));
+        ep.refuse(
+            "registration_path",
+            "cannot tell which registration path this endpoint takes -- issue 1319",
+        );
+        let slot = ep.claimed_slot_bytes(CLOSURE, SUBSCRIBED_CLASS);
+        assert!(slot.stated().is_none());
+        assert!(slot.refusal().unwrap().contains("1319"));
+        assert!(ep.may_claim_closure_buffer());
+        // And the loud fallback a build script writes is the SAFE direction.
+        let (v, why) = slot.or_report("endpoint.registration_path", CLOSURE);
+        assert_eq!(v, CLOSURE);
+        assert!(why.unwrap().contains("1319"));
+    }
+
+    /// An absent path is not a refused one, and neither is a number.
+    #[test]
+    fn an_absent_path_is_distinguishable_from_a_refused_one() {
+        let ep = sub(None, Some(700));
+        let slot = ep.claimed_slot_bytes(CLOSURE, SUBSCRIBED_CLASS);
+        assert_eq!(slot.tag(), "absent");
+        assert!(slot.refusal().is_none());
+        assert!(ep.may_claim_closure_buffer());
+    }
+
+    /// A publisher claims no receive slot at all, so there is nothing here to
+    /// refuse -- and nothing for a consumer to charge it for.
+    #[test]
+    fn a_kind_that_receives_no_topic_sample_claims_no_slot() {
+        let mut ep = Endpoint::new(EndpointKind::Publisher, "std_msgs/msg/String", "/chatter");
+        ep.set_registration_path(Some(RegistrationPath::RustTypedSchemaless))
+            .set_wire_bound_bytes(Some(700));
+        assert_eq!(
+            ep.claimed_slot_bytes(CLOSURE, SUBSCRIBED_CLASS).tag(),
+            "absent"
+        );
+        assert!(!ep.may_claim_closure_buffer());
     }
 }
