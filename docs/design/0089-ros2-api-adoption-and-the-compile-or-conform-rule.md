@@ -2279,7 +2279,7 @@ reasoning above was correct and one of its two legs is being removed.
 > was being written, which is how the two collided. phase-430 measured that,
 > rescoped itself to the REACH delta (the clock axis on the Rust, C and C++
 > node-level surfaces) and closed it; see
-> [`phase-430`](../roadmap/phase-430-ros-time-and-clock-driven-timers.md) §
+> [`phase-430`](../roadmap/archived/phase-430-ros-time-and-clock-driven-timers.md) §
 > "Re-measured (2026-09-11)". Nothing below this note changes — the conclusion
 > it draws held in the code phase-425 landed, which is the point the amendment
 > was making.
