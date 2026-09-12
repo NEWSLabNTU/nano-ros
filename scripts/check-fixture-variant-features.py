@@ -32,11 +32,11 @@ Measured twice, in the same file, twenty lines apart:
 
 Two occurrences of one bug is a class, and the fix for a class is a gate rather
 than a third correction. The sweep this gate automates, run by hand 2026-09-12
-over the nine crates a feature-bearing selector names:
+over the crates a feature-bearing selector names -- `-L` lists the files that do
+NOT match, so there is no per-file conditional in which a tool error (grep exit
+>=2) reads as a non-match (issue 0726), and one process replaces twenty-seven:
 
-    for d in packages/testing/nros-tests/bins/*/; do
-        grep -q '^\\[features\\]' "$d/Cargo.toml" || echo "$d has no [features]"
-    done
+    git grep -L '^\\[features\\]' -- 'packages/testing/nros-tests/bins/*/Cargo.toml'
 
 Both live sites are fixed; this refuses the third.
 
@@ -139,7 +139,7 @@ def check(resolver_path=RESOLVER, root=ROOT):
     return problems, len(sites)
 
 
-def self_test():
+def self_test(quiet=False):
     """Both directions, planted, on the normal path."""
     import tempfile
 
@@ -216,15 +216,25 @@ def self_test():
         problems, _ = check(src, tmp)
         expect("an undeclared named feature is caught", len(problems), 1)
 
-    for line in failures:
-        print("  " + line, file=sys.stderr)
-    print(f"self-test: {len(failures)} check(s) failed")
-    return 1 if failures else 0
+    if failures:
+        print("check-fixture-variant-features --self-test FAILED:", file=sys.stderr)
+        for line in failures:
+            print("  " + line, file=sys.stderr)
+        return 1
+    if not quiet:
+        print("check-fixture-variant-features --self-test: OK")
+    return 0
 
 
 def main():
     if "--self-test" in sys.argv:
         return self_test()
+    # Always, not only behind the flag: a negative control nobody runs decays
+    # into a comment. The regex over Rust above is precisely the thing that
+    # silently stops matching, so the planted defect is re-measured on every
+    # invocation rather than on the day it was written.
+    if self_test(quiet=True):
+        return 1
     problems, n = check()
     if n == 0:
         # Vacuity guard, and it belongs HERE rather than in `check`: a regex over
