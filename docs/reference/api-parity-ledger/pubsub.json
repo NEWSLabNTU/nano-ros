@@ -1045,6 +1045,22 @@
     "disposition": "absent",
     "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
   },
+  "cpp:SubscriptionHandle": {
+    "verdict": "extension",
+    "why": "phase-456 W2 — what `rclcpp::Subscription<M>::SharedPtr` names. Upstream's is a `std::shared_ptr<Subscription<M>>`; ours is a two-word `{executor, handle_id}` value, and the difference is not an optimisation. A subscription created with a CALLBACK is owned by the Rust executor arena, which holds the `RmwSubscriber`, the rx buffer, the callback and (phase-456 W1) its capture. There is no C++ object for a pointer to point at, and none is made.\\n\\nWhat shipped before was a `shared_ptr` aliasing into a heap cell, carrying `take()`, `take_serialized()`, `take_validated()`, `take_sequence()` and `borrow()` -- every one guaranteed to answer `NotInitialized`, because the sample went to the callback. `nros.hpp` said exactly that in a comment while handing the type out. This type is that keep-alive with the failing half removed.\\n\\nMEASURED (phase-456 W2): the ported corpus calls NOTHING on a subscription handle -- it is stored and dropped. `try_recv` (16), `take` (11) and `take_serialized`/`take_validated` (6) are all POLL-path calls on the out-ref `Subscription<M>`, which this does not change.\\n\\nThe cost is that `SharedPtr::element_type` is no longer `Subscription<M>`: the alias and the class became different things. phase-456 W2b repays that by moving the poll-style taking API out from under an upstream name whose semantics it does not share -- upstream rclcpp has no poll-style subscription at all, its taking goes through a `WaitSet`."
+  },
+  "cpp:SubscriptionHandle::SubscriptionHandle<M>": {
+    "verdict": "extension",
+    "why": "the handle's constructors: default, `nullptr`, and `{executor, handle_id}`. Ours-only for the reason at `cpp:SubscriptionHandle`. The `nullptr` form exists because ported code writes `Subscription<M>::SharedPtr sub_ = nullptr;`."
+  },
+  "cpp:SubscriptionHandle::handle_id": {
+    "verdict": "extension",
+    "why": "the executor arena slot this registration occupies. Ours-only: rclcpp has no arena and no slot. Present for introspection and for tests that assert a registration happened; there is no operation to perform with it through this API today, which is why it is an accessor and not a verb."
+  },
+  "cpp:SubscriptionHandle::reset": {
+    "verdict": "extension",
+    "why": "`shared_ptr::reset`'s shape, with a deliberately different contract, stated on the method. It drops the handle's reference and does NOT unregister the subscription -- the arena has no removal path, so the callback goes on firing. Upstream's `reset()` on the last `shared_ptr` destroys the subscription. Ported code writes `sub_.reset()` meaning 'I am done with this handle', and that is what this does; a caller who meant 'stop delivering' has no verb here, and that absence is honest rather than hidden behind one that no-ops."
+  },
   "cpp:create_publisher": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",

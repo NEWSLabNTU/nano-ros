@@ -712,13 +712,13 @@ class Node {
     /// `create_subscription<M>(topic, qos, callback)` — upstream's shape.
     /// Accepts ANY callable; the executor dispatches it.
     template <typename M, typename Cb>
-    ::std::shared_ptr<::rclcpp::Subscription<M>> create_subscription(const ::std::string& topic,
-                                                                     const ::nros::QoS& qos, Cb cb);
+    typename ::rclcpp::Subscription<M>::SharedPtr
+    create_subscription(const ::std::string& topic, const ::nros::QoS& qos, Cb cb);
 
     /// `create_subscription<M>(topic, depth, callback)`.
     template <typename M, typename Cb>
-    ::std::shared_ptr<::rclcpp::Subscription<M>> create_subscription(const ::std::string& topic,
-                                                                     ::size_t depth, Cb cb);
+    typename ::rclcpp::Subscription<M>::SharedPtr create_subscription(const ::std::string& topic,
+                                                                      ::size_t depth, Cb cb);
 
 #ifdef NROS_CPP_HAS_STD_CHRONO
     /// `create_wall_timer(period, callback)` — upstream's shape.

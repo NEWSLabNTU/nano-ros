@@ -577,17 +577,22 @@ namespace nros {
 
 namespace rclcpp {
 template <typename M, typename Cb>
-inline ::std::shared_ptr<Subscription<M>> Node::create_subscription(const ::std::string& topic,
-                                                                    const ::nros::QoS& qos, Cb cb) {
-    auto cell = ::std::make_shared<::rclcpp::detail::SubscriptionCallback<M>>();
-    cell->fn = ::nros::tr::forward_rvalue(cb);
-    ::rclcpp::detail::require_created(
-        ::nros::create_subscription_raw(*this, topic.c_str(), M::TYPE_NAME,
-                                        &::rclcpp::detail::SubscriptionCallback<M>::trampoline,
-                                        cell.get(), qos, ::nros::rx_buffer_capacity<M>::value),
-        "create_subscription", topic.c_str());
-    this->hosted().owned_entities.push_back(cell);
-    return ::std::shared_ptr<Subscription<M>>(cell, &cell->handle);
+inline typename Subscription<M>::SharedPtr
+Node::create_subscription(const ::std::string& topic, const ::nros::QoS& qos, Cb cb) {
+    // phase-456 W2 — the arena owns everything, so this allocates nothing.
+    //
+    // This used to `make_shared` a `detail::SubscriptionCallback<M>` cell whose
+    // only job was to give a capturing lambda a stable address, push it into
+    // `owned_entities` to keep it alive, and hand back a `shared_ptr` aliasing
+    // into it. W1 put the capture in the arena entry, so the cell has nothing
+    // left to hold; W2 stops pretending the result is a pointer to an object.
+    using Capture = ::nros::InplaceFn<void(const M&)>;
+    Capture captured(::nros::tr::forward_rvalue(cb));
+    ::size_t handle_id = 0;
+    ::rclcpp::detail::require_created(::nros::detail::register_subscription_capturing<M>(
+                                          *this, topic.c_str(), qos, captured, &handle_id),
+                                      "create_subscription", topic.c_str());
+    return typename Subscription<M>::SharedPtr(this->executor_handle(), handle_id);
 }
 } // namespace rclcpp
 
@@ -595,8 +600,8 @@ namespace nros {} // namespace nros
 
 namespace rclcpp {
 template <typename M, typename Cb>
-inline ::std::shared_ptr<Subscription<M>> Node::create_subscription(const ::std::string& topic,
-                                                                    ::size_t depth, Cb cb) {
+inline typename Subscription<M>::SharedPtr Node::create_subscription(const ::std::string& topic,
+                                                                     ::size_t depth, Cb cb) {
     return this->create_subscription<M>(topic, ::nros::QoS(static_cast<uint32_t>(depth)),
                                         ::nros::tr::forward_rvalue(cb));
 }
