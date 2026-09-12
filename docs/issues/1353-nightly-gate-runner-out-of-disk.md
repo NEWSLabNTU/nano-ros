@@ -104,6 +104,26 @@ compile-tier build now costs. The disk report the section below asks for should
 therefore be added to the shared setup the lanes have in common, not only around
 the compile-tier steps.
 
+## The truncation is confirmed as disk, from cargo itself (2026-09-12)
+
+Until now `host-tests` was attributed to this issue by the SHAPE of its
+failure — a log truncated mid-compile with no diagnostic. Run **34679397895**
+(push, 06:55), job **103515049240**, step `just ci tier1`, says it outright:
+
+```
+===== FAIL (test-targets, rc=101, 62936ms) =====
+error: failed to write to `target/debug/deps/rmetaYBvbcx/full.rmeta`:
+  No space left on device (os error 28)
+error: could not compile `zerocopy` (lib) due to 1 previous error
+error: failed to run custom build command for `zpico-sys v0.5.0`
+```
+
+So the inference was right, and this replaces it with a measurement. It also
+narrows where the space goes: the failure is a write into the HOST workspace's
+`target/debug`, during `check test-targets`, which is a workspace-wide plus
+per-crate clippy — i.e. the tier-1 lane fills the same disk the compile tier
+does, without touching the compile tier at all.
+
 ## What would close it
 
 Measurement first, because the cause is not yet established and a guessed fix
