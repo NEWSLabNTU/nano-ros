@@ -73,11 +73,26 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.tracked import tracked
 
+# `tomllib` is 3.11+, `tomli` the 3.10 backport, `toml` the older third-party
+# package this gate used to require outright. All three expose `loads(str)`,
+# which is the only entry point below. The chain is widest-first so the gate
+# runs wherever ANY of them is present: requiring `toml` alone made it exit 2
+# on the `run-matrix` container, and a gate that cannot run reports the same
+# red as a gate that failed. Sibling spelling: `scripts/check-fixture-groups.py`.
 try:
-    import toml
-except ImportError:  # pragma: no cover - environment guard
-    sys.stderr.write("check-feature-contract: python3 `toml` module required\n")
-    sys.exit(2)
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:
+    try:
+        import tomli as tomllib  # the 3.10 backport
+    except ModuleNotFoundError:
+        try:
+            import toml as tomllib  # older third-party package
+        except ModuleNotFoundError:
+            sys.stderr.write(
+                "check-feature-contract: need one of python3 `tomllib` (3.11+), "
+                "`tomli` or `toml`\n"
+            )
+            sys.exit(2)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCOPE = "packages"
@@ -257,7 +272,10 @@ def read(p):
 
 def load(man):
     try:
-        return toml.load(man)
+        # `loads`, not `load`: `tomllib`/`tomli` take a BINARY file while `toml`
+        # takes a text one, and only the string entry point is common to all three.
+        with open(man, encoding="utf-8") as fh:
+            return tomllib.loads(fh.read())
     except Exception as exc:  # a malformed manifest is someone else's gate
         sys.stderr.write(f"  (skipping unparseable {rel(man)}: {exc})\n")
         return None
