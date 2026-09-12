@@ -82,6 +82,22 @@ Items 1–3 are separate and smaller: a Rust-toolchain step (or a probe) on the
 installed path, a configure that finds an installed `cyclonedds` dist, and
 scaffold "next steps" that follow the same ladder the CMakeLists does.
 
+## Still red in the nightly, 2026-09-12
+
+Nightly run **34680021029** (schedule, 07:10), job **103516832336**
+(`installed-probe`), step `Run installed-path probe`:
+
+```
+  [FAILED]  cyclonedds-src — provision source: read gitlink sha for
+            third-party/dds/cyclonedds (source cyclonedds-src)
+Error: 1 package(s) failed to install (see [FAILED] above)
+```
+
+Same failure this issue describes, reached through `just probe installed`
+(phase-447 A3) rather than by hand — so the installed front door is the thing
+the nightly exercises, and it has not worked since. Recorded here so the lane's
+red has an owner; no separate issue filed.
+
 ## Acceptance
 
 `just probe installed` passes: install -> `nros setup native --rmw cyclonedds`
