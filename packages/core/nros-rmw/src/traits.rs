@@ -2197,16 +2197,25 @@ pub trait Publisher {
     /// Phase 124.E.1 — streamed publish.
     ///
     /// `size_cb` reports the total payload length once; `chunk_cb`
-    /// fills the slot in chunks. Saves the per-publisher staging
-    /// buffer when the message is large enough to dominate the
-    /// device's `.bss`.
+    /// fills the slot in chunks. What it saves is the CALLER-side
+    /// buffer holding a whole serialised message — which is STACK,
+    /// not `.bss`: `EmbeddedPublisher::publish` serialises into a
+    /// per-CALL array of `DEFAULT_TX_BUF`, and this trait's own
+    /// fallback below stages on the caller's stack too. There is no
+    /// per-publisher staging buffer and none of it is in `.bss`;
+    /// issue 0782 corrected that fiction on the C slot and left this
+    /// copy of it standing (phase-428 W12's F2, one layer over).
     ///
     /// Default body — the **staging-buffer fallback** (124.E.2).
     /// Asks `size_cb` for the total length, fills a stack-allocated
-    /// `[u8; NROS_MAX_STREAM_CHUNK]` via `chunk_cb`, then forwards
-    /// to `publish_raw`. Returns `Err(BufferTooSmall)` if the total
-    /// exceeds the stack cap so the caller can drop back to a
-    /// regular `publish_raw` with a heap-sized buffer.
+    /// `[u8; STAGE_CAP]` via `chunk_cb`, then forwards to
+    /// `publish_raw`. `STAGE_CAP` is the 4096 constant declared in
+    /// the body, not a knob: this said `NROS_MAX_STREAM_CHUNK` until
+    /// 2026-09-12 and no such setting has ever existed in any form,
+    /// so a reader looking for it found nothing and had no way to
+    /// learn the limit. Returns `Err(BufferTooSmall)` if the total
+    /// exceeds that cap so the caller can drop back to a regular
+    /// `publish_raw` with a heap-sized buffer.
     ///
     /// Concrete backends opt in by overriding to stream straight
     /// into the network buffer (zenoh: write into the zenoh-pico
