@@ -102,13 +102,81 @@ Four things follow, and each is a simplification rather than a trade:
   measured `NROS_CPP_EXECUTOR_STORAGE_SIZE` of 89 352 — and it replaces an
   888-byte C++ object plus a heap cell.
 
-* **W2 [cpp] — `create_subscription` becomes a handle.** The returning form in
-  `nros.hpp` stops allocating a `SubscriptionCallback<M>` cell and calls the
-  registration directly; `Subscription<M>::SharedPtr` becomes
-  `nros::Handle<Subscription<M>>` over `{executor, handle_id}`.
+* **W2 [cpp] — `create_subscription` returns a handle, and the handle stops
+  lying.** The design was re-explored after W1 landed, and the question turned
+  out not to be "where does the state live" — W1 settled that — but "what should
+  the returned thing BE".
+
+  *The finding that drives it.* `Subscription<M>` is two types wearing one name,
+  and the tree already documents the consequence, in `nros.hpp`'s own comment on
+  the returning factory:
+
+  > WHAT THE RETURNED POINTER IS: a keep-alive … The executor owns the real
+  > subscriber, so `sub->take(msg)` on it answers `NotInitialized` — the sample
+  > went to your callback.
+
+  So a `Subscription<M>` handed back by the callback factory carries `take()`,
+  `take_serialized()`, `take_validated()`, `take_sequence()` and `borrow()` —
+  every one of them present and guaranteed to fail. A method set that lies, on
+  the type a porter is handed.
+
+  *Measured*, what callers actually invoke on a subscription across the corpus,
+  the tests and the book:
+
+  | call | count | path |
+  | --- | --- | --- |
+  | `try_recv` | 16 | poll |
+  | `take` | 11 | poll |
+  | `take_serialized` / `take_validated` | 6 | poll |
+  | the three QoS-event setters | 14 | either |
+  | **anything at all, in the ported templates** | **0** | dispatch |
+
+  The ported corpus holds it and drops it. That is the whole requirement, and it
+  is what the header already calls it: a keep-alive.
+
+  *The shape (candidate C of three).* `Subscription<M>` keeps its storage and
+  its taking API for the out-ref POLL form, which nothing in this work item
+  touches. `Subscription<M>::SharedPtr` becomes a distinct two-word
+  `nros::SubscriptionHandle<M>` over `{executor, handle_id}`, exposing only what
+  a dispatch subscription can actually do. The returning `create_subscription`
+  calls `nros_cpp_subscription_register_capturing` (W1) and allocates nothing:
+  no `SubscriptionCallback<M>` cell, no `make_shared`, no `owned_entities` push.
+
+  *The cost, stated.* `SharedPtr::element_type` is no longer
+  `Subscription<M>` — the alias and the class become different things. That is a
+  surprise for a reader and it needs a ledger row saying so. It is accepted
+  because the alternative is keeping a type whose methods fail by construction.
+
   *Acceptance:* the ported node body compiles and dispatches on all three arms;
-  `sizeof(rclcpp::Subscription<int>)` falls from 888 to two words; no
-  `make_shared` on the path; `owned_entities` loses its subscription push.
+  no allocation on the path; `owned_entities` loses its subscription push; the
+  dispatch handle exposes no operation that cannot work.
+
+  *Blast radius, measured — three files outside the API headers:*
+  `examples/templates/topic-state-monitor-port/src/topic_state_monitor.cpp:31`
+  (an explicit `std::shared_ptr<rclcpp::Subscription<…>>`, which becomes the
+  alias), `tests/compile/ros2_api_adoption.cpp:158-183` (`static_assert`s that
+  INVERT), and `tests/compile/ros2_one_dispatch_path.cpp:163` (already spells
+  `::SharedPtr`, so it keeps working). They land in the same commit; the tree
+  cannot be green in between.
+
+* **W2b [cpp] — `Subscription<M>` becomes the dispatch type, and the taking API
+  moves out (candidate B).** W2's destination, and a separate item because it is
+  a rename of a widely-used type rather than a change to one factory.
+
+  Upstream rclcpp has NO poll-style subscription — its taking goes through a
+  `WaitSet`. So `take()` / `take_serialized()` / `take_validated()` /
+  `take_sequence()` / `borrow()` on `Subscription<M>` are an nros extension
+  wearing an upstream name, which is what forces W2's alias/class split in the
+  first place. Moving them beside `PollingSubscription<M>` lets
+  `Subscription<M>` mean what rclcpp means by it, at which point
+  `SharedPtr::element_type` can be `Subscription<M>` again and W2's stated cost
+  is repaid.
+
+  *Blast radius:* 33 in-tree poll call sites (`try_recv` 16, `take` 11,
+  `take_serialized` / `take_validated` 6). None in the ported templates.
+  *Not started, and deliberately after W2:* W2 removes a lying method set
+  immediately and without touching those 33; W2b is the tidy-up that makes the
+  naming honest.
 
 * **W3 [cpp] — services, then actions.** Same audit, one kind at a time: the
   trampoline context stops being `&out`, so the object the arena knows by
