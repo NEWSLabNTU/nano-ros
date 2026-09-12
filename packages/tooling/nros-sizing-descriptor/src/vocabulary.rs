@@ -173,12 +173,14 @@ vocabulary! {
     /// `[[endpoint]] registration_path` — issue 1319, RFC-0100 D1.
     ///
     /// **A subscription's SLOT SIZE is a function of this and nothing else can
-    /// supply it.** The four rows are measured in issue 1319:
+    /// supply it.** Issue 1319 measured four rows from the source; phase-454 W5
+    /// ran them and found a FIFTH, which is why the vocabulary has five:
     ///
     /// | path | slot size |
     /// | --- | --- |
     /// | `c_typed_hint` | the type's own `_RX` — matches the model |
     /// | `rust_typed_descriptors` | `min(framed(bound), RX_BUF)` — at or below |
+    /// | `rust_typed_in_place` | **no receive region at all** |
     /// | `rust_typed_schemaless` | **`RX_BUF`** |
     /// | `c_raw_no_hint` | **`RX_BUF`** |
     ///
@@ -188,19 +190,46 @@ vocabulary! {
     /// from it, and a descriptor that omitted it would leave W5 with the same
     /// blindness the build has today.
     ///
-    /// It is an IMAGE fact, not a backend fact: which of the four a registration
-    /// takes is decided by the entry's language, whether it passes a bound hint,
-    /// and whether the linked backend carries type descriptors — all three known
-    /// where this descriptor is written and none of them known to the build
-    /// script that prices the arena.
+    /// It is an IMAGE fact, not a backend fact: which row a registration takes
+    /// is decided by the entry's language, whether it passes a bound hint, and
+    /// two properties of the linked backend — all known where this descriptor is
+    /// written and none of them known to the build script that prices the arena.
     RegistrationPath {
         /// C or C++, typed, `nros::rx_size_bound<M>` supplied.
         CTypedHint => "c_typed_hint",
         /// Rust, typed, against a backend WITH type descriptors (Cyclone).
         RustTypedDescriptors => "rust_typed_descriptors",
-        /// Rust, typed, against a SCHEMALESS backend (zenoh, XRCE).
+        /// Rust, typed, against a backend that dispatches IN PLACE — zenoh and
+        /// XRCE, whose `supports_process_in_place` is an unconditional `true`.
+        ///
+        /// **MEASURED, phase-454 W5, and it is the row issue 1319's analysis
+        /// did not have.** `register_subscription_buffered_on` tests the
+        /// capability BEFORE it computes a slot size and returns through
+        /// `SubInplaceEntry` when it holds, so no receive region is allocated at
+        /// all — an explicit `.rx_buffer::<N>()` on such a backend is not even
+        /// read. Measured on `contract-monitor-sub` over zenoh: a
+        /// `std_msgs/Header` subscription claims **672 bytes** of arena, against
+        /// the 9,768-byte region the model budgets it at `KEEP_LAST(10)`.
+        ///
+        /// So this row is an OVER-statement, not an under-size, and its price is
+        /// deliberately left where it was: the same type's-bound term
+        /// [`Self::RustTypedDescriptors`] takes. Lowering it is worth ~9.7 KiB a
+        /// subscription and is issue 1340, because the Rust GENERIC
+        /// (`.generic(ty, hash)`) registration on the SAME backend does not
+        /// reach that capability test and does claim `RX_BUF` — and nothing in
+        /// this descriptor distinguishes a typed endpoint from a generic one.
+        RustTypedInPlace => "rust_typed_in_place",
+        /// Rust, typed, against a SCHEMALESS backend that BUFFERS — no schema on
+        /// `MessageForRmw`, so no bound is reachable at the type-erased site and
+        /// the registration takes `RX_BUF`.
+        ///
+        /// Issue 1319 attributes this row to zenoh and XRCE. They are
+        /// [`Self::RustTypedInPlace`] instead, measured; this row stands for a
+        /// schemaless backend that does not dispatch in place, which is a
+        /// configuration the tree admits and does not currently ship.
         RustTypedSchemaless => "rust_typed_schemaless",
-        /// C or C++, raw, no hint.
+        /// C or C++, raw, no hint. The C registration path never consults the
+        /// in-place capability, so this row is live on every backend.
         CRawNoHint => "c_raw_no_hint",
     }
 }
@@ -210,9 +239,14 @@ impl RegistrationPath {
     /// own bound?
     ///
     /// The two `true` rows are exactly issue 1319's gap. Stated as a predicate
-    /// here so W5's arena term asks the question once instead of matching four
-    /// variants in each of its call sites — and so adding a fifth path has to
-    /// answer it.
+    /// here so W5's arena term asks the question once instead of matching every
+    /// variant in each of its call sites — and so adding a path has to answer
+    /// it. Phase-454 W5 added one and this is where it had to.
+    ///
+    /// `false` is NOT "claims the type's bound" for every row: it is "does not
+    /// claim `RX_BUF`". [`Self::RustTypedInPlace`] claims no region at all and
+    /// is priced at the bound anyway, which is an over-statement its own doc
+    /// argues for.
     pub const fn claims_closure_buffer(self) -> bool {
         matches!(
             self,
@@ -265,5 +299,31 @@ mod tests {
         assert!(RegistrationPath::CRawNoHint.claims_closure_buffer());
         assert!(!RegistrationPath::CTypedHint.claims_closure_buffer());
         assert!(!RegistrationPath::RustTypedDescriptors.claims_closure_buffer());
+        // phase-454 W5 — and the row 1319's analysis did not have. It claims no
+        // region at all, which is the opposite direction from the two above.
+        assert!(!RegistrationPath::RustTypedInPlace.claims_closure_buffer());
+    }
+
+    /// Every path must ANSWER the predicate, and the five spellings must stay
+    /// distinct. A sixth row added without a decision is what this catches:
+    /// the macro gives it a spelling for free, and `claims_closure_buffer`'s
+    /// `matches!` would silently answer `false` for it — which is the
+    /// under-sizing direction (issue 1319).
+    #[test]
+    fn every_registration_path_is_classified_and_spelled_once() {
+        assert_eq!(RegistrationPath::ALL.len(), 5);
+        let mut tags: Vec<&str> = RegistrationPath::ALL.iter().map(|p| p.tag()).collect();
+        tags.sort_unstable();
+        tags.dedup();
+        assert_eq!(tags.len(), RegistrationPath::ALL.len());
+        assert_eq!(
+            RegistrationPath::ALL
+                .iter()
+                .filter(|p| p.claims_closure_buffer())
+                .count(),
+            2,
+            "a new registration path changed which rows claim RX_BUF -- that is \
+             a sizing decision, not a spelling (issue 1319)"
+        );
     }
 }

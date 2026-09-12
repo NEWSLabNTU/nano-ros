@@ -178,9 +178,47 @@ Gates and tests: `just check sizing-descriptor-reader`
 `keep_all` per-field refusal, zero surviving unfloored), the producer's 10, the
 verb's 4, and `sizing_descriptor_portable.rs` for the issue-0320 acceptance.
 
-### W5 — the executor reads the descriptor, and the model learns the registration path
+### W5 — the executor reads the descriptor, and the model learns the registration path — **LANDED**
 
 Two halves, and the second is the one with a live defect behind it.
+
+**What landed.**
+
+| piece | where |
+| --- | --- |
+| the slot rule, issue 1319's table as code | `Endpoint::claimed_slot_bytes` / `may_claim_closure_buffer` in `nros-sizing-descriptor`, beside the vocabulary that already documented the table |
+| the endpoint facts, on ONE road | `nros-node/build.rs`'s `descriptor_subscriptions` → `subs_arena_from_descriptor`; the `NROS_ENTITY_DECLARED_DEPTHS` / `NROS_SUBSCRIBED_TYPE_BOUNDS` carriers stay BELOW it, and W9 retires them |
+| the default term | `default_sub_slot_bytes`, emitted as `arena_model::PUBSUB_SLOT_BYTES` |
+| the reproduction | `executor::tests::a_schemaless_subscription_outgrows_an_arena_priced_at_its_types_bound` |
+
+**The fifth registration path, measured.** The reproduction corrected the
+issue's analysis, which is what a reproduction is for. Issue 1319 assigns zenoh
+and XRCE to the `RX_BUF` row; `register_subscription_buffered_on` asks
+`handle.supports_process_in_place()` **before** it computes a slot size, both
+answer an unconditional `true`, and the registration returns through
+`SubInplaceEntry` having allocated no region at all — 672 bytes of arena on
+`contract-monitor-sub` over zenoh, against a 9,768-byte budgeted region. So:
+
+* `RegistrationPath::RustTypedInPlace` is a fifth row, and the producer needs a
+  second backend fact (`BackendDispatch`) to pick it;
+* its PRICE is deliberately left where it was. Lowering it is worth ~9.7 KiB a
+  subscription and is [issue 1340](../issues/1340-arena-budgets-a-receive-region-an-in-place-backend-never-claims.md),
+  because the Rust GENERIC registration on the same backend does not reach the
+  capability test and an endpoint row cannot say which spelling an image writes.
+
+**Measured.** `arena_model::REQUIRED` for one `KEEP_LAST(1)` subscription at the
+island's 880-against-1,496: 5,712 with no descriptor, 5,712 for `c_typed_hint` /
+`rust_typed_descriptors` / `rust_typed_in_place`, **7,560** for
+`rust_typed_schemaless` / `c_raw_no_hint` / a REFUSED path — a delta of 1,848,
+which is this issue's own number. `mem-report` on `contract-monitor-sub`:
+`EXECUTOR_BACKING` 27,152 B and `.bss+.data` 523,528 B both UNCHANGED by the
+descriptor `nros sync` now writes for it, and +6,776 B (= `11 × (1496 − 880)`)
+when a closure-claiming row fires.
+
+**Byte-identical with no descriptor**, diffed against `bc7ae4617`: every emitted
+VALUE matches; the only textual difference is the new `PUBSUB_SLOT_BYTES` const,
+whose value is the number the derivation already used.
+
 
 **W5.a** — the executor takes its facts from the descriptor rather than from env
 carriers. One road instead of two, so an image no longer sizes differently

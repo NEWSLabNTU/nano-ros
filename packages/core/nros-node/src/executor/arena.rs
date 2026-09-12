@@ -854,6 +854,18 @@ mod arena_model_tests {
     /// image with one declared subscription therefore derived an 8,192-byte
     /// arena for a 12,144-byte registration.
     ///
+    /// phase-454 W5 / issue 1319 — measured at the slot size the derivation
+    /// PRICED, not at `DEFAULT_RX_BUF_SIZE`.
+    ///
+    /// Those were the same number until issue 1255 narrowed the term to the
+    /// image-wide subscribed class, and this assertion went on reading `RX_BUF`
+    /// — which made it right about the two registration paths that take the
+    /// closure buffer and wrong about the three that do not.
+    /// A Cyclone image priced at its bound would have failed here for sizing
+    /// CORRECTLY. `PUBSUB_SLOT_BYTES` is what the build actually charged, and
+    /// `the_modelled_slot_never_exceeds_the_closure_buffer` below is the other
+    /// half — the one that says the price is an upper bound on every path.
+    ///
     /// Deliberately measured through `buffered_region_size`, the function the
     /// allocator itself calls, and not through a second copy of its arithmetic.
     #[test]
@@ -869,18 +881,55 @@ mod arena_model_tests {
         // What it still catches is the thing that matters — a budget that does
         // not cover its own claim.
         let (slots, region) =
-            super::buffered_region_size(model::BUDGETED_QOS_DEPTH, DEFAULT_RX_BUF_SIZE);
+            super::buffered_region_size(model::BUDGETED_QOS_DEPTH, model::PUBSUB_SLOT_BYTES);
         assert!(
             model::PUBSUB_REGION >= region,
             "the arena derivation budgets {} bytes for a subscription's \
              buffered region and the allocator claims {region} for it \
-             ({slots} slots of {DEFAULT_RX_BUF_SIZE} at the budgeted \
+             ({slots} slots of {} at the budgeted \
              KEEP_LAST({}) ) — every image that derives its arena from a \
              declared subscription count is short by {} bytes per \
              subscription (issue 1190)",
             model::PUBSUB_REGION,
+            model::PUBSUB_SLOT_BYTES,
             model::BUDGETED_QOS_DEPTH,
             region.saturating_sub(model::PUBSUB_REGION),
+        );
+    }
+
+    /// **Issue 1319** — the slot the model prices may never exceed `RX_BUF`,
+    /// because `RX_BUF` is what the widest registration path claims and the
+    /// model is an upper bound or it is nothing.
+    ///
+    /// The direction that shipped the bug is the other one, and it has no
+    /// TOTAL assertion available here: a slot priced BELOW `RX_BUF` is correct
+    /// for a `c_typed_hint` or `rust_typed_descriptors` registration and 1,848
+    /// bytes per subscription short for the other two, and which one this image
+    /// takes is composed from the entry's language and the linked backend —
+    /// neither of which the runtime can read out of a `cfg`. That is why the
+    /// fact travels in the sizing descriptor and the check is on the DERIVATION
+    /// (`nros-sizing-descriptor`'s slot table, `nros-node/build.rs`'s
+    /// `row_slot_bytes`) rather than here. What stands here is the cheap half
+    /// and the reproduction in `executor::tests`.
+    ///
+    /// Both sides go through `black_box`, for the reason `config.rs`'s
+    /// `opaque` exists: they are build-emitted CONSTANTS, and clippy
+    /// const-propagates the comparison and refuses the `assert!` as
+    /// `assertions_on_constants` under `-D warnings`. A `const { assert!(…) }`
+    /// would satisfy it and cost the message its two numbers, which are the
+    /// whole diagnostic.
+    #[test]
+    fn the_modelled_slot_never_exceeds_the_closure_buffer() {
+        fn opaque(v: usize) -> usize {
+            core::hint::black_box(v)
+        }
+        assert!(
+            opaque(model::PUBSUB_SLOT_BYTES) <= opaque(DEFAULT_RX_BUF_SIZE),
+            "the arena model prices a subscription slot at {} bytes while the \
+             widest registration path claims DEFAULT_RX_BUF_SIZE = \
+             {DEFAULT_RX_BUF_SIZE} — a model term above every path it stands \
+             for is not an upper bound, it is a second number (issue 1319)",
+            model::PUBSUB_SLOT_BYTES,
         );
     }
 

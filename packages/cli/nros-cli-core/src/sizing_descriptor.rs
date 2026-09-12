@@ -91,6 +91,31 @@ pub enum BackendSchema {
     Schemaless,
 }
 
+/// Does the backend dispatch a received sample IN PLACE?
+///
+/// **The axis issue 1319's four-row table did not have, and phase-454 W5
+/// measured.** `register_subscription_buffered_on` asks
+/// `handle.supports_process_in_place()` BEFORE it computes a slot size, and
+/// returns through `SubInplaceEntry` when the answer is yes — so a Rust typed
+/// subscription on such a backend allocates no receive region at all, whatever
+/// its type's bound or the image's `RX_BUF` say. Measured on
+/// `contract-monitor-sub` over zenoh: 672 bytes of arena for the whole
+/// registration.
+///
+/// It is a property of the BACKEND and not of the entry, which is why it sits
+/// beside [`BackendSchema`] rather than inside [`EntryLanguage`]: both of the
+/// schemaless backends this tree ships answer an unconditional `true`
+/// (`nros-rmw-zenoh`'s `supports_process_in_place`, and XRCE's
+/// `xrce_subscription_supports_in_place`), while Cyclone leaves both vtable
+/// slots NULL.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendDispatch {
+    /// The sample is handed to the callback out of the backend's own ring.
+    InPlace,
+    /// The runtime copies into an arena receive region it must budget for.
+    Buffered,
+}
+
 /// Everything the producer needs, stated by the caller that HAS it.
 ///
 /// A struct rather than nine arguments because every one of these is
@@ -129,6 +154,10 @@ pub struct DescriptorInputs<'a> {
     pub language: Option<EntryLanguage>,
     /// Whether the linked backend carries type descriptors.
     pub backend_schema: Option<BackendSchema>,
+    /// Whether the linked backend dispatches in place (phase-454 W5). `None`
+    /// for a backend this writer does not know — refused with the schema half,
+    /// because the two together select the path and neither alone can.
+    pub backend_dispatch: Option<BackendDispatch>,
     /// The backend's name, for prose only.
     pub rmw: Option<String>,
 }
@@ -494,18 +523,33 @@ fn registration_path(
     // for every kind anyway: a service server's request buffer takes the same
     // four paths, and W6.b prices it.
     let _ = kind;
-    match (inputs.language?, inputs.backend_schema?) {
+    match (
+        inputs.language?,
+        inputs.backend_schema?,
+        inputs.backend_dispatch?,
+    ) {
         // A C/C++ entry that registers typed supplies `rx_size_bound<M>`; the
         // raw no-hint row is a property of an individual call site, not of the
         // image, and nothing this writer reads distinguishes them. The typed
         // hint is therefore what a C/C++ entry is credited with, and W10 --
         // which closes the C half of the declared-QoS check -- is where a
         // per-call-site answer becomes available.
-        (EntryLanguage::CFamily, _) => Some(RegistrationPath::CTypedHint),
-        (EntryLanguage::Rust, BackendSchema::Descriptors) => {
+        //
+        // The C path does NOT consult the in-place capability
+        // (`add_arena_subscription_c_callback` allocates a region
+        // unconditionally), so the dispatch axis does not reach this arm.
+        (EntryLanguage::CFamily, _, _) => Some(RegistrationPath::CTypedHint),
+        // phase-454 W5 -- in-place wins over the schema question, because the
+        // capability test in `register_subscription_buffered_on` happens BEFORE
+        // the slot size is computed. A descriptor-carrying backend that also
+        // dispatched in place would take this row too; none does today.
+        (EntryLanguage::Rust, _, BackendDispatch::InPlace) => {
+            Some(RegistrationPath::RustTypedInPlace)
+        }
+        (EntryLanguage::Rust, BackendSchema::Descriptors, BackendDispatch::Buffered) => {
             Some(RegistrationPath::RustTypedDescriptors)
         }
-        (EntryLanguage::Rust, BackendSchema::Schemaless) => {
+        (EntryLanguage::Rust, BackendSchema::Schemaless, BackendDispatch::Buffered) => {
             Some(RegistrationPath::RustTypedSchemaless)
         }
     }
@@ -520,6 +564,12 @@ fn registration_path_refusal(inputs: &DescriptorInputs<'_>) -> String {
         missing.push(match &inputs.rmw {
             Some(r) => format!("whether backend `{r}` carries type descriptors"),
             None => "which backend this image links".into(),
+        });
+    }
+    if inputs.backend_dispatch.is_none() && inputs.backend_schema.is_some() {
+        missing.push(match &inputs.rmw {
+            Some(r) => format!("whether backend `{r}` dispatches in place"),
+            None => "how this image's backend dispatches".into(),
         });
     }
     format!(
@@ -708,6 +758,7 @@ pub fn write_for_leaf(
         // the C/C++ images go through cmake.
         language: Some(EntryLanguage::Rust),
         backend_schema: rmw.as_deref().and_then(backend_schema),
+        backend_dispatch: rmw.as_deref().and_then(backend_dispatch),
         rmw,
     };
     let desc = build(&inputs);
@@ -807,6 +858,27 @@ fn backend_schema(rmw: &str) -> Option<BackendSchema> {
         // `MessageForRmw` carries no schema on either, so the schemaless arm
         // returns `None` for every type and the registration takes `RX_BUF`.
         "zenoh" | "xrce" => Some(BackendSchema::Schemaless),
+        _ => None,
+    }
+}
+
+/// Does this backend hand a sample to the callback IN PLACE? `None` for a name
+/// this writer does not know — refused rather than guessed, like its sibling.
+///
+/// **Read off the backend's own answer, not off its family.** Both are
+/// unconditional in source and both were measured in phase-454 W5:
+///
+/// * `nros-rmw-zenoh`'s `Subscription::supports_process_in_place` is
+///   `fn(&self) -> bool { true }`;
+/// * XRCE's `xrce_subscription_supports_in_place` writes `true` and its
+///   `process_raw_in_place` slot is non-NULL — the capability is the
+///   CONJUNCTION of the two, per `rmw_vtable.h`;
+/// * Cyclone leaves both slots NULL, which the cffi adapter reads as
+///   unsupported.
+fn backend_dispatch(rmw: &str) -> Option<BackendDispatch> {
+    match rmw {
+        "cyclonedds" | "cyclone" => Some(BackendDispatch::Buffered),
+        "zenoh" | "xrce" => Some(BackendDispatch::InPlace),
         _ => None,
     }
 }
@@ -1037,6 +1109,7 @@ mod tests {
             heap_budget_bytes: Some(65536),
             language: Some(EntryLanguage::Rust),
             backend_schema: Some(BackendSchema::Schemaless),
+            backend_dispatch: Some(BackendDispatch::InPlace),
             rmw: Some("zenoh".into()),
         }
     }
@@ -1052,11 +1125,95 @@ mod tests {
         // have measured (RFC-0100 D1, phase-118-E).
         assert_eq!(d.target.pointer_bytes().stated(), Some(&4));
         assert_eq!(ep.storage_bytes().stated(), Some(&(11 * 1170 + 11 * 4)));
+        // phase-454 W5 — zenoh dispatches IN PLACE, measured, so a Rust typed
+        // registration on it is that row and not the schemaless one issue
+        // 1319's table assigned it.
         assert_eq!(
             ep.registration_path().stated(),
-            Some(&RegistrationPath::RustTypedSchemaless)
+            Some(&RegistrationPath::RustTypedInPlace)
         );
         assert_eq!(d.meta.status, Status::Derived);
+    }
+
+    /// The dispatch axis decides, and it decides BEFORE the schema question —
+    /// the same order `register_subscription_buffered_on` asks them in.
+    #[test]
+    fn the_registration_path_reads_dispatch_before_schema() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
+        for (schema, dispatch, want) in [
+            (
+                BackendSchema::Schemaless,
+                BackendDispatch::InPlace,
+                RegistrationPath::RustTypedInPlace,
+            ),
+            (
+                BackendSchema::Descriptors,
+                BackendDispatch::InPlace,
+                RegistrationPath::RustTypedInPlace,
+            ),
+            (
+                BackendSchema::Schemaless,
+                BackendDispatch::Buffered,
+                RegistrationPath::RustTypedSchemaless,
+            ),
+            (
+                BackendSchema::Descriptors,
+                BackendDispatch::Buffered,
+                RegistrationPath::RustTypedDescriptors,
+            ),
+        ] {
+            let mut i = base(&inv);
+            i.backend_schema = Some(schema);
+            i.backend_dispatch = Some(dispatch);
+            let d = build(&i);
+            assert_eq!(
+                d.endpoints[0].registration_path().stated(),
+                Some(&want),
+                "{schema:?} + {dispatch:?}"
+            );
+        }
+        // A C/C++ entry is credited the typed hint whatever the backend does:
+        // its registration path never consults the capability.
+        for dispatch in [BackendDispatch::InPlace, BackendDispatch::Buffered] {
+            let mut i = base(&inv);
+            i.language = Some(EntryLanguage::CFamily);
+            i.backend_dispatch = Some(dispatch);
+            let d = build(&i);
+            assert_eq!(
+                d.endpoints[0].registration_path().stated(),
+                Some(&RegistrationPath::CTypedHint)
+            );
+        }
+    }
+
+    /// An unknown backend refuses BOTH halves and says so by name — the same
+    /// rule as the schema half, because a guessed dispatch is worth a whole
+    /// receive region per subscription in either direction.
+    #[test]
+    fn an_unknown_dispatch_refuses_the_registration_path_by_name() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
+        let mut i = base(&inv);
+        i.backend_dispatch = None;
+        let d = build(&i);
+        let path = d.endpoints[0].registration_path();
+        let r = path.refusal().unwrap();
+        assert!(r.contains("dispatches in place"), "{r}");
+        assert!(r.contains("zenoh"), "{r}");
+    }
+
+    /// The name-keyed halves must agree about every backend this writer knows:
+    /// a name that answers one and not the other refuses the whole path, which
+    /// is a silent loss of the saving rather than a wrong number.
+    #[test]
+    fn every_known_backend_answers_both_halves() {
+        for rmw in ["cyclonedds", "cyclone", "zenoh", "xrce"] {
+            assert!(
+                backend_schema(rmw).is_some() && backend_dispatch(rmw).is_some(),
+                "backend `{rmw}` answers only one half of the registration path"
+            );
+        }
+        assert!(backend_schema("uorb").is_none());
+        assert!(backend_dispatch("uorb").is_none());
     }
 
     #[test]

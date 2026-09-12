@@ -499,6 +499,151 @@ fn the_default_subscription_buffer_is_derived_from_the_type() {
     }
 }
 
+/// An executor whose ARENA is exactly `arena` bytes, everything else default.
+///
+/// [`executor_with_clock`] takes `ExecutorSizing::DEFAULT`, whose arena is the
+/// build's derived `ARENA_SIZE`. A test that asks *does what the DERIVATION
+/// budgeted hold what the REGISTRATION claims* has to be able to state the
+/// budget, which is the only thing this adds.
+fn executor_with_arena(session: MockSession, arena: usize) -> Executor<'static> {
+    let sizing = super::storage::ExecutorSizing {
+        arena,
+        ..super::storage::ExecutorSizing::DEFAULT
+    };
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] =
+        alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len()));
+    // SAFETY: `backing` is exactly `sizing.u64_len()` words, `'static`, and is
+    // handed to this executor alone -- nothing else holds the leaked slice.
+    unsafe { Executor::from_session_in(session, backing, sizing) }
+}
+
+/// **Issue 1319, reproduced** — phase-454 W5.b.
+///
+/// The issue was analysis-only: *"Not reproduced as a failing image … An image
+/// that declares its entities, subscribes from RUST on zenoh, and sets
+/// `NROS_SUBSCRIBER_BUFFER_SIZE` below `NROS_SUBSCRIPTION_BUFFER_SIZE` is the
+/// shape that would show it, as `NodeError::BufferTooSmall` at a registration
+/// the arena oracle passed."* This is that shape, with the two build-time
+/// numbers stated as arenas so the whole thing fits in one process.
+///
+/// * **the image declares its entities** — so `arena_model::REQUIRED` is the
+///   per-endpoint SUM and not the worst-case budget. Here that is the arena
+///   this test hands the executor.
+/// * **subscribes from Rust** — `.typed::<TestMsg>().build(cb)`, naming no
+///   buffer. The default path, which is what a declarative node emits.
+/// * **on a SCHEMALESS backend that buffers** — `MessageForRmw` carries no
+///   schema, which is `cfg(not(rmw_needs_type_descriptors))` and is why this
+///   test is gated on it, and the handle does not advertise in-place dispatch,
+///   which `MockSubscriber` does not. On the descriptor arm the registration
+///   reaches the type's own bound and the model was already right;
+///   `the_default_subscription_buffer_is_derived_from_the_type` pins that row.
+///
+///   Issue 1319 names zenoh and XRCE for this row and phase-454 W5 measured
+///   otherwise: both advertise `supports_process_in_place`, and
+///   `register_subscription_buffered_on` tests that BEFORE it computes a slot
+///   size, so a typed Rust registration on either claims no region at all (672
+///   bytes on `contract-monitor-sub`; issue 1340). What is reproduced here is
+///   the mechanism and the two rows that do take it —
+///   `RegistrationPath::CRawNoHint`, which the C path reaches on every backend,
+///   and `RustTypedSchemaless` on a schemaless backend that buffers.
+/// * **the subscribed class below the closure bound** — `MODELLED_SLOT`
+///   against `DEFAULT_RX_BUF_SIZE`. The reference island measures 880 against
+///   1,496; the RATIO is not what matters, the direction is.
+///
+/// Both arenas are MEASURED from a registration rather than computed from
+/// `buffered_region_size`, because the arena aligns what it hands out and the
+/// raw region formula is off by that padding at some slot sizes — which would
+/// make this pass or fail for a reason that is not the one under test.
+#[cfg(not(rmw_needs_type_descriptors))]
+#[test]
+fn a_schemaless_subscription_outgrows_an_arena_priced_at_its_types_bound() {
+    /// What the BUILD charged before W5.b: the subscription's own type bound,
+    /// which `NROS_SUBSCRIBED_TYPE_BOUNDS` carries and `subs_arena` prices at.
+    const MODELLED_SLOT: usize = crate::config::DEFAULT_RX_BUF_SIZE / 2;
+    const {
+        assert!(
+            MODELLED_SLOT > 0,
+            "the fixture needs a type bound strictly below the closure buffer, \
+             or there is no gap to reproduce"
+        )
+    };
+    // KEEP_LAST(1) -- a TripleBuffer, three slots, the island's own depth and
+    // the cheapest shape the gap survives.
+    let qos = qos_with_depth(1);
+
+    // --- what each number IS, measured on an arena large enough for both ---
+    let mut wide = executor_with_arena(MockSession::new(), crate::config::ARENA_SIZE);
+    let nid = wide.node_builder("island").build().unwrap();
+    let node_overhead = wide.arena_used();
+    let modelled = {
+        let before = wide.arena_used();
+        wide.node_mut(nid)
+            .subscription("/modelled")
+            .qos(qos)
+            .typed::<TestMsg>()
+            .rx_buffer::<MODELLED_SLOT>()
+            .build(|_: &TestMsg| {})
+            .unwrap();
+        wide.arena_used() - before
+    };
+    let claimed = arena_delta(&mut wide, nid, "/claimed", qos, RxAsk::Default);
+    assert!(
+        claimed > modelled,
+        "the fixture did not reproduce the gap: a default registration claimed \
+         {claimed} bytes and the model's per-type price is {modelled}. On this \
+         arm `default_subscription_rx_bytes` must return `None`, so the \
+         registration takes DEFAULT_RX_BUF_SIZE = {} (issue 1319)",
+        crate::config::DEFAULT_RX_BUF_SIZE,
+    );
+    // The gap has the shape the issue reports: the SLOT COUNT times the
+    // difference in slot size, and nothing else -- both registrations build the
+    // same entry struct. On the island that is `3 x (1496 - 880)` = 1,848 bytes
+    // per subscription at depth 1.
+    assert_eq!(
+        claimed - modelled,
+        3 * (crate::config::DEFAULT_RX_BUF_SIZE - MODELLED_SLOT),
+        "the shortfall is a TripleBuffer's three slots times the difference in \
+         slot size (issue 1319); a different number means the entry struct \
+         moved too and this test is measuring two things"
+    );
+
+    // --- FAILS FIRST: the arena the OLD model derives ---------------------
+    let mut short = executor_with_arena(MockSession::new(), node_overhead + modelled);
+    let nid = short.node_builder("island").build().unwrap();
+    let err = short
+        .node_mut(nid)
+        .subscription("/chatter")
+        .qos(qos)
+        .typed::<TestMsg>()
+        .build(|_: &TestMsg| {})
+        .expect_err(
+            "issue 1319 is that this registration does NOT fit an arena priced \
+             at the type's own bound -- if it now fits, the schemaless \
+             registration path stopped claiming RX_BUF and this test has \
+             outlived the defect it reproduces",
+        );
+    assert_eq!(
+        err,
+        NodeError::BufferTooSmall,
+        "the shortfall must surface as BufferTooSmall at registration -- that \
+         is the symptom issue 1319 predicted and the one an image sees"
+    );
+
+    // --- and fits at the number phase-454 W5.b derives --------------------
+    let mut sized = executor_with_arena(MockSession::new(), node_overhead + claimed);
+    let nid = sized.node_builder("island").build().unwrap();
+    sized
+        .node_mut(nid)
+        .subscription("/chatter")
+        .qos(qos)
+        .typed::<TestMsg>()
+        .build(|_: &TestMsg| {})
+        .expect(
+            "priced at what the registration path CLAIMS, the same subscription \
+             fits -- which is the whole of the W5.b fix",
+        );
+}
+
 /// phase-392 W3c -- `.rx_buffer::<N>()` is the OPT-OUT, and it is exact.
 ///
 /// The consumer named a number, so the derivation is skipped and every slot

@@ -96,6 +96,31 @@ which it cannot see today"* — because the third (*"state the shortfall as a
 per-image margin"*) is explicitly *"the answer that goes stale next time a path
 changes"*, and the first is a narrower repair that leaves the build blind.
 
+**The path has FIVE rows, not four — phase-454 W5 measured the fifth.** Issue
+1319 read the four out of the source and assigned zenoh and XRCE to the
+`RX_BUF` row. Running it says otherwise: `register_subscription_buffered_on`
+asks `handle.supports_process_in_place()` **before** it computes a slot size,
+both schemaless backends answer an unconditional `true`, and the registration
+returns through `SubInplaceEntry` having allocated no receive region at all.
+Measured on `contract-monitor-sub` over zenoh, a `std_msgs/Header` subscription
+claims **672 bytes** of arena against the 9,768-byte region the model budgets it
+at `KEEP_LAST(10)`.
+
+So `rust_typed_in_place` is its own row, and the two directions are not
+symmetric:
+
+| direction | rows | what the model does |
+| --- | --- | --- |
+| UNDER — ships `BufferTooSmall` | `rust_typed_schemaless`, `c_raw_no_hint` | fixed in W5.b: each row is priced at what its path claims |
+| OVER — wastes RAM | `rust_typed_in_place` | left where it was, deliberately |
+
+The over-statement is left alone because the Rust **generic**
+(`.generic(ty, hash)`) registration on the same backend does NOT reach that
+capability test and does claim `RX_BUF` — and an endpoint row cannot say which
+of the two an image writes. Taking the ~9.7 KiB a subscription is a separate
+decision with its own evidence; the row exists so that decision has somewhere to
+land.
+
 Target facts are separate because **build scripts run for the host**
 (phase-118-E), so `DEP_NROS_NODE_*` carry host sizes on a cross build. Storage
 capacity is the target-ABI-dependent size; it cannot be inferred where it is
