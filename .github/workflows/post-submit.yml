@@ -23,9 +23,13 @@
 # COMPLETES NEVER — a lane that always cancels looks busy while reporting
 # nothing, which is worse than the skipped job phase-411 made visible.
 #
-# What stays here is `dep-chain` (hosted, 158 s) and `api-parity` (hosted,
-# 28.6 s measured, no fixture/SDK/QEMU/ROS) — both genuinely per-merge, both
-# in their OWN job so one red cannot withdraw the other's verdict.
+# What stays here is `dep-chain` (hosted, 158 s), which is genuinely per-merge
+# and which no earlier lane can run because it needs codegen output. It keeps
+# its OWN job, because that is what stops one red from withdrawing another
+# lane's verdict when a second lane joins it.
+#
+# `api-parity` used to be the second one. It graduated to the merge gate
+# (issue 1066) and its job is gone; the comment where it stood says why.
 #
 # WHAT THIS DOES NOT DO YET
 #
@@ -132,85 +136,48 @@ jobs:
           source ./activate.sh
           just check dep-chain
 
-  # issue 1040 — `check-api-parity`, the gate whose placement could not report.
+  # issue 1040 / issue 1066 — `check-api-parity` USED TO HAVE A JOB HERE, and
+  # the reason it does not any more is that the gate finally reached a
+  # merge-gating lane instead.
   #
-  # WHY HERE AND NOT ON THE MERGE GATE
+  # The job was right for its moment: the gate ran in no workflow on any event,
+  # it was RED on main (`rust:Executor::set_min_stack_headroom_bytes` had no
+  # ledger row), and "a lane cannot start gating pull requests while it is
+  # already red" is a rule this repo has paid for five times. `push` to main
+  # bounded an unledgered surface change to ONE commit rather than to a nightly
+  # batch.
   #
-  # COST says it could gate: measured 28.6 s wall for `just check api-parity` on
-  # a 24-core host, and there is no warm/cold split to hide behind — the tool
-  # builds rustdoc JSON into a FRESH temp target dir every run, so 28.6 s is
-  # what it always costs. It needs no fixture, no SDK, no QEMU, no cross
-  # toolchain and no ROS install: the ROS 2 side is the committed surface under
-  # `docs/reference/api-surface/`, and our C/C++ side parses the COMMITTED
-  # `nros_cpp_config_generated_nuttx.h` (`-DNROS_PLATFORM_NUTTX`), so nothing
-  # here resolves an artifact this job does not have. That is cheaper than
-  # `dep-chain` (158 s) already on this lane, and cheaper than `test-unit`
-  # (~3.5 min) which the merge group affords.
+  # Both halves moved. The ledger is clean — `just check api-parity` ends
+  # "every divergence carries a ledger entry" — and `565f8c74f` took the gate
+  # off `.config/gate-lane-exempt.txt`, so `just check fast` in `gate.yml`'s
+  # `check` job now runs it on `pull_request` and `merge_group`. The queue
+  # tests the MERGED state and `main-rules` admits no other path to `main`, so
+  # a post-submit run here re-asks a question the queue has already answered
+  # about the same tree. Measured cost of asking it twice: 217 s of extraction
+  # per merge, plus an `apt-get install clang` the image has shipped since
+  # `0c73d061b`.
   #
-  # STATE says it must not gate yet. The gate is RED on main today —
-  # `rust:Executor::set_min_stack_headroom_bytes` has no ledger row — and
-  # gate.yml's own comment states the rule this repo has now paid for five
-  # times: a lane cannot start gating pull requests while it is already red.
-  # Promotion to `merge_group` is a follow-up, once the ledger row lands.
-  #
-  # So: `push` to main, which is what post-submit is for. It bounds an
-  # unledgered surface change to ONE commit with a named author instead of to a
-  # nightly batch, which is issue 1040's actual complaint — "the person who
-  # broke it pays nothing, the person who runs the tier pays everything".
-  #
-  # ITS OWN JOB, not a step beside `dep-chain`: two gates in one job serialise
-  # their verdicts, and gate.yml just spent five nights proving what that costs
-  # (`check build` red => `no-std` and `api-parity` never ran, reported as one
-  # red for three gates).
-  api-parity:
-    name: api-parity (C/C++/Rust surface vs rclc/rclcpp/rclrs)
-    runs-on: ubuntu-22.04
-    container:
-      image: ghcr.io/newslabntu/nano-ros-ci:humble
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-      # clang is NOT in the ci-base image (`ci/docker/ci-base/Dockerfile` installs
-      # gcc cross toolchains and a PINNED clang-format, never clang itself), and
-      # `scripts/api_parity/extract_cxx.py` shells out to `clang`/`clang++` for
-      # `-Xclang -ast-dump=json`. Without this the gate cannot run at all — which
-      # is the other half of why it had never produced a verdict.
-      #
-      # Package names come from `nros-sdk-index.toml` via prereq-packages.py, the
-      # same SSoT `nightly.yml` uses for its bindgen cells, so a distro rename
-      # moves in one place.
-      - name: Install clang (extract_cxx dumps a clang AST)
-        run: |
-          apt-get update -q
-          apt-get install -y --no-install-recommends \
-            $(python3 scripts/sdk/prereq-packages.py --manager apt clang)
-      - name: just check api-parity
-        run: |
-          source ./activate.sh
-          just check api-parity
+  # `dep-chain` stays. It is exempt from the fast lane for a reason that has
+  # not changed — it needs codegen output — so this is still the only lane that
+  # runs it.
 
   coverage:
     name: coverage report (did the post-submit lanes run?)
-    needs: [dep-chain, api-parity]
+    needs: [dep-chain]
     if: always()
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      # Both lanes reported, then the verdicts combined — NOT two commands in a
-      # row. A `run:` block is `bash -e`, so a leading non-zero call withdraws
-      # the one behind it, and this job exists precisely to say whether a lane
-      # ran. Reporting one lane's coverage by silently not reporting the other's
-      # is the defect issue 1040 is about, in the job that reports on it.
+      # Every lane reports, THEN the verdicts combine — NOT a run of commands
+      # under `bash -e`, where a leading non-zero call withdraws the ones
+      # behind it. This job exists precisely to say whether a lane ran, so
+      # reporting one lane's coverage by silently not reporting another's is
+      # the defect issue 1040 is about, in the job that reports on it. The
+      # shape stays with one lane in the list; it is what makes adding a second
+      # safe.
       - name: Report whether each interlocked lane ran
         run: |
           rc=0
           ./scripts/ci/report-interlock-coverage.sh \
             "dep-chain" "${{ needs.dep-chain.result }}" "true" || rc=1
-          ./scripts/ci/report-interlock-coverage.sh \
-            "api-parity" "${{ needs.api-parity.result }}" "true" || rc=1
           exit "$rc"
