@@ -45,13 +45,21 @@ related: [phase-425, phase-430, phase-436, issue-1192, issue-0736, issue-1334]
 > timer" has one answer and not two.
 >
 > One thing the fix had to measure rather than read, filed separately as
-> **[issue 1334](../1334-ros-time-fallback-reads-an-unadvanced-steady-counter.md)**:
-> the documented "a `Ros` timer with no `/clock` reads system time" fallback is
-> not what `nros_core` does — it reads an in-image steady counter nothing
-> advances. That is why the `Ros` answer is unconditional rather than "wall when
-> no source is attached": the conditional rule would be wrong today, and a park
-> bound that flipped with whether a publisher happened to be running is a
-> behaviour no declaration named.
+> **[issue 1334](1334-ros-time-fallback-reads-an-unadvanced-steady-counter.md)**:
+> the documented "a `Ros` timer with no `/clock` reads system time" fallback was
+> not what `nros_core` did — it read an in-image steady counter nothing
+> advances. That was one of two reasons the `Ros` answer is unconditional rather
+> than "wall when no source is attached". **1334 is now fixed** (2026-09-13),
+> and that reason is gone: the fallback reads the wall clock, as rclcpp, the C
+> surface and this tree's own docs always said. The verdict here is UNCHANGED
+> and rests on the other reason, which was always the stronger and is about the
+> rule rather than one image's state — a park bound that flipped with whether a
+> publisher happened to be running is a behaviour no declaration named, and it
+> would flip at the first `/clock` sample, which is exactly the instant the
+> remainder stops being wall microseconds. What 1334 changes is that
+> contributing nothing now costs LATENCY (bounded by the caller's spin budget)
+> where before it cost nothing at all, because a standalone `Ros` timer never
+> fired.
 
 ## Problem
 
