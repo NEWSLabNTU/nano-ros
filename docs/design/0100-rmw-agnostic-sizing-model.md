@@ -212,6 +212,11 @@ wire_bound_bytes = 4096
 depth = "history = keep_all on subscription /image: a KEEP_ALL queue has no static bound (RFC-0100 D6)"
 storage_bytes = "`depth` is refused (history = keep_all), and a receive region is sized from it"
 
+[image]
+node_count = 2
+backend_count = 1
+subscriber_count = 3
+
 # All four STATED since phase-454 W6.c. The three maxima come from codegen's own
 # per-type schema walk (the one that prices the bounds), taken per column: the
 # widest type and the deepest type need not be the same type. A type whose schema
@@ -248,6 +253,16 @@ means NOBODY SAID … It must never read as 0"* — and `Refused` is "I looked a
 there is no number, here is why". `Fact::stated()` is the only accessor that
 yields a value, so there is no spelling of "read it, and if that fails use 10"
 that does not go through a `match`.
+
+**`[image]` carries the counts no endpoint row can** (phase-454 W6.d/W6.e). Most
+of D1's "entity counts by kind" are read off the rows — a consumer wanting
+subscriptions counts `kind = "subscription"`. Three are not there to be counted:
+the NODE count, the BACKEND count, and the session's SUBSCRIBER count, which is
+declared subscriptions plus the feedback subscription each action client opens.
+The third is a fact rather than a row count on purpose: the multiplier that turns
+one declared action into several session slots lives beside the calls that make
+it (`check-infra-queryable-counts` holds it there), and a build script counting
+rows and multiplying would be a third mirror of it in a file no gate scans.
 
 **Three fields the sketch above did not have, and one it did.**
 `schema_version` and `[meta] entry` are new: the first because a reader that kept
@@ -293,8 +308,8 @@ maintainer of that backend reads it.
 | zenoh | counts; `depth`; small/large bounds; service req/resp bounds; `[policy]` | `ZPICO_MAX_*`, `SUBSCRIBER_RING_DEPTH`, payload pools, `SERVICE_BUFFERS` | counts and payload classes derived; ring depth DERIVED from the declared depths (phase-454 W6.a, −124,032 B measured); `SERVICE_BUFFERS`'s slot size takes the declared service bound as its default and carries a stated non-annotation — but **no service or action type has a bound row to read** (`record_message` runs for `.msg` only), so it refuses on every image today |
 | XRCE | counts (**zero legal**); per-family bounds; `depth`; MTU; `reliability` | `MAX_*`, per-family `BUFFER_SIZE`, ring depths, `STREAM_HISTORY` | two counts derivable via `-1`; one global `BUFFER_SIZE = 1024` serves three families; reliability unread |
 | Cyclone | `[types]`, `[target].heap_budget_bytes`. **Nothing else** | `MAX_TYPES`, `MAX_DESCRIPTOR_TYPES`, `MAX_FIELDS`, `MAX_KINDS`, heap assertion | **all derived, phase-454 W6.c** |
-| uORB | distinct topic count; subscription count | `REGISTRY_CAPACITY`, `PX4_MAX_CALLBACKS` | neither wired |
-| cffi | subscription count; node count; backend count | `RMW_SUBSCRIBER_SLOTS`, `MAX_NODES`, `MAX_BACKENDS` | slots derived; `max_nodes = components().len()` computed and discarded |
+| uORB | distinct topic count; subscription count | `REGISTRY_CAPACITY`, `PX4_MAX_CALLBACKS` | **both derived, phase-454 W6.d** |
+| cffi | subscription count; node count; backend count | `RMW_SUBSCRIBER_SLOTS`, `MAX_NODES`, `MAX_BACKENDS` | **all three derived, phase-454 W6.e** |
 
 **Not a derivation, and must not be modelled as one:** cffi's `SLOT_SIZE` is a
 hard 1024, and `insert::<T>()` returns `None` both when every slot is claimed and
@@ -341,7 +356,7 @@ build prints what declaring would save:
 | zenoh | ROS default depth, closure bound, `UNDECLARED_HEADROOM` queryables |
 | XRCE | **assume reliable** — pay both 64 KiB buffers |
 | Cyclone | `DEFAULT_MAX_TYPES = 32` floor |
-| uORB | current literals |
+| uORB | current literals — the `#ifndef … 64` in each source, so an image with no descriptor is byte-identical to every build before W6.d |
 
 ## D7 — derivation publishes demand, unfloored; the floor lives at the consumer
 

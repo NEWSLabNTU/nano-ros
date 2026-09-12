@@ -220,8 +220,8 @@ One sub-wave per consumer; they are independent and can run in parallel.
 | W6.a | zenoh | `SUBSCRIBER_RING_DEPTH` from declared depth (authored today); `SERVICE_BUFFERS` derived from request/response bounds and given a `// nros-pool:` annotation or a stated reason — it is 144,128 B on a native talker and in neither |
 | W6.b | XRCE | `reliability` gates the two 64 KiB `*_reliable_buf`; one global `BUFFER_SIZE = 1024` splits into three per-family sizes; ring depths take declared depth as their default |
 | W6.c | Cyclone | **LANDED** — `MAX_DESCRIPTOR_TYPES` derived from the same count as `MAX_TYPES` (silent-drop overflow at ~86 types today); `MAX_FIELDS`/`MAX_KINDS`/`MAX_NESTED_DEPTH` from the schema walk codegen already does; heap budget asserted at boot (D11) |
-| W6.d | uORB | `REGISTRY_CAPACITY` and `PX4_MAX_CALLBACKS` — both trivially derivable, neither wired |
-| W6.e | cffi | `MAX_NODES` from `components().len()`, which is already computed and discarded |
+| W6.d | uORB | **LANDED.** `REGISTRY_CAPACITY` and `PX4_MAX_CALLBACKS` — both trivially derivable, neither wired |
+| W6.e | cffi | **LANDED.** `MAX_NODES` from `components().len()`, which is already computed and discarded |
 
 Each sub-wave keeps RFC-0100 D7: publish demand **unfloored**, floor at the pool.
 Issues 1015 and 1033 are the negative control — one derivation feeding two
@@ -332,6 +332,32 @@ by every image at its coordinate, so a `-D` there would be last-configure-wins
 across images. That road keeps the `#ifndef` fallbacks, which is exactly what it
 had before. Wiring it needs a per-entry OBJECT library or a runtime cap, and
 neither belongs in this wave.
+
+#### W6.d + W6.e — uORB and cffi — **LANDED**
+
+They land together: they share a shape — counts only, no payload bound, no
+depth, no MTU — and they share the schema change that makes them possible:
+`[image]` carries the node count, the backend count and the session's subscriber
+count, the three RFC-0100 D5 names that no endpoint row can be counted
+to get.
+
+Measured, on a linked artifact rather than by arithmetic:
+
+| image | pool | before | after | delta |
+| --- | --- | --- | --- | --- |
+| `examples/esp32-c3-baremetal/rust/listener` (1 component, 1 subscription) | uORB `g_table` (`nm` on `topic_registry.cpp.o`, host ABI) | 1,536 B (64 slots) | 24 B (1 slot) | **−1,512 B** |
+| `examples/native/rust/talker` (1 component, 1 publisher, `rmw = "zenoh"`) | cffi `REGISTRY` (`nm` on a linked binary) | 328 B (8 slots) | 48 B (1 slot) | **−280 B** |
+
+`NODE_TABLE` is `MAX_NODES` × a measured 144-byte `NodeSlot`, so the same
+declaration takes it from 576 B to 144 B on any image that registers a node; the
+probe binary above does not keep it live, so that one is arithmetic over two
+measured quantities rather than a symbol read, and is reported as such.
+
+And the direction the campaign cares about more: on the pub-only talker the
+subscriber demand is **0**, published unfloored, and the uORB consumer raises it
+to 1 with a line that says so — `NROS_RMW_UORB_PX4_MAX_CALLBACKS=0 raised to 1`.
+That is D7 working in both directions in one image: zero reaches cffi's `[T; 0]`
+untouched and is refused by the C++ array that cannot express it.
 
 ### W7 — contract and `qos_overrides` must agree
 

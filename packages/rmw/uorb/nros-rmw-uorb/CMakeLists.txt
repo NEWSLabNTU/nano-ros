@@ -147,6 +147,37 @@ target_compile_options(nros_rmw_uorb PRIVATE
     -fno-exceptions -fno-rtti
 )
 
+# ---- Derived pool sizes (phase-454 W6.d, RFC-0100 D5) ----------------------
+# The two size knobs this backend has, from what the IMAGE declares rather than
+# from the literals in the sources. `NrosRmwUorbSizing.cmake` carries the
+# arithmetic and the floors; this is only where the answer is applied.
+#
+# Reading the descriptor is OPTIONAL and its absence is the ordinary case: a
+# standalone `add_subdirectory` of this package, or a PX4 module shell, has no
+# `nros` CLI in scope and no contract to resolve. Then no `-D` is emitted and
+# each source's own `#ifndef ... 64` stands — byte-identical to every build
+# before this wave.
+set(NROS_RMW_UORB_SIZING_DESCRIPTOR "" CACHE PATH
+    "The image's `build/nros/sizing/<entry>.toml` (RFC-0100 D4). Empty: keep the built-in pool sizes.")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosRmwUorbSizing.cmake")
+if(NROS_RMW_UORB_SIZING_DESCRIPTOR AND COMMAND nros_sizing_descriptor_read)
+    nros_sizing_descriptor_read("${NROS_RMW_UORB_SIZING_DESCRIPTOR}")
+elseif(NROS_RMW_UORB_SIZING_DESCRIPTOR)
+    # A descriptor was NAMED and the reader is not here. Loud rather than
+    # silent: sizing from our own literals while a user believes they supplied
+    # numbers is exactly the silent default RFC-0100 D6 exists to remove.
+    message(FATAL_ERROR
+        "nros-rmw-uorb: NROS_RMW_UORB_SIZING_DESCRIPTOR names "
+        "${NROS_RMW_UORB_SIZING_DESCRIPTOR}, but `nros_sizing_descriptor_read` is not "
+        "available. Include cmake/NanoRosSizingDescriptor.cmake (and NanoRosCodegenCore.cmake "
+        "before it) in the consuming build, or unset the variable.")
+endif()
+nros_rmw_uorb_sizing_defines(_nros_rmw_uorb_pool_defs)
+if(_nros_rmw_uorb_pool_defs)
+    message(STATUS "nros-rmw-uorb: derived pool sizes ${_nros_rmw_uorb_pool_defs}")
+    target_compile_definitions(nros_rmw_uorb PRIVATE ${_nros_rmw_uorb_pool_defs})
+endif()
+
 set_target_properties(nros_rmw_uorb PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME NrosRmwUorb

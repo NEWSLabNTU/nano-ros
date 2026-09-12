@@ -892,8 +892,14 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   1015's floor — landed in the derivation a day before 1033's fix — silently defeated
   it, and every knob gate stayed green because the number was derived correctly and
   delivered faithfully. Floor at the pool (`c_array_pool_floor` /
-  `_nros_c_array_pool_floor`), keep `#if X < 1 / #error` beside the array as the
+  `_nros_c_array_pool_floor`, the latter now in `cmake/NanoRosPoolFloor.cmake`
+  because phase-454 W6.d gave it a second backend — uORB's two C++ pools, whose
+  build cannot include a Zephyr module file), keep `#if X < 1 / #error` beside the
+  array as the
   backstop that binds a producer neither reaches. Gate: `check-c-array-pool-floors`
+  (its FLOORED knob set is PER PRODUCER since W6.d: a global list made the Zephyr
+  ZPICO bridge answerable for a pool in a PX4 module, and the only way to satisfy
+  that is a written abstention that says nothing true)
   (also refuses an unruled new one; the 1 still unruled is issue 1131 — the
   other 14 were ruled there, 10 guarded and 4 already covered). **Issue 1131
   has since ruled the last one too, so the table is EMPTY and

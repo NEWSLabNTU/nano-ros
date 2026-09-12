@@ -427,6 +427,138 @@ impl Endpoint {
     }
 }
 
+/// `[image]` — the counts that are properties of the IMAGE and of no endpoint.
+///
+/// RFC-0100 D1 lists "entity counts by kind" as an image fact, and the endpoint
+/// rows carry most of them: a consumer that wants subscriptions counts rows with
+/// `kind = "subscription"`. Three counts have no row to be read off, and this is
+/// where they live.
+///
+/// D5's cffi row names all three:
+///
+/// > cffi | reads: subscription count; node count; backend count | computes:
+/// > `RMW_SUBSCRIBER_SLOTS`, `MAX_NODES`, `MAX_BACKENDS`
+///
+/// [`Self::subscriber_count`] is in here rather than left to a row count for a
+/// reason that is measured rather than stylistic — see its own doc. Nothing else
+/// a consumer can count itself belongs here; the rows are the surface, and a
+/// second spelling of a count the rows already carry is how two green tools come
+/// to disagree.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Image {
+    node_count: Option<usize>,
+    backend_count: Option<usize>,
+    subscriber_count: Option<usize>,
+    #[serde(default)]
+    refused: BTreeMap<String, String>,
+}
+
+impl Image {
+    pub(crate) const FIELDS: &'static [&'static str] =
+        &["node_count", "backend_count", "subscriber_count"];
+
+    /// Distinct `(name, namespace)` nodes the image registers — one per declared
+    /// component.
+    ///
+    /// Sizes the executor's node table and the cffi shim's, which are two tables
+    /// over one count. Exhaustion of either NAMES its knob
+    /// (`NodeError::NodeTableFull`), which is the property phase-412 required
+    /// before deriving a count at all.
+    pub fn node_count(&self) -> Fact<usize> {
+        fact(&self.node_count, "node_count", &self.refused)
+    }
+
+    /// Distinct RMW backends this image links and registers.
+    ///
+    /// Sizes `nros_rmw_cffi`'s backend registry. The registry is a fixed array
+    /// and a short one is a REGISTRATION FAILURE rather than a silent
+    /// truncation, so the number has to describe the image and not a guess.
+    pub fn backend_count(&self) -> Fact<usize> {
+        fact(&self.backend_count, "backend_count", &self.refused)
+    }
+
+    /// Subscriber slots one session opens: declared subscriptions PLUS the
+    /// feedback subscription each action client opens.
+    ///
+    /// **This is why it is a fact and not a row count.** An action is ONE
+    /// declared entity that costs SEVERAL session slots, and the multipliers
+    /// that say how many live beside the calls that make them
+    /// (`nros_node::executor::action`, held there by
+    /// `check-infra-queryable-counts`). A consumer counting
+    /// `kind = "action_client"` rows and multiplying would be a new mirror of a
+    /// number that already has two, in a build script no gate scans. So the
+    /// producer — which already owns a checked mirror — states the total.
+    pub fn subscriber_count(&self) -> Fact<usize> {
+        fact(&self.subscriber_count, "subscriber_count", &self.refused)
+    }
+
+    pub fn new(
+        node_count: Option<usize>,
+        backend_count: Option<usize>,
+        subscriber_count: Option<usize>,
+    ) -> Self {
+        Self {
+            node_count,
+            backend_count,
+            subscriber_count,
+            refused: BTreeMap::new(),
+        }
+    }
+
+    /// Builder setters. Each takes `Option` so a producer that has one count and
+    /// not another writes what it actually knows, leaving the rest ABSENT (or
+    /// refusing it with [`Self::refuse`], which is the louder and usually right
+    /// answer).
+    pub fn set_node_count(&mut self, v: Option<usize>) -> &mut Self {
+        self.node_count = v;
+        self
+    }
+    pub fn set_backend_count(&mut self, v: Option<usize>) -> &mut Self {
+        self.backend_count = v;
+        self
+    }
+    pub fn set_subscriber_count(&mut self, v: Option<usize>) -> &mut Self {
+        self.subscriber_count = v;
+        self
+    }
+
+    pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
+        debug_assert!(
+            Self::FIELDS.contains(&field),
+            "unknown [image] field {field}"
+        );
+        self.refused.insert(field.to_string(), reason.into());
+        self
+    }
+
+    pub(crate) fn refusals(&self) -> &BTreeMap<String, String> {
+        &self.refused
+    }
+
+    pub(crate) fn raw_value(&self, field: &str) -> Option<String> {
+        Some(match field {
+            "node_count" => self.node_count?.to_string(),
+            "backend_count" => self.backend_count?.to_string(),
+            "subscriber_count" => self.subscriber_count?.to_string(),
+            _ => return None,
+        })
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        known_refusals(
+            "image",
+            &self.refused,
+            Self::FIELDS,
+            &[
+                ("node_count", self.node_count.is_some()),
+                ("backend_count", self.backend_count.is_some()),
+                ("subscriber_count", self.subscriber_count.is_some()),
+            ],
+        )
+    }
+}
+
 /// `[types]` — Cyclone's whole appetite (RFC-0100 D5).
 ///
 /// > Cyclone: reads `[types]`, `[target].heap_budget_bytes`. **Nothing else**.
@@ -619,6 +751,8 @@ pub struct SizingDescriptor {
     #[serde(default, rename = "endpoint")]
     pub endpoints: Vec<Endpoint>,
     #[serde(default)]
+    pub image: Image,
+    #[serde(default)]
     pub types: Types,
     #[serde(default)]
     pub policy: Policy,
@@ -638,6 +772,7 @@ impl SizingDescriptor {
             },
             target: Target::default(),
             endpoints: Vec::new(),
+            image: Image::default(),
             types: Types::default(),
             policy: Policy::default(),
         }
@@ -669,6 +804,7 @@ impl SizingDescriptor {
         for ep in &self.endpoints {
             ep.validate()?;
         }
+        self.image.validate()?;
         self.types.validate()?;
         self.policy.validate()?;
         Ok(())

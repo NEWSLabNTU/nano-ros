@@ -159,20 +159,45 @@ UNCLASSIFIED_CEILING = 0
 
 # --- the producer half -----------------------------------------------------
 
-# Every producer that hands a DERIVED number to a guarded knob, and the floor
-# call it must apply. Two lanes, because a Zephyr Rust image and a cargo leaf
-# reach the same pools by different paths (issue 0460).
-# A producer either FLOORS the knob or ABSTAINS from producing it at all, and
+# Every producer that hands a DERIVED number to a guarded knob, the floor call
+# it must apply, and THE KNOBS IT IS ANSWERABLE FOR.
+#
+# The knob set is per producer and not one global list. Until phase-454 W6.d
+# there was only one pool family with a derived count, so a global
+# `FLOORED_KNOBS` and a per-producer list were the same thing; the moment a
+# SECOND backend derived its own pools they stopped being. uORB's two C++ pools
+# are produced by uORB's own CMake helper and by nothing else — requiring the
+# Zephyr ZPICO bridge to floor `NROS_RMW_UORB_PX4_MAX_CALLBACKS` would be asking
+# a file that has never heard of uORB to state a number for it, and the only way
+# to satisfy that is a written abstention that says nothing true.
+#
+# A producer either FLOORS its knob or ABSTAINS from producing it at all, and
 # the abstention has to be written down: `ZPICO_MAX_QUERYABLES` is deliberately
 # not derived on the cargo lane (a leaf has no `NROS_DECLARED_INFRA_QUERYABLES`
 # channel, so a bare count would be SHORT for any image with param services),
 # and a rule with no spelling for that would push it into an unwanted floor.
+_ZPICO_POOLS = (
+    "ZPICO_MAX_LIVELINESS",  # phase-412 W2 -- derived since, same C-array rule
+    "ZPICO_MAX_PUBLISHERS",
+    "ZPICO_MAX_QUERYABLES",
+    "ZPICO_MAX_SUBSCRIBERS",
+)
+# phase-454 W6.d. Both are C++ arrays, so zero is refused by the LANGUAGE rather
+# than by the runtime: ISO C++ has no zero-size array and both TUs build
+# `-Wpedantic` inside a `-Werror` PX4 (issue 1131). The derivation publishes the
+# demand unfloored -- an image declaring no publishers and no subscriptions
+# derives exactly 0 distinct topics -- and this is where it is raised.
+_UORB_POOLS = (
+    "NROS_RMW_UORB_PX4_MAX_CALLBACKS",
+    "NROS_RMW_UORB_REGISTRY_CAPACITY",
+)
 FLOOR_PRODUCERS = [
     (
         "zephyr/cmake/nros_cargo_build.cmake",
         r"_nros_c_array_pool_floor\([^)]*\b{knob}\b",
         None,
         "the CMake ZPICO bridge",
+        _ZPICO_POOLS,
     ),
     (
         "packages/cli/nros-cli-core/src/leaf_entity_env.rs",
@@ -183,14 +208,20 @@ FLOOR_PRODUCERS = [
         # facts and the consumer floors the count itself, issue 0460).
         r'(?:NOT_DERIVED[A-Z_]*|[A-Z_]*DERIVED_BY_CONSUMER): &str = "{knob}"',
         "the cargo-leaf `[env]` sidecar",
+        _ZPICO_POOLS,
+    ),
+    (
+        "packages/rmw/uorb/nros-rmw-uorb/cmake/NrosRmwUorbSizing.cmake",
+        r"_nros_c_array_pool_floor\([^)]*\b{knob}\b",
+        None,
+        "the uORB sizing helper",
+        _UORB_POOLS,
     ),
 ]
-FLOORED_KNOBS = [
-    "ZPICO_MAX_LIVELINESS",  # phase-412 W2 -- derived since, same C-array rule
-    "ZPICO_MAX_PUBLISHERS",
-    "ZPICO_MAX_QUERYABLES",
-    "ZPICO_MAX_SUBSCRIBERS",
-]
+# Every knob any producer is answerable for — what `--audit` reports on, and
+# what the selftest mutates. Derived from the table above so the two cannot
+# drift.
+FLOORED_KNOBS = sorted({k for p in FLOOR_PRODUCERS for k in p[4]})
 
 # The shared derivation, and the slice of it that computes the pools. Nothing in
 # that slice may raise a count: it is the image's DEMAND, and two consumers read
@@ -364,14 +395,14 @@ def check_arrays(found: dict[str, dict]) -> list[str]:
 def check_producers(texts: dict[str, str]) -> list[str]:
     """Every producer floors the guarded knobs, and the derivation does not."""
     problems = []
-    for path, pattern, abstain, what in FLOOR_PRODUCERS:
+    for path, pattern, abstain, what, knobs in FLOOR_PRODUCERS:
         text = texts.get(path)
         if text is None:
             raise Failure(
                 f"{path}: missing. This gate names its producers explicitly, so a\n"
                 "renamed or deleted one is a failure rather than a silent pass."
             )
-        for knob in FLOORED_KNOBS:
+        for knob in knobs:
             if abstain and re.search(abstain.format(knob=knob), text):
                 continue
             if not re.search(pattern.format(knob=knob), text):
@@ -570,6 +601,13 @@ const NOT_DERIVED_LIVELINESS_NEEDS_INFRA_COUNT: &str = "ZPICO_MAX_LIVELINESS";
         ("ZPICO_MAX_SUBSCRIBERS", floor(knobs.max_subscribers)),
 """
 
+# phase-454 W6.d — the third producer, and the one that made the knob set
+# per-producer: it answers for uORB's two C++ pools and for nothing else.
+GOOD_UORB = """
+_nros_c_array_pool_floor(_capacity "${N}" NROS_RMW_UORB_REGISTRY_CAPACITY)
+_nros_c_array_pool_floor(_callbacks "${M}" NROS_RMW_UORB_PX4_MAX_CALLBACKS)
+"""
+
 GOOD_DERIVE = """
         let n = |tag: &str| per_kind.get(tag).copied().unwrap_or(0);
         let max_subscribers = n(sub) + n(ac) * ACTION_CLIENT_SUBSCRIPTIONS;
@@ -577,10 +615,11 @@ GOOD_DERIVE = """
 """
 
 
-def producer_texts(cmake=GOOD_CMAKE, rust=GOOD_RUST, derive=GOOD_DERIVE):
+def producer_texts(cmake=GOOD_CMAKE, rust=GOOD_RUST, derive=GOOD_DERIVE, uorb=GOOD_UORB):
     return {
         FLOOR_PRODUCERS[0][0]: cmake,
         FLOOR_PRODUCERS[1][0]: rust,
+        FLOOR_PRODUCERS[2][0]: uorb,
         DERIVATION: derive,
     }
 
@@ -717,6 +756,23 @@ def selftest() -> int:
         "ZPICO_MAX_LIVELINESS" in p
         for p in check_producers(producer_texts(rust=lvl_silent))
     )
+    # phase-454 W6.d -- the uORB producer, and the control that the knob set is
+    # really PER PRODUCER. Dropping uORB's floor must fail...
+    uorb_dropped = GOOD_UORB.replace(
+        '_nros_c_array_pool_floor(_callbacks "${M}" NROS_RMW_UORB_PX4_MAX_CALLBACKS)', ""
+    )
+    assert any(
+        "produces NROS_RMW_UORB_PX4_MAX_CALLBACKS without the C-array floor" in p
+        for p in check_producers(producer_texts(uorb=uorb_dropped))
+    )
+    # ...and the two lanes that have never heard of uORB must NOT be asked for
+    # it. Before the knob set was per producer, a global list made the Zephyr
+    # ZPICO bridge answerable for a pool in a PX4 module, and the only way to
+    # satisfy that is a written abstention that says nothing true.
+    for name in ("NROS_RMW_UORB_PX4_MAX_CALLBACKS", "NROS_RMW_UORB_REGISTRY_CAPACITY"):
+        for p in check_producers(producer_texts()):
+            assert name not in p, p
+
     # The regression this gate was written after: the floor back in the shared
     # derivation, where it also reaches the XRCE pools.
     floored = GOOD_DERIVE.replace(

@@ -64,7 +64,7 @@ use std::path::{Path, PathBuf};
 
 pub use fact::Fact;
 pub use render::{portability_violation, render};
-pub use schema::{Endpoint, Meta, Policy, SizingDescriptor, Target, Types};
+pub use schema::{Endpoint, Image, Meta, Policy, SizingDescriptor, Target, Types};
 pub use vocabulary::{
     Basis, Durability, EndpointKind, History, RegistrationPath, Reliability, Status,
 };
@@ -239,6 +239,7 @@ mod tests {
         d.endpoints.push(sub);
         d.types = Types::new(Some(7), Some(12), Some(48), Some(3));
         d.policy = Policy::new(Some(64), Some(4096), Some(1));
+        d.image = Image::new(Some(2), Some(1), Some(3));
         d
     }
 
@@ -327,6 +328,55 @@ mod tests {
         let back = parse(&render(&d), Path::new("e.toml")).unwrap();
         assert_eq!(back.types.distinct_count().stated(), Some(&0));
         assert_eq!(back.meta.undeclared_endpoints().stated(), Some(&0));
+    }
+
+    #[test]
+    fn the_image_counts_survive_a_round_trip_and_refuse_one_at_a_time() {
+        // phase-454 W6.e. The three counts feed three different cffi pools, and
+        // D6's rule is that a refusal degrades nothing else -- an image whose
+        // backend nobody named must still get its node table sized.
+        let mut d = island();
+        d.image = Image::new(Some(2), None, Some(3));
+        d.image.refuse(
+            "backend_count",
+            "the image names no rmw, so what it links \
+                    is not known here",
+        );
+        let back = parse(&render(&d), Path::new("t.toml")).unwrap();
+        assert_eq!(back.image.node_count().stated(), Some(&2));
+        assert_eq!(back.image.subscriber_count().stated(), Some(&3));
+        assert_eq!(back.image.backend_count().tag(), "refused");
+        assert!(
+            back.image
+                .backend_count()
+                .refusal()
+                .unwrap()
+                .contains("names no rmw")
+        );
+    }
+
+    #[test]
+    fn an_image_with_no_counts_reads_absent_not_zero() {
+        // The distinction the whole `Fact` type exists for, at the section a
+        // pool size is read from: a consumer that saw `0` here would build a
+        // zero-slot registry for an image nobody measured.
+        let d = SizingDescriptor::new("x", Status::Refused, Basis::Closure);
+        let back = parse(&render(&d), Path::new("x.toml")).unwrap();
+        assert_eq!(back.image.node_count().tag(), "absent");
+        assert_eq!(back.image.backend_count().tag(), "absent");
+        assert!(back.image.subscriber_count().stated().is_none());
+    }
+
+    #[test]
+    fn a_zero_subscriber_count_is_a_demand_and_reaches_the_consumer() {
+        // Issue 1033's half of D7: a pub-only image demands ZERO subscriber
+        // slots and that is the answer, worth 1 KiB a slot in the cffi pool.
+        // Nothing here floors it; whether zero is a legal SIZE is decided at
+        // the pool that names the knob.
+        let mut d = island();
+        d.image = Image::new(Some(1), Some(1), Some(0));
+        let back = parse(&render(&d), Path::new("p.toml")).unwrap();
+        assert_eq!(back.image.subscriber_count().stated(), Some(&0));
     }
 
     // --- negative controls: a reader that would default silently -------------

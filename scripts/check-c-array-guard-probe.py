@@ -205,6 +205,27 @@ PROBE_CONTEXT = {
                      "preprocessing. Stated so a reviewer is not misled into "
                      "thinking this probe proves more than it does.",
     },
+    # phase-454 W6.d — the registry's capacity became a DERIVED number, so a
+    # contract declaring no publishers and no subscriptions can now reach it
+    # with 0, and `Entry g_table[0]` is a hard error in a `-Wpedantic -Werror`
+    # PX4 C++ build. The guard landed with the derivation; this is the probe
+    # that proves it fires.
+    #
+    # `compile`, not `preprocess`, and that is the whole difference from its
+    # neighbour above: this TU includes only the package's own registry header,
+    # `nros/rmw_ret.h` and `<cstring>` — no PX4 SDK, no per-build generated
+    # config — so the real translation unit builds from this checkout with two
+    # include paths and the probe asks the compiler the actual question.
+    "packages/rmw/uorb/nros-rmw-uorb/src/topic_registry.cpp": {
+        "mode": "compile",
+        "cc": "c++",
+        "std": "c++14",
+        "includes": [
+            "packages/rmw/uorb/nros-rmw-uorb/include",
+            "packages/core/nros-rmw-abi/include",
+        ],
+        "defines": [],
+    },
 }
 INCLUDE_LINE = re.compile(r"^\s*#\s*include\b")
 

@@ -25,7 +25,7 @@
 //! writes freely, and the one place an interpolated `Path::display()` would slip
 //! in. A refusal that names a file names it relative, or names the entry instead.
 
-use crate::schema::{Endpoint, Meta, Policy, SizingDescriptor, Target, Types};
+use crate::schema::{Endpoint, Image, Meta, Policy, SizingDescriptor, Target, Types};
 
 /// The header every descriptor carries.
 const HEADER: &str = "\
@@ -82,6 +82,10 @@ pub fn render(desc: &SizingDescriptor) -> String {
         emit_values(&mut out, Endpoint::FIELDS, |f| ep.raw_value(f));
         emit_refusals(&mut out, "endpoint.refused", ep.refusals());
     }
+
+    out.push_str("\n[image]\n");
+    emit_values(&mut out, Image::FIELDS, |f| desc.image.raw_value(f));
+    emit_refusals(&mut out, "image.refused", desc.image.refusals());
 
     out.push_str("\n[types]\n");
     emit_values(&mut out, Types::FIELDS, |f| desc.types.raw_value(f));
