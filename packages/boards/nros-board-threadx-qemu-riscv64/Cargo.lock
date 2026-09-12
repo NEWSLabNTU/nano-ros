@@ -414,6 +414,7 @@ dependencies = [
  "nros-cc-flags",
  "nros-log",
  "nros-rmw",
+ "nros-sizing-descriptor",
  "nros-zephyr-build",
  "portable-atomic",
 ]

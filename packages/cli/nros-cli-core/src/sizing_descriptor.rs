@@ -162,6 +162,7 @@ pub fn build(inputs: &DescriptorInputs<'_>) -> SizingDescriptor {
         }
     }
 
+    desc.image = image_facts(inputs);
     desc.types = type_facts(inputs, &desc.endpoints);
     // `[policy]` stays empty. See the module docs: a policy fact is STATED, and
     // nothing states one yet.
@@ -528,6 +529,61 @@ fn registration_path_refusal(inputs: &DescriptorInputs<'_>) -> String {
          bound (issue 1319), so the path is refused rather than assumed",
         missing.join(" and ")
     )
+}
+
+/// `[image]` — the three counts no endpoint row carries (phase-454 W6.e).
+///
+/// Every number here is one the entity inventory ALREADY derived; nothing is
+/// re-computed, which is the same rule the rest of this module holds to. Two of
+/// them are simply thrown away today: `DerivedEntityKnobs::max_nodes` reaches the
+/// executor's node table and never the cffi shim's, and no producer of any kind
+/// states how many backends an image links.
+///
+/// UNFLOORED, D7. `max_subscribers` is zero for a pub-only image and that is the
+/// answer — 1 KiB a slot in the cffi pool (issue 1033's measurement, one backend
+/// over). Whether zero is a legal SIZE is decided at each pool that names a knob.
+fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
+    use crate::entity_inventory::Derivation;
+
+    let mut img = nros_sizing_descriptor::Image::default();
+
+    // The backend half is independent of the inventory: it comes from what the
+    // image DECLARES it links, not from what it declares it publishes.
+    match inputs.rmw.as_deref() {
+        // A leaf names exactly ONE backend (`LeafSystem::rmw` is a single
+        // value), and `nros build` generates exactly one `register()` call for
+        // it. A bridge binds several -- and a bridge leaf carries no
+        // `system.toml`, so no descriptor is written for one and this arm is
+        // never the answer for a multi-backend image.
+        Some(_) => {
+            img = nros_sizing_descriptor::Image::new(None, Some(1), None);
+        }
+        None => {
+            img.refuse(
+                "backend_count",
+                "the image names no rmw, so what it links is not known here -- a short backend \
+                 registry is a registration FAILURE, so it is refused rather than guessed",
+            );
+        }
+    }
+
+    match inputs.inventory.map(EntityInventory::derive) {
+        Some(Derivation::Derived(k)) => {
+            img.set_node_count(Some(k.max_nodes))
+                .set_subscriber_count(Some(k.max_subscribers));
+        }
+        Some(Derivation::Refused { reason }) => {
+            img.refuse("node_count", reason.clone())
+                .refuse("subscriber_count", reason);
+        }
+        None => {
+            let why = "the entity inventory did not compose for this entry, so the image's \
+                       node and subscriber counts are not known -- absence is not zero";
+            img.refuse("node_count", why)
+                .refuse("subscriber_count", why);
+        }
+    }
+    img
 }
 
 /// `[types]` — Cyclone's whole appetite (RFC-0100 D5).
@@ -904,6 +960,25 @@ pub fn to_cmake(desc: &SizingDescriptor) -> String {
         &mut out,
         "NROS_SIZING_TYPES_MAX_NESTED_DEPTH",
         &desc.types.max_nested_depth(),
+    );
+    // phase-454 W6 — the three image counts. uORB reads the subscriber one and
+    // the endpoint TOPIC column beside it; a C/C++ consumer of the cffi shim
+    // reads all three. Same D6 shape as every fact above: a refused one has no
+    // `set()` at all, so `if(DEFINED ...)` is the only road to a number.
+    emit_cmake_fact(
+        &mut out,
+        "NROS_SIZING_IMAGE_NODE_COUNT",
+        &desc.image.node_count(),
+    );
+    emit_cmake_fact(
+        &mut out,
+        "NROS_SIZING_IMAGE_BACKEND_COUNT",
+        &desc.image.backend_count(),
+    );
+    emit_cmake_fact(
+        &mut out,
+        "NROS_SIZING_IMAGE_SUBSCRIBER_COUNT",
+        &desc.image.subscriber_count(),
     );
     out.push_str(&format!(
         "set(NROS_SIZING_ENDPOINT_COUNT {})\n",
@@ -1305,5 +1380,99 @@ mod tests {
         let d = build(&base(&inv));
         assert_eq!(d.types.distinct_count().stated(), Some(&0));
         assert_eq!(d.meta.undeclared_endpoints().stated(), Some(&0));
+        // phase-454 W6.d/W6.e — and the same for the count uORB's push-wake
+        // pool and cffi's slot pool both read. Zero subscriptions IS zero
+        // demand; `_nros_c_array_pool_floor` raises it where the storage
+        // refuses zero, and `[T; 0]` keeps it where the storage does not.
+        assert_eq!(d.image.subscriber_count().stated(), Some(&0));
+    }
+
+    #[test]
+    fn the_image_counts_come_from_the_derivation_and_not_from_the_rows() {
+        // phase-454 W6.e. The subscriber count is `max_subscribers`, which is
+        // declared subscriptions PLUS the feedback subscription each action
+        // client opens -- so it is NOT the number of `kind = "subscription"`
+        // rows, and an image with an action client proves the difference.
+        let mut ac = EntityDecl::bare(
+            EntityKind::ActionClient,
+            Some("test_msgs/action/Fibonacci".into()),
+            Some("/fib".into()),
+        );
+        ac.history = Some(QoSHistoryPolicy::KeepLast);
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10)), ac]);
+        let d = build(&base(&inv));
+        let subs = d
+            .endpoints
+            .iter()
+            .filter(|e| e.kind == EndpointKind::Subscription)
+            .count();
+        assert_eq!(subs, 1, "one row says `subscription`");
+        // ...and the session opens two slots. A consumer that counted rows and
+        // multiplied would need a third mirror of a multiplier that already has
+        // two, in a build script no gate scans.
+        assert_eq!(d.image.subscriber_count().stated(), Some(&2));
+        assert_eq!(d.image.node_count().stated(), Some(&1));
+    }
+
+    #[test]
+    fn an_image_that_names_no_backend_refuses_the_backend_count() {
+        // A short backend registry is a REGISTRATION FAILURE and not a
+        // truncation, so the safe direction is the builtin 8 and a guess is
+        // never it.
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
+        let mut i = base(&inv);
+        i.rmw = None;
+        let d = build(&i);
+        let backends = d.image.backend_count();
+        let r = backends.refusal().unwrap();
+        assert!(r.contains("names no rmw"), "{r}");
+        // Degrades nothing else, D6.
+        assert_eq!(d.image.node_count().stated(), Some(&1));
+        assert_eq!(d.image.subscriber_count().stated(), Some(&1));
+    }
+
+    #[test]
+    fn a_refused_inventory_refuses_both_counts_rather_than_reporting_zero() {
+        let mut i = DescriptorInputs {
+            entry: "talker".into(),
+            ..Default::default()
+        };
+        i.host_build = true;
+        i.rmw = Some("zenoh".into());
+        let d = build(&i);
+        assert!(d.image.node_count().stated().is_none());
+        assert!(
+            d.image
+                .subscriber_count()
+                .refusal()
+                .unwrap()
+                .contains("absence is not zero")
+        );
+        // The backend half is independent of the inventory and survives.
+        assert_eq!(d.image.backend_count().stated(), Some(&1));
+    }
+
+    #[test]
+    fn the_cmake_projection_carries_the_image_counts() {
+        // uORB and every C/C++ consumer of the cffi shim read these through the
+        // projection; a refused one gets no `set()` at all, so `if(DEFINED ...)`
+        // stays the only road to a number.
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
+        let mut i = base(&inv);
+        i.rmw = None;
+        let out = to_cmake(&build(&i));
+        assert!(out.contains("set(NROS_SIZING_IMAGE_NODE_COUNT 1)"), "{out}");
+        assert!(
+            out.contains("set(NROS_SIZING_IMAGE_SUBSCRIBER_COUNT 1)"),
+            "{out}"
+        );
+        assert!(
+            !out.contains("set(NROS_SIZING_IMAGE_BACKEND_COUNT "),
+            "{out}"
+        );
+        assert!(
+            out.contains("set(NROS_SIZING_IMAGE_BACKEND_COUNT_REFUSED "),
+            "{out}"
+        );
     }
 }

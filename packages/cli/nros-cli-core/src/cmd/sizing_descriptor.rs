@@ -86,6 +86,10 @@ fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
         "    heap_budget_bytes {}",
         desc.target.heap_budget_bytes()
     );
+    let _ = writeln!(s, "  image:");
+    let _ = writeln!(s, "    node_count        {}", desc.image.node_count());
+    let _ = writeln!(s, "    backend_count     {}", desc.image.backend_count());
+    let _ = writeln!(s, "    subscriber_count  {}", desc.image.subscriber_count());
     let _ = writeln!(s, "  types:");
     let _ = writeln!(s, "    distinct_count    {}", desc.types.distinct_count());
     let _ = writeln!(s, "    max_fields        {}", desc.types.max_fields());

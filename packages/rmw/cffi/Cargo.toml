@@ -41,6 +41,12 @@ nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
 nros-board-common = { path = "../../boards/nros-board-common", features = [
     "build-helpers",
 ], default-features = false }
+# phase-454 W6.e (RFC-0100 D4/D5) — the sizing descriptor `nros sync` writes per
+# entry, and the road three of this crate's four pools now take their DEFAULT
+# from. Read by PATH, never through a knob-per-fact environment: issues 0460 and
+# 0491 are what env transport cost here, and neither can carry a per-endpoint
+# table without encoding one in a string.
+nros-sizing-descriptor = { path = "../../tooling/nros-sizing-descriptor" }
 # Phase 115.G.4 — compiles the second-language smoke-test stubs in
 # `tests/c_stubs/*.c` into a small static lib that the integration
 # tests link against. Only used during `cargo build`/`cargo test`;

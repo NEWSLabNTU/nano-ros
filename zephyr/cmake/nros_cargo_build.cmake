@@ -33,6 +33,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosResolved.cmake")
 # them the right place to clear a date a previous pass armed. FILE scope, same
 # reason as the two above.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosReconfigure.cmake")
+# Issues 1015 + 1033 / RFC-0100 D7 -- `_nros_c_array_pool_floor`, the ONE CMake
+# spelling of "raise a derived demand to what a fixed C array can be sized to".
+# It lives in `cmake/` rather than here because phase-454 W6.d gave it a second
+# backend: uORB's two C++ pools are floored by the same function, from a build
+# that cannot include a Zephyr module file. FILE scope, same reason as above.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosPoolFloor.cmake")
 
 # =============================================================================
 # nros_detect_rust_target()
@@ -169,41 +175,11 @@ function(_nros_resolve_knob env_name kconfig_value)
         "every nros knob resolved during this configure")
 endfunction()
 
-# _nros_c_array_pool_floor(<out_var> <value> <knob>)
-#
-# Issue 1015 — raise a DERIVED demand to what a fixed C array can be sized to.
-#
-# The three zenoh pools reach `zpico.c` as the extents of real C arrays
-# (`queryable_entry_t queryables[ZPICO_MAX_QUERYABLES]` and its siblings). A
-# derived 0 is a legitimate demand — the reference island declares no service
-# servers — and it produced a board that transmitted NOTHING in 15 seconds: no
-# panic, no log line, core in WFI, every gate green, because the value was
-# derived correctly and delivered faithfully. The same image at 4 transmitted
-# 110 bytes, and at 1 it transmitted 110.
-#
-# The floor is applied HERE, at the consumer that names the knob, and NOT in
-# the derivation. The same `NROS_DERIVED_*` numbers reach
-# `NROS_XRCE_MAX_SUBSCRIBERS` / `NROS_XRCE_MAX_SERVICE_SERVERS` below, where a
-# zero is the ANSWER and worth 33,296 / 4,384 bytes of heap a slot (issue
-# 1033). One derivation, two consumers, two different legal minima.
-#
-# EMPTY passes through untouched: empty means "rung 4, nothing resolved", and
-# turning that into a 1 would state a number where the reading build script is
-# supposed to fall through to its own default.
-#
-# An explicit environment value is NOT floored — `_nros_resolve_knob` applies
-# it after this, so a person who states 0 gets the `#error` in `zpico.c` that
-# names the knob and this issue, rather than a number they did not ask for.
-function(_nros_c_array_pool_floor out_var value knob)
-    set(_v "${value}")
-    if(_v MATCHES "^[0-9]+$" AND _v LESS 1)
-        message(STATUS
-            "nros: ${knob}=${_v} raised to 1 — it sizes a fixed C array in "
-            "zpico.c, where zero is not a smaller pool (issue 1015)")
-        set(_v 1)
-    endif()
-    set(${out_var} "${_v}" PARENT_SCOPE)
-endfunction()
+# `_nros_c_array_pool_floor` — issue 1015, moved to `cmake/NanoRosPoolFloor.cmake`
+# by phase-454 W6.d, which gave it a SECOND backend (uORB's two C++ pools) whose
+# build cannot include this Zephyr file. Included at FILE scope with its
+# neighbours above, for the same reason: an `include()` inside a function frame
+# drops the file's vars when the frame pops. The call sites below are unchanged.
 
 # =============================================================================
 # The DERIVE sentinel (phase-403 W8, issue 0940)
