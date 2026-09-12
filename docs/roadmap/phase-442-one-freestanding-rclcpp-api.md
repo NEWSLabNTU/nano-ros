@@ -286,6 +286,42 @@ the rest and do not depend on each other.
   `NROS_CPP_NODE_HOSTED` in the tree; the per-header parse loop at `fail=0` on
   every toolchain; the FreeRTOS, Zephyr, NuttX and ThreadX C++ builds green.
 
+* **W8's blocker is RESOLVED (2026-09-12), and the answer was already in the
+  tree.** RFC-0096 D9 revision 3: the C/C++ API is a thin wrapper over the Rust
+  API, and for the rclcpp dispatch model **the Rust arena already owns the
+  entity**. `subscription.rs` says so — *"arena (rclcpp dispatch model), as
+  opposed to the poll-style `nros_cpp_subscription_create` above. The arena owns
+  the subscriber."* Two ABI paths exist per entity;
+  `nros_cpp_subscription_register(..., out_handle_id)` is the dispatch one and
+  returns a handle id, exactly as `nros_cpp_timer_create` does.
+
+  So **`X::SharedPtr` for a dispatch entity is `nros::Handle` over
+  `{executor, handle_id}`** — what `Timer` already is, and what W3 already
+  built. The C++ `Subscription<M>`'s 888 bytes of `storage_` and the heap
+  `detail::SubscriptionCallback<M>` cell are a second copy of state
+  `SubBufferedRawCEntry` already holds (the `RmwSubscriber`, the rx buffer, the
+  callback, its context). No ABI addition, no pool, no node template parameter;
+  `X::SharedPtr` becomes COPYABLE again, and `service.hpp`'s "must not move
+  after register" hazard loses its subject because there is no C++ object to
+  move.
+
+  *The one new piece:* `context` is a single pointer, which carries `[this]` (7
+  of the 11 census sites) and not `[obj, method]` (three pointers). Capture bytes
+  belong with the registration, in Rust, and the arena already allocates
+  trailing bytes for the rx buffer — `arena_alloc_with_trailing` — so this is
+  the same allocation with a larger tail, `InplaceFn`'s invoker in the
+  `callback` field. That is the only Rust-side work the design needs.
+
+  *`nros::Owned<T>` is the exception, not the shape:* publishers and the
+  poll-style forms, where no arena slot exists and the C++ object genuinely is
+  the entity. `nros/owned.hpp` says so at the top.
+
+  *Per entity kind, what remains:* `nros_cpp_service_server_register` already
+  returns a handle id, but is handed `&out` — the C++ object — as its context;
+  moving that state into the arena entry removes the back-reference. Same audit
+  for the action forms. Issue 1335 narrows to "the C++ API uses the poll path
+  where it means the dispatch path, and carries storage for both".
+
 * **W9 [examples] — examples and fixtures follow.** The explicit
   `std::shared_ptr<rclcpp::X>` members in our own porting templates become the
   nested alias. DELIBERATELY LAST: this corpus is what made RFC-0096's first

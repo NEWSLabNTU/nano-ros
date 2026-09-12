@@ -4,8 +4,10 @@
 WHAT IS BEING MEASURED
 
 RFC-0096's claim is that one API can be freestanding AND be the rclcpp API, and
-it rests on two mechanisms: a copyable non-owning handle behind `X::SharedPtr`,
-and a fixed-capacity inplace callable behind a capturing-lambda callback. A
+it rests on three mechanisms: a copyable non-owning handle behind
+`Node::SharedPtr`, an OWNING value holder behind an entity's `X::SharedPtr`
+(phase-442 W8), and a fixed-capacity inplace callable behind a capturing-lambda
+callback. A
 claim like that is worth exactly the compile that backs it, on the toolchains
 that actually differ.
 
@@ -150,7 +152,8 @@ def main():
               % (PROBE, OVERBUDGET), file=sys.stderr)
         return 1
 
-    print("check-cpp-freestanding-mechanisms: OK -- the handle and the inplace callable compile "
+    print("check-cpp-freestanding-mechanisms: OK -- the handle, the owning holder and the "
+          "inplace callable compile "
           "on %d toolchain configuration(s), and an over-budget capture fails on each with a "
           "diagnostic naming %s" % (ran, KNOB))
     return 0
