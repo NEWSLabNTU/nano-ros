@@ -421,6 +421,39 @@ This extends the rule that module already holds itself to:
 > `filter_map`ed an unrecognised role or policy away … the image ran different
 > delivery semantics than the model declared."*
 
+### As implemented (phase-454 W7)
+
+`nros_orchestration_ir::qos_agreement::check_model` is the rule, one function
+over a resolved `SystemModel`, called from all four roads a model reaches a bake
+or a sizing derivation on — the two CLI sizing roads W3 already guards
+(`nros ws entity-inventory`, fatal; `nros build`'s seed, a refusal reason) and
+the two BAKE roads (`codegen::entry::plan_from_model`, `nros::main!`). Only the
+bake road is guaranteed to see an override, and only the sizing road is
+guaranteed to see the contract, so a check on either alone is issue 1199's shape.
+It lives in `nros-orchestration-ir` because the proc-macro cannot depend on
+`nros-cli-core`.
+
+Three refinements the ruling did not have to state, each measured:
+
+* **Scope is CAPACITY.** `qos_override::MODELLED_POLICIES` flags each of the
+  eight policies `lower` accepts as capacity or occupancy, and only the four
+  capacity ones are compared: `reliability`, `durability`, `history`, `depth` —
+  exactly the four the contract's `qos:` block can state. `deadline`, `lifespan`
+  and the two liveliness policies bound occupancy or liveness of a queue whose
+  size is already decided; the schema has no key for them, so comparing them
+  would refuse every legal `deadline` override.
+* **It abstains where no contract was authored.** No topic wiring means no
+  contract statement about any topic, hence ONE producer and nothing to diverge
+  from — the same abstention `EntityInventory::from_model` makes by returning
+  `None`. 109 of 114 resolvable models are in that state, including both in-tree
+  producers of a `qos_overrides.*` parameter, which is why the wave moves no
+  sizing number.
+* **One vocabulary, structurally.** The comparison reads a parameter with
+  `qos_override::sizing_statement`, which shares the key parser and the value
+  functions with `lower`; a test asserts the two accept the same policy names,
+  read one value, and refuse the same keys. A second `match policy` would be the
+  drift that module's own header was written about.
+
 ## D9 — `buffer:` is a cross-check, not a `SLOTS` source
 
 `buffer: latest | queue` is fault-analysis vocabulary, not queue sizing:

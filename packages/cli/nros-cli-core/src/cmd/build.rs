@@ -2432,6 +2432,14 @@ fn resolve_image(
         // WRONGLY is not.
         crate::cmd::entity_inventory::reject_unknown_qos_values(&model)
             .map_err(|e| format!("{e}"))?;
+        // phase-454 W7 (RFC-0100 D8) -- and a `qos_overrides.*` parameter that
+        // disagrees with the contract refuses the seed, for the same reason:
+        // the seed would otherwise compose an image sized from the contract
+        // while the bake ran the parameter's QoS. A refusal reason and not a
+        // process failure, exactly as above -- `nros ws entity-inventory`
+        // fatals on the same model at configure time.
+        crate::cmd::entity_inventory::reject_qos_override_divergence(&model)
+            .map_err(|e| format!("{e}"))?;
         // `None` is "no wiring described", which is a DECLARATION GAP and not
         // an error: 5 of the tree's 114 resolvable models describe wiring, and
         // they are exactly the 5 with a contract sidecar (issue 0973).

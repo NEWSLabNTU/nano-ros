@@ -1,0 +1,9 @@
+<launch>
+  <!-- phase-454 W7 (RFC-0100 D8): the parameter states `reliability` and
+       `params_only.contract.yaml` states only a `depth:` for the same endpoint.
+       The build must refuse and name the contract line to add. -->
+  <node pkg="demo_pkg" exec="talker" name="talker"/>
+  <node pkg="demo_pkg" exec="listener" name="listener">
+    <param name="qos_overrides./chatter.subscription.reliability" value="reliable"/>
+  </node>
+</launch>

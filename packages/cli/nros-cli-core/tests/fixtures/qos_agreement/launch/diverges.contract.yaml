@@ -1,0 +1,35 @@
+# phase-454 W7 (RFC-0100 D8) -- the contract and `qos_overrides.*` state the
+# same policy with DIFFERENT values.
+#
+# `diverges.launch.xml` sets `qos_overrides./chatter.subscription.depth = 64`
+# against this contract's `depth: 3`. That is issue 1190 exactly: the 64 reaches
+# the runtime QoS table and the arena is sized from the 3, so the first burst
+# that fills the queue is a `BufferTooSmall` with a config-shaped cause and no
+# diagnostic.
+#
+# The publisher's `reliability` diverges the other way -- the contract states
+# `reliable` and the parameter NARROWS it to `best_effort`. Narrowing is a
+# disagreement too: honouring it silently would leave the image running QoS the
+# contract does not describe, and the contract is what every other size consumer
+# reads.
+
+version: 1
+
+nodes:
+  talker:
+    pub:
+      chatter:
+        qos:
+          reliability: reliable
+
+  listener:
+    sub:
+      chatter:
+        qos:
+          depth: 3
+
+topics:
+  /chatter:
+    type: std_msgs/msg/Int32
+    pub: [talker/chatter]
+    sub: [listener/chatter]

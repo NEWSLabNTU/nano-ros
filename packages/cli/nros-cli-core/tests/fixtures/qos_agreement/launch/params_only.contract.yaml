@@ -1,0 +1,31 @@
+# phase-454 W7 (RFC-0100 D8) -- the override states a policy the contract
+# OMITS.
+#
+# The subscriber's endpoint states a `depth:` and nothing else, and
+# `params_only.launch.xml` sets `qos_overrides./chatter.subscription.reliability
+# = reliable`. The contract is the authoritative producer of what an image
+# declares, so the parameter must not quietly become a second one: the build
+# refuses and names the contract line to add.
+#
+# The direction matters. A node whose parameter says `reliability = reliable`
+# and whose contract says nothing is sized as if best-effort -- on XRCE that is
+# two 64 KiB reliable buffers nobody reserved.
+
+version: 1
+
+nodes:
+  talker:
+    pub:
+      chatter: {}
+
+  listener:
+    sub:
+      chatter:
+        qos:
+          depth: 3
+
+topics:
+  /chatter:
+    type: std_msgs/msg/Int32
+    pub: [talker/chatter]
+    sub: [listener/chatter]

@@ -108,6 +108,33 @@ impl std::error::Error for QoSOverrideError {}
 const POLICY_NAMES: &str = "reliability, durability, history, depth, deadline, lifespan, \
                             liveliness, liveliness_lease_duration";
 
+/// Every policy [`lower`] accepts, and whether it bounds CAPACITY.
+///
+/// phase-454 W7 (RFC-0100 D8). The second flag is the whole of this wave's
+/// scope decision, so it is a field rather than a comment: `reliability`,
+/// `durability`, `history` and `depth` decide how many bytes an image must
+/// reserve, and the launch CONTRACT states the same four per endpoint
+/// (`QosDecl`, read since W3). Those two statements have to agree.
+/// `deadline`, `lifespan` and the two liveliness policies bound OCCUPANCY or
+/// LIVENESS of a queue whose size is already decided, so they stay
+/// runtime-only and the contract has no key for them.
+///
+/// A table and not a `match` because it is read by three things that must not
+/// drift: [`sizing_statement`] classifies a policy against it, `POLICY_NAMES`
+/// enumerates it for the diagnostic, and the tests assert that what [`lower`]
+/// accepts is exactly what this lists — a new policy that reaches `lower` and
+/// not this table is a policy nobody decided the sizing question for.
+pub const MODELLED_POLICIES: [(&str, bool); 8] = [
+    ("reliability", true),
+    ("durability", true),
+    ("history", true),
+    ("depth", true),
+    ("deadline", false),
+    ("lifespan", false),
+    ("liveliness", false),
+    ("liveliness_lease_duration", false),
+];
+
 // ---------------------------------------------------------------------------
 // The VALUE vocabulary -- phase-454 W3.
 // ---------------------------------------------------------------------------
@@ -211,12 +238,29 @@ pub fn is_qos_override(name: &str) -> bool {
     name.starts_with(QOS_OVERRIDE_PREFIX)
 }
 
-/// Lower one `qos_overrides.<topic>.<role>.<policy>` parameter.
+/// The canonical spelling of a [`qos_override_role`] code, for a diagnostic.
 ///
-/// Returns `Ok(None)` when `name` is not a QoS override at all — the caller is
-/// walking a mixed parameter list. A name that DOES carry the prefix but is
-/// unusable is an `Err`, never a skip.
-pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOverrideError> {
+/// The inverse of the role match in [`split_key`], and the reason it is a
+/// function: phase-454 W7's messages name the role the author WROTE, and a
+/// message that respelled it would send someone looking for a key they did not
+/// type.
+pub fn role_spelling(role: u8) -> &'static str {
+    match role {
+        qos_override_role::SUBSCRIPTION => "subscription",
+        // `PUBLISHER` is 0 and a code this build does not know cannot be
+        // produced by `split_key`, which is the only producer.
+        _ => "publisher",
+    }
+}
+
+/// Split `qos_overrides.<topic>.<role>.<policy>` into its three segments.
+///
+/// `Ok(None)` when `name` carries no prefix. THE one parser of the key shape:
+/// [`lower`] and [`sizing_statement`] are two readers of the same parameter and
+/// this module's own header says what a second spelling costs. The VALUE
+/// vocabulary is shared the same way, through `parse_reliability` and its
+/// siblings.
+fn split_key(name: &str) -> Result<Option<(&str, u8, &str)>, QoSOverrideError> {
     let Some(rest) = name.strip_prefix(QOS_OVERRIDE_PREFIX) else {
         return Ok(None);
     };
@@ -243,6 +287,19 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
             });
         }
     };
+    Ok(Some((topic, role, policy_s)))
+}
+
+/// Lower one `qos_overrides.<topic>.<role>.<policy>` parameter.
+///
+/// Returns `Ok(None)` when `name` is not a QoS override at all — the caller is
+/// walking a mixed parameter list. A name that DOES carry the prefix but is
+/// unusable is an `Err`, never a skip.
+pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOverrideError> {
+    let Some((topic, role, policy_s)) = split_key(name)? else {
+        return Ok(None);
+    };
+    let key = name.to_string();
 
     let v = value.trim();
     let bad = |expected: &'static str| QoSOverrideError::BadValue {
@@ -343,6 +400,110 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
         role,
         policy,
         value,
+    }))
+}
+
+/// What one `qos_overrides.*` parameter states about SIZING, in the same
+/// vocabulary the launch contract states it in (phase-454 W7, RFC-0100 D8).
+///
+/// The four capacity policies of [`MODELLED_POLICIES`] and no others. This is
+/// deliberately NOT the wire encoding [`LoweredOverride`] carries: comparing an
+/// override against a contract is a comparison of two AUTHORED statements, and
+/// the wire's `0`/`1` are an ABI that says nothing about what either author
+/// wrote. `reliability_spelling` and its siblings render these back out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SizingStatement {
+    Reliability(QoSReliabilityPolicy),
+    Durability(QoSDurabilityPolicy),
+    History(QoSHistoryPolicy),
+    Depth(u32),
+}
+
+impl SizingStatement {
+    /// The policy's spelling in a parameter key and in a contract `qos:` block
+    /// — one name, because it is one fact stated twice.
+    pub fn policy(&self) -> &'static str {
+        match self {
+            SizingStatement::Reliability(_) => "reliability",
+            SizingStatement::Durability(_) => "durability",
+            SizingStatement::History(_) => "history",
+            SizingStatement::Depth(_) => "depth",
+        }
+    }
+
+    /// The VALUE, spelled as an author would write it on either surface.
+    pub fn value(&self) -> String {
+        match self {
+            SizingStatement::Reliability(p) => reliability_spelling(*p).to_string(),
+            SizingStatement::Durability(p) => durability_spelling(*p).to_string(),
+            SizingStatement::History(p) => history_spelling(*p).to_string(),
+            SizingStatement::Depth(d) => d.to_string(),
+        }
+    }
+}
+
+/// One override's statement about sizing: `(topic, role, statement)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SizingOverride {
+    /// Resolved topic, e.g. `"/chatter"`.
+    pub topic: String,
+    /// [`qos_override_role`] code.
+    pub role: u8,
+    pub statement: SizingStatement,
+}
+
+/// Read one parameter as a statement about SIZING.
+///
+/// Three outcomes, and keeping them apart is the point:
+///
+/// * `Ok(None)` — the parameter is not an override, or it is an override of a
+///   policy that bounds occupancy rather than capacity ([`MODELLED_POLICIES`]'s
+///   second column). Nothing to compare; the runtime table still bakes it.
+/// * `Ok(Some(_))` — what this parameter says about a buffer's size.
+/// * `Err(_)` — the same refusals [`lower`] makes, from the same parser and the
+///   same value vocabulary. A caller that reached this before the bake must not
+///   get a second opinion about whether the key is usable.
+pub fn sizing_statement(
+    name: &str,
+    value: &str,
+) -> Result<Option<SizingOverride>, QoSOverrideError> {
+    let Some((topic, role, policy_s)) = split_key(name)? else {
+        return Ok(None);
+    };
+    let v = value.trim();
+    let bad = |expected: &'static str| QoSOverrideError::BadValue {
+        key: name.to_string(),
+        policy: policy_s.to_string(),
+        value: v.to_string(),
+        expected,
+    };
+    let statement = match policy_s {
+        "reliability" => SizingStatement::Reliability(
+            parse_reliability(v).ok_or_else(|| bad(RELIABILITY_VALUES))?,
+        ),
+        "durability" => {
+            SizingStatement::Durability(parse_durability(v).ok_or_else(|| bad(DURABILITY_VALUES))?)
+        }
+        "history" => SizingStatement::History(parse_history(v).ok_or_else(|| bad(HISTORY_VALUES))?),
+        "depth" => SizingStatement::Depth(
+            v.parse::<u32>()
+                .map_err(|_| bad("a non-negative integer"))?,
+        ),
+        // Modelled, and not a capacity: `deadline`, `lifespan` and the two
+        // liveliness policies. `None` rather than an error — they are perfectly
+        // legal overrides that this comparison has nothing to say about.
+        other if MODELLED_POLICIES.iter().any(|(n, _)| *n == other) => return Ok(None),
+        _ => {
+            return Err(QoSOverrideError::UnknownPolicy {
+                key: name.to_string(),
+                policy: policy_s.to_string(),
+            });
+        }
+    };
+    Ok(Some(SizingOverride {
+        topic: topic.to_string(),
+        role,
+        statement,
     }))
 }
 
@@ -579,6 +740,142 @@ mod tests {
         assert_eq!(got.len(), 2);
         assert_eq!(got[0].topic, "/a");
         assert_eq!(got[1].topic, "/z");
+    }
+
+    /// phase-454 W7 -- `lower` and `sizing_statement` accept exactly the same
+    /// policy names, and [`MODELLED_POLICIES`] lists exactly those.
+    ///
+    /// Three readers of one vocabulary: the bake, the sizing comparison, and
+    /// the `POLICY_NAMES` diagnostic. A policy added to `lower` and forgotten
+    /// in the table is one nobody answered the capacity question for -- it
+    /// would silently become "not a capacity", which is the safe-looking
+    /// direction and the wrong one. This is the test that makes it a decision.
+    #[test]
+    fn every_lowerable_policy_is_classified_for_sizing() {
+        // A value that parses for whichever policy it is handed to. `1` is a
+        // legal depth and a legal duration; the three enum policies get their
+        // own spellings below.
+        let value_for = |policy: &str| match policy {
+            "reliability" => "reliable",
+            "durability" => "volatile",
+            "history" => "keep_last",
+            "liveliness" => "automatic",
+            _ => "1",
+        };
+        for (policy, is_capacity) in MODELLED_POLICIES {
+            let key = format!("qos_overrides./t.publisher.{policy}");
+            let v = value_for(policy);
+            lower(&key, v)
+                .unwrap_or_else(|e| panic!("{policy} must lower: {e}"))
+                .unwrap_or_else(|| panic!("{policy} must be recognised as an override"));
+            let sized =
+                sizing_statement(&key, v).unwrap_or_else(|e| panic!("{policy} must classify: {e}"));
+            assert_eq!(
+                sized.is_some(),
+                is_capacity,
+                "`{policy}` is classified {} by MODELLED_POLICIES and the other way by \
+                 sizing_statement",
+                if is_capacity { "capacity" } else { "occupancy" }
+            );
+            if let Some(s) = sized {
+                assert_eq!(s.statement.policy(), policy);
+            }
+            assert!(
+                POLICY_NAMES.contains(policy),
+                "`{policy}` is modelled but the diagnostic does not list it"
+            );
+        }
+        // …and nothing outside the table lowers, so the two lists cannot drift
+        // by an ADDITION to `lower` either.
+        for policy in ["bandwidth", "reliability_", "", "Depth"] {
+            let key = format!("qos_overrides./t.publisher.{policy}");
+            assert!(lower(&key, "1").is_err(), "`{policy}` must not lower");
+        }
+    }
+
+    /// phase-454 W7 -- the two readers agree about the VALUE, not just the
+    /// name.
+    ///
+    /// `lower` produces the wire's `0`/`1` and `sizing_statement` produces the
+    /// variant; they are two encodings of one authored value, so this asserts
+    /// the pairing rather than either half. A renumbered wire code or a
+    /// mis-mapped spelling shows up here as a mismatched pair.
+    #[test]
+    fn the_bake_and_the_sizing_statement_read_one_value() {
+        let cases: &[(&str, &str, SizingStatement, u32)] = &[
+            (
+                "reliability",
+                "best_effort",
+                SizingStatement::Reliability(QoSReliabilityPolicy::BestEffort),
+                0,
+            ),
+            (
+                "reliability",
+                "reliable",
+                SizingStatement::Reliability(QoSReliabilityPolicy::Reliable),
+                1,
+            ),
+            (
+                "durability",
+                "volatile",
+                SizingStatement::Durability(QoSDurabilityPolicy::Volatile),
+                0,
+            ),
+            (
+                "durability",
+                "transient_local",
+                SizingStatement::Durability(QoSDurabilityPolicy::TransientLocal),
+                1,
+            ),
+            (
+                "history",
+                "keep_last",
+                SizingStatement::History(QoSHistoryPolicy::KeepLast),
+                0,
+            ),
+            (
+                "history",
+                "keep_all",
+                SizingStatement::History(QoSHistoryPolicy::KeepAll),
+                1,
+            ),
+            ("depth", "64", SizingStatement::Depth(64), 64),
+        ];
+        for (policy, written, statement, wire) in cases {
+            let key = format!("qos_overrides./chatter.subscription.{policy}");
+            let lowered = lower(&key, written).unwrap().unwrap();
+            let sized = sizing_statement(&key, written).unwrap().unwrap();
+            assert_eq!(lowered.value, *wire, "{policy}={written} wire code");
+            assert_eq!(sized.statement, *statement, "{policy}={written} statement");
+            assert_eq!(sized.topic, lowered.topic);
+            assert_eq!(sized.role, lowered.role);
+            assert_eq!(
+                sized.statement.value(),
+                *written,
+                "the statement must render back to what the author wrote"
+            );
+        }
+    }
+
+    /// phase-454 W7 -- the shared key parser refuses the same keys on both
+    /// roads. A sizing comparison that accepted `pub` where the bake refuses it
+    /// would compare an endpoint nothing runs.
+    #[test]
+    fn both_readers_refuse_the_same_keys() {
+        for key in [
+            "qos_overrides.",
+            "qos_overrides./t",
+            "qos_overrides./t.publisher",
+            "qos_overrides./t..depth",
+            "qos_overrides./t.pub.depth",
+        ] {
+            assert!(lower(key, "1").is_err(), "{key} must not lower");
+            assert!(
+                sizing_statement(key, "1").is_err(),
+                "{key} must not classify"
+            );
+        }
+        assert_eq!(sizing_statement("use_sim_time", "true").unwrap(), None);
     }
 
     /// One bad override fails the whole list — a half-applied QoS table is

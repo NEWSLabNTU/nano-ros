@@ -753,6 +753,18 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     use ros_launch_manifest_model::Target;
 
     let model = model_ingest::load_model(model_path)?;
+    // phase-454 W7 (RFC-0100 D8) -- before anything is baked, the contract and
+    // the `qos_overrides.*` parameters must state the same QoS.
+    //
+    // Checked on the BAKE road and not only where the contract is SIZED from,
+    // because these are the two producers and only this one is guaranteed to
+    // see an override: an image can bake `qos_overrides./t.subscription.depth =
+    // 64` without ever running `nros ws entity-inventory --model`, and that is
+    // issue 1190 exactly. The check is a property of the model, so it runs
+    // before the board slice -- a divergence is not something a board filter
+    // can make true.
+    nros_orchestration_ir::qos_agreement::check_model(&model)
+        .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?;
     let board = board.unwrap_or_else(|| "native".to_string());
     // Issue 1285 — only a key the entry table knows HAS a tier sub-table.
     //

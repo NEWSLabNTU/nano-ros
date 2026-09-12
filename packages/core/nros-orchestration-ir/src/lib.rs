@@ -52,6 +52,12 @@ pub mod mapper_input;
 // phase-330 W3.b — the ONE place that decides where a SystemModel is read
 // from, shared by the proc-macro, `nros-build` and (via its default) cmake.
 pub mod model_location;
+// phase-454 W7 (RFC-0100 D8) — the contract and `qos_overrides.*` are two
+// statements about ONE fact, so any divergence is a build error naming both
+// sites. Here rather than in the CLI because BOTH producers must ask: the
+// `nros::main!` proc-macro cannot dep `nros-cli-core`, and a check on one of
+// two roads is the shape issue 1199 names.
+pub mod qos_agreement;
 // issue 0303 — the ONE lowering of `qos_overrides.*` params into baked codes,
 // shared by the CLI's entry emitters and the nros::main! proc-macro, and
 // fail-loud on anything it cannot lower.

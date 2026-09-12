@@ -437,7 +437,7 @@ to 1 with a line that says so — `NROS_RMW_UORB_PX4_MAX_CALLBACKS=0 raised to 1
 That is D7 working in both directions in one image: zero reaches cffi's `[T; 0]`
 untouched and is refused by the C++ array that cannot express it.
 
-### W7 — contract and `qos_overrides` must agree
+### W7 — contract and `qos_overrides` must agree — **LANDED**
 
 Build error on any divergence, naming both sites (D8). Where an override states a
 policy the contract omits, the error names the contract line to add.
@@ -449,6 +449,54 @@ cause.
 
 Acceptance: a divergent pair fails the build naming both; an agreeing pair
 builds; a params-only policy fails naming the contract.
+
+**What landed.**
+
+| piece | where |
+| --- | --- |
+| the rule | `nros_orchestration_ir::qos_agreement::check_model` — one function over a resolved `SystemModel` |
+| the vocabulary it reads with | `qos_override::sizing_statement`, sharing `split_key` and the `parse_*` value functions with `lower`, so the bake and the comparison cannot read one parameter two ways |
+| the scope decision | `qos_override::MODELLED_POLICIES` — every policy `lower` accepts, each flagged capacity or occupancy |
+| sizing road | `cmd::entity_inventory::reject_qos_override_divergence` (fatal at configure) + `cmd::build`'s stage-3.5 seed (a refusal reason), beside W3's `reject_unknown_qos_values` |
+| bake roads | `codegen::entry::plan_from_model` (C/C++ and `nros build`'s Rust entry) and `nros::main!` (`main_macro.rs`) |
+
+**Four roads and not two, because only the BAKE road is guaranteed to see an
+override.** An image can bake `qos_overrides./t.subscription.depth = 64` without
+ever running `nros ws entity-inventory --model`, which is issue 1190 exactly; and
+a contract-sizing configure can run on an image whose overrides live in a params
+YAML the entry emitter never reads. The check is the same function at all four —
+the proc-macro cannot dep `nros-cli-core`, which is why the rule lives in
+`nros-orchestration-ir` rather than beside its first caller.
+
+**Scope: capacity, not occupancy.** `reliability`, `durability`, `history`,
+`depth` — the four the contract states and the four that decide how many bytes an
+image reserves. `deadline`, `lifespan` and the two liveliness policies bound
+occupancy or liveness of a queue whose size is already decided, the contract
+schema has no key for them, and comparing them would refuse every legal
+`deadline` override in the tree. The `agrees` fixture carries one on purpose, so
+a widened scope is a red rather than a discovery.
+
+**It abstains where no contract was authored**, which is 109 of the tree's 114
+resolvable models and both in-tree producers of a `qos_overrides.*` parameter
+(`examples/templates/multi-node-workspace-cpp`, `examples/workspaces/features`).
+No contract means ONE producer and nothing to disagree with — the same abstention
+`EntityInventory::from_model` makes by returning `None`. That is why this wave
+moves no sizing number: measured over every one of the tree's 82 launch files,
+80 produce the same derived knobs and the only two refusals are this wave's own
+divergence fixtures.
+
+**Narrowing is a disagreement.** The ruling is not a bound check, and the
+`diverges` fixture carries both directions in one model — a subscription that
+widens `depth` 3 → 64 and a publisher that narrows `reliability` reliable →
+best_effort. Honouring the narrowing silently would leave the image running QoS
+the contract does not describe, and the contract is what sizes the arena, XRCE's
+reliable buffers and zenoh's ring.
+
+Tests: 12 unit tests in `qos_agreement`, 3 binding tests in `qos_override` (the
+two readers accept the same policy names, read one value, and refuse the same
+keys), and `contract_qos_override_agreement.rs` — five cases through the pinned
+resolver, including the no-contract abstention measured against the real
+`multi-node-workspace-cpp` bringup.
 
 ### W8 — `buffer:` earns its keep — LANDED, and ARMED rather than firing
 

@@ -236,6 +236,12 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
         // enters the verb and the only one with an error channel.
         reject_unknown_qos_values(&model)
             .wrap_err_with(|| format!("model `{}`", model_path.display()))?;
+        // phase-454 W7 (RFC-0100 D8) -- and a `qos_overrides.*` parameter that
+        // states a capacity policy the contract does not. Third refusal at the
+        // same seam, for the same reason: this is the one point a model enters
+        // the verb and the only one with an error channel.
+        reject_qos_override_divergence(&model)
+            .wrap_err_with(|| format!("model `{}`", model_path.display()))?;
         if args.output_params_header.is_some() {
             params_header = Some(crate::declared_params_header::render(
                 Some(&model),
@@ -478,6 +484,33 @@ pub(crate) fn reject_unknown_qos_values(
         }
     }
     Ok(())
+}
+
+/// The contract and `qos_overrides.*` must state the same QoS (phase-454 W7,
+/// RFC-0100 D8).
+///
+/// `qos_overrides.<topic>.<role>.<policy>` feeds the baked RUNTIME table and the
+/// contract feeds SIZING, and until W7 the two never met:
+/// `qos_overrides./t.subscription.depth = 64` reached the runtime and the arena
+/// never heard about it -- issue 1190's `BufferTooSmall` with a config-shaped
+/// cause and no diagnostic.
+///
+/// A thin wrapper over [`nros_orchestration_ir::qos_agreement::check_model`],
+/// which is where the rule lives because the `nros::main!` proc-macro cannot dep
+/// this crate and it must ask the same question.
+///
+/// FOUR call sites, not two. `reject_unknown_qos_values` guards the two SIZING
+/// roads (this verb and `nros build`'s seed) because those are the two roads a
+/// model reaches `from_model` on. This rule also needs the two BAKE roads
+/// (`codegen::entry::plan_from_model` and the proc-macro), because only a bake
+/// is guaranteed to see an override: an image can bake
+/// `qos_overrides./t.subscription.depth = 64` without ever running this verb
+/// with a `--model`. A check that guards a subset of the roads a fact travels
+/// is the shape issue 1199 names.
+pub(crate) fn reject_qos_override_divergence(
+    model: &ros_launch_manifest_model::SystemModel,
+) -> Result<()> {
+    nros_orchestration_ir::qos_agreement::check_model(model).map_err(|e| eyre::eyre!("{e}"))
 }
 
 /// Keep only the named component (phase-403 step 2).

@@ -1,0 +1,15 @@
+<launch>
+  <!-- phase-454 W7 (RFC-0100 D8): both directions of a divergence in one file.
+
+       The subscription WIDENS (contract `depth: 3`, parameter 64), which is
+       issue 1190's under-size. The publisher NARROWS (contract `reliability:
+       reliable`, parameter `best_effort`), which the ruling refuses just as
+       hard, because it is still an image running QoS the contract does not
+       describe. -->
+  <node pkg="demo_pkg" exec="talker" name="talker">
+    <param name="qos_overrides./chatter.publisher.reliability" value="best_effort"/>
+  </node>
+  <node pkg="demo_pkg" exec="listener" name="listener">
+    <param name="qos_overrides./chatter.subscription.depth" value="64"/>
+  </node>
+</launch>
