@@ -42,7 +42,7 @@ nros-core                            1   0     2       1      0
 nros-cpp                           609  16     0     272      0
 nros-log                            17   0     5       1      0
 nros-macros                         12   0     1       2      0
-nros-node                          374  122    21      78      0
+nros-node                          375  122    21      78      0
 nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0
 nros-orchestration-ir                4   0     0       0      0
@@ -56,7 +56,7 @@ nros-platform-mps2-an385            19   6     3       7      0
 nros-platform-stm32f4               13   6     3       2      0
 nros-port-metric-bench               3   0     0       3      0
 nros-rmw                            11   6     8      12      0
-nros-rmw-cffi                      316  34     5     174      0
+nros-rmw-cffi                      334  36     5     183      0
 nros-rmw-cyclonedds                  8   0     7       1      0
 nros-rmw-cyclonedds-sys              2   0     0       1      0
 nros-rmw-metadata                    1   0     0       0      0
