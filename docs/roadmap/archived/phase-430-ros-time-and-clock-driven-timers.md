@@ -1,12 +1,21 @@
 # Phase 430 — ROS time: the delta after phase-425
 
+**Status (2026-09-13). ARCHIVED, amended once.** [Issue
+1334](../../issues/archived/1334-ros-time-fallback-reads-an-unadvanced-steady-counter.md)
+is fixed, so delta row 15's decision is now met by IMPLEMENTATION and not only
+by record, and row 1's re-verdict loses one of its three arguments while keeping
+its verdict. Both are re-verdicted below; the tables above them stay as they
+were written. See ["Row 15, re-verdicted
+(2026-09-13)"](#row-15-re-verdicted-2026-09-13--met-by-implementation).
+
 **Status (2026-09-12, second pass). ARCHIVED.** W1–W8 landed, row 1 is MET by
 implementation, and issue 1321 — the one thing this phase did not close — is
 resolved and archived. The single item still owed, W7's ledger rows for
 `install_ros_time_source*`, is a property of the parity EXTRACTOR rather than of
 this delta, and it is now [issue 1351](../../issues/1351-rust-extractor-misses-nodectx-and-sim-time-surface.md)
-so it outlives this document. [Issue 1334](../../issues/1334-ros-time-fallback-reads-an-unadvanced-steady-counter.md),
-measured while deciding row 1, is open and tracked on its own.
+so it outlives this document. [Issue 1334](../../issues/archived/1334-ros-time-fallback-reads-an-unadvanced-steady-counter.md),
+measured while deciding row 1, was open when this was written and is now fixed
+and archived — see the 2026-09-13 amendment at the top.
 
 **Status (2026-09-12). W1–W8 LANDED; row 1's regression is CLOSED — issue 1321
 is fixed and archived, and property 1 is MET for the first time by
@@ -193,16 +202,25 @@ restatements of the 2026-09-07 verdict:
   the clock before dispatching, so a step costs at most one extra wake and can
   never fire a callback early.
 * **`Ros` contributes nothing UNCONDITIONALLY**, not "unless a `/clock` source
-  happens to be attached". The conditional rule would be wrong today —
-  `ClockType::RosTime`'s documented wall fallback reads an in-image steady
-  counter nothing advances
-  ([issue 1334](../../issues/1334-ros-time-fallback-reads-an-unadvanced-steady-counter.md),
-  measured while deciding this) — and a park bound that flipped with whether a
-  publisher was running would be a behaviour no declaration named. The latency
-  cost is the pre-436 bound, the caller's budget, which is what the e2e
-  fixture's 5 ms `sim-clock-listener` cadence already assumes; the park is
-  never unbounded, because `next_wake_bound_attributed_us` seeds its `min`
-  with that budget.
+  happens to be attached". *(Amended 2026-09-13 — the verdict stands, one of
+  its two reasons does not.)* As written, the first reason was that the
+  conditional rule would be wrong TODAY: `ClockType::RosTime`'s documented wall
+  fallback read an in-image steady counter nothing advances
+  ([issue 1334](../../issues/archived/1334-ros-time-fallback-reads-an-unadvanced-steady-counter.md),
+  measured while deciding this), so the remainder was a constant in that state
+  too. 1334 is fixed — that arm now reads the wall clock — so the reason is
+  gone and the rule rests on the second, which was always the stronger and is
+  about the RULE rather than one image's state: a park bound that flipped with
+  whether a publisher was running would be a behaviour no declaration named,
+  and it would flip at the first `/clock` sample, which is the instant the
+  remainder stops being wall microseconds. (Deciding it per-timer at
+  registration is not available either: `use_sim_time` is settable at runtime,
+  W2.) The latency cost is the pre-436 bound, the caller's budget, which is
+  what the e2e fixture's 5 ms `sim-clock-listener` cadence already assumes; the
+  park is never unbounded, because `next_wake_bound_attributed_us` seeds its
+  `min` with that budget. What 1334 changes is that the cost is now
+  OBSERVABLE — before it, a standalone `Ros` timer never fired at all, so
+  contributing nothing to the park cost nothing.
 
 The same sweep found a third site with the same units error and WITHOUT the
 "bounded, over-waking only" mitigation: issue 0736's budget-skip path advanced
@@ -211,6 +229,32 @@ timer on a paused `/clock` — row 8's property, broken on one path. Both sites
 now go through `arena::timer_clock_step`. Negative control, pre-fix: 202 359 µs
 accumulated over five spins with `/clock` held still, i.e. two activations a
 100 ms ROS timer had not earned.
+
+### Row 15, re-verdicted (2026-09-13) — MET BY IMPLEMENTATION
+
+| # | 2026-09-07 | 2026-09-11 | 2026-09-13 | Evidence |
+| --- | --- | --- | --- | --- |
+| 15 | NO LONGER APPLIES | NO LONGER APPLIES | **NO LONGER APPLIES, and now IMPLEMENTED** | `Clock::wall_now()` (`packages/core/nros-core/src/clock.rs`) is the ONE expression both `ClockType::SystemTime` and `ClockType::RosTime`'s no-override arm evaluate. [issue 1334](../../issues/archived/1334-ros-time-fallback-reads-an-unadvanced-steady-counter.md), archived. |
+
+Row 15 verdicted property 3 ("a ROS-time timer with no `/clock` must NOT fall
+back to wall time") NO LONGER APPLIES, on the ground that 425 had chosen the
+opposite deliberately and with rclcpp. That was right about the decision and
+wrong about the code, and the row's own evidence line named the site where:
+it cited `nros-core/src/clock.rs`'s `RosTime` arm as reading system time, and
+that arm read an in-image steady counter nothing advances. So the decision was
+made, written down in five places across three languages, cited here as
+evidence — and not implemented, for four phases. A standalone `Ros` timer took
+neither the documented arm (wall) nor the refused one (do not fire): it took a
+third that reads as "do not fire" by accident.
+
+This does not re-open the design question, and the alternative was weighed
+again rather than assumed: making the fallback REFUSE or report would
+contradict 425's recorded choice and RFC-0089's "a node built for simulation
+still runs standalone", and `use_sim_time` false is not a misconfiguration —
+it is every standalone node. The state that IS a misconfiguration, sim time on
+with no `/clock` ever, already has W1's one-shot report (row 16), and that
+report's own text — "ROS-time timers are running on SYSTEM time meanwhile" —
+is what this fix makes true. No second spelling was added.
 
 ### The tests, run (2026-09-07)
 
