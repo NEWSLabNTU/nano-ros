@@ -131,7 +131,9 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     2026-09-02 — it lived only in `check-build`, which no merge-gating event
     runs, so issue 0896's two reds landed and stayed; no fixture/SDK/ROS, ~2 min
     warm / ~8 min cold, including the `nros-launch-resolve` it must build
-    first.) `ci-l1` also runs `check-build` + `check-api-parity`. Your local tier is STRONGER than the gate, so you catch
+    first.) `ci-l1` also runs `check-build`; `check-api-parity` left that list
+    for the FAST line (issue 1066), so the required PR context now carries it —
+    217.5 s, the lane's slowest gate, not its critical path. Your local tier is STRONGER than the gate, so you catch
     compile-tier breakage before the queue does and the queue stays cheap and
     always-satisfiable. `check-build` is now `schedule`/`workflow_dispatch` only —
     it was on the merge group and could never pass there (it needs generated

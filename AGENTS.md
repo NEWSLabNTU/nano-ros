@@ -440,9 +440,12 @@ may resolve an artifact only if that JOB builds it.
 
 **`just ci l1` is NOT what CI runs, and that is deliberate** (phase-399 W3).
 CI's required context is `check-fast` + `test-unit`; `ci-l1` additionally runs
-`check-build` and `check-api-parity`. So the local tier is a SUPERSET of the
-gate — you catch compile-tier breakage before the queue does, and the queue
-stays cheap and always-satisfiable. This line used to say "the SAME tier the
+`check-build`. So the local tier is a SUPERSET of the gate — you catch
+compile-tier breakage before the queue does, and the queue stays cheap and
+always-satisfiable. (`check-api-parity` was on that "additionally" list until
+issue 1066: it is an ordinary fast-lane gate now, so `check-fast` runs it and
+the required context includes it. It is the slowest gate in that lane —
+217.5 s of the lane's 386 s wall at -P4 — and still not its critical path.) This line used to say "the SAME tier the
 merge group runs", which stopped being true when phase-396 W1 took `check-build`
 off the merge group (it could never pass there — it needs generated bindings and
 prebuilt `.compile-ok` that no CI job builds).
