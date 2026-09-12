@@ -74,6 +74,20 @@ when
   * `nros-node/build.rs` reads a knob this file has not classified (the knob
     table cannot go stale toward OK).
 
+THE OTHER PORTS (phase-448 W5, issue 1145). Zephyr is not the only RTOS whose
+allocator is a fixed static, and the mechanism differs per port because the
+KNOB does. `PORTS` below is the ledger: for each one, either what this gate
+checks or WHY it cannot check it. A port with no entry is itself a failure —
+"nobody has looked at this port" and "this port needs nothing" must not read
+the same, which is the shape issue 1145 left behind for five weeks.
+
+The ThreadX arm is the only one with arithmetic to check, and it is NOT the
+Zephyr shape: the subtraction is done by the C preprocessor from the ONE stated
+rung (`[board.knobs.executor] backing_u64s`), so the two numbers cannot
+disagree and there is nothing to add up. What CAN go wrong is a statement that
+reaches no subtraction — a board that reserves the backing and gives nothing
+back — so that is what is checked, in both directions.
+
 Usage:
     python3 scripts/check-executor-backing-arena-pairing.py [--self-test | --claims]
 """
@@ -101,6 +115,108 @@ BYTES_PER_WORD = 8
 BACKING_RE = re.compile(rf"^\s*{BACKING_KEY}\s*=\s*(-?\d+)\s*$", re.M)
 ARENA_RE = re.compile(rf"^\s*{ARENA_KEY}\s*=\s*(\d+)\s*$", re.M)
 BASE_RE = re.compile(rf"#\s*{BASE_MARKER}\s*:\s*(\d+)")
+
+# --- phase-448 W5 / issue 1145: every port, and what is true of it ---------
+#
+# The RUNG spelling of the same statement, for the ports with no Kconfig. A
+# board states it once; `nros-node/build.rs` sizes `EXECUTOR_BACKING` from it
+# and the port's allocator declaration subtracts `8 *` it. There is deliberately
+# no second place to write the subtrahend.
+RUNG_KEY = "backing_u64s"
+RUNG_RE = re.compile(rf"^\s*{RUNG_KEY}\s*=\s*(\d+)\s*$", re.M)
+
+# Where each port's allocator reservation is declared, and the token that proves
+# the declaration consumes the statement. `None` = this port has no fixed
+# reservation to pair, with the measurement that says so.
+#
+# A port is keyed by the `platform =` its board descriptors declare, because
+# that is what the descriptor and the build rungs both use.
+PORTS = {
+    "zephyr": {
+        "kind": "kconfig",
+        "why": (
+            "picolibc's `malloc_arena` is sized by "
+            "CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE; the conf states the words "
+            "and lowers the arena, and the three numbers must sum (issue 1171)"
+        ),
+    },
+    "threadx-linux": {"kind": "rung", "site": "threadx"},
+    "threadx-riscv64": {"kind": "rung", "site": "threadx"},
+    # phase-448 W5, MEASURED 2026-09-12 on `examples/qemu-armv7a-nuttx/rust/
+    # talker` (armv7a-nuttx-eabihf), by building it twice:
+    #
+    #   NROS_EXECUTOR_BACKING_U64S unset:  EXECUTOR_BACKING 87,496   heap 131,616,768
+    #   NROS_EXECUTOR_BACKING_U64S=0:      EXECUTOR_BACKING      0   heap 131,702,784
+    #
+    # NuttX's flat-build heap is `CONFIG_RAM_END - g_idle_topstack`
+    # (`arch/arm/src/common/arm_allocateheap.c:112`, and the RISC-V twin at
+    # `arch/risc-v/src/common/riscv_allocateheap.c:69`) -- a LEFTOVER, computed
+    # at boot from where `.bss` ended, not a reservation anybody sized. So the
+    # backing is already paid for exactly once and there is no knob to lower.
+    # The 86,016 B the heap actually moved is the 87,496 rounded to the 4 KiB
+    # `_ebss` alignment, not a discrepancy.
+    "nuttx": {"kind": "none", "why": (
+        "the heap is CONFIG_RAM_END - g_idle_topstack, a boot-time leftover "
+        "after .bss, so a byte added to .bss is a byte removed from the heap "
+        "-- measured, see the comment above this table"
+    )},
+    "nuttx-riscv": {"kind": "none", "why": "same allocator as `nuttx`"},
+    "px4-nuttx": {"kind": "none", "why": "same allocator as `nuttx`"},
+    # ffc614252 (2026-09-10) paired this one, by RUNNING the whole esp32 QEMU
+    # suite: `esp_alloc::heap_allocator!(size: 48 * 1024)` -> `16 * 1024` in
+    # `nros-board-esp32-qemu/src/node.rs`, against a measured 29,400 B backing
+    # on `esp32_entry`.
+    #
+    # It is NOT expressible as `base - 8 * words`, and that is a fact about the
+    # fix rather than a gap in this gate: 32,768 was chosen as a RETURN to the
+    # pre-phase-271 heap -- the value whose only recorded failure was the
+    # allocation that is now the static -- not as the backing's size. It is
+    # 3,368 B LARGER than the backing, so a gate asserting the identity would
+    # have to be told to expect an inequality, and an inequality gate here
+    # cannot tell a deliberate margin from a stale number.
+    #
+    # What makes that safe rather than lucky is the FAILURE MODE: on esp32-c3
+    # the executor takes the heap arm only when its backing does not fit the
+    # reservation, and that arm dies loudly at `Executor::open` ("memory
+    # allocation of N bytes failed"). `check-stack-floor` is the standing gate
+    # -- `.stack` is the linker leftover after `.bss` on this part, so it
+    # catches the over-reservation direction on every build.
+    "esp32": {"kind": "stated-heap", "why": (
+        "the heap is a Rust literal in the board crate and was lowered by a "
+        "chosen return-to-known-good value, not by the backing's size; "
+        "`check-stack-floor` is what holds it (see the comment above)"
+    )},
+    # W3/W4 of this phase. Issue 1197 has the measurement and the blocker.
+    "freertos": {"kind": "open", "why": "issue 1197 / phase-448 W4"},
+    "freertos-posix": {"kind": "open", "why": "issue 1197 / phase-448 W4"},
+    # NOT `none`: these boards DO have a fixed `FreeListHeap` static, and the
+    # pairing question is open for them exactly as it is for esp32 — it is just
+    # not W5's, which names NuttX, ThreadX and ESP32. Recorded rather than
+    # silently omitted, which is the whole point of this table.
+    "bare-metal": {"kind": "open", "why": (
+        "`nros-platform-mps2-an385`'s `FreeListHeap` is a fixed static and no "
+        "measurement of its pairing exists; not in phase-448 W5's scope"
+    )},
+    "posix": {"kind": "none", "why": (
+        "hosted: the global allocator is the OS heap, which has no fixed "
+        "reservation, so the static is the only copy of those bytes "
+        "(measured in phase-392 W6 on the native zenoh talker)"
+    )},
+    "esp-idf": {"kind": "none", "why": (
+        "IDF registers the DRAM left after .bss with `heap_caps_init`, so the "
+        "backing is paid once, like NuttX"
+    )},
+}
+
+# The ThreadX subtraction site, and the tokens that prove it is wired. Both
+# files, because a knob that is stated and not forwarded is issue 0460's failure
+# mode one layer up -- and on this port it is SILENT: the pool simply stays at
+# its base and the image pays twice, which is exactly what this gate exists to
+# notice.
+THREADX_POOL_C = "packages/boards/nros-board-common/c/threadx_hooks.c"
+THREADX_FORWARDER = "packages/boards/nros-board-common/src/threadx_sources.rs"
+THREADX_POOL_BASE_TOKEN = "BYTE_POOL_BASE_SIZE"
+THREADX_KNOB_TOKEN = "NROS_EXECUTOR_BACKING_U64S"
 
 # --- issue 1284: the claim half -------------------------------------------
 #
@@ -253,6 +369,84 @@ def check_conf(text):
     return bad
 
 
+def board_platform(text):
+    """-> the `platform = "..."` a board descriptor declares, or None."""
+    m = re.search(r'^\s*platform\s*=\s*"([^"]+)"', text, re.M)
+    return m.group(1) if m else None
+
+
+def check_board_rung(rel, text):
+    """-> complaints for one `nros-board.toml`.
+
+    The rung half of the pairing (phase-448 W5). A board may state
+    `[board.knobs.executor] backing_u64s` only where something SUBTRACTS it:
+    a statement that reaches no subtraction reserves the backing and gives
+    nothing back, which is a bigger image than not stating it at all -- and it
+    fails silently, because `nros-node` honours the statement either way.
+    """
+    words = last_int(RUNG_RE, text)
+    if words is None:
+        return []
+    platform = board_platform(text)
+    if platform is None:
+        return [
+            f"states {RUNG_KEY}={words} but declares no `platform = \"...\"`, so "
+            f"nothing says which port is supposed to give those bytes back"
+        ]
+    port = PORTS.get(platform)
+    if port is None:
+        return [
+            f"declares platform `{platform}`, which this gate's PORTS ledger does "
+            f"not know. Add it with what is true of its allocator -- a port with "
+            f"no entry and a port that needs nothing must not read the same"
+        ]
+    if port["kind"] != "rung":
+        return [
+            f"states {RUNG_KEY}={words}, but port `{platform}` is recorded as "
+            f"`{port['kind']}`: {port.get('why', '')}. Nothing on this port "
+            f"subtracts the rung, so the statement makes the reservation and "
+            f"gives nothing back"
+        ]
+    if words <= 0:
+        return [
+            f"states {RUNG_KEY}={words}. A rung is a SIZE; `0` (decline the "
+            f"static) is the env front-end's spelling and belongs there, not in "
+            f"a board fact"
+        ]
+    return []
+
+
+def check_threadx_site(pool_c, forwarder_rs):
+    """-> complaints about the ThreadX subtraction site.
+
+    Two texts, because the knob has to survive both hops: the C file must
+    subtract it from a NAMED base, and the one build-script helper that compiles
+    that file for a Rust image must forward it. A stated rung that reaches
+    neither leaves the pool at its base with no diagnostic at all.
+    """
+    bad = []
+    if THREADX_POOL_BASE_TOKEN not in pool_c:
+        bad.append(
+            f"{THREADX_POOL_C}: no `{THREADX_POOL_BASE_TOKEN}` — the byte pool's "
+            f"pre-pairing size has to be NAMED, or a reader cannot tell a paired "
+            f"pool from an arbitrary one (the reason the Zephyr arm needs a "
+            f"`# {BASE_MARKER}:` marker)"
+        )
+    if THREADX_KNOB_TOKEN not in pool_c:
+        bad.append(
+            f"{THREADX_POOL_C}: the pool size does not mention "
+            f"`{THREADX_KNOB_TOKEN}`, so nothing subtracts the executor backing "
+            f"and every Rust ThreadX image reserves it twice (issue 1145)"
+        )
+    if THREADX_KNOB_TOKEN not in forwarder_rs:
+        bad.append(
+            f"{THREADX_FORWARDER}: does not forward `{THREADX_KNOB_TOKEN}` to the "
+            f"C compile, so the rung reaches `nros-node` and not the pool — the "
+            f"reservation is made and nothing is given back (issue 0460's shape)"
+        )
+    return bad
+
+
 SELF_TESTS = [
     # (name, body, expected number of complaints)
     ("paired exactly", f"# {BASE_MARKER}: 1048576\n{BACKING_KEY}=11041\n{ARENA_KEY}=960248\n", 0),
@@ -288,6 +482,46 @@ SIZING_SELF_TESTS = [
     ("a prefix is not the knob", "CONFIG_NROS_EXECUTOR_MAX_CBS_EXTRA=1\n", 0),
 ]
 
+_RUNG_BOARD = '[[board]]\nplatform = "threadx-linux"\n'
+_RUNG_BLOCK = f"[board.knobs.executor]\n{RUNG_KEY} = 4494\n"
+
+RUNG_SELF_TESTS = [
+    # (name, board descriptor body, expected number of complaints)
+    ("a paired port states it", _RUNG_BOARD + _RUNG_BLOCK, 0),
+    ("silence is always fine", _RUNG_BOARD, 0),
+    # the failure this arm exists for: the reservation is made and nothing on
+    # this port gives it back.
+    ("a port with no subtraction site",
+     '[[board]]\nplatform = "nuttx"\n' + _RUNG_BLOCK, 1),
+    ("a port nobody has classified",
+     '[[board]]\nplatform = "vxworks"\n' + _RUNG_BLOCK, 1),
+    ("no platform named", _RUNG_BLOCK, 1),
+    ("zero is the env front-end's spelling, not a board fact",
+     _RUNG_BOARD + f"[board.knobs.executor]\n{RUNG_KEY} = 0\n", 1),
+    # a knob that merely SHARES the prefix is not this one
+    ("a different executor knob",
+     _RUNG_BOARD + "[board.knobs.executor]\narena_size = 16384\n", 0),
+]
+
+THREADX_SITE_SELF_TESTS = [
+    # (name, pool C body, forwarder body, expected complaints)
+    ("wired",
+     "#define BYTE_POOL_BASE_SIZE (4*1024*1024)\n"
+     "#define BYTE_POOL_SIZE (BYTE_POOL_BASE_SIZE - 8*(NROS_EXECUTOR_BACKING_U64S))\n",
+     'build.define("NROS_EXECUTOR_BACKING_U64S", w);\n', 0),
+    ("the pool stopped subtracting",
+     "#define BYTE_POOL_BASE_SIZE (4*1024*1024)\n"
+     "#define BYTE_POOL_SIZE BYTE_POOL_BASE_SIZE\n",
+     'build.define("NROS_EXECUTOR_BACKING_U64S", w);\n', 1),
+    ("the base stopped being named",
+     "#define BYTE_POOL_SIZE (4*1024*1024 - 8*(NROS_EXECUTOR_BACKING_U64S))\n",
+     'build.define("NROS_EXECUTOR_BACKING_U64S", w);\n', 1),
+    ("the forwarder dropped it",
+     "#define BYTE_POOL_BASE_SIZE (4*1024*1024)\n"
+     "#define BYTE_POOL_SIZE (BYTE_POOL_BASE_SIZE - 8*(NROS_EXECUTOR_BACKING_U64S))\n",
+     "build.file(&dest);\n", 1),
+]
+
 CLASSIFY_SELF_TESTS = [
     # (name, names build.rs reads, expected number of complaints)
     ("exactly the tables", set(SIZING_KNOBS) | set(NOT_SIZING), 0),
@@ -314,7 +548,23 @@ def self_test():
         if len(got) != expect:
             print(f"  {name}: expected {expect} complaint(s), got {len(got)}: {got}")
             bad += 1
-    total = len(SELF_TESTS) + len(SIZING_SELF_TESTS) + len(CLASSIFY_SELF_TESTS)
+    for name, body, expect in RUNG_SELF_TESTS:
+        got = check_board_rung("<self-test>", body)
+        if len(got) != expect:
+            print(f"  {name}: expected {expect} complaint(s), got {len(got)}: {got}")
+            bad += 1
+    for name, pool_c, fwd, expect in THREADX_SITE_SELF_TESTS:
+        got = check_threadx_site(pool_c, fwd)
+        if len(got) != expect:
+            print(f"  {name}: expected {expect} complaint(s), got {len(got)}: {got}")
+            bad += 1
+    total = (
+        len(SELF_TESTS)
+        + len(SIZING_SELF_TESTS)
+        + len(CLASSIFY_SELF_TESTS)
+        + len(RUNG_SELF_TESTS)
+        + len(THREADX_SITE_SELF_TESTS)
+    )
     if bad:
         print(f"check-executor-backing-arena-pairing --self-test: {bad} case(s) FAILED")
         return 1
@@ -502,6 +752,57 @@ def main():
         for complaint in bad:
             failures.append(f"  {rel}: {complaint}")
 
+    # phase-448 W5 — the RUNG half, for the ports with no Kconfig. Every board
+    # descriptor, not only the ones that state a rung: an unknown `platform =`
+    # is a failure in itself, so that "this port needs nothing" can never be
+    # confused with "nobody has looked at this port" (issue 1145's own history).
+    boards = tracked(repo, "*/nros-board.toml", "nros-board.toml")
+    rung_stated = 0
+    for rel in boards:
+        path = repo / rel
+        if not path.is_file():
+            continue
+        text = path.read_text(errors="replace")
+        platform = board_platform(text)
+        if platform is not None and platform not in PORTS:
+            failures.append(
+                f"  {rel}: declares platform `{platform}`, which this gate's "
+                f"PORTS ledger does not know. Add it with what is true of its "
+                f"allocator — issue 1145 sat open for five weeks because "
+                f"\"untouched\" and \"needs nothing\" looked identical"
+            )
+            continue
+        bad = check_board_rung(rel, text)
+        if not bad and last_int(RUNG_RE, text) is not None:
+            rung_stated += 1
+        for complaint in bad:
+            failures.append(f"  {rel}: {complaint}")
+
+    # The ThreadX subtraction site is checked whenever a ThreadX board states
+    # the rung — and ONLY then, so a tree that has not paired ThreadX yet is not
+    # required to carry the plumbing.
+    threadx_stated = any(
+        last_int(RUNG_RE, (repo / rel).read_text(errors="replace")) is not None
+        and PORTS.get(board_platform((repo / rel).read_text(errors="replace")), {}).get("site")
+        == "threadx"
+        for rel in boards
+        if (repo / rel).is_file()
+    )
+    if threadx_stated:
+        pool = repo / THREADX_POOL_C
+        fwd = repo / THREADX_FORWARDER
+        for missing in (p for p in (pool, fwd) if not p.is_file()):
+            failures.append(
+                f"  {missing.relative_to(repo)}: a ThreadX board states "
+                f"`{RUNG_KEY}` and this file — the one that is supposed to "
+                f"subtract it — does not exist"
+            )
+        if pool.is_file() and fwd.is_file():
+            for complaint in check_threadx_site(
+                pool.read_text(errors="replace"), fwd.read_text(errors="replace")
+            ):
+                failures.append(f"  {complaint}")
+
     # issue 1284 — the claim half's STATIC refusals belong on the fast line too:
     # they are text facts, and a conf nothing can vouch for should be refused
     # on the pull request, not only where the measurement runs.
@@ -543,9 +844,16 @@ def main():
     print(
         "check-executor-backing-arena-pairing: OK "
         f"({paired} conf(s) pair the arena with a stated backing; "
+        f"{rung_stated} board(s) pair it through `{RUNG_KEY}`; "
         f"{len(got)} (conf, board) claim(s) attributed for node-std-tests; "
-        f"{len(confs)} conf(s) scanned)"
+        f"{len(confs)} conf(s) + {len(boards)} board descriptor(s) scanned)"
     )
+    # The ledger itself, so a reader can see WHICH ports are not checked here and
+    # why, without opening the script. Silence would read as coverage.
+    for name, port in sorted(PORTS.items()):
+        if port["kind"] in ("rung", "kconfig"):
+            continue
+        print(f"  {name}: not checked here ({port['kind']}) — {port['why']}")
     return 0
 
 
