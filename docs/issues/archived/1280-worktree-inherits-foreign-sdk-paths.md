@@ -4,7 +4,7 @@ title: "A build in a worktree uses ANOTHER checkout's SDK trees — 19 `sdk-env.
 status: resolved
 type: bug
 area: [build, tooling]
-related: [1253, 0491, 0986, 1336, phase-445, phase-454]
+related: [1253, 0491, 0986, 1336, phase-445, phase-449, phase-454]
 ---
 
 ## What happened

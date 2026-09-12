@@ -423,3 +423,15 @@ owns it. Neither is mentioned in W2's "the missing writer", which names only
 not `:7182`. The premise it supports is confirmed: `node_fqn` is built from
 `self.node_name` / `self.namespace`, the executor's, and all six services
 register under that one name.
+
+## Issues homed here (survey 2026-09-11, re-homed 2026-09-12)
+
+The 2026-09-11 survey homed this issue in phase-430, which was ARCHIVED the next
+day (`f3a0b7168`). A finished phase cannot own open work, so it moves here: the
+defect is on a parameter DECLARATION path, which is this phase's subject.
+Phase-430 W3 is what fixed the other two paths, so the evidence for the fix
+shape is there and the remaining work is here.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1203](../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s `ParameterBuilder` declares straight into the store, bypassing the reserved-parameter hook that phase-430 W3 fixed on the other two paths — so `use_sim_time` named through the builder attaches no clock source |

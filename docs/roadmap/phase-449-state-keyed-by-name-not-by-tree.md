@@ -1,8 +1,10 @@
 # Phase 449 — build state keyed by a NAME, not by the tree that asked for it
 
-**Status (2026-09-11). Opened to give eight homeless issues one owner. Nothing
-in this phase has landed; W1–W8 are open. Every member issue is open and was
-filed from a measured incident, not from a reading.**
+**Status (2026-09-12). Opened to give eight homeless issues one owner. W4 is
+DONE — `8eeaa05ac` on `main` landed the re-root rule and its gate, and
+[#1280](../issues/archived/1280-worktree-inherits-foreign-sdk-paths.md) is
+resolved and archived. W1–W3 and W5–W8 are open, and every one of their
+issues was filed from a measured incident, not from a reading.**
 
 ## Why this phase exists
 
@@ -26,7 +28,8 @@ named something else**:
   checkout's NuttX kernel from `qemu-armv7a` to `rv-virt` and rewrote its
   `.config`, `include/nuttx/config.h` and `nuttx` binary. Nothing in the
   worktree's own `third-party/nuttx` was touched and nothing said so
-  ([#1280](../issues/1280-worktree-inherits-foreign-sdk-paths.md)).
+  ([#1280](../issues/archived/1280-worktree-inherits-foreign-sdk-paths.md),
+  resolved 2026-09-12).
 * Tier 2 produced **no verdict for eight consecutive scheduled runs**, and the
   same SHA failed two different ways on two different days, because the Zephyr
   workspace it built in belongs to a second checkout
@@ -99,17 +102,30 @@ clone existing and on nobody running `just clean-setup` in it.
       [phase-447](phase-447-provisioning-revision.md) A1/A2 add.
 - [ ] A generated `env.sh` contains no path inside any nano-ros checkout.
 
-### W4 — a worktree build uses the worktree's SDK trees
+### W4 — a worktree build uses the worktree's SDK trees — DONE
 
-[Issue 1280](../issues/1280-worktree-inherits-foreign-sdk-paths.md). 19
-`sdk-env.just` paths are absolute and inherited, and they win over the worktree
-that set out to build.
+[Issue 1280](../issues/archived/1280-worktree-inherits-foreign-sdk-paths.md),
+resolved and archived on 2026-09-12 by `8eeaa05ac`. The item was written here
+while the issue was open; it landed on `main` first, so this section records
+what closed it rather than what is owed.
 
-- [ ] Each of the 19 is either derived from the invoking tree or declared
-      shared-on-purpose with a reason.
-- [ ] A worktree build touches no file outside the worktree — checked by
-      comparing the parent checkout byte for byte across one build, the method
-      `check-hook-repo-side-effects` already uses.
+The census came out at **24, not 19** — the 19, plus `NROS_LAN9118_LWIP_DIR`,
+`PX4_AUTOPILOT_DIR`, the derived `IDF_PATH`, and `NROS_REPO_DIR` /
+`nano_ros_ROOT` from the activate files. That is the phase's own point made
+again: an enumeration is not the mechanism, and the fix is the three-valued
+rule in `scripts/lib/checkout-paths.sh` (outside any checkout → KEEP, a
+DIFFERENT checkout → RE-ROOT and say so, this checkout → KEEP).
+
+- [x] Each path-valued export is derived from the invoking tree or declared
+      shared-on-purpose with a reason — `just check inherited-checkout-paths`
+      (fast lane) asserts coverage over `just/sdk-env.just`, one spelling of the
+      checkout marker, and the rule's BEHAVIOUR against synthetic checkouts,
+      because reading the source alone would pass an implementation that never
+      looks at the filesystem.
+- [x] A worktree build compiles the worktree's sources — measured with an
+      `#error` in the worktree's `nros-platform-freertos/src/platform.c`: 0 hits
+      before (the main checkout's copy was compiled), 4 after, and still 0 both
+      ways for a genuine out-of-tree `NROS_PLATFORM_FREERTOS_SRC`.
 
 ### W5 — a worktree's build dir and skip ledger are its own
 
