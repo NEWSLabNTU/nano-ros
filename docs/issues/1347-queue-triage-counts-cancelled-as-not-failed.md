@@ -82,10 +82,18 @@ With the fix, the same query answers:
 ## Still open: the `queue` check itself
 
 This issue is about the TRIAGE. The underlying breakage — `nuttx/config.h`
-missing in the L3 cross-build, so `rust-rtos-link-check` fails for every pull
-request in the queue — is real, is not caused by any of those PRs, and is what
-should be fixed or dropped from the required set until it is. Nothing merges
-through the queue while it stands.
+missing in the L3 cross-build, so `rust-rtos-link-check` fails — is real and is
+not caused by any of the pull requests it ejected.
+
+**It is INTERMITTENT, not uniform, and the first version of this issue said
+otherwise.** PR #997 merged through the queue at 2026-09-12T00:30Z while this
+was being written, so "nothing merges while it stands" was wrong. What is
+measured is that `queue` failed for 11 distinct pull requests inside one
+lookback window and that some batches still pass — which points at build or
+cache STATE in the L3 job (a NuttX tree configured in some runs and not others)
+rather than at a tree that can never link. Retracted here rather than left
+standing: a confident wrong cause in an issue aims the next person at a dead
+end, which is worse than filing nothing.
 
 ## Acceptance
 
