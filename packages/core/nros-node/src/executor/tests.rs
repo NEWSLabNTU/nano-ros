@@ -3123,6 +3123,98 @@ fn ros_time_timer_follows_the_simulated_clock() {
     );
 }
 
+/// A `TimerClockSource::Ros` timer with NO `/clock` source still fires, at its
+/// period, on the wall clock — issue 1334.
+///
+/// This is the acceptance the issue asks for, and it is the behaviour three
+/// doc sites promise: `TimerClockSource::Ros` ("system time when none is, the
+/// same fallback `rclcpp::Clock` has, so a node built for simulation still runs
+/// standalone"), `Executor::register_timer_on_clock`, and phase-430's delta row
+/// 15. Before the fix the ROS clock's no-override arm read an in-image counter
+/// nothing advances, so `timer_clock_step` measured a step of 0 on every poll
+/// and this timer could never reach its period.
+///
+/// # What this test is, and what it is not
+///
+/// It is NOT the negative control for 1334 — it cannot be, in this build
+/// shape. `nros-node`'s test lane links no platform port (`nros-core`'s
+/// `platform-clock` feature is off, checked with `cargo tree`), and with no
+/// port the wall clock IS the counter, so the pre- and post-fix code read the
+/// same static here and both pass. That is not a hole in the fix, it is the
+/// precise statement of it: the defect is "ROS time falls back to the counter
+/// instead of to the wall clock", and where there is no wall clock the counter
+/// is the honest answer. The control lives where the two are separable — a
+/// port-linked build: `nros-core`'s `ros_time_with_no_override_reads_the_port_
+/// wall_clock` and `nros-c`'s `ros_time_agrees_with_the_rust_surface`.
+///
+/// What it IS: the end-to-end guard that the TIMER path follows this clock at
+/// all, in the shape an embedded standalone image actually ships — which is
+/// the half no clock-level unit test reaches.
+#[cfg(feature = "sim-time")]
+// The gate is the LOCK, not the feature: this test drives the process-global
+// ROS time override (by leaving it cleared) and `SimTimeGuard` — itself
+// `#[cfg(feature = "sim-time")]` — is what orders it against the sim-time tests
+// that SET it. Without the shared guard the two race (issue 1104's shape).
+#[test]
+fn ros_timer_fires_on_its_period_with_no_clock_source_installed() {
+    let _sim_time = SimTimeGuard::acquire();
+    use nros_core::clock::Clock;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    // No simulator: nobody has installed a `/clock` sample, which is the state
+    // a standalone image boots in.
+    Clock::clear_ros_time_override();
+    assert!(
+        !Clock::is_ros_time_override_active(),
+        "precondition: this test is about the arm with NO override"
+    );
+    Clock::set_steady_time(1_700_000_000 * 1_000_000_000);
+
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    let ticks = std::sync::Arc::new(AtomicUsize::new(0));
+    let t = ticks.clone();
+    executor
+        .register_timer_on_clock(
+            TimerDuration::from_millis(100),
+            super::arena::TimerClockSource::Ros,
+            move || {
+                t.fetch_add(1, Ordering::SeqCst);
+            },
+        )
+        .unwrap();
+
+    // Three periods of wall time. The counter bump is what makes this
+    // deterministic in BOTH shapes: with no port linked it is the wall clock,
+    // and with one linked it is a no-op beside the real 120 ms slept.
+    for _ in 0..3 {
+        Clock::update_steady_time_ms(120);
+        let _ = elapse_then_spin_once(&mut executor, 1);
+    }
+
+    assert_eq!(
+        ticks.load(Ordering::SeqCst),
+        3,
+        "a Ros timer standing alone must fire once per period of WALL time; \
+         zero here is issue 1334 (the fallback was a counter nothing advances)"
+    );
+
+    // ...and it is the ROS clock it followed, not the executor's spin delta:
+    // hold the clock still and the timer stops, which is what separates this
+    // from a `Steady` timer.
+    let before = ticks.load(Ordering::SeqCst);
+    for _ in 0..3 {
+        let _ = elapse_then_spin_once(&mut executor, 120);
+    }
+    assert_eq!(
+        ticks.load(Ordering::SeqCst),
+        before,
+        "with its clock held still a Ros timer must not fire, however much \
+         real time the executor spends"
+    );
+}
+
 /// phase-425 W3b — `use_sim_time` is a SWITCH, not a value, and declaring it
 /// attaches the `/clock` source the way rclcpp's does.
 ///

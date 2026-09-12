@@ -151,9 +151,16 @@ fn get_steady_time_ns() -> u64 {
 /// The override itself is `nros_core::Clock`'s, not a second copy: the C
 /// switches below drive the SAME global a Rust `Clock::ros_time()` reads, so an
 /// image whose C nodes and Rust nodes share a process cannot end up with two
-/// answers to "what time is it". (Rust's `RosTime` fallback is the steady
-/// counter rather than the system clock — that difference predates this and is
-/// the two languages' fallback, not their override.)
+/// answers to "what time is it".
+///
+/// issue 1334 — that last sentence used to carry a parenthesis admitting the
+/// two surfaces DID differ, on the fallback rather than the override: Rust's
+/// `RosTime` with no override read `nros_core`'s in-image steady counter, which
+/// nothing in the tree advances, so `nros_clock_get_now(NROS_CLOCK_ROS_TIME)`
+/// and `Clock::ros_time().now()` gave different answers about the same image in
+/// the same state. The Rust arm now evaluates the same wall clock this one
+/// does, and `ros_time_agrees_with_the_rust_surface` below is what holds the
+/// two together.
 fn get_ros_time_ns() -> i64 {
     match nros_core::Clock::get_ros_time_override() {
         Some(t) => t.to_nanos(),
@@ -600,6 +607,55 @@ mod tests {
     use super::*;
 
     const NS: i64 = NANOS_PER_SEC as i64;
+
+    /// The two surfaces answer "what is ROS time with no `/clock` installed"
+    /// identically — issue 1334, and the cross-language negative control.
+    ///
+    /// This lane links a real platform port (that is why `platform::tests`
+    /// passes here at all), so the two answers are separable: C reads the
+    /// port's wall clock and Rust used to read an in-image counter nothing
+    /// advances, which on the pre-fix tree makes the assertion below fail by
+    /// roughly the age of the Unix epoch.
+    ///
+    /// The tolerance is a real sample of a running clock on each side, so it
+    /// cannot be zero; a second is three orders of magnitude above the gap
+    /// between two `clock_gettime` calls and nine below the defect.
+    #[test]
+    fn ros_time_agrees_with_the_rust_surface() {
+        nros_core::clock::Clock::clear_ros_time_override();
+
+        let c_side = get_ros_time_ns();
+        let rust_side = nros_core::clock::Clock::ros_time().now().to_nanos();
+
+        assert!(
+            (c_side - rust_side).abs() < NS,
+            "the C and Rust ROS-time surfaces must read the same clock: \
+             C said {c_side} ns, Rust said {rust_side} ns"
+        );
+        assert!(
+            rust_side > 1_600_000_000 * NS,
+            "and it must be the WALL clock (after 2020), not a counter: {rust_side} ns"
+        );
+    }
+
+    /// The same agreement for the other two clock types, which is what makes
+    /// the one above a statement about ROS time rather than about this image's
+    /// clocks in general — issue 1334's sweep.
+    #[test]
+    fn every_clock_type_agrees_with_the_rust_surface() {
+        let wall_gap = get_system_time_ns() - nros_core::clock::Clock::system().now().to_nanos();
+        assert!(
+            wall_gap.abs() < NS,
+            "system time disagrees by {wall_gap} ns"
+        );
+
+        let steady_gap =
+            get_steady_time_ns() as i64 - nros_core::clock::Clock::steady().now().to_nanos();
+        assert!(
+            steady_gap.abs() < NS,
+            "steady time disagrees by {steady_gap} ns"
+        );
+    }
 
     /// The wire decoder, which is the correct inverse of the correct encoding —
     /// so a round trip through it EXPOSES an encoder error rather than
