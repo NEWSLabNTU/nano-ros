@@ -1021,9 +1021,21 @@
     "verdict": "divergence",
     "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`. Ours is `DeclaredNode::create_service_client_for_name`."
   },
+  "rust:Node::create_client_with_callback": {
+    "verdict": "divergence",
+    "why": "RFC-0041 / phase 239.1 -- a service client whose REPLY is delivered to a callback the executor dispatches at `spin_once`, rather than awaited. rclrs has one constructor, `NodeState::create_client`, and expresses the delivery mode as an async call on the client it returns; we have no async runtime to await a future on and no allocator to box one with, so the two modes are two CONSTRUCTORS -- `create_client` hands back a `Promise` the caller polls, this one hands back a send handle and takes the callback at creation. Dual-mode by construction, not by preference: the callback is bound at creation for the same reason every other callback in this lane is, which is that the executor's dispatch arena is sized at build time.\n\nOn `NodeCtx`, the executor-borrowing node handle (`exec.node_mut(id)`), which the correlator folds onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
+  },
+  "rust:Node::create_client_with_callback_sized": {
+    "verdict": "divergence",
+    "why": "`rust:Node::create_client_with_callback` with the request and reply buffer bounds supplied as const generics instead of defaulted. Same `_sized` convention as `rust:NodeHandle::create_client_sized` and the rest of the family: the buffers are STATIC, so their size is part of the type rather than a runtime argument, and rclrs allocates per call and needs no such spelling.\n\nOn `NodeCtx`, the executor-borrowing node handle (`exec.node_mut(id)`), which the correlator folds onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
+  },
   "rust:Node::create_service": {
     "verdict": "divergence",
-    "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`. Ours is `DeclaredNode::create_service_server_for_name`."
+    "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`. Ours is `DeclaredNode::create_service_server_for_name`.\n\nAMENDED 2026-09-12 (issue 1351). The row was written while this key read `theirs-only`, which is why it names only the declarative spelling. It now reads `arity-only`, with NO change to any signature, because the extractor started reaching `NodeCtx` and `NodeCtx::create_service(&mut self, name, callback)` -- RFC-0022's `fork` tier -- is ours under this key. \"Entities are DECLARED by a component rather than created on a live node\" is true of the declarative API and was never the whole answer: the imperative handle creates them on a live node and takes the callback at creation. What survives as the divergence is `&mut self` plus a returned `HandleId` -- static entity storage, RFC-0022's borrow model -- not the absence of the capability."
+  },
+  "rust:Node::service": {
+    "verdict": "divergence",
+    "why": "the service-server BUILDER (`node.service(name).qos(..).build::<Svc, _>(cb)`) -- RFC-0022's `clone` tier, beside the `fork`-tier `create_service`; see `rust:Node::publisher` for the verdict and why a builder rather than rclrs's options struct. Defaults to the services profile (RELIABLE + VOLATILE + KEEP_LAST(10)), which is rclcpp's `ServicesQoS`.\n\nOn `NodeCtx`, the executor-borrowing node handle (`exec.node_mut(id)`), which the correlator folds onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
   },
   "rust:NodeHandle::create_client": {
     "verdict": "divergence",

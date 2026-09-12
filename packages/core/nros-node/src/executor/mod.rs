@@ -140,7 +140,16 @@ pub use arena::TimerOverrunPolicy;
 #[cfg(any(has_rmw, test))]
 pub use handles::*;
 #[cfg(any(has_rmw, test))]
-pub use node::{CallbackGroup, NodeHandle};
+// `NodeCtx` joined this line in 2026-09-12 (issue 1351). It was the only one of
+// the three that `mod node` kept to itself, and it was not a smaller surface for
+// it: `Executor::node_mut` is `pub` and RETURNS a `NodeCtx`, the `nros` crate's
+// own first doc example is `executor.node_mut(node).create_publisher::<Int32>(…)`,
+// and 15 in-tree binaries call its methods. What the missing `pub use` bought
+// was that the type had no PATH — a user could call all ~25 methods and could
+// not write `fn setup(ctx: &mut NodeCtx)` to factor two of them out, and the
+// Rust parity extractor (which walks the umbrella's reachable surface) had never
+// produced a single row for any of them.
+pub use node::{CallbackGroup, NodeCtx, NodeHandle};
 #[cfg(any(has_rmw, test))]
 pub use node_record::{NodeBuilder, NodeId, NodeRecord};
 #[cfg(any(has_rmw, test))]

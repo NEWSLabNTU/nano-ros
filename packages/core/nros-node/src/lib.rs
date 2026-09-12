@@ -246,7 +246,7 @@ pub use executor::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CallbackGroup, CompletedGoal, EmbeddedPublisher,
     EmbeddedRawPublisher, EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream,
-    GoalFeedbackStream, LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec,
+    GoalFeedbackStream, LoanError, NodeCtx, NodeHandle, Promise, PublishLoan, RawActionClientSpec,
     RawActionServerSpec, RawActiveGoal, RawServiceClient, RawServiceServer, RawSubscription,
     RecvView, SessionHandle, Subscription, action_channel_type, executor_storage_layout,
     executor_storage_layout_with, executor_storage_u64_len,

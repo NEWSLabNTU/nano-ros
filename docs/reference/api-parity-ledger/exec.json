@@ -1042,6 +1042,10 @@
     "verdict": "extension",
     "why": "per-callback: fire only when new data arrived (default) or on every iteration that passes the trigger. The second is how a control loop keeps its period when its input is late -- it must still run and act on the last value. rclrs has no equivalent because a wait set only ever reports entities that have data. See `rust:Trigger`."
   },
+  "rust:Node::create_callback_group": {
+    "verdict": "extension",
+    "why": "RFC-0047 / phase 273. The group decides which `SchedContext` the callback runs under -- which RTOS priority tier, and the deadline policy when it overruns. Same verdict and same reason as `rust:SchedContext`: rclrs 0.7.0 has NO callback groups at all (measured: zero `CallbackGroup` / `callback_group` identifiers in the recorded surface -- its isolation primitive is `Worker`, `rust:Node::create_worker`, which is `declined` here), and rclcpp's callback groups carry CONCURRENCY rules and no priority, so neither library has the concept this takes. This names one: it returns a `CallbackGroup` token to pass to the `_in_group` create variants. The token is a `heapless::String<32>` rather than an `Arc` because there is no allocator -- a name longer than 32 bytes is truncated, which is the constraint made visible in the contract.\n\nOn `NodeCtx`, the executor-borrowing node handle (`exec.node_mut(id)`), which the correlator folds onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
+  },
   "rust:PayloadTask": {
     "verdict": "declined",
     "disposition": "absent",
