@@ -49,6 +49,8 @@ use nros_rmw::{
     QoSReliabilityPolicy, TransportError,
 };
 
+use portable_atomic::Ordering;
+
 use crate::config::SUBSCRIBER_RING_DEPTH;
 
 use super::service::SERVICE_REQUEST_RING_DEPTH;
@@ -98,16 +100,23 @@ impl EntityKind {
 /// per entity in every image — noise that teaches a reader to skip it. The
 /// knob that fixes it is global, so one line naming the first entity to lose
 /// depth carries the whole message.
-static DEPTH_CLAMP_REPORTED: core::sync::atomic::AtomicBool =
-    core::sync::atomic::AtomicBool::new(false);
+///
+/// issue 1344 — `portable_atomic`, never `core::sync::atomic`. `riscv32imc`
+/// (every esp32 image) has no A extension, so core's `AtomicBool` there is
+/// load/store only and has no `swap` at all: the latch below compiles on the
+/// host and fails the whole crate on that target. `portable-atomic` is already
+/// a dependency and already the spelling one module up (`shim/mod.rs:49`), and
+/// it resolves a CAS-less target through the `critical-section` /
+/// `unsafe-assume-single-core` feature the consuming board enables.
+static DEPTH_CLAMP_REPORTED: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
 
 /// Reported once per process, same reasoning: `QOS_PROFILE_SENSOR_DATA` and
 /// `QOS_PROFILE_BEST_EFFORT` are common, and the answer is the same every time.
-static RELIABILITY_GRANT_REPORTED: core::sync::atomic::AtomicBool =
-    core::sync::atomic::AtomicBool::new(false);
+static RELIABILITY_GRANT_REPORTED: portable_atomic::AtomicBool =
+    portable_atomic::AtomicBool::new(false);
 
-fn first_time(flag: &core::sync::atomic::AtomicBool) -> bool {
-    !flag.swap(true, core::sync::atomic::Ordering::Relaxed)
+fn first_time(flag: &portable_atomic::AtomicBool) -> bool {
+    !flag.swap(true, Ordering::Relaxed)
 }
 
 /// Resolve a requested profile into the one this backend will run, refusing
