@@ -620,6 +620,39 @@ pub fn executor_env_only(knob: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
+/// phase-448 W5 — one executor knob as env → board → platform, with NO default.
+///
+/// For a build script that has to act on a knob it does not OWN. The ThreadX
+/// board crate is the case: `nros-node` sizes `EXECUTOR_BACKING` from
+/// `backing_u64s`, and the byte pool in `threadx_hooks.c` has to subtract
+/// exactly `8 *` the same number. Two readers of one rung cannot disagree; two
+/// STATEMENTS of one number can, which is the drift issue 1171 had to gate
+/// against on Zephyr.
+///
+/// `None` means nothing stated it, and that has to stay distinguishable: for
+/// this knob the builtin is a const only the TARGET compiler can evaluate, and
+/// `0` is its documented opt-out ("emit no static"), so neither can stand in
+/// for absence. That is why this is not [`executor_env_only`] with a sentinel.
+///
+/// It has no Kconfig rung, deliberately — reading `$DOTCONFIG` belongs to the
+/// crate that owns the knob, and a Zephyr image pairs its arena through the
+/// `CONFIG_` spelling instead.
+///
+/// Like [`executor_env_only`], it lives HERE so the env-reading idiom for a
+/// migrated knob stays in one crate (`check-knob-single-reader`).
+#[must_use]
+pub fn executor_rung_opt(knob: &str) -> Option<usize> {
+    let key = executor_env_key(knob);
+    println!("cargo:rerun-if-env-changed={key}");
+    if let Some(v) = std::env::var(key)
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+    {
+        return Some(v);
+    }
+    BuildRungs::from_build_env().and_then(|r| r.executor_rungs().get(knob))
+}
+
 /// `[knobs.params]` — phase-400 W6, the parameter-storage tenant.
 ///
 /// Five bounds on what a parameter server can hold. They vary by BOARD in

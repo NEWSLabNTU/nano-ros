@@ -176,19 +176,17 @@ pub fn add_threadx_hooks_source(build: &mut cc::Build) {
 /// Unstated → no define, so the C file's own `#ifndef` default (0) applies and
 /// the pool stays at its base. That is the pre-W6 behaviour and the safe
 /// direction: the image wastes the bytes rather than running out of them.
+/// The env-reading idiom itself is NOT here: `executor_rung_opt` lives beside
+/// `executor_env_key` in `platform_config`, so a migrated knob has one
+/// env-reading site in the tree (`check-knob-single-reader`). This file supplies
+/// only what to do with the answer.
 fn forward_executor_backing_words(build: &mut cc::Build) {
     const KNOB: &str = "backing_u64s";
-    let key = crate::platform_config::executor_env_key(KNOB);
-    println!("cargo:rerun-if-env-changed={key}");
-    let words = std::env::var(key)
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .or_else(|| {
-            crate::platform_config::BuildRungs::from_build_env()
-                .and_then(|r| r.executor_rungs().get(KNOB))
-        });
-    if let Some(words) = words {
-        build.define("NROS_EXECUTOR_BACKING_U64S", words.to_string().as_str());
+    if let Some(words) = crate::platform_config::executor_rung_opt(KNOB) {
+        build.define(
+            crate::platform_config::executor_env_key(KNOB),
+            words.to_string().as_str(),
+        );
     }
 }
 
