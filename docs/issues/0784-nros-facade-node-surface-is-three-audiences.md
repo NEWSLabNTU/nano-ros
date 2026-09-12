@@ -68,7 +68,7 @@ finding:
 | --- | --- | --- |
 | `Node` | a TRAIT a component implements (`register`) | `nros::Node` |
 | `NodeHandle<'a>` | the rclrs-shaped imperative handle — `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` | `nros::NodeHandle`, **and in `nros::prelude`** |
-| `NodeCtx<'e, 's>` | the declaration-time context | not exported |
+| `NodeCtx<'e, 's>` | the executor-borrowing node handle — `exec.node_mut(id)` | `nros::NodeCtx` **since 2026-09-12 (issue 1351)**; before that, reachable only as a return value, so all ~25 methods were callable and the TYPE had no path |
 | `Node` (struct) | the standalone pre-component node | `nros::StandaloneNode` |
 
 So a Rust user CAN have rclrs's shape — `NodeHandle` is it, and it is in the
@@ -76,6 +76,17 @@ prelude. What the facade does not do is say which of the four to reach for, or
 that two complete APIs (declarative and imperative) sit side by side under one
 namespace. A reader who types `nros::Node` expecting rclrs's `Node` lands on the
 trait.
+
+**AMENDED 2026-09-12 (issue 1351).** The table above now has FOUR exported
+names rather than three: `NodeCtx` was not missing from the facade by decision,
+it was missing because `nros_node::executor`'s `mod node` is private while
+`Executor::node_mut` returns the type — so the surface was public and only the
+NAME was not. The consequence was two-sided: a user could not write
+`fn setup(ctx: &mut NodeCtx)` to factor two registrations out, and the Rust
+parity extractor (which walks what the umbrella exports) had never produced a
+row for any of its methods. Exporting it added 25 rows to the measured surface.
+This issue's three remaining moves — `#[doc(hidden)]` on the macro plumbing, the
+four zero-consumer types, and what `nros::` LEADS with — are untouched.
 
 Phase 379's correlator reports 45 open decisions in the Rust `node` stage, and
 most of them are this: items that have no rclrs counterpart because they belong
