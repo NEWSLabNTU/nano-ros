@@ -160,3 +160,47 @@ not a gate that RUNS — and it is unaddressed here. The cheap subset would be t
 per-header parse loop plus the compile-test TUs, which need no fixtures, no SDK
 and no cross toolchain; the expensive parts of `check cpp` are the backend
 builds around them.
+
+## CORRECTION 2026-09-12 — the row that was edited is not the row that changed
+
+The resolution above says "`cpp:Rate::period`'s ledger row states the return
+type as it now is", and `9f600be4e`'s commit message says the same. Measured
+against the file, both are false: the commit's only ledger hunk rewrites
+`cpp:Rate::Rate`, the CONSTRUCTOR row. `cpp:Rate::period` — the row the filing
+named, and the only row whose signature actually changed — was left carrying the
+phase-417 sleep-shape `why` alone, which is exactly the "same signature,
+different behaviour" reading this issue was filed to end.
+
+Nothing was wrong with the CODE. `just check cpp`'s compile probes were green
+before this correction and are green after it; the defect is that the ledger
+still answered the wrong question, so `check-api-parity` and a reader agreed
+about a row nobody had asked about.
+
+Both rows now describe their own member, which is what makes them independently
+true:
+
+* **`cpp:Rate::period`** carries the return-type divergence: upstream's
+  `std::chrono::nanoseconds` against our `nros::Duration`
+  (`packages/api/nros-cpp/include/nros/nros.hpp:1194`), the class-level reason
+  (`Rate` used to be absent, not different, on ThreadX), the porter's one-word
+  edit, the one-call chrono adapter, and the probe line that writes it
+  (`packages/api/nros-cpp/tests/compile/ros2_api_adoption_stage2.cpp:273`).
+* **`cpp:Rate::Rate`** carries the constructor's own story, which is the
+  opposite shape and was never a divergence in the return: W5 ADDED
+  `explicit Rate(::nros::Duration)` (`nros.hpp:1136`) beside the two upstream
+  forms, which both still bind — `Rate(double)` at `:1129` and
+  `Rate(std::chrono::duration<Rep, Period>)` at `:1148`, the latter behind
+  `NROS_CPP_HAS_STD_CHRONO`, a gate on a METHOD that phase-442 W8 owns retiring.
+
+**The sweep the filing asked for, run and empty.** `Rate::period` is the only
+accessor phase-442 W5 re-typed: `c8e7cce6f`'s header diff has exactly one
+changed return type, and a sweep of every `<chrono>` mention under
+`packages/api/nros-cpp/include` finds the rest to be PARAMETER types that still
+match upstream (`Node::create_wall_timer`, the free `rclcpp::create_timer`, the
+gated `Rate` constructor) plus `Executor::spin_once`'s already-ledgered
+`int32_t timeout_ms`. The two `Time`-returning accessors, `Clock::now`
+(`clock.hpp:86`) and `Node::now` (`node.hpp:972`), return what upstream returns.
+
+**What this does NOT close is unchanged**, and it is now the second time this
+issue has demonstrated it: `cpp` reaches no merge-gating event, so neither the
+original red nor this ledger drift was reported by anything that runs.
