@@ -3980,7 +3980,7 @@ pub fn build_action_client_multigoal(rmw: Rmw) -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn action_client_multigoal_binary() -> PathBuf {
     build_action_client_multigoal(Rmw::Zenoh)
-        .expect("Failed to build action-client-multigoal (zenoh)")
+        .require("action-client-multigoal (zenoh)")
         .to_path_buf()
 }
 
@@ -3989,7 +3989,7 @@ pub fn action_client_multigoal_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn action_server_concurrent_binary() -> PathBuf {
     build_action_server_concurrent(Rmw::Zenoh)
-        .expect("Failed to build action-server-concurrent (zenoh)")
+        .require("action-server-concurrent (zenoh)")
         .to_path_buf()
 }
 
@@ -3998,7 +3998,7 @@ pub fn action_server_concurrent_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn xrce_action_server_concurrent_binary() -> PathBuf {
     build_action_server_concurrent(Rmw::Xrce)
-        .expect("Failed to build action-server-concurrent (xrce)")
+        .require("action-server-concurrent (xrce)")
         .to_path_buf()
 }
 
@@ -5035,7 +5035,7 @@ pub fn build_qemu_lan9118() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn talker_binary() -> PathBuf {
     build_native_talker()
-        .expect("Failed to build native-rs-talker")
+        .require("native-rs-talker")
         .to_path_buf()
 }
 
@@ -5043,7 +5043,7 @@ pub fn talker_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn listener_binary() -> PathBuf {
     build_native_listener()
-        .expect("Failed to build native-rs-listener")
+        .require("native-rs-listener")
         .to_path_buf()
 }
 
@@ -5051,7 +5051,7 @@ pub fn listener_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn lifecycle_node_binary() -> PathBuf {
     build_native_lifecycle_node()
-        .expect("Failed to build native-rs-lifecycle-node")
+        .require("native-rs-lifecycle-node")
         .to_path_buf()
 }
 
@@ -5137,7 +5137,7 @@ pub fn build_native_listener_tls() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn talker_tls_binary() -> PathBuf {
     build_native_talker_tls()
-        .expect("Failed to build native-rs-talker with link-tls")
+        .require("native-rs-talker with link-tls")
         .to_path_buf()
 }
 
@@ -5145,7 +5145,7 @@ pub fn talker_tls_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn listener_tls_binary() -> PathBuf {
     build_native_listener_tls()
-        .expect("Failed to build native-rs-listener with link-tls")
+        .require("native-rs-listener with link-tls")
         .to_path_buf()
 }
 
@@ -5266,7 +5266,7 @@ pub fn build_native_listener_safety() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn talker_safety_binary() -> PathBuf {
     build_native_talker_safety()
-        .expect("Failed to build native-rs-talker with safety-e2e")
+        .require("native-rs-talker with safety-e2e")
         .to_path_buf()
 }
 
@@ -5274,7 +5274,7 @@ pub fn talker_safety_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn listener_safety_binary() -> PathBuf {
     build_native_listener_safety()
-        .expect("Failed to build native-rs-listener with safety-e2e")
+        .require("native-rs-listener with safety-e2e")
         .to_path_buf()
 }
 
@@ -5329,7 +5329,7 @@ pub fn build_message_info_observer_zero_copy() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn action_server_binary() -> PathBuf {
     build_native_action_server()
-        .expect("Failed to build native-rs-action-server")
+        .require("native-rs-action-server")
         .to_path_buf()
 }
 
@@ -5337,7 +5337,7 @@ pub fn action_server_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn action_client_binary() -> PathBuf {
     build_native_action_client()
-        .expect("Failed to build native-rs-action-client")
+        .require("native-rs-action-client")
         .to_path_buf()
 }
 
@@ -5413,7 +5413,7 @@ pub fn build_native_service_client_callback() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn service_server_binary() -> PathBuf {
     build_native_service_server()
-        .expect("Failed to build native-rs-service-server")
+        .require("native-rs-service-server")
         .to_path_buf()
 }
 
@@ -5421,7 +5421,7 @@ pub fn service_server_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn service_client_binary() -> PathBuf {
     build_native_service_client()
-        .expect("Failed to build native-rs-service-client")
+        .require("native-rs-service-client")
         .to_path_buf()
 }
 
@@ -5441,7 +5441,7 @@ pub fn build_native_custom_msg_no_zenoh() -> TestResult<PathBuf> {
 #[rstest::fixture]
 pub fn custom_msg_binary() -> PathBuf {
     build_native_custom_msg()
-        .expect("Failed to build native-rs-custom-msg")
+        .require("native-rs-custom-msg")
         .to_path_buf()
 }
 
@@ -5476,7 +5476,7 @@ pub fn qemu_baremetal_main_e2e_binary() -> TestResult<PathBuf> {
 #[rstest::fixture]
 pub fn qemu_bsp_talker_binary() -> PathBuf {
     build_qemu_bsp_talker()
-        .expect("Failed to build qemu-bsp-talker")
+        .require("qemu-bsp-talker")
         .to_path_buf()
 }
 
@@ -5484,7 +5484,7 @@ pub fn qemu_bsp_talker_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn qemu_bsp_listener_binary() -> PathBuf {
     build_qemu_bsp_listener()
-        .expect("Failed to build qemu-bsp-listener")
+        .require("qemu-bsp-listener")
         .to_path_buf()
 }
 
@@ -5504,7 +5504,7 @@ pub fn build_qemu_serial_talker() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn qemu_serial_talker_binary() -> PathBuf {
     build_qemu_serial_talker()
-        .expect("Failed to build qemu-serial-talker")
+        .require("qemu-serial-talker")
         .to_path_buf()
 }
 
@@ -5520,7 +5520,7 @@ pub fn build_qemu_serial_listener() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn qemu_serial_listener_binary() -> PathBuf {
     build_qemu_serial_listener()
-        .expect("Failed to build qemu-serial-listener")
+        .require("qemu-serial-listener")
         .to_path_buf()
 }
 
@@ -5661,17 +5661,13 @@ pub fn build_xrce_listener() -> TestResult<&'static Path> {
 /// rstest fixture that provides the xrce-talker binary path.
 #[rstest::fixture]
 pub fn xrce_talker_binary() -> PathBuf {
-    build_xrce_talker()
-        .expect("Failed to build xrce-talker")
-        .to_path_buf()
+    build_xrce_talker().require("xrce-talker").to_path_buf()
 }
 
 /// rstest fixture that provides the xrce-listener binary path.
 #[rstest::fixture]
 pub fn xrce_listener_binary() -> PathBuf {
-    build_xrce_listener()
-        .expect("Failed to build xrce-listener")
-        .to_path_buf()
+    build_xrce_listener().require("xrce-listener").to_path_buf()
 }
 
 /// Resolve the prebuilt px4-stub example binary (Phase 233.4). Built by
@@ -5689,9 +5685,7 @@ pub fn build_px4_stub() -> TestResult<&'static Path> {
 /// rstest fixture that provides the px4-stub binary path.
 #[rstest::fixture]
 pub fn px4_stub_binary() -> PathBuf {
-    build_px4_stub()
-        .expect("Failed to build px4-stub")
-        .to_path_buf()
+    build_px4_stub().require("px4-stub").to_path_buf()
 }
 
 /// The coordinate of the px4 companion leaves — issue 0658 follow-up.
@@ -5734,7 +5728,7 @@ pub fn build_px4_companion() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn px4_companion_binary() -> PathBuf {
     build_px4_companion()
-        .expect("Failed to build px4 offboard-companion")
+        .require("px4 offboard-companion")
         .to_path_buf()
 }
 
@@ -5760,7 +5754,7 @@ pub fn build_xrce_service_client() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn xrce_service_server_binary() -> PathBuf {
     build_xrce_service_server()
-        .expect("Failed to build xrce-service-server")
+        .require("xrce-service-server")
         .to_path_buf()
 }
 
@@ -5768,7 +5762,7 @@ pub fn xrce_service_server_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn xrce_service_client_binary() -> PathBuf {
     build_xrce_service_client()
-        .expect("Failed to build xrce-service-client")
+        .require("xrce-service-client")
         .to_path_buf()
 }
 
@@ -5794,7 +5788,7 @@ pub fn build_xrce_action_client() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn xrce_action_server_binary() -> PathBuf {
     build_xrce_action_server()
-        .expect("Failed to build xrce-action-server")
+        .require("xrce-action-server")
         .to_path_buf()
 }
 
@@ -5802,7 +5796,7 @@ pub fn xrce_action_server_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn xrce_action_client_binary() -> PathBuf {
     build_xrce_action_client()
-        .expect("Failed to build xrce-action-client")
+        .require("xrce-action-client")
         .to_path_buf()
 }
 
@@ -5838,7 +5832,7 @@ pub fn build_xrce_serial_listener() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn xrce_serial_talker_binary() -> PathBuf {
     build_xrce_serial_talker()
-        .expect("Failed to build xrce-serial-talker")
+        .require("xrce-serial-talker")
         .to_path_buf()
 }
 
@@ -5846,7 +5840,7 @@ pub fn xrce_serial_talker_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn xrce_serial_listener_binary() -> PathBuf {
     build_xrce_serial_listener()
-        .expect("Failed to build xrce-serial-listener")
+        .require("xrce-serial-listener")
         .to_path_buf()
 }
 
@@ -5974,7 +5968,7 @@ pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn zenoh_stress_test_large_buf_binary() -> PathBuf {
     build_zenoh_stress_test_large_buf()
-        .expect("Failed to build zenoh-stress-test (large-buf)")
+        .require("zenoh-stress-test (large-buf)")
         .to_path_buf()
 }
 
@@ -6040,7 +6034,7 @@ pub fn build_qemu_large_msg_test() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn qemu_large_msg_test_binary() -> PathBuf {
     build_qemu_large_msg_test()
-        .expect("Failed to build qemu-bsp-large-msg-test")
+        .require("qemu-bsp-large-msg-test")
         .to_path_buf()
 }
 
@@ -6065,17 +6059,13 @@ pub fn build_c_listener() -> TestResult<&'static Path> {
 /// rstest fixture that provides the c-talker binary path
 #[rstest::fixture]
 pub fn c_talker_binary() -> PathBuf {
-    build_c_talker()
-        .expect("Failed to build c-talker")
-        .to_path_buf()
+    build_c_talker().require("c-talker").to_path_buf()
 }
 
 /// rstest fixture that provides the c-listener binary path
 #[rstest::fixture]
 pub fn c_listener_binary() -> PathBuf {
-    build_c_listener()
-        .expect("Failed to build c-listener")
-        .to_path_buf()
+    build_c_listener().require("c-listener").to_path_buf()
 }
 
 /// Build c-service-server example (cached)
@@ -6149,7 +6139,7 @@ pub fn build_c_action_client() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn c_service_server_binary() -> PathBuf {
     build_c_service_server()
-        .expect("Failed to build c-service-server")
+        .require("c-service-server")
         .to_path_buf()
 }
 
@@ -6157,7 +6147,7 @@ pub fn c_service_server_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn c_service_client_binary() -> PathBuf {
     build_c_service_client()
-        .expect("Failed to build c-service-client")
+        .require("c-service-client")
         .to_path_buf()
 }
 
@@ -6165,7 +6155,7 @@ pub fn c_service_client_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn c_service_client_callback_binary() -> PathBuf {
     build_c_service_client_callback()
-        .expect("Failed to build c-service-client-callback")
+        .require("c-service-client-callback")
         .to_path_buf()
 }
 
@@ -6173,7 +6163,7 @@ pub fn c_service_client_callback_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn c_action_server_binary() -> PathBuf {
     build_c_action_server()
-        .expect("Failed to build c-action-server")
+        .require("c-action-server")
         .to_path_buf()
 }
 
@@ -6181,7 +6171,7 @@ pub fn c_action_server_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn c_action_client_binary() -> PathBuf {
     build_c_action_client()
-        .expect("Failed to build c-action-client")
+        .require("c-action-client")
         .to_path_buf()
 }
 
@@ -6206,16 +6196,14 @@ pub fn build_c_xrce_listener() -> TestResult<&'static Path> {
 /// rstest fixture that provides the c-xrce-talker binary path
 #[rstest::fixture]
 pub fn c_xrce_talker_binary() -> PathBuf {
-    build_c_xrce_talker()
-        .expect("Failed to build c-xrce-talker")
-        .to_path_buf()
+    build_c_xrce_talker().require("c-xrce-talker").to_path_buf()
 }
 
 /// rstest fixture that provides the c-xrce-listener binary path
 #[rstest::fixture]
 pub fn c_xrce_listener_binary() -> PathBuf {
     build_c_xrce_listener()
-        .expect("Failed to build c-xrce-listener")
+        .require("c-xrce-listener")
         .to_path_buf()
 }
 
@@ -6435,17 +6423,13 @@ pub fn build_cpp_service_client() -> TestResult<&'static Path> {
 /// rstest fixture that provides the cpp-talker binary path
 #[rstest::fixture]
 pub fn cpp_talker_binary() -> PathBuf {
-    build_cpp_talker()
-        .expect("Failed to build cpp-talker")
-        .to_path_buf()
+    build_cpp_talker().require("cpp-talker").to_path_buf()
 }
 
 /// rstest fixture that provides the cpp-listener binary path
 #[rstest::fixture]
 pub fn cpp_listener_binary() -> PathBuf {
-    build_cpp_listener()
-        .expect("Failed to build cpp-listener")
-        .to_path_buf()
+    build_cpp_listener().require("cpp-listener").to_path_buf()
 }
 
 /// Build cpp-service-client-callback example (cached, RFC-0041 / Phase 239)
@@ -6465,7 +6449,7 @@ pub fn build_cpp_service_client_callback() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn cpp_service_server_binary() -> PathBuf {
     build_cpp_service_server()
-        .expect("Failed to build cpp-service-server")
+        .require("cpp-service-server")
         .to_path_buf()
 }
 
@@ -6473,7 +6457,7 @@ pub fn cpp_service_server_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn cpp_service_client_binary() -> PathBuf {
     build_cpp_service_client()
-        .expect("Failed to build cpp-service-client")
+        .require("cpp-service-client")
         .to_path_buf()
 }
 
@@ -6512,7 +6496,7 @@ pub fn build_cpp_action_client_callback() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn cpp_action_server_binary() -> PathBuf {
     build_cpp_action_server()
-        .expect("Failed to build cpp-action-server")
+        .require("cpp-action-server")
         .to_path_buf()
 }
 
@@ -6520,7 +6504,7 @@ pub fn cpp_action_server_binary() -> PathBuf {
 #[rstest::fixture]
 pub fn cpp_action_client_binary() -> PathBuf {
     build_cpp_action_client()
-        .expect("Failed to build cpp-action-client")
+        .require("cpp-action-client")
         .to_path_buf()
 }
 
@@ -6537,7 +6521,7 @@ pub fn build_cpp_parameters() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn cpp_parameters_binary() -> PathBuf {
     build_cpp_parameters()
-        .expect("Failed to build cpp-parameters")
+        .require("cpp-parameters")
         .to_path_buf()
 }
 
@@ -6555,9 +6539,7 @@ pub fn build_c_parameters() -> TestResult<&'static Path> {
 /// rstest fixture that provides the c-parameters binary path
 #[rstest::fixture]
 pub fn c_parameters_binary() -> PathBuf {
-    build_c_parameters()
-        .expect("Failed to build c-parameters")
-        .to_path_buf()
+    build_c_parameters().require("c-parameters").to_path_buf()
 }
 
 /// Cached path to the qemu-rtic-action-server binary
