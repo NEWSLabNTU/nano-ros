@@ -164,15 +164,56 @@ textual gate, which cannot know. Caught by building one and reading its
 siblings), so W6 applies there; what is absent is the fixed arena those bytes
 used to come out of. There is nothing to lower, and "state nothing" is correct.
 
+## NuttX: NOTHING TO PAIR, and it is measured — 2026-09-12 (phase-448 W5)
+
+NuttX's heap is **not a reservation**. In the flat build `up_allocate_heap`
+returns
+
+```c
+  uintptr_t base = g_idle_topstack;          /* end of .bss + the idle stack */
+  size_t    end  = CONFIG_RAM_END;
+  *heap_start = (void *)base;
+  *heap_size  = end - base;
+```
+
+(`arch/arm/src/common/arm_allocateheap.c:112`, and the RISC-V twin
+`arch/risc-v/src/common/riscv_allocateheap.c:69`, which is the same two lines).
+So the heap is a boot-time LEFTOVER computed from where `.bss` ended, not a
+number anybody sized: a byte added to `.bss` is a byte removed from the heap,
+automatically and exactly. The backing is paid for ONCE, and there is no knob to
+lower — the `CONFIG_RAM_SIZE` in the defconfigs describes the part's RAM, not a
+budget for anything.
+
+MEASURED rather than argued, on `examples/qemu-armv7a-nuttx/rust/talker` built
+twice through `scripts/build/fixtures-build.sh nuttx rust`:
+
+| | `EXECUTOR_BACKING` | `_ebss` | `g_idle_topstack` | heap |
+| --- | ---: | --- | --- | ---: |
+| default (static on) | 87,496 | `0x4027a000` | `0x4027b000` | 131,616,768 |
+| `NROS_EXECUTOR_BACKING_U64S=0` | 0 | `0x40265000` | `0x40266000` | 131,702,784 |
+
+The heap moved 86,016 B against a backing of 87,496 B; the 1,480 B difference is
+the 4 KiB alignment of `_ebss`, not a discrepancy — `0x4027a000 - 0x40265000` is
+exactly `0x15000`.
+
+RUNNING IMAGE (the bar this issue sets, not merely linking):
+`test_rtos_pubsub_e2e / Nuttx / Rust` PASSES on the default build, on QEMU
+against a live router, 120 s.
+
+No code changed for this port. The finding is recorded in
+`check-executor-backing-arena-pairing`'s `PORTS` ledger as `none` WITH this
+measurement, so that "needs nothing" and "nobody has looked" stop reading the
+same — which is how this issue's own "Still open" list went stale.
+
 ## Still open
 
 * ~~Every other Zephyr Rust leaf.~~ **DONE** — see the sweep above. Twelve confs
   paired; the six XRCE ones deliberately not, because their images have no
   picolibc arena to pair (issue 1189).
-* **FreeRTOS, NuttX, ThreadX, ESP32** — untouched. One platform per commit, per
-  the plan above, because the failure mode is a runtime allocation failure and a
-  six-platform diff makes it unattributable. The knob is Zephyr-only so far: the
-  other ports have no Kconfig, so their spelling is still the `NROS_*` build env.
+* ~~**NuttX**~~ **DONE 2026-09-12** — nothing to pair, measured. See above.
+* **FreeRTOS** — untouched; phase-448 W3/W4, and issue 1197 has the measurement
+  and the layering blocker.
+* **ThreadX, ESP32** — see below.
 * ~~**The subtrahend is a hand-copied literal.**~~ RESOLVED —
   [issue 1171](archived/1171-arena-backing-pairing-is-hand-maintained.md).
 
