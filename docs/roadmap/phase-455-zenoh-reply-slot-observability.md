@@ -1,11 +1,48 @@
 # Phase 455 — a saturated zenoh queryable says so, and the rate that follows is measurable
 
-**Status (2026-09-12). Opened.** Closes phase-444 W2's acceptance by a different
+**Status (2026-09-12). W1, W2, W2.b and W3 LANDED; W4 is the remainder and is
+BLOCKED by issue 1341.** Closes phase-444 W2's acceptance by a different
 route than phase-444 assumed: not by re-running the hardware measurement, but by
 giving the failure an observable so it stops needing one. Implements the
 observability half of RFC-0089's rule — a failure a caller cannot see is a
 contract the caller cannot hold us to — and mirrors phase-444 W1, which landed
 the same shape on Cyclone.
+
+## What landed, and the one thing that blocks the rest
+
+| item | state | evidence |
+| --- | --- | --- |
+| W1 — the counter | LANDED, `022e94157c` | per-(session, queryable) refusal/saturation counters behind `zpico_reply_slot_stats`, one `nros_log` line per TRANSITION; negative control fails with the counter removed |
+| W2 — the completion rate | LANDED, `65d7197380` | `completed 3/3` after a 10 s soak; and it says in its own doc comment what the green does NOT cover |
+| W2.b — the control W2 lacked | LANDED, `ef8e09bc6c` | a synthetic declined-query source; RED with `1a032a10b` reverted (`held=4 finalised=0`), GREEN with it (`declines=6 held=0`) |
+| W3 — the Zenoh action cells | LANDED, `c2584bda6c` | first Zenoh action interop cells in the tree; n2r PASS live, r2n FAIL citing 1341 |
+| W4 — the probe on NSOS | **NOT STARTED, BLOCKED** | see below |
+
+**W2's acceptance as this document first wrote it was NOT met, and W2.b is why
+it exists.** The rate probe measured `completed == sent` and `refusals == 0`,
+then tried to break itself and could not: reverting either leak arm changed no
+observable, and so did a ONE-slot table. Issue 1332 has the measurement. The
+cause is structural — the leak is fed by queries the callback DECLINES, and on
+the native lane nothing sends them: graph discovery has been a liveliness
+SUBSCRIBER since phase-381 (a subscriber delivers samples, not queries, so a
+peer joining or leaving never reaches another node's queryable callback), and
+both action client paths are single-in-flight. So the lane lacked the
+population, not the code path, and W2.b built the population.
+
+**Route 1 is measured and negative.** A real `rmw_zenoh_cpp` peer sends our
+queryable only the requests it means to send: 4 queries in 110 s across a daemon
+restart, a talker, a listener, three rounds of graph introspection and a 60 s
+idle soak — zero declines, `payload_len=20` throughout, and a 12-way concurrent
+service-call flood answered 12/12 with none either. W3's cells will therefore
+NOT be the stronger control 1332 hoped for. The synthetic source is the control.
+
+**W4 is blocked by [issue 1341](../issues/1341-zenoh-action-server-refuses-its-own-status-qos.md).**
+`b0ea5a04b` (phase-428 W9) made the zenoh shim refuse `TRANSIENT_LOCAL`; the
+action `/status` publisher passes exactly that, so every zenoh action server
+exits 1 at node declaration — including the one W2's probe drives. Running the
+probe on NSOS cannot begin until that is decided, and the decision is not ours:
+granting VOLATILE breaks RxO against a stock `rclcpp` action client, so it
+belongs to phase-428. Nothing about W4's design changes; it is waiting.
 
 ## Why this phase exists
 
