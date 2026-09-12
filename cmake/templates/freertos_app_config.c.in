@@ -18,26 +18,40 @@
  * means teaching the carrier to read the board's emitted TU; until then, keep
  * it in sync when the board defaults change.
  *
- * `.app_stack_bytes` stays at 512 KiB while the Rust default moved to 128 KiB
- * (issue 1146), and the reason is that HALF of what this file serves could not
- * be measured. `uxTaskGetStackHighWaterMark` on the app task of the six C role
- * examples, each run to a live zenoh session on qemu mps2-an385:
+ * `.app_stack_bytes` is 64 KiB, and it is MEASURED ON BOTH HALVES (issue 1146
+ * part 2). It sat at 512 KiB while the Rust default moved to 128 KiB, because
+ * ONE number serves the C and the C++ typed carriers and the C++ half could not
+ * be BUILT at all — every embedded C++ FreeRTOS target died in `<string>` ->
+ * `requires_hosted.h` under `-ffreestanding` (issue 1187, then issue 1330's
+ * one-byte `nros_log_severity_t`). Both are fixed, so the number was taken.
  *
- *   c/talker 5 416 · c/listener 6 976 · c/service-server 8 304
- *   c/service-client 8 616 · c/action-server 18 176 · c/action-client 16 312
+ * `uxTaskGetStackHighWaterMark` on the app task, every image RUN on qemu
+ * mps2-an385 against a live `rmw_zenohd`, 2026-09-12 — the pubsub and service
+ * pairs delivering, the action pairs serving a goal to completion:
  *
- * — worst 18 176 bytes, 3.5 % of what is reserved, and SHALLOWER than the Rust
- * path (36 152) because this carrier keeps the executor and every node struct
- * in `.bss`. So the C half plainly does not need 512 KiB. The C++ half of the
- * same carrier could not be built at all: every embedded C++ FreeRTOS target
- * dies in `<string>` -> `requires_hosted.h` under `-ffreestanding` with the
- * pinned arm-none-eabi-gcc 13.2-nros4 (issue 1187, the 0112/0332 class re-run
- * by a GCC that turned "header present" into an `#error`), so its frame is
- * unobserved. One number serves both languages here, so it moves when both are
- * measured — not on an argument from the half that runs. Re-run the C half
- * with `bash scripts/build/fixtures-build.sh freertos c zenoh` plus a monitor
- * task calling `uxTaskGetStackHighWaterMark(<app task handle>)`; the C++ half
- * needs 1187 fixed first.
+ *   | role           |      C |    C++ |
+ *   | talker         |  6 096 |  8 832 |
+ *   | listener       |  7 840 |  8 832 |
+ *   | service-server |  9 320 |  8 832 |
+ *   | service-client |  9 344 |  8 832 |
+ *   | action-server  | 18 792 | 19 112 |   <- worst of each half
+ *   | action-client  | 17 112 | 17 472 |
+ *
+ * The two halves agree to within 2 % at their worst (18 792 against 19 112),
+ * which is what makes ONE number legitimate here rather than merely convenient
+ * — and it could not be known until the C++ half ran. Both are SHALLOWER than
+ * the Rust path (36 936) because this carrier keeps the executor and every node
+ * struct in `.bss`.
+ *
+ * 65 536 is 3.4x the worse of the two, the same margin the Rust default carries
+ * over its own worst (131 072 / 36 936 = 3.5x). The MARGIN is the shared
+ * decision; the numbers differ because the measurements do.
+ *
+ * Read it off an image's own boot line rather than re-deriving it:
+ * `report_app_stack_peak` in `nros-board-freertos/c/freertos_c_entry.c` prints
+ * `nros: app task stack peak <used> of <total> bytes` once per boot, and
+ * `report_heap_peak` beside it prints what the whole heap ever needed. Rebuild
+ * with `bash scripts/build/fixtures-build.sh freertos {c,cpp} zenoh`.
  *
  * `.zenoh.locator` is cosmetic on the typed C/C++ path: the connect locator the
  * runtime actually dials is baked into the generated entry TU
@@ -79,7 +93,7 @@ const nros_app_config_t NROS_APP_CONFIG = {
         .zenoh_read_priority     = 4,
         .zenoh_lease_priority    = 4,
         .poll_priority           = 4,
-        .app_stack_bytes         = 524288u,
+        .app_stack_bytes         = 65536u,
         .zenoh_read_stack_bytes  = 5120u,
         .zenoh_lease_stack_bytes = 5120u,
         .poll_interval_ms        = 5u,

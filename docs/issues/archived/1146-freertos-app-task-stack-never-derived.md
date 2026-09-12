@@ -3,10 +3,11 @@ id: 1146
 title: "The FreeRTOS app-task stack is 384 KiB by bisection, its C/C++ mirror says
   512 KiB, and the reason all three documents gave for the number stopped being
   true five phases ago"
-status: open
+status: resolved
 type: tech-debt
 area: boards
-related: [phase-392, phase-76, 0271, 0739, 1145, 1187, phase-448]
+related: [phase-392, phase-76, 0271, 0739, 1145, 1187, 1197, 1330, 1348, phase-448]
+resolved_in: phase-448 W3
 ---
 
 ## Problem
@@ -156,16 +157,82 @@ and `*** STACK OVERFLOW ***` are three faces of one fault here. The `lwIP
 ASSERT: Invalid mbox` this issue predicted is a possible landing, not the
 landing.
 
-## Still open — part 2, the C/C++ carrier's 512 KiB
+## RESOLVED 2026-09-12 — part 2, the C/C++ carrier's 512 KiB
 
-`cmake/templates/freertos_app_config.c.in` keeps `.app_stack_bytes = 524288u`.
-One number serves BOTH the C and C++ typed carriers, the C half measures 18 176
-worst, and the C++ half **cannot be built at all**: every embedded C++ FreeRTOS
-target dies in `<string>` → `requires_hosted.h` under `-ffreestanding` with the
-pinned `arm-none-eabi-gcc 13.2-nros4` (**issue 1187**). Reducing it on the
-strength of the half that runs would be exactly the unverified move this issue
-exists to stop. It moves when 1187 is fixed and a
-`examples/mps2-an385-freertos/cpp/*` image has been measured the same way.
+`cmake/templates/freertos_app_config.c.in` is **65 536**, and it is set from
+BOTH halves rather than from the one that ran.
+
+The blocker was that the C++ half could not be BUILT: every embedded C++
+FreeRTOS target died in `<string>` -> `requires_hosted.h` under `-ffreestanding`
+(issue 1187), and behind that issue 1330 — `nros_log_severity_t` packed to one
+byte by the AAPCS `-fshort-enums` default. Both are fixed, so the number was
+taken.
+
+Method as part 1: `uxTaskGetStackHighWaterMark` on the app task, one-shot at the
+end of bring-up, every image RUN on `qemu-system-arm -machine mps2-an385
+-icount shift=auto` against a live `rmw_zenohd` — the pubsub and service pairs
+delivering, the action pairs serving a goal to completion.
+
+| role | C | C++ |
+| --- | ---: | ---: |
+| talker | 6 096 | 8 832 |
+| listener | 7 840 | 8 832 |
+| service-server | 9 320 | 8 832 |
+| service-client | 9 344 | 8 832 |
+| action-server | **18 792** | **19 112** |
+| action-client | 17 112 | 17 472 |
+| `examples/workspaces/cpp` entry | — | 10 136 |
+
+**The two halves agree to within 2 % at their worst**, and that is the finding
+that makes one shared number legitimate here rather than merely convenient. It
+could not be known until the C++ half ran, which is exactly why this issue
+refused to move the default on the C half alone.
+
+65 536 is **3.4x** the worse of the two (19 112), the same margin the Rust
+default carries over its own worst (131 072 / 36 936 = 3.5x). The MARGIN is the
+shared decision; the numbers differ because the measurements do.
+
+The C numbers moved slightly from the 2026-09-07 table above (talker 5 416 ->
+6 096, action-server 18 176 -> 18 792). That is not drift in the measurement: the
+shipped reporter has a frame of its own, and this run took the peak from a
+watcher task rather than a throwaway probe. Same note as part 1's 36 152/36 160.
+
+### The action images needed a throwaway probe, and that is issue 1348
+
+Every action SERVER — Rust, C and C++ — currently fails to register on the zenoh
+backend: the QoS shim refuses `DURABILITY_TRANSIENT_LOCAL` and the ROS action
+`/<action>/_action/status` publisher is required by the action spec to ask for
+it (regression from `b0ea5a04b`, 2026-09-11). Filed as **issue 1348**, not fixed
+here.
+
+The peaks above were taken with a throwaway local patch granting that policy, so
+the action pairs ran to completion. Worth recording: the failing path and the
+working path reported the SAME peak to the byte (C++ 19 112 either way), because
+the deepest frame is reached before the refusal — so the numbers would have been
+right without the probe. That was not knowable in advance, which is why the
+probe was taken rather than assumed away.
+
+## Verification — every image RUN at the new default
+
+All twelve C/C++ role images plus the `workspaces/cpp` entry rebuilt through the
+real lane (`just freertos build-fixtures`) at `.app_stack_bytes = 65536` and run
+against a live router: every one reports the same peak it did at 512 KiB, the
+pubsub and service pairs deliver, and no image reports `*** MALLOC FAILED ***`
+or `*** STACK OVERFLOW ***`.
+
+The one overflow this work did produce was the INSTRUMENT's own: the reporter
+task's 512-word stack was thin enough that adding the heap line crossed it, and
+`examples/workspaces/cpp` died with `*** STACK OVERFLOW: stkpeak ***` after
+printing both lines. It is 1024 words now. A reporter that faults the image it
+is measuring is worse than no reporter.
+
+## Also found, not fixed here
+
+- **`examples/workspaces/c` and `examples/workspaces/mixed` stop producing
+  output at t=3 s** on mps2-an385, after one publish that IS delivered and
+  received. Three controls say it is not this work: identical at a 512 KiB and a
+  64 KiB app stack, and identical with the reporter task removed entirely. Not
+  investigated further.
 
 ## Also found, not fixed
 

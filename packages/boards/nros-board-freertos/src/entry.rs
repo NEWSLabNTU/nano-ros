@@ -183,6 +183,99 @@ fn report_stack_peak<B: BoardPrint>(what: &str, total_bytes: u32) {
     ));
 }
 
+// ---- FreeRTOS heap peak reporter (issue 1197) ----
+//
+// The heap and the app stack are ONE budget on this port: heap_4 hands out the
+// task stacks, so `configTOTAL_HEAP_SIZE` pays for `app_stack_bytes` once per
+// TASK before lwIP or zenoh-pico allocate a byte. Issue 1146 lowered that stack
+// and issue 1197 takes the executor backing out of the heap's demand list
+// (phase-392 W6 moved it to `.bss`), and both reductions land on this one
+// number — which is why they are derived together rather than one per PR.
+//
+// A WATCHER TASK rather than a call beside `report_stack_peak`, and the reason
+// is not symmetry with the C carrier. The stack peak is reached by the register
+// pass and never moves again (issue 1146 measured 90 s of spinning that did not
+// touch it); the HEAP keeps allocating after registration — zenoh-pico sizes
+// fragment and batch buffers on the wire it actually sees. Sampling at the
+// register pass would report a boot-time floor as if it were the peak, which is
+// the direction that silently under-sizes a default.
+//
+// It samples until the number STOPS MOVING rather than after a fixed delay:
+// `xPortGetMinimumEverFreeHeapSize` is monotone (the least free ever seen), so a
+// later sample can only be a better answer and a fixed delay is a guess a slow
+// router turns into an under-report. Then it prints ONCE and deletes itself.
+//
+// Unlike the stack watermark this probe is O(1) — heap_4 maintains
+// `xMinimumEverFreeBytesRemaining` as it allocates — so the cost here is the
+// task's own stack and one line, both paid once at boot.
+
+/// First sample: after the bringup's 2 s netif wait plus room for the session
+/// handshake and the register pass.
+const HEAP_PEAK_FIRST_MS: u32 = 6000;
+const HEAP_PEAK_PERIOD_MS: u32 = 1000;
+const HEAP_PEAK_STABLE_SAMPLES: u32 = 10;
+const HEAP_PEAK_MAX_SAMPLES: u32 = 60;
+/// Words. Matched to the C carrier's twin (`stack_peak_task_entry`), which
+/// needed 1024 rather than 512: formatting one line through `core::fmt` (or
+/// `snprintf` on that side) is not cheap, and a reporter that faults the image
+/// it is measuring is worse than no reporter. Charged once, at boot.
+const HEAP_PEAK_TASK_STACK: u32 = 1024;
+
+unsafe extern "C" {
+    /// heap_4's own high-water: the least free the heap has ever been. Declared
+    /// here rather than reached through the platform ABI for the same reason
+    /// `nros_platform_task_stack_unused_bytes` is not enough — that ABI's
+    /// `nros_platform_heap_used_bytes` is the INSTANTANEOUS figure, and a
+    /// default has to cover the peak.
+    fn xPortGetMinimumEverFreeHeapSize() -> usize;
+    /// `configTOTAL_HEAP_SIZE`, which is a C macro and has no Rust spelling.
+    fn nros_platform_heap_total_bytes() -> usize;
+}
+
+unsafe extern "C" fn heap_peak_task_entry<B>(_arg: *mut c_void)
+where
+    B: BoardPrint,
+{
+    unsafe extern "C" {
+        fn vTaskDelay(ticks: u32);
+        fn vTaskDelete(task: *mut c_void);
+    }
+
+    unsafe { vTaskDelay(HEAP_PEAK_FIRST_MS) };
+
+    let mut prev = usize::MAX;
+    let mut stable = 0u32;
+    for _ in 0..HEAP_PEAK_MAX_SAMPLES {
+        let free = unsafe { xPortGetMinimumEverFreeHeapSize() };
+        if free == prev {
+            stable += 1;
+            if stable >= HEAP_PEAK_STABLE_SAMPLES {
+                break;
+            }
+        } else {
+            stable = 0;
+            prev = free;
+        }
+        unsafe { vTaskDelay(HEAP_PEAK_PERIOD_MS) };
+    }
+
+    let total = unsafe { nros_platform_heap_total_bytes() };
+    let free = unsafe { xPortGetMinimumEverFreeHeapSize() };
+    B::println(format_args!(
+        "nros: heap peak {} of {} bytes ({} free) \
+         — raise with NROS_FREERTOS_HEAP_KB",
+        total.saturating_sub(free),
+        total,
+        free
+    ));
+
+    unsafe { vTaskDelete(core::ptr::null_mut()) };
+    // `vTaskDelete(NULL)` never returns for the calling task. `loop {}` here
+    // would be an empty spin clippy rightly refuses; this task is gone, so
+    // park the (unreachable) fallthrough without burning the CPU.
+    unreachable!("vTaskDelete(NULL) does not return");
+}
+
 /// FreeRTOS task entry for the application closure (212.N flavour —
 /// hands the closure a `&mut RuntimeCtx<'_>` instead of `&Config`).
 ///
@@ -408,6 +501,24 @@ where
     if ret != 0 {
         B::println(format_args!("Error creating network poll task"));
         B::exit_failure();
+    }
+
+    // issue 1197 — the one-shot heap high-water reporter. Priority 0, strictly
+    // below the app (3) and the transport band (4), so it never takes the CPU
+    // from work that is running; it deletes itself after its single line.
+    // A failure to create it is NOT fatal: it is an instrument, and an image
+    // that boots without it is still a working image.
+    let heap_ret = unsafe {
+        nros_freertos_create_task(
+            heap_peak_task_entry::<B>,
+            c"heappeak".as_ptr().cast(),
+            HEAP_PEAK_TASK_STACK,
+            core::ptr::null_mut(),
+            0,
+        )
+    };
+    if heap_ret != 0 {
+        B::println(format_args!("nros: heap peak reporter not started"));
     }
 
     // Brief delay so the poll task flushes stale RX + the TAP settles.

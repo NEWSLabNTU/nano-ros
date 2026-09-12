@@ -21,6 +21,7 @@
  */
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -259,9 +260,18 @@ static void seed_platform_rng(const uint8_t ip[4], const uint8_t mac[6]) {
  * delay: the watermark is monotone (it is the minimum free ever seen), so a
  * later sample can only be a better answer, and a fixed delay is a guess that a
  * slow router turns into an under-report. Then it prints ONCE and DELETES
- * ITSELF, because the scan is O(unused bytes) — on a 512 KiB stack that is
- * ~515 K byte compares a sample, affordable a few dozen times at boot and not
+ * ITSELF, because the scan is O(unused bytes) — on a 64 KiB stack that is
+ * ~57 K byte compares a sample, affordable a few dozen times at boot and not
  * affordable forever. Same reason the Rust lane calls it once.
+ *
+ * The priority is worth one note, because the obvious worry turned out not to
+ * be the explanation. FreeRTOS runs a priority-0 task only when every higher
+ * one is BLOCKED, so an app that spins would starve this watcher — and
+ * `examples/workspaces/c` does print nothing. It is NOT this: that image stops
+ * producing output of any kind at t=3 s, identically with the watcher removed
+ * and identically at a 512 KiB and a 64 KiB app stack (three controls, issue
+ * 1146 part 2). Every image whose app task is alive at 14 s prints. So priority
+ * 0 stays, and the silence belongs to whatever stops that entry.
  */
 static TaskHandle_t s_app_task = NULL;
 static bool s_stack_peak_reported = false;
@@ -301,6 +311,57 @@ static void report_app_stack_peak(void) {
     printf("%s", line);
 }
 
+/* ---- FreeRTOS heap peak reporter (issue 1197) ----
+ *
+ * The heap and the app stack are ONE budget on this port: heap_4 hands out the
+ * task stacks, so `configTOTAL_HEAP_SIZE` pays for `.app_stack_bytes` once per
+ * task before lwIP or zenoh-pico allocate a byte. Issue 1146 lowers the stack
+ * and issue 1197 takes the executor backing out of the heap's demand list
+ * (phase-392 W6 moved it to `.bss`), and BOTH reductions land on this one
+ * number — which is why they are re-derived together rather than one per PR.
+ *
+ * `xPortGetMinimumEverFreeHeapSize()` is heap_4's own high-water: the least
+ * free the heap has ever been. `total - that` is therefore this image's PEAK
+ * demand, which is the number a default has to cover. Printed beside the stack
+ * peak and from the same one-shot sites, so one run answers both halves.
+ *
+ * No guard on the value: unlike `uxTaskGetStackHighWaterMark`, heap_4 always
+ * maintains `xMinimumEverFreeBytesRemaining`, and a peak EQUAL to the total is
+ * a real and interesting answer (the heap was exhausted) rather than an
+ * "uninstrumented" sentinel.
+ *
+ * The TOTAL comes from `nros_platform_heap_total_bytes()` and NOT from
+ * `configTOTAL_HEAP_SIZE` here, although that macro is in scope. The macro is
+ * `NROS_FREERTOS_HEAP_KB * 1024` and that define is a build-env knob the BOARD
+ * CRATE's `build.rs` passes to the TUs it compiles; this file is compiled by the
+ * cmake overlay instead (`FREERTOS_STARTUP_SOURCE`), which never forwards it. So
+ * reading the macro here would give heap_4's number on one lane and the
+ * FreeRTOSConfig.h default on the other, with nothing to say which — the same
+ * split issue 1197 found between heap_4 and `platform.c`. One TU owns the
+ * answer, and every other asks it.
+ */
+static bool s_heap_peak_reported = false;
+
+/* nros-platform-freertos/src/platform.c — `configTOTAL_HEAP_SIZE` as the
+ * platform ABI reports it. */
+extern size_t nros_platform_heap_total_bytes(void);
+
+static void report_heap_peak(void) {
+    if (s_heap_peak_reported) {
+        return;
+    }
+    s_heap_peak_reported = true;
+    const uint32_t total = (uint32_t)nros_platform_heap_total_bytes();
+    const uint32_t min_free = (uint32_t)xPortGetMinimumEverFreeHeapSize();
+    char line[160];
+    snprintf(line, sizeof(line),
+             "nros: heap peak %lu of %lu bytes (%lu free) "
+             "- raise with NROS_FREERTOS_HEAP_KB\n",
+             (unsigned long)(total - min_free), (unsigned long)total,
+             (unsigned long)min_free);
+    printf("%s", line);
+}
+
 static void stack_peak_task_entry(void *arg) {
     (void)arg;
 
@@ -322,6 +383,7 @@ static void stack_peak_task_entry(void *arg) {
     }
 
     report_app_stack_peak();
+    report_heap_peak();
     vTaskDelete(NULL);
 }
 
@@ -362,11 +424,18 @@ static void app_task_entry(void *arg) {
     nros_freertos_create_task(poll_task_entry, "poll", 256, 0,
                               clamp_prio(NROS_APP_CONFIG.scheduling.poll_priority));
 
-    /* Issue 1146 part 2 — the one-shot app-task stack peak reporter. Priority
-     * 0 so it cannot preempt anything; 512 words because `snprintf` on newlib
-     * wants room; it deletes itself after its single line, so both costs are
-     * paid once at boot. */
-    nros_freertos_create_task(stack_peak_task_entry, "stkpeak", 512, 0, 0);
+    /* Issue 1146 part 2 / issue 1197 — the one-shot app-task stack + heap peak
+     * reporter. Priority 0 so it cannot preempt anything; it deletes itself
+     * after its two lines, so both costs are paid once at boot.
+     *
+     * 1024 words, not 512. `snprintf` with `%lu` conversions on newlib is not
+     * cheap and the margin at 512 was thin enough that ADDING the second line
+     * crossed it: `examples/workspaces/cpp` died with
+     * `*** STACK OVERFLOW: stkpeak ***` right after printing both, and the
+     * role examples at the same 512 did not. A reporter that faults the image
+     * it is measuring is worse than no reporter, and this one is charged once
+     * against a heap with megabytes spare. */
+    nros_freertos_create_task(stack_peak_task_entry, "stkpeak", 1024, 0, 0);
 
     /* Initialise semihosting stdio so printf() routes to QEMU stdout.
      * Disable buffering so output is visible immediately (important for
@@ -394,6 +463,7 @@ static void app_task_entry(void *arg) {
      * (cpp/service-client) rather than one that spins; the watcher above covers
      * the rest, and whichever arrives first is the one that prints. */
     report_app_stack_peak();
+    report_heap_peak();
 
     /* Semihosting exit */
     {
