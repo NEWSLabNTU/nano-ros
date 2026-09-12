@@ -28,7 +28,12 @@ struct TopicState {
     std::string name;
     std::chrono::steady_clock::time_point last_seen;
     int64_t last_value = 0;
-    std::shared_ptr<rclcpp::Subscription<std_msgs::msg::Int32>> sub;
+    // phase-456 W2 — the NESTED alias, which is upstream house style and is
+    // what compiles on every target. The explicit `std::shared_ptr<...>`
+    // spelling that stood here is RFC-0096 D5's first non-drop-in item: a
+    // subscription created with a callback is owned by the executor arena, so
+    // there is no C++ object for a `shared_ptr` to own.
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr sub;
 };
 
 class Monitor : public rclcpp::Node {
