@@ -155,9 +155,32 @@ static_assert(std::is_same<::nros::Publisher<StringMsg>::ConstSharedPtr,
 static_assert(std::is_same<::nros::Publisher<StringMsg>::UniquePtr,
                            std::unique_ptr<::nros::Publisher<StringMsg>>>::value,
               "Publisher<M>::UniquePtr must be std::unique_ptr<Publisher<M>>");
+// phase-456 W2 — `Subscription<M>::SharedPtr` is DELIBERATELY not a pointer to
+// a `Subscription<M>`, and this assertion inverted to say so.
+//
+// A subscription created with a callback is owned by the Rust executor arena,
+// which holds the subscriber, the rx buffer, the callback and its capture.
+// There is no C++ object to point at. What the factory used to hand back was a
+// `shared_ptr` aliasing into a heap cell, carrying `take()`,
+// `take_serialized()`, `take_validated()`, `take_sequence()` and `borrow()` --
+// every one of them guaranteed to answer `NotInitialized`, because the sample
+// went to the callback. `nros.hpp` said so in a comment while handing it out.
+//
+// The POLL form is untouched: a `Subscription<M>` from the out-ref
+// `create_subscription(out, topic, qos)` still owns its storage and still
+// takes. phase-456 W2b moves that API out from under an upstream name whose
+// semantics it does not share, and at that point `element_type` can mean
+// `Subscription<M>` again.
 static_assert(std::is_same<::nros::Subscription<StringMsg>::SharedPtr,
-                           std::shared_ptr<::nros::Subscription<StringMsg>>>::value,
-              "Subscription<M>::SharedPtr must be std::shared_ptr<Subscription<M>>");
+                           ::nros::SubscriptionHandle<StringMsg>>::value,
+              "Subscription<M>::SharedPtr must be the two-word arena handle");
+static_assert(sizeof(::nros::Subscription<StringMsg>::SharedPtr) == 2 * sizeof(void*),
+              "the dispatch handle must stay two words -- it is what replaced an 888-byte "
+              "object plus a heap cell");
+static_assert(std::is_same<::nros::Subscription<StringMsg>::ConstSharedPtr,
+                           ::nros::Subscription<StringMsg>::SharedPtr>::value,
+              "ConstSharedPtr is the same handle: there is no const/mutable distinction to "
+              "draw over a registration that exposes no operation on the entity");
 static_assert(std::is_same<::nros::PollingSubscription<StringMsg>::SharedPtr,
                            std::shared_ptr<::nros::PollingSubscription<StringMsg>>>::value,
               "PollingSubscription<M>::SharedPtr must be std::shared_ptr<PollingSubscription<M>>");
