@@ -62,7 +62,57 @@ _Static_assert(sizeof(ULONG) == 4,
                "precedence over the upstream port header. See phase-337 W4.a.");
 
 /* ---- Sizing constants ---- */
-#define BYTE_POOL_SIZE          (4 * 1024 * 1024)
+
+/* phase-448 W5 / issue 1145 — the byte pool and the executor backing are ONE
+ * decision on this port, the way the picolibc arena and the backing are on
+ * Zephyr.
+ *
+ * `byte_pool_storage` below is a fixed `.bss` array, and it is the allocator
+ * every Rust ThreadX image draws from: `nros_platform_alloc` forwards to
+ * `tx_byte_allocate` on this pool, and `nros-platform` installs the tree's one
+ * `#[global_allocator]` over that. Before phase-392 W6 the executor's per-entry
+ * storage was a `Box::leak` out of exactly here. W6 moved it into the named
+ * `.bss` static `nros_node::executor::backing::EXECUTOR_BACKING` so
+ * `mem-report` could price it — a MOVE, not a saving. Leaving the pool at its
+ * old size reserves those bytes TWICE.
+ *
+ * `NROS_EXECUTOR_BACKING_U64S` is the image's STATEMENT of how many `u64`s that
+ * static holds, and it is the same statement `nros-node` sizes the static from:
+ * `[board.knobs.executor] backing_u64s` in the board's `nros-board.toml`,
+ * resolved through the RFC-0049 ladder by `nros-node/build.rs` and, for this
+ * file, by `threadx_sources::add_threadx_hooks_source`. One rung, two readers
+ * — the subtrahend is never written down a second time, which is the defect
+ * issue 1171 fixed on Zephyr.
+ *
+ * UNSTATED (the default 0) leaves the pool at the base, which is the SAFE
+ * direction: the image pays for the backing twice, exactly as it does today.
+ * A C or C++ ThreadX image is in that case permanently and correctly — its
+ * `nros_executor_t` objects are file-scope statics and were never drawn from
+ * this pool, so there is nothing to give back.
+ */
+#define BYTE_POOL_BASE_SIZE     (4 * 1024 * 1024)
+
+#ifndef NROS_EXECUTOR_BACKING_U64S
+#define NROS_EXECUTOR_BACKING_U64S 0
+#endif
+
+/* A word of the reservation is a `MaybeUninit<u64>`, so 8 bytes on every target
+ * nano-ros builds for — the reason the knob is spelled in WORDS at all: the
+ * derived size is target-dependent and a stated one is not (issue 1171). */
+#define BYTE_POOL_SIZE \
+    (BYTE_POOL_BASE_SIZE - 8 * (NROS_EXECUTOR_BACKING_U64S))
+
+/* A statement larger than the pool would silently wrap `BYTE_POOL_SIZE` (it is
+ * unsigned arithmetic on an array bound) into a multi-gigabyte `.bss`, which on
+ * the RISC-V board fails to link with a message about `.bss` and nothing about
+ * this knob. The floor is deliberately generous rather than exact: the pool also
+ * feeds the NetX packet pool, the IP/ARP/BSD stacks and every tier's thread
+ * stack, so a pool that only just fits the backing is already wrong. */
+_Static_assert(BYTE_POOL_SIZE >= (1 * 1024 * 1024),
+               "NROS_EXECUTOR_BACKING_U64S leaves the ThreadX byte pool under "
+               "1 MiB. The pool is the WHOLE allocator on this port (NetX "
+               "packet pool, IP/ARP/BSD stacks, tier stacks), not just the "
+               "executor's backing. See issue 1145 / phase-448 W5.");
 
 /* ---- Overlay-tunable parameters (weak getters — overlay strong-overrides) ----
  *

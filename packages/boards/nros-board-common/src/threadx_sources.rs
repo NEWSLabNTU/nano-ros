@@ -144,10 +144,52 @@ pub fn add_threadx_hooks_source(build: &mut cc::Build) {
     std::fs::write(&dest, HOOKS_C)
         .unwrap_or_else(|e| panic!("nros-board-common: write({}): {e}", dest.display()));
     build.file(&dest);
+    forward_executor_backing_words(build);
     println!(
         "cargo:rerun-if-changed={}/c/threadx_hooks.c",
         env!("CARGO_MANIFEST_DIR")
     );
+}
+
+/// phase-448 W5 / issue 1145 — hand `threadx_hooks.c` the SAME backing
+/// statement `nros-node` sizes `EXECUTOR_BACKING` from, so the byte pool can
+/// give those bytes back instead of reserving them twice.
+///
+/// # Why it is resolved here and not passed in
+///
+/// The number has exactly one home — `[board.knobs.executor] backing_u64s` in
+/// the board's `nros-board.toml`, plus the `NROS_EXECUTOR_BACKING_U64S` env
+/// front-end that outranks it (RFC-0049). Both readers walk the same ladder
+/// through `BuildRungs`, so they cannot disagree. Writing the subtrahend down a
+/// second time — in a `.conf`, in a leaf `[env]`, in this file — is issue
+/// 1171's defect, and the reason Zephyr needed a gate to notice.
+///
+/// # Why the board crate CAN do this and FreeRTOS's could not
+///
+/// Issue 1197 established that a board crate cannot DERIVE the backing size: it
+/// is `arena + repr(Rust) tables`, the tables are the target compiler's to lay
+/// out, and probing `nros-node` from outside its own dependency graph gets the
+/// wrong features and the wrong env (measured: 87,256 against a linked 21,832).
+/// Nothing here derives anything. It forwards a STATED number, which is a fact
+/// about the board that the board file already holds.
+///
+/// Unstated → no define, so the C file's own `#ifndef` default (0) applies and
+/// the pool stays at its base. That is the pre-W6 behaviour and the safe
+/// direction: the image wastes the bytes rather than running out of them.
+fn forward_executor_backing_words(build: &mut cc::Build) {
+    const KNOB: &str = "backing_u64s";
+    let key = crate::platform_config::executor_env_key(KNOB);
+    println!("cargo:rerun-if-env-changed={key}");
+    let words = std::env::var(key)
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .or_else(|| {
+            crate::platform_config::BuildRungs::from_build_env()
+                .and_then(|r| r.executor_rungs().get(KNOB))
+        });
+    if let Some(words) = words {
+        build.define("NROS_EXECUTOR_BACKING_U64S", words.to_string().as_str());
+    }
 }
 
 pub fn add_nros_platform_threadx_build(build: &mut cc::Build) {

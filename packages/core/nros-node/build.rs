@@ -903,7 +903,16 @@ fn emit_executor_backing(out_dir: &str) {
     // and reaches this as `None` (it does not parse as a `usize`, which is how
     // every `-1 = derive` knob here falls through), so the shipped Kconfig
     // default is still "the crate's own sizing".
-    let words = env_opt_usize("NROS_EXECUTOR_BACKING_U64S");
+    //
+    // phase-448 W5 / issue 1145 -- the ports with NO Kconfig (NuttX, ThreadX,
+    // ESP32) reach the same statement through the RFC-0049 ladder instead, as
+    // `[board.knobs.executor] backing_u64s`. That rung matters because the
+    // SUBTRAHEND has to come from the same place: on ThreadX the byte pool is
+    // declared in C compiled by the board crate's own build script, and that
+    // script resolves this same rung and subtracts `8 *` it. One statement, two
+    // readers -- two statements of one number is the drift that issue 1171 is
+    // about, and it is not fixable by a gate on a number nobody can recompute.
+    let words = env_opt_usize_laddered("NROS_EXECUTOR_BACKING_U64S");
     println!("cargo:rustc-check-cfg=cfg(nros_executor_backing_static)");
     if words == Some(0) {
         // No item at all, and no cfg: `backing::take` is then a `None` stub and
@@ -988,21 +997,16 @@ fn knob_for_env(name: &str) -> Option<&'static str> {
         .find(|k| nros_board_common::platform_config::executor_env_key(k) == name)
 }
 
+/// phase-448 W5 — this WAS a third hand-written copy of the field list (the
+/// other two were `resolve_executor`'s two `pick` closures). A knob added to
+/// `ExecutorKnobs` and to `EXECUTOR_KNOBS` but missed in one copy resolves to
+/// its builtin with no diagnostic, which is `check-knob-single-reader`'s
+/// subject. It reads the struct's own accessor now.
 fn rung_value(
     rungs: &nros_board_common::platform_config::ExecutorKnobs,
     knob: &str,
 ) -> Option<usize> {
-    match knob {
-        "max_cbs" => rungs.max_cbs,
-        "max_sc" => rungs.max_sc,
-        "max_nodes" => rungs.max_nodes,
-        "max_shutdown_cbs" => rungs.max_shutdown_cbs,
-        "action_clients" => rungs.action_clients,
-        "arena_size" => rungs.arena_size,
-        "subscription_buffer_size" => rungs.subscription_buffer_size,
-        "param_service_buffer_size" => rungs.param_service_buffer_size,
-        _ => None,
-    }
+    rungs.get(knob)
 }
 
 /// A DECLARED entity count, or `None` when nobody declared one.
@@ -1031,6 +1035,25 @@ fn env_opt_usize(name: &str) -> Option<usize> {
         return Some(v);
     }
     nros_zephyr_build::dotconfig_usize(&format!("CONFIG_{name}"))
+}
+
+/// [`env_opt_usize`] with the board/platform rungs spliced in BELOW Kconfig.
+///
+/// phase-448 W5. [`env_usize`] already walks env → Kconfig → board → platform,
+/// but it takes a `usize` default, and this knob's "default" is a const the
+/// TARGET compiler evaluates (`ExecutorSizing::DEFAULT.u64_len()`) — a number
+/// this script cannot name without retyping the derivation. So absence has to
+/// stay `None`, and the ladder has to be walked separately rather than by
+/// passing a sentinel that would then have to be told apart from a stated `0`,
+/// which is this knob's documented opt-out.
+fn env_opt_usize_laddered(name: &str) -> Option<usize> {
+    if let Some(v) = env_opt_usize(name) {
+        return Some(v);
+    }
+    static RUNGS: std::sync::OnceLock<nros_board_common::platform_config::ExecutorKnobs> =
+        std::sync::OnceLock::new();
+    let rungs = RUNGS.get_or_init(executor_rungs);
+    knob_for_env(name).and_then(|k| rung_value(rungs, k))
 }
 
 /// One executor knob: env → Kconfig → board → platform → built-in default.

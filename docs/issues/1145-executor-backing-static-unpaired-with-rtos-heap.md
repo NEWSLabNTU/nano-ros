@@ -273,6 +273,102 @@ The `esp32_entry` workspace cell was NOT rebuilt here: `nros build
 demo_bringup:esp32` wants `rustup target add riscv32imc-unknown-none-elf` on a
 toolchain this host does not have it on. Its numbers above are ffc614252's.
 
+## ThreadX: PAIRED on threadx-linux — 2026-09-12 (phase-448 W5)
+
+ThreadX has no global heap. `nros_platform_alloc` forwards to `tx_byte_allocate`
+on ONE pool, whose storage is `byte_pool_storage[4 * 1024 * 1024]` — a fixed
+`.bss` array in `nros-board-common/c/threadx_hooks.c` — and `nros-platform`
+installs the tree's single `#[global_allocator]` over it. Before phase-392 W6
+the executor's per-entry storage was a `Box::leak` out of exactly there. So this
+port double-reserves, the way Zephyr did.
+
+MEASURED at HEAD, `scripts/build/fixtures-build.sh threadx-linux rust`, `nm -S`:
+
+| leaf | `EXECUTOR_BACKING` | `byte_pool_storage` |
+| --- | ---: | ---: |
+| talker / listener / service-server | 23,336 | 4,194,304 |
+| action-client / action-server | 29,008 | 4,194,304 |
+| service-client | **35,952** | 4,194,304 |
+
+The sizes differ per role because `nros sync` derives each leaf's executor knobs
+(the issue 0827 / 1061 channel), exactly as issue 1197 measured on FreeRTOS.
+
+### The mechanism, and why it is the ladder rather than a second knob
+
+The statement is `[board.knobs.executor] backing_u64s` in the board's
+`nros-board.toml` — the RFC-0049 rung, with the existing
+`NROS_EXECUTOR_BACKING_U64S` env front-end still outranking it. It is read
+TWICE and written ONCE:
+
+* `nros-node/build.rs` sizes `EXECUTOR_BACKING` from it (`env_opt_usize_laddered`);
+* `threadx_sources::add_threadx_hooks_source` resolves the same rung and passes
+  `-DNROS_EXECUTOR_BACKING_U64S` to the C compile, where
+  `BYTE_POOL_SIZE = BYTE_POOL_BASE_SIZE - 8 * NROS_EXECUTOR_BACKING_U64S`.
+
+So the SUBTRAHEND is never written down a second time. That is the difference
+from what issue 1171 had to fix on Zephyr, where the arena's new value is a
+second number in the conf and a gate has to check the sum.
+
+Issue 1197 established that a board crate cannot DERIVE the backing size — it is
+`arena + repr(Rust) tables`, and probing `nros-node` from outside its dependency
+graph gets the wrong features and env (87,256 against a linked 21,832). Nothing
+here derives anything; it forwards a stated board fact. `nros-node`'s const
+assertion is what makes the statement safe: a value below the executor's own
+sizing is a compile error naming the knob.
+
+### The number, and what it costs
+
+`backing_u64s = 4494` = `35,952 / 8`, the heaviest role on this board. Below it
+and the build fails loudly; above it and the bytes are wasted. Every leaf's
+static becomes that size and its pool shrinks by the same amount, so:
+
+| | before | after |
+| --- | ---: | ---: |
+| `talker` backing + pool | 23,336 + 4,194,304 = 4,217,640 | 35,952 + 4,158,352 = **4,194,304** |
+| `service-client` backing + pool | 35,952 + 4,194,304 = 4,230,256 | **4,194,304** |
+
+**Verified on all six leaves: `backing + pool == 4,194,304` exactly** — the
+pre-W6 reservation, paid once. The per-image saving is exactly that image's old
+backing.
+
+The cost of one number per board rather than one per leaf is that four of the
+six roles carry a static larger than they need. They give back the same bytes
+from the pool, so no image grows; what it does mean is that `mem-report` shows
+the board's worst case rather than the leaf's. Zephyr made the same trade for
+the same reason (one stated number, twelve confs).
+
+RUNNING IMAGES on the paired build, `rtos_e2e` / ThreadxLinux / Rust:
+
+```
+PASS [ 48.203s] test_rtos_service_e2e
+PASS [119.553s] test_rtos_pubsub_e2e
+FAIL           test_rtos_action_e2e   <- issue 1343, pre-existing
+```
+
+The action cell is issue 1343 and is not this: the control — the same lane
+rebuilt with `NROS_EXECUTOR_BACKING_U64S=0`, no static at all, pool at its base
+— fails identically, at QoS validation, before any allocation.
+
+### Not done: threadx-riscv64
+
+The mechanism is board-agnostic and the rv64 descriptor can state its own rung
+the moment someone measures it. It is NOT stated here because the number has to
+come from that board's own images (`nm -S` on a riscv64 build), and building the
+rv64 lane was not affordable in this session. Unstated is the safe state: no
+define, the C `#ifndef` default of 0 applies, and the pool stays at its base —
+the image pays twice, exactly as it does today.
+
+A C or C++ ThreadX image is in that state permanently and correctly: its
+`nros_executor_t` objects are file-scope statics and never came out of this
+pool, so it has nothing to give back.
+
+### Found on the way, and not fixed
+
+`BYTE_POOL_BASE_SIZE` is 4 MiB because `threadx_hooks.c` has said "4 MB byte
+pool" since phase 152. Nobody derived it. The pairing subtracts a measured
+number from an undeclared one, which is correct arithmetic on a base that is
+itself a guess — worth its own work item, alongside the FreeRTOS heap budget.
+
 ## Still open
 
 * ~~Every other Zephyr Rust leaf.~~ **DONE** — see the sweep above. Twelve confs
@@ -283,7 +379,11 @@ toolchain this host does not have it on. Its numbers above are ffc614252's.
   and the layering blocker.
 * ~~**ESP32**~~ **DONE** — paired by `ffc614252` on 2026-09-10 and re-measured
   and re-run 2026-09-12. See above.
-* **ThreadX** — see below.
+* **ThreadX** — `threadx-linux` PAIRED 2026-09-12 (see below); `threadx-riscv64`
+  still unstated, and unstated is the safe state. The mechanism is in place for
+  it; what is missing is a measurement on that board's own images.
+* **The byte pool's 4 MiB base, and FreeRTOS's 2 MiB, are undeclared numbers.**
+  Both pairings subtract a measured size from a base nobody derived.
 * ~~**The subtrahend is a hand-copied literal.**~~ RESOLVED —
   [issue 1171](archived/1171-arena-backing-pairing-is-hand-maintained.md).
 
