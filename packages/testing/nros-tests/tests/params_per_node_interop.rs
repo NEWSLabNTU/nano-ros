@@ -30,8 +30,7 @@
 use nros_tests::{
     fixtures::{
         ManagedProcess, RequireFixture, ZenohRouter, build_native_param_two_node_talker,
-        build_native_param_two_node_talker_cyclonedds, require_ros2, require_zenohd,
-        zenohd_unique,
+        build_native_param_two_node_talker_cyclonedds, require_ros2, require_zenohd, zenohd_unique,
     },
     output::PARAM_SERVICE_NODE_PREFIX,
     ros2::DEFAULT_ROS_DISTRO,
@@ -395,8 +394,8 @@ fn ros2_param_cli_addresses_each_node_on_cyclonedds() -> nros_tests::TestResult<
     if !nros_tests::ros2::require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
     }
-    let binary = build_native_param_two_node_talker_cyclonedds()
-        .unwrap_or_else(|e| panic!("param-two-node-talker-cyclone fixture not built: {e}"));
+    let binary =
+        build_native_param_two_node_talker_cyclonedds().require("param-two-node-talker-cyclone");
 
     let domain = nros_tests::unique_ros_domain_id();
     let mut cmd = Command::new(binary);
