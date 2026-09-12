@@ -77,6 +77,33 @@ runner**, where no orphan from this repo can exist across jobs — the runner is
 fresh per job. The two share a symptom and nothing else, so fixing 1350 will not
 fix this.
 
+## It is not one lane — a second hosted lane hit it (2026-09-12)
+
+The `live-peer regression` workflow, run **34672525328** (schedule, 04:15), job
+**103496470349** (`rows whose board IS this runner`), carries the same
+annotation on the same file:
+
+```
+Unhandled exception. System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20260912-041530-utc.log'
+```
+
+Its sibling job **103496661226** (`rows whose board is NOT this runner`) failed
+at step 11, `Build the fixtures those rows resolve`, reporting only `Process
+completed with exit code 1` with no compiler diagnostic in the log — the same
+shape the `host-tests` job showed on 2026-09-12T02:27, where the stream is
+truncated mid-compile and the run ends. That truncation is itself a symptom:
+when the disk is gone the log has nowhere to land, so the lane that failed
+cannot say why.
+
+So the title's "the scheduled `gate` run" understates it. At least three hosted
+lanes are affected — `gate` (schedule), `live-peer regression` (schedule) and
+`host-tests` (push) — which rules out anything specific to `just check build`
+and points at the job image's free space against what a full provision plus
+compile-tier build now costs. The disk report the section below asks for should
+therefore be added to the shared setup the lanes have in common, not only around
+the compile-tier steps.
+
 ## What would close it
 
 Measurement first, because the cause is not yet established and a guessed fix
