@@ -342,12 +342,21 @@ RUNNING IMAGES on the paired build, `rtos_e2e` / ThreadxLinux / Rust:
 ```
 PASS [ 48.203s] test_rtos_service_e2e
 PASS [119.553s] test_rtos_pubsub_e2e
-FAIL           test_rtos_action_e2e   <- issue 1343, pre-existing
+FAIL           test_rtos_action_e2e   <- issue 1341, pre-existing
 ```
 
-The action cell is issue 1343 and is not this: the control — the same lane
-rebuilt with `NROS_EXECUTOR_BACKING_U64S=0`, no static at all, pool at its base
-— fails identically, at QoS validation, before any allocation.
+The action cell is **issue 1341** and is not this. `nros-node` creates the
+action status publisher with `QOS_PROFILE_ACTION_STATUS_DEFAULT`, which mirrors
+ROS's `rcl_action_qos_profile_status_default` and is TRANSIENT_LOCAL;
+`shim/qos.rs:169` refuses TRANSIENT_LOCAL for every publisher since `b0ea5a04b`.
+Both halves are unconditional, so it is a property of (zenoh, any action
+server) — this run is the evidence that it is platform-independent, the sibling
+filing found it on the native r2n cell.
+
+The CONTROL was run rather than argued: the same lane rebuilt with
+`NROS_EXECUTOR_BACKING_U64S=0` — no static at all, pool at its base, the shape
+the port had before phase-392 W6 — fails identically, at QoS validation, before
+any allocation.
 
 ### Not done: threadx-riscv64
 
