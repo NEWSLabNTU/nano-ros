@@ -1,5 +1,13 @@
 # Phase 430 — ROS time: the delta after phase-425
 
+**Status (2026-09-12, second pass). ARCHIVED.** W1–W8 landed, row 1 is MET by
+implementation, and issue 1321 — the one thing this phase did not close — is
+resolved and archived. The single item still owed, W7's ledger rows for
+`install_ros_time_source*`, is a property of the parity EXTRACTOR rather than of
+this delta, and it is now [issue 1351](../../issues/1351-rust-extractor-misses-nodectx-and-sim-time-surface.md)
+so it outlives this document. [Issue 1334](../../issues/1334-ros-time-fallback-reads-an-unadvanced-steady-counter.md),
+measured while deciding row 1, is open and tracked on its own.
+
 **Status (2026-09-12). W1–W8 LANDED; row 1's regression is CLOSED — issue 1321
 is fixed and archived, and property 1 is MET for the first time by
 implementation rather than by absence.** See
@@ -15,13 +23,13 @@ parameter-semantics corrections are in, and W7 recorded the rulings. What is
 NOT closed is row 1: phase-436 W1 gave the executor a timer-derived park bound
 nine hours after this table verdicted the property "NO LONGER APPLIES", so the
 property applies again and is unmet. It is filed rather than fixed here
-([issue 1321](../issues/archived/1321-ros-time-timer-caps-the-park-on-wall-time.md)),
+([issue 1321](../../issues/archived/1321-ros-time-timer-caps-the-park-on-wall-time.md)),
 because it is an executor change and this phase is the reach delta. See
 "Re-measured (2026-09-11)" below; the 2026-09-07 table is left as it was
 written.
 
 This document was first written as if ROS time were unstarted work. It was not:
-phase-425 ([`phase-425-ros-time-clock-semantics.md`](phase-425-ros-time-clock-semantics.md))
+phase-425 ([`phase-425-ros-time-clock-semantics.md`](../phase-425-ros-time-clock-semantics.md))
 landed `rosgraph_msgs/msg/Clock`, the `/clock` time source, `use_sim_time`,
 clock-driven timers and an end-to-end fixture while this was being drafted, and
 the collision was found in a rebase conflict rather than by looking. The
@@ -139,7 +147,13 @@ one is on `main`, so a row's line numbers can move without its verdict moving.
   `cpp:create_timer`). Still owed, deliberately: rows for
   `install_ros_time_source*`, which wait on the Rust extractor building the
   surface with `sim-time` — finding C, and the ledger says so in the same words
-  at `docs/reference/api-parity-ledger/timer.json:940`. The one thing that was
+  at `docs/reference/api-parity-ledger/timer.json:940`. **TRACKED 2026-09-12 as
+  [issue 1351](../../issues/1351-rust-extractor-misses-nodectx-and-sim-time-surface.md)**,
+  because it is a property of the TOOL and not of this phase's delta: `sim-time`
+  is absent from `NROS_FEATURES` (`scripts/api_parity/extract_rust.py:41`) and
+  `NodeCtx` is not re-exported from the umbrella, so the rows are unmatchable by
+  construction rather than unwritten — two states a reader and every gate see as
+  one blank. Filed so the fact outlives this document. The one thing that was
   simply stale is fixed by this pass: RFC-0089's 2026-09-05 amendment still read
   "phase-430 brings ROS time" four days after this document had measured that
   phase-425 brought it.
@@ -154,7 +168,7 @@ the next section, and the issue is archived.
 
 | # | 2026-09-07 | 2026-09-11 | 2026-09-12 | Evidence |
 | --- | --- | --- | --- | --- |
-| 1 | NO LONGER APPLIES | NOT STARTED | **MET** | A timer bounds the executor's wall park only if its OWN clock runs in wall microseconds — `TimerClockSource::remaining_is_wall_time` (`packages/core/nros-node/src/timer.rs`), read by `next_timer_deadline_us` and by `audit_spin_quantization` (`executor/spin.rs`). [issue 1321](../issues/archived/1321-ros-time-timer-caps-the-park-on-wall-time.md), archived. |
+| 1 | NO LONGER APPLIES | NOT STARTED | **MET** | A timer bounds the executor's wall park only if its OWN clock runs in wall microseconds — `TimerClockSource::remaining_is_wall_time` (`packages/core/nros-node/src/timer.rs`), read by `next_timer_deadline_us` and by `audit_spin_quantization` (`executor/spin.rs`). [issue 1321](../../issues/archived/1321-ros-time-timer-caps-the-park-on-wall-time.md), archived. |
 
 **Property 1 now reads, post-fix:** *a ROS-time timer's wake source is a
 `/clock` message, so it contributes NOTHING to the wall timeout handed to the
@@ -182,7 +196,7 @@ restatements of the 2026-09-07 verdict:
   happens to be attached". The conditional rule would be wrong today —
   `ClockType::RosTime`'s documented wall fallback reads an in-image steady
   counter nothing advances
-  ([issue 1334](../issues/1334-ros-time-fallback-reads-an-unadvanced-steady-counter.md),
+  ([issue 1334](../../issues/1334-ros-time-fallback-reads-an-unadvanced-steady-counter.md),
   measured while deciding this) — and a park bound that flipped with whether a
   publisher was running would be a behaviour no declaration named. The latency
   cost is the pre-436 bound, the caller's budget, which is what the e2e
