@@ -181,3 +181,22 @@ tests = ["nros_zephyr_publisher_reaches_ros2_topic_echo"]
 run = "cargo nextest run -p nros-tests --test qos_zephyr_ros2_interop_e2e"
 where = "ros2 distrobox, Humble, zephyr native_sim"
 evidence = "2/2: an nros zenoh-pico publisher on a Zephyr native_sim image reaches a stock rmw_zenoh_cpp subscriber via ros2 topic echo. First Zephyr build this host has ever produced."
+
+[[verdict]]
+cell = "native-action-rust-zenoh-n2r"
+date = "2026-09-12"
+verdict = "pass"
+tests = ["the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh"]
+run = "cargo nextest run -p nros-tests --test ros2_action_e2e"
+where = "ros2 distrobox (Ubuntu 22.04, Humble) on the maintainer host, box tree at d4025ceba; `ros2 daemon stop` first — a stale ros2cli daemon makes the `ros2 action list` discovery gate unmeetable"
+evidence = "the nano-ros zenoh action CLIENT drives examples_rclcpp_minimal_action_server to Fibonacci(10) over rmw_zenoh_cpp; passed twice, 62 s each"
+
+[[verdict]]
+cell = "native-action-rust-zenoh-r2n"
+date = "2026-09-12"
+verdict = "fail"
+tests = ["a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh"]
+run = "cargo nextest run -p nros-tests --test ros2_action_e2e"
+where = "ros2 distrobox (Ubuntu 22.04, Humble) on the maintainer host, box tree at d4025ceba; ros2 daemon stopped first"
+evidence = "the nano-ros zenoh action server exits 1 at boot — `/fibonacci/_action/status` is TRANSIENT_LOCAL and shim/qos.rs refuses it since b0ea5a04b (issue 1341); the 2026-09-08 build of the same fixture still runs"
+issue = "1341"

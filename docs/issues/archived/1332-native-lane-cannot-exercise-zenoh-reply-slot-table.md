@@ -5,7 +5,7 @@ title: "the native host lane cannot refuse a zenoh reply slot at all, so it cann
 status: resolved
 type: limitation
 area: testing
-related: [issue-0902, phase-455, issue-0903]
+related: [issue-0902, phase-455, issue-0903, issue-1341, issue-1342]
 ---
 
 ## What was measured
@@ -173,3 +173,47 @@ counter would settle it in one run, and is the obvious follow-up to option 2.
 
 *(That counter is `zpico_reply_slot_declines` / `Context::reply_slot_declines`,
 landed with the resolution above. It reads 0 on this lane without the probe.)*
+
+## Route 1, MEASURED 2026-09-12 — a live `rmw_zenoh_cpp` peer declines nothing
+
+The "What would close it" list says of route 1: *"if those peers produce
+declined queries, W3's cells become the negative control this one cannot be.
+**Measure it — do not assume it.**"* It was measured. **They do not.**
+
+The route-1 recipe as written could not be run: it says to run W3's interop cell
+against a tree with `1a032a10b` reverted, and on `main` the r2n cell's server
+does not start at all — its `/fibonacci/_action/status` publisher asks for
+TRANSIENT_LOCAL and the zenoh shim refuses it since `b0ea5a04b` (issue 1341).
+So the question was put to the same queryable one layer down: a nano-ros zenoh
+SERVICE server, which is the same zenoh-pico queryable an action server is.
+
+Instrument: an experiment-only `-DZPICO_DECLINE_PROBE` in `query_handler`
+printing one line PER QUERY with the decline verdict — per query rather than per
+decline, so an answered request is the instrument's own control. Population, all
+on one ephemeral `rmw_zenohd`, ~110 s: a fresh ros2cli daemon, `demo_nodes_cpp`
+talker and listener, three rounds of `ros2 node list` / `service list` /
+`topic list` / `node info`, four real `ros2 service call`, and a 60 s idle soak
+with the graph present.
+
+```
+queries seen: 4  declined: 0
+ZPICO_QUERY n=1 declined=0 declined_total=0 payload_len=20 keyexpr=0/add_two_ints/…
+… n=2, n=3, n=4 identical
+```
+
+Four queries in 110 s — one per service call, and nothing else. `payload_len=20`
+on every one, so the empty-payload arm was never entered; a separate 12-way
+concurrent `ros2 service call` flood answered 12/12 with 0 declines, so the
+ring-full arm was not entered either.
+
+**So the "Why (inferred from the code, not measured)" section above is now
+measured, and it is stronger than it was written.** A real `rmw_zenoh_cpp` peer
+population does not merely fail to fill the table: it sends our queryable
+nothing but the requests it means to send. The resolution's route-2 probe is the
+control this lane has, and it is the only one it is going to get from a host
+lane — phase-444 W2's board run is what remains for the population issue 0902
+actually measured.
+
+(The closing note above says `zpico_reply_slot_declines` "reads 0 on this lane
+without the probe". That is now also true with a live ROS 2 graph attached, and
+for the same reason: nothing declines.)

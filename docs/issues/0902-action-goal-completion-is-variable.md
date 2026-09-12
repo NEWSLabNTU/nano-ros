@@ -5,7 +5,7 @@ title: "action goals complete between 20 % and 90 % of the time on the same buil
 status: open
 type: bug
 area: rmw
-related: [issue-0912, issue-0882, issue-0879, issue-0852, issue-1332, phase-444, phase-455]
+related: [issue-0912, issue-0882, issue-0879, issue-0852, issue-1332, issue-1341, phase-444, phase-455]
 ---
 
 ## Measurement
@@ -447,3 +447,65 @@ for one shape of a real peer's traffic, on the host lane. Item 1 on the board,
 and the live `rmw_zenoh_cpp` peer (phase-455 W3), remain what this issue is
 waiting for. Also still uncontrolled: `b56e3d50a`'s FAILED-REPLY arm — the probe
 never makes the server reply, so it never enters `zpico_query_reply`.
+
+## Status 2026-09-12 — ROUTE 1 measured: a live ROS 2 peer declines NOTHING
+
+The section above ends "item 1 on the board, and the live `rmw_zenoh_cpp` peer
+(phase-455 W3), remain what this issue is waiting for." The live peer has now
+been run, in a distrobox with ROS 2 Humble, and it is **ruled out as the
+population that feeds the leak**.
+
+W2.b's synthetic probe and this measurement answer different questions and both
+were needed: W2.b asks *does the reclaim work when a declined query arrives*;
+this asks *does a real ROS 2 graph send one at all*.
+
+**Instrument.** `query_handler` was built with an experiment-only
+`-DZPICO_DECLINE_PROBE` (never committed) printing one line PER QUERY with the
+decline verdict — per query rather than per decline on purpose, so an ordinary
+answered request is the instrument's own control and a silent probe cannot be
+mistaken for a quiet peer. (`zpico_reply_slot_declines` landed on `main` hours
+later and is the counter to use next time; it was not in the tree under test.)
+
+**Subject.** A nano-ros zenoh SERVICE server
+(`examples/native/rust/service-server --features rmw-zenoh`), which is the same
+zenoh-pico queryable an action server is. Deliberately not an action server: on
+`main` today no zenoh action server starts at all — issue **1341**.
+
+**Population**, all on one ephemeral `rmw_zenohd`, ~110 s: a ros2cli daemon
+started fresh, `demo_nodes_cpp` talker AND listener joined and stayed, three
+rounds of `ros2 node list` / `service list` / `topic list` / `node info`, four
+real `ros2 service call /add_two_ints`, and a **60 s idle soak** with the whole
+graph present — idling being the condition that made this issue's rate worse.
+
+```
+--- t+10s: queries=3 declined=0
+--- t+60s: queries=3 declined=0
+================= RESULT =================
+queries seen: 4  declined: 0
+ZPICO_QUERY n=1 declined=0 declined_total=0 payload_len=20 keyexpr=0/add_two_ints/example_interfaces::srv::dds_::AddTwoInts_/TypeHashNotSupported
+… n=2, n=3, n=4 identical
+```
+
+**Four queries in 110 s: one per service call, and nothing else.** Not "no
+declines" — no other queries at all. `payload_len=20` on every one, so the
+empty-payload arm (`shim/service.rs:220-227`) was never entered; a separate
+12-way concurrent `ros2 service call` flood answered 12/12 with 0 declines, so
+the ring-full arm was not entered either.
+
+**What this changes.** The leak arms are real and the fixes are right, but the
+assumption route 1 rested on — *a real ROS 2 graph produces declined queries* —
+is FALSE on this population. Whatever fed the leak on the bare-metal serial
+board this issue measured, it is not the mere presence of ROS 2 peers. So
+phase-455 W3's zenoh interop cells will NOT be the stronger control they were
+expected to be, W2.b's synthetic probe is the control the host lane has, and
+phase-444 W2's board run is the only remaining route to the population that
+showed the symptom.
+
+**Route 1 could not have been run as issue 1332 wrote it, either.** That text
+says to run W3's interop cell against a tree with `1a032a10b` reverted. The r2n
+cell's server does not start on `main`: the `/fibonacci/_action/status`
+publisher asks for TRANSIENT_LOCAL and the zenoh shim refuses it since
+`b0ea5a04b` (**issue 1341**, measured the same day, with the 2026-09-08 build of
+the same fixture still running). The service-server probe above answers the same
+question without needing that revert, and more directly — it counts the declines
+instead of inferring them from a refusal four slots later.
