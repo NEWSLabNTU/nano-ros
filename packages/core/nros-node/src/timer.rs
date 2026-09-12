@@ -231,12 +231,32 @@ impl TimerClockSource {
     ///   already have.
     ///
     ///   The answer does not become "yes" when no `/clock` source is attached,
-    ///   even though `ClockType::RosTime` is documented as falling back to the
-    ///   wall: measured, that fallback reads `nros_core`'s in-image STEADY
-    ///   COUNTER, and nothing outside `nros-core`'s own tests advances it, so
-    ///   the remainder is a constant there too. A rule that flipped with
-    ///   whether a publisher happened to be running would also make the park
-    ///   bound change under an image for reasons no declaration named.
+    ///   and issue 1334 changed WHY. When this rule was written, the fallback
+    ///   was measured to read `nros_core`'s in-image steady counter — a value
+    ///   nothing in the tree advances — so the remainder was a constant in
+    ///   that state too and the rule was true twice over. 1334 fixed that
+    ///   arm: `ClockType::RosTime` with no override now reads the wall clock,
+    ///   exactly as its own doc, rclcpp and the C surface always said, so the
+    ///   remainder there IS wall microseconds and the first reason is gone.
+    ///   The decision stands on the two that remain, and both are about the
+    ///   RULE rather than about one image's state:
+    ///
+    ///   * property 1 of phase-430 — a ROS-time timer's wake source is a
+    ///     `/clock` MESSAGE. A rule that flipped with whether a publisher
+    ///     happened to be running would make the park bound change under a
+    ///     live image for a reason no declaration named, and it would flip at
+    ///     the worst moment: the first `/clock` sample, the instant the
+    ///     remainder stops being wall microseconds. Deciding it per-timer at
+    ///     REGISTRATION is not available either — the source can attach later
+    ///     (`use_sim_time` is settable at runtime, phase-430 W2).
+    ///   * what it costs is LATENCY and nothing else, bounded by the caller.
+    ///     A `Ros` timer standing alone is paced by `spin_once`'s own budget
+    ///     instead of by its period, so a 10 ms timer under a 100 ms budget
+    ///     fires late — the pre-436 behaviour of every timer in the tree, and
+    ///     never unbounded, because `next_wake_bound_attributed_us` seeds its
+    ///     `min` with that budget. An image that wants its standalone ROS
+    ///     timer paced to the millisecond spins to the millisecond, which is
+    ///     what `bins/sim-clock-listener` already does at 5 ms.
     pub(crate) fn remaining_is_wall_time(self) -> bool {
         match self {
             TimerClockSource::Steady | TimerClockSource::System => true,

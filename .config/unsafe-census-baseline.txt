@@ -38,7 +38,7 @@ nros-build                           1   0     0       0      0
 nros-build-helpers                   2   0     0       2      0
 nros-c                             325  54     5     386      0
 nros-cli-core                       22   0     0       0      0
-nros-core                            1   0     2       1      0
+nros-core                            2   0     2       2      0
 nros-cpp                           609  16     0     272      0
 nros-log                            17   0     5       1      0
 nros-macros                         12   0     1       2      0
