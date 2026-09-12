@@ -35,6 +35,13 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 REPO="${NROS_QUEUE_REPO:-NEWSLabNTU/nano-ros}"
 LOOKBACK="${NROS_TRIAGE_LOOKBACK:-15}"
+# How many merge-group runs to FETCH to find `LOOKBACK` runs that carry a
+# verdict. An ALLGREEN batch cancels every entry behind the one that failed, so
+# most rows in this history are cancellations: of the 12 most recent runs on
+# 2026-09-12, NINE were `cancelled` and two were `failure`. Fetching exactly
+# LOOKBACK rows therefore samples mostly non-verdicts, and the distinct-PR count
+# the classifier needs cannot reach 2 even when a check is broken for everyone.
+FETCH=$((LOOKBACK * 5))
 
 # Classify a set of (pr, check, conclusion) rows. Pure text in, verdict out, so
 # the judgement can be tested without a network.
@@ -42,6 +49,12 @@ LOOKBACK="${NROS_TRIAGE_LOOKBACK:-15}"
 #   stdout: INFRA <check> <n-prs>   |   MINE <check>   |   CLEAN
 classify() {
     awk -F'\t' '
+        # A merge group runs ALLGREEN over up to five entries, so when one
+        # entry fails the ones behind it are CANCELLED, not failed. They are
+        # not verdicts and must not be counted as passes either — the window
+        # below drops them, and `cancelled` is reported separately so a reader
+        # can see how much of the batch history carried no signal at all.
+        $3 == "cancelled" || $3 == "skipped" || $3 == "running" { skipped++; next }
         $3 == "failure" { fails[$2] = fails[$2] " " $1; n[$2]++ }
         END {
             best = ""; bestn = 0
@@ -51,11 +64,11 @@ classify() {
                 for (i in a) if (a[i] != "" && !(a[i] in seen)) { seen[a[i]]; distinct++ }
                 if (distinct > bestn) { bestn = distinct; best = c }
             }
-            if (best == "") { print "CLEAN"; exit }
+            if (best == "") { printf "CLEAN\t\t0\t%d\n", skipped; exit }
             # The SAME check failing for two or more DIFFERENT pull requests is
             # not a property of any one change.
-            if (bestn >= 2) printf "INFRA\t%s\t%d\n", best, bestn
-            else            printf "MINE\t%s\t%d\n", best, bestn
+            if (bestn >= 2) printf "INFRA\t%s\t%d\t%d\n", best, bestn, skipped
+            else            printf "MINE\t%s\t%d\t%d\n", best, bestn, skipped
         }'
 }
 
@@ -73,6 +86,15 @@ if [ "${1:-}" = "--selftest" ]; then
     t "one PR failing one check is MINE" MINE '6\tcheck\tfailure\n7\tcheck\tsuccess\n'
     t "the SAME check failing for TWO PRs is INFRA" INFRA '6\tcheck\tfailure\n7\tcheck\tfailure\n'
     t "one PR failing twice is still MINE (not two authors)" MINE '6\tcheck\tfailure\n6\tcheck\tfailure\n'
+    # The case that was missing, and the one that gave the wrong answer on
+    # 2026-09-12: a batch cancels every entry behind the failure, so a check
+    # broken for EVERYONE arrives as one `failure` beside N `cancelled`.
+    t "cancelled entries are not passes" INFRA \
+        '6\tcheck\tfailure\n7\tcheck\tcancelled\n8\tcheck\tfailure\n'
+    t "a batch of pure cancellations reads CLEAN, not MINE" CLEAN \
+        '6\tcheck\tcancelled\n7\tcheck\tcancelled\n'
+    t "running is not a verdict either" MINE \
+        '6\tcheck\tfailure\n7\tcheck\trunning\n'
     [ "$fails" -eq 0 ] || { echo "queue-triage selftest: FAILED"; exit 1; }
     echo "queue-triage selftest: OK"
     exit 0
@@ -93,7 +115,7 @@ while IFS=$'\t' read -r rid head name concl; do
     printf '  PR #%-4s %-34s %s\n' "$pr" "${name:0:34}" "$concl"
     rows="${rows}${pr}	${name}	${concl}"$'\n'
 done < <(
-    gh run list --event merge_group --limit "$LOOKBACK" \
+    gh run list --event merge_group --limit "$FETCH" \
         --json databaseId,headBranch,workflowName,conclusion \
         --jq '.[] | [(.databaseId|tostring), .headBranch, .workflowName, (.conclusion // "running")] | @tsv' \
         2>/dev/null
