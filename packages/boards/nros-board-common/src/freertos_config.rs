@@ -186,6 +186,90 @@ pub const fn app_stack_bytes(kb: Option<&str>) -> u32 {
     }
 }
 
+// =============================================================================
+// The FreeRTOS heap default (issue 1197) — DERIVED, from terms that were
+// measured on running images, not bisected.
+// =============================================================================
+
+/// App-sized task stacks the default heap budgets for.
+///
+/// Three: the boot task plus two spawned tiers. `app_stack_bytes` is charged
+/// **per TASK** — a tier whose `[tiers.*] stack_bytes` is 0 takes the app
+/// default too — so a tiered image multiplies this term rather than sharing it.
+/// The deepest in-tree image (`examples/workspaces/realtime-rust`) declares two
+/// tiers; three is one more than anything shipped, and a deeper image raises
+/// `NROS_FREERTOS_HEAP_KB` with its own `heap peak` line as the evidence.
+pub const DEFAULT_HEAP_APP_TASK_SLOTS: usize = 3;
+
+/// Heap an executor costs when it is NOT the one that took the `.bss`
+/// reservation — issue 1197's residue, and the only backing term left in this
+/// budget.
+///
+/// phase-392 W6 put ONE executor's per-entry storage in the named `.bss` static
+/// `nros_node::executor::backing::EXECUTOR_BACKING`, so the FIRST executor an
+/// image opens costs the heap NOTHING and this budget has no term for it. That
+/// is what makes the default independent of a size the board cannot see (issue
+/// 1197's whole subject). A TIERED boot opens one executor per tier, and
+/// `backing::take` is a latch — the second and later ones fall through to
+/// `Box::leak` out of this heap, which is correct and deliberate.
+///
+/// MEASURED: `examples/workspaces/realtime-rust` (2 tiers) peaks at **389,064**
+/// bytes of heap against **176,920** for the worst single-executor image
+/// (`rust/action-client`), both at a 131,072-byte app stack. The difference
+/// beyond the second task's stack is **93,216** bytes — a default-sized backing
+/// (87,496 by `arm-none-eabi-nm -S` on the wake-latency images, which declare no
+/// entities) plus heap_4 block overhead. 131,072 is 1.4x it.
+///
+/// This is the one term a backing change can re-stale, and it is the one term
+/// every image PRINTS a check on: `nros: heap peak <used> of <total>`.
+pub const DEFAULT_HEAP_SPARE_EXECUTOR_BYTES: usize = 131_072;
+
+/// Everything in the heap that is neither an app-sized task stack nor a spare
+/// executor: the zenoh-pico read + lease task stacks (5,120 each), the network
+/// poll task (1 KiB), the heap-peak reporter (2 KiB), lwIP's tcpip thread and
+/// per-socket allocations, and the RMW's per-entity working set.
+///
+/// MEASURED at **45,848** bytes worst — `rust/action-client`, 176,920 peak less
+/// its one 131,072 app stack. The C/C++ carrier agrees to within 1 KiB
+/// (`c/action-server` 569,064 less its 524,288 stack = **44,776**), which is the
+/// cross-check that this term is a property of the transport and the netstack
+/// rather than of a language lane. 65,536 is 1.43x the worse of the two.
+pub const DEFAULT_HEAP_WORKING_SET_BYTES: usize = 65_536;
+
+/// The FreeRTOS heap default for a zenoh image, in BYTES.
+///
+/// ```text
+/// app_stack_bytes * SLOTS + SPARE_EXECUTOR * (SLOTS - 1) + WORKING_SET
+/// ```
+///
+/// At the shipped 131,072-byte app stack that is **720,896** bytes (704 KiB),
+/// replacing a bisected 2 MiB literal that predates both of the reductions it
+/// was still sized for:
+///
+/// * issue 1146 lowered `app_stack_bytes` 393,216 -> 131,072, charged per task;
+/// * issue 1197 / phase-392 W6 moved the first executor's backing to `.bss`,
+///   so this budget stopped holding it a second time.
+///
+/// Doing those in two commits is how the subtraction ends up applied twice, and
+/// a too-small heap on this port does not say `*** STACK OVERFLOW ***` — heap_4
+/// hands out the task stacks, so it says `*** MALLOC FAILED ***` and hangs
+/// (issue 1146 measured that too). Hence one derivation, and hence every image
+/// prints its own `nros: heap peak` line so the next person reads the number
+/// instead of re-bisecting it.
+///
+/// VERIFIED by running every in-tree FreeRTOS mps2-an385 image against a live
+/// `rmw_zenohd`: the worst peak is `realtime-rust`'s **389,064**, so the default
+/// carries 1.85x what the deepest image has ever asked for.
+///
+/// Not applied to the cyclone / XRCE lane, which keeps `FreeRTOSConfig.h`'s
+/// 3 MiB: DDS discovery's working set is a different measurement and this PR did
+/// not take it.
+pub const fn default_heap_bytes(app_stack_bytes: u32) -> usize {
+    (app_stack_bytes as usize) * DEFAULT_HEAP_APP_TASK_SLOTS
+        + DEFAULT_HEAP_SPARE_EXECUTOR_BYTES * (DEFAULT_HEAP_APP_TASK_SLOTS - 1)
+        + DEFAULT_HEAP_WORKING_SET_BYTES
+}
+
 /// Const decimal parser for the `NROS_FREERTOS_APP_STACK_KB` build env.
 const fn parse_kb(s: &str) -> u32 {
     let bytes = s.as_bytes();
@@ -210,6 +294,32 @@ mod tests {
     fn the_stack_override_is_read_in_kib() {
         assert_eq!(app_stack_bytes(Some("256")), 262144);
         assert_eq!(app_stack_bytes(None), DEFAULT_APP_STACK_BYTES);
+    }
+
+    #[test]
+    fn the_heap_default_tracks_the_app_stack_it_holds() {
+        // issue 1197 — the point of the derivation: lower the stack (issue
+        // 1146's half) and the heap follows, with no second edit to forget.
+        assert_eq!(default_heap_bytes(DEFAULT_APP_STACK_BYTES), 720_896);
+        assert_eq!(
+            default_heap_bytes(DEFAULT_APP_STACK_BYTES) - default_heap_bytes(65_536),
+            (DEFAULT_APP_STACK_BYTES as usize - 65_536) * DEFAULT_HEAP_APP_TASK_SLOTS
+        );
+    }
+
+    #[test]
+    fn the_heap_default_covers_the_worst_measured_image() {
+        // `examples/workspaces/realtime-rust` on qemu mps2-an385 against a live
+        // `rmw_zenohd`, 2026-09-12: `nros: heap peak 389064 of 2097152 bytes`.
+        // A term that shrinks below this is a `*** MALLOC FAILED ***` at boot,
+        // which no build-time check can see.
+        const WORST_MEASURED_PEAK: usize = 389_064;
+        assert!(
+            default_heap_bytes(DEFAULT_APP_STACK_BYTES) >= WORST_MEASURED_PEAK,
+            "the derived heap default no longer covers the deepest image this \
+             tree has measured — re-run the FreeRTOS images and read their \
+             `nros: heap peak` lines before moving a term"
+        );
     }
 
     #[test]

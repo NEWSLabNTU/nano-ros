@@ -132,27 +132,48 @@ fn main() {
         &freertos_config_dir,
     );
     // Phase 204.6 — right-size the FreeRTOS heap (heap_4 `ucHeap`, the dominant
-    // bss; this is the only TU that sizes it). FreeRTOSConfig.h defaults to a
-    // cyclone-safe 3 MiB. Two overrides, env wins:
+    // bss). FreeRTOSConfig.h defaults to a cyclone-safe 3 MiB. Two overrides,
+    // env wins:
     //   1. explicit `NROS_FREERTOS_HEAP_KB` build env (any value), else
-    //   2. the `rmw-zenoh` feature (forwarded from the board) → 2 MiB. The
-    //      FreeRTOS task stacks are allocated *from* this heap (heap_4), so it
-    //      must hold the `nros_app` task stack (128 KiB since issue 1146 —
-    //      MEASURED, worst in-tree peak 36 152 bytes; it was 384 KiB, and one
-    //      task stack per TIER comes out of the same heap) PLUS lwIP
-    //      (netconns/pbufs/socket semaphores) PLUS zenoh-pico's working set.
-    //      512 KiB sufficed for the old *direct* talker but the Entry path
-    //      MALLOC-FAILs at it (issue #46); 2 MiB boots cleanly through Executor
-    //      + network on the qemu MPS2-AN385 (4 MiB SRAM, ample headroom). Still
-    //      below the cyclone DDS-discovery default; cyclone/xrce don't enable
-    //      this feature on the base crate, so they keep the 3 MiB default; tune
-    //      via the env (`xPortGetMinimumEverFreeHeapSize()` high-water).
+    //   2. the `rmw-zenoh` feature (forwarded from the board) → the DERIVATION
+    //      in `nros_board_common::freertos_config::default_heap_bytes`. The
+    //      FreeRTOS task stacks are allocated *from* this heap (heap_4), so the
+    //      budget is a SUM of the things in it — app-sized task stacks (one per
+    //      TIER), the executors a tiered boot opens past the first, and the
+    //      lwIP + zenoh-pico working set — and each of those terms is measured
+    //      on running images and documented where it is defined.
+    //
+    //      It was the literal `2048` until issue 1197, bisected in phase 204.6
+    //      and never re-derived through either of the two reductions that
+    //      landed under it: issue 1146 took the app stack 384 KiB -> 128 KiB
+    //      (charged PER TASK), and phase-392 W6 moved the first executor's
+    //      backing into the `.bss` static `EXECUTOR_BACKING`, so this heap
+    //      stopped needing to hold it at all. Both had to move this ONE number,
+    //      and doing them separately is how a subtraction gets applied twice.
+    //      Now it follows the app stack automatically: lower that knob and this
+    //      falls by three times as much, with no second edit to forget.
+    //
+    //      Still below the cyclone DDS-discovery default; cyclone/xrce don't
+    //      enable this feature on the base crate, so they keep
+    //      `FreeRTOSConfig.h`'s 3 MiB, which this PR did not measure. Tune with
+    //      the env, and read the image's own `nros: heap peak` boot line first —
+    //      it is `xPortGetMinimumEverFreeHeapSize()` and it is what the terms
+    //      above were derived from.
     // phase-400 W6 — the platform and board rungs sit UNDER the two overrides
     // this already had, and the env front-end still wins over all of them.
     //
     // The knob keeps its KiB spelling at the front end and the ladder stores
     // bytes, so the define is converted back here: FreeRTOSConfig.h reads KiB.
-    let zenoh_default_kb = (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()).then_some(2048_usize);
+    //
+    // `app_stack_bytes` comes from the knob's ONE owner
+    // (`freertos_build::app_stack_bytes_from_build_env`, which also emits the
+    // `rerun-if-env-changed` line), never a second `env::var` here: a second
+    // reader is not a fallback, it is a disagreement waiting to happen, and
+    // `check-knob-single-reader` refuses one. An image that raises its stack
+    // therefore raises the heap that hands it out, through one parse.
+    let app_stack_bytes = nros_board_common::freertos_build::app_stack_bytes_from_build_env();
+    let zenoh_default_kb = (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok())
+        .then(|| nros_board_common::freertos_config::default_heap_bytes(app_stack_bytes) / 1024);
     let heap_kb = match nros_board_common::platform_config::BuildRungs::from_build_env() {
         Some(rungs) => {
             // No lane default means "leave FreeRTOSConfig.h's 3 MiB alone",
@@ -165,9 +186,30 @@ fn main() {
             .and_then(|v| v.trim().parse::<usize>().ok())
             .or(zenoh_default_kb),
     };
-    if let Some(kb) = heap_kb {
-        freertos.define("NROS_FREERTOS_HEAP_KB", kb.to_string().as_str());
-    }
+    // issue 1197 — the define reaches EVERY TU that includes FreeRTOSConfig.h,
+    // not just heap_4's. It used to reach only this one, on the reasoning that
+    // heap_4 is "the only TU that sizes it" — true of the ARRAY and false of the
+    // MACRO. `configTOTAL_HEAP_SIZE` is also read by
+    // `nros-platform-freertos/src/platform.c`, whose
+    // `nros_platform_heap_total_bytes()` / `nros_platform_heap_used_bytes()`
+    // are the platform ABI's answer to "how big is the heap and how much of it
+    // is gone". With the define on one TU those two disagreed by exactly
+    // `3072 - 2048` KiB: every zenoh image reported a 3 MiB total it did not
+    // have and a phantom 1,048,576 bytes already in use. MEASURED on
+    // `mps2-an385-freertos/rust/talker` — `nm` says `ucHeap` is 0x200000 and the
+    // ABI said 3,145,728 — which is the same class as issue 0135 (two TUs, one
+    // generated config, one of them missing it), and it silently corrupts the
+    // one instrument anybody sizing this knob would reach for.
+    //
+    // A closure rather than four call sites: the next `cc::Build` here gets it
+    // by being handed to the same function, which is the property that was
+    // missing.
+    let apply_heap_kb = |build: &mut cc::Build| {
+        if let Some(kb) = heap_kb {
+            build.define("NROS_FREERTOS_HEAP_KB", kb.to_string().as_str());
+        }
+    };
+    apply_heap_kb(&mut freertos);
     println!("cargo:rerun-if-env-changed=NROS_FREERTOS_HEAP_KB");
     for src in &[
         "tasks.c",
@@ -192,6 +234,7 @@ fn main() {
     configure_cflags(&mut lwip);
     add_freertos_includes(&mut lwip, &freertos_dir, &port_dir, &freertos_config_dir);
     add_lwip_includes(&mut lwip, &lwip_dir);
+    apply_heap_kb(&mut lwip);
     for src in &[
         // Core
         "src/core/init.c",
@@ -261,6 +304,7 @@ fn main() {
     );
     add_lwip_includes(&mut platform, &lwip_dir);
     platform.include(&nros_platform_cffi_include);
+    apply_heap_kb(&mut platform);
     platform.file(nros_platform_freertos_dir.join("platform.c"));
     platform.file(nros_platform_freertos_dir.join("net.c"));
     platform.file(nros_platform_freertos_dir.join("timer.c"));
@@ -288,6 +332,7 @@ fn main() {
     configure_cflags(&mut glue);
     add_freertos_includes(&mut glue, &freertos_dir, &port_dir, &freertos_config_dir);
     add_lwip_includes(&mut glue, &lwip_dir);
+    apply_heap_kb(&mut glue);
     glue.file(manifest_dir.join("c/freertos_hooks.c"));
     glue.file(manifest_dir.join("c/network_glue.c"));
     // phase-370 W1 — the kernel-only half of what `network_glue.c` used to be.

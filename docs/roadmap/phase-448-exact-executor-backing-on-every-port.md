@@ -87,7 +87,7 @@ executor arena but `xrce_session_state`, dominated by
 
 ### W3 — the FreeRTOS C/C++ carrier's stack is measured
 
-[Issue 1146](../issues/1146-freertos-app-task-stack-never-derived.md), part 2.
+[Issue 1146](../issues/archived/1146-freertos-app-task-stack-never-derived.md), part 2.
 `cmake/templates/freertos_app_config.c.in` keeps `.app_stack_bytes = 524288u`
 for both typed carriers. Its C half measures 18,176 B at worst. Its C++ half was
 unmeasurable because no embedded C++ FreeRTOS image built; that blocker
@@ -105,7 +105,7 @@ done.
 
 ### W4 — FreeRTOS reserves the backing once
 
-[Issue 1197](../issues/1197-freertos-heap-cannot-learn-the-backing-size.md), and
+[Issue 1197](../issues/archived/1197-freertos-heap-cannot-learn-the-backing-size.md), and
 the FreeRTOS half of [issue 1145](../issues/1145-executor-backing-static-unpaired-with-rtos-heap.md).
 Measured: every FreeRTOS Rust image reserves its 20,608–32,512 B backing twice,
 because `configTOTAL_HEAP_SIZE` is still budgeted for an arena that moved to
