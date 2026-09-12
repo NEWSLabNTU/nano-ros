@@ -86,6 +86,12 @@ ROW_PLATFORM_BOARD: dict[str, str | None] = {
     "nuttx": None,
     "nuttx-riscv": None,
     "threadx-linux": None,
+    # issue 1346 — bare metal, but its threads still get their OWN stacks:
+    # `threadx_hooks.c` carves each one out of the shared byte pool with
+    # `tx_byte_allocate`, so the floor is the port's `stack_bytes` and
+    # `_stack_start`/`_stack_end` do not describe it. Same answer as the
+    # `threadx-linux` sibling above, for the same reason.
+    "threadx-riscv64": None,
     "zephyr": None,
 }
 
