@@ -203,6 +203,25 @@ jobs:
               while IFS= read -r f; do
                 [ -n "$f" ] || continue
                 case "$f" in
+                  # Issue 1066. These two live under `docs/` and are not
+                  # documentation: they are the INPUT to `check-api-parity`,
+                  # which runs in the `check` job below as an ordinary
+                  # fast-lane gate. The ledger is the 2158 written verdicts,
+                  # `api-surface/` the recorded rclc/rclcpp/rclrs side. A pull
+                  # request that deletes a ledger row — for a divergence that
+                  # still exists — is by this probe's own spelling a
+                  # documentation change, so the job that would have caught it
+                  # skipped, and the author heard about it as a merge-queue
+                  # ejection instead. Measured: the deletion makes `just check
+                  # api-parity` exit 1 with `1 item(s) differ with no ledger
+                  # entry`, and `code` stayed `false`.
+                  #
+                  # Listed BEFORE the documentation arm because `case` takes
+                  # the first match and `docs/*` matches these too. Same shape
+                  # as the `colcon` filter's `gate.yml` entry above: a filter
+                  # that excludes the thing under test.
+                  docs/reference/api-parity-ledger/*|docs/reference/api-surface/*)
+                    code=true; break ;;
                   *.md|docs/*|book/*) ;;
                   *) code=true; break ;;
                 esac
@@ -821,35 +840,41 @@ jobs:
           source ./activate.sh
           just check node-std-tests
 
-      # `check-api-parity` has NO step of its own here, and the reason is a
-      # prerequisite rather than a cost.
+      # `check-api-parity` has NO step of its own here, and that is now the
+      # finished answer rather than a deferral — issue 1066, closed.
       #
-      # It is NOT unheard, and this comment used to say it was: "the only `just
-      # ci gate` step that NO workflow runs, on any event". That was already
-      # false when written — `api-parity` is a fast-lane gate, so `just check
-      # fast` two steps up runs it on `pull_request` and `merge_group` alike
-      # (`check-default-gates-run-somewhere.py --survey` prints the events) —
-      # and it was false the other way too, because `test-lane-contracts` was
-      # the step no event reached (issue 1226, fixed by the step above). A
-      # comment naming the wrong step is worse than none: it is the thing a
-      # reader consults to decide the lane is covered.
+      # IT RUNS. `api-parity` came off `.config/gate-lane-exempt.txt` in
+      # `565f8c74f`, so it is an ordinary fast-lane gate and `just check fast`
+      # two steps up runs it on `pull_request`, `merge_group`, `push` and the
+      # nightly alike. Measured in this container, run 34687504281 on
+      # 2026-09-12:
       #
-      # What is still true is the phase-421 history: the
-      # `node_get_serialization_format` accessors landed UNLEDGERED, and a
-      # DEDICATED step here is what would report parity as its own verdict
-      # rather than folded into `check fast`'s.
+      #   check-fast: 319 gate(s) at -P4, busy 1542s over wall 386s
+      #   slowest gate: api-parity, 217543 ms (14.1% of busy)
       #
-      # It cannot run in this container yet. `api_parity/extract_cxx.py` shells
-      # out to `clang -Xclang -ast-dump=json` and the image installed no
-      # `clang` (only the separately-pinned `clang-format`, which is a different
-      # binary). That is fixed in `ci/docker/ci-base/Dockerfile` in this same
-      # change — but the image publishes on PUSH TO MAIN, so the step can only
-      # be added once `ghcr.io/newslabntu/nano-ros-ci:humble` has been rebuilt
-      # with it. Adding it here in the same commit would make the gate red for
-      # a reason that says nothing about API parity.
+      # That log line is also the image evidence. `api_parity/extract_cxx.py`
+      # shells out to `clang -Xclang -ast-dump=json`, and this comment used to
+      # say the image shipped none — true until `0c73d061b` added it and issue
+      # 1201 fixed the build that had been failing to publish it since
+      # 2026-09-04. A 217 s clang+rustdoc extraction that exits 0 is a stronger
+      # statement about what the image contains than any `which clang` step.
       #
-      # Cost, measured the same way: 29.3 s, and it leaves no target dir — the
-      # rustdoc extraction writes into a temp CARGO_TARGET_DIR.
+      # WHY NOT A DEDICATED STEP ANYWAY. The argument for one was a cleaner
+      # verdict name (phase-421's `node_get_serialization_format` accessors
+      # landed UNLEDGERED and nobody could see which gate would have said so).
+      # It costs a second full extraction: 217 s SERIAL, against a lane whose
+      # whole wall is 386 s because the gate runs inside it at -P4. A step that
+      # adds 56% to the job's wall to rename a failure is the wrong trade;
+      # `just check fast` already prints `[FAIL] api-parity` with the row key.
+      #
+      # WHAT THE PR LANE COULD NOT DO, and now can: the gate's only authored
+      # inputs are `docs/reference/api-parity-ledger/` (2158 rows) and
+      # `docs/reference/api-surface/`, both under `docs/`, which the `code`
+      # probe above classified as documentation. So a pull request whose ENTIRE
+      # SUBJECT was the ledger skipped this job and got no parity verdict until
+      # the merge queue. The probe now excepts those two paths — see its
+      # comment. Same shape as the `colcon` filter's `gate.yml` entry: a filter
+      # that excludes the thing under test.
 
       # phase-396 W1 — the build tier is NOT on the merge group.
       #
