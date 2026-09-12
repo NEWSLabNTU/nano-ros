@@ -56,6 +56,16 @@ NROS_FEATURES = [
     # type exists. `env` requires `std` (a `compile_error!` in lib.rs), which
     # is already in this list.
     "env",
+    # issue 1351 (2026-09-12) — the ROS-time surface, same class as `env` above
+    # and added for the same reason. `sim-time` gates
+    # `NodeCtx::install_ros_time_source` / `_on`
+    # (`nros-node/src/executor/node.rs`, `#[cfg(all(feature = "sim-time",
+    # any(has_rmw, test)))]`) and the `time_source` module behind them. Without
+    # it phase-430 W7's rows for those two entry points were on no measured
+    # surface, so they could not be written at all — and an unwritable row and
+    # an unwritten one read the same. Cheap: it pulls in one message crate
+    # (`nros-rosgraph-msgs`) and no new backend.
+    "sim-time",
 ]
 
 

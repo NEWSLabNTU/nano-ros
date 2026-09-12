@@ -1318,7 +1318,7 @@ pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
     EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorSizing, FeedbackStream,
-    GoalFeedbackStream, LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec,
+    GoalFeedbackStream, LoanError, NodeCtx, NodeHandle, Promise, PublishLoan, RawActionClientSpec,
     RawActionServerSpec, RawActiveGoal, RawSubscription, RecvView, SessionHandle, SessionSpec,
     Subscription, action_channel_type,
 };
