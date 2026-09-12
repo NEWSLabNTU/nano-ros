@@ -205,6 +205,74 @@ No code changed for this port. The finding is recorded in
 measurement, so that "needs nothing" and "nobody has looked" stop reading the
 same — which is how this issue's own "Still open" list went stale.
 
+## ESP32: ALREADY PAIRED, and the pairing is not this issue's arithmetic — 2026-09-12 (phase-448 W5)
+
+This port was paired on 2026-09-10 by `ffc614252 fix(esp32): the heap was sized
+to hold the executor arena, and the arena moved to .bss`, which found it from the
+other end — the nightly `check-stack-floor` red — and did the work this issue
+asks for, including running the whole esp32 QEMU suite. The "Still open" list
+below said ESP32 was untouched for two days after that.
+
+`nros-board-esp32-qemu/src/node.rs`'s `esp_alloc::heap_allocator!(size: 48 *
+1024)` became `16 * 1024`, a reduction of **32,768 B**, against a measured
+29,400 B backing on `esp32_entry`.
+
+RE-MEASURED here on the two single-node images, which are what this host can
+build (`nm -S`, `riscv32imc-unknown-none-elf`, `nros-relwithdebinfo`):
+
+| image | `EXECUTOR_BACKING` | `init_hardware::HEAP` | `.stack` |
+| --- | ---: | ---: | ---: |
+| `esp32_qemu_talker` | 24,696 | 16,384 | 102,984 |
+| `esp32_qemu_listener` | 24,696 | 16,384 | 72,720 |
+
+(The third `.bss` heap in these images, `nros_platform_esp32_qemu::memory::HEAP`
+at 34,480 B, is zenoh-pico's `z_malloc` arena, not the Rust global allocator.
+It never held the executor backing and is not part of this pairing.)
+
+**It is deliberately NOT expressed as `base - 8 * words`**, and that is a fact
+about the fix rather than a gap:
+
+* the 32,768 B was chosen as a RETURN to the pre-phase-271 heap — the value whose
+  only recorded failure was the 17,032 B allocation that is now the static — not
+  as the backing's size. It is 3,368–8,072 B LARGER than the backing, depending
+  on the image;
+* a gate asserting the identity would have to be told to expect an inequality,
+  and an inequality here cannot tell a deliberate margin from a stale number;
+* what makes the margin safe is the FAILURE MODE. The executor takes the heap arm
+  only when its backing does not fit the reservation, and that arm dies loudly at
+  `Executor::open` ("memory allocation of N bytes failed"), never as a silent
+  overflow. And on esp32-c3 `.stack` is the linker leftover after `.bss`, so
+  `check-stack-floor` — which runs per row on every esp32 fixture build — catches
+  the over-reservation direction on every build.
+
+So the ledger records `esp32: stated-heap` with that reasoning, rather than
+adding an arithmetic the fix does not have.
+
+RUNNING IMAGES, re-verified on this host:
+
+```
+PASS [ 6.421s] nros-tests::esp32_emulator test_esp32_qemu_talker_boots
+PASS [11.879s] nros-tests::esp32_emulator test_esp32_talker_listener_e2e
+```
+
+### Two reds stood between `main` and a built esp32 image
+
+Neither is this issue's, and both are why re-measuring was not a five-minute job:
+
+* **issue 1344** — `shim/qos.rs`'s report-once latches used
+  `core::sync::atomic::AtomicBool`, which has no `swap` on riscv32imc. No esp32
+  image compiled.
+* **issue 1346** — `check-stack-floor.py`'s own coverage assertion was red
+  (`threadx-riscv64` missing from `ROW_PLATFORM_BOARD`), and it runs per fixture
+  ROW, so it failed rows that had already linked.
+
+Both fixed; both reached `main` because no merge-gating lane builds an esp32
+image.
+
+The `esp32_entry` workspace cell was NOT rebuilt here: `nros build
+demo_bringup:esp32` wants `rustup target add riscv32imc-unknown-none-elf` on a
+toolchain this host does not have it on. Its numbers above are ffc614252's.
+
 ## Still open
 
 * ~~Every other Zephyr Rust leaf.~~ **DONE** — see the sweep above. Twelve confs
@@ -213,7 +281,9 @@ same — which is how this issue's own "Still open" list went stale.
 * ~~**NuttX**~~ **DONE 2026-09-12** — nothing to pair, measured. See above.
 * **FreeRTOS** — untouched; phase-448 W3/W4, and issue 1197 has the measurement
   and the layering blocker.
-* **ThreadX, ESP32** — see below.
+* ~~**ESP32**~~ **DONE** — paired by `ffc614252` on 2026-09-10 and re-measured
+  and re-run 2026-09-12. See above.
+* **ThreadX** — see below.
 * ~~**The subtrahend is a hand-copied literal.**~~ RESOLVED —
   [issue 1171](archived/1171-arena-backing-pairing-is-hand-maintained.md).
 
