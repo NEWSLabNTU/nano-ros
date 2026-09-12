@@ -3808,6 +3808,13 @@ pub fn build_graph_probe_rmw(rmw: Rmw) -> TestResult<&'static Path> {
 /// three live failures against a peer it never reached. Found on its first run
 /// (phase-433, 2026-09-08); adding the feature to the row instead fails with
 /// `the package 'advertised-state-probe' does not contain this feature`.
+///
+/// **This recurred, one function down.** `build_qos_event_probe` made the same
+/// selector mistake and its cell could never run either, found on ITS first run
+/// (2026-09-12). So the rule, rather than the anecdote: the variant follows the
+/// LEAF's manifest, not the caller's habit — `FixtureVariant::rmw` only for a
+/// crate that has an `rmw-*` feature axis, `platform_rmw` for a row that names
+/// an `rmw` and no features, and `select_sole_row` where the leaf has one row.
 pub fn build_advertised_state_probe() -> TestResult<&'static Path> {
     static BIN: OnceCell<PathBuf> = OnceCell::new();
     BIN.get_or_try_init(|| {
@@ -3835,12 +3842,26 @@ pub fn build_advertised_state_probe() -> TestResult<&'static Path> {
 /// ("backend declined") on every host, which is a fact about the vtable that a
 /// live peer adds nothing to. It is recorded as a `CarveOut` cell in
 /// `interop::CELLS` instead.
+///
+/// `platform_rmw` and NOT `rmw`, and the difference is why this cell could never
+/// run — the same mistake `build_advertised_state_probe` above records against
+/// itself, made again one function later. `FixtureVariant::rmw` asks for
+///
+///   Selector { rmw: "zenoh", features: "rmw-zenoh", no_default_features: true }
+///
+/// which is the shape a leaf with an `rmw-*` FEATURE axis has. This crate has no
+/// `[features]` table at all — the row is a plain `rmw = "zenoh"` with default
+/// features — so the selector matched nothing and every run of the cell died at
+/// `no [[fixture]] row … with Selector {…}` before reaching a peer. Measured
+/// 2026-09-12, the first time anything aimed `qos_event_interop` at a live ROS 2
+/// host; `native-qos-event-rust-zenoh-r2n` had never produced a verdict, and
+/// this is why.
 pub fn build_qos_event_probe() -> TestResult<&'static Path> {
     static BIN: OnceCell<PathBuf> = OnceCell::new();
     BIN.get_or_try_init(|| {
         let row = crate::fixtures::groups::select_row(
             "packages/testing/nros-tests/bins/qos-event-probe",
-            &crate::fixtures::groups::FixtureVariant::rmw(Rmw::Zenoh),
+            &crate::fixtures::groups::FixtureVariant::platform_rmw(Rmw::Zenoh),
         )?;
         let profile = cargo_target_profile_dir();
         let rel = PathBuf::from(format!("{profile}/qos-event-probe"));
