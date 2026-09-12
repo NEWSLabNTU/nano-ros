@@ -396,6 +396,52 @@ itself a guess — worth its own work item, alongside the FreeRTOS heap budget.
 * ~~**The subtrahend is a hand-copied literal.**~~ RESOLVED —
   [issue 1171](archived/1171-arena-backing-pairing-is-hand-maintained.md).
 
+## Regression, 2026-09-12: `threadx-linux` now fails to COMPILE
+
+The nightly at 07:10 (run **34680021029**, job **103517111549**, `threadx_linux`,
+step `Build (threadx_linux)`) cannot build `nros-node`:
+
+```
+error[E0080]: evaluation panicked: NROS_EXECUTOR_BACKING_U64S is below the
+default executor sizing, so the reservation can never be taken and is pure
+dead weight; use 0 to decline the static entirely
+   --> packages/core/nros-node/src/executor/backing.rs:155:15
+```
+
+and the build prints its own explanation two lines later:
+
+```
+warning: nros-node@0.5.0: NROS_PLATFORM_NAME=threadx-linux: no nros-platform.toml,
+so the executor knobs fall through to their builtin defaults
+```
+
+So the guard is working exactly as designed — it is refusing a reservation that
+could never be taken — and what it caught is a platform reaching the knob
+through the FALL-THROUGH path rather than through a declaration. The pairing
+landed for the platforms that declare one; `threadx-linux` has no
+`nros-platform.toml`, so it takes a builtin default that is below
+`EXECUTOR_BACKING_DEFAULT_U64S`.
+
+**It is new.** The previous nightly, 05:10 (run 34674916487), failed an entirely
+different set of jobs — every `zephyr` cell, on workspace provisioning — and no
+RTOS build job. The 07:10 run fails `threadx_linux` and leaves the zephyr cells
+green. phase-448 W5 (#1012, "NuttX, ThreadX and ESP32 reserve the executor
+backing") merged between the two. That is a correlation with the right shape and
+the right timing; it is not yet a proven cause, and the fix is not guessed here
+because the number is measured per target, never copied (see the entries above
+and issues 1171/1284).
+
+Two other jobs in the same run fail for unrelated reasons and are NOT this:
+`esp32` on `no matching package named 'esp-backtrace' found` plus a failed
+`allocator-api2` download, and `freertos` on a test run rather than a build.
+
+### What would close this part
+
+A measurement on a `threadx-linux` image of what the executor actually needs,
+then either a `nros-platform.toml` for that platform stating it, or a builtin
+fall-through default that cannot sit below `EXECUTOR_BACKING_DEFAULT_U64S`.
+Acceptance is the `threadx_linux` nightly job reaching a verdict on its build.
+
 ## Related
 
 - phase-392 W6 — the change that created this, and the measurement that is done.
