@@ -156,7 +156,7 @@ moves ownership.
 | RFC-0089 | the compile-or-conform rule and the four dispositions | settled |
 | [phase-379](phase-379-api-parity-with-ros2-client-libraries.md) | `scripts/api-parity.py`: every public item in all three languages, correlated against rclc+rcl (Humble), rclcpp and rclrs v0.7.0; one ledger row per difference in `docs/reference/api-parity-ledger/` | measurement done; its gap rows are the queue |
 | [phase-417](phase-417-ros2-api-adoption.md) | taking ROS 2's names, stages 2–5 | in flight |
-| [phase-428](phase-428-api-porting-principle-sweep.md) | the class the correlator cannot see: a name we share with upstream whose behaviour differs | the RMW sweep and the user-API findings (W5) are recorded; the status line still says the user-API sweep is "planned" |
+| [phase-428](archived/phase-428-api-porting-principle-sweep.md) | the class the correlator cannot see: a name we share with upstream whose behaviour differs | the RMW sweep and the user-API findings (W5) are recorded; the status line still says the user-API sweep is "planned" |
 | `rmw-api-parity` / `rmw-abi-shape` | our RMW layer against upstream `rmw` | 0 gaps; the remainder is W1–W7 above |
 
 ### The truth pass
