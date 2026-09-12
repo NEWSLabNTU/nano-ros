@@ -1,0 +1,19 @@
+<launch>
+  <!-- phase-454 W7 (RFC-0100 D8): every `qos_overrides.*` parameter here
+       restates a policy `agrees.contract.yaml` also states, with the same
+       value. This is the pair that must BUILD.
+
+       A `deadline` rides along deliberately: it is a modelled override that
+       bounds occupancy rather than capacity, the contract has no key for it,
+       and it must not be compared. A check that widened its scope to every
+       policy would refuse this file. -->
+  <node pkg="demo_pkg" exec="talker" name="talker">
+    <param name="qos_overrides./chatter.publisher.depth" value="8"/>
+    <param name="qos_overrides./chatter.publisher.deadline" value="100"/>
+  </node>
+  <node pkg="demo_pkg" exec="listener" name="listener">
+    <param name="qos_overrides./chatter.subscription.depth" value="3"/>
+    <param name="qos_overrides./chatter.subscription.reliability" value="best_effort"/>
+    <param name="qos_overrides./chatter.subscription.history" value="keep_last"/>
+  </node>
+</launch>

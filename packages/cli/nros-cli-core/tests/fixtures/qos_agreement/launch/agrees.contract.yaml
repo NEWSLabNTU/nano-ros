@@ -1,0 +1,41 @@
+# phase-454 W7 (RFC-0100 D8) -- the contract and `qos_overrides.*` state the
+# SAME QoS, which is the pair that must build.
+#
+# `agrees.launch.xml` sets three `qos_overrides.*` parameters on the listener
+# and one on the talker. Every one of them restates a policy this contract also
+# states, with the same value, so the runtime table and the sizing model
+# describe one image.
+#
+# `/quiet` carries no override and no `qos:` at all -- the "nobody said"
+# baseline, so a check that fired on silence would be caught here rather than in
+# a divergence fixture where a red is expected.
+
+version: 1
+
+nodes:
+  talker:
+    pub:
+      chatter:
+        qos:
+          depth: 8
+          durability: transient_local
+      quiet: {}
+
+  listener:
+    sub:
+      chatter:
+        qos:
+          depth: 3
+          reliability: best_effort
+          history: keep_last
+      quiet: {}
+
+topics:
+  /chatter:
+    type: std_msgs/msg/Int32
+    pub: [talker/chatter]
+    sub: [listener/chatter]
+  /quiet:
+    type: std_msgs/msg/Int32
+    pub: [talker/quiet]
+    sub: [listener/quiet]

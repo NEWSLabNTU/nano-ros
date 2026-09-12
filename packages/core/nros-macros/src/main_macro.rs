@@ -743,6 +743,22 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             )
         })?;
 
+        // phase-454 W7 (RFC-0100 D8) -- the contract and the `qos_overrides.*`
+        // parameters are two statements about ONE fact, so a divergence is a
+        // COMPILE ERROR naming both sites.
+        //
+        // The same check the CLI's entry emitter and `nros ws entity-inventory`
+        // run, from the same function in `nros-orchestration-ir`, because this
+        // macro cannot dep `nros-cli-core` and a rule that holds on one of two
+        // bake roads is not a rule. Before the node slice: a divergence is a
+        // property of the model, and a board filter cannot make one true.
+        nros_orchestration_ir::qos_agreement::check_model(&model).map_err(|e| {
+            syn::Error::new(
+                model_lit.span(),
+                format!("nros::main!: model `{}`: {e}", model_path.display()),
+            )
+        })?;
+
         // Bridge entry (phase-267 / R-code.1): the model's `execution.bridges`
         // is the SSoT for "this bringup relays between two RMW sessions". When
         // non-empty AND `nros sync` generated the runtime config
