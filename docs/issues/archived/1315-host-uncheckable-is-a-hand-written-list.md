@@ -73,7 +73,7 @@ how a hand list rots.
 
 ## Why it matters beyond the five
 
-This is the blocker [issue 1309](1309-excluded-crate-is-built-by-no-lane.md)
+This is the blocker [issue 1309](../1309-excluded-crate-is-built-by-no-lane.md)
 ran into. Four crates —
 `nros-platform-{mps2-an385,stm32f4,esp32-qemu}` and `nros-board-esp32-qemu` —
 depend on `cortex-m` / `esp-hal` and so cannot build for the host. They are kept

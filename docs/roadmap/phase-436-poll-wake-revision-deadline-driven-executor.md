@@ -789,3 +789,13 @@ core. W4 and W5 are independent of everything.
   unbounded.
 * It does not change `spin_period`'s drift compensation, which is already
   correct (absolute `next_us` accumulation, not `now + period`).
+
+## Issues homed here (survey 2026-09-11, re-homed 2026-09-12)
+
+The 2026-09-11 survey homed this issue in phase-430, which was ARCHIVED the next
+day (`f3a0b7168`). A finished phase cannot own open work, so it moves here: the
+defect is the executor's timer policy, which is this phase's subject.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1041](../issues/1041-timer-missed-deadline-policy-differs-from-rcl.md) | a repeating timer CATCHES UP after a stall where rcl SKIPS — N callbacks instead of one. Partly fixed already: the executor arena defaults to `Skip`, and `nros-node/src/timer.rs:354` is the unswept sibling, which is the fix-the-class shape rather than a new defect |

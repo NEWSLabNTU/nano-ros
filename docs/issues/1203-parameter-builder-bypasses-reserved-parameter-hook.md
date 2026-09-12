@@ -6,7 +6,7 @@ status: open
 type: bug
 area: core
 severity: low
-related: [1202, phase-425, phase-430]
+related: [1202, phase-425, phase-426, phase-430]
 found: 2026-09-07
 ---
 
