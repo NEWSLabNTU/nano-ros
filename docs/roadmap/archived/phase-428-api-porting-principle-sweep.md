@@ -1,5 +1,21 @@
 # Phase 428 — sweep the C, C++ and Rust APIs against the porting principle
 
+**Status (2026-09-12). ARCHIVED — every work item landed, and the two residues
+this document had carried forward are closed here rather than inherited.**
+W1–W6 and W10 and W13 were already recorded below; W7 (`3f579290b`), W8
+(`d08c139c6` + `043b77f8d`), W9 (`b80777605` + `741913e3c`), W11 (`cb27f01fd`)
+and W12 (`81a075003` + `14706d1bc`) now carry the same evidence on their own
+bullets instead of only in an outcome section eleven hundred lines below, which
+is what made them read as unstarted. The residues: W10's `rmw_entity.h`
+coverage is BOUND (it is a `Mirror` in `check-qos-profile-ssot.py`), and W12's
+`NROS_MAX_STREAM_CHUNK` is gone from `nros-rmw/src/traits.rs` — deferred to two
+phases that both finished without touching it, which is how a fiction outlives
+the sweep that found it. Every issue this phase filed is resolved and archived
+(1087, 1088, 1092, 1099, 1148–1152, 1162, 1327, 1328, 1329); the one open id it
+names, **1066** (`check-api-parity` runs in no workflow), is a standing CI
+limitation it recorded rather than a work item it owns. The FIXES for the
+findings were never this phase's and are [phase-444](../phase-444-rmw-fix-up.md)'s.
+
 **Status (2026-09-11). Both sweeps DONE. The findings are ledgered and the checkable
 ones are gated; the fixes live elsewhere.** The user-API sweep was not "planned"; it
 ran:
@@ -13,7 +29,7 @@ ran:
 
 What is left is FIXING the findings. That work is not this phase's. The 22 behaviour
 defects still live under shared names (re-read in code on 2026-09-11) are listed in
-[phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap list", group 1, and belong to
+[phase-444](../phase-444-rmw-fix-up.md) § "The ROS 2 gap list", group 1, and belong to
 phase-417 stage 3. Audits all three user APIs against RFC-0089's
 governing principle. Not a rename pass — a conformance review that produces
 findings, each of which becomes a work item somewhere else.
@@ -218,10 +234,14 @@ W1–W6 stand for the user-facing C/C++/Rust APIs. The RMW layer adds:
   be live slots with a pinned return type; grouped-only targets are compared
   against the symbol grouped onto them. *Acceptance:* all seven surviving
   mutations from #1092 fail.
+
+  **LANDED** `3f579290b` (as phase-444 W4.a; issue 1092 resolved). `ADDED` entries are `Added(ret, args, why)` keyed on a live slot, and `ARG_DEVIATIONS`/`RET_DEVIATIONS` are `ArgPin`/`RetPin` in the normalised spelling the comparison uses (`scripts/rmw-abi-shape.py`). Measured: exactly-enforced slots 15 of 68 → **68 of 68, with no licence to vary**. Acceptance met and re-verified independently — all seven of #1092's mutations were applied to the REAL `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h` rather than replayed by the tool's own `--self-test`, and all seven failed a gate; see “W7 — pin every deviation” below for the per-mutation table.
 * **W8 [rmw] — a slot is covered when something READS it.** Reorder
   `check-rmw-slot-producers` so a backend body does not satisfy the check, and
   decide per slot whether the 17 unreachable ones get a consumer or are
   withdrawn. *Acceptance:* the tool's inert count matches the hand count.
+
+  **LANDED** `d08c139c6`. `consumed` is asked before `produced` in `scripts/check-rmw-slot-producers.py`, so a slot a backend fills but nothing reads no longer classifies `produced`. The work item's 17 was a stale snapshot: re-measured **11 of 68 inert**, hand-counted (`produced - consumed`) and matched by the tool, which is the acceptance. Nothing was withdrawn; the four `{client,service}_{request,response}_*_get_actual_qos` slots got a CONSUMER instead, sequenced behind W9 as issue 1327 and landed with it — `043b77f8d`, **inert 11 → 7**, the four map rows back to a derived `same`. See “W8” and “W9 follow-through” below.
 * **W9 [rmw] — the supported mask is DERIVED, not authored.** Today
   `supported_qos_policies()` is a hand-written constant, so a backend can
   declare a capability it does not have. Derive it from what the backend
@@ -233,6 +253,8 @@ W1–W6 stand for the user-facing C/C++/Rust APIs. The RMW layer adds:
   were already silently downgrading. RELIABLE keeps working because we genuinely
   deliver it.
 
+  **LANDED** `b80777605`, with `741913e3c` (issue 1329) behind it. `scripts/check-qos-mask-derivation.py` is on the fast line and buildless (~0.4 s): a bit may be advertised only where the backend carries a `nros-qos-honours: <BIT>` claim sited on code that READS the mapped profile field, and every subject list — vocabulary, bit→field map, backend set — is derived rather than authored. Its negative control is six mutations run against the shipped sources, not a synthetic backend. 1329 then removed the mux's union: `nros_rmw_vtable_t::supported_qos_policies` is asked of the registered backend once at `open`, and NULL reads as NONE. The prediction was half wrong and the section below says where.
+
   *Acceptance:* a backend whose code never reads a policy cannot advertise it;
   `create_service`/`create_client`'s `let _ = qos;` either applies the profile
   or refuses loudly; a request for a depth the ring cannot hold is refused or
@@ -243,9 +265,13 @@ W1–W6 stand for the user-facing C/C++/Rust APIs. The RMW layer adds:
   `PARAMETER_EVENTS` test asserts upstream's values.
 * **W11 [rmw] — resolve every issue reference.** Every `issue NNNN` in a gap
   reason and every authored `issue =` resolves to a file with `status: open`.
+
+  **LANDED** `cb27f01fd`, on `d8acc572c`'s `scripts/lib/issue_status.py`. The rule had two implementations and therefore two reaches; one function judges it now — `why_not_open` (`scripts/lib/issue_status.py:56`), with `deferral` for the prose form and `refused_deferrals` for the structured one — and three call sites use it. Measured, and it is a clean result: **41 distinct ids across 11 files, zero dangling.** Two reach defects were real and both are fixed: the parity map resolved `issue =` only on the `not-implemented` arm (the 0196 shape), and the mechanism was VACUOUS because no map row carried an `issue` at all — W8's four rows give it one.
 * **W12 [rmw] — the prose.** Delete the retired sign contract, the two stale
   slot doc blocks and the fictional NULL-slot fallbacks; then gate what can be
   gated (a doc naming a slot that does not exist is mechanically checkable).
+
+  **LANDED** `81a075003`, with `14706d1bc` fixing the gate's own corpus. `scripts/check-rmw-doc-slot-names.py` reads a backtick in these headers as THIS IDENTIFIER EXISTS and resolves all **362** against three derived sources — the headers' own code with comments stripped (so prose cannot vouch for itself), tracked non-markdown sources, and the recorded upstream snapshot — leaving **seven exemptions**, each a name another project owns. Deleted with what each claimed recorded in place: the retired sign contract in `packages/core/nros-rmw-abi/include/nros/rmw_ret.h`, two stacked pre-W3.d doc blocks bindgen was concatenating into `generated.rs`, four fictional NULL-slot fallbacks and five retired slot names cited as live — plus `publish_streamed`'s `NROS_MAX_STREAM_CHUNK`, a knob that has never existed in any form.
 
 
 ## W9 outcome (2026-09-12) — the mask is derived, and the prediction was half wrong
@@ -463,9 +489,15 @@ lost its target.
 
 **Not yet bound, carried forward rather than claimed:**
 
-* `packages/core/nros-rmw-abi/include/nros/rmw_entity.h` — corrected and
+* ~~`packages/core/nros-rmw-abi/include/nros/rmw_entity.h` — corrected and
   restructured to one line per profile, but the gate does not read it. The
-  deleted gate did; that coverage is the work item.
+  deleted gate did; that coverage is the work item.~~ **BOUND since**: it is a
+  `Mirror` in `check-qos-profile-ssot.py`'s `MIRRORS` list
+  (`scripts/check-qos-profile-ssot.py:733`), with its own extractor
+  `_rmw_entity_profiles` (`:432`) and all six profile names mapped to the
+  fence's rows. The coverage the deleted gate had is back in the surviving
+  one, which is what "kept the gate with a working negative control" was
+  supposed to end at.
 * `packages/rmw/cffi/src/lib.rs` — the FIFTH transcription site, which the
   original survey missed entirely. Corrected by hand.
 * `packages/api/nros-cpp/include/nros/qos.hpp` — now one in-file table
@@ -1492,8 +1524,19 @@ convention that keeps the exemption list from growing.
 
 ### Left for someone else
 
-* `NROS_MAX_STREAM_CHUNK` is also named in
+* ~~`NROS_MAX_STREAM_CHUNK` is also named in
   `packages/core/nros-rmw/src/traits.rs:2141`, which phase-428 W13 and the
-  phase-426 parameters work are both touching; corrected in the header only.
+  phase-426 parameters work are both touching; corrected in the header only.~~
+  **DONE 2026-09-12**, and it was W12's own F2 one layer over: neither of the
+  two phases named here touched it, and deferring a prose fix to whoever else
+  is in the file is how a fiction outlives the sweep that found it. The Rust
+  doc comment on `Publisher::publish_streamed`
+  (`packages/core/nros-rmw/src/traits.rs:2197`) carried BOTH fictions the
+  header had already shed — issue 0782's "per-publisher staging buffer …
+  `.bss`" and the `NROS_MAX_STREAM_CHUNK` knob that has never existed. It now
+  names the real cap, `STAGE_CAP = 4096`, a `const` declared in the body four
+  lines below, and says what the saving actually is (caller-side STACK). The
+  bindgen copy in `packages/rmw/cffi/src/generated.rs` already carried the
+  header's corrected text, so the tree holds one story now instead of two.
 * ~~The consumer for the four QoS read-backs is issue 1327, sequenced behind
   W9.~~ DONE 2026-09-12 with issue 1329 — see "W9 follow-through".
