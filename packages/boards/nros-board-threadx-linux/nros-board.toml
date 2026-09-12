@@ -50,3 +50,34 @@ reserved.transport = [14, 14]
 # the same "below the transport" rule reads as `<= 3` on FreeRTOS and `>= 15`
 # here.
 pool.app = [15, 31]
+
+# phase-448 W5 / issue 1145 — the executor backing, reserved ONCE.
+#
+# phase-392 W6 moved the executor's per-entry storage out of a `Box::leak` and
+# into the named `.bss` static `EXECUTOR_BACKING`, so `mem-report` could price
+# it. On this port the allocator that `Box` came out of is `byte_pool_storage`
+# in `nros-board-common/c/threadx_hooks.c` — itself a fixed `.bss` array — so
+# an image that turns the static on without lowering that pool holds the same
+# bytes twice.
+#
+# This rung is the ONE statement of the size, and both halves read it:
+# `nros-node/build.rs` sizes the static from it, and
+# `threadx_sources::add_threadx_hooks_source` subtracts `8 *` it from the
+# pool's 4 MiB base. Nothing writes the subtrahend down a second time — that
+# is issue 1171's defect, and it is what a stated number buys over an `nm`
+# reading.
+#
+# THE NUMBER. `nros sync` derives each leaf's executor knobs, so the DERIVED
+# backing differs per role; measured on this board (x86_64, `nm -S`):
+#
+#     talker / listener / service-server   23,336 B
+#     action-client / action-server        29,008 B
+#     service-client                       35,952 B   <- the heaviest
+#
+# 4,494 words is `35,952 / 8`, so it is at or above every role's requirement
+# and `nros-node`'s const assertion refuses the build if that ever stops being
+# true. A lighter role's static grows to this size and its pool shrinks by the
+# same amount, so the image's total falls by exactly the backing it used to
+# pay for twice.
+[board.knobs.executor]
+backing_u64s = 4494

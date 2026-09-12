@@ -256,6 +256,7 @@ pub const EXECUTOR_KNOBS: &[&str] = &[
     "arena_size",
     "subscription_buffer_size",
     "param_service_buffer_size",
+    "backing_u64s",
 ];
 
 /// The platform and board rungs a BUILD SCRIPT can reach, resolved once.
@@ -424,6 +425,7 @@ impl BuildRungs {
             param_service_buffer_size: b
                 .param_service_buffer_size
                 .or(plat.param_service_buffer_size),
+            backing_u64s: b.backing_u64s.or(plat.backing_u64s),
         }
     }
 
@@ -597,6 +599,7 @@ pub fn executor_env_key(knob: &str) -> &'static str {
         "arena_size" => "NROS_EXECUTOR_ARENA_SIZE",
         "subscription_buffer_size" => "NROS_SUBSCRIPTION_BUFFER_SIZE",
         "param_service_buffer_size" => "NROS_PARAM_SERVICE_BUFFER_SIZE",
+        "backing_u64s" => "NROS_EXECUTOR_BACKING_U64S",
         other => panic!("unknown executor knob `{other}`"),
     }
 }
@@ -870,6 +873,46 @@ pub struct ExecutorKnobs {
     pub arena_size: Option<usize>,
     pub subscription_buffer_size: Option<usize>,
     pub param_service_buffer_size: Option<usize>,
+    /// phase-448 W5 / issue 1145 — the words this board's images RESERVE for
+    /// `nros_node::executor::backing::EXECUTOR_BACKING`.
+    ///
+    /// The ONE statement of that number for a port with no Kconfig. It is read
+    /// twice and written once: `nros-node/build.rs` sizes the `.bss` static
+    /// from it, and the port's allocator-arena declaration subtracts `8 *` it
+    /// — on ThreadX, `threadx_hooks.c`'s byte pool. Two readers of one rung
+    /// cannot drift; two statements of one number can, which is why the
+    /// subtrahend is never spelled a second time.
+    ///
+    /// `None` = nothing stated, so `nros-node` derives the size and the port's
+    /// arena is left alone. That is the pre-pairing behaviour and is the SAFE
+    /// direction: an image that does not state its backing reserves the bytes
+    /// twice, which wastes RAM rather than failing an allocation.
+    #[serde(default)]
+    pub backing_u64s: Option<usize>,
+}
+
+impl ExecutorKnobs {
+    /// One executor knob by its dotted name, or `None` when this rung is silent.
+    ///
+    /// The field↔name mapping lives HERE, beside [`EXECUTOR_KNOBS`] and
+    /// [`executor_env_key`], for the reason `check-knob-single-reader` exists:
+    /// a consumer that writes its own `match` is a second copy of the list, and
+    /// the copy is what ends up missing the knob somebody just added.
+    #[must_use]
+    pub fn get(&self, knob: &str) -> Option<usize> {
+        match knob {
+            "max_cbs" => self.max_cbs,
+            "max_sc" => self.max_sc,
+            "max_nodes" => self.max_nodes,
+            "max_shutdown_cbs" => self.max_shutdown_cbs,
+            "action_clients" => self.action_clients,
+            "arena_size" => self.arena_size,
+            "subscription_buffer_size" => self.subscription_buffer_size,
+            "param_service_buffer_size" => self.param_service_buffer_size,
+            "backing_u64s" => self.backing_u64s,
+            _ => None,
+        }
+    }
 }
 
 /// `[knobs.memory]` — phase-400 W6, the platform memory tenant.
@@ -2273,33 +2316,14 @@ impl PlatformsTree {
     ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
         let plat = self.platform_executor_knobs(platform)?;
 
-        let pick = |name: &'static str| -> Option<usize> {
-            match name {
-                "max_cbs" => plat.max_cbs,
-                "max_sc" => plat.max_sc,
-                "max_nodes" => plat.max_nodes,
-                "max_shutdown_cbs" => plat.max_shutdown_cbs,
-                "action_clients" => plat.action_clients,
-                "arena_size" => plat.arena_size,
-                "subscription_buffer_size" => plat.subscription_buffer_size,
-                "param_service_buffer_size" => plat.param_service_buffer_size,
-                _ => None,
-            }
-        };
-        let pick_board = |name: &'static str| -> Option<usize> {
-            let b = board?;
-            match name {
-                "max_cbs" => b.max_cbs,
-                "max_sc" => b.max_sc,
-                "max_nodes" => b.max_nodes,
-                "max_shutdown_cbs" => b.max_shutdown_cbs,
-                "action_clients" => b.action_clients,
-                "arena_size" => b.arena_size,
-                "subscription_buffer_size" => b.subscription_buffer_size,
-                "param_service_buffer_size" => b.param_service_buffer_size,
-                _ => None,
-            }
-        };
+        // phase-448 W5 — both rungs read through `ExecutorKnobs::get` rather
+        // than a `match` per rung. There were two hand-written copies of the
+        // field list here and a third in `nros-node/build.rs`; a knob added to
+        // the struct and to `EXECUTOR_KNOBS` but missed in one of them resolves
+        // to its builtin with no diagnostic, which is `check-knob-single-reader`'s
+        // whole subject.
+        let pick = |name: &'static str| -> Option<usize> { plat.get(name) };
+        let pick_board = |name: &'static str| -> Option<usize> { board?.get(name) };
 
         let mut out = Vec::new();
         for (name, builtin) in defaults {

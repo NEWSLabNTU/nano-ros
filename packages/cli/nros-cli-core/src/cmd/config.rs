@@ -78,7 +78,7 @@ pub struct ExplainArgs {
 /// including live env overrides, so the printout matches what the next
 /// build will bake.
 fn explain(args: ExplainArgs) -> Result<()> {
-    use nros_board_common::platform_config::{BoardKnobsFile, PlatformsTree};
+    use nros_board_common::platform_config::{BoardKnobsFile, KnobSource, PlatformsTree};
 
     // phase-400 W1 — a search path. An explicit --platforms-dir still pins one
     // root, because that is what it is for; otherwise the path is
@@ -239,7 +239,18 @@ fn explain(args: ExplainArgs) -> Result<()> {
         .iter()
         .find(|(n, _)| *n == "max_cbs")
         .map_or(4, |(_, r)| r.value);
-    let derived_defaults: &[(&str, usize)] = &[("action_clients", max_cbs), ("arena_size", 0)];
+    //
+    // phase-448 W5 adds `backing_u64s` here for the same reason: its builtin is
+    // `ExecutorSizing::DEFAULT.u64_len()`, a const only the TARGET compiler can
+    // evaluate, so no number can be printed for it. `0` cannot stand in either
+    // — that is this knob's documented opt-out ("emit no static"), the opposite
+    // of the truth — so the rendering below asks the SOURCE rather than the
+    // value.
+    let derived_defaults: &[(&str, usize)] = &[
+        ("action_clients", max_cbs),
+        ("arena_size", 0),
+        ("backing_u64s", 0),
+    ];
     let derived = tree
         .resolve_executor(
             &args.platform,
@@ -250,7 +261,8 @@ fn explain(args: ExplainArgs) -> Result<()> {
         .map_err(|e| eyre!("{e}"))?;
 
     for (name, r) in resolved.iter().chain(derived.iter()) {
-        let shown = if *name == "arena_size" && r.value == 0 {
+        let unstated = *name == "backing_u64s" && r.source == KnobSource::Builtin;
+        let shown = if (*name == "arena_size" && r.value == 0) || unstated {
             "derived".to_string()
         } else {
             r.value.to_string()
