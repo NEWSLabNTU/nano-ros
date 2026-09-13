@@ -221,6 +221,74 @@ Four things follow, and each is a simplification rather than a trade:
   `NROS_CPP_NODE_HOSTED`; both gates fail on a mutation that reintroduces a
   `std` type in a public signature, and the mutation is in the selftest.
 
+## What changed on `main` while this phase was being opened (2026-09-13)
+
+Rebased over 104 commits. One of them matters a great deal, and it is the same
+disease this phase treats, diagnosed one layer down.
+
+**phase-454 W5 (`ac9316aea`, issue 1319) found that a subscription has FIVE
+registration paths**, and had to enumerate them because the executor was pricing
+every subscription at its type's bound while the runtime slot depends on which
+path it took:
+
+| path | what claims it |
+| --- | --- |
+| `c_typed_hint` | C or C++, typed, `rx_size_bound<M>` supplied |
+| `rust_typed_descriptors` | Rust, typed, descriptor-carrying backend |
+| `rust_typed_in_place` | Rust, typed, in-place backend (zenoh, XRCE) |
+| `rust_typed_schemaless` | Rust, typed, schemaless buffering backend |
+| `c_raw_no_hint` | **C or C++, raw, no hint** |
+
+Two of those five are the C family, and they exist only because the C++ API has
+both a hint-passing and a hint-less way to register the same subscription. That
+is precisely the boilerplate this phase is about, and it has a measured cost:
+`claims_closure_buffer()` is true for `c_raw_no_hint`, so that row is priced at
+`RX_BUF` rather than at the type's bound.
+
+**And the descriptor writer knows it cannot tell them apart.** Its own comment:
+
+> A C/C++ entry that registers typed supplies `rx_size_bound<M>`; the raw
+> no-hint row is a property of an individual call site, not of the image, and
+> nothing this writer reads distinguishes them. The typed hint is therefore what
+> a C/C++ entry is CREDITED with.
+
+So a C++ image is credited with `c_typed_hint` whether or not its call sites
+earn it, and a site that takes the no-hint row is UNDER-sized. That is a latent
+mis-size the writer documents rather than hides.
+
+**W2 makes the credit true for one call site.** The returning
+`create_subscription` now always passes `rx_buffer_capacity<M>::value`, so it is
+genuinely `c_typed_hint`. It was before too — the old `create_subscription_raw`
+call passed the same value — so this is not a regression either way, and the
+sizing classification is unchanged by W2.
+
+**What is still live**, and it is a new work item rather than a claim:
+`component.hpp`'s `create_subscription_raw` takes `size_t rx_bytes = 0`, so any
+caller that omits it registers with no hint while the image is credited with
+one. The default is the defect.
+
+* **W7 [cpp, core] — the C/C++ registration rows collapse from two to one.**
+  Make the bound non-optional at every C++ registration site, so
+  `c_raw_no_hint` becomes unreachable from C++ and the descriptor's credit stops
+  being an assumption. `rx_buffer_capacity<M>` is available wherever the message
+  type is, which is every typed site; a genuinely type-erased raw site is the
+  one case that has to keep the row, and it should have to say so.
+  *Acceptance:* no C++ subscription registration defaults its bound to 0; the
+  descriptor's `c_typed_hint` credit is earned rather than assumed; issue 1319's
+  under-size is unreachable from the C++ API.
+  *Related:* issue 1340 is the sibling one row over — `rust_typed_in_place` is
+  priced at the bound while claiming no region at all, worth ~9.7 KiB per
+  subscription.
+
+Two smaller ones, noted so a reader does not rediscover them:
+
+* `11bbf4ec9` (another session) added a `static_assert` pinning
+  `decltype(rate.period())`, which is the follow-up issue 1331 asked for. It and
+  this branch's own fix coexist; the rebase was clean.
+* `check-unsafe-census` is new and caught W1/W2's eight new `unsafe` sites. The
+  growth is enumerated and argued in its own commit rather than absorbed, which
+  is what that gate exists to force.
+
 ## What this phase does not do
 
 * It does not change the poll-style path. Caller storage is correct there —
