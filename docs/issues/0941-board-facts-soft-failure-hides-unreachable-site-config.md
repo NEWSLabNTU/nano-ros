@@ -82,3 +82,44 @@ configures legitimately resolve nothing (a native build does), and which should
 be loud. That enumeration — 414 probes across 16 workspaces — is recorded above
 and is still the right method; the answer just has to be re-derived against
 `[board_config.*]`.
+
+## The soft failure now has a price tag: the NuttX nightly (2026-09-13)
+
+Nightly run **34744568635** (schedule, 07:10), job **103690230027** (`nuttx`),
+step `Test / e2e (nuttx)`. The configure prints the soft line twice for each of
+the **six** NuttX C++ example leaves — `listener`, `talker`, `service-client`,
+`service-server`, `action-client`, `action-server` — twelve lines in all:
+
+```
+-- nano-ros: board facts NOT delivered from examples/qemu-armv7a-nuttx/cpp/listener
+   — Error: examples/qemu-armv7a-nuttx/cpp/listener/system.toml: no [image.nuttx]
+   or [deploy.nuttx] naming a board
+   Location: nros-cli-core/src/cmd/board_facts.rs:387:24
+```
+
+and the job then reports `Real failures: 5 / 5`:
+
+```
+FAIL test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_1_Lang__Rust
+FAIL test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C
+FAIL test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_3_Lang__Cpp
+FAIL test_rtos_pubsub_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C
+FAIL test_rtos_service_e2e::platform_2_Platform__Nuttx::lang_3_Lang__Cpp
+```
+
+**What this adds, stated no wider than it is measured.** The `Cpp` cell of
+`test_rtos_service_e2e` is a leaf that carries the soft line, so the two are
+consistent; the three `action` cells match the shape issue 1341 already records
+on FreeRTOS across all three languages, so they are more likely that; and
+`test_rtos_pubsub_e2e … Lang__C` is a **C** leaf, which prints no soft line at
+all and is therefore NOT explained by this issue. No C leaf warns — the twelve
+lines are C++ only.
+
+The point is not the cell count. It is that this issue's own argument —
+"the configure continues and the image builds without `NROS_BOARD`" — has been
+invisible because nothing downstream said so. A lane that runs those images now
+does, and the reach is wider than the original filing: this is the **standalone
+example** front door (`examples/qemu-armv7a-nuttx/cpp/*`), not the workspace
+bringups the 414-probe enumeration covered. Whatever the judgement call turns
+out to be, it has to answer for a `system.toml` with no `[image.<t>]` naming a
+board, not only for an unreachable `[deploy.<t>.nros]`.
