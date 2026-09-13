@@ -260,6 +260,13 @@ pub fn to_rcl_descriptor(desc: &InternalDescriptor) -> ParameterDescriptor {
     let _ = result.name.push_str(desc.name.as_str());
     result.type_ = type_to_u8(desc.param_type);
     let _ = result.description.push_str(desc.description.as_str());
+    // phase-417 W4.a — `additional_constraints` used to be sent EMPTY for every
+    // parameter, because the store had nowhere to keep it. `ros2 param
+    // describe` prints this field, so a constraint a C or Rust caller attached
+    // was invisible to the tool it is written for.
+    let _ = result
+        .additional_constraints
+        .push_str(desc.additional_constraints.as_str());
     result.read_only = desc.read_only;
     result.dynamic_typing = desc.dynamic_typing;
 
@@ -630,6 +637,11 @@ const fn set_result_reason(result: SetParameterResult) -> &'static str {
         // Issue 1151 — rclrs's wording, verbatim.
         SetParameterResult::Undeclared => UNDECLARED_REASON,
         SetParameterResult::InvalidRange => "Invalid range",
+        // phase-417 W4.a — an on-set-parameters callback refused it. rclcpp
+        // lets the callback supply its own reason string; ours cannot, because
+        // a `fn` pointer with no allocator has nowhere to put one, so the
+        // reason names WHO refused rather than why.
+        SetParameterResult::Rejected => "Rejected by an on-set-parameters callback",
     }
 }
 

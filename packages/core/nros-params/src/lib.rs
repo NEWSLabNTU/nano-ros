@@ -67,7 +67,10 @@ pub mod types;
 
 // Re-export main types
 pub use declared::{DeclaredParamMismatch, DeclaredParams};
-pub use server::{LegacyParameterBuilder, ParameterServer, ParameterStorage, ParameterTable};
+pub use server::{
+    DeclarationError, LegacyParameterBuilder, MAX_ON_SET_CALLBACKS, OnSetContext, OnSetParameterFn,
+    OnSetParameterHandle, ParameterServer, ParameterStorage, ParameterTable,
+};
 pub use typed::{
     MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, RangeConvertible,
     ReadOnlyParameter, UndeclaredParameters,
