@@ -1785,9 +1785,13 @@ pub type nros_typed_subscription_callback_t =
 /// type name, type hash, QoS, node binding, and the scheduling context
 /// requested via `nros_subscription_init_with_options`.
 ///
-/// `nros_subscription_init` currently rejects a NULL callback, so a typed-only
-/// user must still pass one that never fires. That belongs to
-/// `nros/subscription.h`'s owner, not here; see the W5.a report.
+/// CORRECTED 2026-09-13 — this paragraph used to say `nros_subscription_init`
+/// rejects a NULL callback, so a typed-only user had to pass one that never
+/// fires, and to leave the fix to `nros/subscription.h`'s owner. Both halves
+/// are stale: the six-argument `nros_subscription_init` is GONE (stage 6 step
+/// B) and `rclc_subscription_init_default` takes no callback at all, so a
+/// typed-only caller passes nothing to leave NULL. `nros_subscription_init_with_qos`
+/// still accepts one in the old position and accepts NULL there.
 ///
 /// # Safety
 /// * `executor` and `subscription` must be valid, initialised objects.
