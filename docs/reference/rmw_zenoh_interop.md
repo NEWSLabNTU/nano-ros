@@ -107,6 +107,54 @@ For BEST_EFFORT/VOLATILE with KEEP_LAST depth 1:
 
 **Important:** Empty values default to RELIABLE which causes QoS mismatch. Always specify explicit values.
 
+**The durability field must be the one the backend SERVES, not the one the
+caller asked for** (phase-428 W9). On zenoh a publisher granted
+`TRANSIENT_LOCAL` writes `1` here and a volatile one writes `2`; the depth
+beside it is likewise the retained depth, which for a transient-local publisher
+is `TL_RETAIN_DEPTH` and not whatever was requested. An action server's
+`/status` publisher therefore reads `1:1:1,1:,:,:,,`.
+
+### 3b. TRANSIENT_LOCAL — the `@adv` cache keyexpr
+
+phase-455 W5 / issue 1341. This section is MEASURED, from a
+`RUST_LOG=zenoh=debug` router watching a stock `rmw_zenoh_cpp` 0.1.9
+TRANSIENT_LOCAL pair on 2026-09-13, not read out of upstream source.
+
+`rmw_zenoh_cpp` 0.1.9 builds its endpoints on zenoh's `ze_advanced_publisher` /
+`ze_advanced_subscriber` (confirmed with `nm -D --undefined-only
+librmw_zenoh_cpp.so`), so transient-local durability is served by
+QUERY-ON-MATCH rather than by anything in the wire format above:
+
+```
+Declare queryable  <domain>/<topic>/<type>/<hash>/@adv/pub/<zid>/<eid>/_
+Declare subscriber <domain>/<topic>/<type>/<hash>
+Declare subscriber <domain>/<topic>/<type>/<hash>/@adv/pub/**
+Route query    for <domain>/<topic>/<type>/<hash>/@adv/**
+Route query    for <domain>/<topic>/<type>/<hash>/@adv/pub/<zid>/<eid>/_
+```
+
+* The PUBLISHER's cache is a queryable at `<topic keyexpr>/@adv/pub/<zid>/<eid>/_`.
+  `@adv` is zenoh-ext's own prefix — the key format
+  `${remaining:**}/@adv/${entity:*}/${zid:*}/${eid:*}/${meta:**}` is a literal
+  string in `libzenohc.so`; `pub` is the entity and the trailing `_` is the
+  empty metadata chunk.
+* The SUBSCRIBER issues a GLOBAL history query at `<topic keyexpr>/@adv/**` when
+  it is created. That intersects any publisher's cache key, and it is what
+  serves a late joiner.
+* The second query is late-joiner DETECTION: the subscriber also declares a
+  liveliness subscriber on `<topic keyexpr>/@adv/pub/**` and queries each
+  publisher whose `@adv` liveliness token appears after it.
+* The reply carries the TOPIC keyexpr, not the queryable's, and the same
+  attachment a live publication would have. The advanced subscriber accepts a
+  reply keyexpr differing from the query's, which is what makes that legal.
+
+nano-ros serves the publisher half of this
+(`shim/publisher.rs::transient_local`) and declares no `@adv` liveliness token,
+so it answers the global query and not the per-publisher one. The subscriber
+half — querying a stock transient-local publisher on match — is not
+implemented, and `shim/qos.rs::admit` refuses `TRANSIENT_LOCAL` on a
+subscription rather than pretending.
+
 ### 4. CDR Message Format
 
 Messages use CDR (Common Data Representation) little-endian encoding:

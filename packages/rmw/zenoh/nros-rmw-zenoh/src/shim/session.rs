@@ -1501,8 +1501,9 @@ impl Session for ZenohSession {
     /// * *"Durability VOLATILE / History / Depth honoured at the subscriber
     ///   buffer level"* — none of the three were read outside the discovery
     ///   keyexpr. The ring is KEEP_LAST at a build-time depth whatever was
-    ///   asked. `shim/qos.rs` refuses KEEP_ALL and TRANSIENT_LOCAL, grants the
-    ///   depth the ring can hold, and puts the GRANT in the token.
+    ///   asked. `shim/qos.rs` refuses KEEP_ALL, grants the depth the ring can
+    ///   hold, and puts the GRANT in the token. (TRANSIENT_LOCAL was refused
+    ///   with them until phase-455 W5 — see the bit below.)
     /// * `LIVELINESS_MANUAL_BY_NODE` is **withdrawn**. It was advertised here
     ///   and folded onto MANUAL_BY_TOPIC — cyclonedds folds the same value in
     ///   `qos.cpp`, and xrce drops liveliness entirely, so the policy was
@@ -1510,11 +1511,21 @@ impl Session for ZenohSession {
     ///   (issue 1328). Asserting per publisher where the caller asked for per
     ///   node expires publishers the application believed it had kept alive.
     ///
+    /// * `DURABILITY_TRANSIENT_LOCAL` is **added** by phase-455 W5 (issue
+    ///   1341), and it is the one bit here that is true of a SINGLE entity
+    ///   kind: `shim/publisher.rs::transient_local` serves it by
+    ///   query-on-match, a subscription still cannot query a peer's cache, and
+    ///   `shim/qos.rs::admit` refuses it for every kind but a publisher. The
+    ///   mask has no per-kind spelling, so an `rmw_zenoh_cpp` peer reading this
+    ///   sees a policy it can rely on us to OFFER; what it may not conclude is
+    ///   that we can REQUEST it.
+    ///
     /// AVOID_ROS_NAMESPACE_CONVENTIONS stays absent: key generation always
     /// applies the ROS conventions and nothing reads the flag.
     fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {
         use nros_rmw::QoSPolicyMask;
         QoSPolicyMask::CORE
+            | QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL
             | QoSPolicyMask::DEADLINE
             | QoSPolicyMask::LIFESPAN
             | QoSPolicyMask::LIVELINESS_AUTOMATIC

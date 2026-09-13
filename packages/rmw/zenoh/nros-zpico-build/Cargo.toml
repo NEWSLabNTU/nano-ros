@@ -40,6 +40,11 @@ cc = "1.0"
 nros-cc-flags = { path = "../../../tooling/nros-cc-flags" }
 nros-board-common = { path = "../../../boards/nros-board-common", features = ["build-helpers"] }
 nros-build-paths = { path = "../../../tooling/nros-build-paths" }
+# phase-455 W5 / issue 1341 — the ONE derivation of "how many TRANSIENT_LOCAL
+# publishers does this image declare". `nros-rmw-zenoh` sizes its retention pool
+# from the same function; a transient-local publisher costs a slot in BOTH pools,
+# so two derivations would disagree by whichever rows one of them forgot (1025).
+nros-sizing-descriptor = { path = "../../../tooling/nros-sizing-descriptor" }
 # issue 0460 — the ONE spelling of the Kconfig-via-$DOTCONFIG knob fallback.
 nros-zephyr-build = { path = "../../../tooling/nros-zephyr-build" }
 pkg-config = "0.3"

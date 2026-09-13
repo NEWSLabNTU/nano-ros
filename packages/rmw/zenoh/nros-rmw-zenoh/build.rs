@@ -31,6 +31,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_SUBSCRIBER_LARGE_SIZE");
     println!("cargo:rerun-if-env-changed=NROS_EXECUTOR_MAX_NODES");
     println!("cargo:rerun-if-env-changed=ZPICO_PUBLISHER_TX_BUFFER_SIZE");
+    // phase-455 W5 / issue 1341 — the TRANSIENT_LOCAL retention pool.
+    println!("cargo:rerun-if-env-changed=ZPICO_MAX_TL_PUBLISHERS");
+    println!("cargo:rerun-if-env-changed=ZPICO_TL_RETAIN_BYTES");
 
     // Phase 214.C.3 — default coordinated with
     // `packages/core/nros-node/build.rs::NROS_SUBSCRIPTION_BUFFER_SIZE`
@@ -179,6 +182,13 @@ fn main() {
     // per-publisher, so the cost is `ZPICO_MAX_PUBLISHERS` × this — priced in
     // the inventory via the `nros-pool:` annotation beside `LendArena`.
     let publisher_tx_size: usize = env_usize("ZPICO_PUBLISHER_TX_BUFFER_SIZE", 1024);
+    // phase-455 W5 / issue 1341 — the TRANSIENT_LOCAL retention pool, one slot
+    // per TL publisher. See `transient_local_publisher_demand` for what the
+    // descriptor can and cannot answer, and why an image that declares nothing
+    // keeps a builtin rather than deriving zero.
+    let tl_retain_bytes: usize = env_usize("ZPICO_TL_RETAIN_BYTES", TL_RETAIN_BYTES_DEFAULT);
+    let tl_demand = transient_local_publisher_demand(sizing.as_ref());
+    let max_tl_publishers: usize = resolve_max_tl_publishers(tl_demand);
 
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let path = std::path::Path::new(&out_dir).join("buffer_config.rs");
@@ -217,7 +227,20 @@ fn main() {
              pub const MAX_PER_NODE_LIVELINESS: usize = {max_nodes};\n\
              /// Issue 0813 — per-publisher TX arena capacity for the zero-copy\n\
              /// loan path (set via ZPICO_PUBLISHER_TX_BUFFER_SIZE, default 1024).\n\
-             pub const PUBLISHER_TX_BUFFER_SIZE: usize = {publisher_tx_size};\n",
+             pub const PUBLISHER_TX_BUFFER_SIZE: usize = {publisher_tx_size};\n\
+             /// phase-455 W5 — how many TRANSIENT_LOCAL publishers this image can\n\
+             /// serve at once (set via ZPICO_MAX_TL_PUBLISHERS; default is the\n\
+             /// declared demand, else {TL_PUBLISHERS_DEFAULT}). Each costs one\n\
+             /// retention slot here AND one slot in the C shim's queryable table.\n\
+             pub const MAX_TL_PUBLISHERS: usize = {max_tl_publishers};\n\
+             /// phase-455 W5 — bytes one retained TRANSIENT_LOCAL sample may hold\n\
+             /// (set via ZPICO_TL_RETAIN_BYTES, default {TL_RETAIN_BYTES_DEFAULT}).\n\
+             pub const TL_RETAIN_BYTES: usize = {tl_retain_bytes};\n\
+             /// phase-455 W5 — how many samples a TRANSIENT_LOCAL publisher\n\
+             /// retains. ONE: `rcl_action_qos_profile_status_default` is\n\
+             /// KEEP_LAST(1), and `shim/qos.rs` grants this depth and advertises\n\
+             /// it, so a deeper request is reported rather than pocketed.\n\
+             pub const TL_RETAIN_DEPTH: u32 = 1;\n",
             keyexpr_buf_size = keyexpr_string_size + 1,
         ),
     )
@@ -349,6 +372,84 @@ fn declared_ring_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
     }
     Some(max)
 }
+
+/// The TRANSIENT_LOCAL retention slots this image's declarations ask for.
+///
+/// phase-455 W5 / issue 1341. The COUNT is not derived here — it is
+/// `nros_sizing_descriptor::transient_local_publishers`, shared with
+/// `nros-zpico-build`, which adds the same number to the queryable table
+/// because a transient-local publisher costs one slot in each. Two derivations
+/// of one number is issue 1025, and here the two pools would disagree by
+/// exactly the rows one of them forgot.
+///
+/// This wrapper only turns the descriptor's three answers into the two a
+/// consumer needs — a demand to floor, or nothing — and prints the refusal,
+/// because a refusal that reaches no log is a default nobody chose (D6).
+fn transient_local_publisher_demand(desc: Option<&SizingDescriptor>) -> Option<usize> {
+    let desc = desc?;
+    match nros_sizing_descriptor::transient_local_publishers(desc) {
+        Fact::Stated(n) => Some(n),
+        Fact::Absent => None,
+        Fact::Refused(reason) => {
+            warn(&format!(
+                "{reason}. The transient-local retention pool keeps \
+                 {TL_PUBLISHERS_DEFAULT} slot(s) (ZPICO_MAX_TL_PUBLISHERS)"
+            ));
+            None
+        }
+    }
+}
+
+/// `ZPICO_MAX_TL_PUBLISHERS` as a CHECKED override, shaped after
+/// `nros-zpico-build`'s `resolve_queryable_default`.
+///
+/// A stated value BELOW the declared demand is refused at BUILD time naming the
+/// knob, because the alternative is `create_publisher` returning
+/// `IncompatibleQos` at boot on an image whose every gate read green — which is
+/// issue 1341's symptom, and the reason phase-455 W5 asked for this to be a
+/// compile-stage answer rather than a runtime `-80`.
+fn resolve_max_tl_publishers(demand: Option<usize>) -> usize {
+    let default = demand.unwrap_or(TL_PUBLISHERS_DEFAULT);
+    let requested = env_usize("ZPICO_MAX_TL_PUBLISHERS", default);
+    if let Some(demand) = demand {
+        if requested < demand {
+            panic!(
+                "ZPICO_MAX_TL_PUBLISHERS={requested} cannot serve this image's {demand} \
+                 declared TRANSIENT_LOCAL publisher(s).\n  \
+                 A transient-local publisher retains its last sample and answers a \
+                 late-joining subscriber's history query, so it costs one retention \
+                 slot here AND one slot in the zenoh queryable table \
+                 (ZPICO_MAX_QUERYABLES) — an action server's \
+                 `<action>/_action/status` is one of these, and every action_server \
+                 row counts one whether or not it states a durability.\n  \
+                 Raise ZPICO_MAX_TL_PUBLISHERS, or stop declaring the endpoint. \
+                 It has no Kconfig row yet, so a Zephyr image sets the env var \
+                 like every other unmapped knob in KCONFIG_KNOBS.\n  \
+                 Each slot costs ZPICO_TL_RETAIN_BYTES plus the keyexpr and \
+                 attachment it replies with."
+            );
+        }
+    }
+    requested
+}
+
+/// The transient-local retention slots an image that declares nothing keeps.
+///
+/// TWO, and the number is a policy rather than a measurement: one action server
+/// is the motivating case (issue 1341) and two lets a second one — or one
+/// action server beside one latched topic — build without a knob. Every image
+/// that DOES declare its endpoints derives its own count, zero included, so
+/// this is only ever the undeclared road's answer.
+const TL_PUBLISHERS_DEFAULT: usize = 2;
+
+/// Bytes one retained transient-local sample may hold.
+///
+/// Shares `NROS_SUBSCRIBER_BUFFER_SIZE`'s 1024 for the same reason the
+/// publisher TX arena does (issue 0813): it is the other side of the same wire
+/// expectation. A sample that does not fit is NOT retained and says so once,
+/// naming `ZPICO_TL_RETAIN_BYTES` — silently retaining a truncated sample would
+/// serve a late joiner garbage under a profile that promises it the last value.
+const TL_RETAIN_BYTES_DEFAULT: usize = 1024;
 
 /// The service-request slot size this image's declarations ask for.
 ///

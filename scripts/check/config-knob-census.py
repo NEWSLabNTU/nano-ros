@@ -103,6 +103,25 @@ KNOB_CLASS = {
     "ZPICO_SUBSCRIBER_LARGE_SIZE": ("derived", "LARGE_PAYLOADS class (phase-403)"),
     "ZPICO_SUBSCRIBER_SIZE_THRESHOLD": ("derived", "SMALL_CLASS_CEILING (phase-403)"),
     "ZPICO_PUBLISHER_TX_BUFFER_SIZE": ("derived", "TX half of the same split"),
+    # phase-455 W5 / issue 1341 — the transient-local retention pool. Both are
+    # DERIVED and neither is a ladder candidate, for the reason
+    # ZPICO_MAX_LARGE_SUBSCRIBERS is not one: the answer is a property of what
+    # the IMAGE declares, not of the platform it runs on.
+    # `nros-rmw-zenoh/build.rs` counts the sizing descriptor's transient-local
+    # publisher rows (plus one per `action_server` row, for the `/status`
+    # publisher the declaration structurally cannot mention) and refuses a
+    # stated value below that count.
+    "ZPICO_MAX_TL_PUBLISHERS": (
+        "derived",
+        "retention slots for TRANSIENT_LOCAL publishers; counted from the "
+        "image's declared endpoints, phase-455 W5",
+    ),
+    "ZPICO_TL_RETAIN_BYTES": (
+        "derived",
+        "the retained sample's slot size — the publisher-side twin of "
+        "ZPICO_SUBSCRIBER_BUFFER_SIZE, so it belongs to the same phase-403 "
+        "per-type campaign and is a global only until that reaches it",
+    ),
     # --- sizing: the backlog ---
     "NROS_SERVICE_TIMEOUT_MS": ("sizing", "a timeout, not a size, but the same ladder shape. TWO readers (zenoh build + the C emitter), so it needs one emission point before a rung"),
     # issue 0968 — the UDP/TCP twin of the line above. Documented in the book and

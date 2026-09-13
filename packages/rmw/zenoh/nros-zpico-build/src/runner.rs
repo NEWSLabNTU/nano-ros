@@ -169,16 +169,67 @@ fn resolve_queryable_default() -> QueryableSizing {
     let declared = std::env::var("NROS_DECLARED_SERVICE_SERVERS").ok();
     let infra = std::env::var("NROS_DECLARED_INFRA_QUERYABLES").ok();
     let nodes = std::env::var("NROS_DECLARED_NODES").ok();
+    let tl = transient_local_publishers();
     QueryableSizing {
         default: queryable_default_from(
             declared.as_deref(),
             infra.as_deref(),
             nodes.as_deref(),
+            tl,
             target_os_is_hosted(std::env::var("CARGO_CFG_TARGET_OS").as_deref().ok()),
         ),
-        floor: queryable_floor_from(declared.as_deref(), infra.as_deref(), nodes.as_deref()),
+        floor: queryable_floor_from(declared.as_deref(), infra.as_deref(), nodes.as_deref(), tl),
         declared: declared.is_some() || infra.is_some(),
         param_nodes: declared_nodes(nodes.as_deref()),
+        transient_local_publishers: tl,
+    }
+}
+
+/// phase-455 W5 / issue 1341 — **a TRANSIENT_LOCAL publisher IS a queryable.**
+///
+/// It retains its last sample and declares a queryable on
+/// `<keyexpr>/@adv/pub/<zid>/<eid>/_` so a late-joining subscriber's history
+/// query can reach it, exactly as a service server declares one for its
+/// requests. Before this term the slot was un-budgeted, and the failure landed
+/// where issue 0460 says it must not: the native Rust action-server fixture
+/// declares three service servers and no infrastructure, derived
+/// `ZPICO_MAX_QUERYABLES = 3`, and died at boot with
+///
+/// ```text
+/// qos: publisher '…/_action/status/…' asked for TRANSIENT_LOCAL and its cache
+/// queryable could not be declared (Full)
+/// ```
+///
+/// The count is NOT derived here. It is
+/// `nros_sizing_descriptor::transient_local_publishers`, the same function
+/// `nros-rmw-zenoh` sizes its retention pool with — one publisher, two pools,
+/// and issue 1025 is what two derivations of one number cost.
+///
+/// The rebuild edge is on the descriptor's CONTENT, placed by
+/// `load_for_build_script`; there is deliberately no `rerun-if-env-changed` on
+/// the PATH variable (issue 0491).
+///
+/// A REFUSED count contributes zero and says so. That is the same direction as
+/// every other refusal here — the builtin budget stands — and unlike the
+/// retention pool, under-counting this one is survivable on a hosted image,
+/// whose undeclared default is 32.
+fn transient_local_publishers() -> usize {
+    match nros_sizing_descriptor::transient_local_publishers_from_build_env() {
+        Ok(nros_sizing_descriptor::Fact::Stated(n)) => n,
+        Ok(nros_sizing_descriptor::Fact::Absent) => 0,
+        Ok(nros_sizing_descriptor::Fact::Refused(reason)) => {
+            println!(
+                "cargo:warning=the zenoh queryable table is NOT budgeting for any \
+                 transient-local publisher: {reason}. A transient-local publisher \
+                 declares a cache queryable, so an image that has one may exhaust \
+                 ZPICO_MAX_QUERYABLES at boot (issue 1341)."
+            );
+            0
+        }
+        // A named descriptor that cannot be read is the producer's bug, and the
+        // zenoh crate one layer over panics on the same condition. Matching it
+        // here keeps one failure for one cause.
+        Err(e) => panic!("{e}"),
     }
 }
 
@@ -195,6 +246,12 @@ struct QueryableSizing {
     /// Carried so the refusal message can SHOW the multiplication rather than
     /// hand the reader a total and let them work backwards.
     param_nodes: usize,
+    /// phase-455 W5 — how many of the floor's slots are transient-local
+    /// PUBLISHERS rather than service servers. Carried for the refusal message,
+    /// because "a service server IS a queryable" is no longer the whole rule and
+    /// a reader counting their service servers against the number would come up
+    /// short by exactly this.
+    transient_local_publishers: usize,
 }
 
 /// The slots this image PROVABLY needs, as opposed to the ones it is budgeted.
@@ -217,14 +274,19 @@ struct QueryableSizing {
 ///
 /// Undeclared images have a floor of zero: nothing is known, so nothing is
 /// provable, and the historical budgets apply unchecked.
-fn queryable_floor_from(declared: Option<&str>, infra: Option<&str>, nodes: Option<&str>) -> usize {
+fn queryable_floor_from(
+    declared: Option<&str>,
+    infra: Option<&str>,
+    nodes: Option<&str>,
+    transient_local_publishers: usize,
+) -> usize {
     if declared.is_none() && infra.is_none() {
         return 0;
     }
     let app = declared
         .and_then(|v| v.trim().parse::<usize>().ok())
         .unwrap_or(0);
-    app + infra_queryables(infra, nodes)
+    app + infra_queryables(infra, nodes) + transient_local_publishers
 }
 
 /// phase-426 W3 — how many nodes claim a set of parameter services.
@@ -283,11 +345,17 @@ fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
              `ServiceServerCreationFailed` and no explanation (issue 0460).\n  \
              The ROS parameter services are registered once PER NODE (phase-426 W3), \
              so a {}-node image carrying them claims {} slots for those alone.\n  \
+             {} of the floor is TRANSIENT_LOCAL PUBLISHERS, not service servers \
+             (phase-455 W5): such a publisher retains its last sample and declares a \
+             cache queryable to serve it to a late joiner, and an action server has \
+             one for its `/status` whether or not anything declared it. Counting \
+             service servers alone comes up short by exactly that.\n  \
              On Zephyr this knob is CONFIG_NROS_MAX_QUERYABLES, whose Kconfig default \
              is 8; raise it, or stop declaring the services the image does not have.",
             sizing.floor,
             sizing.param_nodes,
-            PARAM_SERVICE_QUERYABLES * sizing.param_nodes
+            PARAM_SERVICE_QUERYABLES * sizing.param_nodes,
+            sizing.transient_local_publishers
         );
     }
     if requested < sizing.default {
@@ -339,6 +407,7 @@ fn queryable_default_from(
     declared: Option<&str>,
     infra: Option<&str>,
     nodes: Option<&str>,
+    transient_local_publishers: usize,
     hosted: bool,
 ) -> usize {
     let app = match declared {
@@ -381,7 +450,7 @@ fn queryable_default_from(
     // A table of zero would make every service-server registration fail, so an
     // entry declaring none still gets one slot rather than a pool nothing can
     // index.
-    core::cmp::max(app + infra, 1)
+    core::cmp::max(app + infra + transient_local_publishers, 1)
 }
 
 #[cfg(test)]
@@ -392,20 +461,23 @@ mod queryable_default_tests {
     #[test]
     fn the_floor_counts_only_what_is_provably_claimed() {
         // Undeclared: nothing is known, so nothing is provable.
-        assert_eq!(queryable_floor_from(None, None, None), 0);
+        assert_eq!(queryable_floor_from(None, None, None, 0), 0);
         // Infrastructure declared absent: an image that declares nothing still
         // needs nothing, even though its BUDGET is 8.
-        assert_eq!(queryable_floor_from(None, Some("none"), None), 0);
-        assert_eq!(queryable_default_from(None, Some("none"), None, true), 8);
+        assert_eq!(queryable_floor_from(None, Some("none"), None, 0), 0);
+        assert_eq!(queryable_default_from(None, Some("none"), None, 0, true), 8);
         // Both service families: eleven slots claimed at boot. This is the
         // number issue 0460 discovered at runtime against a table of 8.
         assert_eq!(
-            queryable_floor_from(None, Some("param+lifecycle"), None),
+            queryable_floor_from(None, Some("param+lifecycle"), None, 0),
             PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
         );
         // A declared application count is provable too — it is what the model
         // says the image will create.
-        assert_eq!(queryable_floor_from(Some("2"), Some("lifecycle"), None), 7);
+        assert_eq!(
+            queryable_floor_from(Some("2"), Some("lifecycle"), None, 0),
+            7
+        );
     }
 
     fn sizing(declared: Option<&str>, infra: Option<&str>) -> QueryableSizing {
@@ -417,12 +489,64 @@ mod queryable_default_tests {
         infra: Option<&str>,
         nodes: Option<&str>,
     ) -> QueryableSizing {
+        sizing_for_tl(declared, infra, nodes, 0)
+    }
+
+    /// phase-455 W5 — [`sizing_for`] with the transient-local publisher term,
+    /// which is the one input that does not arrive as an env string.
+    fn sizing_for_tl(
+        declared: Option<&str>,
+        infra: Option<&str>,
+        nodes: Option<&str>,
+        tl: usize,
+    ) -> QueryableSizing {
         QueryableSizing {
-            default: queryable_default_from(declared, infra, nodes, true),
-            floor: queryable_floor_from(declared, infra, nodes),
+            default: queryable_default_from(declared, infra, nodes, tl, true),
+            floor: queryable_floor_from(declared, infra, nodes, tl),
             declared: declared.is_some() || infra.is_some(),
             param_nodes: declared_nodes(nodes),
+            transient_local_publishers: tl,
         }
+    }
+
+    /// phase-455 W5 / issue 1341 — **a transient-local publisher is a
+    /// queryable, and the action-server fixture is the image that proved it.**
+    ///
+    /// `examples/native/rust/action-server` declares three service servers and
+    /// no infrastructure, so before this term it derived a table of 3 — exactly
+    /// the three action services — and the `/status` publisher's cache
+    /// queryable was the fourth. Measured on 2026-09-13: the image built clean
+    /// and died at boot with `asked for TRANSIENT_LOCAL and its cache queryable
+    /// could not be declared (Full)`, which is issue 0460's shape on a
+    /// publisher instead of on a service server.
+    ///
+    /// The action server contributes its TL publisher through the
+    /// `action_server` endpoint row rather than a publisher row, because
+    /// nothing declares `<action>/_action/status`.
+    #[test]
+    fn a_transient_local_publisher_takes_a_queryable_slot() {
+        let without = sizing_for_tl(Some("3"), Some("none"), None, 0);
+        let with = sizing_for_tl(Some("3"), Some("none"), None, 1);
+        assert_eq!(without.floor, 3, "three declared service servers");
+        assert_eq!(
+            with.floor, 4,
+            "the transient-local publisher's cache queryable is a fourth slot"
+        );
+        assert_eq!(without.default, 3);
+        assert_eq!(
+            with.default, 4,
+            "the BUDGET moves with the floor too, or the derived default itself \
+             cannot boot the image"
+        );
+    }
+
+    /// The refusal has to reach the reader through this term as well, or
+    /// someone who set the knob from a service-server count gets no explanation
+    /// for the difference.
+    #[test]
+    #[should_panic(expected = "TRANSIENT_LOCAL PUBLISHERS")]
+    fn a_knob_below_the_transient_local_term_is_refused_and_says_so() {
+        check_queryable_override(3, &sizing_for_tl(Some("3"), Some("none"), None, 1));
     }
 
     /// phase-426 W3 — the parameter family is PER NODE, so the floor is too.
@@ -430,29 +554,29 @@ mod queryable_default_tests {
     fn the_parameter_family_costs_six_slots_per_node() {
         // One node: the number issue 0460 discovered at runtime, unchanged.
         assert_eq!(
-            queryable_floor_from(None, Some("param+lifecycle"), Some("1")),
+            queryable_floor_from(None, Some("param+lifecycle"), Some("1"), 0),
             PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
         );
         // Undeclared node count IS one — an image nobody described keeps the
         // pool it had.
         assert_eq!(
-            queryable_floor_from(None, Some("param+lifecycle"), None),
-            queryable_floor_from(None, Some("param+lifecycle"), Some("1"))
+            queryable_floor_from(None, Some("param+lifecycle"), None, 0),
+            queryable_floor_from(None, Some("param+lifecycle"), Some("1"), 0)
         );
         // Three nodes: 18 for the parameter services plus the executor's five
         // lifecycle services. The lifecycle family does NOT multiply — it is
         // still one set on the executor.
         assert_eq!(
-            queryable_floor_from(None, Some("param+lifecycle"), Some("3")),
+            queryable_floor_from(None, Some("param+lifecycle"), Some("3"), 0),
             3 * PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
         );
         assert_eq!(
-            queryable_floor_from(None, Some("lifecycle"), Some("3")),
+            queryable_floor_from(None, Some("lifecycle"), Some("3"), 0),
             LIFECYCLE_SERVICE_QUERYABLES,
             "an image with no parameter services pays nothing for its nodes"
         );
         assert_eq!(
-            queryable_floor_from(Some("0"), Some("param"), Some("2")),
+            queryable_floor_from(Some("0"), Some("param"), Some("2"), 0),
             12
         );
     }
@@ -529,19 +653,19 @@ mod queryable_default_tests {
     fn infra_declared_without_an_app_count_still_drops_the_hosted_guess() {
         // A native talker: no parameter services, no lifecycle. 32 -> 8.
         assert_eq!(
-            queryable_default_from(None, Some("none"), None, true),
+            queryable_default_from(None, Some("none"), None, 0, true),
             UNDECLARED_HEADROOM
         );
         // An image that carries both: the headroom PLUS what they cost.
         assert_eq!(
-            queryable_default_from(None, Some("param+lifecycle"), None, true),
+            queryable_default_from(None, Some("param+lifecycle"), None, 0, true),
             UNDECLARED_HEADROOM + PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
         );
         // And it is the same number on an embedded target: the hosted/embedded
         // sniff decides nothing once the declaration arrives.
         assert_eq!(
-            queryable_default_from(None, Some("none"), None, false),
-            queryable_default_from(None, Some("none"), None, true)
+            queryable_default_from(None, Some("none"), None, 0, false),
+            queryable_default_from(None, Some("none"), None, 0, true)
         );
     }
 
@@ -551,14 +675,14 @@ mod queryable_default_tests {
     #[test]
     #[should_panic(expected = "NROS_DECLARED_INFRA_QUERYABLES")]
     fn an_unknown_infra_spelling_panics_even_without_an_app_count() {
-        queryable_default_from(None, Some("safety"), None, true);
+        queryable_default_from(None, Some("safety"), None, 0, true);
     }
 
     #[test]
     fn undeclared_keeps_the_historical_budgets() {
-        assert_eq!(queryable_default_from(None, None, None, true), 32);
+        assert_eq!(queryable_default_from(None, None, None, 0, true), 32);
         assert_eq!(
-            queryable_default_from(None, None, None, false),
+            queryable_default_from(None, None, None, 0, false),
             UNDECLARED_HEADROOM
         );
     }
@@ -568,7 +692,7 @@ mod queryable_default_tests {
         // The talker case: no services, no infrastructure. Measured at 4,504
         // bytes of SERVICE_BUFFERS against 144,128 for the guess.
         assert_eq!(
-            queryable_default_from(Some("0"), Some("none"), None, true),
+            queryable_default_from(Some("0"), Some("none"), None, 0, true),
             1
         );
     }
@@ -577,19 +701,19 @@ mod queryable_default_tests {
     fn infrastructure_is_added_here_not_by_the_declarer() {
         // Issue 0460: codegen sees the user's entities and never the runtime's.
         assert_eq!(
-            queryable_default_from(Some("0"), Some("param+lifecycle"), None, true),
+            queryable_default_from(Some("0"), Some("param+lifecycle"), None, 0, true),
             11
         );
         assert_eq!(
-            queryable_default_from(Some("2"), Some("param+lifecycle"), None, true),
+            queryable_default_from(Some("2"), Some("param+lifecycle"), None, 0, true),
             13
         );
         assert_eq!(
-            queryable_default_from(Some("2"), Some("param"), None, true),
+            queryable_default_from(Some("2"), Some("param"), None, 0, true),
             8
         );
         assert_eq!(
-            queryable_default_from(Some("2"), Some("lifecycle"), None, true),
+            queryable_default_from(Some("2"), Some("lifecycle"), None, 0, true),
             7
         );
     }
@@ -597,27 +721,27 @@ mod queryable_default_tests {
     #[test]
     fn unknown_infrastructure_is_assumed_present() {
         // Over-reserving wastes RAM; under-reserving fails at boot.
-        assert_eq!(queryable_default_from(Some("0"), None, None, true), 11);
+        assert_eq!(queryable_default_from(Some("0"), None, None, 0, true), 11);
     }
 
     #[test]
     fn the_hosted_split_stops_mattering_once_declared() {
         assert_eq!(
-            queryable_default_from(Some("3"), Some("none"), None, true),
-            queryable_default_from(Some("3"), Some("none"), None, false)
+            queryable_default_from(Some("3"), Some("none"), None, 0, true),
+            queryable_default_from(Some("3"), Some("none"), None, 0, false)
         );
     }
 
     #[test]
     #[should_panic(expected = "is not a count")]
     fn a_malformed_count_is_not_silently_undeclared() {
-        queryable_default_from(Some("lots"), Some("none"), None, true);
+        queryable_default_from(Some("lots"), Some("none"), None, 0, true);
     }
 
     #[test]
     #[should_panic(expected = "is not one of")]
     fn an_unknown_infrastructure_spelling_is_refused() {
-        queryable_default_from(Some("0"), Some("params"), None, true);
+        queryable_default_from(Some("0"), Some("params"), None, 0, true);
     }
 }
 

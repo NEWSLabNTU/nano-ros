@@ -22,9 +22,9 @@
 //!   drops on a full ring), so `KEEP_ALL` is refused rather than silently
 //!   served as KEEP_LAST. Nothing in the tree requests it: no named preset is
 //!   KEEP_ALL since phase-428 W10.
-//! * **durability** — VOLATILE is what a shim with no historical-sample cache
-//!   does; TRANSIENT_LOCAL is refused (it was already outside the mask, this
-//!   makes the refusal local and loud for a direct caller).
+//! * **durability** — VOLATILE is what an entity with no retention does.
+//!   TRANSIENT_LOCAL is SERVED on a publisher since phase-455 W5 and refused on
+//!   every other kind.
 //! * **depth** — clamped to the ring, which is a build-time constant, and the
 //!   clamp is REPORTED: the granted value goes into the graph token, and the
 //!   first entity to lose depth says so once per session.
@@ -43,6 +43,25 @@
 //! `create_*` puts THAT profile — not the request — into the liveliness token
 //! a `rmw_zenoh_cpp` peer parses. So the graph stops carrying a number we do
 //! not honour, which was the lie.
+//!
+//! # Why refusing was not free either — phase-455 W5, issue 1341
+//!
+//! W9's rule is right and the population it was applied to was not.
+//! `QOS_PROFILE_ACTION_STATUS_DEFAULT` mirrors
+//! `rcl_action_qos_profile_status_default` and is the action protocol's WIRE
+//! CONTRACT, not a caller's preference this backend may decline: a client that
+//! joins late, or is slow, learns a goal's terminal state only because
+//! `/status` is transient-local. Refusing it stopped every zenoh action server
+//! from starting; granting VOLATILE instead would have kept them starting and
+//! broken RxO against a stock `rclcpp` client, whose `/status` reader is
+//! transient-local — the "goal terminated, client never saw it" failure issue
+//! 0902 exists for.
+//!
+//! So the publisher SERVES it, by the mechanism the paragraph above already
+//! named as the missing one: query-on-match. What a transient-local publisher
+//! retains is `TL_RETAIN_DEPTH` sample, and `queue_capacity` makes that the
+//! depth the graph advertises, so the advertised durability and the advertised
+//! depth are both the served ones.
 
 use nros_rmw::{
     DURATION_INFINITE_MS, QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSProfile,
@@ -51,7 +70,7 @@ use nros_rmw::{
 
 use portable_atomic::Ordering;
 
-use crate::config::SUBSCRIBER_RING_DEPTH;
+use crate::config::{SUBSCRIBER_RING_DEPTH, TL_RETAIN_DEPTH};
 
 use super::service::SERVICE_REQUEST_RING_DEPTH;
 
@@ -76,16 +95,27 @@ impl EntityKind {
         }
     }
 
-    /// How many samples the entity's receive ring can hold, or `None` when the
-    /// entity has no ring.
+    /// How many samples the entity's queue can hold for the requested
+    /// durability, or `None` when the entity has no queue.
     ///
-    /// A publisher has none: zenoh-pico writes to the session on the calling
-    /// thread and queues no sample of its own, so there is no history for a
-    /// depth to bound and no sample a depth could cause it to drop. Any
+    /// A VOLATILE publisher has none: zenoh-pico writes to the session on the
+    /// calling thread and queues no sample of its own, so there is no history
+    /// for a depth to bound and no sample a depth could cause it to drop. Any
     /// requested depth is therefore satisfied — vacuously, but exactly.
-    fn ring_capacity(self) -> Option<u32> {
+    ///
+    /// phase-455 W5 — a TRANSIENT_LOCAL publisher is the exception, and it is
+    /// not vacuous: it RETAINS, and `TL_RETAIN_DEPTH` samples is what it
+    /// retains. The depth a transient-local publisher advertises has to be the
+    /// number a late joiner will actually receive, so this is the one place a
+    /// publisher's depth meets a real queue. `rcl_action_qos_profile_status_
+    /// default` is KEEP_LAST(1), so the motivating caller is served exactly and
+    /// anything deeper is reported by the clamp below rather than pocketed.
+    fn queue_capacity(self, durability: QoSDurabilityPolicy) -> Option<u32> {
         match self {
-            EntityKind::Publisher => None,
+            EntityKind::Publisher => match durability {
+                QoSDurabilityPolicy::TransientLocal => Some(TL_RETAIN_DEPTH),
+                _ => None,
+            },
             EntityKind::Subscription => Some(SUBSCRIBER_RING_DEPTH as u32),
             EntityKind::Service | EntityKind::Client => Some(SERVICE_REQUEST_RING_DEPTH as u32),
         }
@@ -113,6 +143,13 @@ static DEPTH_CLAMP_REPORTED: portable_atomic::AtomicBool = portable_atomic::Atom
 /// Reported once per process, same reasoning: `QOS_PROFILE_SENSOR_DATA` and
 /// `QOS_PROFILE_BEST_EFFORT` are common, and the answer is the same every time.
 static RELIABILITY_GRANT_REPORTED: portable_atomic::AtomicBool =
+    portable_atomic::AtomicBool::new(false);
+
+/// phase-455 W5 — the transient-local publisher's depth clamp, latched
+/// SEPARATELY from the receive ring's. See the clamp site for why sharing one
+/// latch would silence this one on every image that has a transient-local
+/// publisher at all.
+static TL_DEPTH_CLAMP_REPORTED: portable_atomic::AtomicBool =
     portable_atomic::AtomicBool::new(false);
 
 fn first_time(flag: &portable_atomic::AtomicBool) -> bool {
@@ -163,19 +200,37 @@ pub(super) fn admit(
         }
     }
 
-    // nros-qos-honours: DURABILITY_VOLATILE — no historical-sample cache and no
-    // query-on-match, so VOLATILE is what the shim does and TRANSIENT_LOCAL is
-    // refused. The mask already withholds TRANSIENT_LOCAL, so the runtime
-    // refuses it first; this is the same refusal for a caller who reached the
-    // backend directly.
+    // nros-qos-honours: DURABILITY_VOLATILE — VOLATILE is served by every
+    // entity kind, which is what an entity with no retention does.
+    //
+    // nros-qos-honours: DURABILITY_TRANSIENT_LOCAL — served by a PUBLISHER,
+    // through query-on-match (`shim/publisher.rs::transient_local`): the
+    // publisher retains its last `TL_RETAIN_DEPTH` sample and declares a
+    // queryable on `<keyexpr>/@adv/pub/<zid>/<eid>/_`, which is where a stock
+    // `ze_advanced_subscriber`'s history query lands. Refused for every other
+    // kind — the SUBSCRIBER half (querying a stock transient-local publisher on
+    // match, for a latched topic) is a real capability and is not built.
+    //
+    // phase-455 W5 / issue 1341 — this arm refused ALL FOUR kinds from
+    // phase-428 W9 (2026-09-12) until now, and the one profile in the tree whose
+    // durability is not VOLATILE is the one an action server creates:
+    // `QOS_PROFILE_ACTION_STATUS_DEFAULT` mirrors
+    // `rcl_action_qos_profile_status_default`, so a zenoh action server could
+    // not start at all. That profile is the action protocol's wire contract and
+    // not a caller request this backend may decline, and granting VOLATILE
+    // instead would break RxO against a stock `rclcpp` client — whose `/status`
+    // reader IS transient-local — while reintroducing by design the
+    // "goal terminated, client never saw it" failure of issue 0902.
     match requested.durability {
         QoSDurabilityPolicy::Volatile => {}
+        QoSDurabilityPolicy::TransientLocal if matches!(kind, EntityKind::Publisher) => {}
         QoSDurabilityPolicy::TransientLocal => {
             refuse(
                 kind,
                 name,
                 "durability",
-                "TRANSIENT_LOCAL — the shim keeps no historical samples",
+                "TRANSIENT_LOCAL — the shim serves publisher-side retention only; \
+                 a subscription cannot query a peer's cache on match yet",
             );
             return Err(TransportError::IncompatibleQos);
         }
@@ -216,21 +271,53 @@ pub(super) fn admit(
     // served; what it must not do is vanish. The granted depth is what
     // `create_*` puts in the liveliness token, so a peer reading our graph
     // entry sees the queue we keep, and the first loss says so once.
-    if let Some(capacity) = kind.ring_capacity() {
+    if let Some(capacity) = kind.queue_capacity(requested.durability) {
         if requested.depth > capacity {
             granted.depth = capacity;
-            if first_time(&DEPTH_CLAMP_REPORTED) {
-                nros_log::log_warn!(
-                    nros_log::get_logger("nros_rmw_zenoh"),
-                    "qos: {} '{}' asked for KEEP_LAST({}); this image's receive ring \
-                     holds {}. Granting {} and advertising it to the graph. Raise \
-                     ZPICO_SUBSCRIBER_RING_DEPTH to keep more.",
-                    kind.label(),
-                    name,
-                    requested.depth,
-                    capacity,
-                    capacity
-                );
+            // phase-455 W5 — the transient-local publisher's clamp names its
+            // own bound, because `ZPICO_SUBSCRIBER_RING_DEPTH` is not the knob
+            // that would fix it and `TL_RETAIN_DEPTH` is not a knob at all. A
+            // message naming the wrong knob is worse than no message: it sends
+            // the reader to change a number that changes nothing.
+            //
+            // And it takes its OWN once-per-process latch rather than sharing
+            // the ring's. They are different facts with different remedies, and
+            // sharing one latch means whichever entity is created first
+            // silences the other — measured: every action server clamps its
+            // `send_goal` service ring (10 -> 4) before it creates the `/status`
+            // publisher, so a shared latch would make the transient-local
+            // downgrade permanently invisible on exactly the image it matters on.
+            let transient_local_publisher = matches!(kind, EntityKind::Publisher);
+            let latch = if transient_local_publisher {
+                &TL_DEPTH_CLAMP_REPORTED
+            } else {
+                &DEPTH_CLAMP_REPORTED
+            };
+            if first_time(latch) {
+                if transient_local_publisher {
+                    nros_log::log_warn!(
+                        nros_log::get_logger("nros_rmw_zenoh"),
+                        "qos: publisher '{}' asked for TRANSIENT_LOCAL KEEP_LAST({}); \
+                         this backend retains {} sample and replays it on a late \
+                         joiner's query. Granting {} and advertising it to the graph.",
+                        name,
+                        requested.depth,
+                        capacity,
+                        capacity
+                    );
+                } else {
+                    nros_log::log_warn!(
+                        nros_log::get_logger("nros_rmw_zenoh"),
+                        "qos: {} '{}' asked for KEEP_LAST({}); this image's receive ring \
+                         holds {}. Granting {} and advertising it to the graph. Raise \
+                         ZPICO_SUBSCRIBER_RING_DEPTH to keep more.",
+                        kind.label(),
+                        name,
+                        requested.depth,
+                        capacity,
+                        capacity
+                    );
+                }
             }
         }
     }
@@ -349,14 +436,67 @@ mod tests {
         ));
     }
 
+    /// phase-455 W5 / issue 1341 — the split is by ENTITY KIND, because the
+    /// publisher half is built and the subscriber half is not.
     #[test]
-    fn transient_local_is_refused() {
+    fn transient_local_is_served_on_a_publisher_and_refused_on_every_other_kind() {
         let mut qos = base();
         qos.durability = QoSDurabilityPolicy::TransientLocal;
-        assert!(matches!(
-            admit(EntityKind::Subscription, "/t", &qos),
-            Err(TransportError::IncompatibleQos)
-        ));
+        let granted = admit(EntityKind::Publisher, "/t", &qos).expect("the publisher serves it");
+        assert_eq!(granted.durability, QoSDurabilityPolicy::TransientLocal);
+        for kind in [
+            EntityKind::Subscription,
+            EntityKind::Service,
+            EntityKind::Client,
+        ] {
+            assert!(
+                matches!(
+                    admit(kind, "/t", &qos),
+                    Err(TransportError::IncompatibleQos)
+                ),
+                "{} must refuse TRANSIENT_LOCAL until the subscriber half exists",
+                kind.label()
+            );
+        }
+    }
+
+    /// The advertised depth is the RETAINED depth, which is the whole reason a
+    /// transient-local publisher has a queue capacity at all. A publisher that
+    /// asked for more must not advertise more — that is the lie phase-428 W9
+    /// removed, and re-adding it here would be the same defect one policy over.
+    #[test]
+    fn a_transient_local_publisher_advertises_the_depth_it_retains() {
+        let mut qos = base();
+        qos.durability = QoSDurabilityPolicy::TransientLocal;
+        qos.depth = 10;
+        let granted = admit(EntityKind::Publisher, "/t", &qos).expect("admissible");
+        assert_eq!(granted.depth, crate::config::TL_RETAIN_DEPTH);
+        assert_eq!(granted.durability, QoSDurabilityPolicy::TransientLocal);
+
+        // and a VOLATILE publisher still has no queue, so its depth is granted
+        // verbatim — the two arms must not converge.
+        qos.durability = QoSDurabilityPolicy::Volatile;
+        qos.depth = 10;
+        assert_eq!(
+            admit(EntityKind::Publisher, "/t", &qos)
+                .expect("admissible")
+                .depth,
+            10
+        );
+    }
+
+    /// The profile issue 1341 is about, end to end through admission.
+    #[test]
+    fn the_action_status_profile_survives_admission_on_a_publisher() {
+        let qos = QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT;
+        assert_eq!(qos.durability, QoSDurabilityPolicy::TransientLocal);
+        let granted = admit(EntityKind::Publisher, "/fibonacci/_action/status", &qos)
+            .expect("an action server must be able to create its status publisher");
+        assert_eq!(granted.durability, QoSDurabilityPolicy::TransientLocal);
+        assert_eq!(
+            granted.depth, qos.depth,
+            "KEEP_LAST(1) is exactly what the retention serves, so nothing is clamped"
+        );
     }
 
     #[test]

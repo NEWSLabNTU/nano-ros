@@ -80,6 +80,8 @@ statically allocated — unused slots still consume memory.
 | `ZPICO_MAX_QUERYABLES` | 8 | Max concurrent service servers |
 | `ZPICO_MAX_LIVELINESS` | 16 | Max concurrent liveliness tokens |
 | `ZPICO_MAX_PENDING_GETS` | 4 | Max concurrent in-flight service calls |
+| `ZPICO_MAX_TL_PUBLISHERS` | 2 | Max concurrent TRANSIENT_LOCAL publishers (each also costs one queryable) |
+| `ZPICO_TL_RETAIN_BYTES` | 1024 | Bytes one retained transient-local sample may hold |
 
 **Sizing rule:** the exact number your application uses, plus 1-2 spare slots
 for parameter services (if enabled). Over-provisioning wastes static memory;
