@@ -482,28 +482,46 @@ const fn remaining_period_ns(period_us: u64, elapsed_us: u64) -> i64 {
 /// * `timer` must be NULL or point to a valid `nros_timer_t`.
 /// * `time_until_next_call_ns` must be NULL or writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_timer_get_time_until_next_call(
+pub unsafe extern "C" fn rcl_timer_get_time_until_next_call(
     timer: *const nros_timer_t,
     time_until_next_call_ns: *mut i64,
 ) -> nros_ret_t {
     validate_not_null!(timer, time_until_next_call_ns);
-    let timer_ref = &*timer;
-
-    match timer_ref.state {
-        nros_timer_state_t::NROS_TIMER_STATE_RUNNING
-        | nros_timer_state_t::NROS_TIMER_STATE_CANCELED => {}
-        _ => return NROS_RET_NOT_INIT,
-    }
-
-    let Some((exec, id)) = registered_handle(timer_ref) else {
-        return NROS_RET_NOT_INIT;
-    };
-    match (exec.timer_period_us(id), exec.timer_elapsed_us(id)) {
-        (Some(period_us), Some(elapsed_us)) => {
-            *time_until_next_call_ns = remaining_period_ns(period_us, elapsed_us);
+    match time_until_next_call_ns_of(&*timer) {
+        Ok(remaining_ns) => {
+            *time_until_next_call_ns = remaining_ns;
             NROS_RET_OK
         }
-        _ => NROS_RET_NOT_INIT,
+        Err(ret) => ret,
+    }
+}
+
+/// The "how long until this timer next fires" answer, computed ONCE.
+///
+/// Two entry points report it — [`rcl_timer_get_time_until_next_call`]
+/// relative and [`rcl_timer_get_next_call_time`] as an absolute point on the
+/// timer's clock — and rcl's own pair are `next_call_time` and
+/// `next_call_time - now`, so they cannot disagree upstream either. Deriving
+/// it twice here is the shape CLAUDE.md's "fix the CLASS" rule names: a later
+/// change to the readiness accounting would have to find both sites.
+///
+/// `Err` carries the `nros_ret_t` the caller returns unchanged.
+///
+/// # Safety
+/// `timer` must point to a valid `nros_timer_t`.
+unsafe fn time_until_next_call_ns_of(timer: &nros_timer_t) -> Result<i64, nros_ret_t> {
+    match timer.state {
+        nros_timer_state_t::NROS_TIMER_STATE_RUNNING
+        | nros_timer_state_t::NROS_TIMER_STATE_CANCELED => {}
+        _ => return Err(NROS_RET_NOT_INIT),
+    }
+
+    let Some((exec, id)) = registered_handle(timer) else {
+        return Err(NROS_RET_NOT_INIT);
+    };
+    match (exec.timer_period_us(id), exec.timer_elapsed_us(id)) {
+        (Some(period_us), Some(elapsed_us)) => Ok(remaining_period_ns(period_us, elapsed_us)),
+        _ => Err(NROS_RET_NOT_INIT),
     }
 }
 
@@ -524,7 +542,7 @@ pub unsafe extern "C" fn nros_timer_get_time_until_next_call(
 // have to spend a legal value on "cannot answer" — an unregistered timer has
 // no elapsed time, and reporting that as `0` is the defect issue 1008 was.
 //
-// phase-417 stage 3 made it FOUR: `nros_timer_get_time_until_next_call` (issue
+// phase-417 stage 3 made it FOUR: `rcl_timer_get_time_until_next_call` (issue
 // 1049, defined above beside `nros_timer_get_period` where its old bare-value
 // form lived) is the same forward, for the same reason, and it reached this
 // shape last because it was the one that already had a name and a plausible
@@ -690,6 +708,189 @@ pub unsafe extern "C" fn nros_timer_get_time_since_last_call(
 }
 
 // ============================================================================
+// phase-417 W5.c (2026-09-13) — the last two timer rows the ledger filed `gap`
+//
+// `c:timer_exchange_period` and `c:timer_get_next_call_time` are the same two
+// forwarders one more time: the live period and the live elapsed count belong
+// to the arena's `TimerHeader`, not to `nros_timer_t`, so both reach it through
+// the `(handle_id, _executor)` pair `rclc_executor_add_timer` installs.
+//
+// Both take rcl's SPELLING and rcl's SIGNATURE exactly, because both are
+// expressible here without changing a type: rcl's `int64_t` nanoseconds are
+// ours, and the `(const timer *, out)` shape is the one the four siblings above
+// already have.
+// ============================================================================
+
+/// Swap this timer's period, reporting the one it had. **Nanoseconds.**
+///
+/// rcl's `rcl_timer_exchange_period(const rcl_timer_t *, int64_t new_period,
+/// int64_t *old_period)`, at rcl's arity and in rcl's order. Gap
+/// `c:timer_exchange_period` recorded that a node whose rate is a parameter had
+/// to destroy and recreate its timer, because neither C nor Rust could change
+/// one in place.
+///
+/// Writes BOTH copies of the period, which is the whole reason this is not a
+/// one-line setter:
+///
+/// * the arena's `TimerHeader::period_us`, when the timer is registered — the
+///   number `arena::timer_try_process` compares `elapsed_us` against, so this
+///   is the period the dispatcher will honour on its next pass;
+/// * `nros_timer_t::period_ns` always — the registration INPUT
+///   `rclc_executor_add_timer` re-reads, and what `nros_timer_get_period`
+///   returns. Leaving it stale would make the getter disagree with the
+///   dispatcher, which is the "compiles and differs" RFC-0089 exists to stop.
+///
+/// **`old_period` is the exact nanosecond value last supplied**, not the
+/// microsecond-quantised one the arena holds: the struct's copy is written
+/// unquantised by `nros_timer_init` and by this function, so a caller reading
+/// back what it wrote gets what it wrote. The DISPATCHER's resolution is still
+/// microseconds (issue #505), so a period below 1 µs schedules as 0 — the same
+/// quantisation `nros_timer_init` has always applied, surfaced here rather than
+/// introduced.
+///
+/// **The elapsed count is NOT rewound**, which is rcl's behaviour: upstream
+/// exchanges the period and touches nothing else. A timer shortened below its
+/// accumulated elapsed time is ready immediately; one lengthened past it waits
+/// longer. Call `rcl_timer_reset` after if the new period should start fresh.
+///
+/// ## Why `const` on a function that writes
+///
+/// rcl's signature is `const rcl_timer_t *` and it mutates through
+/// `timer->impl`, so a ported call site passes a handle it holds by value and
+/// expects the write. Ours has no `impl` indirection, so the write is through a
+/// cast. That is sound for every reachable timer: `nros_timer_init` takes
+/// `struct nros_timer_t *`, so no timer that was ever initialised is a
+/// `const`-defined object. Taking a non-`const` parameter instead would have
+/// been a silent divergence for exactly the ported callers that hold a
+/// `const rcl_timer_t *`, and C reports that as a warning.
+///
+/// # Returns
+/// * `NROS_RET_OK` with `*old_period` written and the new period in force
+/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL, or `new_period` is
+///   not positive — `nros_timer_init` refuses a zero period, and a setter that
+///   accepted one would leave the timer in a state its own constructor forbids
+/// * `NROS_RET_NOT_INIT` if the timer is uninitialised or finalised, or is
+///   registered with an executor that no longer knows the handle
+///
+/// # Safety
+/// * `timer` must be NULL or point to a valid, non-`const`-defined
+///   `nros_timer_t`.
+/// * `old_period` must be NULL or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_timer_exchange_period(
+    timer: *const nros_timer_t,
+    new_period: i64,
+    old_period: *mut i64,
+) -> nros_ret_t {
+    validate_not_null!(timer, old_period);
+    if new_period <= 0 {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let timer_ref = &*timer;
+
+    match timer_ref.state {
+        nros_timer_state_t::NROS_TIMER_STATE_RUNNING
+        | nros_timer_state_t::NROS_TIMER_STATE_CANCELED => {}
+        _ => return NROS_RET_NOT_INIT,
+    }
+
+    let new_period_ns = new_period as u64;
+    if let Some((exec, id)) = registered_handle(timer_ref) {
+        // A registered timer whose handle the executor no longer recognises is
+        // the `NOT_INIT` the sibling accessors report; reporting OK here would
+        // claim a dispatcher change that did not happen.
+        if exec
+            .exchange_timer_period_us(id, new_period_ns / 1_000)
+            .is_none()
+        {
+            return NROS_RET_NOT_INIT;
+        }
+    }
+
+    let previous_ns = timer_ref.period_ns;
+    // SAFETY: see "Why `const` on a function that writes" above — the pointee
+    // was declared non-`const` by whichever call to `nros_timer_init` brought
+    // this timer out of `UNINITIALIZED`, which the state check above proved
+    // happened.
+    (*(timer as *mut nros_timer_t)).period_ns = new_period_ns;
+    *old_period = previous_ns.min(i64::MAX as u64) as i64;
+    NROS_RET_OK
+}
+
+/// When this timer next fires, as a point on the clock it is scheduled against.
+///
+/// rcl's `rcl_timer_get_next_call_time(const rcl_timer_t *, int64_t *)`. Gap
+/// `c:timer_get_next_call_time` recorded C as lacking it; the row's `why` said
+/// "Rust has it (`Timer::time_until_next_call`)", which named the RELATIVE
+/// sibling — upstream ships both, and `rcl_timer_get_time_until_next_call`
+/// (phase-417 stage 3) is the relative one. This is the absolute one, and it is
+/// `now + remaining` over the SAME derivation, so the pair cannot disagree.
+///
+/// ## Which clock "now" is read from
+///
+/// The timer's own, which is the property that makes the answer comparable
+/// with anything else the caller timestamps:
+///
+/// * a timer created by `nros_timer_init_on_clock` carries an
+///   `nros_clock_t *`, and that clock is read — so a `NROS_CLOCK_ROS_TIME`
+///   timer answers on `/clock`'s timeline and stops advancing when the
+///   playback does, exactly as its dispatch does;
+/// * a timer created by `nros_timer_init` is the WALL timer (rclcpp's
+///   `create_wall_timer`) and carries no clock handle. Its answer is on the
+///   platform STEADY clock — the same monotonic source whose spin deltas
+///   advance the arena's `elapsed_us`, so it is the timeline the timer is
+///   actually scheduled on rather than a wall-clock approximation of it.
+///
+/// **Divergence from rcl, inherited from the sibling accessors:** the arena's
+/// timer accounting is MICROSECOND-based (issue #505), so the remaining half of
+/// this sum has microsecond resolution. The clock read does not.
+///
+/// `RCL_RET_TIMER_INVALID` and `RCL_RET_TIMER_CANCELED` have no counterpart in
+/// `nros_ret_t` (`<nros/rcl_compat.h>` declines to map them), so those and "not
+/// registered with an executor" all arrive as `NROS_RET_NOT_INIT`.
+///
+/// # Returns
+/// * `NROS_RET_OK` with `*next_call_time` written
+/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `NROS_RET_NOT_INIT` if the timer is uninitialised, finalised, or not
+///   registered with an executor — nothing is advancing its clock, so it has no
+///   next call rather than a next call of zero
+/// * whatever `nros_clock_get_now_ns` reports for a timer whose attached clock
+///   is not readable
+///
+/// # Safety
+/// * `timer` must be NULL or point to a valid `nros_timer_t`.
+/// * `next_call_time` must be NULL or writable.
+/// * A non-NULL `timer->clock` must still point to a live `nros_clock_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_timer_get_next_call_time(
+    timer: *const nros_timer_t,
+    next_call_time: *mut i64,
+) -> nros_ret_t {
+    validate_not_null!(timer, next_call_time);
+    let timer_ref = &*timer;
+
+    let remaining_ns = match time_until_next_call_ns_of(timer_ref) {
+        Ok(remaining_ns) => remaining_ns,
+        Err(ret) => return ret,
+    };
+
+    let now_ns = if timer_ref.clock.is_null() {
+        crate::clock::get_steady_time_ns().min(i64::MAX as u64) as i64
+    } else {
+        let mut now_ns: i64 = 0;
+        let ret = crate::clock::nros_clock_get_now_ns(timer_ref.clock, &mut now_ns);
+        if ret != NROS_RET_OK {
+            return ret;
+        }
+        now_ns
+    };
+
+    *next_call_time = now_ns.saturating_add(remaining_ns);
+    NROS_RET_OK
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -794,7 +995,7 @@ mod tests {
         let mut out: i64 = 0xdead_beef;
 
         assert_eq!(
-            unsafe { nros_timer_get_time_until_next_call(&timer, &mut out) },
+            unsafe { rcl_timer_get_time_until_next_call(&timer, &mut out) },
             NROS_RET_NOT_INIT,
             "nothing is advancing an unregistered timer's clock"
         );
@@ -804,17 +1005,17 @@ mod tests {
         );
 
         assert_eq!(
-            unsafe { nros_timer_get_time_until_next_call(core::ptr::null(), &mut out) },
+            unsafe { rcl_timer_get_time_until_next_call(core::ptr::null(), &mut out) },
             NROS_RET_INVALID_ARGUMENT
         );
         assert_eq!(
-            unsafe { nros_timer_get_time_until_next_call(&timer, core::ptr::null_mut()) },
+            unsafe { rcl_timer_get_time_until_next_call(&timer, core::ptr::null_mut()) },
             NROS_RET_INVALID_ARGUMENT
         );
 
         let uninitialised = nros_timer_t::default();
         assert_eq!(
-            unsafe { nros_timer_get_time_until_next_call(&uninitialised, &mut out) },
+            unsafe { rcl_timer_get_time_until_next_call(&uninitialised, &mut out) },
             NROS_RET_NOT_INIT
         );
     }
@@ -871,6 +1072,117 @@ mod tests {
         assert_eq!(timer.state, nros_timer_state_t::NROS_TIMER_STATE_SHUTDOWN);
     }
 
+    /// phase-417 W5.c, ledger row `c:timer_exchange_period`.
+    ///
+    /// The row's `why`: "a node whose rate is a parameter has to destroy and
+    /// recreate the timer". A parameter callback is the caller this exists for,
+    /// so the property that matters is that the exchange is READABLE afterwards
+    /// — `nros_timer_get_period` must report the new value, not the value the
+    /// constructor was given. Two sources of truth is the defect this could
+    /// have shipped with, since the live period is the ARENA's and the struct
+    /// carries a second copy that a later `rclc_executor_add_timer` re-reads.
+    ///
+    /// The arena half of the same claim — that the DISPATCHER honours the new
+    /// period and that `elapsed_us` is not rewound — is asserted in
+    /// `nros-node`'s own tests
+    /// (`exchanging_a_timers_period_changes_the_cadence_without_rewinding_it`),
+    /// where an executor exists. A `nros-c` unit test has none.
+    #[test]
+    fn exchanging_a_period_is_readable_through_the_getter() {
+        let timer = unregistered_running_timer();
+        assert_eq!(unsafe { nros_timer_get_period(&timer) }, 1_000_000);
+
+        let mut old: i64 = 0;
+        assert_eq!(
+            unsafe { rcl_timer_exchange_period(&timer, 250_000, &mut old) },
+            NROS_RET_OK
+        );
+        assert_eq!(
+            old, 1_000_000,
+            "the exchange reports the period it replaced"
+        );
+        assert_eq!(
+            unsafe { nros_timer_get_period(&timer) },
+            250_000,
+            "the getter must not keep reporting the constructor's value"
+        );
+
+        // ...and again, so the second exchange reports the FIRST exchange's
+        // value rather than the constructor's.
+        assert_eq!(
+            unsafe { rcl_timer_exchange_period(&timer, 7_000, &mut old) },
+            NROS_RET_OK
+        );
+        assert_eq!(old, 250_000);
+        assert_eq!(unsafe { nros_timer_get_period(&timer) }, 7_000);
+    }
+
+    /// A period the constructor would refuse must not be reachable through the
+    /// setter — `nros_timer_init` rejects `period_ns == 0`, and rcl rejects a
+    /// negative one, so accepting either here would leave a timer in a state
+    /// its own constructor forbids.
+    #[test]
+    fn a_period_the_constructor_refuses_is_refused_here_too() {
+        let timer = unregistered_running_timer();
+        let mut old: i64 = 0xdead_beef;
+
+        for bad in [0_i64, -1, i64::MIN] {
+            assert_eq!(
+                unsafe { rcl_timer_exchange_period(&timer, bad, &mut old) },
+                NROS_RET_INVALID_ARGUMENT,
+                "period {bad} must be refused"
+            );
+        }
+        assert_eq!(
+            old, 0xdead_beef,
+            "a refused exchange must not write the out-param"
+        );
+        assert_eq!(
+            unsafe { nros_timer_get_period(&timer) },
+            1_000_000,
+            "a refused exchange must not change the period either"
+        );
+    }
+
+    /// phase-417 W5.c, ledger row `c:timer_get_next_call_time`.
+    ///
+    /// Upstream distinguishes "cannot answer" from an answer, and an absolute
+    /// time point has no safe sentinel — `0` is a legal point on every clock we
+    /// support. So the unanswerable cases must arrive as a status, with the
+    /// out-param untouched. Unregistered is one of them for the same reason
+    /// `rcl_timer_get_time_until_next_call` reports it: nothing is advancing
+    /// the timer's clock, so there is no next call rather than a next call now.
+    #[test]
+    fn next_call_time_reports_rather_than_answering_zero() {
+        let timer = unregistered_running_timer();
+        let mut out: i64 = 0xdead_beef;
+
+        assert_eq!(
+            unsafe { rcl_timer_get_next_call_time(&timer, &mut out) },
+            NROS_RET_NOT_INIT,
+            "nothing is advancing an unregistered timer's clock"
+        );
+        assert_eq!(
+            out, 0xdead_beef,
+            "a failed read must not write the out-param"
+        );
+
+        let uninitialised = nros_timer_t::default();
+        assert_eq!(
+            unsafe { rcl_timer_get_next_call_time(&uninitialised, &mut out) },
+            NROS_RET_NOT_INIT
+        );
+        assert_eq!(
+            unsafe { rcl_timer_get_next_call_time(core::ptr::null(), &mut out) },
+            NROS_RET_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe { rcl_timer_get_next_call_time(&timer, core::ptr::null_mut()) },
+            NROS_RET_INVALID_ARGUMENT
+        );
+        assert_eq!(out, 0xdead_beef);
+    }
+
     /// NULL in any position is refused, never dereferenced.
     #[test]
     fn null_arguments_are_refused() {
@@ -891,6 +1203,23 @@ mod tests {
         );
         assert_eq!(
             unsafe { nros_timer_get_time_since_last_call(core::ptr::null(), &mut n) },
+            NROS_RET_INVALID_ARGUMENT
+        );
+        let mut i: i64 = 0;
+        assert_eq!(
+            unsafe { rcl_timer_exchange_period(core::ptr::null(), 1_000, &mut i) },
+            NROS_RET_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe { rcl_timer_exchange_period(&timer, 1_000, core::ptr::null_mut()) },
+            NROS_RET_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe { rcl_timer_get_next_call_time(core::ptr::null(), &mut i) },
+            NROS_RET_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe { rcl_timer_get_next_call_time(&timer, core::ptr::null_mut()) },
             NROS_RET_INVALID_ARGUMENT
         );
     }

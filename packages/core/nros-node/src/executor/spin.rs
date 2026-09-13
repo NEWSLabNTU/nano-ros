@@ -6928,6 +6928,42 @@ impl<'s> Executor<'s> {
         Some(header.period_us)
     }
 
+    /// Swap a registered timer's period, in microseconds, returning the one
+    /// it had — or `None` if the handle is not a valid timer.
+    ///
+    /// `TimerHeader::period_us` is the number `arena::timer_try_process`
+    /// compares `elapsed_us` against, so this writes the period the
+    /// DISPATCHER honours rather than a second copy of it (RFC-0019). The C
+    /// entry point `rcl_timer_exchange_period` also keeps
+    /// `nros_timer_t::period_ns` in step, because that field is the
+    /// registration input a later `rclc_executor_add_timer` would re-read.
+    ///
+    /// `elapsed_us` is deliberately NOT rewound, which is rcl's own behaviour:
+    /// `rcl_timer_exchange_period` swaps the period and touches nothing else,
+    /// so a timer shortened below its accumulated elapsed time becomes ready
+    /// at once and one lengthened past it simply waits longer. A caller that
+    /// wants the new period to start fresh calls
+    /// [`reset_timer`](Self::reset_timer) after it.
+    ///
+    /// phase-417 W5.c — the Rust half of `c:timer_exchange_period`, the last
+    /// timer row the C ledger filed as `gap`. The answer lives here and only
+    /// the spelling lives in the wrapper, the same split
+    /// [`timer_elapsed_us`](Self::timer_elapsed_us) made.
+    pub fn exchange_timer_period_us(&mut self, id: HandleId, new_period_us: u64) -> Option<u64> {
+        let offset = self
+            .entries
+            .get(id.0)
+            .and_then(|e| e.as_ref())
+            .filter(|m| matches!(m.kind, EntryKind::Timer))?
+            .offset;
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        // SAFETY: same layout invariant as `timer_period_us`.
+        let header = unsafe { &mut *(arena_ptr.add(offset) as *mut TimerHeader) };
+        let old_period_us = header.period_us;
+        header.period_us = new_period_us;
+        Some(old_period_us)
+    }
+
     /// Set a timer's overrun policy (issue #505). Timers default to
     /// [`TimerOverrunPolicy::Skip`]; switch to
     /// [`TimerOverrunPolicy::CatchUp`] for timers whose every activation

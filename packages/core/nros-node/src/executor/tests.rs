@@ -4668,6 +4668,78 @@ fn timer_readiness_and_elapsed_agree_with_the_dispatcher() {
     assert_eq!(executor.timer_is_ready(not_a_timer), None);
 }
 
+/// phase-417 W5.c — `exchange_timer_period_us` must change what the DISPATCHER
+/// does, and must not touch the elapsed count while doing it.
+///
+/// The C entry point is `rcl_timer_exchange_period`, and ledger row
+/// `c:timer_exchange_period` recorded the cost of not having it: a node whose
+/// rate is a parameter had to destroy and recreate its timer. Two things could
+/// go wrong in a way a compile cannot see, and each is asserted:
+///
+/// * the write lands somewhere the dispatcher does not read, so the timer keeps
+///   its old cadence while `timer_period_us` reports the new one;
+/// * the write RESETS `elapsed_us`. rcl's `rcl_timer_exchange_period` swaps the
+///   period and touches nothing else, so a timer shortened below its
+///   accumulated elapsed time must become ready AT ONCE rather than starting a
+///   fresh period — which is the behaviour a rate-lowering parameter callback
+///   depends on.
+#[test]
+fn exchanging_a_timers_period_changes_the_cadence_without_rewinding_it() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    let id = executor
+        .register_timer(TimerDuration::from_millis(100), || {})
+        .unwrap();
+
+    // 40 ms in: not due under the 100 ms period.
+    let result = elapse_then_spin_once(&mut executor, 40);
+    assert_eq!(result.timers_fired, 0);
+    let before = executor.timer_elapsed_us(id).unwrap();
+    assert!(
+        (40_000..50_000).contains(&before),
+        "one 40ms step: {before}us"
+    );
+
+    // Shorten the period to 20 ms. The old value comes back, in the arena's own
+    // microseconds.
+    assert_eq!(
+        executor.exchange_timer_period_us(id, 20_000),
+        Some(100_000),
+        "the exchange reports the period it replaced"
+    );
+    assert_eq!(executor.timer_period_us(id), Some(20_000));
+
+    // The elapsed count is untouched — this is the half a "reset it too" reading
+    // of the API would get wrong.
+    assert_eq!(
+        executor.timer_elapsed_us(id),
+        Some(before),
+        "rcl exchanges the period and touches nothing else"
+    );
+
+    // And the DISPATCHER agrees: 40ms already elapsed is past a 20ms period, so
+    // the timer is ready now rather than in another 60ms.
+    assert_eq!(executor.timer_is_ready(id), Some(true));
+    let result = elapse_then_spin_once(&mut executor, 1);
+    assert_eq!(
+        result.timers_fired, 1,
+        "a period shortened below the elapsed count fires immediately"
+    );
+
+    // Lengthening works the same way round: still no rewind, and the longer
+    // period is what readiness is measured against.
+    assert_eq!(executor.exchange_timer_period_us(id, 500_000), Some(20_000));
+    assert_eq!(executor.timer_is_ready(id), Some(false));
+    let result = elapse_then_spin_once(&mut executor, 100);
+    assert_eq!(result.timers_fired, 0, "100ms is short of the new 500ms");
+
+    // A handle that is not a timer has no period to exchange, and reports that
+    // rather than silently doing nothing.
+    let not_a_timer = HandleId(id.0 + 1);
+    assert_eq!(executor.exchange_timer_period_us(not_a_timer, 1_000), None);
+}
+
 #[test]
 fn test_timer_oneshot_fires_once() {
     let session = MockSession::new();

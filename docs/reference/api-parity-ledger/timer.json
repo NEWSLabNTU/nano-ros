@@ -211,10 +211,6 @@
     "disposition": "absent",
     "why": "swaps a timer's callback at runtime. The callback is bound to the ENTITY at creation (RFC-0041) so the executor's static dispatch table cannot be rewritten while it is being walked."
   },
-  "c:timer_exchange_period": {
-    "verdict": "gap",
-    "why": "changes a timer's period at runtime. Rust has `Timer::set_oneshot`/`set_repeating`/`set_inert` but no period change either -- a node whose rate is a parameter has to destroy and recreate the timer. Phase 379 W3."
-  },
   "c:timer_get_allocator": {
     "verdict": "declined",
     "disposition": "absent",
@@ -229,10 +225,6 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "the guard condition rcl fires to wake a wait set when a timer is reset. RFC-0002's executor recomputes its next deadline directly (`next_deadline_ms`); there is no wait set to interrupt."
-  },
-  "c:timer_get_next_call_time": {
-    "verdict": "gap",
-    "why": "when this timer next fires. Rust has it (`Timer::time_until_next_call`) and C does not. Phase 379 W3."
   },
   "c:timer_get_period": {
     "verdict": "divergence",
@@ -1261,5 +1253,9 @@
   "cpp:NodeWithTimers::create_wall_timer_in": {
     "verdict": "divergence",
     "why": "rclcpp's `Node::create_wall_timer(period, callback)` on the RFC-0044 base: ours is `create_wall_timer<Self, &Self::tick>(period_ms)`, the member bound at compile time for the reason `cpp:ComponentNode::create_subscription` gives, plus a `(period_ms, nros_cpp_timer_callback_t, void* ctx)` escape hatch for non-member handlers. The NAME half of the pair is already recorded: `cpp:Node::create_wall_timer` (rename -- ours should carry rclcpp's name) and `cpp:Node::create_timer` (its ours-only half); this row is that same pair one type over, and the type name is the additional question (`cpp:ComponentNode`). Ours also takes `uint64_t period_ms` rather than a `std::chrono::duration` -- freestanding builds have no `<chrono>`, and the chrono spelling exists as the free `nros::create_timer` under `NROS_CPP_STD` (`cpp:create_timer`) -- and parks the `nros::Timer` in the component's inline pool (`NROS_COMPONENT_MAX_TIMERS`) because there is no allocator to keep it alive in; pool exhaustion sets `ok()=false`.\n\nRENAMED 2026-09-05 (phase-425 W1) with the base: both overloads are thin wrappers over `Node::create_wall_timer`, so they moved with it, as did the macro (`NROS_CREATE_WALL_TIMER`). `create_timer_in_group` keeps its stem. The type name `ComponentNode` remains the additional, separate question. phase-427 W4: `nros::ComponentNode` is DELETED and this row moved onto the merged `nros::Node`. ComponentNode WRAPPED a node (RFC-0044 Q1 chose wrap over derive), so a component was not a `Node` and every verb had to be forwarded; the merged type IS one.\n\nphase-427 (the `_in_group` split) -- `_in` here is ours-only/storage-free and carries no group; the group form on this type is `cpp:NodeWithTimers::create_timer_in_group`."
+  },
+  "rust:Executor::exchange_timer_period_us": {
+    "verdict": "divergence",
+    "why": "phase-417 W5.c — the WRITE half of the same family as `rust:Executor::timer_elapsed_us` and `rust:Executor::timer_is_ready`, and it sits on the executor for the same reason: RFC-0002's arena owns timer state, so there is no owning `Timer` object to hang it on where rclrs would. Returns `Option<u64>` (the period it replaced) rather than `()`, because \"not a timer handle\" must be a different answer from \"exchanged a period of 0\" — issue 1008's shape, and the same choice the two read siblings make.\n\nIt exists so `rcl_timer_exchange_period` (C) can forward rather than recompute: the live period is `TimerHeader::period_us`, the number `arena::timer_try_process` compares `elapsed_us` against, and a second writable copy of it is exactly the drift RFC-0019 puts the answer in Rust to avoid. `elapsed_us` is deliberately not rewound, which is rcl's own behaviour; held by `executor::tests::exchanging_a_timers_period_changes_the_cadence_without_rewinding_it`, which fails if it is (measured)."
   }
 }
