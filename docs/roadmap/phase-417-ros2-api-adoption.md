@@ -400,17 +400,98 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
 * W4.b **[mixed]** — actions: a goal-id TYPE in C++ (`uint8_t[16]` today, so it cannot be
   stored or compared); `succeed`/`abort`/`canceled` verbs; Rust's `cancel`
   renamed to `canceled` with a deprecated forwarder. Five `action.json` rows.
-* W4.c **[wrapper]** — executor: `cancel`/`is_spinning` in all three (a C++ node cannot stop
-  spinning today without tearing down the session).
-* W4.d **[wrapper]** — logging: named loggers, per-logger levels, throttle,
-  sinks. **Partly landed:** the Rust façade re-exports `nros_log` now, so
-  `nros_log` is the easy path rather than `std::println!` and issue 0589 is
-  resolved and archived; W3.a routed the whole `RCLCPP_*` family at
-  `NROS_LOG_*`. What is left is the eight `log.json` rows — per-logger levels
-  (`cpp:Logger::set_level`, `rust:Logger::set_default_level`), the rcutils
-  output-handler family in C, `rosout`, and `c:log_severity_t`'s one remaining
-  envelope (rcutils's `UNSET` means *inherit*, and our facade has no
-  inheritable level).
+* W4.c **[wrapper]** — **LANDED.** executor: `cancel`/`is_spinning` in all three,
+  under rclcpp's own names. Before: C had `nros_executor_stop` mutating a
+  C-side state enum, Rust's `halt`/`is_halted` were `alloc`-GATED (so a
+  core-only image could not stop its own executor at all), and C++ could not do
+  it — `Executor::spin` exited only on `shutdown()`, which calls
+  `nros_cpp_fini` and destroys the session. After: one flag in Rust;
+  `nros_executor_cancel` / `nros_executor_is_spinning` (C, with
+  `nros_executor_stop` left as a deprecated `static inline` forwarder) and
+  `Executor::cancel` / `is_spinning` (C++ and Rust) forward to it.
+  ADOPT-BOUNDED — `cancel` returns at the NEXT POLL BOUNDARY, so it returns
+  before spinning has stopped and `is_spinning` is the observable that says
+  when it has; `is_halted` (cancel REQUESTED) stays a distinct question from
+  `is_spinning` (a loop is RUNNING), and all four combinations are reachable.
+
+  **The acceptance is BEHAVIOURAL and the last wave's probe was not**
+  (2026-09-13). `executor_cancel.cpp` is a `static_assert` TU that delegates
+  the behaviour to `spin.rs::cancel_tests` — right about where the flag lives
+  (RFC-0019), incomplete here: the Rust test drives `Executor::spin` directly
+  while C++ reaches the loop through `nros_cpp_spin`, and no `static_assert`
+  can tell "the loop returned and the session is still open" from "the loop
+  returned because the session died", which is the exact pair W4.c exists to
+  separate. `executor_cancel_runtime.cpp` is the RUN: it links
+  `libnros_cpp.a` plus the shared C stub RMW backend, observes
+  `is_spinning()` TRUE from another thread (so "the loop ended" cannot be
+  satisfied by a loop that never started), cancels, asserts `spin()` RETURNS,
+  and then asserts the session survived — `ok()` still true, the node created
+  before the cancel still answers its name, and **a NEW node can be created on
+  the executor afterwards**, which is the cheapest question only a live
+  session can answer. It also asserts cancel is not one-shot (a second spin
+  runs and a second cancel ends it, because the flag clears on spin ENTRY).
+  Negative controls, measured: `cancel` made a no-op → 1 failure plus a FATAL;
+  `cancel` made to call `shutdown()` → 6 failures. On `just check cpp`.
+* W4.d **[wrapper]** — **LANDED.** logging: named loggers, per-logger levels,
+  throttle, sinks. C got the whole surface —
+  `nros_log_get_logger` / `nros_logger_{get_name,set_level,get_level,is_enabled}` /
+  `nros_log_add_sink` / `nros_log_throttle_admit` + the `NROS_LOG_*_THROTTLE`
+  family — each a thin forwarder onto `nros-log` (RFC-0019); the façade
+  re-exports `nros_log`, so `std::println!` is no longer the path of least
+  resistance from it (issue 0589).
+
+  **The C++ half was one accessor short until 2026-09-13**, and that was the
+  last open `gap` row in the stage: `cpp:Logger::set_level` read "A ported
+  node can raise or lower a logger in rclcpp and cannot here." It can now —
+  `rclcpp::Logger::set_level(Level)` plus the two readers C and Rust already
+  had, `get_level()` and `is_enabled()`. `Level` is upstream's nested enum and
+  its values ARE `nros_log_severity_t`'s, so the cast is an identity and there
+  is no second number line to drift. ADOPT-BOUNDED twice over: the return type
+  widens to `Result` because RFC-0018 forbids exceptions (and `Result` is
+  `NROS_NODISCARD`, so a ported `logger.set_level(x);` warns), and a `Logger`
+  with a NULL handle — built from a name alone, or from an uninitialised node
+  — is REFUSED rather than redirected. `detail::log_handle` does redirect and
+  is right to, because a RECORD with no owner belongs in the catch-all; a
+  THRESHOLD WRITE with no owner does not, since redirecting it moves the level
+  of every unnamed logger in the image while reading at the call site as if it
+  had moved the named one. That is issue 1019's third defect pointing the
+  other way, and it is the assertion a negative control measured at 2 failures.
+
+  **Acceptance, in all three languages: two nodes in ONE image log under
+  DISTINCT names.** Rust's is
+  `nros-log/tests/named_loggers_levels_and_throttle.rs`; C's is
+  `nros-c/tests/run/named_logger_levels.c` and C++'s
+  `nros-cpp/tests/compile/logger_names_and_levels_runtime.cpp`, both new here,
+  both RUNS on their `just check` lane. Runs rather than signature probes
+  because every shape of this defect compiles — three of four accessors used
+  to resolve through a lookup-only `get_logger` answering the catch-all for
+  any unregistered name, and two handles and one handle have the same TYPE.
+  Each asserts the levels through an INSTALLED SINK rather than through the
+  getter, because a `set_level`/`get_level` pair over one shared cell agrees
+  with itself while dropping the wrong records. Each also pins the SHARED
+  HELPER, which is what keeps the wrapper a wrapper: the handle
+  `nros_log_get_logger(name)` / `rclcpp::get_logger(name)` answers must be the
+  handle the NODE accessor produced, so a second table beside
+  `nros_log::resolve_logger` is a failure rather than a coincidence.
+
+  **Not in this item, and both already closed elsewhere:** the severity
+  numbering (ours was 0–5 against rcutils's 10–50) moved onto rcutils's line
+  in stage 3 with a width pin, issue 1330; and `RCLCPP_FATAL` lowering to
+  ERROR was issue 1019, closed 2026-09-11. The `_THROTTLE` family stays
+  REFUSE-LOUD in C++ for its own recorded reason (issue 1302).
+
+  **Ledger rows corrected rather than merely closed** — four of them stated
+  facts about our code that W4.d had already made false, which is issue 1022's
+  class: `c:log_levels_add_logger_setting` said `<nros/log.h>` exposes no
+  `nros_logger_set_level`; `c:logging_output_handler_t` said a C caller cannot
+  install a sink at all and that C records carry no location and no time;
+  `c:logging_configure_with_output_handler` inherited the first of those as
+  its whole reason; `c:logger_t` said we decline per-logger level maps and an
+  installable output handler. `cpp:Node::get_logger` said ours returns
+  `const void*`, which phase-427 W5 changed to `rclcpp::Logger` — and the
+  return type is the one fact that row exists to record. Three `exec.json`
+  rows said C exports no `is_spinning` reader and that the three languages
+  spell the capability three ways; W4.c settled both.
 * W4.e **[rust-first]** — guard conditions: one owner and one creation shape. The ledger already
   records this as undecided ("Nothing about no_std picks between these").
 * W4.f **[wrapper]** — **lifecycle, 15 rows, added 2026-09-13** because the
