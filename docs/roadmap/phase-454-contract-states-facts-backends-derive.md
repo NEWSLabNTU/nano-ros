@@ -640,6 +640,129 @@ that the declared-image test passes WITH `NROS_ENTITY_DECLARED_DEPTHS` and does
 not exist without it, so a cfg that was always on cannot make the lane green
 over nothing.
 
+### W11 — which roads the descriptor actually reaches, measured
+
+Every consumer D5 names reads `nros_sizing_descriptor::from_build_env()`, which
+answers `Ok(None)` unless something names a descriptor to that build. So the
+question "is any shipping image smaller?" is not a question about the consumers
+at all — it is a question about **who sets `NROS_SIZING_DESCRIPTOR`, on which
+road**. Measured on `origin/main` @ `3df569308`, 2026-09-13:
+
+| road | writes a descriptor | names it to the build | state |
+| --- | --- | --- | --- |
+| single-package cargo leaf — `nros sync` / `nros build` on a directory with `system.toml` beside a `[package]` manifest | `cmd::leaf_settings::write` → `sizing_descriptor::write_for_leaf` | the same function, as a `relative = true` `[env]` row in `build/<image>/nros-cargo.toml` | **LIVE**, and measured below |
+| workspace cargo image — `nros build` on a workspace with `[image.*]` | nobody | nobody (`cmd::build.rs` stage 4 builds its `CargoConfigSpec` with `path_env` defaulted) | **INERT** |
+| cmake — native C/C++, Zephyr west, the NuttX `ENV_OUT` lane | nobody | nobody. `nros_sizing_descriptor_read()` exists and is correct; its ONE caller is `packages/rmw/uorb/…/CMakeLists.txt`, guarded on `NROS_RMW_UORB_SIZING_DESCRIPTOR`, a cache `PATH` no in-tree configure sets | **INERT** |
+
+**The variable is not the blocker on the two inert roads; the PRODUCER is.**
+`write_for_leaf` takes a `LeafImage` and reads the leaf's `metadata/*.json`
+probe sidecars and its `generated/` bound tables. A workspace image has neither
+— its entity facts come from the resolved SystemModel
+(`EntityInventory::from_model`) and its bound inventory does not exist at all,
+which `derived_pool_env` already records in as many words (*"not derived for a
+workspace image (no leaf message-bound inventory)"*). Pointing either road at a
+path nothing writes would be worse than leaving it alone: every consumer treats
+a NAMED-but-absent descriptor as a hard build error (D6), so the wiring would
+break every C/C++ and workspace image rather than size one.
+
+So the open work is a second producer, and it carries a decision this wave did
+not take: **what a descriptor written from a model alone may CLAIM.** The
+`[image]` counts, `[target]` and the per-endpoint QoS rows are all reachable
+there; `wire_bound_bytes`, `storage_bytes` and all of `[types]` are not, and
+would be refused per field. That is D6's own shape and it is probably right —
+but a refusal that reads as a derivation is the failure mode this whole model
+exists to remove, so it wants its own wave, its own fixture and its own measured
+image rather than an extension of this note.
+
+**Measured on the live road**, `examples/native/rust/talker` (native, zenoh,
+`--release`), ordinary flow only — `nros sync`, then the retypable `cargo build
+--config build/native/nros-cargo.toml`, nothing exported by hand:
+
+| | no descriptor row | with the row `sync` writes | delta |
+| --- | --- | --- | --- |
+| `.bss + .data` | 147,074 | 146,362 | **−712** |
+| `nros_rmw_cffi::REGISTRY` | 328 | 48 | −280 |
+| `nros_rmw_cffi::NODE_TABLE` | 576 | 144 | −432 |
+| `.text` in symbols | 647,802 | 640,586 | −7,216 |
+
+which is W6.e's own pair of numbers, on a linked artifact rather than by
+arithmetic — W6.e could only measure `REGISTRY`, because its probe binary did
+not keep `NODE_TABLE` live. A leaf built with no descriptor at all is
+byte-identical (same `sha256`, full rebuild).
+
+**And the bigger half is delivered by nothing, for a reason one layer in from
+the road.** The same listener, same road, same command, with `KEEP_LAST(1)`
+written into its descriptor's one subscription row by hand:
+
+| `examples/native/rust/listener` | no descriptor | as `sync` writes it | with a declared depth |
+| --- | --- | --- | --- |
+| `.bss + .data` | 274,418 | 273,706 | **172,170** |
+| `LARGE_PAYLOADS` | 131,072 | 131,072 | **32,768** |
+| `SMALL_PAYLOADS` | 4,096 | 4,096 | **1,024** |
+| `REGISTRY` + `NODE_TABLE` | 904 | 192 | 192 |
+
+−102,248 bytes, 37 % of the image's static RAM, and W6.a's own −98,304 among
+them — reached through the shipped road, with nothing exported by hand. It does
+not fire today because **the producer on the live road fills its rows from the
+leaf's metadata PROBE, not from the contract.** A probe knows that a
+subscription exists and nothing about its QoS, so the row carries no `depth` and
+no `history`, its `topic` is the CALLBACK name (`on_chatter`, not `/chatter`),
+and `undeclared_endpoints` comes out 1 — which is the guard that switches off
+every per-endpoint consumer, `nros-node`'s `descriptor_subscriptions` included
+(D6: absence is not zero). What survives is the `[image]` counts and `[target]`,
+which is exactly the −712 above.
+
+So the gap RFC-0100 D3 names — *"the contract file is the single declaration
+surface"* — is open in both directions at once: **the road that carries
+contracts (a workspace bringup) writes no descriptor, and the road that writes
+descriptors reads no contract.** `EntityInventory::from_model` already resolves
+all four QoS policies (W1–W3) and a synced leaf already HAS a resolved model at
+`build/nros/models/<entry>/system_model.yaml`. Joining it is the fix and it is
+not mechanical: the two inventories key their rows differently (callback name vs
+endpoint ref), so "merge them" has to answer which wins per field and how a row
+is matched, and getting that wrong publishes a `depth` against the wrong
+endpoint — an UNDER-size, the one direction this phase exists to prevent. That
+decision belongs with the second producer above, in one wave, with this
+102 KiB as its acceptance.
+
+**Self-containment is what makes the delivered half work, and it is the copy-out
+that proves it**: the example copied OUT of the checkout into an unrelated directory,
+`nros sync`ed and built there, resolves the descriptor through the same
+`value = "nros/sizing/<image>.toml", relative = true` row and links the same
+48/144-byte pools. Measured base for a `--config <dir>/<sub>/x.toml`: the file's
+GRANDPARENT, `<dir>`, independent of the working directory — the same rule
+`builder::cargo_config::base_dir` already writes every other relative path
+against, re-measured here on cargo 1.98.1 because being one level off is silent.
+
+**The watch could not see a descriptor appear.** `load_for_build_script` emitted
+its `cargo::rerun-if-changed` only after an `exists()` check, so a build that ran
+before the first `nros sync` never looked at the path again — not on the
+creation, and not on a later edit. Measured through the shipped reader, with a
+build-script side effect as the signal (cargo REPLAYS a fresh unit's warnings,
+so counting warnings reports every build as a run):
+
+| build | watch after `exists()` | watch either way |
+| --- | --- | --- |
+| 1, descriptor absent, cold | RAN | RAN |
+| 2, descriptor absent | fresh | RAN |
+| 3, `nros sync` **writes** it | **fresh** | **RAN** |
+| 4, unchanged | fresh | fresh |
+| 5, descriptor **edited** | **fresh** | **RAN** |
+
+The issue-0490 dirt the check was avoiding is real and is bounded by exactly the
+state that wants re-checking: column 2 re-runs while the descriptor is absent and
+goes quiet on the build after it appears. The cmake side had already made this
+call in the other direction and said why — *"Registered BEFORE the existence
+check, deliberately … so a build that has no descriptor today picks one up on the
+sync that creates it"* — so the two roads now answer the same way.
+
+Reach, stated rather than implied: every in-tree consumer PANICS on a
+named-but-absent descriptor, so on those the fix changes a failing build into a
+failing build. What it repairs is the CONTRACT — a consumer that keeps its
+defaults on `Missing` (which is what `nros_sizing_descriptor_read()` does on the
+cmake road, and what the second producer above will want) now gets the creation
+edge instead of silently sizing from its literals forever.
+
 ## Acceptance for the phase
 
 Not "it builds". One correctness result and three measured recoveries, each on a

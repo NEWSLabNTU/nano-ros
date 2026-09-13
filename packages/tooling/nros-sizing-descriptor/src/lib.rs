@@ -190,17 +190,57 @@ pub fn read(path: &Path) -> Result<SizingDescriptor, DescriptorError> {
 /// Read one from a build script, with the rebuild edge acceptance asks for.
 ///
 /// Emits `cargo::rerun-if-changed=<path>` for the file's CONTENT, which is the
-/// whole point of a file transport — and does so only when the file EXISTS,
-/// because a trigger on an absent path leaves the unit permanently dirty (issue
-/// 0490 and `scripts/check-build-rs-rerun-paths.py`). A path that was named and
-/// is not there is an error rather than a silent skip: somebody pointed the build
-/// at a descriptor, and "it wasn't there so I used my defaults" is the shape D6
-/// exists to forbid.
+/// whole point of a file transport — **whether or not the file is there yet**,
+/// because CREATION is the edge that matters: the first `nros sync` after a
+/// build is what turns an image's defaults into its declaration, and a watch
+/// that only names paths that already exist cannot see it.
+///
+/// An earlier version of this function emitted the line only after an
+/// `exists()` check, citing issue 0490's permanently-dirty unit. Both halves of
+/// that were measured on cargo 1.98.1, against a build script emitting this one
+/// line, with a side effect as the signal (a `cargo::warning` is REPLAYED for a
+/// fresh unit, so counting warnings measures nothing):
+///
+/// | build | watch after `exists()` | watch either way |
+/// | --- | --- | --- |
+/// | 1, descriptor absent, cold | RAN | RAN |
+/// | 2, descriptor absent | fresh | RAN |
+/// | 3, descriptor **created** | **fresh** | **RAN** |
+/// | 4, descriptor present, unchanged | fresh | fresh |
+/// | 5, descriptor **edited** | **fresh** | **RAN** |
+///
+/// So the old shape did not merely miss the creation — it never looked at the
+/// file again at all, and a later EDIT was invisible too. And the dirt the
+/// check was avoiding is bounded exactly by the state that wants re-checking:
+/// column 2 re-runs while the descriptor is absent and goes quiet on the build
+/// after it appears. `scripts/check-build-rs-rerun-paths.py` polices STATIC
+/// literal paths in a `build.rs`, which this is not — it is the path a road
+/// pointed this build at, and naming it is how the road's own artifact gets an
+/// edge.
+///
+/// A path that was named and is not there is still an error rather than a silent
+/// skip: somebody pointed the build at a descriptor, and "it wasn't there so I
+/// used my defaults" is the shape D6 exists to forbid. The watch is emitted
+/// first so that the answer survives the refusal — it is a statement about the
+/// PATH, not about the file that may or may not be at it.
 pub fn load_for_build_script(path: &Path) -> Result<SizingDescriptor, DescriptorError> {
-    if !path.exists() {
-        return Err(DescriptorError::Missing(path.to_path_buf()));
-    }
-    println!("cargo::rerun-if-changed={}", path.display());
+    load_for_build_script_emitting(path, &mut |line| println!("{line}"))
+}
+
+/// [`load_for_build_script`] with the cargo directives handed to `emit`.
+///
+/// Split out so a test can assert that a MISSING descriptor is watched anyway —
+/// the ordering above is the whole of this function, and an ordering nothing
+/// exercises is an ordering that gets re-swapped by the next reader of issue
+/// 0490. Printing to stdout is not observable from a unit test; a closure is.
+fn load_for_build_script_emitting(
+    path: &Path,
+    emit: &mut dyn FnMut(&str),
+) -> Result<SizingDescriptor, DescriptorError> {
+    emit(&format!("cargo::rerun-if-changed={}", path.display()));
+    // No `exists()` guard: `read` already reports a NotFound as
+    // `Missing`, so a second probe would only add a window in which the
+    // answer changes between the two.
     read(path)
 }
 
@@ -457,6 +497,45 @@ mod tests {
         std::fs::write(&p, "schema_version = ").unwrap();
         let err = read(&p).unwrap_err();
         assert!(!err.is_missing(), "{err}");
+    }
+
+    /// The watch names the path, not the file that may be at it.
+    ///
+    /// A descriptor that does not exist yet is the state a build is in BEFORE
+    /// the first `nros sync`, and the sync that creates one has to be able to
+    /// re-run this unit. Measured on cargo 1.98.1: with the watch emitted only
+    /// for a file that already existed, neither the creation nor a later edit
+    /// re-ran the script — see `load_for_build_script`'s table.
+    #[test]
+    fn a_descriptor_that_does_not_exist_yet_is_watched_anyway() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = descriptor_path(&dir.path().join("build"), "nobody");
+        let mut lines: Vec<String> = Vec::new();
+        let err = load_for_build_script_emitting(&p, &mut |l| lines.push(l.to_string()))
+            .expect_err("nothing is there");
+
+        assert!(err.is_missing(), "{err}");
+        assert_eq!(
+            lines,
+            [format!("cargo::rerun-if-changed={}", p.display())],
+            "the creation edge is the whole reason this is a file"
+        );
+    }
+
+    /// And exactly once for one that IS there — a second line would be
+    /// harmless to cargo and a sign the two roads had been written twice.
+    #[test]
+    fn a_descriptor_that_exists_is_watched_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = descriptor_path(&dir.path().join("build"), "talker");
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, render(&island())).unwrap();
+
+        let mut lines: Vec<String> = Vec::new();
+        let desc = load_for_build_script_emitting(&p, &mut |l| lines.push(l.to_string())).unwrap();
+
+        assert_eq!(desc.meta.entry, "talker");
+        assert_eq!(lines, [format!("cargo::rerun-if-changed={}", p.display())]);
     }
 
     #[test]
