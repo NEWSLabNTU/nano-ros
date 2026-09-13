@@ -137,7 +137,7 @@ fn get_system_time_ns() -> i64 {
 }
 
 /// Get steady (monotonic) time in nanoseconds.
-fn get_steady_time_ns() -> u64 {
+pub(crate) fn get_steady_time_ns() -> u64 {
     platform::get_time_ns()
 }
 

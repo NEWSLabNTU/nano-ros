@@ -85,7 +85,7 @@ int main(void) {
      * mismatch C only warns about, so the assignment is to a FUNCTION POINTER,
      * where the types must match exactly. */
     nros_ret_t (*p_until)(const struct nros_timer_t*, int64_t*) =
-        nros_timer_get_time_until_next_call;
+        rcl_timer_get_time_until_next_call;
 
     /* --- nros_difference_times: Time - Time -> Duration ------------------ */
 

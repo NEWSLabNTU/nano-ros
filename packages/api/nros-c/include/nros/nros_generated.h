@@ -8032,8 +8032,8 @@ NROS_PUBLIC uint64_t nros_timer_get_period(const struct nros_timer_t *timer);
  * * `time_until_next_call_ns` must be NULL or writable.
  */
 NROS_PUBLIC
-nros_ret_t nros_timer_get_time_until_next_call(const struct nros_timer_t *timer,
-                                               int64_t *time_until_next_call_ns);
+nros_ret_t rcl_timer_get_time_until_next_call(const struct nros_timer_t *timer,
+                                              int64_t *time_until_next_call_ns);
 
 /**
  * Has this timer been cancelled?
@@ -8118,6 +8118,119 @@ NROS_PUBLIC nros_ret_t rcl_timer_is_ready(const struct nros_timer_t *timer, bool
 NROS_PUBLIC
 nros_ret_t nros_timer_get_time_since_last_call(const struct nros_timer_t *timer,
                                                uint64_t *time_since_last_call_ns);
+
+/**
+ * Swap this timer's period, reporting the one it had. **Nanoseconds.**
+ *
+ * rcl's `rcl_timer_exchange_period(const rcl_timer_t *, int64_t new_period,
+ * int64_t *old_period)`, at rcl's arity and in rcl's order. Gap
+ * `c:timer_exchange_period` recorded that a node whose rate is a parameter had
+ * to destroy and recreate its timer, because neither C nor Rust could change
+ * one in place.
+ *
+ * Writes BOTH copies of the period, which is the whole reason this is not a
+ * one-line setter:
+ *
+ * * the arena's `TimerHeader::period_us`, when the timer is registered — the
+ *   number `arena::timer_try_process` compares `elapsed_us` against, so this
+ *   is the period the dispatcher will honour on its next pass;
+ * * `nros_timer_t::period_ns` always — the registration INPUT
+ *   `rclc_executor_add_timer` re-reads, and what `nros_timer_get_period`
+ *   returns. Leaving it stale would make the getter disagree with the
+ *   dispatcher, which is the "compiles and differs" RFC-0089 exists to stop.
+ *
+ * **`old_period` is the exact nanosecond value last supplied**, not the
+ * microsecond-quantised one the arena holds: the struct's copy is written
+ * unquantised by `nros_timer_init` and by this function, so a caller reading
+ * back what it wrote gets what it wrote. The DISPATCHER's resolution is still
+ * microseconds (issue #505), so a period below 1 µs schedules as 0 — the same
+ * quantisation `nros_timer_init` has always applied, surfaced here rather than
+ * introduced.
+ *
+ * **The elapsed count is NOT rewound**, which is rcl's behaviour: upstream
+ * exchanges the period and touches nothing else. A timer shortened below its
+ * accumulated elapsed time is ready immediately; one lengthened past it waits
+ * longer. Call `rcl_timer_reset` after if the new period should start fresh.
+ *
+ * ## Why `const` on a function that writes
+ *
+ * rcl's signature is `const rcl_timer_t *` and it mutates through
+ * `timer->impl`, so a ported call site passes a handle it holds by value and
+ * expects the write. Ours has no `impl` indirection, so the write is through a
+ * cast. That is sound for every reachable timer: `nros_timer_init` takes
+ * `struct nros_timer_t *`, so no timer that was ever initialised is a
+ * `const`-defined object. Taking a non-`const` parameter instead would have
+ * been a silent divergence for exactly the ported callers that hold a
+ * `const rcl_timer_t *`, and C reports that as a warning.
+ *
+ * # Returns
+ * * `NROS_RET_OK` with `*old_period` written and the new period in force
+ * * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL, or `new_period` is
+ *   not positive — `nros_timer_init` refuses a zero period, and a setter that
+ *   accepted one would leave the timer in a state its own constructor forbids
+ * * `NROS_RET_NOT_INIT` if the timer is uninitialised or finalised, or is
+ *   registered with an executor that no longer knows the handle
+ *
+ * # Safety
+ * * `timer` must be NULL or point to a valid, non-`const`-defined
+ *   `nros_timer_t`.
+ * * `old_period` must be NULL or writable.
+ */
+NROS_PUBLIC
+nros_ret_t rcl_timer_exchange_period(const struct nros_timer_t *timer,
+                                     int64_t new_period,
+                                     int64_t *old_period);
+
+/**
+ * When this timer next fires, as a point on the clock it is scheduled against.
+ *
+ * rcl's `rcl_timer_get_next_call_time(const rcl_timer_t *, int64_t *)`. Gap
+ * `c:timer_get_next_call_time` recorded C as lacking it; the row's `why` said
+ * "Rust has it (`Timer::time_until_next_call`)", which named the RELATIVE
+ * sibling — upstream ships both, and `rcl_timer_get_time_until_next_call`
+ * (phase-417 stage 3) is the relative one. This is the absolute one, and it is
+ * `now + remaining` over the SAME derivation, so the pair cannot disagree.
+ *
+ * ## Which clock "now" is read from
+ *
+ * The timer's own, which is the property that makes the answer comparable
+ * with anything else the caller timestamps:
+ *
+ * * a timer created by `nros_timer_init_on_clock` carries an
+ *   `nros_clock_t *`, and that clock is read — so a `NROS_CLOCK_ROS_TIME`
+ *   timer answers on `/clock`'s timeline and stops advancing when the
+ *   playback does, exactly as its dispatch does;
+ * * a timer created by `nros_timer_init` is the WALL timer (rclcpp's
+ *   `create_wall_timer`) and carries no clock handle. Its answer is on the
+ *   platform STEADY clock — the same monotonic source whose spin deltas
+ *   advance the arena's `elapsed_us`, so it is the timeline the timer is
+ *   actually scheduled on rather than a wall-clock approximation of it.
+ *
+ * **Divergence from rcl, inherited from the sibling accessors:** the arena's
+ * timer accounting is MICROSECOND-based (issue #505), so the remaining half of
+ * this sum has microsecond resolution. The clock read does not.
+ *
+ * `RCL_RET_TIMER_INVALID` and `RCL_RET_TIMER_CANCELED` have no counterpart in
+ * `nros_ret_t` (`<nros/rcl_compat.h>` declines to map them), so those and "not
+ * registered with an executor" all arrive as `NROS_RET_NOT_INIT`.
+ *
+ * # Returns
+ * * `NROS_RET_OK` with `*next_call_time` written
+ * * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+ * * `NROS_RET_NOT_INIT` if the timer is uninitialised, finalised, or not
+ *   registered with an executor — nothing is advancing its clock, so it has no
+ *   next call rather than a next call of zero
+ * * whatever `nros_clock_get_now_ns` reports for a timer whose attached clock
+ *   is not readable
+ *
+ * # Safety
+ * * `timer` must be NULL or point to a valid `nros_timer_t`.
+ * * `next_call_time` must be NULL or writable.
+ * * A non-NULL `timer->clock` must still point to a live `nros_clock_t`.
+ */
+NROS_PUBLIC
+nros_ret_t rcl_timer_get_next_call_time(const struct nros_timer_t *timer,
+                                        int64_t *next_call_time);
 
 #ifdef __cplusplus
 }  // extern "C"
