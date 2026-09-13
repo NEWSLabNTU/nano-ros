@@ -326,6 +326,52 @@ mod tests {
     use super::*;
     use nros_node::{QoSDurabilityPolicy, QoSReliabilityPolicy};
 
+    /// phase-417 W5.d — the premises the rclc `_best_effort` presets in
+    /// `<nros/{publisher,subscription,service,client}.h>` are built on.
+    ///
+    /// Those forwarders are `static inline`, so nothing in the Rust test suite
+    /// can call them; what IS testable is the relationship between the three
+    /// exported profiles they choose between, and that relationship is the part
+    /// a reader gets wrong. rclc does NOT build one best-effort profile and use
+    /// it everywhere (`rclc/src/rclc/{publisher,subscription,service,client}.c`
+    /// @ `10eadcc`):
+    ///
+    /// * pub/sub `_best_effort` passes `rmw_qos_profile_sensor_data`, whose
+    ///   DEPTH is 5 — not "the default with reliability flipped";
+    /// * service/client `_best_effort` copies
+    ///   `rmw_qos_profile_services_default` and flips one field, so its depth
+    ///   stays 10.
+    ///
+    /// A later "simplification" of the service preset onto
+    /// `NROS_QOS_SENSOR_DATA` would compile, ship, and quietly cut a service's
+    /// queue depth in half. This is what stands between that and the tree.
+    #[test]
+    fn the_rclc_best_effort_presets_choose_between_two_different_profiles() {
+        assert_eq!(
+            NROS_QOS_SENSOR_DATA.reliability,
+            nros_qos_reliability_t::NROS_QOS_RELIABILITY_BEST_EFFORT,
+        );
+        assert_ne!(
+            NROS_QOS_SENSOR_DATA.depth, NROS_QOS_DEFAULT.depth,
+            "the pub/sub preset is the SENSOR profile, not the default with \
+             reliability flipped -- the depth is the difference",
+        );
+        assert_eq!(NROS_QOS_SENSOR_DATA.depth, 5);
+
+        // The service preset's base. `nros_qos_services_best_effort()` copies
+        // this and flips reliability, and the reliable sibling
+        // `rclc_service_init_default` reaches NROS_QOS_DEFAULT by passing a
+        // NULL qos -- so the pair differs in exactly one field only while these
+        // two agree on the rest, which is the claim the headers make.
+        assert_eq!(
+            NROS_QOS_SERVICES.reliability,
+            nros_qos_reliability_t::NROS_QOS_RELIABILITY_RELIABLE,
+        );
+        assert_eq!(NROS_QOS_SERVICES.depth, NROS_QOS_DEFAULT.depth);
+        assert_eq!(NROS_QOS_SERVICES.durability, NROS_QOS_DEFAULT.durability);
+        assert_eq!(NROS_QOS_SERVICES.history, NROS_QOS_DEFAULT.history);
+    }
+
     #[test]
     fn apply_qos_overrides_matches_topic_and_role() {
         // best_effort reliability on /chatter for the publisher role.

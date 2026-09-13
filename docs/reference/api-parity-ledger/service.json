@@ -26,10 +26,6 @@
     "disposition": "absent",
     "why": "rcl's pimpl; our handles carry their state inline. See `c:publisher_impl_t`."
   },
-  "c:client_init_best_effort": {
-    "verdict": "divergence",
-    "why": "rclc ships an entry point per QoS preset; ours takes a QoS value. See `c:publisher_init_best_effort`."
-  },
   "c:client_init_default": {
     "verdict": "declined",
     "disposition": "adopt-bounded",
@@ -188,10 +184,6 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "rcl's pimpl; our handles carry their state inline. See `c:publisher_impl_t`."
-  },
-  "c:service_init_best_effort": {
-    "verdict": "divergence",
-    "why": "see `c:client_init_best_effort`."
   },
   "c:service_init_default": {
     "verdict": "declined",
@@ -1275,5 +1267,10 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "phase-428 Q1 (2026-09-06) -- `rcl_service_init(service, node, type_support, service_name, options)`. No symbol answers to this key. The six-argument `nros_service_init` (callback and context in positions 5 and 6) was retired at phase-417 stage 6 step B (`packages/api/nros-c/src/service.rs:303-322`): the callback moved to registration, where rclc puts it (`nros_executor_add_service_raw` <-> `rclc_executor_add_service`). What remains is `rclc_service_init_default` at rclc's arity (`c:service_init_default`, adopt-bounded on the typesupport type) and `nros_service_init_with_qos` / `_with_options` / `_polling` (`packages/api/nros-c/include/nros/nros_generated.h:6194`, `:6246`, `:6293`) for the options-shaped and RFC-0022 polling forms.\n\nABSENT, not adopt-bounded: see `c:node_init` for why the label is the rcl-layer name's, not the rclc-layer name's."
+  },
+  "c:qos_services_best_effort": {
+    "verdict": "extension",
+    "disposition": "adopt",
+    "why": "phase-417 W5.d. The QoS rclc's `rclc_service_init_best_effort` and `rclc_client_init_best_effort` build INLINE: both copy `rmw_qos_profile_services_default` and flip `reliability` to BEST_EFFORT (`rclc/src/rclc/{service,client}.c` @ `10eadcc`). ROS 2 gives that value no name -- there is no `rmw_qos_profile_services_best_effort` -- so the two nano-ros presets that need it would otherwise each restate it, which is issue 0160's hand-mirror class at header scale. A `static inline` returning by value in <nros/service.h>: no exported symbol, no writable data, and a caller needs a mutable copy to take the address of. Ours-only because the NAME is ours; the VALUE is upstream's, and `qos::tests::the_rclc_best_effort_presets_choose_between_two_different_profiles` pins the premise a reader gets wrong -- the depth stays 10 here, where the pub/sub `_best_effort` presets drop to the sensor profile's 5."
   }
 }

@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 4;
+pub const NROS_CODEGEN_VERSION: u32 = 5;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -79,6 +79,25 @@ pub const NROS_CODEGEN_VERSION: u32 = 4;
 /// demanded declaration and should stay that way: it cannot know that two
 /// spellings are one type, and a gate that tried to would be one that misses a
 /// real rename.
+///
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 5 (phase-417 W5.b/c/d). That
+/// move is ADDITIVE and, in most of its entries, is not a change to the runtime
+/// at all: the rclc preset constructors landed as `static inline` forwarders in
+/// `<nros/{publisher,subscription,service,client,action}.h>`, and naming a type
+/// inside one of those headers is what puts a `c|type|<header>|<name>` row in
+/// the extracted surface — `nros_message_type_t`, `nros_node_t`,
+/// `nros_service_type_t` and `nros_action_type_t` were already declared in
+/// `nros_generated.h` and still are, reached the same way. The one genuinely
+/// new declaration a demanded name resolves to is
+/// `nros_service_init_with_qos`, which is an entry point that already existed
+/// and is now also visible from `<nros/service.h>`. Nothing a version-4 tree
+/// names was withdrawn, so this is the window the doc above describes rather
+/// than a migration.
+///
+/// The version moves anyway for the reason the version-4 paragraph gives: the
+/// gate is fail-closed on the TEXT of a demanded declaration and should stay
+/// that way. A gate that tried to decide which additions are "really" runtime
+/// changes is one that misses a real withdrawal.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

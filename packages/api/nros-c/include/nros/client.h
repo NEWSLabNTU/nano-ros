@@ -36,5 +36,34 @@
  * This per-module header is kept as a thin shim so existing code that
  * does `#include <nros/client.h>` continues to compile. */
 #include "nros/types.h"
+/* phase-417 W5.d — `nros_qos_services_best_effort()`, the profile rclc's
+ * service AND client `_best_effort` presets share. One definition, in the
+ * service header both halves of the request/response pair already belong to
+ * (`@ingroup grp_service` above). */
+#include "nros/service.h"
+
+/**
+ * @brief rclc's best-effort preset constructor for a service client.
+ *
+ * phase-417 W5.d; the client-side sibling of rclc_service_init_best_effort(),
+ * sharing its profile through nros_qos_services_best_effort() so the two
+ * cannot drift — rclc's `client.c` and `service.c` build the same value the
+ * same way, and one place to read it here is what keeps that true.
+ *
+ * `static inline`: no symbol, no writable data.
+ *
+ * @param[out] client       Zero-initialised client to fill in.
+ * @param[in]  node         An initialised node.
+ * @param[in]  type_info    Generated service type descriptor.
+ * @param[in]  service_name Service name, null-terminated.
+ * @return Whatever nros_client_init_with_qos() returns.
+ */
+static inline nros_ret_t rclc_client_init_best_effort(struct nros_client_t* client,
+                                                      const struct nros_node_t* node,
+                                                      const struct nros_service_type_t* type_info,
+                                                      const char* service_name) {
+    struct nros_qos_t qos = nros_qos_services_best_effort();
+    return nros_client_init_with_qos(client, node, type_info, service_name, &qos);
+}
 
 #endif /* NROS_CLIENT_H */
