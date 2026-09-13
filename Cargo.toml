@@ -29,6 +29,8 @@ members = [
     # `reference-mps2` back-edge (a package cycle) was removed.
     "packages/platform/nros-baremetal-common",
     "packages/boards/nros-board-freertos",
+    "packages/boards/nros-board-threadx",
+    "packages/boards/nros-board-nuttx",
     "packages/core/nros-node",
     "packages/core/nros-executor-layout",
     "packages/core/nros-log",
