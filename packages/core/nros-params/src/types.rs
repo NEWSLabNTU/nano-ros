@@ -467,16 +467,18 @@ pub struct ParameterDescriptor {
     /// Free-text extra constraints — `rcl_interfaces/msg/ParameterDescriptor`'s
     /// `additional_constraints`, which `ros2 param describe` prints.
     ///
-    /// phase-417 W4.a — it shares `NROS_MAX_PARAM_DESCRIPTION_LEN` with
-    /// [`description`](Self::description) rather than taking a knob of its
-    /// own. Both are code-supplied descriptor prose, both are bounded by the
-    /// same 256-byte `rcl_interfaces` string the describe reply can carry,
-    /// and a second knob would be a second answer to one question — an image
-    /// that says "no descriptor text" must not have to say it twice. Write it
+    /// phase-417 W4.a — its own capacity, `NROS_MAX_PARAM_CONSTRAINTS_LEN`,
+    /// **default 0**. Sharing the description's knob was the first shape and
+    /// the derived service buffer measured it wrong: the describe reply's
+    /// bound is a worst case over CAPACITY, not over use, so every image would
+    /// have paid 256 bytes per parameter for a field it never sets — 2,048
+    /// bytes on the eight-parameter island, taking its reply past the 4,096
+    /// fallback. An image that wants constraint text states the knob. Write it
     /// with [`Self::set_additional_constraints`], which truncates at a
     /// character boundary and records the truncation exactly as the
-    /// description does.
-    pub additional_constraints: String<MAX_PARAM_DESCRIPTION_LEN>,
+    /// description does, so a value that does not fit is reported rather than
+    /// dropped in silence.
+    pub additional_constraints: String<MAX_PARAM_CONSTRAINTS_LEN>,
     /// Whether the parameter is read-only
     pub read_only: bool,
     /// Whether the parameter type can change dynamically

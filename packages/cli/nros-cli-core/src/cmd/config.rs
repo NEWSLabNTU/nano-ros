@@ -366,6 +366,11 @@ fn explain(args: ExplainArgs) -> Result<()> {
         ("max_array_len", 32),
         ("max_byte_array_len", 256),
         ("max_param_description_len", 256),
+        // phase-417 W4.a -- the descriptor's `additional_constraints`. DEFAULT
+        // 0, unlike its sibling: the field is new, so there is no old
+        // effective value to keep, and the describe reply's derived bound
+        // prices capacity rather than use.
+        ("max_param_constraints_len", 0),
     ];
     for (name, r) in tree
         .resolve_params(

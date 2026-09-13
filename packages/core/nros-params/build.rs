@@ -85,6 +85,32 @@ fn main() {
         256,
     );
 
+    // phase-417 W4.a -- the descriptor's OTHER free text,
+    // `rcl_interfaces/msg/ParameterDescriptor::additional_constraints`, which
+    // `ros2 param describe` prints and rclc's
+    // `rclc_add_parameter_description` takes as its fourth argument.
+    //
+    // ITS OWN CAPACITY, DEFAULT 0, and the default is the decision. Sharing
+    // `NROS_MAX_PARAM_DESCRIPTION_LEN` was the first shape and it was wrong in
+    // a way only the derived service buffer showed: the describe reply's bound
+    // is a worst case over CAPACITY, not over use, so every image would have
+    // paid 256 bytes per parameter for a field it never sets -- 2,048 bytes on
+    // the eight-parameter island in `parameter_services.rs`, taking its derived
+    // reply from 2,741 to 4,789 and past the 4,096 fallback. Nothing is
+    // derived here for the same reason F2 derives nothing for the description:
+    // the contract states a parameter's name and type, and descriptor prose is
+    // code-supplied, so a board STATES it and 0 is the legitimate statement
+    // meaning "no constraint text". A too-long value is truncated and REPORTED
+    // (`ParameterServer::take_truncated_descriptions`), never dropped in
+    // silence, so an image that states nothing and passes constraints anyway
+    // gets a log line rather than a mystery.
+    let max_param_constraints_len = knob(
+        "NROS_MAX_PARAM_CONSTRAINTS_LEN",
+        rungs.max_param_constraints_len,
+        None,
+        0,
+    );
+
     let contents = format!(
         "/// Maximum number of parameters the server can store \
          (set via NROS_MAX_PARAMETERS, default 32).\n\
@@ -109,7 +135,12 @@ fn main() {
          /// Maximum length for a parameter description, in bytes \
          (set via NROS_MAX_PARAM_DESCRIPTION_LEN, default 256; 0 = no \
          descriptions). phase-446 F2.\n\
-         pub const MAX_PARAM_DESCRIPTION_LEN: usize = {max_param_description_len};\n"
+         pub const MAX_PARAM_DESCRIPTION_LEN: usize = {max_param_description_len};\n\
+         \n\
+         /// Maximum length for a parameter's `additional_constraints`, in \
+         bytes (set via NROS_MAX_PARAM_CONSTRAINTS_LEN, default 0 = no \
+         constraint text). phase-417 W4.a.\n\
+         pub const MAX_PARAM_CONSTRAINTS_LEN: usize = {max_param_constraints_len};\n"
     );
 
     std::fs::write(Path::new(&out_dir).join("nros_params_config.rs"), contents).unwrap();

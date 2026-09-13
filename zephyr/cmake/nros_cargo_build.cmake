@@ -1097,6 +1097,11 @@ function(nros_resolve_knobs)
     # NROS_PARAM_SERVICE_BUFFER_SIZE: Kconfig states it, the environment wins.
     _nros_resolve_knob(NROS_MAX_PARAM_DESCRIPTION_LEN
         "${CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN}")
+    # phase-417 W4.a -- the descriptor's OTHER free text, its own knob and the
+    # same ladder. Default 0; see the Kconfig help for why it is not the
+    # description's knob.
+    _nros_resolve_knob(NROS_MAX_PARAM_CONSTRAINTS_LEN
+        "${CONFIG_NROS_MAX_PARAM_CONSTRAINTS_LEN}")
     # phase-446 F3 -- the parameter services' declaration shape, for
     # nros-node's build script (see NROS_PARAM_SERVICE_BUFFER_SIZE above).
     if(DEFINED NROS_PARAM_SERVICE_SHAPE)
