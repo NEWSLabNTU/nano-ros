@@ -298,13 +298,27 @@ D9 rules out as a `SLOTS` source anyway; it is REQUIRED, and D1 says why.
 
 A cargo consumer gets a real `rerun-if-changed` edge on this path —
 `nros_sizing_descriptor::load_for_build_script` emits it, on the file's CONTENT
-and never on the variable that names it (issue 0491). A cmake consumer reads it
-through `nros_sizing_descriptor_read()` in `cmake/NanoRosSizingDescriptor.cmake`,
-which registers BOTH the descriptor and the CLI in `CMAKE_CONFIGURE_DEPENDS`
-(issue 1018's rule — `execute_process()` has already run by the time ninja
-decides anything, so that list is the only thing that makes the emitted fragment
-fresh). The descriptor is registered even when it does not exist yet, so the
-first `nros sync` after a configure is what re-triggers one.
+and never on the variable that names it (issue 0491), and **on the path whether
+or not a file is there yet**, because CREATION is the edge that matters: the
+first `nros sync` is what turns an image's defaults into its declaration.
+Measured on cargo 1.98.1 — a watch emitted only for a file that already existed
+saw neither the creation nor a later edit (phase-454 W11 carries the table). A
+cmake consumer reads it through `nros_sizing_descriptor_read()` in
+`cmake/NanoRosSizingDescriptor.cmake`, which registers BOTH the descriptor and
+the CLI in `CMAKE_CONFIGURE_DEPENDS` (issue 1018's rule — `execute_process()` has
+already run by the time ninja decides anything, so that list is the only thing
+that makes the emitted fragment fresh). The descriptor is registered even when it
+does not exist yet, so the first `nros sync` after a configure is what re-triggers
+one; the cargo side answers the same way for the same reason.
+
+**A consumer reading it is not a road delivering it.** `from_build_env()` answers
+`Ok(None)` unless something names a descriptor to that build, and as of
+2026-09-13 exactly one road does: `cmd::leaf_settings::write` on a
+single-package cargo leaf, as a `relative = true` `[env]` row (the path is
+relative because the descriptor lives INSIDE the leaf and a package must stay
+self-contained — proved by copy-out, not by reading). A workspace cargo image and
+every cmake road write no descriptor at all, so every derivation in D5 is inert
+there. The open work, and the decision it carries, is phase-454 W11.
 
 **The descriptor carries no absolute path** — issue 0320's rule. Two checkouts of
 one tree at different paths render byte-identical bytes, which is what keeps
