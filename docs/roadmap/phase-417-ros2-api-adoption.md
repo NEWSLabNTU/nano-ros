@@ -671,14 +671,113 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
   will be "a direct six-argument alias", which it cannot be: ours carries the
   deserialiser, so the forwarder is seven arguments and only codegen collapses
   it.
-* W5.b **[wrapper]** — `<nros/rcl_compat.h>` mapping `RCL_RET_*` onto ours. `nros_ret_t`'s
-  own doc says "Compatible with `rcl_ret_t` for familiarity"
-  (`nros_generated.h:840`) and only `OK` agrees: ours are −1/−2/−3/−7, rcl's
-  are 1/2/11/101. Map, do not renumber.
-* W5.c **[wrapper]** — the node and timer accessors filed as `gap`, all thin forwarders over
-  state the executor already holds.
-* W5.d **[wrapper]** — rclc-shaped preset constructors as `static inline` forwarders; rodata
-  only, retires ~18 declined rows.
+* W5.b **[wrapper]** — **LANDED, and it had already landed once: this item was
+  written as if it were open for nine days after its own fix shipped.**
+  `<nros/rcl_compat.h>` maps `RCL_RET_*` onto ours — both `RMW_RET_*` and
+  `RCL_RET_*` spellings, six codes, with the two drift guards that make the
+  mapping hold: `(a)` six `_Static_assert`s pinning ours to the literals they
+  have, so a renumbering fails at the header rather than at a consumer that
+  stored the old value, and `(b)` five asserting we did NOT take rcl's values,
+  which is the mutation RFC-0089 names as forbidden. Held by
+  `tests/compile/rcl_compat_aliases.c` (the mapping is INJECTIVE — a `switch`
+  over the labels, where C makes a duplicate case a hard error) and
+  `rcl_compat_collision_probe.c` (a TU holding the real `<rcl/types.h>` too is
+  REFUSED, not silently resolved to one of two numberings).
+  The item's own premise is also fixed: `nros_ret_t`'s doc comment said
+  "Compatible with `rcl_ret_t` for familiarity" and now leads with "NOT
+  value-compatible with `rcl_ret_t` — only `OK` (0) agrees", carrying the table.
+  W5.d's pass corrected the header's stale self-description (it still described
+  that comment as wrong in the present tense, citing a line number the generated
+  header had moved past) and took one NAME stage 6 had left behind —
+  `nros_timer_get_time_until_next_call` is `rcl_timer_get_time_until_next_call`,
+  no forwarder, because it already had rcl's exact signature and the bullet
+  recording that the rename was owed had sat in §4 since stage 6.
+  **BREAKING for C callers of the old spelling.**
+  Ledger rows retired: 0 — a value mapping has no correspondent to ledger; its
+  acceptance is the two probes.
+* W5.c **[wrapper]** — **LANDED.** The node accessors and four of the six timer
+  accessors landed in earlier waves (`rcl_node_is_valid`,
+  `nros_node_get_domain_id`, `nros_node_get_fully_qualified_name`,
+  `nros_node_resolve_name`, `rcl_timer_is_canceled`, `rcl_timer_is_ready`,
+  `nros_timer_get_time_since_last_call`, `rcl_timer_get_time_until_next_call`).
+  W5.c's remaining two are now in, as the same forward onto the arena's
+  `TimerHeader` through the `(handle_id, _executor)` pair
+  `rclc_executor_add_timer` installs:
+  * `rcl_timer_exchange_period(const timer *, int64_t new_period,
+    int64_t *old_period)` — rcl's spelling, arity and order. Writes BOTH copies
+    of the period: the arena's `period_us`, which is what
+    `arena::timer_try_process` compares `elapsed_us` against, and
+    `nros_timer_t::period_ns`, which is the registration input and what
+    `nros_timer_get_period` reports — leaving the second stale would have made
+    the getter disagree with the dispatcher. `elapsed_us` is NOT rewound, which
+    is rcl's own behaviour, so a period lowered below the elapsed count fires at
+    once. Rust half: `Executor::exchange_timer_period_us`.
+  * `rcl_timer_get_next_call_time(const timer *, int64_t *)` — the ABSOLUTE
+    point, on the clock the timer is scheduled against: its `nros_clock_t *` for
+    a `nros_timer_init_on_clock` timer, the platform steady clock for the wall
+    timer `nros_timer_init` creates. Computed as `now + remaining` over the SAME
+    derivation its relative sibling uses (`time_until_next_call_ns_of`), because
+    two derivations of one answer is how the pair would come to disagree.
+  The one node row left as `gap` is `c:node_get_graph_guard_condition`, which is
+  NOT a thin forwarder over executor state — it is the graph family, and the
+  vtable slot is `None` in every backend.
+  **Ledger rows retired: 2** (`c:timer_exchange_period`,
+  `c:timer_get_next_call_time`); one row added
+  (`rust:Executor::exchange_timer_period_us`, `divergence` — the arena owns
+  timer state, so it sits on the executor where rclrs puts it on `Timer`).
+* W5.d **[wrapper]** — **LANDED, and the "~18 declined rows" estimate was spent
+  by stage 6 rather than by this item.** Five of the six `_init_default`
+  constructors became NATIVE entry points at stage 6
+  (`rclc_node_init_default`, `rclc_publisher_init_default`,
+  `rclc_subscription_init_default`, `rclc_service_init_default`,
+  `rclc_client_init_default`), so by the time W5.d ran the theirs-only preset
+  set was SIX, not eighteen. Five adopted as `static inline` forwarders in the
+  per-module headers — the shape `nros_difference_times` in `<nros/timer.h>`
+  already had, so no symbol and no writable data:
+  * `rclc_publisher_init_best_effort` / `rclc_subscription_init_best_effort` →
+    `NROS_QOS_SENSOR_DATA`. Read from rclc's source (`10eadcc`), not inferred:
+    rclc passes `rmw_qos_profile_sensor_data`, so the DEPTH drops to 5 as well
+    as the reliability changing. "The default with reliability flipped" is the
+    plausible wrong answer.
+  * `rclc_service_init_best_effort` / `rclc_client_init_best_effort` →
+    `nros_qos_services_best_effort()`, a sixth `static inline` that copies
+    `NROS_QOS_SERVICES` and flips one field, which is literally what rclc's two
+    bodies do. Depth stays 10. ROS 2 names that value nowhere, so the shared
+    helper is ours-only and ledgered `extension`; two hand-written copies of it
+    would be issue 0160's class at header scale.
+  * `rclc_action_client_init_default` → `nros_action_client_init` with
+    arguments 3 and 4 SWAPPED (rclc puts the typesupport third). A distinct NAME
+    rather than a reorder of ours, per RFC-0089's rule: both are pointers, so a
+    caller who guessed would get a warning and a client holding a type
+    descriptor as its name.
+  `rclc_action_server_init_default` is the one refused, and its ledger row now
+  carries its own reason rather than a see-also: rclc reads `support` for
+  exactly one thing (`&support->clock`) and ours takes no clock, so a faithful
+  five-argument forwarder would carry an INERT parameter; and rclc binds the
+  goal/cancel handlers at `rclc_executor_add_action_server`, which we do not
+  have, so forwarding to the callback-free polling init would compile and
+  dispatch nothing. Its disposition moved `adopt` → `absent`, which is what a
+  name nothing declares actually gives a porting user.
+  **Ledger rows retired: 5** (`c:publisher_init_best_effort`,
+  `c:subscription_init_best_effort`, `c:service_init_best_effort`,
+  `c:client_init_best_effort`, `c:action_client_init_default`); one row added
+  (`c:qos_services_best_effort`, `extension`).
+
+  **Acceptance for W5.b/c/d, measured.** The C lane's `same` count moved
+  101 → 108 and `theirs-only` 354 → 347 (`scripts/api-parity.py --lang c`);
+  `just check api-parity` ends "every divergence carries a ledger entry".
+  `tests/compile/preset_constructors.c` joins the stage-5 loop in `just check c`
+  and carries its own
+  `#pragma GCC diagnostic error "-Wincompatible-pointer-types"`, because the one
+  preset with behaviour is an argument swap and C reports a swapped pointer as a
+  warning even under `-Wall -Wextra` — mutation-checked: a forwarder that drops
+  the swap is a hard error there, and it is rc=0 without the pragma. The
+  presets' QoS claims are Rust unit tests
+  (`qos::tests::the_rclc_best_effort_presets_choose_between_two_different_profiles`),
+  because a `static inline` has no symbol to call and the claim that can go
+  wrong is which profile was chosen. The exchange's runtime behaviour is
+  `executor::tests::exchanging_a_timers_period_changes_the_cadence_without_rewinding_it`,
+  mutation-checked against a version that rewinds `elapsed_us`.
 * W5.e **[rust-first]** — a typed service/client path; `service.h.jinja` generates only
   `_get_type_name`/`_get_type_hash` today, so every C service in the tree is
   raw bytes with hand-written CDR.
