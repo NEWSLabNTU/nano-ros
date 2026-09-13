@@ -464,6 +464,19 @@ pub struct ParameterDescriptor {
     /// description at all. Write it with [`Self::set_description`], which
     /// truncates and records the truncation instead of dropping the text.
     pub description: String<MAX_PARAM_DESCRIPTION_LEN>,
+    /// Free-text extra constraints — `rcl_interfaces/msg/ParameterDescriptor`'s
+    /// `additional_constraints`, which `ros2 param describe` prints.
+    ///
+    /// phase-417 W4.a — it shares `NROS_MAX_PARAM_DESCRIPTION_LEN` with
+    /// [`description`](Self::description) rather than taking a knob of its
+    /// own. Both are code-supplied descriptor prose, both are bounded by the
+    /// same 256-byte `rcl_interfaces` string the describe reply can carry,
+    /// and a second knob would be a second answer to one question — an image
+    /// that says "no descriptor text" must not have to say it twice. Write it
+    /// with [`Self::set_additional_constraints`], which truncates at a
+    /// character boundary and records the truncation exactly as the
+    /// description does.
+    pub additional_constraints: String<MAX_PARAM_DESCRIPTION_LEN>,
     /// Whether the parameter is read-only
     pub read_only: bool,
     /// Whether the parameter type can change dynamically
@@ -507,6 +520,7 @@ impl ParameterDescriptor {
             name: n,
             param_type,
             description: String::new(),
+            additional_constraints: String::new(),
             read_only: false,
             dynamic_typing: false,
             range: ParameterRange::None,
@@ -534,6 +548,26 @@ impl ParameterDescriptor {
     /// Whether the last description set was truncated and not yet reported.
     pub fn description_truncated(&self) -> bool {
         self.description_truncated
+    }
+
+    /// phase-417 W4.a — rclc's `additional_constraints`, the fourth argument of
+    /// `rclc_add_parameter_description`. Truncated and recorded like the
+    /// description; returns whether anything was cut.
+    pub fn set_additional_constraints(&mut self, text: &str) -> bool {
+        let cut = fit_description(&mut self.additional_constraints, text);
+        // ONE truncation flag for both texts, deliberately. What the executor
+        // reports is "this parameter's descriptor prose did not fit", and the
+        // remedy — raise `NROS_MAX_PARAM_DESCRIPTION_LEN` — is the same for
+        // either field, because they share the knob. A second flag would
+        // report two states with one cure.
+        self.description_truncated |= cut;
+        cut
+    }
+
+    /// Builder form of [`Self::set_additional_constraints`].
+    pub fn with_additional_constraints(mut self, text: &str) -> Self {
+        self.set_additional_constraints(text);
+        self
     }
 
     /// Mark the truncation as reported (phase-446 F2 -- once per parameter).
@@ -648,6 +682,14 @@ pub enum SetParameterResult {
     /// or whose default does not satisfy its own range (issue 1150; rclrs
     /// `DeclarationError::InvalidRange` / `InitialValueOutOfRange`).
     InvalidRange,
+    /// A registered on-set-parameters callback refused the write — rclcpp's
+    /// `SetParametersResult { successful: false }` from
+    /// `add_on_set_parameters_callback` (phase-417 W4.a).
+    ///
+    /// Distinct from every verdict above it: those are the STORE's rules, and
+    /// a caller can predict them from the descriptor. This one is the
+    /// APPLICATION's rule, and only the application knows why.
+    Rejected,
 }
 
 impl SetParameterResult {

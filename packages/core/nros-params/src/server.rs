@@ -4,8 +4,8 @@
 //! Parameters are stored in a fixed-size array with compile-time capacity.
 
 use crate::types::{
-    MAX_PARAM_NAME_LEN, NodeFlags, NodeKey, Parameter, ParameterDescriptor, ParameterType,
-    ParameterValue, SetParameterResult,
+    FloatingPointRange, IntegerRange, MAX_PARAM_NAME_LEN, NodeFlags, NodeKey, Parameter,
+    ParameterDescriptor, ParameterRange, ParameterType, ParameterValue, SetParameterResult,
 };
 use heapless::String;
 
@@ -28,6 +28,116 @@ pub(crate) struct ParameterEntry {
     /// Optional descriptor with constraints
     descriptor: Option<ParameterDescriptor>,
 }
+
+/// Why a declaration was refused — phase-417 W4.a.
+///
+/// rclrs separates DECLARE-time failures from set-time ones, and this is that
+/// separation: [`SetParameterResult`] answers "may this WRITE happen", this
+/// answers "may this parameter EXIST". Ours is a subset of rclrs's, and the
+/// difference is structural rather than an omission: rclrs's
+/// `NoValueAvailable`, `OverrideValueTypeMismatch` and `PriorValueTypeMismatch`
+/// are about a launch OVERRIDE arriving before the declaration and disagreeing
+/// with it, and nano-ros seeds overrides through the same
+/// [`ParameterServer::apply`] path a remote set uses — so a disagreeing
+/// override is a `SetParameterResult`, on the write that carried it, and
+/// cannot reach a declaration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeclarationError {
+    /// This node already declared this name (rclrs `AlreadyDeclared`).
+    AlreadyDeclared,
+    /// The descriptor's range is ill-formed — `min > max`, or a negative step
+    /// (rclrs `InvalidRange`).
+    InvalidRange,
+    /// The default value is outside the descriptor's range (rclrs
+    /// `InitialValueOutOfRange`).
+    InitialValueOutOfRange,
+    /// Every slot of the caller-owned table is taken. No rclrs correspondent:
+    /// rclrs's store grows, ours is the storage the caller placed.
+    StorageFull,
+    /// The name is longer than `NROS_MAX_PARAM_NAME_LEN`. No rclrs
+    /// correspondent, same reason.
+    NameTooLong,
+}
+
+/// An on-set-parameters callback — phase-417 W4.a.
+///
+/// `false` REFUSES the write, which is rclcpp's
+/// `add_on_set_parameters_callback` contract (a `SetParametersResult` whose
+/// `successful` is false) and the contract C's legacy
+/// `nros_parameter_server_set_callback` already had on the wrong store.
+///
+/// A `fn` pointer plus an [`OnSetContext`], not a closure: this crate is
+/// `no_std` with no allocator, so there is nothing to box a `FnMut` into.
+pub type OnSetParameterFn =
+    fn(node: NodeKey, name: &str, value: &ParameterValue, ctx: OnSetContext) -> bool;
+
+/// Two machine words of caller context, carried verbatim to an
+/// [`OnSetParameterFn`].
+///
+/// TWO, not one, because of the consumer that drives this API: a C or C++
+/// registration is a FUNCTION POINTER plus a user `void*`, and the shim needs
+/// both to reach the caller's code. One word would force each wrapper to keep
+/// a static side table mapping an index back to the pair — a second, smaller
+/// registry with its own bound and its own exhaustion story, which is the
+/// class phase-426 spent six work items removing.
+///
+/// `usize`, not `*mut c_void`: a raw pointer in this struct would strip
+/// [`ParameterServer`]'s auto traits, and the store lives inside the executor.
+/// The C and C++ shims cast through it and say so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct OnSetContext {
+    /// First word. The wrappers put the user's `void* context` here, so a
+    /// Rust caller with one pointer to carry uses this one and ignores `b`.
+    pub a: usize,
+    /// Second word. The wrappers put the C function pointer here.
+    pub b: usize,
+}
+
+impl OnSetContext {
+    /// One word of context; `b` is zero.
+    pub const fn new(a: usize) -> Self {
+        Self { a, b: 0 }
+    }
+
+    /// Both words.
+    pub const fn pair(a: usize, b: usize) -> Self {
+        Self { a, b }
+    }
+}
+
+/// A registered [`OnSetParameterFn`], returned by
+/// [`ParameterServer::add_on_set_parameters_callback`] and consumed by
+/// [`ParameterServer::remove_on_set_parameters_callback`].
+///
+/// rclcpp hands back an owning `ParameterCallbackHandle` shared_ptr whose
+/// destruction unregisters. With no allocator there is nothing to own, so this
+/// is a plain index token and unregistering is explicit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OnSetParameterHandle(u16);
+
+#[derive(Clone, Copy)]
+struct OnSetCallbackSlot {
+    node: NodeKey,
+    callback: OnSetParameterFn,
+    ctx: OnSetContext,
+}
+
+/// How many on-set-parameters callbacks ONE store holds, across every node.
+///
+/// phase-417 W4.a — a BOUNDED registry with a stated capacity, because the
+/// unbounded upstream shape needs an allocator this crate does not have. Four,
+/// and the number is chosen rather than inherited: a slot costs
+/// `size_of::<Option<OnSetCallbackSlot>>()` — 32 bytes on a 64-bit host, 16 on
+/// a 32-bit target — so the whole registry is 128 bytes next to a 285,184-byte
+/// default table, and four is one hook for each node of a four-node composed
+/// image (RFC-0047's shape) with none left to spare by accident. Registering a
+/// fifth REFUSES with `None` rather than dropping one silently.
+///
+/// It is deliberately NOT a build knob. Every other parameter capacity sizes
+/// the table a user's data lands in; this one sizes a table of code the image
+/// itself registers, which is known at build time by reading the source. A
+/// knob here would be a number nobody can derive and everybody has to state.
+pub const MAX_ON_SET_CALLBACKS: usize = 4;
 
 /// The slot table a [`ParameterServer`] borrows.
 ///
@@ -243,6 +353,9 @@ pub struct ParameterServer<'s> {
     /// answer "nothing" without walking the table, which is what lets the
     /// executor ask on every spin.
     truncation_pending: bool,
+    /// phase-417 W4.a — the bounded on-set-parameters registry. See
+    /// [`MAX_ON_SET_CALLBACKS`] for why it is bounded and why 4.
+    on_set: [Option<OnSetCallbackSlot>; MAX_ON_SET_CALLBACKS],
 }
 
 impl<'s> ParameterServer<'s> {
@@ -297,6 +410,7 @@ impl<'s> ParameterServer<'s> {
             table,
             count,
             allow_undeclared: NodeFlags::new(),
+            on_set: [None; MAX_ON_SET_CALLBACKS],
             // An adopted table may already hold a truncated description, so
             // the first drain looks rather than assuming none.
             truncation_pending: true,
@@ -407,27 +521,55 @@ impl<'s> ParameterServer<'s> {
         value: ParameterValue,
         descriptor: Option<ParameterDescriptor>,
     ) -> bool {
+        self.try_declare_with_descriptor(node, name, value, descriptor)
+            .is_ok()
+    }
+
+    /// [`declare`](Self::declare), saying WHY it refused — phase-417 W4.a.
+    ///
+    /// rclrs separates declare-time failures from set-time ones
+    /// ([`DeclarationError`] against [`SetParameterResult`]); ours returned a
+    /// bare `bool` for "the name was taken", "the table was full" and "the
+    /// default is outside the range" alike, so a caller could not tell a
+    /// programming error from a capacity one. The `bool` spellings above
+    /// forward to this, so there is exactly one declare path.
+    pub fn try_declare(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: ParameterValue,
+    ) -> Result<(), DeclarationError> {
+        self.try_declare_with_descriptor(node, name, value, None)
+    }
+
+    /// [`declare_with_descriptor`](Self::declare_with_descriptor), saying WHY
+    /// it refused. See [`try_declare`](Self::try_declare).
+    pub fn try_declare_with_descriptor(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: ParameterValue,
+        descriptor: Option<ParameterDescriptor>,
+    ) -> Result<(), DeclarationError> {
         // Check if already exists
         if self.find_index(node, name).is_some() {
-            return false;
+            return Err(DeclarationError::AlreadyDeclared);
         }
 
         // Issue 1150 — an ill-formed range, or a default the range rejects,
         // is refused at declaration, as upstream. Same predicate as every set.
-        if !Self::declaration_is_consistent(descriptor.as_ref(), &value) {
-            return false;
-        }
+        Self::declaration_consistency(descriptor.as_ref(), &value)?;
 
         // Find an empty slot
         let slot = match self.find_empty_slot() {
             Some(idx) => idx,
-            None => return false,
+            None => return Err(DeclarationError::StorageFull),
         };
 
         // Create the parameter
         let param = match Parameter::new(name, value) {
             Some(p) => p,
-            None => return false,
+            None => return Err(DeclarationError::NameTooLong),
         };
 
         self.note_descriptor(descriptor.as_ref());
@@ -437,20 +579,36 @@ impl<'s> ParameterServer<'s> {
             descriptor,
         });
         self.count += 1;
-        true
+        Ok(())
     }
 
     /// The declare-time half of issue 1150: the range must be well-formed
-    /// and the initial value must satisfy it (rclrs `InvalidRange` /
-    /// `InitialValueOutOfRange`). ONE spelling for both declare paths.
+    /// and the initial value must satisfy it. ONE spelling for both declare
+    /// paths.
+    ///
+    /// phase-417 W4.a — it returns rclrs's two distinct names rather than a
+    /// `bool`, because the remedies differ: `InvalidRange` means fix the
+    /// range, `InitialValueOutOfRange` means fix the default. The `bool`
+    /// spelling below is kept for the caller that only has a
+    /// [`SetParameterResult`] channel, so there is still one predicate.
+    fn declaration_consistency(
+        descriptor: Option<&ParameterDescriptor>,
+        value: &ParameterValue,
+    ) -> Result<(), DeclarationError> {
+        match descriptor {
+            Some(desc) if !desc.range.is_valid() => Err(DeclarationError::InvalidRange),
+            Some(desc) if !desc.validate_range(value) => {
+                Err(DeclarationError::InitialValueOutOfRange)
+            }
+            _ => Ok(()),
+        }
+    }
+
     fn declaration_is_consistent(
         descriptor: Option<&ParameterDescriptor>,
         value: &ParameterValue,
     ) -> bool {
-        match descriptor {
-            Some(desc) => desc.range.is_valid() && desc.validate_range(value),
-            None => true,
-        }
+        Self::declaration_consistency(descriptor, value).is_ok()
     }
 
     /// Would `set(name, value)` succeed on an EXISTING entry? Read-only,
@@ -511,12 +669,211 @@ impl<'s> ParameterServer<'s> {
         if !verdict.is_success() {
             return verdict;
         }
+        // phase-417 W4.a — the accept/reject hook, AFTER the store's own rules
+        // and BEFORE the write, which is rclcpp's ordering: a callback never
+        // sees a write the type, range or read-only rules already refused, and
+        // a callback that refuses leaves the value untouched. `apply` is the
+        // one seam every writer funnels through (the six services, the C and
+        // C++ facades, `Executor::set_parameter`), so hooking it here is what
+        // makes one registration reach all of them.
+        if !self.run_on_set_callbacks(node, name, &value) {
+            return SetParameterResult::Rejected;
+        }
         if self.find_index(node, name).is_some() {
             self.set(node, name, value)
         } else if self.declare(node, name, value) {
             SetParameterResult::Success
         } else {
             SetParameterResult::StorageFull
+        }
+    }
+
+    /// Run every registered hook for `node`. `false` from any one of them
+    /// refuses the write; the rest are not consulted, as rclcpp stops at the
+    /// first unsuccessful result.
+    fn run_on_set_callbacks(&self, node: NodeKey, name: &str, value: &ParameterValue) -> bool {
+        for slot in self.on_set.iter().flatten() {
+            if slot.node == node && !(slot.callback)(node, name, value, slot.ctx) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Register an accept/reject hook for writes to `node` — rclcpp's
+    /// `add_on_set_parameters_callback` (phase-417 W4.a).
+    ///
+    /// The callback runs on every [`apply`](Self::apply): a remote
+    /// `ros2 param set`, a C `nros_executor_set_param_*`, a C++
+    /// `Node::set_parameter`, a Rust `Executor::set_parameter`. Returning
+    /// `false` refuses the write with [`SetParameterResult::Rejected`] and
+    /// leaves the stored value alone.
+    ///
+    /// `None` when all [`MAX_ON_SET_CALLBACKS`] slots are taken — a refusal,
+    /// never a silent eviction.
+    pub fn add_on_set_parameters_callback(
+        &mut self,
+        node: NodeKey,
+        callback: OnSetParameterFn,
+        ctx: OnSetContext,
+    ) -> Option<OnSetParameterHandle> {
+        let idx = self.on_set.iter().position(Option::is_none)?;
+        self.on_set[idx] = Some(OnSetCallbackSlot {
+            node,
+            callback,
+            ctx,
+        });
+        Some(OnSetParameterHandle(idx as u16))
+    }
+
+    /// Unregister a hook — rclcpp's `remove_on_set_parameters_callback`.
+    /// `false` if the slot was already empty.
+    pub fn remove_on_set_parameters_callback(&mut self, handle: OnSetParameterHandle) -> bool {
+        let idx = handle.0 as usize;
+        if idx >= MAX_ON_SET_CALLBACKS || self.on_set[idx].is_none() {
+            return false;
+        }
+        self.on_set[idx] = None;
+        true
+    }
+
+    /// How many hook slots are free. Lets a caller ask before registering
+    /// rather than discovering the bound as a `None`.
+    pub fn on_set_callbacks_free(&self) -> usize {
+        self.on_set.iter().filter(|s| s.is_none()).count()
+    }
+
+    // ---- descriptor mutation on a DECLARED parameter (phase-417 W4.a) ------
+    //
+    // rclc's shape: `rclc_add_parameter_description`,
+    // `rclc_add_parameter_constraint_double` / `_integer` and
+    // `rclc_set_parameter_read_only` all attach metadata AFTER the declaration,
+    // so a C caller that cannot build a descriptor value still gets one. Ours
+    // are the same verbs against the one store, and they are what the C and C++
+    // descriptor surfaces forward to — a wrapper that built its own descriptor
+    // table would be the second store phase-426 removed.
+    //
+    // Each creates the descriptor on demand: a parameter declared without one
+    // has `None` in its slot, and refusing to describe it would make "declare
+    // then describe" work only in the order rclc does not use.
+
+    /// The descriptor of `node`'s `name`, creating an empty one typed from the
+    /// stored value if the declaration carried none.
+    fn descriptor_mut(&mut self, node: NodeKey, name: &str) -> Option<&mut ParameterDescriptor> {
+        let idx = self.find_index(node, name)?;
+        let entry = self.table.entries[idx].as_mut()?;
+        if entry.descriptor.is_none() {
+            entry.descriptor = Some(ParameterDescriptor::new(
+                name,
+                entry.param.value.param_type(),
+            )?);
+        }
+        entry.descriptor.as_mut()
+    }
+
+    /// Attach a description and free-text constraints to a declared parameter
+    /// — rclc's `rclc_add_parameter_description`. Either text may be empty.
+    /// `false` if the parameter is not declared on `node`.
+    pub fn set_parameter_description(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        description: &str,
+        additional_constraints: &str,
+    ) -> bool {
+        let mut truncated = false;
+        let found = match self.descriptor_mut(node, name) {
+            Some(desc) => {
+                truncated |= desc.set_description(description);
+                truncated |= desc.set_additional_constraints(additional_constraints);
+                true
+            }
+            None => false,
+        };
+        // Same report path a declared-with-descriptor truncation takes, so the
+        // executor logs it once whichever verb supplied the text.
+        self.truncation_pending |= truncated;
+        found
+    }
+
+    /// Mark a declared parameter read-only, so every later write is
+    /// [`SetParameterResult::ReadOnly`] — rclc's
+    /// `rclc_set_parameter_read_only`. `false` if not declared on `node`.
+    pub fn set_parameter_read_only(&mut self, node: NodeKey, name: &str, read_only: bool) -> bool {
+        match self.descriptor_mut(node, name) {
+            Some(desc) => {
+                desc.read_only = read_only;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Attach an integer range to a declared parameter — rclc's
+    /// `rclc_add_parameter_constraint_integer`.
+    ///
+    /// Refuses an ill-formed range, and refuses one the CURRENT value does not
+    /// satisfy: attaching a constraint that the stored value already violates
+    /// would leave the store in a state no `set` could have produced, and
+    /// `ros2 param describe` would then advertise a bound the value breaks.
+    pub fn set_parameter_integer_range(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        min: i64,
+        max: i64,
+        step: i64,
+    ) -> bool {
+        self.set_parameter_range(
+            node,
+            name,
+            ParameterRange::Integer(IntegerRange::new(min, max, step)),
+        )
+    }
+
+    /// Attach a floating-point range to a declared parameter — rclc's
+    /// `rclc_add_parameter_constraint_double`. See
+    /// [`set_parameter_integer_range`](Self::set_parameter_integer_range).
+    pub fn set_parameter_float_range(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        min: f64,
+        max: f64,
+        step: f64,
+    ) -> bool {
+        self.set_parameter_range(
+            node,
+            name,
+            ParameterRange::FloatingPoint(FloatingPointRange::new(min, max, step)),
+        )
+    }
+
+    /// The one range-attaching path both spellings above use.
+    fn set_parameter_range(&mut self, node: NodeKey, name: &str, range: ParameterRange) -> bool {
+        if !range.is_valid() {
+            return false;
+        }
+        let idx = match self.find_index(node, name) {
+            Some(idx) => idx,
+            None => return false,
+        };
+        // The stored value has to satisfy the range BEFORE it is attached, and
+        // reading it needs the entry, so the check happens here rather than
+        // inside `descriptor_mut`.
+        let value = match self.table.entries[idx].as_ref() {
+            Some(entry) => entry.param.value.clone(),
+            None => return false,
+        };
+        if !range.contains(&value) {
+            return false;
+        }
+        match self.descriptor_mut(node, name) {
+            Some(desc) => {
+                desc.range = range;
+                true
+            }
+            None => false,
         }
     }
 
@@ -1444,6 +1801,292 @@ mod tests {
         assert!(server.declare(NODE, "param", ParameterValue::Integer(1)));
         assert!(!server.declare(NODE, "param", ParameterValue::Integer(2))); // Already exists
         assert_eq!(server.get_integer(NODE, "param"), Some(1)); // Unchanged
+    }
+
+    // ── phase-417 W4.a: descriptors, undeclare, and the on-set hook ──
+
+    /// The four rclc descriptor verbs land on the ONE store and are visible
+    /// through the ordinary descriptor read — a C or C++ wrapper forwarding to
+    /// these adds no table of its own.
+    #[test]
+    fn descriptor_verbs_attach_to_a_declared_parameter() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        assert!(server.declare(NODE, "rate", ParameterValue::Double(2.0)));
+
+        // A parameter declared with no descriptor still gets one on demand:
+        // rclc's order is declare-then-describe.
+        assert!(server.get_descriptor(NODE, "rate").is_none());
+        assert!(server.set_parameter_description(NODE, "rate", "publish rate", "hz, positive"));
+        assert!(server.set_parameter_float_range(NODE, "rate", 0.0, 10.0, 0.0));
+
+        let desc = server.get_descriptor(NODE, "rate").expect("descriptor");
+        assert_eq!(desc.description.as_str(), "publish rate");
+        assert_eq!(desc.additional_constraints.as_str(), "hz, positive");
+        assert_eq!(desc.param_type, ParameterType::Double);
+
+        // And the range is ENFORCED by the same predicate every set uses.
+        assert_eq!(
+            server.apply(NODE, "rate", ParameterValue::Double(50.0)),
+            SetParameterResult::OutOfRange
+        );
+        assert_eq!(
+            server.apply(NODE, "rate", ParameterValue::Double(5.0)),
+            SetParameterResult::Success
+        );
+
+        // read-only is the same shape.
+        assert!(server.set_parameter_read_only(NODE, "rate", true));
+        assert_eq!(
+            server.apply(NODE, "rate", ParameterValue::Double(6.0)),
+            SetParameterResult::ReadOnly
+        );
+
+        // An undeclared name is refused rather than silently creating a
+        // descriptor for a parameter that is not there.
+        assert!(!server.set_parameter_description(NODE, "absent", "d", "c"));
+        assert!(!server.set_parameter_read_only(NODE, "absent", true));
+        assert!(!server.set_parameter_integer_range(NODE, "absent", 0, 1, 1));
+    }
+
+    /// A range the stored value already violates is REFUSED, and so is an
+    /// ill-formed one. Attaching either would advertise a bound over a value
+    /// no `set` could have produced.
+    #[test]
+    fn a_range_must_fit_the_value_it_is_attached_to() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        assert!(server.declare(NODE, "depth", ParameterValue::Integer(100)));
+
+        assert!(!server.set_parameter_integer_range(NODE, "depth", 0, 10, 1));
+        assert!(server.get_descriptor(NODE, "depth").is_none());
+
+        // min > max
+        assert!(!server.set_parameter_integer_range(NODE, "depth", 10, 0, 1));
+        // negative step
+        assert!(!server.set_parameter_integer_range(NODE, "depth", 0, 1000, -1));
+
+        assert!(server.set_parameter_integer_range(NODE, "depth", 0, 1000, 1));
+    }
+
+    /// `remove` is the undeclare every language forwards to: the slot frees,
+    /// the count drops, and a later declare of the same name succeeds.
+    #[test]
+    fn undeclare_frees_the_slot_for_that_node_only() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        let other = NodeKey::new(1);
+        assert!(server.declare(NODE, "rate", ParameterValue::Integer(1)));
+        assert!(server.declare(other, "rate", ParameterValue::Integer(2)));
+        assert_eq!(server.total_len(), 2);
+
+        assert!(server.remove(NODE, "rate"));
+        assert!(!server.has(NODE, "rate"));
+        assert!(server.has(other, "rate"));
+        assert_eq!(server.total_len(), 1);
+        assert!(!server.remove(NODE, "rate"));
+
+        assert!(server.declare(NODE, "rate", ParameterValue::Integer(3)));
+        assert_eq!(server.get_integer(NODE, "rate"), Some(3));
+    }
+
+    fn refuse_everything(
+        _n: NodeKey,
+        _name: &str,
+        _v: &ParameterValue,
+        _ctx: OnSetContext,
+    ) -> bool {
+        false
+    }
+
+    fn refuse_if_ctx_matches(
+        _n: NodeKey,
+        _name: &str,
+        v: &ParameterValue,
+        ctx: OnSetContext,
+    ) -> bool {
+        v.as_integer() != Some(ctx.a as i64)
+    }
+
+    /// The hook runs on `apply` — the seam every facade and the six services
+    /// funnel through — refuses with `Rejected`, leaves the value alone, and
+    /// only for the node it was registered on.
+    #[test]
+    fn an_on_set_callback_vetoes_the_write_it_refuses() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        let other = NodeKey::new(1);
+        assert!(server.declare(NODE, "rate", ParameterValue::Integer(1)));
+        assert!(server.declare(other, "rate", ParameterValue::Integer(1)));
+
+        let h = server
+            .add_on_set_parameters_callback(NODE, refuse_everything, OnSetContext::default())
+            .expect("a free slot");
+
+        assert_eq!(
+            server.apply(NODE, "rate", ParameterValue::Integer(9)),
+            SetParameterResult::Rejected
+        );
+        assert_eq!(server.get_integer(NODE, "rate"), Some(1));
+        // A sibling node's writes are untouched: the registration names a node.
+        assert_eq!(
+            server.apply(other, "rate", ParameterValue::Integer(9)),
+            SetParameterResult::Success
+        );
+
+        assert!(server.remove_on_set_parameters_callback(h));
+        assert!(!server.remove_on_set_parameters_callback(h));
+        assert_eq!(
+            server.apply(NODE, "rate", ParameterValue::Integer(9)),
+            SetParameterResult::Success
+        );
+    }
+
+    /// The registry is BOUNDED and says so: the (N+1)th registration is `None`,
+    /// never a silent eviction of somebody else's hook. The context reaches
+    /// the callback.
+    #[test]
+    fn the_on_set_registry_refuses_past_its_stated_capacity() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        assert!(server.declare(NODE, "rate", ParameterValue::Integer(1)));
+
+        assert_eq!(server.on_set_callbacks_free(), MAX_ON_SET_CALLBACKS);
+        let mut handles = heapless::Vec::<_, MAX_ON_SET_CALLBACKS>::new();
+        for i in 0..MAX_ON_SET_CALLBACKS {
+            let h = server
+                .add_on_set_parameters_callback(
+                    NODE,
+                    refuse_if_ctx_matches,
+                    OnSetContext::new(40 + i),
+                )
+                .expect("within capacity");
+            handles.push(h).expect("bounded by the same constant");
+        }
+        assert_eq!(server.on_set_callbacks_free(), 0);
+        assert!(
+            server
+                .add_on_set_parameters_callback(NODE, refuse_everything, OnSetContext::default())
+                .is_none()
+        );
+
+        // Every registered hook is consulted, and each got its own context.
+        for i in 0..MAX_ON_SET_CALLBACKS {
+            assert_eq!(
+                server.apply(NODE, "rate", ParameterValue::Integer(40 + i as i64)),
+                SetParameterResult::Rejected
+            );
+        }
+        assert_eq!(
+            server.apply(NODE, "rate", ParameterValue::Integer(7)),
+            SetParameterResult::Success
+        );
+
+        assert!(server.remove_on_set_parameters_callback(handles[0]));
+        assert_eq!(server.on_set_callbacks_free(), 1);
+    }
+
+    /// The hook runs AFTER the store's own rules, so a callback never sees a
+    /// write the descriptor already refused.
+    #[test]
+    fn the_store_rules_run_before_the_hook() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        let desc = ParameterDescriptor::new("rate", ParameterType::Integer)
+            .expect("name fits")
+            .with_read_only(true);
+        assert!(server.declare_with_descriptor(
+            NODE,
+            "rate",
+            ParameterValue::Integer(1),
+            Some(desc)
+        ));
+        let _ = server
+            .add_on_set_parameters_callback(NODE, refuse_everything, OnSetContext::default())
+            .expect("a free slot");
+        // ReadOnly, not Rejected: the callback was never consulted.
+        assert_eq!(
+            server.apply(NODE, "rate", ParameterValue::Integer(2)),
+            SetParameterResult::ReadOnly
+        );
+    }
+
+    /// The registry's cost is MEASURED, not asserted in prose: the doc on
+    /// [`MAX_ON_SET_CALLBACKS`] names a byte count, and a slot that grows
+    /// silently is how that number goes stale (the issue-1022 class).
+    #[test]
+    fn the_on_set_registry_costs_what_its_doc_says() {
+        let slot = core::mem::size_of::<Option<OnSetCallbackSlot>>();
+        let word = core::mem::size_of::<usize>();
+        // node (1 byte, padded) + fn pointer + two context words, and the
+        // `Option` rides in the padding or the null fn pointer.
+        assert!(
+            slot <= 4 * word,
+            "an on-set slot is {slot} bytes, more than the four words its doc claims"
+        );
+        assert_eq!(
+            core::mem::size_of::<[Option<OnSetCallbackSlot>; MAX_ON_SET_CALLBACKS]>(),
+            MAX_ON_SET_CALLBACKS * slot
+        );
+    }
+
+    /// `try_declare` says WHY, where `declare` said only `false`.
+    #[test]
+    fn try_declare_names_the_refusal() {
+        let mut storage: ParameterStorage<2> = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+
+        assert_eq!(
+            server.try_declare(NODE, "a", ParameterValue::Integer(1)),
+            Ok(())
+        );
+        assert_eq!(
+            server.try_declare(NODE, "a", ParameterValue::Integer(1)),
+            Err(DeclarationError::AlreadyDeclared)
+        );
+
+        let bad_range = ParameterDescriptor::new("b", ParameterType::Integer)
+            .expect("name fits")
+            .with_integer_range(10, 0, 1);
+        assert_eq!(
+            server.try_declare_with_descriptor(
+                NODE,
+                "b",
+                ParameterValue::Integer(1),
+                Some(bad_range)
+            ),
+            Err(DeclarationError::InvalidRange)
+        );
+
+        let out_of_range = ParameterDescriptor::new("b", ParameterType::Integer)
+            .expect("name fits")
+            .with_integer_range(0, 10, 1);
+        assert_eq!(
+            server.try_declare_with_descriptor(
+                NODE,
+                "b",
+                ParameterValue::Integer(99),
+                Some(out_of_range)
+            ),
+            Err(DeclarationError::InitialValueOutOfRange)
+        );
+
+        assert_eq!(
+            server.try_declare(NODE, "b", ParameterValue::Integer(1)),
+            Ok(())
+        );
+        assert_eq!(
+            server.try_declare(NODE, "c", ParameterValue::Integer(1)),
+            Err(DeclarationError::StorageFull)
+        );
+
+        let long = "n".repeat(MAX_PARAM_NAME_LEN + 1);
+        let mut roomy: ParameterStorage<2> = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(roomy.as_table());
+        assert_eq!(
+            server.try_declare(NODE, &long, ParameterValue::Integer(1)),
+            Err(DeclarationError::NameTooLong)
+        );
     }
 }
 

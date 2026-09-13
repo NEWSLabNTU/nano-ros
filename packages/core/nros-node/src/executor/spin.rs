@@ -9619,6 +9619,280 @@ impl<'s> Executor<'s> {
             name,
         ))
     }
+
+    // ========================================================================
+    // phase-417 W4.a — the surface C and C++ forward to
+    //
+    // Every one of these is a forwarder onto `nros_params::ParameterServer`,
+    // the ONE store. They exist on the executor because that is the object the
+    // FFI holds: a C caller has an `nros_executor_t*` and an `nros_node_t*`,
+    // and a C++ node has its `node_id`. Nothing here keeps state — a wrapper
+    // that did would be the second store phase-426 removed.
+    // ========================================================================
+
+    /// Attach a description and free-text constraints to a declared parameter
+    /// on `node` — rclc's `rclc_add_parameter_description`.
+    pub fn set_parameter_description_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        description: &str,
+        additional_constraints: &str,
+    ) -> bool {
+        match &mut self.params {
+            Some(params) => params.server.set_parameter_description(
+                node.into(),
+                name,
+                description,
+                additional_constraints,
+            ),
+            None => false,
+        }
+    }
+
+    /// [`set_parameter_description_on`](Self::set_parameter_description_on) for
+    /// the primary node.
+    pub fn set_parameter_description(
+        &mut self,
+        name: &str,
+        description: &str,
+        additional_constraints: &str,
+    ) -> bool {
+        self.set_parameter_description_on(
+            super::node_record::NodeId::PRIMARY,
+            name,
+            description,
+            additional_constraints,
+        )
+    }
+
+    /// Mark a declared parameter read-only — rclc's
+    /// `rclc_set_parameter_read_only`. Every later write, local or remote, is
+    /// refused.
+    pub fn set_parameter_read_only_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        read_only: bool,
+    ) -> bool {
+        match &mut self.params {
+            Some(params) => params
+                .server
+                .set_parameter_read_only(node.into(), name, read_only),
+            None => false,
+        }
+    }
+
+    /// [`set_parameter_read_only_on`](Self::set_parameter_read_only_on) for the
+    /// primary node.
+    pub fn set_parameter_read_only(&mut self, name: &str, read_only: bool) -> bool {
+        self.set_parameter_read_only_on(super::node_record::NodeId::PRIMARY, name, read_only)
+    }
+
+    /// Attach an integer range — rclc's
+    /// `rclc_add_parameter_constraint_integer`. Refuses an ill-formed range or
+    /// one the current value does not satisfy.
+    pub fn set_parameter_integer_range_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        min: i64,
+        max: i64,
+        step: i64,
+    ) -> bool {
+        match &mut self.params {
+            Some(params) => {
+                params
+                    .server
+                    .set_parameter_integer_range(node.into(), name, min, max, step)
+            }
+            None => false,
+        }
+    }
+
+    /// [`set_parameter_integer_range_on`](Self::set_parameter_integer_range_on)
+    /// for the primary node.
+    pub fn set_parameter_integer_range(
+        &mut self,
+        name: &str,
+        min: i64,
+        max: i64,
+        step: i64,
+    ) -> bool {
+        self.set_parameter_integer_range_on(
+            super::node_record::NodeId::PRIMARY,
+            name,
+            min,
+            max,
+            step,
+        )
+    }
+
+    /// Attach a floating-point range — rclc's
+    /// `rclc_add_parameter_constraint_double`.
+    pub fn set_parameter_float_range_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        min: f64,
+        max: f64,
+        step: f64,
+    ) -> bool {
+        match &mut self.params {
+            Some(params) => {
+                params
+                    .server
+                    .set_parameter_float_range(node.into(), name, min, max, step)
+            }
+            None => false,
+        }
+    }
+
+    /// [`set_parameter_float_range_on`](Self::set_parameter_float_range_on) for
+    /// the primary node.
+    pub fn set_parameter_float_range(&mut self, name: &str, min: f64, max: f64, step: f64) -> bool {
+        self.set_parameter_float_range_on(super::node_record::NodeId::PRIMARY, name, min, max, step)
+    }
+
+    /// The descriptor of a declared parameter — rclcpp's
+    /// `describe_parameter`, rclrs's `ParameterBuilder` readback. `None` when
+    /// the parameter is not declared on `node`, or was declared without one.
+    pub fn describe_parameter_on(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+    ) -> Option<&nros_params::ParameterDescriptor> {
+        self.params
+            .as_ref()?
+            .server
+            .get_descriptor(node.into(), name)
+    }
+
+    /// [`describe_parameter_on`](Self::describe_parameter_on) for the primary
+    /// node.
+    pub fn describe_parameter(&self, name: &str) -> Option<&nros_params::ParameterDescriptor> {
+        self.describe_parameter_on(super::node_record::NodeId::PRIMARY, name)
+    }
+
+    /// The declared TYPE of a parameter — rclcpp's `get_parameter_types`, and
+    /// the local answer to the `~/get_parameter_types` service.
+    pub fn get_parameter_type_on(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+    ) -> Option<nros_params::ParameterType> {
+        self.params.as_ref()?.server.get_type(node.into(), name)
+    }
+
+    /// [`get_parameter_type_on`](Self::get_parameter_type_on) for the primary
+    /// node.
+    pub fn get_parameter_type(&self, name: &str) -> Option<nros_params::ParameterType> {
+        self.get_parameter_type_on(super::node_record::NodeId::PRIMARY, name)
+    }
+
+    /// The names a node has declared, filtered by prefix — rclcpp's
+    /// `list_parameters`, and the local answer to `~/list_parameters`. An
+    /// empty prefix lists them all.
+    pub fn list_parameters_on<'p>(
+        &'p self,
+        node: super::node_record::NodeId,
+        prefix: &'p str,
+    ) -> impl Iterator<Item = &'p str> {
+        self.params
+            .as_ref()
+            .into_iter()
+            .flat_map(move |p| p.server.list_with_prefix(node.into(), prefix))
+    }
+
+    /// [`list_parameters_on`](Self::list_parameters_on) for the primary node.
+    pub fn list_parameters<'p>(&'p self, prefix: &'p str) -> impl Iterator<Item = &'p str> {
+        self.list_parameters_on(super::node_record::NodeId::PRIMARY, prefix)
+    }
+
+    /// Undeclare a parameter — rclcpp's `undeclare_parameter`, rclc's
+    /// `rclc_delete_parameter`. The slot is freed for a later declaration.
+    pub fn undeclare_parameter_on(&mut self, node: super::node_record::NodeId, name: &str) -> bool {
+        match &mut self.params {
+            Some(params) => params.server.remove(node.into(), name),
+            None => false,
+        }
+    }
+
+    /// [`undeclare_parameter_on`](Self::undeclare_parameter_on) for the primary
+    /// node.
+    pub fn undeclare_parameter(&mut self, name: &str) -> bool {
+        self.undeclare_parameter_on(super::node_record::NodeId::PRIMARY, name)
+    }
+
+    /// Register an accept/reject hook for writes to `node` — rclcpp's
+    /// `add_on_set_parameters_callback`.
+    ///
+    /// It runs on every write that reaches the store through
+    /// [`set_parameter_on`](Self::set_parameter_on), which is the seam the six
+    /// `rcl_interfaces/srv/*` servers and both wrapper languages share, so ONE
+    /// registration covers a remote `ros2 param set` and a local one alike.
+    ///
+    /// `None` when all [`nros_params::MAX_ON_SET_CALLBACKS`] slots are taken.
+    pub fn add_on_set_parameters_callback_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        callback: nros_params::OnSetParameterFn,
+        ctx: nros_params::OnSetContext,
+    ) -> Option<nros_params::OnSetParameterHandle> {
+        self.ensure_parameter_store();
+        self.params
+            .as_mut()?
+            .server
+            .add_on_set_parameters_callback(node.into(), callback, ctx)
+    }
+
+    /// [`add_on_set_parameters_callback_on`](Self::add_on_set_parameters_callback_on)
+    /// for the primary node.
+    pub fn add_on_set_parameters_callback(
+        &mut self,
+        callback: nros_params::OnSetParameterFn,
+        ctx: nros_params::OnSetContext,
+    ) -> Option<nros_params::OnSetParameterHandle> {
+        self.add_on_set_parameters_callback_on(super::node_record::NodeId::PRIMARY, callback, ctx)
+    }
+
+    /// Unregister a hook — rclcpp's `remove_on_set_parameters_callback`.
+    pub fn remove_on_set_parameters_callback(
+        &mut self,
+        handle: nros_params::OnSetParameterHandle,
+    ) -> bool {
+        match &mut self.params {
+            Some(params) => params.server.remove_on_set_parameters_callback(handle),
+            None => false,
+        }
+    }
+
+    /// rclrs's `Node::use_undeclared_parameters` — a handle that reads and
+    /// writes parameters this node never declared.
+    ///
+    /// The handle writes through `set_or_declare`, not through the wire-facing
+    /// `apply`: `allow_undeclared_parameters` governs what a REMOTE set may
+    /// create, and a caller who reached for this type has opted in by naming
+    /// it. That is rclrs's split too.
+    pub fn use_undeclared_parameters_on(
+        &mut self,
+        node: super::node_record::NodeId,
+    ) -> Result<nros_params::UndeclaredParameters<'_, 's>, NodeError> {
+        let server = self
+            .params
+            .as_mut()
+            .map(|p| &mut p.server)
+            .ok_or(NodeError::NotInitialized)?;
+        Ok(nros_params::UndeclaredParameters::new(server, node.into()))
+    }
+
+    /// [`use_undeclared_parameters_on`](Self::use_undeclared_parameters_on) for
+    /// the primary node.
+    pub fn use_undeclared_parameters(
+        &mut self,
+    ) -> Result<nros_params::UndeclaredParameters<'_, 's>, NodeError> {
+        self.use_undeclared_parameters_on(super::node_record::NodeId::PRIMARY)
+    }
 }
 
 // ============================================================================

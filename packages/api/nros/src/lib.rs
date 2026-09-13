@@ -1462,11 +1462,33 @@ pub use nros_bridge::run_from_config;
 // outside an executor has to place the storage and lend it.
 // phase-426 W1 — `NodeKey` is here because every per-parameter call names the
 // node it is about; a consumer holding a `ParameterServer` needs it to say so.
+// phase-417 W4.a — the rest of the parameter vocabulary. Five ledger rows
+// (`rust:ParameterRange`, `rust:ParameterRanges`, `rust:Parameters`,
+// `rust:Node::use_undeclared_parameters`, `rust:RmwParameterConversionError`)
+// were not missing capabilities: `nros_params` had every one of them and this
+// list stopped at ten names, so a user of the facade could build a range
+// through the builder's scalar arguments and never NAME the type it produced.
+// An unexported type is a capability a user cannot write down.
 pub use nros_params::{
-    MandatoryParameter, NodeKey, OptionalParameter, Parameter, ParameterBuilder,
-    ParameterDescriptor, ParameterError, ParameterServer, ParameterStorage, ParameterTable,
-    ParameterType, ParameterValue, ParameterVariant, ReadOnlyParameter, SetParameterResult,
+    DeclarationError, FloatingPointRange, IntegerRange, MAX_ON_SET_CALLBACKS, MandatoryParameter,
+    NodeKey, OnSetContext, OnSetParameterFn, OnSetParameterHandle, OptionalParameter, Parameter,
+    ParameterBuilder, ParameterDescriptor, ParameterError, ParameterRange, ParameterServer,
+    ParameterStorage, ParameterTable, ParameterType, ParameterValue, ParameterVariant,
+    ReadOnlyParameter, SetParameterResult, UndeclaredParameters,
 };
+// The wire-side half: why an `rcl_interfaces` parameter value could not be
+// turned into a native one. The `~/set_parameters` handler already puts
+// `reason()` into the `SetParametersResult`; without the type a user could read
+// the sentence and not match on the cause.
+// Gated like the module it comes from: `parameter_services` is the six
+// `rcl_interfaces/srv/*` servers, and an image without them has no wire side
+// for this error to describe.
+// Gated like the module it comes from: `parameter_services` is
+// `#[cfg(all(feature = "param-services", any(has_rmw, test)))]` in nros-node,
+// so it exists only once an RMW backend is linked — the same pairing the
+// `sched_context` re-export above uses.
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+pub use nros_node::parameter_services::ValueConversionError;
 /// Prelude module for convenient imports
 ///
 /// Import everything you need with a single statement:

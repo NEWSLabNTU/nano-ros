@@ -31,6 +31,8 @@ pub enum ParameterError {
     StringConversion,
     /// Invalid range for type
     InvalidRange,
+    /// An on-set-parameters callback refused the write (phase-417 W4.a).
+    Rejected,
 }
 
 impl From<SetParameterResult> for ParameterError {
@@ -42,6 +44,7 @@ impl From<SetParameterResult> for ParameterError {
             SetParameterResult::NotFound => ParameterError::NotFound,
             SetParameterResult::StorageFull => ParameterError::StorageFull,
             SetParameterResult::InvalidRange => ParameterError::InvalidRange,
+            SetParameterResult::Rejected => ParameterError::Rejected,
             // The typed API never auto-declares, so an unknown name is
             // simply not there.
             SetParameterResult::Undeclared => ParameterError::NotFound,
@@ -415,6 +418,49 @@ impl<'a, 's> UndeclaredParameters<'a, 's> {
     /// Try to get the value of an undeclared string parameter
     pub fn get_string(&self, name: &str) -> Option<&str> {
         self.server.get_string(self.node, name)
+    }
+
+    // ---- writes (phase-417 W4.a) -------------------------------------------
+    //
+    // rclrs's `Parameters` handle reads AND writes; ours only read, which made
+    // `use_undeclared_parameters` half a handle. The writes go through
+    // `ParameterServer::set_or_declare` rather than `apply`, and that is the
+    // whole point of the type: `apply` refuses a name the node never declared
+    // unless the node opted in, and this handle IS the opt-in — a caller
+    // reaches it by naming it, exactly as the store's own doc comment for
+    // `set_or_declare` describes.
+
+    /// Set (declaring if absent) an undeclared boolean parameter.
+    pub fn set_bool(&mut self, name: &str, value: bool) -> Result<(), ParameterError> {
+        self.set_value(name, crate::ParameterValue::Bool(value))
+    }
+
+    /// Set (declaring if absent) an undeclared integer parameter.
+    pub fn set_integer(&mut self, name: &str, value: i64) -> Result<(), ParameterError> {
+        self.set_value(name, crate::ParameterValue::Integer(value))
+    }
+
+    /// Set (declaring if absent) an undeclared double parameter.
+    pub fn set_double(&mut self, name: &str, value: f64) -> Result<(), ParameterError> {
+        self.set_value(name, crate::ParameterValue::Double(value))
+    }
+
+    /// Set (declaring if absent) an undeclared string parameter.
+    pub fn set_string(&mut self, name: &str, value: &str) -> Result<(), ParameterError> {
+        let value =
+            crate::ParameterValue::from_string(value).ok_or(ParameterError::StringConversion)?;
+        self.set_value(name, value)
+    }
+
+    fn set_value(
+        &mut self,
+        name: &str,
+        value: crate::ParameterValue,
+    ) -> Result<(), ParameterError> {
+        match self.server.set_or_declare(self.node, name, value) {
+            SetParameterResult::Success => Ok(()),
+            other => Err(other.into()),
+        }
     }
 }
 
