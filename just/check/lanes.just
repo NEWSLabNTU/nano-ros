@@ -514,7 +514,13 @@ c: c-fmt
     # its derived output dir, and the mirrored header beside it is from this
     # same build.
     param_dir="$PWD/target/nros-c-param-services"
-    CARGO_TARGET_DIR="$param_dir" cargo build -p nros-c --no-default-features \
+    # phase-417 W4.a -- `NROS_MAX_PARAM_CONSTRAINTS_LEN=256` because the
+    # descriptor's `additional_constraints` capacity DEFAULTS TO 0 (an image
+    # pays for that text only if it asks for it), and a probe built at 0 would
+    # read every constraints round-trip as an empty string and pass. Stating it
+    # here is also the only in-tree exercise of the knob's own ladder.
+    NROS_MAX_PARAM_CONSTRAINTS_LEN=256 CARGO_TARGET_DIR="$param_dir" \
+        cargo build -p nros-c --no-default-features \
         --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
     mkdir -p tmp
     cc -std=c11 -Wall -Wextra \
@@ -1528,6 +1534,28 @@ cpp: cpp-fmt
     # shipped unparsed. Its own TU because defining `NROS_CPP_STD` changes what
     # every nano-ros header does in that unit (issue 0135's flag-gated-field
     # hazard), which is exactly why it must not join the sweep.
+    # phase-417 W4.a — the descriptor / undeclare / listing / hook surface, in
+    # BOTH arms the W4 probe above uses. The `-nostdinc++` arm is the one that
+    # catches an `#include <string>` or an `std::` creeping into
+    # `node_parameters.hpp` (issue 0332's hazard), which is why this surface
+    # has no descriptor struct with an inline text buffer. `test -f` first — a
+    # missing file compiles to nothing and passes.
+    _w4a_probe=packages/api/nros-cpp/tests/compile/param_descriptor_surface.cpp
+    test -f "$_w4a_probe" || { echo "ERROR: $_w4a_probe is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - phase-417 W4.a: parameter descriptors, listing, undeclare and the on-set hook (hosted + -nostdinc++)"
+    for _w4a_arm in "" "-nostdinc++ -isystem $_threadx_shim"; do
+        # shellcheck disable=SC2086
+        c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_w4a_arm \
+            -Itarget/nros-cpp-generated \
+            -Itarget/nros-c-generated \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            "$_w4a_probe" || {
+            echo "check-cpp: the W4.a parameter surface does not compile (arm: ${_w4a_arm:-hosted, no -DNROS_CPP_STD})" >&2
+            exit 1
+        }
+    done
     echo "  - hosted parameter overloads: std::string + std::vector<T> on both node types (c++17)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Itarget/nros-cpp-generated \

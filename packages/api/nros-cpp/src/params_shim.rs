@@ -10,15 +10,16 @@
 // phase-426 W4 — the node-scoped entry points below are defined whatever the
 // feature set is (see the block comment above them), so their signature
 // vocabulary has to be too. Only the pieces that touch the STORE stay gated.
-use core::ffi::c_char;
+// phase-417 W4.a — `c_void` joins `c_char` UNGATED: `nros_cpp_param_write_t`
+// and `nros_cpp_param_callback_t` are part of that always-present signature
+// vocabulary, and a type the entry points name cannot be gated more narrowly
+// than they are.
+use core::ffi::{c_char, c_void};
 
 use crate::nros_cpp_ret_t;
 
 #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
 use crate::NROS_CPP_RET_UNSUPPORTED;
-
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
-use core::ffi::c_void;
 
 #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
 use nros_node::ParameterValue;
@@ -385,6 +386,10 @@ fn set_result_to_ret(result: nros_node::SetParameterResult) -> nros_cpp_ret_t {
         R::ReadOnly => NROS_CPP_RET_NOT_ALLOWED,
         R::TypeMismatch | R::OutOfRange | R::InvalidRange => NROS_CPP_RET_INVALID_ARGUMENT,
         R::StorageFull => NROS_CPP_RET_FULL,
+        // phase-417 W4.a — an on-set-parameters callback refused it.
+        // `NOT_ALLOWED`, beside `ReadOnly`, because that is what it means to a
+        // caller: the value was fine and the node said no.
+        R::Rejected => NROS_CPP_RET_NOT_ALLOWED,
     }
 }
 
@@ -1196,6 +1201,745 @@ fn infer_param_value(raw: &str) -> ParameterValue {
         return ParameterValue::from_double(f);
     }
     ParameterValue::from_string(raw).unwrap_or(ParameterValue::NotSet)
+}
+
+// ============================================================================
+// phase-417 W4.a — descriptors, undeclare, listing and the on-set hook
+// ============================================================================
+//
+// C++ had none of it: no descriptor type and no way to attach one, no
+// `undeclare_parameter`, no type accessor, no `list_parameters`, and no
+// accept/reject hook. Every entry point below forwards to the executor's
+// `nros_params::ParameterServer` — the ONE store — exactly as its neighbours
+// above do, and keeps no state of its own.
+//
+// ## How a descriptor crosses this boundary without allocating
+//
+// Text goes IN as a borrowed `const char*` and comes back OUT in a
+// caller-owned `char*` of stated capacity. The scalars are out-params, each
+// NULLable. There is no descriptor STRUCT: one would either carry pointers
+// into the store (a borrow a C++ caller cannot honour) or an inline buffer,
+// which would put `NROS_MAX_PARAM_DESCRIPTION_LEN` into the ABI and make a
+// build knob a layout — and `check-cpp-capability-layout`'s rule is that a
+// probe may gate a METHOD, never a `sizeof`.
+//
+// The one struct here, [`nros_cpp_param_write_t`], is the PROPOSED WRITE a
+// hook sees, not a descriptor. It is `#[repr(C)]` and cbindgen emits it into
+// `nros_cpp_ffi.h`, so it is generated rather than hand-mirrored — the
+// `check-ffi-struct-mirrors` class cannot arise from it.
+
+/// The proposed write an on-set-parameters callback sees.
+///
+/// rclcpp hands the callback a `std::vector<rclcpp::Parameter>`;
+/// `rclcpp::Parameter` is a generated message value object we do not have
+/// (`cpp:Parameter` is ledgered `declined`) and the vector needs an allocator.
+/// This is the same information as one element of that vector, flattened into
+/// scalars a freestanding C++ TU can read.
+///
+/// `string_value` is NULL unless `param_type` is the string code, and it
+/// points at a buffer that lives only for the duration of the call. An ARRAY
+/// value arrives as its `param_type` with every scalar zeroed: the proposed
+/// elements are not in the store yet, so publishing a pointer to them would be
+/// a borrow this ABI cannot state.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_param_write_t {
+    /// The parameter's name, null-terminated. Valid for the call only.
+    pub name: *const c_char,
+    /// `rcl_interfaces/msg/ParameterType` code — see `nros::param_type`.
+    pub param_type: i32,
+    /// The proposed value when `param_type` is the bool code.
+    pub bool_value: bool,
+    /// The proposed value when `param_type` is the integer code.
+    pub integer_value: i64,
+    /// The proposed value when `param_type` is the double code.
+    pub double_value: f64,
+    /// The proposed value when `param_type` is the string code; else NULL.
+    pub string_value: *const c_char,
+}
+
+/// An accept/reject hook. `false` REFUSES the write — rclcpp's
+/// `add_on_set_parameters_callback` contract.
+pub type nros_cpp_param_callback_t = Option<
+    unsafe extern "C" fn(write: *const nros_cpp_param_write_t, context: *mut c_void) -> bool,
+>;
+
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+fn param_type_code(t: nros_node::ParameterType) -> i32 {
+    use nros_node::ParameterType as P;
+    match t {
+        P::NotSet => 0,
+        P::Bool => 1,
+        P::Integer => 2,
+        P::Double => 3,
+        P::String => 4,
+        P::ByteArray => 5,
+        P::BoolArray => 6,
+        P::IntegerArray => 7,
+        P::DoubleArray => 8,
+        P::StringArray => 9,
+    }
+}
+
+/// Copy `src` into a caller buffer, truncating at a UTF-8 boundary.
+///
+/// Descriptor PROSE truncates where a string VALUE refuses: a prefix of a
+/// description is still usable, and `NROS_CPP_RET_FULL` says it is a prefix.
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+unsafe fn str_out_truncating(src: &str, dst: *mut c_char, max_len: usize) -> nros_cpp_ret_t {
+    if dst.is_null() || max_len == 0 {
+        return NROS_CPP_RET_FULL;
+    }
+    let bytes = src.as_bytes();
+    let mut cut = bytes.len().min(max_len - 1);
+    while !src.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    for (i, &b) in bytes[..cut].iter().enumerate() {
+        unsafe { *dst.add(i) = b as c_char };
+    }
+    unsafe { *dst.add(cut) = 0 };
+    if cut < bytes.len() {
+        NROS_CPP_RET_FULL
+    } else {
+        NROS_CPP_RET_OK
+    }
+}
+
+/// Attach a description and free-text constraints to a declared parameter —
+/// rclc's `rclc_add_parameter_description`, reachable from C++.
+///
+/// Either text may be NULL, meaning "clear it".
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_bool`]; the texts must be null or valid
+/// null-terminated UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_add_param_description(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+    description: *const c_char,
+    additional_constraints: *const c_char,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let (ctx, id, name) = node_param_prologue!(node, name);
+        let d = if description.is_null() {
+            Some("")
+        } else {
+            unsafe { cstr_to_str(description) }
+        };
+        let c = if additional_constraints.is_null() {
+            Some("")
+        } else {
+            unsafe { cstr_to_str(additional_constraints) }
+        };
+        let (Some(d), Some(c)) = (d, c) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        if ctx.executor.set_parameter_description_on(id, name, d, c) {
+            NROS_CPP_RET_OK
+        } else {
+            NROS_CPP_RET_NOT_FOUND
+        }
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, name, description, additional_constraints);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// Mark a declared parameter read-only — rclc's
+/// `rclc_set_parameter_read_only`. Every later write is refused.
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_bool`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_set_param_read_only(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+    read_only: bool,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let (ctx, id, name) = node_param_prologue!(node, name);
+        if ctx.executor.set_parameter_read_only_on(id, name, read_only) {
+            NROS_CPP_RET_OK
+        } else {
+            NROS_CPP_RET_NOT_FOUND
+        }
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, name, read_only);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// Attach an integer range — rclc's `rclc_add_parameter_constraint_integer`.
+///
+/// `NROS_CPP_RET_INVALID_ARGUMENT` for an ill-formed range, or one the
+/// parameter's CURRENT value does not satisfy.
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_bool`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_add_param_constraint_integer(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+    from_value: i64,
+    to_value: i64,
+    step: i64,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let (ctx, id, name) = node_param_prologue!(node, name);
+        if ctx
+            .executor
+            .set_parameter_integer_range_on(id, name, from_value, to_value, step)
+        {
+            NROS_CPP_RET_OK
+        } else {
+            NROS_CPP_RET_INVALID_ARGUMENT
+        }
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, name, from_value, to_value, step);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// Attach a floating-point range — rclc's
+/// `rclc_add_parameter_constraint_double`. See
+/// [`nros_cpp_node_add_param_constraint_integer`].
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_bool`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_add_param_constraint_double(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+    from_value: f64,
+    to_value: f64,
+    step: f64,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let (ctx, id, name) = node_param_prologue!(node, name);
+        if ctx
+            .executor
+            .set_parameter_float_range_on(id, name, from_value, to_value, step)
+        {
+            NROS_CPP_RET_OK
+        } else {
+            NROS_CPP_RET_INVALID_ARGUMENT
+        }
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, name, from_value, to_value, step);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// Undeclare a parameter — rclcpp's `undeclare_parameter`. The slot is freed
+/// for a later declaration.
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_bool`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_undeclare_param(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let (ctx, id, name) = node_param_prologue!(node, name);
+        if ctx.executor.undeclare_parameter_on(id, name) {
+            NROS_CPP_RET_OK
+        } else {
+            NROS_CPP_RET_NOT_FOUND
+        }
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, name);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// The declared TYPE of a parameter — rclcpp's `get_parameter_types`, one name
+/// at a time.
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_bool`]; `out_type` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_get_param_type(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+    out_type: *mut i32,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let (ctx, id, name) = node_param_prologue!(node, name);
+        if out_type.is_null() {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        }
+        match ctx.executor.get_parameter_type_on(id, name) {
+            Some(t) => {
+                unsafe { *out_type = param_type_code(t) };
+                NROS_CPP_RET_OK
+            }
+            None => NROS_CPP_RET_NOT_FOUND,
+        }
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, name, out_type);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// Read a declared parameter's descriptor into caller-owned storage —
+/// rclcpp's `describe_parameter`.
+///
+/// Any out-param may be NULL. A parameter declared with no descriptor answers
+/// OK with the defaults, because that IS its description — the same answer
+/// `~/describe_parameters` gives. `NROS_CPP_RET_FULL` when a text buffer was
+/// too small; the text is still written, truncated and null-terminated.
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_bool`]; each non-null out-param must be
+/// writable for the length given.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_describe_param(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+    out_description: *mut c_char,
+    description_len: usize,
+    out_constraints: *mut c_char,
+    constraints_len: usize,
+    out_read_only: *mut bool,
+    out_type: *mut i32,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let (ctx, id, name) = node_param_prologue!(node, name);
+        let Some(stored_type) = ctx.executor.get_parameter_type_on(id, name) else {
+            return NROS_CPP_RET_NOT_FOUND;
+        };
+        let desc = ctx.executor.describe_parameter_on(id, name);
+        let mut ret = NROS_CPP_RET_OK;
+        if !out_type.is_null() {
+            unsafe {
+                *out_type = param_type_code(desc.map(|d| d.param_type).unwrap_or(stored_type))
+            };
+        }
+        if !out_read_only.is_null() {
+            unsafe { *out_read_only = desc.map(|d| d.read_only).unwrap_or(false) };
+        }
+        if !out_description.is_null()
+            && unsafe {
+                str_out_truncating(
+                    desc.map(|d| d.description.as_str()).unwrap_or(""),
+                    out_description,
+                    description_len,
+                )
+            } == NROS_CPP_RET_FULL
+        {
+            ret = NROS_CPP_RET_FULL;
+        }
+        if !out_constraints.is_null()
+            && unsafe {
+                str_out_truncating(
+                    desc.map(|d| d.additional_constraints.as_str())
+                        .unwrap_or(""),
+                    out_constraints,
+                    constraints_len,
+                )
+            } == NROS_CPP_RET_FULL
+        {
+            ret = NROS_CPP_RET_FULL;
+        }
+        ret
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (
+            node,
+            name,
+            out_description,
+            description_len,
+            out_constraints,
+            constraints_len,
+            out_read_only,
+            out_type,
+        );
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// The integer range attached to a parameter.
+///
+/// `NROS_CPP_RET_NOT_FOUND` when the parameter is undeclared OR carries no
+/// integer range: both are the same answer to "what may I write".
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_bool`]; each non-null out-param must be
+/// writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_get_param_integer_range(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+    out_from: *mut i64,
+    out_to: *mut i64,
+    out_step: *mut i64,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let (ctx, id, name) = node_param_prologue!(node, name);
+        let Some(nros_node::ParameterRange::Integer(r)) = ctx
+            .executor
+            .describe_parameter_on(id, name)
+            .map(|d| d.range)
+        else {
+            return NROS_CPP_RET_NOT_FOUND;
+        };
+        unsafe {
+            if !out_from.is_null() {
+                *out_from = r.min;
+            }
+            if !out_to.is_null() {
+                *out_to = r.max;
+            }
+            if !out_step.is_null() {
+                *out_step = r.step;
+            }
+        }
+        NROS_CPP_RET_OK
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, name, out_from, out_to, out_step);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// The floating-point range attached to a parameter. See
+/// [`nros_cpp_node_get_param_integer_range`].
+///
+/// # Safety
+/// As [`nros_cpp_node_get_param_integer_range`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_get_param_double_range(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+    out_from: *mut f64,
+    out_to: *mut f64,
+    out_step: *mut f64,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let (ctx, id, name) = node_param_prologue!(node, name);
+        let Some(nros_node::ParameterRange::FloatingPoint(r)) = ctx
+            .executor
+            .describe_parameter_on(id, name)
+            .map(|d| d.range)
+        else {
+            return NROS_CPP_RET_NOT_FOUND;
+        };
+        unsafe {
+            if !out_from.is_null() {
+                *out_from = r.min;
+            }
+            if !out_to.is_null() {
+                *out_to = r.max;
+            }
+            if !out_step.is_null() {
+                *out_step = r.step;
+            }
+        }
+        NROS_CPP_RET_OK
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, name, out_from, out_to, out_step);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// Enumerate this node's declared parameter names, prefix-filtered —
+/// rclcpp's `list_parameters`.
+///
+/// Names land in a caller-owned RECTANGLE (`max_names` rows of `name_stride`
+/// bytes) because a list of strings cannot cross this boundary any other way
+/// without an allocator. `*out_count` always receives the TOTAL that matched,
+/// so the "ask for the size, then read" shape works with `max_names` 0.
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_bool`]; `out_names` must be writable for
+/// `max_names * name_stride` bytes when `max_names` is non-zero.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_list_params(
+    node: *const crate::nros_cpp_node_t,
+    prefix: *const c_char,
+    out_names: *mut c_char,
+    name_stride: usize,
+    max_names: usize,
+    out_count: *mut usize,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let Some((ctx, id)) = (unsafe { node_param_target(node) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        let p = if prefix.is_null() {
+            Some("")
+        } else {
+            unsafe { cstr_to_str(prefix) }
+        };
+        let Some(p) = p else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        if max_names > 0 && (out_names.is_null() || name_stride == 0) {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        }
+        let mut total = 0usize;
+        let mut ret = NROS_CPP_RET_OK;
+        for name in ctx.executor.list_parameters_on(id, p) {
+            if total < max_names {
+                let row = unsafe { out_names.add(total * name_stride) };
+                if unsafe { str_out_truncating(name, row, name_stride) } == NROS_CPP_RET_FULL {
+                    ret = NROS_CPP_RET_FULL;
+                }
+            }
+            total += 1;
+        }
+        if total > max_names {
+            ret = NROS_CPP_RET_FULL;
+        }
+        if !out_count.is_null() {
+            unsafe { *out_count = total };
+        }
+        ret
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, prefix, out_names, name_stride, max_names, out_count);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// The Rust-side hook the store calls, which unpacks `OnSetContext` back into
+/// the C++ function pointer and the user's `void*` and builds the
+/// [`nros_cpp_param_write_t`] on the STACK for the synchronous call.
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+fn cpp_on_set_trampoline(
+    _node: nros_node::ParameterNodeKey,
+    name: &str,
+    value: &nros_node::ParameterValue,
+    ctx: nros_node::OnSetContext,
+) -> bool {
+    if ctx.b == 0 {
+        return true;
+    }
+    type RawCb = unsafe extern "C" fn(*const nros_cpp_param_write_t, *mut c_void) -> bool;
+    // SAFETY: `b` is the non-null function pointer the caller handed to
+    // `nros_cpp_node_add_on_set_params_callback`, cast to `usize` on the way
+    // in. Nothing else writes this slot.
+    let cb: RawCb = unsafe { core::mem::transmute::<usize, RawCb>(ctx.b) };
+
+    // The name and any string value must be NUL-terminated for C++; the store
+    // holds `&str`. Both buffers are LOCALS, which is what makes this
+    // allocation-free — the callback is synchronous and the doc says the
+    // pointers are valid for the call only.
+    let mut name_buf = [0u8; NROS_CPP_PARAM_TEXT_BUF];
+    let n = name.len().min(NROS_CPP_PARAM_TEXT_BUF - 1);
+    name_buf[..n].copy_from_slice(&name.as_bytes()[..n]);
+
+    let mut value_buf = [0u8; NROS_CPP_PARAM_TEXT_BUF];
+    let string_value = match value.as_string() {
+        Some(sv) => {
+            let n = sv.len().min(NROS_CPP_PARAM_TEXT_BUF - 1);
+            value_buf[..n].copy_from_slice(&sv.as_bytes()[..n]);
+            value_buf.as_ptr().cast::<c_char>()
+        }
+        None => core::ptr::null(),
+    };
+
+    let write = nros_cpp_param_write_t {
+        name: name_buf.as_ptr().cast::<c_char>(),
+        param_type: param_type_code(value.param_type()),
+        bool_value: value.as_bool().unwrap_or(false),
+        integer_value: value.as_integer().unwrap_or(0),
+        double_value: value.as_double().unwrap_or(0.0),
+        string_value,
+    };
+    // SAFETY: the caller promised a valid function pointer and a context that
+    // outlives the registration.
+    unsafe { cb(&raw const write, ctx.a as *mut c_void) }
+}
+
+/// The stack buffer the trampoline NUL-terminates a name or a string value
+/// into.
+///
+/// The store's own bounds are `NROS_MAX_PARAM_NAME_LEN` (64) and
+/// `NROS_MAX_STRING_VALUE_LEN` (256) and this crate cannot see either, so this
+/// is the one number that covers both. It sizes two LOCALS in one function and
+/// no member anywhere, so it cannot move a layout — the same reasoning
+/// `NROS_NODE_PARAM_STRING_BUF` carries one header over. A longer name or
+/// value reaches the hook TRUNCATED; the hook is an accept/reject vote on a
+/// VALUE the store has already type- and range-checked, and the untruncated
+/// value is one `get_parameter` away.
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+const NROS_CPP_PARAM_TEXT_BUF: usize = 256;
+
+/// Register an accept/reject hook for writes to this node — rclcpp's
+/// `add_on_set_parameters_callback`.
+///
+/// The hook runs on every write that reaches the store, local or over
+/// `~/set_parameters`, and runs AFTER the store's own read-only / type / range
+/// rules, so it never sees a write those already refused.
+///
+/// `NROS_CPP_RET_FULL` when the store's on-set slots are all taken — a
+/// refusal, never a silent eviction. `out_handle` receives the token
+/// [`nros_cpp_node_remove_on_set_params_callback`] takes.
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_bool`]; `callback` must be a valid
+/// function pointer and `context` must outlive the registration.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_add_on_set_params_callback(
+    node: *const crate::nros_cpp_node_t,
+    callback: nros_cpp_param_callback_t,
+    context: *mut c_void,
+    out_handle: *mut u16,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let Some((ctx, id)) = (unsafe { node_param_target(node) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        let Some(cb) = callback else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        let payload = nros_node::OnSetContext::pair(context as usize, cb as usize);
+        match ctx
+            .executor
+            .add_on_set_parameters_callback_on(id, cpp_on_set_trampoline, payload)
+        {
+            Some(handle) => {
+                if !out_handle.is_null() {
+                    unsafe { *out_handle = handle.raw() };
+                }
+                NROS_CPP_RET_OK
+            }
+            None => NROS_CPP_RET_FULL,
+        }
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, callback, context, out_handle);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// Unregister a hook — rclcpp's `remove_on_set_parameters_callback`.
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_bool`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_remove_on_set_params_callback(
+    node: *const crate::nros_cpp_node_t,
+    handle: u16,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let Some((ctx, _id)) = (unsafe { node_param_target(node) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        if ctx
+            .executor
+            .remove_on_set_parameters_callback(nros_node::OnSetParameterHandle::from_raw(handle))
+        {
+            NROS_CPP_RET_OK
+        } else {
+            NROS_CPP_RET_NOT_FOUND
+        }
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, handle);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
+/// All-or-nothing multi-set — rclcpp's `set_parameters_atomically`.
+///
+/// We SERVED `~/set_parameters_atomically` and offered it in no language, so
+/// the only way to reach our own atomic set was over the wire. `writes` reuses
+/// [`nros_cpp_param_write_t`], which is already a name plus a tagged value.
+///
+/// Nothing is written unless every element passes. Array elements are refused
+/// (`NROS_CPP_RET_INVALID_ARGUMENT`): the struct carries scalars only, and
+/// silently dropping one would make an "atomic" batch partial.
+///
+/// # Safety
+/// `node` as [`nros_cpp_node_declare_param_bool`]; `writes` must point to
+/// `count` initialised elements whose `name` / `string_value` are valid
+/// null-terminated UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_set_params_atomically(
+    node: *const crate::nros_cpp_node_t,
+    writes: *const nros_cpp_param_write_t,
+    count: usize,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let Some((ctx, id)) = (unsafe { node_param_target(node) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        if count == 0 {
+            return NROS_CPP_RET_OK;
+        }
+        if writes.is_null() {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        }
+        let items = unsafe { core::slice::from_raw_parts(writes, count) };
+        // A name that is not readable refuses the whole batch, rather than
+        // being skipped: a partial "atomic" set is the one outcome this verb
+        // must not have.
+        if items
+            .iter()
+            .any(|w| unsafe { cstr_to_str(w.name) }.is_none())
+        {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        }
+        let verdict = ctx.executor.set_parameters_atomically_on(
+            id,
+            items.iter().map(|w| {
+                let name = unsafe { cstr_to_str(w.name) }?;
+                let value = match w.param_type {
+                    1 => nros_node::ParameterValue::from_bool(w.bool_value),
+                    2 => nros_node::ParameterValue::from_integer(w.integer_value),
+                    3 => nros_node::ParameterValue::from_double(w.double_value),
+                    4 => nros_node::ParameterValue::from_string(unsafe {
+                        cstr_to_str(w.string_value)?
+                    })?,
+                    _ => return None,
+                };
+                Some((name, value))
+            }),
+        );
+        set_result_to_ret(verdict)
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = (node, writes, count);
+        NROS_CPP_RET_UNSUPPORTED
+    }
 }
 
 #[cfg(test)]

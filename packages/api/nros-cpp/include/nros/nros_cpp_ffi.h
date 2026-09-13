@@ -594,6 +594,54 @@ typedef struct nros_cpp_transport_ops_t {
 typedef uint8_t (*nros_cpp_lifecycle_callback_t)(void*);
 
 /**
+ * The proposed write an on-set-parameters callback sees.
+ *
+ * rclcpp hands the callback a `std::vector<rclcpp::Parameter>`;
+ * `rclcpp::Parameter` is a generated message value object we do not have
+ * (`cpp:Parameter` is ledgered `declined`) and the vector needs an allocator.
+ * This is the same information as one element of that vector, flattened into
+ * scalars a freestanding C++ TU can read.
+ *
+ * `string_value` is NULL unless `param_type` is the string code, and it
+ * points at a buffer that lives only for the duration of the call. An ARRAY
+ * value arrives as its `param_type` with every scalar zeroed: the proposed
+ * elements are not in the store yet, so publishing a pointer to them would be
+ * a borrow this ABI cannot state.
+ */
+typedef struct nros_cpp_param_write_t {
+  /**
+   * The parameter's name, null-terminated. Valid for the call only.
+   */
+  const char *name;
+  /**
+   * `rcl_interfaces/msg/ParameterType` code — see `nros::param_type`.
+   */
+  int32_t param_type;
+  /**
+   * The proposed value when `param_type` is the bool code.
+   */
+  bool bool_value;
+  /**
+   * The proposed value when `param_type` is the integer code.
+   */
+  int64_t integer_value;
+  /**
+   * The proposed value when `param_type` is the double code.
+   */
+  double double_value;
+  /**
+   * The proposed value when `param_type` is the string code; else NULL.
+   */
+  const char *string_value;
+} nros_cpp_param_write_t;
+
+/**
+ * An accept/reject hook. `false` REFUSES the write — rclcpp's
+ * `add_on_set_parameters_callback` contract.
+ */
+typedef bool (*nros_cpp_param_callback_t)(const struct nros_cpp_param_write_t *write, void *context);
+
+/**
  * C callback type for shutdown hooks: `void callback(void* context)`.
  */
 typedef void (*nros_cpp_shutdown_callback_t)(void *context);
@@ -3529,6 +3577,202 @@ nros_cpp_ret_t nros_cpp_node_set_param_bool_array(const struct nros_cpp_node_t *
                                                   const char *name,
                                                   const bool *data,
                                                   size_t len);
+
+/**
+ * Attach a description and free-text constraints to a declared parameter —
+ * rclc's `rclc_add_parameter_description`, reachable from C++.
+ *
+ * Either text may be NULL, meaning "clear it".
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`]; the texts must be null or valid
+ * null-terminated UTF-8.
+ */
+nros_cpp_ret_t nros_cpp_node_add_param_description(const struct nros_cpp_node_t *node,
+                                                   const char *name,
+                                                   const char *description,
+                                                   const char *additional_constraints);
+
+/**
+ * Mark a declared parameter read-only — rclc's
+ * `rclc_set_parameter_read_only`. Every later write is refused.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`].
+ */
+nros_cpp_ret_t nros_cpp_node_set_param_read_only(const struct nros_cpp_node_t *node,
+                                                 const char *name,
+                                                 bool read_only);
+
+/**
+ * Attach an integer range — rclc's `rclc_add_parameter_constraint_integer`.
+ *
+ * `NROS_CPP_RET_INVALID_ARGUMENT` for an ill-formed range, or one the
+ * parameter's CURRENT value does not satisfy.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`].
+ */
+nros_cpp_ret_t nros_cpp_node_add_param_constraint_integer(const struct nros_cpp_node_t *node,
+                                                          const char *name,
+                                                          int64_t from_value,
+                                                          int64_t to_value,
+                                                          int64_t step);
+
+/**
+ * Attach a floating-point range — rclc's
+ * `rclc_add_parameter_constraint_double`. See
+ * [`nros_cpp_node_add_param_constraint_integer`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`].
+ */
+nros_cpp_ret_t nros_cpp_node_add_param_constraint_double(const struct nros_cpp_node_t *node,
+                                                         const char *name,
+                                                         double from_value,
+                                                         double to_value,
+                                                         double step);
+
+/**
+ * Undeclare a parameter — rclcpp's `undeclare_parameter`. The slot is freed
+ * for a later declaration.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`].
+ */
+nros_cpp_ret_t nros_cpp_node_undeclare_param(const struct nros_cpp_node_t *node, const char *name);
+
+/**
+ * The declared TYPE of a parameter — rclcpp's `get_parameter_types`, one name
+ * at a time.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`]; `out_type` must be writable.
+ */
+nros_cpp_ret_t nros_cpp_node_get_param_type(const struct nros_cpp_node_t *node,
+                                            const char *name,
+                                            int32_t *out_type);
+
+/**
+ * Read a declared parameter's descriptor into caller-owned storage —
+ * rclcpp's `describe_parameter`.
+ *
+ * Any out-param may be NULL. A parameter declared with no descriptor answers
+ * OK with the defaults, because that IS its description — the same answer
+ * `~/describe_parameters` gives. `NROS_CPP_RET_FULL` when a text buffer was
+ * too small; the text is still written, truncated and null-terminated.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`]; each non-null out-param must be
+ * writable for the length given.
+ */
+nros_cpp_ret_t nros_cpp_node_describe_param(const struct nros_cpp_node_t *node,
+                                            const char *name,
+                                            char *out_description,
+                                            size_t description_len,
+                                            char *out_constraints,
+                                            size_t constraints_len,
+                                            bool *out_read_only,
+                                            int32_t *out_type);
+
+/**
+ * The integer range attached to a parameter.
+ *
+ * `NROS_CPP_RET_NOT_FOUND` when the parameter is undeclared OR carries no
+ * integer range: both are the same answer to "what may I write".
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`]; each non-null out-param must be
+ * writable.
+ */
+nros_cpp_ret_t nros_cpp_node_get_param_integer_range(const struct nros_cpp_node_t *node,
+                                                     const char *name,
+                                                     int64_t *out_from,
+                                                     int64_t *out_to,
+                                                     int64_t *out_step);
+
+/**
+ * The floating-point range attached to a parameter. See
+ * [`nros_cpp_node_get_param_integer_range`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_get_param_integer_range`].
+ */
+nros_cpp_ret_t nros_cpp_node_get_param_double_range(const struct nros_cpp_node_t *node,
+                                                    const char *name,
+                                                    double *out_from,
+                                                    double *out_to,
+                                                    double *out_step);
+
+/**
+ * Enumerate this node's declared parameter names, prefix-filtered —
+ * rclcpp's `list_parameters`.
+ *
+ * Names land in a caller-owned RECTANGLE (`max_names` rows of `name_stride`
+ * bytes) because a list of strings cannot cross this boundary any other way
+ * without an allocator. `*out_count` always receives the TOTAL that matched,
+ * so the "ask for the size, then read" shape works with `max_names` 0.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`]; `out_names` must be writable for
+ * `max_names * name_stride` bytes when `max_names` is non-zero.
+ */
+nros_cpp_ret_t nros_cpp_node_list_params(const struct nros_cpp_node_t *node,
+                                         const char *prefix,
+                                         char *out_names,
+                                         size_t name_stride,
+                                         size_t max_names,
+                                         size_t *out_count);
+
+/**
+ * Register an accept/reject hook for writes to this node — rclcpp's
+ * `add_on_set_parameters_callback`.
+ *
+ * The hook runs on every write that reaches the store, local or over
+ * `~/set_parameters`, and runs AFTER the store's own read-only / type / range
+ * rules, so it never sees a write those already refused.
+ *
+ * `NROS_CPP_RET_FULL` when the store's on-set slots are all taken — a
+ * refusal, never a silent eviction. `out_handle` receives the token
+ * [`nros_cpp_node_remove_on_set_params_callback`] takes.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`]; `callback` must be a valid
+ * function pointer and `context` must outlive the registration.
+ */
+nros_cpp_ret_t nros_cpp_node_add_on_set_params_callback(const struct nros_cpp_node_t *node,
+                                                        nros_cpp_param_callback_t callback,
+                                                        void *context,
+                                                        uint16_t *out_handle);
+
+/**
+ * Unregister a hook — rclcpp's `remove_on_set_parameters_callback`.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`].
+ */
+nros_cpp_ret_t nros_cpp_node_remove_on_set_params_callback(const struct nros_cpp_node_t *node,
+                                                           uint16_t handle);
+
+/**
+ * All-or-nothing multi-set — rclcpp's `set_parameters_atomically`.
+ *
+ * We SERVED `~/set_parameters_atomically` and offered it in no language, so
+ * the only way to reach our own atomic set was over the wire. `writes` reuses
+ * [`nros_cpp_param_write_t`], which is already a name plus a tagged value.
+ *
+ * Nothing is written unless every element passes. Array elements are refused
+ * (`NROS_CPP_RET_INVALID_ARGUMENT`): the struct carries scalars only, and
+ * silently dropping one would make an "atomic" batch partial.
+ *
+ * # Safety
+ * `node` as [`nros_cpp_node_declare_param_bool`]; `writes` must point to
+ * `count` initialised elements whose `name` / `string_value` are valid
+ * null-terminated UTF-8.
+ */
+nros_cpp_ret_t nros_cpp_node_set_params_atomically(const struct nros_cpp_node_t *node,
+                                                   const struct nros_cpp_param_write_t *writes,
+                                                   size_t count);
 
 /**
  * Register a hook to run BEFORE the executor's session is closed.
