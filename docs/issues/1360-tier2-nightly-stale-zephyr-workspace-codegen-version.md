@@ -75,3 +75,26 @@ reach a single cell, so that whole cover is unmeasured, and the lane reports the
 
 Acceptance is `tier 2 nightly` reaching its cells — a verdict on the pairwise cover,
 green or red — rather than failing in `build-fixtures`.
+
+## The same cause in a second lane: `run-matrix.yml` tier 2
+
+Run **34742879689** (schedule, 2026-09-13T06:29), job **103685468305**
+(`tier 2 (1-wise matrix)`), step `just build tier2`:
+
+```
+/home/runner/.nros/workspaces/zephyr/3.7/build-cpp-talker-xrce/nano_ros_cpp/std_msgs/msg/
+  std_msgs_msg_uint8.hpp:28:2: error: #error "nros: this generated tree was emitted at a
+  codegen version the runtime does not accept …"
+error: recipe `build-fixtures` failed with exit code 2
+```
+
+Same persistent workspace, same guard, same `build-fixtures` failure — so this is
+not only the nightly pairwise cover. The 1-wise lane has failed on 2026-09-11, -12
+and -13.
+
+Worth recording because of what it changes about triage: this lane's reds were
+being read as issue 1158 (tier 2 never reaching its cells, by provisioning or
+build stage). The stage is right — it never reaches the cells — but the cause is
+this workspace, not 1158's. A stage axis says how far a lane got; it does not say
+why, and reading one as the other is how a second cause hides behind a chronic
+red.
