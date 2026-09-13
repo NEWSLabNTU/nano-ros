@@ -1281,6 +1281,925 @@ mod service_backed {
         exec.allow_undeclared_parameters_on(id, allow);
         NROS_RET_OK
     }
+
+    // ========================================================================
+    // phase-417 W4.a — descriptors, undeclare, type query, listing and the
+    // accept/reject hook, ON THE STORE THE SERVICES READ
+    //
+    // rclc attaches metadata AFTER the declaration
+    // (`rclc_add_parameter_description`, `rclc_add_parameter_constraint_*`,
+    // `rclc_set_parameter_read_only`) and undeclares with
+    // `rclc_delete_parameter`. Ours are the same verbs against the executor's
+    // `nros_node::ParameterServer` — the object the six
+    // `rcl_interfaces/srv/*` servers read, so `ros2 param describe` answers
+    // with what a C caller attached instead of an empty descriptor.
+    //
+    // NOT on the legacy `nros_parameter_server_t`: that is the disjoint store
+    // issue 0793's C half is about, and adding a descriptor surface there
+    // would be a second answer to "what is this parameter's range". Whether
+    // that store is retired or re-pointed is W2.a's decision, and nothing here
+    // depends on it.
+    //
+    // ## How a descriptor crosses the FFI without allocating
+    //
+    // TEXT GOES IN as a borrowed `const char*` and COMES BACK in a
+    // caller-owned `char*` of stated capacity — the shape
+    // `nros_executor_get_param_string` already has. There is no descriptor
+    // STRUCT: a struct would either carry pointers into the store (a borrow
+    // with no lifetime a C caller can honour) or an inline buffer, which puts
+    // `NROS_MAX_PARAM_DESCRIPTION_LEN` into a public ABI and makes the knob a
+    // layout. Scalars are read through ordinary out-params. Nothing here
+    // allocates on either side of the boundary.
+
+    /// Attach a description and free-text constraints to a declared parameter
+    /// on `node`.
+    unsafe fn add_param_description_impl(
+        executor: *mut nros_executor_t,
+        id: NodeId,
+        name: *const c_char,
+        description: *const c_char,
+        additional_constraints: *const c_char,
+    ) -> nros_ret_t {
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        // Either text may be NULL, meaning "clear it": rclc's caller passes a
+        // string for both, and a C caller with only one has no other spelling.
+        let d = if description.is_null() {
+            Some("")
+        } else {
+            cstr_to_str(description)
+        };
+        let c = if additional_constraints.is_null() {
+            Some("")
+        } else {
+            cstr_to_str(additional_constraints)
+        };
+        let (Some(d), Some(c)) = (d, c) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        if exec.set_parameter_description_on(id, n, d, c) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_NOT_FOUND
+        }
+    }
+
+    /// rclc's `rclc_add_parameter_description`, on the executor's PRIMARY node.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_add_param_description(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+        description: *const c_char,
+        additional_constraints: *const c_char,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        add_param_description_impl(
+            executor,
+            NodeId::PRIMARY,
+            name,
+            description,
+            additional_constraints,
+        )
+    }
+
+    /// [`nros_executor_add_param_description`] for `node`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_add_param_description_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+        description: *const c_char,
+        additional_constraints: *const c_char,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        add_param_description_impl(executor, id, name, description, additional_constraints)
+    }
+
+    unsafe fn set_param_read_only_impl(
+        executor: *mut nros_executor_t,
+        id: NodeId,
+        name: *const c_char,
+        read_only: bool,
+    ) -> nros_ret_t {
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        if exec.set_parameter_read_only_on(id, n, read_only) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_NOT_FOUND
+        }
+    }
+
+    /// rclc's `rclc_set_parameter_read_only`, on the PRIMARY node. Every later
+    /// write — local or over `~/set_parameters` — is refused.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_set_param_read_only(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+        read_only: bool,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        set_param_read_only_impl(executor, NodeId::PRIMARY, name, read_only)
+    }
+
+    /// [`nros_executor_set_param_read_only`] for `node`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_set_param_read_only_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+        read_only: bool,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        set_param_read_only_impl(executor, id, name, read_only)
+    }
+
+    /// rclc's `rclc_add_parameter_constraint_integer`, on the PRIMARY node.
+    ///
+    /// `NROS_RET_INVALID_ARGUMENT` for an ill-formed range, or one the
+    /// parameter's CURRENT value does not satisfy — attaching either would
+    /// advertise a bound no `set` could have produced.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_add_param_constraint_integer(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+        from_value: i64,
+        to_value: i64,
+        step: i64,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        if exec.set_parameter_integer_range(n, from_value, to_value, step) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_INVALID_ARGUMENT
+        }
+    }
+
+    /// [`nros_executor_add_param_constraint_integer`] for `node`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_add_param_constraint_integer_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+        from_value: i64,
+        to_value: i64,
+        step: i64,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        if exec.set_parameter_integer_range_on(id, n, from_value, to_value, step) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_INVALID_ARGUMENT
+        }
+    }
+
+    /// rclc's `rclc_add_parameter_constraint_double`, on the PRIMARY node.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_add_param_constraint_double(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+        from_value: f64,
+        to_value: f64,
+        step: f64,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        if exec.set_parameter_float_range(n, from_value, to_value, step) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_INVALID_ARGUMENT
+        }
+    }
+
+    /// [`nros_executor_add_param_constraint_double`] for `node`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_add_param_constraint_double_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+        from_value: f64,
+        to_value: f64,
+        step: f64,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        if exec.set_parameter_float_range_on(id, n, from_value, to_value, step) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_INVALID_ARGUMENT
+        }
+    }
+
+    /// rclc's `rclc_delete_parameter` — undeclare, freeing the slot for a
+    /// later declaration. `NROS_RET_NOT_FOUND` if the PRIMARY node never
+    /// declared it.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_delete_param(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        if exec.undeclare_parameter(n) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_NOT_FOUND
+        }
+    }
+
+    /// [`nros_executor_delete_param`] for `node`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_delete_param_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        if exec.undeclare_parameter_on(id, n) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_NOT_FOUND
+        }
+    }
+
+    /// The declared TYPE of a parameter on the PRIMARY node, or
+    /// `NROS_PARAMETER_NOT_SET` when it is not declared.
+    ///
+    /// `nros_parameter_get_type` answers the same question about the LEGACY
+    /// store, which is not the one `ros2 param get` reads (issue 0793). This
+    /// is the executor-store answer, and the local form of what
+    /// `~/get_parameter_types` serves.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_get_param_type(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+    ) -> nros_parameter_type_t {
+        if executor.is_null() {
+            return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
+        }
+        let Some(n) = cstr_to_str(name) else {
+            return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        param_type_to_c(exec.get_parameter_type(n))
+    }
+
+    /// [`nros_executor_get_param_type`] for `node`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_get_param_type_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+    ) -> nros_parameter_type_t {
+        if executor.is_null() {
+            return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
+        }
+        let Some(n) = cstr_to_str(name) else {
+            return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
+        };
+        param_type_to_c(exec.get_parameter_type_on(id, n))
+    }
+
+    /// The store's type enum as the C one. ONE spelling — the legacy half of
+    /// this file has its own `From` between the same two vocabularies, and a
+    /// second hand-written `match` is how the two come to disagree about
+    /// `BYTE_ARRAY`.
+    fn param_type_to_c(t: Option<nros_node::ParameterType>) -> nros_parameter_type_t {
+        use nros_node::ParameterType as P;
+        match t {
+            None | Some(P::NotSet) => nros_parameter_type_t::NROS_PARAMETER_NOT_SET,
+            Some(P::Bool) => nros_parameter_type_t::NROS_PARAMETER_BOOL,
+            Some(P::Integer) => nros_parameter_type_t::NROS_PARAMETER_INTEGER,
+            Some(P::Double) => nros_parameter_type_t::NROS_PARAMETER_DOUBLE,
+            Some(P::String) => nros_parameter_type_t::NROS_PARAMETER_STRING,
+            Some(P::ByteArray) => nros_parameter_type_t::NROS_PARAMETER_BYTE_ARRAY,
+            Some(P::BoolArray) => nros_parameter_type_t::NROS_PARAMETER_BOOL_ARRAY,
+            Some(P::IntegerArray) => nros_parameter_type_t::NROS_PARAMETER_INTEGER_ARRAY,
+            Some(P::DoubleArray) => nros_parameter_type_t::NROS_PARAMETER_DOUBLE_ARRAY,
+            Some(P::StringArray) => nros_parameter_type_t::NROS_PARAMETER_STRING_ARRAY,
+        }
+    }
+
+    /// Read a declared parameter's descriptor into caller-owned storage.
+    ///
+    /// This is `describe_parameter` without a descriptor TYPE: every field is
+    /// an out-param, text lands in a buffer the caller placed, and a pointer
+    /// the caller does not want is NULL. A parameter declared with no
+    /// descriptor answers `NROS_RET_OK` with the defaults (empty text, not
+    /// read-only, no range), because that IS its description — the same answer
+    /// `~/describe_parameters` gives.
+    ///
+    /// `NROS_RET_FULL` when a text buffer was too small; the text is still
+    /// written, TRUNCATED and null-terminated, so a caller that wanted a
+    /// prefix gets one and a caller that did not can see it happened.
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn describe_param_impl(
+        executor: *mut nros_executor_t,
+        id: NodeId,
+        name: *const c_char,
+        out_description: *mut c_char,
+        description_len: usize,
+        out_constraints: *mut c_char,
+        constraints_len: usize,
+        out_read_only: *mut bool,
+        out_type: *mut nros_parameter_type_t,
+    ) -> nros_ret_t {
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(stored_type) = exec.get_parameter_type_on(id, n) else {
+            return NROS_RET_NOT_FOUND;
+        };
+        let desc = exec.describe_parameter_on(id, n);
+        let mut ret = NROS_RET_OK;
+        if !out_type.is_null() {
+            *out_type = param_type_to_c(Some(match desc {
+                Some(d) => d.param_type,
+                None => stored_type,
+            }));
+        }
+        if !out_read_only.is_null() {
+            *out_read_only = desc.map(|d| d.read_only).unwrap_or(false);
+        }
+        if !out_description.is_null()
+            && str_to_cbuf_truncating(
+                desc.map(|d| d.description.as_str()).unwrap_or(""),
+                out_description,
+                description_len,
+            ) == NROS_RET_FULL
+        {
+            ret = NROS_RET_FULL;
+        }
+        if !out_constraints.is_null()
+            && str_to_cbuf_truncating(
+                desc.map(|d| d.additional_constraints.as_str())
+                    .unwrap_or(""),
+                out_constraints,
+                constraints_len,
+            ) == NROS_RET_FULL
+        {
+            ret = NROS_RET_FULL;
+        }
+        ret
+    }
+
+    /// Copy `src` into a caller buffer, truncating at a UTF-8 boundary rather
+    /// than refusing.
+    ///
+    /// `str_to_cbuf` above refuses a short buffer, which is right for a VALUE
+    /// (a truncated string parameter is a plausible wrong answer). Descriptor
+    /// prose is the other case: a prefix of a description is still usable, and
+    /// `NROS_RET_FULL` says it is a prefix.
+    unsafe fn str_to_cbuf_truncating(src: &str, dst: *mut c_char, max_len: usize) -> nros_ret_t {
+        if max_len == 0 {
+            return NROS_RET_FULL;
+        }
+        let bytes = src.as_bytes();
+        let mut cut = bytes.len().min(max_len - 1);
+        while !src.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        for (i, &b) in bytes[..cut].iter().enumerate() {
+            *dst.add(i) = b as c_char;
+        }
+        *dst.add(cut) = 0;
+        if cut < bytes.len() {
+            NROS_RET_FULL
+        } else {
+            NROS_RET_OK
+        }
+    }
+
+    /// rclcpp's `describe_parameter`, on the PRIMARY node. See
+    /// [`describe_param_impl`] for what each out-param means and why there is
+    /// no descriptor struct.
+    #[allow(clippy::too_many_arguments)]
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_describe_param(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+        out_description: *mut c_char,
+        description_len: usize,
+        out_constraints: *mut c_char,
+        constraints_len: usize,
+        out_read_only: *mut bool,
+        out_type: *mut nros_parameter_type_t,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        describe_param_impl(
+            executor,
+            NodeId::PRIMARY,
+            name,
+            out_description,
+            description_len,
+            out_constraints,
+            constraints_len,
+            out_read_only,
+            out_type,
+        )
+    }
+
+    /// [`nros_executor_describe_param`] for `node`.
+    #[allow(clippy::too_many_arguments)]
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_describe_param_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+        out_description: *mut c_char,
+        description_len: usize,
+        out_constraints: *mut c_char,
+        constraints_len: usize,
+        out_read_only: *mut bool,
+        out_type: *mut nros_parameter_type_t,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        describe_param_impl(
+            executor,
+            id,
+            name,
+            out_description,
+            description_len,
+            out_constraints,
+            constraints_len,
+            out_read_only,
+            out_type,
+        )
+    }
+
+    /// The range attached to a declared INTEGER parameter.
+    ///
+    /// `NROS_RET_NOT_FOUND` when the parameter is undeclared OR carries no
+    /// integer range — the two are the same answer to "what may I write", and
+    /// distinguishing them would need a second out-param nobody would read.
+    unsafe fn get_param_integer_range_impl(
+        executor: *mut nros_executor_t,
+        id: NodeId,
+        name: *const c_char,
+        out_from: *mut i64,
+        out_to: *mut i64,
+        out_step: *mut i64,
+    ) -> nros_ret_t {
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(nros_node::ParameterRange::Integer(r)) =
+            exec.describe_parameter_on(id, n).map(|d| d.range)
+        else {
+            return NROS_RET_NOT_FOUND;
+        };
+        if !out_from.is_null() {
+            *out_from = r.min;
+        }
+        if !out_to.is_null() {
+            *out_to = r.max;
+        }
+        if !out_step.is_null() {
+            *out_step = r.step;
+        }
+        NROS_RET_OK
+    }
+
+    /// The integer range of a parameter on the PRIMARY node.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_get_param_integer_range(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+        out_from: *mut i64,
+        out_to: *mut i64,
+        out_step: *mut i64,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        get_param_integer_range_impl(executor, NodeId::PRIMARY, name, out_from, out_to, out_step)
+    }
+
+    /// [`nros_executor_get_param_integer_range`] for `node`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_get_param_integer_range_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+        out_from: *mut i64,
+        out_to: *mut i64,
+        out_step: *mut i64,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        get_param_integer_range_impl(executor, id, name, out_from, out_to, out_step)
+    }
+
+    unsafe fn get_param_double_range_impl(
+        executor: *mut nros_executor_t,
+        id: NodeId,
+        name: *const c_char,
+        out_from: *mut f64,
+        out_to: *mut f64,
+        out_step: *mut f64,
+    ) -> nros_ret_t {
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(nros_node::ParameterRange::FloatingPoint(r)) =
+            exec.describe_parameter_on(id, n).map(|d| d.range)
+        else {
+            return NROS_RET_NOT_FOUND;
+        };
+        if !out_from.is_null() {
+            *out_from = r.min;
+        }
+        if !out_to.is_null() {
+            *out_to = r.max;
+        }
+        if !out_step.is_null() {
+            *out_step = r.step;
+        }
+        NROS_RET_OK
+    }
+
+    /// The floating-point range of a parameter on the PRIMARY node.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_get_param_double_range(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+        out_from: *mut f64,
+        out_to: *mut f64,
+        out_step: *mut f64,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        get_param_double_range_impl(executor, NodeId::PRIMARY, name, out_from, out_to, out_step)
+    }
+
+    /// [`nros_executor_get_param_double_range`] for `node`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_get_param_double_range_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+        out_from: *mut f64,
+        out_to: *mut f64,
+        out_step: *mut f64,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        get_param_double_range_impl(executor, id, name, out_from, out_to, out_step)
+    }
+
+    /// Enumerate a node's declared parameter names, prefix-filtered.
+    ///
+    /// Names land in a caller-owned rectangle — `max_names` rows of
+    /// `name_stride` bytes — because a list of strings cannot cross this
+    /// boundary any other way without an allocator. `*out_count` always
+    /// receives the TOTAL number that matched, whether or not they fit, so the
+    /// two-call "ask for the size, then read" shape works: pass `max_names`
+    /// 0 to count. `NROS_RET_FULL` when more matched than fit; the rows that
+    /// did fit are still written.
+    unsafe fn list_params_impl(
+        executor: *mut nros_executor_t,
+        id: NodeId,
+        prefix: *const c_char,
+        out_names: *mut c_char,
+        name_stride: usize,
+        max_names: usize,
+        out_count: *mut usize,
+    ) -> nros_ret_t {
+        let p = if prefix.is_null() {
+            Some("")
+        } else {
+            cstr_to_str(prefix)
+        };
+        let Some(p) = p else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        if max_names > 0 && (out_names.is_null() || name_stride == 0) {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        let mut total = 0usize;
+        let mut ret = NROS_RET_OK;
+        for name in exec.list_parameters_on(id, p) {
+            if total < max_names {
+                let row = out_names.add(total * name_stride);
+                if str_to_cbuf_truncating(name, row, name_stride) == NROS_RET_FULL {
+                    ret = NROS_RET_FULL;
+                }
+            }
+            total += 1;
+        }
+        if total > max_names {
+            ret = NROS_RET_FULL;
+        }
+        if !out_count.is_null() {
+            *out_count = total;
+        }
+        ret
+    }
+
+    /// rclcpp's `list_parameters` / rcl's `~/list_parameters`, on the PRIMARY
+    /// node. See [`list_params_impl`] for the buffer shape.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_list_params(
+        executor: *mut nros_executor_t,
+        prefix: *const c_char,
+        out_names: *mut c_char,
+        name_stride: usize,
+        max_names: usize,
+        out_count: *mut usize,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        list_params_impl(
+            executor,
+            NodeId::PRIMARY,
+            prefix,
+            out_names,
+            name_stride,
+            max_names,
+            out_count,
+        )
+    }
+
+    /// [`nros_executor_list_params`] for `node`.
+    #[allow(clippy::too_many_arguments)]
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_list_params_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        prefix: *const c_char,
+        out_names: *mut c_char,
+        name_stride: usize,
+        max_names: usize,
+        out_count: *mut usize,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        list_params_impl(
+            executor,
+            id,
+            prefix,
+            out_names,
+            name_stride,
+            max_names,
+            out_count,
+        )
+    }
+
+    // ---- the accept/reject hook (phase-417 W4.a) ---------------------------
+    //
+    // `nros_parameter_server_set_callback` has had this contract since phase
+    // 84 — a `bool` return where `false` refuses — on the LEGACY store, which
+    // no service reads, so it fired for nobody (issue 0793). This is the same
+    // callback TYPE on the store `ros2 param set` reaches, so a C image gets
+    // rclcpp's `add_on_set_parameters_callback` under the vocabulary C
+    // already has. One typedef, two stores, no third spelling.
+
+    /// The Rust-side hook the store calls. It unpacks `OnSetContext` back into
+    /// the C function pointer and the user's `void*`, builds the
+    /// `nros_parameter_t` the C callback expects on the STACK, and calls it.
+    ///
+    /// Building the value here rather than keeping one in a side table is what
+    /// makes this allocation-free: the proposed value lives in `apply`'s frame
+    /// for exactly as long as the synchronous callback runs.
+    fn c_on_set_trampoline(
+        _node: nros_node::ParameterNodeKey,
+        name: &str,
+        value: &nros_node::ParameterValue,
+        ctx: nros_node::OnSetContext,
+    ) -> bool {
+        if ctx.b == 0 {
+            return true;
+        }
+        // SAFETY: `b` is the non-null function pointer the caller handed to
+        // `nros_executor_set_param_callback`, cast to `usize` on the way in
+        // (the NULL case never reaches here — `ctx.b == 0` returned above).
+        // Nothing else ever writes this slot.
+        type RawCb =
+            unsafe extern "C" fn(*const c_char, *const nros_parameter_t, *mut c_void) -> bool;
+        let cb: RawCb = unsafe { core::mem::transmute::<usize, RawCb>(ctx.b) };
+        let mut param = nros_parameter_t::default();
+        let bytes = name.as_bytes();
+        let n = bytes.len().min(NROS_MAX_PARAM_NAME_LEN - 1);
+        param.name[..n].copy_from_slice(&bytes[..n]);
+        param.r#type = param_type_to_c(Some(value.param_type()));
+        match value {
+            nros_node::ParameterValue::Bool(b) => param.value.bool_value = *b,
+            nros_node::ParameterValue::Integer(i) => param.value.integer_value = *i,
+            nros_node::ParameterValue::Double(d) => param.value.double_value = *d,
+            nros_node::ParameterValue::String(s) => {
+                let sb = s.as_bytes();
+                let n = sb.len().min(NROS_MAX_PARAM_STRING_LEN - 1);
+                // SAFETY: writing the union's largest inline member, which is
+                // the one `type_` now names.
+                unsafe {
+                    param.value.string_value[..n].copy_from_slice(&sb[..n]);
+                }
+            }
+            // Array values reach the callback as their TYPE with an empty
+            // `array_value`: the legacy struct borrows caller memory
+            // (`{data, len}`) and the proposed value's elements live in a
+            // `heapless::Vec` the store has not accepted yet, so handing out a
+            // pointer to it would publish a borrow whose lifetime this ABI
+            // cannot state. A hook that needs the elements reads them back
+            // after the set.
+            _ => {}
+        }
+        // SAFETY: the caller promised a valid function pointer and a context
+        // that outlives the registration.
+        unsafe {
+            cb(
+                param.name.as_ptr().cast::<c_char>(),
+                &raw const param,
+                ctx.a as *mut c_void,
+            )
+        }
+    }
+
+    /// Register an accept/reject hook for writes to the PRIMARY node —
+    /// rclcpp's `add_on_set_parameters_callback`, on the store the six
+    /// `rcl_interfaces` service servers read.
+    ///
+    /// `NROS_RET_FULL` when the store's `MAX_ON_SET_CALLBACKS` slots are all
+    /// taken — a refusal, never a silent eviction. `out_handle` receives the
+    /// token [`nros_executor_remove_param_callback`] takes; NULL if the caller
+    /// never intends to unregister.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_set_param_callback(
+        executor: *mut nros_executor_t,
+        callback: nros_parameter_callback_t,
+        context: *mut c_void,
+        out_handle: *mut u16,
+    ) -> nros_ret_t {
+        set_param_callback_impl(
+            executor,
+            NodeId::PRIMARY,
+            callback,
+            context,
+            out_handle,
+            false,
+        )
+    }
+
+    /// [`nros_executor_set_param_callback`] for `node`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_set_param_callback_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        callback: nros_parameter_callback_t,
+        context: *mut c_void,
+        out_handle: *mut u16,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        set_param_callback_impl(executor, id, callback, context, out_handle, true)
+    }
+
+    unsafe fn set_param_callback_impl(
+        executor: *mut nros_executor_t,
+        id: NodeId,
+        callback: nros_parameter_callback_t,
+        context: *mut c_void,
+        out_handle: *mut u16,
+        _explicit_node: bool,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let cb_word = callback.map(|f| f as usize).unwrap_or(0);
+        if cb_word == 0 {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        let ctx = nros_node::OnSetContext::pair(context as usize, cb_word);
+        match exec.add_on_set_parameters_callback_on(id, c_on_set_trampoline, ctx) {
+            Some(handle) => {
+                if !out_handle.is_null() {
+                    *out_handle = handle.raw();
+                }
+                NROS_RET_OK
+            }
+            None => NROS_RET_FULL,
+        }
+    }
+
+    /// Unregister a hook — rclcpp's `remove_on_set_parameters_callback`.
+    /// `NROS_RET_NOT_FOUND` when the handle names no registration.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_remove_param_callback(
+        executor: *mut nros_executor_t,
+        handle: u16,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        if exec.remove_on_set_parameters_callback(nros_node::OnSetParameterHandle::from_raw(handle))
+        {
+            NROS_RET_OK
+        } else {
+            NROS_RET_NOT_FOUND
+        }
+    }
 }
 
 #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]

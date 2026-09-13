@@ -526,6 +526,27 @@ c: c-fmt
         "$param_dir/debug/libnros_c.a" -lpthread -ldl -lm \
         -o tmp/executor_param_node_keying
     ./tmp/executor_param_node_keying
+    echo "  - descriptors, listing, undeclare and the on-set hook (phase-417 W4.a)"
+    # The sibling probe, and a COMPILE+LINK+RUN for the same reason: a
+    # descriptor verb that kept the range in a table of its own -- or forwarded
+    # to the LEGACY `nros_parameter_server_t`, which no service reads -- would
+    # compile, link and pass every declaration check while the write it was
+    # supposed to refuse went through. `test -f` first on both: a missing TU
+    # must not read as a pass (issue 0196's class).
+    for _tu in executor_param_descriptors stub_rmw_backend; do \
+        test -f "packages/api/nros-c/tests/run/$_tu.c" || { \
+            echo "ERROR: $_tu.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
+    done
+    cc -std=c11 -Wall -Wextra -D_GNU_SOURCE \
+        -I"$param_dir/nros-c-generated" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/run/executor_param_descriptors.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$param_dir/debug/libnros_c.a" -lpthread -ldl -lm \
+        -o tmp/executor_param_descriptors
+    ./tmp/executor_param_descriptors
     echo "All C checks passed!"
 
 # issue 0379 — clippy gate for the CLI sub-workspace. No lane ran clippy on

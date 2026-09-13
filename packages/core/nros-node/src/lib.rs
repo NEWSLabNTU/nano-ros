@@ -169,10 +169,17 @@ pub(crate) fn tx_writer(buf: &mut [u8]) -> Result<nros_core::CdrWriter<'_>, nros
     nros_core::CdrWriter::new_with_header(buf)
 }
 
-// Re-export parameter types when param-services is enabled
+// Re-export parameter types when param-services is enabled.
+//
+// phase-417 W4.a — `ParameterRange` and the on-set-hook vocabulary join the
+// list for the reason the list exists: `nros-c` and `nros-cpp` depend on
+// `nros-node` and not on `nros-params`, so a type they cannot name here is a
+// capability their surface cannot expose, whatever the store does.
 #[cfg(feature = "param-services")]
 pub use nros_params::{
-    ParameterDescriptor, ParameterServer, ParameterType, ParameterValue, SetParameterResult,
+    NodeKey as ParameterNodeKey, OnSetContext, OnSetParameterFn, OnSetParameterHandle,
+    ParameterDescriptor, ParameterRange, ParameterServer, ParameterType, ParameterValue,
+    SetParameterResult,
 };
 
 #[cfg(all(feature = "lifecycle-services", any(has_rmw, test)))]

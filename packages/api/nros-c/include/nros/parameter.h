@@ -485,6 +485,14 @@ NROS_PUBLIC nros_ret_t nros_executor_allow_undeclared_parameters(struct nros_exe
  * are new functions over an existing type, and no generated tree includes this
  * header -- so bumping would record a move that did not happen. Do not
  * reintroduce the `struct` keyword here for consistency with the block above.
+ *
+ * `enum` IS THE SAME TRAP, and phase-417 W4.a walked into it: the checker's
+ * pattern is `typedef|struct|enum|union`, so `enum nros_parameter_type_t
+ * nros_executor_get_param_type_on(..., const nros_node_t* node, ...)` is read
+ * as a type declaration of `nros_node_t` exactly as a `struct` keyword would
+ * be. Both names are typedefs in <nros/nros_generated.h>, so the bare spelling
+ * is the same type -- write `nros_parameter_type_t`, never `enum
+ * nros_parameter_type_t`, in every prototype below.
  * ------------------------------------------------------------------- */
 
 /** @brief Declare a boolean parameter on @p node. */
@@ -548,6 +556,212 @@ NROS_PUBLIC bool nros_executor_has_param_on(nros_executor_t* executor, const nro
 NROS_PUBLIC nros_ret_t nros_executor_allow_undeclared_parameters_on(nros_executor_t* executor,
                                                                     const nros_node_t* node,
                                                                     bool allow);
+
+/* -------------------------------------------------------------------
+ * Descriptors, undeclare, type query, listing and the on-set hook
+ * (phase-417 W4.a)
+ *
+ * rclc attaches metadata AFTER the declaration -- rclc_add_parameter_description,
+ * rclc_add_parameter_constraint_double / _integer, rclc_set_parameter_read_only --
+ * and undeclares with rclc_delete_parameter. These are the same verbs against
+ * the executor's store, so `ros2 param describe` answers with what a C caller
+ * attached instead of the empty descriptor it used to send for everything C
+ * declared.
+ *
+ * They are deliberately NOT on the legacy nros_parameter_server_t above: that
+ * store is disjoint from the one the six rcl_interfaces service servers read
+ * (issue 0793), and a descriptor surface on it would be a second answer to
+ * "what is this parameter's range". Whether the legacy family is retired or
+ * re-pointed is phase-417 W2.a's decision; nothing here depends on it.
+ *
+ * ## How a descriptor crosses this boundary without allocating
+ *
+ * There is no descriptor STRUCT, on purpose. Text goes IN as a borrowed
+ * `const char*` and comes back OUT in a caller-owned `char*` of stated
+ * capacity -- the shape nros_executor_get_param_string() already has --
+ * and the scalars are ordinary out-params, each of which may be NULL when the
+ * caller does not want it. A struct would either carry pointers into the
+ * store (a borrow no C caller can honour) or an inline buffer, which would put
+ * NROS_MAX_PARAM_DESCRIPTION_LEN into a public ABI and make a build knob a
+ * layout. Nothing on either side of these calls allocates.
+ * ------------------------------------------------------------------- */
+
+/** @brief Attach a description and free-text constraints to a parameter
+ *         declared on the PRIMARY node (rclc `rclc_add_parameter_description`).
+ *
+ * Either text may be NULL, meaning "clear it".
+ * @retval NROS_RET_NOT_FOUND if the parameter is not declared. */
+NROS_PUBLIC nros_ret_t nros_executor_add_param_description(nros_executor_t* executor,
+                                                           const char* name,
+                                                           const char* description,
+                                                           const char* additional_constraints);
+/** @brief nros_executor_add_param_description() for @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_add_param_description_on(nros_executor_t* executor,
+                                                              const nros_node_t* node,
+                                                              const char* name,
+                                                              const char* description,
+                                                              const char* additional_constraints);
+
+/** @brief Mark a declared parameter read-only on the PRIMARY node (rclc
+ *         `rclc_set_parameter_read_only`). Every later write, local or over
+ *         `~/set_parameters`, is refused. */
+NROS_PUBLIC nros_ret_t nros_executor_set_param_read_only(nros_executor_t* executor,
+                                                         const char* name, bool read_only);
+/** @brief nros_executor_set_param_read_only() for @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_set_param_read_only_on(nros_executor_t* executor,
+                                                            const nros_node_t* node,
+                                                            const char* name, bool read_only);
+
+/** @brief Attach an integer range to a declared parameter on the PRIMARY node
+ *         (rclc `rclc_add_parameter_constraint_integer`).
+ *
+ * @retval NROS_RET_INVALID_ARGUMENT for an ill-formed range (from > to, or a
+ *         negative step), or one the parameter's CURRENT value does not
+ *         satisfy -- attaching either would advertise a bound no set could
+ *         have produced. */
+NROS_PUBLIC nros_ret_t nros_executor_add_param_constraint_integer(nros_executor_t* executor,
+                                                                  const char* name,
+                                                                  int64_t from_value,
+                                                                  int64_t to_value, int64_t step);
+/** @brief nros_executor_add_param_constraint_integer() for @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_add_param_constraint_integer_on(
+    nros_executor_t* executor, const nros_node_t* node, const char* name, int64_t from_value,
+    int64_t to_value, int64_t step);
+
+/** @brief Attach a floating-point range to a declared parameter on the PRIMARY
+ *         node (rclc `rclc_add_parameter_constraint_double`). */
+NROS_PUBLIC nros_ret_t nros_executor_add_param_constraint_double(nros_executor_t* executor,
+                                                                 const char* name,
+                                                                 double from_value, double to_value,
+                                                                 double step);
+/** @brief nros_executor_add_param_constraint_double() for @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_add_param_constraint_double_on(nros_executor_t* executor,
+                                                                    const nros_node_t* node,
+                                                                    const char* name,
+                                                                    double from_value,
+                                                                    double to_value, double step);
+
+/** @brief Undeclare a parameter on the PRIMARY node (rclc
+ *         `rclc_delete_parameter`, rclcpp `undeclare_parameter`). The slot is
+ *         freed for a later declaration.
+ * @retval NROS_RET_NOT_FOUND if the node never declared it. */
+NROS_PUBLIC nros_ret_t nros_executor_delete_param(nros_executor_t* executor, const char* name);
+/** @brief nros_executor_delete_param() for @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_delete_param_on(nros_executor_t* executor,
+                                                     const nros_node_t* node, const char* name);
+
+/** @brief The declared TYPE of a parameter on the PRIMARY node, or
+ *         `NROS_PARAMETER_NOT_SET` when it is not declared.
+ *
+ * nros_parameter_get_type() answers the same question about the LEGACY store,
+ * which is not the one `ros2 param get` reads. This is the executor-store
+ * answer, and the local form of what `~/get_parameter_types` serves. */
+NROS_PUBLIC nros_parameter_type_t nros_executor_get_param_type(nros_executor_t* executor,
+                                                               const char* name);
+/** @brief nros_executor_get_param_type() for @p node. */
+NROS_PUBLIC nros_parameter_type_t nros_executor_get_param_type_on(nros_executor_t* executor,
+                                                                  const nros_node_t* node,
+                                                                  const char* name);
+
+/** @brief Read a declared parameter's descriptor into caller-owned storage
+ *         (rclcpp `describe_parameter`), on the PRIMARY node.
+ *
+ * Any out-param may be NULL. A parameter declared with no descriptor answers
+ * NROS_RET_OK with the defaults -- empty text, not read-only -- because that
+ * IS its description, and it is the same answer `~/describe_parameters` gives.
+ *
+ * @retval NROS_RET_NOT_FOUND the parameter is not declared on this node.
+ * @retval NROS_RET_FULL      a text buffer was too small. The text is still
+ *                            written, truncated at a character boundary and
+ *                            null-terminated. */
+NROS_PUBLIC nros_ret_t nros_executor_describe_param(nros_executor_t* executor, const char* name,
+                                                    char* out_description, size_t description_len,
+                                                    char* out_constraints, size_t constraints_len,
+                                                    bool* out_read_only,
+                                                    nros_parameter_type_t* out_type);
+/** @brief nros_executor_describe_param() for @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_describe_param_on(
+    nros_executor_t* executor, const nros_node_t* node, const char* name, char* out_description,
+    size_t description_len, char* out_constraints, size_t constraints_len, bool* out_read_only,
+    nros_parameter_type_t* out_type);
+
+/** @brief The integer range attached to a parameter on the PRIMARY node.
+ *
+ * @retval NROS_RET_NOT_FOUND the parameter is undeclared OR carries no integer
+ *         range. The two are the same answer to "what may I write", and
+ *         distinguishing them would need an out-param nobody would read. */
+NROS_PUBLIC nros_ret_t nros_executor_get_param_integer_range(nros_executor_t* executor,
+                                                             const char* name, int64_t* out_from,
+                                                             int64_t* out_to, int64_t* out_step);
+/** @brief nros_executor_get_param_integer_range() for @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_get_param_integer_range_on(nros_executor_t* executor,
+                                                                const nros_node_t* node,
+                                                                const char* name, int64_t* out_from,
+                                                                int64_t* out_to, int64_t* out_step);
+
+/** @brief The floating-point range attached to a parameter on the PRIMARY
+ *         node. See nros_executor_get_param_integer_range(). */
+NROS_PUBLIC nros_ret_t nros_executor_get_param_double_range(nros_executor_t* executor,
+                                                            const char* name, double* out_from,
+                                                            double* out_to, double* out_step);
+/** @brief nros_executor_get_param_double_range() for @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_get_param_double_range_on(nros_executor_t* executor,
+                                                               const nros_node_t* node,
+                                                               const char* name, double* out_from,
+                                                               double* out_to, double* out_step);
+
+/** @brief Enumerate the PRIMARY node's declared parameter names, prefix-filtered
+ *         (rclcpp `list_parameters`, `~/list_parameters`).
+ *
+ * Names land in a caller-owned RECTANGLE -- @p max_names rows of
+ * @p name_stride bytes -- because a list of strings cannot cross this boundary
+ * any other way without an allocator. `*out_count` always receives the TOTAL
+ * that matched, whether or not they fit, so the two-call "ask for the size,
+ * then read" shape works: pass @p max_names 0 to count.
+ *
+ * @param prefix  Prefix to filter by; NULL or "" lists everything.
+ * @retval NROS_RET_FULL more matched than fit, or a name was longer than
+ *         @p name_stride. The rows that did fit are still written. */
+NROS_PUBLIC nros_ret_t nros_executor_list_params(nros_executor_t* executor, const char* prefix,
+                                                 char* out_names, size_t name_stride,
+                                                 size_t max_names, size_t* out_count);
+/** @brief nros_executor_list_params() for @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_list_params_on(nros_executor_t* executor,
+                                                    const nros_node_t* node, const char* prefix,
+                                                    char* out_names, size_t name_stride,
+                                                    size_t max_names, size_t* out_count);
+
+/** @brief Register an accept/reject hook for writes to the PRIMARY node
+ *         (rclcpp `add_on_set_parameters_callback`).
+ *
+ * The callback returns `false` to REFUSE the write, which is the contract
+ * nros_parameter_server_set_callback() has had since phase 84 -- on the LEGACY
+ * store, which no service reads, so it fired for nobody (issue 0793). This is
+ * the same callback TYPE on the store `ros2 param set` reaches. One typedef,
+ * two stores, no third spelling.
+ *
+ * The hook runs AFTER the store's own rules, so it never sees a write that
+ * read-only, the declared type or a range already refused. Array values reach
+ * it as their TYPE with an empty `array_value`: the proposed elements are not
+ * yet in the store and this ABI cannot state a borrow for them.
+ *
+ * @param out_handle  Receives the token nros_executor_remove_param_callback()
+ *                    takes; NULL if the caller never intends to unregister.
+ * @retval NROS_RET_FULL all of the store's on-set slots are taken -- a
+ *         refusal, never a silent eviction of somebody else's hook. */
+NROS_PUBLIC nros_ret_t nros_executor_set_param_callback(nros_executor_t* executor,
+                                                        nros_parameter_callback_t callback,
+                                                        void* context, uint16_t* out_handle);
+/** @brief nros_executor_set_param_callback() for @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_set_param_callback_on(nros_executor_t* executor,
+                                                           const nros_node_t* node,
+                                                           nros_parameter_callback_t callback,
+                                                           void* context, uint16_t* out_handle);
+
+/** @brief Unregister a hook (rclcpp `remove_on_set_parameters_callback`).
+ * @retval NROS_RET_NOT_FOUND the handle names no registration. */
+NROS_PUBLIC nros_ret_t nros_executor_remove_param_callback(nros_executor_t* executor,
+                                                           uint16_t handle);
 
 #ifdef __cplusplus
 }

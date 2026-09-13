@@ -115,6 +115,23 @@ impl OnSetContext {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OnSetParameterHandle(u16);
 
+impl OnSetParameterHandle {
+    /// The token as a plain integer, for an FFI that must hand it to C.
+    ///
+    /// An opaque `u16` rather than a pointer: it indexes the bounded registry
+    /// and nothing else, so a wrong value is a `false` from
+    /// [`ParameterServer::remove_on_set_parameters_callback`] rather than a
+    /// wild write.
+    pub const fn raw(self) -> u16 {
+        self.0
+    }
+
+    /// Rebuild a handle a C caller kept. See [`Self::raw`].
+    pub const fn from_raw(raw: u16) -> Self {
+        Self(raw)
+    }
+}
+
 #[derive(Clone, Copy)]
 struct OnSetCallbackSlot {
     node: NodeKey,
