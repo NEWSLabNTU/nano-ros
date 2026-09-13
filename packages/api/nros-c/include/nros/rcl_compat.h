@@ -71,9 +71,15 @@ RMW_RET_* and the VALUES differ. Include one."
  * 1. Return codes — the SPELLING is adopted, the VALUES are NOT
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * `nros_ret_t`'s own doc comment claims it is "Compatible with rcl_ret_t for
- * familiarity" (`nros/nros_generated.h:840`). **It is not, and that sentence
- * is wrong.** Only OK agrees:
+ * `nros_ret_t`'s own doc comment USED TO claim it was "Compatible with
+ * rcl_ret_t for familiarity". **It is not**, and W5.b corrected the comment as
+ * well as adding the mapping below — a doc comment is the only thing a caller
+ * can read at the call site, so leaving it while shipping a header that
+ * contradicts it would have kept the defect and added a second copy of it.
+ * `<nros/nros_generated.h>`'s `nros_ret_t` now leads with "NOT value-compatible
+ * with `rcl_ret_t` — only `OK` (0) agrees" and carries this same table. (No
+ * line number: the generated header moves, and a stale `:840` is how a citation
+ * stops being checkable.) Only OK agrees:
  *
  *     code                ours   rcl   rcl's source
  *     OK                     0     0   RMW_RET_OK
@@ -424,6 +430,16 @@ typedef struct nros_support_t rclc_support_t;
  *   `RCL_RET_TIMER_INVALID` / `RCL_RET_TIMER_CANCELED` have no counterpart
  *   here (see the constant block), so those and "not registered with an
  *   executor" all arrive as `NROS_RET_NOT_INIT`.
+ *   **The NAME was taken in W5.c (2026-09-13).** This bullet said the rename
+ *   "is stage 6's step"; stage 6 renamed twelve entry points and left this one,
+ *   and nothing noticed until W5.c added its absolute sibling
+ *   `rcl_timer_get_next_call_time` beside it — at which point one family had
+ *   two prefixes with a stated reason for only one of them
+ *   (`nros_timer_get_time_since_last_call` keeps `nros_` because its
+ *   out-parameter is `uint64_t *` against upstream's `int64_t *`, which is a
+ *   real contract difference; this one had none). It is
+ *   `rcl_timer_get_time_until_next_call` now, with no forwarder, per stage 6
+ *   step B's rule that a stale call should fail on the IDENTIFIER.
  * * `rcl_timer_get_time_since_last_call` — same shape, but `uint64_t *`
  *   against upstream's `int64_t *`; caller-authored out-parameter again.
  * * `rcl_clock_get_now` — upstream writes an `int64_t` nanosecond count, ours
