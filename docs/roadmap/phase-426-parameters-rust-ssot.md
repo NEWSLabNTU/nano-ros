@@ -1,11 +1,29 @@
 # Phase 426 — parameters get a Rust SSoT, and `ros2 param list` works
 
-**Status (2026-09-12). W1–W6 landed, and the two items the 2026-09-11 re-audit
-found PARTIAL — W4 and W5 — are now CLOSED.** The re-audit below is kept in
-full: it is the record of what each acceptance actually measured, and its W4 and
-W5 bullets are what this wave answered. Each carries a `CLOSED 2026-09-12` note
-naming what landed. The line before the re-audit read "per-item acceptance not
-re-audited here", which is what let two unmet acceptances sit for four months.
+**Status (2026-09-13). ALL SIX WORK ITEMS ARE MET AND RE-AUDITED. The phase is
+STILL ACTIVE for exactly one reason, and it is not a work item: it owns one
+OPEN issue, [#1203](../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md).**
+Archiving it with 1203 open would put open work under a finished phase — the
+rule this phase itself applied when 1203 arrived here from the archived
+phase-430. **Resolve 1203 and this phase archives with no other change.**
+
+1203 was re-measured in code on 2026-09-13 and is live: `Executor::parameter` /
+`parameter_on` still hand out a `nros_params::ParameterBuilder` over `&mut
+p.server` (`nros-node/src/executor/spin.rs:9601`, `:9616`), so the terminal
+verbs declare through that borrow and the executor never observes the write.
+`note_reserved_parameter`'s own doc comment names the issue at `:9348`–`9351`.
+The other three declaration paths call the hook (`:9324`, `:9465`, `:9519`);
+the builder reaches none of them.
+
+**Nothing else is owed here, and in particular the 27 parameter rows in the
+ledger are NOT this phase's** — see "The 27 parameter rows are not ours" below.
+
+The two items the 2026-09-11 re-audit found PARTIAL — W4 and W5 — are CLOSED.
+The re-audit below is kept in full: it is the record of what each acceptance
+actually measured, and its W4 and W5 bullets are what this wave answered. Each
+carries a `CLOSED 2026-09-12` note naming what landed. The line before the
+re-audit read "per-item acceptance not re-audited here", which is what let two
+unmet acceptances sit for four months.
 Commits for the original waves:
 - W1: 4 commits.
 - W2: `30f5e9f941`.
@@ -117,12 +135,31 @@ stayed true while `examples/native/cpp/parameters` went on demonstrating a
 different store. A phase line that says "acceptance not re-audited" is a phase
 line that says nobody checked.
 
-Run `git log --grep='phase-426 W'` for the full list. There is one known hole in the
-promise this phase makes. On Cyclone, the parameter services never start, so
-`ros2 param list` sees the parameters on zenoh only. That is issue 1268, owned by
-[phase-444](phase-444-rmw-fix-up.md) W6. The remaining user-API parameter gaps (27
-ledger rows: descriptors, callbacks, undeclare) are listed in phase-444 § "The ROS 2
-gap list".
+Run `git log --grep='phase-426 W'` for the full list. The one hole this phase's
+promise used to have is CLOSED: on Cyclone the parameter services never started,
+so `ros2 param list` saw the parameters on zenoh only — issue 1268, owned by
+[phase-444](phase-444-rmw-fix-up.md) W6, resolved and archived 2026-09-12 with a
+live two-node `list`/`get`/`set` against a ROS 2 Humble peer.
+
+### The 27 parameter rows are not ours
+
+The api-parity ledger carries **27 `gap` rows in `param.json`** (measured
+2026-09-13; unchanged since the 2026-09-11 truth pass). They are descriptors and
+ranges, `add_on_set_parameters_callback`, `undeclare`/`delete`,
+`describe_parameter`/`list_parameters`, the plural `*_parameters` forms,
+`ParameterType`, the `rclcpp_lifecycle` copies, and three Rust type exports.
+
+**None of them is this phase's work, and two of the groups are named in "Not in
+scope" above.** This phase's subject is that ONE store exists, keyed by node,
+with six services per node and no second implementation in C or C++ — which is
+what W1–W6 delivered. The 27 rows are missing SURFACE on top of that one store:
+cross-language capability the wrappers never exposed. Their owner is
+[phase-417](phase-417-ros2-api-adoption.md) **stage 4 W4.a**, which names them
+explicitly.
+
+[phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap list" INDEXES them. It is
+an index and not an owner — its own words — so read it to find them and read
+phase-417 W4.a to find out who is doing them.
 
 Implements RFC-0089 §"Parameters:
 feature-complete, Rust-side SSoT" and RFC-0019/0020's rule that behaviour lives
@@ -435,3 +472,11 @@ shape is there and the remaining work is here.
 | issue | why it belongs here |
 | --- | --- |
 | [#1203](../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s `ParameterBuilder` declares straight into the store, bypassing the reserved-parameter hook that phase-430 W3 fixed on the other two paths — so `use_sim_time` named through the builder attaches no clock source |
+
+**This is the whole of what keeps the phase active.** It is one issue, not a
+work item: no acceptance here depends on it, and no other phase is waiting on
+it. Re-measured live 2026-09-13 (see the status block). When it resolves, move
+this document to `archived/` and repoint the inbound references — at the time of
+writing those are [phase-417](phase-417-ros2-api-adoption.md) § "Where the
+remaining work lives" and [phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap
+list".
