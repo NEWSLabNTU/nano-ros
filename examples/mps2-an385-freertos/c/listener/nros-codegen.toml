@@ -1,0 +1,22 @@
+# RFC-0033 capacity for the stock `std_msgs/String` this example receives.
+#
+# Issue 0964: a type that states no serialized-size bound may not size a buffer,
+# because the number would be invented. `std_msgs/String` is `string data` with
+# no IDL bound, and a consumer of someone else's `.msg` cannot add one at the
+# source -- so it states it here, beside `package.xml`, where the leaf already
+# declares WHICH interfaces it wants.
+#
+# phase-417 W5.a is what makes this leaf need it, where the C++ listener beside
+# it has had one since issue 1098. Typed delivery deserializes into storage the
+# CALLER owns, so the six-argument rclc-shaped
+# `std_msgs_msg_string_executor_add_subscription` passes the type's own
+# `_RX_MAX_SERIALIZED_SIZE` -- and an unbounded type has no such constant, which
+# codegen POISONS rather than inventing. The byte path this file used before
+# never asked the question: it sized nothing and handed the callback whatever
+# arrived.
+#
+# 256 is this demo's number, the same one the C++ listener chose: the payloads
+# are one short line ("Hello, world N"), so the bound is generous rather than
+# tight. A sample above it is refused by `_deserialize` and never dispatched.
+[fields]
+"std_msgs/String.data" = 256

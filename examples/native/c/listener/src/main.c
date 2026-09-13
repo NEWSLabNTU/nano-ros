@@ -32,6 +32,12 @@ static struct {
     listener_context_t listener_ctx;
     nros_subscription_t subscription;
     nros_executor_t executor;
+    // The message the callback is handed. It is OURS — that is the whole
+    // mechanism behind typed delivery on a path with no allocator, and it is
+    // rclc's: the executor deserializes into this object and calls us, rather
+    // than allocating one per sample. It must outlive the subscription, which
+    // here is trivially true because both are in this one `.bss` object.
+    std_msgs_msg_string msg;
 } app;
 
 static volatile sig_atomic_t g_running = 1;
@@ -53,18 +59,22 @@ static void signal_handler(int signum) {
 // Subscription callback - process received message
 // ----------------------------------------------------------------------------
 
-static void subscription_callback(const uint8_t* data, size_t len, void* context) {
+// phase-417 W5.a — rclc's callback shape: a DESERIALIZED message, not CDR
+// bytes. `msgin` is `&app.msg`, written by the generated
+// `std_msgs_msg_string_deserialize` immediately before this call, so this body
+// casts and reads FIELDS and there is no CDR anywhere in it.
+//
+// A sample that cannot be decoded into `app.msg` — a string longer than the
+// bound `nros-codegen.toml` declares included — does NOT reach here: the
+// executor drops it, counts a subscription error and logs it. That is why this
+// function has no failure branch rather than a relocated one; calling it after
+// a failed decode would hand it the PREVIOUS message dressed as the new one.
+static void subscription_callback(const void* msgin, void* context) {
+    const std_msgs_msg_string* msg = (const std_msgs_msg_string*)msgin;
     listener_context_t* ctx = (listener_context_t*)context;
 
-    std_msgs_msg_string msg;
-    std_msgs_msg_string_init(&msg);
-
-    if (std_msgs_msg_string_deserialize(&msg, data, len) == 0) {
-        ctx->message_count++;
-        printf("I heard: [%s]\n", msg.data);
-    } else {
-        fprintf(stderr, "Failed to deserialize message (len=%zu)\n", len);
-    }
+    ctx->message_count++;
+    printf("I heard: [%s]\n", msg->data);
 }
 
 int nros_app_main(int argc, char** argv) {
@@ -125,11 +135,19 @@ int nros_app_main(int argc, char** argv) {
 
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
-    /* phase-417 stage 6 — rclc arity: the byte callback is supplied at
-     * REGISTRATION, not at `*_init`. */
-    NROS_CHECK_RET(nros_executor_add_subscription_raw(&app.executor, &app.subscription,
-                                                      subscription_callback, &app.listener_ctx,
-                                                      NROS_EXECUTOR_ON_NEW_DATA),
+    /* phase-417 W5.a — rclc's registration, argument for argument:
+     *
+     *   rclc_executor_add_subscription_with_context(&exec, &sub, &msg, &cb, &ctx, ON_NEW_DATA);
+     *
+     * The deserializer and the receive-buffer hint are derived from the type
+     * token in the macro's own name, so they cannot disagree with each other or
+     * with `app.msg` — which the macro also checks is a `std_msgs_msg_string*`
+     * rather than trusting the FFI's `void*`. The byte-oriented
+     * `nros_executor_add_subscription_raw` is still there for a caller doing
+     * its own CDR; this file no longer is one. */
+    NROS_CHECK_RET(std_msgs_msg_string_executor_add_subscription(
+                       &app.executor, &app.subscription, &app.msg, subscription_callback,
+                       &app.listener_ctx, NROS_EXECUTOR_ON_NEW_DATA),
                    1);
     printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
 
