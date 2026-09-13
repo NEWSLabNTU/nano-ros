@@ -39,10 +39,10 @@ nros-build-helpers                   2   0     0       2      0
 nros-c                             343  63     5     412      0
 nros-cli-core                       22   0     0       0      0
 nros-core                            2   0     2       2      0
-nros-cpp                           635  17     0     287      0
+nros-cpp                           638  18     0     288      0
 nros-log                            17   0     5       1      0
 nros-macros                         12   0     1       2      0
-nros-node                          376  122    21      78      0
+nros-node                          378  122    21      80      0
 nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0
 nros-orchestration-ir                4   0     0       0      0
