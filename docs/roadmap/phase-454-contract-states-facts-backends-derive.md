@@ -215,7 +215,8 @@ which is this issue's own number. `mem-report` on `contract-monitor-sub`:
 descriptor `nros sync` now writes for it, and +6,776 B (= `11 × (1496 − 880)`)
 when a closure-claiming row fires.
 
-**Byte-identical with no descriptor**, diffed against `bc7ae4617`: every emitted
+**Byte-identical with no descriptor**, diffed against the tree immediately
+before this wave — the parent of W5, which landed as PR #1013: every emitted
 VALUE matches; the only textual difference is the new `PUBSUB_SLOT_BYTES` const,
 whose value is the number the derivation already used.
 
