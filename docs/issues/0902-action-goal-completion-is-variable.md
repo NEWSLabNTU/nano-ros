@@ -509,3 +509,24 @@ publisher asks for TRANSIENT_LOCAL and the zenoh shim refuses it since
 the same fixture still running). The service-server probe above answers the same
 question without needing that revert, and more directly — it counts the declines
 instead of inferring them from a refusal four slots later.
+
+## The shape reappears in CI, on NuttX arm, 2026-09-13
+
+The nightly `nuttx` job (run `34744568635`, job `103690230027`) failed
+`test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_1_Lang__Rust` with this
+issue's exact signature — the goal is accepted and the result never arrives:
+
+```
+nuttx rust action E2E failed: accepted=true, completed=false
+```
+
+What makes it evidence for the variability rather than for a defect in that
+image: the same cell **passed** in the 2026-09-11 nightly (run `34573245146`,
+job `103180329522`), on a build that differs only in the days between. Nothing
+about the cell changed; the outcome did. That is the 20–90 % spread reaching a
+second platform and a second link (emulated virtio-net rather than the direct
+serial link measured above), which the earlier measurements could not say.
+
+Not to be confused with the C and C++ action cells in that same job: those fail
+before any goal, on `readiness pattern 'Waiting for action goals' not observed`,
+which is a server that never becomes ready and not this issue.
