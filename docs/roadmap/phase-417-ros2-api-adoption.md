@@ -371,10 +371,10 @@ per-language drop-in claim is undermined while our own surfaces disagree about
 the same capability. 37 such disagreements are catalogued; C++ is the odd one
 out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
 
-* W4.a **[wrapper]** — parameters: setter, type query, undeclare, descriptors
-  (ranges, read-only) in all three.
+* W4.a **[wrapper]** — **LANDED 2026-09-13.** Parameters: setter, type query,
+  undeclare, descriptors (ranges, read-only) in all three.
 
-  **This item OWNS the 27 `param.json` `gap` rows**, and stating that is the
+  **This item OWNED the 27 `param.json` `gap` rows**, and stating that was the
   point of saying so here: `param.json` is the largest single-shard queue left,
   and until 2026-09-13 three documents each implied a different owner for it.
   It is not [phase-426](phase-426-parameters-rust-ssot.md)'s — that phase made
@@ -382,21 +382,108 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
   callbacks explicitly. It is not
   [phase-444](phase-444-rmw-fix-up.md)'s — that section is an index and says so.
   The rows are missing cross-language SURFACE on top of one store, which is
-  exactly what this item is. Re-measured 2026-09-13, they group as:
+  exactly what this item is. Measured 2026-09-13 before the work, they grouped
+  as follows; the OUTCOME column is what landed the same day.
 
-  | group | rows | notes |
-  | --- | ---: | --- |
-  | descriptors, ranges, read-only, constraints | 7 | `c:add_parameter_constraint_{double,integer}`, `c:add_parameter_description`, `c:set_parameter_read_only`, `rust:ParameterRange`, `rust:ParameterRanges`, `rust:ParameterBuilder::constraints` |
-  | `undeclare` / `delete` | 2 | `c:delete_parameter`, `cpp:Node::undeclare_parameter` |
-  | `describe` / `list` / type query | 4 | `cpp:Node::describe_parameter{,s}`, `cpp:Node::get_parameter_types`, `cpp:Node::list_parameters` |
-  | plural and `_or` forms | 5 | `cpp:Node::{declare,get,set}_parameters`, `set_parameters_atomically`, `get_parameter_or` |
-  | set-parameters callbacks | 2 | `cpp:Node::{add,remove}_on_set_parameters_callback` — was out of scope for phase-426 by construction ("adding a callback path before the store is single would be a third implementation"). The store IS single now, so the reason has expired and the work lands here |
-  | the `rclcpp_lifecycle` copies | 1 | `cpp:LifecycleNode::*parameter*`, a glob row; it moves with stage 4's lifecycle work, not ahead of it |
-  | types and errors | 6 | `cpp:ParameterType`, `rust:Parameters`, `rust:Node::use_undeclared_parameters`, `rust:DeclarationError`, `rust:RmwParameterConversionError`, `c:executor_add_parameter_server_with_context` |
+  | group | rows | outcome | notes |
+  | --- | ---: | --- | --- |
+  | descriptors, ranges, read-only, constraints | 7 | all 7 closed | `c:add_parameter_constraint_{double,integer}`, `c:add_parameter_description`, `c:set_parameter_read_only`, `rust:ParameterRange`, `rust:ParameterRanges`, `rust:ParameterBuilder::constraints` |
+  | `undeclare` / `delete` | 2 | both closed | `c:delete_parameter`, `cpp:Node::undeclare_parameter` |
+  | `describe` / `list` / type query | 4 | all 4 closed | `cpp:Node::describe_parameter{,s}`, `cpp:Node::get_parameter_types`, `cpp:Node::list_parameters` |
+  | plural and `_or` forms | 5 | 3 closed, 2 `declined` | `cpp:Node::{declare,get,set}_parameters`, `set_parameters_atomically`, `get_parameter_or` |
+  | set-parameters callbacks | 2 | both closed | `cpp:Node::{add,remove}_on_set_parameters_callback` — was out of scope for phase-426 by construction ("adding a callback path before the store is single would be a third implementation"). The store IS single now, so the reason has expired and the work lands here |
+  | the `rclcpp_lifecycle` copies | 1 | **still open — W4.f** | `cpp:LifecycleNode::*parameter*`, a glob row; it moves with stage 4's lifecycle work, not ahead of it |
+  | types and errors | 6 | all 6 closed | `cpp:ParameterType`, `rust:Parameters`, `rust:Node::use_undeclared_parameters`, `rust:DeclarationError`, `rust:RmwParameterConversionError`, `c:executor_add_parameter_server_with_context` |
 
   Two issues sit inside this item rather than beside it: **0793**'s C half is
-  W2.a above (the second C store must go before a C descriptor API is worth
-  writing), and **1203** is phase-426's and is what keeps that phase open.
+  W2.a above and **1203** is phase-426's. The 0793 ordering claim — that the
+  second C store must go before a C descriptor API is worth writing — turned
+  out to be false, and usefully so: the new C verbs go on the EXECUTOR-owned
+  store only, which is the one the six `rcl_interfaces` servers read, so
+  nothing here depends on what happens to the legacy family. Adding them to
+  the legacy store is what would have needed 0793 settled first, and that is
+  precisely what was not done.
+
+  **What landed.** **`param.json`'s `gap` rows: 27 → 1**, and the one left is
+  `cpp:LifecycleNode::*parameter*`, the glob that moves with W4.f rather than
+  ahead of it. The shard is 171 rows: 74 divergence, 44 declined, 27 extension,
+  24 rename, 1 gap, 1 their-rename.
+
+  Everything lands in `nros_params::ParameterServer` and the wrappers forward.
+  A wrapper that kept a descriptor table of its own would be the second store
+  phase-426 spent six work items removing, in a smaller spelling.
+
+  | what shipped | where |
+  | --- | --- |
+  | descriptors as post-declare mutators — rclc's four verbs | `ParameterServer::set_parameter_{description,read_only,integer_range,float_range}`, `Executor::*_on`, `nros_executor_{add_param_description,add_param_constraint_*,set_param_read_only}[_on]`, `nros_cpp_node_*`, `rclcpp::Node::declare_parameter<T>(name, default, descriptor)` |
+  | `additional_constraints`, which `to_rcl_descriptor` and `write_descriptor` had always sent EMPTY | `ParameterDescriptor::additional_constraints`, `ParameterBuilder::constraints` |
+  | describe / list / type query, locally | `Executor::{describe_parameter,list_parameters,get_parameter_type}[_on]`, `nros_executor_{describe_param,list_params,get_param_type}[_on]`, `rclcpp::Node::{describe_parameter,list_parameters,get_parameter_type,get_parameter_types}` |
+  | undeclare | `Executor::undeclare_parameter[_on]`, `nros_executor_delete_param[_on]`, `rclcpp::Node::undeclare_parameter` |
+  | `set_parameters_atomically`, served since phase-382 and callable from no language | `ParameterServer::apply_atomically` (which the service handler now forwards to, so the wire and the local call cannot disagree), `Executor::set_parameters_atomically[_on]`, `rclcpp::Node::set_parameters_atomically` |
+  | the accept/reject hook, on the store `ros2 param set` reaches | `ParameterServer::add_on_set_parameters_callback`, fired in `apply`; `nros_executor_set_param_callback[_on]`; `rclcpp::Node::add_on_set_parameters_callback` |
+  | `rclcpp::ParameterType`, `ParameterDescriptor`, `ParameterWrite` — C++ named none of them | `nros/node_parameters.hpp` |
+  | six Rust facade exports that were capabilities nobody could NAME | `ParameterRange`, `IntegerRange`, `FloatingPointRange`, `UndeclaredParameters` (which now writes), `DeclarationError`, `ValueConversionError` |
+  | `try_declare` → `DeclarationError`, where `declare` returned a bare `bool` for "taken", "full" and "out of range" alike | `nros_params::server` |
+
+  **How a descriptor crosses the FFI without allocating.** Text goes IN as a
+  borrowed `const char*` and comes OUT in a caller-owned `char*` of stated
+  capacity — the shape `nros_executor_get_param_string` already had — and the
+  scalars are NULLable out-params. There is NO descriptor struct on either
+  boundary: one would carry either a pointer into the store (a borrow no C or
+  C++ caller can honour) or an inline buffer, and the second would put
+  `NROS_MAX_PARAM_DESCRIPTION_LEN` into a public ABI and make a build knob a
+  LAYOUT, which `check-cpp-capability-layout`'s rule forbids. Descriptor prose
+  TRUNCATES with `FULL` where a string VALUE refuses, because a prefix of a
+  description is still usable and a shortened frame id is a wrong answer.
+  C++'s `rclcpp::ParameterDescriptor` is a value that BORROWS its text, and
+  `describe_parameter` reads one back into a caller buffer split in half.
+  `list_parameters` writes into a caller-owned rectangle and always reports the
+  TOTAL that matched, so "ask the size, then read" works.
+
+  **The callback registry is bounded, and the number is 4.** rclcpp's is
+  unbounded because it allocates and hands back an owning
+  `ParameterCallbackHandle`; ours is a fixed array in the store and the handle
+  is an opaque `u16` token, so unregistering is explicit. A slot is at most
+  four machine words — 128 bytes on a 64-bit host beside a 285,184-byte default
+  table — and four is one hook per node of a four-node composed image
+  (RFC-0047's shape). The (N+1)th registration REFUSES; it never evicts. It is
+  deliberately NOT a build knob: every other parameter capacity sizes a table
+  of the USER's data, this one sizes a table of the image's own code, which is
+  known by reading the source. The hook runs on `apply` — the one seam the six
+  `rcl_interfaces` servers, both wrappers and `Executor::set_parameter` share —
+  and AFTER the store's read-only / type / range rules, so it never sees a
+  write those already refused. `SetParameterResult::Rejected` is its verdict.
+  phase-426's "adding a callback path before the store is single would be a
+  third implementation" was right and its reason has expired: the store is
+  single, and this is one registry.
+
+  **What the wave MEASURED that reading would not have.** Giving
+  `additional_constraints` the description's knob doubled the DERIVED
+  parameter-service buffer for every image, used or not — the describe reply's
+  bound prices CAPACITY, not use — taking the eight-parameter reference island
+  from 2,741 bytes to 4,789 and past the 4,096 configured fallback. A field
+  nobody had set would have decided the buffer's size. So it has its own knob,
+  `NROS_MAX_PARAM_CONSTRAINTS_LEN`, default **0**, on the same ladder; an image
+  that wants the text states it, and text that does not fit is truncated and
+  REPORTED through `take_truncated_descriptions` rather than dropped in
+  silence. The same pass found `write_descriptor` — the LIVE streaming
+  serializer, where `to_rcl_descriptor` beside it is the by-value test oracle —
+  hardcoding `""` for the field, so a constraint attached in any language would
+  have reached no `ros2 param describe`.
+
+  **Acceptance, as run.** `nros-params` 80 unit tests (8 new) at
+  `NROS_MAX_PARAM_CONSTRAINTS_LEN` = 0 and 256; `nros-node --lib --features
+  std,param-services` 459, likewise at both. `executor_param_descriptors.c`, a
+  COMPILE+LINK+RUN on the shared stub backend wired into `just check c` — a
+  descriptor verb that kept the range in a table of its own, or forwarded to
+  the legacy `nros_parameter_server_t`, would compile, link and pass every
+  declaration check while the write it was supposed to refuse went through,
+  which is RFC-0089's "compiles and differs". Measured against two mutations
+  (skip the hook in `apply`; drop the current-value check when attaching a
+  range): 5 failures, 0 when correct. `param_descriptor_surface.cpp` compiles
+  the whole C++ surface in BOTH arms — hosted and `-nostdinc++` against the
+  ThreadX shim — which is what keeps the no-STL promise honest.
+
 * W4.b **[mixed]** — actions: a goal-id TYPE in C++ (`uint8_t[16]` today, so it cannot be
   stored or compared); `succeed`/`abort`/`canceled` verbs; Rust's `cancel`
   renamed to `canceled` with a deprecated forwarder. Five `action.json` rows.

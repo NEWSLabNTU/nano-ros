@@ -1881,6 +1881,13 @@ mod tests {
     /// through the ordinary descriptor read — a C or C++ wrapper forwarding to
     /// these adds no table of its own.
     #[test]
+    // The comparison and the `min` below read as "always true" to clippy on a
+    // build that leaves `NROS_MAX_PARAM_CONSTRAINTS_LEN` at its default of 0 --
+    // and that is the point: the constant is a KNOB, the test is written
+    // against it so it holds at 0, at 64 and at 256, and a version specialised
+    // to whichever value this build resolved would read as coverage on the
+    // other two.
+    #[allow(clippy::absurd_extreme_comparisons, clippy::unnecessary_min_or_max)]
     fn descriptor_verbs_attach_to_a_declared_parameter() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
