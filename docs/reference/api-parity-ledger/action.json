@@ -86,11 +86,6 @@
     "disposition": "absent",
     "why": "rcl's pimpl; our handles carry their state inline because there is no allocator to put it behind a pointer. See the pubsub stage's `c:publisher_impl_t`."
   },
-  "c:action_client_init_default": {
-    "verdict": "declined",
-    "disposition": "adopt",
-    "why": "rclc's default-QoS wrapper; `nros_action_client_init` takes no QoS and IS the default form. See the service stage's `c:client_init_default`."
-  },
   "c:action_client_init_polling": {
     "verdict": "extension",
     "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
@@ -341,8 +336,8 @@
   },
   "c:action_server_init_default": {
     "verdict": "declined",
-    "disposition": "adopt",
-    "why": "see `c:action_client_init_default`."
+    "disposition": "absent",
+    "why": "rclc's default-QoS action-server constructor. phase-417 W5.d adopted its SIBLING (`rclc_action_client_init_default`, a `static inline` in <nros/action.h>) and refused this one, so the old `see `c:action_client_init_default`` no longer carries a reason and the reason is recorded here. TWO things block it, and neither is the QoS. (1) The `support` PARAMETER. rclc takes `rclc_support_t *` in slot 3 and reads it for exactly one thing -- it passes `&support->clock` to `rcl_action_server_init` (`rclc/src/rclc/action_server.c` @ `10eadcc`). `nros_action_server_init` stores metadata and defers RMW entity creation to `nros_executor_add_action_server`, so it takes neither a clock nor a support handle: a five-argument forwarder would carry an argument it IGNORES, which is the inert-parameter defect RFC-0089 exists to end and the same refusal `nros_node_resolve_name` makes for rcl's `allocator` and `is_service`. (2) The CALLBACK BINDING SITE. rclc registers goal and cancel handlers at `rclc_executor_add_action_server`; ours are bound at init. Forwarding to the callback-free `nros_action_server_init_polling` instead would compile and then dispatch nothing -- a plausible name over an opposite data contract. Closing this needs the executor-side binding site, not a wrapper. `absent` rather than `refuse-loud`: nothing declares the name, so a ported file gets `undeclared identifier` (the disposition read `adopt` until W5.d, which described a state that had never existed)."
   },
   "c:action_server_init_polling": {
     "verdict": "extension",

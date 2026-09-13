@@ -301,8 +301,16 @@ c: c-fmt
     # the rcl spelling layer. `test -f` first on every one: a syntax-only
     # compile of a MISSING file is a pass, and this campaign has already shipped
     # one probe that never ran (issue 0196's class).
-    echo "  - phase-417 stage 5: typed delivery, node/timer accessors, rcl spellings"
-    for probe in typed_subscription_delivery node_timer_accessors rcl_compat_aliases; do \
+    #
+    # `preset_constructors` (W5.d) carries its own
+    # `#pragma GCC diagnostic error "-Wincompatible-pointer-types"`, because the
+    # one preset it pins that has BEHAVIOUR is an argument SWAP, and C reports a
+    # swapped pointer as a warning even under `-Wall -Wextra`. The pragma travels
+    # with the probe rather than living in these flags: a check that only works
+    # when the caller remembers a flag is one copy-paste away from decorative.
+    echo "  - phase-417 stage 5: typed delivery, node/timer accessors, rcl spellings, rclc presets"
+    for probe in typed_subscription_delivery node_timer_accessors rcl_compat_aliases \
+                 preset_constructors; do \
         test -f "packages/api/nros-c/tests/compile/$probe.c" || { \
             echo "ERROR: $probe.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
         cc -fsyntax-only -std=c11 -Wall -Wextra \
