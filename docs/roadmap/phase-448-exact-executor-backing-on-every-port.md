@@ -1,8 +1,23 @@
 # Phase 448 — the executor backing, sized exactly and paid for once, on every port
 
-**Status (2026-09-11). Opened to give the exact-size work a home. Nothing in
-this phase has landed; W1–W8 are open. Zephyr's pairing (issue 1145, landed
-2026-09-06) predates the phase and is the template the other ports follow.**
+**Status (2026-09-13). ALL EIGHT WAVES LANDED.** W1+W2 as PR #980, W3 in two
+parts (#990 the blocker and the instrument, #1021 the number), W4 as #1021, W5
+as #1012, W6 as #957, W7+W8 as #951. Eight issues resolved: 1010, 1146, 1189,
+1197, 1198, 1255, 1290, 1330.
+
+**What is NOT closed, and is the honest remainder.** Issue 1145 stays open for
+`threadx-riscv64`'s own backing number — the mechanism is in place and both
+threadx names resolve their descriptor now, but that board's images have not
+been measured. Three findings the phase produced and did not fix, each filed
+rather than folded into a sizing commit: issue 1301 (the NuttX link lane
+delivers no board facts, and the gate that should catch it reads two
+directories while the lane is in a third — the 0196 shape), issue 1318 (a
+process-env race that reds `node-std-tests` about one run in three), and issue
+1362 (five more platform names taking builtin knobs, gated by a ratchet).
+Issue 1348 — every zenoh action server refusing to register — is owned by
+phase-455, whose reading is sharper than this phase's: the mask withheld
+TRANSIENT_LOCAL before the refusal landed, so the startup failure is new and
+the interop defect is old.
 
 **Three waves are IN FLIGHT and the doc did not say so**, which cost a survey on
 2026-09-11 an hour of re-deriving what two open pull requests already carried —

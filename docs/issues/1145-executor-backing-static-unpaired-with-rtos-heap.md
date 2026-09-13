@@ -384,17 +384,51 @@ itself a guess — worth its own work item, alongside the FreeRTOS heap budget.
   paired; the six XRCE ones deliberately not, because their images have no
   picolibc arena to pair (issue 1189).
 * ~~**NuttX**~~ **DONE 2026-09-12** — nothing to pair, measured. See above.
-* **FreeRTOS** — untouched; phase-448 W3/W4, and issue 1197 has the measurement
-  and the layering blocker.
+* ~~**FreeRTOS**~~ **DONE 2026-09-12** — phase-448 W3/W4 (PR #1021). The heap is
+  a DERIVATION now (`default_heap_bytes(app_stack_bytes)`), and the backing has
+  no term in it because `backing::take` is a latch: the first executor takes the
+  `.bss` reservation and costs the heap nothing.
 * ~~**ESP32**~~ **DONE** — paired by `ffc614252` on 2026-09-10 and re-measured
   and re-run 2026-09-12. See above.
-* **ThreadX** — `threadx-linux` PAIRED 2026-09-12 (see below); `threadx-riscv64`
-  still unstated, and unstated is the safe state. The mechanism is in place for
-  it; what is missing is a measurement on that board's own images.
+* **ThreadX** — `threadx-linux` PAIRED 2026-09-12 (see below). Both variants now
+  RESOLVE THEIR DESCRIPTOR (2026-09-13): the regression below was that neither
+  name was listed in `nros-platform-threadx`'s `names`, so both fell through to
+  builtin knobs. `threadx-riscv64`'s own backing number is still unstated, and
+  unstated remains the safe state — what is missing is a measurement on that
+  board's images, not a mechanism.
 * **The byte pool's 4 MiB base, and FreeRTOS's 2 MiB, are undeclared numbers.**
   Both pairings subtract a measured size from a base nobody derived.
 * ~~**The subtrahend is a hand-copied literal.**~~ RESOLVED —
   [issue 1171](archived/1171-arena-backing-pairing-is-hand-maintained.md).
+
+## RESOLVED 2026-09-13 — the descriptor did not answer to the name
+
+The regression below is fixed, and its cause was one line:
+`packages/platform/nros-platform-threadx/nros-platform.toml` declared
+`names = ["threadx"]` while `examples/fixtures.toml` only ever spells
+`threadx-linux` and `threadx-riscv64`. Neither build name was answered, so both
+took an `UnknownPlatform` fall-through to the BUILTIN knobs — and the builtin
+executor sizing sits below `EXECUTOR_BACKING_DEFAULT_U64S`, which is what the
+backing guard then refused.
+
+`names = ["threadx", "threadx-linux", "threadx-riscv64"]` now, the same shape
+`freertos` already carried for `freertos-lwip`. Verified by measurement, not by
+reading: with the old line, `NROS_PLATFORM_NAME=threadx-linux cargo check -p
+nros-node` prints the fall-through warning; with the new one, both
+`threadx-linux` and `threadx-riscv64` resolve with ZERO warnings.
+
+**What was NOT reproduced here, stated rather than implied:** the `E0080`
+compile failure itself. A bare `cargo check` falls through and still compiles —
+the guard needs the nightly's feature set to fire. So the CAUSE is fixed and
+verified; the nightly is the thing that will confirm the symptom is gone.
+
+**It was never only threadx.** A gate written for this found five more names in
+the same state — `esp32`, `baremetal`, `nuttx-riscv`, `freertos-posix`,
+`zephyr-cortex-m` — each taking builtin knobs today. They are
+[issue 1362](1362-platform-names-fall-through-to-builtin-knobs.md), baselined in
+`check-platform-name-answered` so a sixth cannot appear unnoticed, and NOT
+fixed here: adding a name swaps builtin knobs for a descriptor's, and doing that
+to four platforms on an assumption is how one fixed regression becomes four.
 
 ## Regression, 2026-09-12: `threadx-linux` now fails to COMPILE
 
