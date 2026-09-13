@@ -105,6 +105,22 @@ extern crate alloc;
 /// `libnros_platform_nuttx.a`. Nothing here is new capability — it is the same
 /// syscall, reached without compiling the standard library to get to it.
 #[doc(hidden)]
+// issue 1309 / phase-451 W4 — `allow(dead_code)`, deliberately, and NOT a
+// `cfg(target_os = "nuttx")` gate.
+//
+// Every item below is a declaration of, or a thin wrapper over, the NuttX/POSIX
+// platform ABI, and the only callers are the `cfg(target_os = "nuttx")` paths
+// further down. So on the host build that this crate's membership finally
+// provides, they are dead — that is what promotion surfaced.
+//
+// Gating them to the target would silence the warning and COST the thing the
+// promotion was for. This crate spent its whole life in `exclude`, compiled by
+// no lane, which is issue 1309 itself; moving these behind a target the host
+// lane cannot build puts them straight back where they were. Compiled-and-unused
+// still type-checks every signature against `<nros/platform.h>` on every push,
+// which is the property worth having — a wrong `-> u64` here is the silent
+// garbage issue 1208 is about.
+#[allow(dead_code)]
 pub mod sys {
     use core::ffi::{c_char, c_int, c_void};
 
@@ -699,6 +715,14 @@ unsafe extern "C" {
 // the C arm's create-time path). std's Builder has no priority attr, so the
 // Rust arm self-applies at tier entry — without this a non-sporadic tier ran
 // at the parent's priority (invisible until contention).
+//
+// issue 1309 / phase-451 W4 — target-gated to match its SIBLING twelve lines
+// up (`nros_nuttx_apply_current_affinity`). Both are defined in the same
+// NuttX-only board seam, `nuttx_run_tiers.c`, and both have only
+// `cfg(target_os = "nuttx")` callers; one carried the gate and one did not.
+// Nothing had noticed, because until this crate became a workspace member no
+// lane compiled the file for the host, where the asymmetry is visible.
+#[cfg(target_os = "nuttx")]
 unsafe extern "C" {
     fn nros_nuttx_apply_current_priority(name: *const core::ffi::c_char, priority: u32) -> i32;
 }
@@ -721,10 +745,6 @@ fn apply_tier_priority(tier: &nros_platform::TierSpec<'_>) {
         );
     }
 }
-
-#[cfg(not(target_os = "nuttx"))]
-#[inline]
-fn apply_tier_priority(_tier: &nros_platform::TierSpec<'_>) {}
 
 /// Default per-tier pthread stack for spawned Rust tiers (issue #246). Mirrors
 /// the C glue's `NROS_NUTTX_TIER_STACK_BYTES` intent but sized at NuttX's own
@@ -760,10 +780,6 @@ fn apply_tier_sporadic(tier: &nros_platform::TierSpec<'_>) {
     }
 }
 
-#[cfg(not(target_os = "nuttx"))]
-#[inline]
-fn apply_tier_sporadic(_tier: &nros_platform::TierSpec<'_>) {}
-
 /// phase-296 W5.11 — self-apply the tier's SMP core pin (no-op off-target and
 /// when the tier declares no `core`). The `core + 1` encoding (0 = unpinned)
 /// matches the C emit. Name crosses the FFI as a NUL-terminated stack copy.
@@ -785,10 +801,6 @@ fn apply_tier_affinity(tier: &nros_platform::TierSpec<'_>) {
         );
     }
 }
-
-#[cfg(not(target_os = "nuttx"))]
-#[inline]
-fn apply_tier_affinity(_tier: &nros_platform::TierSpec<'_>) {}
 
 // issue 0579 / phase-358 W4 — this doc block and the `#[cfg]` below it were
 // STRANDED ~150 lines above, before the `apply_tier_*` extern blocks that got
@@ -1418,7 +1430,14 @@ fn nuttx_spin_tier_forever(
             println!(
                 "nros: tier `{}` alive — {} spin(s), {} timer(s) fired, {} sub callback(s), \
                  {} error(s), {} gap(s), clock {} us vs asked {} us",
-                tier.name, iters, timers, subs, errs, gap.gaps(), clock_us, asked_us
+                tier.name,
+                iters,
+                timers,
+                subs,
+                errs,
+                gap.gaps(),
+                clock_us,
+                asked_us
             );
         }
     }

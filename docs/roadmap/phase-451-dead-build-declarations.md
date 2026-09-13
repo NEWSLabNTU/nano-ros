@@ -186,10 +186,43 @@ reached only as somebody else's path dependency.
       exists, and dropping the disjunct at 12 sites is a no-op rather than a
       behaviour change. threadx's two features gated only re-exports from a
       transition that is over.
-- [ ] Membership itself, which is no longer STRUCTURAL and is now measured:
-      with the cycles gone both build clean on the host, and entering the host
-      lane surfaces **20 latent `-D warnings` errors** (12 nuttx, 8 threadx) in
-      crates nothing has ever compiled. That is what promotion costs.
+- [x] Membership itself. **Both crates are workspace members**, so the host
+      lane compiles them for the first time. The predicted cost was "20 latent
+      `-D warnings` errors (12 nuttx, 8 threadx)"; re-measured at promotion it
+      was **18** — threadx had 6, not 8, two having been fixed upstream in the
+      interim. All 18 are gone, and three were worth more than a lint fix:
+      * **A dead `extern` declaration.** `tx_thread_sleep` had no Rust caller —
+        issue 0484 removed the `tx_thread_sleep(200)` "network stabilisation
+        delay" and left the declaration behind. It is C-side-live
+        (`platform.c`, `nx_user.h`) and Rust-side dead, which is exactly this
+        phase's subject arriving in the crate the phase was promoting.
+      * **An asymmetric cfg.** `nros_nuttx_apply_current_priority` carried no
+        `cfg(target_os = "nuttx")` while its sibling
+        `nros_nuttx_apply_current_affinity` did — same NuttX-only C seam, same
+        target-gated callers, twelve lines apart. Nothing had noticed because
+        no lane compiled the file for a host.
+      * **A THIRD orphaned doc comment**, after `nros-board-freertos` and
+        `nros-tests`' `ros2.rs` in the same campaign: threadx's UART-logger doc
+        was stranded above an unrelated `extern` block, which also drew
+        `unused_doc_comments` — rustdoc generates nothing for an extern block,
+        so the text documented nothing at all.
+      The `sys` module's nine remaining items got `allow(dead_code)`, NOT a
+      `cfg(target_os = "nuttx")` gate, and the difference is the phase's whole
+      point: gating them would silence the warning by returning them to the
+      state issue 1309 is about — compiled by no lane. Compiled-and-unused
+      still type-checks every signature against `<nros/platform.h>` on every
+      push, which is what issue 1208's silent `-> u64`/`-> u32` needs.
+- [x] **The embedded lane needed a declaration too, and that was not predicted.**
+      Membership puts a crate in `check::workspace-embedded`, which builds every
+      member for `thumbv7em-none-eabihf`; `nros-board-threadx`'s `build.rs`
+      defaults `THREADX_PORT` to `linux/gnu`, so the lane compiled the POSIX
+      simulation port for bare metal and died in the vendored header on
+      `semaphore.h: No such file or directory`. The crate is port-PARAMETERISED
+      rather than embedded-hostile — the cross consumer
+      (`nros-board-threadx-qemu-riscv64`) brings its own port, and nothing names
+      a thumb one — so it is `[package.metadata.nros] host-only = true` with the
+      reason recorded. Host-only is about the LANE, not the crate: it stays a
+      member, and the host lane keeps compiling it.
 - [x] The mirror exists: `[package.metadata.nros] embedded-only = true`, derived
       by `scripts/build/embedded-only-members.sh`, and `HOST_UNCHECKABLE` is
       derived from it. Five of its eight hand-written entries were STALE.
