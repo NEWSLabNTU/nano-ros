@@ -40,9 +40,9 @@
 //!   [`nros_platform::board`] trait set
 //!   (`BoardInit` parameterless + `BoardPrint` + `BoardExit`
 //!   + `RuntimeCtx`). Shape:
-//!   `(Config, FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>) ->
+//!     `(Config, FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>) ->
 //!   Result<(), E>`. Per-board `impl BoardEntry` impls (landed in
-//!   212.N.3) delegate here.
+//!     212.N.3) delegate here.
 //! - `init_hardware()` — board-specific init (default no-op;
 //!   overlay re-exports a vendor version).
 //! - `#[no_mangle]` hooks the overlay implements:

@@ -1,7 +1,18 @@
 # Phase 450 — a gate whose reach is narrower than the rule it enforces
 
-**Status (2026-09-11). COMPLETE — W1 through W5 all landed, and all five member
-issues are resolved and archived (1129, 1153, 1236, 1051+1294).** Every landed item was mutation-tested —
+**Status (2026-09-13). COMPLETE — W1 through W5 all landed, and all five member
+issues are resolved and archived (1129, 1153, 1236, 1051+1294).**
+
+**This line said COMPLETE on 2026-09-11 while W1's two defining boxes were
+unchecked, and they were the ones the phase was written around.** What had
+landed was the widened regex; what W1 asks for is a shared helper and a gate
+keyed on it — which the text three lines above the boxes names as the thing that
+must NOT happen. The prose and the checkboxes disagreed for two days, and the
+prose is what a reader believes. That is this phase's own subject arriving in
+its status line: a claim whose reach is narrower than the rule it states, with
+nothing that re-derives it. Closed for real by PRs #997 and #1007.
+
+Every landed item was mutation-tested —
 the defect it exists for was planted, the gate went red naming it, and the tree
 was restored — because a gate of this shape is green while the defect is
 present, which is the whole premise of the phase.
@@ -72,10 +83,39 @@ found the scope had been the SPELLING. 4 more sites say `not prebuilt` in files
 This is the canonical *fix the class, not the site* case, so it is also the one
 that must not be fixed by adding a second spelling to the matcher.
 
-- [ ] One shared helper converts a fixture-resolver `Err`, and the sites call
-      it. Not a widened regex.
-- [ ] `check-skip-budget` keys on the helper, so a new site that bypasses it is
-      the thing that fails.
+- [x] One shared helper converts a fixture-resolver `Err`, and the sites call
+      it. Not a widened regex. **The decision moved into the TYPE** —
+      `TestError::FixtureNotBuilt`, which is the rule `RouterUnavailable`
+      already states one variant up: *a caller can only make that distinction
+      if the type carries it.* The tree knew that rule and had applied it to
+      the router, whose call sites number a handful, and not to fixtures, whose
+      call sites numbered 260. Three producers feed it, because all 318
+      resolvers funnel through `require_prebuilt_binary_checks` or
+      `require_prebuilt_workspace_binary`.
+      `fixtures::RequireFixture::require(what)` is the only reader: it skips a
+      `FixtureNotBuilt` and panics on everything else. A STALE fixture stays
+      `BuildFailed` and still panics — laundering that into a skip is issue
+      0445's absorbing verdict. **249 of 267 sites converted**; the 18 that
+      remain are multi-line closures behind a shrink-only per-file ratchet.
+      One file had already grown a private `skip_missing_fixture`, used by that
+      file alone and matching on prose; it is deleted.
+- [x] `check-skip-budget` keys on the helper, so a new site that bypasses it is
+      the thing that fails. Landed as its own gate,
+      `check-fixture-require`, which harvests the resolver set from the source
+      (a new resolver is covered the day it is written) and refuses a call site
+      that handles its `Err` without the helper. A 62nd wording cannot reopen a
+      rule that never read the words — and the rule earned that immediately:
+      phase-444 W6's Cyclone test arrived carrying a 260th hand-written
+      spelling that said `not built`, which the widened `FIXTURE_RE` matched
+      and would have passed.
+      Two defects in the gate itself, both caught by this repo's own gates and
+      both the shape this phase collects: the baseline first keyed on
+      `file:line`, and converting a site shifts every line beneath it, so the
+      ratchet went red on the edit it rewards (it counts per file now); and the
+      detector read a four-line WINDOW rather than a statement, which was wrong
+      BOTH ways — blind to 8 real sites, and it invented one where
+      `build_entry_poc()?` propagates and an unrelated `.expect(...)` sat two
+      lines below.
 - [x] `check-skip-budget` keys on the SPELLINGS rather than one spelling. It
       read `not prebuilt` only, while **57 of the tree's 61 laundering sites say
       `not built`** — the rule stated fully and enforced on 4 of 61.
