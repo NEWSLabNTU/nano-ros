@@ -9,7 +9,18 @@
 # Schema + loader: nros-board-common/src/platform_config.rs.
 # phase-349 W1 / RFC-0072 — the names this platform answers to; the
 # directory is just where the file lives. names[0] is canonical.
-names = ["threadx"]
+# `threadx-linux` and `threadx-riscv64` are the names the TREE uses
+# (`examples/fixtures.toml` has no row spelled plain `threadx`), and a name this
+# file does not answer to is an UnknownPlatform — which `or_builtin_rungs`
+# deliberately turns into a warning plus builtin knobs rather than a panic, so
+# a typo stays visible. That is right for a typo and wrong here: the builtin
+# executor knobs sit BELOW `EXECUTOR_BACKING_DEFAULT_U64S`, so the backing
+# guard then refuses the reservation and `threadx-linux` stopped COMPILING
+# (issue 1145's 2026-09-12 regression, nightly run 34680021029).
+#
+# `freertos` already carries its variant this way (`["freertos",
+# "freertos-lwip"]`); this is the same shape. names[0] stays canonical.
+names = ["threadx", "threadx-linux", "threadx-riscv64"]
 
 [build.zenoh]
 # `NROS_PLATFORM_ALIASES` selects the 32-byte opaque socket / endpoint

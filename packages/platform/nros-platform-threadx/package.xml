@@ -35,5 +35,12 @@
       `check-provider-announcements.py` compares them.
     -->
     <nano_ros_provides kind="platform" name="threadx"/>
+    <!-- The two names the TREE builds (`examples/fixtures.toml` has no row
+         spelled plain `threadx`). They must match `nros-platform.toml`'s
+         `names` exactly — `check-provider-announcements` compares the two, and
+         a descriptor that answers a name this file does not announce is a
+         source-time scan disagreeing with a build-time resolve. -->
+    <nano_ros_provides kind="platform" name="threadx-linux"/>
+    <nano_ros_provides kind="platform" name="threadx-riscv64"/>
   </export>
 </package>

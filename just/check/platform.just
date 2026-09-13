@@ -264,6 +264,18 @@ executor-stack-floor:
 host-platform-vocabulary:
     @python3 scripts/check-host-platform-vocabulary.py
 
+# Issue 1145 / 1362 — a platform name the TREE uses must be answered by some
+# `nros-platform.toml`'s `names`. An unanswered name is not fatal at build
+# time: `or_builtin_rungs` warns and falls through to the BUILTIN knobs, which
+# is right for a typo and wrong for a platform that never declared its own
+# name. `threadx-linux` fell through, took builtin executor knobs below
+# `EXECUTOR_BACKING_DEFAULT_U64S`, and stopped COMPILING in a nightly with an
+# error naming neither the descriptor nor the name. A `cargo:warning` is the
+# shape nobody reads. Buildless; RATCHETED (five names baselined).
+[private]
+platform-name-answered:
+    @python3 scripts/check-platform-name-answered.py
+
 # phase-366 M6 / RFC-0077 — every image declares exactly one ending, and what it
 # declares matches what it supplies. `check-archive-lang-items` counts per LINK
 # LINE, which catches duplication and is blind to ABSENCE (an image with no
