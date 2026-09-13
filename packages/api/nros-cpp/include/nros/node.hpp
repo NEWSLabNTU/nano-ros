@@ -15,6 +15,7 @@
 #include <type_traits> // Phase 189.M3.3.e — SFINAE on the callback-style create_service
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdlib> // getenv — Phase 123.B.3 env-aware init
+#include <map>     // phase-417 W4.a — rclcpp::Node::declare_parameters<T>'s argument
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdio> // fopen — Phase 212.L.5 init_with_launch path-exists check
 #endif
@@ -61,6 +62,12 @@
 // family is DECLARED here and DEFINED there.
 #include "nros/declared_qos.hpp"
 #include "nros/declared_params.hpp" // phase-446 W6 -- each node's DECLARED parameters
+// phase-417 W4.a -- `rclcpp::ParameterType`, `ParameterDescriptor`,
+// `ParameterWrite` and the on-set callback types, which the parameter methods
+// below name. Freestanding (`<cstdint>`, `const char*`, the FFI header) and it
+// includes nothing that includes this file. `nros.hpp` included it already;
+// the declarations here are why it moves onto node.hpp's own include list.
+#include "nros/node_parameters.hpp"
 #include "nros/log.hpp"
 #include "nros/guard_condition.hpp"
 #include "nros/executor.hpp"
@@ -830,6 +837,92 @@ class Node {
     /// `rclcpp::Node::has_parameter(name)`.
     bool has_parameter(const char* name) const;
 
+    // ---- phase-417 W4.a: the rest of rclcpp's parameter surface ------------
+    //
+    // All of it forwards to the executor's ONE store through
+    // `nros/node_parameters.hpp`. OUTSIDE `NROS_CPP_NODE_HOSTED` for the same
+    // reason the four above are: the FFI is `<cstdint>` and `const char*`, so
+    // a freestanding node can spell every one of them, and a gate here would
+    // decide whether a node HAS parameters rather than whether it can name
+    // them.
+
+    /// `rclcpp::Node::declare_parameter<T>(name, default, descriptor)`.
+    ///
+    /// Upstream's third argument is an `rcl_interfaces` message; ours is
+    /// `rclcpp::ParameterDescriptor`, which borrows its text (see that type).
+    /// Returns the value in effect, like the two-argument form; a descriptor
+    /// that could not be attached leaves the parameter DECLARED with the value
+    /// and reports nothing, which is upstream's behaviour for a descriptor
+    /// whose range the default satisfies.
+    template <typename T>
+    T declare_parameter(const char* name, T default_value, const ParameterDescriptor& descriptor);
+
+    /// `rclcpp::Node::get_parameter_or<T>(name, out, fallback)` — read with a
+    /// caller-chosen fallback, where the value-returning `get_parameter<T>`
+    /// falls back to `T()`.
+    template <typename T> bool get_parameter_or(const char* name, T& out, T fallback) const;
+
+    /// `rclcpp::Node::undeclare_parameter(name)`. Upstream returns `void` and
+    /// throws; ours reports (RFC-0089's error-channel rule — there are no
+    /// exceptions here).
+    Result undeclare_parameter(const char* name);
+
+    /// The declared TYPE of one parameter. `PARAMETER_NOT_SET` when the name
+    /// is not declared on this node.
+    ParameterType get_parameter_type(const char* name) const;
+
+    /// `rclcpp::Node::get_parameter_types(names)`, into caller storage.
+    ///
+    /// Upstream takes a `std::vector<std::string>` and returns a
+    /// `std::vector<ParameterType>`; both need an allocator, so ours takes the
+    /// names as an array and writes `count` types into `out`. A name that is
+    /// not declared gets `PARAMETER_NOT_SET`, as upstream's service does.
+    Result get_parameter_types(const char* const* names, ::size_t count, ParameterType* out) const;
+
+    /// `rclcpp::Node::describe_parameter(name)`, into caller storage.
+    ///
+    /// `text` holds both strings; `out.description` and
+    /// `out.additional_constraints` point into it. It is split in half, so a
+    /// 128-byte buffer gives each text 64 bytes, and `Result::FULL` says a
+    /// text was truncated — the text is still there, cut at a character
+    /// boundary. Pass `text = nullptr` to read only the flags and the range.
+    Result describe_parameter(const char* name, ParameterDescriptor& out, char* text,
+                              ::size_t text_len) const;
+
+    /// `rclcpp::Node::list_parameters(prefixes, depth)`, into caller storage.
+    ///
+    /// Upstream returns a `ListParametersResult` message. Ours writes into a
+    /// RECTANGLE of `max_names` rows of `name_stride` bytes and always reports
+    /// the TOTAL that matched in `count`, so passing `max_names = 0` counts.
+    /// One prefix rather than a vector, and no `depth`: our names have no
+    /// separator semantics to recurse on.
+    Result list_parameters(const char* prefix, char* out_names, ::size_t name_stride,
+                           ::size_t max_names, ::size_t& count) const;
+
+    /// `rclcpp::Node::set_parameters_atomically(parameters)` — all or nothing.
+    ///
+    /// We SERVED `~/set_parameters_atomically` and offered it in no language,
+    /// so the only way to reach our own atomic set was over the wire.
+    Result set_parameters_atomically(const ParameterWrite* writes, ::size_t count);
+
+    /// `rclcpp::Node::add_on_set_parameters_callback(callback)`.
+    ///
+    /// The hook runs on every write that reaches the store — a remote
+    /// `ros2 param set`, a local `set_parameter`, another language's setter —
+    /// and AFTER the store's own read-only / type / range rules, so it never
+    /// sees a write those already refused. `false` from the callback REFUSES
+    /// the write.
+    ///
+    /// Upstream returns an owning handle whose destruction unregisters; with
+    /// no allocator there is nothing to own, so `out_handle` receives a token
+    /// and unregistering is explicit. `Result::FULL` when every slot is taken
+    /// — a refusal, never a silent eviction of somebody else's hook.
+    Result add_on_set_parameters_callback(OnSetParametersCallbackType callback, void* context,
+                                          ParameterCallbackHandle& out_handle);
+
+    /// `rclcpp::Node::remove_on_set_parameters_callback(handle)`.
+    Result remove_on_set_parameters_callback(ParameterCallbackHandle handle);
+
 #ifdef NROS_CPP_NODE_HOSTED
     /// `std::string`-keyed overloads. rclcpp keys on `std::string`, which does
     /// not implicitly convert to `const char*`, so a ported call site needs
@@ -848,6 +941,41 @@ class Node {
     }
     bool has_parameter(const ::std::string& name) const {
         return this->has_parameter(name.c_str());
+    }
+    Result undeclare_parameter(const ::std::string& name) {
+        return this->undeclare_parameter(name.c_str());
+    }
+    template <typename T>
+    T declare_parameter(const ::std::string& name, T default_value,
+                        const ParameterDescriptor& descriptor) {
+        return this->template declare_parameter<T>(name.c_str(), default_value, descriptor);
+    }
+    template <typename T>
+    bool get_parameter_or(const ::std::string& name, T& out, T fallback) const {
+        return this->template get_parameter_or<T>(name.c_str(), out, fallback);
+    }
+    ParameterType get_parameter_type(const ::std::string& name) const {
+        return this->get_parameter_type(name.c_str());
+    }
+
+    /// `rclcpp::Node::declare_parameters<T>(prefix, map)` — the bulk form.
+    ///
+    /// Hosted only, because upstream's argument IS a `std::map`, which needs
+    /// an allocator. `prefix` is joined with `.` exactly as upstream does; an
+    /// empty prefix declares the bare names. The first failure stops the run
+    /// and is returned, so a half-applied map is visible rather than silent.
+    template <typename T>
+    Result declare_parameters(const ::std::string& prefix, const ::std::map<::std::string, T>& m) {
+        for (typename ::std::map<::std::string, T>::const_iterator it = m.begin(); it != m.end();
+             ++it) {
+            const ::std::string full = prefix.empty() ? it->first : (prefix + "." + it->first);
+            const ::nros_cpp_node_t* h = this->ffi_handle();
+            Result r = ::nros::detail::node_param_declare(h, full.c_str(), it->second);
+            if (!r.ok() && r.raw() != NROS_RET_ALREADY_EXISTS) {
+                return r;
+            }
+        }
+        return Result(NROS_RET_OK);
     }
 #endif // NROS_CPP_NODE_HOSTED
 

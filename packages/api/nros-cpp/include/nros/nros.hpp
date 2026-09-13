@@ -1059,6 +1059,122 @@ inline bool Node::has_parameter(const char* name) const {
 }
 } // namespace rclcpp
 
+// --- the rest of rclcpp's parameter surface (phase-417 W4.a) -----------------
+//
+// Every one of these is a forwarder onto the executor's ONE store through
+// `nros/node_parameters.hpp`. None of them holds state; a wrapper that did
+// would be the second store phase-426 removed, in a smaller spelling.
+
+namespace rclcpp {
+
+template <typename T>
+inline T Node::declare_parameter(const char* name, T default_value,
+                                 const ParameterDescriptor& descriptor) {
+    T in_effect = this->template declare_parameter<T>(name, default_value);
+    // The descriptor is attached AFTER the declaration, which is the store's
+    // own shape (rclc's `rclc_add_parameter_description` & co.). A failure
+    // here leaves the parameter declared with its value, which is what
+    // upstream does when the descriptor is consistent with the default — and
+    // when it is not, the attach refuses rather than advertising a bound the
+    // value breaks.
+    (void)::nros::detail::node_param_apply_descriptor(this->ffi_handle(), name, descriptor,
+                                                      ::nros::detail::node_param_type<T>::value);
+    return in_effect;
+}
+
+template <typename T>
+inline bool Node::get_parameter_or(const char* name, T& out, T fallback) const {
+    if (::nros::detail::node_param_get(this->ffi_handle(), name, out).ok()) {
+        return true;
+    }
+    out = fallback;
+    return false;
+}
+
+inline Result Node::undeclare_parameter(const char* name) {
+    return ::nros::detail::node_param_undeclare(this->ffi_handle(), name);
+}
+
+inline ParameterType Node::get_parameter_type(const char* name) const {
+    int code = 0;
+    if (!::nros::detail::node_param_get_type(this->ffi_handle(), name, code).ok()) {
+        return PARAMETER_NOT_SET;
+    }
+    return static_cast<ParameterType>(code);
+}
+
+inline Result Node::get_parameter_types(const char* const* names, ::size_t count,
+                                        ParameterType* out) const {
+    if ((names == nullptr || out == nullptr) && count != 0) {
+        return Result(NROS_RET_INVALID_ARGUMENT);
+    }
+    for (::size_t i = 0; i < count; ++i) {
+        out[i] = this->get_parameter_type(names[i]);
+    }
+    return Result(NROS_RET_OK);
+}
+
+inline Result Node::describe_parameter(const char* name, ParameterDescriptor& out, char* text,
+                                       ::size_t text_len) const {
+    out = parameter_descriptor();
+    // The buffer is split in half, one NUL-terminated string in each, so ONE
+    // caller buffer serves both texts and neither can run into the other.
+    char* description = nullptr;
+    char* constraints = nullptr;
+    ::size_t half = 0;
+    if (text != nullptr && text_len >= 2) {
+        half = text_len / 2;
+        description = text;
+        constraints = text + half;
+    }
+    int type = 0;
+    Result r = ::nros::detail::node_param_describe(this->ffi_handle(), name, description, half,
+                                                   constraints, half, &out.read_only, &type);
+    if (r.raw() == NROS_RET_NOT_FOUND) {
+        return r;
+    }
+    out.description = description;
+    out.additional_constraints = constraints;
+
+    // The range, read through whichever accessor the TYPE picks. `NOT_FOUND`
+    // from it means "no range", which is not a failure of `describe`.
+    if (type == ::nros::param_type::INTEGER) {
+        out.has_range =
+            ::nros::detail::node_param_get_range(this->ffi_handle(), name, &out.integer_from,
+                                                 &out.integer_to, &out.integer_step)
+                .ok();
+    } else if (type == ::nros::param_type::DOUBLE) {
+        out.has_range =
+            ::nros::detail::node_param_get_range(this->ffi_handle(), name, &out.double_from,
+                                                 &out.double_to, &out.double_step)
+                .ok();
+    }
+    return r;
+}
+
+inline Result Node::list_parameters(const char* prefix, char* out_names, ::size_t name_stride,
+                                    ::size_t max_names, ::size_t& count) const {
+    return ::nros::detail::node_param_list(this->ffi_handle(), prefix, out_names, name_stride,
+                                           max_names, &count);
+}
+
+inline Result Node::set_parameters_atomically(const ParameterWrite* writes, ::size_t count) {
+    return ::nros::detail::node_params_set_atomically(this->ffi_handle(), writes, count);
+}
+
+inline Result Node::add_on_set_parameters_callback(OnSetParametersCallbackType callback,
+                                                   void* context,
+                                                   ParameterCallbackHandle& out_handle) {
+    return ::nros::detail::node_param_add_on_set_callback(this->ffi_handle(), callback, context,
+                                                          &out_handle);
+}
+
+inline Result Node::remove_on_set_parameters_callback(ParameterCallbackHandle handle) {
+    return ::nros::detail::node_param_remove_on_set_callback(this->ffi_handle(), handle);
+}
+
+} // namespace rclcpp
+
 // --- Rate / WallRate (phase-417 W2.d) ----------------------------------------
 //
 // A FORWARDER onto `nros::spin(remaining_ms, poll_ms)`, which budgets by wall

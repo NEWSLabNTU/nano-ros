@@ -348,6 +348,219 @@ inline Result node_param_get(const nros_cpp_node_t* node, const char* name, ::st
 
 #endif // NROS_CPP_STD
 
+// --- descriptors, undeclare, listing and the on-set hook (phase-417 W4.a) ----
+//
+// Forwarders onto the same one store. TEXT crosses the FFI as a borrowed
+// `const char*` in and a caller-owned `char*` out; there is no descriptor
+// STRUCT, because one would either carry a pointer into the store or an inline
+// buffer, and the second would make `NROS_MAX_PARAM_DESCRIPTION_LEN` a layout
+// (`check-cpp-capability-layout`: a probe may gate a METHOD, never a `sizeof`).
+// Nothing below declares a member of anything.
+
+inline Result node_param_add_description(const nros_cpp_node_t* node, const char* name,
+                                         const char* description,
+                                         const char* additional_constraints) {
+    return Result(
+        nros_cpp_node_add_param_description(node, name, description, additional_constraints));
+}
+
+inline Result node_param_set_read_only(const nros_cpp_node_t* node, const char* name,
+                                       bool read_only) {
+    return Result(nros_cpp_node_set_param_read_only(node, name, read_only));
+}
+
+inline Result node_param_add_range(const nros_cpp_node_t* node, const char* name, int64_t from,
+                                   int64_t to, int64_t step) {
+    return Result(nros_cpp_node_add_param_constraint_integer(node, name, from, to, step));
+}
+
+inline Result node_param_add_range(const nros_cpp_node_t* node, const char* name, double from,
+                                   double to, double step) {
+    return Result(nros_cpp_node_add_param_constraint_double(node, name, from, to, step));
+}
+
+inline Result node_param_undeclare(const nros_cpp_node_t* node, const char* name) {
+    return Result(nros_cpp_node_undeclare_param(node, name));
+}
+
+inline Result node_param_get_type(const nros_cpp_node_t* node, const char* name, int& out) {
+    return Result(nros_cpp_node_get_param_type(node, name, &out));
+}
+
+inline Result node_param_describe(const nros_cpp_node_t* node, const char* name,
+                                  char* out_description, ::size_t description_len,
+                                  char* out_constraints, ::size_t constraints_len,
+                                  bool* out_read_only, int* out_type) {
+    return Result(nros_cpp_node_describe_param(node, name, out_description, description_len,
+                                               out_constraints, constraints_len, out_read_only,
+                                               out_type));
+}
+
+inline Result node_param_get_range(const nros_cpp_node_t* node, const char* name, int64_t* from,
+                                   int64_t* to, int64_t* step) {
+    return Result(nros_cpp_node_get_param_integer_range(node, name, from, to, step));
+}
+
+inline Result node_param_get_range(const nros_cpp_node_t* node, const char* name, double* from,
+                                   double* to, double* step) {
+    return Result(nros_cpp_node_get_param_double_range(node, name, from, to, step));
+}
+
+inline Result node_param_list(const nros_cpp_node_t* node, const char* prefix, char* out_names,
+                              ::size_t name_stride, ::size_t max_names, ::size_t* out_count) {
+    return Result(
+        nros_cpp_node_list_params(node, prefix, out_names, name_stride, max_names, out_count));
+}
+
+} // namespace detail
+} // namespace nros
+
+namespace rclcpp {
+
+/// `rclcpp::ParameterType` — the `rcl_interfaces/msg/ParameterType` codes,
+/// under upstream's own name and with upstream's own enumerator spellings.
+///
+/// phase-417 W4.a — C had `nros_parameter_type_t` and Rust had
+/// `ParameterType`, both mirroring the same message, and C++ named neither, so
+/// a ported file that wrote `rclcpp::ParameterType::PARAMETER_DOUBLE` did not
+/// compile and no C++ accessor could have returned one.
+///
+/// An `enum` and not an `enum class`, matching upstream: rclcpp's is a plain
+/// enum whose enumerators carry the `PARAMETER_` prefix, so
+/// `rclcpp::ParameterType::PARAMETER_DOUBLE` and the bare
+/// `rclcpp::PARAMETER_DOUBLE` both resolve there, and both resolve here.
+/// The values are `nros::param_type`'s, which is where the codes live; this
+/// enum NAMES them rather than restating them, so the two cannot drift.
+enum ParameterType {
+    PARAMETER_NOT_SET = 0,
+    PARAMETER_BOOL = ::nros::param_type::BOOL,
+    PARAMETER_INTEGER = ::nros::param_type::INTEGER,
+    PARAMETER_DOUBLE = ::nros::param_type::DOUBLE,
+    PARAMETER_STRING = ::nros::param_type::STRING,
+    PARAMETER_BYTE_ARRAY = ::nros::param_type::BYTE_ARRAY,
+    PARAMETER_BOOL_ARRAY = ::nros::param_type::BOOL_ARRAY,
+    PARAMETER_INTEGER_ARRAY = ::nros::param_type::INTEGER_ARRAY,
+    PARAMETER_DOUBLE_ARRAY = ::nros::param_type::DOUBLE_ARRAY,
+    PARAMETER_STRING_ARRAY = ::nros::param_type::STRING_ARRAY,
+};
+
+/// The proposed write an on-set-parameters callback sees.
+///
+/// rclcpp hands the callback a `std::vector<rclcpp::Parameter>` and takes a
+/// `rcl_interfaces::msg::SetParametersResult` back. Neither type exists here —
+/// both are generated messages, and the vector needs an allocator — so the
+/// callback sees ONE write at a time as scalars, and answers with a `bool`
+/// whose `false` is upstream's `successful = false`.
+using ParameterWrite = ::nros_cpp_param_write_t;
+
+/// `bool (*)(const ParameterWrite*, void* context)`. A plain function pointer
+/// with a context, not a `std::function`: there is no allocator to hold a
+/// closure, and the freestanding lane has no `<functional>`.
+using OnSetParametersCallbackType = ::nros_cpp_param_callback_t;
+
+/// `rclcpp::ParameterDescriptor` — a parameter's metadata, as a value a
+/// freestanding C++ TU can build and read.
+///
+/// Upstream's is `rcl_interfaces::msg::ParameterDescriptor`, a generated
+/// message whose strings own their storage. Ours BORROWS its text: the
+/// pointers are read during the call that consumes the descriptor (the store
+/// copies into its own slot) and never retained, so a descriptor can be a
+/// string-literal aggregate on the stack with no allocator anywhere.
+///
+/// Reading one back needs the mirror of that: `Node::describe_parameter` takes
+/// a caller-owned text buffer and points the two `const char*` at it. There is
+/// no way around it — a returned descriptor that owned its strings would need
+/// the allocator this type exists to avoid.
+struct ParameterDescriptor {
+    /// Human-readable description; NULL or "" for none.
+    const char* description;
+    /// Free-text extra constraints, which `ros2 param describe` prints.
+    const char* additional_constraints;
+    /// Refuse every write after the declaration.
+    bool read_only;
+    /// A range applies. `integer_range` picks which of the two below is read,
+    /// from the parameter's own type.
+    bool has_range;
+    /// The range bounds, read as integers for an integer parameter and as
+    /// doubles for a double one. Two representations rather than a union
+    /// because a union in a freestanding aggregate cannot have a default
+    /// member initialiser at C++14, and this type must be brace-initialisable.
+    int64_t integer_from, integer_to, integer_step;
+    /// @see integer_from
+    double double_from, double_to, double_step;
+};
+
+/// A `ParameterDescriptor` with nothing set — the C++14-friendly way to build
+/// one field at a time (`auto d = rclcpp::parameter_descriptor(); d.read_only
+/// = true;`), since designated initialisers are C++20.
+inline ParameterDescriptor parameter_descriptor() {
+    ParameterDescriptor d = {nullptr, nullptr, false, false, 0, 0, 0, 0.0, 0.0, 0.0};
+    return d;
+}
+
+/// The token `remove_on_set_parameters_callback` takes.
+///
+/// rclcpp returns an owning `ParameterCallbackHandle` shared_ptr whose
+/// destruction unregisters. With no allocator there is nothing to own, so this
+/// is a plain token and unregistering is explicit.
+using ParameterCallbackHandle = uint16_t;
+
+} // namespace rclcpp
+
+namespace nros {
+namespace detail {
+
+inline Result node_param_add_on_set_callback(const nros_cpp_node_t* node,
+                                             ::rclcpp::OnSetParametersCallbackType callback,
+                                             void* context,
+                                             ::rclcpp::ParameterCallbackHandle* out_handle) {
+    return Result(nros_cpp_node_add_on_set_params_callback(node, callback, context, out_handle));
+}
+
+inline Result node_param_remove_on_set_callback(const nros_cpp_node_t* node,
+                                                ::rclcpp::ParameterCallbackHandle handle) {
+    return Result(nros_cpp_node_remove_on_set_params_callback(node, handle));
+}
+
+inline Result node_params_set_atomically(const nros_cpp_node_t* node,
+                                         const ::rclcpp::ParameterWrite* writes, ::size_t count) {
+    return Result(nros_cpp_node_set_params_atomically(node, writes, count));
+}
+
+/// Attach a whole `ParameterDescriptor` to an ALREADY-DECLARED parameter.
+///
+/// Three FFI calls rather than a descriptor-carrying declare, deliberately:
+/// the store's own verbs are rclc's post-declare mutators, so this is
+/// composition rather than a fifth declare entry point per type. The executor
+/// is single-threaded on every platform we ship, so nothing can observe the
+/// parameter between the declare and these calls; on a platform where that
+/// stopped being true, a descriptor-carrying declare would be the fix.
+///
+/// The first failing step wins, and the ones after it are not attempted —
+/// a descriptor half applied is worse than one not applied.
+inline Result node_param_apply_descriptor(const nros_cpp_node_t* node, const char* name,
+                                          const ::rclcpp::ParameterDescriptor& d, int param_type) {
+    Result r = node_param_add_description(node, name, d.description, d.additional_constraints);
+    if (!r.ok()) {
+        return r;
+    }
+    if (d.has_range) {
+        r = (param_type == ::nros::param_type::INTEGER)
+                ? node_param_add_range(node, name, d.integer_from, d.integer_to, d.integer_step)
+                : node_param_add_range(node, name, d.double_from, d.double_to, d.double_step);
+        if (!r.ok()) {
+            return r;
+        }
+    }
+    // read_only LAST: it is the one flag that would refuse the writes above if
+    // it were set first, which is the ordering bug this comment exists to
+    // prevent someone re-introducing.
+    if (d.read_only) {
+        r = node_param_set_read_only(node, name, true);
+    }
+    return r;
+}
+
 // phase-446 W6 -- the contract type a `declare_parameter<T>` declares, as the
 // rcl_interfaces code the declared-parameter table carries. Mirrors the store
 // overloads above: `bool`, any other integer (`int` and `int64_t` both reach
