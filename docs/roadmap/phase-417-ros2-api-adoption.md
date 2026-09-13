@@ -305,16 +305,87 @@ one out in 15.
 
 ## Stage 5 — C
 
-* W5.a **[rust-first]** — **typed subscription delivery.** rclc delivers a deserialised message
-  on a path with no allocator, by having the caller own the storage:
+* W5.a **[rust-first]** — **typed subscription delivery. LANDED 2026-09-04
+  (the surface) and 2026-09-13 (the callers).** rclc delivers a deserialised
+  message on a path with no allocator, by having the caller own the storage:
   `rclc_executor_add_subscription(executor, subscription, void *msg, callback,
-  invocation)` with `void (*)(const void *)`. Ours has no `msg` slot and
-  delivers `(const uint8_t *, size_t)`. The generated `<Msg>_deserialize`
-  already writes into caller storage and the typed publish half already
-  shipped. Every ported callback body currently has to be rewritten, and the
-  ledger blames an allocator that rclc does not have either. The FFI needs an
-  `add_subscription` variant carrying caller-owned storage before C can expose
-  anything, so this is Rust work with a C surface, not C work.
+  invocation)` with `void (*)(const void *)`. Ours had no `msg` slot and
+  delivered `(const uint8_t *, size_t)`, so every ported callback body had to be
+  rewritten — the largest porting cost this campaign measured.
+
+  **Both facts the item rested on held, checked before building on them.** The
+  generated `<Msg>_deserialize(<Msg>*, const uint8_t*, size_t)` writes into
+  caller storage and returns 0/-1 (`packs/c/message.c.jinja:109`), with no
+  allocation for a bounded type; the typed publish half ships as
+  `<Msg>_publish` (`message.h.jinja:166`) and every C talker in the tree calls
+  it. So the shape the item predicted is the shape that was buildable.
+
+  **What the surface is.** `nros_executor_add_subscription_typed{,_sized}`
+  (`packages/api/nros-c/src/executor.rs:1798,1834`) over
+  `Executor::add_arena_subscription_c_typed_callback`, whose arena entry is the
+  raw one plus two words (`msg`, `deserialize`) and whose buffering is the same
+  `BufferStrategy`. Codegen collapses the one extra argument away, so a ported
+  line is rclc's six in rclc's order:
+  `<Msg>_executor_add_subscription(&exec, &sub, &msg, cb, &ctx, ON_NEW_DATA)`.
+  A refused decode does NOT invoke the callback — it drops the sample, counts a
+  `subscription_errors` and logs through `nros_log` — because dispatching would
+  hand the callback the PREVIOUS message dressed as the new one.
+
+  **What 2026-09-13 added, and why the item was not closeable without it.** The
+  surface had NO in-tree C caller: all five C listener examples still declared
+  `subscription_callback(const uint8_t*, size_t, void*)` and hand-called
+  `std_msgs_msg_string_deserialize`, and the only exercise of the typed macro
+  was a compile probe. A delivery path nothing runs is one nobody would notice
+  breaking. All five are ported (native, threadx-linux, rv-virt-threadx,
+  qemu-armv7a-nuttx, mps2-an385-freertos — one transform, five identical
+  files), each leaf gaining the `nros-codegen.toml` its C++ sibling has had
+  since issue 1098: `std_msgs/String` is `string data` with no IDL bound, and
+  the six-argument form passes `_RX_MAX_SERIALIZED_SIZE`, which codegen POISONS
+  for an unbounded type rather than inventing. Measured with the cap:
+  `STD_MSGS_MSG_STRING_RX_MAX_SERIALIZED_SIZE 272`, `char data[256]`.
+
+  **The one argument the type token could not vouch for.** Five of the six come
+  from one token and cannot disagree; `msg` is `void *` at the FFI and accepted
+  any object pointer silently, so the wrong struct's storage would compile and
+  then be overwritten with a message of another type every dispatch — with no
+  allocator anywhere to notice. The generated macro now routes it through
+  `1 ? (msg) : (<Msg>*)0`, a conditional whose branches must be compatible
+  pointers: a warning in C naming both types, an error in C++, and the
+  const-discard diagnostic kept because nothing casts. Negative control:
+  `tests/compile/typed_subscription_storage_mismatch_probe.c`, compiled
+  `-Werror` in `check c` and required to FAIL.
+
+  **Measured.** `native_example_pubsub_e2e::case_2_c_zenoh` PASS on fresh
+  fixtures; by hand against the C talker, `I heard: [Hello World: 1..6]` — the
+  payload, not just the marker. `just check c` green including both probes;
+  `check no-std` green on thumbv7m-none-eabi and riscv32imc (the point of the
+  exercise is a path with no allocator); `nros-node --lib` 420 passed,
+  including `typed_c_subscription_delivers_into_caller_storage` and
+  `typed_c_subscription_refused_decode_is_loud_and_undelivered`.
+
+  **Ledger.** The item said the reason blamed an allocator rclc does not have
+  either, and it was right: `c:executor_add_subscription_typed` retracts it in
+  its own `why`. Two rows beside it were still wrong on 2026-09-13.
+  `c:subscription_callback_t` said the callback binds to the entity at creation
+  (stage 6 moved it to registration) and cited
+  `executor-owns-no-entity-storage`, a rule RFC-0089 measured as defined
+  nowhere — re-verdicted `divergence` → `extension`, because the byte callback
+  is now the byte TIER beside a faithful typed one rather than a stand-in for
+  it, which is `cpp:bind_subscription_raw`'s verdict one language over.
+  `c:typed_subscription_callback_t` was `blocked-needs-decision`; RFC-0089's
+  ALIAS RULE (2026-09-09, five days after the row) decides it — upstream HAS
+  `rclc_subscription_callback_with_context_t`, so the name is not ours to
+  decline — and it is now `settled-pending-owner`, because the alias belongs in
+  `<nros/rcl_compat.h>`, which is W5.b's surface.
+
+  **Open, and it belongs to W5.b.** `rcl_compat.h` section 6 still tells a
+  reader the typed entry point does not exist ("the honest move is to name the
+  shape a faithful alias needs and wait for it") and sketches
+  `nros_subscription_typed_callback_t` as the thing to wait for. It shipped, in
+  the other word order. That section also predicts the `..._with_context` alias
+  will be "a direct six-argument alias", which it cannot be: ours carries the
+  deserialiser, so the forwarder is seven arguments and only codegen collapses
+  it.
 * W5.b **[wrapper]** — `<nros/rcl_compat.h>` mapping `RCL_RET_*` onto ours. `nros_ret_t`'s
   own doc says "Compatible with `rcl_ret_t` for familiarity"
   (`nros_generated.h:840`) and only `OK` agrees: ours are −1/−2/−3/−7, rcl's
