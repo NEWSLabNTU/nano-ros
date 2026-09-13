@@ -145,6 +145,35 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/timer_clock_source
     ./tmp/timer_clock_source
+    echo "  - phase-417 W4.d: two C nodes log under DISTINCT names, with independent levels"
+    # The THIRD compile+link+run TU, same reason again: every shape of this
+    # defect compiles. Three of four logger accessors used to resolve through a
+    # lookup-only `get_logger` that answers the catch-all for any unregistered
+    # name, so every node in an image logged under `nros` and no record said
+    # which one wrote it (phase-427 W5). Two handles and one handle have the
+    # same TYPE, so no header check can tell them apart -- only a run can, and
+    # only through an installed sink, because a `set_level`/`get_level` pair
+    # over one shared cell agrees with itself while dropping the wrong records.
+    #
+    # It also pins the SHARED HELPER: `nros_log_get_logger(name)` must return
+    # the handle `nros_node_get_logger` produced, so a future C-side named
+    # logger surface cannot grow a second table beside `resolve_logger`
+    # (RFC-0019). Same stub backend and same archive as the timer probe above.
+    # `test -f` first -- a missing TU must not read as a pass (issue 0196).
+    test -f packages/api/nros-c/tests/run/named_logger_levels.c || { \
+        echo "ERROR: named_logger_levels.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/named_logger_levels.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/named_logger_levels
+    ./tmp/named_logger_levels
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in
@@ -696,29 +725,21 @@ cpp: cpp-fmt
         packages/api/nros-cpp/tests/compile/ros2_loudness_runtime.cpp \
         "$nros_cpp_lib" -lpthread -ldl -lm
     ./target/nros-cpp-tests/ros2_loudness_runtime
-    # phase-417 W4.c — `cancel()` ends a real spin and the SESSION SURVIVES.
-    # The shape probe (`executor_cancel.cpp`) cannot tell that apart from a
-    # loop that returned because the session died, which is exactly the pair
-    # W4.c exists to separate: before it, the only way out of `spin()` was
-    # `shutdown()`, and that calls `nros_cpp_fini`.
+    # phase-417 W4.c/W4.d — the two behaviours a C++ `static_assert` cannot
+    # reach. Both link `libnros_cpp.a` AND the shared C stub RMW backend
+    # (`nros-c/tests/run/stub_rmw_backend.c`), because both need a real
+    # executor and an executor needs a session; nothing here touches the wire.
     #
-    # Links `libnros_cpp.a` AND the shared C stub RMW backend
-    # (`nros-c/tests/run/stub_rmw_backend.c`), because an executor needs a
-    # session and a session needs a registered backend; nothing here touches
-    # the wire. The stub is compiled by `cc` into its own object and linked,
-    # NOT handed to `c++`: the driver picks the language by EXTENSION, and
-    # `c++ foo.c` compiles C as C++, which mangles `nros_stub_rmw_register`
-    # and fails to link against the `extern "C"` declaration in the header.
-    #
-    # Negative controls, measured: `cancel` made a no-op -> 1 failure plus a
-    # FATAL (the loop never returns); `cancel` made to call `shutdown()` -> 6
-    # failures. `test -f` first on both TUs -- a missing one must not read as a
-    # pass (issue 0196's class).
-    test -f packages/api/nros-cpp/tests/compile/executor_cancel_runtime.cpp || { \
-        echo "ERROR: executor_cancel_runtime.cpp is MISSING -- this check would pass" >&2; \
-        echo "       on absence." >&2; \
-        exit 1; \
-    }
+    # The stub is compiled by `cc` into its own object and linked, NOT handed
+    # to `c++`: the driver picks the language by EXTENSION, and `c++ foo.c`
+    # compiles C as C++, which mangles `nros_stub_rmw_register` and fails to
+    # link against the `extern "C"` declaration in the header.
+    for _tu in executor_cancel_runtime logger_names_and_levels_runtime; do \
+        test -f "packages/api/nros-cpp/tests/compile/$_tu.cpp" || { \
+            echo "ERROR: $_tu.cpp is MISSING -- this check would pass on absence." >&2; \
+            exit 1; \
+        }; \
+    done
     test -f packages/api/nros-c/tests/run/stub_rmw_backend.c || { \
         echo "ERROR: stub_rmw_backend.c is MISSING -- this check would pass on absence." >&2; \
         exit 1; \
@@ -730,6 +751,13 @@ cpp: cpp-fmt
         -Ipackages/platform/nros-platform-api/include \
         -o target/nros-cpp-tests/stub_rmw_backend.o \
         packages/api/nros-c/tests/run/stub_rmw_backend.c
+    # W4.c — `cancel()` ends a real spin and the SESSION SURVIVES. The shape
+    # probe (`executor_cancel.cpp`) cannot tell that apart from a loop that
+    # returned because the session died, which is exactly the pair W4.c exists
+    # to separate: before it, the only way out of `spin()` was `shutdown()`,
+    # and that calls `nros_cpp_fini`. Negative controls, measured: cancel made
+    # a no-op -> 1 failure plus a FATAL (the loop never returns); cancel made
+    # to call `shutdown()` -> 6 failures.
     echo "  - cancel() stops a C++ spin and leaves the session open (runtime, phase-417 W4.c)"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -Itarget/nros-cpp-generated \
@@ -744,6 +772,27 @@ cpp: cpp-fmt
         target/nros-cpp-tests/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     ./target/nros-cpp-tests/executor_cancel_runtime
+    # W4.d — two nodes in one image under DISTINCT logger names, independent
+    # thresholds through `rclcpp::Logger::set_level`, and ONE resolve-or-create
+    # helper behind both the node accessor and the named lookup. The C twin is
+    # `named_logger_levels.c` on `just check c`; Rust's is
+    # `nros-log/tests/named_loggers_levels_and_throttle.rs`. Negative control,
+    # measured: a `set_level` that redirects a null handle to the catch-all ->
+    # 2 failures.
+    echo "  - two C++ nodes log under distinct names; set_level moves one (runtime, W4.d)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o target/nros-cpp-tests/logger_names_and_levels_runtime \
+        packages/api/nros-cpp/tests/compile/logger_names_and_levels_runtime.cpp \
+        target/nros-cpp-tests/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    ./target/nros-cpp-tests/logger_names_and_levels_runtime
     # issue 0730 — the (zephyr-embedded × C++ × cyclonedds) coordinate is a
     # pairwise-class gap no runtime tier covers (cyclone fixtures run on
     # native_sim, which appends `,std`), and it failed E0599 at COMPILE time:

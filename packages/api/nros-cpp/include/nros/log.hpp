@@ -114,6 +114,12 @@
 // the transitive include path of every freestanding TU in the API.
 #include "nros/std_detect.hpp"
 
+// phase-417 W4.d -- `Logger::set_level` reports through the house channel.
+// Acyclic by inspection: `result.hpp` includes `<cstdint>`, `nros/traits.hpp`
+// (which includes nothing) and a `NROS_CPP_STD`-gated `<cstdio>`, and neither
+// reaches back here.
+#include "nros/result.hpp"
+
 namespace rclcpp {
 
 // --- REFUSE-LOUD infrastructure (RFC-0089 stage 3) ---------------------------
@@ -290,10 +296,19 @@ namespace rclcpp {
 
 // --- Logger surface ----------------------------------------------------------
 //
-// `rclcpp::Logger` in upstream is a pull-through to the rcl logger. Here it is
-// a name-only sentinel; the log macros below dispatch through NROS_*, which
-// already carry the file/line. The logger NAME is lost (nros has no per-logger
-// dispatch yet). Documented; a follow-up can teach nros::log a tag.
+// `rclcpp::Logger` upstream is a pull-through to the rcl logger, holding a
+// `std::string` name it copies into every macro call. Here it is a
+// `const char*` name PLUS the opaque `nros_log::Logger` handle the
+// `NROS_LOG_*` macros dispatch through, so a record carries the name of the
+// logger it was emitted on and a THRESHOLD can be moved per logger.
+//
+// This banner used to read "the logger NAME is lost (nros has no per-logger
+// dispatch yet)". That stopped being true in two steps -- phase-417 W3.a
+// routed the `RCLCPP_*` family through the handle (issue 1019), and W4.d gave
+// `<nros/log.h>` a named lookup and the three threshold accessors -- and the
+// correction is recorded rather than merely made, because a stale "we cannot
+// do this" comment is how a capability stays unused for two phases after it
+// ships. `get_child` is still a divergence and says so on its own row.
 
 class Logger {
   public:
@@ -306,6 +321,87 @@ class Logger {
     Logger(const char* name, const void* handle) : name_(name), handle_(handle) {}
 
     const char* get_name() const { return name_; }
+
+    /// `rclcpp::Logger::Level` -- upstream's nested severity enum, phase-417
+    /// W4.d.
+    ///
+    /// The values ARE `nros_log_severity_t`'s, which are rcutils's
+    /// (`UNSET=0, DEBUG=10 ... FATAL=50`, `<nros/log.h>`), so the casts below
+    /// are identities and there is no second number line to drift. That
+    /// numbering is not this row's doing: phase-417 stage 3 moved the C enum
+    /// onto it (issue 1330), and naming the constants here rather than
+    /// restating `0/10/20/...` is what keeps the two from parting.
+    ///
+    /// `Trace` is ours and has no rclcpp counterpart -- `nros_log` has the
+    /// level, and a `Level` that could not name it would make `set_level`
+    /// unable to reach a threshold the C and Rust surfaces both reach.
+    enum class Level : int {
+        Unset = NROS_LOG_SEVERITY_UNSET,
+        Trace = NROS_LOG_SEVERITY_TRACE,
+        Debug = NROS_LOG_SEVERITY_DEBUG,
+        Info = NROS_LOG_SEVERITY_INFO,
+        Warn = NROS_LOG_SEVERITY_WARN,
+        Error = NROS_LOG_SEVERITY_ERROR,
+        Fatal = NROS_LOG_SEVERITY_FATAL,
+    };
+
+    /// `rclcpp::Logger::set_level(Level)` -- raise or lower THIS logger's
+    /// runtime threshold. phase-417 W4.d.
+    ///
+    /// A forwarder onto `nros_logger_set_level` (`<nros/log.h>`), which
+    /// forwards to `nros_log::Logger::set_level`. No level table, and no
+    /// comparison against one, lives on this side: RFC-0019 makes the Rust API
+    /// the implementation and C++ a shim, and a second threshold store is the
+    /// defect this campaign has removed three times.
+    ///
+    /// ADOPT-BOUNDED (RFC-0089). Upstream returns `void` and throws on a level
+    /// it cannot set; RFC-0018 forbids exceptions, so a call that can fail says
+    /// so in its return type -- the same widening as `Executor::cancel`, and
+    /// loud for the same reason, because `Result` is `NROS_NODISCARD`.
+    ///
+    /// A NULL handle is an ERROR here and is deliberately NOT redirected to the
+    /// catch-all logger. `detail::log_handle` does redirect, and is right to:
+    /// a RECORD with no owner belongs in the catch-all. A THRESHOLD WRITE with
+    /// no owner does not -- redirecting it would quietly move the level of
+    /// every unnamed logger in the image instead of the one the caller named,
+    /// which is issue 1019's third defect pointing the other way. A `Logger`
+    /// carries a null handle when it was built from a name alone
+    /// (`Logger("planner")`, the one-argument constructor) or from an
+    /// uninitialised node; `rclcpp::get_logger("planner")` resolves the name
+    /// and does not.
+    ::nros::Result set_level(Level level) {
+        if (handle_ == nullptr) {
+            return ::nros::Result(::nros::ErrorCode::InvalidArgument);
+        }
+        return nros_logger_set_level(handle_, static_cast<nros_log_severity_t>(level))
+                   ? ::nros::Result::success()
+                   : ::nros::Result(::nros::ErrorCode::InvalidArgument);
+    }
+
+    /// This logger's current runtime threshold -- OURS-ONLY, phase-417 W4.d.
+    ///
+    /// rclcpp has no getter. C (`nros_logger_get_level`) and Rust
+    /// (`nros_log::Logger::level`) both do, and W4.d is about our own three
+    /// languages agreeing rather than about upstream's surface, so the one
+    /// language missing it was the thing to fix.
+    ///
+    /// A null handle answers `Fatal` -- the quiet end, so a dropped handle
+    /// cannot read as "trace everything". That rule is the C entry point's and
+    /// is reached rather than restated: `nros_logger_get_level(NULL)` already
+    /// answers `NROS_LOG_SEVERITY_FATAL`.
+    Level get_level() const { return static_cast<Level>(nros_logger_get_level(handle_)); }
+
+    /// Would a record at `level` pass this logger's threshold? -- OURS-ONLY.
+    ///
+    /// Spelled `is_enabled` to agree with C's `nros_logger_is_enabled` and
+    /// Rust's `Logger::is_enabled` rather than with rcutils's
+    /// `rcutils_logging_logger_is_enabled_for`, for the same reason as
+    /// `get_level`: this trio exists so our three languages stop disagreeing,
+    /// and a third spelling would be the disagreement in a new place. Null
+    /// handle answers false, from the C entry point.
+    bool is_enabled(Level level) const {
+        return nros_logger_is_enabled(handle_, static_cast<nros_log_severity_t>(level));
+    }
 
     /// Implicit conversion to `nros_logger_t` (`const void*`, `<nros/log.h>`).
     ///
