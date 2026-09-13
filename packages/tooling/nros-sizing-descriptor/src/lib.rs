@@ -69,6 +69,81 @@ pub use vocabulary::{
     Basis, Durability, EndpointKind, History, RegistrationPath, Reliability, Status,
 };
 
+/// How many TRANSIENT_LOCAL publishers this image declares.
+///
+/// phase-455 W5 / issue 1341. **ONE formula**, because it has TWO consumers
+/// that must agree or the image does not boot: `nros-rmw-zenoh` sizes the
+/// retention pool from it, and `nros-zpico-build` adds it to the queryable
+/// table — a transient-local publisher retains its last sample AND declares a
+/// queryable to serve that sample to a late joiner. Issue 1025 is what a second
+/// derivation of one number costs; this is the first place both could reach.
+///
+/// # What counts, and the row that is not a `durability` field
+///
+/// * a `publisher` row whose `durability` is `transient_local`, and
+/// * every `action_server` row, ONE each, whatever its own durability says.
+///
+/// The second is not a guess. `nros-node` creates an action server's
+/// `<action>/_action/status` publisher itself with
+/// `rcl_action_qos_profile_status_default` — KEEP_LAST(1) / RELIABLE /
+/// TRANSIENT_LOCAL — and that publisher is BELOW the declaration: it appears in
+/// no `[[endpoint]]` row because no launch file mentions it. Counting only the
+/// publisher rows answers 0 for an action-server image, which is exactly the
+/// image issue 1341 is about, and exactly the image whose queryable table then
+/// fills at boot.
+///
+/// # The three answers, and why `Absent` is not zero
+///
+/// * [`Fact::Stated`] — every publisher row stated a durability, so the count is
+///   exact. Zero is a legitimate answer and means this image pays nothing.
+/// * [`Fact::Refused`] — some publisher row states no durability. A count over
+///   the rows that DID answer is not a bound on the row that stayed silent, and
+///   an under-sized pool here is `create_publisher` failing at boot. The prose
+///   names the row.
+/// * [`Fact::Absent`] — the descriptor has no endpoint rows at all, so there is
+///   no declaration to read. Consumers keep their builtin.
+///
+/// Nothing here is floored (D7): whether zero is a legal SIZE is a property of
+/// the consumer's storage.
+pub fn transient_local_publishers(desc: &SizingDescriptor) -> Fact<usize> {
+    if desc.endpoints.is_empty() {
+        return Fact::Absent;
+    }
+    let mut count = 0usize;
+    for e in &desc.endpoints {
+        match e.kind {
+            EndpointKind::ActionServer => count += 1,
+            EndpointKind::Publisher => match e.durability() {
+                Fact::Stated(Durability::TransientLocal) => count += 1,
+                Fact::Stated(Durability::Volatile) => {}
+                f => {
+                    return Fact::Refused(format!(
+                        "publisher {} ({}) states no `durability`: {}. A count over the \
+                         rows that answered is not a bound on the row that did not",
+                        e.topic,
+                        e.type_name,
+                        f.refusal().unwrap_or("nothing derived it"),
+                    ));
+                }
+            },
+            _ => {}
+        }
+    }
+    Fact::Stated(count)
+}
+
+/// [`transient_local_publishers`] for a build script, straight off
+/// [`DESCRIPTOR_ENV`].
+///
+/// `Fact::Absent` when no descriptor was named — the undeclared road, which is
+/// every bare `cargo build` and every leaf that has not run `nros sync`.
+pub fn transient_local_publishers_from_build_env() -> Result<Fact<usize>, DescriptorError> {
+    Ok(match from_build_env()? {
+        Some(desc) => transient_local_publishers(&desc),
+        None => Fact::Absent,
+    })
+}
+
 /// The schema version this reader understands.
 ///
 /// Bumped whenever a consumer that kept reading an older file would size from a
@@ -281,6 +356,69 @@ mod tests {
         d.policy = Policy::new(Some(64), Some(4096), Some(1));
         d.image = Image::new(Some(2), Some(1), Some(3));
         d
+    }
+
+    /// phase-455 W5 / issue 1341 — the ONE count two pools size from.
+    #[test]
+    fn transient_local_publishers_counts_tl_publishers_and_every_action_server() {
+        let mut d = island();
+        // The island has one VOLATILE subscription and nothing else.
+        assert_eq!(transient_local_publishers(&d), Fact::Stated(0));
+
+        let mut tl = Endpoint::new(EndpointKind::Publisher, "std_msgs/msg/String", "/latched");
+        tl.set_durability(Some(Durability::TransientLocal));
+        d.endpoints.push(tl);
+        assert_eq!(transient_local_publishers(&d), Fact::Stated(1));
+
+        let mut vol = Endpoint::new(EndpointKind::Publisher, "std_msgs/msg/String", "/chatter");
+        vol.set_durability(Some(Durability::Volatile));
+        d.endpoints.push(vol);
+        assert_eq!(
+            transient_local_publishers(&d),
+            Fact::Stated(1),
+            "a volatile publisher costs nothing"
+        );
+
+        // An action server's `/status` publisher is BELOW the declaration —
+        // nothing states its durability because nothing states the endpoint —
+        // so the row counts one on its kind alone. This is the arm issue 1341's
+        // image depends on.
+        d.endpoints.push(Endpoint::new(
+            EndpointKind::ActionServer,
+            "example_interfaces/action/Fibonacci",
+            "/fibonacci",
+        ));
+        assert_eq!(transient_local_publishers(&d), Fact::Stated(2));
+    }
+
+    /// A publisher that states no durability REFUSES the count, naming itself:
+    /// a total over the rows that answered is not a bound on the row that did
+    /// not, and both consumers size a pool whose shortfall is a boot failure.
+    #[test]
+    fn a_publisher_with_no_durability_refuses_the_count() {
+        let mut d = island();
+        d.endpoints.push(Endpoint::new(
+            EndpointKind::Publisher,
+            "std_msgs/msg/String",
+            "/unstated",
+        ));
+        match transient_local_publishers(&d) {
+            Fact::Refused(reason) => assert!(
+                reason.contains("/unstated"),
+                "the refusal must name the row: {reason}"
+            ),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    }
+
+    /// An EMPTY descriptor is `Absent`, never `Stated(0)`. A consumer must be
+    /// able to tell "this image declares no transient-local publisher" from
+    /// "nobody described this image", because the first is a pool of zero and
+    /// the second is the builtin.
+    #[test]
+    fn no_endpoint_rows_is_absent_rather_than_zero() {
+        let d = SizingDescriptor::new("bare", Status::Derived, Basis::Contract);
+        assert_eq!(transient_local_publishers(&d), Fact::Absent);
     }
 
     #[test]

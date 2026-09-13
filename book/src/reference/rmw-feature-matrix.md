@@ -63,7 +63,7 @@ downgrade**. Per-policy semantics: [RMW vs upstream §7](../design/rmw-vs-upstre
 | Policy | Zenoh | XRCE-DDS / Cyclone DDS (via C ABI) ¹ |
 |---|---|---|
 | `CORE` | ✓ | — |
-| `DURABILITY_TRANSIENT_LOCAL` | — | — |
+| `DURABILITY_TRANSIENT_LOCAL` | ✓ | — |
 | `DEADLINE` | ✓ | — |
 | `LIFESPAN` | ✓ | — |
 | `LIVELINESS_AUTOMATIC` | ✓ | — |

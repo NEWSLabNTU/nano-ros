@@ -14,6 +14,349 @@ use crate::keyexpr::TopicKeyExpr;
 use super::RMW_ATTACHMENT_SIZE_WITH_CRC;
 
 // ============================================================================
+// phase-455 W5 / issue 1341 — TRANSIENT_LOCAL retention, the PUBLISHER half
+// ============================================================================
+
+/// Publisher-side transient-local durability, served by query-on-match.
+///
+/// # What a stock peer actually does, measured rather than recalled
+///
+/// `rmw_zenoh_cpp` 0.1.9 builds its endpoints on zenoh's `ze_advanced_publisher`
+/// / `ze_advanced_subscriber`. Read from a router's own debug log on
+/// 2026-09-13, a stock TRANSIENT_LOCAL pair produces exactly this:
+///
+/// ```text
+/// Declare queryable  77/tl_probe/std_msgs::msg::dds_::String_/…/@adv/pub/<zid>/<eid>/_
+/// Declare subscriber 77/tl_probe/std_msgs::msg::dds_::String_/…
+/// Declare subscriber 77/tl_probe/std_msgs::msg::dds_::String_/…/@adv/pub/**
+/// Route query    for 77/tl_probe/std_msgs::msg::dds_::String_/…/@adv/**
+/// Route query    for 77/tl_probe/std_msgs::msg::dds_::String_/…/@adv/pub/<zid>/<eid>/_
+/// ```
+///
+/// So the cache of a transient-local publisher is a QUERYABLE at
+/// `<topic keyexpr>/@adv/pub/<zid>/<eid>/_`, and a subscriber that joins issues
+/// a GLOBAL history query at `<topic keyexpr>/@adv/**` — which INTERSECTS that
+/// key. That global query is what serves the case the profile exists for: a
+/// client attaching after a goal has already terminated. The per-publisher
+/// query beside it is late-joiner detection, driven by a zenoh liveliness token
+/// under the same `@adv` prefix, and this module declares NO such token (see
+/// "What this does not do").
+///
+/// The reply carries the TOPIC keyexpr, not the queryable's — that is what the
+/// cache does and why the advanced subscriber accepts a reply keyexpr differing
+/// from the query's.
+///
+/// # What this does not do
+///
+/// * **The subscriber half.** Querying a stock transient-local publisher on
+///   match, so a nano-ros subscription gets a latched topic's last value, is a
+///   real capability and is a separate item; `shim/qos.rs` still REFUSES
+///   TRANSIENT_LOCAL on a subscription rather than pretending.
+/// * **A `@adv` liveliness token**, so a stock subscriber that existed BEFORE
+///   this publisher does not detect it as a late joiner and does not query it
+///   individually. It receives the live samples from that moment on, which is
+///   what a volatile publisher would have given it, plus whatever the global
+///   query at its own creation collected.
+/// * **Retain a STREAMED publish.** `publish_streamed` produces its payload
+///   through caller callbacks, so it holds no contiguous buffer this module
+///   could copy without invoking the producer a second time. It says so once,
+///   at WARN, rather than leaving the retention silently behind the live
+///   stream. The LOANED path (`commit_slot`) is NOT in this exception — the
+///   arena slice is contiguous, so a transient-local publisher retains from it.
+/// * **Retain more than `TL_RETAIN_DEPTH` samples.** The depth is a constant 1,
+///   which is exactly `rcl_action_qos_profile_status_default`'s KEEP_LAST(1);
+///   `shim/qos.rs` grants a deeper request down to it and ADVERTISES the grant,
+///   so the graph never claims a history this keeps. Making it a knob is the
+///   extension point, and it would multiply the pool below by that many.
+pub(super) mod transient_local {
+    use super::*;
+    use core::{cell::UnsafeCell, ffi::c_void};
+
+    use portable_atomic::{AtomicBool, AtomicI32, AtomicPtr, AtomicU32, AtomicUsize};
+
+    use crate::config::{MAX_TL_PUBLISHERS, TL_RETAIN_BYTES};
+
+    /// The widest attachment a retained sample can carry — the same 33 or 37
+    /// bytes `publish_raw` builds, so the reply is byte-identical to the live
+    /// publication a peer would have received.
+    #[cfg(not(feature = "safety-e2e"))]
+    const TL_ATTACHMENT_MAX: usize = RMW_ATTACHMENT_SIZE;
+    #[cfg(feature = "safety-e2e")]
+    const TL_ATTACHMENT_MAX: usize = RMW_ATTACHMENT_SIZE_WITH_CRC;
+
+    /// One publisher's retained sample plus everything its query callback needs
+    /// to answer without touching the `ZenohPublisher` that owns it.
+    ///
+    /// The callback runs on zenoh-pico's read task and is handed only a `void*`
+    /// context, so it cannot borrow the publisher; it reads THIS, which is
+    /// process-static and outlives any entity.
+    ///
+    /// `nros-pool: MAX_TL_PUBLISHERS × (TL_RETAIN_BYTES + KEYEXPR_BUFFER_SIZE +
+    /// TL_ATTACHMENT_MAX)` — priced because, unlike `LendArena`, this one is
+    /// reached by a SHIPPED image: every zenoh action server retains its
+    /// `/status`.
+    pub(crate) struct RetainSlot {
+        /// Claimed by a live TRANSIENT_LOCAL publisher.
+        claimed: AtomicBool,
+        /// Held across the publisher's write so the read side can tell a
+        /// half-written sample from a complete one. The two never run on the
+        /// same thread — the writer is the application, the reader is the
+        /// zenoh-pico read task — and a reader that loses the race declines the
+        /// query rather than replying with a torn buffer. A declined query is
+        /// the same outcome as no retention yet, which a late joiner already
+        /// has to tolerate.
+        writing: AtomicBool,
+        /// A complete sample is retained.
+        valid: AtomicBool,
+        session: AtomicPtr<zpico_sys::zpico_session_t>,
+        queryable: AtomicI32,
+        len: AtomicUsize,
+        att_len: AtomicUsize,
+        /// How many publishes were too large to retain. Read by
+        /// [`RetainSlot::oversize_drops`] so a test can assert the refusal
+        /// rather than grep a log line.
+        oversize: AtomicU32,
+        data: UnsafeCell<[u8; TL_RETAIN_BYTES]>,
+        att: UnsafeCell<[u8; TL_ATTACHMENT_MAX]>,
+        /// The TOPIC keyexpr, null-terminated — what the reply is sent on.
+        reply_keyexpr: UnsafeCell<[u8; KEYEXPR_BUFFER_SIZE]>,
+    }
+
+    // SAFETY: the three `UnsafeCell` buffers are written only by the slot's
+    // owning publisher, between `writing = true` and `writing = false`, and read
+    // only by the query callback, which returns early while `writing` is set.
+    unsafe impl Sync for RetainSlot {}
+
+    impl RetainSlot {
+        const fn new() -> Self {
+            Self {
+                claimed: AtomicBool::new(false),
+                writing: AtomicBool::new(false),
+                valid: AtomicBool::new(false),
+                session: AtomicPtr::new(core::ptr::null_mut()),
+                queryable: AtomicI32::new(-1),
+                len: AtomicUsize::new(0),
+                att_len: AtomicUsize::new(0),
+                oversize: AtomicU32::new(0),
+                data: UnsafeCell::new([0u8; TL_RETAIN_BYTES]),
+                att: UnsafeCell::new([0u8; TL_ATTACHMENT_MAX]),
+                reply_keyexpr: UnsafeCell::new([0u8; KEYEXPR_BUFFER_SIZE]),
+            }
+        }
+
+        /// How many publishes this slot refused to retain because they exceeded
+        /// `ZPICO_TL_RETAIN_BYTES`.
+        pub(crate) fn oversize_drops(&self) -> u32 {
+            self.oversize.load(Ordering::Relaxed)
+        }
+    }
+
+    /// The process-wide retention pool.
+    ///
+    /// Length is `ZPICO_MAX_TL_PUBLISHERS`, which an image that declares its
+    /// endpoints DERIVES — zero included. A zero-length pool is legal and
+    /// costs nothing: [`claim`] iterates an empty range and returns `None`, and
+    /// `ZenohPublisher::new` turns that into a refusal naming the knob. Nothing
+    /// here indexes the pool without having been handed an index by `claim`,
+    /// which is the condition `check-c-array-pool-floors` requires of the C
+    /// arrays one language over before it allows a zero (issues 1015, 1033).
+    pub(crate) static TL_SLOTS: [RetainSlot; MAX_TL_PUBLISHERS] =
+        [const { RetainSlot::new() }; MAX_TL_PUBLISHERS];
+
+    /// Entity ids for the `@adv` keyexpr. Only has to be unique within this
+    /// session's own `@adv` namespace, which is keyed by our zid.
+    static NEXT_ADV_EID: AtomicU32 = AtomicU32::new(0);
+
+    pub(crate) fn next_adv_eid() -> u32 {
+        NEXT_ADV_EID.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Claim a free retention slot, or `None` when the pool is full.
+    pub(crate) fn claim() -> Option<usize> {
+        TL_SLOTS.iter().position(|s| {
+            s.claimed
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        })
+    }
+
+    /// Return a slot. The caller must have undeclared its queryable first.
+    pub(crate) fn release(slot: usize) {
+        let s = &TL_SLOTS[slot];
+        s.valid.store(false, Ordering::Release);
+        s.len.store(0, Ordering::Relaxed);
+        s.att_len.store(0, Ordering::Relaxed);
+        s.oversize.store(0, Ordering::Relaxed);
+        s.session.store(core::ptr::null_mut(), Ordering::Release);
+        s.queryable.store(-1, Ordering::Release);
+        s.claimed.store(false, Ordering::Release);
+    }
+
+    /// Wire a claimed slot to the session and queryable that will answer for
+    /// it, and to the keyexpr its replies go out on.
+    pub(crate) fn arm(
+        slot: usize,
+        session: *mut zpico_sys::zpico_session_t,
+        queryable: i32,
+        reply_keyexpr: &[u8],
+    ) {
+        let s = &TL_SLOTS[slot];
+        // SAFETY: called from `ZenohPublisher::new` before the queryable handle
+        // is published below, so no callback can be reading this slot yet.
+        let ke = unsafe { &mut *s.reply_keyexpr.get() };
+        let n = reply_keyexpr.len().min(KEYEXPR_BUFFER_SIZE - 1);
+        ke[..n].copy_from_slice(&reply_keyexpr[..n]);
+        ke[n] = 0;
+        s.session.store(session, Ordering::Release);
+        // LAST: a non-negative handle is what the callback treats as "this slot
+        // is answerable".
+        s.queryable.store(queryable, Ordering::Release);
+    }
+
+    /// Retain one sample. Returns `false` when it did not fit, in which case
+    /// the previously retained sample is DROPPED rather than left in place: a
+    /// late joiner served a stale value under a KEEP_LAST(1) promise is worse
+    /// than one served nothing, because nothing is a condition it can detect.
+    pub(crate) fn retain(slot: usize, data: &[u8], attachment: &[u8]) -> bool {
+        let s = &TL_SLOTS[slot];
+        s.writing.store(true, Ordering::Release);
+        s.valid.store(false, Ordering::Release);
+        let fits = data.len() <= TL_RETAIN_BYTES && attachment.len() <= TL_ATTACHMENT_MAX;
+        if fits {
+            // SAFETY: `writing` is set, so the query callback declines rather
+            // than reading; the only other writer is this publisher.
+            unsafe {
+                (&mut *s.data.get())[..data.len()].copy_from_slice(data);
+                (&mut *s.att.get())[..attachment.len()].copy_from_slice(attachment);
+            }
+            s.len.store(data.len(), Ordering::Relaxed);
+            s.att_len.store(attachment.len(), Ordering::Relaxed);
+        } else {
+            s.oversize.store(
+                s.oversize.load(Ordering::Relaxed).saturating_add(1),
+                Ordering::Relaxed,
+            );
+        }
+        s.valid.store(fits, Ordering::Release);
+        s.writing.store(false, Ordering::Release);
+        fits
+    }
+
+    /// Reported once per process: the answer and the knob are the same for
+    /// every slot, so a line per publisher would be a line per publisher.
+    static OVERSIZE_REPORTED: AtomicBool = AtomicBool::new(false);
+    /// Its one caller is `publish_streamed`, which is itself
+    /// `cfg(not(safety-e2e))` — the streamed path cannot build the trailing
+    /// CRC over a payload it never holds contiguously. The gate is on the
+    /// REPORTER rather than an `#[allow(dead_code)]` because a dead
+    /// `#[allow]` is how a reporter that stops being called goes unnoticed;
+    /// under `safety-e2e` there is no streamed publish to report on.
+    #[cfg(not(feature = "safety-e2e"))]
+    static STREAMED_REPORTED: AtomicBool = AtomicBool::new(false);
+
+    pub(crate) fn report_oversize_once(name: &str, len: usize) {
+        if !OVERSIZE_REPORTED.swap(true, Ordering::Relaxed) {
+            nros_log::log_warn!(
+                nros_log::get_logger("nros_rmw_zenoh"),
+                "qos: transient-local publisher '{}' published {} bytes; the retention \
+                 slot holds {}. The sample was sent but NOT retained, so a late joiner \
+                 gets nothing rather than a truncated message. Raise \
+                 ZPICO_TL_RETAIN_BYTES.",
+                name,
+                len,
+                TL_RETAIN_BYTES
+            );
+        }
+    }
+
+    #[cfg(not(feature = "safety-e2e"))]
+    pub(crate) fn report_unretainable_path_once(name: &str, path: &str) {
+        if !STREAMED_REPORTED.swap(true, Ordering::Relaxed) {
+            nros_log::log_warn!(
+                nros_log::get_logger("nros_rmw_zenoh"),
+                "qos: transient-local publisher '{}' used the {} path, which holds no \
+                 contiguous payload to retain. The sample was sent; the retained one is \
+                 unchanged, so a late joiner sees the last sample published through \
+                 `publish_raw`.",
+                name,
+                path
+            );
+        }
+    }
+
+    /// The queryable callback a transient-local publisher declares.
+    ///
+    /// `ctx` is the slot index. Nothing else is safe to hand it: the callback
+    /// outlives no borrow and the pool is static.
+    ///
+    /// # The reply-slot protocol, and why the order matters
+    ///
+    /// `query_handler` (C) clones the query into a reply slot BEFORE calling
+    /// this, and reclaims that slot afterwards only if nobody took the seq
+    /// (issue 0902). So a callback with nothing to say must return WITHOUT
+    /// taking the seq — taking it and then not replying is exactly the leak
+    /// that made an action server stop answering after four liveliness probes.
+    pub(crate) extern "C" fn query_callback(
+        _keyexpr: *const core::ffi::c_char,
+        _keyexpr_len: usize,
+        _payload: *const u8,
+        _payload_len: usize,
+        ctx: *mut c_void,
+    ) {
+        let slot = ctx as usize;
+        if slot >= MAX_TL_PUBLISHERS {
+            return;
+        }
+        let s = &TL_SLOTS[slot];
+        let session = s.session.load(Ordering::Acquire);
+        let queryable = s.queryable.load(Ordering::Acquire);
+        if session.is_null() || queryable < 0 {
+            return;
+        }
+        // Nothing retained, or a write in flight: decline, and leave the seq
+        // for `query_handler` to reclaim.
+        if !s.valid.load(Ordering::Acquire) || s.writing.load(Ordering::Acquire) {
+            return;
+        }
+        // SAFETY: `valid` is set and `writing` is clear, so the buffers hold a
+        // complete sample and the only writer is quiescent.
+        let (data, att, ke) = unsafe {
+            let len = s.len.load(Ordering::Relaxed);
+            let att_len = s.att_len.load(Ordering::Relaxed);
+            (
+                &(&*s.data.get())[..len],
+                &(&*s.att.get())[..att_len],
+                &*s.reply_keyexpr.get(),
+            )
+        };
+        let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(session, queryable) };
+        if seq < 0 {
+            return;
+        }
+        // `ke` is null-terminated by `arm`, which is the contract
+        // `zpico_query_reply`'s `const char*` takes.
+        let rc = unsafe {
+            zpico_sys::zpico_query_reply(
+                session,
+                queryable,
+                seq,
+                ke.as_ptr().cast(),
+                data.as_ptr(),
+                data.len(),
+                att.as_ptr(),
+                att.len(),
+            )
+        };
+        // A failed reply has already released the slot inside
+        // `zpico_query_reply`; there is no second chance to take and nothing a
+        // callback on the read task can usefully do about it. The late joiner
+        // sees a query that returned no sample, which is the same outcome as
+        // "nothing retained yet".
+        let _ = rc;
+    }
+}
+
+// ============================================================================
 // ZenohPublisher
 // ============================================================================
 
@@ -64,6 +407,37 @@ pub struct ZenohPublisher {
     last_liveliness_lost_fire_ms: core::cell::Cell<u64>,
     /// Phase 108.C.zenoh.4-followup — cumulative `LivelinessLost` count.
     liveliness_lost_total: core::cell::Cell<u32>,
+    /// phase-455 W5 / issue 1341 — present exactly when this publisher was
+    /// granted TRANSIENT_LOCAL durability. `None` for a VOLATILE publisher,
+    /// which is every publisher in the tree bar an action server's `/status`
+    /// and a deliberately latched topic, so the cost is paid by the images
+    /// that asked for it.
+    retention: Option<TransientLocalRetention>,
+    /// The publisher's ROS name, for the one-shot retention diagnostics. A
+    /// `&'static str` is not available here (the name is a `&str` on a
+    /// `TopicInfo` that does not outlive `new`), and a heapless copy is cheaper
+    /// than making every warning site take the name as an argument it does not
+    /// have.
+    name: heapless::String<KEYEXPR_STRING_SIZE>,
+}
+
+/// One claimed retention slot plus the queryable that answers from it.
+///
+/// A struct with its own `Drop` rather than two fields on `ZenohPublisher`,
+/// because the ORDER is load-bearing: the queryable must be undeclared before
+/// the slot is released, or a query already in flight reads a slot that has
+/// been handed to another publisher. Fields drop after the `Drop` body, so the
+/// body takes the queryable out and drops it first.
+struct TransientLocalRetention {
+    slot: usize,
+    queryable: Option<crate::zpico::Queryable>,
+}
+
+impl Drop for TransientLocalRetention {
+    fn drop(&mut self) {
+        drop(self.queryable.take());
+        transient_local::release(self.slot);
+    }
 }
 
 /// Phase 108.A — single-slot event registration. cb is `unsafe extern
@@ -126,6 +500,20 @@ impl ZenohPublisher {
             }
         };
 
+        // phase-455 W5 / issue 1341 — the transient-local half. `admit` has
+        // already refused TRANSIENT_LOCAL for every kind but a publisher and
+        // granted the depth this retention actually serves, so reaching here
+        // with TransientLocal means "serve it".
+        let retention = if qos.durability == nros_rmw::QoSDurabilityPolicy::TransientLocal {
+            Some(Self::declare_retention(
+                context,
+                key.as_str(),
+                &keyexpr_buf,
+            )?)
+        } else {
+            None
+        };
+
         let now = now_ms();
         Ok(Self {
             publisher,
@@ -149,6 +537,129 @@ impl ZenohPublisher {
             last_assert_at_ms: core::cell::Cell::new(now),
             last_liveliness_lost_fire_ms: core::cell::Cell::new(now),
             liveliness_lost_total: core::cell::Cell::new(0),
+            retention,
+            name: heapless::String::try_from(topic.name).unwrap_or_default(),
+        })
+    }
+
+    /// Claim a retention slot and declare the cache queryable a stock
+    /// `ze_advanced_subscriber` queries.
+    ///
+    /// The keyexpr is `<topic keyexpr>/@adv/pub/<zid>/<eid>/_`, which is the
+    /// shape measured off a stock pair (see the module doc). The trailing `_`
+    /// is zenoh's empty-metadata chunk; the `zid` is ours, in the same LSB-first
+    /// hex the ROS liveliness tokens use, and the `eid` only has to be unique
+    /// under that zid.
+    fn declare_retention(
+        context: &Context,
+        topic_key: &str,
+        topic_keyexpr_nul: &[u8; KEYEXPR_BUFFER_SIZE],
+    ) -> Result<TransientLocalRetention, TransportError> {
+        let Some(slot) = transient_local::claim() else {
+            // issue 0460's shape, one pool over: name the knob, say what the
+            // pool is for, and do it through `nros_log` so an embedded image
+            // that has no `std` logger still gets the sentence. The build-time
+            // refusal in `build.rs` is the one that catches this on a DECLARED
+            // image; this arm is the undeclared road's answer.
+            nros_log::log_error!(
+                nros_log::get_logger("nros_rmw_zenoh"),
+                "qos: publisher '{}' asked for TRANSIENT_LOCAL and the retention pool \
+                 holds {} slot(s), all taken. Raise ZPICO_MAX_TL_PUBLISHERS. Each \
+                 transient-local publisher retains its last sample and answers a late \
+                 joiner's query from it.",
+                topic_key,
+                crate::config::MAX_TL_PUBLISHERS
+            );
+            return Err(TransportError::Backend(
+                "zenoh transient-local retention pool exhausted — raise \
+                 ZPICO_MAX_TL_PUBLISHERS. A TRANSIENT_LOCAL publisher retains its last \
+                 sample and declares a queryable to serve it to a late joiner.",
+            ));
+        };
+        let mut adv: heapless::String<KEYEXPR_STRING_SIZE> = heapless::String::new();
+        let mut hex = [0u8; 32];
+        match context.zid() {
+            Ok(zid) => zid.to_hex_bytes(&mut hex),
+            Err(e) => {
+                transient_local::release(slot);
+                return Err(TransportError::from(e));
+            }
+        }
+        let eid = transient_local::next_adv_eid();
+        let mut eid_buf: heapless::String<12> = heapless::String::new();
+        let _ = core::fmt::Write::write_fmt(&mut eid_buf, format_args!("{eid}"));
+        let built = (|| -> Result<(), ()> {
+            adv.push_str(topic_key).map_err(|_| ())?;
+            adv.push_str("/@adv/pub/").map_err(|_| ())?;
+            adv.push_str(core::str::from_utf8(&hex).map_err(|_| ())?)
+                .map_err(|_| ())?;
+            adv.push('/').map_err(|_| ())?;
+            adv.push_str(eid_buf.as_str()).map_err(|_| ())?;
+            adv.push_str("/_").map_err(|_| ())
+        })();
+        if built.is_err() {
+            transient_local::release(slot);
+            nros_log::log_error!(
+                nros_log::get_logger("nros_rmw_zenoh"),
+                "qos: publisher '{}' asked for TRANSIENT_LOCAL but its cache keyexpr \
+                 does not fit NROS_KEYEXPR_STRING_SIZE={}. The cache key is the topic \
+                 key plus 47 bytes; raise the knob.",
+                topic_key,
+                KEYEXPR_STRING_SIZE
+            );
+            return Err(TransportError::TopicNameInvalid);
+        }
+        let mut adv_nul = [0u8; KEYEXPR_BUFFER_SIZE];
+        let bytes = adv.as_bytes();
+        if bytes.len() >= adv_nul.len() {
+            transient_local::release(slot);
+            return Err(TransportError::TopicNameInvalid);
+        }
+        adv_nul[..bytes.len()].copy_from_slice(bytes);
+        adv_nul[bytes.len()] = 0;
+
+        // Wire the reply keyexpr BEFORE the queryable exists, so the first
+        // query cannot find a slot that knows where to reply but not how.
+        transient_local::arm(
+            slot,
+            context.handle(),
+            -1,
+            &topic_keyexpr_nul[..=topic_key.len().min(KEYEXPR_BUFFER_SIZE - 1)],
+        );
+        // SAFETY: the callback's context is a slot INDEX into a process-static
+        // pool, so it is valid for the queryable's whole life and beyond.
+        let queryable = unsafe {
+            context.declare_queryable_raw(
+                &adv_nul,
+                transient_local::query_callback,
+                slot as *mut core::ffi::c_void,
+            )
+        };
+        let queryable = match queryable {
+            Ok(q) => q,
+            Err(e) => {
+                transient_local::release(slot);
+                nros_log::log_error!(
+                    nros_log::get_logger("nros_rmw_zenoh"),
+                    "qos: publisher '{}' asked for TRANSIENT_LOCAL and its cache \
+                     queryable could not be declared ({:?}). If this is `Full`, the \
+                     image exceeded ZPICO_MAX_QUERYABLES — a transient-local publisher \
+                     is a queryable, on top of every service server.",
+                    topic_key,
+                    e
+                );
+                return Err(TransportError::from(e));
+            }
+        };
+        transient_local::arm(
+            slot,
+            context.handle(),
+            queryable.handle(),
+            &topic_keyexpr_nul[..=topic_key.len().min(KEYEXPR_BUFFER_SIZE - 1)],
+        );
+        Ok(TransientLocalRetention {
+            slot,
+            queryable: Some(queryable),
         })
     }
 
@@ -262,6 +773,41 @@ impl ZenohPublisher {
         }
     }
 
+    /// phase-455 W5 — keep this sample for a late joiner, when this publisher
+    /// was granted TRANSIENT_LOCAL. A no-op on a VOLATILE publisher, which is
+    /// the reason the branch is a `match` on an `Option` rather than a flag:
+    /// there is no slot, so there is nothing to test against.
+    fn retain_sample(&self, data: &[u8], attachment: &[u8]) {
+        let Some(retention) = self.retention.as_ref() else {
+            return;
+        };
+        if !transient_local::retain(retention.slot, data, attachment) {
+            transient_local::report_oversize_once(self.name.as_str(), data.len());
+        }
+    }
+
+    /// phase-455 W5 — a publish path that holds no contiguous payload says so,
+    /// once, instead of leaving the retention silently behind the live stream.
+    ///
+    /// `cfg`-gated with its one caller, `publish_streamed`. See the note on
+    /// `transient_local::STREAMED_REPORTED`.
+    #[cfg(not(feature = "safety-e2e"))]
+    fn report_unretainable(&self, path: &str) {
+        if self.retention.is_some() {
+            transient_local::report_unretainable_path_once(self.name.as_str(), path);
+        }
+    }
+
+    /// issue 1341 — how many publishes this publisher's retention slot refused
+    /// because they exceeded `ZPICO_TL_RETAIN_BYTES`, and `None` when it is not
+    /// a transient-local publisher at all. A counter rather than a log grep,
+    /// for the same reason the reply-slot refusals are one (phase-455 W1).
+    pub fn transient_local_oversize_drops(&self) -> Option<u32> {
+        self.retention
+            .as_ref()
+            .map(|r| transient_local::TL_SLOTS[r.slot].oversize_drops())
+    }
+
     /// Serialize attachment for RMW compatibility
     fn serialize_attachment(&self, seq: i64, ts: i64, buf: &mut [u8; RMW_ATTACHMENT_SIZE]) {
         // Sequence number (little-endian)
@@ -310,9 +856,14 @@ impl Publisher for ZenohPublisher {
                 &self.rmw_gid[..4],
             );
 
-            self.publisher
+            let r = self
+                .publisher
                 .publish_with_attachment(data, Some(&att_buf))
-                .map_err(TransportError::from)
+                .map_err(TransportError::from);
+            if r.is_ok() {
+                self.retain_sample(data, &att_buf);
+            }
+            r
         };
 
         // With safety-e2e: 37-byte attachment (33 + 4-byte CRC of payload)
@@ -339,9 +890,14 @@ impl Publisher for ZenohPublisher {
                 crc,
             );
 
-            self.publisher
+            let r = self
+                .publisher
                 .publish_with_attachment(data, Some(&att_buf))
-                .map_err(TransportError::from)
+                .map_err(TransportError::from);
+            if r.is_ok() {
+                self.retain_sample(data, &att_buf);
+            }
+            r
         };
 
         // Phase 108.C.zenoh.2 — only update last_publish_at on a
@@ -381,6 +937,7 @@ impl Publisher for ZenohPublisher {
     ) -> Result<(), Self::Error> {
         self.check_offered_deadline();
         self.check_liveliness_lost();
+        self.report_unretainable("streamed publish");
 
         #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
         let seq: i64 = (self.sequence_counter.fetch_add(1, Ordering::Relaxed) + 1).into();
@@ -671,6 +1228,14 @@ mod lending {
                 .publisher
                 .publish_with_attachment_aliased(slot.bytes, Some(&att_buf))
                 .map_err(TransportError::from);
+            // phase-455 W5 — the loan path DOES hold a contiguous payload (the
+            // arena slice), so a transient-local publisher retains it here too.
+            // The copy is the price of retention and is paid only by a
+            // publisher that asked for TRANSIENT_LOCAL; the zero-copy claim is
+            // about the WIRE, which is still aliased.
+            if res.is_ok() {
+                self.retain_sample(slot.bytes, &att_buf);
+            }
             // slot drops here, releasing the arena.
             res
         }

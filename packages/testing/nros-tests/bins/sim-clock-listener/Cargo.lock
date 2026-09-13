@@ -706,6 +706,7 @@ dependencies = [
  "nros-board-common",
  "nros-build-paths",
  "nros-cc-flags",
+ "nros-sizing-descriptor",
  "nros-zephyr-build",
  "pkg-config",
 ]
