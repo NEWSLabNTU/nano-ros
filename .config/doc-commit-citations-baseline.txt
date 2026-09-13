@@ -50,11 +50,6 @@ bc6c8dfc6
 826c4ca91
 adb4c592e
 
-# docs/issues/README.md — an archived issue cites the commit that made a QEMU
-# failure drain the guest before killing it. Hash rebased away; the change is
-# real and the prose is the record. Dangling on main before this line.
-d97c9c606
-
 # `docs/issues/1127-live-peer-cells-skip-forever.md` — commits in ANOTHER
 # CHECKOUT. The issue is about a live-peer lane that runs inside the distrobox
 # against a mirror tree at `/mnt/wd/data/projects/nano-ros-box`, and it records
@@ -67,20 +62,19 @@ d97c9c606
 # and `d1d88f660`, the mirror's own HEAD named in the same sentence, did not,
 # so `main` stayed red for the half that was still missing. Both belong here:
 # the comment above says "those hashes", plural, and always meant both.
+#
+# DO NOT delete `d1d88f660` because a local run reported it stale. It is the
+# mirror tree's HEAD, and that tree is a nano-ros checkout, so the hash also
+# names a commit on `origin/work/1055-box-sync-tracked-source` — an unmerged
+# branch. A clone that has fetched that branch resolves it and asks for this
+# line; a fresh clone and CI do not, and deleting it makes the citation in
+# issue 1127 go NEW-dangling there. That asymmetry is issue 1205, still open:
+# the gate resolves against `rev-list --all`, which includes fetched remote
+# branches, rather than against ancestry of the default branch. Before
+# retiring any line here, check that the commit is an ancestor of
+# `origin/main`; for this one it is NOT.
 d1d88f660
 ea9fbfae9
-
-# `docs/issues/1227-island-image-dtcm-overflows-on-main.md`, the DTCM bisect
-# table. Three of its four commits still resolve; `e3786749a` does not, because
-# the merge queue rebases entries SERVER-SIDE and this one's branch was
-# rewritten after the issue was written. DEAD, and deliberately not rewritten:
-# the row is a MEASUREMENT of a specific tree (DTCM 93344 B, 71.22%) and there
-# is no durable name for a commit that no longer exists — a PR number would
-# describe a different tree. The claim it supports survives without it:
-# `1976727d8` measured the identical 93344 B / 71.22% and still resolves, so
-# the "NOT environmental" argument has a live witness.
-e3786749a
-
 
 # `docs/roadmap/phase-447-provisioning-revision.md`, the "In flight at this
 # checkpoint" table (upstream `300bd0f95`). `b7ec5e55a` is A3's probe commit on
