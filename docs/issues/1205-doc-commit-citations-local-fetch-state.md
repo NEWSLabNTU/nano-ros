@@ -89,3 +89,61 @@ Keep the shallow-clone skip; it guards the other direction and is still needed.
 Until then the stale-baseline half is advisory on a developer machine: do not
 delete a baseline line because a local run asked you to, without checking
 whether the commit is reachable from `origin/main`.
+
+## Second measurement: the gate has no verdict capacity in CI
+
+Prompted by `main` going red on a phase-454 W5 citation (PR #1013) to the
+pre-wave tree on its own branch, invalidated by the queue's server-side rebase
+— and sitting red for days while every agent read it as environmental. The hash
+is deliberately not repeated here: a dangling one written into a live document
+is the very thing this gate refuses.
+
+Counted over the live (non-`archived/`) markdown the gate scans: **245 distinct
+9-hex citations, 329 occurrences.**
+
+| where the commit is reachable from | count |
+| --- | --- |
+| `origin/main` | 231 |
+| some other ref only (a fetched work branch) | 1 |
+| nothing here | 13 |
+
+The 231 cannot decay: the `main-rules` ruleset forbids force-push and deletion
+on `refs/heads/main`, so a commit once on `main` stays reachable forever. The 13
+are the baseline's dangling entries, and the 1 is `d1d88f660` — this issue's own
+false positive, reachable here only because this clone fetched
+`origin/work/1055-box-sync-tracked-source`.
+
+So the standing debt is 14 and the inflow has exactly ONE shape: a document
+citing a commit on its own unmerged branch. That citation is green on the PR —
+the branch is checked out, so it resolves — and dangling the moment the queue
+rebases it server-side. The gate can only ever report it after it has landed.
+
+**Switching to default-branch ancestry (the fix above) would catch it on the
+PR**, because a citation to the PR's own branch reads as not-on-`main`, and the
+gate's existing message ("cite a PR or issue number, or a description") is the
+right advice at exactly that moment. The switch is also cheap to price: of the
+245 live citations, **exactly 1 changes verdict under it**, and that one is
+already baselined. It is a predicate change, not a migration.
+
+**But it buys nothing in CI on its own.** `actions/checkout@v4` is shallow by
+default and no gate job sets `fetch-depth: 0` (only `nightly.yml` does), so
+`is_shallow()` is TRUE on every `pull_request` and `merge_group` run and the
+gate prints `[SKIPPED]` and returns 0. It has never produced a verdict in CI.
+That is the real reason a dangling citation can sit on `main`: nothing on the
+required lane ever goes red for it, so the only evidence is a developer's local
+`just check fast`, where a gate that is red for nobody else reads as
+environmental. A gate that always skips is indistinguishable from a gate that
+passes — CLAUDE.md's red-lane rule, one level out.
+
+Closing the class therefore needs both halves:
+
+1. resolve against ancestry of the default branch rather than `rev-list --all`
+   (this issue's original fix), and
+2. give the gate a history to answer from in CI — `gate.yml` already has the
+   pattern, in the step that fetches the base ref for
+   `check-submodule-pins` precisely because "`actions/checkout` is shallow, so
+   `origin/main` is normally absent here" made that gate `exit 0` without
+   comparing anything on every PR.
+
+Half 2 without half 1 still misses this defect (on a PR the citation resolves);
+half 1 without half 2 never runs. Neither is large.
