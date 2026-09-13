@@ -54,13 +54,18 @@ static inline int32_t probe_msg_reading_deserialize_erased(void* msg, const uint
 
 /* Generated (message.h.jinja): the five-argument, rclc-ordered registration.
  * The deserialiser and the receive-buffer hint both come from the ONE type
- * token, so they cannot disagree with each other or with the type. */
+ * token, so they cannot disagree with each other or with the type.
+ *
+ * `msg` is the one argument the type token could not vouch for -- the FFI
+ * parameter is `void *` -- so it is CHECKED by the conditional expression,
+ * whose two branches must be compatible pointers. The negative control is
+ * `typed_subscription_storage_mismatch_probe.c`, which must FAIL to compile. */
 #define PROBE_MSG_READING_RX_MAX_SERIALIZED_SIZE 48
 #define probe_msg_reading_executor_add_subscription_sized(executor, subscription, msg, cb, ctx,    \
                                                           invocation, rx_bytes)                    \
-    nros_executor_add_subscription_typed_sized((executor), (subscription), (msg),                  \
-                                               probe_msg_reading_deserialize_erased, (cb), (ctx),  \
-                                               (invocation), (uint32_t)(rx_bytes))
+    nros_executor_add_subscription_typed_sized(                                                    \
+        (executor), (subscription), (1 ? (msg) : (probe_msg_reading*)0),                           \
+        probe_msg_reading_deserialize_erased, (cb), (ctx), (invocation), (uint32_t)(rx_bytes))
 #define probe_msg_reading_executor_add_subscription(executor, subscription, msg, cb, ctx,          \
                                                     invocation)                                    \
     probe_msg_reading_executor_add_subscription_sized((executor), (subscription), (msg), (cb),     \

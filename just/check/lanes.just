@@ -282,6 +282,31 @@ c: c-fmt
             -Ipackages/platform/nros-platform-api/include \
             "packages/api/nros-c/tests/compile/$probe.c" || exit 1; \
     done
+
+    # ...and typed delivery's NEGATIVE control must FAIL. `msg` is the one
+    # argument of the six that does not come from the type token, and the FFI
+    # takes it as `void *`, so the wrong struct's storage would compile and then
+    # be overwritten with a message of another type on every dispatch -- with no
+    # allocator anywhere to notice. -Werror because in C an incompatible pointer
+    # in a conditional is only a WARNING (the asymmetry
+    # `rcl_node_init_reorder_probe` records one lane down); C++ rejects it
+    # outright. The positive control above compiles the SAME macro, so a guard
+    # that rejected everything would be caught there rather than read as rigour.
+    echo "  - phase-417 W5.a: typed delivery REFUSES storage of the wrong type"
+    test -f packages/api/nros-c/tests/compile/typed_subscription_storage_mismatch_probe.c || { \
+        echo "ERROR: typed_subscription_storage_mismatch_probe.c is MISSING -- an" >&2; \
+        echo "       expected-failure check passes on a missing file." >&2; exit 1; }
+    if cc -fsyntax-only -std=c11 -Wall -Wextra -Werror \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/typed_subscription_storage_mismatch_probe.c \
+        2>tmp/typed-subscription-storage-mismatch.log; then \
+        echo "ERROR: typed_subscription_storage_mismatch_probe.c COMPILED. The" >&2; \
+        echo "       generated <Msg>_executor_add_subscription macro is handing the" >&2; \
+        echo "       FFI's void* msg through unchecked, so storage of the wrong type" >&2; \
+        echo "       now registers silently. See packs/c/message.h.jinja." >&2; exit 1; \
+    fi
     # phase-454 W10 — the DECLARED QoS depth, C's half.
     #
     # Same shape as the C++ pair at the bottom of `check cpp`, and for the same

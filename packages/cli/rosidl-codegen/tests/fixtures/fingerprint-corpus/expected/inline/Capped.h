@@ -230,10 +230,23 @@ static inline int32_t fingerprint_corpus_msg_capped_deserialize_erased(void* msg
 /// the CALL SITE, where <nros/executor.h> is already included, so this header
 /// keeps its single include of <nros/types.h> and names nothing from the
 /// executor ABI until the macro is actually used.
+///
+/// `msg` is CHECKED against this type, and the check is the `1 ? (msg) :
+/// (fingerprint_corpus_msg_capped*)0` below. The FFI parameter is `void *`, which accepts
+/// any object pointer silently, so handing the wrong struct's storage to this
+/// type's deserialiser would compile and then write a
+/// fingerprint_corpus_msg_capped-shaped message over whatever is really there -- the one
+/// argument of the six the type token could not vouch for on its own. In a
+/// conditional expression the two branches must be COMPATIBLE pointers, so a
+/// mismatch is diagnosed here, naming both types (a warning in C, an error in
+/// C++), and the const-discard diagnostic a `void *` argument already gave is
+/// kept because nothing casts. A caller who genuinely holds a `void *` is
+/// unaffected: `void *` is compatible with every object pointer.
 #define fingerprint_corpus_msg_capped_executor_add_subscription_sized(executor, subscription, msg, cb, ctx, \
                                                           invocation, rx_bytes) \
     nros_executor_add_subscription_typed_sized( \
-        (executor), (subscription), (msg), fingerprint_corpus_msg_capped_deserialize_erased, (cb), (ctx), \
+        (executor), (subscription), (1 ? (msg) : (fingerprint_corpus_msg_capped*)0), \
+        fingerprint_corpus_msg_capped_deserialize_erased, (cb), (ctx), \
         (invocation), (uint32_t)(rx_bytes))
 
 /* issue 0896 layer 5 -- this type has NO receive bound
