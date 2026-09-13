@@ -1,11 +1,32 @@
 # Phase 417 — ROS 2 user-API adoption
 
-**Status (2026-09-04). In flight. Implements RFC-0089.** Stages 0, 1 and 2b are
-LANDED, and so is the correction track (issues 1012 and 1022 resolved, 92 rows).
-Stage 1's acceptance is met: `cpp-port-minimal-publisher/src/minimal_publisher.cpp`
-is upstream's file again. Stages 2 (node surface), 3 (loudness), 4 (cross-language)
-and 5 (C) are open; stage 6 (the rename) is gated on stage 3 AND on the structural
-blocker below.
+**Status (2026-09-13). In flight. Implements RFC-0089. Re-measured against the
+tree, because the line this replaces was dated 2026-09-04 and nine days of the
+campaign had landed underneath it — including three stage-3 waves this very
+document records as LANDED.** A status line that contradicts its own body is the
+defect phase-419 W2's gate exists for; it caught none of this, because every
+contradiction here was prose against prose.
+
+| stage | state (measured 2026-09-13) | what it was measured against |
+| --- | --- | --- |
+| 0 — the instrument | **LANDED** | `disposition` is a live ledger field (16 `gap` rows carry one); `just check api-parity` runs `--require-disposition` (`just/check/lanes.just:47`) |
+| 1 — cheap unblockers | **LANDED** | acceptance met; `cpp-port-minimal-publisher/src/minimal_publisher.cpp` is upstream's file |
+| 2 — the node surface | **W2.b, W2.c, W2.d LANDED; only W2.a open** | `set_parameter<T>` on the node (`node.hpp:829`, `:846`); `create_service`/`create_client` (`node.hpp:734`–`775`); `Rate`/`WallRate` (`nros.hpp:1062`–`1125`). W2.a is issue 0793's **C half** — the legacy `nros_param_*` store is still exported and still disjoint. The C++ half closed in phase-426 W4 |
+| 2b — graph forwarders | **LANDED** | zero `cpp:Node::*` graph rows remain `gap`; the 18 graph gaps are all `c:` and `rust:` |
+| 3 — loudness | **W3.a, W3.c, W3.e, W3.f, W3.g, W3.h LANDED; W3.b and W3.d open** | see the stage-3 items; W3.f measured at `qos.hpp:743` (`ParametersQoS` reads the QoS table) and `options.hpp:295`–`315` (the inert setters `static_assert`) |
+| 4 — our three languages agree | **OPEN — this is the remaining body of work** | 132 `gap` rows, below |
+| 5 — C | **OPEN** | `c:` rows across `graph`, `service`, `pubsub`, `log`, `timer` |
+| 6 — the rename | **BOTH STEPS LANDED** | `rclcpp_compat.hpp` is gone; `deprecate-legacy-names` is retired (`nros-node/Cargo.toml:48` records it in the past tense); the `nros_node_init` forwarder is retired (`rcl_compat.h:299`) |
+
+**Stage 6 was never gated on stage 4 or 5, and it went first.** The old status
+line said the rename was "gated on stage 3 AND on the structural blocker"; both
+cleared, the rename landed, and stages 4 and 5 are what is left. So the campaign
+did NOT run in its written order, and the document has to say so rather than let
+a reader infer that stages 4–5 are also done because stage 6 is.
+
+**The correction track is CLOSED.** Issues 1012 and 1022 are resolved and
+archived; W-C1, W-C2 and W-C3 have nothing outstanding. Only 1042 (the rclrs pin
+moved and nine rows went false) is still open on that track.
 
 **What stage 0 revealed, and it reframes the phase.** Admitting the compat shim as
 a fourth TU made the ported surface look better — `same` 84 → 110 — while the
@@ -43,12 +64,18 @@ cheapest work here; items marked **[rust-first]** need the Rust side to grow
 before either wrapper can expose anything, and planning them as C/C++ tasks
 would mis-cost them by an order of magnitude.
 
-## Stage 0 — measure the thing we are changing (issue 1020)
+## Stage 0 — measure the thing we are changing (issue 1020) — LANDED
 
-Blocks everything. Today the C++ lane reads `nros.hpp`, `component_node.hpp`
+**Issue 1020 is resolved and archived.** The text below describes the tree as it
+was; both of the files it names are gone (`rclcpp_compat.hpp` deleted in stage 6
+step A, `component_node.hpp` in phase-427 W4), which is a stronger outcome than
+the item asked for: there is no separate shim left to admit as a fourth TU.
+W0.b's `disposition` field is live and gated (W3.e).
+
+It said: blocks everything. The C++ lane reads `nros.hpp`, `component_node.hpp`
 and `nros.hpp -DNROS_CPP_STD`, and filters to namespace `nros`, so the 589-line
-compat shim contributes zero rows. Every "how far are we" number is currently
-about the native API rather than about what a ported file reaches.
+compat shim contributes zero rows. Every "how far are we" number is about the
+native API rather than about what a ported file reaches.
 
 * W0.a — admit `rclcpp_compat.hpp` as a fourth TU with namespace `rclcpp`, and
   decide the three questions issue 1020 records: does a `rclcpp::` alias
@@ -96,13 +123,25 @@ That claim becomes true or the stage is not done.
 
 Where a real node stops being a tutorial. Each item is independently useful.
 
-* W2.a **[wrapper]** — **one parameter store.** Rust already has the single
-  store; this is thin-wrapper COMPLIANCE work, not new capability. Today there are three arrangements: C has two
-  disjoint stores (issue 0793), C++'s `ComponentNode` owns a private
-  `ParameterServer` and reads the executor store exactly once at boot under
-  `#if defined(NROS_SYSTEM_PARAM_SERVICES)` (`component_node.hpp:536`), and
-  Rust has one. Converge on the executor's, with node facades as views.
-  Unfiled twin of 0793 on the C++ side; file it as part of this item.
+* W2.a **[wrapper]** — **one parameter store. C++ DONE; the C half is all that
+  is left, and it is the only open item in stage 2.** Rust always had the single
+  store; this is thin-wrapper COMPLIANCE work, not new capability.
+
+  **What closed.** The C++ side went in
+  [phase-426](phase-426-parameters-rust-ssot.md) W4: `ComponentNode`'s private
+  `ParameterServer` went with the type (phase-427 W4 merged the node types,
+  `component_node.hpp` no longer exists), `rclcpp::Node`'s inline member is
+  gone, and the standalone `nros::ParameterServer<Cap>` was DELETED rather than
+  forwarded — the unfiled C++ twin this item said to file turned out to be a
+  third store, and deleting it is what `check-example-parameter-stores` now
+  keeps out of `examples/`.
+
+  **What is open.** C still exports the legacy `nros_param_*` caller-storage
+  store beside the executor-owned `nros_executor_*_param_*` family, and nothing
+  joins them — issue 0793's C half, verbatim. Deliberate for now: phase-426 W5
+  retained the export and moved every shipped example off it, so the defect is
+  no longer SHOWN, only still reachable. Closing this item is a decision
+  (retire the family, or make it a view onto the one store) plus the sweep.
 * W2.b **[wrapper]** — **LANDED (the include half).** rclcpp-shaped
   `declare_parameter<T>` / `get_parameter<T>` / `set_parameter<T>` /
   `has_parameter` on the node reachable from the umbrella. The implementation
@@ -116,19 +155,31 @@ Where a real node stops being a tutorial. Each item is independently useful.
   `NROS_SUBSCRIBE` / `NROS_COMPONENT` macros now all resolve from
   `<nros/nros.hpp>` alone (verified by compiling a TU that includes nothing
   else, against a negative control that includes only `node.hpp` and fails).
-  **Two things this did NOT do**, so the item is not closed outright:
-  `set_parameter<T>` is still absent — `ComponentNode` has no setter of any
-  kind, and the only C++ setter is `ParameterServer<Cap>::set_parameter<T>` on
-  the store (`cpp:Node::set_parameter` in the param ledger) — and the methods
-  arrive under `ComponentNode`, not on `nros::Node`, so the six
-  `cpp:Node::*_parameter*` ledger rows stay `gap` on the native bucket. The
-  store-convergence half is W2.a. Stale restatements of the old blocker were
-  swept 2026-09-07 (phase-427): `scripts/api-parity.py`, `docs/issues/README.md`,
-  issue 0793, and seven ledger rows in `node.json` / `param.json`.
-* W2.c **[wrapper]** — `create_service` / `create_client` on the node; `async_send_request`
-  returning something the existing `spin_until_future_complete` accepts.
-  `nros::Client<S>` and `nros::Future` already exist.
-* W2.d **[wrapper, carefully]** — `rclcpp::Rate` / `WallRate` as a FORWARDER
+  **Two things this did NOT do at the time**, and BOTH have since closed —
+  W2.b is now fully landed. What was outstanding: `set_parameter<T>` was absent
+  (`ComponentNode` had no setter of any kind, and the only C++ setter was
+  `ParameterServer<Cap>::set_parameter<T>` on the store), and the methods
+  arrived under `ComponentNode` rather than on the node, so the six
+  `cpp:Node::*_parameter*` ledger rows stayed `gap` on the native bucket.
+  Measured 2026-09-13: `set_parameter<T>` is on the node
+  (`node.hpp:829`, `std::string` overload `:846`), `ComponentNode` no longer
+  exists (phase-427 W4 merged it), and the four `cpp:Node::*_parameter` rows
+  were CLOSED AND DELETED in the 2026-09-11 truth pass. Stale restatements of
+  the old blocker were swept 2026-09-07 (phase-427): `scripts/api-parity.py`,
+  `docs/issues/README.md`, issue 0793, and seven ledger rows in `node.json` /
+  `param.json`.
+* W2.c **[wrapper]** — **LANDED.** `create_service` / `create_client` on the
+  node (`node.hpp:734`, `:741`, `:753`, `:758`, `:765`, `:775`, in both
+  poll-style and callback-style forms); `async_send_request` returns something
+  the existing `spin_until_future_complete` accepts.
+  `nros::Client<S>` and `nros::Future` already existed.
+* W2.d **[wrapper, carefully]** — **LANDED** at `nros.hpp:1062`–`1125`, as a
+  forwarder and not a sleep loop. One envelope is recorded there and is worth
+  repeating: `Rate` and `WallRate` are the SAME clock here (both monotonic), so
+  `WallRate` is faithful and `Rate` is `WallRate` under a second name — upstream
+  measures `Rate` on ROS time. Original item follows.
+
+  `rclcpp::Rate` / `WallRate` as a FORWARDER
   onto `nros::spin(remaining_ms, poll_ms)` (`nros.hpp:175`), which drives the
   executor. The obvious fifteen-line C++ class with its own sleep loop is both
   RFC-0020 violation class 2 (a polling loop that spins the executor from
@@ -138,14 +189,23 @@ Where a real node stops being a tutorial. Each item is independently useful.
 **Acceptance:** a node that declares a parameter, calls a service and reads the
 clock compiles unmodified. Measured by a new ported template, not by inspection.
 
-## Stage 2b — graph forwarders **[wrapper]**, 18 rows
+## Stage 2b — graph forwarders **[wrapper]** — LANDED
 
-`nros::Executor` already ships the whole graph surface — `get_node_names`,
+`nros::Executor` already shipped the whole graph surface — `get_node_names`,
 `count_publishers`/`count_subscribers`, the four `*_names_and_types_by_node`
-forms, `get_{publishers,subscriptions}_info_by_topic` (`executor.hpp:205-301`)
-over FFI that exists. The rows are open because `Node`/`LifecycleNode` do not
-forward to it, not because the capability is missing. Pure delegation, no new
-behaviour, and it needs a `TopicEndpointInfo` value type.
+forms, `get_{publishers,subscriptions}_info_by_topic` — over FFI that exists.
+The 18 rows were open because `Node`/`LifecycleNode` did not forward to it, not
+because the capability was missing. They forward now (`node.hpp:1051`, `:1084`,
+and the `*_by_node` / `*_info_by_topic` block following), and a
+`TopicEndpointInfo` value type exists.
+
+**Do not read the "18 graph rows" in the ledger as this stage.** There are still
+exactly 18 `gap` rows in `graph.json`, which is a coincidence of count: not one
+of them is `cpp:Node::*`. Eight are `c:` (the four `*_names_and_types_by_node`
+forms, the two `*_info_by_topic`, and `wait_for_{publishers,subscribers}`) and
+ten are `rust:Node::*`. Those belong to stage 5 and stage 4 respectively. Most
+also need the BACKEND to answer — Cyclone fills 1 of 12 graph slots, which is
+[phase-444](phase-444-rmw-fix-up.md) W3.
 
 ## Stage 3 — the loudness pass (the safety gate)
 
@@ -179,27 +239,48 @@ ways a ported program can compile and differ.
   `rclcpp::detail::RUNTIME_REFUSAL_MAX` now `static_assert`s against it), and a
   `decltype(...)` assertion cannot see a refusal at all, because it does not
   instantiate a template body. `spin_verbs.cpp` carried exactly that shape.
-* W3.b **[rust-first]** — `rclcpp::init(argc, argv)` drops `--ros-args`
-  silently (`rclcpp_compat.hpp:238`), turning a remap into a wrong-topic bug at
-  runtime. Honour them on posix boards, or refuse the two-argument form.
-  Honouring them is remap resolution — name construction, RFC-0020 violation
-  class 4 — so the parser belongs beside `nros::resolve_name`, not in the shim.
-* W3.c — write the REFUSE-LOUD diagnostics. **69 rows collapse into 17
-  messages** — a refusal is per-concept, not per-symbol; the sixteen inert
-  `NodeOptions` setters share one. ~120 lines for the whole pass.
-* W3.f — **the two live inversions the shim already ships**, which a rename
-  would inherit: `ParametersQoS()` returns `QoS(10)` where upstream is
-  `KEEP_LAST, 1000` (`rclcpp_compat.hpp:117`), and ten `NodeOptions` setters
-  store their argument and are never read (`:125`, "intentionally inert
-  today"). Adopting the named QoS profiles at all is ADOPT **only** with each
-  profile's values transcribed from upstream and a table-driven test against
-  `rmw_qos_profile_*` — the shim already got two wrong, which is the evidence
-  for why the test is not optional.
-* W3.d — document the ADOPT-BOUNDED envelopes in the doc comments, starting
-  with `create_wall_timer` (period accuracy is the spin cadence, because the
-  timer is polled from `Node::pump()`, not driven by the executor).
-* W3.e — a gate: no adopted upstream name may lack a disposition, and no
-  `adopt` row may carry a known contract inversion.
+* W3.b **[rust-first]** — **HALF DONE; the honouring half is one of the three
+  stage-3 items still live.** `rclcpp::init(argc, argv)` dropped `--ros-args`
+  silently, turning a remap into a wrong-topic bug at runtime. The REFUSAL
+  landed with W3.c — the two-argument form now fails loudly in all three
+  languages (C++ measured at `nros.hpp:252`: "The TWO-ARGUMENT form is
+  REFUSE-LOUD (RFC-0089 W3.b)") — so a ported program no longer differs
+  silently. What is still
+  owed is HONOURING them on posix boards, tracked as the ledger row
+  `rust:init_with_args`. That is remap resolution — name construction, RFC-0020
+  violation class 4 — so the parser belongs beside `nros::resolve_name`, not in
+  a wrapper.
+* W3.c — **LANDED.** The REFUSE-LOUD diagnostics are written: **69 rows
+  collapsed into 17 messages**, a refusal being per-concept and not per-symbol.
+  Measured 2026-09-13, the `NROS_RCLCPP_REFUSE_*` family has 51 uses across
+  eight headers, 22 of them the shared `NodeOptions` message.
+* W3.f — **LANDED. Both live inversions are gone.** They were: `ParametersQoS()`
+  returning `QoS(10)` where upstream is `KEEP_LAST, 1000`, and ten `NodeOptions`
+  setters storing their argument and never reading it ("intentionally inert
+  today"). Today `ParametersQoS` reads the one QoS table
+  (`qos.hpp:743`, `detail::qos_table::parameters()`), and every `NodeOptions`
+  option — setter AND getter — is a `static_assert` refusal
+  (`options.hpp:295`–`315`); the type and its default constructor survive,
+  because `rclcpp::NodeOptions{}` claims nothing. The getters refuse alongside
+  the setters deliberately: a getter reporting `false` for a policy nothing
+  implements is a claim about a switch that does not exist. Adopting the named
+  QoS profiles at all was ADOPT **only** with each profile's values transcribed
+  from upstream and a table-driven test against `rmw_qos_profile_*` — the shim
+  got two wrong, which is the evidence for why the test was not optional.
+* W3.d — **OPEN.** Document the ADOPT-BOUNDED envelopes in the doc comments,
+  starting with `create_wall_timer` (period accuracy is the spin cadence,
+  because the timer is polled rather than driven by the executor). The item as
+  first written cited `Node::pump()`, which no longer exists; the envelope it
+  describes does. Several envelopes have since been written at their call sites
+  (`Rate`/`WallRate` at `nros.hpp:1088`, `cpp:Publisher::publish`'s
+  `adopt-bounded` row) — what is owed is the SWEEP, not a first instance.
+* W3.e — **LANDED.** The gate is `scripts/api-parity.py --check
+  --require-disposition`, run by `just check api-parity`
+  (`just/check/lanes.just:47`). No adopted upstream name may lack a disposition,
+  and the 2026-09-11 truth pass added `stale_gaps` beside it: a `gap` row whose
+  subject now correlates and that carries no disposition is refused, so a
+  shipped name cannot leave a stale `gap` behind it. Sixteen `gap` rows carry a
+  disposition today.
 * W3.g — **LANDED 2026-09-11. The C half: five measured behaviour defects behind
   adopted rcl names.** Every one compiled exactly as upstream's does and
   differed, which is the case this stage exists for; each is now fixed with a
@@ -285,23 +366,59 @@ shape `check c` / `check cpp` already use.
 
 ## Stage 4 — make our own three languages agree
 
-A per-language drop-in claim is undermined while our own surfaces disagree
-about the same capability. 37 such disagreements are catalogued; C++ is the odd
-one out in 15.
+**This is the remaining body of work in the campaign**, with stage 5. A
+per-language drop-in claim is undermined while our own surfaces disagree about
+the same capability. 37 such disagreements are catalogued; C++ is the odd one
+out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
 
-* W4.a **[wrapper]** — parameters: setter, type query, undeclare, descriptors (ranges,
-  read-only) in all three.
+* W4.a **[wrapper]** — parameters: setter, type query, undeclare, descriptors
+  (ranges, read-only) in all three.
+
+  **This item OWNS the 27 `param.json` `gap` rows**, and stating that is the
+  point of saying so here: `param.json` is the largest single-shard queue left,
+  and until 2026-09-13 three documents each implied a different owner for it.
+  It is not [phase-426](phase-426-parameters-rust-ssot.md)'s — that phase made
+  the store SINGLE and per-node, which is done, and its "Not in scope" excludes
+  callbacks explicitly. It is not
+  [phase-444](phase-444-rmw-fix-up.md)'s — that section is an index and says so.
+  The rows are missing cross-language SURFACE on top of one store, which is
+  exactly what this item is. Re-measured 2026-09-13, they group as:
+
+  | group | rows | notes |
+  | --- | ---: | --- |
+  | descriptors, ranges, read-only, constraints | 7 | `c:add_parameter_constraint_{double,integer}`, `c:add_parameter_description`, `c:set_parameter_read_only`, `rust:ParameterRange`, `rust:ParameterRanges`, `rust:ParameterBuilder::constraints` |
+  | `undeclare` / `delete` | 2 | `c:delete_parameter`, `cpp:Node::undeclare_parameter` |
+  | `describe` / `list` / type query | 4 | `cpp:Node::describe_parameter{,s}`, `cpp:Node::get_parameter_types`, `cpp:Node::list_parameters` |
+  | plural and `_or` forms | 5 | `cpp:Node::{declare,get,set}_parameters`, `set_parameters_atomically`, `get_parameter_or` |
+  | set-parameters callbacks | 2 | `cpp:Node::{add,remove}_on_set_parameters_callback` — was out of scope for phase-426 by construction ("adding a callback path before the store is single would be a third implementation"). The store IS single now, so the reason has expired and the work lands here |
+  | the `rclcpp_lifecycle` copies | 1 | `cpp:LifecycleNode::*parameter*`, a glob row; it moves with stage 4's lifecycle work, not ahead of it |
+  | types and errors | 6 | `cpp:ParameterType`, `rust:Parameters`, `rust:Node::use_undeclared_parameters`, `rust:DeclarationError`, `rust:RmwParameterConversionError`, `c:executor_add_parameter_server_with_context` |
+
+  Two issues sit inside this item rather than beside it: **0793**'s C half is
+  W2.a above (the second C store must go before a C descriptor API is worth
+  writing), and **1203** is phase-426's and is what keeps that phase open.
 * W4.b **[mixed]** — actions: a goal-id TYPE in C++ (`uint8_t[16]` today, so it cannot be
   stored or compared); `succeed`/`abort`/`canceled` verbs; Rust's `cancel`
-  renamed to `canceled` with a deprecated forwarder.
+  renamed to `canceled` with a deprecated forwarder. Five `action.json` rows.
 * W4.c **[wrapper]** — executor: `cancel`/`is_spinning` in all three (a C++ node cannot stop
   spinning today without tearing down the session).
-* W4.d **[wrapper]** — logging: named loggers, per-logger levels, throttle, sinks. C and C++
-  have none of it; Rust has it but the façade does not re-export it, which is
-  why `std::println!` is the path of least resistance from the façade — fatal
-  on Zephyr native_sim (issue 0589).
+* W4.d **[wrapper]** — logging: named loggers, per-logger levels, throttle,
+  sinks. **Partly landed:** the Rust façade re-exports `nros_log` now, so
+  `nros_log` is the easy path rather than `std::println!` and issue 0589 is
+  resolved and archived; W3.a routed the whole `RCLCPP_*` family at
+  `NROS_LOG_*`. What is left is the eight `log.json` rows — per-logger levels
+  (`cpp:Logger::set_level`, `rust:Logger::set_default_level`), the rcutils
+  output-handler family in C, `rosout`, and `c:log_severity_t`'s one remaining
+  envelope (rcutils's `UNSET` means *inherit*, and our facade has no
+  inheritable level).
 * W4.e **[rust-first]** — guard conditions: one owner and one creation shape. The ledger already
   records this as undecided ("Nothing about no_std picks between these").
+* W4.f **[wrapper]** — **lifecycle, 15 rows, added 2026-09-13** because the
+  shard is the third largest and no work item named it. `register_on_*` differs
+  across our three languages (which is squarely this stage's subject), and the
+  rest are missing: no `~/transition_event` publisher (REP-2002), no
+  `LifecyclePublisher` or managed-entity protocol, no `get_transition_graph`,
+  and no `get_clock`/`now` on the lifecycle node.
 
 ## Stage 5 — C
 
@@ -527,42 +644,70 @@ and the two must not be run as separate passes.
 * `just ci gate` green, and the ported templates build with **every** compat
   layer deleted.
 
-## Correction track — the ledger says false things, and they misdirect
+## Correction track — CLOSED, except issue 1042
 
 The measurement is the campaign's instrument; a wrong row is worse than a
 missing one because it forecloses the fix. Three issues, ~140 rows, no code.
 
-* **W-C1 — issue 1012** (15 rows): prose names a symbol a rename retired.
+**W-C1, W-C2 and W-C3 are DONE: issues 1012 and 1022 are both resolved and
+archived.** The items are kept below as the record of what was corrected and
+why, because the `why` is a standing rule about the ledger rather than a job.
+One issue on this track is still open and it is a different failure: **1042** —
+nine rows went false when the rclrs pin moved 0.5.1 → 0.7.0 and nothing
+re-measured them. Closing it means the ledger RECORDS the pin it was measured
+against, so the next bump invalidates rows instead of silently outdating them.
+
+* **W-C1 — issue 1012** (15 rows, resolved): prose names a symbol a rename retired.
   Fifteen describe the CURRENT tree with a dead spelling; a further 21 name one
   legitimately (a deprecated-alias row must). The distinguishing property is
   tense, which is why a sweep on the spelling alone breaks the correct ones.
   The issue's durable half — whether to gate it — needs the tense made
   machine-readable first.
-* **W-C2 — issue 1022** (~95 rows): prose states something FALSE about our own
+* **W-C2 — issue 1022** (~95 rows, resolved): prose states something FALSE about our own
   code. "There is no runtime options struct" where seven ship;
   `nros_borrowed_str_t` for `nros_view_str_t`; `get_actual_qos` "would return
   its own input" when `set_qos_overrides` makes it differ; `cpp:` rows
   answering in C spellings; ~14 rows verdicted `declined` whose own prose
   describes a capability we have under another name.
-* **W-C3 — issue 1022's systematic half**: a divergence justified by a
+* **W-C3 — issue 1022's systematic half** (resolved with it): a divergence justified by a
   constraint the compared surface refutes. Byte-oriented delivery is blamed on
   "no allocator"; rclc has no allocator on that path either and delivers typed
   by making the caller own the storage. RFC-0036 forbids recording a preference
   as a divergence and has no rule against recording a real divergence under a
   false cause. Closing W-C3 means adding one.
 
-### The `gap` rows are the queue, and they are counted (2026-09-06)
+### The `gap` rows are the queue, and this phase counts them
 
-*Re-counted 2026-09-11 after a truth pass: 149 rows, not 158 — 20 were closed
-gaps still queued. Current counts and the grouped list:
-[phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap list".*
+**132 `gap` rows, measured 2026-09-13 straight off
+`docs/reference/api-parity-ledger/*.json`: C 39, C++ 58, Rust 35.**
 
-Phase-379 re-measured the ledger: **158 `gap` rows**, C++ 82, C 41, Rust 35.
-By shard: `param` 32, `graph` 30, `pubsub` 22, `lifecycle` 15, `log` 13,
-`timer` 11, `service` 10, `qos` 8, `action` 6, `node` 6, `exec` 2, one each in
-`boot`, `types`, `other`. That is this phase's work queue for stages 2–5, and
-the shard distribution is the order argument: parameters and graph are a third
-of it between them.
+| shard | gaps | owner |
+| --- | ---: | --- |
+| pubsub | 29 | stage 4 / stage 5; most need the BACKEND to answer |
+| param | 27 | **stage 4 W4.a**, which enumerates them |
+| graph | 18 | stage 5 (`c:`, 8) and stage 4 (`rust:`, 10); the backend half is phase-444 W3 |
+| lifecycle | 15 | stage 4 W4.f |
+| service | 14 | stage 4 / stage 5 (W5.e) |
+| log | 8 | stage 4 W4.d |
+| timer | 6 | stage 4 / stage 5 (W5.c) |
+| action | 5 | stage 4 W4.b |
+| qos | 3 | stage 4 |
+| init | 2 | W3.b's honouring half, and `rust:Context::domain_id` |
+| other | 2 | `rust:Session::serialization_format`, `cpp:State::label` |
+| exec, node, boot | 1 each | `cpp:Executor::spin_once` (carries `refuse-loud`), `c:node_get_graph_guard_condition`, `rust:BOOT_SET_NAMESPACE` |
+
+**The count is the phase's own, not an inherited one, and that is the fix for
+what went wrong here.** This section previously carried phase-379's 158 and a
+pointer to phase-444's 149, neither re-derived; the true figure moved twice
+while the pointer stayed put, because the stage-3 loudness waves DELETE rows
+when they land. `python3 -c` over the ledger takes a second and is the only
+number worth writing down. 16 of the 132 carry a disposition; the rest record a
+missing name and nothing else.
+
+For context, the trajectory: phase-379 measured **158** (C++ 82, C 41, Rust 35);
+the 2026-09-11 truth pass found 20 of those already closed and 5 mis-verdicted,
+giving **149**; the three stage-3 waves that landed on 2026-09-11 removed a
+further 17, giving **132**.
 
 **The precedent for how one closes.** `node_get_fully_qualified_name` shipped
 for all three languages in PR #567. What made it worth more than the row: the
@@ -616,20 +761,25 @@ forward unchanged.
 ## Issues homed here
 
 Every issue this phase owns, with what closing it means. A mention is not an
-owner.
+owner. **Statuses re-read against `docs/issues/` on 2026-09-13** — five rows here
+described open work over a resolved-and-archived issue, which is the table doing
+the opposite of its job.
+
+**OPEN and owned here: 0793, 1042, 1302, 1303.** That is the whole live set;
+everything else in this table is kept as the record of what closing it meant.
 
 | issue | track | closing it means |
 | --- | --- | --- |
-| 1012 | correction | 15 rows re-worded; a decision on whether tense becomes machine-readable |
+| 1012 | correction — **RESOLVED, archived** | 15 rows re-worded; a decision on whether tense becomes machine-readable |
 | 1019 | correction + loudness (W3.a) — **CLOSED 2026-09-11** | the whole `RCLCPP_*` family routes at `NROS_LOG_*`, so it reaches `nros_log` (and therefore `LOG_ERR`/`printk`) on embedded, carries the logger it was handed, and emits `RCLCPP_FATAL` at `NROS_LOG_SEVERITY_FATAL`; `get_logger(name)` resolves the name through `nros_log_get_logger`. `_STREAM` stopped discarding its message earlier and now inherits the routing. `_THROTTLE` stays REFUSE-LOUD — the refusal is still right (upstream's `clock` argument is load-bearing and `nros_log_throttle_admit` measures on its own clock), but its stated REASON went stale when W4.d shipped `NROS_LOG_*_THROTTLE`: issue 1302. Held by `ros2_loudness_runtime.cpp`, a sink-installing run TU on `just check cpp`; negative control 12 failures / 0 records |
-| 1302 | loudness (W3.a) — filed by it | `NROS_RCLCPP_REFUSE_THROTTLE` names the clock argument as the constraint instead of claiming no C throttle exists, and the five `cpp:RCLCPP_*_THROTTLE` rows agree |
-| 1303 | loudness (W3.a) — filed by it | the two RUNTIME refusals (`init(argc,argv)`, `abort_failed_create`) stop emitting through the legacy no-op sink, so an RTOS image says why it aborted; needs a short runtime form each, and a decision on `failed_create_aborts.cpp`'s link model |
-| 1020 | stage 0 | the C++ lane sees the compat shim; native-API distance and ported-file distance are distinguishable |
-| 1022 | correction | ~95 rows corrected; RFC-0036 gains the rule that a divergence's cause must not be one the compared surface also operates under |
-| 0793 | stage 2 (W2.a) | one parameter store in C; the unfiled C++ twin filed and fixed with it |
-| 0829 | stage 5 | `SYSTEM_DEFAULT` stops disagreeing with itself; folds into the named-profile transcription |
-| 1042 | correction (homed 2026-09-11) | nine rows went false because the rclrs pin moved 0.5.1 → 0.7.0 and nothing re-measured them. Closing it means the ledger records the pin it was measured against, so the next bump invalidates rows instead of silently outdating them |
-| 0589 | stage 4 (W4.d) | the façade re-exports `nros_log`, so it is the easy path rather than `std::println!` |
+| 1302 | loudness (W3.a) — filed by it, **OPEN** | `NROS_RCLCPP_REFUSE_THROTTLE` names the clock argument as the constraint instead of claiming no C throttle exists, and the five `cpp:RCLCPP_*_THROTTLE` rows agree |
+| 1303 | loudness (W3.a) — filed by it, **OPEN** | the two RUNTIME refusals (`init(argc,argv)`, `abort_failed_create`) stop emitting through the legacy no-op sink, so an RTOS image says why it aborted; needs a short runtime form each, and a decision on `failed_create_aborts.cpp`'s link model |
+| 1020 | stage 0 — **RESOLVED, archived**. NOTE: phase-444's gap list files it under phase-442; it is resolved, so neither phase owes anything | the C++ lane sees the compat shim; native-API distance and ported-file distance are distinguishable |
+| 1022 | correction — **RESOLVED, archived** | ~95 rows corrected; RFC-0036 gains the rule that a divergence's cause must not be one the compared surface also operates under |
+| 0793 | stage 2 (W2.a) — **OPEN, C half only** | one parameter store in C. The C++ twin turned out to be a THIRD store and was deleted in phase-426 W4, so that half is closed; what remains is retiring or re-pointing the C `nros_param_*` family |
+| 0829 | stage 5 — **RESOLVED, archived** (sentinel implementation, 2026-09-03) | `SYSTEM_DEFAULT` stops disagreeing with itself; folds into the named-profile transcription |
+| 1042 | correction (homed 2026-09-11) — **OPEN; the only live item on the correction track** | nine rows went false because the rclrs pin moved 0.5.1 → 0.7.0 and nothing re-measured them. Closing it means the ledger records the pin it was measured against, so the next bump invalidates rows instead of silently outdating them |
+| 0589 | stage 4 (W4.d) — **RESOLVED, archived** | the façade re-exports `nros_log`, so it is the easy path rather than `std::println!` |
 | 1126 | correction — CLOSED | `nros_publisher_publish_streamed`'s doc (the raw entry point was never the site) stopped promising a `NROS_RET_`-prefixed `BUFFER_TOO_SMALL`; correct-the-doc won, no caller needs the two failures apart. The sweep found two more live sites and the class is now gated |
 
 ## What this phase does NOT promise
@@ -643,24 +793,33 @@ a ROS 2 node is actually written in compile and behave, everything else fails
 loudly — and the in-tree ported templates are the measurement.
 
 
-## Where the remaining work lives (2026-09-05)
+## Where the remaining work lives — re-measured 2026-09-13
 
 Stage 6's rename is done for the call sites (step B) and the forwarders (W-B5).
-What is left was never a rename, and each piece now has its own phase rather
-than growing this one:
+The three phases this section spun out are **all finished**, which is a change
+since it was written on 2026-09-05:
 
-* **phase-427 — one node type.** `rclcpp::Node` becomes the class, the three
-  C++ node shapes collapse, `ComponentNode` is deleted. Its preconditions were
-  cleared here: the `pump()` blocker is gone, `check-cpp-capability-layout`
-  measures the layout rule, and the `-nostdinc++` lane can see a freestanding
-  regression.
-* **phase-426 — parameters get a Rust SSoT.** The three stores become one and
-  `ros2 param list` enumerates the image's nodes rather than the executor.
-* **phase-428 — the porting-principle sweep.** All three user APIs audited
-  against RFC-0089's governing principle. This is the one that looks for the
-  class the parity instrument cannot see: a name we share with upstream whose
-  BEHAVIOUR differs, which correlates `same` because correlation compares names
-  and shapes.
+* **phase-427 — one node type. ARCHIVED 2026-09-11.** `rclcpp::Node` is the
+  class, the three C++ node shapes collapsed, `ComponentNode` is deleted
+  (measured: every remaining occurrence in the tree is prose about its removal).
+* **[phase-426](phase-426-parameters-rust-ssot.md) — parameters get a Rust
+  SSoT. W1–W6 all MET**, re-audited 2026-09-12. The document is still ACTIVE and
+  archives on one condition: issue 1203, the only open issue it owns. Nothing in
+  this phase waits on it.
+* **phase-428 — the porting-principle sweep. ARCHIVED 2026-09-12.** Both sweeps
+  ran; the findings are ledgered and the checkable ones gated. **Its FIXES were
+  never its own and most of them are THIS phase's stage 3**, which is why three
+  of those waves landed here on 2026-09-11.
+
+**So the remaining drop-in-replacement work is stages 4 and 5 of this document,
+and nothing else.** Stage 4 is the larger half by row count and the one a ported
+program notices: our own C, C++ and Rust surfaces disagree about the same
+capability in 37 places, and the queue is the 132 `gap` rows above — parameters
+(W4.a, 27), lifecycle (W4.f, 15), logging (W4.d, 8), actions (W4.b, 5),
+executor (W4.c) and guard conditions (W4.e). Stage 5 is the C surface: typed
+subscription delivery, the `RCL_RET_*` mapping, rclc-shaped presets, a typed
+service path. Everything else on this phase is bookkeeping: three issues
+(1042, 1302, 1303) plus 0793's C half, and one changelog entry.
 
 The `#3 batch` (34 `declined` rows the spelling decision flips to `adopt`) stays
 here, and W-B6's changelog entry now has phase-427's two loudness items to carry
