@@ -9809,6 +9809,38 @@ impl<'s> Executor<'s> {
         self.list_parameters_on(super::node_record::NodeId::PRIMARY, prefix)
     }
 
+    /// All-or-nothing multi-set on `node` — rclcpp's
+    /// `set_parameters_atomically`.
+    ///
+    /// We SERVED `~/set_parameters_atomically` and offered it in no language,
+    /// so the only way to reach our own atomic set was over the wire. This is
+    /// the same call the service handler makes.
+    ///
+    /// `items` yields `None` for an element that could not be turned into a
+    /// value at all; that refuses the batch like any failing check.
+    pub fn set_parameters_atomically_on<'x, I>(
+        &mut self,
+        node: super::node_record::NodeId,
+        items: I,
+    ) -> nros_params::SetParameterResult
+    where
+        I: Iterator<Item = Option<(&'x str, nros_params::ParameterValue)>> + Clone,
+    {
+        match &mut self.params {
+            Some(params) => params.server.apply_atomically(node.into(), items),
+            None => nros_params::SetParameterResult::NotFound,
+        }
+    }
+
+    /// [`set_parameters_atomically_on`](Self::set_parameters_atomically_on) for
+    /// the primary node.
+    pub fn set_parameters_atomically<'x, I>(&mut self, items: I) -> nros_params::SetParameterResult
+    where
+        I: Iterator<Item = Option<(&'x str, nros_params::ParameterValue)>> + Clone,
+    {
+        self.set_parameters_atomically_on(super::node_record::NodeId::PRIMARY, items)
+    }
+
     /// Undeclare a parameter — rclcpp's `undeclare_parameter`, rclc's
     /// `rclc_delete_parameter`. The slot is freed for a later declaration.
     pub fn undeclare_parameter_on(&mut self, node: super::node_record::NodeId, name: &str) -> bool {

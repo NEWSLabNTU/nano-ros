@@ -20,6 +20,12 @@
  * parameter path touches the wire, so this stays a source-gate test with no
  * router, no agent and no timing, while still driving the real `Executor`, the
  * real `nros_params::ParameterServer` and the real `apply` rules.
+ *
+ * The lane builds this probe's `libnros_c.a` with
+ * `NROS_MAX_PARAM_CONSTRAINTS_LEN=256`. That capacity DEFAULTS TO 0 -- an
+ * image pays for `additional_constraints` text only if it asks for it -- so a
+ * probe built at the default would read every constraints round-trip below as
+ * an empty string and pass while proving nothing.
  */
 
 #include <nros/nros.h>
@@ -51,8 +57,7 @@ void nros_app_register_backends(void) {
  * reaches it and a run that always refuses are both visibly wrong. */
 static int g_hook_calls;
 
-static bool refuse_thirteen(const char* name, const struct nros_parameter_t* param,
-                            void* context) {
+static bool refuse_thirteen(const char* name, const struct nros_parameter_t* param, void* context) {
     (void)name;
     g_hook_calls++;
     *(int*)context += 1;

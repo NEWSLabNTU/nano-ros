@@ -872,9 +872,11 @@ fn write_descriptor(writer: &mut CdrWriter<'_>, desc: &InternalDescriptor) -> Re
     writer.write_string(fit_or_empty(desc.name.as_str()))?;
     writer.write_u8(type_to_u8(desc.param_type))?;
     writer.write_string(fit_or_empty(desc.description.as_str()))?;
-    // `additional_constraints` — the internal descriptor has no such field, so
-    // `to_rcl_descriptor` leaves it at the default.
-    writer.write_string("")?;
+    // phase-417 W4.a — `additional_constraints` is a REAL field now. This is
+    // the LIVE path (`to_rcl_descriptor` is the by-value oracle), so a
+    // constraint a C, C++ or Rust caller attached reaches `ros2 param
+    // describe` only if it is written here.
+    writer.write_string(fit_or_empty(desc.additional_constraints.as_str()))?;
     writer.write_bool(desc.read_only)?;
     writer.write_bool(desc.dynamic_typing)?;
     match &desc.range {
@@ -1052,38 +1054,24 @@ pub fn handle_set_parameters_atomically(
 ) -> Box<SetParametersAtomicallyResponse> {
     let mut response = Box::new(SetParametersAtomicallyResponse::default());
 
-    // First, validate all parameters can be set
-    let mut can_set_all = true;
-    for param in request.parameters.iter() {
-        // issue 0323 — the truncation used to happen INSIDE this pre-check, so
-        // an over-capacity value passed validation and applied as a shortened
-        // value with `successful = true`. It now fails the batch, which is the
-        // atomic contract.
-        let Ok(value) = from_rcl_value(&param.value) else {
-            can_set_all = false;
-            break;
-        };
+    // phase-417 W4.a — check-all-then-apply-all lives in the STORE now
+    // (`ParameterServer::apply_atomically`), because W4.a gave every language
+    // a local atomic set and a second copy of the two passes here is how the
+    // wire and the local call come to disagree about what "atomic" means.
+    //
+    // issue 0323 — a value that does not convert (over the store's capacity)
+    // fails the batch rather than applying truncated with `successful = true`.
+    // That is what the `None` element means to `apply_atomically`.
+    let verdict = server.apply_atomically(
+        node,
+        request.parameters.iter().map(|param| {
+            from_rcl_value(&param.value)
+                .ok()
+                .map(|v| (param.name.as_str(), v))
+        }),
+    );
 
-        // Check if setting would succeed — the same predicate the apply uses.
-        if !server
-            .check_apply(node, param.name.as_str(), &value)
-            .is_success()
-        {
-            can_set_all = false;
-            break;
-        }
-    }
-
-    if can_set_all {
-        // Set all parameters
-        for param in request.parameters.iter() {
-            // The pre-check above already proved every value converts; skip
-            // rather than unwrap so a future divergence cannot panic mid-batch.
-            let Ok(value) = from_rcl_value(&param.value) else {
-                continue;
-            };
-            let _ = apply_one(server, node, param.name.as_str(), value);
-        }
+    if verdict.is_success() {
         response.result.successful = true;
     } else {
         response.result.successful = false;
@@ -1322,6 +1310,9 @@ pub(crate) struct ParamWireCaps {
     pub(crate) array: usize,
     pub(crate) byte_array: usize,
     pub(crate) description: usize,
+    /// phase-417 W4.a -- `additional_constraints`' own capacity. Default 0, so
+    /// an image that states nothing adds nothing to the describe reply.
+    pub(crate) constraints: usize,
 }
 
 const fn min_usize(a: usize, b: usize) -> usize {
@@ -1337,6 +1328,9 @@ impl ParamWireCaps {
         array: min_usize(nros_params::MAX_ARRAY_LEN, WIRE_SEQ_CAP),
         byte_array: min_usize(nros_params::MAX_BYTE_ARRAY_LEN, WIRE_SEQ_CAP),
         description: nros_params::MAX_PARAM_DESCRIPTION_LEN,
+        // Clamped like the value strings: a board may state more than a wire
+        // string can carry, and the reply is bounded by what CDR can hold.
+        constraints: min_usize(nros_params::MAX_PARAM_CONSTRAINTS_LEN, WIRE_STRING_CAP),
     };
 }
 
@@ -1400,6 +1394,7 @@ const LONGEST_SET_REASON: usize = {
         set_result_reason(SetParameterResult::StorageFull),
         set_result_reason(SetParameterResult::Undeclared),
         set_result_reason(SetParameterResult::InvalidRange),
+        set_result_reason(SetParameterResult::Rejected),
         ValueConversionError::CapacityExceeded.reason(),
         ValueConversionError::UnknownType(0).reason(),
     ];
@@ -1542,7 +1537,15 @@ const fn node_bound(s: &[usize; 9], c: ParamWireCaps) -> ParamServiceBound {
     ParamServiceBound {
         names_request: head + names,
         get_reply: head + values,
-        describe_reply: head + s[SHAPE_NAME_BYTES] + n * (CDR_DESCRIPTOR_BASE + c.description),
+        // phase-417 W4.a — `+ c.constraints`, because `additional_constraints`
+        // can carry TEXT now. Until W4.a the store had nowhere to keep it, so
+        // it was always the empty string and `CDR_DESCRIPTOR_BASE` counted its
+        // four-byte length and its padding and none of its bytes. It has its
+        // OWN capacity, default 0, so an image that states nothing adds
+        // nothing here — which is the reason it is not the description's knob.
+        describe_reply: head
+            + s[SHAPE_NAME_BYTES]
+            + n * (CDR_DESCRIPTOR_BASE + c.description + c.constraints),
         types_reply: head + n,
         list_request: head + prefixes + CDR_WORD,
         list_reply: head + names + CDR_SEQ + prefixes,
@@ -3341,12 +3344,18 @@ mod tests {
     /// byte-array limits to 0 from the same contract -- every declared
     /// parameter is a scalar -- so the only one still open is the description,
     /// which F2 made a board fact.
-    const fn island_caps(description: usize) -> ParamWireCaps {
+    /// phase-417 W4.a -- `constraints` is a SECOND argument rather than this
+    /// build's constant, because the two callers ask different questions. The
+    /// exact-number test below states the island's own capacities; the
+    /// worst-message probe has to match whatever THIS build resolved, or it
+    /// compares a bound against a message serialized under another capacity.
+    const fn island_caps(description: usize, constraints: usize) -> ParamWireCaps {
         ParamWireCaps {
             string: 0,
             array: 0,
             byte_array: 0,
             description,
+            constraints,
         }
     }
 
@@ -3356,16 +3365,34 @@ mod tests {
     fn the_island_s_declarations_size_its_service_buffer() {
         // At F2's default description capacity the DESCRIBE reply dominates:
         // 256 bytes of free text per parameter outweighs everything else.
-        let at_default = param_service_bound(&ISLAND_SHAPES, island_caps(256));
+        //
+        // phase-417 W4.a -- and it is STILL 2741, which is the point of giving
+        // `additional_constraints` its own knob with a default of 0. Sharing
+        // the description's capacity would have made this 4789 for every
+        // image, declared or not, and 4789 is past the 4096 fallback: a field
+        // nobody had set would have decided the buffer's size. The cost is
+        // measured below rather than argued.
+        let at_default = param_service_bound(&ISLAND_SHAPES, island_caps(256, 0));
         assert_eq!(at_default.describe_reply, 2741);
         assert_eq!(at_default.total(), 2741);
+
+        // An image that DOES state `NROS_MAX_PARAM_CONSTRAINTS_LEN` pays for
+        // it, per parameter, exactly as it pays for descriptions.
+        let stated = param_service_bound(&ISLAND_SHAPES, island_caps(256, 256));
+        assert_eq!(stated.describe_reply, 2741 + 8 * 256);
+        assert!(
+            stated.total() > PARAM_SERVICE_BUFFER_SIZE,
+            "an image stating both text capacities at 256 over 8 parameters needs \
+             {} bytes, which is what makes the DERIVED buffer load-bearing",
+            stated.total()
+        );
 
         // Stating `NROS_MAX_PARAM_DESCRIPTION_LEN=0` -- what an image that
         // declares no descriptions should say -- takes 2048 bytes of free text
         // out of the describe reply. It still decides the size, but only just:
         // the set request, which carries every declared name AND value, is 24
         // bytes behind it.
-        let bare = param_service_bound(&ISLAND_SHAPES, island_caps(0));
+        let bare = param_service_bound(&ISLAND_SHAPES, island_caps(0, 0));
         assert_eq!(bare.describe_reply, 693);
         assert_eq!(bare.set_request, 669);
         assert_eq!(bare.total(), 693);
@@ -3381,9 +3408,9 @@ mod tests {
         // The worst NODE decides each message -- the shapes are not summed.
         // Every request addresses one node's six, so the 8-parameter node is
         // the whole image's bound and the 4-parameter node adds nothing.
-        let worst_alone = param_service_bound(&ISLAND_SHAPES[2..3], island_caps(256));
+        let worst_alone = param_service_bound(&ISLAND_SHAPES[2..3], island_caps(256, 0));
         assert_eq!(worst_alone.total(), at_default.total());
-        let smallest_alone = param_service_bound(&ISLAND_SHAPES[..1], island_caps(256));
+        let smallest_alone = param_service_bound(&ISLAND_SHAPES[..1], island_caps(256, 0));
         assert!(smallest_alone.total() < at_default.total());
     }
 
@@ -3436,6 +3463,13 @@ mod tests {
         let mut server = leaked_server();
         let names = island_node_names();
         let desc = "d".repeat(nros_params::MAX_PARAM_DESCRIPTION_LEN);
+        // phase-417 W4.a -- at THIS BUILD's constraints capacity, whatever the
+        // rungs made it (0 by default). Written from the constant rather than
+        // from a literal so the serialized message and the derived bound move
+        // together under any knob setting; a fixture pinned to 256 would read
+        // as coverage on a build that states 0 and overflow one that states
+        // more.
+        let constraints = "c".repeat(nros_params::MAX_PARAM_CONSTRAINTS_LEN);
         for (i, name) in names.iter().enumerate() {
             let (value, descriptor) = if name.as_str() == "use_sim_time" {
                 // A bool takes neither kind of range, so this one descriptor
@@ -3459,7 +3493,16 @@ mod tests {
                         .with_float_range(0.0, 10.0, 0.0),
                 )
             };
-            let descriptor = descriptor.with_description(&desc).with_dynamic_typing(true);
+            // BOTH texts at capacity — phase-417 W4.a gave the descriptor an
+            // `additional_constraints` field and the bound prices it, so the
+            // worst message this probe serializes has to carry it. A fixture
+            // that left it empty would make the bound read too generous and
+            // `MARGIN` would catch it, which is the whole point of asserting
+            // the gap in both directions.
+            let descriptor = descriptor
+                .with_description(&desc)
+                .with_additional_constraints(&constraints)
+                .with_dynamic_typing(true);
             assert!(
                 server.declare_with_descriptor(NODE, name, value, Some(descriptor)),
                 "the fixture lost `{name}`, which would make every comparison below vacuous"
@@ -3502,7 +3545,10 @@ mod tests {
             bound,
             param_service_bound(
                 &ISLAND_SHAPES[2..3],
-                island_caps(nros_params::MAX_PARAM_DESCRIPTION_LEN)
+                island_caps(
+                    nros_params::MAX_PARAM_DESCRIPTION_LEN,
+                    nros_params::MAX_PARAM_CONSTRAINTS_LEN
+                )
             )
         );
 

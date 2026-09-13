@@ -216,6 +216,7 @@ creation timeouts because slots cannot be recycled between separate
 | `NROS_MAX_ARRAY_LEN` | 32 | Max parameter array length |
 | `NROS_MAX_BYTE_ARRAY_LEN` | 256 | Max byte array parameter length |
 | `NROS_MAX_PARAM_DESCRIPTION_LEN` | 256 | Max parameter description length (bytes, per slot); 0 = no descriptions |
+| `NROS_MAX_PARAM_CONSTRAINTS_LEN` | 0 | Max `additional_constraints` length (bytes, per slot); 0 = no constraint text |
 | `NROS_LET_BUFFER_SIZE` | 512 | LET semantics buffer per handle (bytes) |
 | `NROS_MAX_CONCURRENT_GOALS` | 4 | Max concurrent goals per action server |
 

@@ -1625,6 +1625,26 @@ config NROS_MAX_PARAM_DESCRIPTION_LEN
       character boundary and logged once per parameter, naming this knob.
       256 is the most an rcl_interfaces describe reply carries.
 
+config NROS_MAX_PARAM_CONSTRAINTS_LEN
+    int "Parameter additional_constraints capacity in bytes"
+    default 0
+    range 0 256
+    help
+      Longest `additional_constraints` a parameter's descriptor can hold
+      (nros-params build.rs) -- the free text `ros2 param describe` prints
+      and rclc's rclc_add_parameter_description takes as its fourth
+      argument. Paid once per store slot whatever the slot holds.
+
+      phase-417 W4.a -- a board fact, never derived, exactly like
+      NROS_MAX_PARAM_DESCRIPTION_LEN beside it. It has its OWN knob rather
+      than sharing that one, and the DEFAULT IS 0: the describe reply's
+      derived buffer prices CAPACITY, not use, so sharing would have cost
+      every image 256 bytes per parameter for a field it never sets -- 2,048
+      bytes on the eight-parameter reference island, taking its reply past
+      the 4,096 fallback. State a number here to use the field. Longer text
+      is truncated at a character boundary and logged once per parameter,
+      naming this knob.
+
 # =============================================================================
 # Common Platform Configuration
 # =============================================================================

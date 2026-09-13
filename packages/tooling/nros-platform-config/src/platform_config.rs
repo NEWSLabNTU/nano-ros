@@ -451,6 +451,9 @@ impl BuildRungs {
             max_param_description_len: b
                 .max_param_description_len
                 .or(plat.max_param_description_len),
+            max_param_constraints_len: b
+                .max_param_constraints_len
+                .or(plat.max_param_constraints_len),
         }
     }
 
@@ -677,6 +680,14 @@ pub struct ParamKnobs {
     /// "no descriptions".
     #[serde(default)]
     pub max_param_description_len: Option<usize>,
+    /// phase-417 W4.a -- a parameter's `additional_constraints` capacity, the
+    /// descriptor's other free text. The same kind of board fact as the
+    /// description and for the same reason, but its DEFAULT is 0: the field is
+    /// new, so there is no "old effective" value to keep, and the describe
+    /// reply's derived bound prices capacity rather than use -- an image that
+    /// never sets it must not pay for it.
+    #[serde(default)]
+    pub max_param_constraints_len: Option<usize>,
 }
 
 /// phase-400 W6 — the RMW static-pool tenant.
@@ -833,6 +844,7 @@ pub const PARAM_KNOBS: &[&str] = &[
     "max_array_len",
     "max_byte_array_len",
     "max_param_description_len",
+    "max_param_constraints_len",
 ];
 
 /// The env front-end for a parameter knob — the EXISTING names, verbatim.
@@ -844,6 +856,7 @@ pub fn param_env_key(knob: &str) -> &'static str {
         "max_array_len" => "NROS_MAX_ARRAY_LEN",
         "max_byte_array_len" => "NROS_MAX_BYTE_ARRAY_LEN",
         "max_param_description_len" => "NROS_MAX_PARAM_DESCRIPTION_LEN",
+        "max_param_constraints_len" => "NROS_MAX_PARAM_CONSTRAINTS_LEN",
         other => panic!("unknown param knob `{other}`"),
     }
 }
@@ -1848,6 +1861,10 @@ impl PlatformsTree {
                     &mut out.max_param_description_len,
                     p.max_param_description_len,
                 ),
+                (
+                    &mut out.max_param_constraints_len,
+                    p.max_param_constraints_len,
+                ),
             ] {
                 if src.is_some() {
                     *dst = src;
@@ -2207,6 +2224,7 @@ impl PlatformsTree {
             "max_array_len" => k.max_array_len,
             "max_byte_array_len" => k.max_byte_array_len,
             "max_param_description_len" => k.max_param_description_len,
+            "max_param_constraints_len" => k.max_param_constraints_len,
             _ => None,
         };
         let mut out = Vec::new();

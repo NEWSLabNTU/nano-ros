@@ -116,6 +116,7 @@ FACTS = [
             "CONFIG_NROS_MAX_ARRAY_LEN",
             "CONFIG_NROS_MAX_BYTE_ARRAY_LEN",
             "CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN",
+            "CONFIG_NROS_MAX_PARAM_CONSTRAINTS_LEN",
         ],
         "note": "On Zephyr the Kconfig spelling IS how a user sets these — it is "
                 "a carrier only in the sense that the env var is what the build "

@@ -894,6 +894,61 @@ impl<'s> ParameterServer<'s> {
         }
     }
 
+    /// All-or-nothing multi-set — `~/set_parameters_atomically`'s local twin
+    /// (phase-417 W4.a).
+    ///
+    /// We SERVED this and offered it in no language, so the only way to reach
+    /// our own atomic set was over the wire. This is the same two passes the
+    /// service handler makes: every item is checked against the CURRENT state,
+    /// and only if all pass is any applied.
+    ///
+    /// `items` yields `None` for an element that could not even be turned into
+    /// a value — which is how the service handler reports a wire value that
+    /// does not fit the store's capacity (issue 0323) — and a `None` refuses
+    /// the batch like any other failing check.
+    ///
+    /// It is `Clone` because the two passes walk it twice; a slice iterator is.
+    ///
+    /// Returns [`SetParameterResult::Success`], or the FIRST verdict that
+    /// refused. Nothing is written on a refusal.
+    ///
+    /// The per-item check is against the state BEFORE the batch, not against
+    /// the state each earlier item would leave. That is the service handler's
+    /// contract verbatim, and it matters in one case: a batch that declares
+    /// more undeclared names than there are free slots passes the check and
+    /// fills what it can. Making the pre-check cumulative would need a
+    /// speculative copy of the table, which is the allocation this store does
+    /// not have.
+    pub fn apply_atomically<'x, I>(&mut self, node: NodeKey, items: I) -> SetParameterResult
+    where
+        I: Iterator<Item = Option<(&'x str, ParameterValue)>> + Clone,
+    {
+        for item in items.clone() {
+            let Some((name, value)) = item else {
+                return SetParameterResult::TypeMismatch;
+            };
+            let verdict = self.check_apply(node, name, &value);
+            if !verdict.is_success() {
+                return verdict;
+            }
+            // The hook is consulted in the CHECK pass, so a callback that
+            // refuses one element refuses the batch before anything is
+            // written. `apply` will consult it again on the write pass; a hook
+            // that answers differently to the same value twice is the caller's
+            // own inconsistency, and the second answer is the one that stands.
+            if !self.run_on_set_callbacks(node, name, &value) {
+                return SetParameterResult::Rejected;
+            }
+        }
+        for item in items {
+            let Some((name, value)) = item else {
+                continue;
+            };
+            let _ = self.apply(node, name, value);
+        }
+        SetParameterResult::Success
+    }
+
     /// Get a parameter value by name
     pub fn get(&self, node: NodeKey, name: &str) -> Option<&ParameterValue> {
         self.find_index(node, name)
@@ -1839,7 +1894,16 @@ mod tests {
 
         let desc = server.get_descriptor(NODE, "rate").expect("descriptor");
         assert_eq!(desc.description.as_str(), "publish rate");
-        assert_eq!(desc.additional_constraints.as_str(), "hz, positive");
+        // Written against the CAPACITY, not a literal: `additional_constraints`
+        // has its own knob (`NROS_MAX_PARAM_CONSTRAINTS_LEN`) whose default is
+        // 0, so the default build stores a zero-length prefix. A test that
+        // asserted the whole string would pass only on a build that states the
+        // knob, and would read as coverage everywhere else.
+        let constraints_fit = "hz, positive".len() <= crate::MAX_PARAM_CONSTRAINTS_LEN;
+        assert_eq!(
+            desc.additional_constraints.as_str(),
+            &"hz, positive"[..crate::MAX_PARAM_CONSTRAINTS_LEN.min("hz, positive".len())]
+        );
         assert_eq!(desc.param_type, ParameterType::Double);
 
         // And the range is ENFORCED by the same predicate every set uses.
@@ -1857,6 +1921,17 @@ mod tests {
         assert_eq!(
             server.apply(NODE, "rate", ParameterValue::Double(6.0)),
             SetParameterResult::ReadOnly
+        );
+
+        // Text that did not fit is REPORTED, never dropped in silence — which
+        // is what makes a capacity of 0 an honest default rather than a
+        // trap. At a capacity that fits, nothing is reported.
+        let mut reported = 0usize;
+        server.take_truncated_descriptions(|_, _| reported += 1);
+        assert_eq!(
+            reported,
+            usize::from(!constraints_fit),
+            "a constraints string that did not fit the capacity went unreported"
         );
 
         // An undeclared name is refused rather than silently creating a
