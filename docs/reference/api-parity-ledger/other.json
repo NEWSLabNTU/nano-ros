@@ -7,16 +7,19 @@
     "verdict": "extension",
     "why": "see `c:set_custom_transport`; this is `nros_set_custom_transport(NULL)` spelled as a verb."
   },
+  "c:declared_depth": {
+    "verdict": "extension",
+    "why": "phase-454 W10 -- the C sibling of `cpp:declared_depth`, and it exists for the same reason: our QoS history depth is a BUILD-TIME quantity where rcl's is a runtime one. The executor arena prices each subscription `sizeof(entry) + (depth + 1) * bound + (depth + 1) * 8` before the user's TU is compiled, so the depth the contract sidecar states and the depth a call site passes have to be one number. rcl has no counterpart because it has no contract to disagree with -- an rcl subscription's QoS is whatever the caller hands `rcl_subscription_init`, and nothing sizes anything from it ahead of time.\n\nTWO EVALUATION TIMES, as in C++, but under two names because C has no `constexpr`: `NROS_DECLARED_DEPTH(type, topic)` is a macro that folds to an integer constant expression over `__builtin_strcmp`, so it answers inside a `_Static_assert`; `nros_declared_depth(type, topic)` is the `static inline` for a topic that is not a constant expression. Same rows, same answer. Absence is `NROS_DECLARED_DEPTH_UNDECLARED` (-1), never 0 -- an image with no contract sidecar has no table, checks nothing, and compiles exactly as it did before."
+  },
+  "c:declared_depth_agrees": {
+    "verdict": "extension",
+    "why": "phase-454 W10 -- the RUNTIME verdict over `c:declared_depth`, for a C call site whose topic or depth is not a constant expression. That is every `nros_cpp_qos_t` built in a helper function, which is what every C component in this tree writes: `NROS_QOS_DEFAULT` is an `extern const` object resolved at link time and `nros_c_qos_default()` is a function, so neither `.depth` can reach a `_Static_assert`. Non-zero when the subscription may proceed, which includes the UNDECLARED case, because absence is not a disagreement. It answers and does not print -- the registration seam `nros_cpp_subscription_register` is where the refusal and the diagnostic live. rcl has no counterpart for the reason `c:declared_depth` gives."
+  },
   "c:endpoint_info_visit_fn": {
     "verdict": "divergence",
     "why": "phase-381 W3. The ours-half of the `topic_endpoint_info_array_t` divergence this file already records: upstream returns an allocating array, there is no allocator at this seam, and the endpoint count has no bound the CALLER can know. So it streams through a visitor, one entry of peak memory, every string borrowed for the call. The endpoint carries no QoS. The GRANTED profile is what answers 'why is nothing arriving', no backend can read one back yet, and reporting the remote's DECLARED profile would be a confident wrong answer -- so the field is absent here and the rmw ABI's `*_UNKNOWN` sentinels carry it at the vtable seam, which is that ABI's documented way to say 'could not determine'."
   },
   "c:get_fully_qualified_name": {
-    "verdict": "extension",
-    "why": "The join that turns a DISCOVERED node's two halves into one name: `/robot` + `talker` -> `/robot/talker`, with the root namespace collapsed so `/` + `talker` is `/talker` and never `//talker`.\n\nOurs-only, and ROS 2's absence is structural rather than an oversight. `rcl_get_node_names` returns two PARALLEL owning arrays that the caller correlates by index and joins itself; rclcpp joins for you one layer up (`Node::get_node_names()` returns fully-qualified strings) and rclc has no graph API at all, so a C user there reaches rcl and joins by hand. `rcl_node_get_fully_qualified_name` exists but answers only for the CALLER'S OWN node — that one we mirror.\n\nIt exists here because of the constraint one row over: our enumeration is a VISITOR (no allocator at the seam, no caller-knowable bound on the graph), so both halves arrive together in one call and the join is the only step left. Three hand-rolled copies of it already existed in-tree and they did not agree on a namespace with no leading slash, which is what made this a named function rather than a fourth.",
-    "bucket": "ours-only"
-  },
-  "rust:fully_qualified_name": {
     "verdict": "extension",
     "why": "The join that turns a DISCOVERED node's two halves into one name: `/robot` + `talker` -> `/robot/talker`, with the root namespace collapsed so `/` + `talker` is `/talker` and never `//talker`.\n\nOurs-only, and ROS 2's absence is structural rather than an oversight. `rcl_get_node_names` returns two PARALLEL owning arrays that the caller correlates by index and joins itself; rclcpp joins for you one layer up (`Node::get_node_names()` returns fully-qualified strings) and rclc has no graph API at all, so a C user there reaches rcl and joins by hand. `rcl_node_get_fully_qualified_name` exists but answers only for the CALLER'S OWN node — that one we mirror.\n\nIt exists here because of the constraint one row over: our enumeration is a VISITOR (no allocator at the seam, no caller-knowable bound on the graph), so both halves arrive together in one call and the join is the only step left. Three hand-rolled copies of it already existed in-tree and they did not agree on a namespace with no leading slash, which is what made this a named function rather than a fourth.",
     "bucket": "ours-only"
@@ -110,6 +113,40 @@
     "disposition": "absent",
     "verdict": "declined",
     "why": "see `cpp:TypeAdapter`."
+  },
+  "cpp:RCLCPP_DEBUG_THROTTLE": {
+    "verdict": "declined",
+    "disposition": "refuse-loud",
+    "why": "`RCLCPP_DEBUG_THROTTLE(logger, clock, period, ...)` -- REFUSE-LOUD (issue 1019, RFC-0089 W3.a). It used to expand to the plain `RCLCPP_DEBUG` with `clock` and the period left UNEVALUATED, so a 1 Hz throttle logged at loop rate and a side-effecting clock expression was dropped -- compiles-and-differs. There is no throttle on the C++ logging path; `nros-log` has one Rust-side and re-exporting it is phase-417 W4.d, so a throttle written in this header would be a second implementation (RFC-0019).\n\nSITE: `packages/api/nros-cpp/include/nros/log.hpp:360` is the macro; it expands to `rclcpp::detail::throttle_is_refused(logger, clock, period, __VA_ARGS__)` (`packages/api/nros-cpp/include/nros/log.hpp:293-296`), a variadic function template whose body is `static_assert(refuse<Logger>::value, NROS_RCLCPP_REFUSE_THROTTLE)` at `:295`; message `packages/api/nros-cpp/include/nros/log.hpp:236`. Variadic so the arguments are still parsed and type-checked -- only the assertion stops the build, with the migration attached. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_log_throttle_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call, naming the un-throttled `RCLCPP_DEBUG` and rate-limiting at the call site as the alternative.\n\nphase-428 Q1 (2026-09-06): recorded on a MACRO key, like `cpp:RCLCPP_FATAL`. The clang extractor emits no macros, so this key appears in no report and no gate can demand it; it exists so the refusal `NROS_RCLCPP_REFUSE_THROTTLE` has a row at all."
+  },
+  "cpp:RCLCPP_ERROR_THROTTLE": {
+    "verdict": "declined",
+    "disposition": "refuse-loud",
+    "why": "`RCLCPP_ERROR_THROTTLE(logger, clock, period, ...)` -- REFUSE-LOUD (issue 1019, RFC-0089 W3.a). It used to expand to the plain `RCLCPP_ERROR` with `clock` and the period left UNEVALUATED, so a 1 Hz throttle logged at loop rate and a side-effecting clock expression was dropped -- compiles-and-differs. There is no throttle on the C++ logging path; `nros-log` has one Rust-side and re-exporting it is phase-417 W4.d, so a throttle written in this header would be a second implementation (RFC-0019).\n\nSITE: `packages/api/nros-cpp/include/nros/log.hpp:366` is the macro; it expands to `rclcpp::detail::throttle_is_refused(logger, clock, period, __VA_ARGS__)` (`packages/api/nros-cpp/include/nros/log.hpp:293-296`), a variadic function template whose body is `static_assert(refuse<Logger>::value, NROS_RCLCPP_REFUSE_THROTTLE)` at `:295`; message `packages/api/nros-cpp/include/nros/log.hpp:236`. Variadic so the arguments are still parsed and type-checked -- only the assertion stops the build, with the migration attached. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_log_throttle_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call, naming the un-throttled `RCLCPP_ERROR` and rate-limiting at the call site as the alternative.\n\nphase-428 Q1 (2026-09-06): recorded on a MACRO key, like `cpp:RCLCPP_FATAL`. The clang extractor emits no macros, so this key appears in no report and no gate can demand it; it exists so the refusal `NROS_RCLCPP_REFUSE_THROTTLE` has a row at all."
+  },
+  "cpp:RCLCPP_FATAL": {
+    "verdict": "divergence",
+    "disposition": "adopt",
+    "why": "phase-417 stage 3 (2026-09-11) -- CLOSED, together with issue 1019, which is the same family losing a different field.\n\nUPSTREAM'S CONTRACT: `RCLCPP_FATAL(logger, ...)` emits at the FATAL severity, on the logger it is handed.\n\nOURS WAS: `do { (void)(logger); NROS_ERROR(__VA_ARGS__); } while (0)` (`packages/api/nros-cpp/include/nros/log.hpp`). One line, three defects, and the whole `RCLCPP_*` family shared them:\n  1. `NROS_ERROR` is the legacy printf family, whose sink is `fprintf(stderr)` on a hosted build and a NO-OP on a freestanding one. On Zephyr, FreeRTOS, NuttX and ThreadX -- the targets nano-ros exists for -- a ported node's entire log output was compiled away with no diagnostic. It worked on the host, which is where anyone would test the port. This is issue 1019's first defect.\n  2. the logger was cast to `void`, so per-logger levels applied to none of the family and `rclcpp::get_logger(\"planner\")` selected nothing. Issue 1019's third defect.\n  3. FATAL lowered to ERROR, because the legacy family has no fatal level at all. This row.\n\nFIX, one change for all three: the family routes at `NROS_LOG_*` (`packages/api/nros-c/include/nros/log.h`), which dispatches through `nros_log` -- so it reaches `LOG_ERR`/`printk` on exactly the targets where the legacy sink is a no-op, honours the per-logger threshold, and has a distinct `NROS_LOG_SEVERITY_FATAL`. `rclcpp::get_logger(name)` now RESOLVES the name through `nros_log_get_logger` (phase-417 W4.d landed the C surface that made this possible) instead of building a null-handled sentinel. `NROS_INFO` and friends are UNCHANGED and still correct for a board's own console print; what was wrong was routing `RCLCPP_*` through them.\n\nTHE FALLBACK IS LOAD-BEARING: `nros_log_emit_fmt_at` RETURNS EARLY on a null handle, so re-pointing the family at it without more would have swapped one silent drop for another -- a `Logger` built from a name alone, or from an uninitialised node, carries a null handle. `rclcpp::detail::log_handle` sends those to the catch-all `nros` logger, which is where a record with no owner belongs, and the probe asserts it.\n\nONE CONSEQUENCE, named: `RCLCPP_DEBUG` no longer compiles out under `NDEBUG`. It is runtime-filtered by the logger's threshold now, which is what upstream does.\n\nENFORCEMENT BOUND, restated because it has not changed: neither `api-parity.py` extractor emits C/C++ MACROS (the recorded rclcpp surface has 226 records and no macro among them), so `--check` will never reach this row. A TEST is the only thing that can hold it, and there is one: `packages/api/nros-cpp/tests/compile/ros2_loudness_runtime.cpp` links `libnros_cpp.a`, installs a real sink through `nros_log_add_sink`, and asserts that each `RCLCPP_*` record ARRIVES, at the RIGHT SEVERITY, carrying its MESSAGE and its LOGGER NAME -- a sink is the only observer that can tell \"the record reached nros_log at FATAL\" from \"something printed to stderr\", which is precisely the distinction issue 1019 is about. Negative control against the pre-fix headers: 12 failures and ZERO records captured, with the console showing `[ERROR] ... fatal-marker 4` -- this row's defect, printed.\n\nThe refusal macros this header now also defines are `NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN`, `NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN_RUNTIME` and `NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT`; they are cited by `cpp:Executor::spin_once` and `cpp:Client::wait_for_service`."
+  },
+  "cpp:RCLCPP_FATAL_THROTTLE": {
+    "verdict": "declined",
+    "disposition": "refuse-loud",
+    "why": "`RCLCPP_FATAL_THROTTLE(logger, clock, period, ...)` -- REFUSE-LOUD (issue 1019, RFC-0089 W3.a). It used to expand to the plain `RCLCPP_FATAL` with `clock` and the period left UNEVALUATED, so a 1 Hz throttle logged at loop rate and a side-effecting clock expression was dropped -- compiles-and-differs. There is no throttle on the C++ logging path; `nros-log` has one Rust-side and re-exporting it is phase-417 W4.d, so a throttle written in this header would be a second implementation (RFC-0019).\n\nSITE: `packages/api/nros-cpp/include/nros/log.hpp:368` is the macro; it expands to `rclcpp::detail::throttle_is_refused(logger, clock, period, __VA_ARGS__)` (`packages/api/nros-cpp/include/nros/log.hpp:293-296`), a variadic function template whose body is `static_assert(refuse<Logger>::value, NROS_RCLCPP_REFUSE_THROTTLE)` at `:295`; message `packages/api/nros-cpp/include/nros/log.hpp:236`. Variadic so the arguments are still parsed and type-checked -- only the assertion stops the build, with the migration attached. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_log_throttle_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call, naming the un-throttled `RCLCPP_FATAL` and rate-limiting at the call site as the alternative.\n\nphase-428 Q1 (2026-09-06): recorded on a MACRO key, like `cpp:RCLCPP_FATAL`. The clang extractor emits no macros, so this key appears in no report and no gate can demand it; it exists so the refusal `NROS_RCLCPP_REFUSE_THROTTLE` has a row at all."
+  },
+  "cpp:RCLCPP_INFO_THROTTLE": {
+    "verdict": "declined",
+    "disposition": "refuse-loud",
+    "why": "`RCLCPP_INFO_THROTTLE(logger, clock, period, ...)` -- REFUSE-LOUD (issue 1019, RFC-0089 W3.a). It used to expand to the plain `RCLCPP_INFO` with `clock` and the period left UNEVALUATED, so a 1 Hz throttle logged at loop rate and a side-effecting clock expression was dropped -- compiles-and-differs. There is no throttle on the C++ logging path; `nros-log` has one Rust-side and re-exporting it is phase-417 W4.d, so a throttle written in this header would be a second implementation (RFC-0019).\n\nSITE: `packages/api/nros-cpp/include/nros/log.hpp:362` is the macro; it expands to `rclcpp::detail::throttle_is_refused(logger, clock, period, __VA_ARGS__)` (`packages/api/nros-cpp/include/nros/log.hpp:293-296`), a variadic function template whose body is `static_assert(refuse<Logger>::value, NROS_RCLCPP_REFUSE_THROTTLE)` at `:295`; message `packages/api/nros-cpp/include/nros/log.hpp:236`. Variadic so the arguments are still parsed and type-checked -- only the assertion stops the build, with the migration attached. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_log_throttle_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call, naming the un-throttled `RCLCPP_INFO` and rate-limiting at the call site as the alternative.\n\nphase-428 Q1 (2026-09-06): recorded on a MACRO key, like `cpp:RCLCPP_FATAL`. The clang extractor emits no macros, so this key appears in no report and no gate can demand it; it exists so the refusal `NROS_RCLCPP_REFUSE_THROTTLE` has a row at all."
+  },
+  "cpp:RCLCPP_WARN_THROTTLE": {
+    "verdict": "declined",
+    "disposition": "refuse-loud",
+    "why": "`RCLCPP_WARN_THROTTLE(logger, clock, period, ...)` -- REFUSE-LOUD (issue 1019, RFC-0089 W3.a). It used to expand to the plain `RCLCPP_WARN` with `clock` and the period left UNEVALUATED, so a 1 Hz throttle logged at loop rate and a side-effecting clock expression was dropped -- compiles-and-differs. There is no throttle on the C++ logging path; `nros-log` has one Rust-side and re-exporting it is phase-417 W4.d, so a throttle written in this header would be a second implementation (RFC-0019).\n\nSITE: `packages/api/nros-cpp/include/nros/log.hpp:364` is the macro; it expands to `rclcpp::detail::throttle_is_refused(logger, clock, period, __VA_ARGS__)` (`packages/api/nros-cpp/include/nros/log.hpp:293-296`), a variadic function template whose body is `static_assert(refuse<Logger>::value, NROS_RCLCPP_REFUSE_THROTTLE)` at `:295`; message `packages/api/nros-cpp/include/nros/log.hpp:236`. Variadic so the arguments are still parsed and type-checked -- only the assertion stops the build, with the migration attached. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_log_throttle_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call, naming the un-throttled `RCLCPP_WARN` and rate-limiting at the call site as the alternative.\n\nphase-428 Q1 (2026-09-06): recorded on a MACRO key, like `cpp:RCLCPP_FATAL`. The clang extractor emits no macros, so this key appears in no report and no gate can demand it; it exists so the refusal `NROS_RCLCPP_REFUSE_THROTTLE` has a row at all."
+  },
+  "cpp:SerializationFormat": {
+    "verdict": "extension",
+    "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. The enum itself (`nros-cpp/include/nros/serialization_format.hpp:43`), `uint8_t`-backed to mirror `SerializationFormatId` across the C ABI."
   },
   "cpp:SignalHandlerOptions": {
     "disposition": "absent",
@@ -206,6 +243,10 @@
     "verdict": "extension",
     "why": "MERGED 2026-09-04 from two independent rows that both landed on main (a duplicate JSON key at other.json:218 and :1070; parsers take the last silently, so one author's reasoning was being discarded). Both said `extension`; the prose is combined here and neither is lost.\n\nthe declared depth for `(type, topic)`, or `DECLARED_DEPTH_UNDECLARED`. `constexpr`, so it answers inside a `static_assert` when the topic is a string literal -- which is every call site in this tree -- and an ordinary call for the boot-time fallback in `ComponentNode::create_subscription` when the topic is only known at run time. One implementation, two evaluation times.\n\nOurs-only, and it exists because our QoS depth is a BUILD-TIME quantity where rclcpp's is a runtime one. `nros::declared_depth(type, topic)` (`packages/api/nros-cpp/include/nros/declared_qos.hpp:188`) is a `constexpr` lookup into the generated `declared_qos::TABLE` written from the `@depth=` a component declares in `nano_ros_node_register(... ENTITIES ...)`, returning `DECLARED_DEPTH_UNDECLARED` when the image has not opted in. Depth is a MULTIPLIER ON THE ARENA on a no-allocator target, so a subscription whose call-site QoS depth disagrees with the declared one has to fail the BUILD, not resize a queue at runtime -- that is what `NROS_ASSERT_DECLARED_DEPTH` uses this for, via the `detail::declared_depth_agrees<Declared, Passed>` template that gets both numbers into the diagnostic. rclcpp needs no counterpart: it allocates its history at runtime, so `rclcpp::QoS(10)` is simply obeyed and there is nothing to cross-check. The recorded rclcpp surface carries `depth` only as a member and a parameter name (`depth`, `depth_arg`, `history_depth`) and no free function of this shape, so there is no upstream name to align to and this is not a rename. Landed phase-403 step 2 (`3d852da49`); the row was missed then, and `check-api-parity` sat red on main until 2026-09-04 because no merge-gating lane runs it."
   },
+  "cpp:format_of": {
+    "verdict": "extension",
+    "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. `format_of<M>` is the compile-time projection — which format a given message type serialises as — and is what the build-time mismatch check reads."
+  },
   "cpp:get_c_string": {
     "verdict": "divergence",
     "why": "rclcpp's `std::string` -> `const char*` adapter, which exists because rclcpp's API takes `std::string` and rcl takes `const char*`. Our C++ has no such boundary: `nros-cpp` is freestanding with `-fno-exceptions` (RFC-0018) and gates every `<string>` include on `NROS_CPP_STD` (issue 0112), so the API takes `const char*` throughout and there is nothing to adapt."
@@ -222,6 +263,14 @@
     "disposition": "absent",
     "verdict": "declined",
     "why": "see `cpp:TypeAdapter`."
+  },
+  "cpp:linked_format": {
+    "verdict": "extension",
+    "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. `linked_format()` answers which format the LINKED BACKEND speaks, the other half of the comparison `format_of<M>` participates in."
+  },
+  "cpp:linked_format_name": {
+    "verdict": "extension",
+    "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. The printable spelling of `linked_format()`, for diagnostics and for the node accessor `Node::serialization_format()` classified separately in node.json."
   },
   "cpp:rx_buffer_capacity": {
     "verdict": "extension",
@@ -275,6 +324,38 @@
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
+  "rust:BoardTransportConfig": {
+    "verdict": "extension",
+    "why": "the trait a BOARD crate implements so the orchestration generator can write `nros.toml` `[[transport]]` values -- static IPv4, MAC, gateway, baud rate, WiFi SSID/password, NIC list -- into the board's own `Config` (RFC-0049). Every method has a default empty body because a board ignores what it has not got: a wired board ignores `set_ssid`, a board with a fused MAC ignores `set_mac`. rclrs has nothing equivalent because a hosted node inherits an already-configured network stack. Named `BoardTransportConfig` to avoid colliding with the transport-layer `rust:TransportConfig`. Its sibling `BoardConfig` is in the boot stage; the taxonomy split them because only one of the two contains the string `BoardConfig`."
+  },
+  "rust:BoardTransportConfig::set_baudrate": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_gateway": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_interfaces": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_ipv4": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_mac": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_password": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_ssid": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
   "rust:BoundedSequenceValue": {
     "disposition": "absent",
     "verdict": "declined",
@@ -319,6 +400,10 @@
   "rust:DEFAULT": {
     "verdict": "extension",
     "why": "the `nros::qos` module's five profile constants, mirroring rmw's `rmw_qos_profile_*` C constants. Const form because a baked entity declaration needs a value usable in a `static` (RFC-0036/0045); rclrs offers only the function form (`QoSProfile::topics_default()`).\nWORTH ACTING ON: our Rust ships the same five profiles TWICE, as these constants and as `QoSProfile::*_default()`, and the two copies DISAGREE on two of them. `nros::qos::SYSTEM_DEFAULT` is `DEFAULT` (KEEP_LAST depth 10) while `QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT` is depth 1; `nros::qos::PARAMETERS` is VOLATILE depth 1000 while `QoSProfile::QOS_PROFILE_PARAMETERS` is TRANSIENT_LOCAL depth 1000. Both claim to match upstream and both cannot; upstream `rmw_qos_profile_parameters` is RELIABLE + VOLATILE + KEEP_LAST(1000), so the constant is right and the associated const is wrong. Phase 379 W5."
+  },
+  "rust:DEFAULT_LOGGER": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
   },
   "rust:DEFAULT_MAX_METADATA_CALLBACKS": {
     "verdict": "extension",
@@ -610,6 +695,10 @@
     "verdict": "extension",
     "why": "`nros::sizes` -- the SINGLE SOURCE OF TRUTH for FFI opaque-storage sizes. Each entry is `size_of::<T>()` for a Rust type a C or C++ caller declares inline storage for, and each also emits a `__NROS_SIZE_<NAME>` static whose symbol size the `nros-c` / `nros-cpp` build scripts read back to generate the header's storage macros. It exists because our C and C++ APIs put entities in CALLER-OWNED storage -- no allocator, no pimpl -- so the header has to state a byte count, and a hand-written one is the drift class issues 0088/0114/0122/0123/0245/0268 all belong to. rcl has no counterpart: every `rcl_*_t` hides an `impl` pointer it heap-allocates. Visible from Rust only because the module is `pub` for in-crate `const _: () = assert!(...)` checks."
   },
+  "rust:EXECUTOR_VALUE_SIZE": {
+    "verdict": "extension",
+    "why": "MERGED 2026-09-04 during the phase-417 rebase onto main, from two independent rows that both landed -- this branch's W-M2 note and main's own filing. JSON keeps the LAST, so one author's reasoning was being discarded silently. Both said `extension`; the prose is combined here and neither is lost.\n\nAn `export_size!` probe (`packages/api/nros/src/sizes.rs:109`), not a user-facing API: it publishes `size_of::<Executor>()` so the generated C++ header can hold an executor BY VALUE (`nros-build-helpers/src/cpp.rs:283` bakes it as `NROS_EXECUTOR_VALUE_SIZE`). rclcpp needs no such thing because it heap-allocates its executor; here the whole point is that there is no allocator, so the size has to cross from Rust to C++ at build time. This is the sizes-header mirror whose drift is its own recurring issue family (0088/0114/0122/0123/0245/0268) -- the constant is the mechanism, not an addition to the user surface.\n\nphase-417 W-M2 note: ledgered because `--require-disposition` armed the gate and this landed on main in parallel.\n\nSee `rust:EXECUTOR_SIZE`. A `size_of` export in `nros::sizes`, consumed by `nros-build-helpers` (`c.rs:152`, `cpp.rs:111`) to size the C and C++ opaque storage that holds an `Executor` BY VALUE. rclrs has no counterpart because it never hands an executor across an FFI boundary into caller-owned storage; ours must, and the number has to be a build-time fact rather than a guess, which is what the export makes it."
+  },
   "rust:EntityId": {
     "verdict": "extension",
     "why": "the stable source-level identifier a component-mode entity declaration must carry, so the sidecar, the launch model and the image all name the same entity across rebuilds (RFC-0046). rclrs creates entities anonymously at runtime and has nothing to key. Note it is already `#[doc(hidden)]` in the facade, alongside `NodeId` -- which the node stage recorded as an extension for the same reason. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 0784: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
@@ -625,6 +714,22 @@
   "rust:EntityKind": {
     "verdict": "extension",
     "why": "the entity role recorded for source metadata (Publisher, Subscription, Timer, ServiceServer, ServiceClient, ActionServer, ActionClient, Parameter). See `rust:EntityMetadata`."
+  },
+  "rust:FormatBuffer": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:FormatBuffer::as_str": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:FormatBuffer::new": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:FormatBuffer::truncated": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
   },
   "rust:GUARD_CONDITION_SIZE": {
     "verdict": "extension",
@@ -687,6 +792,22 @@
     "verdict": "extension",
     "why": "see `rust:EXECUTOR_SIZE`."
   },
+  "rust:LogCrateOnceFlag": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:LogSink": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:LogSink::flush": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:MAX_ADDED_SINKS": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
   "rust:MAX_CELL_ENTITIES": {
     "verdict": "extension",
     "why": "phase-391 W5 -- knob-driven const (`NROS_MAX_CELL_ENTITIES`, default 8): capacity of the heapless per-cell entity registry that replaced the `Vec` one."
@@ -698,6 +819,18 @@
   "rust:MAX_COMPONENTS": {
     "verdict": "extension",
     "why": "phase-391 W5 -- knob-driven const (`NROS_MAX_COMPONENTS`, default 4): the image-wide component count bound `RuntimeSizing` sizes registries from. Compile-time because embedded images have no allocator to grow past it."
+  },
+  "rust:MAX_LOGGERS": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:MAX_LOGGER_NAME_LEN": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:MAX_ON_SET_CALLBACKS": {
+    "verdict": "divergence",
+    "why": "How many on-set-parameters hooks ONE store holds, across every node. rclcpp's registry is unbounded because it allocates; ours is a fixed array, so the bound is stated: 4, a slot being at most four machine words, which is 128 bytes on a 64-bit host beside a 285,184-byte default table, and one hook per node of a four-node composed image. Registering a fifth REFUSES rather than evicting. Deliberately not a build knob: every other parameter capacity sizes a table of the USER's data, this one sizes a table of the image's own code, which is known by reading the source. phase-417 W4.a."
   },
   "rust:MAX_RESOLVED_NAME_LEN": {
     "verdict": "extension",
@@ -818,6 +951,10 @@
     "verdict": "extension",
     "why": "the C-ABI cancel handler an action server registered from C or C++ is driven through: `extern \"C\" fn(&GoalId, GoalStatus) -> CancelResponse`. A raw fn pointer plus a context pointer rather than a boxed closure, because there is no allocator and the executor's callback arena is statically sized. rclrs 0.5.1 has NO action API at all -- not a client, not a server, not a goal type -- so every action item here is unmatched against the Rust reference and is measured against rclcpp_action instead."
   },
+  "rust:Record": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
   "rust:Rmw": {
     "verdict": "extension",
     "why": "the compile-time backend factory a backend crate implements: `open(&RmwConfig) -> Session`. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
@@ -915,6 +1052,11 @@
     "verdict": "extension",
     "why": "wire-level connectivity probe, `Unsupported` where the backend has none. Lesson taken from micro-ROS's `rmw_uros_ping_agent`: on a link that can simply go away there is no graph to ask, so an image needs a direct question. See `rust:Session`."
   },
+  "rust:Session::serialization_format": {
+    "verdict": "gap",
+    "disposition": "adopt",
+    "why": "phase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-16. One type, two answers to one question, and the reachable one is the wrong one.\n\nUPSTREAM'S CONTRACT for the seam, stated in our own SSoT header — `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h`: \"NULL slot: the runtime answers NULL — it does NOT guess `cdr`. A backend that does not declare its format has not told anyone what it speaks, and inventing an answer is how the identifier slot's doc came to promise a fallback nobody had written.\"\n\nOURS: the INHERENT `CffiSession::serialization_format` (`packages/rmw/cffi/src/lib.rs:1723`, over `serialization_format_cstr` at `:1712`) obeys that — `None` for a NULL slot. The TRAIT impl three hundred lines later (`:2006`) is `CffiSession::serialization_format(self).unwrap_or(Self::SERIALIZATION_FORMAT)`, and the trait constant defaults to `\"cdr\"` (`packages/core/nros-rmw/src/traits.rs`). So the trait method GUESSES exactly where the inherent method says it does not know — and the trait method is the user-reachable one: `Session` is re-exported from the facade (`packages/api/nros/src/lib.rs`), while the honest inherent method is reachable only as `nros::internals::RmwSession`.\n\nHOW A USER FINDS OUT: SILENTLY WRONG. Both calls return a value and neither errors; a bridge comparing two sessions' formats reads `\"cdr\" == \"cdr\"` for a backend that declared nothing. Disposition ADOPT — our own header already states the contract, so this is a fix, not a decision: propagate the `Option` or make the trait method fail rather than guess. Re-verified by hand against the current worktree before this row was written."
+  },
   "rust:Session::set_wake_callback": {
     "verdict": "extension",
     "why": "the backend-side half of the wake primitive; see the pubsub stage's `c:subscription_set_wake_callback` for what it buys. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
@@ -988,6 +1130,26 @@
     "verdict": "extension",
     "why": "see `rust:SubMonitorCell`."
   },
+  "rust:Throttle": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:Throttle::last_emitted_ns": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:Throttle::new": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:Throttle::reset": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:Throttle::should_log": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
   "rust:TopicInfo": {
     "verdict": "extension",
     "why": "the topic descriptor a backend creates an endpoint from: name, type name, type hash, domain, node name and namespace for the liveliness token, plus two embedded-only hints. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
@@ -1045,6 +1207,14 @@
     "verdict": "extension",
     "why": "what the executor pushes into the ring the entry glue drains into the diagnostics reporter. See `rust:MonitorSpec`."
   },
+  "rust:add_sink": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:added_sink_count": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
   "rust:arena_size_for": {
     "verdict": "extension",
     "why": "per-entry executor arena sizing (phase-271, issue 0110): scales the build-time `ARENA_SIZE` linearly by a caller-chosen callback count, floored at the full default. It replaced a workspace-global `NROS_EXECUTOR_ARENA_SIZE` -- one number every entry in the workspace had to share, so a fat entry and a lean one were sized by whichever was declared louder. The arena exists at all because callback closures are stored INLINE with no allocator; over-provisioning is safe, under-provisioning fails entity creation."
@@ -1065,162 +1235,6 @@
     "verdict": "extension",
     "why": "the C API executor's pre-poll hook, delegating to `Session::drive_io`. See `rust:RmwSession` and `rust:Session::drive_io`."
   },
-  "rust:force_link_backend": {
-    "verdict": "extension",
-    "why": "a DCE anchor, not a registration (issue 0330). On a pure-Rust staticlib image the Zephyr module emits a WEAK `nros_rmw_<name>_register` and calls it only if it resolves; the strong definition is the backend crate's `#[no_mangle]` export, and rustc's staticlib DCE drops it unless something in the crate being compiled REFERENCES that crate. The symbol is then present in the rlib and absent from the `.a`, the weak call sees NULL, and the image boots with no backend (issues 0155/0163). The app crate invokes it because the app crate is what selects an RMW; nano-ros's own RMW-agnostic layers must not name a backend. rclrs has no equivalent because rcl loads its rmw as a shared object at runtime."
-  },
-  "rust:get_dynamic_message_package_cache": {
-    "verdict": "divergence",
-    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
-  },
-  "rust:open_session": {
-    "verdict": "extension",
-    "why": "opens a backend session behind one signature, honouring the `$NROS_RMW` selector so a C bridge built with two linked backends pins its primary deterministically instead of taking whichever `.init_array` constructor fired first. Used by `nros-c`; Rust callers use `Executor::open`. See `rust:RmwSession`."
-  },
-  "rust:panic_halt": {
-    "verdict": "extension",
-    "why": "the `panic = \"halt\"` body: mask interrupts through the platform critical section, then spin forever. For an image that must not print -- no formatting, no allocation, no call out to the platform. Masking first is deliberate, so the parked core cannot be woken back into a half-dead system by a timer or a driver ISR still armed from before the panic. A body rather than a re-export of the `panic-halt` crate so choosing it costs the entry no new dependency. See `rust:panic_to_platform`."
-  },
-  "rust:panic_to_platform": {
-    "verdict": "extension",
-    "why": "emits the image's `#[panic_handler]`, formatting the panic into a 192-byte STACK buffer (never the heap -- the allocator may be exactly what failed) and handing it to `nros_platform_panic`. A `no_std` binary must supply that lang item or it does not link, and rclrs is `std`-only so libstd supplies it there. Normally reached as `nros::main!(panic = \"platform\")`; the macro is the escape hatch for images whose entry cannot carry the item -- a hand-rolled `no_std` binary, or the lib side of a `staticlib` crate. Deliberately NOT emitted invisibly: `#[panic_handler]` is a singleton of the final artifact and images that already declare their own (`esp_backtrace`, `panic-semihosting` with `features = [\"exit\"]` so QEMU exits instead of hanging a test) are right."
-  },
-  "rust:rx_buffer_for": {
-    "verdict": "extension",
-    "why": "phase-392 W3 — a subscription receive-buffer size computed from the message schema at compile time (`nros::rx_buffer_for!(Msg)`), so the buffer is sized by the type instead of the NROS_SUBSCRIPTION_BUFFER_SIZE guess. No upstream analogue: rcl sizes nothing statically. Landed unledgered; entry added when check-api-parity caught it one gate into a tier-2 run. phase-403 W0: an UNBOUNDED type is now a build error rather than an expansion to `DEFAULT_RX_BUF_SIZE` -- every message type is required to carry a derived upper bound, and a buffer sized from a fallback is what phase 380 forbade."
-  },
-  "rust:zephyr_component_main": {
-    "verdict": "extension",
-    "why": "emits Zephyr's `rust_main` for a self-bringup Rust component package: open a Zephyr executor, register the component, spin forever. A framework ENTRY macro, the same category as `nros::main!`, needed because a Zephyr `rust_cargo_application()` image has no `fn main` of its own and there are no POSIX-style constructor sections to register from (see the CLAUDE.md pitfall). Gated on `rmw-cffi` rather than on a platform feature, because it is codegen and its `::zephyr::*` paths resolve only in a zephyr build."
-  },
-  "rust:EXECUTOR_VALUE_SIZE": {
-    "verdict": "extension",
-    "why": "MERGED 2026-09-04 during the phase-417 rebase onto main, from two independent rows that both landed -- this branch's W-M2 note and main's own filing. JSON keeps the LAST, so one author's reasoning was being discarded silently. Both said `extension`; the prose is combined here and neither is lost.\n\nAn `export_size!` probe (`packages/api/nros/src/sizes.rs:109`), not a user-facing API: it publishes `size_of::<Executor>()` so the generated C++ header can hold an executor BY VALUE (`nros-build-helpers/src/cpp.rs:283` bakes it as `NROS_EXECUTOR_VALUE_SIZE`). rclcpp needs no such thing because it heap-allocates its executor; here the whole point is that there is no allocator, so the size has to cross from Rust to C++ at build time. This is the sizes-header mirror whose drift is its own recurring issue family (0088/0114/0122/0123/0245/0268) -- the constant is the mechanism, not an addition to the user surface.\n\nphase-417 W-M2 note: ledgered because `--require-disposition` armed the gate and this landed on main in parallel.\n\nSee `rust:EXECUTOR_SIZE`. A `size_of` export in `nros::sizes`, consumed by `nros-build-helpers` (`c.rs:152`, `cpp.rs:111`) to size the C and C++ opaque storage that holds an `Executor` BY VALUE. rclrs has no counterpart because it never hands an executor across an FFI boundary into caller-owned storage; ours must, and the number has to be a build-time fact rather than a guess, which is what the export makes it."
-  },
-  "cpp:SerializationFormat": {
-    "verdict": "extension",
-    "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. The enum itself (`nros-cpp/include/nros/serialization_format.hpp:43`), `uint8_t`-backed to mirror `SerializationFormatId` across the C ABI."
-  },
-  "cpp:format_of": {
-    "verdict": "extension",
-    "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. `format_of<M>` is the compile-time projection — which format a given message type serialises as — and is what the build-time mismatch check reads."
-  },
-  "cpp:linked_format": {
-    "verdict": "extension",
-    "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. `linked_format()` answers which format the LINKED BACKEND speaks, the other half of the comparison `format_of<M>` participates in."
-  },
-  "cpp:linked_format_name": {
-    "verdict": "extension",
-    "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. The printable spelling of `linked_format()`, for diagnostics and for the node accessor `Node::serialization_format()` classified separately in node.json."
-  },
-  "rust:BoardTransportConfig": {
-    "verdict": "extension",
-    "why": "the trait a BOARD crate implements so the orchestration generator can write `nros.toml` `[[transport]]` values -- static IPv4, MAC, gateway, baud rate, WiFi SSID/password, NIC list -- into the board's own `Config` (RFC-0049). Every method has a default empty body because a board ignores what it has not got: a wired board ignores `set_ssid`, a board with a fused MAC ignores `set_mac`. rclrs has nothing equivalent because a hosted node inherits an already-configured network stack. Named `BoardTransportConfig` to avoid colliding with the transport-layer `rust:TransportConfig`. Its sibling `BoardConfig` is in the boot stage; the taxonomy split them because only one of the two contains the string `BoardConfig`."
-  },
-  "rust:BoardTransportConfig::set_baudrate": {
-    "verdict": "extension",
-    "why": "see `rust:BoardTransportConfig`."
-  },
-  "rust:BoardTransportConfig::set_gateway": {
-    "verdict": "extension",
-    "why": "see `rust:BoardTransportConfig`."
-  },
-  "rust:BoardTransportConfig::set_interfaces": {
-    "verdict": "extension",
-    "why": "see `rust:BoardTransportConfig`."
-  },
-  "rust:BoardTransportConfig::set_ipv4": {
-    "verdict": "extension",
-    "why": "see `rust:BoardTransportConfig`."
-  },
-  "rust:BoardTransportConfig::set_mac": {
-    "verdict": "extension",
-    "why": "see `rust:BoardTransportConfig`."
-  },
-  "rust:BoardTransportConfig::set_password": {
-    "verdict": "extension",
-    "why": "see `rust:BoardTransportConfig`."
-  },
-  "rust:BoardTransportConfig::set_ssid": {
-    "verdict": "extension",
-    "why": "see `rust:BoardTransportConfig`."
-  },
-  "rust:DEFAULT_LOGGER": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
-  },
-  "rust:FormatBuffer": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
-  },
-  "rust:FormatBuffer::as_str": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
-  },
-  "rust:FormatBuffer::new": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
-  },
-  "rust:FormatBuffer::truncated": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
-  },
-  "rust:LogCrateOnceFlag": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
-  },
-  "rust:LogSink": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
-  },
-  "rust:LogSink::flush": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
-  },
-  "rust:MAX_ADDED_SINKS": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
-  },
-  "rust:MAX_LOGGERS": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
-  },
-  "rust:MAX_LOGGER_NAME_LEN": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
-  },
-  "rust:Record": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
-  },
-  "rust:Throttle": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
-  },
-  "rust:Throttle::last_emitted_ns": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
-  },
-  "rust:Throttle::new": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
-  },
-  "rust:Throttle::reset": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
-  },
-  "rust:Throttle::should_log": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
-  },
-  "rust:add_sink": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
-  },
-  "rust:added_sink_count": {
-    "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
-  },
   "rust:early_depth": {
     "verdict": "extension",
     "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
@@ -1229,9 +1243,22 @@
     "verdict": "extension",
     "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
   },
+  "rust:force_link_backend": {
+    "verdict": "extension",
+    "why": "a DCE anchor, not a registration (issue 0330). On a pure-Rust staticlib image the Zephyr module emits a WEAK `nros_rmw_<name>_register` and calls it only if it resolves; the strong definition is the backend crate's `#[no_mangle]` export, and rustc's staticlib DCE drops it unless something in the crate being compiled REFERENCES that crate. The symbol is then present in the rlib and absent from the `.a`, the weak call sees NULL, and the image boots with no backend (issues 0155/0163). The app crate invokes it because the app crate is what selects an RMW; nano-ros's own RMW-agnostic layers must not name a backend. rclrs has no equivalent because rcl loads its rmw as a shared object at runtime."
+  },
   "rust:format_buffer_capacity": {
     "verdict": "extension",
     "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:fully_qualified_name": {
+    "verdict": "extension",
+    "why": "The join that turns a DISCOVERED node's two halves into one name: `/robot` + `talker` -> `/robot/talker`, with the root namespace collapsed so `/` + `talker` is `/talker` and never `//talker`.\n\nOurs-only, and ROS 2's absence is structural rather than an oversight. `rcl_get_node_names` returns two PARALLEL owning arrays that the caller correlates by index and joins itself; rclcpp joins for you one layer up (`Node::get_node_names()` returns fully-qualified strings) and rclc has no graph API at all, so a C user there reaches rcl and joins by hand. `rcl_node_get_fully_qualified_name` exists but answers only for the CALLER'S OWN node — that one we mirror.\n\nIt exists here because of the constraint one row over: our enumeration is a VISITOR (no allocator at the seam, no caller-knowable bound on the graph), so both halves arrive together in one call and the join is the only step left. Three hand-rolled copies of it already existed in-tree and they did not agree on a namespace with no leading slash, which is what made this a named function rather than a fourth.",
+    "bucket": "ours-only"
+  },
+  "rust:get_dynamic_message_package_cache": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
   },
   "rust:interval_ms_to_ns": {
     "verdict": "extension",
@@ -1364,9 +1391,33 @@
     "verdict": "divergence",
     "why": "phase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe `_at` form takes the caller's `now_ns`. It exists because a target without `nros-log/platform-clock` has no time base, and a throttle with no clock admits EVERY record -- so the clock-reading form is a `compile_error!` there and this is the form that still works.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. W4 F14: this is the CONSTRAINED half of the throttle cluster and its `divergence` stands — without `nros-log/platform-clock` the clock-reading form is a `compile_error!`, so the caller-supplied-time variant is the only throttle a clockless target has. The six BASE `*_throttle!` macros do not have that defence and are a decomposition preference; see `rust:nros_warn_throttle`.\n\nNO DISPOSITION IS WRITTEN on this row. The four dispositions are what clause 1 does to a CANDIDATE FROM CLAUSE 2 (RFC-0089), and the clockless-target `compile_error!` is clause 1 acting on OUR form, not on an upstream candidate — rclrs has no caller-supplied-time throttle to adopt, weaken or refuse. The base `*_throttle!` sibling's spelling question is the stage-6 rename's, and is stated there."
   },
+  "rust:open_session": {
+    "verdict": "extension",
+    "why": "opens a backend session behind one signature, honouring the `$NROS_RMW` selector so a C bridge built with two linked backends pins its primary deterministically instead of taking whichever `.init_array` constructor fired first. Used by `nros-c`; Rust callers use `Executor::open`. See `rust:RmwSession`."
+  },
   "rust:overflowed": {
     "verdict": "extension",
     "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:panic_halt": {
+    "verdict": "extension",
+    "why": "the `panic = \"halt\"` body: mask interrupts through the platform critical section, then spin forever. For an image that must not print -- no formatting, no allocation, no call out to the platform. Masking first is deliberate, so the parked core cannot be woken back into a half-dead system by a timer or a driver ISR still armed from before the panic. A body rather than a re-export of the `panic-halt` crate so choosing it costs the entry no new dependency. See `rust:panic_to_platform`."
+  },
+  "rust:panic_to_platform": {
+    "verdict": "extension",
+    "why": "emits the image's `#[panic_handler]`, formatting the panic into a 192-byte STACK buffer (never the heap -- the allocator may be exactly what failed) and handing it to `nros_platform_panic`. A `no_std` binary must supply that lang item or it does not link, and rclrs is `std`-only so libstd supplies it there. Normally reached as `nros::main!(panic = \"platform\")`; the macro is the escape hatch for images whose entry cannot carry the item -- a hand-rolled `no_std` binary, or the lib side of a `staticlib` crate. Deliberately NOT emitted invisibly: `#[panic_handler]` is a singleton of the final artifact and images that already declare their own (`esp_backtrace`, `panic-semihosting` with `features = [\"exit\"]` so QEMU exits instead of hanging a test) are right."
+  },
+  "rust:resolve_hosted": {
+    "verdict": "extension",
+    "why": "phase-428 Q1 follow-through (2026-09-06) — `nros::env::resolve_hosted(baked: BootConfig) -> ExecutorConfig` (`packages/api/nros/src/env.rs:207`): RFC-0045 precedence model A with the environment rung on top of the baked one, the hosted counterpart of `rust:ExecutorConfig::resolve` (which is the same ladder WITHOUT an environment, for the five ports that have none). It replaced the old `ExecutorConfig::resolve(baked, hosted_env: bool)`, whose flag was a compile-time constant at every call site. rclrs has no counterpart because its `Context::from_env` is one rung and requires a process environment. Panics on a malformed variable; the fallible form is `rust:try_resolve_hosted`."
+  },
+  "rust:rmw_selector": {
+    "verdict": "extension",
+    "why": "phase-428 Q1 follow-through (2026-09-06) — `nros::env::rmw_selector() -> Option<heapless::String<RMW_SELECTOR_CAP>>` (`packages/api/nros/src/env.rs:154`): the one `$NROS_RMW` reader, naming the registry slot a multi-backend image opens against. rclrs has no counterpart: a ROS 2 desktop process selects its middleware with `RMW_IMPLEMENTATION` and a dynamic loader, and there is nothing to select at runtime in an image that linked exactly one backend — the same reasoning as `c:support_init_rmw`. The cap is `Executor::primary_rmw_name`'s capacity, so an over-long value reads as unset rather than truncated into another backend's name."
+  },
+  "rust:rx_buffer_for": {
+    "verdict": "extension",
+    "why": "phase-392 W3 — a subscription receive-buffer size computed from the message schema at compile time (`nros::rx_buffer_for!(Msg)`), so the buffer is sized by the type instead of the NROS_SUBSCRIPTION_BUFFER_SIZE guess. No upstream analogue: rcl sizes nothing statically. Landed unledgered; entry added when check-api-parity caught it one gate into a tier-2 run. phase-403 W0: an UNBOUNDED type is now a build error rather than an expansion to `DEFAULT_RX_BUF_SIZE` -- every message type is required to carry a derived upper bound, and a buffer sized from a fallback is what phase 380 forbade."
   },
   "rust:severity_enabled_at_compile_time": {
     "verdict": "extension",
@@ -1384,59 +1435,12 @@
     "verdict": "extension",
     "why": "phase-417 W4.d — asks whether the platform clock is available, so a caller can tell \"this record has no timestamp\" from \"this record happened at time zero\". ROS 2 has no counterpart because rcutils always has a clock; on a target built without `nros-log/platform-clock` ours does not, and the honest answer is a query rather than a zero that reads as a time. It is also what makes the C throttle's failure mode legible: with no clock a window admits every record, and `nros_log_timestamp_available()` is how a caller finds out before trusting a rate."
   },
-  "cpp:RCLCPP_FATAL": {
-    "verdict": "divergence",
-    "disposition": "adopt",
-    "why": "phase-417 stage 3 (2026-09-11) -- CLOSED, together with issue 1019, which is the same family losing a different field.\n\nUPSTREAM'S CONTRACT: `RCLCPP_FATAL(logger, ...)` emits at the FATAL severity, on the logger it is handed.\n\nOURS WAS: `do { (void)(logger); NROS_ERROR(__VA_ARGS__); } while (0)` (`packages/api/nros-cpp/include/nros/log.hpp`). One line, three defects, and the whole `RCLCPP_*` family shared them:\n  1. `NROS_ERROR` is the legacy printf family, whose sink is `fprintf(stderr)` on a hosted build and a NO-OP on a freestanding one. On Zephyr, FreeRTOS, NuttX and ThreadX -- the targets nano-ros exists for -- a ported node's entire log output was compiled away with no diagnostic. It worked on the host, which is where anyone would test the port. This is issue 1019's first defect.\n  2. the logger was cast to `void`, so per-logger levels applied to none of the family and `rclcpp::get_logger(\"planner\")` selected nothing. Issue 1019's third defect.\n  3. FATAL lowered to ERROR, because the legacy family has no fatal level at all. This row.\n\nFIX, one change for all three: the family routes at `NROS_LOG_*` (`packages/api/nros-c/include/nros/log.h`), which dispatches through `nros_log` -- so it reaches `LOG_ERR`/`printk` on exactly the targets where the legacy sink is a no-op, honours the per-logger threshold, and has a distinct `NROS_LOG_SEVERITY_FATAL`. `rclcpp::get_logger(name)` now RESOLVES the name through `nros_log_get_logger` (phase-417 W4.d landed the C surface that made this possible) instead of building a null-handled sentinel. `NROS_INFO` and friends are UNCHANGED and still correct for a board's own console print; what was wrong was routing `RCLCPP_*` through them.\n\nTHE FALLBACK IS LOAD-BEARING: `nros_log_emit_fmt_at` RETURNS EARLY on a null handle, so re-pointing the family at it without more would have swapped one silent drop for another -- a `Logger` built from a name alone, or from an uninitialised node, carries a null handle. `rclcpp::detail::log_handle` sends those to the catch-all `nros` logger, which is where a record with no owner belongs, and the probe asserts it.\n\nONE CONSEQUENCE, named: `RCLCPP_DEBUG` no longer compiles out under `NDEBUG`. It is runtime-filtered by the logger's threshold now, which is what upstream does.\n\nENFORCEMENT BOUND, restated because it has not changed: neither `api-parity.py` extractor emits C/C++ MACROS (the recorded rclcpp surface has 226 records and no macro among them), so `--check` will never reach this row. A TEST is the only thing that can hold it, and there is one: `packages/api/nros-cpp/tests/compile/ros2_loudness_runtime.cpp` links `libnros_cpp.a`, installs a real sink through `nros_log_add_sink`, and asserts that each `RCLCPP_*` record ARRIVES, at the RIGHT SEVERITY, carrying its MESSAGE and its LOGGER NAME -- a sink is the only observer that can tell \"the record reached nros_log at FATAL\" from \"something printed to stderr\", which is precisely the distinction issue 1019 is about. Negative control against the pre-fix headers: 12 failures and ZERO records captured, with the console showing `[ERROR] ... fatal-marker 4` -- this row's defect, printed.\n\nThe refusal macros this header now also defines are `NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN`, `NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN_RUNTIME` and `NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT`; they are cited by `cpp:Executor::spin_once` and `cpp:Client::wait_for_service`."
-  },
-  "rust:Session::serialization_format": {
-    "verdict": "gap",
-    "disposition": "adopt",
-    "why": "phase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-16. One type, two answers to one question, and the reachable one is the wrong one.\n\nUPSTREAM'S CONTRACT for the seam, stated in our own SSoT header — `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h`: \"NULL slot: the runtime answers NULL — it does NOT guess `cdr`. A backend that does not declare its format has not told anyone what it speaks, and inventing an answer is how the identifier slot's doc came to promise a fallback nobody had written.\"\n\nOURS: the INHERENT `CffiSession::serialization_format` (`packages/rmw/cffi/src/lib.rs:1723`, over `serialization_format_cstr` at `:1712`) obeys that — `None` for a NULL slot. The TRAIT impl three hundred lines later (`:2006`) is `CffiSession::serialization_format(self).unwrap_or(Self::SERIALIZATION_FORMAT)`, and the trait constant defaults to `\"cdr\"` (`packages/core/nros-rmw/src/traits.rs`). So the trait method GUESSES exactly where the inherent method says it does not know — and the trait method is the user-reachable one: `Session` is re-exported from the facade (`packages/api/nros/src/lib.rs`), while the honest inherent method is reachable only as `nros::internals::RmwSession`.\n\nHOW A USER FINDS OUT: SILENTLY WRONG. Both calls return a value and neither errors; a bridge comparing two sessions' formats reads `\"cdr\" == \"cdr\"` for a backend that declared nothing. Disposition ADOPT — our own header already states the contract, so this is a fix, not a decision: propagate the `Option` or make the trait method fail rather than guess. Re-verified by hand against the current worktree before this row was written."
-  },
-  "rust:resolve_hosted": {
-    "verdict": "extension",
-    "why": "phase-428 Q1 follow-through (2026-09-06) — `nros::env::resolve_hosted(baked: BootConfig) -> ExecutorConfig` (`packages/api/nros/src/env.rs:207`): RFC-0045 precedence model A with the environment rung on top of the baked one, the hosted counterpart of `rust:ExecutorConfig::resolve` (which is the same ladder WITHOUT an environment, for the five ports that have none). It replaced the old `ExecutorConfig::resolve(baked, hosted_env: bool)`, whose flag was a compile-time constant at every call site. rclrs has no counterpart because its `Context::from_env` is one rung and requires a process environment. Panics on a malformed variable; the fallible form is `rust:try_resolve_hosted`."
-  },
   "rust:try_resolve_hosted": {
     "verdict": "extension",
     "why": "the fallible form of `rust:resolve_hosted` (`packages/api/nros/src/env.rs:222`): `Result<ExecutorConfig, BootConfigError>`, so a typo'd `ROS_DOMAIN_ID` is an error the caller sees rather than a node that silently moves to domain 0. `nros::init()` reads through this one (issue 0687 — the module used to carry its own copy of the same four-variable parse, and the copies had drifted)."
   },
-  "rust:rmw_selector": {
+  "rust:zephyr_component_main": {
     "verdict": "extension",
-    "why": "phase-428 Q1 follow-through (2026-09-06) — `nros::env::rmw_selector() -> Option<heapless::String<RMW_SELECTOR_CAP>>` (`packages/api/nros/src/env.rs:154`): the one `$NROS_RMW` reader, naming the registry slot a multi-backend image opens against. rclrs has no counterpart: a ROS 2 desktop process selects its middleware with `RMW_IMPLEMENTATION` and a dynamic loader, and there is nothing to select at runtime in an image that linked exactly one backend — the same reasoning as `c:support_init_rmw`. The cap is `Executor::primary_rmw_name`'s capacity, so an over-long value reads as unset rather than truncated into another backend's name."
-  },
-  "cpp:RCLCPP_DEBUG_THROTTLE": {
-    "verdict": "declined",
-    "disposition": "refuse-loud",
-    "why": "`RCLCPP_DEBUG_THROTTLE(logger, clock, period, ...)` -- REFUSE-LOUD (issue 1019, RFC-0089 W3.a). It used to expand to the plain `RCLCPP_DEBUG` with `clock` and the period left UNEVALUATED, so a 1 Hz throttle logged at loop rate and a side-effecting clock expression was dropped -- compiles-and-differs. There is no throttle on the C++ logging path; `nros-log` has one Rust-side and re-exporting it is phase-417 W4.d, so a throttle written in this header would be a second implementation (RFC-0019).\n\nSITE: `packages/api/nros-cpp/include/nros/log.hpp:360` is the macro; it expands to `rclcpp::detail::throttle_is_refused(logger, clock, period, __VA_ARGS__)` (`packages/api/nros-cpp/include/nros/log.hpp:293-296`), a variadic function template whose body is `static_assert(refuse<Logger>::value, NROS_RCLCPP_REFUSE_THROTTLE)` at `:295`; message `packages/api/nros-cpp/include/nros/log.hpp:236`. Variadic so the arguments are still parsed and type-checked -- only the assertion stops the build, with the migration attached. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_log_throttle_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call, naming the un-throttled `RCLCPP_DEBUG` and rate-limiting at the call site as the alternative.\n\nphase-428 Q1 (2026-09-06): recorded on a MACRO key, like `cpp:RCLCPP_FATAL`. The clang extractor emits no macros, so this key appears in no report and no gate can demand it; it exists so the refusal `NROS_RCLCPP_REFUSE_THROTTLE` has a row at all."
-  },
-  "cpp:RCLCPP_INFO_THROTTLE": {
-    "verdict": "declined",
-    "disposition": "refuse-loud",
-    "why": "`RCLCPP_INFO_THROTTLE(logger, clock, period, ...)` -- REFUSE-LOUD (issue 1019, RFC-0089 W3.a). It used to expand to the plain `RCLCPP_INFO` with `clock` and the period left UNEVALUATED, so a 1 Hz throttle logged at loop rate and a side-effecting clock expression was dropped -- compiles-and-differs. There is no throttle on the C++ logging path; `nros-log` has one Rust-side and re-exporting it is phase-417 W4.d, so a throttle written in this header would be a second implementation (RFC-0019).\n\nSITE: `packages/api/nros-cpp/include/nros/log.hpp:362` is the macro; it expands to `rclcpp::detail::throttle_is_refused(logger, clock, period, __VA_ARGS__)` (`packages/api/nros-cpp/include/nros/log.hpp:293-296`), a variadic function template whose body is `static_assert(refuse<Logger>::value, NROS_RCLCPP_REFUSE_THROTTLE)` at `:295`; message `packages/api/nros-cpp/include/nros/log.hpp:236`. Variadic so the arguments are still parsed and type-checked -- only the assertion stops the build, with the migration attached. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_log_throttle_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call, naming the un-throttled `RCLCPP_INFO` and rate-limiting at the call site as the alternative.\n\nphase-428 Q1 (2026-09-06): recorded on a MACRO key, like `cpp:RCLCPP_FATAL`. The clang extractor emits no macros, so this key appears in no report and no gate can demand it; it exists so the refusal `NROS_RCLCPP_REFUSE_THROTTLE` has a row at all."
-  },
-  "cpp:RCLCPP_WARN_THROTTLE": {
-    "verdict": "declined",
-    "disposition": "refuse-loud",
-    "why": "`RCLCPP_WARN_THROTTLE(logger, clock, period, ...)` -- REFUSE-LOUD (issue 1019, RFC-0089 W3.a). It used to expand to the plain `RCLCPP_WARN` with `clock` and the period left UNEVALUATED, so a 1 Hz throttle logged at loop rate and a side-effecting clock expression was dropped -- compiles-and-differs. There is no throttle on the C++ logging path; `nros-log` has one Rust-side and re-exporting it is phase-417 W4.d, so a throttle written in this header would be a second implementation (RFC-0019).\n\nSITE: `packages/api/nros-cpp/include/nros/log.hpp:364` is the macro; it expands to `rclcpp::detail::throttle_is_refused(logger, clock, period, __VA_ARGS__)` (`packages/api/nros-cpp/include/nros/log.hpp:293-296`), a variadic function template whose body is `static_assert(refuse<Logger>::value, NROS_RCLCPP_REFUSE_THROTTLE)` at `:295`; message `packages/api/nros-cpp/include/nros/log.hpp:236`. Variadic so the arguments are still parsed and type-checked -- only the assertion stops the build, with the migration attached. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_log_throttle_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call, naming the un-throttled `RCLCPP_WARN` and rate-limiting at the call site as the alternative.\n\nphase-428 Q1 (2026-09-06): recorded on a MACRO key, like `cpp:RCLCPP_FATAL`. The clang extractor emits no macros, so this key appears in no report and no gate can demand it; it exists so the refusal `NROS_RCLCPP_REFUSE_THROTTLE` has a row at all."
-  },
-  "cpp:RCLCPP_ERROR_THROTTLE": {
-    "verdict": "declined",
-    "disposition": "refuse-loud",
-    "why": "`RCLCPP_ERROR_THROTTLE(logger, clock, period, ...)` -- REFUSE-LOUD (issue 1019, RFC-0089 W3.a). It used to expand to the plain `RCLCPP_ERROR` with `clock` and the period left UNEVALUATED, so a 1 Hz throttle logged at loop rate and a side-effecting clock expression was dropped -- compiles-and-differs. There is no throttle on the C++ logging path; `nros-log` has one Rust-side and re-exporting it is phase-417 W4.d, so a throttle written in this header would be a second implementation (RFC-0019).\n\nSITE: `packages/api/nros-cpp/include/nros/log.hpp:366` is the macro; it expands to `rclcpp::detail::throttle_is_refused(logger, clock, period, __VA_ARGS__)` (`packages/api/nros-cpp/include/nros/log.hpp:293-296`), a variadic function template whose body is `static_assert(refuse<Logger>::value, NROS_RCLCPP_REFUSE_THROTTLE)` at `:295`; message `packages/api/nros-cpp/include/nros/log.hpp:236`. Variadic so the arguments are still parsed and type-checked -- only the assertion stops the build, with the migration attached. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_log_throttle_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call, naming the un-throttled `RCLCPP_ERROR` and rate-limiting at the call site as the alternative.\n\nphase-428 Q1 (2026-09-06): recorded on a MACRO key, like `cpp:RCLCPP_FATAL`. The clang extractor emits no macros, so this key appears in no report and no gate can demand it; it exists so the refusal `NROS_RCLCPP_REFUSE_THROTTLE` has a row at all."
-  },
-  "cpp:RCLCPP_FATAL_THROTTLE": {
-    "verdict": "declined",
-    "disposition": "refuse-loud",
-    "why": "`RCLCPP_FATAL_THROTTLE(logger, clock, period, ...)` -- REFUSE-LOUD (issue 1019, RFC-0089 W3.a). It used to expand to the plain `RCLCPP_FATAL` with `clock` and the period left UNEVALUATED, so a 1 Hz throttle logged at loop rate and a side-effecting clock expression was dropped -- compiles-and-differs. There is no throttle on the C++ logging path; `nros-log` has one Rust-side and re-exporting it is phase-417 W4.d, so a throttle written in this header would be a second implementation (RFC-0019).\n\nSITE: `packages/api/nros-cpp/include/nros/log.hpp:368` is the macro; it expands to `rclcpp::detail::throttle_is_refused(logger, clock, period, __VA_ARGS__)` (`packages/api/nros-cpp/include/nros/log.hpp:293-296`), a variadic function template whose body is `static_assert(refuse<Logger>::value, NROS_RCLCPP_REFUSE_THROTTLE)` at `:295`; message `packages/api/nros-cpp/include/nros/log.hpp:236`. Variadic so the arguments are still parsed and type-checked -- only the assertion stops the build, with the migration attached. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_log_throttle_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call, naming the un-throttled `RCLCPP_FATAL` and rate-limiting at the call site as the alternative.\n\nphase-428 Q1 (2026-09-06): recorded on a MACRO key, like `cpp:RCLCPP_FATAL`. The clang extractor emits no macros, so this key appears in no report and no gate can demand it; it exists so the refusal `NROS_RCLCPP_REFUSE_THROTTLE` has a row at all."
-  },
-  "c:declared_depth": {
-    "verdict": "extension",
-    "why": "phase-454 W10 -- the C sibling of `cpp:declared_depth`, and it exists for the same reason: our QoS history depth is a BUILD-TIME quantity where rcl's is a runtime one. The executor arena prices each subscription `sizeof(entry) + (depth + 1) * bound + (depth + 1) * 8` before the user's TU is compiled, so the depth the contract sidecar states and the depth a call site passes have to be one number. rcl has no counterpart because it has no contract to disagree with -- an rcl subscription's QoS is whatever the caller hands `rcl_subscription_init`, and nothing sizes anything from it ahead of time.\n\nTWO EVALUATION TIMES, as in C++, but under two names because C has no `constexpr`: `NROS_DECLARED_DEPTH(type, topic)` is a macro that folds to an integer constant expression over `__builtin_strcmp`, so it answers inside a `_Static_assert`; `nros_declared_depth(type, topic)` is the `static inline` for a topic that is not a constant expression. Same rows, same answer. Absence is `NROS_DECLARED_DEPTH_UNDECLARED` (-1), never 0 -- an image with no contract sidecar has no table, checks nothing, and compiles exactly as it did before."
-  },
-  "c:declared_depth_agrees": {
-    "verdict": "extension",
-    "why": "phase-454 W10 -- the RUNTIME verdict over `c:declared_depth`, for a C call site whose topic or depth is not a constant expression. That is every `nros_cpp_qos_t` built in a helper function, which is what every C component in this tree writes: `NROS_QOS_DEFAULT` is an `extern const` object resolved at link time and `nros_c_qos_default()` is a function, so neither `.depth` can reach a `_Static_assert`. Non-zero when the subscription may proceed, which includes the UNDECLARED case, because absence is not a disagreement. It answers and does not print -- the registration seam `nros_cpp_subscription_register` is where the refusal and the diagnostic live. rcl has no counterpart for the reason `c:declared_depth` gives."
+    "why": "emits Zephyr's `rust_main` for a self-bringup Rust component package: open a Zephyr executor, register the component, spin forever. A framework ENTRY macro, the same category as `nros::main!`, needed because a Zephyr `rust_cargo_application()` image has no `fn main` of its own and there are no POSIX-style constructor sections to register from (see the CLAUDE.md pitfall). Gated on `rmw-cffi` rather than on a platform feature, because it is codegen and its `::zephyr::*` paths resolve only in a zephyr build."
   }
 }

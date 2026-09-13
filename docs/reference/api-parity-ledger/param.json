@@ -24,16 +24,37 @@
     }
   },
   "c:add_parameter_constraint_double": {
-    "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: our Rust has the whole descriptor surface -- `ParameterDescriptor::with_description` / `with_read_only` / `with_integer_range` / `with_float_range` / `with_dynamic_typing`, plus `validate_range` enforced on every set -- and our C has NO descriptor surface whatever. The `~/describe_parameters` server a C user registers with `nros_executor_register_parameter_services` therefore answers with empty descriptors for everything that C declared. Phase 379 W3. rclc attaches a `[from, to, step]` range to a double parameter and REJECTS sets outside it; our C accepts anything the type allows."
+    "verdict": "divergence",
+    "disposition": "absent",
+    "provides": [
+      "nros_executor_add_param_constraint_double",
+      "nros_executor_add_param_constraint_double_on",
+      "nros_executor_get_param_double_range",
+      "nros_executor_get_param_double_range_on"
+    ],
+    "why": "rclc attaches a `[from, to, step]` range to a double parameter and REJECTS sets outside it; ours does both, through `ParameterServer::apply` — the same predicate a remote `ros2 param set` meets — and additionally refuses a range the parameter's CURRENT value does not satisfy, which would advertise a bound no set could produce. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS — under our spelling, not rclc's. Ours is `nros_executor_*_param_*` because the store is the EXECUTOR's and keyed by NODE (phase-426 W1), where rclc's verbs take an `rclc_parameter_server_t*`: an image composes several nodes onto one executor, and a C caller holds the `nros_node_t` it passed to `nros_executor_node_init`, not a per-node server object. Deliberately NOT added to the legacy `nros_parameter_server_t` family, which is disjoint from the store the six `rcl_interfaces` servers read (issue 0793) — a descriptor surface there would be a second answer to 'what is this parameter's range'. Whether that family is retired or re-pointed is phase-417 W2.a's decision and nothing here depends on it."
   },
   "c:add_parameter_constraint_integer": {
-    "verdict": "gap",
-    "why": "the integer form; see `c:add_parameter_constraint_double`."
+    "verdict": "divergence",
+    "disposition": "absent",
+    "provides": [
+      "nros_executor_add_param_constraint_integer",
+      "nros_executor_add_param_constraint_integer_on",
+      "nros_executor_get_param_integer_range",
+      "nros_executor_get_param_integer_range_on"
+    ],
+    "why": "the integer form; see `c:add_parameter_constraint_double`. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS — under our spelling, not rclc's. Ours is `nros_executor_*_param_*` because the store is the EXECUTOR's and keyed by NODE (phase-426 W1), where rclc's verbs take an `rclc_parameter_server_t*`: an image composes several nodes onto one executor, and a C caller holds the `nros_node_t` it passed to `nros_executor_node_init`, not a per-node server object. Deliberately NOT added to the legacy `nros_parameter_server_t` family, which is disjoint from the store the six `rcl_interfaces` servers read (issue 0793) — a descriptor surface there would be a second answer to 'what is this parameter's range'. Whether that family is retired or re-pointed is phase-417 W2.a's decision and nothing here depends on it."
   },
   "c:add_parameter_description": {
-    "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: our Rust has the whole descriptor surface -- `ParameterDescriptor::with_description` / `with_read_only` / `with_integer_range` / `with_float_range` / `with_dynamic_typing`, plus `validate_range` enforced on every set -- and our C has NO descriptor surface whatever. The `~/describe_parameters` server a C user registers with `nros_executor_register_parameter_services` therefore answers with empty descriptors for everything that C declared. Phase 379 W3. rclc attaches a description and an additional-constraints string to a declared parameter; nothing in `nros/parameter.h` takes either."
+    "verdict": "divergence",
+    "disposition": "absent",
+    "provides": [
+      "nros_executor_add_param_description",
+      "nros_executor_add_param_description_on",
+      "nros_executor_describe_param",
+      "nros_executor_describe_param_on"
+    ],
+    "why": "rclc attaches a description and an additional-constraints string to a declared parameter; ours are `nros_executor_add_param_description[_on]`, and `nros_executor_describe_param[_on]` reads them back. Both texts live in the descriptor `~/describe_parameters` serves, so `ros2 param describe` prints what a C caller attached instead of the empty descriptor it used to answer with for everything C declared. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS — under our spelling, not rclc's. Ours is `nros_executor_*_param_*` because the store is the EXECUTOR's and keyed by NODE (phase-426 W1), where rclc's verbs take an `rclc_parameter_server_t*`: an image composes several nodes onto one executor, and a C caller holds the `nros_node_t` it passed to `nros_executor_node_init`, not a per-node server object. Deliberately NOT added to the legacy `nros_parameter_server_t` family, which is disjoint from the store the six `rcl_interfaces` servers read (issue 0793) — a descriptor surface there would be a second answer to 'what is this parameter's range'. Whether that family is retired or re-pointed is phase-417 W2.a's decision and nothing here depends on it."
   },
   "c:bool_array_t": {
     "verdict": "declined",
@@ -46,21 +67,38 @@
     "why": "a parsed `byte[]` sequence, heap-allocated by the YAML parser. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
   },
   "c:delete_parameter": {
-    "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: rclc can undeclare a parameter at runtime, and so can our Rust (`ParameterServer::remove`, and `ParameterServer::unset` to clear the value while keeping the declaration). C has neither, and C++ has neither -- `nros/parameter.h` and `nros/parameter.hpp` offer declare/get/set/has/count/fini and no way to take a parameter back. Nothing about static storage forbids it; the slot is a fixed array entry that `ParameterServer::remove` already clears one language over. Phase 379 W3."
+    "verdict": "divergence",
+    "disposition": "absent",
+    "provides": [
+      "nros_executor_delete_param",
+      "nros_executor_delete_param_on"
+    ],
+    "why": "undeclare at runtime. The slot is freed for a later declaration, per node, which is what `ParameterServer::remove` does one language over. The row's own reasoning held: nothing about static storage forbade it. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS — under our spelling, not rclc's. Ours is `nros_executor_*_param_*` because the store is the EXECUTOR's and keyed by NODE (phase-426 W1), where rclc's verbs take an `rclc_parameter_server_t*`: an image composes several nodes onto one executor, and a C caller holds the `nros_node_t` it passed to `nros_executor_node_init`, not a per-node server object. Deliberately NOT added to the legacy `nros_parameter_server_t` family, which is disjoint from the store the six `rcl_interfaces` servers read (issue 0793) — a descriptor surface there would be a second answer to 'what is this parameter's range'. Whether that family is retired or re-pointed is phase-417 W2.a's decision and nothing here depends on it."
   },
   "c:double_array_t": {
     "verdict": "declined",
     "disposition": "absent",
     "why": "a parsed `double[]` sequence, heap-allocated by the YAML parser. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
   },
+  "c:executor_add_param_*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "Descriptor ATTACHMENT on a declared parameter — rclc's `rclc_add_parameter_description` and `rclc_add_parameter_constraint_{double,integer}`. phase-417 W4.a. OURS-ONLY because the STORE is the executor's and keyed by NODE (phase-426 W1), where rclc's corresponding verbs take an `rclc_parameter_server_t*`: an image composes several nodes onto one executor and a C caller holds the `nros_node_t` it passed to `nros_executor_node_init`. Every member carries the `_on` / primary pair the rest of the `nros_executor_*_param_*` family does, and every one forwards to `nros_params::ParameterServer` and keeps no state. The upstream half each answers is ledgered `divergence` on its own theirs-only row."
+  },
   "c:executor_add_parameter_server": {
     "verdict": "divergence",
     "why": "rclc attaches a CALLER-OWNED `rclc_parameter_server_t` to the executor. Ours is `nros_executor_register_parameter_services(executor)`, which takes no server because the executor owns the only one there is -- static entity storage, no allocator to make a second. Ledgered as an extension in the service stage. Note which of our TWO C parameter stores this is. `nros_parameter_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_parameter_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. What a user additionally loses is rclc's on-modification callback, which this call is where you pass: see `c:executor_add_parameter_server_with_context`."
   },
   "c:executor_add_parameter_server_with_context": {
-    "verdict": "gap",
-    "why": "the `void* context` form -- and the row that matters, because BOTH rclc forms take the on-modification callback and ours takes none. So a `ros2 param set` reaching the executor-owned store notifies nobody: the C callback that does exist, `nros_parameter_server_set_callback`, is on the legacy standalone `nros_parameter_server_t`, which is not the object the services write to. Note which of our TWO C parameter stores this is. `nros_parameter_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_parameter_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. NOTE FOR RFC-0036: line 91 says \"No parameter callbacks; parameters are read/write only\", and that is now wrong in both directions -- C ships an accept/reject set-callback on one store, and has none on the store `ros2 param` talks to. Phase 379 W3."
+    "verdict": "divergence",
+    "disposition": "absent",
+    "provides": [
+      "nros_executor_register_parameter_services",
+      "nros_executor_set_param_callback",
+      "nros_executor_set_param_callback_on",
+      "nros_executor_remove_param_callback"
+    ],
+    "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and what this row said MATTERED is now closed. BOTH rclc forms take the on-modification callback and ours took none, so a `ros2 param set` reaching the executor-owned store notified nobody: the C callback that existed, `nros_parameter_server_set_callback`, is on the legacy standalone store, which is not the object the services write to, so it fired for nobody. `nros_executor_set_param_callback[_on]` registers the SAME `nros_parameter_callback_t` on the store `ros2 param set` reaches — one typedef, two stores, no third spelling — and it carries rclcpp's accept/reject contract: `false` refuses the write. It runs AFTER the store's read-only / type / range rules, so a callback never sees a write those already refused. Registration is bounded (`nros_params::MAX_ON_SET_CALLBACKS`, 4) and a full registry answers `NROS_RET_FULL` rather than evicting somebody else's hook; `nros_executor_remove_param_callback` takes the token back. The SHAPE still differs and that is what `absent` records: rclc's is one call that creates the server and the callback together over an `rclc_parameter_server_t*`, ours is `nros_executor_register_parameter_services` plus a registration on the executor, because the store is the executor's and keyed by node. RFC-0036 line 91 ('No parameter callbacks; parameters are read/write only') is now wrong in a third direction: C has one on BOTH stores, C++ has one, and Rust has one."
   },
   "c:executor_allow_undeclared_parameters": {
     "verdict": "divergence",
@@ -80,6 +118,16 @@
     "bucket": "ours-only",
     "why": "phase-426 W5 -- the node-naming half of `c:executor_declare_param_*`, and the C mirror of `rust:Executor::declare_parameter_on`. The parameter STORE is one fixed table owned by the EXECUTOR, not a container per node: there is no allocator to make a second, so a node cannot own its own. Upstream keys parameters by making the node the RECEIVER (`rclcpp::Node::declare_parameter`, rclc's `rclc_parameter_server_t` bound to a node); ours are on the executor and the node is an ARGUMENT, because an image composes several nodes onto one executor (RFC-0047) and the shared table has to be told whose parameter it is. The `_on` suffix is the same disambiguation the entity builders already use (`node_mut(id)` / `_on(...)`, phase 104.C) and the same pair Rust ships, so C and Rust name one relationship one way. It is a NEW NAME rather than a widened signature deliberately: RFC-0089 permits a signature change only where the compiler forces the edit, and the existing spellings are not wrong -- they mean the primary node and will go on meaning it -- so re-signing them would cost every C caller an edit that buys nothing. What a user loses: a ported node writes `nros_executor_declare_param_integer_on(&exec, &node, name, value)` where rclcpp writes `node->declare_parameter(name, value)`. Takes the `nros_node_t` rather than its slot index, so a node that is uninitialised or bound to another executor is refused instead of silently meaning slot 0."
   },
+  "c:executor_delete_param*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "Undeclare — rclc's `rclc_delete_parameter`, rclcpp's `undeclare_parameter`. phase-417 W4.a. OURS-ONLY because the STORE is the executor's and keyed by NODE (phase-426 W1), where rclc's corresponding verbs take an `rclc_parameter_server_t*`: an image composes several nodes onto one executor and a C caller holds the `nros_node_t` it passed to `nros_executor_node_init`. Every member carries the `_on` / primary pair the rest of the `nros_executor_*_param_*` family does, and every one forwards to `nros_params::ParameterServer` and keeps no state. The upstream half each answers is ledgered `divergence` on its own theirs-only row."
+  },
+  "c:executor_describe_param*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "Descriptor READBACK — rclcpp's `describe_parameter`. Every out-param is NULLable and the two texts land in caller-owned buffers of stated capacity, TRUNCATING with `NROS_RET_FULL` rather than refusing: a prefix of a description is still usable where a shortened VALUE would be a wrong answer. There is no descriptor STRUCT on this boundary, deliberately — one would carry either a pointer into the store or an inline buffer, and the second would put `NROS_MAX_PARAM_DESCRIPTION_LEN` into a public ABI. phase-417 W4.a. OURS-ONLY because the STORE is the executor's and keyed by NODE (phase-426 W1), where rclc's corresponding verbs take an `rclc_parameter_server_t*`: an image composes several nodes onto one executor and a C caller holds the `nros_node_t` it passed to `nros_executor_node_init`. Every member carries the `_on` / primary pair the rest of the `nros_executor_*_param_*` family does, and every one forwards to `nros_params::ParameterServer` and keeps no state. The upstream half each answers is ledgered `divergence` on its own theirs-only row."
+  },
   "c:executor_get_param_*": {
     "verdict": "divergence",
     "bucket": "ours-only",
@@ -93,6 +141,15 @@
   "c:executor_has_param_on": {
     "verdict": "divergence",
     "why": "the existence predicate of the per-node family; see `c:executor_declare_param_*_on`. Upstream's correspondent is `rclcpp::Node::has_parameter`, whose receiver IS the node. A node this executor does not own answers `false`, never the primary node's answer -- defaulting the node is how a sibling's parameter reads as this one's."
+  },
+  "c:executor_list_params*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "Prefix-filtered name listing — rclcpp's `list_parameters`, `~/list_parameters`'s local form. Names land in a caller-owned RECTANGLE (`max_names` rows of `name_stride`) and `*out_count` always reports the TOTAL that matched, so `max_names = 0` counts: the only way a list of strings crosses this boundary with no allocator. phase-417 W4.a. OURS-ONLY because the STORE is the executor's and keyed by NODE (phase-426 W1), where rclc's corresponding verbs take an `rclc_parameter_server_t*`: an image composes several nodes onto one executor and a C caller holds the `nros_node_t` it passed to `nros_executor_node_init`. Every member carries the `_on` / primary pair the rest of the `nros_executor_*_param_*` family does, and every one forwards to `nros_params::ParameterServer` and keeps no state. The upstream half each answers is ledgered `divergence` on its own theirs-only row."
+  },
+  "c:executor_remove_param_callback": {
+    "verdict": "divergence",
+    "why": "Unregister an on-set hook — rclcpp's `remove_on_set_parameters_callback`. Takes the `uint16_t` token the registration returned, because with no allocator there is no owning handle whose destruction could unregister. See `c:executor_add_parameter_server_with_context` for the registration half. phase-417 W4.a. OURS-ONLY because the STORE is the executor's and keyed by NODE (phase-426 W1), where rclc's corresponding verbs take an `rclc_parameter_server_t*`: an image composes several nodes onto one executor and a C caller holds the `nros_node_t` it passed to `nros_executor_node_init`. Every member carries the `_on` / primary pair the rest of the `nros_executor_*_param_*` family does, and every one forwards to `nros_params::ParameterServer` and keeps no state. The upstream half each answers is ledgered `divergence` on its own theirs-only row."
   },
   "c:executor_set_param_*": {
     "verdict": "divergence",
@@ -362,8 +419,13 @@
     "why": "the whole parsed parameter tree: node names plus per-node parameter lists. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
   },
   "c:set_parameter_read_only": {
-    "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: our Rust has the whole descriptor surface -- `ParameterDescriptor::with_description` / `with_read_only` / `with_integer_range` / `with_float_range` / `with_dynamic_typing`, plus `validate_range` enforced on every set -- and our C has NO descriptor surface whatever. The `~/describe_parameters` server a C user registers with `nros_executor_register_parameter_services` therefore answers with empty descriptors for everything that C declared. Phase 379 W3. rclc marks a declared parameter read-only so `ros2 param set` is refused. Our Rust has both `ParameterDescriptor::with_read_only` and a `ReadOnlyParameter<T>` handle, and `ParameterServer::set` returns `SetParameterResult::ReadOnly`; our C has no way to say it."
+    "verdict": "divergence",
+    "disposition": "absent",
+    "provides": [
+      "nros_executor_set_param_read_only",
+      "nros_executor_set_param_read_only_on"
+    ],
+    "why": "rclc marks a declared parameter read-only so `ros2 param set` is refused. Ours does, through the descriptor the store already checks on every write, so a local `nros_executor_set_param_*` is refused exactly as the wire is. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS — under our spelling, not rclc's. Ours is `nros_executor_*_param_*` because the store is the EXECUTOR's and keyed by NODE (phase-426 W1), where rclc's verbs take an `rclc_parameter_server_t*`: an image composes several nodes onto one executor, and a C caller holds the `nros_node_t` it passed to `nros_executor_node_init`, not a per-node server object. Deliberately NOT added to the legacy `nros_parameter_server_t` family, which is disjoint from the store the six `rcl_interfaces` servers read (issue 0793) — a descriptor surface there would be a second answer to 'what is this parameter's range'. Whether that family is retired or re-pointed is phase-417 W2.a's decision and nothing here depends on it."
   },
   "c:variant_t": {
     "verdict": "declined",
@@ -381,41 +443,60 @@
     "why": "`rclcpp_lifecycle::LifecycleNode` repeats `Node`'s entire parameter surface verbatim. Every row has the same answer as its `cpp:Node::` twin -- a lifecycle node declares and reads parameters exactly like an ordinary one here, and a lifecycle node's parameters are not lifecycle-gated in rclcpp either. See the `cpp:Node::*` rows in this shard."
   },
   "cpp:Node::add_on_set_parameters_callback": {
-    "verdict": "gap",
-    "why": "rclcpp's accept/reject hook: the callback returns a `SetParametersResult` and a `false` REFUSES the change. Our C has exactly this contract already -- `nros_parameter_server_set_callback` with a `bool` return -- and C++ does not wrap it, so RFC-0036 line 91 (\"No parameter callbacks\") is stale for C and accurate for C++ by accident. rclcpp returns an owning `ParameterCallbackHandle` shared_ptr, which we cannot; a single fn-pointer slot per server, as C already has, is the no-allocator form. Phase 379 W3; see `c:parameter_server_set_callback`."
+    "verdict": "divergence",
+    "disposition": "refuse-loud",
+    "why": "upstream takes a `std::function` over a `std::vector<rclcpp::Parameter>` returning a `SetParametersResult`, and hands back an owning `ParameterCallbackHandle` shared_ptr whose destruction unregisters. With no allocator ours is a plain function pointer plus a `void*` context seeing ONE write at a time as scalars, answering `bool` — upstream's `successful` — and `out_handle` receives a `uint16_t` token because there is nothing to own. The registry is bounded (`nros_params::MAX_ON_SET_CALLBACKS`, 4) and a full one answers `Result::FULL` rather than evicting somebody else's hook. The hook runs AFTER the store's read-only / type / range rules and on every write that reaches the store, local or over `~/set_parameters`, because `apply` is the one seam. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
   },
   "cpp:Node::declare_parameters": {
-    "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: our C++ DOES have this method -- `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` / `get_parameter<T>(name)` / `has_parameter(name)` (RFC-0044, component_node.hpp:418-545 -- that header is DELETED as of phase-427 W4, which merged `ComponentNode` into the one `nros::Node`) -- but `component_node.hpp` was NOT included by `nros/nros.hpp`, the umbrella that defines the public C++ surface; only the generated entry reached it (`emit_cpp.rs` emits the include). Through `nros/nros.hpp` a ported rclcpp node got `nros::Node`, which has no parameter method at all, and `nros::ParameterServer<Cap>`, a standalone store the node cannot see. RETIRED 2026-09-07 (phase-427): phase-417 W2.b added an unconditional `#include \"nros/component_node.hpp\"` at `nros.hpp:62`, so the umbrella DOES reach `ComponentNode` and its rclcpp-shaped parameter methods today; what follows is kept as the reasoning that produced this row. Phase 379 W3. This is the map-taking bulk form, and `ComponentNode` would not have it either: it takes a `std::map<std::string, T>`, which needs an allocator."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "why": "SHIPPED phase-417 W4.a. The map-taking bulk form, hosted only, because upstream's argument IS a `std::map<std::string, T>`. `prefix` is joined with `.` exactly as upstream does. The envelope: upstream returns `std::vector<T>`, the values IN EFFECT after each declaration, and ours returns `nros::Result`. They differ only where a launch seed already declared a name — the case rclcpp's return exists for — and a caller who needs it reads back with `get_parameter<T>`. A ported file that ignores the return compiles and behaves identically; one that binds it does not compile, which is the loud half. The row previously said `ComponentNode` 'would not have it either'; that type is gone (phase-427 W4) and the reason it gave (the map needs an allocator) is what the `NROS_CPP_STD` gate is for, not a reason to decline."
   },
   "cpp:Node::describe_parameter": {
-    "verdict": "gap",
-    "why": "returns the `rcl_interfaces` descriptor. Our C++ has no descriptor type; see `c:add_parameter_description` for the same hole one language over."
+    "verdict": "divergence",
+    "disposition": "refuse-loud",
+    "why": "upstream returns an `rcl_interfaces::msg::ParameterDescriptor` BY VALUE, whose strings own their storage. Ours fills a caller-owned `rclcpp::ParameterDescriptor` whose two `const char*` point into a caller-owned text buffer the call splits in half: `describe_parameter(name, out, text, text_len)`. There is no other shape without an allocator, and across the FFI there is no descriptor struct at all — text in as a borrowed `const char*`, out into a `char*` of stated capacity, scalars as NULLable out-params. A struct with an inline buffer would put `NROS_MAX_PARAM_DESCRIPTION_LEN` into the ABI and make a build knob a layout, which `check-cpp-capability-layout` forbids. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
   },
   "cpp:Node::describe_parameters": {
-    "verdict": "gap",
-    "why": "the vector form; see `cpp:Node::describe_parameter`."
+    "verdict": "declined",
+    "disposition": "absent",
+    "provides": [
+      "nros::Node::get_parameter",
+      "nros::Node::set_parameter",
+      "nros::Node::describe_parameter",
+      "nros::Node::set_parameters_atomically"
+    ],
+    "why": "RE-VERDICTED phase-417 W4.a. was `gap`. the vector form of `describe_parameter`, which ships one name at a time into caller storage (phase-417 W4.a). Every one of these is a vector of `rclcpp::Parameter` — a generated ROS message value object ledgered `declined` at `cpp:Parameter` — and a `std::vector` needs an allocator the freestanding lane does not have. The singular forms ship and reach the same store; the plural forms are declined because their ARGUMENT TYPE is, not because the capability is missing."
   },
   "cpp:Node::get_node_parameters_interface": {
     "verdict": "declined",
     "disposition": "absent",
     "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `node_interfaces::Node*Interface` slices exist so a component can be handed the part it needs; our components are declared, not constructed with an injected node (RFC-0044)."
   },
-  "cpp:Node::get_parameter_or": {
-    "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: our C++ DOES have this method -- `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` / `get_parameter<T>(name)` / `has_parameter(name)` (RFC-0044, component_node.hpp:418-545 -- that header is DELETED as of phase-427 W4, which merged `ComponentNode` into the one `nros::Node`) -- but `component_node.hpp` was NOT included by `nros/nros.hpp`, the umbrella that defines the public C++ surface; only the generated entry reached it (`emit_cpp.rs` emits the include). Through `nros/nros.hpp` a ported rclcpp node got `nros::Node`, which has no parameter method at all, and `nros::ParameterServer<Cap>`, a standalone store the node cannot see. RETIRED 2026-09-07 (phase-427): phase-417 W2.b added an unconditional `#include \"nros/component_node.hpp\"` at `nros.hpp:62`, so the umbrella DOES reach `ComponentNode` and its rclcpp-shaped parameter methods today; what follows is kept as the reasoning that produced this row. Phase 379 W3. Read-with-fallback specifically: `ComponentNode::get_parameter<T>` already returns `T{}` on a miss, which is the same shape with the fallback fixed at the default-constructed value."
+  "cpp:Node::get_parameter_type": {
+    "verdict": "extension",
+    "why": "The SINGULAR type query. rclcpp has only the vector-taking `get_parameter_types`, which needs an allocator for both its argument and its return; ours ships as `get_parameter_types(names, count, out)` over caller storage (`cpp:Node::get_parameter_types`) and this is the one-name form underneath it. phase-417 W4.a. C and Rust have had the singular form all along (`nros_parameter_get_type`, `ParameterServer::get_type`), so this is the row that stops C++ being the odd one out — which is what stage 4 is."
   },
   "cpp:Node::get_parameter_types": {
-    "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: we serve `~/get_parameter_types` and our C (`nros_parameter_get_type`) and Rust (`ParameterServer::get_type`) both answer it locally; C++ has no type accessor on either `Node` or `ParameterServer`. See `c:parameter_get_type`."
+    "verdict": "divergence",
+    "disposition": "refuse-loud",
+    "why": "upstream takes a `std::vector<std::string>` and returns a `std::vector<rclcpp::ParameterType>`; both need an allocator, and the freestanding lane has neither. Ours is `get_parameter_types(names, count, out)` over caller storage, plus the singular `get_parameter_type(name)`. An undeclared name answers `PARAMETER_NOT_SET`, as upstream's service does. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
   },
   "cpp:Node::get_parameters": {
-    "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: our C++ DOES have this method -- `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` / `get_parameter<T>(name)` / `has_parameter(name)` (RFC-0044, component_node.hpp:418-545 -- that header is DELETED as of phase-427 W4, which merged `ComponentNode` into the one `nros::Node`) -- but `component_node.hpp` was NOT included by `nros/nros.hpp`, the umbrella that defines the public C++ surface; only the generated entry reached it (`emit_cpp.rs` emits the include). Through `nros/nros.hpp` a ported rclcpp node got `nros::Node`, which has no parameter method at all, and `nros::ParameterServer<Cap>`, a standalone store the node cannot see. RETIRED 2026-09-07 (phase-427): phase-417 W2.b added an unconditional `#include \"nros/component_node.hpp\"` at `nros.hpp:62`, so the umbrella DOES reach `ComponentNode` and its rclcpp-shaped parameter methods today; what follows is kept as the reasoning that produced this row. Phase 379 W3. The bulk form additionally reads into a `std::vector<Parameter>`, which needs an allocator and `cpp:Parameter`."
+    "verdict": "declined",
+    "disposition": "absent",
+    "provides": [
+      "nros::Node::get_parameter",
+      "nros::Node::set_parameter",
+      "nros::Node::describe_parameter",
+      "nros::Node::set_parameters_atomically"
+    ],
+    "why": "RE-VERDICTED phase-417 W4.a. was `gap`. the read half: upstream returns `std::vector<rclcpp::Parameter>` for a vector of names. Every one of these is a vector of `rclcpp::Parameter` — a generated ROS message value object ledgered `declined` at `cpp:Parameter` — and a `std::vector` needs an allocator the freestanding lane does not have. The singular forms ship and reach the same store; the plural forms are declined because their ARGUMENT TYPE is, not because the capability is missing."
   },
   "cpp:Node::list_parameters": {
-    "verdict": "gap",
-    "why": "prefix-filtered name listing. Rust has `ParameterServer::list_names` and `list_with_prefix`; C and C++ have neither, and we serve `~/list_parameters` in all three. Phase 379 W3."
+    "verdict": "divergence",
+    "disposition": "refuse-loud",
+    "why": "upstream returns an `rcl_interfaces::msg::ListParametersResult` and takes a vector of prefixes plus a `depth`. Ours writes into a caller-owned RECTANGLE (`max_names` rows of `name_stride` bytes) and always reports the TOTAL that matched, so `max_names = 0` counts — the only way a list of strings crosses this boundary with no allocator. ONE prefix and no `depth`: our names carry no separator semantics to recurse on. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
   },
   "cpp:Node::parameters": {
     "verdict": "extension",
@@ -423,25 +504,45 @@
     "why": "REMOVED, phase-426 W4 (2026-09-07). It was an ours-only accessor on the compat shim's `rclcpp::Node` handing back a reference to the node's own `nros::ParameterServer`, documented as \"the escape hatch to the node-owned store\" for \"the C-API helpers that take an `nros_parameter_server_t*`\" -- and no such helper exists: `nros_executor_register_parameter_services` takes the EXECUTOR, which `cpp:ParameterServer` had already recorded. With the node-local store deleted there is nothing to return and nothing that took it, so the name is gone rather than returning a reference to a store the services do not read. A node's parameters are reached through `declare_parameter` / `get_parameter` / `set_parameter`, which now name the one store. rclcpp declares no `parameters()` either, so removing it moves the ported surface TOWARD upstream. The row is kept, not deleted, so the removal is legible: a reader who finds `parameters()` in a pre-W4 port learns where it went."
   },
   "cpp:Node::remove_on_set_parameters_callback": {
-    "verdict": "gap",
-    "why": "the unregister half; C's form is `nros_parameter_server_set_callback(server, NULL, NULL)`. See `cpp:Node::add_on_set_parameters_callback`."
+    "verdict": "divergence",
+    "disposition": "refuse-loud",
+    "why": "the unregister half. Upstream takes the owning handle; ours takes the `rclcpp::ParameterCallbackHandle` token (a `uint16_t`) its registration returned. See `cpp:Node::add_on_set_parameters_callback`. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
   },
   "cpp:Node::set_parameters": {
-    "verdict": "gap",
-    "why": "the vector form; see `cpp:Node::set_parameter`."
+    "verdict": "declined",
+    "disposition": "absent",
+    "provides": [
+      "nros::Node::get_parameter",
+      "nros::Node::set_parameter",
+      "nros::Node::describe_parameter",
+      "nros::Node::set_parameters_atomically"
+    ],
+    "why": "RE-VERDICTED phase-417 W4.a. was `gap`. the non-atomic write half: upstream takes `std::vector<rclcpp::Parameter>` and returns a `std::vector<SetParametersResult>`, one verdict per element. `Node::set_parameters_atomically` DOES ship (phase-417 W4.a) over `rclcpp::ParameterWrite`, so the capability is reachable; what is declined is the per-element-result vector, which needs `SetParametersResult`. Every one of these is a vector of `rclcpp::Parameter` — a generated ROS message value object ledgered `declined` at `cpp:Parameter` — and a `std::vector` needs an allocator the freestanding lane does not have. The singular forms ship and reach the same store; the plural forms are declined because their ARGUMENT TYPE is, not because the capability is missing."
   },
   "cpp:Node::set_parameters_atomically": {
-    "verdict": "gap",
-    "why": "all-or-nothing multi-set. We SERVE it -- `~/set_parameters_atomically` is one of the six servers `nros_executor_register_parameter_services` registers, and `handle_set_parameters_atomically` implements it -- but no language offers it as a local call, so the only way to reach our own atomic set is over the wire. Phase 379 W3."
+    "verdict": "divergence",
+    "disposition": "refuse-loud",
+    "why": "we SERVED `~/set_parameters_atomically` and offered it in no language, so the only way to reach our own atomic set was over the wire. Now `set_parameters_atomically(writes, count)` over `rclcpp::ParameterWrite` — a name plus a tagged value, which is one element of upstream's `std::vector<rclcpp::Parameter>` flattened into scalars, because `rclcpp::Parameter` is a generated message we do not have (`cpp:Parameter`) and the vector needs an allocator. Check-all-then-apply-all lives in the store (`ParameterServer::apply_atomically`), which is the same call the service handler makes, so the wire and the local call cannot disagree about what 'atomic' means. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
   },
   "cpp:Node::undeclare_parameter": {
-    "verdict": "gap",
-    "why": "see `c:delete_parameter`."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "why": "SHIPPED phase-417 W4.a. `rclcpp::Node::undeclare_parameter(name)` forwards to `ParameterServer::remove` through `nros_cpp_node_undeclare_param`, on the one store, so the slot is freed for a later declaration and a sibling node's identical name is untouched. The envelope: upstream returns `void` and THROWS `ParameterNotDeclaredException`; ours returns `nros::Result` and answers `NOT_FOUND`, which is RFC-0089's error-channel rule (there are no exceptions here), not a choice made for this verb. A ported call site compiles either way; one that relies on the throw to skip the rest of a block does not."
+  },
+  "cpp:NodeOptions::allow_undeclared_parameters": {
+    "verdict": "divergence",
+    "disposition": "refuse-loud",
+    "why": "`rclcpp::NodeOptions::allow_undeclared_parameters` -- REFUSE-LOUD, per-CONCEPT with the rest of the option family (`cpp:NodeOptions` carries the reasoning; this row carries the SITE).\n\nSITE: `packages/api/nros-cpp/include/nros/options.hpp:278` (setter) and `:282` (getter). Each is a `template <typename T = void>` whose body is `static_assert(detail::refuse<T>::value, NROS_RCLCPP_REFUSE_NODE_OPTIONS)` -- dependent on `T` so it fires on USE, not on include, and a caller writes the chain exactly as upstream does. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_node_options_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call carrying the constraint and the alternative. For this member: the parameter store is fixed-capacity and `declare_parameter<T>(name, default)` is the only way a name enters it -- an undeclared name has no storage to land in.\n\nphase-428 Q1 (2026-09-06): this member used to INHERIT its disposition from `cpp:NodeOptions` and had no row of its own, which is how a live refusal stayed invisible to the ledger -- a refusal is a declaration, it correlates `same`, and `--check` stopped asking. A refusal site now gets its own row so `--require-disposition` can see it."
   },
   "cpp:NodeOptions::append_parameter_override": {
     "verdict": "declined",
     "disposition": "absent",
     "why": "phase-417 stage 0 — visible only because the rclcpp adapter (then `rclcpp_compat.hpp`; deleted at stage 6 step A, each declaration moved to the header owning its concept) became a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. This member is NOT declared here at all: `packages/api/nros-cpp/include/nros/options.hpp` refuses the ten option setter/getter pairs a tutorial chains (`arguments`, `use_intra_process_comms`, `enable_rosout`, ...) with a dependent `static_assert` carrying `NROS_RCLCPP_REFUSE_NODE_OPTIONS`, and declares nothing else on the type. So a ported call to THIS one gets `no member named` -- honest, and it names neither the constraint nor the alternative. phase-428 Q1 (2026-09-06): this row used to say it was a `= delete` overload; it never was, and the disposition is corrected from refuse-loud to absent. The refusal that does exist is per-CONCEPT and `cpp:NodeOptions` carries it."
+  },
+  "cpp:NodeOptions::automatically_declare_parameters_from_overrides": {
+    "verdict": "divergence",
+    "disposition": "refuse-loud",
+    "why": "`rclcpp::NodeOptions::automatically_declare_parameters_from_overrides` -- REFUSE-LOUD, per-CONCEPT with the rest of the option family (`cpp:NodeOptions` carries the reasoning; this row carries the SITE).\n\nSITE: `packages/api/nros-cpp/include/nros/options.hpp:288` (setter) and `:292` (getter). Each is a `template <typename T = void>` whose body is `static_assert(detail::refuse<T>::value, NROS_RCLCPP_REFUSE_NODE_OPTIONS)` -- dependent on `T` so it fires on USE, not on include, and a caller writes the chain exactly as upstream does. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_node_options_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call carrying the constraint and the alternative. For this member: overrides arrive as launcher-projected environment, and `declare_parameter<T>` reads them at the declaration; there is no override table to walk.\n\nphase-428 Q1 (2026-09-06): this member used to INHERIT its disposition from `cpp:NodeOptions` and had no row of its own, which is how a live refusal stayed invisible to the ledger -- a refusal is a declaration, it correlates `same`, and `--check` stopped asking. A refusal site now gets its own row so `--require-disposition` can see it."
   },
   "cpp:NodeOptions::parameter_event_qos": {
     "verdict": "declined",
@@ -453,15 +554,9 @@
     "disposition": "absent",
     "why": "phase-417 stage 0 — visible only because the rclcpp adapter (then `rclcpp_compat.hpp`; deleted at stage 6 step A, each declaration moved to the header owning its concept) became a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. This member is NOT declared here at all: `packages/api/nros-cpp/include/nros/options.hpp` refuses the ten option setter/getter pairs a tutorial chains (`arguments`, `use_intra_process_comms`, `enable_rosout`, ...) with a dependent `static_assert` carrying `NROS_RCLCPP_REFUSE_NODE_OPTIONS`, and declares nothing else on the type. So a ported call to THIS one gets `no member named` -- honest, and it names neither the constraint nor the alternative. phase-428 Q1 (2026-09-06): this row used to say it was a `= delete` overload; it never was, and the disposition is corrected from refuse-loud to absent. The refusal that does exist is per-CONCEPT and `cpp:NodeOptions` carries it."
   },
-  "cpp:NodeOptions::allow_undeclared_parameters": {
+  "cpp:OnSetParametersCallbackType": {
     "verdict": "divergence",
-    "disposition": "refuse-loud",
-    "why": "`rclcpp::NodeOptions::allow_undeclared_parameters` -- REFUSE-LOUD, per-CONCEPT with the rest of the option family (`cpp:NodeOptions` carries the reasoning; this row carries the SITE).\n\nSITE: `packages/api/nros-cpp/include/nros/options.hpp:278` (setter) and `:282` (getter). Each is a `template <typename T = void>` whose body is `static_assert(detail::refuse<T>::value, NROS_RCLCPP_REFUSE_NODE_OPTIONS)` -- dependent on `T` so it fires on USE, not on include, and a caller writes the chain exactly as upstream does. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_node_options_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call carrying the constraint and the alternative. For this member: the parameter store is fixed-capacity and `declare_parameter<T>(name, default)` is the only way a name enters it -- an undeclared name has no storage to land in.\n\nphase-428 Q1 (2026-09-06): this member used to INHERIT its disposition from `cpp:NodeOptions` and had no row of its own, which is how a live refusal stayed invisible to the ledger -- a refusal is a declaration, it correlates `same`, and `--check` stopped asking. A refusal site now gets its own row so `--require-disposition` can see it."
-  },
-  "cpp:NodeOptions::automatically_declare_parameters_from_overrides": {
-    "verdict": "divergence",
-    "disposition": "refuse-loud",
-    "why": "`rclcpp::NodeOptions::automatically_declare_parameters_from_overrides` -- REFUSE-LOUD, per-CONCEPT with the rest of the option family (`cpp:NodeOptions` carries the reasoning; this row carries the SITE).\n\nSITE: `packages/api/nros-cpp/include/nros/options.hpp:288` (setter) and `:292` (getter). Each is a `template <typename T = void>` whose body is `static_assert(detail::refuse<T>::value, NROS_RCLCPP_REFUSE_NODE_OPTIONS)` -- dependent on `T` so it fires on USE, not on include, and a caller writes the chain exactly as upstream does. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_node_options_probe.cpp`.\n\nHOW A USER FINDS OUT: COMPILE ERROR at the call carrying the constraint and the alternative. For this member: overrides arrive as launcher-projected environment, and `declare_parameter<T>` reads them at the declaration; there is no override table to walk.\n\nphase-428 Q1 (2026-09-06): this member used to INHERIT its disposition from `cpp:NodeOptions` and had no row of its own, which is how a live refusal stayed invisible to the ledger -- a refusal is a declaration, it correlates `same`, and `--check` stopped asking. A refusal site now gets its own row so `--require-disposition` can see it."
+    "why": "Upstream's is a `std::function<SetParametersResult(const std::vector<Parameter>&)>`. Ours is a plain function pointer plus a `void*` context over one `rclcpp::ParameterWrite`, answering `bool` — upstream's `successful`. The allocator is the constraint for the closure and the vector, and `<functional>` is absent from the freestanding lane entirely. phase-417 W4.a."
   },
   "cpp:Parameter": {
     "verdict": "declined",
@@ -476,6 +571,20 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "the owning handle `ParameterEventHandler::add_parameter_callback` returns; dropping it unregisters. the `/parameter_events` family. We publish no `/parameter_events` topic at all -- `QOS_PROFILE_PARAMETER_EVENTS` is defined in `nros-rmw/src/traits.rs` and has no publisher behind it -- so there is nothing for an event handler to subscribe to. Bringing it back needs a `std::function`-shaped callback registry and a shared_ptr handle per registration, neither of which exists without an allocator. What a user loses: reacting to ANOTHER node's parameter change. Phase 379 W3."
+  },
+  "cpp:ParameterCallbackHandle::*": {
+    "verdict": "declined",
+    "bucket": "theirs-only",
+    "disposition": "absent",
+    "provides": [
+      "nros::Node::add_on_set_parameters_callback",
+      "nros::Node::remove_on_set_parameters_callback"
+    ],
+    "why": "The `make_shared` / `make_unique` factories rclcpp generates for its owning callback handle. Ours is `rclcpp::ParameterCallbackHandle = uint16_t`, a plain token: with no allocator there is nothing to own and nothing whose destruction could unregister, so `remove_on_set_parameters_callback(handle)` is explicit. A factory for an integer would be a name with nothing behind it. phase-417 W4.a."
+  },
+  "cpp:ParameterDescriptor": {
+    "verdict": "divergence",
+    "why": "Upstream's is `rcl_interfaces::msg::ParameterDescriptor`, a generated ROS message whose strings OWN their storage. Ours BORROWS its text: the `const char*` are read during the call that consumes the descriptor — the store copies into its own slot — and never retained, so a descriptor is a string-literal aggregate on the stack with no allocator anywhere. Reading one back is the mirror of that and takes a caller-owned text buffer (`Node::describe_parameter`). The platform constraint is the allocator; there is no shape in which a returned descriptor owns its strings without one. phase-417 W4.a."
   },
   "cpp:ParameterEventCallbackHandle": {
     "verdict": "declined",
@@ -505,10 +614,6 @@
     "verdict": "divergence",
     "why": "rclcpp wraps the parameter SERVERS in an object a node owns; ours is a registration call on the executor, because the executor owns the one parameter store there is. See `c:executor_register_parameter_services` and the service stage's `cpp:ParameterService::ParameterService`."
   },
-  "cpp:ParameterType": {
-    "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: the parameter type enum. C has `nros_parameter_type_t` and Rust has `ParameterType`, both mirroring `rcl_interfaces/msg/ParameterType`; C++ has no `nros::ParameterType` and no accessor that would return one. A C++ file can reach the C enum through the `extern \"C\"` include, but nothing in `nros::` names it. See `cpp:Node::get_parameter_types`."
-  },
   "cpp:ParameterTypeException": {
     "verdict": "declined",
     "disposition": "absent",
@@ -518,6 +623,10 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "the value half of `cpp:Parameter`, with the same allocator problem: `get<std::string>()` and `to_value_msg()` both hand back owned storage. Rust's `ParameterValue` is the no-allocator equivalent (heapless `String`/`Vec`, accessors that return borrows); C++ has no counterpart."
+  },
+  "cpp:ParameterWrite": {
+    "verdict": "divergence",
+    "why": "The proposed write an on-set-parameters callback sees, and the element type of `set_parameters_atomically`. Upstream passes a `std::vector<rclcpp::Parameter>`; `rclcpp::Parameter` is a generated message value object ledgered `declined` (`cpp:Parameter`) and the vector needs an allocator, so ours is one element of that vector flattened into scalars a freestanding TU can read. `#[repr(C)]` in `params_shim.rs` and emitted by cbindgen, so it is GENERATED rather than hand-mirrored — `check-ffi-struct-mirrors`' class cannot arise from it. phase-417 W4.a."
   },
   "cpp:Seq": {
     "verdict": "divergence",
@@ -532,6 +641,26 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "rclcpp's JSON formatter for a parameter value, used by `Parameter::value_to_string`. It builds a `std::string` per entry; with no allocator there is nothing to build it in, and an image has no consumer for JSON. See `cpp:Parameter`."
+  },
+  "cpp:declared_param_exempt": {
+    "verdict": "extension",
+    "why": "the names no contract has to declare -- `use_sim_time`, `start_type_description_service` and `qos_overrides.*` -- which are exactly the names play_launch exempts when it holds a launch file to the same contract. See `cpp:declared_param_node`."
+  },
+  "cpp:declared_param_node": {
+    "verdict": "extension",
+    "why": "phase-446 W6. The declaring node for a namespace + name in the generated `declared_params` table (`nros/declared_params.hpp`), or `nullptr` when the node's launch contract has no `params:`. rclcpp has no counterpart: its parameters are declared nowhere outside the code, so there is nothing to check a declaration against. Ours are declared in the launch contract because the parameter store is a fixed table sized from that contract at build time (no allocator to grow it, phase-446 W4), and `ComponentNode::declare_parameter` uses this lookup to refuse, at boot, a declaration the contract does not make. `constexpr`, so `declared_params.cpp` asserts its answers against a rendered fixture."
+  },
+  "cpp:declared_param_type": {
+    "verdict": "extension",
+    "why": "the declared type (the `rcl_interfaces/msg/ParameterType` code) of one parameter on a declaring node, or `DECLARED_PARAM_UNDECLARED`. See `cpp:declared_param_node`."
+  },
+  "cpp:declared_param_type_name": {
+    "verdict": "extension",
+    "why": "the contract's spelling of a type code, for the boot diagnostic that names the declared and the passed type. See `cpp:declared_param_node`."
+  },
+  "cpp:parameter_descriptor": {
+    "verdict": "extension",
+    "why": "A `ParameterDescriptor` with nothing set. C++14 has no designated initialisers, so `auto d = rclcpp::parameter_descriptor(); d.read_only = true;` is how a caller builds one field at a time — and this header must parse at C++14 (PX4 modules build `-std=gnu++14 -Werror`). Upstream has no correspondent because its descriptor is a generated message with a default constructor. phase-417 W4.a."
   },
   "cpp:parameter_map_from": {
     "verdict": "declined",
@@ -554,8 +683,24 @@
     "why": "the input to rclrs's initial-value discriminator: the set of candidate values a declaration may choose from (override, prior value, default). rclrs's parameter OVERRIDE machinery: a value supplied outside the code (`--ros-args -p`, a params file, a prior declaration) that the declaration then has to reconcile with. Overrides are resolved BEFORE the image runs here -- the launch resolver bakes them into the SystemModel and the generated entry seeds them into the executor store before any component constructor runs (RFC-0045, issue 0745) -- so by declare time there is no second value to reconcile against. Constraint: no runtime env, no argv."
   },
   "rust:DeclarationError": {
-    "verdict": "gap",
-    "why": "rclrs separates DECLARE-time failures (`AlreadyDeclared`, `NoValueAvailable`, `OverrideValueTypeMismatch`, `PriorValueTypeMismatch`, `InitialValueOutOfRange`, `InvalidRange`) from set-time ones. We have no declare-time error type at all: `ParameterServer::declare` and `declare_with_descriptor` return a bare `bool`, so a failed declaration cannot say whether the name was taken, the storage was full or the default was out of range -- and the C++ `ComponentNode` treats any of them as one boot-fatal flag. `ParameterError` (see `rust:ParameterValueError`) already has the variants; the declare path just does not return them. Phase 379 W3."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "why": "SHIPPED phase-417 W4.a. `nros_params::DeclarationError`, returned by `ParameterServer::try_declare` / `try_declare_with_descriptor` and exported from the `nros` facade. `declare` returned a bare `bool` for 'the name was taken', 'the table was full' and 'the default is outside its range' alike; the `bool` spellings now forward to these, so there is one declare path. The envelope: OUR VARIANT SET IS A SUBSET of rclrs's, and the difference is structural rather than an omission. Ours are `AlreadyDeclared`, `InvalidRange`, `InitialValueOutOfRange` (all three rclrs's), plus `StorageFull` and `NameTooLong`, which rclrs has no correspondent for because its store grows and ours is the storage the caller placed. rclrs's `NoValueAvailable`, `OverrideValueTypeMismatch` and `PriorValueTypeMismatch` are about a launch OVERRIDE arriving before the declaration and disagreeing with it; nano-ros seeds overrides through the same `ParameterServer::apply` a remote set uses, so a disagreeing override is a `SetParameterResult` on the write that carried it and cannot reach a declaration."
+  },
+  "rust:DeclarationError::*": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "Whatever the derive gives the enum. The type itself is `rust:DeclarationError`. phase-417 W4.a."
+  },
+  "rust:Executor::*parameter*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "The parameter surface C and C++ forward to, and the Rust half of stage 4. OURS-ONLY BY RECEIVER: rclrs puts these on `Node`, and our store belongs to the EXECUTOR because an image composes several nodes onto one executor and there is no allocator to give each node a table (phase-426 W1). So each verb carries an `_on` spelling naming the node and a bare one meaning the primary — the pair every other parameter verb on the executor already had. Every member forwards to `nros_params::ParameterServer` and holds no state; the wrappers forward HERE, which is what keeps all three languages on one store. phase-417 W4.a."
+  },
+  "rust:Executor::*params*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "See `rust:Executor::*parameter*` — the same family, for the members whose name is plural. phase-417 W4.a."
   },
   "rust:Executor::allow_undeclared_parameters": {
     "verdict": "divergence",
@@ -609,6 +754,16 @@
     "verdict": "divergence",
     "why": "the node-naming half of `rust:Executor::set_parameter`. phase-426 W1 -- the parameter STORE is one fixed table owned by the EXECUTOR, not a container per node: there is no allocator to make a second, so a node cannot own its own. Upstream's parameter methods are on the node object itself (`rclcpp::Node::declare_parameter`, rclrs's `Node::declare`), which is how upstream keys them; ours are on the executor and the node is an ARGUMENT, because an image composes several nodes onto one executor (RFC-0047) and the shared table has to be told whose parameter it is. The `_on(NodeId, ...)` spelling is the same disambiguation the entity builders already use (`node_mut(id)` / `_on(...)`, phase 104.C). What a user loses: a ported node writes `executor.declare_parameter_on(node_id, name, value)` where rclcpp writes `node->declare_parameter(name, value)`."
   },
+  "rust:FloatingPointRange*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "The floating-point half; see `rust:IntegerRange*`. phase-417 W4.a."
+  },
+  "rust:IntegerRange*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "The two halves of `ParameterRange`, exported from the `nros` facade since phase-417 W4.a. rclrs's `ParameterRange<T>` is ONE generic type over `i64` and `f64`; ours is an enum over two concrete structs, because `nros-params` is `no_std` and a monomorphised range inside a `#[repr]`-stable descriptor slot would multiply the slot by the number of instantiations. `new` / `is_valid` / `contains` are the predicates the store runs on every declare and every set (min, max AND step -- step since issue 1150), so a range means the same thing to a local set and to a remote `ros2 param set`. The aggregate rclrs builds out of them is `rust:ParameterRanges`."
+  },
   "rust:MandatoryParameter::set": {
     "verdict": "divergence",
     "why": "ours is `set(&mut self, T)`, rclrs's is `set(&self, U)`. rclrs can take `&self` because the value lives behind the node's `Arc<Mutex<...>>`, so a handle is a shared reference into shared state; ours holds `&'a mut ParameterServer` directly. Constraint: no allocator and no `Arc` -- with one executor per RTOS task (RFC-0002) the store is owned, not shared, so mutation is an exclusive borrow the compiler checks rather than a lock taken at runtime. The value-type difference is the same distinction: ours takes `T` exactly, rclrs takes any `U: Into<T>`."
@@ -618,8 +773,22 @@
     "why": "rclrs declares a parameter on a live `Arc<Node>` and hands back a typed handle. Ours is `DeclaredNode::declare_parameter_for_name[_with_default]`, called during `register`. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time."
   },
   "rust:Node::use_undeclared_parameters": {
-    "verdict": "gap",
-    "why": "rclrs's escape hatch: a handle that reads and writes parameters that were never declared. We HAVE the type -- `nros_params::typed::UndeclaredParameters`, with `get_bool`/`get_integer`/`get_double`/`get_string` -- and no way to reach it. This is not a missing capability, it is an unexported one: `packages/api/nros/src/lib.rs` re-exports ten `nros_params` items and stops, so a user of the `nros` facade cannot name it. Phase 379 W3. See `rust:Parameters`."
+    "verdict": "divergence",
+    "disposition": "absent",
+    "provides": [
+      "nros::Executor::use_undeclared_parameters",
+      "nros::Executor::use_undeclared_parameters_on"
+    ],
+    "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and the capability SHIPS: `Executor::use_undeclared_parameters[_on]` hands out the handle, which now writes as well as reads. The RECEIVER is what diverges and it is structural — the store belongs to the EXECUTOR, because an image composes several nodes onto one executor and there is no allocator to give each node a table (phase-426 W1). rclrs's `Node` owns its own. So the `_on` spelling names the node and the bare one means the primary, which is the same pair every other parameter verb on the executor carries. `absent`, because the name does not exist on a node type."
+  },
+  "rust:OnSetParameterFn": {
+    "verdict": "divergence",
+    "why": "An accept/reject hook. rclrs takes a closure; this crate is `no_std` with no allocator so there is nothing to box a `FnMut` into, and this is a `fn` pointer plus an `OnSetContext`. `false` REFUSES the write, which is rclcpp's contract and the one C's legacy `nros_parameter_server_set_callback` already had on the wrong store. phase-417 W4.a."
+  },
+  "rust:OnSetParameterHandle*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "The token `remove_on_set_parameters_callback` takes. rclcpp returns an owning `ParameterCallbackHandle` shared_ptr whose destruction unregisters; with no allocator there is nothing to own, so this is an opaque `u16` index into the bounded registry and unregistering is explicit. `raw` / `from_raw` exist for the FFI that must hand it to C. phase-417 W4.a."
   },
   "rust:OptionalParameter::set": {
     "verdict": "divergence",
@@ -633,10 +802,6 @@
   "rust:Parameter": {
     "verdict": "extension",
     "why": "the stored record -- name plus `ParameterValue` -- returned by `ParameterServer::iter()` and `get_parameter()`, and what the `~/list_parameters` / `~/describe_parameters` handlers walk. rclrs never materialises one because its store is a map behind the node handle. Ours must, because the handlers iterate the static array without allocating an intermediate collection. C has the same record as `nros_parameter_t` and C++ has none. This row covers `Parameter::new`/`bool`/`integer`/`double`/`string`/`name`/`param_type`, which are constructors and accessors over those two fields."
-  },
-  "rust:ParameterBuilder::constraints": {
-    "verdict": "gap",
-    "why": "the free-text `additional_constraints` field of `rcl_interfaces/msg/ParameterDescriptor`, which `ros2 param describe` prints. Our `ParameterDescriptor` carries `description` and not this one, and `to_rcl_descriptor` therefore always sends it empty. rclc has the same field on `rclc_add_parameter_description`; see `c:add_parameter_description`."
   },
   "rust:ParameterBuilder::default_from_iter": {
     "verdict": "declined",
@@ -724,13 +889,20 @@
     "verdict": "divergence",
     "why": "rclrs's per-parameter options bundle (description, constraints, ranges, override handling), built and passed at declare time. Ours is `ParameterDescriptor`, stored INLINE beside the parameter in the server's fixed array rather than passed as an owned bundle -- no allocator, so the description is a `heapless::String` and the range an inline enum. See `rust:ParameterDescriptor`."
   },
-  "rust:ParameterRange": {
-    "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE with our own facade, not with rclrs: `nros_params` HAS `ParameterRange` (an enum over `IntegerRange`/`FloatingPointRange`, both with min/max/step, both enforced by `ParameterDescriptor::validate_range` -> `ParameterRange::contains` on every set -- step INCLUDED since issue 1150, fixed 2026-09-06; before that this parenthetical asserted an enforcement that did not exist, the issue-1022 class), and `packages/api/nros/src/lib.rs` does not re-export any of the three. So a user of the `nros` facade can build a range only through the builder's `integer_range(min,max,step)` / `float_range(min,max,step)` scalars and can never name the type. This is not a missing capability, it is an unexported one: `packages/api/nros/src/lib.rs` re-exports ten `nros_params` items and stops, so a user of the `nros` facade cannot name it. Phase 379 W3."
+  "rust:ParameterRange::*": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "`is_valid` and `contains` — the predicates `ParameterServer` runs on every declare and every set. rclrs's `ParameterRange` carries the bounds and leaves the checking to the node; ours is where min, max AND step are enforced (step included since issue 1150), so the range means the same thing to a local set and to a remote `ros2 param set`. phase-417 W4.a. (the type itself correlates and needs no row; these two methods are ours)."
   },
   "rust:ParameterRanges": {
-    "verdict": "gap",
-    "why": "rclrs's aggregate of every range on one parameter. Ours holds a single `Option<ParameterRange>` per descriptor, which is the same thing for the one-range case and cannot express two. See `rust:ParameterRange`."
+    "verdict": "declined",
+    "disposition": "absent",
+    "provides": [
+      "nros::ParameterRange",
+      "nros::IntegerRange",
+      "nros::FloatingPointRange"
+    ],
+    "why": "RE-VERDICTED phase-417 W4.a. was `gap`. rclrs's aggregate of every range on one parameter. Ours is a single `Option<ParameterRange>` on the descriptor, and for a parameter that is not a shortfall: `ParameterRange` is an enum over `IntegerRange` / `FloatingPointRange`, a parameter has ONE type, and `rcl_interfaces/msg/ParameterDescriptor` carries the two range sequences precisely so that at most one is non-empty — which is exactly what `to_rcl_descriptor` writes. The aggregate would name a state the wire format cannot carry. All three types are exported from the `nros` facade since W4.a, which is the half of the old row that WAS a defect."
   },
   "rust:ParameterServer": {
     "verdict": "divergence",
@@ -798,8 +970,13 @@
     }
   },
   "rust:Parameters": {
-    "verdict": "gap",
-    "why": "the handle `Node::use_undeclared_parameters` returns, with `get`/`set` covered by this row. Ours is named `UndeclaredParameters` and is not exported. This is not a missing capability, it is an unexported one: `packages/api/nros/src/lib.rs` re-exports ten `nros_params` items and stops, so a user of the `nros` facade cannot name it. Phase 379 W3. Ours is also read-only where rclrs's has `set`."
+    "verdict": "rename",
+    "disposition": "adopt-bounded",
+    "provides": [
+      "nros::UndeclaredParameters",
+      "nros::Executor::use_undeclared_parameters"
+    ],
+    "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and two of its three complaints are closed: the type IS exported from the `nros` facade now, and it reads AND WRITES (`set_bool` / `set_integer` / `set_double` / `set_string`, through `ParameterServer::set_or_declare` — not `apply`, because `allow_undeclared_parameters` governs what a REMOTE set may create and a caller who reached for this type has opted in by naming it, which is rclrs's split too). What remains is the NAME: rclrs calls it `Parameters`, ours is `UndeclaredParameters`. `rename` and not `divergence` because no platform constraint picks either spelling. The envelope: a ported rclrs file rarely NAMES the type — it binds what `use_undeclared_parameters()` returns — so the drop-in cost is a `use` line. Renaming it inside `nros::`, where `Parameter` is already the store's value type, is a stage-6 decision rather than this item's."
   },
   "rust:QoSProfile::parameters_default": {
     "verdict": "rename",
@@ -813,8 +990,12 @@
     }
   },
   "rust:RmwParameterConversionError": {
-    "verdict": "gap",
-    "why": "the failure of turning an `rcl_interfaces` parameter value into a native one. We have it -- `nros_node::parameter_services::ValueConversionError`, with a `reason()` the `~/set_parameters` handler puts into the `SetParametersResult` -- and the `nros` facade does not export it, so a user cannot match on why a wire value was rejected. This is not a missing capability, it is an unexported one: `packages/api/nros/src/lib.rs` re-exports ten `nros_params` items and stops, so a user of the `nros` facade cannot name it. Phase 379 W3."
+    "verdict": "rename",
+    "disposition": "adopt-bounded",
+    "provides": [
+      "nros::ValueConversionError"
+    ],
+    "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and the complaint it was filed under is closed: the `nros` facade exports the type now, so a user can match on WHY a wire value was rejected rather than reading the sentence `reason()` put in the `SetParametersResult`. What remains is the NAME — rclrs's `RmwParameterConversionError` against our `ValueConversionError`, which is where the conversion actually happens (`nros-node`'s `parameter_services`, between an `rcl_interfaces` value and the store's). `rename` because no platform constraint picks either spelling; the export is what a porting user needed."
   },
   "rust:SetParameterResult": {
     "verdict": "rename",
@@ -826,25 +1007,19 @@
       "actual_change": "REMOVAL — collapses to Result<(), _>, takes is_success() and a From impl with it. Public Rust API break"
     }
   },
+  "rust:UndeclaredParameters*": {
+    "verdict": "rename",
+    "bucket": "ours-only",
+    "why": "Our spelling of rclrs's `Parameters` — the handle that reads and writes parameters a node never declared. See `rust:Parameters` for the naming half; the capability, the facade export and the WRITE half all ship as of phase-417 W4.a. The setters go through `ParameterServer::set_or_declare` rather than `apply`, because `allow_undeclared_parameters` governs what a REMOTE set may create and a caller who reached for this type has opted in by naming it — which is rclrs's split too."
+  },
+  "rust:ValueConversionError*": {
+    "verdict": "rename",
+    "bucket": "ours-only",
+    "why": "Our spelling of rclrs's `RmwParameterConversionError`, exported from the `nros` facade since phase-417 W4.a. -- see `rust:RmwParameterConversionError` for the naming half. `reason()` is the sentence the `~/set_parameters` handler puts into the `SetParametersResult`, so a local caller and a remote one read the same words."
+  },
   "rust:default_initial_value_discriminator": {
     "verdict": "declined",
     "disposition": "absent",
     "why": "the default choice function over `rust:AvailableValues`. rclrs's parameter OVERRIDE machinery: a value supplied outside the code (`--ros-args -p`, a params file, a prior declaration) that the declaration then has to reconcile with. Overrides are resolved BEFORE the image runs here -- the launch resolver bakes them into the SystemModel and the generated entry seeds them into the executor store before any component constructor runs (RFC-0045, issue 0745) -- so by declare time there is no second value to reconcile against. Constraint: no runtime env, no argv."
-  },
-  "cpp:declared_param_node": {
-    "verdict": "extension",
-    "why": "phase-446 W6. The declaring node for a namespace + name in the generated `declared_params` table (`nros/declared_params.hpp`), or `nullptr` when the node's launch contract has no `params:`. rclcpp has no counterpart: its parameters are declared nowhere outside the code, so there is nothing to check a declaration against. Ours are declared in the launch contract because the parameter store is a fixed table sized from that contract at build time (no allocator to grow it, phase-446 W4), and `ComponentNode::declare_parameter` uses this lookup to refuse, at boot, a declaration the contract does not make. `constexpr`, so `declared_params.cpp` asserts its answers against a rendered fixture."
-  },
-  "cpp:declared_param_type": {
-    "verdict": "extension",
-    "why": "the declared type (the `rcl_interfaces/msg/ParameterType` code) of one parameter on a declaring node, or `DECLARED_PARAM_UNDECLARED`. See `cpp:declared_param_node`."
-  },
-  "cpp:declared_param_exempt": {
-    "verdict": "extension",
-    "why": "the names no contract has to declare -- `use_sim_time`, `start_type_description_service` and `qos_overrides.*` -- which are exactly the names play_launch exempts when it holds a launch file to the same contract. See `cpp:declared_param_node`."
-  },
-  "cpp:declared_param_type_name": {
-    "verdict": "extension",
-    "why": "the contract's spelling of a type code, for the boot diagnostic that names the declared and the passed type. See `cpp:declared_param_node`."
   }
 }

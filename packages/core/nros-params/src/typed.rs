@@ -105,6 +105,10 @@ pub struct ParameterBuilder<'a, 's, T: ParameterVariant> {
     default: Option<T>,
     /// Human-readable description
     description: Option<&'a str>,
+    /// phase-417 W4.a — the descriptor's other free text,
+    /// `rcl_interfaces/msg/ParameterDescriptor::additional_constraints`, which
+    /// `ros2 param describe` prints.
+    constraints: Option<&'a str>,
     /// Range constraints
     range: Option<ParameterRange>,
     /// Whether the parameter is read-only
@@ -122,6 +126,7 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
             name,
             default: None,
             description: None,
+            constraints: None,
             range: None,
             read_only: false,
             _phantom: core::marker::PhantomData,
@@ -137,6 +142,22 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
     /// Set a human-readable description for the parameter
     pub fn description(mut self, desc: &'a str) -> Self {
         self.description = Some(desc);
+        self
+    }
+
+    /// Set the free-text `additional_constraints` — rclrs's
+    /// `ParameterBuilder::constraints`, and rclc's fourth argument to
+    /// `rclc_add_parameter_description` (phase-417 W4.a).
+    ///
+    /// Text longer than `NROS_MAX_PARAM_CONSTRAINTS_LEN` — whose default is
+    /// **0**, so an image pays for this field only when it asks for it — is
+    /// truncated at a character boundary and REPORTED once through
+    /// [`ParameterServer::take_truncated_descriptions`], never dropped in
+    /// silence.
+    ///
+    /// [`ParameterServer::take_truncated_descriptions`]: crate::ParameterServer::take_truncated_descriptions
+    pub fn constraints(mut self, text: &'a str) -> Self {
+        self.constraints = Some(text);
         self
     }
 
@@ -183,6 +204,33 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
         Ok(self)
     }
 
+    /// The descriptor the three terminal verbs declare with — ONE
+    /// construction (phase-417 W4.a).
+    ///
+    /// It was written out three times, identically but for the `read_only`
+    /// line, which is why `additional_constraints` would otherwise have needed
+    /// adding in three places and reached whichever two somebody remembered.
+    /// `read_only` stays at the call site because that is the one line the
+    /// three genuinely disagree about.
+    ///
+    /// phase-446 F2 -- a too-long description is truncated and reported, never
+    /// a reason to refuse the declaration: the contract derives the string
+    /// capacity to 0 for a scalar-only image, and this used to fail every
+    /// `.description(..)` there with `StringConversion`. The same holds for
+    /// the constraints text, whose capacity DEFAULTS to 0.
+    fn build_descriptor(&self) -> Result<ParameterDescriptor, ParameterError> {
+        let mut descriptor = ParameterDescriptor::new(self.name, T::parameter_type())
+            .ok_or(ParameterError::StorageFull)?;
+        if let Some(desc) = self.description {
+            descriptor.set_description(desc);
+        }
+        if let Some(text) = self.constraints {
+            descriptor.set_additional_constraints(text);
+        }
+        descriptor.range = self.range.unwrap_or_default();
+        Ok(descriptor)
+    }
+
     /// Declare a read-only parameter
     ///
     /// Read-only parameters cannot be changed after declaration.
@@ -195,17 +243,8 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
             .ok_or(ParameterError::NotFound)?
             .clone();
 
-        let mut descriptor = ParameterDescriptor::new(self.name, T::parameter_type())
-            .ok_or(ParameterError::StorageFull)?;
-        // phase-446 F2 -- a too-long description is truncated and reported,
-        // never a reason to refuse the declaration: the contract derives the
-        // string capacity to 0 for a scalar-only image, and this used to fail
-        // every `.description(..)` there with `StringConversion`.
-        if let Some(desc) = self.description {
-            descriptor.set_description(desc);
-        }
+        let mut descriptor = self.build_descriptor()?;
         descriptor.read_only = true;
-        descriptor.range = self.range.unwrap_or_default();
 
         let param_value = default_value.to_parameter_value();
 
@@ -219,17 +258,8 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
     ///
     /// If no default value is provided, it must be set externally before use.
     pub fn mandatory(self) -> Result<MandatoryParameter<'a, 's, T>, ParameterError> {
-        let mut descriptor = ParameterDescriptor::new(self.name, T::parameter_type())
-            .ok_or(ParameterError::StorageFull)?;
-        // phase-446 F2 -- a too-long description is truncated and reported,
-        // never a reason to refuse the declaration: the contract derives the
-        // string capacity to 0 for a scalar-only image, and this used to fail
-        // every `.description(..)` there with `StringConversion`.
-        if let Some(desc) = self.description {
-            descriptor.set_description(desc);
-        }
+        let mut descriptor = self.build_descriptor()?;
         descriptor.read_only = self.read_only;
-        descriptor.range = self.range.unwrap_or_default();
 
         let default_value = self.default.map(|v| v.to_parameter_value());
 
@@ -241,17 +271,8 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
 
     /// Declare an optional parameter
     pub fn optional(self) -> Result<OptionalParameter<'a, 's, T>, ParameterError> {
-        let mut descriptor = ParameterDescriptor::new(self.name, T::parameter_type())
-            .ok_or(ParameterError::StorageFull)?;
-        // phase-446 F2 -- a too-long description is truncated and reported,
-        // never a reason to refuse the declaration: the contract derives the
-        // string capacity to 0 for a scalar-only image, and this used to fail
-        // every `.description(..)` there with `StringConversion`.
-        if let Some(desc) = self.description {
-            descriptor.set_description(desc);
-        }
+        let mut descriptor = self.build_descriptor()?;
         descriptor.read_only = self.read_only;
-        descriptor.range = self.range.unwrap_or_default();
 
         let default_value = self.default.map(|v| v.to_parameter_value());
 
@@ -612,6 +633,60 @@ mod tests {
             .expect("Failed to declare parameter");
 
         assert_eq!(param.get(), 0.5);
+    }
+
+    /// phase-417 W4.a -- the builder's `constraints` reaches the stored
+    /// descriptor through the ONE `build_descriptor`, from every terminal
+    /// verb, and a text that does not fit the (default 0) capacity is
+    /// REPORTED rather than dropped in silence.
+    // The comparison and the `min` below read as "always true" to clippy on a
+    // build that leaves `NROS_MAX_PARAM_CONSTRAINTS_LEN` at its default of 0 --
+    // and that is the point: the constant is a KNOB, the test is written
+    // against it so it holds at 0, at 64 and at 256, and a version specialised
+    // to whichever value this build resolved would read as coverage on the
+    // other two.
+    #[allow(clippy::absurd_extreme_comparisons, clippy::unnecessary_min_or_max)]
+    #[test]
+    fn builder_constraints_reach_the_descriptor_from_every_terminal() {
+        let text = "positive, hz";
+        let fits = text.len() <= crate::MAX_PARAM_CONSTRAINTS_LEN;
+        let stored = &text[..crate::MAX_PARAM_CONSTRAINTS_LEN.min(text.len())];
+
+        for which in 0..3u8 {
+            let mut storage: ParameterStorage = ParameterStorage::new();
+            let mut server = ParameterServer::new_in(storage.as_table());
+            {
+                let b = ParameterBuilder::<f64>::new(&mut server, NODE, "rate")
+                    .default(1.0)
+                    .description("publish rate")
+                    .constraints(text);
+                match which {
+                    0 => {
+                        b.read_only().expect("read_only");
+                    }
+                    1 => {
+                        b.mandatory().expect("mandatory");
+                    }
+                    _ => {
+                        b.optional().expect("optional");
+                    }
+                }
+            }
+            let desc = server.get_descriptor(NODE, "rate").expect("descriptor");
+            assert_eq!(desc.description.as_str(), "publish rate");
+            assert_eq!(
+                desc.additional_constraints.as_str(),
+                stored,
+                "terminal {which} lost the constraints text"
+            );
+            let mut reported = 0usize;
+            server.take_truncated_descriptions(|_, _| reported += 1);
+            assert_eq!(
+                reported,
+                usize::from(!fits),
+                "terminal {which}: a constraints string that did not fit went unreported"
+            );
+        }
     }
 
     #[test]
