@@ -1,7 +1,7 @@
 # Phase 455 — a saturated zenoh queryable says so, and the rate that follows is measurable
 
-**Status (2026-09-12). W1, W2, W2.b and W3 LANDED; W4 is the remainder and is
-BLOCKED by issue 1341.** Closes phase-444 W2's acceptance by a different
+**Status (2026-09-13). W1, W2, W2.b and W3 LANDED. W5 (new) is in flight; it
+serves TRANSIENT_LOCAL and so unblocks W4, the remainder.** Closes phase-444 W2's acceptance by a different
 route than phase-444 assumed: not by re-running the hardware measurement, but by
 giving the failure an observable so it stops needing one. Implements the
 observability half of RFC-0089's rule — a failure a caller cannot see is a
@@ -219,6 +219,61 @@ path, a correction `interop.rs:330-335` already had to make once about this
 platform.
 
 **Acceptance.** The cell runs by a focused recipe and produces a verdict.
+
+### W5 [rmw-zenoh] — serve TRANSIENT_LOCAL, because the profile is not ours to decline
+
+**Unblocks W4, and it is a capability rather than a repair.** Issue 1341 reads as
+a regression: `b0ea5a04b` (phase-428 W9) made `shim/qos.rs::admit` refuse
+`TRANSIENT_LOCAL`, the action `/status` publisher asks for exactly that, and
+every zenoh action server now exits 1 at node declaration. But the mask ALREADY
+withheld `TRANSIENT_LOCAL` before that commit, so an action server asked for TL,
+got VOLATILE and advertised VOLATILE with nothing saying so. **W9 did not break
+zenoh actions; it revealed that zenoh never served `/status`'s contract.** The
+startup failure is new, the interop defect is old. That is also why
+`native-action-rust-zenoh-n2r` passes and `-r2n` fails: as CLIENT we create no
+`/status` publisher and never reach the gap.
+
+**Granting VOLATILE is refused on functional grounds, not purity.**
+`rcl_action_qos_profile_status_default` is `KEEP_LAST(1)/RELIABLE/TRANSIENT_LOCAL`
+precisely so a client that joins late, or is slow, still learns a goal's terminal
+state. A VOLATILE `/status` means a client attaching after the goal terminates
+never sees the final status and waits for a result already published — which is
+the symptom family issue 0902 is about. The option would reintroduce by design
+the defect W1's counter exists to detect.
+
+**The profile is not a caller's request we may decline.** Refusing a USER's
+unsupported QoS is correct and is what RFC-0089 asks for; `QOS_PROFILE_ACTION_
+STATUS_DEFAULT` mirrors rcl's and is the action protocol's wire contract. W9's
+rule — advertise only what you serve — stays; its refusal was aimed at the wrong
+population.
+
+**The mechanism is the one the shim's own comment names: query-on-match.** The
+publisher retains its last `KEEP_LAST(n)` samples and declares a queryable on its
+keyexpr; a late-joining subscriber `get`s it on match, which is how
+`rmw_zenoh_cpp` implements TL. At the status profile that is ONE retained message
+per action server, not a history cache. Only the PUBLISHER half is needed here —
+a stock client queries us. The subscriber half (we query a stock TL publisher on
+match, for latched topics) is a real capability and is NOT in this item.
+
+**The queryable budget is part of the work, not a follow-up.** A service server
+IS a queryable; CLAUDE.md records `[param_services]` (6) + `[lifecycle]` (5)
+claiming eleven against `ZPICO_MAX_QUERYABLES` = 8 embedded (issue 0460). One
+more per TL publisher must be a BUILD-time error naming the knob, never a runtime
+`-80`.
+
+**The sweep is the other half, and W9 is why.** That commit stated "a no-op for
+every default caller (nros-node passes `services_default` at all ten
+service/action sites)" — true of the ten SERVICE sites, false of the two
+PUBLISHER sites beside them. Enumerate every TRANSIENT_LOCAL user in the tree and
+say for each whether it is a publisher, a subscriber or a service; the parameters
+preset is transient-local too.
+
+**Acceptance.** A zenoh action server starts; a stock `rclcpp` action client that
+attaches AFTER a goal terminates still receives the terminal status sample, run
+live against a real peer; the advertised durability in the graph token is the one
+served; a three-TL-publisher image on the default ceiling fails the BUILD naming
+the knob. `native-action-rust-zenoh-r2n`'s recorded `fail` is re-run and
+re-recorded.
 
 ## What this phase does NOT do
 
