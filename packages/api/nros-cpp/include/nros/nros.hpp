@@ -1096,7 +1096,7 @@ inline Result Node::undeclare_parameter(const char* name) {
 }
 
 inline ParameterType Node::get_parameter_type(const char* name) const {
-    int code = 0;
+    int32_t code = 0;
     if (!::nros::detail::node_param_get_type(this->ffi_handle(), name, code).ok()) {
         return PARAMETER_NOT_SET;
     }
@@ -1127,7 +1127,7 @@ inline Result Node::describe_parameter(const char* name, ParameterDescriptor& ou
         description = text;
         constraints = text + half;
     }
-    int type = 0;
+    int32_t type = 0;
     Result r = ::nros::detail::node_param_describe(this->ffi_handle(), name, description, half,
                                                    constraints, half, &out.read_only, &type);
     if (r.raw() == NROS_RET_NOT_FOUND) {
