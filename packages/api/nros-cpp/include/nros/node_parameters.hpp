@@ -383,14 +383,14 @@ inline Result node_param_undeclare(const nros_cpp_node_t* node, const char* name
     return Result(nros_cpp_node_undeclare_param(node, name));
 }
 
-inline Result node_param_get_type(const nros_cpp_node_t* node, const char* name, int& out) {
+inline Result node_param_get_type(const nros_cpp_node_t* node, const char* name, int32_t& out) {
     return Result(nros_cpp_node_get_param_type(node, name, &out));
 }
 
 inline Result node_param_describe(const nros_cpp_node_t* node, const char* name,
                                   char* out_description, ::size_t description_len,
                                   char* out_constraints, ::size_t constraints_len,
-                                  bool* out_read_only, int* out_type) {
+                                  bool* out_read_only, int32_t* out_type) {
     return Result(nros_cpp_node_describe_param(node, name, out_description, description_len,
                                                out_constraints, constraints_len, out_read_only,
                                                out_type));
