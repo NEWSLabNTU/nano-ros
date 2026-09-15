@@ -93,17 +93,16 @@ impl log::Log for UartLogger {
 
 static UART_LOGGER: UartLogger = UartLogger;
 
-/// Install the UART `log` sink, routing records through `B::println`. Idempotent:
-/// re-arms the print fn each call and ignores a repeated `set_logger` (the second
-/// returns `Err`). Safe to call once per boot before the spin loop.
-
-/// phase-436 W7 — ThreadX's park, and the tick period that is its real floor.
-///
-/// ThreadX has no sub-tick wait: `tx_semaphore_get` counts ticks and
-/// `TX_TIMER_TICKS_PER_SECOND` is 100 on both shipped boards, so the floor is
-/// 10 ms — an order of magnitude coarser than the millisecond the ABI
-/// signature suggests. Installing this does not gain resolution; it makes the
-/// executor stop CLAIMING resolution it never had (issue 1242).
+// phase-436 W7 — ThreadX's park, and the tick period that is its real floor.
+//
+// ThreadX has no sub-tick wait: `tx_semaphore_get` counts ticks and
+// `TX_TIMER_TICKS_PER_SECOND` is 100 on both shipped boards, so the floor is
+// 10 ms — an order of magnitude coarser than the millisecond the ABI
+// signature suggests. Installing this does not gain resolution; it makes the
+// executor stop CLAIMING resolution it never had (issue 1242).
+//
+// `//` not `///`: rustdoc does not generate documentation for an extern block,
+// so a doc comment here documents nothing and `unused_doc_comments` says so.
 unsafe extern "C" {
     fn nros_platform_wake_park_until_us(w: *mut core::ffi::c_void, deadline_us: u64) -> i8;
     fn nros_platform_wake_park_granularity_us() -> u64;
@@ -120,6 +119,9 @@ fn install_park(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime) {
     );
 }
 
+/// Install the UART `log` sink, routing records through `B::println`. Idempotent:
+/// re-arms the print fn each call and ignores a repeated `set_logger` (the second
+/// returns `Err`). Safe to call once per boot before the spin loop.
 fn install_uart_logger<B: BoardPrint>() {
     fn print_via_board<B: BoardPrint>(args: core::fmt::Arguments<'_>) {
         B::println(args);
@@ -203,8 +205,6 @@ unsafe extern "C" {
     #[link_name = "_tx_initialize_kernel_enter"]
     fn tx_kernel_enter();
 
-    #[link_name = "_tx_thread_sleep"]
-    fn tx_thread_sleep(ticks: u32);
 }
 
 // ============================================================================
@@ -337,7 +337,7 @@ where
     let time_slice_us = tier.time_slice_us.unwrap_or(0) as core::ffi::c_ulong;
     let rc = unsafe {
         nros_threadx_create_task(
-            b"nros_tier\0".as_ptr(),
+            c"nros_tier".as_ptr().cast(),
             tier_task_entry::<B, C, F, E>,
             ptr as *mut c_void,
             stack_bytes,

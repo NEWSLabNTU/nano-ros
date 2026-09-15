@@ -1680,6 +1680,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-board-nuttx"
+version = "0.4.0"
+dependencies = [
+ "log",
+ "nros",
+ "nros-board-common",
+ "nros-log",
+ "nros-platform",
+ "nros-platform-cffi",
+ "nros-rmw-zenoh",
+]
+
+[[package]]
+name = "nros-board-threadx"
+version = "0.4.0"
+dependencies = [
+ "cc",
+ "log",
+ "nros",
+ "nros-board-common",
+ "nros-board-threadx-port-riscv64",
+ "nros-build-paths",
+ "nros-cc-flags",
+ "nros-log",
+ "nros-platform",
+ "nros-platform-cffi",
+ "nros-rmw-zenoh",
+]
+
+[[package]]
 name = "nros-board-threadx-port-riscv64"
 version = "0.5.0"
 
