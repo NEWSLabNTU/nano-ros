@@ -74,3 +74,34 @@ human reading run ids.
    gate that runs nowhere, one layer over: a lane whose job never starts is a
    lane with no signal capacity, and it currently looks identical to a lane that
    is merely slow.
+
+## Measured a day later: the job is cancelled at 24h, and the lane reports GREEN
+
+2026-09-15 06:37 UTC, exactly twenty-four hours after it was created, GitHub
+cancelled the oldest of the three:
+
+```
+run-matrix 34814226310 → conclusion: cancelled
+  job 103881434950 `tier 2 (1-wise matrix)`
+    started  2026-09-14T06:37:05Z
+    completed 2026-09-15T06:37:06Z   (cancelled, never claimed)
+```
+
+So the wait has an upper bound — GitHub's 24-hour queue limit — and what the
+lane records at the end of it is not a red. The run's follow-up job is
+
+```
+job 104279258259 `tier 2 — DID NOT START` … completed/SUCCESS
+  ./scripts/ci/report-interlock-coverage.sh "tier 2 (1-wise matrix)" "cancelled" "true" ""
+  tier 2 (1-wise matrix): cancelled.
+```
+
+It prints the word `cancelled` and **exits zero**, so the stage-reporting job is
+green over a lane that produced nothing at all. That is this issue's second half
+made concrete: the absence is not merely quiet, it is affirmatively reported as
+a passing job, and only the run-level `cancelled` conclusion says otherwise.
+
+Meanwhile the backlog kept growing — at 06:35 UTC four tier-2 jobs were waiting
+(nightly 34808815075 at 25h22m before its own cancellation, nightly 34817434819,
+nightly 34931796422, run-matrix 34937177508), so a second night of schedules
+queued behind a runner that never came back.
