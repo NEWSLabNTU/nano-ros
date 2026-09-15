@@ -209,3 +209,49 @@ override can reach one. The sweep command:
 ```sh
 git grep -n -E "TRANSIENT_LOCAL|TransientLocal|transient_local" -- packages examples scripts config
 ```
+
+## After the fix, on an EMBEDDED image, the cache queryable cannot be declared
+
+The refusal is gone; what stands in its place is the next step of the same
+sequence. Nightly **34940586021** (schedule, 2026-09-15T07:13), job
+**104288439509** (`nuttx`), cells
+`test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C` and
+`…lang_3_Lang__Cpp` both fail as
+
+```
+nuttx E2E failed — readiness pattern 'Waiting for action goals' not observed.
+```
+
+and the server's own transcript says why it never got there:
+
+```
+[ERROR] nros: [0.054000] qos: publisher
+  '0/fibonacci/_action/status/action_msgs::msg::dds_::GoalStatusArray_/TypeHashNotSupported'
+  asked for TRANSIENT_LOCAL and its cache queryable could not be declared (Full…
+[nros] examples/qemu-armv7a-nuttx/c/action-server/src/main.c:236
+  nros_executor_add_action_server(&app.executor, &app.action_server) -> -1
+```
+
+So the publisher is now SERVED rather than refused — this issue's own defect is
+fixed, as recorded above — and the cache queryable it therefore declares is what
+the image cannot provide. `nros_executor_add_action_server` returns `-1` and the
+server exits before printing its readiness line.
+
+**The asymmetry is measured, not inferred.** In that same job the RUST action
+cell passes: `9 tests run: 6 passed, 3 failed` — the three reds are action C,
+action C++ and the pubsub C cell that issue 1363 covers. Rust action, and all
+three service cells, are green.
+
+**What this points at, and what is not yet measured.** A transient-local
+publisher's cache is a queryable under `@adv/pub` (this issue's own note above),
+and on an embedded image the queryable table is a small static array —
+`ZPICO_MAX_QUERYABLES` is 8, against which `[param_services]` (6) and
+`[lifecycle]` (5) already claim eleven slots before the app declares anything
+(issue 0460). That makes pool exhaustion the obvious reading of `(Full…`, and
+the next thing to measure rather than a conclusion: nobody has yet counted the
+declared queryables in this image.
+
+**A second, smaller defect in the same line:** the message is cut mid-word at
+`(Full…`, so whatever the shim's reason code says after it never reaches the
+log. A diagnostic that truncates exactly where the cause is named costs the
+reader the one fact they came for.
