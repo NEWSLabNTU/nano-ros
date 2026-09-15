@@ -105,3 +105,55 @@ Meanwhile the backlog kept growing — at 06:35 UTC four tier-2 jobs were waitin
 (nightly 34808815075 at 25h22m before its own cancellation, nightly 34817434819,
 nightly 34931796422, run-matrix 34937177508), so a second night of schedules
 queued behind a runner that never came back.
+
+## It is not only tier 2 — the merge queue's own L3 interlock wants the same machine
+
+Measured 2026-09-15 12:10 UTC. `queue.yml:106` declares
+
+```yaml
+  runs-on: [self-hosted, linux, nros-sdk-zephyr, nros-big]
+```
+
+for `L3 (cross build + link)` — a subset of the tier-2 label set (it does not ask
+for `nros-qemu`), so it is the same absent machine, and the merge queue's cross
+build + link lane has been unclaimed for as long as tier 2 has.
+
+The last L3 that actually ran:
+
+```
+merge_group queue 34748330909 (pr-1038)
+  L3 (cross build + link)   success   started 2026-09-13T08:41:57Z  done 08:57:39Z
+```
+
+Every `queue` run on a merge_group since then has produced no L3 verdict:
+
+| run | ref | outcome |
+| --- | --- | --- |
+| 34823842726 | pr-1045 | cancelled, no jobs recorded |
+| 34824289359 | pr-1044 | cancelled, no jobs recorded |
+| 34940255543 | pr-1046 | cancelled, no jobs recorded |
+| 34945557581 | pr-1047 | still `queued`; its L3 unclaimed since 2026-09-15T10:04:45Z |
+
+**Why this hid behind normal behaviour.** A cancelled `queue` run is the ORDINARY
+outcome here, not a symptom: the merge queue's one required context is the
+aggregator `CI` from `gate.yml`, so a batch merges as soon as that is green and
+GitHub deletes the `gh-readonly-queue/...` ref, cancelling whatever else was
+still running against it. On 2026-09-13 that produced a mix — four L3 runs
+completed, seven were cancelled. Since the runner left there is no mix: L3 has
+started zero times, and each run reaches the same `cancelled` it would have
+reached on a busy day. The state that says "the interlock never ran" and the
+state that says "the interlock ran and the merge beat it" look identical in
+`gh run list`.
+
+The consequence is the same one this issue makes for tier 2, one lane over:
+every batch merged since 2026-09-13 08:57 shipped with no cross build + link
+verification at all. That is exactly the class of break no hosted lane can see —
+the `int32_t` vs `int` out-param mismatch fixed in phase-417 W4.a (#1309)
+compiles clean wherever `int32_t` IS `int`, and is a hard error under
+arm-none-eabi where it is `long int`. Whether L3 as configured would have caught
+that particular one is not measured here; what is measured is that the lane
+whose job is cross build + link has produced no verdict for two days.
+
+Nothing here changes what would close the issue: register the runner. It does
+widen what is waiting on it — `just runner-up nros-qemu,nros-sdk-zephyr,nros-big`
+covers both label sets.
