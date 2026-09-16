@@ -212,20 +212,29 @@ reached only as somebody else's path dependency.
       state issue 1309 is about — compiled by no lane. Compiled-and-unused
       still type-checks every signature against `<nros/platform.h>` on every
       push, which is what issue 1208's silent `-> u64`/`-> u32` needs.
-- [x] **The embedded lane needed a declaration too, and that was not predicted.**
-      Membership puts a crate in `check::workspace-embedded`, which builds every
-      member for `thumbv7em-none-eabihf`; `nros-board-threadx`'s `build.rs`
-      defaults `THREADX_PORT` to `linux/gnu`, so the lane compiled the POSIX
-      simulation port for bare metal and died in the vendored header on
-      `semaphore.h: No such file or directory`. The crate is port-PARAMETERISED
-      rather than embedded-hostile — the cross consumer
-      (`nros-board-threadx-qemu-riscv64`) brings its own port, and nothing names
-      a thumb one — so it is `[package.metadata.nros] host-only = true` with the
-      reason recorded. Host-only is about the LANE, not the crate: it stays a
-      member, and the host lane keeps compiling it.
-- [x] The mirror exists: `[package.metadata.nros] embedded-only = true`, derived
-      by `scripts/build/embedded-only-members.sh`, and `HOST_UNCHECKABLE` is
-      derived from it. Five of its eight hand-written entries were STALE.
+- [x] **The port selector, which is what both lane failures were really about.**
+      First diagnosed as "the embedded lane needs a declaration" and fixed with
+      `host-only = true`. That was the SYMPTOM. `build.rs` chose the ThreadX
+      port unconditionally — `THREADX_PORT` defaulting to `linux/gnu` — and its
+      one guard asked a single direction: *is the port riscv64 while TARGET is
+      not?* Of the other case it said, verbatim, that "`linux/gnu` is
+      host-native by definition", which is true of the PORT and says nothing
+      about the TARGET.
+      So a cross build inheriting the default compiled the POSIX simulation
+      layer for bare metal and died in the vendored header on `<semaphore.h>` —
+      seen on `thumbv7em-none-eabihf` here, and recorded independently as issue
+      1355 for `threadx_riscv64`. Asked symmetrically (a host-native port needs
+      a host TARGET, exactly as a cross port needs its own), the embedded lane
+      skips the C build by itself and **`host-only = true` is not needed at
+      all**: the crate is a full member of BOTH lanes now, which is strictly
+      more than the first fix bought.
+      The second half is the freertos rule again — `THREADX_DIR` resolves in
+      every checkout because `activate.sh` exports it, so the guard passed where
+      `third-party/threadx/kernel` was never initialised. That is the normal
+      state of `check-compile-smoke` and `check-test-targets`, both on the
+      required `CI` context, and the panic named the port rather than the
+      submodule. It probes the port tree and skips with the
+      `git submodule update --init` to run.
 - [ ] ~~The four `cortex-m` / `esp-hal` crates — blocked on a missing mirror.~~
       **Refuted by doing it.** They are not waiting on the mirror: `cortex-m`,
       `esp-hal` and `nros-platform-critical-section` each select a different

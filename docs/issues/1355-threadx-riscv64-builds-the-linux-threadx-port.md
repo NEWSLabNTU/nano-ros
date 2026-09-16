@@ -64,3 +64,35 @@ That measurement cannot be taken while the board crate will not build.
    rather than a compiler error thirteen frames down in a vendored header.
 3. Acceptance is the `threadx_riscv64` nightly job reaching a verdict — green or
    red on its own cells, not on its board crate's build script.
+
+## Progress (phase-451 W4, 2026-09-16) — the failure is now legible, and NOT fixed
+
+`nros-board-threadx/build.rs` had one port/target guard and it asked a single
+direction: *is the port `risc-v64` while `TARGET` is not?* Of the other case it
+said, verbatim, that "`linux/gnu` is host-native by definition" — true of the
+PORT, and silent about the TARGET. So any cross build that inherited the default
+port compiled the POSIX simulation layer and died in `tx_port.h`, which is this
+issue.
+
+The guard is symmetric now: a host-native port requires a host `TARGET` exactly
+as a cross port requires its own. On this coordinate the build script therefore
+prints
+
+    THREADX_PORT=linux/gnu targets x86_64-unknown-linux-gnu but
+    TARGET=riscv64...; skipping the ThreadX C build
+
+instead of `fatal error: semaphore.h: No such file or directory`.
+
+**That is a diagnosis, not a fix, and the distinction is the whole point of this
+issue.** The finding here was never "a header is missing" but "the wrong port
+was selected", and the wrong port is *still* selected — `nros-board-threadx-qemu-riscv64/nros-board.toml`
+sets `THREADX_PORT = { value = "risc-v64/gnu", force = true }` and that value is
+not reaching `build-fixture-extras`. What changed is that the lane now says so
+in the words of the actual problem rather than in the words of a missing libc
+header.
+
+Left open deliberately. Closing it on a clearer error message would be the
+uniformly-red-lane trade this issue objects to: the riscv64 axis still does not
+build its port, and a real regression on that coordinate is still invisible
+behind a skip. The remaining work is to find why the board's forced
+`THREADX_PORT` does not reach that lane's environment.

@@ -79,20 +79,65 @@ fn main() {
     // keys on the port, which is right); only the premise was wrong.
     {
         let target = env::var("TARGET").unwrap_or_default();
-        let cross_port_arch = if port_subpath.starts_with("risc-v64") {
+        let host = env::var("HOST").unwrap_or_default();
+
+        // issue 1309 / phase-451 W4 — THIS GUARD USED TO ASK ONLY ONE OF THE TWO
+        // QUESTIONS, and the unasked one is where both failures came from.
+        //
+        // It read: "is the port riscv64 while TARGET is not?" — and said of the
+        // other case, verbatim, that "`linux/gnu` is host-native by definition".
+        // Which is true of the PORT and says nothing about the TARGET. So a
+        // cross build that inherited the default port compiled the POSIX
+        // simulation layer for bare metal and died inside the vendored header
+        // (`<semaphore.h>`, no such file) — measured on `thumbv7em-none-eabihf`
+        // when membership put this crate in `check::workspace-embedded`, and
+        // recorded again as issue 1355 for `threadx_riscv64`.
+        //
+        // Asked symmetrically: a host-native port needs a host TARGET, exactly
+        // as a cross port needs its own.
+        let port_arch: Option<&str> = if port_subpath.starts_with("risc-v64") {
             Some("riscv64")
         } else {
-            // `linux/gnu` is host-native by definition; any future cross port
-            // adds an arm here rather than inheriting a wrong default.
-            None
+            None // `linux/gnu` — host-native, checked against HOST below
         };
-        if let Some(arch) = cross_port_arch
-            && !target.starts_with(arch)
-        {
+        let mismatch = match port_arch {
+            Some(arch) => (!target.starts_with(arch)).then(|| arch.to_string()),
+            None => (!host.is_empty() && target != host).then(|| host.clone()),
+        };
+        if let Some(wanted) = mismatch {
             println!(
-                "cargo:warning=nros-board-threadx: THREADX_PORT={port_subpath} targets {arch} \
-                 but TARGET={target}; skipping the ThreadX C build. The crate still compiles \
-                 as a Rust shell so host tooling can build packages that dep it (issue 0288)."
+                "cargo:warning=nros-board-threadx: THREADX_PORT={port_subpath} targets \
+                 {wanted} but TARGET={target}; skipping the ThreadX C build. The crate still \
+                 compiles as a Rust shell so host tooling can build packages that dep it \
+                 (issue 0288)."
+            );
+            return;
+        }
+
+        // issue 1309 — AND A VARIABLE THAT RESOLVES IS NOT A TREE THAT EXISTS.
+        // `activate.sh` exports `THREADX_DIR` unconditionally, so the guard at
+        // the top of `main` passes in a checkout where
+        // `third-party/threadx/kernel` was never initialised — the normal state
+        // of `check-compile-smoke` and `check-test-targets`, which are on the
+        // required `CI` context and check out no submodule but `play_launch`.
+        // Membership is what made that reachable, and the panic below named the
+        // port rather than the submodule:
+        //
+        //     ThreadX port `linux/gnu` not found at .../ports/linux/gnu
+        //
+        // Skipping rather than panicking, and it is the same answer
+        // `nros-board-freertos` already carries for the same reason: a `cargo
+        // check` of this crate's RUST is what membership is FOR and needs no
+        // kernel, while an image that links the archive still fails — with this
+        // warning in the same log, naming the command that fixes it.
+        let port_inc = threadx_dir.join("ports").join(&port_subpath).join("inc");
+        if !port_inc.is_dir() {
+            println!(
+                "cargo:warning=nros-board-threadx: THREADX_DIR is set but the port sources \
+                 are absent ({} not found); skipping the ThreadX C build. The submodule is \
+                 not initialised here — run `git submodule update --init \
+                 third-party/threadx/kernel`. A link of this board will fail until you do.",
+                port_inc.display()
             );
             return;
         }
