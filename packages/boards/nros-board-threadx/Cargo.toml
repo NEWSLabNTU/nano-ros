@@ -102,25 +102,3 @@ default = []
 # per-board overlay (which the example forwards to from its own `rmw-zenoh`), so a
 # zenoh build registers a backend and a cyclonedds build (feature off) does not.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
-
-# issue 1309 / phase-451 W4 — HOST-ONLY, and the reason is its PORT.
-#
-# Promoting this crate to a workspace member put it in `check::workspace-embedded`
-# too, which builds every member for `thumbv7em-none-eabihf`. `build.rs` defaults
-# `THREADX_PORT` to `linux/gnu`, so the lane compiled the POSIX simulation port
-# for bare-metal ARM and died in the vendored header:
-#
-#     ports/linux/gnu/inc/tx_port.h:118:10:
-#         fatal error: semaphore.h: No such file or directory
-#
-# The crate is not embedded-hostile; it is PORT-PARAMETERISED, and an overlay
-# supplies the port. `nros-board-threadx-qemu-riscv64` is the cross consumer and
-# carries its own. Nothing names a thumb port, so the embedded lane has no
-# coordinate for this crate and its default is the only thing it could pick.
-#
-# Host-only is therefore about the LANE, not the crate: it stays a member, so the
-# host lane compiles it — which is the whole point of issue 1309 and the reason
-# this promotion surfaced 18 latent lints no lane had ever reported.
-[package.metadata.nros]
-host-only = true
-host-only-reason = "build.rs defaults THREADX_PORT to the linux/gnu POSIX simulation port; the embedded lane has no thumb port for it (the cross consumer is nros-board-threadx-qemu-riscv64)"
