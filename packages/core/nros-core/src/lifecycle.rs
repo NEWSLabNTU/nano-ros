@@ -51,6 +51,46 @@ impl LifecycleState {
             _ => None,
         }
     }
+
+    /// Every reachable state, in `lifecycle_msgs` id order.
+    ///
+    /// phase-417 W4.f. `nros_node::lifecycle_services` held this list
+    /// privately, so the wire could enumerate the states and no in-process
+    /// caller in any of the three languages could. It is a CONSTANT, not
+    /// state — the point of moving it here is that there is one of it.
+    pub const ALL: [Self; 5] = [
+        Self::Unconfigured,
+        Self::Inactive,
+        Self::Active,
+        Self::Finalized,
+        Self::ErrorProcessing,
+    ];
+
+    /// The `lifecycle_msgs/msg/State.label` for this state, NUL-terminated.
+    ///
+    /// The C string is the SOURCE spelling and [`Self::label`] is derived from
+    /// it, not the other way round: the C API hands this pointer straight to a
+    /// caller (`nros_lifecycle_state_label`), and a second set of literals for
+    /// the `&str` form is exactly the drift this move exists to remove.
+    pub const fn label_cstr(&self) -> &'static core::ffi::CStr {
+        match self {
+            Self::Unconfigured => c"unconfigured",
+            Self::Inactive => c"inactive",
+            Self::Active => c"active",
+            Self::Finalized => c"finalized",
+            Self::ErrorProcessing => c"errorprocessing",
+        }
+    }
+
+    /// The `lifecycle_msgs/msg/State.label` for this state.
+    ///
+    /// Infallible in practice — every label above is ASCII — but expressed
+    /// without an `unwrap`, because a panic on a `const` table is a panic
+    /// nobody can act on. The empty string is unreachable, and
+    /// `every_label_is_valid_utf8` is the test that keeps it so.
+    pub fn label(&self) -> &'static str {
+        self.label_cstr().to_str().unwrap_or_default()
+    }
 }
 
 /// Lifecycle transition (REP-2002)
@@ -168,6 +208,61 @@ impl LifecycleTransition {
             Self::ShutdownActive => LifecycleState::Active,
             Self::ErrorRecovery => LifecycleState::ErrorProcessing,
         }
+    }
+
+    /// Every transition in the REP-2002 graph, in `lifecycle_msgs` id order.
+    ///
+    /// phase-417 W4.f. The three shutdown variants are listed separately
+    /// because their [`source_state`](Self::source_state) differs, which is
+    /// also rclcpp's graph shape. `nros_node::lifecycle_services` served this
+    /// table over `~/get_transition_graph` while holding it privately, so a
+    /// node's own code could not read its transition table in ANY of our three
+    /// languages; this is the one table all of them now read.
+    pub const ALL: [Self; 8] = [
+        Self::Configure,
+        Self::Cleanup,
+        Self::Activate,
+        Self::Deactivate,
+        Self::ShutdownUnconfigured,
+        Self::ShutdownInactive,
+        Self::ShutdownActive,
+        Self::ErrorRecovery,
+    ];
+
+    /// The `lifecycle_msgs/msg/Transition.label` for this transition,
+    /// NUL-terminated. See [`LifecycleState::label_cstr`] for why the C
+    /// spelling is the source.
+    ///
+    /// The three shutdown variants share the label `"shutdown"` — that is
+    /// upstream's wire spelling, and `from_shorthand` is what resolves it back
+    /// against the current state.
+    pub const fn label_cstr(&self) -> &'static core::ffi::CStr {
+        match self {
+            Self::Configure => c"configure",
+            Self::Cleanup => c"cleanup",
+            Self::Activate => c"activate",
+            Self::Deactivate => c"deactivate",
+            Self::ShutdownUnconfigured => c"shutdown",
+            Self::ShutdownInactive => c"shutdown",
+            Self::ShutdownActive => c"shutdown",
+            Self::ErrorRecovery => c"error_recovery",
+        }
+    }
+
+    /// The `lifecycle_msgs/msg/Transition.label` for this transition.
+    pub fn label(&self) -> &'static str {
+        self.label_cstr().to_str().unwrap_or_default()
+    }
+
+    /// The state this transition ADVERTISES as its destination — rclcpp's
+    /// `Transition::goal_state()`.
+    ///
+    /// It is the state a SUCCEEDING callback reaches, which is what the
+    /// transition graph advertises. A failing callback routes to
+    /// `ErrorProcessing` or rolls back at runtime; that is
+    /// [`apply_transition`]'s business and orthogonal to the advertised graph.
+    pub const fn goal_state(&self) -> LifecycleState {
+        apply_transition(self.source_state(), *self, TransitionResult::Success)
     }
 }
 
@@ -759,5 +854,67 @@ mod tests {
             TransitionResult::Success,
         );
         assert_eq!(state, LifecycleState::Unconfigured);
+    }
+
+    // ── phase-417 W4.f — the transition table as a readable fact ───────────
+
+    /// Every label is ASCII, so the `&str` accessor never falls through to the
+    /// empty string. Pinned because `label()` reports the unreachable arm
+    /// SILENTLY rather than panicking: without this the fallback could become
+    /// live and nothing would say so.
+    #[test]
+    fn every_label_is_valid_utf8() {
+        for t in LifecycleTransition::ALL {
+            assert!(!t.label().is_empty(), "transition {t:?} has no label");
+            assert_eq!(t.label().as_bytes(), t.label_cstr().to_bytes());
+        }
+        for s in LifecycleState::ALL {
+            assert!(!s.label().is_empty(), "state {s:?} has no label");
+            assert_eq!(s.label().as_bytes(), s.label_cstr().to_bytes());
+        }
+    }
+
+    /// `ALL` is the graph, so it must hold every variant exactly once and in
+    /// id order. A table that silently lost a transition would serve a
+    /// `~/get_transition_graph` short by one and read as correct.
+    #[test]
+    fn all_is_complete_and_ordered() {
+        let ids: heapless::Vec<u8, 8> = LifecycleTransition::ALL
+            .iter()
+            .map(|t| *t as u8)
+            .collect::<heapless::Vec<u8, 8>>();
+        assert_eq!(ids.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 60]);
+        for id in ids.iter() {
+            assert!(LifecycleTransition::from_u8(*id).is_some());
+        }
+        let state_ids: heapless::Vec<u8, 5> = LifecycleState::ALL
+            .iter()
+            .map(|s| *s as u8)
+            .collect::<heapless::Vec<u8, 5>>();
+        assert_eq!(state_ids.as_slice(), &[1, 2, 3, 4, 5]);
+    }
+
+    /// `goal_state` is the SUCCESS destination, and the three shutdowns all
+    /// reach `Finalized` from three different sources — the pair that makes
+    /// the graph worth publishing.
+    #[test]
+    fn goal_state_is_the_success_destination() {
+        use LifecycleState as S;
+        use LifecycleTransition as T;
+        assert_eq!(T::Configure.goal_state(), S::Inactive);
+        assert_eq!(T::Cleanup.goal_state(), S::Unconfigured);
+        assert_eq!(T::Activate.goal_state(), S::Active);
+        assert_eq!(T::Deactivate.goal_state(), S::Inactive);
+        assert_eq!(T::ErrorRecovery.goal_state(), S::Unconfigured);
+        for t in [
+            T::ShutdownUnconfigured,
+            T::ShutdownInactive,
+            T::ShutdownActive,
+        ] {
+            assert_eq!(t.goal_state(), S::Finalized);
+        }
+        assert_eq!(T::ShutdownUnconfigured.source_state(), S::Unconfigured);
+        assert_eq!(T::ShutdownInactive.source_state(), S::Inactive);
+        assert_eq!(T::ShutdownActive.source_state(), S::Active);
     }
 }
