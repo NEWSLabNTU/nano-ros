@@ -783,24 +783,6 @@ typedef enum nros_client_state_t {
 } nros_client_state_t;
 
 /**
- * Guard condition state.
- */
-typedef enum nros_guard_condition_state_t {
-  /**
-   * Not initialized
-   */
-  NROS_GUARD_CONDITION_STATE_UNINITIALIZED = 0,
-  /**
-   * Initialized and ready
-   */
-  NROS_GUARD_CONDITION_STATE_INITIALIZED = 1,
-  /**
-   * Shutdown
-   */
-  NROS_GUARD_CONDITION_STATE_SHUTDOWN = 2,
-} nros_guard_condition_state_t;
-
-/**
  * Scheduling class — picks the runtime queue + selection policy.
  * Mirrors `nros_node::executor::sched_context::SchedClass`.
  */
@@ -864,6 +846,24 @@ typedef enum nros_deadline_policy_t nros_deadline_policy_t;
 typedef uint8_t nros_deadline_policy_t;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
+
+/**
+ * Guard condition state.
+ */
+typedef enum nros_guard_condition_state_t {
+  /**
+   * Not initialized
+   */
+  NROS_GUARD_CONDITION_STATE_UNINITIALIZED = 0,
+  /**
+   * Initialized and ready
+   */
+  NROS_GUARD_CONDITION_STATE_INITIALIZED = 1,
+  /**
+   * Shutdown
+   */
+  NROS_GUARD_CONDITION_STATE_SHUTDOWN = 2,
+} nros_guard_condition_state_t;
 
 /**
  * Clock structure.
@@ -2467,50 +2467,6 @@ typedef struct nros_client_t {
 } nros_client_t;
 
 /**
- * Guard condition callback type.
- */
-typedef void (*nros_guard_condition_callback_t)(void *context);
-
-/**
- * Guard condition structure.
- */
-typedef struct nros_guard_condition_t {
-  /**
-   * Current state
-   */
-  enum nros_guard_condition_state_t state;
-  /**
-   * Triggered flag (volatile for cross-thread visibility)
-   */
-  bool triggered;
-  /**
-   * Callback function
-   */
-  nros_guard_condition_callback_t callback;
-  /**
-   * User context pointer
-   */
-  void *context;
-  /**
-   * Pointer to parent support context
-   */
-  const struct nros_support_t *_support;
-  /**
-   * Handle ID from executor registration (SIZE_MAX = not registered)
-   */
-  size_t handle_id;
-  /**
-   * Whether the guard handle has been initialized
-   */
-  bool _guard_valid;
-  /**
-   * Inline opaque storage for the guard condition handle (set by executor).
-   * Avoids heap allocation — managed by executor registration / guard_condition_fini.
-   */
-  uint64_t _guard_opaque[GUARD_HANDLE_OPAQUE_U64S];
-} nros_guard_condition_t;
-
-/**
  * Scheduling-context descriptor passed to
  * [`nros_executor_create_sched_context`].
  *
@@ -2568,6 +2524,46 @@ typedef void (*nros_shutdown_callback_t)(void *context);
  * "compare against `NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID`".
  */
 typedef uint32_t nros_shutdown_callback_handle_t;
+
+/**
+ * Guard condition callback type.
+ */
+typedef void (*nros_guard_condition_callback_t)(void *context);
+
+/**
+ * Guard condition structure.
+ */
+typedef struct nros_guard_condition_t {
+  /**
+   * Current state
+   */
+  enum nros_guard_condition_state_t state;
+  /**
+   * Triggered flag (volatile for cross-thread visibility)
+   */
+  bool triggered;
+  /**
+   * Callback function
+   */
+  nros_guard_condition_callback_t callback;
+  /**
+   * User context pointer
+   */
+  void *context;
+  /**
+   * Handle ID from executor registration (SIZE_MAX = not registered)
+   */
+  size_t handle_id;
+  /**
+   * Whether the guard handle has been initialized
+   */
+  bool _guard_valid;
+  /**
+   * Inline opaque storage for the guard condition handle (set by executor).
+   * Avoids heap allocation — managed by executor registration / guard_condition_fini.
+   */
+  uint64_t _guard_opaque[GUARD_HANDLE_OPAQUE_U64S];
+} nros_guard_condition_t;
 
 /**
  * Opaque lifecycle state machine storage.
@@ -5449,16 +5445,6 @@ nros_ret_t nros_executor_add_client(struct nros_executor_t *executor,
                                     struct nros_client_t *client);
 
 /**
- * Add a guard condition to the executor.
- *
- * # Safety
- * * All pointers must be valid and point to initialized objects
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_add_guard_condition(struct nros_executor_t *executor,
-                                             struct nros_guard_condition_t *guard);
-
-/**
  * Add an action server to the executor.
  *
  * Extracts metadata from the action server struct, creates callback
@@ -5743,36 +5729,108 @@ nros_ret_t nros_executor_remove_on_shutdown_callback(struct nros_executor_t *exe
 NROS_PUBLIC struct nros_guard_condition_t rcl_get_zero_initialized_guard_condition(void);
 
 /**
- * Initialize a guard condition.
- */
-NROS_PUBLIC
-nros_ret_t nros_guard_condition_init(struct nros_guard_condition_t *guard,
-                                     const struct nros_support_t *support);
-
-/**
- * Set the guard condition callback.
- */
-NROS_PUBLIC
-nros_ret_t nros_guard_condition_set_callback(struct nros_guard_condition_t *guard,
-                                             nros_guard_condition_callback_t callback,
-                                             void *context);
-
-/**
- * Trigger a guard condition.
+ * Create a guard condition on `node` — the ONE creation shape (phase-417
+ * W4.e, RFC-0089 stage 4).
  *
- * This function is designed to be thread-safe. When registered with an
- * executor, it triggers via the executor's guard handle (atomic flag in
- * the arena). Otherwise falls back to the local triggered flag.
+ * A guard condition is the cross-thread / ISR wake source: any thread may call
+ * [`nros_guard_condition_trigger`] and `callback` runs on the executor's next
+ * spin. The flag lives in the executor's arena, so creation has to reach an
+ * executor — and the thing a caller has in hand is a NODE, which is why the
+ * node is the owner in all three of our languages. `callback` may be NULL for
+ * a wake with no work attached; `context` is handed back to it unchanged.
+ *
+ * **This replaced three calls, and until 2026-09-18 the first two produced an
+ * INERT object.** `nros_guard_condition_init(guard, support)` only zeroed
+ * fields — nothing reached the arena until `nros_executor_add_guard_condition`
+ * ran, so between the two the handle read `handle_id == SIZE_MAX` and a
+ * trigger fell back to a local flag no executor watches. Binding the callback
+ * after the fact was also the shape we already REFUSE in C++ at
+ * `GuardCondition::set_on_trigger_callback`, so one constraint was enforced in
+ * two languages and contradicted in the third. All three names are retired
+ * with no forwarder (stage 6 step B): the whole in-tree cost was one example.
+ *
+ * # Ordering
+ * `node` must be bound to an executor through `nros_executor_node_init` — the
+ * executor exists first, then the node. A node from the legacy
+ * `rclc_node_init_default` path reaches no executor and gets
+ * `NROS_RET_NOT_INIT`, which is what `nros_node_resolve_name` answers for the
+ * same reason: the capability is UNREACHABLE from that node, not absent.
+ *
+ * # Returns
+ * * `NROS_RET_OK` — created, registered, and the callback is bound.
+ * * `NROS_RET_INVALID_ARGUMENT` — `node` or `out` is NULL.
+ * * `NROS_RET_NOT_INIT` — the node is uninitialised, or is not bound to an
+ *   executor.
+ * * `NROS_RET_STALE_NODE` — the node slot has been retired.
+ * * `NROS_RET_BAD_SEQUENCE` — `out` is not zero-initialised (a double create).
+ * * `NROS_RET_FULL` — the executor's handle table is full.
+ *
+ * # Safety
+ * * `node` must point to a valid, executor-bound `nros_node_t`.
+ * * `out` must point to writable storage that outlives the executor —
+ *   registration is one-way and the arena records the entity pointer.
+ */
+NROS_PUBLIC
+nros_ret_t nros_node_create_guard_condition(struct nros_node_t *node,
+                                            struct nros_guard_condition_t *out,
+                                            nros_guard_condition_callback_t callback,
+                                            void *context);
+
+/**
+ * Trigger a guard condition — thread-safe and lock-free.
+ *
+ * Stores into the atomic flag the executor's arena holds for this guard and
+ * then fires the runtime wake hook, so an ISR or a foreign task releases a
+ * `spin_once` already blocked in `drive_io` rather than waiting out its poll
+ * timeout. The callback runs on the executor's thread, at its next spin.
+ *
+ * **This is `nros_generated.h`'s `nros_<entity>_<verb>` spelling, and until
+ * 2026-09-18 it DID NOT EXIST** — only rcl's verb-first
+ * [`rcl_trigger_guard_condition`] did, while the ledger, this crate's own docs
+ * and the custom-platform example's README all named this one. The example's
+ * README told a reader to call a symbol nothing defined.
+ *
+ * # Safety
+ * * `guard` must be NULL or point to a valid `nros_guard_condition_t`.
+ */
+NROS_PUBLIC nros_ret_t nros_guard_condition_trigger(struct nros_guard_condition_t *guard);
+
+/**
+ * rcl's spelling of [`nros_guard_condition_trigger`], forwarding to it.
+ *
+ * Kept, not retired: rcl HAS this name, and RFC-0089's alias rule makes a name
+ * upstream has load-bearing rather than a courtesy — a ported rcl node writes
+ * `rcl_trigger_guard_condition(&gc)` and must keep compiling. It is not
+ * deprecated for the same reason.
+ *
+ * # Safety
+ * See [`nros_guard_condition_trigger`].
  */
 NROS_PUBLIC nros_ret_t rcl_trigger_guard_condition(struct nros_guard_condition_t *guard);
 
 /**
- * Check if the guard condition is triggered.
+ * Is this guard condition triggered and not yet dispatched?
+ *
+ * The RFC-0022 POLLING tier: a task that owns its own loop and never calls a
+ * callback still needs to see the flag another thread or an ISR set. rcl has
+ * no such reader, so this is ours.
+ *
+ * **It reads the ARENA flag, which is the one `nros_guard_condition_trigger`
+ * writes** — and it had to, from the moment creation became registration. The
+ * local `triggered` byte this used to read was only ever written by the
+ * fallback path of an UNREGISTERED guard, so with the retirement of
+ * `nros_guard_condition_init` it would have answered `false` for every guard
+ * condition that exists: a reader that compiles, runs, and is always wrong.
+ * The executor CONSUMES the flag when it dispatches, so this answers "set and
+ * not yet dispatched"; a caller that both polls this and spins the executor is
+ * racing itself.
  */
 NROS_PUBLIC bool nros_guard_condition_is_triggered(const struct nros_guard_condition_t *guard);
 
 /**
- * Clear the triggered flag.
+ * Clear the triggered flag without dispatching — the other half of
+ * [`nros_guard_condition_is_triggered`], for a polling owner that handled the
+ * event itself. Reads the same arena flag, for the same reason.
  */
 NROS_PUBLIC nros_ret_t nros_guard_condition_clear(struct nros_guard_condition_t *guard);
 
