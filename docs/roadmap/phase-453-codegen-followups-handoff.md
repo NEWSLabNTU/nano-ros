@@ -37,8 +37,8 @@ is being worked in its own branch now. Two corrections to the original list:
 
 - **1306 is a DUPLICATE of [1336](../issues/1336-cli-source-stamp-unwatched-in-worktree.md)**,
   filed a day later by phase-454 W3 with better evidence and cross-references
-  (0419, 0466, 0561, 0627, 0921). 1336 is the canonical id; 1306 is being closed
-  as a duplicate, with its acceptance recipe preserved.
+  (0419, 0466, 0561, 0627, 0921). 1336 is the canonical id; 1306 was closed as a
+  duplicate, with its acceptance recipe preserved.
 - **[1360](../issues/archived/1360-tier2-nightly-stale-zephyr-workspace-codegen-version.md)
   is not from this campaign but was the most urgent codegen-area defect**: the
   tier-2 nightly builds against a persistent `~/.nros/workspaces/zephyr/3.7`
@@ -46,10 +46,17 @@ is being worked in its own branch now. Two corrections to the original list:
   refusal guard fires on every Zephyr fixture. The guard is right; the
   persistent workspace is the bug. It was fixed alongside this phase.
 
-- [1306](../issues/1306-cli-build-rs-misses-worktree-git-index.md): in a
-  linked worktree, the CLI source stamp never re-runs on a commit. Every
-  agent hit this. The workaround is `touch packages/cli/nros-cli-core/build.rs`.
-  The fix is `git rev-parse --git-path index`.
+- **DONE (2026-09-18)** —
+  [1336](../issues/archived/1336-cli-source-stamp-unwatched-in-worktree.md),
+  which absorbed this item's
+  [1306](../issues/archived/1306-cli-build-rs-misses-worktree-git-index.md) as
+  a duplicate: in a linked worktree the CLI source stamp never re-ran on a
+  commit, and every agent hit it. Fixed with the
+  `git rev-parse --git-path index` this row called for (plus
+  `--path-format=absolute`), swept across six siblings — two of them live
+  defects in other gates — and gated by
+  `check-git-dir-layout-assumptions`. The `touch
+  packages/cli/nros-cli-core/build.rs` workaround is no longer needed.
 - [1307](../issues/archived/1307-sizes-build-nested-cargo-rewrites-root-lock.md)
   (RESOLVED): every NuttX build rewrote the root `Cargo.lock`. `--locked` alone
   would have broken the build; the size probe resolves against a seeded copy in
