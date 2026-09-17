@@ -791,6 +791,24 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 if let Some(d) = &resolved_dir {
                     a.push(format!("-DNROS_RESOLVED_DIR={}", d.display()));
                 }
+                // Issue 1304 — the ROOT this generated file's
+                // `find_package(nano_ros)` resolves against. `nano_rosConfig.cmake`
+                // sits at the SDK root and is located through `nano_ros_ROOT`,
+                // which only `activate.sh` exports — so on a host with no
+                // sourced shell the configure died with "Could not find a package
+                // configuration file provided by nano_ros", after `nros build`
+                // had already resolved that very root.
+                //
+                // PASSED, not baked into the generated file, for the reason the
+                // preamble and `NROS_RESOLVED_DIR` above are: the file stays
+                // workspace-agnostic and byte-identical across machines (W3.c),
+                // which an absolute store path written into it would not be.
+                //
+                // Before `native_args` so a caller's own `-Dnano_ros_ROOT` still
+                // wins: cmake takes the last definition on the line.
+                if let Some(nr) = &nano_ros_root {
+                    a.push(format!("-Dnano_ros_ROOT={}", nr.display()));
+                }
                 a.extend(args.native_args.iter().cloned());
                 cmake_configure = Some(Handoff::new("cmake", a).in_dir(&root));
                 Some(
@@ -1470,6 +1488,9 @@ fn plan_packages(
                 "-B".to_string(),
                 format!("{rel}/cmake"),
             ];
+            // Issue 1304 — same seam as the workspace lane above; `nros_root` is
+            // the root this arm already refuses to proceed without.
+            a.push(format!("-Dnano_ros_ROOT={}", nros_root.display()));
             a.extend(args.native_args.iter().cloned());
             (
                 Driver::CMake,
