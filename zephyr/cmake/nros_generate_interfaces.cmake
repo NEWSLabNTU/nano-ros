@@ -296,6 +296,24 @@ function(nros_generate_interfaces target)
     endforeach()
   endforeach()
 
+  # issue 1360 — and the EMITTED CODEGEN VERSION, which no mtime can express.
+  #
+  # This lane's build dirs live in the provisioned Zephyr workspace
+  # (`$NROS_STORE/workspaces/zephyr/<version>`, RFC-0095 D4), which outlives
+  # every checkout: both edges above are keyed on the tool THIS DIRECTORY cached,
+  # and on the self-hosted runner that is the provisioning checkout's binary,
+  # which CI never rebuilds. So a `NROS_CODEGEN_VERSION_MIN` move left every
+  # fixture compiling against museum trees and failing on the RFC-0090 `#error`,
+  # nightly after nightly, with all three freshness inputs reading current.
+  # Asking the artifacts what version they state is the one input that is a
+  # property of the tree on disk rather than of a timestamp.
+  nros_codegen_version_stale(_version_stale
+    CONTEXT "nros codegen (${target}, ${_ARG_LANGUAGE})"
+    FILES ${_exp_hdr})
+  if(_version_stale)
+    set(_codegen_needed TRUE)
+  endif()
+
   if(_codegen_needed)
     execute_process(
       COMMAND ${_codegen_cmd}
@@ -316,6 +334,16 @@ function(nros_generate_interfaces target)
       "  command: ${_codegen_cmd}\n"
       "  stdout: ${_codegen_output}\n"
       "  stderr: ${_codegen_error}")
+  endif()
+
+  # issue 1360 — close the loop. A tree still stating a refused version after a
+  # successful regeneration means the cached tool is not this runtime's emitter,
+  # and re-running it forever is the loop this arm exists to stop. Fail with the
+  # binary and both numbers named, at configure time.
+  if(_version_stale)
+    nros_codegen_version_assert_fresh("${_NROS_ZEPHYR_CODEGEN_TOOL}"
+      CONTEXT "nros codegen (${target}, ${_ARG_LANGUAGE})"
+      FILES ${_exp_hdr})
   endif()
 
   # phase-403 W8 (issue 0940) -- codegen has run, so the bound fragment is on
