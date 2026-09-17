@@ -411,6 +411,30 @@ c: c-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/typed_service_handler.c
+    # ...and its NEGATIVE control must FAIL. Unlike the subscription's `void *`
+    # msg slot, the service seam is typed on both sides -- the handler FUNCTION
+    # and the handler BLOCK are generated types -- so a mismatch should already
+    # be ill-typed. That is a claim, and this is what measures it. A service has
+    # two payloads travelling in opposite directions, so the mistake it invites
+    # is the two SWAPPED, which rclc's own
+    # `void (*)(const void *, void *, void *)` could not diagnose at all.
+    # -Werror because C reports both as warnings even under -Wall -Wextra.
+    echo "  - phase-417 W5.e: the typed service seam REFUSES swapped payloads"
+    test -f packages/api/nros-c/tests/compile/typed_service_storage_mismatch_probe.c || { \
+        echo "ERROR: typed_service_storage_mismatch_probe.c is MISSING -- an" >&2; \
+        echo "       expected-failure check passes on a missing file." >&2; exit 1; }
+    if cc -fsyntax-only -std=c11 -Wall -Wextra -Werror \
+        -Ipackages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/configured \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/typed_service_storage_mismatch_probe.c \
+        2>tmp/typed-service-storage-mismatch.log; then \
+        echo "ERROR: typed_service_storage_mismatch_probe.c COMPILED. The generated" >&2; \
+        echo "       service seam is taking its handler or its storage block through" >&2; \
+        echo "       an untyped pointer, so a request would be decoded into response" >&2; \
+        echo "       storage with nothing to say so. See packs/c/service.h.jinja." >&2; exit 1; \
+    fi
     # phase-417 stage 6 — the rename+reorder guards. Both carry their pragma
     # INSIDE the TU, so the wiring needs no flags; both are expected-FAILURE.
     #

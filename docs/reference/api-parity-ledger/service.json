@@ -138,8 +138,8 @@
     "why": "see `c:get_zero_initialized_client`.\n\nphase-428 Q1 (2026-09-06) — refuse-loud -> adopt, a VERDICT BUG. `rcl_get_zero_initialized_service` is exported under rcl's own name (`packages/api/nros-c/src/service.rs:220`), returns a default `nros_service_t`, and the correlator files it `same`. Nothing refuses. See `c:get_zero_initialized_client`."
   },
   "c:response_callback_t": {
-    "verdict": "divergence",
-    "why": "see `c:service_callback_t`."
+    "verdict": "extension",
+    "why": "RE-VERDICTED 2026-09-18 (phase-417 W5.e follow-through), divergence -> extension, on the client side of `c:service_callback_t` -- and it is a `see` again only because the argument really is the same one, not because nobody looked. Ours is `void (*)(const uint8_t *response, size_t response_len, void *context)`; rclc's `rclc_client_callback_t` is `void (*)(const void *response)` over a deserialized reply. The typed counterpart ships from the same pack: `<Srv>_response_fn_t = void (*)(const <Srv>_response *, void *context)`, installed with `<Srv>_client_set_response_callback(client, &handler)`, whose trampoline decodes into the caller's `<Srv>_client_handler_t`. A reply whose CDR does not decode does NOT reach the callback: handing it a zeroed struct would be indistinguishable from a server that answered with defaults."
   },
   "c:send_request": {
     "verdict": "divergence",
@@ -163,8 +163,8 @@
     }
   },
   "c:service_callback_t": {
-    "verdict": "divergence",
-    "why": "bound to the entity at creation; see the pubsub stage's `c:subscription_callback_t`."
+    "verdict": "extension",
+    "why": "RE-VERDICTED 2026-09-18 (phase-417 W5.e follow-through), divergence -> extension. Both halves of the old one-line reason were false, and they are recorded here rather than smoothed away.\n\nIt said: \"bound to the entity at creation; see the pubsub stage's `c:subscription_callback_t`.\"\n\n(1) THE BINDING SITE MOVED. phase-417 stage 6 took the callback off `*_init` and put it at registration -- `nros_executor_add_service_raw(exec, svc, cb, ctx)`, which is where rclc supplies it (`rclc_executor_add_service`). The sentence described an arrangement the tree no longer has. (2) THE ROW IT DEFERRED TO NO LONGER SAYS THAT EITHER: `c:subscription_callback_t` was itself re-verdicted divergence -> extension on 2026-09-13, so a `see` pointing at it was inheriting a retracted argument.\n\nWHAT THE DIFFERENCE ACTUALLY IS: the DATA contract, plus a return. Ours is `bool (*)(const uint8_t *request, size_t request_len, uint8_t *response, size_t response_capacity, size_t *response_len, void *context)` -- CDR bytes both ways -- where rclc's `rclc_service_callback_with_context_t` is `void (*)(const void *request, void *response, void *context)` over DESERIALIZED payloads. The `bool` is not decoration: `srv_raw_try_process` sends a reply only on `ok && resp_len > 0` (`executor/arena.rs`), so returning `false` is how a handler refuses to put a malformed or oversized reply on the wire. rclc's `void` callback cannot refuse at all.\n\nExtension rather than divergence, because the faithful counterpart now SHIPS beside it and carries the correspondence: `packs/c/service.h.jinja` emits `<Srv>_handler_fn_t = void (*)(const <Srv>_request *, <Srv>_response *, void *)` -- rclc's three parameters in rclc's order, with the two payload pointers TYPED -- and the generated trampoline `<Srv>_service_handle_request` is an `nros_service_callback_t` that owns the CDR on both sides. Until W5.e's callers landed (2026-09-18) this byte callback was the only delivery shape and so stood in for rclc's typed one; it is now the byte TIER beside a faithful one, which is where a caller doing its own CDR or FORWARDING a payload belongs.\n\nNOTE WHAT DOES NOT APPEAR HERE: \"no allocator\". Neither side allocates -- rclc makes the caller own `request_msg` / `response_msg`, and ours puts both structs in the caller's `<Srv>_service_handler_t`."
   },
   "c:service_get_options": {
     "verdict": "declined",

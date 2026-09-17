@@ -2,10 +2,22 @@
 /// @brief C service client example — **callback** variant.
 ///
 /// Mirrors the blocking `service-client` example, but receives each reply
-/// through a `nros_response_callback_t` dispatched by `rclc_executor_spin_some`
+/// through a typed response callback dispatched by `rclc_executor_spin_some`
 /// — the dual-mode alternative to `nros_client_call`. Send is non-blocking
-/// (`nros_client_send_request_async`); the reply lands in the callback when the
+/// (`..._client_send_request`); the reply lands in the callback when the
 /// executor next spins (the C analogue of rclcpp `async_send_request(req, cb)`).
+///
+/// phase-417 W5.e — the callback is TYPED, which is rclc's shape:
+///
+///     rclc: void (*rclc_client_callback_t)(const void *response)
+///     ours: void (*..._response_fn_t)(const ..._response *response,
+///                                     void *context)
+///
+/// The response storage is the CALLER's — it lives in the
+/// `..._client_handler_t` below — so nothing on the reply path allocates. A
+/// reply whose CDR does not decode does NOT reach the callback: handing it a
+/// zeroed struct would be indistinguishable from a server that answered with
+/// defaults.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +44,9 @@ static struct {
     nros_node_t node;
     nros_client_t client;
     nros_executor_t executor;
+    // Caller-owned response storage + the typed callback. Must outlive the
+    // client, so it lives here beside it.
+    example_interfaces_srv_add_two_ints_client_handler_t handler;
     // Reply state shared with the callback.
     int reply_count; // bumped each time the callback fires
 } app;
@@ -40,16 +55,11 @@ static struct {
 // Response callback — fired from `rclc_executor_spin_some`, not a poll.
 // ----------------------------------------------------------------------------
 
-static void on_response(const uint8_t* response, size_t response_len, void* context) {
+static void on_response(const example_interfaces_srv_add_two_ints_response* response,
+                        void* context) {
     (void)context;
-    example_interfaces_srv_add_two_ints_response resp;
-    if (example_interfaces_srv_add_two_ints_response_deserialize(&resp, response, response_len) ==
-        0) {
-        app.reply_count++;
-        printf("Result of add_two_ints: %lld\n", (long long)resp.sum);
-    } else {
-        fprintf(stderr, "Callback: failed to deserialize response\n");
-    }
+    app.reply_count++;
+    printf("Result of add_two_ints: %lld\n", (long long)response->sum);
 }
 
 // ----------------------------------------------------------------------------
@@ -116,7 +126,12 @@ int nros_app_main(int argc, char** argv) {
     NROS_CHECK_RET(nros_executor_add_client(&app.executor, &app.client), 1);
 
     // Register the reply callback. It fires at spin, not via poll.
-    NROS_CHECK_RET(nros_client_set_response_callback(&app.client, on_response, NULL), 1);
+    NROS_CHECK_RET(
+        example_interfaces_srv_add_two_ints_client_handler_init(&app.handler, on_response, NULL),
+        1);
+    NROS_CHECK_RET(
+        example_interfaces_srv_add_two_ints_client_set_response_callback(&app.client, &app.handler),
+        1);
     printf("Response callback registered\n");
 
     // Let discovery settle (the callback client has no blocking call to gate on).
@@ -131,15 +146,11 @@ int nros_app_main(int argc, char** argv) {
     request.a = a;
     request.b = b;
 
+    // Caller-owned scratch for the request's wire form; borrowed for the send.
     uint8_t req_buf[256];
-    size_t req_len = 0;
-    int32_t req_len_rc = example_interfaces_srv_add_two_ints_request_serialize(
-        &request, req_buf, sizeof(req_buf), &req_len);
-    if (req_len_rc != 0) {
-        fprintf(stderr, "Failed to serialize request\n");
-        exit_code = 1;
-    } else {
-        nros_ret_t ret = nros_client_send_request_async(&app.client, req_buf, req_len);
+    {
+        nros_ret_t ret = example_interfaces_srv_add_two_ints_client_send_request(
+            &app.client, &request, req_buf, sizeof(req_buf));
         if (ret != NROS_RET_OK) {
             fprintf(stderr, "Async send failed with error %d\n", ret);
             exit_code = 1;
@@ -156,6 +167,13 @@ int nros_app_main(int argc, char** argv) {
                 exit_code = 1;
             }
         }
+    }
+    example_interfaces_srv_add_two_ints_request_fini(&request);
+    // A reply that failed to decode never reaches the callback, so a zero
+    // `reply_count` alone cannot tell the two apart. `error_count` can.
+    if (app.handler.error_count != 0u) {
+        fprintf(stderr, "Replies refused: %u (last error %d)\n", app.handler.error_count,
+                (int)app.handler.last_error);
     }
 
     printf("\nShutting down...\n");
