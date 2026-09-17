@@ -571,6 +571,120 @@ mod service_backed {
 }
 
 // ============================================================================
+// The REP-2002 transition graph, readable IN PROCESS (phase-417 W4.f)
+// ============================================================================
+//
+// `~/get_transition_graph` has served this table to remote peers since
+// phase-379, and until now a node's own code could not read it in ANY of our
+// three languages: there was no accessor beside `get_current_state`, so a C
+// caller wanting a transition's label or its start/goal state had to transcribe
+// `lifecycle_msgs` a fourth time.
+//
+// These five functions are the accessor, and they are the reason the table now
+// lives in `nros_core::lifecycle` rather than privately inside
+// `nros_node::lifecycle_services` — `nros::Transition` in the C++ header calls
+// straight through, so neither language carries a copy of the labels.
+//
+// Every one is PURE: no handle, no executor, no state. A transition's label and
+// its two states are facts about REP-2002, not about a running node, so asking
+// for them cannot fail and none of them returns `nros_ret_t`. An id nobody
+// implements (`0` = CREATE, `8` = DESTROY, anything else) answers with the
+// `NULL` / `0` sentinel rather than a wrong row.
+
+/// The `lifecycle_msgs/msg/Transition.label` for `transition_id`, or `NULL`
+/// when the id is not one nano-ros implements.
+///
+/// The returned pointer is a NUL-terminated string literal with STATIC
+/// lifetime — the caller neither owns nor frees it, and there is no capacity
+/// argument, because unlike a parameter description this text is ours and its
+/// length is known at compile time.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_lifecycle_transition_label(transition_id: u8) -> *const core::ffi::c_char {
+    match LifecycleTransition::from_u8(transition_id) {
+        Some(t) => t.label_cstr().as_ptr(),
+        None => core::ptr::null(),
+    }
+}
+
+/// The `lifecycle_msgs/msg/State.label` for `state_id`, or `NULL` for an id
+/// that is not a lifecycle state. See [`nros_lifecycle_transition_label`].
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_lifecycle_state_label(state_id: u8) -> *const core::ffi::c_char {
+    match LifecycleState::from_u8(state_id) {
+        Some(s) => s.label_cstr().as_ptr(),
+        None => core::ptr::null(),
+    }
+}
+
+/// The state `transition_id` may be taken FROM — rclcpp's
+/// `Transition::start_state()`, spelled `source_state` in Rust.
+///
+/// Returns `0`, which is no lifecycle state, for an unimplemented id.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_lifecycle_transition_start_state(transition_id: u8) -> u8 {
+    match LifecycleTransition::from_u8(transition_id) {
+        Some(t) => t.source_state() as u8,
+        None => 0,
+    }
+}
+
+/// The state `transition_id` ADVERTISES as its destination — rclcpp's
+/// `Transition::goal_state()`.
+///
+/// This is where a SUCCEEDING callback lands. A failing one rolls back or
+/// routes to `ErrorProcessing`, which is a runtime outcome and not a property
+/// of the graph. Returns `0` for an unimplemented id.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_lifecycle_transition_goal_state(transition_id: u8) -> u8 {
+    match LifecycleTransition::from_u8(transition_id) {
+        Some(t) => t.goal_state() as u8,
+        None => 0,
+    }
+}
+
+/// The whole REP-2002 transition graph: every transition id, in
+/// `lifecycle_msgs` order.
+///
+/// `out_ids` receives a pointer to a STATIC array of `*out_count` ids — no
+/// allocation, no caller buffer, and nothing to free. Pair each id with
+/// [`nros_lifecycle_transition_label`],
+/// [`nros_lifecycle_transition_start_state`] and
+/// [`nros_lifecycle_transition_goal_state`] to get the row rclcpp's
+/// `Transition` object carries.
+///
+/// This is the SAME table `~/get_transition_graph` serves, so a node and a
+/// remote `ros2 lifecycle list` cannot disagree about it.
+///
+/// # Safety
+/// `out_ids` and `out_count` must be valid, writable pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_lifecycle_transition_graph(
+    out_ids: *mut *const u8,
+    out_count: *mut usize,
+) -> nros_ret_t {
+    if out_ids.is_null() || out_count.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    // A `static` rather than a local: the pointer outlives the call, so the
+    // array has to. `LifecycleTransition` is `repr(u8)`, so the transmute-free
+    // spelling is a table of the discriminants themselves.
+    static GRAPH: [u8; LifecycleTransition::ALL.len()] = {
+        let mut ids = [0u8; LifecycleTransition::ALL.len()];
+        let mut i = 0;
+        while i < LifecycleTransition::ALL.len() {
+            ids[i] = LifecycleTransition::ALL[i] as u8;
+            i += 1;
+        }
+        ids
+    };
+    unsafe {
+        *out_ids = GRAPH.as_ptr();
+        *out_count = GRAPH.len();
+    }
+    NROS_RET_OK
+}
+
+// ============================================================================
 // Tests — focused on the FFI bridge; the state machine itself is tested in
 // `nros_node::lifecycle::tests`.
 // ============================================================================
@@ -731,5 +845,92 @@ mod tests {
                 NROS_LIFECYCLE_STATE_INACTIVE
             );
         }
+    }
+
+    // ── phase-417 W4.f: the transition graph, in process ──────────────────
+
+    fn label_of(ptr: *const core::ffi::c_char) -> Option<&'static str> {
+        if ptr.is_null() {
+            return None;
+        }
+        unsafe { core::ffi::CStr::from_ptr(ptr) }.to_str().ok()
+    }
+
+    #[test]
+    fn transition_graph_enumerates_every_row_with_its_metadata() {
+        let mut ids: *const u8 = core::ptr::null();
+        let mut count: usize = 0;
+        assert_eq!(
+            unsafe { nros_lifecycle_transition_graph(&mut ids, &mut count) },
+            NROS_RET_OK
+        );
+        assert_eq!(count, 8, "the REP-2002 graph has eight transitions");
+        let graph = unsafe { core::slice::from_raw_parts(ids, count) };
+        assert_eq!(graph, &[1, 2, 3, 4, 5, 6, 7, 60]);
+
+        // Every row answers all three accessors — the tuple rclcpp's
+        // `Transition` object carries.
+        for id in graph.iter().copied() {
+            assert!(
+                label_of(nros_lifecycle_transition_label(id)).is_some(),
+                "transition {id} has no label"
+            );
+            assert_ne!(nros_lifecycle_transition_start_state(id), 0);
+            assert_ne!(nros_lifecycle_transition_goal_state(id), 0);
+        }
+
+        // Spot-check the one row whose start and goal states are the reason
+        // the three shutdowns are listed separately.
+        assert_eq!(
+            nros_lifecycle_transition_start_state(NROS_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE),
+            NROS_LIFECYCLE_STATE_ACTIVE
+        );
+        assert_eq!(
+            nros_lifecycle_transition_goal_state(NROS_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE),
+            NROS_LIFECYCLE_STATE_FINALIZED
+        );
+        assert_eq!(
+            label_of(nros_lifecycle_transition_label(
+                NROS_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE
+            )),
+            Some("shutdown"),
+            "all three shutdown ids carry upstream's single `shutdown` label"
+        );
+        assert_eq!(
+            label_of(nros_lifecycle_state_label(NROS_LIFECYCLE_STATE_ACTIVE)),
+            Some("active")
+        );
+    }
+
+    /// An id nobody implements answers with the sentinel, never a neighbouring
+    /// row: `0` is CREATE and `8` is DESTROY, and issue 1099 is what aliasing
+    /// an unimplemented id onto a real transition cost.
+    #[test]
+    fn unimplemented_ids_answer_with_the_sentinel() {
+        for id in [0u8, 8, 9, 59, 61, 255] {
+            assert!(
+                nros_lifecycle_transition_label(id).is_null(),
+                "transition id {id} must have no label"
+            );
+            assert_eq!(nros_lifecycle_transition_start_state(id), 0);
+            assert_eq!(nros_lifecycle_transition_goal_state(id), 0);
+        }
+        for id in [0u8, 6, 15, 255] {
+            assert!(nros_lifecycle_state_label(id).is_null());
+        }
+    }
+
+    #[test]
+    fn transition_graph_refuses_null_out_params() {
+        let mut count: usize = 0;
+        assert_eq!(
+            unsafe { nros_lifecycle_transition_graph(core::ptr::null_mut(), &mut count) },
+            NROS_RET_INVALID_ARGUMENT
+        );
+        let mut ids: *const u8 = core::ptr::null();
+        assert_eq!(
+            unsafe { nros_lifecycle_transition_graph(&mut ids, core::ptr::null_mut()) },
+            NROS_RET_INVALID_ARGUMENT
+        );
     }
 }
