@@ -204,6 +204,21 @@ cxx-compat-shim-facilities:
 cpp-freestanding-mechanisms:
     @python3 scripts/check-cpp-freestanding-mechanisms.py
 
+# phase-456 W7 / issue 1319 — every C++ subscription registration states its
+# receive bound. A site that omits it takes the `c_raw_no_hint` row, priced at
+# the executor's closure buffer rather than at the message, and the sizing
+# descriptor CANNOT see the difference: it credits every C/C++ entry with a
+# supplied hint, because which row a call site takes is a property of the site
+# and not of the image. So one silent omission makes the credit untrue for the
+# whole entry, in the UNDER direction. Five such sites existed before W7, every
+# one of them with `M` in scope. `nros::rx_bound_unknown` is the row said out
+# loud, and it is legal only where no message type is in scope — a structural
+# rule rather than an allowlist, so the one legitimate site
+# (`bind_subscription_raw`) is admitted by its shape.
+[private]
+cpp-subscription-bound-supplied:
+    @python3 scripts/check-cpp-subscription-bound-supplied.py
+
 # phase-417 / issue 1225 — a capability probe may gate a METHOD, never `sizeof`.
 # MEASURED, not grepped: one `sizeof` probe TU per capability configuration over
 # every public type the umbrella exports, DERIVED from a clang AST rather than

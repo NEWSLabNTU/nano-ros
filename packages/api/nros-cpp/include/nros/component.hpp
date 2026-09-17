@@ -39,7 +39,7 @@
 #include "nros/node.hpp"
 #include "nros/result.hpp"
 #include "nros/service.hpp"      // nros_cpp_service_server_register (raw callback)
-#include "nros/size_bound.hpp"   // nros::rx_size_bound<M> — the derived receive bound
+#include "nros/size_bound.hpp"   // nros::rx_size_bound<M> / rx_bound_unknown — the receive bound
 #include "nros/subscription.hpp" // nros_cpp_subscription_register (raw callback)
 
 namespace nros {
@@ -49,11 +49,19 @@ namespace nros {
 /// typed header. `ctx` is carried through to the callback. The executor owns the
 /// subscription (no storage object needed on the caller side); it dispatches the
 /// callback during `spin_once`. (Thin wrapper over `nros_cpp_subscription_register`.)
+///
+/// `rx_bytes` has NO DEFAULT — phase-456 W7. It used to default to 0, and 0 is
+/// the `c_raw_no_hint` registration row: priced at the executor's closure
+/// buffer rather than at the message, and invisible to the sizing descriptor,
+/// which credits every C/C++ entry with a supplied hint. A caller with a
+/// message type in scope passes `nros::rx_buffer_capacity<M>::value` (or the
+/// strict `nros::rx_size_bound<M>::value`); a caller that genuinely has only a
+/// type name passes `nros::rx_bound_unknown`, which is the same 0 said out
+/// loud.
 inline Result create_subscription_raw(::rclcpp::Node& node, const char* topic,
                                       const char* type_name,
                                       void (*callback)(const uint8_t* data, size_t len, void* ctx),
-                                      void* ctx, const QoS& qos = QoS::default_profile(),
-                                      size_t rx_bytes = 0) {
+                                      void* ctx, const QoS& qos, size_t rx_bytes) {
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
@@ -62,9 +70,10 @@ inline Result create_subscription_raw(::rclcpp::Node& node, const char* topic,
     // executor's arena slot for this subscription, so a publisher-heavy image
     // stops charging every slot the largest subscription's buffer.
     //
-    // 0 keeps the pre-phase-403 behaviour (the image-wide default), and is what
-    // a caller with no type in hand passes. Options are stack-local: the FFI
-    // reads the struct during the call and retains nothing.
+    // `nros::rx_bound_unknown` (0) keeps the pre-phase-403 behaviour (the
+    // image-wide default), and is what a caller with no type in hand passes.
+    // Options are stack-local: the FFI reads the struct during the call and
+    // retains nothing.
     nros_cpp_subscription_options_t opts = {};
     opts.rx_buffer_hint = static_cast<uint32_t>(rx_bytes);
     const nros_cpp_subscription_options_t* opts_p = (rx_bytes != 0) ? &opts : nullptr;
@@ -77,6 +86,12 @@ inline Result create_subscription_raw(::rclcpp::Node& node, const char* topic,
 /// (zero-copy) subscription callback. The member-fn pointer is a template
 /// parameter, so the trampoline is a non-capturing lambda (decays to a function
 /// pointer — no heap, no `std::function`). `self` is the executor `ctx`.
+///
+/// **This is the tree's one genuinely type-erased registration**, so it is the
+/// one site that passes `nros::rx_bound_unknown` (phase-456 W7). The callback
+/// takes bytes, the type arrives as a NAME, and no bound is recoverable from a
+/// string — the caller who wants one calls `bind_subscription<M, C, Method>`,
+/// which has the type, or `bind_subscription_sized`, which takes the number.
 template <class C, void (C::*Method)(const uint8_t* data, size_t len)>
 inline Result bind_subscription_raw(::rclcpp::Node& node, const char* topic, const char* type_name,
                                     C* self, const QoS& qos = QoS::default_profile()) {
@@ -85,7 +100,7 @@ inline Result bind_subscription_raw(::rclcpp::Node& node, const char* topic, con
         [](const uint8_t* data, size_t len, void* ctx) {
             (static_cast<C*>(ctx)->*Method)(data, len);
         },
-        self, qos);
+        self, qos, ::nros::rx_bound_unknown);
 }
 
 /// Phase 242.2 (RFC-0044 §Design.2(1)) — bind a component **member**
@@ -434,6 +449,11 @@ inline void Node::create_subscription_in_group(const ::nros::CallbackGroup& grou
     // this frame happened to hold.
     nros_cpp_subscription_options_t sub_options = nros_cpp_subscription_default_options();
     sub_options.callback_group = group.get_name();
+    // phase-456 W7 — `M` is in scope, so this states the bound rather than
+    // taking the `c_raw_no_hint` row. It read 0 until now, which made the
+    // grouped form cost the closure buffer where the ungrouped
+    // `create_subscription_in` (through `bind_subscription`) costs the type.
+    sub_options.rx_buffer_hint = static_cast<uint32_t>(::nros::rx_buffer_capacity<M>::value);
     nros_cpp_ret_t ret = nros_cpp_subscription_register(
         h, topic, M::TYPE_NAME, "", ffi_qos,
         [](const uint8_t* data, size_t len, void* ctx) {

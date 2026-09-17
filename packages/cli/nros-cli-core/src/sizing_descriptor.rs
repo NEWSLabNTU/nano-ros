@@ -536,6 +536,19 @@ fn registration_path(
         // which closes the C half of the declared-QoS check -- is where a
         // per-call-site answer becomes available.
         //
+        // phase-456 W7 NARROWED what this credit assumes, and it is worth being
+        // exact about how far. Every registration site in the nros-cpp headers
+        // now states a bound, enforced by `check-cpp-subscription-bound-supplied`,
+        // so a C++ entry earns the credit unless it calls the one deliberately
+        // type-erased site (`nros::bind_subscription_raw`, which passes the
+        // named `nros::rx_bound_unknown`). The C API's own helper
+        // (`nros_cpp_subscription_register_hinted`) has always required the
+        // hint. What remains untrue is CONSUMER code passing `options = NULL`
+        // with the type in scope -- seven C example listeners do, which is
+        // issue 1376. So this arm is still an assumption, over a smaller and
+        // now GREPPABLE set of ways to break it rather than over five silent
+        // ones.
+        //
         // The C path does NOT consult the in-place capability
         // (`add_arena_subscription_c_callback` allocates a region
         // unconditionally), so the dispatch axis does not reach this arm.
