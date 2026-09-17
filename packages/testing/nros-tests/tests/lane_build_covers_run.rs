@@ -95,21 +95,34 @@ fn lane_coords_bin() -> PathBuf {
     //
     // Freshness needs no check of its own: `lane-coords` is a bin of THIS
     // package, so `cargo nextest run -p nros-tests` rebuilds it in the build
-    // phase before any test runs (verified — an artifact backdated to 2020 came
-    // back stamped today during the run). That is the whole point of consuming
-    // it rather than shelling out to `cargo run`: the compile still happens, it
-    // just happens where it is not on a 60-second clock.
-    let newest = ["nros-fast-release", "debug", "release"]
-        .iter()
-        .map(|p| target.join(p).join("lane-coords"))
+    // phase before any test runs (verified twice — an artifact backdated to 2020
+    // came back stamped today during the run, and re-verified under a `--test
+    // <names>`-FILTERED run for issue 1314, where a filter that selects only
+    // test targets might plausibly have skipped the bins and does not).
+    //
+    // EVERY profile dir, though, not a hardcoded three — issue 1314. This listed
+    // `["nros-fast-release", "debug", "release"]` and the repo's development
+    // default is none of them: `nros_cargo_profile::DEFAULT_PROFILE` is
+    // `nros-relwithdebinfo`. So the binary the paragraph above correctly says is
+    // always rebuilt was being looked for somewhere it never lands, and this
+    // either skipped or selected a stale `target/debug/lane-coords` left by an
+    // earlier plain `cargo test` — precisely the museum-binary hazard the note
+    // below warns about, created by the list it was written beside. A directory
+    // scan cannot drift when the profile table moves.
+    let newest = std::fs::read_dir(&target)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path().join("lane-coords"))
         .filter(|p| p.is_file())
         .filter_map(|p| p.metadata().and_then(|m| m.modified()).ok().map(|t| (t, p)))
         .max_by_key(|(t, _)| *t);
     match newest {
         Some((_, bin)) => bin,
         None => nros_tests::skip!(
-            "lane-coords not prebuilt under {}/{{nros-fast-release,debug,release}} — \
-             run `just build`. This test must NOT compile it (issue 0523).",
+            "lane-coords not prebuilt under any {}/<profile>/ — run \
+             `just test-lane-contracts` (which builds it) or `just build`. This \
+             test must NOT compile it (issues 0523, 1314).",
             target.display()
         ),
     }
@@ -156,11 +169,36 @@ fn write_stamp(dir: &std::path::Path, lane: &str, coords: &[&str]) -> PathBuf {
     path
 }
 
+/// A scratch directory PER TEST, not per process — issue 1314.
+///
+/// This was keyed on `std::process::id()` alone, which is per-test only under
+/// nextest. Under plain `cargo test` every case in this file shares one process
+/// and runs on its own thread, so they shared one directory — and three cases
+/// write `.fixtures-built-tier2` into it and then `remove_file` it. Measured on
+/// `origin/main`: 8 of 11 passed, and the two extra failures were
+/// `sed: can't read …/.fixtures-built-tier2: No such file or directory` and an
+/// empty (mid-`fs::write`, i.e. truncated) `lane-coords-tier2.txt` read back as
+/// "NROS_TEST_COORDS is unset or empty". Both are a sibling's cleanup, not a
+/// lane defect — the same nextest-process-per-test assumption as issue 1313,
+/// noted as pre-existing in issue 1016's resolution and left there.
+///
+/// libtest names each test's thread after the test, so that name is the
+/// discriminator and no call site has to pass one (which would just be a
+/// copy-paste hazard). Under nextest the thread is `main` and the pid already
+/// differs; under `--test-threads=1` the name is `main` too, but then the cases
+/// are serial and cannot interfere.
 fn tmpdir() -> PathBuf {
+    let who: String = std::thread::current()
+        .name()
+        .unwrap_or("main")
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
     // `$project/tmp/` (gitignored), not /tmp — CLAUDE.md.
-    let d = nros_tests::project_root()
-        .join("tmp")
-        .join(format!("lane-build-covers-run-{}", std::process::id()));
+    let d = nros_tests::project_root().join("tmp").join(format!(
+        "lane-build-covers-run-{}-{who}",
+        std::process::id()
+    ));
     std::fs::create_dir_all(&d).expect("create tmp dir");
     d
 }
@@ -321,27 +359,115 @@ fn an_all_build_satisfies_every_lane() {
     let _ = std::fs::remove_file(&stamp);
 }
 
-/// Tier 1 keeps its saving: a `native` build still satisfies the tier-1 run.
+/// Tier 1 keeps its saving — and since phase-395 W19 the saving is tier 1's OWN
+/// coordinate cover, not the `native` module.
 ///
-/// The fix must not re-price the one lane that was already honest — if
-/// `run_scope` ever said tier 1 runs everything, `just ci` would start demanding
-/// a tier-3 build and the ladder would collapse to one rung.
+/// # What this used to assert, and why it was wrong (issue 1314)
+///
+/// It was `a_native_build_satisfies_the_tier1_run`, and its reason was "tier 1
+/// narrows its run to host binaries, which is exactly what that build
+/// produces". phase-395 W19 retired that premise on BOTH sides —
+/// `CiLane::Tier1::run_scope()` became `LaneCoords`, `nros_lane_build_lane
+/// tier1` became `tier1`, and `just ci` exports `NROS_TEST_COORDS` rather than
+/// `NROS_TEST_SCOPE` — and this case was not moved with it. So it failed
+/// DETERMINISTICALLY, on every invocation including nextest, and went unnoticed
+/// because the target it lives in was run by no affordability lane (both halves
+/// fixed in one commit; the lane half is issue 1226's shape).
+///
+/// The old premise is not merely obsolete, it is false by MEASUREMENT:
+/// `lane-coords tier1` selects `threadx-linux,c,zenoh` and `zephyr,rust,zenoh`,
+/// and the `native` module builds neither. A `native` build therefore has to be
+/// REFUSED for a tier-1 run, which is what the second arm below asserts —
+/// against the lane's own selection rather than against those two spellings, so
+/// that a tier 1 which ever becomes host-only again reports "this arm is now the
+/// wrong assertion" instead of passing vacuously.
+///
+/// What the old case was really guarding survives as the first two assertions:
+/// if `run_scope` ever said tier 1 runs everything, `just ci` would start
+/// demanding a tier-3 build and the ladder would collapse to one rung.
 #[test]
-fn a_native_build_satisfies_the_tier1_run() {
+fn a_tier1_build_satisfies_the_tier1_run_and_a_native_build_does_not() {
+    use nros_tests::ci_lane::{CiLane, RunScope};
+
+    assert_eq!(
+        CiLane::Tier1.run_scope(),
+        RunScope::LaneCoords,
+        "tier 1 must narrow its RUN to its own coordinates; anything wider makes \
+         `just ci` demand a broader build than the lane it names"
+    );
+    assert_eq!(
+        CiLane::Tier1.build_lane(),
+        "tier1",
+        "tier 1 must not be re-priced to a wider build lane — that is the rung \
+         everybody runs before every push"
+    );
+
     let dir = tmpdir();
-    let stamp = write_stamp(&dir, "native", &[]);
-    for lane in ["native", "tier1"] {
-        let (code, out) = lane_sh(
-            &format!("nros_fixtures_stamp_require {lane}"),
-            Some(stamp.to_str().unwrap()),
-        );
-        assert_eq!(
-            code, 0,
-            "a lane=native build must satisfy the {lane} run — tier 1 narrows its \
-             run to host binaries, which is exactly what that build produces:\n{out}"
+
+    // The saving: tier 1's own build satisfies tier 1's (narrowed) run.
+    let coords = lane_coords_file("tier1");
+    let coord_lines = std::fs::read_to_string(&coords).expect("read tier1 coords");
+    let coord_refs: Vec<&str> = coord_lines.lines().filter(|l| !l.is_empty()).collect();
+    let stamp = write_stamp(&dir, "tier1", &coord_refs);
+    let (code, out) = lane_sh_env(
+        "nros_fixtures_stamp_require tier1",
+        Some(stamp.to_str().unwrap()),
+        &[("NROS_TEST_COORDS", coords.as_str())],
+    );
+    assert_eq!(
+        code, 0,
+        "a lane=tier1 fixture build must satisfy the tier-1 preflight — the run \
+         is narrowed to the same coordinates, which is what makes the rung \
+         everybody runs before every push affordable:\n{out}"
+    );
+
+    // …and a `native` MODULE build does not, because tier 1's cover reaches
+    // past the host module. Read the reach out of the lane, never hardcode it.
+    let non_host: Vec<&str> = coord_refs
+        .iter()
+        .copied()
+        .filter(|c| !c.starts_with("linux,"))
+        .collect();
+    assert!(
+        !non_host.is_empty(),
+        "tier 1 selects only host coordinates now, so the arm below asserts the \
+         wrong thing: a `native` build WOULD cover it. Re-read \
+         `nros_lane_build_lane`/`CiLane::run_scope` and restate this case rather \
+         than deleting the assertion — that is how issue 1314 happened."
+    );
+    let native_stamp = write_stamp(&dir, "native", &[]);
+    let (code, out) = lane_sh_env(
+        "nros_fixtures_stamp_require tier1",
+        Some(native_stamp.to_str().unwrap()),
+        &[("NROS_TEST_COORDS", coords.as_str())],
+    );
+    assert_ne!(
+        code, 0,
+        "a lane=native build was accepted for a tier-1 run, but tier 1 selects \
+         {non_host:?}, which the native module does not build — the run would \
+         fail 'Binary not found' on exactly those:\n{out}"
+    );
+    for c in &non_host {
+        assert!(
+            out.contains(c),
+            "the refusal must NAME the coordinate that is missing ({c}), not \
+             merely decline — a reader cannot act on a bare refusal:\n{out}"
         );
     }
+
+    // A `native` build does still satisfy a `native` run; without this the arm
+    // above could be "passed" by refusing that too.
+    let (code, out) = lane_sh(
+        "nros_fixtures_stamp_require native",
+        Some(native_stamp.to_str().unwrap()),
+    );
+    assert_eq!(
+        code, 0,
+        "a lane=native build must satisfy the native run:\n{out}"
+    );
+
     let _ = std::fs::remove_file(&stamp);
+    let _ = std::fs::remove_file(&native_stamp);
 }
 
 /// Every buildable fixture row must be REACHABLE through the coordinate filter

@@ -689,10 +689,13 @@ fn require_prebuilt_binary_checks(binary_path: &Path) -> TestResult<PathBuf> {
 
 /// Did something already PROMISE that this lane's fixtures are present?
 ///
-/// True when the run carries a lane scope — `NROS_TEST_SCOPE` (tier 1 narrows
-/// by name) or `NROS_TEST_COORDS` (tier 2 / nightly narrow by coordinate).
-/// Both are set by the `just` recipes that run `_require-fixtures` and
-/// `check-fixtures-stale` first, so their presence marks "a gate ran".
+/// True when the run carries a lane scope — `NROS_TEST_SCOPE` (a name filter a
+/// caller may pass to `test-all`) or `NROS_TEST_COORDS` (EVERY ci tier: tier 2
+/// and nightly since phase-340 W3, tier 1 since phase-395 W19, which is why no
+/// recipe sets `NROS_TEST_SCOPE` any more). Either way the run reached here
+/// through `_require-fixtures` / `check-fixtures-stale`, so their presence
+/// marks "a gate ran". This parenthetical said "tier 1 narrows by name", the
+/// third copy of the premise W19 retired — see issue 1314.
 ///
 /// `NROS_FIXTURES_OPTIONAL` is the explicit opt-out and is handled by the
 /// caller above, before this is consulted.
