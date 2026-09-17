@@ -157,3 +157,29 @@ whose job is cross build + link has produced no verdict for two days.
 Nothing here changes what would close the issue: register the runner. It does
 widen what is waiting on it — `just runner-up nros-qemu,nros-sdk-zephyr,nros-big`
 covers both label sets.
+
+## Resolved half: the runner is back, and tier 2 ran
+
+Measured 2026-09-17 18:40 UTC:
+
+```
+$ gh api repos/NEWSLabNTU/nano-ros/actions/runners
+total_count: 1
+  nano-ros-runner  online  [self-hosted, Linux, X64, nros-qemu, nros-sdk-zephyr, nros-big]
+```
+
+One machine, online, carrying all three labels — so both tier-2 label sets and
+`queue.yml`'s `L3 (cross build + link)` can be claimed again. The backlog
+drained rather than waited: nightly 35184836117's `tier 2 nightly (pairwise
+cover)` job 105084553092 **started 17:58:16Z and completed 18:34:32Z**, the
+first tier-2 job to run since 2026-09-13.
+
+It failed. Not on anything this issue predicted: the Zephyr fixtures do not
+link, on two `zpico_reply_slot_*` symbols whose callers landed 2026-09-12 —
+filed as [[issue-1375]]. That is the cost this issue was about, made concrete:
+the lane was not quiet because the tree was healthy, and five days of absence
+was five days of a real build break going unreported.
+
+Closing condition 1 is met. **Condition 2 is not** — nothing yet makes "queued
+and unclaimed" visible, so the next time that machine goes away the lane will
+again look the same as a lane that is merely slow. Left open on that half.
