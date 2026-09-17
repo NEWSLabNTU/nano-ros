@@ -1872,8 +1872,8 @@ mod tests {
         assert_eq!(parse_cargo_minor("not a version line"), None);
         assert_eq!(parse_cargo_minor(""), None);
         // 96 < 97 <= 98: the gate's direction, stated where it can break.
-        assert!(96 < LOCKFILE_PATH_STABLE_MINOR);
-        assert!(98 >= LOCKFILE_PATH_STABLE_MINOR);
+        const { assert!(96 < LOCKFILE_PATH_STABLE_MINOR) };
+        const { assert!(98 >= LOCKFILE_PATH_STABLE_MINOR) };
     }
 
     /// The backstop restores byte-for-byte, and says nothing when the file did
