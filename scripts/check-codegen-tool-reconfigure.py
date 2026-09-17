@@ -1,5 +1,34 @@
 #!/usr/bin/env python3
-"""A configure-time emitter must make a rebuilt `nros` re-run its configure.
+"""A codegen emitter must state every edge that can leave it museum code.
+
+Two rules, one class. Issue 1018 wrote the first and issue 1360 measured why it
+is not the whole rule.
+
+RULE 1 — a configure-time emitter must make a rebuilt `nros` re-run its
+configure (`nros_codegen_tool_reconfigure()`).
+
+RULE 2 — a file that OWNS a generated interface tree (it calls
+`_nros_predict_generated_outputs()`, the shared "here is what codegen will
+emit") must also consult the tree's EMITTED CODEGEN VERSION
+(`nros_codegen_version_stale()`), whichever lane it is.
+
+Rule 1 keys freshness on the TOOL, and the tool it names is only the tool that
+build directory RESOLVED: `_NANO_ROS_CODEGEN_TOOL` / `_NROS_ZEPHYR_CODEGEN_TOOL`
+are `CACHE INTERNAL` and are dropped only when the path stops EXISTING. RFC-0095
+D4 then moved the Zephyr workspace to `$NROS_STORE/workspaces/zephyr/<version>`,
+outside every checkout, so its build dirs outlive any one checkout — and on the
+self-hosted runner the checkout that configures them (`runner-bootstrap.sh`'s
+`~/src/nano-ros`) is not the one CI builds from. That binary is never rebuilt by
+the job, so its mtime never advances, and every mtime edge reads current while
+the trees sit at a codegen version `NROS_CODEGEN_VERSION_MIN` has moved past.
+Measured: tier 2 and tier-2 nightly failed in `build-fixtures` on the RFC-0090
+`#error` for three consecutive nights, reaching none of their cells.
+
+Rule 2 is the input no timestamp can express, and it is not lane-specific — the
+build-time lane's `add_custom_command DEPENDS` names the same cached binary — so
+it is asked of BOTH generators. That is also why rule 2 keys on
+`_nros_predict_generated_outputs` rather than on the verb: the question is about
+a tree of version-stamped artifacts, and the predictor is what names them.
 
 Issue 1018. The chain is::
 
@@ -78,6 +107,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 HELPER = "nros_codegen_tool_reconfigure"
+
+# Rule 2 (issue 1360). The shared predictor is what identifies a file as the
+# OWNER of a generated interface tree — the artifacts that carry
+# `NROS_EMITTED_CODEGEN_VERSION` — and the version helper is the edge it must
+# state. Both spellings are single-definition, so this cannot drift into naming
+# something that does not exist.
+PREDICTOR = "_nros_predict_generated_outputs"
+VERSION_HELPER = "nros_codegen_version_stale"
 
 # Verbs whose answer outlives the configure. See the module docstring for why
 # `resolve-deps` and the fact verbs are not here.
@@ -213,6 +250,26 @@ def offenders(files, read):
     return bad
 
 
+def version_offenders(files, read):
+    """Files owning a generated interface tree that never ask its version.
+
+    Rule 2 (issue 1360). A CALL is `<name>(`; the DEFINITION is
+    `function(<name> …)`, where the paren precedes the name, so the file that
+    defines the predictor is not a call site and needs no exemption. Comments
+    and quoted strings are blanked first, for rule 1's reasons: the core's own
+    header spells the signature in a comment and its `FATAL_ERROR` names it in
+    prose.
+    """
+    bad = []
+    for rel in files:
+        text = blank_strings(strip_comments(read(rel)))
+        if re.search(r"(?<![\w.-])" + re.escape(PREDICTOR) + r"\s*\(", text) and (
+            VERSION_HELPER + "(" not in text
+        ):
+            bad.append(rel)
+    return bad
+
+
 def tracked_cmake():
     out = subprocess.run(
         ["git", "ls-files", "*.cmake", "*CMakeLists.txt", "*.cmake.in"],
@@ -235,7 +292,34 @@ def main():
     selftest()
 
     files = tracked_cmake()
-    bad = offenders(files, lambda rel: (REPO / rel).read_text(errors="replace"))
+    read = lambda rel: (REPO / rel).read_text(errors="replace")  # noqa: E731
+
+    # Rule 2 first: it is the one a reader of a red lane will not guess.
+    stale_blind = version_offenders(files, read)
+    if stale_blind:
+        print("check-codegen-tool-reconfigure: FAILED", file=sys.stderr)
+        for rel in stale_blind:
+            print(
+                f"  {rel}: predicts generated interface outputs ({PREDICTOR}) "
+                f"but never calls {VERSION_HELPER}()",
+                file=sys.stderr,
+            )
+        print(
+            "\nEvery mtime edge a codegen emitter has names the `nros` binary that\n"
+            "build directory CACHED, and a persistent build dir — a provisioned Zephyr\n"
+            "workspace under $NROS_STORE, outside every checkout — keeps whichever\n"
+            "checkout's binary configured it. That binary is never rebuilt, so the edge\n"
+            "reads current while the tree sits at a codegen version this runtime refuses,\n"
+            "and the failure lands as an `#error` inside a museum header (issue 1360:\n"
+            "three nights of tier 2 reaching no cell). Ask the artifacts:\n"
+            f"  {VERSION_HELPER}(<out> [REJECTED <var>] CONTEXT <label> FILES <headers…>)\n"
+            "then either set your regen flag (configure-time lane) or remove the rejected\n"
+            "outputs so your own emitter re-emits them (build-time lane).",
+            file=sys.stderr,
+        )
+        return 1
+
+    bad = offenders(files, read)
     if bad:
         print("check-codegen-tool-reconfigure: FAILED", file=sys.stderr)
         for rel, verbs in bad:
@@ -254,7 +338,10 @@ def main():
             file=sys.stderr,
         )
         return 1
-    print(f"check-codegen-tool-reconfigure: OK ({len(files)} cmake files)")
+    print(
+        f"check-codegen-tool-reconfigure: OK ({len(files)} cmake files; "
+        "tool edge + emitted-version edge)"
+    )
     return 0
 
 
@@ -349,6 +436,44 @@ def selftest(verbose=False):
     chk("a verb named inside a quoted message is prose, not an invocation",
         run(["prose.cmake"]) == [])
     chk("the whole tracked set is enumerable", len(tracked_cmake()) > 0)
+
+    # ---- Rule 2: the emitted-version edge (issue 1360) ----
+    predict = (
+        f"{PREDICTOR}(_hdr _src _rs\n"
+        '    LANGUAGE "${_L}" PACKAGE "${t}" OUTPUT_DIR "${_o}"\n'
+        "    INTERFACE_FILES ${_files})\n"
+    )
+    asks = f'{VERSION_HELPER}(_stale CONTEXT "x" FILES ${{_hdr}})\n'
+    vfiles = {
+        "blind.cmake": predict,
+        "asks.cmake": predict + asks,
+        # The core DEFINES the predictor; a definition is not a call site.
+        "core.cmake": f"function({PREDICTOR} _hdr_var _src_var _rs_var)\n"
+                      "    set(${_hdr_var} \"\" PARENT_SCOPE)\n"
+                      "endfunction()\n",
+        # Its own header spells the signature in a comment, and its FATAL_ERROR
+        # names it in prose — neither is a call.
+        "docs.cmake": f"# {PREDICTOR}(<headers_var> <sources_var> <rs_var>\n"
+                      f'message(FATAL_ERROR "{PREDICTOR}: unknown extension")\n',
+        "unrelated.cmake": 'add_library(x INTERFACE)\n',
+    }
+    vrun = lambda names: version_offenders(names, vfiles.get)  # noqa: E731
+
+    chk("predicting codegen outputs without asking their version FAILS",
+        vrun(["blind.cmake"]) == ["blind.cmake"])
+    chk("asking the version passes", vrun(["asks.cmake"]) == [])
+    chk("DEFINING the predictor is not a call site", vrun(["core.cmake"]) == [])
+    chk("the predictor named in a comment or a message is not a call site",
+        vrun(["docs.cmake"]) == [])
+    chk("a file that generates no interfaces is out of scope",
+        vrun(["unrelated.cmake"]) == [])
+    # Mutation: the helper NAME without a call must not satisfy rule 2.
+    chk("the version helper's name in a comment does not satisfy rule 2",
+        version_offenders(["m.cmake"], {"m.cmake": f"# {VERSION_HELPER}\n" + predict}.get)
+        == ["m.cmake"])
+    # And the two rules must not substitute for each other.
+    chk("registering the TOOL does not satisfy the version rule",
+        version_offenders(["t.cmake"], {"t.cmake": reg + predict}.get) == ["t.cmake"])
 
     if verbose:
         print(f"\n{ok} passed, {fail} failed")

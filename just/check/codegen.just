@@ -83,12 +83,22 @@ codegen-size-bound-golden:
 codegen-stamp-inputs:
     @./tests/codegen-stamp-tests.sh
 
-# A configure-time emitter must make a rebuilt `nros` re-run its configure
-# (issue 1018). The build-time generator says so in `DEPENDS`; `execute_process`
-# cannot, so the tool goes in `CMAKE_CONFIGURE_DEPENDS` via
-# `nros_codegen_tool_reconfigure()`. #182 registered it at ONE of four sites,
-# inline, so the other three kept museum generated code after a `just setup-cli`
-# unless the image also happened to call `nano_ros_entry()`.
+# A codegen emitter must state every edge that can leave it museum code — two
+# rules, one class.
+#
+# 1. A configure-time emitter must make a rebuilt `nros` re-run its configure
+#    (issue 1018). The build-time generator says so in `DEPENDS`;
+#    `execute_process` cannot, so the tool goes in `CMAKE_CONFIGURE_DEPENDS` via
+#    `nros_codegen_tool_reconfigure()`. #182 registered it at ONE of four sites,
+#    inline, so the other three kept museum generated code after a
+#    `just setup-cli` unless the image also happened to call `nano_ros_entry()`.
+# 2. A file that owns a generated interface tree must consult its EMITTED
+#    CODEGEN VERSION (`nros_codegen_version_stale()`, issue 1360). Rule 1's edge
+#    names the `nros` that build dir CACHED, and a persistent build dir — a
+#    provisioned Zephyr workspace under $NROS_STORE, outside every checkout —
+#    keeps whichever checkout's binary configured it, forever. Three nights of
+#    tier 2 reached no cell: every mtime edge read current while the trees sat
+#    below `NROS_CODEGEN_VERSION_MIN`.
 [group("checks")]
 codegen-tool-reconfigure:
     @python3 scripts/check-codegen-tool-reconfigure.py
