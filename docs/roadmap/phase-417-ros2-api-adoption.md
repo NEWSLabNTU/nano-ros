@@ -392,7 +392,7 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
   | `describe` / `list` / type query | 4 | all 4 closed | `cpp:Node::describe_parameter{,s}`, `cpp:Node::get_parameter_types`, `cpp:Node::list_parameters` |
   | plural and `_or` forms | 5 | 3 closed, 2 `declined` | `cpp:Node::{declare,get,set}_parameters`, `set_parameters_atomically`, `get_parameter_or` |
   | set-parameters callbacks | 2 | both closed | `cpp:Node::{add,remove}_on_set_parameters_callback` — was out of scope for phase-426 by construction ("adding a callback path before the store is single would be a third implementation"). The store IS single now, so the reason has expired and the work lands here |
-  | the `rclcpp_lifecycle` copies | 1 | **still open — W4.f** | `cpp:LifecycleNode::*parameter*`, a glob row; it moves with stage 4's lifecycle work, not ahead of it |
+  | the `rclcpp_lifecycle` copies | 1 | **CLOSED by W4.f, 2026-09-18** | `cpp:LifecycleNode::*parameter*`, a glob row; it moved with stage 4's lifecycle work rather than ahead of it, because closing it meant deciding whether `nros::LifecycleNode` owns a node. It binds one — see W4.f |
   | types and errors | 6 | all 6 closed | `cpp:ParameterType`, `rust:Parameters`, `rust:Node::use_undeclared_parameters`, `rust:DeclarationError`, `rust:RmwParameterConversionError`, `c:executor_add_parameter_server_with_context` |
 
   Two issues sit inside this item rather than beside it: **0793**'s C half is
@@ -404,10 +404,12 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
   the legacy store is what would have needed 0793 settled first, and that is
   precisely what was not done.
 
-  **What landed.** **`param.json`'s `gap` rows: 27 → 1**, and the one left is
-  `cpp:LifecycleNode::*parameter*`, the glob that moves with W4.f rather than
-  ahead of it. The shard is 171 rows: 74 divergence, 44 declined, 27 extension,
-  24 rename, 1 gap, 1 their-rename.
+  **What landed.** **`param.json`'s `gap` rows: 27 → 1**, and the one left was
+  `cpp:LifecycleNode::*parameter*`, the glob that moved with W4.f rather than
+  ahead of it. The shard was 171 rows: 74 divergence, 44 declined, 27 extension,
+  24 rename, 1 gap, 1 their-rename. **W4.f closed the last one on 2026-09-18**,
+  so the shard has NO `gap` row left; the glob survives as a `declined` over the
+  four plural/interface rows whose `cpp:Node::` twins are declined too.
 
   Everything lands in `nros_params::ParameterServer` and the wrappers forward.
   A wrapper that kept a descriptor table of its own would be the second store
@@ -778,12 +780,106 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
   `cpp:GuardCondition::is_valid`, `cpp:Node::create_guard_condition`,
   `rust:Executor::register_guard_condition`. Upstream's free-standing
   constructor from a `Context` stays REFUSED (`cpp:WaitSet`).
-* W4.f **[wrapper]** — **lifecycle, 15 rows, added 2026-09-13** because the
-  shard is the third largest and no work item named it. `register_on_*` differs
-  across our three languages (which is squarely this stage's subject), and the
-  rest are missing: no `~/transition_event` publisher (REP-2002), no
+* W4.f **[wrapper]** — **lifecycle, 15 rows, added 2026-09-13. LANDED
+  2026-09-18: 14 of 15 closed, plus the `param.json` glob W4.a left here.**
+  The shard was the third largest and no work item named it. `register_on_*`
+  differed across our three languages (which is squarely this stage's subject),
+  and the rest were missing: no `~/transition_event` publisher (REP-2002), no
   `LifecyclePublisher` or managed-entity protocol, no `get_transition_graph`,
   and no `get_clock`/`now` on the lifecycle node.
+
+  **What `LifecycleNode` turned out to be, which decided the wave.** Not a node.
+  Phase-427 merged `ComponentNode` onto `rclcpp::Node` and phase-426 deleted the
+  two C++ parameter stores, and neither touched `nros::LifecycleNode`: it is a
+  MIXIN holding one `void* exec_`, with the graph forwarders phase-417 stage 2b
+  hung on it. That is why six of the fifteen rows read the way they did — the
+  clock row said "closing it means deciding whether `LifecycleNode` owns a node",
+  and the `param.json` glob was waiting on the same question.
+
+  **The answer is BIND, not OWN.** `bind(Node&)` joins the existing
+  `bind(void*)`; a lifecycle node that constructed a node would be a second node
+  for one logical node, with its own entity storage and its own row in the
+  executor's table. The whole parameter surface then forwards to that node —
+  every body is one call to the identically named `rclcpp::Node` method, so the
+  store, the per-node keying and phase-446's declared-parameter contract are
+  reached through ONE implementation. A table on the wrapper would have been
+  phase-426's defect in a smaller spelling, and it would have passed a local
+  read-back test; the acceptance is a WIRE read for exactly that reason.
+
+  | what shipped | where |
+  | --- | --- |
+  | the whole parameter surface, forwarded (18 methods + the hosted `std::string` set + `declare_parameters`) | `nros::LifecycleNode`, `lifecycle.hpp`; closes `cpp:LifecycleNode::*parameter*` |
+  | `get_clock()` / `now()` — a `Clock` MEMBER, so an unbound node can still ask | `lifecycle.hpp` |
+  | `register_on_{configure,activate,deactivate,cleanup,shutdown,error}` — a fn ptr + context, stored in the class so registration order does not matter | `lifecycle.hpp` |
+  | `nros::Transition` (id, label, start_state, goal_state) + `state_label` | `lifecycle.hpp` |
+  | `get_transition_graph(visit, ctx)` — the same eight rows `~/get_transition_graph` serves | `lifecycle.hpp` |
+  | `ManagedEntityInterface` / `SimpleManagedEntity` / `LifecyclePublisher<M>` + `add_managed_entity` | `lifecycle.hpp` |
+  | the transition table as ONE fact: `LifecycleTransition::{ALL,label_cstr,label,goal_state}`, `LifecycleState::{ALL,label_cstr,label}` | `nros_core::lifecycle` |
+  | the C accessors that read it: `nros_lifecycle_{transition_label,state_label,transition_start_state,transition_goal_state,transition_graph}` | `nros-c/src/lifecycle.rs` |
+
+  **The table MOVED rather than being copied, and that is the part reading would
+  not have got right.** `~/get_transition_graph` has served the eight rows since
+  phase-379 while `ALL_TRANSITIONS`, its start states and its goal states were
+  private to `nros_node::lifecycle_services` — so no language could read its own
+  transition table in process, and the obvious fix (a `constexpr` table in
+  `lifecycle.hpp`) would have been the FOURTH copy of `lifecycle_msgs` in this
+  tree. Issue 1099 is what the third copy cost. So the table went DOWN to
+  `nros_core`, `lifecycle_services` aliases it, C reaches it through five pure
+  functions, and `nros::Transition` stores an id and asks. `sizeof(Transition)
+  == 1` is pinned in the header and again in the compile TU.
+
+  **Two shapes were chosen against the one that fits best, both for the same
+  reason.** `get_transition_graph` VISITS rather than returning an
+  `nros::Span<Transition>` over the static table: `span.hpp` is reached by
+  nothing else in these headers, and `graph.hpp` and `options.hpp` had each
+  already declined to pull it in because doing so newly exposes `Span` /
+  `StringView` / `LeSpan` on the public C++ surface as a side effect (16
+  unledgered items, measured — this wave measured 13 and dropped the include).
+  And the managed-entity registry is an INTRUSIVE list rather than a fixed
+  array, because a capacity in a member array is a build knob deciding a
+  `sizeof`, which `check-cpp-capability-layout` forbids. Cost of the list,
+  stated in the header: an entity must outlive its node and belong to one;
+  adding one twice is refused rather than corrupting the list.
+
+  **`lifecycle.hpp` now includes `node.hpp`.** It has to: the hosted
+  `std::string` overloads are guarded on `NROS_CPP_NODE_HOSTED`, which
+  `node.hpp` is the file that DEFINES, and a guard answering differently in the
+  two headers would give a lifecycle node a different parameter surface per
+  translation unit. No cycle — `node.hpp` has never included this file.
+
+  **Acceptance (RUN, not asserted).** `ManagedTalker` declares
+  `publish_period_ms` through the LIFECYCLE node and prints what it read back;
+  `cpp_lifecycle_node_wrapper_e2e::a_parameter_declared_through_the_lifecycle_node_reaches_ros2`
+  then asks a live `ros2 param get /managed_talker publish_period_ms` over an
+  ephemeral `zenohd`. The local print alone would pass with a second store on
+  the wrapper, which is why the assertion is the peer's. The `managed` bringup
+  gains `param_services` for it. Both copies of `ManagedTalker` (`managed/` and
+  `features/`) move together — they are byte-identical files.
+
+  **The one row left OPEN is `c:lifecycle_change_state`**, deliberately, and its
+  ledger row now says why. Its subject is the missing `~/transition_event`
+  publisher, which REP-2002 names as half the communication interface. The other
+  half of what that row pointed at — `cpp:LifecyclePublisher` and the
+  managed-entity protocol it called "the same missing piece" — is closed. What
+  remains is a session ENTITY in every lifecycle image: it moves
+  `EntityInventory::derive`'s publisher and liveliness-token counts and the
+  `LIFECYCLE_SERVICE_QUERYABLES` family `check-infra-queryable-counts` holds,
+  and it needs a hand-written `TransitionEvent` CDR writer beside the five in
+  `lifecycle_services.rs`. That is a sizing item, not a header wave, and it is
+  sized as its own rather than smuggled in beneath this one.
+
+  **Ledger arithmetic.** `lifecycle.json` goes 15 gap -> 1 (`c:lifecycle_change_state`);
+  7 rows were DELETED because the gate reported their subjects now correlate, 7
+  were re-verdicted `gap` -> `divergence` (`register_on_*` x6 and
+  `get_transition_graph`), and the new surface added 14 rows across
+  `lifecycle.json`, `param.json`, `pubsub.json`, `graph.json` and `action.json` —
+  the last three because the topic classifier keys on the NAME, so
+  `lifecycle_transition_graph` files as a graph row and anything called
+  `LifecyclePublisher` as a pubsub one. Each carries the note.
+  `param.json`'s glob stops being a `gap` over the whole surface and becomes a
+  `declined` over the four rows whose `cpp:Node::` twins are also declined
+  (`get_parameters`, `set_parameters`, `describe_parameters`,
+  `get_node_parameters_interface`).
 
 ## Stage 5 — C
 
