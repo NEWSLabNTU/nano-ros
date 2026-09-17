@@ -890,6 +890,24 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
   `c:typed_subscription_callback_t` `settled-pending-owner` → `landed` (the
   alias landed in `rcl_compat.h`, W5.e's other file).
 
+  **Measured, live.** All three transforms were built as real example binaries
+  (`just native _build-c-example`) and run against `rmw_zenohd` on an isolated
+  endpoint. Typed client: `Result of add_two_ints: 42` for `17 25`; typed
+  CALLBACK client: `Result of add_two_ints: 17` for `9 8`; the typed server
+  printed `Incoming request / a: 17 b: 25` then `a: 9 b: 8` from its typed
+  handler and exited `Total requests handled: 2` with no refusals — the PAYLOAD,
+  through the generated trampoline, not a marker. Compile-side: `just check c`
+  rc=0 with both probes; the three sources compile `-Wall -Wextra -Werror`
+  against the REAL generated `example_interfaces` header, not only the golden
+  corpus; `arm-none-eabi-gcc 13.2 -ffreestanding -Os -mcpu=cortex-m3 -Werror`
+  compiles the typed service header and the object's undefined-symbol set is 16
+  generated/`nros_*` entry points with ZERO allocator or libc symbols, which is
+  the no-allocator claim measured rather than stated. `just check api-parity`
+  rc=0; `api-parity-ledger` rc=0; `codegen-version-surface` OK at version 5 /
+  259 items UNCHANGED — no pack was edited and no new runtime identifier is
+  named, so `NROS_CODEGEN_VERSION` does not move and neither NuttX fallback
+  snapshot nor the golden corpus needed carrying.
+
   **One more stale claim, MEASURED and left with a reason.**
   `nros_service_init_with_qos`'s doc says "`nros_executor_add_service` treats an
   absent callback as nothing to dispatch". It does not — `executor.rs` returns
