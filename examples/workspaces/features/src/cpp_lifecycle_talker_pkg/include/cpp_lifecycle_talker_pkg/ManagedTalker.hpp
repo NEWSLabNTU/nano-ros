@@ -21,6 +21,9 @@ class ManagedTalker : public ::nros::LifecycleNode {
     ::nros::Timer timer_;
     int32_t counter_ = 0;
     bool active_ = false;
+    // phase-417 W4.f — declared through the LIFECYCLE node, read back on every
+    // tick, and the value `ros2 param get` must agree with.
+    int64_t publish_period_ms_ = 0;
 
     void on_tick();
 
