@@ -438,9 +438,48 @@
     "why": "the CLIENT side of the parameter services -- a service client speaking `rcl_interfaces/srv/*` on someone else's behalf. Ours registers the SERVER side (`nros_executor_register_parameter_services`) and ships no client: a device sets its own parameters from baked config (RFC-0045) and is the thing a desktop tool queries, not the thing that queries. See the param stage for the server half."
   },
   "cpp:LifecycleNode::*parameter*": {
-    "verdict": "gap",
+    "verdict": "declined",
     "bucket": "theirs-only",
-    "why": "`rclcpp_lifecycle::LifecycleNode` repeats `Node`'s entire parameter surface verbatim. Every row has the same answer as its `cpp:Node::` twin -- a lifecycle node declares and reads parameters exactly like an ordinary one here, and a lifecycle node's parameters are not lifecycle-gated in rclcpp either. See the `cpp:Node::*` rows in this shard."
+    "disposition": "absent",
+    "why": "RE-VERDICTED phase-417 W4.f. was `gap` over the WHOLE parameter surface; `nros::LifecycleNode` now carries it, forwarding every call to the `rclcpp::Node` that `bind(Node&)` supplied, so the store, the per-node keying and the declared-parameter contract are reached through one implementation and a lifecycle node's parameters are visible to `ros2 param get` exactly as a plain node's are. A table on the wrapper would have been the second store phase-426 spent six work items removing, in a smaller spelling. What the glob covers NOW is the four rows whose `cpp:Node::` twins are also `declined` -- `get_parameters`, `set_parameters`, `describe_parameters` and `get_node_parameters_interface`, all of which take or return a `std::vector` of a generated message type or an interface handle we do not have. Every other row has its own entry, because the reasons now differ; see the `cpp:Node::*` twin of each."
+  },
+  "cpp:LifecycleNode::add_on_set_parameters_callback": {
+    "verdict": "divergence",
+    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::add_on_set_parameters_callback`. UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters."
+  },
+  "cpp:LifecycleNode::declare_parameters": {
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::declare_parameters` (both return a `Result` where upstream returns `void`). UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters."
+  },
+  "cpp:LifecycleNode::describe_parameter": {
+    "verdict": "divergence",
+    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::describe_parameter`. UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters."
+  },
+  "cpp:LifecycleNode::get_parameter_type": {
+    "verdict": "extension",
+    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::get_parameter_type`. UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters."
+  },
+  "cpp:LifecycleNode::get_parameter_types": {
+    "verdict": "divergence",
+    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::get_parameter_types`. UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters."
+  },
+  "cpp:LifecycleNode::list_parameters": {
+    "verdict": "divergence",
+    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::list_parameters`. UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters."
+  },
+  "cpp:LifecycleNode::remove_on_set_parameters_callback": {
+    "verdict": "divergence",
+    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::remove_on_set_parameters_callback`. UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters."
+  },
+  "cpp:LifecycleNode::set_parameters_atomically": {
+    "verdict": "divergence",
+    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::set_parameters_atomically`. UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters."
+  },
+  "cpp:LifecycleNode::undeclare_parameter": {
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::undeclare_parameter` (both return a `Result` where upstream returns `void`). UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters."
   },
   "cpp:Node::add_on_set_parameters_callback": {
     "verdict": "divergence",
