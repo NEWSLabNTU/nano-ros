@@ -59,9 +59,10 @@ is being worked in its own branch now. Two corrections to the original list:
   sources of nine targets at once, so a parallel `make` ran `idlc` up to eleven
   times concurrently into the same files. Fixed with one OBJECT-library owner
   per generated set, gated by `check-cmake-generated-source-owners`.
-- [1312](../issues/1312-zephyr-system-generate-passes-no-image-id.md): the Zephyr
-  system-generate module passes no image id, so the tier resolver answers for
-  the host.
+- [1312](../issues/archived/1312-zephyr-system-generate-passes-no-image-id.md):
+  the Zephyr system-generate module passed no image id, so the tier resolver
+  answered for the host. **RESOLVED** — `codegen-system --for-entry`; the shim
+  names its entry package and the image that claims it supplies the target.
 - [1313](../issues/1313-nros-tests-gated-absence-env-race.md): an env race
   under plain `cargo test`.
 - [1314](../issues/1314-tier1-lane-contract-test-refuses-unscoped-run.md): a

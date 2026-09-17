@@ -70,6 +70,44 @@ pub struct Args {
     #[arg(long)]
     pub target: Option<String>,
 
+    /// The ENTRY PACKAGE this bake is for — a package name, or a path to its
+    /// directory (the shape `--bringup` above already accepts). The
+    /// `[image.<id>]` that claims it supplies the target block, so a build
+    /// shim never has to know the id.
+    ///
+    /// Issue 1312. This is the question a framework configure actually has: a
+    /// west or ESP-IDF configure knows the APPLICATION DIRECTORY it was pointed
+    /// at and nothing above it, so `--target` — a block key — is the one thing
+    /// it cannot answer. `zephyr/cmake/nros_system_generate.cmake`
+    /// answered it anyway, with `--target zephyr-<rmw>` synthesised from
+    /// Kconfig, and that names no block in any bringup: everything `--target`
+    /// selects fell back to the system-wide default, and for the tier resolver
+    /// that default is the HOST, so a Zephyr image baked here read
+    /// `[tiers.*.posix]`.
+    ///
+    /// Same flag name and same resolver as `nros image-facts --for-entry`
+    /// (and as the `nros ws board-facts` the Zephyr lane already calls):
+    /// [`nros_orchestration_ir::leaf_system::for_entry`]. One vocabulary, so
+    /// the three cannot disagree about which image an entry belongs to —
+    /// and no substring of the target string is read, which is what the
+    /// issue-1285 follow-up removed.
+    #[arg(long = "for-entry", value_name = "PKG", conflicts_with = "target")]
+    pub for_entry: Option<String>,
+
+    /// nano-ros checkout holding `packages/boards`, for the board catalog a
+    /// resolved target needs. Defaults to `$NROS_REPO_DIR`, then a walk up from
+    /// the workspace, then this toolchain's own `share/nano-ros`.
+    ///
+    /// The SAME top rung `nros image-facts` and `nros ws board-facts` take, and
+    /// for issue 1263's reason: the walk-up finds nothing for a downstream
+    /// project whose nano-ros sits BELOW it (`third-party/nano-ros`), and a
+    /// build shim is the one caller that always knows where its own module
+    /// tree is. Before issue 1312 no bake this module made ever resolved a
+    /// board, so no bake ever needed a root — naming the image is what makes
+    /// this reachable, which is why the flag lands with it.
+    #[arg(long = "nano-ros-path", value_name = "DIR")]
+    pub nano_ros_path: Option<PathBuf>,
+
     /// Output directory (the `nros-system/` subdir is created inside this).
     /// Defaults to `<workspace>/build/<bringup>/`.
     #[arg(long)]
@@ -109,6 +147,87 @@ pub struct Args {
     pub rmw: Option<String>,
 }
 
+/// `--for-entry`'s value → the entry's (directory, package name).
+///
+/// A package NAME or a path to its directory, the shape `--bringup` on this
+/// same verb already accepts — because the cmake caller holds ONE value that is
+/// both: `NanoRosImageAgreement.cmake` passes `APPLICATION_SOURCE_DIR` and
+/// calls `get_filename_component(… NAME)` of it the entry package.
+/// [`leaf_system::for_entry`](nros_orchestration_ir::leaf_system::for_entry)
+/// matches an image's `entry =` against either spelling for exactly that
+/// reason, so handing it both costs nothing and misses nothing.
+fn entry_identity(value: &str, workspace: &Path) -> (PathBuf, String) {
+    let p = Path::new(value);
+    let abs = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        workspace.join(p)
+    };
+    let name = if abs.is_dir() {
+        abs.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(value)
+            .to_string()
+    } else {
+        // A bare package name. `abs` is then a path that need not exist: the
+        // leaf-`system.toml` rung simply finds nothing there and the answer
+        // comes from the bringup, which is where a workspace entry's image
+        // lives anyway.
+        value.to_string()
+    };
+    (abs, name)
+}
+
+/// The `[image.<id>]` / `[deploy.<id>]` block this bake selects, from whichever
+/// flag named it.
+///
+/// `--target` names the block itself. `--for-entry` names the entry PACKAGE and
+/// the image that claims it answers — see [`Args::for_entry`] for why a build
+/// shim can only ask the second way, and what issue 1312 measured when the
+/// Zephyr module asked the first way with a string it had synthesised.
+///
+/// An entry no image claims is NOT an error: a plain framework application need
+/// not be in a nano-ros workspace at all, and a bringup that declares no image
+/// is legal. It degrades to `None` — the documented system-wide default — but
+/// says so on the way past, because that default silently being the HOST is the
+/// whole of 1312.
+fn resolve_target_block(
+    target: Option<&str>,
+    for_entry: Option<&str>,
+    workspace: &Path,
+    bringup_dir: &Path,
+) -> Result<Option<String>> {
+    if let Some(t) = target {
+        return Ok(Some(t.to_string()));
+    }
+    let Some(entry) = for_entry else {
+        return Ok(None);
+    };
+    let (entry_dir, entry_pkg) = entry_identity(entry, workspace);
+    let claimed =
+        nros_orchestration_ir::leaf_system::for_entry(&entry_dir, &entry_pkg, bringup_dir)
+            .map_err(|e| eyre::eyre!("codegen-system --for-entry {entry}: {e}"))?
+            .and_then(|l| l.image);
+    match claimed {
+        Some(id) => {
+            eprintln!(
+                "codegen-system: target `{id}` — the image claiming entry `{entry_pkg}` \
+                 (--for-entry; issue 1312)"
+            );
+            Ok(Some(id))
+        }
+        None => {
+            eprintln!(
+                "codegen-system: NOTE — no `[image.*]` in {} claims the entry `{entry_pkg}`, \
+                 so this bake takes the system-wide defaults, including the HOST tier \
+                 tables. Name it from the image this build is: `entry = \"{entry_pkg}\"`.",
+                bringup_dir.display()
+            );
+            Ok(None)
+        }
+    }
+}
+
 pub fn run(args: Args) -> Result<()> {
     let workspace = match args.workspace {
         Some(p) => p,
@@ -119,6 +238,16 @@ pub fn run(args: Args) -> Result<()> {
         .wrap_err_with(|| format!("load workspace at {}", workspace.display()))?;
 
     let bringup = resolve_bringup(&cfg, args.bringup.as_deref())?;
+
+    // Issue 1312 — the block this bake selects, resolved ONCE. Everything below
+    // that used to read `args.target` reads this, so `--for-entry` and
+    // `--target` cannot answer the same question differently in two places.
+    let target = resolve_target_block(
+        args.target.as_deref(),
+        args.for_entry.as_deref(),
+        &workspace,
+        bringup.manifest_path.parent().unwrap_or(&workspace),
+    )?;
 
     // Phase 261 W4 — validate `[system].features` (typo guard) + warn on the
     // deprecated typed capability blocks. Same checks in the planner so both
@@ -139,25 +268,27 @@ pub fn run(args: Args) -> Result<()> {
     let callback_groups = collect_callback_groups(&cfg, &bringup.system.components);
     // Issue 1285 follow-up — the tier RTOS is read from the BOARD CATALOG, which
     // is loaded only when the target actually names a board. With no board
-    // id (no `--target`, or the Zephyr module's `--target zephyr-<rmw>`, which
-    // names no block) nothing is looked up, so those bakes need no SDK root.
+    // id (no `--target`/`--for-entry`, or an entry no image claims) nothing is
+    // looked up, so those bakes need no SDK root.
     // The workspace's own packages can carry descriptors, exactly as for
     // `nros build`, so a workspace-declared board resolves here too.
     let target_rtos = {
         let catalog = if crate::orchestration::tier_resolver::target_board_id(
             &bringup.system,
-            args.target.as_deref(),
+            target.as_deref(),
         )
         .is_some()
         {
-            let root = crate::orchestration::nano_ros_root::resolve(None, &workspace).ok_or_else(
-                || {
-                    eyre::eyre!(
-                        "codegen-system: {}",
-                        crate::orchestration::nano_ros_root::not_found_help()
-                    )
-                },
-            )?;
+            let root = crate::orchestration::nano_ros_root::resolve(
+                args.nano_ros_path.clone(),
+                &workspace,
+            )
+            .ok_or_else(|| {
+                eyre::eyre!(
+                    "codegen-system: {}",
+                    crate::orchestration::nano_ros_root::not_found_help()
+                )
+            })?;
             let pkg_dirs: Vec<PathBuf> = cfg
                 .component_packages
                 .values()
@@ -170,7 +301,7 @@ pub fn run(args: Args) -> Result<()> {
         } else {
             crate::orchestration::board_descriptor::BoardCatalog::default()
         };
-        derive_target_rtos(&bringup.system, args.target.as_deref(), &catalog)
+        derive_target_rtos(&bringup.system, target.as_deref(), &catalog)
             .map_err(|e| eyre::eyre!("codegen-system: {e}"))?
             .to_string()
     };
@@ -243,7 +374,7 @@ pub fn run(args: Args) -> Result<()> {
         );
         crate::orchestration::model_ingest::check_executor_capacity(
             &model,
-            args.target.as_deref(),
+            target.as_deref(),
             crate::orchestration::model_ingest::declared_max_callbacks(&bringup.manifest_path),
             &metadata_slots,
         )?;
@@ -375,7 +506,7 @@ pub fn run(args: Args) -> Result<()> {
         sched_warnings,
         bringup,
         &component_kinds,
-        args.target.as_deref(),
+        target.as_deref(),
         args.rmw.as_deref(),
         resolved_launch.as_deref(),
         &tier_table,
@@ -1635,6 +1766,8 @@ execution:
             exec: None,
             rmw: None,
             model: None,
+            for_entry: None,
+            nano_ros_path: None,
         })
         .expect("codegen runs");
 
@@ -1648,6 +1781,161 @@ execution:
         let hi = plan.find("\"high\"").unwrap();
         let lo = plan.find("\"low\"").unwrap();
         assert!(hi < lo, "high tier must precede low (priority order)");
+    }
+
+    /// `write_tiered_workspace`, re-pointed at a ZEPHYR image (issue 1312).
+    ///
+    /// The bringup gains an `[image.*]` whose board the catalog resolves to
+    /// Zephyr and which CLAIMS the west application beside it, and every tier
+    /// states BOTH a `posix` and a `zephyr` priority — so which sub-table the
+    /// bake read is readable off the output rather than inferred. The model
+    /// carries them too, because a model's execution layer REPLACES the
+    /// authored tiers before resolution (RFC-0052 W1).
+    fn write_zephyr_tiered_workspace(dir: &Path) {
+        write_tiered_workspace(dir);
+        // The west application. Its NAME is what the image claims; this is the
+        // `zephyr_app/` of the in-tree `multi_pkg_workspace_zephyr` fixture.
+        fs::create_dir_all(dir.join("zephyr_app")).unwrap();
+        fs::write(
+            dir.join("zephyr_app/CMakeLists.txt"),
+            "# west application (nros_system_generate(demo_bringup))\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("demo_bringup/system.toml"),
+            r#"
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Control"
+name = "control_node"
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+
+[tiers.high]
+spin_period = "1000us"
+[tiers.high.posix]
+priority = 80
+[tiers.high.zephyr]
+priority = 7
+[tiers.low.posix]
+priority = 10
+[tiers.low.zephyr]
+priority = 9
+
+[image.zephyr_native_sim]
+board = "native_sim/native/64"
+launch = "system.launch.xml"
+entry = "zephyr_app"
+"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("demo_bringup/config/system_model.yaml"),
+            r#"
+meta:
+  version: 1
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /control_node:
+      scope: /
+      pkg: ctrl_pkg
+      exec: control_node
+    /telem_node:
+      scope: /
+      pkg: telem_pkg
+      exec: telem_node
+execution:
+  tiers:
+    high:
+      spin_period_us: 1000
+      posix:
+        priority: 80
+      zephyr:
+        priority: 7
+    low:
+      posix:
+        priority: 10
+      zephyr:
+        priority: 9
+"#,
+        )
+        .unwrap();
+    }
+
+    /// Issue 1312 — a Zephyr image baked through the Zephyr module's own
+    /// invocation reads `[tiers.*.zephyr]`, and the `--target zephyr-<rmw>` the
+    /// module used to pass reads the HOST's sub-table instead.
+    ///
+    /// Both halves run the same bake over the same workspace, so the only
+    /// difference is how the image was named. The second half is the DEFECT,
+    /// asserted rather than described: `zephyr-zenoh` names no block, so every
+    /// `--target`-driven answer falls back to the system-wide default, and the
+    /// tier resolver's default is `posix`.
+    #[test]
+    fn a_zephyr_image_named_by_its_entry_bakes_the_zephyr_tier_table() {
+        crate::test_support::isolate_model_discovery();
+        let dir = scratch_dir("zephyr_entry_tiers");
+        write_zephyr_tiered_workspace(&dir);
+
+        let bake = |out: &Path, target: Option<&str>, for_entry: Option<String>| {
+            run(Args {
+                workspace: Some(dir.clone()),
+                bringup: None,
+                target: target.map(str::to_string),
+                for_entry,
+                // The module passes its own module tree (issue 1263's rung);
+                // here the walk-up from the scratch workspace cannot answer.
+                nano_ros_path: Some(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")),
+                out: Some(out.to_path_buf()),
+                ahead_of_vendor: None,
+                file: None,
+                exec: None,
+                rmw: Some("zenoh".into()),
+                model: None,
+            })
+            .expect("codegen runs");
+            fs::read_to_string(out.join("nros-system/nros-plan.json")).unwrap()
+        };
+
+        // As `zephyr/cmake/nros_system_generate.cmake` calls it: no --target,
+        // the application directory named. `zephyr_app` is not derivable from
+        // the image id (a GENERATED entry would be `zephyr_native_sim_entry`),
+        // which is the case `entry =` exists for.
+        let out = dir.join("build/for_entry");
+        let app = dir.join("zephyr_app").display().to_string();
+        let plan = bake(&out, None, Some(app));
+        assert!(
+            plan.contains("\"priority\": 7,") && plan.contains("\"priority\": 9,"),
+            "the zephyr sub-tables (7/9) must be the baked priorities: {plan}"
+        );
+        assert!(
+            !plan.contains("\"priority\": 80,") && !plan.contains("\"priority\": 10,"),
+            "no posix priority may reach a zephyr image: {plan}"
+        );
+
+        // The defect this test exists for.
+        let out_legacy = dir.join("build/legacy_target");
+        let legacy = bake(&out_legacy, Some("zephyr-zenoh"), None);
+        assert!(
+            legacy.contains("\"priority\": 80,") && legacy.contains("\"priority\": 10,"),
+            "issue 1312: `--target zephyr-<rmw>` names no block, so this bake \
+             answers for the HOST. If that ever stops being true, the first \
+             half above is no longer evidence of anything: {legacy}"
+        );
+        assert!(
+            !legacy.contains("\"priority\": 7,"),
+            "the legacy target must not reach a zephyr sub-table: {legacy}"
+        );
     }
 
     /// phase-296 W5.12 — a workspace whose committed model declares NO
@@ -1751,6 +2039,8 @@ contracts:
             exec: None,
             rmw: None,
             model: None,
+            for_entry: None,
+            nano_ros_path: None,
         })
         .expect("codegen runs on a contract-only model");
 
@@ -2051,6 +2341,8 @@ structure:
             exec: None,
             rmw: None,
             model: None,
+            for_entry: None,
+            nano_ros_path: None,
         })
         .expect("codegen runs");
 
@@ -2109,6 +2401,8 @@ structure:
             exec: None,
             rmw: None,
             model: None,
+            for_entry: None,
+            nano_ros_path: None,
         };
         run(args()).expect("first run");
 
@@ -2144,6 +2438,8 @@ structure:
             exec: None,
             rmw: None,
             model: None,
+            for_entry: None,
+            nano_ros_path: None,
         })
         .expect("codegen runs");
 
@@ -2182,6 +2478,8 @@ structure:
             exec: None,
             rmw: None,
             model: None,
+            for_entry: None,
+            nano_ros_path: None,
         })
         .expect("codegen runs");
 
@@ -2303,6 +2601,8 @@ locator = "tcp/127.0.0.1:7447"
             exec: None,
             rmw: None,
             model: None,
+            for_entry: None,
+            nano_ros_path: None,
         })
         .expect("codegen runs for self-bringup");
 
@@ -2383,6 +2683,8 @@ domain_id = 3
             exec: None,
             rmw: None,
             model: None,
+            for_entry: None,
+            nano_ros_path: None,
         })
         .expect("codegen runs via workspace pointer");
 
@@ -2410,6 +2712,8 @@ domain_id = 3
             exec: None,
             rmw: None,
             model: None,
+            for_entry: None,
+            nano_ros_path: None,
         })
         .expect("codegen runs");
 
@@ -2501,6 +2805,8 @@ domain_id = 5
             exec: None,
             rmw: None,
             model: None,
+            for_entry: None,
+            nano_ros_path: None,
         })
         .expect("codegen-system resolves dir basename → cargo pkg name via alias");
 
@@ -2568,6 +2874,8 @@ domain_id = 11
             exec: None,
             rmw: None,
             model: None,
+            for_entry: None,
+            nano_ros_path: None,
         })
         .expect("dir-identity fallback resolves arbitrary cargo name");
         let header = fs::read_to_string(out.join("nros-system/system_config.h")).unwrap();
@@ -2599,6 +2907,8 @@ domain_id = 11
             exec: None,
             rmw: None,
             model: None,
+            for_entry: None,
+            nano_ros_path: None,
         })
         .expect_err("expected resolver to fail");
         let msg = format!("{err:#}");

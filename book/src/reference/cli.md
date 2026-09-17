@@ -347,7 +347,7 @@ nros ws doctor          # lint workspace pkgs (package.xml markers, stale patche
 | `clean` | Remove `generated/` + auto-managed `[patch.crates-io]` entries from each `.cargo/config.toml`; leaves user-written keys + sections alone |
 | `doctor` | Lint: warn on missing `<member_of_group> rosidl_interface_packages</member_of_group>`, malformed `package.xml`, missing nros-managed `[patch.crates-io]` entries in the authority `.cargo/config.toml` |
 
-### `nros codegen-system [--bringup <pkg>] [--target <triple>] [--out <dir>] [--launch <file>] [--ahead-of-vendor <pio|px4>]`
+### `nros codegen-system [--bringup <pkg>] [--target <id> | --for-entry <pkg>] [--out <dir>] [--launch <file>] [--ahead-of-vendor <pio|px4>]`
 
 Host-time system bake: reads `<bringup>/system.toml` +
 `<bringup>/launch/system.launch.xml` and emits the baked compile-time C
@@ -356,7 +356,8 @@ adapter.
 
 ```sh
 nros codegen-system --bringup demo_bringup
-nros codegen-system --bringup demo_bringup --target thumbv7em-none-eabihf
+nros codegen-system --bringup demo_bringup --target zephyr_native_sim  # an [image.<id>]
+nros codegen-system --bringup demo_bringup --for-entry zephyr_app      # the image claiming it
 nros codegen-system --bringup demo_bringup --ahead-of-vendor pio   # + PlatformIO library.json
 nros codegen-system --bringup demo_bringup --ahead-of-vendor px4   # + PX4 module dirs
 ```
@@ -365,7 +366,9 @@ nros codegen-system --bringup demo_bringup --ahead-of-vendor px4   # + PX4 modul
 |---|---|
 | `--workspace <path>` | Workspace root (default: cwd) |
 | `--bringup <pkg>` | Bringup pkg name or path. Defaults to `[workspace.metadata.nros].default_system` |
-| `--target <triple>` | Target triple for cross-compile bake context |
+| `--target <id>` | The `[image.<id>]` / `[deploy.<id>]` this bake is for — it selects the domain, RMW, locator, launch and tier sub-table. A triple or platform name that matches no block selects nothing and every one of those falls back to the `[system]` default (issue 1312) |
+| `--for-entry <pkg>` | Name the ENTRY PACKAGE instead (a name, or a path to its directory) and the `[image.*]` that claims it supplies the target. What a framework configure can answer: west/ESP-IDF know the application directory, never the image id. Mutually exclusive with `--target` |
+| `--nano-ros-path <dir>` | nano-ros checkout holding `packages/boards`, for the board catalog a resolved target needs. Default: `$NROS_REPO_DIR`, then a walk up from the workspace, then the toolchain's own `share/nano-ros` |
 | `--out <dir>` | Output directory; `nros-system/` subdir created inside. Default: `<workspace>/build/<bringup>/` |
 | `--launch <file>` | Multi-launch disambiguation: pick `<bringup>/launch/<file>` (`--file` is an alias) |
 | `--exec <exec>` | `<node exec="…">` override for synthesised launches |
