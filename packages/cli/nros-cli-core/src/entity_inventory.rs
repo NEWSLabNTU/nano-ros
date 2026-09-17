@@ -430,6 +430,34 @@ pub struct EntityDecl {
     /// publish, which is the model's own convention for a periodic path's rate
     /// (`nros_orchestration_ir::mapper_input::pub_rate_hz`).
     pub drain_rate: Option<RateMilliHz>,
+    /// phase-454 W12 -- the topic / service name AS THE SOURCE WRITES IT.
+    ///
+    /// The JOIN KEY between this row and a contract endpoint, and the reason it
+    /// is a separate field from [`Self::name`]: on the metadata-probe road
+    /// `name` is the entity's `id`, which for a SUBSCRIPTION is the CALLBACK
+    /// name (`on_chatter`) and not the topic. The probe records the written
+    /// topic separately (`unresolved_topic`), and that is the only spelling
+    /// both inventories can be compared on.
+    ///
+    /// `None` on every producer but the probe: the `ENTITIES` grammar and
+    /// `from_model` both put the topic in `name` already, so there is nothing
+    /// to carry twice. WRITTEN, not resolved -- a relative or private spelling
+    /// arrives here verbatim and [`crate::contract_join`] refuses it rather
+    /// than resolving it, because resolution needs the namespace AND the
+    /// remappings and a wrong answer attributes a depth to the wrong endpoint.
+    pub source_topic: Option<String>,
+    /// phase-454 W12 -- why this row carries no contract QoS.
+    ///
+    /// `Some` only when a contract WAS authored for this image and this row
+    /// could not be attributed to one of its endpoints WITH CERTAINTY. `None`
+    /// where no contract was authored at all: that is "nobody said"
+    /// (`Fact::Absent`), which is a different statement from "I looked and
+    /// could not tell" (`Fact::Refused`) -- RFC-0100 D6.
+    ///
+    /// It is the reason and not a flag because the consumer that reads it (the
+    /// sizing descriptor) publishes the prose to whoever sizes a buffer from
+    /// this endpoint, rather than to a build log nobody kept.
+    pub contract_refusal: Option<String>,
 }
 
 impl EntityDecl {
@@ -453,6 +481,8 @@ impl EntityDecl {
             buffer: None,
             publish_rate: None,
             drain_rate: None,
+            source_topic: None,
+            contract_refusal: None,
         }
     }
 
@@ -2215,6 +2245,22 @@ impl EntityInventory {
             p => p.clone(),
         };
         out
+    }
+
+    /// phase-454 W12 -- this inventory with its component ROWS replaced.
+    ///
+    /// Everything that is not a row rides along: the source line, the
+    /// infrastructure families, the tier count and the parameter declarations.
+    /// [`crate::contract_join`] needs exactly this -- it rewrites rows and
+    /// changes nothing else -- and those four fields are private, deliberately,
+    /// so that a caller cannot assemble an inventory that says one thing in its
+    /// rows and another in its provenance.
+    #[must_use]
+    pub fn with_components(&self, components: Vec<ComponentEntities>) -> Self {
+        Self {
+            components,
+            ..self.clone()
+        }
     }
 
     /// Record one component. A later record for the same `(pkg, component)`

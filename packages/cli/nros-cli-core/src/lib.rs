@@ -26,6 +26,11 @@ pub mod build_output;
 // rmw parity map came to disagree with the vtable by 25 symbols.
 pub mod build_type;
 pub mod cmd;
+/// phase-454 W12 (RFC-0100 D3) — joining the CONTRACT's per-endpoint QoS onto
+/// the rows the metadata probe found, on the ONE key both inventories can
+/// state (the topic) and with a per-row REFUSAL wherever that key is not
+/// certain.
+pub mod contract_join;
 /// phase-446 W6 -- the C++ table of each node's declared parameters.
 pub mod declared_params_header;
 // phase-403 W9 (issue 0965) — the ENTITY inventory: WHICH entities an image

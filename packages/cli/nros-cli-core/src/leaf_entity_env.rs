@@ -73,10 +73,43 @@ struct ProbeInterface {
     name: Option<String>,
 }
 
+/// The probe's record of a topic / service name AS THE SOURCE WRITES IT.
+///
+/// The probe also records a `kind` (`absolute` / `relative` / `private`), and
+/// this reader deliberately does NOT take it: the distinction that matters to
+/// [`crate::contract_join`] is whether the name reaches the wire unchanged, and
+/// that is exactly "does it begin with `/`" in all three spellings. Reading the
+/// tag as well would be a second answer to one question, and the two would
+/// eventually disagree.
+#[derive(Debug, Deserialize)]
+struct ProbeUnresolvedName {
+    value: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct ProbeEntity {
     id: Option<String>,
     interface: Option<ProbeInterface>,
+    /// phase-454 W12 -- the written topic, on a publisher or subscription row.
+    /// A timer has none, which is why this is an `Option` and not a hard field.
+    #[serde(default)]
+    unresolved_topic: Option<ProbeUnresolvedName>,
+    /// The same field one kind over: a service server/client and an action
+    /// server/client spell it `unresolved_name` (MEASURED against the probe
+    /// output of `examples/native/rust/{service,action}-*`, not assumed).
+    #[serde(default)]
+    unresolved_name: Option<ProbeUnresolvedName>,
+}
+
+impl ProbeEntity {
+    /// The topic / service / action name as the SOURCE writes it, whichever of
+    /// the two keys this kind carries it under.
+    fn source_name(&self) -> Option<String> {
+        self.unresolved_topic
+            .as_ref()
+            .or(self.unresolved_name.as_ref())
+            .and_then(|n| n.value.clone())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,11 +167,23 @@ pub fn declaration_from_probe(doc_json: &str) -> Result<(String, String, Declara
                 // code CREATES, and a `create_subscription(qos)` argument is a
                 // runtime value this metadata never carried. The contract file
                 // is the QoS surface (RFC-0100 D3).
-                decls.push(EntityDecl::bare(
-                    *kind,
-                    ent.interface.as_ref().and_then(qualified_type),
-                    ent.id,
-                ));
+                //
+                // phase-454 W12 -- but the WRITTEN TOPIC does travel, beside
+                // `id` rather than in it. `id` is the entity's identity as the
+                // component spells it, which for a subscription is the CALLBACK
+                // name (`on_chatter`); carrying the topic separately is what
+                // lets `contract_join` attribute this row to a contract
+                // endpoint without either inventory changing what its own
+                // fields mean.
+                let source_topic = ent.source_name();
+                decls.push(EntityDecl {
+                    source_topic,
+                    ..EntityDecl::bare(
+                        *kind,
+                        ent.interface.as_ref().and_then(qualified_type),
+                        ent.id,
+                    )
+                });
             }
         }
     }
@@ -712,6 +757,20 @@ pub fn leaf_facts(
 /// sync is the one producer, and a build that finds no model says `nros sync`
 /// (RFC-0098 D2) rather than guessing.
 pub fn leaf_model_facts(leaf: &Path) -> Option<BTreeMap<String, String>> {
+    leaf_model(leaf).map(|m| crate::cmd::entity_facts::facts_from_model(&m))
+}
+
+/// The leaf's resolved SystemModel, or `None` when `nros sync` has not
+/// resolved one.
+///
+/// phase-454 W12 split this out of [`leaf_model_facts`]: the sizing descriptor
+/// needs the MODEL itself (`contract_join` reads its per-endpoint QoS and its
+/// per-node remaps), not the `NROS_DECLARED_*` projection of it. Split rather
+/// than duplicated — the two callers read the file separately, which is fine,
+/// but they must agree about WHICH file and about what an unreadable one means,
+/// and a second copy of this resolution is how the facts and the rows would
+/// come to describe different resolutions of one bringup.
+pub fn leaf_model(leaf: &Path) -> Option<ros_launch_manifest_model::SystemModel> {
     use nros_orchestration_ir::model_location;
     if !leaf
         .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
@@ -725,7 +784,7 @@ pub fn leaf_model_facts(leaf: &Path) -> Option<BTreeMap<String, String>> {
         return None;
     }
     match crate::orchestration::model_ingest::load_model(&path) {
-        Ok(m) => Some(crate::cmd::entity_facts::facts_from_model(&m)),
+        Ok(m) => Some(m),
         Err(e) => {
             eprintln!(
                 "warning: {}: cannot read the resolved model for entity facts ({e}); the \

@@ -748,9 +748,11 @@ all four QoS policies (W1–W3) and a synced leaf already HAS a resolved model a
 not mechanical: the two inventories key their rows differently (callback name vs
 endpoint ref), so "merge them" has to answer which wins per field and how a row
 is matched, and getting that wrong publishes a `depth` against the wrong
-endpoint — an UNDER-size, the one direction this phase exists to prevent. That
-decision belongs with the second producer above, in one wave, with this
-102 KiB as its acceptance.
+endpoint — an UNDER-size, the one direction this phase exists to prevent.
+
+**W12 below closes that second direction**, with this 102 KiB as its measured
+acceptance. The FIRST — a workspace bringup that writes no descriptor at all —
+is still open and is still the second producer this note asks for.
 
 **Self-containment is what makes the delivered half work, and it is the copy-out
 that proves it**: the example copied OUT of the checkout into an unrelated directory,
@@ -789,6 +791,100 @@ failing build. What it repairs is the CONTRACT — a consumer that keeps its
 defaults on `Missing` (which is what `nros_sizing_descriptor_read()` does on the
 cmake road, and what the second producer above will want) now gets the creation
 edge instead of silently sizing from its literals forever.
+
+### W12 — the descriptor carries the CONTRACT's facts — **LANDED**
+
+W11's closing finding, answered: *"the road that carries contracts writes no
+descriptor, and the road that writes descriptors reads no contract."* This wave
+closes the second half — the LIVE road now reads one.
+
+**Two things had to exist, and only one of them was a join.**
+
+| piece | where |
+| --- | --- |
+| a place for a single-package leaf to AUTHOR a contract | `<leaf>/system.contract.yaml`, beside `system.toml`; `cmd::ws::carry_leaf_contract` puts it beside the launch file sync SYNTHESISES, which is where the resolver's provider-sidecar channel looks |
+| the contract sidecar as a MODEL INPUT | `resolve_system_models`' input horizon, which globbed `*.xml` only — so editing a `qos.depth` left the old model in place and an image sized from a declaration nobody could see |
+| the JOIN | `nros_cli_core::contract_join`, called from `sizing_descriptor::write_for_leaf` |
+| the probe's half of the key | `EntityDecl::source_topic`, from the probe's `unresolved_topic` / `unresolved_name` |
+| the refusal, per row | `EntityDecl::contract_refusal` → four `Fact::Refused` QoS facts on the descriptor row |
+
+**THE KEY.** The probe keys a row `(kind, type, id)` and `id` is the CALLBACK
+name for a subscription (`on_chatter`); the contract keys `(kind, type, RESOLVED
+name)`. The one thing both can state is the endpoint's NAME — which the probe
+records separately from `id`, AS THE SOURCE WRITES IT. That is the resolved name
+only when nothing intervenes, and two things can: the node's NAMESPACE and the
+launch REMAPPINGS, which the model records per node without saying which
+endpoint each renamed. So a row is attributed when the node declares no remaps,
+the written name is absolute, and `(kind, type, name)` picks out ONE row **on
+each side**; everything else REFUSES, naming the row and what the contract does
+describe.
+
+The uniqueness is checked on BOTH sides and that is not symmetry for its own
+sake: two registrations against one declaration is an under-description, and
+giving the declaration to whichever the probe listed first publishes a depth for
+a registration nobody made — an UNDER-size, the direction this phase exists to
+prevent.
+
+**Measured, on the ordinary flow.** `examples/native/rust/listener` — `nros
+sync`, then `cargo build --config build/native/nros-cargo.toml --release`,
+nothing exported by hand — with a contract declaring `KEEP_LAST(1)`:
+
+| | before W12 | after | delta |
+| --- | --- | --- | --- |
+| `.bss + .data` | 273,802 | **172,298** | **−101,504 (−37.1 %)** |
+| `LARGE_PAYLOADS` | 131,072 | **32,768** | −98,304 |
+| `SMALL_PAYLOADS` | 4,096 | 1,024 | −3,072 |
+| `SUBSCRIBER_BUFFERS` | 312 | 168 | −144 |
+
+W11 measured this by hand-editing the descriptor row and could not reach it
+through the shipped road. It is W6.a's own −98,304, delivered for the first time
+by a build nobody special-cased.
+
+**The three controls, each measured rather than argued.**
+
+* **A mis-key REFUSES and the consumer keeps the worst case.** A contract
+  declaring `/status` against a code that registers `/chatter` prints
+  *"subscription `/chatter`: no subscription in this image's contract carries
+  type `std_msgs/msg/String` on `/chatter`. The contract describes:
+  `std_msgs/msg/String` on `/status`"*, sets all four QoS facts `Refused` with
+  that reason, leaves `undeclared_endpoints = 1`, and `nros-rmw-zenoh`'s build
+  echoes the refusal and keeps `RING_DEPTH` at 4 — the image measures 273,802 B
+  again, exactly the pre-join number.
+* **No contract, no change.** Measured against `origin/main`'s CLI on the same
+  leaf with the sidecar removed: the descriptor, the generated `nros-cargo.toml`
+  and the linked binary are byte-identical (`adab93c6…`, after a forced
+  recompile and relink).
+* **Copy-out still works** (RFC-0026). The leaf copied to an unrelated directory
+  syncs and builds there to the same 172,298 B, through the same
+  `value = "nros/sizing/native.toml", relative = true` row, with zero absolute
+  paths in the descriptor (`scripts/ci/absolute-path-check.sh`).
+
+**Runtime, not just bytes.** The pair still delivers 11 of 11 messages against
+`rmw_zenohd`. A declared `KEEP_LAST(1)` is not a new kind of clamp: `shim/qos.rs`
+already grants every subscription `min(asked, SUBSCRIBER_RING_DEPTH)` and
+reports it, and *"every stock preset asks for more depth than the default
+four-slot ring"* — so before this wave the listener's `QOS_PROFILE_DEFAULT`
+KEEP_LAST(10) was already being granted 4. What the contract changes is the
+number the build reserves for, not whether a clamp exists.
+
+**What it does NOT close, stated rather than implied.** The Rust call site still
+passes `QoSProfile::default()`; C++ reads the declared depth back into the QoS
+(`NROS_SUBSCRIBE` → `qos_from_declared_depth`) and Rust has no macro seam to do
+the same, so on the cargo leaf road `DECLARED_QOS_ROWS` is unpopulated and W10's
+registration check cannot compare the two. That is W10's gap, not one this wave
+opens — but it is what a Rust image would need before a declared depth could be
+trusted on a BUFFERED backend, where the arena and the registration must agree
+rather than merely clamp.
+
+Tests: 9 in `contract_join` (the key, both halves of it, the relative spelling,
+the remapped node, the both-sides uniqueness rule, the untouched no-contract
+path, the reported leftover, the timer pass-through) and 2 in
+`sizing_descriptor` (the four facts refuse together and the row still counts;
+a publisher gains no receive-region refusal). Mutation-checked three ways, each
+reding a named test: dropping the NAME from the key reds
+`a_row_on_a_different_topic_refuses_rather_than_taking_the_lone_candidate`;
+dropping the reason from the row reds five of the nine; dropping the
+producer's publication of it reds both descriptor tests.
 
 ## Acceptance for the phase
 

@@ -186,6 +186,85 @@ hardcodes `depth: None` for every publisher row, so a contract stating
 `pub: { qos: { depth: 8 } }` cannot reach the build. That structurally blocks
 transient-local pricing and is a prerequisite, not a nicety.
 
+### The declaration surface reaches the DESCRIPTOR (phase-454 W12)
+
+Landed. W11 measured that D3 was open in both directions at once — *"the road
+that carries contracts writes no descriptor, and the road that writes
+descriptors reads no contract"* — because the leaf producer filled its rows from
+the leaf's `metadata/` PROBE. A probe knows an endpoint exists and nothing about
+its QoS, so every row came out with the callback name in the `topic` column, no
+`depth`, and `undeclared_endpoints` non-zero, which is the guard that switches
+every per-endpoint consumer off.
+
+**Two things had to exist, and only one of them was a join.**
+
+A single-package leaf had nowhere to AUTHOR a contract. The resolver finds one
+through the provider-sidecar channel, `<launch-file-dir>/<stem>.contract.yaml`,
+and a leaf's launch file is SYNTHESISED by `nros sync` from its `[[component]]`
+rows into a generated directory (RFC-0098 D3) — which is not a place a user can
+put a file. So a leaf states its contract at **`<leaf>/system.contract.yaml`**,
+beside the `system.toml` that states everything else about its deployment, and
+sync carries it to where the resolver looks. A leaf with its own `launch/`
+directory is unaffected: it authors the sidecar beside its launch file, like any
+bringup.
+
+**THE KEY, and the hazard it answers.** The two inventories key their rows
+differently, and a wrong match publishes a depth against the wrong endpoint —
+which is an UNDER-size, the direction that ships `BufferTooSmall`:
+
+| side | row identity |
+| --- | --- |
+| probe | `(kind, type, id)`, and `id` is the CALLBACK name for a subscription |
+| contract | `(kind, type, RESOLVED name)` |
+
+There is exactly one key both sides can state: **the endpoint's name**. The
+probe records it separately from `id` (`unresolved_topic` / `unresolved_name`,
+now carried as `EntityDecl::source_topic`), AS THE SOURCE WRITES IT — which is
+the resolved name only when nothing intervenes. Two things can:
+
+* the node's **namespace**, which turns `chatter` into `/ns/chatter`;
+* the launch **remappings**, which can turn any name into any other, and which
+  the model records per NODE without saying which endpoint each one renamed.
+
+So `nros_cli_core::contract_join` attributes a row in exactly one case — the
+node declares no remaps, the written name is absolute, and `(kind, type, name)`
+picks out ONE row **on each side** — and REFUSES in every other, naming the row
+and what the contract does describe. The uniqueness is checked on both sides
+because two registrations against one declaration is an under-description:
+giving the declaration to whichever the probe listed first publishes a depth for
+a registration nobody made.
+
+A refusal is per row and per fact (D6). All four QoS policies refuse together,
+because they come from one attribution and half an attribution describes no
+image; the payload class beside them survives, because it is a property of the
+TYPE. The row keeps counting toward `undeclared_endpoints`, so every consumer
+keeps its worst case — measured end to end: a mis-keyed contract takes
+`examples/native/rust/listener` back to 273,802 B with `LARGE_PAYLOADS` at
+131,072, and `nros-rmw-zenoh`'s build prints the refusal verbatim.
+
+**No contract, no change.** `from_model` returns `None` when the model describes
+no wiring and the join then hands the probe's rows back untouched — measured
+against `origin/main`'s CLI on the same leaf: the descriptor, the generated
+`nros-cargo.toml` and the linked binary are byte-identical (`adab93c6…`, after a
+forced recompile and relink). "Nobody said" (`Fact::Absent`) and "I looked and
+could not tell" (`Fact::Refused`) stay different statements.
+
+**Measured, on the ordinary flow.** `examples/native/rust/listener` — `nros
+sync`, then the retypable `cargo build --config build/native/nros-cargo.toml`,
+nothing exported by hand — with one contract row declaring `KEEP_LAST(1)`:
+
+| | as `sync` wrote it before W12 | with the contract joined | delta |
+| --- | --- | --- | --- |
+| `.bss + .data` | 273,802 | **172,298** | **−101,504 (−37.1 %)** |
+| `LARGE_PAYLOADS` | 131,072 | **32,768** | −98,304 |
+| `SMALL_PAYLOADS` | 4,096 | 1,024 | −3,072 |
+| `SUBSCRIBER_BUFFERS` | 312 | 168 | −144 |
+
+which is W6.a's own saving, reached for the first time by a shipping image. The
+running code did not change: the pair still delivers 11 of 11 messages against
+`rmw_zenohd`, and the ring `shim/qos.rs` clamps every stock preset to was
+already shorter than `QOS_PROFILE_DEFAULT`'s KEEP_LAST(10) before this wave.
+
 ## D4 — one descriptor, read by path
 
 **Landed, phase-454 W4.** `nros sync` writes one file per entry; consumers read
@@ -316,9 +395,17 @@ one; the cargo side answers the same way for the same reason.
 2026-09-13 exactly one road does: `cmd::leaf_settings::write` on a
 single-package cargo leaf, as a `relative = true` `[env]` row (the path is
 relative because the descriptor lives INSIDE the leaf and a package must stay
-self-contained — proved by copy-out, not by reading). A workspace cargo image and
-every cmake road write no descriptor at all, so every derivation in D5 is inert
-there. The open work, and the decision it carries, is phase-454 W11.
+self-contained — proved by copy-out, not by reading; re-proved in W12, where a
+copied-out leaf syncs and builds to the same 172,298 bytes with zero absolute
+paths in the file). A workspace cargo image and every cmake road write no
+descriptor at all, so every derivation in D5 is inert there. The open work, and
+the decision it carries, is phase-454 W11.
+
+**What that one road CARRIES is a separate question from what it delivers, and
+W12 is the answer to it.** Through W11 the live road delivered the probe's rows:
+a descriptor that reached every consumer correctly and stated nothing any of
+them could size from. See D3's "The declaration surface reaches the DESCRIPTOR"
+above.
 
 **The descriptor carries no absolute path** — issue 0320's rule. Two checkouts of
 one tree at different paths render byte-identical bytes, which is what keeps
