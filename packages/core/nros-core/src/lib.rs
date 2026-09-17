@@ -100,9 +100,12 @@ pub mod service;
 pub mod time;
 pub mod types;
 
+// phase-417 W4.b — `ActionClient` / `ActionServer` left this list with the two
+// dead marker structs behind them; the live types under those names are
+// `nros_node`'s, which is what `nros` re-exports.
 pub use action::{
-    ActionClient, ActionServer, CancelResponse, CancelReturnCode, GoalId, GoalInfo, GoalResponse,
-    GoalStatus, GoalStatusStamped, RosAction,
+    CancelResponse, CancelReturnCode, GoalId, GoalInfo, GoalResponse, GoalStatus,
+    GoalStatusStamped, RosAction,
 };
 pub use clock::{Clock, ClockType};
 // RFC-0090 — generated code names these directly, so they are re-exported at

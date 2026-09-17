@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 5;
+pub const NROS_CODEGEN_VERSION: u32 = 6;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -98,6 +98,17 @@ pub const NROS_CODEGEN_VERSION: u32 = 5;
 /// gate is fail-closed on the TEXT of a demanded declaration and should stay
 /// that way. A gate that tried to decide which additions are "really" runtime
 /// changes is one that misses a real withdrawal.
+///
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 6 (phase-417 W4.b). That
+/// move is a WITHDRAWAL, and it is the first one — `nros_core::action` stopped
+/// re-exporting `ActionServer` and `ActionClient`, two "type-level marker"
+/// structs. A version-5 tree still runs, because no generated tree has ever
+/// named them: measured before the deletion, they had ZERO references anywhere
+/// in this repository, and they were UNREACHABLE through the `nros` facade at
+/// all, which re-exports `nros_node`'s live `ActionServer` / `ActionClient`
+/// under exactly those spellings. So the floor stays where it is. The gate is
+/// fail-closed on the extracted surface and cannot know which names nothing
+/// reached, which is the property that makes it worth keeping.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

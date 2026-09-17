@@ -541,77 +541,16 @@ impl GoalResponse {
     }
 }
 
-/// Action server handle (type-level marker)
-///
-/// This is a lightweight handle for tracking an action server.
-/// The actual implementation is in `nros-node`.
-pub struct ActionServer<A: RosAction> {
-    /// Action name (e.g., "/fibonacci")
-    pub name: &'static str,
-    /// Marker for action type
-    _marker: core::marker::PhantomData<A>,
-}
-
-impl<A: RosAction> ActionServer<A> {
-    /// Create a new action server handle
-    pub fn new(name: &'static str) -> Self {
-        Self {
-            name,
-            _marker: core::marker::PhantomData,
-        }
-    }
-
-    /// Get the action name
-    pub fn name(&self) -> &str {
-        self.name
-    }
-
-    /// Get the action type name
-    pub fn action_type(&self) -> &'static str {
-        A::ACTION_NAME
-    }
-
-    /// Get the action type hash
-    pub fn action_hash(&self) -> &'static str {
-        A::ACTION_HASH
-    }
-}
-
-/// Action client handle (type-level marker)
-///
-/// This is a lightweight handle for tracking an action client.
-/// The actual implementation is in `nros-node`.
-pub struct ActionClient<A: RosAction> {
-    /// Action name (e.g., "/fibonacci")
-    pub name: &'static str,
-    /// Marker for action type
-    _marker: core::marker::PhantomData<A>,
-}
-
-impl<A: RosAction> ActionClient<A> {
-    /// Create a new action client handle
-    pub fn new(name: &'static str) -> Self {
-        Self {
-            name,
-            _marker: core::marker::PhantomData,
-        }
-    }
-
-    /// Get the action name
-    pub fn name(&self) -> &str {
-        self.name
-    }
-
-    /// Get the action type name
-    pub fn action_type(&self) -> &'static str {
-        A::ACTION_NAME
-    }
-
-    /// Get the action type hash
-    pub fn action_hash(&self) -> &'static str {
-        A::ACTION_HASH
-    }
-}
+// phase-417 W4.b — `ActionServer<A>` and `ActionClient<A>`, two "type-level
+// marker" structs each carrying `name()` / `action_type()` / `action_hash()`,
+// were DELETED here. Measured reach before the deletion: ZERO references
+// anywhere in the tree, and the names were UNREACHABLE through the `nros`
+// facade, which re-exports `nros_node`'s live `ActionServer` / `ActionClient`
+// under exactly those spellings. The ledger row
+// `c:action_client_get_action_name` cited `nros_core::ActionServer::name` as
+// Rust's half of the action-name accessor; it could not be called, so the
+// claim was false (issue 1022's class). PR #806's precedent: in-tree-only
+// reach, measured, so a hard delete rather than a deprecated forwarder.
 
 #[cfg(test)]
 mod tests {
