@@ -168,6 +168,7 @@ default:
         "    source ./activate.sh       REQUIRED once per shell" \
         "    just setup-cli             rebuild the in-tree nros CLI" \
         "    just setup-hooks           git hooks + submodule legibility" \
+        "    just setup-worktree        a NEW worktree: the submodules the gates read" \
         "" \
         "  everything else   just --list" \
         "  what CI runs      docs/roadmap/phase-399-justfile-surface-and-event-design.md"
@@ -737,6 +738,70 @@ setup-hooks:
         echo "  git config $key $value"
     done < <(nros_git_settings)
     echo "hooks installed: core.hooksPath -> .githooks"
+
+# Provision a freshly created worktree (or a non-recursive clone) far enough that
+# `just check fast` can RUN: check out the submodules the source gates READ.
+#
+# issue 1373. `git worktree add` populates no submodules, and two of the 324 fast
+# gates fail without one: `capability-conditionals` reads zenoh-pico's platform
+# dispatch header, `xrce-vendored-versions` reads both vendored XRCE
+# `CMakeLists.txt`. Neither may be downgraded to a skip - their own comments say
+# why (issue 0702: without the tree the rule has no source of truth, so say so
+# rather than pass over it) - and `.githooks/pre-push` runs the fast tier on every
+# push, so a new worktree cannot push until this has been run once.
+#
+# NOT `git submodule update --init` with no paths. That is PX4-Autopilot, QEMU,
+# NuttX and 14 more - gigabytes - for gates that read two CMakeLists and a header.
+#
+# Only UNINITIALISED submodules are touched. One that IS checked out but sits off
+# its pin is REPORTED, never updated: AGENTS.md makes that a human decision because
+# the update discards work in a submodule someone is mid-edit on, and
+# `just post-rebase` follows the same rule. An uninitialised submodule has no work
+# to discard, which is the whole reason this one can be a verb.
+#
+# Idempotent - a second run fetches nothing.
+[group("main")]
+setup-worktree:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The submodules the fast gate tier reads, and which gate reads each. When a
+    # gate grows a dependency on a fourth one, it belongs in this list.
+    paths=(
+        packages/rmw/zenoh/zpico-sys/zenoh-pico           # capability-conditionals, zpico-config-keys
+        packages/rmw/xrce/xrce-sys/micro-cdr              # xrce-vendored-versions
+        packages/rmw/xrce/xrce-sys/micro-xrce-dds-client  # xrce-vendored-versions
+    )
+    want=()
+    for p in "${paths[@]}"; do
+        # `git submodule status --cached` marks an uninitialised submodule with a
+        # leading `-`, one whose checkout is off its pin with `+`, and one in sync
+        # with a space. Empty output means the path names no submodule here.
+        line="$(git submodule status --cached -- "$p" 2>/dev/null || true)"
+        case "$line" in
+            -*)
+                want+=("$p")
+                ;;
+            +*)
+                echo "  [KEPT]    $p is checked out at a commit other than its pin."
+                echo "            NOT updated - that would discard work in it (AGENTS.md)."
+                echo "            When you are sure it holds nothing you need:"
+                echo "                git submodule update $p"
+                ;;
+            "")
+                echo "  [UNKNOWN] $p is not a submodule of this checkout."
+                ;;
+            *)
+                echo "  [OK]      $p already checked out."
+                ;;
+        esac
+    done
+    if [ "${#want[@]}" -gt 0 ]; then
+        echo "setup-worktree: checking out ${#want[@]} submodule(s)."
+        git submodule update --init "${want[@]}"
+    fi
+    echo ""
+    echo "setup-worktree: done. The fast gate tier can run now:"
+    echo "    just check fast"
 
 # Repair build dirs whose generated `build.ninja` no longer LOADS.
 #

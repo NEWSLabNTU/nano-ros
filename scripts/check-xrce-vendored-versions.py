@@ -656,7 +656,7 @@ def main() -> int:
         if not cml.is_file():
             notes.append(
                 f"SKIP `{name}` — {VENDOR_ROOT}/{w.dirname}/CMakeLists.txt not checked out "
-                "(`nros setup --source …`); its version is unverified"
+                "(`just setup-worktree`); its version is unverified"
             )
             continue
         text = cml.read_text(encoding="utf-8")
@@ -754,9 +754,21 @@ def main() -> int:
         return 1
 
     if not versions:
+        # issue 1373 - this used to advise `nros setup --source`, which CANNOT
+        # run where this failure happens. The state that produces it is a fresh
+        # `git worktree add` (it populates no submodules), and a fresh worktree
+        # has no `target/`, so the `nros` on PATH belongs to some other checkout
+        # and `setup` is a guarded verb that refuses a foreign binary
+        # (`stale_guard.rs`). Following the advice literally got you a refusal;
+        # following it properly got you a full `just setup-cli` build to satisfy
+        # a gate that only wants two directories checked out.
         print(
-            "check-xrce-vendored-versions: no vendored tree checked out — nothing verified. "
-            "Run `nros setup --source micro-cdr --source micro-xrce-dds-client`.",
+            "check-xrce-vendored-versions: no vendored tree checked out — nothing verified.\n"
+            "  Fresh worktree or non-recursive clone? Provision it:\n"
+            "      just setup-worktree\n"
+            "  Or check out the two vendored trees by hand:\n"
+            f"      git submodule update --init {VENDOR_ROOT}/micro-cdr "
+            f"{VENDOR_ROOT}/micro-xrce-dds-client",
             file=sys.stderr,
         )
         return 1
