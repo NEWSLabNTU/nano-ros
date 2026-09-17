@@ -409,6 +409,27 @@ path-env-fingerprints:
 inherited-checkout-paths:
     @python3 scripts/check-inherited-checkout-paths.py
 
+# issue 1336 (which absorbed 1306) — the THIRD thing a linked worktree breaks,
+# after 1280's inherited paths: code that models where git keeps its own files.
+# `nros-cli-core/build.rs` watched `root.join(".git/index")`, and a worktree's
+# `.git` is a FILE (`gitdir: …`), so the path did not exist, the `exists()`
+# guard failed OPEN, and the CLI source stamp had NO watch on its one VCS
+# input: after a commit `just setup-cli` reported `built:` on every attempt
+# while `check cli-fresh` stayed STALE, clearable only by `touch build.rs`.
+# Every agent session works in a worktree, so that was the default condition.
+#
+# Two spellings, both gated: a literal subpath under `.git` (ask
+# `rev-parse --git-path` instead), and a `.git` existence test that demands a
+# DIRECTORY — `detect_workspace_root` had the second and walked past the real
+# root in both a worktree and a submodule. The rule is MEASURED, not asserted:
+# the self-test builds a real checkout AND a real linked worktree and looks,
+# the `check-hook-repo-side-effects` precedent, because a grep alone would be
+# a style rule and the defect survived review in a file that discusses `.git`
+# being a file.
+[private]
+git-dir-layout-assumptions:
+    @python3 scripts/check-git-dir-layout-assumptions.py
+
 # Issue 0336 — a retired submodule path must not survive anywhere that a user or
 # a CI job would follow it. RFC-0060's sweep missed scripts/bootstrap.sh, nine
 # doc copies and eight workflow refs; this grep would have caught all of them.
