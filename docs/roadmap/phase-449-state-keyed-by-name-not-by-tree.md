@@ -17,7 +17,7 @@ resolves its build root and its `check-skips` ledger to its own tree. Issue
 **One PRESCRIPTION here is superseded, which matters more than one item
 closing.** This phase says shared state must be keyed by "git common dir"; a
 linked worktree's `.git` is a FILE, not a directory
-([#1336](../issues/1336-cli-source-stamp-unwatched-in-worktree.md)), so
+([#1336](../issues/archived/1336-cli-source-stamp-unwatched-in-worktree.md)), so
 `scripts/lib/checkout-paths.sh` deliberately uses a MARKER WALK and says so at
 its own § "Why the marker and not `.git`". Anything W6 keys by tree must reach
 for that marker, not for the mechanism this document named.
@@ -74,7 +74,7 @@ host collide on.
 
 **"Keyed by the tree" has one spelling, and this document first named the wrong
 one.** It said "git common dir"; a linked worktree's `.git` is a FILE
-([#1336](../issues/1336-cli-source-stamp-unwatched-in-worktree.md)), so the
+([#1336](../issues/archived/1336-cli-source-stamp-unwatched-in-worktree.md)), so the
 answer is the CHECKOUT MARKER walk that `scripts/lib/checkout-paths.sh`
 implements and `nros_launcher::checkout::MONOREPO_MARKER` mirrors — the same
 resolver W4 already landed. A second spelling here would be the defect this

@@ -35,7 +35,7 @@ for each. Read an ejection before re-queueing.
 **IN FLIGHT 2026-09-18.** Every issue below is `status: open` on `main`, and each
 is being worked in its own branch now. Two corrections to the original list:
 
-- **1306 is a DUPLICATE of [1336](../issues/1336-cli-source-stamp-unwatched-in-worktree.md)**,
+- **1306 is a DUPLICATE of [1336](../issues/archived/1336-cli-source-stamp-unwatched-in-worktree.md)**,
   filed a day later by phase-454 W3 with better evidence and cross-references
   (0419, 0466, 0561, 0627, 0921). 1336 is the canonical id; 1306 was closed as a
   duplicate, with its acceptance recipe preserved.
