@@ -1,10 +1,34 @@
 # Phase 449 — build state keyed by a NAME, not by the tree that asked for it
 
-**Status (2026-09-12). Opened to give eight homeless issues one owner. W4 is
-DONE — `8eeaa05ac` on `main` landed the re-root rule and its gate, and
-[#1280](../issues/archived/1280-worktree-inherits-foreign-sdk-paths.md) is
-resolved and archived. W1–W3 and W5–W8 are open, and every one of their
-issues was filed from a measured incident, not from a reading.**
+**Status (2026-09-18). W4 and W5 are DONE; W1–W3 and W6–W8 are open. Every
+premise below was RE-MEASURED against the tree on 2026-09-18 rather than
+re-read, because a phase doc is prose and prose does not re-derive on a
+rebase — this campaign has already retracted two conclusions that went stale
+exactly that way.**
+
+**W5 closed without anyone touching this file.** `NROS_REPO_DIR` is
+`justfile_directory()` in `just/sdk-env.just` now, not `env(...)`, and
+`nros_build_root()` re-roots both REPO rungs through
+`nros_reroot_checkout_path` — landed by W4's rule plus phase-454 W3. Measured,
+not inferred: a linked worktree carrying the MAIN checkout's `NROS_REPO_DIR`
+resolves its build root and its `check-skips` ledger to its own tree. Issue
+1234's defect does not reproduce.
+
+**One PRESCRIPTION here is superseded, which matters more than one item
+closing.** This phase says shared state must be keyed by "git common dir"; a
+linked worktree's `.git` is a FILE, not a directory
+([#1336](../issues/1336-cli-source-stamp-unwatched-in-worktree.md)), so
+`scripts/lib/checkout-paths.sh` deliberately uses a MARKER WALK and says so at
+its own § "Why the marker and not `.git`". Anything W6 keys by tree must reach
+for that marker, not for the mechanism this document named.
+
+**The five open premises all still hold, verbatim**, and W2's has not moved at
+all: `just matrix-triage` on 2026-09-18 reports **0 of 8 runs reached the
+cells**, the same count this phase opened on a week earlier — 4 stopped in
+provisioning, 3 in the build. The lane still has no signal capacity.
+
+Opened to give eight homeless issues one owner. Every one of their issues was
+filed from a measured incident, not from a reading.
 
 ## Why this phase exists
 
@@ -43,10 +67,18 @@ at from the other direction.
 ## The shape, stated once
 
 **A build artifact must be a function of the tree that produced it.** Anything
-shared between checkouts must be keyed by the tree (git common dir, repo root,
-`NROS_BUILD_ROOT`), or be provably content-addressed, or be refused. A name is
-not a key: `<name>.pgid`, `nano-ros`, `build`, `zephyr-workspace` are all names
-that two clones on one host collide on.
+shared between checkouts must be keyed by the tree, or be provably
+content-addressed, or be refused. A name is not a key: `<name>.pgid`,
+`nano-ros`, `build`, `zephyr-workspace` are all names that two clones on one
+host collide on.
+
+**"Keyed by the tree" has one spelling, and this document first named the wrong
+one.** It said "git common dir"; a linked worktree's `.git` is a FILE
+([#1336](../issues/1336-cli-source-stamp-unwatched-in-worktree.md)), so the
+answer is the CHECKOUT MARKER walk that `scripts/lib/checkout-paths.sh`
+implements and `nros_launcher::checkout::MONOREPO_MARKER` mirrors — the same
+resolver W4 already landed. A second spelling here would be the defect this
+phase is about, one layer up.
 
 Two adjacent facts this phase must not re-learn:
 
@@ -127,7 +159,7 @@ DIFFERENT checkout → RE-ROOT and say so, this checkout → KEEP).
       before (the main checkout's copy was compiled), 4 after, and still 0 both
       ways for a genuine out-of-tree `NROS_PLATFORM_FREERTOS_SRC`.
 
-### W5 — a worktree's build dir and skip ledger are its own
+### W5 — a worktree's build dir and skip ledger are its own — DONE
 
 [Issue 1234](../issues/1234-worktree-agents-share-the-parent-build-dir.md). A
 linked worktree inherits `NROS_REPO_DIR`, so it writes its build dir and its
@@ -135,9 +167,27 @@ skip ledger into the parent, and one tree's skips appear in another's gate
 summary. Parallel agent sessions are the normal way work happens here, so this
 is not a rare configuration.
 
-- [ ] `NROS_REPO_DIR` resolves per tree (git common dir, not the inherited
-      value), or the inheritance is refused with the two paths named.
-- [ ] Two `just check fast` runs in two trees report only their own skips.
+**Closed by other work, and this file did not notice for six days** — which is
+the phase's own subject wearing a different hat: a conclusion written as prose
+does not re-derive when the code beneath it moves. W4's re-root rule plus
+phase-454 W3 did it; neither had reason to edit this section.
+
+- [x] `NROS_REPO_DIR` resolves per tree. `just/sdk-env.just` sets it from
+      `justfile_directory()` and NOT from `env(...)` — its comment states the
+      reason this phase would have: *"there is nothing an inherited value could
+      be more right about"*. `nros_build_root()` then re-roots both REPO rungs
+      (`NROS_REPO_ROOT`, `NROS_REPO_DIR`) through `nros_reroot_checkout_path`,
+      so an inherited root belonging to ANOTHER checkout lands back on this
+      tree. `NROS_BUILD_ROOT` is deliberately left alone, because its Rust
+      mirror `nros_tests::build_root` reads it unre-rooted and a writer/reader
+      split would be a fresh instance of this same bug.
+- [x] Measured on a real linked worktree rather than read: with
+      `NROS_REPO_DIR` set to the MAIN checkout, the worktree resolves its build
+      root to `<worktree>/build` and its ledger to
+      `<worktree>/build/check-skips`. Issue 1234's defect does not reproduce.
+      (The acceptance as first written — "two `just check fast` runs report only
+      their own skips" — is the same fact at one remove; the ledger PATH is what
+      decides it, and that is what was measured.)
 
 ### W6 — the build guard is keyed by tree
 
