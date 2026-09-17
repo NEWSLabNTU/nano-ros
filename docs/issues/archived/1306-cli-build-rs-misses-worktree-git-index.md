@@ -2,12 +2,40 @@
 id: 1306
 title: "In a linked git worktree the `nros` CLI's source stamp never re-runs on a
   commit: `build.rs` watches `<root>/.git/index`, which is not a file there"
-status: open
+status: wontfix
 type: bug
 area: cli, build
 severity: low
-related: [issue-0466, issue-0627, issue-1285]
+found: 2026-09-11
+resolved: 2026-09-18
+resolved_in: "issue 1336 — duplicate, retired under that number"
+related: [issue-1336, issue-0466, issue-0627, issue-1285]
 ---
+
+> **DUPLICATE of issue 1336 — absorbed 2026-09-18.** Two sessions a day apart
+> filed the same defect: this one on 2026-09-11 from issue 1285's agent hitting
+> it in a worktree, and 1336 on 2026-09-12 as an incidental observation during
+> phase-454 W3. **1336 has the number** and carries the resolution.
+>
+> Nothing here was wrong, and two things below were the best statement of the
+> problem in either file, so they were carried into 1336 rather than lost with
+> the duplicate:
+>
+> * **The FIX spelling.** `git rev-parse --git-path index`, run in `root`,
+>   answering in a main checkout, in a linked worktree and under
+>   `GIT_INDEX_FILE` — this file named it; 1336 proposed `--git-dir` plus a
+>   hand-read `gitdir:` line. The landed fix is this one, with
+>   `--path-format=absolute` added because without it git answers relative to
+>   its own cwd and cargo resolves a relative `rerun-if-changed` against the
+>   PACKAGE root.
+> * **The ACCEPTANCE recipe**, and the instruction to sweep the class
+>   (`rg -n '"\.git/' --glob build.rs`). 1336 had no acceptance section. The
+>   sweep found six siblings, two of them live defects.
+>
+> Also from here: the observation that `just setup-cli` "rebuilding does not
+> help, because cargo sees nothing to rebuild" — which is the part that makes
+> this expensive rather than merely wrong, and which the measurement in 1336's
+> Resolution confirms verbatim.
 
 ## What happens
 

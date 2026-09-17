@@ -696,6 +696,18 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `nros_build_paths::reroot_foreign` (every `build.rs`); "which checkout" is
   the marker walk, never `.git` — a worktree's `.git` is a FILE (issue 1336).
   Gate: `check-inherited-checkout-paths`.
+- **Nothing may MODEL git's layout — ask `rev-parse --path-format=absolute
+  --git-path <n>`** (issue 1336, which absorbed 1306). `build.rs` watched
+  `root.join(".git/index")` behind an `exists()` guard that fails OPEN, so in
+  every agent worktree the CLI source stamp had NO watch: after a commit
+  `setup-cli` reported `built:` forever while `check cli-fresh` stayed STALE,
+  clearable only by `touch build.rs`. Six siblings, two of them live — the
+  0986 config-side-effect assertion in `check-hook-repo-side-effects` was
+  VACUOUS in a worktree (`--git-dir` there has no `config`), and
+  `submodule-pins-check` read the MAIN checkout's submodule store. A `.git`
+  existence test asks `exists()`/`-e`, never `is_dir()`/`-d`: a submodule's is
+  a file too. Gate: `check-git-dir-layout-assumptions`, whose self-test builds
+  both checkout shapes rather than asserting the rule.
 - **A red CI lane answers one of two questions and they look identical** — the
   lane RAN and the code is broken (a verdict), or it never ran (no verdict). A
   uniformly-red lane has NO signal capacity: a regression landing in it looks
