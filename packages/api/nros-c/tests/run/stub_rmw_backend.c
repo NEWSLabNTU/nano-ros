@@ -176,6 +176,34 @@ static rmw_ret_t stub_destroy_client(rmw_client_t* client) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
+/* Phase 124.B.1's wake slot, stored and never called — and the DIFFERENCE that
+ * makes is the point (phase-417 W4.e).
+ *
+ * The runtime asks `supports_wake_callback()`, which is literally "is this slot
+ * non-NULL", and a backend that answers NO gets `drive_io(full timeout)`: the
+ * executor parks inside the transport, where nothing can reach it. A backend
+ * that answers YES gets `node_wake.wait_ms(timeout)` + `drive_io(0)`, and that
+ * wait is interruptible — which is what makes a guard condition triggered from
+ * another thread WAKE a spin rather than wait it out.
+ *
+ * So this slot is not a formality: without it `node_guard_condition.c` cannot
+ * measure the wake at all, and with it the wall time a spin spends simply moves
+ * from the stub's `nanosleep` into the platform's wake primitive, which is
+ * where a real async backend spends it too.
+ *
+ * Nothing here ever invokes `cb`: this stub has no transport to be notified
+ * from, and a guard condition's own trigger signals the executor directly
+ * through `nros_rmw_runtime_wake_cb`, not through the backend. */
+static void (*s_wake_cb)(void* ctx) = NULL;
+static void* s_wake_ctx = NULL;
+
+static rmw_ret_t stub_set_wake_callback(rmw_session_t* session, void (*cb)(void* ctx), void* ctx) {
+    (void)session;
+    s_wake_cb = cb;
+    s_wake_ctx = ctx;
+    return NROS_RMW_RET_OK;
+}
+
 static const nros_rmw_vtable_t STUB_VTABLE = {
     .create_session = stub_create_session,
     .destroy_session = stub_destroy_session,
@@ -194,6 +222,7 @@ static const nros_rmw_vtable_t STUB_VTABLE = {
     .send_response = stub_send_response,
     .create_client = stub_create_client,
     .destroy_client = stub_destroy_client,
+    .set_wake_callback = stub_set_wake_callback,
 };
 
 int32_t nros_stub_rmw_register(void) {
