@@ -1,10 +1,11 @@
 # Phase 455 — a saturated zenoh queryable says so, and the rate that follows is measurable
 
-**Status (2026-09-18). W1, W2, W2.b, W3 and W5 LANDED (W5 as `#1040`,
-2026-09-13). W4 is the remainder and is no longer blocked — but W5's run found
-a deeper defect than the one it fixed, and issue 1341 stays OPEN because of it:
-[#1361](../issues/1361-action-server-never-publishes-a-terminal-status.md), a
-nano-ros action server never publishes a TERMINAL status on ANY backend.** Closes phase-444 W2's acceptance by a different
+**Status (2026-09-18). W1, W2, W2.b, W3 and W5 LANDED, and the two defects W5's
+run exposed are CLOSED with them (`#1068`): issues 1341 and 1361.
+#1361 was the deeper one — a nano-ros action server never published a TERMINAL status
+on ANY backend — and its fix is what finally satisfied
+#1341's acceptance, live. **W4 is the only remainder**, and it is unblocked; it has
+simply not been run.** Closes phase-444 W2's acceptance by a different
 route than phase-444 assumed: not by re-running the hardware measurement, but by
 giving the failure an observable so it stops needing one. Implements the
 observability half of RFC-0089's rule — a failure a caller cannot see is a
@@ -49,16 +50,32 @@ starts. W4's own acceptance never touches `/status` (the probe awaits
 `get_result`), so it is runnable; that it has not been RUN is the only thing
 between it and done.
 
-**Issue 1341 stays open, and the reason is worth reading before anyone reruns
-`-r2n`.** Its acceptance names the terminal status sample, and W5's live run
-found that no such sample is ever published: `complete_goal_raw` removes the
-goal from `active_goals` BEFORE `publish_status_array`, so a subscriber attached
-before the goal sees `status: 1` (ACCEPTED) and then an empty array, and the
-retained sample a late joiner now correctly receives is `status_list: []`. That
-is [#1361](../issues/1361-action-server-never-publishes-a-terminal-status.md),
-it is backend-independent, and it is the same shape as issue 0902: a client
-waiting for a terminal state it will never observe. It was only findable once W5
-made the retained sample readable.
+**Issue 1341 and issue 1361 are both closed (`#1068`), and how they hid each
+other is the lesson.** 1341's acceptance named the terminal status sample, and
+W5's live run found that no such sample was ever published: `complete_goal_raw`
+removed the goal from `active_goals` BEFORE `publish_status_array`, so a
+subscriber saw `status: 1` (ACCEPTED) and then an empty array, and the retained
+sample a late joiner now correctly received was `status_list: []`. 1361 was only
+FINDABLE once W5 made retention work — retention and content had never been
+asserted together, which is why the fix puts the late-joiner assertion inside the
+existing interop cell rather than a new one. Option 2 was taken: the status array
+now carries `active_goals` + `completed_results`, so a terminated goal stays
+visible until its result is reclaimed. Live acceptance, three seconds after
+termination with nothing publishing in between: `status: 4` (`STATUS_SUCCEEDED`).
+
+**Two measurements from that work that correct this document.** The buffer
+arithmetic written here was wrong: an entry is 28 bytes and an N-entry array is
+`28N + 5`, so 512 bytes hold **18** entries, not "about eight" — `2 × MAX_GOALS`
+therefore fits for `MAX_GOALS <= 9`, now a per-instantiation compile-time assert.
+And above that bound the writer answers `BufferTooSmall`, `publish_status_array`
+returns `Err`, and every caller discards it with `let _ =` — 1361's own symptom
+one level down, **already reachable before this change** with active goals alone.
+It was fixed as a class rather than an instance.
+
+**One finding worth carrying past this phase:** `MockPublisher` dropped its
+payload argument, so every status assertion in the suite was about the core's
+internal tables rather than about what reached the wire. That is why nothing
+caught 1361. The hook is in the mock now.
 
 **Two defects W5's run surfaced outside this phase**, filed rather than fixed
 inside it:
@@ -69,10 +86,14 @@ inside it:
   complete from a clone. phase-445 owns the decision (is a generated entry a
   member of the tracked root?); W5 worked around it with
   `just native build-fixture-rust`.
-* **[#1367](../issues/1367-cyclone-test-idlc-races-into-one-gen-dir.md)** — two
-  concurrent `idlc` runs wrote one Cyclone test `gen/` dir; the truncated header
-  is newer than its IDL input, so the codegen edge is up to date and no later
-  run repairs it. Issue 0834's non-converging shape, one lane over.
+* The concurrent-`idlc` defect was filed here as #1367 and is a **DUPLICATE** of
+  [#1311](../issues/1311-cyclonedds-sumseq-generated-c-fails-to-compile.md),
+  open since 2026-09-11 and fixed at `f62c17359a` the same night — checking for
+  an existing report is the step that was skipped. 1311's cause is sharper than
+  #1367 guessed: `tests/CMakeLists.txt` listed each generated-source list in the
+  sources of MANY targets, and the Makefile generator copies the custom command
+  into each consuming target's own sub-make, so a parallel build ran `idlc
+  AddTwoInts.idl` **eleven times at once**. #1367 is archived as resolved.
 
 ## Why this phase exists
 
