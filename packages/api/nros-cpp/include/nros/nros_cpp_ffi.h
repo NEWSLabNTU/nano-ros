@@ -1753,6 +1753,29 @@ nros_cpp_ret_t nros_cpp_guard_condition_create(void *executor_handle,
 nros_cpp_ret_t nros_cpp_guard_condition_trigger(void *storage);
 
 /**
+ * Is this guard condition triggered and not yet dispatched?
+ *
+ * phase-417 W4.e — the RFC-0022 polling reader C has had all along, which C++
+ * and Rust did not: the ledger's `c:guard_condition_is_triggered` recorded
+ * "a polling C++ or Rust user cannot do what a polling C user can" as a
+ * three-language disagreement, and stage 4 is where those close. The executor
+ * consumes the flag on dispatch, so this answers "set and not yet dispatched".
+ *
+ * # Safety
+ * `storage` must be a valid guard condition storage.
+ */
+bool nros_cpp_guard_condition_is_triggered(const void *storage);
+
+/**
+ * Clear the triggered flag without dispatching — the other half of
+ * [`nros_cpp_guard_condition_is_triggered`].
+ *
+ * # Safety
+ * `storage` must be a valid guard condition storage.
+ */
+nros_cpp_ret_t nros_cpp_guard_condition_clear(void *storage);
+
+/**
  * Destroy a guard condition (drop in place, no free).
  *
  * # Safety
