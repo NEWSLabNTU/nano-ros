@@ -9,6 +9,11 @@
  *   2. the deprecated `register_*` aliases still compile, so a consumer gets one
  *      release to migrate.
  *
+ * The guard-condition pair left this probe in phase-417 W4.e: the node is the
+ * owner and `nros_node_create_guard_condition` is the one creation shape, so
+ * `nros_executor_add_guard_condition` and its `register_*` alias are retired
+ * rather than migrated. A retired name has nothing to pin here.
+ *
  * Compile-only (no main): the assertion is that these names resolve with these
  * signatures. Taking a function pointer forces a real lookup — a macro alias
  * that pointed at a nonexistent symbol would fail here.
@@ -23,8 +28,6 @@ static nros_ret_t (*const kAddService)(struct nros_executor_t*,
                                        struct nros_service_t*) = nros_executor_add_service;
 static nros_ret_t (*const kAddClient)(struct nros_executor_t*,
                                       struct nros_client_t*) = nros_executor_add_client;
-static nros_ret_t (*const kAddGuard)(struct nros_executor_t*, struct nros_guard_condition_t*) =
-    nros_executor_add_guard_condition;
 
 /* 2. The deprecated aliases still resolve, to the SAME functions. */
 static nros_ret_t (*const kOldTimer)(struct nros_executor_t*,
@@ -40,8 +43,6 @@ static nros_ret_t (*const kOldTimer)(struct nros_executor_t*,
  * this signature. */
 static nros_ret_t (*const kOldService)(struct nros_executor_t*,
                                        struct nros_service_t*) = nros_executor_register_service;
-static nros_ret_t (*const kOldGuard)(struct nros_executor_t*, struct nros_guard_condition_t*) =
-    nros_executor_register_guard_condition;
 
 /* Silence "defined but not used" without needing a main(). */
 const void* nros_executor_verb_alias_probe(void);
@@ -49,12 +50,9 @@ const void* nros_executor_verb_alias_probe(void) {
     (void)kAddTimer;
     (void)kAddService;
     (void)kAddClient;
-    (void)kAddGuard;
     (void)kOldTimer;
     (void)kOldService;
-    (void)kOldGuard;
     /* The alias must name the same entity as the new spelling. */
-    return (kOldTimer == kAddTimer && kOldService == kAddService && kOldGuard == kAddGuard)
-               ? (const void*)kAddTimer
-               : (const void*)0;
+    return (kOldTimer == kAddTimer && kOldService == kAddService) ? (const void*)kAddTimer
+                                                                  : (const void*)0;
 }

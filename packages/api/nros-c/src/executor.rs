@@ -16,7 +16,6 @@ use crate::{
         nros_action_server_t, nros_goal_status_t, nros_goal_uuid_t,
     },
     error::*,
-    guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t},
     node::nros_node_t,
     service::{
         client_response_trampoline, nros_client_state_t, nros_client_t, nros_service_state_t,
@@ -1295,7 +1294,7 @@ pub unsafe extern "C" fn nros_executor_node_init(
 /// remove. Out-of-range ids are dropped rather than panicking — the executor's
 /// own capacity check already bounds them.
 #[inline]
-fn record_trigger_entity(
+pub(crate) fn record_trigger_entity(
     table: &mut [*mut core::ffi::c_void; NROS_EXECUTOR_MAX_HANDLES],
     handle_id: nros_node::HandleId,
     entity: *mut core::ffi::c_void,
@@ -2680,68 +2679,18 @@ pub unsafe extern "C" fn nros_executor_add_client(
     }
 }
 
-/// Add a guard condition to the executor.
-///
-/// # Safety
-/// * All pointers must be valid and point to initialized objects
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_guard_condition(
-    executor: *mut nros_executor_t,
-    guard: *mut nros_guard_condition_t,
-) -> nros_ret_t {
-    validate_not_null!(executor, guard);
-
-    let executor = &mut *executor;
-    let guard_ref = &*guard;
-
-    validate_state!(
-        executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-    );
-    validate_state!(
-        guard_ref,
-        nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED
-    );
-
-    // Check capacity
-    if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
-    }
-
-    {
-        let rust_exec = get_executor(&mut executor._opaque);
-
-        // Get the C callback and context from the guard condition
-        let c_callback = guard_ref.get_callback();
-        let c_context = guard_ref.get_context();
-
-        // Wrap the C callback in a Rust closure
-        let wrapper = move || {
-            if let Some(cb) = c_callback {
-                // SAFETY: The C callback and context remain valid for the
-                // lifetime of the executor.
-                cb(c_context);
-            }
-        };
-
-        match rust_exec.register_guard_condition(wrapper) {
-            Ok((handle_id, guard_handle)) => {
-                let guard_mut = &mut *guard;
-                guard_mut.set_handle_id(handle_id);
-                guard_mut.set_guard_handle(guard_handle);
-                record_trigger_entity(
-                    &mut executor._handle_entities,
-                    handle_id,
-                    guard as *mut core::ffi::c_void,
-                );
-
-                executor.handle_count += 1;
-                NROS_RET_OK
-            }
-            Err(_) => NROS_RET_ERROR,
-        }
-    }
-}
+// `nros_executor_add_guard_condition` was RETIRED by phase-417 W4.e, with no
+// forwarder (RFC-0089 stage 6 step B). It was the third of three calls a C
+// caller had to make, and the only one that did anything: `init` and
+// `set_callback` left the object inert, so a guard condition was unregistered —
+// `handle_id == SIZE_MAX`, triggers landing on a local flag no executor
+// watches — for however long the caller took to reach this function, and
+// forever if it never did (the one in-tree example never did).
+//
+// The creation verb is `nros_node_create_guard_condition(node, out, cb, ctx)`
+// in `guard_condition.rs`: one call, on the owner a caller has in hand, with
+// the callback bound at creation like every other entity (RFC-0041/0043) and
+// the node's `SchedContext` inherited like every other handle the node makes.
 
 /// Add an action server to the executor.
 ///
