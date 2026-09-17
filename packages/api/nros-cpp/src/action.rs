@@ -575,6 +575,43 @@ pub unsafe extern "C" fn nros_cpp_action_server_for_each_active_goal(
     NROS_CPP_RET_OK
 }
 
+/// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
+///
+/// The C++ tier's binding of `nros_action_server_goal_exists` /
+/// `ActionServerRawHandle::goal_exists`. TRUE while the goal is active AND
+/// while its completed result is still retained, which is rcl's window.
+///
+/// Returns `false` rather than an error code for every rejected argument: the
+/// ported idiom is a guard, and a `Result` here would make the one-line `if`
+/// that a caller writes impossible to write.
+///
+/// # Safety
+/// `handle` must be a valid `CppActionServer` storage pointer,
+/// `executor_handle` a valid `CppContext`, and `goal_id` 16 readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_goal_exists(
+    handle: *const c_void,
+    executor_handle: *mut c_void,
+    goal_id: *const [u8; 16],
+) -> bool {
+    if handle.is_null() || goal_id.is_null() {
+        return false;
+    }
+    let server = unsafe { &*(handle as *const CppActionServer) };
+    let Some(executor_ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return false;
+    };
+    let executor_ctx = &*executor_ctx;
+    let arena_handle = match &server.handle {
+        Some(h) => *h,
+        None => return false,
+    };
+    let goal = nros_node::GoalId {
+        uuid: unsafe { *goal_id },
+    };
+    arena_handle.goal_exists(&executor_ctx.executor, &goal)
+}
+
 /// Destroy an action server (drop in place, no free).
 ///
 /// # Safety
@@ -1010,6 +1047,38 @@ pub unsafe extern "C" fn nros_cpp_action_client_wait_for_action_server(
         let _ = ctx
             .executor
             .spin_once(core::time::Duration::from_millis(SPIN_MS));
+    }
+}
+
+/// Non-blocking snapshot of action-server visibility — phase-417 W4.b.
+///
+/// `rclcpp_action::ClientBase::action_server_is_ready`, the non-blocking half
+/// of [`nros_cpp_action_client_wait_for_action_server`] and the C++ binding of
+/// C's `nros_action_client_action_server_is_ready` / Rust's
+/// `ActionClient::action_server_is_ready` (ledger row
+/// `cpp:Client::action_server_is_ready`, which was a C++-only gap: the other
+/// two languages had the predicate and C++ could only BLOCK).
+///
+/// Reads the same `is_server_ready()` the wait loop polls, and spins nothing —
+/// so unlike the wait it is legal inside a callback.
+///
+/// # Safety
+/// `handle` must be a valid initialized `CppActionClient`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_action_server_is_ready(
+    handle: *mut c_void,
+) -> bool {
+    if handle.is_null() {
+        return false;
+    }
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let executor_ptr = client.executor_ptr;
+    if executor_ptr.is_null() {
+        return false;
+    }
+    match unsafe { cpp_arena_core_mut(client.arena_entry_index, executor_ptr) } {
+        Some(core) => core.is_server_ready(),
+        None => false,
     }
 }
 

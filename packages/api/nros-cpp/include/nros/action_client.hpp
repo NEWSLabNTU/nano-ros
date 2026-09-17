@@ -162,6 +162,33 @@ template <typename A> class Client {
         return ::nros::Result(::nros::ErrorCode::Unsupported);
     }
 
+    /// Is an action server for this action visible right now? — phase-417 W4.b.
+    ///
+    /// `rclcpp_action::ClientBase::action_server_is_ready`, the NON-BLOCKING
+    /// half of @ref wait_for_action_server. C has had
+    /// `nros_action_client_action_server_is_ready` and Rust
+    /// `ActionClient::action_server_is_ready` since phase-338; C++ had neither,
+    /// so the only way to ask here was to block (ledger row
+    /// `cpp:Client::action_server_is_ready`, a C++-only gap rather than a
+    /// decision).
+    ///
+    /// Spins nothing, so unlike @ref wait_for_action_server it is legal inside
+    /// a callback. Its answer is a SNAPSHOT: `false` means "not visible yet",
+    /// never "will not appear".
+    bool action_server_is_ready() const {
+        if (!initialized_) return false;
+        return nros_cpp_action_client_action_server_is_ready(
+            const_cast<void*>(static_cast<const void*>(storage_)));
+    }
+
+    /// Read back the action name this client was created on — phase-417 W4.b.
+    ///
+    /// The client half of "four surfaces, one accessor" (ledger row
+    /// `c:action_client_get_action_name`); see
+    /// `rclcpp_action::Server<A>::get_action_name` for why the 256-byte copy is
+    /// where it is. Returns `""` (never NULL) on an uninitialised client.
+    const char* get_action_name() const { return initialized_ ? action_name_ : ""; }
+
     ::nros::Result send_goal(const GoalType& goal, uint8_t goal_id[16]) {
         if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
 
@@ -502,7 +529,9 @@ template <typename A> class Client {
     // Move semantics (non-copyable). Relocation goes through the
     // `nros_cpp_action_client_relocate` runtime call (Phase 84.C1).
     // The feedback stream is rebound to the new storage afterwards.
-    Client(Client&& other) : executor_(other.executor_), initialized_(other.initialized_) {
+    Client(Client&& other)
+        : executor_(other.executor_), initialized_(other.initialized_), action_name_{} {
+        ::memcpy(action_name_, other.action_name_, sizeof(action_name_));
         if (other.initialized_) {
             nros_cpp_action_client_relocate(other.storage_, storage_);
             other.initialized_ = false;
@@ -518,6 +547,7 @@ template <typename A> class Client {
             }
             executor_ = other.executor_;
             initialized_ = other.initialized_;
+            ::memcpy(action_name_, other.action_name_, sizeof(action_name_));
             if (other.initialized_) {
                 nros_cpp_action_client_relocate(other.storage_, storage_);
                 other.initialized_ = false;
@@ -529,7 +559,7 @@ template <typename A> class Client {
 
     /// Default constructor — creates an uninitialized action client.
     /// Use `Node::create_action_client()` to initialize.
-    Client() : executor_(nullptr), initialized_(false) {}
+    Client() : executor_(nullptr), initialized_(false), action_name_{} {}
 
   private:
     Client(const Client&) = delete;
@@ -542,9 +572,10 @@ template <typename A> class Client {
     bool initialized_;
     ::nros::Stream<FeedbackType> feedback_stream_;
     // Phase 87.6 put a `char action_name_[256]` here for an accessor that was
-    // never written; phase-417 W4.b deleted it. See the matching note in
-    // `action_server.hpp` — populated at construction, read by nothing, and a
-    // duplicate of a name the runtime already holds.
+    // never written, and an earlier phase-417 W4.b wave deleted it as dead
+    // state. W4.b's second half writes `get_action_name()`, so it is back and
+    // it is read — see the note on `Server<A>::get_action_name`.
+    char action_name_[::nros::ACTION_NAME_MAX];
 };
 
 } // namespace rclcpp_action
@@ -573,6 +604,14 @@ Result Node::create_action_client(::nros::ActionClient<A>& out, const char* acti
                                                        A::Goal::TYPE_HASH, ffi_qos, out.storage_);
     if (ret == 0) {
         out.executor_ = executor_handle_;
+        // phase-417 W4.b — remember the name for `get_action_name()`, truncating
+        // at `nros::ACTION_NAME_MAX` exactly as the server and the polling tiers do.
+        size_t name_len = 0;
+        while (action_name[name_len] != '\0' && name_len + 1 < sizeof(out.action_name_)) {
+            out.action_name_[name_len] = action_name[name_len];
+            ++name_len;
+        }
+        out.action_name_[name_len] = '\0';
         out.initialized_ = true;
     }
     return Result(ret);

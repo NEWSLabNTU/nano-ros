@@ -245,4 +245,71 @@ static_assert(
                  ::nros::Result>::value,
     "PollingActionServer<A>::abort must return nros::Result");
 
+// ── 6. The accessors the four action tiers now agree on ───────────────────
+//
+// phase-417 W4.b's second half, ledger rows `c:action_client_get_action_name`,
+// `c:action_server_get_action_name`, `c:action_server_goal_exists` and
+// `cpp:Client::action_server_is_ready`. Each of these existed on SOME of our
+// surfaces and not others, which is the disagreement stage 4 is about:
+//
+//  * `get_action_name` was on the POLLING tiers only. C now has
+//    `rcl_action_{client,server}_get_action_name`, and the callback tiers have
+//    it here. All four C++ classes read ONE bound, `nros::ACTION_NAME_MAX`.
+//  * `action_server_is_ready` existed in C and Rust and NOT in C++, so the
+//    only way to ask here was to block in `wait_for_action_server`.
+//  * `goal_exists` is rcl's; C now has `nros_action_server_goal_exists` and
+//    this is its C++ binding.
+//
+// Return types are asserted, not just names: a `get_action_name` that came
+// back as `nros::Result`, or a predicate that came back as `nros::Result`,
+// would compile at every call site above and mean something else — RFC-0089's
+// "compiles and differs".
+inline void accessors(::rclcpp::Node& node) {
+    ::nros::ActionServer<Fib> server;
+    ::nros::ActionClient<Fib> client;
+    (void)node.create_action_server(server, "/fib");
+    (void)node.create_action_client(client, "/fib");
+
+    const ::nros::ActionServer<Fib>& cserver = server;
+    const ::nros::ActionClient<Fib>& cclient = client;
+
+    // Readable from a const handle, like every other accessor here.
+    (void)cserver.get_action_name();
+    (void)cclient.get_action_name();
+    (void)cclient.action_server_is_ready();
+
+    // Both goal-id spellings reach `goal_exists`, same as the verbs above.
+    ::nros::GoalUUID id;
+    uint8_t raw[16] = {0};
+    (void)cserver.goal_exists(id);
+    (void)cserver.goal_exists(raw);
+}
+
+static_assert(
+    std::is_same<decltype(std::declval<const ::nros::ActionServer<Fib>&>().get_action_name()),
+                 const char*>::value,
+    "ActionServer<A>::get_action_name must return const char* — the same shape "
+    "PollingActionServer<A> and Subscription<M> already return, and never a Result");
+static_assert(
+    std::is_same<decltype(std::declval<const ::nros::ActionClient<Fib>&>().get_action_name()),
+                 const char*>::value,
+    "ActionClient<A>::get_action_name must return const char*");
+static_assert(std::is_same<decltype(std::declval<const ::nros::ActionClient<Fib>&>()
+                                        .action_server_is_ready()),
+                           bool>::value,
+              "ActionClient<A>::action_server_is_ready must be a PREDICATE — a Result here "
+              "would make the ported `if (client.action_server_is_ready())` mean readiness "
+              "OR an error, which is the pair rclcpp_action's bool exists to separate");
+static_assert(std::is_same<decltype(std::declval<const ::nros::ActionServer<Fib>&>().goal_exists(
+                               std::declval<const ::nros::GoalUUID&>())),
+                           bool>::value,
+              "ActionServer<A>::goal_exists must be a PREDICATE — rcl's "
+              "rcl_action_server_goal_exists returns bool and the ported idiom is a guard");
+
+// One bound for the four action classes, not four literals (phase-417 W4.b).
+static_assert(::nros::PollingActionServer<Fib>::ACTION_NAME_MAX == ::nros::ACTION_NAME_MAX,
+              "PollingActionServer<A>::ACTION_NAME_MAX must BE nros::ACTION_NAME_MAX");
+static_assert(::nros::PollingActionClient<Fib>::ACTION_NAME_MAX == ::nros::ACTION_NAME_MAX,
+              "PollingActionClient<A>::ACTION_NAME_MAX must BE nros::ACTION_NAME_MAX");
+
 } // namespace nros_cpp_action_goal_uuid_compile_test

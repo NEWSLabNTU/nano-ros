@@ -2574,6 +2574,25 @@ nros_cpp_ret_t nros_cpp_action_server_for_each_active_goal(void *handle,
                                                            void *ctx);
 
 /**
+ * Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
+ *
+ * The C++ tier's binding of `nros_action_server_goal_exists` /
+ * `ActionServerRawHandle::goal_exists`. TRUE while the goal is active AND
+ * while its completed result is still retained, which is rcl's window.
+ *
+ * Returns `false` rather than an error code for every rejected argument: the
+ * ported idiom is a guard, and a `Result` here would make the one-line `if`
+ * that a caller writes impossible to write.
+ *
+ * # Safety
+ * `handle` must be a valid `CppActionServer` storage pointer,
+ * `executor_handle` a valid `CppContext`, and `goal_id` 16 readable bytes.
+ */
+bool nros_cpp_action_server_goal_exists(const void *handle,
+                                        void *executor_handle,
+                                        const uint8_t (*goal_id)[16]);
+
+/**
  * Destroy an action server (drop in place, no free).
  *
  * # Safety
@@ -2639,6 +2658,24 @@ nros_cpp_ret_t nros_cpp_action_client_create(const struct nros_cpp_node_t *node,
  * `handle` must be a valid initialized `CppActionClient`.
  */
 nros_cpp_ret_t nros_cpp_action_client_wait_for_action_server(void *handle, uint32_t timeout_ms);
+
+/**
+ * Non-blocking snapshot of action-server visibility — phase-417 W4.b.
+ *
+ * `rclcpp_action::ClientBase::action_server_is_ready`, the non-blocking half
+ * of [`nros_cpp_action_client_wait_for_action_server`] and the C++ binding of
+ * C's `nros_action_client_action_server_is_ready` / Rust's
+ * `ActionClient::action_server_is_ready` (ledger row
+ * `cpp:Client::action_server_is_ready`, which was a C++-only gap: the other
+ * two languages had the predicate and C++ could only BLOCK).
+ *
+ * Reads the same `is_server_ready()` the wait loop polls, and spins nothing —
+ * so unlike the wait it is legal inside a callback.
+ *
+ * # Safety
+ * `handle` must be a valid initialized `CppActionClient`.
+ */
+bool nros_cpp_action_client_action_server_is_ready(void *handle);
 
 /**
  * Send a goal and block until the server accepts or rejects it.
