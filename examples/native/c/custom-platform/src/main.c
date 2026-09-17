@@ -146,7 +146,7 @@ static void signal_handler(int signum) {
 
     // This is how you would signal from an interrupt handler:
     // The guard condition trigger is thread-safe and can be called from any context
-    (void)rcl_trigger_guard_condition(&app.shutdown_guard);
+    (void)nros_guard_condition_trigger(&app.shutdown_guard);
 }
 
 // ============================================================================
@@ -186,29 +186,32 @@ static void demo_platform_time(void) {
 static void demo_guard_condition(void) {
     printf("\n=== Guard Condition Demo ===\n");
 
-    // Initialize guard condition with callback
+    // ONE call, on the NODE, with the callback bound at creation — phase-417
+    // W4.e. This example used to make three (`nros_guard_condition_init`,
+    // `nros_guard_condition_set_callback`, `nros_executor_add_guard_condition`)
+    // and stopped after two, so the guard condition it printed as "initialized"
+    // was never registered with anything: the SIGINT handler's trigger set a
+    // byte in the struct and no executor ever looked at it. Every call returned
+    // NROS_RET_OK. Creation IS registration now, so that state no longer
+    // exists.
     app.shutdown_guard = rcl_get_zero_initialized_guard_condition();
-    nros_ret_t ret = nros_guard_condition_init(&app.shutdown_guard, &app.support);
+    nros_ret_t ret =
+        nros_node_create_guard_condition(&app.node, &app.shutdown_guard, shutdown_callback, NULL);
     if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to init guard condition: %d\n", ret);
+        fprintf(stderr, "Failed to create guard condition: %d\n", ret);
         return;
     }
 
-    ret = nros_guard_condition_set_callback(&app.shutdown_guard, shutdown_callback, NULL);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to set guard condition callback: %d\n", ret);
-        return;
-    }
-
-    // Check initial state
-    printf("Guard condition initialized\n");
+    printf("Guard condition created on the node and registered with its executor\n");
     printf("  Is valid: %s\n", nros_guard_condition_is_valid(&app.shutdown_guard) ? "yes" : "no");
     printf("  Is triggered: %s\n",
            nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
 
-    // Demonstrate trigger/clear cycle
+    // The polling half: trigger, observe, clear WITHOUT dispatching. An RTOS
+    // task that owns its own loop reads the flag here instead of waiting for a
+    // callback (RFC-0022).
     printf("Triggering guard condition...\n");
-    (void)rcl_trigger_guard_condition(&app.shutdown_guard);
+    (void)nros_guard_condition_trigger(&app.shutdown_guard);
     printf("  Is triggered: %s\n",
            nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
 
@@ -216,12 +219,6 @@ static void demo_guard_condition(void) {
     (void)nros_guard_condition_clear(&app.shutdown_guard);
     printf("  Is triggered: %s\n",
            nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
-
-    // Add to executor - callback will be invoked when triggered
-    ret = nros_executor_add_guard_condition(&app.executor, &app.shutdown_guard);
-    if (ret == NROS_RET_OK) {
-        printf("Guard condition added to executor\n");
-    }
 }
 
 // ============================================================================
@@ -276,12 +273,23 @@ int nros_app_main(int argc, char** argv) {
     }
     printf("Support initialized\n");
 
-    // Initialize node
+    // Initialize executor, THEN the node. The order is load-bearing since
+    // phase-417 W4.e: a guard condition is created on the node and lands in
+    // that node's executor arena, so the node has to be BOUND to an executor —
+    // `nros_executor_node_init`, not the legacy `rclc_node_init_default`, which
+    // leaves the node reaching no executor at all.
+    app.executor = rclc_executor_get_zero_initialized_executor();
+    ret = nros_executor_init(&app.executor, &app.support, 4);
+    if (ret != NROS_RET_OK) {
+        fprintf(stderr, "Failed to init executor: %d\n", ret);
+        goto cleanup_support;
+    }
+
     app.node = rcl_get_zero_initialized_node();
-    ret = rclc_node_init_default(&app.node, "baremetal_demo", "/", &app.support);
+    ret = nros_executor_node_init(&app.executor, &app.node, "baremetal_demo", NULL);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init node: %d\n", ret);
-        goto cleanup_support;
+        goto cleanup_executor;
     }
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
@@ -310,19 +318,11 @@ int nros_app_main(int argc, char** argv) {
     }
     printf("Timer created (500ms period)\n");
 
-    // Initialize executor
-    app.executor = rclc_executor_get_zero_initialized_executor();
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to init executor: %d\n", ret);
-        goto cleanup_timer;
-    }
-
     // Add timer to executor
     ret = rclc_executor_add_timer(&app.executor, &app.timer);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add timer: %d\n", ret);
-        goto cleanup_executor;
+        goto cleanup_timer;
     }
     printf("Executor initialized with %d handles\n", nros_executor_get_handle_count(&app.executor));
 
@@ -348,10 +348,9 @@ int nros_app_main(int argc, char** argv) {
     (void)rcl_guard_condition_fini(&app.shutdown_guard);
     printf("Guard condition finalized\n");
 
-cleanup_executor:
-    (void)rclc_executor_fini(&app.executor);
-    printf("Executor finalized\n");
-
+    // Reverse order of initialisation, which now ends with the executor rather
+    // than starting with it: the node is BOUND to the executor, so the executor
+    // is constructed first and finalised last.
 cleanup_timer:
     (void)rcl_timer_fini(&app.timer);
     printf("Timer finalized\n");
@@ -363,6 +362,10 @@ cleanup_publisher:
 cleanup_node:
     (void)rcl_node_fini(&app.node);
     printf("Node finalized\n");
+
+cleanup_executor:
+    (void)rclc_executor_fini(&app.executor);
+    printf("Executor finalized\n");
 
 cleanup_support:
     (void)rclc_support_fini(&app.support);
