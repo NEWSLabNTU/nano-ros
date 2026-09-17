@@ -990,6 +990,25 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/lifecycle_transition_ids.cpp
+    echo "  - the lifecycle node carries rclcpp_lifecycle's surface (phase-417 W4.f)"
+    # Fifteen ledger rows: `register_on_*` (C and Rust had it, C++ did not),
+    # the clock, the transition graph as an OBJECT rather than an enum, the
+    # managed-entity protocol, and the whole parameter surface forwarded to the
+    # bound node. Every claim is pinned as a METHOD POINTER or an instantiation,
+    # because a surface that quietly stops existing still compiles at any call
+    # site that happens to match another overload -- which is how six of these
+    # rows stayed open while the capability sat one layer down in the FFI.
+    test -f packages/api/nros-cpp/tests/compile/lifecycle_surface.cpp || { \
+        echo "ERROR: lifecycle_surface.cpp is MISSING -- phase-417 W4.f is unpinned." >&2; \
+        exit 1; \
+    }
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/lifecycle_surface.cpp
     echo "  - a module can NAME the backend it means (issue 1050 defect 3)"
     # `nros::init()` opens whichever backend registered FIRST, and on a hosted
     # target that order is decided before `main` by `.init_array` ctors. A PX4
