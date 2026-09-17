@@ -663,14 +663,27 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
   decline — and it is now `settled-pending-owner`, because the alias belongs in
   `<nros/rcl_compat.h>`, which is W5.b's surface.
 
-  **Open, and it belongs to W5.b.** `rcl_compat.h` section 6 still tells a
-  reader the typed entry point does not exist ("the honest move is to name the
-  shape a faithful alias needs and wait for it") and sketches
-  `nros_subscription_typed_callback_t` as the thing to wait for. It shipped, in
-  the other word order. That section also predicts the `..._with_context` alias
-  will be "a direct six-argument alias", which it cannot be: ours carries the
-  deserialiser, so the forwarder is seven arguments and only codegen collapses
-  it.
+  **That open item is CLOSED 2026-09-18, by W5.e, and what it found was worse
+  than what it predicted.** `rcl_compat.h` section 6 did tell a reader the
+  typed entry point does not exist ("the honest move is to name the shape a
+  faithful alias needs and wait for it") and did sketch
+  `nros_subscription_typed_callback_t` as the thing to wait for — the shipped
+  name with two words swapped. What the note did not say is WHEN: the section
+  and the entry point landed in the SAME COMMIT (`6da5349d`, 2026-09-04, W5.a
+  and W5.b together), so the file has never once described the tree it shipped
+  in. A reader following it would have concluded a capability was missing and
+  written their own CDR, which is the exact failure this campaign exists to
+  remove. The `..._with_context` prediction was also wrong as predicted: ours
+  carries the deserialiser, so a forwarder is SEVEN arguments, and the six-in-
+  rclc's-order line exists only because codegen knows the type and a header
+  cannot. Section 6 is rewritten against the shipped header, the alias
+  `rclc_subscription_callback_with_context_t` LANDED there (an alias of our
+  typedef NAME, not a second copy of the function type — issue 0160's class),
+  and `c:typed_subscription_callback_t` moves `settled-pending-owner` →
+  `landed`. A fourth correction fell out: every line number section 6 cited
+  into `<nros/nros_generated.h>` pointed at unrelated code, because that header
+  is cbindgen output and every regeneration moves it (4 of 4 stale; section 2's
+  `:2547` was out by 105 lines). Citations there name identifiers now.
 * W5.b **[wrapper]** — **LANDED, and it had already landed once: this item was
   written as if it were open for nine days after its own fix shipped.**
   `<nros/rcl_compat.h>` maps `RCL_RET_*` onto ours — both `RMW_RET_*` and
@@ -695,6 +708,19 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
   **BREAKING for C callers of the old spelling.**
   Ledger rows retired: 0 — a value mapping has no correspondent to ledger; its
   acceptance is the two probes.
+
+  **One part of this file was still wrong, and it was the part W5.d's pass did
+  not reach: SECTION 6 (fixed 2026-09-18, W5.e).** The mapping and the
+  self-description were corrected; the section that tells a reader what the
+  executor's registration does NOT alias was left describing 2026-09-03. It
+  said the typed subscription entry point did not exist and to wait for a name
+  it sketched — which had shipped in the SAME COMMIT as the section, in the
+  other word order — and predicted a "direct six-argument alias" that cannot
+  exist at six. It now reads off the header, carries the alias the ledger asked
+  for (`rclc_subscription_callback_with_context_t`), and cites identifiers
+  rather than line numbers, because all four line numbers it carried into the
+  cbindgen-generated `<nros/nros_generated.h>` pointed at unrelated code. Detail
+  in W5.a's closing note and in W5.e.
 * W5.c **[wrapper]** — **LANDED.** The node accessors and four of the six timer
   accessors landed in earlier waves (`rcl_node_is_valid`,
   `nros_node_get_domain_id`, `nros_node_get_fully_qualified_name`,
@@ -778,9 +804,109 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
   wrong is which profile was chosen. The exchange's runtime behaviour is
   `executor::tests::exchanging_a_timers_period_changes_the_cadence_without_rewinding_it`,
   mutation-checked against a version that rewinds `elapsed_us`.
-* W5.e **[rust-first]** — a typed service/client path; `service.h.jinja` generates only
-  `_get_type_name`/`_get_type_hash` today, so every C service in the tree is
-  raw bytes with hand-written CDR.
+* W5.e **[rust-first]** — **typed service/client delivery. LANDED 2026-09-04
+  (the surface) and 2026-09-18 (the callers) — and, exactly like W5.b, this
+  item was written as if it were open for fourteen days after its own surface
+  shipped.**
+
+  **The premise was already false when it was written, and the item said so
+  itself, in the commit that shipped it.** This bullet read "`service.h.jinja`
+  generates only `_get_type_name`/`_get_type_hash` today, so every C service in
+  the tree is raw bytes with hand-written CDR". `6da5349d` (2026-09-04) carries
+  a section headed "W5.e — typed service/client" whose first line is "My brief
+  said the service pack emits only `_get_type_name`/`_get_type_hash`. FALSE" —
+  and it landed 12 entry points. The bullet was never updated. The SECOND half
+  of the sentence stayed true for two more weeks, which is why the stale
+  premise cost nothing until someone measured it: every C service in the tree
+  WAS still raw bytes. That is the half this wave fixes.
+
+  **What the surface is** (`packs/c/service.h.jinja`, shipped 2026-09-04). Per
+  service, `static inline`, no symbol and no writable data:
+  `<Srv>_service_handler_t` (caller-owned request + response storage, the typed
+  callback, `last_error`/`error_count`), `<Srv>_service_handler_init`,
+  `<Srv>_service_handle_request` (the `nros_service_callback_t` trampoline),
+  `<Srv>_service_init`; and the client mirror `<Srv>_client_handler_t`,
+  `<Srv>_client_handler_init`, `<Srv>_client_handle_response`,
+  `<Srv>_client_set_response_callback`, `<Srv>_client_send_request`,
+  `<Srv>_client_take_response`, `<Srv>_client_call`. Plus one Rust entry point,
+  `nros_service_typed_report_error`.
+
+  **The two-payload seam, and the three answers it forced.** A subscription has
+  one payload arriving; a service has two, travelling in opposite directions,
+  so W5.a's shape does not transfer unchanged.
+  * *Who owns each buffer* — the CALLER owns both, which is rclc's answer
+    (`rclc_executor_add_service(exec, svc, &req, &res, cb)`), and it is what
+    keeps an allocator off the path. They travel as ONE block rather than two
+    arguments because our registration carries exactly one context word; that
+    is also why no executor-side `_typed` variant was added, unlike W5.a's.
+    A subscription's byte callback has nowhere to put a decoded message, so
+    W5.a had to widen the FFI; a service callback already receives a
+    caller-visible reply buffer, so the only missing storage is the two payload
+    STRUCTS and a `void *context` can carry them.
+  * *A failed request decode* — REFUSED, not dispatched: `_fini` the partial
+    decode, count it, emit an ERROR record, return `false`. Measured, not
+    assumed: `srv_raw_try_process` sends a reply only on `ok && resp_len > 0`
+    (`executor/arena.rs`), so `false` puts NOTHING on the wire and the peer
+    times out rather than receiving an answer to a request nobody parsed. The
+    same `bool` catches an oversized response — forwarding a short `written`
+    there would put a TRUNCATED CDR payload on the wire.
+  * *How the response is published* — not by the handler. The handler fills the
+    typed struct; the trampoline serializes into the executor's reply buffer
+    and reports the byte count through `*response_len`. So the handler body
+    names no buffer, no size and no CDR function, which is the whole point.
+
+  **What 2026-09-18 added, and why the item was not closeable without it.** The
+  surface had NO in-tree C caller — the only exercise was a compile probe, and
+  the five identical `examples/*/c/service-server/src/main.c` still declared
+  `bool service_callback(const uint8_t*, size_t, uint8_t*, size_t, size_t*,
+  void*)` and hand-called `_request_deserialize` / `_response_serialize`. A
+  delivery path nothing runs is one nobody would notice breaking (W5.a's own
+  lesson, one entity over). Ported: 5 service servers, 5 blocking service
+  clients, 1 callback client (`examples/native/c/service-client-callback`) —
+  three transforms over eleven files, native / threadx-linux /
+  mps2-an385-freertos / qemu-armv7a-nuttx / rv-virt-threadx. The servers also
+  stop building an `nros_service_type_t` by hand: `<Srv>_service_init` names
+  the type support, the trampoline and the handler together, so the three
+  cannot disagree.
+
+  **The negative control, and why it is a different one from W5.a's.** W5.a
+  needed `1 ? (msg) : (<Msg>*)0` because the FFI takes storage as `void *`.
+  The service seam has no such hole — the handler FUNCTION and the handler
+  BLOCK are both generated types — so a mismatch should already be ill-typed.
+  That is a claim, and
+  `tests/compile/typed_service_storage_mismatch_probe.c` measures it: a handler
+  with the two payloads SWAPPED, and a `_client_handler_t` on the server seam.
+  Compiled `-Werror` in `check c` and REQUIRED to fail, because C reports both
+  as warnings. The swap is the mistake this seam invites and the one rclc's own
+  `void (*)(const void *, void *, void *)` could not diagnose at all.
+
+  **Ledger.** `c:service_callback_t` and `c:response_callback_t` re-verdicted
+  `divergence` → `extension`, the same move `c:subscription_callback_t` made on
+  2026-09-13 and for the same reason: the byte callback is now the byte TIER
+  beside a faithful typed one rather than a stand-in for it. Both rows' stated
+  reason was also stale — "bound to the entity at creation" describes an
+  arrangement stage 6 removed, and the row it deferred to had already retracted
+  that argument, so a `see` was inheriting a retraction.
+  `c:typed_subscription_callback_t` `settled-pending-owner` → `landed` (the
+  alias landed in `rcl_compat.h`, W5.e's other file).
+
+  **One more stale claim, MEASURED and left with a reason.**
+  `nros_service_init_with_qos`'s doc says "`nros_executor_add_service` treats an
+  absent callback as nothing to dispatch". It does not — `executor.rs` returns
+  `NROS_RET_INVALID_ARGUMENT` when `get_callback()` is `None`, which is the
+  better behaviour and the opposite of what the sentence promises. Left because
+  the fix is a Rust doc comment plus a cbindgen regeneration of the 7000-line
+  `nros_generated.h`, and three sibling agents were regenerating it the same
+  day: the conflict would cost more than the sentence does. Take it in a quiet
+  window.
+
+  **Measured, left, and named rather than smoothed over:** the two ZEPHYR C
+  service examples are NOT ported and are on a different surface
+  (`<nros/component.h>`, `nros_cpp_service_server_register`, not
+  `nros_service_t`). They are also the worst CDR in the tree — `read_i64_le(req
+  + 4)` against a hardcoded 4-byte encapsulation header, with no generated type
+  in sight. Giving the component seam a typed handler is its own item; this one
+  would have had to widen a second surface to claim it.
 
 ## The structural blocker — RESOLVED by phase-417 itself (corrected 2026-09-05)
 
