@@ -68,9 +68,9 @@ is being worked in its own branch now. Two corrections to the original list:
   names its entry package and the image that claims it supplies the target.
 - [1313](../issues/1313-nros-tests-gated-absence-env-race.md): an env race
   under plain `cargo test`.
-- [1314](../issues/1314-tier1-lane-contract-test-refuses-unscoped-run.md): a
-  tier-1 lane-contract test failed when run directly. Establish whether it is a
-  defect or a precondition before touching it.
+- [1314](../issues/archived/1314-tier1-lane-contract-test-refuses-unscoped-run.md):
+  RESOLVED — it was in no lane AND asserted a premise phase-395 W19 retired;
+  the direct run lacked no precondition.
 
 ## W3 — triage the backed-up local branches
 

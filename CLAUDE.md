@@ -438,10 +438,17 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   lane. Build the lane you'll test — tier 1 doesn't need all 314 rows.
   **A lane answers TWO questions and they have different answers (#482):** which fixtures must be
   FRESH (its cell cover) vs which must EXIST (a property of the RUN). `nros_lane_build_lane` maps
-  lane→required build and `CiLane::run_scope` declares it. Tier 1 narrows its run by NAME
-  (`NROS_TEST_SCOPE`) so it needs the broader `native` build; **tier 2 / nightly narrow by
-  COORDINATE in the fixture RESOLVER** (`NROS_TEST_COORDS` → `nros_tests::fixtures::lane`,
-  phase-340 W3), so each is its own build lane. Name filtering cannot express tier 2 — it is
+  lane→required build and `CiLane::run_scope` declares it. **EVERY tier now narrows by
+  COORDINATE in the fixture RESOLVER** (`NROS_TEST_COORDS` → `nros_tests::fixtures::lane`;
+  tier 2 / nightly since phase-340 W3, tier 1 since phase-395 W19), so each is its own build
+  lane — `nros_lane_build_lane tier1` is `tier1`, not `native`. This line said tier 1 narrowed
+  by NAME (`NROS_TEST_SCOPE`) and needed the broader `native` build long after W19 changed both,
+  and it was not a harmless lag: the tier-1 case in `lane_build_covers_run` asserted the same
+  retired premise and failed 10/11 on EVERY invocation, read as a flake because its target was in
+  no lane at all (issue 1314). The doc, the `run_scope` comment and the test all had to move
+  together, which is 0828's lesson — the build side and the run side of a lane are ONE fact, and
+  a doc that keeps the old half aims the next reader at the wrong one. Name filtering could never
+  express tier 2 anyway — it is
   1-wise over platform, so every platform is in it (#357/#482); the resolver attributes an
   artifact back to its manifest row via `row_artifact_root()`, the sibling of `row_coord()`, so
   build-set and run-set are ONE predicate on one coordinate file. The skip is keyed on the

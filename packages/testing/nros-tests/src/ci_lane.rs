@@ -244,12 +244,14 @@ impl CiLane {
     /// and their own build now covers their run.
     pub fn run_scope(self) -> RunScope {
         match self {
-            // Host-only by construction (`tier1_is_native_only`), and `just ci`
-            // filters the run to match. Kept NAME-based: tier 1's build lane is
-            // `native`, a module-level superset of `coords(Tier1)`, so a
-            // coordinate filter would skip host fixtures that were built and
-            // buy nothing.
             // phase-395 W19 — COORDINATES, not names.
+            //
+            // (The paragraph that stood here said tier 1 was "host-only by
+            // construction" and "kept NAME-based", i.e. it stated the premise
+            // this arm had already replaced. Both halves are false now: tier 1
+            // selects `threadx-linux,c,zenoh` and `zephyr,rust,zenoh`, and `just
+            // ci` exports `NROS_TEST_COORDS`. Removed with issue 1314, whose
+            // whole cost was that same retired premise surviving in a test.)
             //
             // This was `Native`, a name-based filter, and that is the coarse end
             // of "scope precisely rather than run-and-skip": it selects by test

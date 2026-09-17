@@ -97,9 +97,29 @@ nros_lane_validate() {
 # NEWEST rather than a preferred profile — preferring `nros-fast-release` picked
 # an eleven-day-old artifact on this host while `debug` was current.
 _nros_lane_coords_bin() {
-    local best="" best_t=0 p b t
-    for p in nros-fast-release debug release; do
-        b="target/$p/lane-coords"
+    local best="" best_t=0 b t
+    # EVERY profile dir, not a hardcoded three — issue 1314.
+    #
+    # This read `for p in nros-fast-release debug release`, and the repo's own
+    # development default is none of them: `nros_cargo_profile::DEFAULT_PROFILE`
+    # is `nros-relwithdebinfo`, so the binary lands in
+    # `target/nros-relwithdebinfo/` and this lookup had never seen it. Two
+    # spellings of one fact — the profile table, and a list beside it — which is
+    # the drift class this repo keeps paying for.
+    #
+    # It stayed invisible because the fallback WORKS: `nros_lane_coords_file`
+    # ran `cargo run` instead, which is correct in a build recipe. It is not
+    # correct on the TEST path, and removing it from there is all of issue 0523
+    # part B: nested inside a `cargo nextest run` it blocks on the build lock
+    # and every case that reaches here TIMES OUT at 60 s. Measured 5 of 28, the
+    # day `lane_build_covers_run` was finally put in a lane — with a freshly
+    # built binary sitting in a directory this loop did not name.
+    #
+    # A glob cannot go stale when the profile table moves, and needs no
+    # knowledge of that table here. "Newest wins" is unchanged, and so is the
+    # freshness check below — which is what keeps a foreign or museum profile
+    # dir from being believed, and is why widening the scan is safe.
+    for b in target/*/lane-coords; do
         [ -x "$b" ] || continue
         t="$(stat -c %Y "$b" 2>/dev/null || echo 0)"
         if [ "$t" -gt "$best_t" ]; then

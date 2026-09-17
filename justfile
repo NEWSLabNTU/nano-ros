@@ -3158,14 +3158,44 @@ mod ci 'just/ci.just'
 # Admissible in an affordability tier under the `check-lane-contracts` rule: no
 # fixture stamp is resolved and no fixture is built. Keep it that way — a target
 # added here that needs a staged artifact breaks the tier's promise.
+#
+# Issue 1314 — `lane_build_covers_run` was NOT in this set, and that was the
+# whole of the contradiction the issue opened on: it failed 10/11 under nextest
+# while `just test-lane-contracts` passed 17/17 in three worktrees the same day,
+# because the 17 are this file's other two targets and nothing anywhere ran the
+# eleven. `test-all` reaches them, but only behind `_require-fixtures-ready`, so
+# the one lane that could afford them is the one that excluded them — issue
+# 0922's defect (excluded by CRATE where the real property is per-TARGET) with a
+# third target left behind, and issue 1226's shape once more. It belongs here on
+# the same grounds as the other two: it drives `fixture-lane.sh` against a
+# temporary `NROS_FIXTURE_STAMP` under `tmp/`, resolves no real fixture, and runs
+# in ~0.6 s. `check-lane-contracts` reads this line, so the rule is checked and
+# not merely asserted here.
 [group("main")]
 test-lane-contracts:
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/build/cargo.sh
+    # No `cargo build --bin lane-coords` here, deliberately — MEASURED, because
+    # the obvious reading of the symptom was wrong (issue 1314).
+    #
+    # `lane_build_covers_run` consumes the PREBUILT `lane-coords` rather than
+    # `cargo run`-ing it (issue 0523 part B: a nested cargo blocks on the build
+    # lock and every case reaching it times out at 60 s). Adding the target here
+    # made exactly that happen — 5 of 28 TIMEOUT — which reads as "this lane does
+    # not build what it resolves", the `check-lane-contracts` rule, and a
+    # pre-build step looked like the fix. It is not the cause: backdate the bin
+    # to 2020, drop the pre-build, and `cargo nextest run -p nros-tests --test
+    # <names>` rebuilds it anyway (verified, mtime moved to the run). The cause
+    # was that BOTH resolvers scanned a hardcoded three profile dirs, none of
+    # them the repo's default `nros-relwithdebinfo` — so the freshly built binary
+    # was invisible and the fallback fired. Fixed where the defect is, in the
+    # resolvers; a redundant step propped up by a wrong diagnosis is how a lane
+    # accretes cost nobody can later justify removing.
     cargo_nextest_args=($(nros_cargo_nextest_args))
     cargo nextest run "${cargo_nextest_args[@]}" -p nros-tests \
-        --test lane_run_narrowing --test matrix_fixture_coverage
+        --test lane_run_narrowing --test matrix_fixture_coverage \
+        --test lane_build_covers_run
 
 [group("ci")]
 ci-l1:

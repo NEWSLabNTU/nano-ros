@@ -697,22 +697,50 @@ def lane_filters(recipes, reached):
 
 
 def _strip_rust_comments(text):
-    """Blank out `//…` line comments and `/* … */` block comments, so a
-    substring search over the result cannot mistake PROSE about a resolver for
-    a CALL to it.
+    """Blank out `//…` line comments, `/* … */` block comments AND string
+    literals, so a substring search over the result cannot mistake PROSE about
+    a resolver for a CALL to it.
 
     `lane_run_narrowing.rs` documents `require_west_leaf_in_lane`'s fail-open
     behaviour in a `//` comment beside a DIFFERENT test, never calling the
     function itself — and the naive `name in text` check the PR that reached
     this test for the first time exposed could not tell the two apart, so a
     test that resolves nothing failed the gate as if it were `t_runtime` from
-    the self-test below. Not a full Rust lexer — it does not understand string
-    or char literals, so a `//`/`/*` inside one would (wrongly) start erasing
-    from there; nothing in this file's inputs does that, and getting it exactly
-    right needs a tokenizer this file has no other reason to carry.
+    the self-test below.
+
+    STRING LITERALS ARE THE SAME CLASS, and this used to say so and stop —
+    "it does not understand string or char literals … nothing in this file's
+    inputs does that". Issue 1314 put `lane_build_covers_run` into
+    `test-lane-contracts` (it had been in no lane at all) and the very first
+    run reported `ci::gate reaches lane_build_covers_run … resolves a RUNTIME
+    fixture: require_west_leaf_in_lane`, over an ASSERTION MESSAGE explaining
+    that the resolver fails open — a test that resolves nothing, refused for
+    naming the thing it reasons about. That is CLAUDE.md's fix-the-class rule:
+    the comment fix landed only where the symptom had been seen, and the next
+    site was one token-kind over. A call can never sit inside a string, so
+    blanking them strictly narrows the FALSE positives and can lose no true
+    one.
+
+    Handles `"…"` with `\\` escapes, raw strings (`r"…"`, `r#"…"#`, more
+    hashes) and the byte forms (`b"…"`, `br#"…"#`).
+
+    CHAR literals are deliberately left alone for everything except their own
+    closing quote: `'` is also a LIFETIME (`&'static str`), so treating it as a
+    literal opener would erase the rest of the file from the first `&'a`. Only
+    the unambiguous one-char forms (`'x'`, `'\\n'`) are consumed, which is
+    enough to stop `'"'` from opening a phantom string — the one way a char
+    literal can derail the scan.
+
+    Still not a full Rust lexer; it is a lexer for the three token kinds that
+    can hold prose.
     """
     out = []
     i, n = 0, len(text)
+
+    def blank(s):
+        """Same length, same line structure, no content."""
+        return "".join(c if c == "\n" else " " for c in s)
+
     while i < n:
         two = text[i:i + 2]
         if two == "//":
@@ -720,14 +748,65 @@ def _strip_rust_comments(text):
             j = n if j == -1 else j
             out.append(" " * (j - i))
             i = j
-        elif two == "/*":
+            continue
+        if two == "/*":
             j = text.find("*/", i + 2)
             j = n if j == -1 else j + 2
-            out.append("".join(c if c == "\n" else " " for c in text[i:j]))
+            out.append(blank(text[i:j]))
             i = j
-        else:
-            out.append(text[i])
-            i += 1
+            continue
+        # A raw / byte-string prefix: r, b, br, followed by `"` or `#`+`"`.
+        # Only when it STARTS a token — otherwise the trailing `r` of an
+        # identifier before a string would be swallowed with it.
+        prev_is_ident = i > 0 and (text[i - 1].isalnum() or text[i - 1] == "_")
+        m = None if prev_is_ident else re.match(r'(?:br|b|r)(#*)"', text[i:])
+        if m:
+            hashes = m.group(1) or ""
+            body = i + m.end()
+            close = f'"{hashes}'
+            if hashes:
+                # Raw: no escapes at all, ends at the first `"` + same hashes.
+                j = text.find(close, body)
+                j = n if j == -1 else j + len(close)
+                out.append(blank(text[i:j]))
+                i = j
+                continue
+            # No hashes: `r"…"`/`br"…"` are escape-free, `b"…"` is escaped.
+            raw = "r" in text[i:body - 1]
+            j = body
+            while j < n:
+                if not raw and text[j] == "\\":
+                    j += 2
+                    continue
+                if text[j] == '"':
+                    j += 1
+                    break
+                j += 1
+            out.append(blank(text[i:j]))
+            i = j
+            continue
+        if text[i] == '"':
+            j = i + 1
+            while j < n:
+                if text[j] == "\\":
+                    j += 2
+                    continue
+                if text[j] == '"':
+                    j += 1
+                    break
+                j += 1
+            out.append(blank(text[i:j]))
+            i = j
+            continue
+        if text[i] == "'":
+            # Only an unambiguous one-char literal; a lifetime falls through.
+            m = re.match(r"'(?:\\.|[^\\'])'", text[i:])
+            if m:
+                out.append(blank(m.group(0)))
+                i += m.end()
+                continue
+        out.append(text[i])
+        i += 1
     return "".join(out)
 
 
@@ -1386,6 +1465,55 @@ def selftest(verbose=False):
                      "fn f() {}\n")
         chk("a resolver name inside a comment is not a resolver USE",
             resolvers_used("t_commented")[0] == set())
+
+        # …and the same in a STRING, which is where issue 1314 found it: an
+        # assertion message explaining that `require_west_leaf_in_lane` fails
+        # open made a fixture-free test read as fixture-bearing. The char
+        # literal and the lifetime are here because the two ways to get string
+        # handling wrong are to stop at `'` (erasing the file from the first
+        # `&'a`) and to let `'"'` open a phantom string that swallows the rest.
+        with open(os.path.join(td, "t_stringy.rs"), "w", encoding="utf8") as fh:
+            fh.write('fn f<\'a>(s: &\'a str) -> char {\n'
+                     '    assert!(s.is_empty(),\n'
+                     '        "require_west_leaf_in_lane fails open; see also \\\n'
+                     '         require_cmake_fixture and require_idf_fixture");\n'
+                     '    let _r = r"require_entry_binary in a raw string";\n'
+                     '    let _h = r#"require_west_fixture, hashed "quoted" "#;\n'
+                     '    \'"\'\n'
+                     '}\n')
+        chk("a resolver name inside a string literal is not a resolver USE",
+            resolvers_used("t_stringy")[0] == set())
+
+        # The negative control for the above: blanking strings must not blind
+        # the scan to a real call sitting after one.
+        with open(os.path.join(td, "t_string_then_call.rs"), "w", encoding="utf8") as fh:
+            fh.write('fn f() {\n'
+                     '    let _ = "require_cmake_fixture is only prose here";\n'
+                     '    require_west_leaf_in_lane("build-c-talker-zenoh");\n'
+                     '}\n')
+        chk("a real call AFTER a string mentioning a resolver is still found",
+            resolvers_used("t_string_then_call")[0] == {"require_west_leaf_in_lane"})
+
+        # …and the reason string handling is not merely a false-POSITIVE fix.
+        #
+        # The comment-only scanner had no idea what a string was, so a `/*`
+        # INSIDE one opened a block comment that ran to the next `*/` — or to
+        # EOF. Measured on the real tree: `entry_e2e.rs` line 297 carries the ROS
+        # parameter wildcard `/**: 999` inside an assertion message, and the old
+        # scanner erased 26,588 characters from there to the end of the file,
+        # swallowing the genuine `nuttx::require_entry_binary(..)` call at line
+        # 365. So the gate could MISS a runtime resolver, which is the direction
+        # that matters: a false positive is a red somebody investigates, a false
+        # negative is the rule silently not enforced. No affordability tier
+        # reaches `entry_e2e` today, so nothing was actually waved through — the
+        # hole was simply there, waiting for the lane list to grow.
+        with open(os.path.join(td, "t_slash_star_in_string.rs"), "w", encoding="utf8") as fh:
+            fh.write('fn f() {\n'
+                     '    assert!(true, "the wildcard `/**: 999` lost to the node block");\n'
+                     '    require_entry_binary("talker", "talker");\n'
+                     '}\n')
+        chk("a `/*` inside a string does not hide the call after it",
+            resolvers_used("t_slash_star_in_string")[0] == {"require_entry_binary"})
 
         with open(jf, "w", encoding="utf8") as fh:
             fh.write("ci-l1: \\\n    gate-a \\\n    gate-b\n\n"
