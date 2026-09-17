@@ -139,6 +139,41 @@ fn detects_workspace_root_via_env_override() {
     }
 }
 
+/// Issue 1336's sibling — pass 3 accepts a `.git` of EITHER shape.
+///
+/// A linked worktree's `.git` is a FILE (`gitdir: …`), and so is a submodule's,
+/// so the old `is_dir()` predicate found nothing in the two checkout shapes
+/// that are ordinary here and walked straight past the real root. Both shapes
+/// are asserted, because only one of them ever worked.
+#[test]
+fn detects_workspace_root_via_either_git_shape() {
+    for (label, make_git) in [
+        ("directory (main checkout)", true),
+        ("file (linked worktree / submodule)", false),
+    ] {
+        let _env = env_guard();
+        clear_env_override();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        if make_git {
+            fs::create_dir_all(root.join(".git")).unwrap();
+        } else {
+            fs::write(root.join(".git"), "gitdir: /elsewhere/.git/worktrees/w\n").unwrap();
+        }
+        let nested = root.join("src/pkg");
+        fs::create_dir_all(&nested).unwrap();
+
+        let detected = detect_workspace_root(&nested).unwrap_or_else(|e| {
+            panic!("a `.git` {label} must be a workspace root: {e:#}");
+        });
+        assert_eq!(
+            detected.canonicalize().unwrap(),
+            root.canonicalize().unwrap(),
+            "wrong root for a `.git` {label}"
+        );
+    }
+}
+
 #[test]
 fn duplicate_pkg_names_error() {
     let _env = env_guard();

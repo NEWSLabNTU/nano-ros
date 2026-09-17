@@ -72,7 +72,17 @@ set -euo pipefail
 # owned by this container.
 SRC=/home/runner/src/nano-ros
 mkdir -p "$(dirname "$SRC")"
-if [ -d "$SRC/.git" ]; then
+# -e, not -d: the class in issue 1336. The question is whether a checkout is
+# here, and a .git that is a FILE -- a linked worktree, a submodule -- is one
+# just as much as a directory is. -d answers no for those and sends us into the
+# clone branch, which then fails against a populated directory. Every such test
+# in the tree asks -e now, so the shape stops being a thing each site has to get
+# right on its own.
+#
+# NOTE: no apostrophes or backticks in this block. It lives inside the
+# single-quoted BOOTSTRAP_SH string, where one apostrophe ends the string and
+# the rest of the script is then parsed as code.
+if [ -e "$SRC/.git" ]; then
     echo "  fetching $REF into an existing checkout"
     git -C "$SRC" fetch --depth 1 origin "$REF"
     git -C "$SRC" checkout -q FETCH_HEAD

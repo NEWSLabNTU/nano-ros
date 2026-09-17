@@ -268,11 +268,21 @@ local_pins="$(pins_at "$local_ref")"
 # perfectly readable history absent, which turns a verdict this gate COULD give
 # into a skip. So resolve the store, not the checkout.
 #
-# `--git-common-dir`, not `--git-dir`: in a linked WORKTREE the latter is
-# `.git/worktrees/<wt>`, which has no `modules/`. Agents here work in worktrees,
-# so the wrong spelling would be wrong exactly where it is used most.
+# BOTH admin dirs, per-worktree FIRST — issue 1336.
+#
+# This asked `--git-common-dir` only, on the stated reasoning that "in a linked
+# WORKTREE `--git-dir` is `.git/worktrees/<wt>`, which has no `modules/`". That
+# is measurably false: a submodule initialised inside a worktree keeps its store
+# under THAT worktree's admin dir, and `packages/cli/third-party/play_launch`'s
+# gitlink here reads `gitdir: …/.git/worktrees/<wt>/modules/packages/cli/
+# third-party/play_launch`. Both `<wt>/modules/<name>` and `<common>/modules/
+# <name>` exist on this host and they are DIFFERENT object stores, so the
+# common-dir-only spelling answered with the MAIN checkout's history for a
+# submodule deinit'd in a worktree — or found nothing and downgraded a verdict
+# to a skip, which is the outcome this function exists to avoid. Agents work in
+# worktrees, so the wrong spelling was wrong exactly where it is used most.
 submodule_git_dir() {
-    local path="$1" name common modules
+    local path="$1" name dir modules
     if [ -e "$path/.git" ]; then
         git -C "$path" rev-parse --absolute-git-dir 2>/dev/null && return 0
     fi
@@ -280,12 +290,19 @@ submodule_git_dir() {
             | awk -v p="$path" '$2 == p { print $1 }' \
             | sed -e 's/^submodule\.//' -e 's/\.path$//' | head -1)"
     [ -n "$name" ] || name="$path"
-    common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
-    modules="$common/modules/$name"
-    if [ -d "$modules" ]; then
-        printf '%s\n' "$modules"
-        return 0
-    fi
+    # Per-worktree before common: in a main checkout the two are the same
+    # directory, so the order only matters where it is load-bearing.
+    for dir in \
+        "$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)" \
+        "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+    do
+        [ -n "$dir" ] || continue
+        modules="$dir/modules/$name"
+        if [ -d "$modules" ]; then
+            printf '%s\n' "$modules"
+            return 0
+        fi
+    done
     return 1
 }
 

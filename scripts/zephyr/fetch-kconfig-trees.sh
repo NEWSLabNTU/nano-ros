@@ -61,7 +61,9 @@ fetch_one() { # <dirname> <project> <revision>
         rm -rf "$dir"
     fi
 
-    if [ -d "$dir/.git" ]; then
+    # `-e`, not `-d` — issue 1336's class: a `.git` FILE is a checkout too, and
+    # `$DEST` is settable, so this can be pointed at one.
+    if [ -e "$dir/.git" ]; then
         local at
         at="$(git -C "$dir" rev-parse HEAD 2>/dev/null || echo none)"
         # A tag pin resolves to a commit, so compare BOTH spellings.

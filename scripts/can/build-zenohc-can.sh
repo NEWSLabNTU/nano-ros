@@ -134,7 +134,9 @@ fi
 
 mkdir -p "$WORK_DIR"
 SRC="$WORK_DIR/zenoh-c-$ZENOHC_TAG"
-if [ ! -d "$SRC/.git" ]; then
+# `-e`, not `-d` — issue 1336's class: a `.git` FILE (worktree, submodule) is a
+# checkout too, and `-d` would re-clone over one.
+if [ ! -e "$SRC/.git" ]; then
     say "cloning zenoh-c $ZENOHC_TAG"
     git clone --depth 1 --branch "$ZENOHC_TAG" https://github.com/eclipse-zenoh/zenoh-c "$SRC"
 else
