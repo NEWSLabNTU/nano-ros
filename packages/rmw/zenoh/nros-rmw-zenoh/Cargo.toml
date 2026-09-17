@@ -94,6 +94,13 @@ std = ["alloc", "zpico-sys/std", "log"]
 alloc = ["nros-rmw/alloc"]
 rtic = []
 polling = []
+# phase-392 amendment B -- the payload pools' live-vs-reserved high-water.
+#
+# DEFAULT OFF and deliberately so: the sampler runs once per MESSAGE on the RX
+# path and walks every live subscriber's ring, unlike the unconditional
+# `SubscriberAllocReport` next to it, which runs once per SUBSCRIPTION at
+# registration. A measurement wave turns it on; a shipped image does not.
+pool-occupancy = []
 sync-spin = ["nros-rmw/sync-spin"]
 sync-critical-section = ["nros-rmw/sync-critical-section"]
 ffi-sync = ["dep:critical-section"]

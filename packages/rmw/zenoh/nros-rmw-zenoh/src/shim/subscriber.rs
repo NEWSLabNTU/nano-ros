@@ -652,6 +652,126 @@ static mut SUBSCRIBER_BUFFERS: [SubscriberBuffer; ZPICO_MAX_SUBSCRIBERS] =
 /// Next available buffer index
 pub(super) static NEXT_BUFFER_INDEX: AtomicUsize = AtomicUsize::new(0);
 
+/// The bytes this image RESERVES for subscriber payloads — the denominator
+/// amendment B's aggregate peak is measured against.
+///
+/// `size_of` the two statics rather than the knob product: the pools ARE the
+/// arrays, so this cannot drift from what the linker placed the way a
+/// restated `MAX x DEPTH x SIZE` can (that restatement is what the
+/// `// nros-pool:` annotations above exist to keep honest, and this is the
+/// runtime side of the same claim).
+///
+/// Public and NOT feature-gated: it is a build fact an image wants whether or
+/// not it is instrumented, and `reserved_payload_bytes_matches_the_knobs`
+/// below asserts it against the annotated formula on every ordinary test run.
+/// Gating it would have put that assertion behind a feature no lane enables,
+/// which is coverage that reads as coverage and never runs.
+pub const fn reserved_payload_bytes() -> usize {
+    core::mem::size_of::<[SmallPayloadBlock; ZPICO_MAX_SUBSCRIBERS]>()
+        + core::mem::size_of::<[LargePayloadBlock; MAX_LARGE_SUBSCRIBERS]>()
+}
+
+/// What the subscriber payload pools hold RIGHT NOW, across every live
+/// subscriber. The instantaneous half of phase-392 amendment B's question;
+/// [`super::occupancy`] is the high-water half that samples it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LivePayload {
+    /// Subscribers that have taken a metadata slot (`NEXT_BUFFER_INDEX`).
+    pub subscribers: usize,
+    /// Ring slots holding an unconsumed message, summed over all of them.
+    pub slots: usize,
+    /// Those slots priced at their subscriber's CLASS STRIDE — what a
+    /// slot-granular arena would have to be holding.
+    pub slot_bytes: usize,
+    /// Those slots priced at the MESSAGE bytes actually in them — the floor
+    /// of any sharing scheme, and unreachable today because the C ring
+    /// producer writes into a pre-described stride.
+    pub exact_bytes: usize,
+    /// The deepest any single ring is. `SUBSCRIBER_RING_DEPTH` means at least
+    /// one ring is at the drop edge.
+    pub deepest_ring: usize,
+    /// How many rings are full.
+    pub full_rings: usize,
+}
+
+/// One ring's live occupancy: `(occupied_slots, bytes_in_those_slots)`.
+///
+/// Split out of [`live_payload`] so the arithmetic that is easy to get wrong —
+/// the counter wrap, the clamp to the depth, and pricing a length at no more
+/// than the stride it was written into — is testable without a session, a
+/// static or a `NEXT_BUFFER_INDEX` that the other tests in this file share.
+fn ring_occupancy(
+    head: usize,
+    tail: usize,
+    stride: usize,
+    lens: &[usize; SUBSCRIBER_RING_DEPTH],
+) -> (usize, usize) {
+    // `wrapping_sub`: both counters are free-running and the producer's may
+    // have wrapped past the consumer's. Clamped because a producer that has
+    // advanced past `head + depth` is a torn read of two independent atomics,
+    // not a ring holding more than it has slots.
+    let occupied = tail.wrapping_sub(head).min(SUBSCRIBER_RING_DEPTH);
+    let mut bytes = 0usize;
+    for k in 0..occupied {
+        let slot = head.wrapping_add(k) % SUBSCRIBER_RING_DEPTH;
+        // `min(stride)`: a length above the stride never reached the slot —
+        // the C producer refuses that write and reports it through `notify`
+        // instead — so crediting it would inflate the peak with bytes the
+        // pool never held.
+        bytes += lens[slot].min(stride);
+    }
+    (occupied, bytes)
+}
+
+/// Sample every live subscriber's ring.
+///
+/// # Why this reads only `[head, tail)`
+///
+/// The SPSC contract makes exactly those slots stable: the C producer owns
+/// `[tail, head + depth)` and may be writing into them right now, while the
+/// Rust consumer owns `[head, tail)` and nothing else touches them until
+/// `consume_head` advances. Reading a slot outside that window would be
+/// reading a buffer mid-write. Same discipline as `payload_slot`, which is
+/// why this lives here beside it rather than in the caller.
+///
+/// A subscriber whose `ring_desc` is still zeroed (it took a metadata slot but
+/// has not declared yet) reports a stride of 0 and contributes nothing, which
+/// is correct: it holds no payload bytes.
+///
+/// Cost is `O(live_subscribers x SUBSCRIBER_RING_DEPTH)`, so a caller on the
+/// RX path is making a choice — see [`super::occupancy`], which is behind a
+/// feature for exactly that reason.
+pub fn live_payload() -> LivePayload {
+    let live = NEXT_BUFFER_INDEX
+        .load(Ordering::Acquire)
+        .min(ZPICO_MAX_SUBSCRIBERS);
+    let mut out = LivePayload {
+        subscribers: live,
+        ..LivePayload::default()
+    };
+    // Safety: `live <= ZPICO_MAX_SUBSCRIBERS` (clamped above);
+    // `SUBSCRIBER_BUFFERS` is a module-level static with a fixed address, and
+    // every field read below is either an atomic or a slot the SPSC contract
+    // says the consumer owns.
+    let buffers: &'static [SubscriberBuffer] = unsafe { &SUBSCRIBER_BUFFERS[..live] };
+    for buffer in buffers {
+        let head = buffer.ring_head.load(Ordering::Acquire);
+        let tail = buffer.ring_tail.load(Ordering::Acquire);
+        let stride = buffer.payload_stride();
+        let (occupied, exact) = ring_occupancy(head, tail, stride, &buffer.ring_len);
+        out.slots += occupied;
+        out.slot_bytes += occupied * stride;
+        out.exact_bytes += exact;
+        if occupied > out.deepest_ring {
+            out.deepest_ring = occupied;
+        }
+        if occupied >= SUBSCRIBER_RING_DEPTH {
+            out.full_rings += 1;
+        }
+    }
+    out
+}
+
 // ============================================================================
 // SubscriberBufferRef — safe accessor wrapper
 // ============================================================================
@@ -753,6 +873,14 @@ extern "C" fn subscriber_notify_callback(
     if len > buffer.payload_stride() {
         OVERFLOW_DROPS.fetch_add(1, Ordering::Relaxed);
     }
+
+    // phase-392 amendment B — sample the payload pools' live occupancy HERE,
+    // and nowhere else. The C shim Release-stored `ring_tail` immediately
+    // before calling us, so this is the instant occupancy is at its highest
+    // for this arrival; a sampler on the spin loop reports whatever happened
+    // to be live when the executor next looked, which is a different number.
+    // A no-op (and no code) without `pool-occupancy`.
+    super::occupancy::sample();
 
     // Wake any async task waiting for data on this subscriber.
     buffer.waker.wake();
@@ -2458,5 +2586,46 @@ pub(super) mod tests {
             head_after,
             "ring drained → head == tail"
         );
+    }
+
+    // ---- phase-392 amendment B ----------------------------------------
+
+    /// The denominator the amendment's aggregate peak is measured against
+    /// must be the pools the linker placed, not a restatement of the knobs.
+    #[test]
+    fn reserved_payload_bytes_matches_the_knobs() {
+        let expected = ZPICO_MAX_SUBSCRIBERS * SUBSCRIBER_RING_DEPTH * SUBSCRIBER_BUFFER_SIZE
+            + MAX_LARGE_SUBSCRIBERS * SUBSCRIBER_RING_DEPTH * SUBSCRIBER_LARGE_SIZE;
+        assert_eq!(
+            reserved_payload_bytes(),
+            expected,
+            "the runtime denominator and the `// nros-pool:` formulas disagree — \
+             one of them is lying about what this image reserves"
+        );
+    }
+
+    #[test]
+    fn ring_occupancy_counts_only_the_consumer_window() {
+        let lens = [10usize, 20, 30, 40];
+        // Empty.
+        assert_eq!(super::ring_occupancy(7, 7, 1024, &lens), (0, 0));
+        // Two in flight, starting at slot 1.
+        assert_eq!(super::ring_occupancy(1, 3, 1024, &lens), (2, 20 + 30));
+        // Wrapped: head at slot 3, two live → slots 3 and 0.
+        assert_eq!(super::ring_occupancy(3, 5, 1024, &lens), (2, 40 + 10));
+    }
+
+    #[test]
+    fn ring_occupancy_clamps_and_prices_at_the_stride() {
+        let lens = [10usize, 20, 30, 40];
+        // A torn read of two free-running counters cannot mean a ring holds
+        // more than its depth.
+        let (occupied, _) = super::ring_occupancy(0, 99, 1024, &lens);
+        assert_eq!(occupied, SUBSCRIBER_RING_DEPTH);
+        // A length above the stride never reached the slot, so it is credited
+        // at the stride rather than at the number the producer reported.
+        assert_eq!(super::ring_occupancy(0, 1, 8, &lens), (1, 8));
+        // Counter wrap at the top of the address space is still one message.
+        assert_eq!(super::ring_occupancy(usize::MAX, 0, 1024, &lens), (1, 40));
     }
 }

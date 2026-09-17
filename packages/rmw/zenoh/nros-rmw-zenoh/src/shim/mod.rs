@@ -39,6 +39,7 @@
 //! session.spin_once(core::time::Duration::from_millis(10))?;
 //! ```
 
+pub mod occupancy;
 pub mod publisher;
 pub mod qos;
 pub mod service;
