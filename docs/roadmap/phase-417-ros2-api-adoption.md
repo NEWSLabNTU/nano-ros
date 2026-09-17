@@ -484,9 +484,107 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
   the whole C++ surface in BOTH arms — hosted and `-nostdinc++` against the
   ThreadX shim — which is what keeps the no-STL promise honest.
 
-* W4.b **[mixed]** — actions: a goal-id TYPE in C++ (`uint8_t[16]` today, so it cannot be
-  stored or compared); `succeed`/`abort`/`canceled` verbs; Rust's `cancel`
-  renamed to `canceled` with a deprecated forwarder. Five `action.json` rows.
+* W4.b **[mixed]** — **LANDED, in two halves, and the item's own prose was
+  stale by the time it was picked up.** Actions.
+
+  **The first half had already shipped.** `nros::GoalUUID` (the goal-id VALUE
+  type — standard layout, trivially copyable, `==`/`<`/`is_zero`, `sizeof ==
+  16`, raw `const uint8_t[16]` overloads kept beside every `GoalUUID` one),
+  `ActionServer<A>::succeed`/`abort`/`canceled`, and Rust's `cancel` →
+  `canceled` all landed inside commit `806b2e223` ("stages 2/3/4"), which the
+  item was never marked for. **Verify the item against the tree first** — this
+  is the fourth W4 wave in a row to find its brief partly stale, and here it
+  was three of three bullets. The deprecation question the brief asked
+  (feature-armed vs deleted outright) was settled the third way: `cancel` is an
+  INHERENT method with no in-tree callers, so an always-armed
+  `#[deprecated]` forwarder costs nothing under `-D warnings` and is what
+  shipped. Measured again here: `just check fast` is green with it armed.
+
+  **The second half is the five `action.json` `gap` rows**, which is what
+  "Five `action.json` rows" actually named, and none of them is in the prose
+  above. All five are closed:
+
+  | row | closed by | before → after |
+  | --- | --- | --- |
+  | `c:action_client_get_action_name` | `rcl_action_client_get_action_name` | `gap` → `same` (row deleted) |
+  | `c:action_server_get_action_name` | `rcl_action_server_get_action_name` | `gap` → `same` (row deleted) |
+  | `c:action_server_goal_exists` | `nros_action_server_goal_exists` | `gap` → `same` (row deleted) |
+  | `cpp:Client::action_server_is_ready` | `rclcpp_action::Client<A>::action_server_is_ready` | `gap` → `same` (row deleted) |
+  | `c:action_expire_goals` | `nros_action_expire_goals` | `gap` → `divergence` + `adopt-bounded` |
+
+  Shard counts: `gap` 5 → **0**, `extension` 77 → 81, `divergence` 203 → 204.
+  The C lane's `same` went 108 → 111 and the C++ lane's 144 → 145. `just check
+  api-parity` ends "every divergence carries a ledger entry".
+
+  **Two of the five were open on a claim about our own code that is FALSE**,
+  which is issue 1022's class inside the ledger:
+
+  * `c:action_server_goal_exists` read "ours answers the stronger question —
+    `nros_action_get_goal_status` returns `NROS_RET_NOT_FOUND` for a goal the
+    arena has retired … close enough that it may be a documentation fix". It is
+    WEAKER, not stronger, and measured: a status lookup reads the ACTIVE set,
+    and `complete_goal_raw` removes a goal from it the moment it terminates —
+    so for a goal whose result is still retained for a `get_result` the status
+    lookup says NOT FOUND while rcl says the goal EXISTS. That window is
+    exactly when a client is expected to fetch. `ActionServerCore::goal_exists`
+    is active-set OR retained-result; the test
+    `goal_exists_covers_active_and_retained_results_not_just_active` walks the
+    three states and the middle assertion is the one the documentation fix
+    would have got wrong. Negative control: drop the retained half and it fails
+    on that exact assertion.
+  * `c:action_client_get_action_name` read "our Rust has
+    `nros_core::ActionServer::name`". It could not be CALLED — `nros` re-exports
+    `nros_node`'s live `ActionServer`/`ActionClient` under those spellings, so
+    the `nros_core` markers were shadowed and unreachable through the façade,
+    and measured they had ZERO references anywhere in the tree. **Deleted**
+    (PR #806's precedent: in-tree-only reach, measured, so a hard delete rather
+    than a forwarder). That is the FIRST withdrawal
+    `check-codegen-version-surface` has seen: `NROS_CODEGEN_VERSION` 5 → **6**,
+    `NROS_CODEGEN_VERSION_MIN` stays 2 (nothing generated ever named them, so a
+    version-5 tree still runs), plus the two NuttX committed snapshots (issue
+    1115's two-file rule) and the codegen golden.
+
+  **What the accessor cost, and why the earlier note did not apply.** An
+  earlier wave deleted `Server<A>`'s `char action_name_[256]` as dead state and
+  left "if an accessor is wanted, it belongs on an FFI getter over the name the
+  runtime already owns". Measured, the runtime does NOT own it for this tier:
+  `CppActionServer` holds a raw arena handle, `nros_cpp_action_server_create`
+  takes `_action_name` and drops it, and `CallbackMeta` carries no name. So the
+  copy is back on both callback tiers WITH a reader, at the same 256 bytes
+  `Subscription::get_topic_name` already pays — and all four action classes now
+  read ONE bound, `nros::ACTION_NAME_MAX`, instead of two private literals and
+  two absences. A borrowed `const char*` was rejected: a hosted caller may hand
+  `create_action_server` a pointer from a temporary.
+
+  **`c:action_expire_goals` is the one that stays a difference, and it is now
+  DECIDED rather than open.** `nros_action_expire_goals(server, size_t
+  *num_expired)` ships and both tiers answer it. ADOPT-BOUNDED with two named
+  refusals: no `result_timeout` (the `no_std` core takes no time source, so
+  there is nothing to measure one against) and no `expired_goals` array (an
+  entry is reclaimed once its result has been DELIVERED, so "which goals
+  expired" is a question about a clock we do not have). The memory bound
+  upstream's timer exists to give is already held by issue 0796's on-demand
+  slab compaction; what this buys is EAGERNESS.
+
+  **New ours-only rows, all `extension`:** `cpp:Client::get_action_name`,
+  `cpp:Server::get_action_name`, `cpp:Server::goal_exists`,
+  `rust:ActionServer::goal_exists`, `rust:ActionServer::expire_goals`.
+  `rclcpp_action` has no `get_action_name` on either class (measured against
+  `docs/reference/api-surface/rclcpp.json`) and no `goal_exists` at all, so
+  these agree with rcl rather than with rclcpp — which is the shape this stage
+  wants, since the disagreement being closed is among OUR OWN surfaces.
+
+  **Acceptance.** Behavioural where the change is behavioural:
+  `goal_exists_covers_active_and_retained_results_not_just_active` (nros-node,
+  RUN, negative control measured) and `accessors_refuse_an_unusable_server` /
+  `get_action_name_refuses_an_unusable_client` (nros-c, RUN — a name accessor
+  that handed back the zeroed buffer would return an empty C string that reads
+  like a real name; negative control measured at 1 failure). Signature-shaped
+  where the change is a signature: `action_goal_uuid.cpp` grew section 6,
+  asserting `const char*` for the two name accessors and `bool` for the two
+  predicates — a `Result` there would compile at every call site and mean
+  something else — plus that both polling tiers' `ACTION_NAME_MAX` IS
+  `nros::ACTION_NAME_MAX`.
 * W4.c **[wrapper]** — **LANDED.** executor: `cancel`/`is_spinning` in all three,
   under rclcpp's own names. Before: C had `nros_executor_stop` mutating a
   C-side state enum, Rust's `halt`/`is_halted` were `alloc`-GATED (so a
@@ -1271,7 +1369,7 @@ against, so the next bump invalidates rows instead of silently outdating them.
 | service | 14 | stage 4 / stage 5 (W5.e) |
 | log | 8 | stage 4 W4.d |
 | timer | 6 | stage 4 / stage 5 (W5.c) |
-| action | 5 | stage 4 W4.b |
+| action | ~~5~~ **0** | **stage 4 W4.b — CLOSED**, the first shard to reach zero |
 | qos | 3 | stage 4 |
 | init | 2 | W3.b's honouring half, and `rust:Context::domain_id` |
 | other | 2 | `rust:Session::serialization_format`, `cpp:State::label` |
@@ -1396,7 +1494,7 @@ since it was written on 2026-09-05:
 and nothing else.** Stage 4 is the larger half by row count and the one a ported
 program notices: our own C, C++ and Rust surfaces disagree about the same
 capability in 37 places, and the queue is the 132 `gap` rows above — parameters
-(W4.a, 27), lifecycle (W4.f, 15), logging (W4.d, 8), actions (W4.b, 5),
+(W4.a, 27), lifecycle (W4.f, 15), logging (W4.d, 8), actions (W4.b, 5 -> 0, closed),
 executor (W4.c) and guard conditions (W4.e). Stage 5 is the C surface: typed
 subscription delivery, the `RCL_RET_*` mapping, rclc-shaped presets, a typed
 service path. Everything else on this phase is bookkeeping: three issues
