@@ -66,8 +66,8 @@ is being worked in its own branch now. Two corrections to the original list:
   the Zephyr system-generate module passed no image id, so the tier resolver
   answered for the host. **RESOLVED** — `codegen-system --for-entry`; the shim
   names its entry package and the image that claims it supplies the target.
-- [1313](../issues/1313-nros-tests-gated-absence-env-race.md): an env race
-  under plain `cargo test`.
+- [1313](../issues/archived/1313-nros-tests-gated-absence-env-race.md): RESOLVED —
+  an env race under plain `cargo test`; the verdict's inputs are injected now.
 - [1314](../issues/archived/1314-tier1-lane-contract-test-refuses-unscoped-run.md):
   RESOLVED — it was in no lane AND asserted a premise phase-395 W19 retired;
   the direct run lacked no precondition.
