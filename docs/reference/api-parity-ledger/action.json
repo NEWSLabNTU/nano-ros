@@ -478,6 +478,10 @@
     "verdict": "divergence",
     "why": "the 16-byte goal id as its own type. rcl carries it inside `rcl_action_goal_info_t` and rclcpp_action aliases it as `GoalUUID` (a `std::array`). Ours is a plain struct so it is copyable by value into caller storage with no allocator and no STL. Note our C++ grew `nros::GoalUUID` in phase-417 W4.b -- a standard-layout, trivially copyable value over the same 16 bytes; before that every C++ action signature passed a bare `uint8_t goal_id[16]`, which decays to a pointer."
   },
+  "c:lifecycle_transition_goal_state": {
+    "verdict": "extension",
+    "why": "phase-417 W4.f. rclc has no counterpart: `rcl_lifecycle` owns a `rcl_lifecycle_transition_map_t` that a caller walks through its own handle, and the whole family is `declined` here (see `c:lifecycle_transition_map_t`). These five are PURE functions over `nros_core::lifecycle` instead -- no handle, no executor, no state, because a transition's label and its two states are facts about REP-2002 and not about a running node. They exist because `cpp:LifecycleNode::get_transition_graph` needed them and a C++-only table would have been the fourth copy of `lifecycle_msgs` in this tree; C gets the accessor it was equally missing as a result. An unimplemented id (`0` = CREATE, `8` = DESTROY) answers with the `NULL` / `0` sentinel rather than a neighbouring row -- issue 1099 is what aliasing an unimplemented id onto a real transition cost. FILED HERE, not in `lifecycle.json`, because the topic classifier keys on the NAME: this is a lifecycle row and the shard is the taxonomy's answer, not a claim about the subject (same observation as `cpp:LifecycleNode::get_transition_graph`)."
+  },
   "c:result_callback_t": {
     "verdict": "divergence",
     "why": "see `c:goal_response_callback_t`."
