@@ -2944,6 +2944,15 @@ fn check_declared_depends(
         }));
     }
 
+    // Issue 1304 — the msg packages the toolchain BUNDLES (`std_msgs`,
+    // `builtin_interfaces`, …), which codegen generates from the definitions at
+    // `packages/cli/interfaces/` with no ROS install in the picture. This rung
+    // was missing, and the C++ workspace `nros new` scaffolds declares
+    // `<depend>std_msgs</depend>`: on a host WITH ROS the `ros` rung below
+    // answered, so the preflight only ever refused where nobody looked — a
+    // pristine installed host, which is `just probe installed`.
+    generated.extend(cargo_nano_ros::bundled_interface_packages());
+
     let prereq_map: std::collections::BTreeMap<String, crate::orchestration::sdk_index::PrereqDep> =
         nano_ros_root
             .map(|nr| nr.join("nros-sdk-index.toml"))

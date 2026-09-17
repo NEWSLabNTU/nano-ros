@@ -704,6 +704,32 @@ fn bundled_interfaces_dir() -> Option<PathBuf> {
     dir.join("std_msgs").is_dir().then_some(dir)
 }
 
+/// The bundled msg packages this toolchain ships, by the name a `package.xml`
+/// declares (`std_msgs`, `builtin_interfaces`, …).
+///
+/// Issue 1304 — `nros build`'s `<depend>` preflight needs the same answer
+/// `load_index_with_fallback` gives codegen, without loading 150 KB of
+/// interface files to get it. It asks THIS rather than re-deriving the
+/// directory: the locator below is where the checkout arms and the shipped
+/// SDK-root arm live, and a second walk is how the sizes-header mirror got
+/// fixed five times.
+///
+/// Empty when no rung answers, which reads as "not a bundled package" — never
+/// as an error, because a workspace that names none is the common case.
+#[must_use]
+pub fn bundled_interface_packages() -> std::collections::BTreeSet<String> {
+    let Some(dir) = bundled_interfaces_dir() else {
+        return std::collections::BTreeSet::new();
+    };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return std::collections::BTreeSet::new();
+    };
+    rd.flatten()
+        .filter(|e| e.path().is_dir() && e.path().join("package.xml").is_file())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect()
+}
+
 /// Load the ament index, merging bundled interfaces as fallback.
 ///
 /// If a ROS 2 environment is sourced, the ament index takes precedence.
@@ -2258,5 +2284,29 @@ mod tests {
             .collect();
 
         assert_eq!(names, ["Lone_Request.msg", "Odometry.msg", "GetMap.srv"]);
+    }
+}
+
+#[cfg(test)]
+mod bundled_interface_packages_tests {
+    /// Issue 1304 — the names the `<depend>` preflight resolves through. Asserts
+    /// the two the shipped C++ template needs, and the SHAPE (a ROS name, no
+    /// `nros-` crate prefix): `packages/interfaces/` carries the other spelling,
+    /// and mixing them is how `std_msgs` read as unresolved.
+    #[test]
+    fn the_bundled_set_names_std_msgs_by_its_ros_name() {
+        let got = super::bundled_interface_packages();
+        assert!(
+            got.contains("std_msgs"),
+            "bundled set must name std_msgs; got {got:?}"
+        );
+        assert!(
+            got.contains("builtin_interfaces"),
+            "bundled set must name builtin_interfaces; got {got:?}"
+        );
+        assert!(
+            !got.iter().any(|n| n.starts_with("nros-")),
+            "bundled names are ROS names, not crate names; got {got:?}"
+        );
     }
 }
