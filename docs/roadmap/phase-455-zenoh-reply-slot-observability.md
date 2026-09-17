@@ -41,7 +41,7 @@ idle soak — zero declines, `payload_len=20` throughout, and a 12-way concurren
 service-call flood answered 12/12 with none either. W3's cells will therefore
 NOT be the stronger control 1332 hoped for. The synthetic source is the control.
 
-**W4 was blocked by [issue 1341](../issues/1341-zenoh-action-server-refuses-its-own-status-qos.md);
+**W4 was blocked by [issue 1341](../issues/archived/1341-zenoh-action-server-refuses-its-own-status-qos.md);
 W5 removed the block.** `b0ea5a04b` (phase-428 W9) made the zenoh shim refuse
 `TRANSIENT_LOCAL`, and the action `/status` publisher passes exactly that, so
 every zenoh action server exited 1 at node declaration — including the one W2's
