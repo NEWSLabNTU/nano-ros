@@ -21,8 +21,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 
 use nros_core::lifecycle::{
-    LifecycleState as InternalState, LifecycleTransition as InternalTransition, apply_transition,
-    can_transition,
+    LifecycleState as InternalState, LifecycleTransition as InternalTransition, can_transition,
 };
 
 use crate::lifecycle::LifecyclePollingNodeCtx;
@@ -97,37 +96,42 @@ pub mod transition_id {
 /// [`to_msg_state`] and by the streaming writer `write_state`, so the two can
 /// never disagree about what goes out.
 pub(crate) fn state_wire(state: InternalState) -> (u8, &'static str) {
-    match state {
-        InternalState::Unconfigured => (state_id::PRIMARY_STATE_UNCONFIGURED, "unconfigured"),
-        InternalState::Inactive => (state_id::PRIMARY_STATE_INACTIVE, "inactive"),
-        InternalState::Active => (state_id::PRIMARY_STATE_ACTIVE, "active"),
-        InternalState::Finalized => (state_id::PRIMARY_STATE_FINALIZED, "finalized"),
-        InternalState::ErrorProcessing => (
-            state_id::TRANSITION_STATE_ERRORPROCESSING,
-            "errorprocessing",
-        ),
-    }
+    // phase-417 W4.f — the LABEL comes from the enum and the ID from the
+    // `lifecycle_msgs` constant, deliberately. The label used to be spelled
+    // here and nowhere else, so neither C nor C++ could read a state's label
+    // at all and giving them one meant a fourth set of literals. The id stays
+    // a `state_id::*` reference because that is what pins our discriminants to
+    // upstream's numbering (issue 1099) — collapsing it to `state as u8` would
+    // make the assertion assert itself.
+    let id = match state {
+        InternalState::Unconfigured => state_id::PRIMARY_STATE_UNCONFIGURED,
+        InternalState::Inactive => state_id::PRIMARY_STATE_INACTIVE,
+        InternalState::Active => state_id::PRIMARY_STATE_ACTIVE,
+        InternalState::Finalized => state_id::PRIMARY_STATE_FINALIZED,
+        InternalState::ErrorProcessing => state_id::TRANSITION_STATE_ERRORPROCESSING,
+    };
+    (id, state.label())
 }
 
 /// The `(id, label)` pair a `lifecycle_msgs/Transition` carries on the wire.
 /// Companion to [`state_wire`]; see the note there.
 pub(crate) fn transition_wire(t: InternalTransition) -> (u8, &'static str) {
-    match t {
-        InternalTransition::Configure => (transition_id::CONFIGURE, "configure"),
-        InternalTransition::Cleanup => (transition_id::CLEANUP, "cleanup"),
-        InternalTransition::Activate => (transition_id::ACTIVATE, "activate"),
-        InternalTransition::Deactivate => (transition_id::DEACTIVATE, "deactivate"),
-        InternalTransition::ShutdownUnconfigured => {
-            (transition_id::UNCONFIGURED_SHUTDOWN, "shutdown")
-        }
-        InternalTransition::ShutdownInactive => (transition_id::INACTIVE_SHUTDOWN, "shutdown"),
-        InternalTransition::ShutdownActive => (transition_id::ACTIVE_SHUTDOWN, "shutdown"),
+    // See `state_wire`: label from the enum, id from `lifecycle_msgs`.
+    let id = match t {
+        InternalTransition::Configure => transition_id::CONFIGURE,
+        InternalTransition::Cleanup => transition_id::CLEANUP,
+        InternalTransition::Activate => transition_id::ACTIVATE,
+        InternalTransition::Deactivate => transition_id::DEACTIVATE,
+        InternalTransition::ShutdownUnconfigured => transition_id::UNCONFIGURED_SHUTDOWN,
+        InternalTransition::ShutdownInactive => transition_id::INACTIVE_SHUTDOWN,
+        InternalTransition::ShutdownActive => transition_id::ACTIVE_SHUTDOWN,
         // ErrorRecovery is an implicit transition in rclcpp_lifecycle; 60 is
         // upstream's `TRANSITION_ON_ERROR_SUCCESS`. Since issue 1099 that is
         // also the enum's own discriminant, so this row is identity like the
         // rest — `transition_id::ERROR_RECOVERY` names it.
-        InternalTransition::ErrorRecovery => (transition_id::ERROR_RECOVERY, "error_recovery"),
-    }
+        InternalTransition::ErrorRecovery => transition_id::ERROR_RECOVERY,
+    };
+    (id, t.label())
 }
 
 /// Build a `lifecycle_msgs/State` from an internal state enum.
@@ -209,51 +213,29 @@ pub fn from_msg_transition_label(
     }
 }
 
-/// Every primary transition that can appear in a transition graph. The
-/// three shutdown variants are listed separately so their `start_state`
-/// differs (mirroring rclcpp's graph shape).
-const ALL_TRANSITIONS: [InternalTransition; 8] = [
-    InternalTransition::Configure,
-    InternalTransition::Cleanup,
-    InternalTransition::Activate,
-    InternalTransition::Deactivate,
-    InternalTransition::ShutdownUnconfigured,
-    InternalTransition::ShutdownInactive,
-    InternalTransition::ShutdownActive,
-    InternalTransition::ErrorRecovery,
-];
+/// Every primary transition that can appear in a transition graph.
+///
+/// phase-417 W4.f — an ALIAS for `nros_core::lifecycle::LifecycleTransition::ALL`,
+/// not a second table. This list, its start states and its goal states were all
+/// private to this module, so the graph a remote peer could read over
+/// `~/get_transition_graph` was unreadable to the node's own code in every one
+/// of our three languages. Moving the table down to `nros-core` is what lets
+/// the C and C++ accessors read the SAME eight rows rather than a copy.
+const ALL_TRANSITIONS: [InternalTransition; 8] = InternalTransition::ALL;
 
 /// Primary states plus ErrorProcessing — every reachable lifecycle state.
-const ALL_STATES: [InternalState; 5] = [
-    InternalState::Unconfigured,
-    InternalState::Inactive,
-    InternalState::Active,
-    InternalState::Finalized,
-    InternalState::ErrorProcessing,
-];
+/// Aliases `nros_core::lifecycle::LifecycleState::ALL`; see `ALL_TRANSITIONS`.
+const ALL_STATES: [InternalState; 5] = InternalState::ALL;
 
 fn transition_start_state(t: InternalTransition) -> InternalState {
-    match t {
-        InternalTransition::Configure => InternalState::Unconfigured,
-        InternalTransition::Cleanup => InternalState::Inactive,
-        InternalTransition::Activate => InternalState::Inactive,
-        InternalTransition::Deactivate => InternalState::Active,
-        InternalTransition::ShutdownUnconfigured => InternalState::Unconfigured,
-        InternalTransition::ShutdownInactive => InternalState::Inactive,
-        InternalTransition::ShutdownActive => InternalState::Active,
-        InternalTransition::ErrorRecovery => InternalState::ErrorProcessing,
-    }
+    t.source_state()
 }
 
 fn transition_goal_state(t: InternalTransition) -> InternalState {
     // Assume the callback succeeds — that's the "goal" state the service
     // advertises. If it fails, apply_transition() will route to ErrorProcessing
     // at runtime; that's orthogonal to the advertised graph.
-    apply_transition(
-        transition_start_state(t),
-        t,
-        nros_core::lifecycle::TransitionResult::Success,
-    )
+    t.goal_state()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
