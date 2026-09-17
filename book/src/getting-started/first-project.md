@@ -9,7 +9,7 @@ your PATH, `nros setup native --rmw cyclonedds` run once).
 
 ## Scaffold
 
-```bash
+```bash probe=50 track=installed
 nros new my_robot --workspace
 cd my_robot
 ```
@@ -32,7 +32,7 @@ directory is *for* is the next chapter,
 
 ## Build
 
-```bash
+```bash probe=60 track=installed
 nros sync
 nros build
 ```

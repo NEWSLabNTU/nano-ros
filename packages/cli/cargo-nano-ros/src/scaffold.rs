@@ -291,7 +291,6 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     println!();
     println!("Next steps:");
     println!("  cd {}", cfg.name);
-    println!("  export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros source checkout");
     println!("  eval \"$(nros ws env)\"   # ROS + interface search path");
     println!("  nros sync          # codegen + write the [patch.crates-io] block (RFC-0040)");
     println!("  cargo build           # or: cmake --build build / west build / idf.py build");
@@ -697,7 +696,9 @@ void {class_name}::on_tick() {{
     println!("Next steps:");
     println!("  cd {}", cfg.name);
     println!("  # Solo build:");
-    println!("  cmake -S . -B build -DNANO_ROS_ROOT=<path-to-nano-ros>");
+    println!("  cmake -S . -B build");
+    println!("  #   (an installed toolchain needs nothing here; from an un-activated");
+    println!("  #    checkout shell add -DNANO_ROS_ROOT=<path-to-nano-ros>)");
     println!("  cmake --build build");
     println!();
     println!("  # Or add it as a SUBDIR in a workspace root that calls");
@@ -834,7 +835,9 @@ NROS_C_COMPONENT({state_ty}, {configure_fn})
     println!("Next steps:");
     println!("  cd {}", cfg.name);
     println!("  # Solo build:");
-    println!("  cmake -S . -B build -DNANO_ROS_ROOT=<path-to-nano-ros>");
+    println!("  cmake -S . -B build");
+    println!("  #   (an installed toolchain needs nothing here; from an un-activated");
+    println!("  #    checkout shell add -DNANO_ROS_ROOT=<path-to-nano-ros>)");
     println!("  cmake --build build");
     println!();
     println!("  # Or add it as a SUBDIR in a C++ or Rust Entry workspace.");
