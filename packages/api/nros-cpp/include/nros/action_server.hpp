@@ -132,6 +132,19 @@ static_assert(sizeof(GoalUUID) == 16,
 static_assert(alignof(GoalUUID) == alignof(uint8_t),
               "nros::GoalUUID must not add alignment over its uint8_t[16]");
 
+/// Bound on the action name an action entity remembers for
+/// `get_action_name()` — phase-417 W4.b.
+///
+/// ONE spelling for all four action classes. `PollingActionServer` and
+/// `PollingActionClient` each defined their own `ACTION_NAME_MAX = 256` and
+/// the two callback tiers had neither, which is how the accessor came to
+/// exist on half the C++ action surface (ledger rows
+/// `c:action_{client,server}_get_action_name`, "four surfaces, one
+/// accessor"). Sized to match `nros::SUBSCRIPTION_TOPIC_NAME_MAX` and the C
+/// surface's `MAX_ACTION_NAME_LEN`, so a name that fits one entity fits all
+/// of them and a truncation is not a per-class surprise.
+static const size_t ACTION_NAME_MAX = 256;
+
 /// Goal acceptance response returned from the user's goal callback.
 enum class GoalResponse : int32_t {
     Reject = 0,
@@ -474,6 +487,46 @@ template <typename A> class Server {
         return ret;
     }
 
+    /// Read back the action name this server was created on — phase-417 W4.b.
+    ///
+    /// The callback tier's half of "four surfaces, one accessor" (ledger row
+    /// `c:action_server_get_action_name`): `PollingActionServer` and
+    /// `PollingActionClient` have had `get_action_name()` all along, C now has
+    /// `rcl_action_server_get_action_name`, and this tier — the one a ported
+    /// `rclcpp_action` program uses — had a `char action_name_[256]` field
+    /// populated at construction and read by nothing.
+    ///
+    /// The field is back, and it is now READ. The earlier removal was right
+    /// about dead state and the note it left ("if an accessor is wanted, it
+    /// belongs on an FFI getter over the name the runtime already owns") does
+    /// not apply: the runtime does NOT own it here. `CppActionServer` keeps a
+    /// raw arena handle and `nros_cpp_action_server_create` takes
+    /// `_action_name` and drops it, so there is nothing FFI-side to hand back.
+    /// `Subscription::get_topic_name` pays the same 256 bytes for the same
+    /// reason, and a borrowed `const char*` was rejected — `create_action_server`
+    /// takes a `const char*` that a hosted caller may well have obtained from a
+    /// temporary.
+    ///
+    /// Returns `""` (never NULL) on an uninitialised server, matching
+    /// `Subscription::get_topic_name` and the two polling tiers.
+    const char* get_action_name() const { return initialized_ ? action_name_ : ""; }
+
+    /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
+    ///
+    /// rcl's `rcl_action_server_goal_exists`, and C's
+    /// `nros_action_server_goal_exists`. TRUE while the goal is ACTIVE and
+    /// while its completed result is still retained for a later `get_result`,
+    /// which is rcl's own window. A predicate rather than a `Result`, because
+    /// the ported idiom is a guard.
+    bool goal_exists(const uint8_t goal_id[16]) const {
+        if (!initialized_) return false;
+        return nros_cpp_action_server_goal_exists(storage_, executor_,
+                                                  reinterpret_cast<const uint8_t(*)[16]>(goal_id));
+    }
+
+    /// @ref goal_exists taking a `GoalUUID` value.
+    bool goal_exists(const ::nros::GoalUUID& goal_id) const { return goal_exists(goal_id.data()); }
+
     /// Check if the action server is initialized and valid.
     bool is_valid() const { return initialized_; }
 
@@ -497,7 +550,8 @@ template <typename A> class Server {
           user_cancel_ctx_(other.user_cancel_ctx_), user_accepted_fn_(other.user_accepted_fn_),
           user_accepted_fn_ctx_(other.user_accepted_fn_ctx_),
           user_accepted_ctx_(other.user_accepted_ctx_), user_visitor_fn_(other.user_visitor_fn_),
-          initialized_(other.initialized_) {
+          action_name_{}, initialized_(other.initialized_) {
+        ::memcpy(action_name_, other.action_name_, sizeof(action_name_));
         if (other.initialized_) {
             nros_cpp_action_server_relocate(other.storage_, storage_);
             other.initialized_ = false;
@@ -521,6 +575,7 @@ template <typename A> class Server {
             user_accepted_fn_ctx_ = other.user_accepted_fn_ctx_;
             user_accepted_ctx_ = other.user_accepted_ctx_;
             user_visitor_fn_ = other.user_visitor_fn_;
+            ::memcpy(action_name_, other.action_name_, sizeof(action_name_));
             initialized_ = other.initialized_;
             if (other.initialized_) {
                 nros_cpp_action_server_relocate(other.storage_, storage_);
@@ -537,7 +592,8 @@ template <typename A> class Server {
         : executor_(nullptr), user_goal_fn_(nullptr), user_goal_fn_ctx_(nullptr),
           user_goal_ctx_(nullptr), user_cancel_fn_(nullptr), user_cancel_fn_ctx_(nullptr),
           user_cancel_ctx_(nullptr), user_accepted_fn_(nullptr), user_accepted_fn_ctx_(nullptr),
-          user_accepted_ctx_(nullptr), user_visitor_fn_(nullptr), initialized_(false) {}
+          user_accepted_ctx_(nullptr), user_visitor_fn_(nullptr), action_name_{},
+          initialized_(false) {}
 
   private:
     Server(const Server&) = delete;
@@ -621,15 +677,12 @@ template <typename A> class Server {
     TypedAcceptedFnWithCtx user_accepted_fn_ctx_;
     void* user_accepted_ctx_;
     TypedVisitorFn user_visitor_fn_;
-    bool initialized_;
     // Phase 87.6 put a `char action_name_[256]` here for a `get_action_name()`
-    // that was never written; phase-417 W4.b deleted it. It was populated at
-    // construction and read by nothing, and the name it copied is already held
-    // Rust-side in the runtime struct (`nros_action_server_t::action_name`), so
-    // it was 256 bytes of duplicated state per server on targets whose whole
-    // malloc arena defaults to 16 KB. If an accessor is wanted, it belongs on
-    // an FFI getter over the name the runtime already owns (RFC-0019), not on a
-    // second copy here.
+    // that was never written, and an earlier phase-417 W4.b wave deleted it as
+    // dead state. W4.b's second half writes the accessor, so it is back and it
+    // is read — see `get_action_name()` for why the FFI cannot answer instead.
+    char action_name_[::nros::ACTION_NAME_MAX];
+    bool initialized_;
 };
 
 } // namespace rclcpp_action
@@ -671,6 +724,16 @@ Result Node::create_action_server(::nros::ActionServer<A>& out, const char* acti
                                           A::Goal::TYPE_HASH, sched);
     if (ret == 0) {
         out.executor_ = executor_handle_;
+        // phase-417 W4.b — remember the name for `get_action_name()`. Truncating
+        // copy, as `Subscription`'s and the two polling tiers' do: a name longer
+        // than `nros::ACTION_NAME_MAX` is not a reason to fail a create that the
+        // runtime already accepted.
+        size_t name_len = 0;
+        while (action_name[name_len] != '\0' && name_len + 1 < sizeof(out.action_name_)) {
+            out.action_name_[name_len] = action_name[name_len];
+            ++name_len;
+        }
+        out.action_name_[name_len] = '\0';
         out.initialized_ = true;
     }
     return Result(ret);

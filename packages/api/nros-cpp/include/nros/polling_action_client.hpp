@@ -61,7 +61,11 @@ namespace nros {
 /// ```
 template <typename A> class PollingActionClient {
   public:
-    static constexpr size_t ACTION_NAME_MAX = 256;
+    /// phase-417 W4.b — one spelling for all four action classes; see
+    /// `nros::ACTION_NAME_MAX` in `action_server.hpp`. Kept as a member
+    /// name so existing `PollingActionServer<A>::ACTION_NAME_MAX` /
+    /// `PollingActionClient<A>::ACTION_NAME_MAX` call sites still resolve.
+    static constexpr size_t ACTION_NAME_MAX = ::nros::ACTION_NAME_MAX;
 
     using GoalType = typename A::Goal;
     using ResultType = typename A::Result;
