@@ -181,6 +181,24 @@ cargo-custom-command-depfile:
 cargo-locked:
     @bash scripts/check-cargo-locked.sh
 
+# issue 1307 — the shim above cannot reach a BUILD SCRIPT. Inside one, cargo
+# exports `CARGO` as the path of the real binary, and `scripts/bin/cargo` execs
+# that same binary, so `Command::new(env::var_os("CARGO"))` runs cargo with the
+# shim skipped and no `--locked`. The size probe did, and injected a
+# `[patch.crates-io] libc` the root lock cannot match, so EVERY NuttX build
+# appended a `[[patch.unused]]` block to the root `Cargo.lock`.
+#
+# `--locked` alone is not the fix (measured: `cannot update the lock file …
+# because --locked was passed`, and `find_dep_rlib` has no fallback by design —
+# issue 0464), so the rule is "non-resolving subcommand, or lock discipline".
+# Which subcommands count as non-resolving is MEASURED, with `metadata` without
+# `--no-deps` as the negative control. Source-only, ~0.4 s; self-tests the
+# detector, the sanctioned spellings, and the brace-masking that keeps one
+# function from absorbing its neighbour's `--locked`.
+[private]
+nested-cargo-lock-discipline:
+    @python3 scripts/check/check-nested-cargo-lock-discipline.py
+
 # A cargo profile defined in BOTH `Cargo.toml` and `.cargo/config.toml` must
 # agree. Both are load-bearing — the manifest one applies to the root
 # workspace, the config one to the ~48 leaf crates outside it — so editing one
