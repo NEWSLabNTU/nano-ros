@@ -92,20 +92,23 @@ one was the issue it cites plus the code:
 | `fix/0972-domain-range` (1) | redundant | Issue 0974 is resolved+archived. |
 | `fix/cxx-compat-libstdcpp-passthrough` (1) | redundant | Main's `zephyr/cxx-compat/*` shims already carry the passthrough: `#if defined(__has_include_next) && __has_include_next(<atomic>)`. |
 | `feature/phase-172` (1) | redundant, one cosmetic remainder | The `ZENOH_LOCATOR` half landed: all five `scripts/debug/*` read it on main. What is left is a two-line "CONFIGURE ME" comment on the stm32f4 porting reference mains. Not worth a PR; re-add it if anyone touches those files. |
-| `wip/zenoh-linux-test` (1) | **LIVE — being landed** | See below. |
+| `wip/zenoh-linux-test` (1) | redundant | Issue 1039 is resolved+archived: the fork's patch line already carried the fix. See below. |
 
 **The one rescue.** `wip/zenoh-linux-test` holds `a270ceb3e`, the only fix on
-file for [issue 1039](../issues/1039-nuttx-stdbool-nonconforming-breaks-zenoh-pico.md)
-— `status: open`, `severity: high`: NuttX's `stdbool.h` defines `true` as
+file for [issue 1039](../issues/archived/1039-nuttx-stdbool-nonconforming-breaks-zenoh-pico.md)
+— `severity: high`: NuttX's `stdbool.h` defines `true` as
 `(bool)1`, which is not an integer constant, so zenoh-pico's `keyexpr` template
 (included once per value) breaks every NuttX build. Main's
 `nros-zpico-build/src/runner.rs` has no such helper, so the work never landed.
-It is being re-derived onto current `main` on `fix/1039-nuttx-conforming-bool`,
-with the premise re-validated (the NuttX header, the zenoh-pico pin, and a real
-build) rather than trusted.
+It was re-derived onto current `main` on `fix/1039-nuttx-conforming-bool`, and
+re-validating the premise (the NuttX header, the zenoh-pico pin, and a real
+build) rather than trusting it is what closed the issue: the fork's patch line
+already carries the fix at `a1c741db`, an ancestor of the recorded pin, so the
+rescued commit is REDUNDANT. Issue 1039 is resolved and archived.
 
-**Done when:** issue 1039's fix is merged, and the `backup/local-2026-09-11/*`
-refs are deleted. Deleting them is a separate, explicit step: they are the only
+**Done when:** issue 1039's fix is merged — done, it was already on the patch
+line — and the `backup/local-2026-09-11/*` refs are deleted. Deleting them is a
+separate, explicit step: they are the only
 copy of those 28 commits, and this table is the record of why nine of them do
 not matter.
 
