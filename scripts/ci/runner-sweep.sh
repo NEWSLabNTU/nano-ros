@@ -248,8 +248,14 @@ _sweep_processes() {
     if [ -d "$lock_dir" ] && [ -r "$repo_root/scripts/build/subtree-guard.sh" ]; then
         # shellcheck source=/dev/null
         . "$repo_root/scripts/build/subtree-guard.sh" 2>/dev/null || true
+        # `*/*.pgid` — the lock is per TREE since issue 1157 / phase-449 W6,
+        # so the glob gained a segment. A shared runner legitimately wants
+        # every tree's locks, which is why the tree is a directory rather than
+        # part of the filename; the bare `*.pgid` form is kept beside it so a
+        # lock written before that change is still swept rather than orphaned
+        # forever by the very fix that tidied it.
         local lock name lock_pgid
-        for lock in "$lock_dir"/*.pgid; do
+        for lock in "$lock_dir"/*/*.pgid "$lock_dir"/*.pgid; do
             [ -f "$lock" ] || continue
             name="$(basename "$lock" .pgid)"
             # `<launcher-pid> <payload-pgid>`. A lock whose group has no live
@@ -266,7 +272,10 @@ _sweep_processes() {
                 _would "hand '$name' (pgid $lock_pgid) to subtree-guard's reaper ($lock)"
             else
                 _did "subtree-guard reap: $name (pgid $lock_pgid)"
-                nros_guard_reap "$name" || true
+                # By LOCK PATH, not by name: the name no longer identifies
+                # which tree's build this is, and recomputing the path from the
+                # sweeper's own cwd would reap a different tree's lock.
+                nros_guard_reap_lock "$lock" "$name" || true
             fi
         done
     fi

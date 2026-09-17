@@ -37,13 +37,58 @@
 #   source scripts/build/subtree-guard.sh
 #   nros_guard_exec fixtures make -j "$n" -f "$makefile"
 
-# Where the lock lives. One per NAME, so `fixtures` and a platform lane do not
-# evict each other.
+# `nros_checkout_root` — the one marker walk (issue 1336). Sourced rather than
+# reimplemented; `check-inherited-checkout-paths` refuses a second spelling.
+if ! command -v nros_checkout_root >/dev/null 2>&1; then
+    # shellcheck source=/dev/null
+    . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/checkout-paths.sh"
+fi
+
+# The CHECKOUT this guard is guarding — issue 1157 / phase-449 W6.
+#
+# The marker walk, not `git rev-parse` and not `.git`: a linked worktree's
+# `.git` is a FILE (issue 1336), and `rev-parse` answers about the caller's
+# repository rather than about a path. `scripts/lib/checkout-paths.sh` is the
+# tree's ONE spelling of "which checkout is this"; a second one here would be
+# this phase's own defect, one layer up.
+#
+# A caller outside any checkout keys on its cwd instead. That is not a
+# fallback to the old behaviour — it still separates two such callers — it is
+# the honest answer when there is no checkout to name.
+_nros_guard_tree_root() {
+    local root
+    root="$(nros_checkout_root "$PWD" 2>/dev/null || true)"
+    [ -n "$root" ] || root="$PWD"
+    printf '%s' "$root"
+}
+
+# A filesystem-safe, human-readable key for one tree. The basename makes a
+# stray lock attributable by eye; the checksum is what makes it UNIQUE, since
+# two clones are very often both called `nano-ros`.
+_nros_guard_tree_key() {
+    local root="$1" sum
+    sum="$(printf '%s' "$root" | cksum | awk '{print $1}')"
+    printf '%s-%s' "${root##*/}" "$sum"
+}
+
+# Where the lock lives. One per NAME **per TREE**.
+#
+# ISSUE 1157 — it used to be one per NAME and nothing else, so
+# `/tmp/nros-build-guards/fixtures.pgid` was shared by every clone on the host.
+# An unrelated checkout's build then blocked this one, and the refusal said
+# "Two builds in one tree corrupt each other's artifacts" — which is the reason
+# the guard exists and was false of the situation it printed on. A name is not
+# a key: `fixtures`, `nano-ros` and `build` are names two clones collide on.
+#
+# The tree is a DIRECTORY segment rather than part of the filename so
+# `runner-sweep.sh` can still enumerate every tree's locks on a shared runner,
+# which is a thing it legitimately wants to do.
 _nros_guard_lock_path() {
-    local name="$1" root
+    local name="$1" root tree
     root="${NROS_GUARD_LOCK_DIR:-${TMPDIR:-/tmp}/nros-build-guards}"
-    mkdir -p "$root" 2>/dev/null || true
-    printf '%s/%s.pgid\n' "$root" "$name"
+    tree="$(_nros_guard_tree_key "$(_nros_guard_tree_root)")"
+    mkdir -p "$root/$tree" 2>/dev/null || true
+    printf '%s/%s/%s.pgid\n' "$root" "$tree" "$name"
 }
 
 # Every live PID in process group `pgid`, excluding this shell's own tree.
@@ -69,13 +114,26 @@ _nros_guard_group_members() {
 # Announced, never silent: a build that quietly kills processes it did not start
 # is indistinguishable from one that hangs, and the thing being reaped is
 # usually somebody's interrupted work.
+# nros_guard_reap <name>          — this tree's lock for <name>.
+# nros_guard_reap_lock <lockfile> — a NAMED lock, wherever it lives.
+#
+# The second exists for `runner-sweep.sh`, which enumerates every tree's locks
+# on a shared runner. Before the lock was per-tree it could pass a bare name and
+# the path was implied; now the path is the only thing that identifies which
+# tree's build is being reaped, and recomputing it from the sweeper's own cwd
+# would reap the wrong one.
 nros_guard_reap() {
-    local name="$1" lock pgid members leader
-    lock="$(_nros_guard_lock_path "$name")"
+    nros_guard_reap_lock "$(_nros_guard_lock_path "$1")" "$1"
+}
+
+nros_guard_reap_lock() {
+    local lock="$1" name="${2:-}" pgid members leader tree
+    [ -n "$name" ] || { name="${lock##*/}"; name="${name%.pgid}"; }
     [ -f "$lock" ] || return 0
     local launcher
     launcher="$(awk '{print $1}' "$lock" 2>/dev/null || true)"
     pgid="$(awk '{print $2}' "$lock" 2>/dev/null || true)"
+    tree="$(awk '{print $3}' "$lock" 2>/dev/null || true)"
     case "$pgid$launcher" in
         ''|*[!0-9]*) rm -f "$lock"; return 0 ;;
     esac
@@ -97,6 +155,8 @@ nros_guard_reap() {
     # burning the machine.
     if kill -0 "$launcher" 2>/dev/null && [ "${NROS_GUARD_FORCE:-}" != "1" ]; then
         echo "subtree-guard: a '$name' build is already running (pgid $pgid, $(printf '%s\n' "$members" | wc -l | tr -d ' ') process(es))." >&2
+        echo "  Holding tree: ${tree:-<unrecorded — lock predates issue 1157>}" >&2
+        echo "  This tree:    $(_nros_guard_tree_root)" >&2
         echo "  Two builds in one tree corrupt each other's artifacts, so this one refuses to start." >&2
         echo "  Wait for it, or stop it with:  kill -TERM -$pgid" >&2
         echo "  Override (only if you know that group is not really building):  NROS_GUARD_FORCE=1" >&2
@@ -170,9 +230,14 @@ nros_guard_exec() {
     local pid=$!
     set +m
 
-    # `<launcher-pid> <payload-pgid>` — the reaper needs both, and which one it
-    # keys on is the whole correctness of the refuse-vs-reap decision.
-    printf '%s %s\n' "$$" "$pid" > "$(_nros_guard_lock_path "$name")"
+    # `<launcher-pid> <payload-pgid> <tree-root>` — the reaper needs the first
+    # two, and which one it keys on is the whole correctness of the
+    # refuse-vs-reap decision. The third is for the MESSAGE (issue 1157): a
+    # refusal that cannot name the tree holding the lock sends the reader to
+    # look in the wrong one, which is what this guard did for as long as the
+    # lock was host-global. Third field, so the two `awk` readers are unchanged.
+    printf '%s %s %s\n' "$$" "$pid" "$(_nros_guard_tree_root)" \
+        > "$(_nros_guard_lock_path "$name")"
     # shellcheck disable=SC2064  # expand pid/name NOW, not at trap time
     trap "_nros_guard_cleanup $pid $name INT; exit 130" INT
     trap "_nros_guard_cleanup $pid $name TERM; exit 143" TERM
