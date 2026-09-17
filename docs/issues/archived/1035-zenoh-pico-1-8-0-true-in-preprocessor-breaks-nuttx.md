@@ -109,3 +109,24 @@ issue 0870, whose entire remaining plan is to catch a failing run in a sweep.
 
 A duplicate of this issue was filed the same day (id 1047, from a session that
 had not found this one) and retired without reaching `main`.
+
+## Correction, 2026-09-18 — the "Fix" section above is half right
+
+"The callers keep defining the macro as `true` / `false` … which is fine — only
+the preprocessor comparison needed an integer" is FALSE, and measured so under
+[#1039](1039-nuttx-stdbool-nonconforming-breaks-zenoh-pico.md) (the third filing
+of this defect, which reached `main` two days after this one and carries the
+A/B). With the header comparing `== 1` and the call site restored to
+`true` / `false`, `arm-none-eabi-gcc 13.2.1` against the real
+`nros-nuttx-export-arm/include` produces the same **11** errors as before —
+`stdbool.h:79:25: missing binary operator before token "1"` and nine
+`redefinition of '_z_*_includes'`. The `true` still arrives through the macro
+expansion, so `#if X == 1` is no safer than `#if X == true` when `X` IS `true`.
+
+The fork's live commit is `a1c741db` (the `92c01732` recorded above is no longer
+in the patch line's history after a rebase) and it changes BOTH files:
+`keyexpr_match_template.h` compares against `1`, and `src/session/keyexpr.c`
+defines the macro `1` / `0` at the two include sites. Both halves are
+load-bearing. The comment the fork carries at `keyexpr.c:570-572` says it
+plainly: "Defining the macro here is the fix — changing only the comparison in
+the header is not."
