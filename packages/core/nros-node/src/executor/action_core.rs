@@ -79,9 +79,39 @@ pub fn action_channel_type<const N: usize>(
 }
 
 /// Scratch buffer for serializing a `GoalStatusArray` before publishing it
-/// on the status topic. 512 bytes holds the CDR header plus a status entry
-/// (`GoalInfo` + status enum) for every concurrently-tracked goal.
-const STATUS_ARRAY_BUF: usize = 512;
+/// on the status topic. It is a local in
+/// [`publish_status_array`](ActionServerCore::publish_status_array), so it is
+/// stack, not static — which is why it is not simply made large enough for any
+/// `MAX_GOALS` anyone might pick. What it must hold is stated exactly by
+/// [`status_array_bytes`] and checked at COMPILE time per instantiation; see
+/// [`ActionServerCore::STATUS_ARRAY_FITS`].
+pub(crate) const STATUS_ARRAY_BUF: usize = 512;
+
+/// Bytes one `GoalStatusStamped` occupies when another entry follows it.
+///
+/// `GoalInfo` is a fixed `uint8[16]` (16 unaligned bytes) + `int32 sec` +
+/// `uint32 nanosec`, then `int8 status` — 25 bytes — and the NEXT entry's `sec`
+/// forces a 4-byte alignment pad, so the stride is 28. MEASURED against the
+/// real `CdrWriter` by `test_status_array_entry_layout_is_measured`, not
+/// asserted from this comment: the const and the serializer have to agree or
+/// the compile-time bound below is checking the wrong number.
+pub(crate) const STATUS_ENTRY_STRIDE: usize = 28;
+
+/// The LAST entry carries no trailing alignment pad, so it is 3 bytes shorter
+/// than [`STATUS_ENTRY_STRIDE`].
+pub(crate) const STATUS_ENTRY_TAIL: usize = 25;
+
+/// CDR encapsulation header (4) + the sequence length prefix (4).
+pub(crate) const STATUS_ARRAY_PREAMBLE: usize = 8;
+
+/// Exact serialized size of a `GoalStatusArray` carrying `entries` entries.
+pub(crate) const fn status_array_bytes(entries: usize) -> usize {
+    if entries == 0 {
+        STATUS_ARRAY_PREAMBLE
+    } else {
+        STATUS_ARRAY_PREAMBLE + STATUS_ENTRY_STRIDE * (entries - 1) + STATUS_ENTRY_TAIL
+    }
+}
 
 // ============================================================================
 // Supporting types
@@ -637,14 +667,28 @@ impl<
     /// Complete a goal: remove from active, store raw result CDR in slab,
     /// publish status.
     ///
+    /// The goal moves from `active_goals` to `completed_results`, and the
+    /// status array published at the end of this function carries BOTH lists
+    /// (issue 1361), so the terminal status is on the wire. See
+    /// [`publish_status_array`](Self::publish_status_array) for how long it
+    /// stays there.
+    ///
+    /// One case still publishes no terminal entry, and it is the `Err` arm
+    /// below: when `result_cdr` exceeds `RESULT_BUF` the goal enters NEITHER
+    /// list, so the array omits it exactly as it omitted every terminated goal
+    /// before 1361. That is not a regression — it was already the behaviour —
+    /// and the fix for it is the one this function's `Err` already names: raise
+    /// `RESULT_BUF`.
+    ///
     /// # Errors
     ///
     /// `NodeError::BufferTooSmall` when `result_cdr` is larger than
     /// `RESULT_BUF` and therefore cannot be retained for a later `get_result`.
     /// Any client already waiting on `~/_action/get_result` is still answered
-    /// (straight from `result_cdr`), and the terminal status is still
-    /// published — but a *later* `get_result` for this goal gets
-    /// `GoalStatus::Unknown`. Raise the server's `RESULT_BUF`.
+    /// (straight from `result_cdr`), and a status array is still published —
+    /// but it carries no entry for this goal (see above), and a *later*
+    /// `get_result` for it gets `GoalStatus::Unknown`. Raise the server's
+    /// `RESULT_BUF`.
     ///
     /// Issue 0796: this returned `()`, so the pre-fix slab exhaustion — the
     /// server silently dropping every result once the bump allocator hit
@@ -1096,17 +1140,81 @@ impl<
             .unwrap_or(GoalStatus::Unknown)
     }
 
-    /// Publish the current GoalStatusArray on the status topic.
+    /// Compile-time bound on the status array (issue 1361).
+    ///
+    /// `publish_status_array` now writes up to `2 * MAX_GOALS` entries, and the
+    /// scratch buffer is a fixed [`STATUS_ARRAY_BUF`]. An instantiation whose
+    /// worst case does not fit would not fail loudly — `CdrWriter` would answer
+    /// `BufferTooSmall`, `publish_status_array` would return `Err`, and every
+    /// caller discards that with `let _ =`, so the terminal status would go
+    /// missing exactly the way 1361 is about. That silent overflow was reachable
+    /// BEFORE this change too (at `MAX_GOALS > 18`, active goals alone); nothing
+    /// guarded it. This is the guard, and it names the numbers.
+    ///
+    /// 512 bytes hold 18 entries, so `MAX_GOALS` may be at most 9. The default
+    /// is 4 and no in-tree instantiation exceeds it.
+    const STATUS_ARRAY_FITS: () = assert!(
+        status_array_bytes(2 * MAX_GOALS) <= STATUS_ARRAY_BUF,
+        "MAX_GOALS is too large for STATUS_ARRAY_BUF: the status array carries \
+         active goals AND retained completed results, i.e. up to 2 * MAX_GOALS \
+         entries of 28 bytes. 512 bytes hold 18 entries, so MAX_GOALS <= 9."
+    );
+
+    /// Publish the current `GoalStatusArray` on the status topic.
+    ///
+    /// The array carries **active goals and retained completed results**, not
+    /// active goals alone (issue 1361, option 2). Before that, a terminated goal
+    /// left `active_goals` in `complete_goal_raw`'s first statement and the
+    /// publish at the end of the same function was therefore structurally
+    /// guaranteed to omit the goal it was about: every client saw ACCEPTED and
+    /// then an empty array, on every backend, and a transient-local late joiner
+    /// retained that empty array.
+    ///
+    /// **The visibility promise this makes, which is NOT upstream's.**
+    /// `rcl_action` retires a terminated goal on a per-goal `result_timeout`
+    /// (15 minutes by default). The core has no clock, so a nano-ros action
+    /// server promises instead: *a terminated goal stays in `/status` until its
+    /// result is reclaimed* — that is, until the client fetches it and
+    /// [`expire_completed_results`](Self::expire_completed_results) runs, or
+    /// until `MAX_GOALS` newer goals displace it through
+    /// [`evict_one_completed_result`](Self::evict_one_completed_result). It is a
+    /// rule a caller can reason about, and it is the closest thing to upstream
+    /// reachable without a time source; it is deliberately not a duration.
+    ///
+    /// Reclamation itself does NOT republish, which is what the late joiner
+    /// rides on: the last sample the publisher retained still names the terminal
+    /// status after the result behind it has been returned to the slab.
+    ///
+    /// Consequence for a reader: an entry in the array is no longer necessarily
+    /// an ACTIVE goal, so a count of entries is not a count of active goals —
+    /// read each entry's `status`. That is what `rcl_action` has always
+    /// published, so a stock `rclcpp_action` client already does it, and
+    /// nothing in this tree subscribes to `/status` at all
+    /// (`ActionClientCore` holds three service clients and a feedback
+    /// subscriber, no status subscriber). Callers wanting the active count have
+    /// [`active_goal_count`](Self::active_goal_count), which still reads
+    /// `active_goals` alone.
     pub fn publish_status_array(&self) -> Result<(), NodeError> {
+        // Force the bound above to be evaluated for this instantiation.
+        let () = Self::STATUS_ARRAY_FITS;
+
         let mut buf = [0u8; STATUS_ARRAY_BUF];
         let mut writer = crate::tx_writer(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
 
+        let entries = self.active_goals.len() + self.completed_results.len();
         writer
-            .write_u32(self.active_goals.len() as u32)
+            .write_u32(entries as u32)
             .map_err(|_| NodeError::Serialization)?;
 
         for goal in &self.active_goals {
             let stamped = GoalStatusStamped::new(GoalInfo::with_id(goal.goal_id), goal.status);
+            stamped
+                .serialize(&mut writer)
+                .map_err(|_| NodeError::Serialization)?;
+        }
+
+        for done in &self.completed_results {
+            let stamped = GoalStatusStamped::new(GoalInfo::with_id(done.goal_id), done.status);
             stamped
                 .serialize(&mut writer)
                 .map_err(|_| NodeError::Serialization)?;

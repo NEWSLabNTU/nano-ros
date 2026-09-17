@@ -400,6 +400,17 @@ fn zenoh_env(locator: &str) -> HostRosEnv {
 /// `ZPICO_MAX_PENDING_REPLIES` slots whose exhaustion issue 0902 measured and
 /// phase-455 W1 gives an observable.
 ///
+/// **It also carries issue 1341's acceptance, which is a LATE JOINER.** After
+/// the goal terminates, a stock transient-local reader attaches with nothing
+/// publishing in between and must receive the TERMINAL status sample. Both
+/// halves of that had to be true and only one was: W5 made the `/status`
+/// publisher serve TRANSIENT_LOCAL for real (1341), and what it faithfully
+/// retained was `status_list: []`, because `complete_goal_raw` published the
+/// array AFTER removing the goal from `active_goals` (issue 1361). No
+/// durability setting can deliver a sample that was never sent, so the
+/// retention mechanism and the content are asserted here TOGETHER — a test for
+/// either one alone passes on a system that is broken in the other.
+///
 /// Interop cell: `native-action-rust-zenoh-r2n`.
 #[test]
 fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
@@ -437,6 +448,28 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
         .expect("run ros2 action send_goal");
 
     let died = server.try_wait().ok().flatten();
+
+    // Issue 1341's acceptance, issue 1361's fix, measured as ONE thing — see
+    // the doc comment. The server stays up; what changes is that this reader
+    // was not here when the sample was published, so everything it gets came
+    // out of the publisher's retained history.
+    //
+    // No `--no-daemon`: `ros2 topic echo` builds its own node and is
+    // deliberately outside `check-ros2-daemon-queries`' verb list. The message
+    // type is named explicitly so a graph type lookup cannot be what fails.
+    let late = if died.is_none() {
+        std::thread::sleep(Duration::from_secs(3));
+        env.run_text(
+            "timeout --foreground 15 ros2 topic echo --once \
+             --qos-durability transient_local --qos-reliability reliable \
+             --qos-history keep_last --qos-depth 1 \
+             /fibonacci/_action/status action_msgs/msg/GoalStatusArray 2>&1",
+        )
+        .unwrap_or_else(|e| format!("<`ros2 topic echo` failed: {e}>"))
+    } else {
+        String::new()
+    };
+
     let _ = server.kill();
     let _ = server.wait();
 
@@ -473,6 +506,31 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
              to the wrong numbers rather than failing.\n{text}"
         );
     }
+
+    // The late joiner, asserted AFTER the goal's own assertions so a run in
+    // which the goal never succeeded reports that rather than this.
+    assert!(
+        !late.trim().is_empty() && !late.contains("<`ros2 topic echo` failed"),
+        "the late-joining transient-local reader received NOTHING within 15 s. \
+         That is the retention half (issue 1341): a reader whose durability \
+         matches the publisher's must be served the retained sample.\n{late}"
+    );
+    assert!(
+        !late.contains("status_list: []"),
+        "the retained sample is an EMPTY status array — issue 1361. The \
+         publisher retained faithfully; what it was given to retain omitted \
+         the goal, because `complete_goal_raw` removed it from `active_goals` \
+         before publishing.\n{late}"
+    );
+    assert!(
+        late.contains("status: 4"),
+        "the retained sample must carry STATUS_SUCCEEDED (4) for the goal that \
+         just finished. Anything else means the array reached the wire without \
+         the terminal status in it.\n{late}"
+    );
+    // Evidence, printed: the whole point of this cell is what a late joiner
+    // SEES, and a green tick does not carry it.
+    println!("=== late joiner (transient_local, 3 s after termination) ===\n{late}");
 }
 
 /// The nano-ros zenoh action CLIENT drives a stock ROS 2 action server.

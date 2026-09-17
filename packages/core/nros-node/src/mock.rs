@@ -142,13 +142,78 @@ impl ServiceTrait for MockServiceServer {
     }
 }
 
-/// Dummy publisher (never sends).
-pub struct MockPublisher;
+/// Largest payload [`MockPublisher`] retains per sample. Sized to
+/// `action_core`'s `STATUS_ARRAY_BUF` so a full `GoalStatusArray` is recorded
+/// whole; a longer payload is recorded truncated, and the RECORDED length is
+/// still the true one so a test can tell truncation from a short message.
+pub const MOCK_PUBLISH_RECORD: usize = 512;
+
+/// One recorded publish: the bytes (truncated to [`MOCK_PUBLISH_RECORD`]) and
+/// the payload's true length.
+pub type MockPublished = ([u8; MOCK_PUBLISH_RECORD], usize);
+
+/// Publisher that sends nowhere but REMEMBERS what it was handed.
+///
+/// It recorded nothing until issue 1361, so every status-array assertion in the
+/// suite was necessarily about the core's internal tables rather than about the
+/// bytes a subscriber receives — which is exactly where 1361 lived: the tables
+/// were right and the published array was empty. A publisher double that drops
+/// its argument can only test the paths that do not care what was published.
+///
+/// Keeps the most recent 8 samples (older ones drop off the front) plus a total
+/// count that window does not bound, so a test can assert both "how many
+/// publishes" and "what the last one said".
+pub struct MockPublisher {
+    published: RefCell<heapless::Deque<MockPublished, 8>>,
+    count: Cell<usize>,
+}
+
+impl MockPublisher {
+    pub fn new() -> Self {
+        Self {
+            published: RefCell::new(heapless::Deque::new()),
+            count: Cell::new(0),
+        }
+    }
+
+    /// Total number of `publish_raw` calls, including samples aged out of the
+    /// retained window.
+    pub fn publish_count(&self) -> usize {
+        self.count.get()
+    }
+
+    /// The most recently published sample, or `None` if nothing was published.
+    pub fn last_published(&self) -> Option<MockPublished> {
+        self.published.borrow().back().copied()
+    }
+
+    /// Forget every retained sample and reset the count — for a test asserting
+    /// about publishes made AFTER some setup step.
+    pub fn clear_published(&self) {
+        self.published.borrow_mut().clear();
+        self.count.set(0);
+    }
+}
+
+impl Default for MockPublisher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Publisher for MockPublisher {
     type Error = TransportError;
 
-    fn publish_raw(&self, _data: &[u8]) -> Result<(), TransportError> {
+    fn publish_raw(&self, data: &[u8]) -> Result<(), TransportError> {
+        let mut rec = [0u8; MOCK_PUBLISH_RECORD];
+        let copied = data.len().min(MOCK_PUBLISH_RECORD);
+        rec[..copied].copy_from_slice(&data[..copied]);
+        let mut queue = self.published.borrow_mut();
+        if queue.is_full() {
+            let _ = queue.pop_front();
+        }
+        let _ = queue.push_back((rec, data.len()));
+        self.count.set(self.count.get() + 1);
         Ok(())
     }
 
@@ -297,7 +362,7 @@ impl Session for MockSession {
         _topic: &TopicInfo,
         _qos: QoSProfile,
     ) -> Result<MockPublisher, TransportError> {
-        Ok(MockPublisher)
+        Ok(MockPublisher::new())
     }
 
     fn create_subscription(

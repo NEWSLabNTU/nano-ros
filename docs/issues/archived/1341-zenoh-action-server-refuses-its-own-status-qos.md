@@ -2,11 +2,12 @@
 id: 1341
 title: "every nano-ros zenoh ACTION SERVER fails to start on main: the shim
   refuses TRANSIENT_LOCAL and the action's own `/status` publisher asks for it"
-status: open
+status: resolved
 type: bug
 area: rmw, core
 severity: high
-related: [issue-0902, issue-1332, issue-1256, phase-428, phase-455]
+related: [issue-0902, issue-1332, issue-1256, issue-1361, issue-1378, phase-428, phase-455]
+resolved_in: "phase-455 W5 (the shim) + issue 1361 (the sample)"
 ---
 
 ## Symptom, measured
@@ -255,3 +256,47 @@ declared queryables in this image.
 `(Full…`, so whatever the shim's reason code says after it never reaches the
 log. A diagnostic that truncates exactly where the cause is named costs the
 reader the one fact they came for.
+
+## Resolution (2026-09-18) — both halves, and the acceptance re-run
+
+This issue needed two things to be true and only one of them was its own defect.
+
+1. **The shim must serve the profile it advertises.** phase-455 W5 did that
+   (option 2 above): a depth-1 transient-local publisher, verified live against
+   `rmw_zenoh_cpp` 0.1.9 — graph token `1:1:1,1`, `ros2 topic info -v` reading
+   `TRANSIENT_LOCAL / KEEP_LAST (1)`, and a late joiner served from the retained
+   history with a volatile reader as the negative control.
+2. **There has to be a sample worth retaining.** There was not: the server never
+   published a terminal status at all, on any backend, so what the mechanism
+   faithfully retained was `status_list: []`. That is issue 1361, and it is
+   fixed — `publish_status_array` now carries `active_goals` AND
+   `completed_results`.
+
+With both, the acceptance this issue was held open for runs. The zenoh r2n
+interop cell now carries it: 3 s after the goal terminates, with nothing
+publishing in between, a stock transient-local reader attaches and receives
+
+```
+status_list:
+- goal_info:
+    goal_id:
+      uuid: [187, 88, ..., 230]
+    stamp: {sec: 0, nanosec: 0}
+  status: 4
+---
+```
+
+`status: 4` is `STATUS_SUCCEEDED`, in place of the `status_list: []` recorded
+above. Run solo in the `ros2` distrobox (Ubuntu 22.04, Humble); recorded in
+`.config/interop-verdicts.toml` under `native-action-rust-zenoh-r2n`
+(2026-09-18). The assertion lives in the cell itself, so the retention mechanism
+and the content are now gated together — a test for either alone passes on a
+system broken in the other, which is exactly how this issue and 1361 hid each
+other.
+
+### What did NOT close with it
+
+The embedded half — the cache queryable that an embedded image cannot declare,
+and the diagnostic truncated at `(Full…` — is **issue 1378**, carried out of
+this document so archiving it does not bury the finding. Nothing in this fix
+touched it, and no embedded image was run here.

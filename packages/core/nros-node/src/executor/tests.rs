@@ -7228,8 +7228,8 @@ fn test_get_result_deferred_per_goal_concurrent() {
         MockServiceServer::new(),
         MockServiceServer::new(),
         MockServiceServer::new(),
-        MockPublisher,
-        MockPublisher,
+        MockPublisher::new(),
+        MockPublisher::new(),
     );
 
     let g1 = GoalId { uuid: [1u8; 16] };
@@ -7308,8 +7308,8 @@ fn test_get_result_after_completion_replies_immediately() {
         MockServiceServer::new(),
         MockServiceServer::new(),
         MockServiceServer::new(),
-        MockPublisher,
-        MockPublisher,
+        MockPublisher::new(),
+        MockPublisher::new(),
     );
 
     let g = GoalId { uuid: [7u8; 16] };
@@ -7400,8 +7400,8 @@ fn action_results_keep_being_delivered_past_the_slab_capacity() {
         MockServiceServer::new(),
         MockServiceServer::new(),
         MockServiceServer::new(),
-        MockPublisher,
-        MockPublisher,
+        MockPublisher::new(),
+        MockPublisher::new(),
     );
 
     const RESULT_LEN: usize = 40;
@@ -7452,8 +7452,8 @@ fn deferred_get_result_is_answered_past_the_slab_capacity() {
         MockServiceServer::new(),
         MockServiceServer::new(),
         MockServiceServer::new(),
-        MockPublisher,
-        MockPublisher,
+        MockPublisher::new(),
+        MockPublisher::new(),
     );
 
     const RESULT_LEN: usize = 40;
@@ -7515,8 +7515,8 @@ fn completed_result_survives_until_pressure_then_evicts_the_fetched_one_first() 
         MockServiceServer::new(),
         MockServiceServer::new(),
         MockServiceServer::new(),
-        MockPublisher,
-        MockPublisher,
+        MockPublisher::new(),
+        MockPublisher::new(),
     );
 
     const RESULT_LEN: usize = 40;
@@ -7581,8 +7581,8 @@ fn an_unretainable_result_is_reported_and_the_waiter_is_still_answered() {
         MockServiceServer::new(),
         MockServiceServer::new(),
         MockServiceServer::new(),
-        MockPublisher,
-        MockPublisher,
+        MockPublisher::new(),
+        MockPublisher::new(),
     );
 
     let g = GoalId { uuid: [9u8; 16] };
@@ -7628,8 +7628,8 @@ fn expire_completed_results_reclaims_only_delivered_results() {
         MockServiceServer::new(),
         MockServiceServer::new(),
         MockServiceServer::new(),
-        MockPublisher,
-        MockPublisher,
+        MockPublisher::new(),
+        MockPublisher::new(),
     );
 
     const RESULT_LEN: usize = 40;
@@ -7730,6 +7730,300 @@ fn goal_exists_covers_active_and_retained_results_not_just_active() {
 
     // The still-active goal was never a candidate for expiry.
     assert!(core.goal_exists(&live));
+}
+
+// ============================================================================
+// Issue 1361 — the published status array carries TERMINAL statuses
+//
+// These assert on the BYTES the status publisher was handed, not on the core's
+// internal tables. That distinction is the issue: the tables were always right
+// and the published array was empty, so no table assertion could have caught it.
+// ============================================================================
+
+/// Decode a published `GoalStatusArray` into `(goal_id, status)` pairs.
+fn parse_status_array(
+    bytes: &[u8],
+) -> heapless::Vec<(nros_core::GoalId, nros_core::GoalStatus), 32> {
+    use nros_core::{CdrReader, Deserialize, GoalStatusStamped};
+
+    let mut reader = CdrReader::new_with_header(bytes).expect("status array has a CDR header");
+    let count = reader.read_u32().expect("status array has a length prefix") as usize;
+    let mut out = heapless::Vec::new();
+    for _ in 0..count {
+        let stamped = GoalStatusStamped::deserialize(&mut reader).expect("entry decodes");
+        out.push((stamped.goal_info.goal_id, stamped.status))
+            .expect("test array fits");
+    }
+    assert!(
+        reader.position() + 3 >= bytes.len(),
+        "decoded {} entries but left {} of {} bytes unread — the array carries \
+         more than it declared",
+        count,
+        bytes.len() - reader.position(),
+        bytes.len()
+    );
+    out
+}
+
+/// The last sample published for a goal that ran to completion must NAME that
+/// goal with its terminal status.
+///
+/// **Negative control.** Against the pre-fix `publish_status_array` (which
+/// serialised `active_goals` alone, after `complete_goal_raw` had already
+/// `swap_remove`d the goal) this fails: the published array is empty. That
+/// empty array is what a live `rmw_zenoh_cpp` subscriber measured on
+/// 2026-09-13 and what the transient-local publisher retained for a late
+/// joiner (issues 1361, 1341).
+#[test]
+fn completed_goal_appears_in_the_published_status_array() {
+    use super::action_core::{ActionServerCore, RawActiveGoal};
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher::new(),
+        MockPublisher::new(),
+    );
+
+    let g = GoalId { uuid: [9u8; 16] };
+    let _ = core.active_goals.push(RawActiveGoal {
+        goal_id: g,
+        status: GoalStatus::Executing,
+    });
+    core.publish_status_array().unwrap();
+
+    // While active: one entry, EXECUTING.
+    let (bytes, len) = core.status_publisher.last_published().unwrap();
+    let entries = parse_status_array(&bytes[..len]);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0], (g, GoalStatus::Executing));
+
+    core.complete_goal_raw(&g, GoalStatus::Succeeded, &[0xAAu8; 8])
+        .unwrap();
+
+    // The goal has left `active_goals` — that part never was the bug.
+    assert_eq!(core.active_goal_count(), 0);
+
+    // What the subscriber receives must still name it, SUCCEEDED.
+    let (bytes, len) = core.status_publisher.last_published().unwrap();
+    let entries = parse_status_array(&bytes[..len]);
+    assert_eq!(
+        entries.len(),
+        1,
+        "the terminal publish must carry the goal, not an empty array"
+    );
+    assert_eq!(entries[0], (g, GoalStatus::Succeeded));
+}
+
+/// A terminated goal is visible alongside goals that are still running, and an
+/// ABORTED goal is reported as aborted — the array is a status array, not an
+/// "active goals" list.
+#[test]
+fn status_array_mixes_active_and_terminated_goals() {
+    use super::action_core::{ActionServerCore, RawActiveGoal};
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher::new(),
+        MockPublisher::new(),
+    );
+
+    let running = GoalId { uuid: [1u8; 16] };
+    let aborted = GoalId { uuid: [2u8; 16] };
+    for id in [running, aborted] {
+        let _ = core.active_goals.push(RawActiveGoal {
+            goal_id: id,
+            status: GoalStatus::Executing,
+        });
+    }
+    core.complete_goal_raw(&aborted, GoalStatus::Aborted, &[0u8; 4])
+        .unwrap();
+
+    let (bytes, len) = core.status_publisher.last_published().unwrap();
+    let entries = parse_status_array(&bytes[..len]);
+    assert_eq!(entries.len(), 2);
+    assert!(entries.contains(&(running, GoalStatus::Executing)));
+    assert!(entries.contains(&(aborted, GoalStatus::Aborted)));
+
+    // The entry count is NOT the active-goal count any more; `active_goal_count`
+    // still is.
+    assert_eq!(core.active_goal_count(), 1);
+}
+
+/// The promise `publish_status_array` documents: a terminated goal is visible
+/// for exactly as long as its RESULT is retained. Not 15 minutes — nano-ros has
+/// no clock — so this test is the written form of that divergence from
+/// `rcl_action_expire_goals`.
+#[test]
+fn terminal_status_is_visible_until_its_result_is_reclaimed() {
+    use super::action_core::ActionServerCore;
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher::new(),
+        MockPublisher::new(),
+    );
+
+    const RESULT_LEN: usize = 8;
+    let g = GoalId { uuid: [5u8; 16] };
+    core.complete_goal_raw(&g, GoalStatus::Succeeded, &[0u8; RESULT_LEN])
+        .unwrap();
+
+    let (bytes, len) = core.status_publisher.last_published().unwrap();
+    assert_eq!(parse_status_array(&bytes[..len]).len(), 1);
+
+    // The client fetches the result. Reclamation does NOT republish — the last
+    // retained sample still names the terminal status, which is what a
+    // transient-local late joiner receives.
+    let _ = fetch_result(&mut core, &g, &[0u8; 4], RESULT_LEN);
+    let (bytes, len) = core.status_publisher.last_published().unwrap();
+    assert_eq!(
+        parse_status_array(&bytes[..len])[0],
+        (g, GoalStatus::Succeeded)
+    );
+
+    // Once the result is reclaimed the goal leaves the array on the NEXT
+    // publish. That is the end of the visibility window.
+    assert_eq!(core.expire_completed_results(), 1);
+    core.publish_status_array().unwrap();
+    let (bytes, len) = core.status_publisher.last_published().unwrap();
+    assert!(parse_status_array(&bytes[..len]).is_empty());
+}
+
+/// The 512-byte scratch buffer must hold the array's WORST case, which issue
+/// 1361 doubled to `2 * MAX_GOALS` entries. Measures the real serialized size
+/// rather than trusting the "roughly 32 bytes an entry" estimate the issue was
+/// written from, and pins the layout constants the compile-time bound
+/// (`ActionServerCore::STATUS_ARRAY_FITS`) is computed from.
+#[test]
+fn status_array_entry_layout_is_measured() {
+    use super::action_core::{
+        ActionServerCore, RawActiveGoal, STATUS_ARRAY_BUF, STATUS_ARRAY_PREAMBLE,
+        STATUS_ENTRY_STRIDE, STATUS_ENTRY_TAIL, status_array_bytes,
+    };
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher::new(),
+        MockPublisher::new(),
+    );
+
+    fn published_len(core: &ActionServerCore<256, 128, 128, 4>) -> usize {
+        core.publish_status_array().unwrap();
+        core.status_publisher.last_published().unwrap().1
+    }
+
+    // 0, 1 and 2 entries pin preamble, tail and stride against the real writer.
+    let empty = published_len(&core);
+    let _ = core.active_goals.push(RawActiveGoal {
+        goal_id: GoalId { uuid: [1u8; 16] },
+        status: GoalStatus::Executing,
+    });
+    let one = published_len(&core);
+    let _ = core.active_goals.push(RawActiveGoal {
+        goal_id: GoalId { uuid: [2u8; 16] },
+        status: GoalStatus::Executing,
+    });
+    let two = published_len(&core);
+
+    assert_eq!(empty, STATUS_ARRAY_PREAMBLE, "preamble");
+    assert_eq!(one - empty, STATUS_ENTRY_TAIL, "tail entry size");
+    assert_eq!(two - one, STATUS_ENTRY_STRIDE, "entry stride");
+    assert_eq!(one, status_array_bytes(1));
+    assert_eq!(two, status_array_bytes(2));
+
+    // The measured worst case at the DEFAULT MAX_GOALS = 4: four active goals
+    // plus four retained completed results.
+    const MAX_GOALS: usize = 4;
+    for i in 3..=MAX_GOALS as u8 {
+        let _ = core.active_goals.push(RawActiveGoal {
+            goal_id: GoalId { uuid: [i; 16] },
+            status: GoalStatus::Executing,
+        });
+    }
+    for i in 0..MAX_GOALS as u8 {
+        core.complete_goal_raw(
+            &GoalId {
+                uuid: [100 + i; 16],
+            },
+            GoalStatus::Succeeded,
+            &[0u8; 4],
+        )
+        .unwrap();
+    }
+    assert_eq!(core.active_goal_count(), MAX_GOALS);
+    assert_eq!(core.completed_result_count(), MAX_GOALS);
+
+    let worst = published_len(&core);
+    assert_eq!(worst, status_array_bytes(2 * MAX_GOALS));
+    assert!(
+        worst <= STATUS_ARRAY_BUF,
+        "2 * MAX_GOALS entries are {worst} bytes, over the {STATUS_ARRAY_BUF}-byte buffer"
+    );
+    let (bytes, len) = core.status_publisher.last_published().unwrap();
+    assert_eq!(parse_status_array(&bytes[..len]).len(), 2 * MAX_GOALS);
+}
+
+/// The bound holds at the LARGEST `MAX_GOALS` the compile-time guard admits.
+/// One higher does not compile — that is what
+/// `ActionServerCore::STATUS_ARRAY_FITS` is for, and it is why this number is 9
+/// rather than something rounder.
+#[test]
+fn status_array_fits_at_the_largest_admitted_max_goals() {
+    use super::action_core::{
+        ActionServerCore, RawActiveGoal, STATUS_ARRAY_BUF, status_array_bytes,
+    };
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    const MAX_GOALS: usize = 9;
+    let mut core: ActionServerCore<256, 128, 128, MAX_GOALS> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher::new(),
+        MockPublisher::new(),
+    );
+
+    for i in 0..MAX_GOALS as u8 {
+        let _ = core.active_goals.push(RawActiveGoal {
+            goal_id: GoalId { uuid: [i; 16] },
+            status: GoalStatus::Executing,
+        });
+        core.complete_goal_raw(
+            &GoalId {
+                uuid: [100 + i; 16],
+            },
+            GoalStatus::Succeeded,
+            &[0u8; 4],
+        )
+        .unwrap();
+    }
+    assert_eq!(core.active_goal_count(), MAX_GOALS);
+    assert_eq!(core.completed_result_count(), MAX_GOALS);
+
+    let (bytes, len) = core.status_publisher.last_published().unwrap();
+    assert_eq!(len, status_array_bytes(2 * MAX_GOALS));
+    assert!(
+        len <= STATUS_ARRAY_BUF,
+        "{len} bytes over {STATUS_ARRAY_BUF}"
+    );
+    assert_eq!(parse_status_array(&bytes[..len]).len(), 2 * MAX_GOALS);
 }
 
 // ============================================================================
@@ -9083,8 +9377,8 @@ fn a_deferred_goal_reaches_the_accepted_callback_exactly_once() {
         MockServiceServer::new(),
         MockServiceServer::new(),
         MockServiceServer::new(),
-        MockPublisher,
-        MockPublisher,
+        MockPublisher::new(),
+        MockPublisher::new(),
     );
     let mut entry: ActionServerRawArenaEntry<GB, RB, FB, MG> = ActionServerRawArenaEntry {
         core,
