@@ -365,6 +365,44 @@ pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
     }
 }
 
+/// Read back the action name this client was created on.
+///
+/// rcl's `rcl_action_client_get_action_name`, and the third of the C
+/// surface's name accessors — `rcl_service_get_service_name`,
+/// `rcl_subscription_get_topic_name` and `rcl_publisher_get_topic_name`
+/// already had this shape, and the action client and server were the two
+/// entities that did not (phase-417 W4.b, ledger row
+/// `c:action_client_get_action_name`). The name is the caller's own string,
+/// copied NUL-terminated into the handle at init, so this hands back a
+/// pointer into the handle and costs nothing.
+///
+/// # Parameters
+/// * `client` - Pointer to an action client
+///
+/// # Returns
+/// * Pointer to the action name (NUL-terminated), or NULL when `client` is
+///   NULL or was never initialised. Every live state answers — an L1 polling
+///   client (`nros_action_client_init_polling`) names its action just as an
+///   executor-registered one does, which is the distinction
+///   `nros_service_t::is_usable` exists to make (ledger row
+///   `c:service_is_valid`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_action_client_get_action_name(
+    client: *const nros_action_client_t,
+) -> *const core::ffi::c_char {
+    if client.is_null() {
+        return core::ptr::null();
+    }
+    let client = &*client;
+    match client.state {
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+        | nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_POLLING => {
+            client.action_name.as_ptr() as *const core::ffi::c_char
+        }
+        _ => core::ptr::null(),
+    }
+}
+
 /// Non-blocking snapshot of action-server visibility. Mirrors
 /// `rclcpp_action::Client::action_server_is_ready`. Takes `executor`
 /// for the same reason as
@@ -1779,5 +1817,26 @@ mod verification {
             },
             NROS_RET_INVALID_ARGUMENT,
         );
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The client's name accessor answers NULL, not an empty string, for a
+    /// handle that was never initialised — phase-417 W4.b.
+    ///
+    /// The server twin is in `action/server.rs`; the reason is the same and it
+    /// is the one a zeroed `action_name` buffer gets wrong silently.
+    #[test]
+    fn get_action_name_refuses_an_unusable_client() {
+        let client = rcl_action_get_zero_initialized_client();
+        assert!(unsafe { rcl_action_client_get_action_name(core::ptr::null()) }.is_null());
+        assert!(unsafe { rcl_action_client_get_action_name(&client) }.is_null());
     }
 }
