@@ -1,5 +1,16 @@
 /// @file main.c
 /// @brief C service client example - calls AddTwoInts service (blocking)
+///
+/// phase-417 W5.e — the call is TYPED. `..._client_call()` serializes the
+/// request into the caller's scratch buffer, forwards to `nros_client_call()`
+/// so the timeout and the executor spin stay where they already live, and
+/// deserializes the reply into the caller's response struct. Nothing here
+/// names a CDR function.
+///
+/// The two scratch buffers are the CALLER's on purpose: the service pack emits
+/// no `_MAX_SERIALIZED_SIZE` constants (the message pack does — issue 0896), so
+/// a `static inline` with a hidden buffer would be a size nobody chose, and
+/// a truncating one at that.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -97,43 +108,37 @@ int nros_app_main(int argc, char** argv) {
 
     // Prepare the single request using the generated type
     example_interfaces_srv_add_two_ints_request request;
+    example_interfaces_srv_add_two_ints_response response;
     example_interfaces_srv_add_two_ints_request_init(&request);
+    example_interfaces_srv_add_two_ints_response_init(&response);
     request.a = a;
     request.b = b;
 
-    // Serialize request using generated function
+    // Caller-owned scratch for the wire form of each payload. Both are only
+    // borrowed for the duration of the call.
     uint8_t req_buf[256];
-    size_t req_len = 0;
-    int32_t req_len_rc = example_interfaces_srv_add_two_ints_request_serialize(
-        &request, req_buf, sizeof(req_buf), &req_len);
-    if (req_len_rc != 0) {
-        fprintf(stderr, "Failed to serialize request\n");
+    uint8_t resp_buf[256];
+
+    nros_ret_t ret = example_interfaces_srv_add_two_ints_client_call(
+        &app.client, &request, &response, req_buf, sizeof(req_buf), resp_buf, sizeof(resp_buf));
+
+    if (ret == NROS_RET_OK) {
+        printf("Result of add_two_ints: %lld\n", (long long)response.sum);
+    } else if (ret == NROS_RET_TIMEOUT) {
+        fprintf(stderr, "Service call timed out (is the server running?)\n");
+        exit_code = 1;
+    } else if (ret == NROS_RET_INVALID_ARGUMENT) {
+        // The request did not fit `req_buf`; nothing was sent. The loud half
+        // is an ERROR record from `nros_service_typed_report_error`.
+        fprintf(stderr, "Failed to encode request\n");
         exit_code = 1;
     } else {
-        // Call service (blocking)
-        uint8_t resp_buf[256];
-        size_t resp_len = 0;
-        nros_ret_t ret =
-            nros_client_call(&app.client, req_buf, req_len, resp_buf, sizeof(resp_buf), &resp_len);
-
-        if (ret == NROS_RET_OK) {
-            // Deserialize response using generated function
-            example_interfaces_srv_add_two_ints_response response;
-            if (example_interfaces_srv_add_two_ints_response_deserialize(&response, resp_buf,
-                                                                         resp_len) == 0) {
-                printf("Result of add_two_ints: %lld\n", (long long)response.sum);
-            } else {
-                fprintf(stderr, "Failed to deserialize response\n");
-                exit_code = 1;
-            }
-        } else if (ret == NROS_RET_TIMEOUT) {
-            fprintf(stderr, "Service call timed out (is the server running?)\n");
-            exit_code = 1;
-        } else {
-            fprintf(stderr, "Service call failed with error %d\n", ret);
-            exit_code = 1;
-        }
+        fprintf(stderr, "Service call failed with error %d\n", ret);
+        exit_code = 1;
     }
+
+    example_interfaces_srv_add_two_ints_request_fini(&request);
+    example_interfaces_srv_add_two_ints_response_fini(&response);
 
     // Cleanup
     printf("\nShutting down...\n");

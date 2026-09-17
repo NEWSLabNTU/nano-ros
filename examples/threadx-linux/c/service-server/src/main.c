@@ -1,5 +1,24 @@
 /// @file main.c
 /// @brief C service server example - AddTwoInts service using executor
+///
+/// phase-417 W5.e — the handler is TYPED. It receives a deserialized request
+/// and an empty response to fill; it calls no CDR function, names no buffer
+/// size, and allocates nothing. That is rclc's shape:
+///
+///     rclc: void (*rclc_service_callback_with_context_t)(const void *request,
+///                                                        void *response,
+///                                                        void *context)
+///     ours: void (*..._handler_fn_t)(const ..._request *request,
+///                                    ..._response *response, void *context)
+///
+/// — the same ownership (the CALLER owns both payload structs, so nothing on
+/// the delivery path allocates), with the two pointers typed rather than
+/// `void *`. The storage lives in the `..._service_handler_t` below, which is
+/// where rclc's `request_msg` / `response_msg` arguments would have put it.
+///
+/// The byte-oriented callback this file used to carry is not gone — it is
+/// `nros_executor_add_service_raw()`, and it remains the only shape for a
+/// caller doing its own CDR.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +51,9 @@ static struct {
     nros_service_t service;
     nros_executor_t executor;
     server_context_t ctx;
+    // Caller-owned request + response storage and the typed callback. It must
+    // outlive the service, so it lives here beside it.
+    example_interfaces_srv_add_two_ints_service_handler_t handler;
 } app;
 
 static volatile sig_atomic_t g_running = 1;
@@ -53,39 +75,16 @@ static void signal_handler(int signum) {
 // Service callback - handle AddTwoInts request
 // ----------------------------------------------------------------------------
 
-static bool service_callback(const uint8_t* request_data, size_t request_len,
-                             uint8_t* response_data, size_t response_capacity, size_t* response_len,
+static void service_callback(const example_interfaces_srv_add_two_ints_request* request,
+                             example_interfaces_srv_add_two_ints_response* response,
                              void* context) {
     server_context_t* ctx = (server_context_t*)context;
 
-    // Deserialize request using generated function
-    example_interfaces_srv_add_two_ints_request request;
-    if (example_interfaces_srv_add_two_ints_request_deserialize(&request, request_data,
-                                                                request_len) != 0) {
-        fprintf(stderr, "Failed to deserialize request\n");
-        return false;
-    }
-
     ctx->request_count++;
 
-    // Compute response
-    example_interfaces_srv_add_two_ints_response response;
-    example_interfaces_srv_add_two_ints_response_init(&response);
-    response.sum = request.a + request.b;
+    printf("Incoming request\na: %lld b: %lld\n", (long long)request->a, (long long)request->b);
 
-    printf("Incoming request\na: %lld b: %lld\n", (long long)request.a, (long long)request.b);
-
-    // Serialize response using generated function
-    size_t len = 0;
-    int32_t len_rc = example_interfaces_srv_add_two_ints_response_serialize(
-        &response, response_data, response_capacity, &len);
-    if (len_rc != 0) {
-        fprintf(stderr, "Failed to serialize response\n");
-        return false;
-    }
-
-    *response_len = len;
-    return true;
+    response->sum = request->a + request->b;
 }
 
 // ----------------------------------------------------------------------------
@@ -123,27 +122,26 @@ int nros_app_main(int argc, char** argv) {
     // Zero-initialize all static state
     memset(&app, 0, sizeof(app));
 
-    // Build type info using generated type name/hash
-    nros_service_type_t add_two_ints_type = {
-        .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
-        .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
-    };
-
     NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
     NROS_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_server", "/", &app.support), 1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
-    NROS_CHECK_RET(
-        rclc_service_init_default(&app.service, &app.node, &add_two_ints_type, "/add_two_ints"), 1);
+    // Install the typed handler, then create the service against it. The
+    // generated `_service_init` names the type support, the trampoline and the
+    // handler together, so the three cannot disagree — there is no
+    // hand-written `nros_service_type_t` here any more.
+    NROS_CHECK_RET(example_interfaces_srv_add_two_ints_service_handler_init(
+                       &app.handler, service_callback, &app.ctx),
+                   1);
+    NROS_CHECK_RET(example_interfaces_srv_add_two_ints_service_init(&app.service, &app.node,
+                                                                    "/add_two_ints", &app.handler),
+                   1);
     printf("Service created: %s\n", rcl_service_get_service_name(&app.service));
 
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
-    /* phase-417 stage 6 — rclc arity: the request handler is supplied at
-     * REGISTRATION, not at `*_init`. */
-    NROS_CHECK_RET(
-        nros_executor_add_service_raw(&app.executor, &app.service, service_callback, &app.ctx), 1);
+    NROS_CHECK_RET(nros_executor_add_service(&app.executor, &app.service), 1);
     printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
 
     // Set up signal handler
@@ -161,6 +159,12 @@ int nros_app_main(int argc, char** argv) {
     // Cleanup
     printf("\nShutting down...\n");
     printf("Total requests handled: %d\n", app.ctx.request_count);
+    // A refused request never reaches the callback, so `request_count` alone
+    // cannot report one. `error_count` is the other half.
+    if (app.handler.error_count != 0u) {
+        fprintf(stderr, "Requests refused: %u (last error %d)\n", app.handler.error_count,
+                (int)app.handler.last_error);
+    }
     rclc_executor_fini(&app.executor);
     nros_service_fini(&app.service);
     rcl_node_fini(&app.node);
