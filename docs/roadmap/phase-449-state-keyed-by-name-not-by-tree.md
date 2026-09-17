@@ -44,7 +44,7 @@ artifact shipped or the wrong verdict printed, and in every case **the message
 named something else**:
 
 * `subtree-guard` refused a build saying *"two builds in one tree"* when the
-  other build was in an unrelated clone ([#1157](../issues/1157-subtree-guard-lock-is-host-global-not-per-tree.md)).
+  other build was in an unrelated clone ([#1157](../issues/archived/1157-subtree-guard-lock-is-host-global-not-per-tree.md)).
 * A `just check fast` summary listed skips that were untrue of the checkout that
   printed them — the linked worktree's, delivered into the parent's ledger
   ([#1234](../issues/1234-worktree-agents-share-the-parent-build-dir.md)).
@@ -191,7 +191,7 @@ phase-454 W3 did it; neither had reason to edit this section.
 
 ### W6 — the build guard is keyed by tree
 
-[Issue 1157](../issues/1157-subtree-guard-lock-is-host-global-not-per-tree.md).
+[Issue 1157](../issues/archived/1157-subtree-guard-lock-is-host-global-not-per-tree.md).
 `/tmp/nros-build-guards/<name>.pgid` is keyed by build NAME and by nothing else,
 so an unrelated checkout blocks this one's gates while the refusal says the
 opposite.

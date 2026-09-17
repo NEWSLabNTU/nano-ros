@@ -3,12 +3,13 @@ id: 1157
 title: "`subtree-guard`'s lock is keyed by build NAME in a host-global directory, so an
   unrelated nano-ros checkout blocks this one's gates while the refusal says
   \"two builds in one tree\""
-status: open
+status: resolved
 type: bug
 area: [build, testing]
 severity: medium
 found: 2026-09-06
 related: [0853, 1025, phase-449]
+resolved_in: "phase-449 W6 — the lock carries the tree, from the marker walk"
 ---
 
 ## What
@@ -131,3 +132,31 @@ lock) and needs its own measurement before anyone files it.
 
 Escape hatch today: `NROS_GUARD_FORCE=1`, or `NROS_GUARD_LOCK_DIR` pointed
 somewhere per-tree. Both require knowing this issue exists.
+
+
+## Resolution (phase-449 W6, 2026-09-18)
+
+The lock is `<dir>/<basename>-<cksum>/<name>.pgid`, and the refusal names both
+trees — `Holding tree:` and `This tree:` — from a third field appended to the
+lock file so the two existing `awk` readers are untouched.
+
+The tree comes from `nros_checkout_root`, sourced from
+`scripts/lib/checkout-paths.sh` rather than reimplemented: a linked worktree's
+`.git` is a FILE (issue 1336), and a second spelling of "which checkout is
+this" would be phase-449's own subject one layer up. Phase-449 had said "git
+common dir" and is corrected in the same change.
+
+The tree is a DIRECTORY segment rather than part of the filename, because
+`runner-sweep.sh` legitimately enumerates every tree's locks on a shared
+runner. It gained `nros_guard_reap_lock <lockfile>` — a bare name no longer
+says which tree's build is being reaped — and keeps the legacy `*.pgid` glob
+beside `*/*.pgid`, so a lock written before this change is swept rather than
+orphaned by the fix that tidied it.
+
+**Gated, with a negative control.** `subtree_guard.sh` tested trap, refuse and
+reap; none of the three asks about a second checkout, so this fix would have
+shipped ungated. A fourth case models two trees with the checkout marker and
+checks both directions, and asserts that the PRE-FIX spelling still collides —
+without which the case would pass against a guard that keys on nothing at all.
+
+Issue 1166 is the opposite half and stays open, as both issues say.
