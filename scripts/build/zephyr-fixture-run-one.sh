@@ -168,6 +168,18 @@ if [ -n "$conf_files" ]; then
     replace_or_append_arg "-DCONF_FILE" "$conf_files"
 fi
 
+# issue 1258 / phase-449 W1 — this build names its OWN nros module.
+#
+# The workspace's manifest project used to be a symlink to whichever checkout
+# provisioned it, so every build in a shared store workspace silently compiled
+# that tree's `zephyr/` module. It is a manifest-only directory now, so the
+# module has to come from here.
+#
+# `$nros_root`, NOT `$nros_root/zephyr`: a zephyr module ROOT is the directory
+# holding `zephyr/module.yml`. Pointing at the subdirectory fails configure with
+# "is not a valid zephyr module", which names the variable and not the rule.
+replace_or_append_arg "-DZEPHYR_EXTRA_MODULES" "$nros_root"
+
 west_extra=()
 if [ "${#extra_args[@]}" -gt 0 ]; then
     west_extra=(-- "${extra_args[@]}")

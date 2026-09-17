@@ -2,11 +2,12 @@
 id: 1258
 title: "A Zephyr workspace in the store is bound to the ONE checkout that
   provisioned it -- every later project builds that checkout's Zephyr module"
-status: open
+status: resolved
 type: bug
 area: zephyr, tooling
 severity: medium
 related: [issue-1254, issue-1259, phase-449]
+resolved_in: "phase-449 W1 — the manifest project carries no checkout"
 ---
 
 ## Symptom
@@ -77,3 +78,44 @@ tree of the same line as one.
 - A store workspace's west project list contains no path into a checkout.
 - Two projects pinning two nano-ros revisions build against one store
   workspace, each with its own `zephyr/` module (`zephyr_modules.txt`).
+
+
+## Resolution (phase-449 W1, 2026-09-18)
+
+`setup.sh` no longer ends with `ln -sf "$NANO_ROS_ROOT"`. The manifest project
+is a real directory holding the manifest FILE and nothing else, so it carries no
+`zephyr/module.yml` and contributes no module, and the workspace is keyed by
+Zephyr version alone — which is what its path claims.
+
+Each build names its own module with `-DZEPHYR_EXTRA_MODULES=<checkout>`. The
+module ROOT, not `<checkout>/zephyr`: a zephyr module is the directory holding
+`zephyr/module.yml`, and pointing at the subdirectory fails configure with
+`is not a valid zephyr module` — a message that names the variable and not the
+rule, so it is written at all three call sites
+(`zephyr-fixture-run-one.sh`, `check-copy-out.sh`, `tests/zephyr/run-c.sh`).
+
+Measured on a real image rather than argued: against an isolated workspace in
+the migrated shape, `west build -b native_sim/native/64` on
+`examples/zephyr/rust/talker` configures, compiles and links
+`zephyr/zephyr.elf`, with `"nros":"/home/aeon/repos/nano-ros"` in
+`zephyr_modules.txt` where the bound workspace gives
+`"nros":"<workspace>/nano-ros"`.
+
+### Migration is transparent, and that was the risk
+
+A workspace provisioned before this still carries the symlink, and the builders
+now also pass the module, so Zephyr sees `nros` twice. Measured on the live
+bound workspace: no duplicate-module error, configure proceeds, and the resolved
+module is the CHECKOUT's. Where the two would disagree — a workspace bound to a
+FOREIGN checkout — `check-zephyr-workspace-checkout.sh` refuses before the
+build, which phase-449 W2 wired into the tier-2 lane in the same change.
+
+`setup.sh` also unbinds an existing workspace in place
+(`scripts/zephyr/unbind-manifest-project.sh`, idempotent) rather than asking
+anyone to re-provision 4.6 GB. It removes the LINK, never its target.
+
+### Not addressed here
+
+The issue's second half — provisioning re-fetching a line already on disk, and
+west's `update.path-cache` as a seed — is a separate change to how the tree is
+FETCHED and is left for phase-447, which owns provisioning.

@@ -136,6 +136,7 @@ set +e
         -b "$BOARD" -d "$bd" -p auto "$copied" -- \
         -DCONF_FILE="$conf" \
         -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" \
+        -DZEPHYR_EXTRA_MODULES="$NROS_ROOT" \
         -DMAKE="$make_bin"
 )
 rc=$?

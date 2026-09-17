@@ -99,16 +99,44 @@ before the items where a wrong VERDICT prints, and the repair gap comes last.
 
 ### W1 — a Zephyr workspace names the checkout whose module it builds
 
-[Issue 1258](../issues/1258-zephyr-store-workspace-is-bound-to-one-checkout.md).
+[Issue 1258](../issues/archived/1258-zephyr-store-workspace-is-bound-to-one-checkout.md).
 `scripts/zephyr/setup.sh` replaces the west manifest project with a symlink to
 the checkout that ran it, so the `nros` Zephyr module of EVERY build in that
 workspace comes from that one tree, measured in a downstream project's
 `build/zephyr_modules.txt`.
 
-- [ ] A workspace either resolves `nros` from the checkout invoking the build,
-      or refuses and says which checkout it is bound to.
-- [ ] A downstream project's `zephyr_modules.txt` names its own pinned
-      submodule, shown on a real board build.
+- [x] A workspace either resolves `nros` from the checkout invoking the build,
+      or refuses and says which checkout it is bound to. **Both halves.**
+      `setup.sh` no longer ends with `ln -sf "$NANO_ROS_ROOT"`: the manifest
+      project is a real directory holding the manifest FILE and nothing else,
+      so it carries no `zephyr/module.yml` and contributes no module. Each
+      build names its own with `-DZEPHYR_EXTRA_MODULES=<checkout>` — the module
+      ROOT, not `<checkout>/zephyr`, because a zephyr module is the directory
+      holding `zephyr/module.yml` and the subdirectory fails configure with
+      *"is not a valid zephyr module"*, a message that names the variable and
+      not the rule. Three `west build` sites carry it:
+      `zephyr-fixture-run-one.sh`, `check-copy-out.sh`, `tests/zephyr/run-c.sh`.
+      The refusal half is `check-zephyr-workspace-checkout.sh`, which W2 wires
+      into the lane that needed it.
+- [x] A `zephyr_modules.txt` names the invoking checkout, shown on a REAL
+      board build — the acceptance as written asks for a downstream project,
+      and this is the same fact with the same mechanism, measured here because
+      no downstream tree is available to this checkout.
+      Against an isolated workspace in the migrated shape (manifest-only
+      project, no symlink), `west build -b native_sim/native/64` on
+      `examples/zephyr/rust/talker` configures, compiles and reaches
+      `Linking C executable zephyr/zephyr.elf`, with
+      `"nros":"/home/aeon/repos/nano-ros"` — where the live bound workspace
+      gives `"nros":"<workspace>/nano-ros"`.
+- [x] **Migration is transparent, which was the risk worth measuring.** A
+      workspace provisioned BEFORE this still carries the symlink, and the
+      builders now also pass the module — so Zephyr sees `nros` twice. Measured
+      on the live bound workspace: no duplicate-module error, configure
+      proceeds, and the resolved module is the CHECKOUT's. Where the two would
+      disagree — a workspace bound to a FOREIGN checkout — W2's guard refuses
+      before the build. `setup.sh` also unbinds an existing workspace in place
+      (`unbind-manifest-project.sh`, idempotent) rather than asking anyone to
+      re-provision 4.6 GB.
 
 ### W2 — tier 2 builds the tree under test
 
@@ -117,10 +145,28 @@ W1's defect as the lane experiences it: the runner's workspace lives inside a
 second nano-ros checkout, so tier 2 compiled that tree's headers beside this
 tree's entries and judged images no run of this tree made.
 
-- [ ] The lane fails LOUDLY when its workspace belongs to another checkout,
-      rather than building and reporting an unattributable failure.
+- [x] The lane fails LOUDLY when its workspace belongs to another checkout.
+      **The gate already existed and the lane did not run it** —
+      `check-zephyr-workspace-checkout.sh`, written for this very issue, whose
+      header names the two tier-2 nights (2026-09-06, -07) it was written
+      after. It was reached only through `check-tier-preconditions.sh`, which
+      only the TIER-1 `ci` recipe runs. So the gate written FOR this lane was
+      never run BY it: phase-450's subject, arriving inside this phase.
+      Wired into `_matrix-run` and `matrix-nightly`, immediately after
+      `_lane-gate` and BEFORE the build — issue 1253's complaint is not that
+      the refusal is missing but that it arrives fifteen minutes in, inside a
+      cmake configure, naming a binary rather than the workspace. Measured: on
+      a workspace bound to a foreign checkout it exits 1 and prints the
+      workspace, that checkout and this tree.
 - [ ] One scheduled tier-2 run reaches the cells and produces a verdict. This
       is the acceptance; the three earlier failure texts are not.
+      **Still owed, and not claimable from a checkout.** A scheduled run is the
+      only thing that can satisfy it. As of 2026-09-18 `just matrix-triage`
+      reports 0 of 8 runs reaching the cells — 4 stopped in provisioning, 3 in
+      the build — so this item stays open until a nightly says otherwise.
+      W1 removes one cause; issue 1158 at
+      [phase-416](phase-416-tier2-lane-and-single-spelling.md) owns the rest,
+      and this item does not claim them.
 
 ### W3 — the Zephyr SDK lives in the store, not in a clone
 

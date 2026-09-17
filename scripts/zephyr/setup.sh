@@ -446,17 +446,32 @@ log_info "Initializing workspace..."
 mkdir -p "$WORKSPACE_DIR"
 cd "$WORKSPACE_DIR"
 
-# Create manifest directory with west.yml, then replace with symlink
-# (west init -l follows symlinks during init, so we copy first)
+# The manifest project is a MANIFEST and nothing else — issue 1258 / phase-449 W1.
+#
+# This used to end with `ln -sf "$NANO_ROS_ROOT"`, which made the project BE the
+# checkout that ran setup. West's project list is what Zephyr's module discovery
+# reads, so every build in the workspace took its `nros` module from that one
+# tree. Harmless beside a single checkout; since phase-440 W4 the default target
+# is the shared store (`$NROS_STORE/workspaces/zephyr/<version>`), and RFC-0095
+# D2 is that ONE workspace serves every project wanting that version — so the
+# first project to provision a line bound every later one to its nano-ros, with
+# nothing reporting the mix.
+#
+# Each build names its own module instead:
+#     west build … -- -DZEPHYR_EXTRA_MODULES=<checkout>
+# `<checkout>`, not `<checkout>/zephyr`: the module ROOT is the directory
+# holding `zephyr/module.yml`, and pointing at the subdirectory fails with
+# "is not a valid zephyr module", which names the variable and not the rule.
 mkdir -p "$WORKSPACE_DIR/$NANO_ROS_NAME"
 cp "$NANO_ROS_ROOT/$MANIFEST" "$WORKSPACE_DIR/$NANO_ROS_NAME/$MANIFEST"
 
 # Initialize west (--mf selects the 3.7 vs 4.4 manifest)
 west init -l --mf "$MANIFEST" "$WORKSPACE_DIR/$NANO_ROS_NAME"
 
-# Replace with symlink to real nros
-rm -rf "$WORKSPACE_DIR/$NANO_ROS_NAME"
-ln -sf "$NANO_ROS_ROOT" "$WORKSPACE_DIR/$NANO_ROS_NAME"
+# A workspace provisioned BEFORE 1258 still carries the symlink; unbind it in
+# place rather than making the operator re-provision 4.6 GB.
+bash "$NANO_ROS_ROOT/scripts/zephyr/unbind-manifest-project.sh" \
+    "$WORKSPACE_DIR" "$NANO_ROS_NAME" "$MANIFEST" "$NANO_ROS_ROOT"
 
 log_info "Fetching Zephyr and modules (this may take a while)..."
 west update
