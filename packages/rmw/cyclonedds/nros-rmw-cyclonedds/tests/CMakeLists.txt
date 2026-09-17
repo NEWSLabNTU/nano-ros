@@ -48,10 +48,19 @@ add_test(
 # yet; load it from the source tree directly.
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/NrosRmwCycloneddsTypeSupport.cmake")
 
-nros_rmw_cyclonedds_idlc_compile(_test_string_sources
+nros_rmw_cyclonedds_idlc_compile(_test_string_gen
     IDL_FILE  "${CMAKE_CURRENT_SOURCE_DIR}/types/test_string.idl"
     OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/types"
     TYPE_NAME "nros_test::msg::TestString"
+)
+# Issue 1311 — ten targets below list these generated files as sources, which
+# the Makefile generator turns into ten copies of the idlc rule, one per
+# sub-make, all writing the same `.c`/`.h`. One owner, objects for everyone
+# else; see `nros_rmw_cyclonedds_own_generated_sources`.
+nros_rmw_cyclonedds_own_generated_sources(_test_string_sources
+    nros_rmw_cyclonedds_test_string_types
+    SOURCES ${_test_string_gen}
+    INCLUDE_DIRS ${NROS_RMW_CFFI_DIR} "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
 
 add_executable(nros_rmw_cyclonedds_codegen_smoke
@@ -280,10 +289,18 @@ add_test(
 # them up via `<type_name>_Request_` / `_Response_` suffix from
 # the consumer-supplied `nros_test::srv::dds_::AddTwoInts`.
 if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
-    nros_rmw_cyclonedds_generate_from_msg(_addtwoints_sources
+    nros_rmw_cyclonedds_generate_from_msg(_addtwoints_gen
         PKG_NAME nros_test
         PKG_DIR  "${CMAKE_CURRENT_SOURCE_DIR}/types/nros_test"
         INTERFACES srv/AddTwoInts.srv srv/SumSeq.srv
+    )
+    # Issue 1311 — nine targets below consume these; without one owner the
+    # Makefile generator runs `msg_to_cyclone_idl` and `idlc` once per target
+    # in parallel, into the same `.idl`/`.c`/`.h`.
+    nros_rmw_cyclonedds_own_generated_sources(_addtwoints_sources
+        nros_rmw_cyclonedds_nros_test_types
+        SOURCES ${_addtwoints_gen}
+        INCLUDE_DIRS ${NROS_RMW_CFFI_DIR}
     )
 else()
     set(_addtwoints_sources "")
@@ -316,7 +333,12 @@ if(_addtwoints_sources)
     # this is where the generated AddTwoInts sources become available. With
     # them it drives the real `create_service` / `create_client`; without them
     # the target above still builds and its topic assertions still run.
-    target_sources(nros_rmw_cyclonedds_graph_query PRIVATE ${_addtwoints_sources})
+    # Issue 1311 — the owner library is linked rather than re-listed as
+    # sources: `$<TARGET_OBJECTS:…>` is documented only for the source lists of
+    # `add_library()` / `add_executable()`, and linking an OBJECT library pulls
+    # in every one of its objects, constructors included.
+    target_link_libraries(nros_rmw_cyclonedds_graph_query
+        PRIVATE nros_rmw_cyclonedds_nros_test_types)
     target_compile_definitions(nros_rmw_cyclonedds_graph_query PRIVATE NROS_TEST_HAS_SERVICE=1)
 
     # Phase 117.7 service request/reply data round-trip — Phase
@@ -568,10 +590,17 @@ add_test(
 # the host lacks /opt/ros/humble's rosidl_adapter the helper emits
 # a soft warning at configure time and we skip the test.
 if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
-    nros_rmw_cyclonedds_generate_from_msg(_from_msg_sources
+    nros_rmw_cyclonedds_generate_from_msg(_from_msg_gen
         PKG_NAME std_msgs
         PKG_DIR  "${CMAKE_CURRENT_SOURCE_DIR}/types/std_msgs"
         INTERFACES msg/String.msg
+    )
+    # Issue 1311 — four consumers (from_msg_smoke, ros2_pub, ros2_sub,
+    # mangling_test); one owner.
+    nros_rmw_cyclonedds_own_generated_sources(_from_msg_sources
+        nros_rmw_cyclonedds_std_msgs_types
+        SOURCES ${_from_msg_gen}
+        INCLUDE_DIRS ${NROS_RMW_CFFI_DIR}
     )
     add_executable(nros_rmw_cyclonedds_from_msg_smoke
         from_msg_smoke.cpp
@@ -638,10 +667,16 @@ if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
     # codegen helper emits the stock-shape mangled type
     # `example_interfaces::srv::dds_::AddTwoInts_{Request,Response}_`
     # so the wire matches `rmw_cyclonedds_cpp` byte-for-byte.
-    nros_rmw_cyclonedds_generate_from_msg(_example_addtwoints_sources
+    nros_rmw_cyclonedds_generate_from_msg(_example_addtwoints_gen
         PKG_NAME example_interfaces
         PKG_DIR  "${CMAKE_CURRENT_SOURCE_DIR}/types/example_interfaces"
         INTERFACES srv/AddTwoInts.srv
+    )
+    # Issue 1311 — two consumers (ros2_srv_server, ros2_srv_client); one owner.
+    nros_rmw_cyclonedds_own_generated_sources(_example_addtwoints_sources
+        nros_rmw_cyclonedds_example_interfaces_types
+        SOURCES ${_example_addtwoints_gen}
+        INCLUDE_DIRS ${NROS_RMW_CFFI_DIR}
     )
     if(_example_addtwoints_sources)
         add_executable(nros_rmw_cyclonedds_ros2_srv_server
