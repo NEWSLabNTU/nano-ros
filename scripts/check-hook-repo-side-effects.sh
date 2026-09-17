@@ -471,7 +471,29 @@ head_sha="$(git rev-parse HEAD 2>/dev/null)"
 if [ -z "$head_sha" ]; then
     bad "cannot resolve HEAD — refusing to report on a hook run that did not happen"
 else
-    cfg_before="$(sha1sum "$(git rev-parse --git-dir)/config" 2>/dev/null)"
+    # WHERE this repo's config is, asked rather than derived — issue 1336.
+    #
+    # This read `$(git rev-parse --git-dir)/config`, and in a linked worktree
+    # `--git-dir` is the PER-WORKTREE admin dir, which has no `config` (config
+    # lives only in the common dir; measured: that directory holds HEAD, index,
+    # commondir, gitdir, logs, modules and nothing else). So `sha1sum` failed,
+    # `2>/dev/null` ate the error, before and after were both EMPTY, they
+    # compared equal, and the `ok` below was printed having measured nothing —
+    # in every agent worktree, which is where this gate mostly runs. The
+    # assertion that would have caught 0986's `core.bare=true` was the one that
+    # went vacuous, in the gate whose whole subject is that hazard.
+    #
+    # `--git-path config` resolves to the common dir's file in both shapes,
+    # which is the file 0986 writes to and the one this compares.
+    cfg_file="$(git rev-parse --path-format=absolute --git-path config 2>/dev/null)"
+    if [ -z "$cfg_file" ] || [ ! -f "$cfg_file" ]; then
+        # LOUD, not silently equal: an unreadable config means this assertion
+        # cannot be made, which is not the same as it holding.
+        bad "cannot locate this repository's config (git rev-parse --git-path
+        config -> '${cfg_file:-<empty>}'), so the 0986 side-effect assertion
+        below cannot be made. Fix the resolution, do not skip the check."
+    fi
+    cfg_before="$(sha1sum "$cfg_file" 2>/dev/null)"
     verdict="$(printf 'refs/heads/probe %s refs/heads/probe %s\n' "$head_sha" "$head_sha" \
         | run_probe worktree "$REPO" env NROS_SKIP_PREPUSH_CHECKS=1 \
               timeout 120 bash "$REPO/$HOOK" origin "$REPO")"
@@ -490,11 +512,15 @@ $(printf '%s\n' "$verdict" | tail -n +2)" ;;
         the stages after that point were not exercised. Its output:
 $(sed 's/^/          /' "$PROBE_LOG" | head -20)"
     fi
-    cfg_after="$(sha1sum "$(git rev-parse --git-dir)/config" 2>/dev/null)"
-    if [ "$cfg_before" = "$cfg_after" ]; then
-        ok "this repo's own .git/config is byte-identical across the hook runs"
+    cfg_after="$(sha1sum "$cfg_file" 2>/dev/null)"
+    if [ -z "$cfg_before" ] || [ -z "$cfg_after" ]; then
+        bad "this repo's config hashed to nothing ($cfg_file), so 'unchanged'
+        would be two empty strings comparing equal — issue 1336's shape, and
+        the reason this line no longer derives the path itself."
+    elif [ "$cfg_before" = "$cfg_after" ]; then
+        ok "this repo's own config ($cfg_file) is byte-identical across the hook runs"
     else
-        bad "this repo's own .git/config CHANGED across a hook run — that is
+        bad "this repo's own config CHANGED across a hook run — that is
         0986's exact symptom (core.bare=true), and it is live right now."
     fi
 fi

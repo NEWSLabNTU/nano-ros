@@ -296,7 +296,8 @@ pub fn build_pkg_index(workspace_root: &Path) -> Result<PkgIndex> {
 /// 1. `NROS_WORKSPACE_ROOT` env var.
 /// 2. `.colcon_workspace` marker in any ancestor.
 /// 3. `Cargo.toml` containing `[workspace]`.
-/// 4. `.git/` directory.
+/// 4. a `.git` entry — of either shape: a directory (a main checkout) or a
+///    FILE holding `gitdir: …` (a linked worktree or a submodule; issue 1336).
 ///
 /// `COLCON_IGNORE` ancestors do NOT terminate the walk (they merely
 /// shadow themselves from discovery — handled inside [`build_pkg_index`]).
@@ -331,13 +332,22 @@ pub fn detect_workspace_root(start: &Path) -> Result<PathBuf> {
     if let Some(root) = walk_ancestors(&start, is_cargo_workspace_root) {
         return Ok(root);
     }
-    // Pass 3: `.git/` directory.
-    if let Some(root) = walk_ancestors(&start, |dir| dir.join(".git").is_dir()) {
+    // Pass 3: a `.git` entry of EITHER shape — issue 1336's sibling.
+    //
+    // `is_dir()` was wrong for two checkout shapes that are ordinary here: a
+    // LINKED WORKTREE's `.git` is a file holding `gitdir: …` (every agent
+    // session works in one), and so is a SUBMODULE's (issue 0419 documents
+    // that one three crates over). In both, this pass found nothing and the
+    // walk continued past the real root — up to whatever ancestor happened to
+    // match, or to a `bail!` naming three markers that were all present. Both
+    // shapes are a checkout, which is the only question this pass asks, so it
+    // asks it with `exists()`.
+    if let Some(root) = walk_ancestors(&start, |dir| dir.join(".git").exists()) {
         return Ok(root);
     }
     bail!(
         "no workspace root found above `{}` (looked for $NROS_WORKSPACE_ROOT, \
-         {COLCON_WORKSPACE_MARKER}, Cargo.toml [workspace], .git/)",
+         {COLCON_WORKSPACE_MARKER}, Cargo.toml [workspace], .git)",
         start.display()
     )
 }

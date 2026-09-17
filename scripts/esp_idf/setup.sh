@@ -55,7 +55,11 @@ echo "ESP-IDF ref:       $ESP_IDF_REF"
 echo "Targets:           $ESP_IDF_TARGETS"
 
 # 1. Clone (or update) ESP-IDF.
-if [[ -d "$WORKSPACE_DIR/.git" ]]; then
+# `-e`, not `-d` — issue 1336's class: "is there a checkout here" is true for a
+# `.git` FILE too, and `NROS_ESP_IDF_WORKSPACE` is operator-settable, so this
+# can legitimately be pointed at a worktree or a submodule. `-d` sent those
+# into the clone branch below, which then fails against a populated directory.
+if [[ -e "$WORKSPACE_DIR/.git" ]]; then
     echo "==> esp-idf already cloned; fetching $ESP_IDF_REF"
     # NOTE: `fetch origin <ref>:<ref>` writes the destination into
     # `refs/heads/<ref>` (a branch). When `$ESP_IDF_REF` is an
