@@ -1045,6 +1045,21 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   by `check-codegen-tool-reconfigure`. The BUILD-time lane is fine — its
   `add_custom_command` names the tool in `DEPENDS`, and `restat = 1` plus codegen's
   write-if-changed keep an emitter-identical rebuild from cascading.
+  **And a TOOL edge is not enough for either lane, because the tool it names is the
+  one that BUILD DIR cached (issue 1360).** `_NANO_ROS_CODEGEN_TOOL` /
+  `_NROS_ZEPHYR_CODEGEN_TOOL` are `CACHE INTERNAL`, dropped only when the path stops
+  EXISTING; RFC-0095 D4 then put the Zephyr workspace in `$NROS_STORE/workspaces/
+  zephyr/<ver>`, outside every checkout, so its build dirs outlive any clone — and on
+  the runner the checkout that configures them (`runner-bootstrap.sh`'s
+  `~/src/nano-ros`) is not the one CI builds from, so that binary's mtime never moves.
+  Tier 2 and tier-2-nightly reached NO cell for three nights: every mtime edge read
+  current while the trees sat below `NROS_CODEGEN_VERSION_MIN` and every fixture died
+  on RFC-0090's `#error`. So the EMITTED VERSION is a freshness input too —
+  `nros_codegen_version_stale()`, asked of the artifacts (the range parsed from
+  `codegen_version.rs`, the same text `abi_guard` reads; never `nros
+  --codegen-version`, which a stale tool answers stalely) — and a tree still refused
+  after a regen is a configure FATAL naming the binary and both numbers, not an
+  `#error` 15 minutes in. Both rules are `check-codegen-tool-reconfigure`.
 - **A lib reached through a raw `-Wl,...` link FLAG gets no rebuild edge (issue 0475)** — CMake cannot
   see a file inside a flag string, and `add_dependencies()` only adds build ORDER, which ninja renders
   `||` (order-only): "must exist before linking", never "relink when it changes". The RMW backends are
