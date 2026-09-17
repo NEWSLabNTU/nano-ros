@@ -58,13 +58,13 @@ evidence = "the nano-ros zenoh action CLIENT drives examples_rclcpp_minimal_acti
 
 [[verdict]]
 cell = "native-action-rust-zenoh-r2n"
-date = "2026-09-13"
+date = "2026-09-18"
 verdict = "pass"
 tests = ["a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh"]
-run = "just native test-ros2-action-zenoh  (solo: just _test-focused (binary(=ros2_action_e2e) and test(a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh)))"
-where = "ros2 distrobox (Ubuntu 22.04, Humble, rmw_zenoh_cpp 0.1.9) on the maintainer host, box tree at 3df569308 + this branch; ros2 daemon stopped first, cell run SOLO"
-evidence = "phase-455 W5 served TRANSIENT_LOCAL on the publisher, so the action server starts and a stock ros2 action send_goal reaches SUCCEEDED. Two failures had to go first and BOTH were this cell: the shim refused the /status profile (issue 1341), and then its cache queryable exhausted a table sized for three service servers — ZPICO_MAX_QUERYABLES now counts a transient-local publisher, deriving 4. Live: graph token 1:1:1,1 and ros2 topic info -v reads Durability: TRANSIENT_LOCAL / KEEP_LAST (1). Fails IN-SWEEP beside its n2r sibling on the ros2 action list gate (issue 1342), passes solo."
-issue = "1341"
+run = "cargo nextest run -p nros-tests --success-output final -E \"binary(=ros2_action_e2e) and test(a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh)\" (the recipe is: just native test-ros2-action-zenoh)"
+where = "ros2 distrobox (Ubuntu 22.04, Humble, rmw_zenoh_cpp 0.1.9), box tree /mnt/wd/data/projects/nano-ros-box at 7571bbf01 + this branch; cell run SOLO with the stale domain-0 ros2cli daemon killed first"
+evidence = "Re-run after issue 1361 option 2 (publish_status_array iterates active_goals + completed_results). Goal reaches SUCCEEDED as before, AND the case now also carries 1341s acceptance: a stock transient_local reader attaching 3 s after termination, with nothing publishing in between, receives status: 4 for that goal id instead of status_list: []. The servers own TRACE shows the second status publish is 33 bytes (one entry) where it used to be 8 (an empty sequence). 6.15 s, 1 passed."
+issue = "1361"
 
 [[verdict]]
 cell = "native-advertised-state-rust-cyclone-bidir"

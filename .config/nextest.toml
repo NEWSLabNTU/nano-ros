@@ -857,10 +857,17 @@ retries = 2
 # `binary(qos_event_interop)` further down already carries. The Cyclone row's
 # `retries` is not there either; its host-DDS siblings' retries re-roll a
 # PID→domain collision, which is a hazard these cases do not have.
+#
+# 120s since issues 1361/1341: the r2n case now also runs a LATE JOINER after
+# the goal terminates — a 3 s settle plus a 15 s `ros2 topic echo --once` —
+# behind a discovery poll worth up to 20 s and a `send_goal` worth up to 60 s.
+# 90 s covered the old worst case and not this one, and a period that kills a
+# case mid-step reports a TIMEOUT where the cell had an answer (PR #627's shape,
+# described two rows below).
 [[profile.default.overrides]]
 filter = "binary(=ros2_action_e2e) and test(zenoh)"
 test-group = "ros2-interop"
-slow-timeout = { period = "90s", terminate-after = 3 }
+slow-timeout = { period = "120s", terminate-after = 3 }
 
 # phase-433 W6 — the ACTIONS live-peer lane, routed exactly like the cyclone
 # half of `interop_e2e` above and for the same two reasons.
