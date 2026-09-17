@@ -194,6 +194,234 @@ function(nros_codegen_tool_reconfigure _tool)
     endif()
 endfunction()
 
+# ---------------------------------------------------------------------------
+# The EMITTED CODEGEN VERSION as a freshness input (issue 1360).
+#
+# `nros_codegen_tool_reconfigure()` above keys freshness on the TOOL: a newer
+# `nros` re-runs the configure, and the emitter's own `IS_NEWER_THAN` loop
+# re-emits. That is the right edge and it is not sufficient, because the tool it
+# names is only the tool THIS build dir was configured with:
+#
+#   * `_NANO_ROS_CODEGEN_TOOL` / `_NROS_ZEPHYR_CODEGEN_TOOL` are `CACHE INTERNAL`
+#     and only dropped when the path stops EXISTING, so a PERSISTENT build dir
+#     keeps whichever binary first configured it;
+#   * RFC-0095 D4 moved the Zephyr workspace to `$NROS_STORE/workspaces/zephyr/
+#     <version>`, outside every checkout, so its build dirs outlive any one
+#     checkout — and on the self-hosted runner the one that configures them
+#     (`runner-bootstrap.sh`'s `~/src/nano-ros`) is NOT the one CI builds from
+#     (`~/_work/nano-ros/nano-ros`). That binary is never rebuilt by the job, so
+#     its mtime never advances and BOTH the configure-depends edge and the
+#     `IS_NEWER_THAN` loop are satisfied by a tool this job never rebuilt.
+#
+# The result is issue 1360: every Zephyr fixture in tier 2 / tier-2-nightly
+# failed to COMPILE on `#error "nros: this generated tree was emitted at a
+# codegen version the runtime does not accept"` — the RFC-0090 guard doing
+# exactly its job, against trees nothing had regenerated since
+# `NROS_CODEGEN_VERSION_MIN` moved. The guard is right; the freshness decision
+# was missing its most direct input.
+#
+# So ask the artifacts. A generated header STATES the version it was emitted at
+# (`#define NROS_EMITTED_CODEGEN_VERSION <n>`, `_codegen_version.jinja`), and
+# this tree STATES the range it accepts, in the same file the CLI's `abi_guard`
+# parses as text. Comparing the two is a pure function of two files on disk —
+# independent of mtimes, of which binary is cached, and of which checkout
+# provisioned the directory. When it says no, the tree is regenerated (by the
+# lane's own emitter) with the reason logged; never wiped.
+#
+# WHY THE SOURCE AND NOT `nros --codegen-version`. The authority has to be the
+# RUNTIME this image will link, not the emitter: a stale tool reports a stale
+# version, agrees with the stale tree it emitted, and reports FRESH. Same reason
+# `abi_guard` reads `codegen_version.rs` rather than trusting the binary
+# (`abi_guard.rs`, "Where each side reads its number").
+#
+# WHY NOT the per-build `nros_config_generated.h`, which is what the compiler
+# actually compares against: it is a cargo build-script byproduct, so at
+# configure time it is either absent (clean tree) or from the previous build,
+# and a regeneration cannot fix a disagreement whose stale side is that header.
+# Reading it here would turn "the tree is stale" into "something is stale",
+# which is the diagnosis issue 1360 already had.
+
+# The nano-ros tree these cmake modules belong to. Derived from this file's own
+# location — `<root>/cmake/NanoRosCodegenCore.cmake` — so it is the checkout
+# DRIVING this configure, with no variable and no env var to inherit from
+# somewhere else (issue 1280's class). Captured at FILE scope into the cache:
+# every function below may run inside a nested frame where a plain variable set
+# here is gone (the `_NROS_ENTRY_DIR` pattern).
+get_filename_component(_nros_cgcore_tree "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+set(_NROS_CODEGEN_CORE_TREE "${_nros_cgcore_tree}" CACHE INTERNAL
+    "issue 1360: the nano-ros tree these cmake modules came from" FORCE)
+unset(_nros_cgcore_tree)
+
+# nros_codegen_accepted_range(<min_var> <max_var>)
+#
+# The codegen versions THIS tree's runtime accepts, read out of
+# `packages/core/nros-core/src/codegen_version.rs` — the single declaration, and
+# the same text `abi_guard::accepted_range_in_tree` parses, for the same reason
+# (a consumer cannot compile Rust to ask a question about its build inputs).
+#
+# Both out-vars are EMPTY when the range cannot be read: an installed layout
+# with no `packages/`, or a tree predating phase-429. Absence of evidence is not
+# evidence of a mismatch — note-and-continue, exactly `abi_guard`'s contract.
+#
+# DELIBERATELY NOT CACHED ACROSS CONFIGURES. The first draft of this function
+# stashed the range in a `CACHE INTERNAL` pair and returned it on every later
+# call — which is issue 1360's own defect one layer up: a persistent build dir
+# would then answer with the range of whichever checkout configured it, and a
+# `NROS_CODEGEN_VERSION_MIN` bump would be invisible to the check that exists to
+# notice it. Two `file(STRINGS)` over a 200-line file is not worth a staleness
+# hazard; measured, a re-configure of a 30-header package is still 0.0 s.
+#
+# It also registers that file as a configure dependency, so a version bump
+# re-runs the configure on its own rather than waiting for a tool rebuild to do
+# it — the same move `nros_codegen_tool_reconfigure()` makes for the binary.
+function(nros_codegen_accepted_range _min_var _max_var)
+    set(_src "${_NROS_CODEGEN_CORE_TREE}/packages/core/nros-core/src/codegen_version.rs")
+    if(EXISTS "${_src}")
+        get_property(_ncar_deps DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
+        if(NOT "${_src}" IN_LIST _ncar_deps)
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_src}")
+        endif()
+    endif()
+    set(_min "")
+    set(_max "")
+    if(EXISTS "${_src}")
+        # `NROS_CODEGEN_VERSION` is a PREFIX of `NROS_CODEGEN_VERSION_MIN`, so
+        # the max line is matched with the `:` anchored right after the name —
+        # the same trap `abi_guard`'s `const_u32_in` has a regression test for.
+        file(STRINGS "${_src}" _max_line
+            REGEX "^pub const NROS_CODEGEN_VERSION:[ \t]*u32[ \t]*=[ \t]*[0-9]+")
+        file(STRINGS "${_src}" _min_line
+            REGEX "^pub const NROS_CODEGEN_VERSION_MIN:[ \t]*u32[ \t]*=[ \t]*[0-9]+")
+        if(_max_line AND _min_line)
+            list(GET _max_line 0 _max_line)
+            list(GET _min_line 0 _min_line)
+            # Anchor on the `=`, never a bare `[0-9]+`: the TYPE is spelled
+            # `u32`, so the first run of digits on the line is `32`. Measured —
+            # the first draft of this parse reported the range as `32..32`.
+            if("${_max_line}" MATCHES "=[ \t]*([0-9]+)")
+                set(_max "${CMAKE_MATCH_1}")
+            endif()
+            if("${_min_line}" MATCHES "=[ \t]*([0-9]+)")
+                set(_min "${CMAKE_MATCH_1}")
+            endif()
+        endif()
+    endif()
+    set(${_min_var} "${_min}" PARENT_SCOPE)
+    set(${_max_var} "${_max}" PARENT_SCOPE)
+endfunction()
+
+# nros_codegen_emitted_version(<file> <out_var>)
+#
+# The codegen version `<file>` says it was emitted at, or empty when it carries
+# no stamp. Empty is a legitimate answer for a generated header and NOT a
+# finding: only the per-TYPE headers carry the stamp (that is where
+# `_codegen_version.jinja` is included), while the per-package umbrella
+# (`<pkg>.h` / `<pkg>.hpp`) and the C++ short aliases (`msg/string.hpp`) do not.
+function(nros_codegen_emitted_version _file _out_var)
+    set(${_out_var} "" PARENT_SCOPE)
+    if(NOT EXISTS "${_file}")
+        return()
+    endif()
+    file(STRINGS "${_file}" _stamp
+        REGEX "^#define[ \t]+NROS_EMITTED_CODEGEN_VERSION[ \t]+[0-9]+" LIMIT_COUNT 1)
+    if(NOT _stamp)
+        return()
+    endif()
+    list(GET _stamp 0 _stamp)
+    string(REGEX REPLACE "^#define[ \t]+NROS_EMITTED_CODEGEN_VERSION[ \t]+" "" _stamp "${_stamp}")
+    string(REGEX MATCH "[0-9]+" _stamp "${_stamp}")
+    set(${_out_var} "${_stamp}" PARENT_SCOPE)
+endfunction()
+
+# nros_codegen_version_stale(<stale_var> [REJECTED <var>] [CONTEXT <label>]
+#                            [QUIET] FILES <files...>)
+#
+# TRUE in `<stale_var>` when at least one existing FILE states an emitted codegen
+# version this tree's runtime does not accept — i.e. when compiling that tree
+# WOULD hit the RFC-0090 `#error`. `REJECTED` collects those files, for a caller
+# whose emitter is driven by its outputs' absence rather than by a flag.
+#
+# One STATUS line per rejected file, naming the version, the range and the tree
+# the range came from: issue 1360 point 2, which cost an archaeology session
+# because the `#error` can only name macros, never their values. `QUIET`
+# suppresses it — for a RE-ask after a regeneration, where "regenerating" is
+# exactly what did not happen and repeating the line would misreport it.
+function(nros_codegen_version_stale _stale_var)
+    cmake_parse_arguments(_V "QUIET" "REJECTED;CONTEXT" "FILES" ${ARGN})
+    set(${_stale_var} FALSE PARENT_SCOPE)
+    if(_V_REJECTED)
+        set(${_V_REJECTED} "" PARENT_SCOPE)
+    endif()
+    nros_codegen_accepted_range(_min _max)
+    if(_min STREQUAL "" OR _max STREQUAL "")
+        return()
+    endif()
+    set(_context "${_V_CONTEXT}")
+    if(_context STREQUAL "")
+        set(_context "nros codegen")
+    endif()
+    set(_rejected "")
+    foreach(_f ${_V_FILES})
+        nros_codegen_emitted_version("${_f}" _emitted)
+        if(_emitted STREQUAL "")
+            continue()
+        endif()
+        if(_emitted LESS _min OR _emitted GREATER _max)
+            list(APPEND _rejected "${_f}")
+            if(NOT _V_QUIET)
+                message(STATUS
+                    "${_context}: regenerating — ${_f} was emitted at codegen version "
+                    "${_emitted}, and this runtime accepts ${_min}..${_max} "
+                    "(${_NROS_CODEGEN_CORE_TREE}/packages/core/nros-core/src/codegen_version.rs)")
+            endif()
+        endif()
+    endforeach()
+    if(_rejected)
+        set(${_stale_var} TRUE PARENT_SCOPE)
+        if(_V_REJECTED)
+            set(${_V_REJECTED} "${_rejected}" PARENT_SCOPE)
+        endif()
+    endif()
+endfunction()
+
+# nros_codegen_version_assert_fresh(<tool> [CONTEXT <label>] FILES <files...>)
+#
+# Called AFTER a regeneration: a tree still stating a refused version means the
+# TOOL that just emitted it is not one this runtime accepts, and no amount of
+# re-running will change that. Fail here, naming the binary and both numbers,
+# rather than 15 minutes later as a `#error` inside a museum header (the shape
+# `check-zephyr-workspace-checkout.sh`'s own header argues against).
+function(nros_codegen_version_assert_fresh _tool)
+    cmake_parse_arguments(_A "" "CONTEXT" "FILES" ${ARGN})
+    nros_codegen_version_stale(_still_stale REJECTED _bad QUIET
+        CONTEXT "${_A_CONTEXT}" FILES ${_A_FILES})
+    if(NOT _still_stale)
+        return()
+    endif()
+    nros_codegen_accepted_range(_min _max)
+    list(GET _bad 0 _first)
+    nros_codegen_emitted_version("${_first}" _emitted)
+    message(FATAL_ERROR
+        "nros codegen: the regenerated tree is STILL at a codegen version this "
+        "runtime refuses (issue 1360).\n"
+        "  emitted:          ${_emitted}\n"
+        "  this tree accepts ${_min}..${_max}\n"
+        "  runtime:          ${_NROS_CODEGEN_CORE_TREE}\n"
+        "  emitted by:       ${_tool}\n"
+        "  first offender:   ${_first}\n"
+        "\n"
+        "The tool above is not this runtime's emitter. That happens when a "
+        "PERSISTENT build directory — a provisioned Zephyr workspace under "
+        "$NROS_STORE/workspaces/, which lives outside every checkout — was "
+        "configured by a DIFFERENT nano-ros checkout, whose `nros` it then "
+        "cached and keeps using. Re-run the configure with this tree's binary "
+        "— build it with ./scripts/bootstrap.sh (contributors: source "
+        "./activate.sh && just setup-cli), then:\n"
+        "  cmake -D_NANO_ROS_CODEGEN_TOOL=<this tree>/packages/cli/target/release/nros <build-dir>\n"
+        "and see `just check tier-preconditions`, which asks whether the "
+        "workspace belongs to this checkout at all.")
+endfunction()
+
 # _nros_write_codegen_args_json(ARGS_FILE <path> PACKAGE <name> OUTPUT_DIR <dir>
 #     ROS_EDITION <edition> [CODEGEN_CONFIG <path>]
 #     INTERFACE_FILES <files...> DEPS <pkgs...>)

@@ -402,6 +402,31 @@ function(nros_generate_interfaces target)
   # immediately -- the difference is the lane's, not this wave's.
   nros_message_bounds_register_fragment("${_bounds_cmake}")
 
+  # ---- The emitted codegen version, as a build-graph input (issue 1360) ----
+  #
+  # The `add_custom_command` below carries the tool in `DEPENDS`, so a rebuilt
+  # `nros` re-emits — that is the edge issue 1018 had to add by hand to the
+  # configure-time lane, and it is the reason this one is exempt from
+  # `check-codegen-tool-reconfigure`. It is still not enough, and the gap is the
+  # same one 1360 measured on the Zephyr lane: the DEPENDS names the binary this
+  # build dir resolved, so a build dir that outlives its checkout (a shared
+  # `NANO_ROS_GEN_CACHE_DIR`, a workspace under `$NROS_STORE`) can satisfy every
+  # mtime edge with a tool that emitted at a version this runtime now refuses,
+  # and the failure lands as a `#error` in a museum header.
+  #
+  # mtimes cannot express the question, so it is asked of the artifacts and
+  # acted on the way this lane acts: a rejected output is REMOVED, which is
+  # exactly the input its own emitter is driven by. Targeted (only the files
+  # whose stated version is refused), logged with both numbers by the helper, and
+  # the re-emit is done by the tool that owns them — never a wipe of the tree
+  # (CLAUDE.md), which would take the reproduction with it.
+  nros_codegen_version_stale(_nros_gi_version_stale REJECTED _nros_gi_version_bad
+    CONTEXT "nros codegen (${target}, ${_ARG_LANGUAGE})"
+    FILES ${_generated_headers})
+  if(_nros_gi_version_stale)
+    file(REMOVE ${_nros_gi_version_bad})
+  endif()
+
   # ---- Custom command ----
   add_custom_command(
     OUTPUT ${_generated_headers} ${_generated_sources} ${_generated_rs_files}
