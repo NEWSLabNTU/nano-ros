@@ -1,6 +1,33 @@
 # phase-454 — the contract states the facts, every backend derives its own buffers
 
-**Status (2026-09-11). Opened.** Home phase for
+**Status (2026-09-18). W1–W8, W10 and W11 are LANDED; W9 remains, and is
+BLOCKED — see below.** The 2026-09-11 line said "Opened" and outlived that by a
+week: every wave but one is marked LANDED in the body, so the phase read as
+unstarted to anyone who stopped at the header. That is the same defect this
+campaign corrected in phase-403 (`docs/roadmap/phase-403-type-bound-rx-sizing.md`,
+whose header listed W0 as remaining while its body said otherwise) — a header
+claiming LESS than the body is as misleading as one claiming more.
+
+**W9 is blocked, and not on effort.** It retires the ~35 `NROS_DECLARED_*` /
+`NROS_DERIVED_*` carriers. W11 measured that the descriptor reaches **one road of
+three**: a single-package cargo leaf is live, while a workspace cargo image and
+the cmake / Zephyr west / NuttX roads have **no producer at all**. For those two,
+the carriers are still the only working road, so retiring them would remove a
+working mechanism in favour of one that reaches a third of the tree —
+`check-knob-single-reader`'s own failure mode inverted.
+
+**And the savings are not shipped yet.** The live producer fills its descriptor
+rows from the leaf's `metadata/` probe, **not from the contract**: `topic` is the
+callback name (`on_chatter`), no `depth` is stated, and `undeclared_endpoints`
+lands at 1 — the guard that switches off every per-endpoint consumer. Measured on
+`examples/native/rust/listener`, same road and same command: 274,418 B as sync
+writes it, **172,170 B** with `KEEP_LAST(1)` in the descriptor row — **−102,248 B
+(37 %)**, W6.a's −98,304 among them, and it never fires. RFC-0100 D3's gap is
+open BOTH ways: the road carrying contracts writes no descriptor, and the road
+writing descriptors reads no contract.
+
+So the order is: join the contract to the descriptor, then decide a second
+producer, then W9. Home phase for
 [RFC-0100](../design/0100-rmw-agnostic-sizing-model.md). Successor to
 [phase-403](phase-403-type-bound-rx-sizing.md) (the bound inventory and the
 entity inventory, both landed) and [phase-412](phase-412-derived-counts-and-sizes.md)
