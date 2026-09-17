@@ -526,11 +526,11 @@ where it matters.
 
 | work | branch | state |
 | --- | --- | --- |
-| #1304 (A4) | `work/1304-installed-setup-provisions-without-a-checkout` | the agent stopped at the API session limit mid-change. Its tree is pushed as-is: A3's probe commit, two `wip(#1304)` commits (unreviewed, untested), and a fix to `cargo-target-spelling`'s no-triple arm — the WIP's rustup fallback defeated that PATH-only negative control, which is what first refused the push. No PR yet |
+| #1304 (A4) | `work/1304-installed-setup-provisions-without-a-checkout` | rebased onto main and finished: the release carries its submodule pins, `nros setup` provisions a Rust toolchain, the Cyclone dist is found by configure, and `nros_rust_tool` resolves cargo/rustc where PATH does not. Also re-tagged first-project.md, whose `probe=` tags phase-445 W5 had dropped — the installed probe had been extracting no build step |
 
 ### What is left
 
-- **#1304 (A4)** — the installed path dead-ends at `nros setup`: submodule pins read from a git history a release does not have, no Rust toolchain provisioned, CMake cannot find the Cyclone package. The phase's headline acceptance — an installed `nros` builds a scaffolded project — depends on it, and so does A3's pass direction.
+- **#1304 (A4)** — landing now; see the row above. Acceptance is `just probe installed`.
 
 ### Open findings, not fixed here
 
@@ -546,7 +546,7 @@ where it matters.
 
 1. Clone `nano-ros` and read this section. Every PR above is on the remote.
 2. **#927 is already re-armed** (the poller fired when #918 landed). Nothing to do unless the queue ejects it; `just queue-triage` or `gh pr view 927` says.
-2a. **Resume #1304:** check out `work/1304-installed-setup-provisions-without-a-checkout`, read the newest `wip(#1304)` commit (its diff is where the agent stopped), finish, squash the two `wip` commits, then `just ci gate`, open the PR and arm it. `just probe` via A3's clean-host probe is its acceptance: the probe must go green.
+2a. **#1304 is done** — rebased off that branch and finished; nothing to resume.
 3. `nano-ros-sdk`: branch `work/phase-447-c2-play-launch-parser-dist` (`9babb72`) is pushed. Fast-forward it to `main` and cut a release to seed the `play_launch_parser` dist; until then it stays on the dist-or-reason list.
 4. A3's revert-direction mutant was not pushed — it is derived, not work. #896
    landed as TWO commits through the rebase-merging queue (no merge commit), so
