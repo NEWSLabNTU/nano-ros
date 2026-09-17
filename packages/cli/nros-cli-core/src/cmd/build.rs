@@ -3148,6 +3148,82 @@ fn check_declared_depends(
 /// under an ambient env var, cannot be tested deterministically — and the
 /// previous shape is exactly how W1.f shipped a correct, well-tested lint that
 /// no production path called. The test below asserts the WIRING, not the lint.
+/// Every `[image.*]` with its RMW RESOLVED, at the parse boundary.
+///
+/// Issue 1304 (and issue 0938, which believed this was already true). The
+/// ladder is `SystemToml::resolved_rmw`: `[image.<id>].rmw` folded over
+/// `[image_defaults]`, then the deprecated `[deploy.<id>].rmw`, then
+/// `[system].rmw`, then `"zenoh"`. The builder read only the first rung and
+/// then defaulted straight to zenoh, so the last two were unreachable from
+/// `nros build` — while 0938's own doc said "`nros build` has resolved an
+/// image's RMW from `[image.*]` since RFC-0065" and removed the duality for
+/// `nros plan` and `nros codegen-system` only.
+///
+/// What that cost: `nros new --workspace --rmw cyclonedds` writes the choice to
+/// `[system] rmw` and NOWHERE else (its `[image.native]` names a board), so the
+/// scaffolded workspace the quick start builds selected the ZENOH backend —
+/// `BACKEND zenoh` in the generated cmake root, `rmw = ""` in `resolved.toml`.
+/// On a checkout that still compiles, because zenoh-pico is a submodule sitting
+/// there; on an installed toolchain the build dies in `zpico-sys` with "zenoh-pico
+/// source not provisioned", which is how `just probe installed` surfaced it.
+///
+/// Resolved HERE so there is one call and every reader downstream — the cmake
+/// spec's `BACKEND`, `ResolvedBuild::rmw`, the `ImageIdent` that names the build
+/// directory — sees the same answer.
+fn effective_images(
+    sys: &crate::orchestration::cargo_metadata_schema::SystemToml,
+) -> std::collections::BTreeMap<String, crate::orchestration::image::ImageBlock> {
+    sys.image
+        .iter()
+        .map(|(id, img)| {
+            let mut img = img.clone();
+            img.rmw = Some(sys.resolved_rmw(Some(id), None));
+            (id.clone(), img)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod effective_images_tests {
+    use super::effective_images;
+
+    /// `[system]` requires `name`, `rmw` and `domain_id`, so a fixture cannot
+    /// omit `rmw` to mean "undeclared" — it carries the EMPTY string, which is
+    /// what `resolved_rmw` reads as undeclared and what a workspace that never
+    /// chose one actually holds.
+    fn sys(header_rmw: &str, image_extra: &str) -> crate::orchestration::cargo_metadata_schema::SystemToml {
+        let text = format!(
+            "[system]\nname = \"demo\"\nrmw = \"{header_rmw}\"\ndomain_id = 0\n\n\
+             [image.native]\nboard = \"native\"\n{image_extra}"
+        );
+        toml::from_str(&text).unwrap_or_else(|e| panic!("parse: {e}\n{text}"))
+    }
+
+    /// The shape `nros new --workspace --rmw cyclonedds` writes: the choice
+    /// lives in `[system]`, the image names only a board. This is the case that
+    /// built the wrong backend — `BACKEND zenoh` for a cyclonedds workspace.
+    #[test]
+    fn an_image_with_no_rmw_inherits_the_system_header() {
+        let got = effective_images(&sys("cyclonedds", ""));
+        assert_eq!(got["native"].rmw.as_deref(), Some("cyclonedds"));
+    }
+
+    /// An image's own `rmw` still wins over the header.
+    #[test]
+    fn an_images_own_rmw_beats_the_header() {
+        let got = effective_images(&sys("cyclonedds", "rmw = \"xrce\"\n"));
+        assert_eq!(got["native"].rmw.as_deref(), Some("xrce"));
+    }
+
+    /// Nothing declared anywhere resolves to the tree's default, not to an
+    /// empty string — `resolved.toml` carried `rmw = ""` before this.
+    #[test]
+    fn nothing_declared_resolves_to_the_default() {
+        let got = effective_images(&sys("", ""));
+        assert_eq!(got["native"].rmw.as_deref(), Some("zenoh"));
+    }
+}
+
 fn collect_images_with_warnings(
     packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
     suppressed: bool,
@@ -3202,7 +3278,7 @@ fn collect_images_with_warnings(
             pkg.name.clone(),
             pkg.dir.clone(),
             plan::ImageSet {
-                images: sys.image.clone(),
+                images: effective_images(&sys),
                 defaults: sys.image_defaults.clone(),
                 default_images: sys.system.default_images.clone(),
             },
