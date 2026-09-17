@@ -18,9 +18,12 @@
 //!
 //! # Where it samples, and why that instant
 //!
-//! In [`super::subscriber::subscriber_notify_callback`], which the C shim
-//! calls once per arrival IMMEDIATELY AFTER its Release-store to `ring_tail`
-//! (`zpico.c`'s ring producer). Ring occupancy only ever RISES at that store
+//! In `subscriber_notify_callback` (`super::subscriber`), which the C shim
+//! calls once per arrival IMMEDIATELY AFTER its Release-store to `ring_tail`.
+//! Not a doc LINK: that callback is private, and rustdoc rejects a public item
+//! linking to one — which is issue 1110, recorded in the module next door and
+//! then repeated here anyway. It is `zpico.c`'s ring producer on the other
+//! side of the FFI. Ring occupancy only ever RISES at that store
 //! and FALLS at the Rust consumer's `consume_head`, so sampling there catches
 //! every peak exactly — a sampler on the spin loop would report whatever
 //! happened to be live when the executor looked, which is not the number the
