@@ -16,7 +16,17 @@
 name = "cpp_managed_lifecycle_demo"
 rmw = "zenoh"
 domain_id = 0
-features = ["lifecycle"]
+#
+# phase-417 W4.f — `param_services` joins it, so this workspace is also the
+# acceptance for the lifecycle node's PARAMETER surface: `ManagedTalker`
+# declares `publish_period_ms` through `nros::LifecycleNode` (not through the
+# `rclcpp::Node` it binds), and `ros2 param get /managed_talker
+# publish_period_ms` must answer with it. That is the same property phase-426
+# W5/W6 proved for a plain node, asked of the wrapper — because a wrapper that
+# kept a table of its own would answer the local read correctly and the wire
+# read not at all, which is exactly the defect phase-426 spent six work items
+# removing.
+features = ["lifecycle", "param_services"]
 default_launch = "system.launch.xml"
 
 [[component]]

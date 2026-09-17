@@ -41,13 +41,27 @@ void ManagedTalker::on_tick() {
 
 ::rclcpp::Result ManagedTalker::configure(::rclcpp::Node& node) {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
-    // Two-phase: bind the executor handle the component install exposes.
-    bind(node.executor_handle());
+    // Two-phase: bind the NODE, which binds the executor handle with it
+    // (phase-417 W4.f). `bind(node.executor_handle())` still exists and still
+    // does what it says; it leaves the lifecycle node with no node to key
+    // parameters on, so the declaration below would answer `InvalidArgument`.
+    bind(node);
+
+    // phase-417 W4.f — declared THROUGH the lifecycle node. It forwards to the
+    // bound `rclcpp::Node`, which reaches the executor's one
+    // `nros_params::ParameterServer` — the store the six `rcl_interfaces`
+    // servers read — so `ros2 param get /managed_talker publish_period_ms`
+    // answers with this number. A wrapper holding a table of its own would
+    // print the line below and tell a remote peer nothing.
+    publish_period_ms_ = declare_parameter<int64_t>("publish_period_ms", 200);
+    std::printf("LC:param publish_period_ms=%lld\n", static_cast<long long>(publish_period_ms_));
+
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) {
         return r;
     }
-    r = node.create_wall_timer<ManagedTalker, &ManagedTalker::on_tick>(timer_, 200, this);
+    r = node.create_wall_timer<ManagedTalker, &ManagedTalker::on_tick>(
+        timer_, static_cast<uint32_t>(publish_period_ms_), this);
     if (!r.ok()) {
         return r;
     }
