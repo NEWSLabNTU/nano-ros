@@ -50,9 +50,12 @@ is being worked in its own branch now. Two corrections to the original list:
   linked worktree, the CLI source stamp never re-runs on a commit. Every
   agent hit this. The workaround is `touch packages/cli/nros-cli-core/build.rs`.
   The fix is `git rev-parse --git-path index`.
-- [1307](../issues/1307-sizes-build-nested-cargo-rewrites-root-lock.md): every
-  NuttX build rewrites the root `Cargo.lock`. `--locked` alone would break the
-  build, and the issue lists the options.
+- [1307](../issues/archived/1307-sizes-build-nested-cargo-rewrites-root-lock.md)
+  (RESOLVED): every NuttX build rewrote the root `Cargo.lock`. `--locked` alone
+  would have broken the build; the size probe resolves against a seeded copy in
+  its own probe dir (`resolver.lockfile-path`), and
+  `check-nested-cargo-lock-discipline` keeps the next nested cargo from
+  bypassing the `--locked` shim the same way.
 - [1311](../issues/archived/1311-cyclonedds-sumseq-generated-c-fails-to-compile.md):
   RESOLVED 2026-09-18. It reproduced on a clean `main` checkout on the first
   attempt and was NOT a provisioning artifact: the generated descriptors were

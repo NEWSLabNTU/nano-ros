@@ -413,6 +413,10 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
     // untouched, and on a non-nightly toolchain the `-Z` flags just fail the
     // nested build → the existing filesystem fallback runs (no worse than
     // before).
+    // Set when this invocation injects a `[patch]` the outer workspace's own
+    // lockfile does not record. Such a patch makes the nested cargo REWRITE
+    // that lockfile (issue 1307), so it decides the lock discipline below.
+    let mut injects_unrecorded_patch = false;
     if target.contains("nuttx") {
         cmd.arg("-Z").arg("build-std=std,panic_abort");
         cmd.arg("-Z")
@@ -422,6 +426,7 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
                 "patch.crates-io.libc.path=\"{}\"",
                 libc_dir.display()
             ));
+            injects_unrecorded_patch = true;
         } else {
             println!(
                 "cargo:warning=nros-sizes-build: NuttX target {target} but the patched \
@@ -485,9 +490,23 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
         cmd.arg("--features").arg(forwarded.join(","));
     }
 
+    // issue 1307 — the nested cargo must not write the outer workspace's
+    // tracked `Cargo.lock`. See `apply_nested_lock_discipline`.
+    apply_nested_lock_discipline(
+        &cargo,
+        &mut cmd,
+        &probe_target_dir,
+        injects_unrecorded_patch,
+    );
+    // Backstop, not the mechanism: the flags above are version-dependent, and
+    // a silently-ignored redirect is exactly how this class regresses. Snapshot
+    // the workspace lock and restore it if the nested build moved it.
+    let lock_guard = WorkspaceLockGuard::snapshot();
+
     let output = cmd
         .output()
         .map_err(|e| Error::CargoMetadata(e.to_string()))?;
+    lock_guard.restore_if_moved();
     if !output.status.success() {
         // Write full stderr to a debug log next to the probe target dir
         // so the user can inspect the actual rustc error message; the
@@ -581,6 +600,314 @@ fn find_nuttx_patched_libc() -> Option<PathBuf> {
         }
         if !dir.pop() {
             return None;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Lock discipline for the nested probe cargo (issue 1307)
+// ---------------------------------------------------------------------------
+
+/// The lock-discipline flags the `scripts/bin/cargo` PATH shim injects, which
+/// the nested probe must not bypass and cannot simply forward.
+const LOCK_DISCIPLINE_FLAGS: [&str; 2] = ["--locked", "--frozen"];
+
+/// The cargo release that stabilized the `resolver.lockfile-path` config key.
+///
+/// Measured (2026-09-18, this repo's toolchains, `cargo metadata --config
+/// 'resolver.lockfile-path="…"'`):
+///
+/// * cargo 1.96.0-nightly — `warning: ignoring `resolver.lockfile-path`, pass
+///   `-Zlockfile-path` to enable it`, and the root lock was written anyway;
+/// * cargo 1.97.0-nightly — honoured; `-Z lockfile-path` now warns `has been
+///   stabilized in the 1.97 release, and is no longer necessary`;
+/// * cargo 1.98.1 (stable) — honoured, and any `-Z` is a hard error.
+///
+/// So the `-Z` opt-in is passed only BELOW this minor. The pinned NuttX
+/// nightly is 1.96, which is exactly the version that needs it; hard-coding
+/// "always pass it" would break the day the pin moves onto a cargo that has
+/// dropped the stabilized name.
+const LOCKFILE_PATH_STABLE_MINOR: u64 = 97;
+
+/// Decide, and apply, what the nested probe cargo may do to a lockfile.
+///
+/// Issue 1307: every NuttX build appended
+///
+/// ```toml
+/// [[patch.unused]]
+/// name = "libc"
+/// version = "0.2.183"
+/// ```
+///
+/// to the repo's ROOT `Cargo.lock`. Measured cause, in two halves:
+///
+/// * the nested cargo is `$CARGO` — the REAL binary the outer cargo exported,
+///   not the `scripts/bin/cargo` PATH shim — so the project-wide `--locked`
+///   (`NROS_CARGO_FLAGS`, issues 0359/0378) never reached it;
+/// * the NuttX branch injects `--config patch.crates-io.libc.path=…`, and the
+///   root lock pins `libc 0.2.186` from the registry while the patched libc is
+///   `0.2.183`. The versions cannot meet, so the patch is genuinely unused —
+///   cargo records that fact, in the root lock.
+///
+/// `--locked` alone is not the fix: it converts the silent rewrite into
+/// `error: cannot update the lock file … because --locked was passed`
+/// (measured), and `find_dep_rlib` has no fallback by design (issue 0464), so
+/// every NuttX build would fail instead. The nested build has to stop writing
+/// that file at all, which is what `resolver.lockfile-path` does: the probe
+/// resolves against its OWN copy, seeded from the workspace lock so resolution
+/// — and therefore every `__NROS_SIZE_*` the probe reports — is unchanged.
+///
+/// What is forwarded, and why it is not the whole variable:
+///
+/// * every flag in `NROS_CARGO_FLAGS` that is NOT lock discipline is passed
+///   through verbatim, so `--offline` and friends reach the probe;
+/// * `--locked` / `--frozen` are forwarded only when this invocation does NOT
+///   redirect its lockfile, i.e. when it resolves the workspace lock as-is and
+///   the shim's own rule applies unchanged;
+/// * when the lockfile IS redirected they are dropped (`--frozen` leaving its
+///   `--offline` half behind), because the redirected file is a build artifact
+///   in the probe target dir rather than a committed promise, and the first
+///   run necessarily writes the `[[patch.unused]]` record into it. That is the
+///   same distinction the shim already draws — it skips `--locked` when the
+///   target's lock is not a tracked file.
+///
+/// The variable is honoured only when it is SET. Unset means we are outside
+/// the project's activated environment (an out-of-tree consumer of this
+/// crate), whose lock is not ours to have an opinion about.
+fn apply_nested_lock_discipline(
+    cargo: &std::ffi::OsStr,
+    cmd: &mut Command,
+    probe_target_dir: &Path,
+    injects_unrecorded_patch: bool,
+) {
+    let declared = env::var("NROS_CARGO_FLAGS").ok();
+    let plan = nested_lock_plan(declared.as_deref(), injects_unrecorded_patch);
+    for flag in &plan.passthrough {
+        cmd.arg(flag);
+    }
+
+    if !plan.redirect {
+        for flag in &plan.lock_flags {
+            cmd.arg(flag);
+        }
+        return;
+    }
+
+    match seed_probe_lockfile(probe_target_dir) {
+        Ok(lockfile) => {
+            cmd.arg("--config")
+                .arg(format!("resolver.lockfile-path=\"{}\"", lockfile.display()));
+            if cargo_minor(cargo).is_none_or(|m| m < LOCKFILE_PATH_STABLE_MINOR) {
+                cmd.arg("-Z").arg("lockfile-path");
+            }
+            if plan.offline {
+                cmd.arg("--offline");
+            }
+        }
+        Err(e) => {
+            // No copy to resolve against. Forward the lock discipline as
+            // declared: a hard failure is better than a silent rewrite, and
+            // `WorkspaceLockGuard` still restores the file either way.
+            println!(
+                "cargo:warning=nros-sizes-build: could not seed the probe's own \
+                 lockfile ({e}); the nested build will resolve the workspace lock \
+                 directly (issue 1307)"
+            );
+            for flag in &plan.lock_flags {
+                cmd.arg(flag);
+            }
+        }
+    }
+}
+
+/// What [`apply_nested_lock_discipline`] decided, separated from the doing.
+///
+/// Split out so the RULE is testable without a cargo invocation or a
+/// filesystem — issue 0665's lesson in this very file was a fix whose wiring
+/// no test reached.
+#[derive(Debug, PartialEq, Eq)]
+struct NestedLockPlan {
+    /// `NROS_CARGO_FLAGS` entries that are not lock discipline, forwarded
+    /// verbatim.
+    passthrough: Vec<String>,
+    /// Lock-discipline flags to forward as declared — only when the lockfile
+    /// is NOT redirected.
+    lock_flags: Vec<String>,
+    /// Resolve against a seeded copy in the probe target dir.
+    redirect: bool,
+    /// `--frozen`'s `--offline` half, kept when its `--locked` half is dropped.
+    offline: bool,
+}
+
+fn nested_lock_plan(declared: Option<&str>, injects_unrecorded_patch: bool) -> NestedLockPlan {
+    let (lock_flags, passthrough): (Vec<String>, Vec<String>) = declared
+        .unwrap_or("")
+        .split_whitespace()
+        .map(str::to_string)
+        .partition(|f| LOCK_DISCIPLINE_FLAGS.contains(&f.as_str()));
+    let offline = injects_unrecorded_patch && lock_flags.iter().any(|f| f == "--frozen");
+    NestedLockPlan {
+        passthrough,
+        lock_flags,
+        redirect: injects_unrecorded_patch,
+        offline,
+    }
+}
+
+/// `cargo --version`'s minor number, or `None` if it cannot be read.
+///
+/// Asks the binary that will run the nested build, not `rustc` and not the
+/// crate's own build-time version: corrosion can point `CARGO_BUILD_RUSTC` at
+/// a different toolchain than `$CARGO`, so the two are not interchangeable.
+fn cargo_minor(cargo: &std::ffi::OsStr) -> Option<u64> {
+    let out = Command::new(cargo).arg("--version").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    parse_cargo_minor(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// `"cargo 1.96.0-nightly (eb94155a9 2026-04-09)"` -> `Some(96)`.
+fn parse_cargo_minor(line: &str) -> Option<u64> {
+    let version = line.split_whitespace().nth(1)?;
+    let mut parts = version.split('.');
+    let _major = parts.next()?;
+    parts.next()?.parse().ok()
+}
+
+/// Copy the outer workspace's `Cargo.lock` into the probe target dir and
+/// return the copy's path, so the nested build has an identical starting
+/// resolution it is free to rewrite.
+///
+/// Seeded, not generated: a probe that re-resolves from scratch could pick
+/// different versions than the outer build, and the probe's answer sizes a C
+/// caller's buffer (issue 0464). The seed is kept beside the copy so the copy
+/// is refreshed exactly when the workspace lock's CONTENT changes — never on
+/// an mtime, which every rebase and `git stash` moves.
+fn seed_probe_lockfile(probe_target_dir: &Path) -> Result<PathBuf, Error> {
+    let workspace_lock = workspace_lockfile()?;
+    let bytes = std::fs::read(&workspace_lock)?;
+    let dir = probe_target_dir.join("probe-lockfile");
+    std::fs::create_dir_all(&dir)?;
+    let lockfile = dir.join("Cargo.lock");
+    let seed = dir.join("Cargo.lock.seed");
+    let stale = match std::fs::read(&seed) {
+        Ok(recorded) => recorded != bytes,
+        Err(_) => true,
+    };
+    if stale || !lockfile.is_file() {
+        // Write-then-rename: two consumers (`nros-c` and `nros-cpp`) probe the
+        // same key concurrently and write identical bytes, so a lost race is
+        // harmless, but a half-written lockfile would not be.
+        write_atomic(&lockfile, &bytes)?;
+        write_atomic(&seed, &bytes)?;
+    }
+    Ok(lockfile)
+}
+
+/// Write-then-rename, so no reader ever sees a half-written lockfile.
+///
+/// The temp name is a dotfile in the same directory (rename must not cross
+/// filesystems) and carries the pid, so concurrent writers do not share it.
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "Cargo.lock".to_string());
+    let tmp = path.with_file_name(format!(".{name}.nros-tmp-{}", std::process::id()));
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)
+}
+
+/// The `Cargo.lock` the nested `cargo build -p <crate>` would resolve.
+///
+/// `cargo locate-project --workspace` answers it exactly, which a path-prefix
+/// test cannot: `packages/cli` is a separate workspace INSIDE this repo
+/// (issue 0616), and an out-of-tree consumer's workspace is somewhere else
+/// entirely. `locate-project` takes no `--locked` and writes nothing.
+fn workspace_lockfile() -> Result<PathBuf, Error> {
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let out = Command::new(&cargo)
+        .arg("locate-project")
+        .arg("--workspace")
+        .arg("--message-format=plain")
+        .output()
+        .map_err(|e| Error::CargoMetadata(e.to_string()))?;
+    if !out.status.success() {
+        return Err(Error::CargoMetadata(
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        ));
+    }
+    let manifest = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim().to_string());
+    let lock = manifest
+        .parent()
+        .ok_or(Error::MalformedMetadata("workspace root"))?
+        .join("Cargo.lock");
+    if !lock.is_file() {
+        return Err(Error::MalformedMetadata("workspace Cargo.lock"));
+    }
+    Ok(lock)
+}
+
+/// Snapshot of the outer workspace's `Cargo.lock`, restored if the nested
+/// build moved it.
+///
+/// The backstop behind `apply_nested_lock_discipline`, and deliberately not
+/// the mechanism: which flag switches the redirect on depends on the cargo
+/// version (see [`LOCKFILE_PATH_STABLE_MINOR`]), and a redirect cargo silently
+/// IGNORES is indistinguishable from one that worked — which is how issue 1307
+/// would come back. The guard makes the invariant observable instead: after
+/// the probe, the file is byte-identical to what it was before, and if it was
+/// not, the build says so.
+///
+/// It restores rather than fails: the probe's job is to report a size, and the
+/// size it reports is correct either way. Leaving a tracked file dirty is the
+/// part that is not.
+struct WorkspaceLockGuard {
+    path: Option<PathBuf>,
+    bytes: Vec<u8>,
+}
+
+impl WorkspaceLockGuard {
+    fn snapshot() -> Self {
+        match workspace_lockfile().and_then(|p| {
+            let b = std::fs::read(&p)?;
+            Ok((p, b))
+        }) {
+            Ok((path, bytes)) => Self {
+                path: Some(path),
+                bytes,
+            },
+            Err(_) => Self {
+                path: None,
+                bytes: Vec::new(),
+            },
+        }
+    }
+
+    fn restore_if_moved(&self) {
+        let Some(path) = self.path.as_deref() else {
+            return;
+        };
+        let Ok(now) = std::fs::read(path) else { return };
+        if now == self.bytes {
+            return;
+        }
+        match write_atomic(path, &self.bytes) {
+            Ok(()) => println!(
+                "cargo:warning=nros-sizes-build: the nested size probe rewrote {} \
+                 and it has been restored — the lockfile redirect did not take \
+                 effect (issue 1307); check whether this cargo honours \
+                 `resolver.lockfile-path`",
+                path.display()
+            ),
+            Err(e) => println!(
+                "cargo:warning=nros-sizes-build: the nested size probe rewrote {} \
+                 and it could NOT be restored ({e}); `git checkout -- {}` \
+                 (issue 1307)",
+                path.display(),
+                path.display()
+            ),
         }
     }
 }
@@ -1486,6 +1813,98 @@ mod tests {
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// issue 1307 — the probe's nested cargo may not write the outer
+    /// workspace's tracked lockfile.
+    ///
+    /// The two arms are not symmetric and that is the whole rule: an
+    /// invocation that injects a `[patch]` the workspace lock cannot record
+    /// MUST redirect (and then cannot also carry `--locked`, which would make
+    /// the first write a hard error — measured), while one that resolves the
+    /// lock as-is forwards the project's flags unchanged.
+    #[test]
+    fn redirecting_invocation_drops_lock_flags_and_plain_one_forwards_them() {
+        // The shim's default, and what `activate.sh` exports.
+        let plan = nested_lock_plan(Some("--locked"), true);
+        assert!(plan.redirect);
+        assert!(!plan.offline);
+        assert!(plan.passthrough.is_empty());
+
+        let plan = nested_lock_plan(Some("--locked"), false);
+        assert!(!plan.redirect);
+        assert_eq!(plan.lock_flags, vec!["--locked".to_string()]);
+
+        // Everything that is not lock discipline reaches the probe either way.
+        let plan = nested_lock_plan(Some("--locked --offline"), true);
+        assert_eq!(plan.passthrough, vec!["--offline".to_string()]);
+        assert!(plan.redirect);
+
+        // `--frozen` is `--locked --offline`; dropping it must not drop the
+        // offline half.
+        let plan = nested_lock_plan(Some("--frozen"), true);
+        assert!(plan.redirect);
+        assert!(plan.offline);
+        let plan = nested_lock_plan(Some("--frozen"), false);
+        assert!(!plan.offline, "not dropped, so nothing to put back");
+        assert_eq!(plan.lock_flags, vec!["--frozen".to_string()]);
+
+        // The escape hatch (`NROS_CARGO_FLAGS=`) and an out-of-tree consumer
+        // (unset) both add nothing.
+        for declared in [Some(""), None] {
+            let plan = nested_lock_plan(declared, false);
+            assert!(plan.passthrough.is_empty() && plan.lock_flags.is_empty());
+        }
+    }
+
+    /// The `-Z lockfile-path` opt-in is version-gated, so the version has to
+    /// be read and not guessed.
+    #[test]
+    fn cargo_version_minor_is_parsed_from_the_version_line() {
+        assert_eq!(
+            parse_cargo_minor("cargo 1.96.0-nightly (eb94155a9 2026-04-09)\n"),
+            Some(96)
+        );
+        assert_eq!(
+            parse_cargo_minor("cargo 1.98.1 (797e8a9bc 2026-08-05)\n"),
+            Some(98)
+        );
+        assert_eq!(parse_cargo_minor("not a version line"), None);
+        assert_eq!(parse_cargo_minor(""), None);
+        // 96 < 97 <= 98: the gate's direction, stated where it can break.
+        assert!(96 < LOCKFILE_PATH_STABLE_MINOR);
+        assert!(98 >= LOCKFILE_PATH_STABLE_MINOR);
+    }
+
+    /// The backstop restores byte-for-byte, and says nothing when the file did
+    /// not move.
+    #[test]
+    fn workspace_lock_guard_restores_only_a_moved_file() {
+        let dir = std::env::temp_dir().join(format!("nros-1307-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let lock = dir.join("Cargo.lock");
+        std::fs::write(&lock, b"original\n").unwrap();
+
+        let guard = WorkspaceLockGuard {
+            path: Some(lock.clone()),
+            bytes: std::fs::read(&lock).unwrap(),
+        };
+        std::fs::write(&lock, b"original\n[[patch.unused]]\n").unwrap();
+        guard.restore_if_moved();
+        assert_eq!(std::fs::read(&lock).unwrap(), b"original\n");
+
+        // Idempotent: a second restore of an unmoved file writes nothing new.
+        guard.restore_if_moved();
+        assert_eq!(std::fs::read(&lock).unwrap(), b"original\n");
+        // And no temp file is left behind.
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n != "Cargo.lock")
+            .collect();
+        assert!(leftovers.is_empty(), "left behind: {leftovers:?}");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// issue 0665 — the WIRING, not just the parser. Removing the `extra`

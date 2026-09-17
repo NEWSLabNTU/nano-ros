@@ -180,6 +180,7 @@ message-bound-knobs
 mirror-header-precedence
 msg-dep-is-path
 named-lane-fails
+nested-cargo-lock-discipline
 nested-workspace-excludes
 nextest-binary-filters
 no-absolute-model-paths
