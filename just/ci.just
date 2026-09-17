@@ -266,6 +266,21 @@ _matrix-run:
     #!/usr/bin/env bash
     set -euo pipefail
     just _lane-gate tier2
+    # issue 1253 / phase-449 W2 — WHICH CHECKOUT'S WORKSPACE IS THIS.
+    #
+    # `check-zephyr-workspace-checkout.sh` exists because a west workspace
+    # nested inside a SECOND nano-ros checkout made tier 2 compile that tree's
+    # `zephyr/`, platform sources and nros-cpp headers beside this tree's
+    # generated entries — run 34319241943 failed that way and the next night the
+    # same SHA built. Its own header says so, in those words.
+    #
+    # It was reached only by `check-tier-preconditions.sh`, which only the TIER-1
+    # `ci` recipe runs. So the gate written FOR this lane was never run BY it:
+    # a gate that works and does not run where its rule applies, which is
+    # phase-450's subject. Cheap (it resolves two paths), and it must come before
+    # the build rather than 15 minutes into a cmake configure, which is the whole
+    # complaint issue 1253 files.
+    bash scripts/check-zephyr-workspace-checkout.sh
     # issue 0368 F8 — tell the inner gates that this run is the tier-2 lane, not
     # the default `all`. Without it they DISAGREE: `_lane-gate tier2`
     # (content-based, over the tier-2 coordinates) passes, then the staleness
@@ -314,6 +329,21 @@ matrix-nightly:
     #!/usr/bin/env bash
     set -euo pipefail
     just _lane-gate tier2-nightly
+    # issue 1253 / phase-449 W2 — WHICH CHECKOUT'S WORKSPACE IS THIS.
+    #
+    # `check-zephyr-workspace-checkout.sh` exists because a west workspace
+    # nested inside a SECOND nano-ros checkout made tier 2 compile that tree's
+    # `zephyr/`, platform sources and nros-cpp headers beside this tree's
+    # generated entries — run 34319241943 failed that way and the next night the
+    # same SHA built. Its own header says so, in those words.
+    #
+    # It was reached only by `check-tier-preconditions.sh`, which only the TIER-1
+    # `ci` recipe runs. So the gate written FOR this lane was never run BY it:
+    # a gate that works and does not run where its rule applies, which is
+    # phase-450's subject. Cheap (it resolves two paths), and it must come before
+    # the build rather than 15 minutes into a cmake configure, which is the whole
+    # complaint issue 1253 files.
+    bash scripts/check-zephyr-workspace-checkout.sh
     # issue 0368 F8 (same class as ci-matrix) — require the tier2-nightly lane so
     # the inner `_require-fixtures` accepts a per-family build instead of
     # demanding the `all` stamp the lane ladder said to avoid. phase-340 W3 —
