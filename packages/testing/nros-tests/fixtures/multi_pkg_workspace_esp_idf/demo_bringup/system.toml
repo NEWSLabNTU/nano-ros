@@ -18,6 +18,13 @@ name = "listener"
 # platform family, which `[image.*]` reads off the board, and `target` restated
 # the rustc triple the board descriptor already states. `launch` loses its
 # `launch/` prefix: an image's value is resolved against that directory.
+
+# Issue 1312 — `entry` claims the hand-written IDF project beside this bringup.
+# The ESP-IDF shim names its entry (`codegen-system --for-entry
+# ${CMAKE_SOURCE_DIR}`) because an IDF configure knows its project directory and
+# not which image named it; without this key the bake resolves no image and
+# takes the HOST defaults, tier sub-table included.
 [image.esp_idf_esp32c3]
 board = "esp32c3"
 launch = "system.launch.xml"
+entry = "esp_idf_app"

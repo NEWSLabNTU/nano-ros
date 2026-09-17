@@ -164,6 +164,8 @@ fn args(ws: &Path, out: &Path) -> Args {
         exec: None,
         rmw: None,
         model: None,
+        for_entry: None,
+        nano_ros_path: None,
     }
 }
 

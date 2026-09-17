@@ -11,5 +11,11 @@ pkg = "alpha_pkg"
 class = "alpha_pkg::Node"
 name = "selfpkg"
 
+# Issue 1312 — the sibling form: the west APPLICATION is `caller/`, not this
+# package, so the image has to claim it by name for
+# `codegen-system --for-entry` to resolve an image at all. (In the `self/`
+# variant the application IS this package and its own `system.toml` answers,
+# so no `entry` is needed there.)
 [image.zephyr]
 board = "native_sim/native/64"
+entry = "caller"

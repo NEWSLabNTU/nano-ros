@@ -119,9 +119,11 @@ pub fn resolve_system_tiers(
 /// (`qemu-armv7a-nuttx` vs `rv-virt-nuttx`).
 ///
 /// `None` when there is no target, or when the target names no image or
-/// deploy block. The Zephyr module's `nros_system_generate()` passes
-/// `--target zephyr-<rmw>`, which is the second case for every in-tree bringup
-/// it bakes.
+/// deploy block. The second case used to be every bake the Zephyr module made
+/// — `nros_system_generate()` passed a `--target zephyr-<rmw>` it had
+/// synthesised from Kconfig — so a tiered Zephyr image read the host's tier
+/// tables (issue 1312, FIXED). The module names its ENTRY now
+/// (`codegen-system --for-entry`) and the image that claims it answers here.
 pub fn target_board_id(system: &SystemToml, target: Option<&str>) -> Option<(String, String)> {
     let t = target?;
     if let Some(board) = system.image_for(t).and_then(|img| img.board) {
@@ -241,8 +243,10 @@ mod tests {
         }
 
         /// No board id means the documented host default. It is not a lookup,
-        /// so it needs no catalog. `zephyr-zenoh` is what the Zephyr module's
-        /// `nros_system_generate()` passes, and it names no block.
+        /// so it needs no catalog. `zephyr-zenoh` is what the Zephyr module
+        /// USED to pass (issue 1312): it names no block, so it landed here —
+        /// which is why the fix was to make the module name its image, not to
+        /// teach this function to read a platform out of the string.
         #[test]
         fn no_board_id_is_the_host_default() {
             let s = sys("[image.fw]\nboard=\"native\"\n");

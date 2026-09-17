@@ -101,11 +101,22 @@ if(NROS_EXECUTABLE AND EXISTS "${_nros_bringup_dir}/system.toml")
     # Configure-time bake. If the running CLI lacks `codegen-system`
     # (Phase 212.E not yet shipped in this nros-cli), this fails soft
     # so the shim still configures.
+    #
+    # Issue 1312 — `--for-entry`, not the `--target "esp-idf"` this used to
+    # pass. `--target` selects an `[image.*]` / `[deploy.*]` block and
+    # "esp-idf" names none, so every answer it drives fell back to the
+    # system-wide default — for the tier resolver, the HOST's sub-table. The
+    # IDF project directory IS the entry package (`esp_idf_app/`; the workspace
+    # root above is derived from it), so the image that claims it answers, the
+    # same way the Zephyr module's `nros_system_generate()` asks. An entry no
+    # image claims degrades to today's defaults with a printed note, so this
+    # can only add an answer, never take one away.
     execute_process(
         COMMAND "${NROS_EXECUTABLE}" codegen-system
                 --workspace "${NROS_WORKSPACE_DIR}"
                 --bringup   "${_nros_bringup_name}"
-                --target    "esp-idf"
+                --for-entry "${CMAKE_SOURCE_DIR}"
+                --nano-ros-path "${_nros_root}"
                 --out       "${_nros_system_out}"
         RESULT_VARIABLE _nros_cg_rc
         OUTPUT_VARIABLE _nros_cg_out

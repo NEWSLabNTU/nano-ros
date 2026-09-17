@@ -88,6 +88,12 @@ absent on ESP — the Kconfig says so). `NROS_BRINGUP_NAME` drives the
 configure-time `nros codegen-system` step, so it must name a bringup
 package that exists in your workspace — a first build with the default
 `demo_bringup` fails if you have none.
+The bake also asks which `[image.*]` this build IS, by naming your IDF
+project directory (`nros codegen-system --for-entry`). Claim it from the
+image — `[image.<id>] entry = "<your idf project dir>"` — and the image's
+`domain_id`, `locator`, `rmw` and `[tiers.*.<rtos>]` reach the baked
+header; leave it unclaimed and the bake takes the `[system]` defaults and
+says so in the configure log (issue 1312).
 **Wi-Fi credentials + zenoh locator are NOT in this Kconfig** —
 provide them via your app's own `Kconfig.projbuild` (Espressif's
 standard pattern) or via environment variables, then pass them to

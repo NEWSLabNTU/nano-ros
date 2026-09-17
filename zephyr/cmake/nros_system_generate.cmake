@@ -41,6 +41,20 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCodegenCore.cmake")
 # file's normal vars with the frame (the `_NROS_ENTRY_DIR` class), and a
 # module included once per call is a module re-read once per call.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosRmwUserConfig.cmake")
+
+# Issue 1312 / 1263 — the checkout THIS file belongs to, for `--nano-ros-path`.
+# Resolved at FILE scope: inside the function `CMAKE_CURRENT_LIST_DIR` names the
+# caller, and `NROS_REPO_DIR` is set by `zephyr/CMakeLists.txt` AFTER this
+# include. Naming the image (below) is the first thing that makes the bake
+# resolve a board id, and resolving one needs the board catalog: the CLI's own
+# ladder is `$NROS_REPO_DIR` → a walk up from the WORKSPACE → a released
+# toolchain's `share/nano-ros`, and the middle rung finds nothing for a
+# downstream project whose nano-ros sits below it (1263's measured case). A
+# build shim always knows where its own module tree is, so it says.
+get_filename_component(_nros_system_generate_repo
+    "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+set(_NROS_SYSTEM_GENERATE_REPO "${_nros_system_generate_repo}" CACHE INTERNAL
+    "nano-ros checkout that owns nros_system_generate.cmake (issue 1312)")
 function(_nros_system_resolve_cli outvar)
     nros_resolve_cli(_cli OPTIONAL)
     if(_cli)
@@ -132,8 +146,21 @@ function(nros_system_generate bringup_pkg)
             "Run `just setup-cli` + `source ./activate.sh` (Phase 218).")
     endif()
 
-    # Map Kconfig RMW to a --target string the CLI understands. Zephyr
-    # is the platform; the RMW comes from the prj-<rmw>.conf overlay.
+    # The backend this image compiles, from the prj-<rmw>.conf overlay. Kconfig
+    # is the MECHANISM for a Zephyr build (`NanoRosImageAgreement.cmake` records
+    # why: a plain Zephyr app is in no nano-ros workspace and has nothing else to
+    # derive from), so this is the answer, and `--rmw` below hands it to the bake
+    # rather than letting the bake re-decide from `system.toml`.
+    #
+    # Issue 1312 — this used to be spliced into `--target "zephyr-${_rmw}"`, a
+    # string synthesised HERE that names no `[image.*]` / `[deploy.*]` block in
+    # any bringup. `--target` selects a block, so everything it selects — the
+    # tier sub-table above all — fell back to the system-wide default, and for
+    # the tier resolver that default is the HOST: a tiered Zephyr image baked
+    # through this module got `[tiers.*.posix]` priorities. The fix is not to
+    # read "zephyr" back out of the string (that is the substring guess the
+    # issue-1285 follow-up removed) but to name the IMAGE, which this configure
+    # can only do via its entry package — see `--for-entry`.
     if(CONFIG_NROS_RMW_ZENOH)
         set(_rmw "zenoh")
     elseif(CONFIG_NROS_RMW_XRCE)
@@ -165,11 +192,34 @@ function(nros_system_generate bringup_pkg)
     # the question of whether a configure happens at all.
     nros_codegen_tool_reconfigure("${_nros_cli}")
 
+    # Issue 1312 — the ENTRY package this bake is for. A west configure knows
+    # the application directory it was pointed at and nothing above it, so this
+    # is the only identity it can state; the `[image.<id>]` that claims the
+    # entry supplies the target block, and the workspace — not cmake — decides
+    # which image that is.
+    #
+    # `APPLICATION_SOURCE_DIR` and its basename are the SAME pair
+    # `NanoRosImageAgreement.cmake` passes to `nros image-facts --for-entry`
+    # and `NanoRosBoardFacts.cmake` resolves an entry's board from, so this is
+    # one vocabulary across the three, not a third. Passing the directory hands
+    # the CLI both halves: `leaf_system::for_entry` matches an image's
+    # `entry =` against the package name or the directory name.
+    #
+    # `CMAKE_CURRENT_SOURCE_DIR` is the fallback for a caller that reaches this
+    # function before `find_package(Zephyr)` has set the application dir (the
+    # deferred-attach case the WARNING below already describes).
+    set(_entry_dir "${APPLICATION_SOURCE_DIR}")
+    if(_entry_dir STREQUAL "")
+        set(_entry_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
+
     execute_process(
         COMMAND "${_nros_cli}" codegen-system
                 --workspace "${_workspace}"
                 --bringup   "${_bringup_dir}"
-                --target    "zephyr-${_rmw}"
+                --for-entry "${_entry_dir}"
+                --rmw       "${_rmw}"
+                --nano-ros-path "${_NROS_SYSTEM_GENERATE_REPO}"
                 --out       "${_out_parent}"
         WORKING_DIRECTORY "${_workspace}"
         RESULT_VARIABLE   _rc
