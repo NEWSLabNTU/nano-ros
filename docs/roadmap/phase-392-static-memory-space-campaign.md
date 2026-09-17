@@ -6,7 +6,12 @@ superseded by phase 408 and W3f was delivered as a recorded refusal. W2 IS issue
 0900, which is RESOLVED. W6 landed 2026-09-06 (the backing is a named `.bss`
 static); its per-port follow-through — pairing that static with each RTOS's
 allocator arena — is now [phase 448](phase-448-exact-executor-backing-on-every-port.md).
-Open: amendment B's wave, and the issues homed at the end of this doc.**
+**Amendment B's measurement wave is DONE (2026-09-17) and the amendment is
+CLOSED AS DECLINED** — read `B. MEASURED 2026-09-17` before quoting either side
+of it, because both recorded grounds are wrong: the cost the refusal feared is
+zero, and the saving the amendment hoped for is zero under load. The conclusion
+is the refusal's; the reason is not.
+Open: the issues homed at the end of this doc.**
 
 **W3c landed with its acceptance NOT met, and the reason is a finding rather
 than an omission — read its wave entry before quoting it.** The default now
@@ -252,6 +257,212 @@ words and in its `1/SLLEN` bound, on a real image, against the aggregate-vs-sum
 saving it buys. Until that exists, neither section may be treated as the
 campaign's position, and lever 1 proceeds regardless — which both texts already
 agree on.
+
+#### B. MEASURED 2026-09-17 — the deciding measurement, and it settles B as a REFUSAL for the opposite reason
+
+**Both numbers exist now. The answer is: do not share the pools into the
+arena — and the ground the refusal was resting on is measurably FALSE.**
+
+The cost the refusal feared is ~0. The saving amendment B hoped for is 0 at
+exactly the moments the memory is needed. Neither half of the disagreement had
+it right, so the text above stays as the record of what was believed and this
+section is what was measured.
+
+##### What was measured, and on what
+
+| half | image | how |
+| --- | --- | --- |
+| rlsf control words, 32-bit | a `thumbv7m-none-eabi` object (`GRANULARITY`, `UsedBlockHdr` and `size_of::<Tlsf<u32,u16,FLLEN,16>>()` for FLLEN 8..20 emitted into `.rodata` and read back with `arm-none-eabi-objdump`) | compiled for the island's pointer width |
+| rlsf per-allocation waste | `x86_64-unknown-linux-gnu`, rlsf 0.2.3 at the tree's parameters, a 1 MiB pool, 15 real block sizes | RUN, `allocation_usable_size` per allocation |
+| the SUM | `packages/testing/nros-tests/bins/int32-sink` ELF | `just mem-report` |
+| the AGGREGATE PEAK | the same ELF, `nros-rmw-zenoh/pool-occupancy` on, over `rmw_zenohd` (ROS Humble) on `tcp/127.0.0.1:17392`, `ROS_DOMAIN_ID=71`, 8 subscribers | RUN, four traffic scenarios |
+
+**Not measured on the island.** The mr_canhubk3 image is hardware; the two
+in-tree stand-ins both failed for reasons that are not about this question and
+are filed separately — the Zephyr west build dir under
+`~/.nros/workspaces/zephyr/3.7` is SHARED between checkouts and reconfigured
+itself against another clone's absolute source paths (issue 1379), and
+`qemu-baremetal-main-e2e` does not build from a bare `cargo build` after
+`nros sync` (issue 1381). So the runtime half is a NATIVE image with the same
+`nros-rmw-zenoh` pools and the same C ring producer, and the rlsf half is
+compiled for the island's width. Say so when quoting it.
+
+##### 1. The COST — measured, and it is zero
+
+The tree's parameters, read from `zpico-alloc`: `SLLEN = 16`, `FLLEN = 18`,
+`FLBitmap = u32`, `SLBitmap = u16`. **Every** instantiation in the tree takes
+the default `FLLEN` — `nros-platform-mps2-an385`, `nros-platform-stm32f4`,
+both `nros-platform-esp32-qemu` arms and `nros-platform`'s `zephyr_heap`.
+
+```
+32-bit (thumbv7m-none-eabi): GRANULARITY 16 B, UsedBlockHdr 8 B
+FLLEN   bytes   step    pool it can hold
+   12     796           64 KiB
+   13     864    +68   128 KiB
+   14     928    +64   256 KiB
+   18    1192    +64     4 MiB   <- what every image in the tree ships
+64-bit (x86_64 = native_sim/native/64): FLLEN 18 -> 2344 B, step +128/136
+```
+
+**`FLLEN` bounds the POOL, not the allocation.**
+`MAX_POOL_SIZE = 1 << (GRANULARITY_LOG2 + FLLEN)` and the initial free block
+spans the whole arena, so the parameter that sets the block-size range is
+driven by how big the arena is, never by how big the largest allocation is.
+The range this amendment calls "payload-inclusive (~2^16)" is 64 KiB, which is
+**six FLLEN steps inside** the 4 MiB the shipped configuration already spans.
+
+> **The widening costs 0 bytes of control words, because the tree already pays
+> for six times the range the objection is about.** Even if `FLLEN` were tuned
+> per image — it is not, and nothing asks it to be — growing a 64 KiB arena to
+> 256 KiB to swallow all 123,648 B of message buffers moves FLLEN 12 -> 14 and
+> costs **+132 bytes**.
+
+**And the `1/SLLEN` bound is not what an rlsf allocation wastes.** 1/SLLEN is
+the bound on the SEARCH: `map_ceil` picks a list whose every member is at least
+the request, over-shooting by at most 1/SLLEN, which is what makes the search
+O(1). `allocate` then **splits** the block and links the remainder back into
+the free list (`tlsf.rs`, the `new_free_block` arm), so the overshoot is
+returned rather than wasted. What an allocation actually costs the arena is
+`round_up(UsedBlockHdr + size, GRANULARITY) - size`, which is bounded by
+GRANULARITY and **independent of size**. Measured at 15 sizes on a 1 MiB pool:
+
+```
+request  usable  block  waste   waste%
+     64      80     96     32   50.00%   infra (slab ceiling)
+    512     528    544     32    6.25%   infra
+   1024    1040   1056     32    3.12%   SUBSCRIBER_BUFFER_SIZE
+   2048    2064   2080     32    1.56%   SUBSCRIBER_LARGE_SIZE
+   4096    4112   4128     32    0.78%   one SMALL block (4x1024)
+   8192    8208   8224     32    0.39%   one LARGE block (4x2048)
+  49152   49168  49184     32    0.07%   the whole SMALL_PAYLOADS pool
+```
+
+(64-bit, so GRANULARITY is 32; on the island's 32-bit it is 16 and every
+`waste` column halves.) The relative cost **falls** as blocks get bigger —
+payload-scale allocations are the CHEAPEST thing this allocator does, and the
+6.25 % the amendment quotes is already beaten at 1024 bytes.
+
+Whole-pool arithmetic, measured by allocating the island's small-payload pool
+out of an rlsf arena:
+
+| granularity | n | requested | arena spent | overhead |
+| --- | --- | --- | --- | --- |
+| per SUBSCRIBER block (12 x 4x1024) | 12 | 49,152 | 49,536 | **+384 B (0.78 %)** |
+| per SLOT block (48 x 1024) | 48 | 49,152 | 50,688 | **+1,536 B (3.12 %)** |
+
+On 32-bit those halve to +192 B and +768 B. **Total measured cost of the
+widening: under 1 KiB on a 49 KiB pool, and nothing at all in control words.**
+
+##### 2. The SAVING — measured, and it is zero under load
+
+Instrument: `nros-rmw-zenoh`'s `pool-occupancy` feature (landed with this
+wave), a monotone high-water sampled in `subscriber_notify_callback` — the
+instant the C shim Release-stores `ring_tail`, which is where occupancy rises,
+so no peak can be missed. Reserved side, from `just mem-report` on the same
+ELF: `SMALL_PAYLOADS` 32,768 B (8 x 4 x 1024), `LARGE_PAYLOADS` 131,072 B
+(4 x 4 x 8192).
+
+Eight subscribers, `std_msgs/Int32` (8 bytes of CDR), one executor:
+
+| run | producer | consumer | slots peak | deepest ring | **slot bytes peak** | exact bytes peak | samples with a full ring |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A | 1 msg/topic/s | 10 ms spin | 8 / 32 | 1 / 4 | 8,192 | 64 | 0 / 176 |
+| B | 1 msg/topic/100 ms | 10 ms spin | 8 / 32 | 1 / 4 | 8,192 | 64 | 0 / 1,600 |
+| C | burst of 8/topic/200 ms | 10 ms spin | **32 / 32** | **4 / 4** | **32,768** | 256 | 5,476 / 6,400 |
+| D | 2/topic/100 ms | 20 ms callback | 30 / 32 | 4 / 4 | 30,720 | 240 | 3,179 / 3,200 |
+
+Three readings, in order of how much they decide:
+
+1. **The aggregate peak EQUALS the sum of individual peaks whenever the rings
+   are stressed.** Run C held 32,768 of the 32,768 bytes reserved for its eight
+   live subscribers — every slot of every ring, at one instant, in 86 % of
+   arrivals. Run D got to 30,720 with no burst at all: a callback slower than
+   the arrival rate is enough. They peak together because ONE executor drains
+   all of them, so whatever stalls it stalls every ring at once. This is the
+   thing the amendment says "nothing in this campaign models" — it is now
+   modelled, and the answer is that they do not, in fact, fail to overlap.
+2. **At idle the peak is 25 %, and all of the slack is ring DEPTH.**
+   `slots_peak` equalled the SUBSCRIBER COUNT in every benign run (4 of 4, 8 of
+   8): even at 1 Hz the subscribers were perfectly correlated, because one
+   publisher round feeds them all and one spin drains them all. So there is no
+   "subscribers do not peak together" saving to collect at any rate — only a
+   "the ring is 4 deep and idle traffic uses 1" saving, which is exactly the
+   headroom the depth exists to provide.
+3. **`exact_bytes_peak` was 0.78 % of `slot_bytes_peak` in every single run** —
+   8 bytes of Int32 sitting in a 1024-byte slot. **The waste in these pools is
+   overwhelmingly class-vs-message, not sum-vs-aggregate.** That is lever 1,
+   and it needs no allocator.
+
+##### 3. The recommendation — close B as declined, and say why properly
+
+**Do not move the payload pools behind `nros_platform_alloc`.** The arithmetic,
+both ways, on the island's shape:
+
+*Per-subscriber granularity* (the only one that preserves the drop guarantee):
+the arena must hold one block per DECLARED subscriber, so the saving is
+`(provisioned - declared) x depth x size`. On the island that is 49,152 ->
+12,288 + ~192 B of rlsf headers. Real — and **W5's `EntityInventory` already
+recovers exactly that, statically, by sizing the pool from the declaration.**
+Sharing adds an allocator to a saving the campaign is already collecting.
+Against a fully-declared image (the native one measured here, 8 of 8) it is a
+**LOSS of 384 bytes**.
+
+*Per-slot granularity* (the only one with a saving W5 does not already have):
+the measured worst case is the full sum, so a correctly sized arena is
+`32,768 + 1,536 = 34,304 B` — **1,536 bytes worse than the static pool**.
+Sizing it to the idle peak instead (8,192 B) buys 24,576 B and pays for it by
+dropping messages at the first burst, with drops now COUPLED across unrelated
+topics: a chatty diagnostics subscriber can starve a control one. That coupling
+is a worse property than the RAM is worth, and it is the real argument against
+B — not the allocator's block-size range.
+
+*Lever 1 on the same image, for comparison:* sizing each subscriber's slot from
+its own type takes the eight Int32 subscribers from `8 x 4 x 1024 = 32,768` to
+`8 x 4 x 32 = 1,024`. **-31,744 B, 96.9 %, static, with the drop guarantee
+intact.** Two orders of magnitude more than sharing could offer, from the lever
+both texts already agree to do first.
+
+**So the "Explicitly out of scope" section's conclusion stands and this
+amendment's does not — but neither of the two grounds recorded above is the
+reason.** The block-size range costs nothing. The allocation that can fail
+mid-callback is confined by the tier gate, as amendment B says. The reason is
+that there is no aggregate-vs-sum gap to collect: the pools peak together under
+every traffic pattern this tree's single-executor images produce.
+
+**What would reopen it**, stated so the next person does not have to re-derive
+it: subscribers on genuinely independent executors or threads, fed by
+independent producers, AFTER lever 1 has taken the class slack out — so that
+what is left to share is depth rather than size. That is measurable with the
+instrument this wave landed (`just` nothing; build any zenoh image with
+`--features nros-rmw-zenoh/pool-occupancy` and read
+`nros_rmw_zenoh::pool_occupancy()`, or the `NROS_POOL_OCCUPANCY_REPORT` symbol
+from a debugger). Nothing in the tree exhibits that shape today.
+
+##### What landed, and what did not
+
+**Landed:** `nros-rmw-zenoh`'s `pool-occupancy` feature — default OFF, because
+the sampler runs once per MESSAGE on the RX path (unlike the unconditional
+`SubscriberAllocReport` beside it, which runs once per SUBSCRIPTION). With it
+on, an image announces one line per new maximum and then goes quiet, since the
+peak is monotone. Also landed unconditionally, because they are build facts an
+image wants either way and putting them behind the feature would have put their
+assertions behind a feature no lane enables:
+`nros_rmw_zenoh::reserved_payload_bytes()` (asserted against the
+`// nros-pool:` formulas by an always-run test) and
+`nros_rmw_zenoh::shim::subscriber::live_payload()`.
+
+**Measured and worth recording about the instrument itself:** the announcement
+reaches the console only where an `nros_log` SINK exists. On a bare native
+binary the record was correct and the line went nowhere — the same
+dispatch-and-drop issue 0708 fixed for the RTOS boot funnels. `pool_occupancy()`
+is therefore the portable reader, not a convenience.
+
+**Not landed, deliberately:** the multi-topic publisher/subscriber driver was a
+throwaway — a temporary body for `int32-sink` with an `NROS_PROBE_ROLE` switch.
+A permanent bin would need a `fixtures.toml` row and a `matrix::CELLS` cell,
+i.e. a build in every lane forever, to reproduce a number the landed instrument
+now reports from any image. The recipe is above; the driver is not worth the
+lane time.
 
 ### C. Field storage mode does NOT shrink wire buffers — restated, because it keeps being proposed
 
@@ -1417,10 +1628,18 @@ here touches buffer sizing.
 
 ## Explicitly out of scope
 
-**Moving payload buffers to the heap.** REOPENED by amendment B above
-(2026-08-29) and no longer this campaign's settled position — read the two
-together, and see B for the measurement that decides it. The original reasoning
-stands as the case against, unchanged:
+**Moving payload buffers to the heap.** Reopened by amendment B above on
+2026-08-29 and **CLOSED AGAIN on 2026-09-17** by the measurement that amendment
+named (`B. MEASURED 2026-09-17`). This conclusion is the campaign's position
+again — but the block-size-range clause below is measurably FALSE and survives
+only as the record of what was believed. `FLLEN` bounds the ARENA, not the
+allocation, and every image in the tree already ships six FLLEN steps of
+headroom past payload scale, so the widening costs nothing in control words;
+rlsf also SPLITS rather than rounding to the class, so `1/SLLEN` is its search
+bound and not what an allocation wastes. What declines the move is that the
+pools peak TOGETHER: measured, the aggregate peak EQUALS the sum of individual
+peaks whenever the rings are stressed. The original reasoning stands as the
+case against, with that one clause struck:
 
 It would convert `12 x 4 x 1024` of
 always-reserved RAM into peak-of-concurrent, which is a real saving, and it is

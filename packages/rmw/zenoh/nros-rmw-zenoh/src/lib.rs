@@ -90,6 +90,12 @@ pub use shim::{
     overflow_drops_total,
 };
 
+// phase-392 amendment B -- the payload pools' live-vs-reserved high-water.
+// Exported unconditionally: `report()` answers `None` without the
+// `pool-occupancy` feature, which is a different fact from a peak of zero and
+// is what a caller needs to be able to say.
+pub use shim::occupancy::{PoolOccupancy, report as pool_occupancy};
+
 // Re-export std-only executor wake functions
 #[cfg(feature = "std")]
 pub use shim::{signal_executor_wake, wait_for_executor_wake};
