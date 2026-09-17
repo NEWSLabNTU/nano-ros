@@ -6083,6 +6083,60 @@ nros_ret_t nros_lifecycle_register_on_error(struct nros_lifecycle_state_machine_
                                             void *context);
 
 /**
+ * The `lifecycle_msgs/msg/Transition.label` for `transition_id`, or `NULL`
+ * when the id is not one nano-ros implements.
+ *
+ * The returned pointer is a NUL-terminated string literal with STATIC
+ * lifetime — the caller neither owns nor frees it, and there is no capacity
+ * argument, because unlike a parameter description this text is ours and its
+ * length is known at compile time.
+ */
+NROS_PUBLIC const char *nros_lifecycle_transition_label(uint8_t transition_id);
+
+/**
+ * The `lifecycle_msgs/msg/State.label` for `state_id`, or `NULL` for an id
+ * that is not a lifecycle state. See [`nros_lifecycle_transition_label`].
+ */
+NROS_PUBLIC const char *nros_lifecycle_state_label(uint8_t state_id);
+
+/**
+ * The state `transition_id` may be taken FROM — rclcpp's
+ * `Transition::start_state()`, spelled `source_state` in Rust.
+ *
+ * Returns `0`, which is no lifecycle state, for an unimplemented id.
+ */
+NROS_PUBLIC uint8_t nros_lifecycle_transition_start_state(uint8_t transition_id);
+
+/**
+ * The state `transition_id` ADVERTISES as its destination — rclcpp's
+ * `Transition::goal_state()`.
+ *
+ * This is where a SUCCEEDING callback lands. A failing one rolls back or
+ * routes to `ErrorProcessing`, which is a runtime outcome and not a property
+ * of the graph. Returns `0` for an unimplemented id.
+ */
+NROS_PUBLIC uint8_t nros_lifecycle_transition_goal_state(uint8_t transition_id);
+
+/**
+ * The whole REP-2002 transition graph: every transition id, in
+ * `lifecycle_msgs` order.
+ *
+ * `out_ids` receives a pointer to a STATIC array of `*out_count` ids — no
+ * allocation, no caller buffer, and nothing to free. Pair each id with
+ * [`nros_lifecycle_transition_label`],
+ * [`nros_lifecycle_transition_start_state`] and
+ * [`nros_lifecycle_transition_goal_state`] to get the row rclcpp's
+ * `Transition` object carries.
+ *
+ * This is the SAME table `~/get_transition_graph` serves, so a node and a
+ * remote `ros2 lifecycle list` cannot disagree about it.
+ *
+ * # Safety
+ * `out_ids` and `out_count` must be valid, writable pointers.
+ */
+NROS_PUBLIC nros_ret_t nros_lifecycle_transition_graph(const uint8_t **out_ids, size_t *out_count);
+
+/**
  * Register the five REP-2002 lifecycle services on the executor's node.
  *
  * After this call, `ros2 lifecycle set|get|list|nodes` can drive the
