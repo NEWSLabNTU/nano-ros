@@ -3,12 +3,13 @@ id: 1279
 title: "`just setup zephyr` skips the whole SDK setup when the WORKSPACE
   exists, but cmake registration is per-USER state — a host can hold a
   complete, unpacked, unusable SDK that the verb cannot repair"
-status: open
+status: resolved
 type: bug
 area: build, setup
 severity: medium
 found: 2026-09-11
 related: [issue-1274, issue-1276, rfc-0095, phase-449]
+resolved_in: "phase-449 W8 — registration is gated on itself"
 ---
 
 ## What this is
@@ -97,3 +98,57 @@ This is the same shape as issue 1274 — a step gated on a condition that is not
 the one it depends on — and the same shape as issue 1276, where the installer
 read a field instead of asking the derivation. Worth fixing together with
 whatever else touches `scripts/zephyr/setup.sh`.
+
+
+## Resolution (phase-449 W8, 2026-09-18)
+
+`scripts/zephyr/ensure-sdk-registered.sh` is the registration step, gated on
+ITSELF: it reads `~/.cmake/packages/Zephyr-sdk/` for an entry whose CONTENT is
+this SDK's `cmake` directory, and registers only when there is none.
+
+Keying on the content rather than on "the directory is non-empty" is what makes
+it per-ARTIFACT, which is what this issue asks for: a host registered for a
+DIFFERENT SDK version has a non-empty registry directory and still cannot build
+this line.
+
+It runs `-c` and never `-h`, taking the issue's own preferred option. `-c`
+writes the registry entry; `-h` installs host tools, is the expensive half, and
+is reported here to fail in a container. A step that is cheap and always safe
+must not inherit the gating of one that is neither — which is this bug stated
+once.
+
+### The same defect existed twice, one layer apart
+
+The issue quotes the outer one: `just/zephyr-setup.just` skips all of
+`scripts/zephyr/setup.sh` when the WORKSPACE exists. `setup.sh` then skips
+`install_sdk` — the function that runs the SDK's registration — when the SDK
+DIRECTORY exists. Fixing only the verb would have left a host with an unpacked,
+unregistered SDK unrepairable by `setup.sh` itself. Both call the helper now,
+unconditionally; `--skip-sdk` still skips it, because that flag is the caller
+saying they manage the SDK themselves.
+
+### Acceptance, measured end to end
+
+`~/.cmake/packages/Zephyr-sdk/` emptied, then `just zephyr setup` with no flags:
+
+```
+Zephyr workspace already present at zephyr-workspace
+ensure-sdk-registered: ...zephyr-sdk-0.16.8 is unpacked but NOT registered with cmake; registering.
+ensure-sdk-registered: registered ...zephyr-sdk-0.16.8 with cmake.
+```
+
+The workspace skip still fires — it is correct, it is just no longer in front of
+this — and every source step reports `already present (skip)`, so nothing was
+re-fetched. No `--force`.
+
+The version comes from `zephyr/SDK_VERSION`, which the doctor block beside it
+already reads, rather than a fourth hardcoded `0.16.8`. The call is not
+`|| true`: this issue is about a failure being invisible until a build dies
+inside `FindZephyr-sdk.cmake`, and swallowing it would rebuild that defect one
+line lower.
+
+### The workaround this replaces
+
+The contained runner registered the SDK by hand once and made `~/.cmake` a
+persistent store (PR #882). That stays harmless, but it is no longer what makes
+the state recoverable, and resetting the store no longer needs a manual step.
