@@ -155,6 +155,19 @@ TOOL_RECIPES = {
         "push.recurseSubmodules). Setup must not reconfigure someone's git "
         "behind their back -- it is opt-in by design.",
     ),
+    # issue 1373. The two gates that name it (capability-conditionals,
+    # xrce-vendored-versions) fail only in a checkout whose submodules were
+    # never populated, which is what `git worktree add` and a non-recursive
+    # clone leave behind.
+    "setup-worktree": (
+        "manual",
+        "Checking out a submodule is a human decision -- AGENTS.md says so, and "
+        "`just post-rebase` REPORTS a diverged submodule rather than updating "
+        "it, because the update discards work someone is mid-edit on. It is "
+        "also needed only by a checkout that `git worktree add` or a "
+        "non-recursive clone left bare, so putting it on every `just setup` "
+        "path would make every scope fetch three trees it may never build.",
+    ),
 }
 
 

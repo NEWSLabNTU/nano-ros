@@ -772,10 +772,18 @@ def main() -> int:
     else:
         # zenoh-pico is a submodule; without it rule 4 has no source of truth.
         # Say so rather than passing over it (issue 0702).
+        #
+        # issue 1373 - the message names `just setup-worktree` first. `git
+        # worktree add` populates no submodules, so this is the normal state of
+        # a brand-new worktree, and the fast tier runs on every push: the reader
+        # is someone who wants ONE command, not the path to type it with.
         print(
             f"check-capability-conditionals: {PLATFORM_DISPATCH.relative_to(ROOT)} "
-            f"is missing — run `git submodule update --init` for the zenoh-pico "
-            f"submodule. The socket-ABI rule cannot be checked without it.",
+            f"is missing. The socket-ABI rule cannot be checked without it.\n"
+            f"  Fresh worktree or non-recursive clone? Provision it:\n"
+            f"      just setup-worktree\n"
+            f"  Or check out this one submodule by hand:\n"
+            f"      git submodule update --init {ZENOH_PICO.relative_to(ROOT)}",
             file=sys.stderr,
         )
         return 2
