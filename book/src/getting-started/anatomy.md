@@ -61,9 +61,16 @@ even carries a per-topic QoS override to show the plumbing:
 
 ```xml
 <node pkg="talker_pkg" exec="talker" name="talker">
-  <param name="qos_overrides./chatter.publisher.reliability" value="best_effort"/>
+  <param name="qos_overrides./chatter.publisher.depth" value="5"/>
 </node>
 ```
+
+An override changes how the two ends MATCH as well as how one end behaves.
+Setting the publisher to `reliability = best_effort` here would look
+harmless and deliver nothing on CycloneDDS: DDS never pairs a best-effort
+writer with a reliable reader, and the listener's subscription is reliable
+by default. (`ros2 topic echo --qos-reliability best_effort` is the same
+rule seen from the other side.)
 
 When you later target hardware, you add an `[image.<id>]` block per
 board — the code and topology stay put, and no new directory appears. That is

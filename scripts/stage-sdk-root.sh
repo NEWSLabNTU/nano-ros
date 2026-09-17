@@ -119,6 +119,24 @@
 #                       (an `if(EXISTS)`), and the degradation is `E0463: can't
 #                       find crate for core` several minutes into a build.
 #
+#   nros-submodule-pins.toml
+#                      WRITTEN here rather than archived: the URL and COMMIT of
+#                       every submodule HEAD records (issue 1304). `git archive`
+#                       drops gitlinks by design, and every `[source.*]` the
+#                       index provisions by `submodule =` (zenoh-pico, mbedtls,
+#                       cyclonedds-src, …) used to be defined as "the checkout's
+#                       gitlink" — so an installed `nros setup native` ran
+#                       `git ls-tree` in a directory that is not a repository
+#                       and stopped. The pins are version-locked to this
+#                       toolchain (RFC-0097 D6) because they are read out of the
+#                       commit this asset is built from, not re-derived from a
+#                       history the user does not have. `nros setup` clones each
+#                       source at its recorded commit into this root, at the
+#                       same checkout-relative `dest` a checkout would hold it,
+#                       so cmake and every build.rs find it unchanged. The file
+#                       is also what marks this root as INSTALLED rather than a
+#                       checkout (see nros-rmw-provision.cmake).
+#
 # NOT staged, each on purpose:
 #
 #   tools/             `cmake/bootstrap.cmake` treats `tools/setup.sh` PLUS the
@@ -198,6 +216,37 @@ git -C "$repo" archive HEAD -- $CARVED | tar -x -C "$root"
 # cannot drift.
 cp "$repo/nros-sdk-index.toml" "$root/nros-sdk-index.toml"
 
+# The submodule pins the archive above dropped — issue 1304, see the header.
+# Kept in step with `sdk_store::SUBMODULE_PINS_FILE` (the reader) and
+# nros-rmw-provision.cmake; `check-release-manifest` R6 holds the three together.
+PINS_FILE="nros-submodule-pins.toml"
+pins="$root/$PINS_FILE"
+# `.gitmodules` from HEAD, never the worktree: the same commit the archive and
+# the gitlinks come from. `git config -f` reads it by name.
+gitmodules="$(mktemp)"
+git -C "$repo" show HEAD:.gitmodules >"$gitmodules"
+{
+    printf '%s\n' \
+        "# The submodule pins of the commit this SDK root was staged from —" \
+        "# written by scripts/stage-sdk-root.sh (issue 1304). A release carries no" \
+        "# gitlinks, so \`nros setup\` provisions each \`[source.*] submodule = \"<path>\"\`" \
+        "# by cloning <url> at <commit> into <this root>/<path>. Do not edit: it is" \
+        "# version-locked to the toolchain beside it (RFC-0097 D6)."
+    # `ls-tree -r` lists gitlinks as `160000 commit <sha>\t<path>`.
+    git -C "$repo" ls-tree -r HEAD | awk '$1 == "160000" { print $3, $4 }' |
+        while read -r sha path; do
+            name="$(git config -f "$gitmodules" --get-regexp '^submodule\..*\.path$' |
+                awk -v p="$path" '$2 == p { sub(/^submodule\./, "", $1); sub(/\.path$/, "", $1); print $1 }')"
+            url="$(git config -f "$gitmodules" --get "submodule.$name.url" || true)"
+            if [ -z "$name" ] || [ -z "$url" ]; then
+                echo "nano-ros: HEAD records a gitlink at $path that .gitmodules does not describe" >&2
+                false
+            fi
+            printf '\n[submodule."%s"]\nurl = "%s"\ncommit = "%s"\n' "$path" "$url" "$sha"
+        done
+} >"$pins"
+rm -f "$gitmodules"
+
 # VERIFY, here rather than in the caller: a staging step that produced an
 # incomplete root would otherwise be discovered by a user, several minutes into
 # their first build, with an error about a missing include. Each path below is
@@ -263,6 +312,26 @@ if [ -n "$missing" ]; then
     false
 fi
 refuse -e tools "with it, cmake/bootstrap.cmake would provision submodules inside an install prefix instead of returning early"
+
+# Every source the index provisions from a submodule must have a recorded pin,
+# or the installed `nros setup` for the board that needs it dead-ends exactly
+# as issue 1304 did — one source later. Read from the index this root ships.
+need -f "$PINS_FILE" "the submodule pins an installed \`nros setup\` clones sources at (issue 1304)"
+unpinned=""
+# A shell `case` over the file's text, not `grep -q`: a grep that cannot RUN
+# exits 2, which would read as "not pinned" (issue 0726's class).
+pins_text="$(cat "$pins")"
+for sub in $(sed -n 's/^submodule = "\(.*\)"$/\1/p' "$root/nros-sdk-index.toml"); do
+    case "$pins_text" in
+        *"[submodule.\"$sub\"]"*) ;;
+        *) unpinned="$unpinned $sub" ;;
+    esac
+done
+if [ -n "$unpinned" ]; then
+    echo "nano-ros: the index provisions these from a submodule, but HEAD records no gitlink for them:$unpinned" >&2
+    echo "  (an installed \`nros setup\` would have nothing to clone them at — issue 1304)" >&2
+    false
+fi
 
 files="$(find "$root" -type f | wc -l)"
 bytes="$(du -sb "$root" | cut -f1)"

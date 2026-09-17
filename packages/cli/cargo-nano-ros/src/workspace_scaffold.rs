@@ -292,11 +292,18 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
     );
     let next = match cfg.lang.as_str() {
         "cpp" => format!(
-            "Next steps:\n  cd {0}\n  export NROS_REPO_DIR=<path-to-nano-ros>\n  nros sync\n  nros build native     # prints its build dir: build/<coord>/cmake\n  ./build/<coord>/cmake/native_entry",
+            // Issue 1304 — an installed toolchain has no `NROS_REPO_DIR` to
+            // export and no checkout to name: `nros` resolves its own
+            // `share/nano-ros` (RFC-0099 D3, the ladder in
+            // `orchestration::nano_ros_root`). Advertising the export made the
+            // first documented command unrunnable for exactly the reader who
+            // installed a release. Same commands as first-project.md.
+            "Next steps:\n  cd {0}\n  nros sync\n  nros build\n  ./build/posix-native/cmake/native_entry\n\
+             (`nros build` finds nano-ros itself; `nros sdk-root --explain` prints the root it uses.)",
             cfg.dir.display()
         ),
         _ => format!(
-            "Next steps:\n  cd {0}\n  export NROS_REPO_DIR=<path-to-nano-ros>\n  nros sync\n  nros build native\n  ./build/posix/native_entry/target/debug/native_entry",
+            "Next steps:\n  cd {0}\n  nros sync\n  nros build\n  RUST_LOG=info ./build/posix/native_entry/target/debug/native_entry",
             cfg.dir.display()
         ),
     };
