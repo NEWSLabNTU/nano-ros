@@ -579,8 +579,107 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
   return type is the one fact that row exists to record. Three `exec.json`
   rows said C exports no `is_spinning` reader and that the three languages
   spell the capability three ways; W4.c settled both.
-* W4.e **[rust-first]** — guard conditions: one owner and one creation shape. The ledger already
-  records this as undecided ("Nothing about no_std picks between these").
+* W4.e **[rust-first]** — **guard conditions: one owner and one creation shape.
+  LANDED 2026-09-18.** The ledger recorded the choice as genuinely open
+  ("Nothing about no_std picks between these"); the decision is **the NODE is
+  the owner, ONE call, callback bound at creation, in all three languages.**
+
+  **The arena constraint does not pick a winner** — the executor owns the flag,
+  a handle is an index, registration is one-way, and all three shapes satisfy
+  that through the node's executor. What picked it: C's separate `set_callback`
+  is the after-the-fact installation we already REFUSE in C++ at
+  `cpp:GuardCondition::set_on_trigger_callback`, so one constraint was enforced
+  in two languages and contradicted in the third; and a porting user has a node
+  in hand, not an executor.
+
+  | | before | after |
+  | --- | --- | --- |
+  | C | `nros_guard_condition_init(gc, SUPPORT)` → `_set_callback` → `nros_executor_add_guard_condition` | `nros_node_create_guard_condition(node, out, cb, ctx)` |
+  | C++ | `NODE.create_guard_condition(out, cb, ctx)` | unchanged — it was the target |
+  | Rust | `EXECUTOR.register_guard_condition(closure)` | `NodeCtx::create_guard_condition(closure)`, over the kept primitive |
+
+  Retired with **no forwarders** (stage 6 step B): `nros_guard_condition_init`,
+  `nros_guard_condition_set_callback`, `nros_executor_add_guard_condition` and
+  its `nros_executor_register_guard_condition` alias. Measured blast radius was
+  four C references, two of them the one example, which is migrated.
+
+  **Both defects the item was written on HELD, and the second was worse than
+  stated.**
+
+  1. *C's shape was three calls and the object was inert until the third.*
+     `nros_guard_condition_init` only zeroed fields; `handle_id` stayed
+     `SIZE_MAX` and a trigger landed on a local byte no executor watches. The
+     one in-tree C caller — `examples/native/c/custom-platform` — made the first
+     two calls and never the third, so its SIGINT handler had been signalling
+     nothing for four phases while every call returned `NROS_RET_OK`.
+  2. *`nros_guard_condition_trigger` was not exported — because it did not
+     exist.* `grep -c` in `nros_generated.h` was 0, and so was a tree-wide grep
+     of every `.rs`/`.c`/`.h`. The only firing verb was rcl's
+     `rcl_trigger_guard_condition`, which we have exported all along — so the
+     ledger was wrong in BOTH directions at once: `c:trigger_guard_condition`
+     said a porting user must rewrite rcl's spelling (we ship it, and the
+     correlator buckets the item `same`), and named ours as a symbol nothing
+     defined. `nros_guard_condition_trigger` is the definition now and rcl's
+     forwards to it, kept and NOT deprecated under RFC-0089's alias rule.
+
+  **Three things the work measured that the item did not predict.**
+
+  * **`is_triggered` / `clear` had to move to the arena flag, or they would have
+    become permanently false.** They read the local byte in
+    `nros_guard_condition_t`, which only the UNREGISTERED fallback path ever
+    wrote — so the moment creation became registration, C's polling readers
+    would have answered `false` for every guard condition that exists. All three
+    languages read the arena flag now, and C++ and Rust GAINED the pair, which
+    closes the "OUR LANGUAGES DISAGREE" the `c:guard_condition_is_triggered` row
+    had carried ("a polling C++ or Rust user cannot do what a polling C user
+    can"). The bound is part of the API: the executor consumes the flag on
+    dispatch, so the reader answers "set and not yet dispatched".
+  * **A wake landing BETWEEN spins made the next spin drive its FULL timeout** —
+    the opposite of what the wake flag exists for, and the opposite of what the
+    swap-and-clear's own comment has claimed since Phase 104.C.6 ("skip the
+    blocking wait … and poll every session non-blockingly"). `spin_once` read
+    `if !was_woken && has_async_wake` and sent the woken case to the `else`.
+    Measured on the C probe: **400 ms to dispatch before, 0 ms after.**
+  * **No C executor can be woken out of a parked transport read, on any
+    backend.** `has_async_wake` is set by `install_wake_signal_on_primary`,
+    which the three Rust `Executor::open*` paths call and the C path does not —
+    `nros_executor_init` reaches `from_session_ptr_in`, which assembles over a
+    session it BORROWS from the support context. So a C trigger is dispatched at
+    the spin boundary, bounded by the spin's own budget, which is what the probe
+    asserts. Not fixed here, and deliberately: `Executor::drop` does not clear
+    the wake callback (the runtime cb's own safety comment says it must), and on
+    the C path the session OUTLIVES the executor (`nros_executor_fini` then
+    `nros_support_fini`), so installing it would leave a backend holding a
+    callback into freed wake state. That is a separate defect, named rather than
+    smuggled in.
+
+  **Acceptance is behavioural, not a compile assertion.**
+  `packages/api/nros-c/tests/run/node_guard_condition.c`, on `just check c`:
+  creation registers (`handle_id != SIZE_MAX`, handle count +1), a trigger from
+  another thread runs the callback **on the executor's thread** with the context
+  the creation call bound, the flag travels through the arena and the dispatch
+  consumes it, and the wake is measured **against a negative control** — an
+  identical spin with nothing pending, which the stub backend sleeps out.
+  Measured: **idle 400 ms, pre-spin wake 0 ms, parked-trigger dispatch within
+  the spin's budget.** The stub backend gained the `set_wake_callback` slot it
+  needed to be parkable at all (`supports_wake_callback` is literally "is this
+  slot non-NULL"), and `timer_clock_source` stays green with it.
+  Rust: two cases in `executor/tests.rs`. C++: `guard_condition_surface.cpp`
+  INSTANTIATES the class (non-template methods on a non-template class are
+  parsed and never compiled otherwise), hosted and `-nostdinc++`.
+
+  Ledger: `c:guard_condition_set_callback` (divergence→declined/absent, and it
+  carried the open question), `c:guard_condition_init` and
+  `c:executor_add_guard_condition` (new, declined/absent),
+  `c:node_create_guard_condition`, `rust:Node::create_guard_condition`,
+  `rust:Executor::register_guard_condition_on`,
+  `{cpp,rust}:GuardCondition::{is_triggered,clear}` (new extensions),
+  `c:trigger_guard_condition` + `c:guard_condition_trigger` (both false, both
+  corrected), `c:guard_condition_is_triggered`, `c:guard_condition_clear`,
+  `c:guard_condition_callback_t`, `cpp:GuardCondition::set_on_trigger_callback`,
+  `cpp:GuardCondition::is_valid`, `cpp:Node::create_guard_condition`,
+  `rust:Executor::register_guard_condition`. Upstream's free-standing
+  constructor from a `Context` stays REFUSED (`cpp:WaitSet`).
 * W4.f **[wrapper]** — **lifecycle, 15 rows, added 2026-09-13** because the
   shard is the third largest and no work item named it. `register_on_*` differs
   across our three languages (which is squarely this stage's subject), and the
