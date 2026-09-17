@@ -97,24 +97,88 @@ protocol mandates sees the terminal state.
 
 ## Fix shape — a decision, not a patch
 
-This issue does not pick one; both change what an image's `MAX_GOALS` slots hold.
+**What has to be decided first, because every option is a different answer to
+it: for how long does a nano-ros action server promise a terminated goal is
+visible on `/status`?** Upstream answers "until `result_timeout` expires it,
+15 minutes by default". A fixed-capacity server cannot copy that answer for
+free — `active_goals` and `completed_results` are both
+`heapless::Vec<_, MAX_GOALS>` with `MAX_GOALS = 4`
+(`action_core.rs:215`, `:222`, `:223`) — so visibility competes with capacity
+to accept NEW goals. That trade is the decision; the three options below are
+where each puts it.
 
-1. **Publish the terminal status before removing the goal.** One statement
-   moved. It makes a live subscriber see `status: 4`, and it does NOT fix the
-   late joiner: the empty array still goes out afterwards and is what gets
-   retained.
-2. **Keep terminated goals in the status array until their result is
-   reclaimed.** `publish_status_array` would iterate `active_goals` +
-   `completed_results` (which already carries `goal_id` and the terminal
-   `status`), so the retained sample is the terminal one and a late joiner gets
-   what the profile promises. `STATUS_ARRAY_BUF` is 512 bytes against a
-   `MAX_GOALS` of 4, and a `GoalStatusStamped` is ~32 bytes, so eight entries
-   fit. The cost is that a terminated goal stays visible for as long as its
-   result does, which is closest to upstream's behaviour but is not the same
-   rule as upstream's timeout.
-3. **Implement `result_timeout` expiry**, i.e. upstream's rule. The most
-   faithful and the most work; it needs a clock in the action core.
+Facts the options rest on, measured in the code rather than assumed:
 
-Nothing here is safe to pick without deciding what a nano-ros action server
-promises about a terminated goal's visibility, which is a design question that
-belongs with issue 0902's owner.
+* `STATUS_ARRAY_BUF` is 512 bytes (`action_core.rs:84`) and a
+  `GoalStatusStamped` serialises to roughly 32, so the buffer holds about eight
+  entries — `MAX_GOALS` active plus `MAX_GOALS` completed fits with room over.
+* `completed_results` already carries both `goal_id` and the terminal `status`
+  (`CompletedResultEntry`, `:121`), so option 2 adds no state; it reads state
+  nothing currently publishes.
+* Nothing in the action core has a clock, which is what makes option 3 the
+  expensive one.
+
+### 1. Publish the terminal status before removing the goal
+
+Move one statement: publish, then `swap_remove`.
+
+* **Fixes:** a subscriber attached BEFORE the goal terminates now sees
+  `status: 4` instead of jumping from ACCEPTED to an empty array.
+* **Does not fix:** the late joiner. The empty array still goes out immediately
+  afterwards and is therefore what the transient-local publisher retains, so
+  the case phase-455 W5 built the retention mechanism for still reads
+  `status_list: []`.
+* **Promise it makes:** a terminated goal is visible for one publish, to
+  whoever was already listening. That is strictly weaker than the profile the
+  action protocol mandates, which exists precisely for the client who was not.
+* **Cost:** none. No capacity change, no clock.
+
+Take this only as a stepping stone — it is a real improvement that leaves the
+headline symptom in place, so shipping it alone would close the symptom's
+visible half and leave 1341's acceptance unmet.
+
+### 2. Keep terminated goals in the array until their result is reclaimed
+
+`publish_status_array` iterates `active_goals` + `completed_results` instead of
+`active_goals` alone.
+
+* **Fixes:** both cases. The last sample published carries the terminal status,
+  so the live subscriber sees it AND it is what the retained sample holds.
+  1341's acceptance is then reachable.
+* **Promise it makes:** a terminated goal is visible for as long as its result
+  is — which is a real rule a caller can reason about, and it is the closest
+  thing to upstream reachable without a clock. It is NOT upstream's rule: the
+  lifetime is "until the client fetches the result, or the slot is reused",
+  not "15 minutes".
+* **Cost:** the status array grows to at most `2 × MAX_GOALS` entries, which
+  the 512-byte buffer already holds. No new state, no clock. What it changes is
+  what a reader of `/status` infers about liveness: a goal in the array is no
+  longer necessarily active, so anything that counted array entries as active
+  goals has to read `status` instead. That is one grep, and it is the whole
+  hidden cost.
+
+### 3. Implement `result_timeout` expiry — upstream's rule
+
+Keep terminated goals and retire them on a timer, as `rcl_action_expire_goals`
+does.
+
+* **Fixes:** both cases, with the same lifetime semantics a ROS 2 client
+  already expects, so there is nothing to document as a divergence.
+* **Cost:** the action core has no clock. Giving it one is not a small change
+  on embedded — it is a per-server time source, a knob for the timeout, and a
+  new reason for the core to be driven even when nothing else is happening.
+  Every platform pays for it.
+* **Note:** this is option 2 plus a retirement policy. Doing 2 first does not
+  make 3 harder, and 2's rule is a defensible end state on a device.
+
+### Recommendation, for whoever holds the decision
+
+**Option 2**, unless the answer to the visibility question is "exactly
+upstream's". It is the only cheap option that reaches 1341's acceptance, its
+cost is bounded by a buffer that already fits, and it leaves option 3 open as a
+later refinement rather than foreclosing it. Option 1 is not sufficient alone
+and option 3 buys fidelity nobody has yet asked for at a cost every platform
+pays.
+
+This remains a design question that belongs with issue 0902's owner; the
+recommendation is stated so the decision is a yes or a no rather than a survey.
