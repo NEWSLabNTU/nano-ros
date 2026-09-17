@@ -47,6 +47,9 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import skip_marker  # noqa: E402  -- one spelling for the marker (issue 0658)
+
 # `out_of_lane_coord` in packages/testing/nros-tests/src/fixtures/lane.rs.
 COORD_RE = re.compile(r"is at coordinate ([^,]+),([^,]+),([^\s,]+)")
 # issue 1129 / phase-450 W1 — the SPELLINGS, not one spelling.
@@ -98,6 +101,15 @@ def skips(root: ET.Element):
             continue
         cls = (node.get("type") or "nros:unclassed").removeprefix("nros:")
         text = f"{node.get('message') or ''} {node.text or ''}"
+        # issue 1377 — for some harness invocations nextest emits a `<failure>`
+        # with NO message and NO body, and the panic text reaches the junit only
+        # in `<system-err>`. The rewriter classifies such a case correctly (it
+        # already reads the streams) but writes the bare marker as the message,
+        # so what arrives here is `[SKIPPED]` and nothing else. The reason is
+        # still on the testcase; read it from there rather than reporting an
+        # empty one, which no baseline pattern can ever match.
+        if not SKIP_LINE.search(text):
+            text = f"{text} {' '.join(skip_marker.testcase_streams(case))}"
         yield case, cls, text
 
 
@@ -107,7 +119,17 @@ def skips(root: ET.Element):
 # verbatim. Everything around it (the `thread '…' panicked at file:line` header,
 # the RUST_BACKTRACE note) is machinery, identical for every skip, and grouping
 # on it would put every skip in one bucket.
-SKIP_LINE = re.compile(r"^\s*\[SKIPPED\]\s*(.+?)\s*$", re.M)
+# Three things this pattern has to get right, each of which it got wrong at some
+# point (issues 0658, 1377):
+#
+# * the CLASSED marker `[SKIPPED:<class>]` does not contain the bare `[SKIPPED]`;
+# * the separator is `[^\S\n]*`, NOT `\s*` — `\s` matches a newline, so a bare
+#   `[SKIPPED]` on one line would swallow the line break and capture the NEXT
+#   line as its reason, which is how a panic header came to be reported as one;
+# * the reason must start with a non-space character, so a bare `[SKIPPED] `
+#   with nothing after it does not match with a single space as its "reason" and
+#   suppress the stream fallback below.
+SKIP_LINE = re.compile(r"^[^\S\n]*\[SKIPPED(?::[a-z_]+)?\][^\S\n]*(\S.*?)[^\S\n]*$", re.M)
 
 
 def reason_of(text: str) -> str:
@@ -168,6 +190,14 @@ def self_test() -> int:
         ("thread 't' (1) panicked at a.rs:1:1:\nnote: run with `RUST_BACKTRACE=1`",
          "(no reason recorded)"),
         ("", "(no reason recorded)"),
+        # issue 1377 — the CLASSED marker. `[SKIPPED:capability] …` does not
+        # contain the bare `[SKIPPED]`, so the pattern that required it fell
+        # through to the machinery scan and reported the panic header as the
+        # reason. Same defect issue 0658 fixed one consumer over.
+        (
+            "thread 't' (1) panicked at a.rs:1:1:\n[SKIPPED:capability] no docker here\n",
+            "no docker here",
+        ),
     ]
     # issue 1161 — the declaration rule, both directions. A ratchet whose
     # negative control nobody runs is a comment: this asserts that a declared
@@ -255,10 +285,36 @@ def self_test() -> int:
         print(f"  self-test FAIL: grouping produced:\n{out}")
         failures += 1
 
+    # issue 1377 — the shape that made this gate fail on a host that HAS a
+    # zenoh router: nextest emitted a `<failure>` with no message and no body,
+    # the rewriter wrote the bare marker, and the reason survived only in
+    # `<system-err>`. The baseline held the matching pattern and could never be
+    # consulted, because the reason handed to it was empty.
+    stream_only = ET.fromstring(
+        '<testsuites><testsuite><testcase classname="c" name="n">'
+        '<skipped message="[SKIPPED]" type="nros:capability" />'
+        "<system-err>\nthread 'n' (1) panicked at a.rs:1:1:\n"
+        "[SKIPPED] second session refused — shim built with ZPICO_MAX_SESSIONS=1\n"
+        "</system-err></testcase></testsuite></testsuites>"
+    )
+    rows = [(case, cls, text) for case, cls, text in skips(stream_only)]
+    got = reason_of(rows[0][2]) if rows else "(no rows)"
+    if "second session refused" not in got:
+        print(
+            "  self-test FAIL: a reason reaching the junit only in <system-err> was "
+            f"read as {got!r}"
+        )
+        failures += 1
+    else:
+        print("  %-52s %s" % ("a stream-only reason is recovered", "ok"))
+
     if failures:
         print(f"check-skip-budget self-test: {failures} case(s) FAILED")
         return 1
-    print(f"check-skip-budget self-test: OK ({len(cases)} extraction cases + grouping)")
+    print(
+        f"check-skip-budget self-test: OK ({len(cases)} extraction cases + grouping "
+        "+ stream recovery)"
+    )
     return 0
 
 
