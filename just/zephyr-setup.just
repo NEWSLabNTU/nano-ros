@@ -17,6 +17,37 @@ setup *ARGS:
     if [ -d "$WORKSPACE/zephyr" ] && [[ "$ARGS" != *--force* ]]; then
         echo "Zephyr workspace already present at $WORKSPACE"
         echo "To reinstall, run: just zephyr setup --force"
+        # issue 1279 / phase-449 W8 — this skip is about the WORKSPACE, and it
+        # was skipping steps that are not about the workspace at all.
+        #
+        # `scripts/zephyr/setup.sh` also runs the SDK's own registration, which
+        # writes `~/.cmake/packages/Zephyr-sdk/` — per-USER state. So a host
+        # whose workspace is present and whose registry is not was one this verb
+        # could not repair: it printed "already present", returned 0, and the
+        # failure appeared later inside `FindZephyr-sdk.cmake`.
+        #
+        # Not exotic: `~/.cmake` gets cleared, or the workspace lives in a
+        # persistent store while `~/.cmake` sits in a container layer that
+        # `--ephemeral` destroys after one job — so every container started with
+        # a complete, unpacked, unusable SDK.
+        #
+        # Registration is milliseconds and safe to repeat, so it is gated on
+        # ITSELF rather than on this condition.
+        #
+        # The VERSION comes from `zephyr/SDK_VERSION` — Zephyr's own statement
+        # of what this line needs, which the doctor block below already reads —
+        # not from a literal. In this branch the workspace exists by
+        # construction, so it is always readable here.
+        #
+        # NOT `|| true`. The whole complaint in 1279 is that this failure is
+        # invisible until a build dies inside `FindZephyr-sdk.cmake`; swallowing
+        # it here would rebuild that exact defect one line lower. The script
+        # already exits 0 when there is nothing to do.
+        sdk_want="$(cat "$WORKSPACE/zephyr/SDK_VERSION" 2>/dev/null || echo "")"
+        if [ -n "$sdk_want" ]; then
+            bash scripts/zephyr/ensure-sdk-registered.sh \
+                "$(pwd)/scripts/zephyr/sdk/zephyr-sdk-$sdk_want"
+        fi
     else
         NROS_ZEPHYR_MANIFEST="{{ZEPHYR_MANIFEST}}" NROS_ZEPHYR_WORKSPACE="$WORKSPACE" ./scripts/zephyr/setup.sh $ARGS
     fi

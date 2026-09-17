@@ -372,6 +372,25 @@ else
     install_sdk
 fi
 
+# issue 1279 / phase-449 W8 — REGISTRATION IS GATED ON ITSELF, not on the SDK
+# directory.
+#
+# The `elif` above takes the "already installed" branch whenever `$SDK_PATH`
+# exists, and `install_sdk` is what runs the SDK's own `setup.sh -c` — the step
+# that writes `~/.cmake/packages/Zephyr-sdk/`. That is per-USER state, so an
+# unpacked SDK on a host whose `~/.cmake` was cleared (or lives in a container
+# layer `--ephemeral` destroys) is a host this script could not repair: it
+# printed "already installed" and returned 0, and the failure surfaced later
+# inside `FindZephyr-sdk.cmake` — at CONFIGURE, not at download.
+#
+# Cheap, idempotent, and about the environment rather than the workspace, so it
+# runs on every invocation and decides for itself whether there is anything to
+# do. `--skip-sdk` still skips it, because that flag is the caller saying they
+# are managing the SDK themselves.
+if [ "$SKIP_SDK" != true ]; then
+    bash "$NANO_ROS_ROOT/scripts/zephyr/ensure-sdk-registered.sh" "$SDK_PATH"
+fi
+
 export ZEPHYR_SDK_INSTALL_DIR="$SDK_PATH"
 
 # =============================================================================

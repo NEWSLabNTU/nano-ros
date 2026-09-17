@@ -288,15 +288,40 @@ build dir carries neither the board nor the checkout in its name.
 
 ### W8 — `just setup zephyr` can repair what it skips
 
-[Issue 1279](../issues/1279-zephyr-setup-skips-sdk-registration-when-workspace-exists.md).
+[Issue 1279](../issues/archived/1279-zephyr-setup-skips-sdk-registration-when-workspace-exists.md).
 The verb skips the whole SDK setup when the WORKSPACE directory exists, but the
 cmake package registry entry is per-USER state. A host can hold a complete,
 unpacked, unusable SDK that the verb cannot repair.
 
-- [ ] The skip is per-artifact, not per-workspace: registration is checked and
-      repaired independently of whether the workspace is present.
-- [ ] Removing the registry entry and re-running the verb restores it, without
-      `--force` and without a re-download.
+- [x] The skip is per-artifact, not per-workspace.
+      `scripts/zephyr/ensure-sdk-registered.sh` is gated on ITSELF: it reads
+      `~/.cmake/packages/Zephyr-sdk/` for an entry whose CONTENT is this SDK's
+      `cmake` dir, and registers only when there is none. Keying on the content
+      rather than "the directory is non-empty" is what makes it per-artifact —
+      a host registered for a DIFFERENT version has a non-empty directory and
+      still cannot build this line.
+      `-c` only, never `-h`: `-c` writes the registry entry, `-h` installs host
+      tools, is the expensive half and is reported to FAIL in a container. A
+      step that is cheap and always safe must not inherit the gating of one
+      that is neither — which is the whole bug, stated once.
+- [x] **The same defect existed TWICE, one layer apart**, and only the outer one
+      is what the issue quotes. `just/zephyr-setup.just` skips all of
+      `setup.sh` when the WORKSPACE exists; `setup.sh` then skips `install_sdk`
+      — the thing that registers — when the SDK DIRECTORY exists. Fixing only
+      the verb would have left a host with an unpacked, unregistered SDK
+      unrepairable by `setup.sh` itself. Both call the helper now.
+- [x] Removing the registry entry and re-running the verb restores it, without
+      `--force` and without a re-download. Measured end to end: registry
+      emptied, `just zephyr setup` with no flags, and the log reads
+      `Zephyr workspace already present` (the skip still fires, correctly),
+      then `registering`, then the entry is back — while every source step
+      reports `already present (skip)`, so nothing was re-fetched.
+      The version comes from `zephyr/SDK_VERSION`, Zephyr's own statement of
+      what the line needs and what the doctor block beside it already reads,
+      rather than a fourth literal `0.16.8`.
+      NOT `|| true` on that call: 1279's complaint is that this failure is
+      invisible until a build dies inside `FindZephyr-sdk.cmake`, and swallowing
+      it would rebuild that defect one line lower.
 
 ## Acceptance for the phase
 
