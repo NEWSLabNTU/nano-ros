@@ -39,12 +39,12 @@ is being worked in its own branch now. Two corrections to the original list:
   filed a day later by phase-454 W3 with better evidence and cross-references
   (0419, 0466, 0561, 0627, 0921). 1336 is the canonical id; 1306 is being closed
   as a duplicate, with its acceptance recipe preserved.
-- **[1360](../issues/1360-tier2-nightly-stale-zephyr-workspace-codegen-version.md)
-  is not from this campaign but is the most urgent codegen-area defect**: the
+- **[1360](../issues/archived/1360-tier2-nightly-stale-zephyr-workspace-codegen-version.md)
+  is not from this campaign but was the most urgent codegen-area defect**: the
   tier-2 nightly builds against a persistent `~/.nros/workspaces/zephyr/3.7`
   whose generated trees were emitted at an older codegen version, so the
   refusal guard fires on every Zephyr fixture. The guard is right; the
-  persistent workspace is the bug. It is being fixed alongside this phase.
+  persistent workspace is the bug. It was fixed alongside this phase.
 
 - [1306](../issues/1306-cli-build-rs-misses-worktree-git-index.md): in a
   linked worktree, the CLI source stamp never re-runs on a commit. Every
