@@ -6796,12 +6796,41 @@ impl<'s> Executor<'s> {
     // Guard condition registration
     // ========================================================================
 
-    /// Register a guard condition with a callback.
+    /// Register a guard condition with a callback, on no particular node.
     ///
     /// Returns both the [`HandleId`] for trigger configuration and a
     /// [`GuardCondition`] for triggering from other threads.
+    ///
+    /// **This is the ours-only PRIMITIVE, not the verb a user reaches for.**
+    /// phase-417 W4.e settled that the NODE owns a guard condition in all three
+    /// languages, so the spelling an application writes is
+    /// [`NodeCtx::create_guard_condition`](crate::executor::NodeCtx::create_guard_condition)
+    /// — which is this function with a node bound, so the guard inherits that
+    /// node's `SchedContext` like every other entity the node creates. This one
+    /// stays because the executor is what owns the arena the flag lives in, and
+    /// because an image with no node at all (a bare `Executor::open` plus a
+    /// wake source) still has to be able to make one.
     pub fn register_guard_condition<F>(
         &mut self,
+        callback: F,
+    ) -> Result<(HandleId, GuardCondition), NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.register_guard_condition_on(None, callback)
+    }
+
+    /// The node-bound form of [`register_guard_condition`](Self::register_guard_condition)
+    /// — phase-417 W4.e.
+    ///
+    /// `node_id == None` is the legacy nodeless path and behaves exactly as
+    /// `register_guard_condition` always did. With a node, the registered slot
+    /// takes that node's default `SchedContext`, which is what "the node owns
+    /// it" has to mean for a callback that shares one executor with every other
+    /// tier in the image (RFC-0047).
+    pub fn register_guard_condition_on<F>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
         callback: F,
     ) -> Result<(HandleId, GuardCondition), NodeError>
     where
@@ -6843,6 +6872,7 @@ impl<'s> Executor<'s> {
                 drop_fn: drop_entry::<GuardConditionEntry<F>>,
             };
             self.emplace_entry(slot, meta, TraceName::Slot("guard", slot));
+            self.apply_node_default_sched(slot, node_id, None);
 
             Ok((HandleId(slot), guard_handle))
         }
@@ -7364,10 +7394,22 @@ impl<'s> Executor<'s> {
         // the condvar fallback was deleted — the std arm's `else` branch had
         // already become "drive for the full timeout", which is what the alloc
         // arm always did — so keeping two was keeping a fork that agreed.
+        // phase-417 W4.e — the FIRST arm is what the swap-and-clear above says
+        // it is for, and it was missing: a wake that landed BETWEEN two spins
+        // set the flag, and this expression then took the `else` and drove the
+        // transport for the caller's FULL timeout, so the pending work waited
+        // out the very budget the wake exists to cut short. Measured with a
+        // guard condition triggered from another thread just before a 400 ms
+        // spin: 400 ms to dispatch, against 50 ms for the same trigger issued
+        // while the spin was already parked in `wait_ms`. Being woken means
+        // there IS work, so the right timeout is 0 — poll every session
+        // non-blockingly and go dispatch it, which is what the comment at the
+        // swap has claimed since Phase 104.C.6.
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         let primary_drive_timeout_ms = {
-            if !was_woken
-                && self.has_async_wake
+            if was_woken {
+                0
+            } else if self.has_async_wake
                 && let Some(wake) = self.node_wake.as_ref()
             {
                 let _ = wake.wait_ms(timeout_ms as u32);
