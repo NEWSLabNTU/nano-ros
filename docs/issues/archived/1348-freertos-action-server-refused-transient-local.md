@@ -2,10 +2,11 @@
 id: 1348
 title: "Every zenoh action server now fails to register: the shim refuses
   TRANSIENT_LOCAL and the ROS action `/status` topic is REQUIRED to ask for it"
-status: open
+status: resolved
 type: bug
 area: [rmw, core]
 related: [1146, 1256, phase-448, phase-454]
+resolved_in: phase-455 W5
 ---
 
 ## What
