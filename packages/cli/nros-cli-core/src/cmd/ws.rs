@@ -2848,13 +2848,23 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // struct to be cloned.
     let base_paths = args.base_paths.clone();
     let nano_ros_root = args.nano_ros_root.clone();
-    // phase-308 W1 — captured up front: `args.workspace` is moved just below,
-    // and the C/C++-only early return still needs the probe's nano-ros path.
-    let nano_ros_for_probes = nano_ros_path_for(&args);
     let ws_root: PathBuf = match args.workspace {
         Some(p) => std::fs::canonicalize(&p).wrap_err_with(|| format!("sync: {}", p.display()))?,
         None => std::env::current_dir()?,
     };
+    // Issue 1304 — the probes' nano-ros path asks the ONE ladder
+    // (`orchestration::nano_ros_root`), so an installed toolchain answers out of
+    // its own `share/nano-ros`. Both rungs of the old two-rung chain were a
+    // CHECKOUT (`--nano-ros-path`, then `$NROS_REPO_DIR`), so on a machine with
+    // neither, every C/C++ component reported "no producer … (no nano-ros
+    // path)" and the bake fell back to the SystemModel bound — silently, since
+    // that fallback is also the documented degradation.
+    //
+    // BELOW `ws_root` (phase-308 W1 captured it above) because the walk-up rung
+    // starts there. `args.workspace` is already moved, so this reads the one
+    // field it needs rather than borrowing `args` as a whole.
+    let nano_ros_for_probes =
+        crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &ws_root);
     // phase-429 W2 — the codegen version guard, before the first write. `sync`
     // emits generated msg crates and rewrites every consumer's
     // `.cargo/config.toml`; a mismatched emitter's output is what the user then
@@ -2863,7 +2873,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // Anchor: a nano-ros checkout named on the COMMAND LINE wins (it IS the
     // runtime this workspace links), then the workspace itself, which the
     // resolver walks up from — the arm that reaches a C/C++-only workspace
-    // with no `Cargo.lock`. Deliberately NOT `nano_ros_path_for`, whose
+    // with no `Cargo.lock`. Deliberately NOT the probes' own path below, whose
     // `NROS_REPO_DIR` fallback is ambient after `source activate.sh`: that
     // would measure every workspace against whichever checkout the shell was
     // opened in. `runtime_root` still consults the env, one rung lower, for a
@@ -3207,11 +3217,6 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
 
 /// phase-308 W1 — resolve the nano-ros checkout the metadata probes build
 /// against. Mirrors the resolution the patch-table path already does.
-fn nano_ros_path_for(args: &SyncArgs) -> Option<PathBuf> {
-    args.nano_ros_path
-        .clone()
-        .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
-}
 /// phase-307 W2 — the producer trigger.
 ///
 /// Runs LAST, and the order is load-bearing: the metadata harness compiles the
