@@ -183,6 +183,97 @@ else
     echo "  SKIP  D  Rust: cargo not on PATH" >&2
 fi
 
+# E — the FRESHNESS half (issue 1360). Arms A-D prove the guard fires; this
+#     proves the build REGENERATES rather than letting it fire, which is the
+#     other half of the same mechanism and the half that had no evidence.
+#
+#     Three nights of tier 2 died on arm B's exact `#error` against a
+#     PERSISTENT Zephyr workspace: every freshness edge a codegen emitter has
+#     names the `nros` binary that build dir CACHED (`_NANO_ROS_CODEGEN_TOOL` is
+#     `CACHE INTERNAL`, dropped only when the path stops existing), and a build
+#     dir under `$NROS_STORE/workspaces/` outlives every checkout — so the
+#     binary CI never rebuilds satisfied all of them while the trees sat below
+#     `NROS_CODEGEN_VERSION_MIN`. `nros_codegen_version_stale()` adds the one
+#     input that is a property of the tree on disk rather than of a timestamp.
+#
+#     Driven through the CANONICAL generator rather than the Zephyr one because
+#     both call the same helper and only this one runs without a west workspace;
+#     the Zephyr lane's arm is the same two lines. The generated .c TUs are never
+#     compiled here (they need the per-build knob header, a cargo byproduct), so
+#     the custom target names the HEADER — which is the versioned artifact.
+nros_cli=""
+for _cand in "$root/packages/cli/target/release/nros" "$(command -v nros || true)"; do
+    [ -n "$_cand" ] && [ -x "$_cand" ] && nros_cli="$_cand" && break
+done
+if [ -z "$nros_cli" ] || ! command -v cmake >/dev/null; then
+    echo "  SKIP  E  freshness: no in-tree \`nros\` or no cmake — cannot drive a configure" >&2
+else
+    gen="$work/gen"
+    mkdir -p "$gen/msg"
+    printf 'int32 v\n' > "$gen/msg/Tiny.msg"
+    hdr_rel="nano_ros_c/probe_pkg/msg/probe_pkg_msg_tiny.h"
+    cat > "$gen/CMakeLists.txt" <<CMAKE
+cmake_minimum_required(VERSION 3.20)
+project(nros_codegen_freshness_probe C)
+set(_NANO_ROS_PREFIX "$root" CACHE INTERNAL "")
+set(_NANO_ROS_CODEGEN_TOOL "$nros_cli" CACHE INTERNAL "")
+include("$root/cmake/NanoRosGenerateInterfaces.cmake")
+nros_generate_interfaces(probe_pkg LANGUAGE C SKIP_INSTALL)
+# Not the interface LIBRARY: its .c TUs need the per-build knob header.
+add_custom_target(gen DEPENDS "\${CMAKE_CURRENT_BINARY_DIR}/$hdr_rel")
+CMAKE
+    hdr="$gen/build/$hdr_rel"
+    stamp_of() { sed -n 's/^#define NROS_EMITTED_CODEGEN_VERSION \([0-9]*\)$/\1/p' "$1"; }
+
+    rc=0
+    NROS_REPO_DIR="$root" cmake -S "$gen" -B "$gen/build" > "$work/E-conf1.log" 2>&1 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        bad "E  the freshness probe could not configure (see $work/E-conf1.log)"
+    else
+        rc=0
+        cmake --build "$gen/build" --target gen > "$work/E-build1.log" 2>&1 || rc=$?
+        if [ "$rc" -ne 0 ] || [ ! -f "$hdr" ]; then
+            bad "E  the freshness probe emitted no header (see $work/E-build1.log)"
+        elif [ "$(stamp_of "$hdr")" != "$emitted" ]; then
+            bad "E  a fresh emit stamped $(stamp_of "$hdr"), not this tree's $emitted"
+        else
+            ok "E  a clean configure+build emits at this tree's version ($emitted)"
+
+            # Poison it into a museum tree: the state the runner's workspace was in.
+            sed -i "s/^#define NROS_EMITTED_CODEGEN_VERSION .*/#define NROS_EMITTED_CODEGEN_VERSION 1/" "$hdr"
+            rc=0
+            cmake --build "$gen/build" --target gen > "$work/E-build2.log" 2>&1 || rc=$?
+            if [ "$rc" -eq 0 ] && [ "$(stamp_of "$hdr")" = "1" ]; then
+                ok "E  reproduction: an incremental build does NOT notice (no input moved)"
+            else
+                bad "E  the reproduction did not reproduce — the build repaired it with no configure"
+            fi
+
+            # The fix: a re-configure asks the ARTIFACTS, names both numbers, and
+            # hands the file back to the lane's own emitter.
+            rc=0
+            NROS_REPO_DIR="$root" cmake -S "$gen" -B "$gen/build" \
+                > "$work/E-conf2.log" 2>&1 || rc=$?
+            if [ "$rc" -ne 0 ]; then
+                bad "E  the re-configure failed (see $work/E-conf2.log)"
+            elif ! nros_grep_q "emitted at codegen version 1, and this runtime accepts" \
+                    "$work/E-conf2.log"; then
+                bad "E  the re-configure did not report the refused version and the range"
+                printf '        %s\n' "$(tail -1 "$work/E-conf2.log")"
+            else
+                ok "E  a re-configure names the refused version AND the accepted range"
+                rc=0
+                cmake --build "$gen/build" --target gen > "$work/E-build3.log" 2>&1 || rc=$?
+                if [ "$rc" -eq 0 ] && [ "$(stamp_of "$hdr")" = "$emitted" ]; then
+                    ok "E  the tree is REGENERATED at $emitted — the guard never fires"
+                else
+                    bad "E  the museum tree survived the re-configure (stamp $(stamp_of "$hdr" 2>/dev/null))"
+                fi
+            fi
+        fi
+    fi
+fi
+
 echo
 if [ "$fails" -ne 0 ]; then
     echo "codegen-version refusal: $fails check(s) FAILED" >&2
