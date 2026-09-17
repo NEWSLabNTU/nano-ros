@@ -602,6 +602,29 @@ impl<
         self.result_slab_used
     }
 
+    /// Is `goal_id` a goal this server still knows about?
+    ///
+    /// rcl's `rcl_action_server_goal_exists` — phase-417 W4.b, ledger row
+    /// `c:action_server_goal_exists`. rcl searches the server's goal-handle
+    /// table, which retains a goal after it terminates until
+    /// `rcl_action_expire_goals` reclaims it, so a terminated-but-unreclaimed
+    /// goal EXISTS there. Ours asks the same question over the two places a
+    /// goal can live here: the active set, and the completed-result slab.
+    ///
+    /// Both halves are load-bearing, and that is why this row could not be
+    /// closed as a documentation fix pointing at the status lookup. A status
+    /// lookup reads the ACTIVE set only, so it answers "not found" — which the
+    /// C surface maps to `NROS_RET_NOT_FOUND` — for a goal that has completed
+    /// and whose result is still sitting there to be fetched. "Not found" and
+    /// "does not exist" therefore disagreed over exactly the window in which a
+    /// client is expected to call `get_result`.
+    pub fn goal_exists(&self, goal_id: &GoalId) -> bool {
+        self.active_goals
+            .iter()
+            .any(|g| g.goal_id.uuid == goal_id.uuid)
+            || self.has_completed_result(goal_id)
+    }
+
     /// `true` while `goal_id`'s completed result is still retained (i.e. a
     /// `get_result` for it would be answered from the slab rather than as
     /// `Unknown`).

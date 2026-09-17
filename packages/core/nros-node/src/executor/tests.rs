@@ -7657,6 +7657,81 @@ fn expire_completed_results_reclaims_only_delivered_results() {
     assert_eq!(&bytes[..], &payload(2)[..]);
 }
 
+/// `goal_exists` answers rcl's question, which is WIDER than a status lookup —
+/// phase-417 W4.b, ledger row `c:action_server_goal_exists`.
+///
+/// The row sat open on the claim that `nros_action_get_goal_status` already
+/// answered it ("ours answers the stronger question"), so it might be a
+/// documentation fix. It is not, and this is the measurement that says so. A
+/// status lookup reads the ACTIVE set; rcl's `rcl_action_server_goal_exists`
+/// searches the goal-handle table, which retains a goal after it terminates
+/// until `rcl_action_expire_goals` reclaims it. The three states below are
+/// where the two answers differ, and the middle one is exactly the window in
+/// which a client is expected to call `get_result`:
+///
+/// | state                              | status lookup | `goal_exists` |
+/// | ---------------------------------- | ------------- | ------------- |
+/// | active                             | a status      | true          |
+/// | completed, result still retained   | NOT FOUND     | **true**      |
+/// | completed, result fetched + expired| NOT FOUND     | false         |
+#[test]
+fn goal_exists_covers_active_and_retained_results_not_just_active() {
+    use super::action_core::ActionServerCore;
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher,
+        MockPublisher,
+    );
+
+    const RESULT_LEN: usize = 40;
+    let live = GoalId { uuid: [1u8; 16] };
+    let done = GoalId { uuid: [2u8; 16] };
+    let never = GoalId { uuid: [9u8; 16] };
+
+    // A goal nobody ever sent is unknown in every state below.
+    assert!(!core.goal_exists(&never));
+
+    // ACTIVE — in the active set, and `goal_exists` says so.
+    core.accept_goal(live, 1).unwrap();
+    assert!(core.goal_exists(&live));
+    assert!(!core.goal_exists(&done));
+
+    // COMPLETED, RESULT RETAINED — this is the row. `complete_goal_raw` removes
+    // the goal from the active set, so an active-set lookup reports NOT FOUND
+    // while the result is still sitting there to be fetched.
+    core.accept_goal(done, 2).unwrap();
+    core.complete_goal_raw(&done, GoalStatus::Succeeded, &[7u8; RESULT_LEN])
+        .unwrap();
+    assert!(
+        !core
+            .active_goals
+            .iter()
+            .any(|g| g.goal_id.uuid == done.uuid),
+        "a completed goal must have left the active set — otherwise this test \
+         proves nothing about the two answers differing"
+    );
+    assert!(core.has_completed_result(&done));
+    assert!(
+        core.goal_exists(&done),
+        "a completed goal whose result is still retained EXISTS, which is what \
+         rcl reports and what an active-set lookup cannot"
+    );
+
+    // COMPLETED, FETCHED, EXPIRED — now it is gone from both.
+    let _ = fetch_result(&mut core, &done, &[0u8; 4], RESULT_LEN);
+    assert_eq!(core.expire_completed_results(), 1);
+    assert!(!core.has_completed_result(&done));
+    assert!(!core.goal_exists(&done));
+
+    // The still-active goal was never a candidate for expiry.
+    assert!(core.goal_exists(&live));
+}
+
 // ============================================================================
 // Phase 272 (RFC-0047) — node_name → sched-context table + node_builder lookup
 // ============================================================================

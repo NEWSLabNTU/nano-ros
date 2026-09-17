@@ -3402,6 +3402,53 @@ where
     entry.server.active_goal_count()
 }
 
+/// Action server: eagerly reclaim delivered results — phase-417 W4.b.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionServerArenaEntry`.
+pub(crate) unsafe fn as_expire_goals<
+    A,
+    GoalF,
+    CancelF,
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+    const MG: usize,
+>(
+    ptr: *mut u8,
+) -> usize
+where
+    A: RosAction,
+{
+    let entry =
+        unsafe { &mut *(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
+    entry.server.expire_goals()
+}
+
+/// Action server: does this server still know `goal_id`? — phase-417 W4.b.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionServerArenaEntry`.
+pub(crate) unsafe fn as_goal_exists<
+    A,
+    GoalF,
+    CancelF,
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+    const MG: usize,
+>(
+    ptr: *const u8,
+    goal_id: &nros_core::GoalId,
+) -> bool
+where
+    A: RosAction,
+{
+    let entry =
+        unsafe { &*(ptr as *const ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
+    entry.server.goal_exists(goal_id)
+}
+
 /// Raw action server: publish feedback via arena entry.
 ///
 /// # Safety
@@ -3475,6 +3522,39 @@ pub(crate) unsafe fn as_raw_active_goal_count<
 ) -> usize {
     let entry = unsafe { &*(ptr as *const ActionServerRawArenaEntry<GB, RB, FB, MG>) };
     entry.core.active_goal_count()
+}
+
+/// Raw action server: eagerly reclaim delivered results — phase-417 W4.b.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionServerRawArenaEntry`.
+pub(crate) unsafe fn as_raw_expire_goals<
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+    const MG: usize,
+>(
+    ptr: *mut u8,
+) -> usize {
+    let entry = unsafe { &mut *(ptr as *mut ActionServerRawArenaEntry<GB, RB, FB, MG>) };
+    entry.core.expire_completed_results()
+}
+
+/// Raw action server: does this server still know `goal_id`? — phase-417 W4.b.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionServerRawArenaEntry`.
+pub(crate) unsafe fn as_raw_goal_exists<
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+    const MG: usize,
+>(
+    ptr: *const u8,
+    goal_id: &nros_core::GoalId,
+) -> bool {
+    let entry = unsafe { &*(ptr as *const ActionServerRawArenaEntry<GB, RB, FB, MG>) };
+    entry.core.goal_exists(goal_id)
 }
 
 /// Raw action server: iterate active goals via arena entry.
