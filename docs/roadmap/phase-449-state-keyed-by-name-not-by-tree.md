@@ -196,9 +196,32 @@ phase-454 W3 did it; neither had reason to edit this section.
 so an unrelated checkout blocks this one's gates while the refusal says the
 opposite.
 
-- [ ] The lock path carries the tree.
-- [ ] The refusal text names the tree holding the lock, so a wrong one is
-      diagnosable from the message alone.
+- [x] The lock path carries the tree:
+      `<dir>/<basename>-<cksum>/<name>.pgid`. The tree comes from
+      `nros_checkout_root` — the MARKER walk, sourced rather than
+      reimplemented, because a linked worktree's `.git` is a file (issue 1336)
+      and a second spelling of "which checkout" is this phase's own defect one
+      layer up. The tree is a DIRECTORY segment, not part of the filename, so
+      `runner-sweep.sh` can still enumerate every tree's locks on a shared
+      runner — which it legitimately wants to do. A caller outside any checkout
+      keys on its cwd: not the old behaviour restored, but the honest answer
+      when there is no checkout to name.
+- [x] The refusal names both trees — `Holding tree:` and `This tree:` — from a
+      third field in the lock (`<launcher> <pgid> <tree>`), appended so the two
+      existing `awk` readers are untouched.
+- [x] Measured on two real trees, both directions, with a negative control.
+      A live `fixtures` lock held by the main checkout does NOT block a linked
+      worktree (`rc=0`), and DOES block the main checkout (`rc=1`) with both
+      paths printed. The control: the old one-line spelling
+      (`<dir>/<name>.pgid`) evaluated in each tree returns the SAME path, which
+      is issue 1157 exactly — so the test distinguishes the fix from its
+      absence rather than passing either way.
+      `runner-sweep.sh` gained `nros_guard_reap_lock <lockfile>`: a bare name no
+      longer identifies which tree's build is being reaped, and recomputing the
+      path from the sweeper's own cwd would reap a different tree's lock. Its
+      glob keeps the legacy `*.pgid` form beside `*/*.pgid`, so a lock written
+      before this change is still swept rather than orphaned forever by the fix
+      that tidied it.
 
 **#1157 and #1166 are NOT duplicates and must not be merged** — #1166 says so
 itself. They are opposite halves: one refuses across trees that should be
