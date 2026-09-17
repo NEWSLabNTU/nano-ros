@@ -87,7 +87,7 @@ inside it:
   member of the tracked root?); W5 worked around it with
   `just native build-fixture-rust`.
 * The concurrent-`idlc` defect was filed here as #1367 and is a **DUPLICATE** of
-  [#1311](../issues/1311-cyclonedds-sumseq-generated-c-fails-to-compile.md),
+  [#1311](../issues/archived/1311-cyclonedds-sumseq-generated-c-fails-to-compile.md),
   open since 2026-09-11 and fixed at `f62c17359a` the same night — checking for
   an existing report is the step that was skipped. 1311's cause is sharper than
   #1367 guessed: `tests/CMakeLists.txt` listed each generated-source list in the
