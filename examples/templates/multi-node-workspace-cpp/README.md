@@ -12,7 +12,9 @@ the same Node pkg / Bringup pkg shape with a generated entry, built with CMake.
   `bind_subscription` (typed member callback on the generated `std_msgs::msg::Int32`).
 - `src/demo_bringup/` — `package.xml` + `system.toml` + `launch/`
   (the launch XML also shows a per-topic QoS override:
-  `qos_overrides./chatter.publisher.reliability = best_effort`).
+  `qos_overrides./chatter.publisher.depth = 5`). Not `reliability =
+  best_effort`: a DDS RMW never matches that writer to the listener's
+  reliable reader, so the default CycloneDDS build would receive nothing.
 There is no root `CMakeLists.txt` and no entry package (RFC-0098 D9, RFC-0065
 D4): `nros build` generates the cmake root and the image's C++ entry
 (`native_entry`) under `build/`, resolving the bringup's launch file into a

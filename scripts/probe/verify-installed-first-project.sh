@@ -23,6 +23,30 @@ marker_hits="$(find / -xdev \( -path /proc -o -path "$nros_store" \) -prune -o \
 [ -z "$marker_hits" ] \
     || probe_fail "a nano-ros root appeared outside the store during setup/build: $marker_hits"
 
+# --- the build used what `nros setup` provisioned (issue 1304) -----------------
+# installation.md says `nros setup native --rmw cyclonedds` provisions "Cyclone
+# DDS runtime + idlc", so the build must link THAT, not a Cyclone compiled from
+# source behind the user's back. Asserted here because the source fallback also
+# produces a working binary: without this check, a configure that stopped
+# finding the provisioned dist would still pass the Run step below, and the
+# prebuilt RFC-0099 D4 prefers would silently stop being used.
+cache=./build/CMakeCache.txt
+[ -f "$cache" ] || probe_fail "no $PWD/build/CMakeCache.txt — the Build step never configured"
+cyclone_dir="$(sed -n 's/^CycloneDDS_DIR:[A-Z]*=//p' "$cache")"
+# The prefix is ASKED for, never matched with a version wildcard (issue 0625,
+# `check-sdk-store-not-enumerated`), and asked from the SDK root so it reads the
+# index that root ships — the same question nros-rmw-provision.cmake asks.
+rc=0
+want="$(cd "$(nros sdk-root)" && nros sdk-path cyclonedds --require)" || rc=$?
+[ "$rc" -eq 0 ] && [ -n "$want" ] \
+    || probe_fail "\`nros sdk-path cyclonedds --require\` exited $rc — \`nros setup --rmw cyclonedds\` provisioned no Cyclone where the build looks"
+case "$cyclone_dir" in
+    "$want"/*)
+        echo "probe: CycloneDDS came from the prebuilt nros setup provisioned ($cyclone_dir)" ;;
+    *)
+        probe_fail "the build did not use the Cyclone \`nros setup --rmw cyclonedds\` provisioned: CycloneDDS_DIR='$cyclone_dir', want one under $want (issue 1304, RFC-0099 D4)" ;;
+esac
+
 # --- the Run step, non-interactively -------------------------------------------
 # first-project.md's Run block, with the output it documents: `Published: N`
 # from the talker and `Received: N` from the listener, both in one process.

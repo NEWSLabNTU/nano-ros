@@ -58,6 +58,7 @@ pub mod release_manifest;
 /// RFC-0099 D8 / phase-447 D3 — the pinned, vendored rosdep snapshot that the
 /// `<depend>` ladder falls back to below `[prereq.*]`.
 pub mod rosdep_snapshot;
+pub mod rust_toolchain;
 pub use nros_orchestration_ir::rtos_realizer;
 /// phase-447 D1 (RFC-0099 D5) — is this host at or above a dist's floor?
 pub mod host_floor;

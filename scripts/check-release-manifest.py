@@ -54,6 +54,14 @@ So the properties below are gated rather than remembered.
   Both NAMES are read out of the Rust that resolves them — `SHIPPED_SUBDIR` in
   `nros_launcher::checkout`, `LAUNCH_RESOLVER` in `cmd::ws` — for R1's reason: a
   gate that spells a path itself goes green while the reader looks elsewhere.
+* **R6 — the SDK root carries its submodule pins, under the name its readers
+  look for** (issue 1304). `git archive` drops gitlinks, so the release RECORDS
+  them in a file the staging script writes and verifies; `nros setup` reads it
+  to clone each submodule source, and `nros-rmw-provision.cmake` reads its
+  presence as "this is an installed root". Three spellings of one name, so the
+  name is read out of `sdk_store::SUBMODULE_PINS_FILE` and the other two must
+  match it — a rename on one side would leave `nros setup` looking for a file
+  nothing writes, which is issue 1304 again with a different error.
 
 ## Buildless
 
@@ -81,6 +89,16 @@ WS = os.path.join(ROOT, "packages", "cli", "nros-cli-core", "src", "cmd", "ws.rs
 # The script that owns the SDK root's path list and verifies what it staged.
 STAGE_SCRIPT = "scripts/stage-sdk-root.sh"
 STAGE_PATH = os.path.join(ROOT, "scripts", "stage-sdk-root.sh")
+
+# R6 — the pins file's reader, and the cmake hook that keys on its presence.
+STORE = os.path.join(
+    ROOT, "packages", "cli", "nros-cli-core", "src", "orchestration", "sdk_store.rs"
+)
+PROVISION = os.path.join(
+    ROOT, "packages", "rmw", "cyclonedds", "nros-rmw-cyclonedds", "nros-rmw-provision.cmake"
+)
+PINS_CONST_RE = re.compile(r'pub const SUBMODULE_PINS_FILE: &str = "([^"]+)"')
+STAGE_PINS_RE = re.compile(r'^PINS_FILE="([^"]+)"', re.M)
 
 # The Rust reader's own name for the file. Read, never spelled here.
 FILE_NAME_RE = re.compile(r'pub const FILE_NAME: &str = "([^"]+)"')
@@ -161,6 +179,36 @@ def sdk_root_violations(workflow_text, launcher_text, ws_text, stage_text):
                        "every workspace configure resolves its launch file through it, "
                        "so a scaffolded project dies at `nros codegen entry`")
             )
+    return bad
+
+
+def pins_violations(store_text, stage_text, provision_text):
+    """R6 — one pins-file name, written, verified and read (issue 1304)."""
+    m = PINS_CONST_RE.search(store_text)
+    if not m:
+        return [("R6", f"{STORE} declares no `pub const SUBMODULE_PINS_FILE` — nothing "
+                       "says where an installed root's submodule pins are read from")]
+    name = m.group(1)
+    bad = []
+    sm = STAGE_PINS_RE.search(stage_text)
+    if not sm or sm.group(1) != name:
+        bad.append(
+            ("R6", f"{STAGE_SCRIPT} writes {sm.group(1) if sm else 'no PINS_FILE'} but "
+                   f"`nros setup` reads {name} — every submodule source of an installed "
+                   "`nros setup` would dead-end as issue 1304 did")
+        )
+    # The script must also VERIFY it (its `need` lines are what fail a release
+    # whose staging broke), not merely declare the name.
+    if 'need -f "$PINS_FILE"' not in stage_text:
+        bad.append(
+            ("R6", f"{STAGE_SCRIPT} does not `need -f \"$PINS_FILE\"` — a staging that "
+                   "wrote no pins would ship, and be found by a user at `nros setup`")
+        )
+    if f'/{name}"' not in provision_text:
+        bad.append(
+            ("R6", f"{PROVISION} does not key on {name} — an installed root would stop "
+                   "finding the Cyclone `nros setup` provisioned")
+        )
     return bad
 
 
@@ -395,10 +443,29 @@ def self_test():
         if got != want:
             print(f"  self-test FAIL [{label}]: expected {sorted(want) or 'no violations'}, got {sorted(got)}")
             failures += 1
+
+    # R6 — each side of the three-way name, broken on its own.
+    store = 'pub const SUBMODULE_PINS_FILE: &str = "pins.toml";'
+    stage = 'PINS_FILE="pins.toml"\nneed -f "$PINS_FILE" "why"\n'
+    cmake = 'if(EXISTS "${_root}/pins.toml")\n'
+    pins_cases = [
+        ("the three agree", store, stage, cmake, set()),
+        ("the reader declares nothing", "", stage, cmake, {"R6"}),
+        ("the stager writes another name", store, stage.replace("pins.toml", "p.toml"), cmake, {"R6"}),
+        ("the stager declares but never verifies", store, 'PINS_FILE="pins.toml"\n', cmake, {"R6"}),
+        ("the cmake hook keys on another name", store, stage, cmake.replace("pins.toml", "p.toml"), {"R6"}),
+    ]
+    for label, st, sg, cm, want in pins_cases:
+        got = {rule for rule, _ in pins_violations(st, sg, cm)}
+        if got != want:
+            print(f"  self-test FAIL [{label}]: expected {sorted(want) or 'no violations'}, got {sorted(got)}")
+            failures += 1
+
+    total = len(cases) + len(pins_cases)
     if failures:
         print(f"check-release-manifest self-test: {failures} case(s) FAILED")
         return 1
-    print(f"check-release-manifest self-test: OK ({len(cases)} cases)")
+    print(f"check-release-manifest self-test: OK ({total} cases)")
     return 0
 
 
@@ -411,7 +478,7 @@ def main():
     if self_test() != 0:
         return 1
 
-    for path in (WORKFLOW, READER, LAUNCHER, WS, STAGE_PATH):
+    for path in (WORKFLOW, READER, LAUNCHER, WS, STAGE_PATH, STORE, PROVISION):
         if not os.path.isfile(path):
             print(f"check-release-manifest: {path} is missing — nothing records the release")
             return 1
@@ -426,7 +493,13 @@ def main():
     with open(STAGE_PATH, encoding="utf-8") as fh:
         stage_text = fh.read()
 
+    with open(STORE, encoding="utf-8") as fh:
+        store_text = fh.read()
+    with open(PROVISION, encoding="utf-8") as fh:
+        provision_text = fh.read()
+
     bad = violations(workflow_text, reader_text, launcher_text, ws_text, stage_text)
+    bad += pins_violations(store_text, stage_text, provision_text)
     if bad:
         print("check-release-manifest: the release does not record its components (RFC-0097 D7):")
         for rule, msg in bad:
@@ -444,7 +517,8 @@ def main():
     print(
         f"check-release-manifest: OK — the asset records share/nros/{name}, "
         f"stamped by the binary; {fatal} release-blocking path(s), all about codegen; "
-        f"it carries {subdir} and bin/{resolver}."
+        f"it carries {subdir} and bin/{resolver}, and {subdir}/"
+        f"{PINS_CONST_RE.search(store_text).group(1)} under the one name its readers use."
     )
     return 0
 
