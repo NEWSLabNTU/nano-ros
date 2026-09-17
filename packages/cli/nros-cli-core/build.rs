@@ -51,9 +51,37 @@ fn main() {
     }
     // …and when the index moves (commit, rebase, branch switch), since the
     // stamp reads index blob SHAs.
-    let index = root.join(".git/index");
-    if index.exists() {
-        println!("cargo:rerun-if-changed={}", index.display());
+    //
+    // ASK git where that file is; never join `.git/<x>` onto the checkout
+    // (issues 1336 + 1306). This line read `root.join(".git/index")`, which is
+    // right only for a main checkout: in a linked worktree `.git` is a FILE and
+    // the index is under `<common>/.git/worktrees/<name>/`, so the path did not
+    // exist, the `exists()` guard failed OPEN, and nothing watched the index at
+    // all. Measured cost in a worktree: commit a new CLI source, and
+    // `just setup-cli` loops forever reporting `built:` while `check cli-fresh`
+    // stays `STALE — built from <a>, sources are now <b>`, clearable only by
+    // `touch build.rs`. The same hazard is handled forty lines below for the
+    // submodule gitlink (issue 0419), so this file already knew `.git` may be a
+    // file — the worktree case was never swept in (the issue-0196 shape).
+    //
+    // The resolution lives in `source_stamp.rs` beside the code that READS the
+    // index, and reuses its `git()`/`git_program()` helper rather than adding a
+    // second way to run git — issue 0561's rule: one expression per stamp
+    // input, shared with the runtime through the `include!` above.
+    match git_index_path(&root) {
+        Some(index) => println!("cargo:rerun-if-changed={}", index.display()),
+        // LOUD, because this is the degraded mode issue 1336 asked to be made
+        // visible: the stamp is baked but nothing will re-bake it. Silent only
+        // when there is no repository at all (a tarball or vendored tree),
+        // where `source_stamp()` also returns `None` and the freshness check
+        // skips itself — so there is nothing to warn about.
+        None if in_git_checkout(&root) => println!(
+            "cargo:warning=nros-cli-core: git could not resolve `--git-path index` \
+             (needs git >= 2.31); NROS_CLI_SOURCE_STAMP is UNWATCHED, so a commit \
+             will not re-bake it and `just check cli-fresh` may report a stale CLI \
+             that `just setup-cli` cannot clear — issue 1336."
+        ),
+        None => {}
     }
 
     let stamp = source_stamp(&root).unwrap_or_else(|| "unknown".to_string());

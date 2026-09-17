@@ -167,6 +167,62 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
     Some(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// Where git actually keeps the index whose blob SHAs [`source_stamp`] reads —
+/// the file `build.rs` must watch, resolved by ASKING git (issues 1336 + 1306).
+///
+/// `build.rs` used to spell it `root.join(".git/index")`. That is correct for a
+/// MAIN checkout and wrong everywhere else, and the everywhere-else is the
+/// common case here: in a LINKED WORKTREE `<root>/.git` is a FILE holding
+/// `gitdir: <common>/.git/worktrees/<name>`, and the worktree's own index lives
+/// under that directory. The literal named a path that does not exist, the
+/// `if index.exists()` guard was therefore false, and the watch was silently
+/// skipped — so a commit moved an input nothing watched, `build.rs` never
+/// re-ran, and `just setup-cli` reported success while re-baking nothing.
+/// Every agent session here works in a linked worktree, so that was the
+/// DEFAULT condition rather than an edge case (issue 1280 is the sibling: a
+/// worktree's `.git` being a file is why "which checkout am I in" is answered
+/// by a marker walk there and never by `.git`).
+///
+/// `--git-path index` is the one spelling that answers in all three shapes we
+/// can be in — a main checkout, a linked worktree, and under `GIT_INDEX_FILE`
+/// (which overrides both) — because it asks the process that owns the layout
+/// instead of modelling it. `--path-format=absolute` matters: without it git
+/// answers relative to its cwd (`.git/index`), and cargo resolves a relative
+/// `rerun-if-changed` against the PACKAGE root, not `root`. The same flag pair
+/// is already how `scripts/ci/submodule-pins-check.sh` and
+/// `scripts/probe/run-bootstrap-probe.sh` locate a gitdir.
+///
+/// A path that does not exist yet is still returned, deliberately — the same
+/// choice `submodule_watch_paths` documents: cargo re-runs when a watched
+/// absent path appears.
+///
+/// `None` means git could not answer (no repository here, or no usable `git`).
+/// [`in_git_checkout`] is what tells those two apart for the caller, because
+/// only one of them deserves a warning.
+#[allow(dead_code)] // `build.rs` consumes this via `include!`; the crate reads the stamp, not its inputs
+fn git_index_path(root: &Path) -> Option<std::path::PathBuf> {
+    let out = git(
+        root,
+        &["rev-parse", "--path-format=absolute", "--git-path", "index"],
+    )?;
+    let line = out.lines().next().map(str::trim).unwrap_or("");
+    (!line.is_empty()).then(|| std::path::PathBuf::from(line))
+}
+
+/// Whether `root` is inside a git checkout at all.
+///
+/// Consulted only when [`git_index_path`] returns `None`, to tell the two
+/// causes apart. Issue 1336 named this as separately wrong about the old code:
+/// `if index.exists()` could not distinguish "no repository here" — a tarball
+/// or vendored source tree, legitimate, and [`source_stamp`] returns `None`
+/// there too so the freshness check is SKIPPED rather than guessed — from "a
+/// repository whose layout I did not model", which must be loud. The realistic
+/// second case is a `git` older than 2.31, which has no `--path-format`.
+#[allow(dead_code)] // as above: the build script's failure path, not the crate's
+fn in_git_checkout(root: &Path) -> bool {
+    git(root, &["rev-parse", "--git-dir"]).is_some()
+}
+
 /// Repo-relative location of the generated closure list (issue 0604).
 const CLI_SOURCE_DIRS_FILE: &str = "packages/cli/cli-source-dirs.txt";
 
@@ -443,8 +499,35 @@ pub fn modified_cli_files(root: &Path) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// The git variables an inherited environment uses to override BOTH a path
+    /// argument and `-C` — issues 0986/0988. A test that runs `git init` or
+    /// `git worktree add` in a temp dir must not be steerable by them: under an
+    /// inherited `GIT_DIR` (which a push from a linked worktree sets, i.e. how
+    /// parallel sessions here work) `git init <tmp>` builds nothing and writes
+    /// into the CALLER's repository instead.
+    ///
+    /// ASKED of git, never hand-listed. `scripts/lib/git-hook-env.sh` and
+    /// `scripts/lib/git_hook_env.py` are the hook-side spellings of this same
+    /// rule and derive the list the same way, for the reason CLAUDE.md records:
+    /// all four hand-written copies that preceded them had already drifted, and
+    /// popping some `GIT_*` names is never what earns the credit.
+    fn inherited_git_env_vars() -> &'static Vec<String> {
+        static VARS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+        VARS.get_or_init(|| {
+            git(Path::new("."), &["rev-parse", "--local-env-vars"])
+                .unwrap_or_default()
+                .split_whitespace()
+                .map(str::to_string)
+                .collect()
+        })
+    }
+
     fn sh(dir: &Path, cmd: &str) {
-        let ok = std::process::Command::new("sh")
+        let mut command = std::process::Command::new("sh");
+        for var in inherited_git_env_vars() {
+            command.env_remove(var);
+        }
+        let ok = command
             .args(["-c", cmd])
             .current_dir(dir)
             .env("GIT_AUTHOR_NAME", "t")
@@ -613,6 +696,98 @@ mod tests {
         assert!(
             source_stamp(root).is_some(),
             "and it must stamp once the list is there"
+        );
+    }
+
+    /// Issues 1336 + 1306 — the index `build.rs` watches is where GIT says it
+    /// is, in BOTH checkout shapes.
+    ///
+    /// Measured in each shape rather than reasoned about, the
+    /// `check-hook-repo-side-effects` precedent: a claim about a checkout shape
+    /// is only worth what it was measured in. That is exactly how the defect
+    /// survived — `<root>/.git/index` is CORRECT in a main checkout, so the
+    /// literal looked fine everywhere anyone looked, while every agent worktree
+    /// (the default here) silently watched nothing.
+    ///
+    /// The negative control is in the middle: the pre-fix literal must NOT
+    /// resolve in the worktree, or this test would pass over the old code too.
+    #[test]
+    fn the_index_resolves_in_a_main_checkout_and_in_a_linked_worktree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let main = tmp.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        sh(&main, "git init -q -b main .");
+        std::fs::write(main.join("f.rs"), "fn a() {}\n").unwrap();
+        sh(&main, "git add f.rs && git commit -qm init");
+
+        // Shape 1: a main checkout, where `.git` is a directory.
+        let main_index = git_index_path(&main).expect("index in a main checkout");
+        assert!(
+            main_index.is_file(),
+            "resolved index must exist: {}",
+            main_index.display()
+        );
+        assert_eq!(main_index, main.join(".git").join("index"));
+        assert!(in_git_checkout(&main));
+
+        // Shape 2: a linked worktree, where `.git` is a FILE and the index
+        // lives under `<common>/.git/worktrees/<name>/`.
+        let wt = tmp.path().join("wt");
+        sh(
+            &main,
+            &format!("git worktree add -q -b wt {} HEAD", wt.display()),
+        );
+        assert!(
+            wt.join(".git").is_file(),
+            "a linked worktree's `.git` is a file, not a directory"
+        );
+        assert!(
+            !wt.join(".git").join("index").exists(),
+            "the pre-fix literal `<root>/.git/index` must not resolve here — \
+             if it did, this test would pass against the defect"
+        );
+        let wt_index = git_index_path(&wt).expect("index in a linked worktree");
+        assert!(
+            wt_index.is_file(),
+            "resolved index must exist: {}",
+            wt_index.display()
+        );
+        assert_ne!(
+            wt_index, main_index,
+            "a linked worktree has its OWN index; watching the main \
+             checkout's would be a different wrong answer"
+        );
+
+        // And the watch has to be load-bearing: a commit in the worktree must
+        // move the file we just named, because that is the input the stamp
+        // reads and the event that has to re-bake it.
+        let before = std::fs::read(&wt_index).unwrap();
+        std::fs::write(wt.join("g.rs"), "fn b() {}\n").unwrap();
+        sh(&wt, "git add g.rs && git commit -qm second");
+        assert_ne!(
+            before,
+            std::fs::read(&wt_index).unwrap(),
+            "a commit must change the file the stamp's `rerun-if-changed` names"
+        );
+    }
+
+    /// The other half of the 1336 decision: silence is only for "no repository
+    /// here". Outside a checkout there is no index AND no stamp, so `build.rs`
+    /// has nothing to watch and nothing to warn about; a tarball build must not
+    /// print a `cargo:warning` on every compile.
+    #[test]
+    fn outside_a_repository_there_is_no_index_and_no_checkout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        assert!(
+            !in_git_checkout(root),
+            "a bare temp dir must not read as a checkout — if TMPDIR is inside \
+             a repository this test is measuring the wrong thing"
+        );
+        assert!(git_index_path(root).is_none());
+        assert!(
+            source_stamp(root).is_none(),
+            "and the stamp refuses too, which is why the silence is correct"
         );
     }
 
