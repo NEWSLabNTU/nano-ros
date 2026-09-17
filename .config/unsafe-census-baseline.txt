@@ -36,13 +36,13 @@ nros-board-zephyr                   16   0     0       7      0
 nros-bridge                         34   1     0       8      0
 nros-build                           1   0     0       0      0
 nros-build-helpers                   2   0     0       2      0
-nros-c                             342  63     5     410      0
+nros-c                             352  63     5     414      0
 nros-cli-core                       22   0     0       0      0
 nros-core                            2   0     2       2      0
-nros-cpp                           637  17     0     289      0
+nros-cpp                           642  17     0     291      0
 nros-log                            17   0     5       1      0
 nros-macros                         12   0     1       2      0
-nros-node                          376  122    21      78      0
+nros-node                          384  134    21      78      0
 nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0
 nros-orchestration-ir                4   0     0       0      0
