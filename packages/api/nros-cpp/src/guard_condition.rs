@@ -83,6 +83,40 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_trigger(storage: *mut c_void) 
     NROS_CPP_RET_OK
 }
 
+/// Is this guard condition triggered and not yet dispatched?
+///
+/// phase-417 W4.e — the RFC-0022 polling reader C has had all along, which C++
+/// and Rust did not: the ledger's `c:guard_condition_is_triggered` recorded
+/// "a polling C++ or Rust user cannot do what a polling C user can" as a
+/// three-language disagreement, and stage 4 is where those close. The executor
+/// consumes the flag on dispatch, so this answers "set and not yet dispatched".
+///
+/// # Safety
+/// `storage` must be a valid guard condition storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_guard_condition_is_triggered(storage: *const c_void) -> bool {
+    if storage.is_null() {
+        return false;
+    }
+    let guard = unsafe { &*(storage as *const GuardCondition) };
+    guard.is_triggered()
+}
+
+/// Clear the triggered flag without dispatching — the other half of
+/// [`nros_cpp_guard_condition_is_triggered`].
+///
+/// # Safety
+/// `storage` must be a valid guard condition storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_guard_condition_clear(storage: *mut c_void) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let guard = unsafe { &*(storage as *const GuardCondition) };
+    let _ = guard.clear();
+    NROS_CPP_RET_OK
+}
+
 /// Destroy a guard condition (drop in place, no free).
 ///
 /// # Safety

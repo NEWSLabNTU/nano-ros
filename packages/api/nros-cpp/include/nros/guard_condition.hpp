@@ -60,6 +60,28 @@ class GuardCondition {
     /// Check if the guard condition is initialized and valid.
     bool is_valid() const { return initialized_; }
 
+    /// Is this guard condition triggered and not yet dispatched?
+    ///
+    /// The RFC-0022 polling tier: a task that owns its own loop and never
+    /// reaches `spin_once` still needs to see the flag another thread or an ISR
+    /// set. rcl and rclcpp have no such reader — a wait set is the only way to
+    /// observe an rclcpp guard condition — so this is ours, and phase-417 W4.e
+    /// gave C++ and Rust the reader C already had.
+    ///
+    /// The executor CONSUMES the flag when it dispatches, so this answers "set
+    /// and not yet dispatched": poll it or take the callback, not both.
+    bool is_triggered() const {
+        if (!initialized_) return false;
+        return nros_cpp_guard_condition_is_triggered(storage_);
+    }
+
+    /// Clear the flag without dispatching — the other half of `is_triggered()`,
+    /// for a polling owner that has handled the event itself.
+    Result clear() {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_guard_condition_clear(storage_));
+    }
+
     /// Destructor — releases guard condition resources.
     ~GuardCondition() {
         if (initialized_) {
