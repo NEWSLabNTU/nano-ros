@@ -7684,8 +7684,8 @@ fn goal_exists_covers_active_and_retained_results_not_just_active() {
         MockServiceServer::new(),
         MockServiceServer::new(),
         MockServiceServer::new(),
-        MockPublisher,
-        MockPublisher,
+        MockPublisher::new(),
+        MockPublisher::new(),
     );
 
     const RESULT_LEN: usize = 40;
