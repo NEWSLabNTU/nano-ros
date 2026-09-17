@@ -254,7 +254,9 @@ typedef struct nros_support_t rclc_support_t;
  * A rosidl typesupport is the opposite: its MEMBERS are the contract. Upstream
  * carries `typesupport_identifier`, `data` and the `func` dispatcher that
  * resolves a nested typesupport; ours is a flat descriptor of `type_name`,
- * `type_hash` and `serialized_size_max` (`nros/nros_generated.h:2547`). Same
+ * `type_hash` and `serialized_size_max` (`nros_message_type_t` in
+ * `<nros/nros_generated.h>` — by NAME: that header is cbindgen output and the
+ * line number this cited had moved on by 105 lines). Same
  * ROLE, different substance, so the name is not taken. The `init` forwarders
  * below therefore spell this parameter `const struct nros_message_type_t *`,
  * which costs a ported call site nothing: the argument it passes comes from
@@ -463,66 +465,127 @@ typedef struct nros_support_t rclc_support_t;
  */
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * 6. NOT aliased: the executor's entity registration
+ * 6. The executor's entity registration: one alias, two refusals
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * `rclc_executor_add_subscription{,_with_context}` and
- * `rclc_executor_add_service{,_with_context}` are absent here, and the reason
- * is a missing entry point rather than a naming decision:
+ * CORRECTED 2026-09-18 (phase-417 W5.e). This section used to tell a reader
+ * that the typed subscription entry point did not exist and that "the honest
+ * move is to name the shape a faithful alias needs and wait for it". It had
+ * SHIPPED — on 2026-09-04, in the very commit that wrote the sentence (W5.a and
+ * W5.b landed together) — and the name sketched here as the thing to wait for,
+ * `nros_subscription_typed_callback_t`, is the shipped one with two words
+ * swapped. A reader following this section would have concluded a capability
+ * was missing and written their own CDR, which is the failure the whole
+ * campaign exists to remove. Everything below is read off the header rather
+ * than predicted from it.
  *
- *   rclc: rcl_ret_t rclc_executor_add_subscription(
- *             rclc_executor_t *executor, rcl_subscription_t *subscription,
- *             void *msg, rclc_subscription_callback_t callback,
- *             rclc_executor_handle_invocation_t invocation)
+ * Citations here name IDENTIFIERS, never line numbers. `<nros/nros_generated.h>`
+ * is cbindgen output, so every regeneration moves it: all four line numbers
+ * this section used to carry pointed at unrelated code by the time anyone
+ * looked (the same rot W5.d found one section up).
+ *
+ * ── The typed subscription callback: ALIASED ─────────────────────────
+ *
+ *   rclc: typedef void (*rclc_subscription_callback_with_context_t)(
+ *             const void *msg, void *context);
+ *   ours: typedef void (*nros_typed_subscription_callback_t)(
+ *             const void *msg, void *context);
+ *
+ * Same two parameters, same order, same meanings — an EXACT alias rather than
+ * an approximate one, which is not the usual case here. RFC-0089's ALIAS RULE
+ * makes it non-optional: for a name upstream HAS and we lack, the ported alias
+ * is load-bearing and "do not take the name" is not available. Ours stays the
+ * DEFINITION, so a nano-ros program that never ported from rclc does not have
+ * to include a compat header to name its own callback type.
+ *
+ * Aliased as our typedef NAME rather than re-spelled as a function type: a
+ * second spelling of one signature is issue 0160's hand-mirror class, and this
+ * one would drift silently because nothing calls a typedef.
+ */
+typedef nros_typed_subscription_callback_t rclc_subscription_callback_with_context_t;
+
+/*
+ * The context-LESS `rclc_subscription_callback_t` is still not offered, and its
+ * refusal is a different one from the two below: adapting a
+ * `void (*)(const void *)` to a `void (*)(const void *, void *)` needs a
+ * trampoline that REMEMBERS the original pointer, and state in the wrapper is
+ * RFC-0019/0020's violation rather than an ergonomic. `rclc_service_callback_t`
+ * and `rclc_client_callback_t` are refused on the same argument.
+ *
+ * ── `rclc_executor_add_subscription_with_context`: REFUSED, by ARITY ─────
+ *
  *   rclc: rcl_ret_t rclc_executor_add_subscription_with_context(
  *             rclc_executor_t *executor, rcl_subscription_t *subscription,
  *             void *msg, rclc_subscription_callback_with_context_t callback,
  *             void *context, rclc_executor_handle_invocation_t invocation)
- *   ours: nros_ret_t nros_executor_add_subscription(
+ *   ours: nros_ret_t nros_executor_add_subscription_typed(
  *             struct nros_executor_t *executor,
- *             struct nros_subscription_t *subscription,
+ *             struct nros_subscription_t *subscription, void *msg,
+ *             nros_message_deserialize_fn_t deserialize,
+ *             nros_typed_subscription_callback_t callback, void *context,
  *             enum nros_executor_handle_invocation_t invocation)
- *                                                      (`nros_generated.h:4612`)
  *
- * Two things are missing, not one. The `void *msg` slot is caller-owned
- * storage for a DESERIALIZED message, and the callback shape follows from it:
+ * This section predicted "a direct six-argument alias". It cannot be one: ours
+ * takes SEVEN. The extra argument is `deserialize`, and it is FORCED rather
+ * than chosen — a rosidl typesupport carries the `func` dispatcher that finds
+ * the deserialiser, and `nros_message_type_t` (which section 2 declines to
+ * alias for exactly this reason) is a flat descriptor with no such slot. So the
+ * function that writes the message into `msg` has to arrive from somewhere, and
+ * a `static inline` in this file has nowhere to get it: the header knows the
+ * ENTITY, not the TYPE.
  *
- *   rclc_subscription_callback_t              = void (*)(const void *msg)
- *   rclc_subscription_callback_with_context_t = void (*)(const void *msg, void *context)
- *   nros_subscription_callback_t              = void (*)(const uint8_t *data,
- *                                                        size_t len, void *context)
- *                                                      (`nros_generated.h:1774`)
+ * CODEGEN knows the type, which is why the ported LINE is six arguments after
+ * all — generated per message rather than written here:
  *
- * Ours delivers CDR BYTES; rclc delivers a typed message into storage the
- * caller supplied. That is RFC-0089's stage-5 item — "typed C subscription
- * delivery needs an `add_subscription` variant that carries caller-owned
- * message storage through the FFI" — and it is Rust-side work, not a wrapper's.
+ *     <Msg>_executor_add_subscription(&exec, &sub, &msg, cb, &ctx, ON_NEW_DATA)
  *
- * So the honest move is to name the shape a faithful alias needs and wait for
- * it, rather than alias onto the byte-oriented entry point. What is needed:
+ * rclc's six, in rclc's order (`packs/c/message.h.jinja`). The macro also routes
+ * `msg` through `1 ? (msg) : (<Msg>*)0`, so storage of the wrong type is a
+ * diagnostic naming both types — which rclc's `void *` slot cannot give.
  *
- *   nros_ret_t nros_executor_add_subscription_typed(
- *       struct nros_executor_t *executor,
- *       struct nros_subscription_t *subscription,
- *       void *msg,                                 // caller-owned storage
- *       nros_subscription_typed_callback_t callback,  // void(*)(const void *, void *)
- *       void *context,
- *       enum nros_executor_handle_invocation_t invocation);
+ * ── `rclc_executor_add_service{,_with_context}`: REFUSED, by DATA ───────
  *
- * Given that, `..._with_context` is a direct six-argument alias in this file.
- * The CONTEXT-LESS `rclc_executor_add_subscription` still would not be, and
- * that is worth saying now: adapting a `void (*)(const void *)` to a
- * `void (*)(const void *, void *)` needs a trampoline that REMEMBERS the
- * original pointer, and state in the wrapper is RFC-0019/0020's violation, not
- * an ergonomic. It needs its own FFI slot or it stays refused.
+ *   rclc: rcl_ret_t rclc_executor_add_service_with_context(
+ *             rclc_executor_t *, rcl_service_t *, void *request_msg,
+ *             void *response_msg, rclc_service_callback_with_context_t,
+ *             void *context)
+ *         typedef void (*rclc_service_callback_with_context_t)(
+ *             const void *request, void *response, void *context);
+ *   ours: nros_ret_t nros_executor_add_service_raw(
+ *             struct nros_executor_t *, struct nros_service_t *,
+ *             nros_service_callback_t callback, void *context)
+ *         typedef bool (*nros_service_callback_t)(
+ *             const uint8_t *request, size_t request_len, uint8_t *response,
+ *             size_t response_capacity, size_t *response_len, void *context);
  *
- * The service pair is the same story one entity over: rclc's carries
- * `void *request_msg` and `void *response_msg` and a
- * `void (*)(const void *, void *, void *)` callback, against our
- * `nros_executor_add_service(executor, service)` (`nros_generated.h:4700`)
- * over a `bool (*)(const uint8_t *, size_t, uint8_t *, size_t, size_t *,
- * void *)` bound at creation (`nros_generated.h:2159`) — note ours also
- * RETURNS a value where rclc's returns void.
+ * Two things this paragraph used to get wrong. Ours is NOT "bound at creation"
+ * any more — phase-417 stage 6 moved the callback to REGISTRATION, where rclc
+ * puts it, and `nros_executor_add_service_raw` is that call. And the typed
+ * service path is no longer missing: phase-417 W5.e ships it per service, out
+ * of `packs/c/service.h.jinja` —
+ *
+ *     void cb(const <Srv>_request *request, <Srv>_response *response,
+ *             void *context);
+ *
+ *     <Srv>_service_handler_init(&handler, cb, &ctx);
+ *     <Srv>_service_init(&service, &node, "/name", &handler);
+ *     nros_executor_add_service(&executor, &service);
+ *
+ * — the CALLER owning both payload structs, which is exactly what rclc's
+ * `request_msg` / `response_msg` arguments are for, and the callback carrying
+ * the `void *context` rclc puts behind its separate `_with_context`
+ * registration. The client half is the same shape one entity over
+ * (`<Srv>_client_handler_t`, `<Srv>_client_set_response_callback`).
+ *
+ * The REGISTRATION still cannot be aliased, and for a reason the subscription's
+ * does not share. Ours carries ONE context word, so it cannot take rclc's
+ * `request_msg` and `response_msg` as two separate caller arguments: both
+ * payload structs travel together inside the generated
+ * `<Srv>_service_handler_t`, which is also where the generated trampoline finds
+ * them. Collapsing two caller arguments into one block is not something a name
+ * can hide. And ours RETURNS a value where rclc's callback returns `void` —
+ * that return is what decides whether a malformed request puts a reply on the
+ * wire at all, so the two callbacks do not merely differ in payload shape.
  *
  * Deliberately not aliased onto anything today. Two arenas for one concept is
  * the drift RFC-0019 exists to prevent.

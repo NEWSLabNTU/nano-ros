@@ -276,6 +276,38 @@ _Static_assert(RCL_RET_NOT_INIT == -7, "ours is -7; rcl's own RCL_RET_NOT_INIT i
 _Static_assert(RCL_RET_UNSUPPORTED == -16, "ours is -16; rcl's own RCL_RET_UNSUPPORTED is 3");
 _Static_assert(RCL_RET_OK == 0, "OK is the ONE code where ours and rcl's values agree");
 
+/* ── 5. The typed subscription callback alias (phase-417 W5.e) ───────────
+ *
+ * `rclc_subscription_callback_with_context_t` is `void (*)(const void *msg,
+ * void *context)` upstream, and ours is the same signature under a different
+ * name — so the alias is EXACT, which is unusual in this file.
+ *
+ * Pinned from the CONSUMER side by writing a callback with rclc's spelling and
+ * handing it to the entry point that takes ours. A typedef nothing calls has no
+ * other way to go wrong and no other way to be checked: if the alias were
+ * re-spelled as its own function type and one of the two moved, this
+ * assignment is what stops compiling.
+ */
+static void typed_sub_cb(const void* msg, void* context) {
+    (void)msg;
+    (void)context;
+}
+/* Declared with RCLC's spelling... */
+static const rclc_subscription_callback_with_context_t k_typed_sub_cb = typed_sub_cb;
+
+/* ...and consumed where OURS is the declared parameter type. A typedef nothing
+ * calls has no other way to go wrong and no other way to be checked: if the
+ * alias were ever re-spelled as its own function type and one of the two moved,
+ * this argument is what stops compiling. */
+static nros_ret_t register_typed_subscription(struct nros_executor_t* executor,
+                                              struct nros_subscription_t* subscription, void* msg,
+                                              nros_message_deserialize_fn_t deserialize,
+                                              void* context) {
+    return nros_executor_add_subscription_typed(executor, subscription, msg, deserialize,
+                                                k_typed_sub_cb, context,
+                                                NROS_EXECUTOR_ON_NEW_DATA);
+}
+
 /* Silence "defined but not used" without needing a main(). */
 const void* nros_rcl_compat_alias_probe(void);
 const void* nros_rcl_compat_alias_probe(void) {
@@ -295,5 +327,7 @@ const void* nros_rcl_compat_alias_probe(void) {
     (void)k_srv_init_default;
     (void)k_add_sub_raw;
     (void)k_add_srv_raw;
+    (void)k_typed_sub_cb;
+    (void)register_typed_subscription;
     return (const void*)k_trigger;
 }
