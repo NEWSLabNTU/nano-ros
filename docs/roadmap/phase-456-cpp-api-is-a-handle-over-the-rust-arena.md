@@ -221,6 +221,10 @@ Four things follow, and each is a simplification rather than a trade:
   `NROS_CPP_NODE_HOSTED`; both gates fail on a mutation that reintroduces a
   `std` type in a public signature, and the mutation is in the selftest.
 
+Two further work items, **W7** and **W8**, are stated in the next section
+rather than here, because each is derived from a finding that arrived with a
+rebase and reads as nonsense without it.
+
 ## What changed on `main` while this phase was being opened (2026-09-13)
 
 Rebased over 104 commits. One of them matters a great deal, and it is the same
@@ -279,6 +283,115 @@ one. The default is the defect.
   *Related:* issue 1340 is the sibling one row over — `rust_typed_in_place` is
   priced at the bound while claiming no region at all, worth ~9.7 KiB per
   subscription.
+
+* **W8 [core, cpp, abi] — one registration function, and the C/C++ side calls
+  it.** W7 collapses the two C-family rows into one. This item asks the question
+  W7's answer makes obvious: why is there a language axis at all?
+
+  *The finding.* The five `RegistrationPath` rows decompose into three real
+  properties and one that is not a property of the registration:
+
+  | axis | values | decided by |
+  | --- | --- | --- |
+  | is the type's bound known? | yes / no | the CALL SITE, via the hint |
+  | does the backend dispatch in place? | yes / no | `supports_process_in_place()` |
+  | is the schema reachable? | yes / no | the backend's descriptor support |
+  | *who called* | *Rust / C* | *nothing about the subscription* |
+
+  Two of the five rows — `c_typed_hint` and `rust_typed_descriptors` — describe
+  the same registration and differ only in the fourth. The other C row,
+  `c_raw_no_hint`, is the first axis answered "no", which is what W7 makes
+  unreachable from C++.
+
+  *The cost of the fake axis is measured, and it is not bookkeeping.* The C
+  registration path never consults `supports_process_in_place()` — only
+  `register_subscription_buffered_on` does (`spin.rs:4908`), and it returns
+  through `SubInplaceEntry` before any slot size is computed. So **every C and
+  C++ subscription on zenoh or XRCE allocates a receive region the backend does
+  not need**, at the same order as issue 1340's ~9.7 KiB per subscription. The
+  irony is that the C callback is the BETTER candidate for in-place dispatch:
+  `RawSubscriptionCallback` is already `(const uint8_t*, size_t, void*)`, a
+  borrowed-bytes signature, where the Rust typed path has to produce an owned
+  `&M` from somewhere.
+
+  *The shape.* One `register_subscription_on` taking an argument struct rather
+  than thirteen entry points taking positional parameters
+  (`spin.rs` currently has 13 `register_subscription_*` /
+  `add_arena_subscription_*` functions, ~1 100 lines before the C-validated
+  tail). The struct carries what the axes above need: node, topic, type name and
+  hash, QoS, group, the bound as a value rather than a `usize` defaulting to 0,
+  the delivery shape (typed / raw / borrowed / with-info / validated), and the
+  callback with its optional capture. The function consults
+  `supports_process_in_place()` ONCE, for every caller, in every language.
+
+  C and C++ then call the same function the Rust API calls, which is this
+  phase's premise applied to the last place it does not hold.
+
+  *What it costs, measured before committing to it.* Unification routes the Rust
+  typed path through an indirect call where it is monomorphised today. Two
+  probes, because a host number is weak evidence for an embedded project:
+
+  | target | monomorphised | type-erased | delta |
+  | --- | --- | --- | --- |
+  | x86_64, `rustc -O -C lto=fat -C codegen-units=1`, 20M iterations, run 1 | 1.302 ns | 1.305 ns | +0.003 ns |
+  | run 2 | 1.220 ns | 1.206 ns | **−0.014 ns** |
+  | run 3 | 1.194 ns | 1.196 ns | +0.002 ns |
+  | cortex-m3, `arm-none-eabi-g++ -Os -ffreestanding -mcpu=cortex-m3 -mthumb` | 25 insns | 8 + 25 insns | **+8 insns** |
+
+  On the host the effect is 30× smaller than run-to-run variance (1.194–1.302)
+  and one run came out negative, so there is no measurable cost there. On
+  cortex-m3 the erased dispatch is 8 instructions because it TAIL-CALLS
+  (`bx r3`) and the work moves into the separate callback; 4 of the 8 are
+  argument shuffling. Against a deserialize-and-sink that is already 25
+  instructions, the honest figure is **+8 instructions per dispatch**.
+
+  Three limits on those numbers, stated rather than left for a reader to find:
+  the ARM figure is a STATIC instruction count, so the pipeline refill an
+  indirect branch costs is not in it; the probe payload is 16 bytes of trivial
+  copy, so a real message makes the relative cost smaller, not larger; and the
+  host probe measures dispatch alone, with no RMW beneath it. If the decision
+  ever looks close, the QEMU harness gives cycles. It does not look close.
+
+  *Reproducing the probes.* They are throwaway files under `tmp/` rather than
+  tracked fixtures: a Rust `bench.rs` calling a monomorphised
+  `FnMut(&Msg)` and a `fn(*const u8, usize, *mut c_void)` through a
+  `black_box`ed function pointer over the same 16-byte message, and an ARM
+  `arm.cpp` of the same two shapes read back with
+  `arm-none-eabi-objdump -d`. Anyone re-deciding this should rebuild them rather
+  than trust the table.
+
+  *Acceptance.*
+  - `RegistrationPath` loses its language axis: 5 rows become 3, and
+    `claims_closure_buffer()` is answerable from the registration's arguments
+    rather than from who called.
+  - `supports_process_in_place()` has exactly one consulting site, and a C or
+    C++ subscription on zenoh or XRCE claims no receive region. Measured on
+    `contract-monitor-sub`, the same entry phase-454 W5 measured, so the before
+    and after are comparable.
+  - W1's `CALLBACK_CAPTURE_BYTES` stops being an ABI constant the two sides must
+    agree on and becomes a runtime length, which removes the failure mode its
+    own doc comment describes (`BufferTooSmall` reached only when the two sides
+    disagree about a number).
+  - The 13 entry points become one plus whatever thin wrappers the call sites
+    actually want; the count is in the commit message.
+  - `just check abi-bindings` green with the regenerated `generated.rs`
+    committed (RFC-0054).
+
+  *Sequencing.* After W7, which is a one-line change per call site and lands the
+  descriptor's credit immediately; W8 is a core refactor and should not hold it
+  up. Independent of W3 and W4 — those are C++-side shape, this is the seam
+  beneath them — but doing W8 first would let W3 and W4 be written against one
+  function instead of five.
+
+  *Open question, recorded rather than decided.* Whether the Rust typed path
+  keeps a monomorphising `#[inline]` wrapper for a caller who has measured that
+  it needs one. The default answer is no — one function is the point, and 8
+  cortex-m3 instructions is the price — but the wrapper is cheap to add later if
+  a real workload ever produces a number that argues for it.
+
+  *Related:* issue 1319 (the five rows), issue 1340 (`rust_typed_in_place` is
+  priced at the bound while claiming no region — the sibling over-statement one
+  row over, which this item's in-place unification touches directly).
 
 Two smaller ones, noted so a reader does not rediscover them:
 
