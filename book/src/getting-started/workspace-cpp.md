@@ -167,6 +167,21 @@ onto the node's FQN and matches no topic. `topics:`, `services:` and `actions:`
 wire those endpoints to absolute names and carry the type. `paths:` is where
 timers live: the model records a path with no `input` as the periodic callback.
 
+**A single-package example writes the same file at `<leaf>/system.contract.yaml`**,
+beside its `system.toml`. Its launch file is generated from the `[[component]]`
+rows, so there is no `launch/` directory to put a sidecar in; `nros sync` carries
+this one to where the resolver looks. That is how a standalone leaf states its
+QoS — and stating it is worth real memory: one `sub: { chatter: { qos: { history:
+keep_last, depth: 1 } } }` row takes `examples/native/rust/listener` from 273,802
+to 172,298 bytes of static RAM, because the zenoh backend then sizes its payload
+pools for the one sample the image keeps instead of the four it might have.
+
+The name you write must be the name the code registers, ABSOLUTELY. A contract
+states RESOLVED names; a call site writing `"chatter"` or a node the launch file
+remaps is one the build cannot match with certainty, so it refuses that endpoint
+by name and the image keeps its configured pools rather than being sized from a
+guess.
+
 `nros sync` folds it into the resolved SystemModel, and the entry passes that
 model to the sizing automatically — nothing here takes an argument for it.
 Inspect the composed answer with:

@@ -335,31 +335,93 @@ fn endpoint_row(
     target: &Target,
 ) -> Endpoint {
     let mut ep = Endpoint::new(kind, ty, topic);
-    let history = d.history.and_then(map_history);
-    ep.set_history(history);
-    ep.set_reliability(d.reliability.and_then(map_reliability));
-    ep.set_durability(d.durability.and_then(map_durability));
 
-    // `keep_all` kills the depth-derived fields and NOTHING else -- RFC-0100 D6,
-    // the one trigger that ships a too-small buffer rather than a too-large one.
-    // phase-454 W3 implements the same refusal one level up, for the whole depth
-    // table; carrying it per row is what lets the rest of this image size.
-    let keep_all = history == Some(History::KeepAll);
-    if keep_all {
-        ep.refuse(
-            "depth",
-            format!(
-                "history = keep_all on {} {topic}: a KEEP_ALL queue has no static bound, so a \
-                 depth beside it prices nothing (RFC-0100 D6)",
-                kind.tag()
-            ),
-        );
+    // phase-454 W12 -- did the contract join attribute this row?
+    //
+    // `Some(why)` means a contract WAS authored for this image and this row
+    // could not be matched to one of its endpoints WITH CERTAINTY. All four QoS
+    // facts then refuse TOGETHER, because they come from one attribution and
+    // half an attribution is the mis-key the refusal exists to prevent:
+    // publishing a reliability against one endpoint and a depth against another
+    // describes no image at all.
+    //
+    // REFUSED and not ABSENT, deliberately. `Absent` is "nobody said", which is
+    // what a leaf with no contract gets and why such a leaf is byte-identical;
+    // this reader LOOKED, so the fact carries its prose to the consumer that
+    // would otherwise have defaulted silently (RFC-0100 D6). Either way the row
+    // still counts toward `undeclared_endpoints`, so every per-endpoint
+    // consumer keeps its worst case.
+    let unattributed = d.contract_refusal.as_deref();
+    let history = if unattributed.is_some() {
+        None
     } else {
-        ep.set_depth(d.depth);
+        d.history.and_then(map_history)
+    };
+    if let Some(why) = unattributed {
+        for field in ["depth", "history", "reliability", "durability"] {
+            ep.refuse(field, why.to_string());
+        }
+    } else {
+        ep.set_history(history);
+        ep.set_reliability(d.reliability.and_then(map_reliability));
+        ep.set_durability(d.durability.and_then(map_durability));
+        // `keep_all` kills the depth-derived fields and NOTHING else --
+        // RFC-0100 D6, the one trigger that ships a too-small buffer rather than
+        // a too-large one. phase-454 W3 implements the same refusal one level
+        // up, for the whole depth table; carrying it per row is what lets the
+        // rest of this image size.
+        if history == Some(History::KeepAll) {
+            ep.refuse(
+                "depth",
+                format!(
+                    "history = keep_all on {} {topic}: a KEEP_ALL queue has no static bound, so \
+                     a depth beside it prices nothing (RFC-0100 D6)",
+                    kind.tag()
+                ),
+            );
+        } else {
+            ep.set_depth(d.depth);
+        }
     }
 
-    // The wire bound, joined from the bound inventory by the same `pkg/msg/Name`
-    // spelling both tables use.
+    // Everything below is a property of the TYPE and of the IMAGE, not of the
+    // attribution, so it survives a refusal above -- D6: a refusal never
+    // degrades another consumer's facts.
+    let bound = set_wire_bound(&mut ep, ty, inputs);
+
+    ep.set_registration_path(registration_path(kind, inputs));
+    if ep.registration_path().stated().is_none() {
+        ep.refuse("registration_path", registration_path_refusal(inputs));
+    }
+
+    // Only a subscription claims a topic-sample receive region. Every other kind
+    // leaves `storage_bytes` ABSENT, which is the accurate statement: nothing
+    // refused it, there is simply no such region. A publisher serializes into a
+    // per-call stack array, which is a transmit buffer and a different question.
+    if kind.receives_topic_sample() {
+        if unattributed.is_some() {
+            ep.refuse(
+                "storage_bytes",
+                "`depth` is refused (this endpoint was not attributed to a contract \
+                 declaration), and a receive region is sized from it",
+            );
+        } else {
+            set_storage_bytes(&mut ep, bound, target, history == Some(History::KeepAll));
+        }
+    }
+    ep
+}
+
+/// The wire bound, joined from the bound inventory by the same `pkg/msg/Name`
+/// spelling both tables use. Returns it, because the receive region is sized
+/// from it.
+///
+/// A FUNCTION rather than an inline block because phase-454 W12 gave
+/// [`endpoint_row`] a second exit: a row the contract could not be attributed to
+/// still has a type, so it still has a bound, and refusing the QoS must not
+/// refuse the payload class beside it (RFC-0100 D6 — a refusal never degrades
+/// another consumer's facts).
+fn set_wire_bound(ep: &mut Endpoint, ty: &str, inputs: &DescriptorInputs<'_>) -> Option<usize> {
     let bound = match lookup_bound(&inputs.bounds, ty) {
         Some(BoundState::Bounded { rx, .. }) => Some(*rx),
         Some(BoundState::Unbounded { reason }) => {
@@ -391,20 +453,7 @@ fn endpoint_row(
         }
     };
     ep.set_wire_bound_bytes(bound);
-
-    ep.set_registration_path(registration_path(kind, inputs));
-    if ep.registration_path().stated().is_none() {
-        ep.refuse("registration_path", registration_path_refusal(inputs));
-    }
-
-    // Only a subscription claims a topic-sample receive region. Every other kind
-    // leaves `storage_bytes` ABSENT, which is the accurate statement: nothing
-    // refused it, there is simply no such region. A publisher serializes into a
-    // per-call stack array, which is a transmit buffer and a different question.
-    if kind.receives_topic_sample() {
-        set_storage_bytes(&mut ep, bound, target, keep_all);
-    }
-    ep
+    bound
 }
 
 /// The arena region one buffered subscription claims, in TARGET bytes.
@@ -776,6 +825,27 @@ pub fn write_for_leaf(
         Ok((inv, _unprobeable)) if !inv.is_empty() => (Some(inv), None),
         Ok(_) => (None, None),
         Err(e) => (None, Some(e.to_string())),
+    };
+    // phase-454 W12 (RFC-0100 D3) — the CONTRACT's facts, joined onto the rows
+    // the probe found. Everything above this line describes what the image
+    // CREATES; only the contract describes what it KEEPS, and until this wave
+    // the descriptor carried the first and called it the second.
+    //
+    // A leaf with no contract sidecar reaches `contract_seen == false` and its
+    // rows come back untouched, which is what keeps such a leaf byte-identical
+    // to every build before this wave.
+    let inventory = match (inventory, crate::leaf_entity_env::leaf_model(leaf)) {
+        (Some(inv), Some(model)) => {
+            let joined = crate::contract_join::join(&inv, &model);
+            for note in &joined.notes {
+                eprintln!(
+                    "{who}: {}: sizing descriptor: {note}",
+                    leaf.file_name().unwrap_or_default().to_string_lossy()
+                );
+            }
+            Some(joined.inventory)
+        }
+        (inv, _) => inv,
     };
     if let Some(e) = &inv_error {
         eprintln!(
@@ -1607,6 +1677,71 @@ mod tests {
         );
         // The backend half is independent of the inventory and survives.
         assert_eq!(d.image.backend_count().stated(), Some(&1));
+    }
+
+    /// phase-454 W12 — a row the contract could not be attributed to REFUSES
+    /// its four QoS facts, carrying the reason to whoever sizes a buffer from
+    /// it, and KEEPS COUNTING toward `undeclared_endpoints`.
+    ///
+    /// The second half is the load-bearing one: `undeclared_endpoints != 0` is
+    /// the guard that switches every per-endpoint consumer back to its worst
+    /// case (RFC-0100 D6, *"absence is not zero"*), so a refusal that quietly
+    /// left the count at zero would publish a partial table as a complete one —
+    /// which is the exact shape an UNDER-size takes.
+    #[test]
+    fn an_unattributable_row_refuses_its_qos_and_still_counts_as_undeclared() {
+        let mut d = sub("std_msgs/msg/String", "on_chatter", Some(10));
+        d.contract_refusal = Some(
+            "no subscription in this image's contract carries \
+                                   `std_msgs/msg/String` on `/chatter`"
+                .to_string(),
+        );
+        let inv = inventory(vec![d]);
+        let desc = build(&base(&inv));
+        let ep = &desc.endpoints[0];
+        for f in [
+            ep.depth().refusal(),
+            ep.history().refusal(),
+            ep.reliability().refusal(),
+            ep.durability().refusal(),
+        ] {
+            assert!(
+                f.expect("refused, not absent").contains("contract"),
+                "every QoS fact carries the attribution refusal"
+            );
+        }
+        // The declared `depth: 10` on the row is NOT published: it came from a
+        // declaration this reader could not attribute, and publishing it would
+        // be the mis-attribution the refusal exists to prevent.
+        assert_eq!(ep.depth().stated(), None);
+        assert_eq!(
+            desc.meta.undeclared_endpoints().stated(),
+            Some(&1),
+            "the guard every per-endpoint consumer reads"
+        );
+        // A refusal never degrades another consumer's facts (D6): the payload
+        // class beside it is a property of the TYPE and survives.
+        assert_eq!(ep.wire_bound_bytes().stated(), Some(&1170));
+        assert_eq!(desc.types.distinct_count().stated(), Some(&1));
+    }
+
+    /// The receive region goes with the depth, and says WHY — but only on the
+    /// kind that has one. A publisher's row must not gain a `storage_bytes`
+    /// refusal it could never have had a value for.
+    #[test]
+    fn an_unattributable_publisher_refuses_no_receive_region() {
+        let mut p = EntityDecl::bare(
+            EntityKind::Publisher,
+            Some("std_msgs/msg/String".into()),
+            Some("/chatter".into()),
+        );
+        p.contract_refusal = Some("the contract describes no publisher".to_string());
+        let inv = inventory(vec![p]);
+        let desc = build(&base(&inv));
+        let ep = &desc.endpoints[0];
+        assert!(ep.storage_bytes().refusal().is_none());
+        assert!(ep.storage_bytes().stated().is_none());
+        assert!(ep.depth().refusal().is_some());
     }
 
     #[test]

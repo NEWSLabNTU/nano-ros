@@ -1,0 +1,43 @@
+# What this image KEEPS (RFC-0100 D3, phase-454 W12).
+#
+# `system.toml` beside this file says what the image IS — its board, its
+# backend, its components. This says what its endpoints DECLARE, which is the
+# other half of what a build needs to size a buffer, and the only half no probe
+# can answer: a probe knows a subscription EXISTS, and nothing about its QoS.
+#
+# One subscription, `KEEP_LAST(1)`. A listener that prints each message as it
+# arrives wants the latest sample, not a ten-deep backlog, and saying so is
+# worth 101,504 bytes of static RAM on this image — the per-subscriber ring
+# depth `nros-rmw-zenoh` sizes `LARGE_PAYLOADS` and `SMALL_PAYLOADS` from
+# (phase-454 W6.a). Measured: 273,802 → 172,298 bytes, `just mem-report`.
+#
+# What this DOES change at runtime, stated rather than implied: the ring the
+# backend grants this subscription is 1 slot rather than 4. `lib.rs` asks for
+# `QoSProfile::default()` — KEEP_LAST(10) — and `shim/qos.rs` has always
+# granted `min(asked, SUBSCRIBER_RING_DEPTH)` and reported the clamp, so the
+# ten was never what this image kept. The contract moves the number the build
+# reserves for, and the granted depth with it. Measured end to end: the pair
+# still delivers every message a 1 Hz talker publishes.
+#
+# The name below is ABSOLUTE and is exactly the one `lib.rs` registers. It has
+# to be: a contract states RESOLVED names, so a relative spelling or a remapped
+# node is one the build refuses to match rather than guess at — it names the
+# endpoint and the image keeps its configured pools.
+#
+# `nros sync` carries this beside the launch file it synthesises from
+# `system.toml`, where the resolver's provider-sidecar channel finds it.
+
+version: 1
+
+nodes:
+  listener:
+    sub:
+      chatter:
+        qos:
+          history: keep_last
+          depth: 1
+
+topics:
+  /chatter:
+    type: std_msgs/msg/String
+    sub: [listener/chatter]

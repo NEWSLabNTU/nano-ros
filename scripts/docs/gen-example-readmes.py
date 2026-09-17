@@ -268,6 +268,27 @@ def render(leaf: pathlib.Path) -> str:
             "features in `Cargo.toml` — the spelling RFC-0098 retires.",
         ]
 
+    # phase-454 W12 — a leaf that DECLARES what it keeps says so here, because
+    # the saving is the reason anyone would write the file and it is invisible
+    # from the source. Rendered rather than hand-added: this page carries the
+    # generated banner, so a paragraph typed into it survives only until the
+    # next `--force`.
+    if (leaf / "system.contract.yaml").is_file():
+        lines += [
+            "",
+            f"What the image KEEPS: `system.contract.yaml` beside `system.toml` ([RFC-0100]"
+            f"({GH}/docs/design/0100-rmw-agnostic-sizing-model.md) D3) — the per-endpoint QoS",
+            "no probe of the code can answer. `nros sync` joins it onto what this leaf",
+            "registers and writes `build/nros/sizing/<image>.toml`, which each backend sizes",
+            "its own pools from; `just mem-report <binary>` is where the difference shows.",
+            "Delete the file and the image builds byte-identically to one that never had it.",
+            "",
+            "Write the endpoint's name ABSOLUTELY and exactly as the code registers it. A",
+            "contract states RESOLVED names, so a relative spelling or a remapped node is one",
+            "the build refuses to match rather than guess at — it names the endpoint and the",
+            "image keeps its configured pools.",
+        ]
+
     lines += [
         "",
         f"Copy-out contract + the full example matrix: [`examples/README.md`]({GH}/examples/README.md).",

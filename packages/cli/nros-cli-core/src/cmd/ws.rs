@@ -1859,8 +1859,61 @@ fn synthesise_leaf_launch(leaf: &Path) -> Result<Option<PathBuf>> {
             .wrap_err_with(|| format!("sync: create {}", dir.display()))?;
         std::fs::write(&file, &xml).wrap_err_with(|| format!("sync: write {}", file.display()))?;
     }
+    carry_leaf_contract(leaf, &dir)?;
     Ok(Some(dir))
 }
+
+/// The contract sidecar a single-package leaf authors, carried beside the
+/// launch file this sync synthesised for it.
+///
+/// phase-454 W12 (RFC-0100 D3). The resolver finds a contract through the
+/// PROVIDER-SIDECAR channel — `<launch-file-dir>/<stem>.contract.yaml` — and a
+/// leaf's launch file lives in a generated directory, which is not somewhere a
+/// user can author anything. So the leaf states its contract where it states
+/// everything else about its deployment, **beside `system.toml`**, and sync
+/// carries it to where the resolver looks.
+///
+/// Carried rather than symlinked, and write-if-changed, for the same two
+/// reasons the launch file itself is: the copy's mtime is what makes an edited
+/// contract re-resolve the model (`resolve_system_models` reads the launch
+/// directory's input horizon), and rewriting identical bytes every sync would
+/// re-resolve it forever.
+///
+/// A leaf with its OWN `launch/` directory never reaches here — it authors the
+/// sidecar beside its launch file like any bringup does.
+fn carry_leaf_contract(leaf: &Path, dir: &Path) -> Result<()> {
+    let authored = leaf.join(LEAF_CONTRACT);
+    let carried = dir.join("system.contract.yaml");
+    // NOT `.ok()`: only ABSENCE means "no contract authored". An unreadable
+    // file is an error to report, not a declaration to drop — dropping it here
+    // would delete the carried copy and silently size the image from nothing,
+    // which is the shape this whole model exists to remove.
+    let body = match std::fs::read_to_string(&authored) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // An earlier sync may have carried one that has since been deleted,
+            // and leaving that behind would let a deleted declaration keep
+            // sizing the image.
+            if carried.is_file() {
+                std::fs::remove_file(&carried)
+                    .wrap_err_with(|| format!("sync: remove {}", carried.display()))?;
+            }
+            return Ok(());
+        }
+        Err(e) => bail!("sync: read {}: {e}", authored.display()),
+    };
+    if std::fs::read_to_string(&carried).ok().as_deref() != Some(body.as_str()) {
+        std::fs::create_dir_all(dir).wrap_err_with(|| format!("sync: create {}", dir.display()))?;
+        std::fs::write(&carried, &body)
+            .wrap_err_with(|| format!("sync: write {}", carried.display()))?;
+    }
+    Ok(())
+}
+
+/// Where a single-package leaf authors its contract sidecar — beside
+/// `system.toml`, which is where it states everything else about its
+/// deployment (RFC-0098 D3).
+pub const LEAF_CONTRACT: &str = "system.contract.yaml";
 
 fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>) -> Result<()> {
     // Issue 0285 — resolve the helper by ABSOLUTE PATH, never through PATH.
@@ -1956,12 +2009,25 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
         if let Ok(rd) = std::fs::read_dir(&launch_dir) {
             for e in rd.flatten() {
                 let p = e.path();
+                let name = p.file_name().and_then(|s| s.to_str()).unwrap_or_default();
+                // phase-454 W12 — a CONTRACT sidecar is an input to the model
+                // exactly as the launch file is: the resolver reads it through
+                // the provider-sidecar channel and writes its QoS into
+                // `contracts.*_endpoints`, which is what the sizing descriptor
+                // then derives from. Before this it was in no horizon at all, so
+                // editing a `qos.depth` left a model that still carried the old
+                // one and an image sized from a declaration nobody could see.
+                let is_input = p.extension().and_then(|s| s.to_str()) == Some("xml")
+                    || name.ends_with(".contract.yaml");
+                if !is_input {
+                    continue;
+                }
+                if let Ok(md) = p.metadata()
+                    && let Ok(mt) = md.modified()
+                {
+                    newest_input = Some(newest_input.map_or(mt, |c| c.max(mt)));
+                }
                 if p.extension().and_then(|s| s.to_str()) == Some("xml") {
-                    if let Ok(md) = p.metadata()
-                        && let Ok(mt) = md.modified()
-                    {
-                        newest_input = Some(newest_input.map_or(mt, |c| c.max(mt)));
-                    }
                     launches.push(p);
                 }
             }
