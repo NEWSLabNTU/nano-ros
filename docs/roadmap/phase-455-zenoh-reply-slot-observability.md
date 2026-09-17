@@ -1,7 +1,10 @@
 # Phase 455 — a saturated zenoh queryable says so, and the rate that follows is measurable
 
-**Status (2026-09-13). W1, W2, W2.b and W3 LANDED. W5 (new) is in flight; it
-serves TRANSIENT_LOCAL and so unblocks W4, the remainder.** Closes phase-444 W2's acceptance by a different
+**Status (2026-09-18). W1, W2, W2.b, W3 and W5 LANDED (W5 as `#1040`,
+2026-09-13). W4 is the remainder and is no longer blocked — but W5's run found
+a deeper defect than the one it fixed, and issue 1341 stays OPEN because of it:
+[#1361](../issues/1361-action-server-never-publishes-a-terminal-status.md), a
+nano-ros action server never publishes a TERMINAL status on ANY backend.** Closes phase-444 W2's acceptance by a different
 route than phase-444 assumed: not by re-running the hardware measurement, but by
 giving the failure an observable so it stops needing one. Implements the
 observability half of RFC-0089's rule — a failure a caller cannot see is a
@@ -16,7 +19,8 @@ the same shape on Cyclone.
 | W2 — the completion rate | LANDED, `65d7197380` | `completed 3/3` after a 10 s soak; and it says in its own doc comment what the green does NOT cover |
 | W2.b — the control W2 lacked | LANDED, `ef8e09bc6c` | a synthetic declined-query source; RED with `1a032a10b` reverted (`held=4 finalised=0`), GREEN with it (`declines=6 held=0`) |
 | W3 — the Zenoh action cells | LANDED, `c2584bda6c` | first Zenoh action interop cells in the tree; n2r PASS live, r2n FAIL citing 1341 |
-| W4 — the probe on NSOS | **NOT STARTED, BLOCKED** | see below |
+| W5 — serve TRANSIENT_LOCAL | LANDED, `#1040` | publisher-side query-on-match at `<topic>/@adv/pub/<zid>/<eid>/_`; a stock `rclcpp` reader reads `Durability: TRANSIENT_LOCAL` off the graph and a late joiner receives the retained sample, where `volatile` at the same moment times out; build-time ceiling refuses a third TL publisher naming `ZPICO_MAX_TL_PUBLISHERS` |
+| W4 — the probe on NSOS | **NOT STARTED**, unblocked | the refusal W5 removed was the blocker; the probe awaits `get_result`, not `/status`, so #1361 does not block it |
 
 **W2's acceptance as this document first wrote it was NOT met, and W2.b is why
 it exists.** The rate probe measured `completed == sent` and `refusals == 0`,
@@ -36,13 +40,39 @@ idle soak — zero declines, `payload_len=20` throughout, and a 12-way concurren
 service-call flood answered 12/12 with none either. W3's cells will therefore
 NOT be the stronger control 1332 hoped for. The synthetic source is the control.
 
-**W4 is blocked by [issue 1341](../issues/1341-zenoh-action-server-refuses-its-own-status-qos.md).**
-`b0ea5a04b` (phase-428 W9) made the zenoh shim refuse `TRANSIENT_LOCAL`; the
-action `/status` publisher passes exactly that, so every zenoh action server
-exits 1 at node declaration — including the one W2's probe drives. Running the
-probe on NSOS cannot begin until that is decided, and the decision is not ours:
-granting VOLATILE breaks RxO against a stock `rclcpp` action client, so it
-belongs to phase-428. Nothing about W4's design changes; it is waiting.
+**W4 was blocked by [issue 1341](../issues/1341-zenoh-action-server-refuses-its-own-status-qos.md);
+W5 removed the block.** `b0ea5a04b` (phase-428 W9) made the zenoh shim refuse
+`TRANSIENT_LOCAL`, and the action `/status` publisher passes exactly that, so
+every zenoh action server exited 1 at node declaration — including the one W2's
+probe drives. W5 serves the durability instead of refusing it, so the server
+starts. W4's own acceptance never touches `/status` (the probe awaits
+`get_result`), so it is runnable; that it has not been RUN is the only thing
+between it and done.
+
+**Issue 1341 stays open, and the reason is worth reading before anyone reruns
+`-r2n`.** Its acceptance names the terminal status sample, and W5's live run
+found that no such sample is ever published: `complete_goal_raw` removes the
+goal from `active_goals` BEFORE `publish_status_array`, so a subscriber attached
+before the goal sees `status: 1` (ACCEPTED) and then an empty array, and the
+retained sample a late joiner now correctly receives is `status_list: []`. That
+is [#1361](../issues/1361-action-server-never-publishes-a-terminal-status.md),
+it is backend-independent, and it is the same shape as issue 0902: a client
+waiting for a terminal state it will never observe. It was only findable once W5
+made the retained sample readable.
+
+**Two defects W5's run surfaced outside this phase**, filed rather than fixed
+inside it:
+
+* **[#1366](../issues/1366-rust-workspace-lists-a-deleted-esp32-entry-member.md)** —
+  `examples/workspaces/rust/Cargo.toml` lists `src/esp32_entry`, which
+  phase-445 W5 deleted, so `just build-test-fixtures lane=native` cannot
+  complete from a clone. phase-445 owns the decision (is a generated entry a
+  member of the tracked root?); W5 worked around it with
+  `just native build-fixture-rust`.
+* **[#1367](../issues/1367-cyclone-test-idlc-races-into-one-gen-dir.md)** — two
+  concurrent `idlc` runs wrote one Cyclone test `gen/` dir; the truncated header
+  is newer than its IDL input, so the codegen edge is up to date and no later
+  run repairs it. Issue 0834's non-converging shape, one lane over.
 
 ## Why this phase exists
 
