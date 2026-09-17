@@ -174,6 +174,33 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/named_logger_levels
     ./tmp/named_logger_levels
+    echo "  - phase-417 W4.e: a node-created C guard condition is REGISTERED, and a"
+    echo "    cross-thread trigger reaches the executor"
+    # The FOURTH compile+link+run TU, same reason as the three above: the shape
+    # this replaced compiled and ran and did nothing. `nros_guard_condition_init`
+    # + `_set_callback` left the object INERT — nothing reached the executor's
+    # arena until a third call, `nros_executor_add_guard_condition`, which the
+    # one in-tree C example never made — and every step answered NROS_RET_OK. So
+    # a header check cannot tell the working shape from the broken one; only a
+    # run can, and only by asserting registration (`handle_id != SIZE_MAX`), the
+    # dispatch thread, the bound context, and the WAKE against a negative
+    # control (an identical spin with nothing pending, which the stub backend
+    # sleeps out). Same stub backend and same archive as the probes above.
+    # `test -f` first — a missing TU must not read as a pass (issue 0196).
+    test -f packages/api/nros-c/tests/run/node_guard_condition.c || { \
+        echo "ERROR: node_guard_condition.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/node_guard_condition.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/node_guard_condition
+    ./tmp/node_guard_condition
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in
@@ -1591,6 +1618,30 @@ cpp: cpp-fmt
     # the exact "broke for another reason, so this check proves nothing" case
     # the grep below exists to catch. A refusal probe must reach the refusal,
     # which means compiling in the flavour the refusal lives in.
+    echo "  - phase-417 W4.e: the guard-condition surface INSTANTIATES (c++14 + -nostdinc++)"
+    # `nros::GuardCondition`'s members are non-template methods on a
+    # non-template class, so the header loop above PARSES them and compiles
+    # none: a method nobody calls is never type-checked. This TU calls each —
+    # `Node::create_guard_condition`, `trigger`, `is_valid`, and the polling
+    # pair `is_triggered`/`clear` W4.e added so C++ can do what a polling C
+    # caller always could. Built twice, hosted and freestanding, because the
+    # polling pair must reach an image with no STL (issue 0332's lane).
+    test -f packages/api/nros-cpp/tests/compile/guard_condition_surface.cpp || { \
+        echo "ERROR: guard_condition_surface.cpp is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    for _gc_arm in "" "-nostdinc++ -isystem $_threadx_shim"; do
+        # shellcheck disable=SC2086
+        c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_gc_arm \
+            -Itarget/nros-cpp-generated \
+            -Itarget/nros-c-generated \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            packages/api/nros-cpp/tests/compile/guard_condition_surface.cpp || {
+            echo "check-cpp: the guard-condition surface does not compile (arm: ${_gc_arm:-hosted})" >&2
+            exit 1
+        }
+    done
     echo "  - phase-417: the refusals FAIL, each naming its own constraint"
     for probe in node_options system_defaults_qos log_throttle service_callback \
                  unbounded_spin unbounded_wait unbounded_action_wait; do \
