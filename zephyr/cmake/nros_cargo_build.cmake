@@ -774,6 +774,107 @@ function(nros_resolve_knobs)
         _nros_resolve_derivable_knob(ZPICO_SUBSCRIBER_LARGE_SIZE
             "${CONFIG_NROS_SUBSCRIBER_LARGE_SIZE}"
             NROS_DERIVED_SUBSCRIBER_LARGE_SIZE)
+
+        # issue 1368 -- the reassembly ceiling was compared to nothing.
+        #
+        # ZPICO_FRAG_MAX_SIZE sizes zenoh-pico's defragmentation buffer: it is
+        # emitted as `Z_FRAG_MAX_SIZE`
+        # (packages/rmw/zenoh/nros-zpico-build/src/lib.rs:265), and a sample
+        # that arrives in fragments and reassembles past it is DROPPED inside
+        # the transport. `_z_transport_unicast_handle_frag`
+        # (zenoh-pico src/transport/unicast/rx.c:211) marks the buffer
+        # OVERFLOW, and the final fragment clears it and returns `_Z_RES_OK` --
+        # a SUCCESS, so no caller above it ever learns a sample existed. It
+        # presents as a subscription that never fires, which is what
+        # docs/guides/embedded-tuning.md:114 has said in prose ("limits the
+        # largest message your node can receive. Messages exceeding this are
+        # silently dropped") since before there was anything to compare it to.
+        #
+        # There is now. The payload classes resolved directly above are this
+        # image's RECEIVE side: the largest serialized sample it is built to
+        # take, derived from the message-bound inventory (phase-403 W8) or
+        # stated by whoever owns the board. Both numbers are known here, so the
+        # disagreement is a subtraction rather than a judgement.
+        #
+        # A CHECK AND NOT A DERIVATION, deliberately. Fragmentation is a
+        # property of the TRANSPORT, not of the message: the buffer is a heap
+        # allocation of the whole `Z_FRAG_MAX_SIZE` made on the first fragment
+        # (`_z_wbuf_make`, rx.c:201), out of the same platform arena every
+        # other allocation comes from. Deriving the knob from the message
+        # bounds would size a transport buffer from a message fact and raise
+        # that demand on every image whose closure happens to hold one large
+        # type, including images that never receive one. Comparing the two
+        # states the disagreement and leaves the number to whoever owns the
+        # board's RAM budget.
+        #
+        # THE CEILING IS max(FRAG, BATCH), NOT FRAG ALONE. zenoh-pico announces
+        # `Z_BATCH_UNICAST_SIZE` as this peer's batch size in its INIT
+        # (src/protocol/definitions/transport.c:144) and reads into a zbuf of
+        # that size (src/transport/common/rx.c:39), so a sample that fits one
+        # batch arrives WHOLE and never touches the defragmentation buffer.
+        # Taking the larger of the two is the direction that cannot invent a
+        # failure; on the embedded defaults FRAG is what binds (2048 against
+        # 1024), which is the case this exists for.
+        #
+        # A knob left on rung 4 (`_nros_resolve_derivable_knob` resolved
+        # nothing: no value stated and none derivable) resolves to no variable
+        # at all, and the check is SKIPPED rather than run against a number this
+        # file would have to invent.
+        set(_nros_rx_need "")
+        set(_nros_rx_need_knob "")
+        if(DEFINED NROS_RESOLVED_ZPICO_MAX_LARGE_SUBSCRIBERS
+           AND NROS_RESOLVED_ZPICO_MAX_LARGE_SUBSCRIBERS GREATER 0
+           AND DEFINED NROS_RESOLVED_ZPICO_SUBSCRIBER_LARGE_SIZE
+           AND NOT "${NROS_RESOLVED_ZPICO_SUBSCRIBER_LARGE_SIZE}" STREQUAL "")
+            # The image routes into the large class, so the large class is the
+            # largest thing it can receive.
+            set(_nros_rx_need "${NROS_RESOLVED_ZPICO_SUBSCRIBER_LARGE_SIZE}")
+            set(_nros_rx_need_knob "ZPICO_SUBSCRIBER_LARGE_SIZE")
+        elseif(DEFINED NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE
+               AND NOT "${NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE}" STREQUAL "")
+            set(_nros_rx_need "${NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE}")
+            set(_nros_rx_need_knob "NROS_SUBSCRIBER_BUFFER_SIZE")
+        endif()
+
+        if(NOT "${_nros_rx_need}" STREQUAL "")
+            set(_nros_rx_ceiling "${NROS_RESOLVED_ZPICO_FRAG_MAX_SIZE}")
+            set(_nros_rx_ceiling_knob "ZPICO_FRAG_MAX_SIZE")
+            if(NROS_RESOLVED_ZPICO_BATCH_UNICAST_SIZE GREATER _nros_rx_ceiling)
+                set(_nros_rx_ceiling "${NROS_RESOLVED_ZPICO_BATCH_UNICAST_SIZE}")
+                set(_nros_rx_ceiling_knob "ZPICO_BATCH_UNICAST_SIZE")
+            endif()
+            if(_nros_rx_need GREATER _nros_rx_ceiling)
+                message(FATAL_ERROR
+                    "nros: this image is built to receive a sample zenoh-pico "
+                    "cannot deliver.\n"
+                    "  largest receivable sample = ${_nros_rx_need}"
+                    " (${_nros_rx_need_knob})\n"
+                    "  ZPICO_FRAG_MAX_SIZE       ="
+                    " ${NROS_RESOLVED_ZPICO_FRAG_MAX_SIZE}\n"
+                    "  ZPICO_BATCH_UNICAST_SIZE  ="
+                    " ${NROS_RESOLVED_ZPICO_BATCH_UNICAST_SIZE}\n"
+                    "  receive ceiling           = ${_nros_rx_ceiling}"
+                    " (${_nros_rx_ceiling_knob})\n"
+                    "\n"
+                    "A fragmented sample that reassembles past "
+                    "ZPICO_FRAG_MAX_SIZE is dropped inside the transport: it "
+                    "reaches no callback and raises no error, so the "
+                    "subscription looks like one that never fires. The "
+                    "ceiling above is the LARGER of the two, because a frame "
+                    "that fits one unicast batch whole is never "
+                    "defragmented.\n"
+                    "\n"
+                    "Set CONFIG_NROS_FRAG_MAX_SIZE to at least "
+                    "${_nros_rx_need} (or export ZPICO_FRAG_MAX_SIZE, which "
+                    "wins over Kconfig). If ${_nros_rx_need_knob} OVER-states "
+                    "what this image actually receives -- it is derived over "
+                    "the linked interface closure when no entity inventory "
+                    "narrows it to the subscribed set -- state the class "
+                    "yourself instead: CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE and "
+                    "CONFIG_NROS_SUBSCRIBER_LARGE_SIZE. A stated value wins "
+                    "over the derivation.")
+            endif()
+        endif()
     endif()
 
     # nros-rmw-cffi's static subscription-handle pool. Backend-independent:
