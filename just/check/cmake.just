@@ -105,6 +105,19 @@ retired-cmake-keywords:
 generated-cmake-keywords:
     @python3 scripts/check-generated-cmake-keywords.py
 
+# Issue 1311 — a file written by an `add_custom_command` may be a source of ONE
+# target. Under the Makefile generators the rule is copied into every consuming
+# target's `build.make` and each target's sub-make runs it, so a parallel build
+# runs the generator N times AT ONCE into the same file. Measured: 11 concurrent
+# `idlc AddTwoInts.idl`, and a descriptor `.c` compiled against a header caught
+# mid-write (`uint32_t` / `NULL` / `DDS_OP_*` undeclared). Invisible in a warm
+# tree, invisible under Ninja, and the lane that would have caught it
+# (`check-build`) runs in CI on schedule/dispatch only — so it read as a
+# property of freshly provisioned worktrees for months. Buildless, milliseconds,
+# self-testing.
+cmake-generated-source-owners:
+    @python3 scripts/check-cmake-generated-source-owners.py
+
 # issue 0719 — the C/C++ half of the same question. `check-image-panic-policy`
 # reads what a RUST image declares (`nros::main!(panic = …)`) and says outright
 # that it cannot see "the C/C++ side, where the policy is a cargo feature on the

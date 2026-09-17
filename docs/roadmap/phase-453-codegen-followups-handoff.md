@@ -35,9 +35,12 @@ for each. Read an ejection before re-queueing.
 - [1307](../issues/1307-sizes-build-nested-cargo-rewrites-root-lock.md): every
   NuttX build rewrites the root `Cargo.lock`. `--locked` alone would break the
   build, and the issue lists the options.
-- [1311](../issues/1311-cyclonedds-sumseq-generated-c-fails-to-compile.md): the
-  `rmw-cyclonedds` `SumSeq` compile and link failure. **Reproduce on a clean
-  main checkout first.** It may be a worktree-provisioning artifact.
+- [1311](../issues/archived/1311-cyclonedds-sumseq-generated-c-fails-to-compile.md):
+  RESOLVED 2026-09-18. It reproduced on a clean `main` checkout on the first
+  attempt and was NOT a provisioning artifact: the generated descriptors were
+  sources of nine targets at once, so a parallel `make` ran `idlc` up to eleven
+  times concurrently into the same files. Fixed with one OBJECT-library owner
+  per generated set, gated by `check-cmake-generated-source-owners`.
 - [1312](../issues/1312-zephyr-system-generate-passes-no-image-id.md): the Zephyr
   system-generate module passes no image id, so the tier resolver answers for
   the host.

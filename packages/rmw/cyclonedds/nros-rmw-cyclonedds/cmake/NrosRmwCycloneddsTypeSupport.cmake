@@ -608,6 +608,72 @@ static void ${_ctor}_constructor(void) {
 endfunction()
 
 #
+# nros_rmw_cyclonedds_own_generated_sources
+#
+# Issue 1311 — give a generated source set exactly ONE owning target.
+#
+# `add_custom_command(OUTPUT …)` is emitted into the `build.make` of EVERY
+# target that lists one of its outputs as a source, and the Makefile generator
+# drives each target through its own sub-make. So `cmake --build --parallel`
+# runs the SAME command once per consuming target, CONCURRENTLY, every copy
+# writing the same file. Measured on 2026-09-18 in this project's own test
+# suite: `idlc AddTwoInts.idl` ran 11 times, `idlc test_string.idl` 10 times,
+# `msg_to_cyclone_idl nros_test/srv/SumSeq.srv` 9 times — and a `.c` that
+# opened its header mid-write compiled against a prefix that had not reached
+# `#include "dds/ddsc/dds_public_impl.h"`, so `uint32_t`, `NULL` and every
+# `DDS_OP_*` came out undeclared. A truncated `.c` loses its descriptor
+# instead, which is the same race arriving one step later as
+# `undefined reference to '…__desc'`.
+#
+# CMake's own `add_custom_command` documentation names this exact misuse: "Do
+# not list the output in more than one independent target that may build in
+# parallel or the instances of the rule may conflict." Ninja is immune (one
+# global graph, one edge per output), which is why the Zephyr/west consumers
+# never saw it and why the failure looked like it belonged to whoever had just
+# provisioned a fresh checkout: a warm tree re-runs no generation rule at all.
+#
+# OBJECT, not STATIC: the `_register_*.c` TUs are reached ONLY through
+# `__attribute__((constructor))`, and an archive member nothing references is
+# not pulled in — the same FORCE_LINK class CLAUDE.md records for nros-c.
+#
+#   nros_rmw_cyclonedds_own_generated_sources(<output_var> <owner_target>
+#       SOURCES      <generated .c files...>
+#       [INCLUDE_DIRS <dirs...>])
+#
+# Sets <output_var> to `$<TARGET_OBJECTS:<owner_target>>`, which consumers list
+# in `add_executable()` / `add_library()` exactly where they listed the sources
+# before. An empty SOURCES list leaves <output_var> empty (callers test it).
+#
+# NOT applied inside `nros_rmw_cyclonedds_idlc_compile` /
+# `…_generate_from_msg`: their far consumers (the Zephyr action-type module,
+# the per-example leaves) add the include dirs the generated TUs need to their
+# OWN target after the call, so an owner library created in here would compile
+# without them. Those callers each feed a single target and are not exposed to
+# this race anyway.
+function(nros_rmw_cyclonedds_own_generated_sources output_var owner)
+    set(_multi SOURCES INCLUDE_DIRS)
+    cmake_parse_arguments(_arg "" "" "${_multi}" ${ARGN})
+
+    if(NOT _arg_SOURCES)
+        set(${output_var} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    add_library(${owner} OBJECT ${_arg_SOURCES})
+    # Usage requirements only (an OBJECT library does not link): this is where
+    # the Cyclone `dds/…` include roots come from, since the backend carries
+    # them and the generated descriptors need them.
+    if(TARGET nros_rmw_cyclonedds)
+        target_link_libraries(${owner} PRIVATE nros_rmw_cyclonedds)
+    endif()
+    if(_arg_INCLUDE_DIRS)
+        target_include_directories(${owner} PRIVATE ${_arg_INCLUDE_DIRS})
+    endif()
+
+    set(${output_var} "$<TARGET_OBJECTS:${owner}>" PARENT_SCOPE)
+endfunction()
+
+#
 # nros_rmw_cyclonedds_add_idl_library
 #
 function(nros_rmw_cyclonedds_add_idl_library tgt)
