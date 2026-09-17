@@ -776,6 +776,176 @@ pub unsafe extern "C" fn nros_action_server_get_active_goal_count(
     }
 }
 
+/// Read back the action name this server was created on.
+///
+/// rcl's `rcl_action_server_get_action_name`, the server twin of
+/// [`rcl_action_client_get_action_name`](crate::action::client::rcl_action_client_get_action_name)
+/// — phase-417 W4.b, ledger row `c:action_server_get_action_name`. The name is
+/// the caller's own string, copied NUL-terminated into the handle at init, so
+/// this hands back a pointer into the handle and costs nothing.
+///
+/// # Parameters
+/// * `server` - Pointer to an action server
+///
+/// # Returns
+/// * Pointer to the action name (NUL-terminated), or NULL when `server` is
+///   NULL or was never initialised. Both live tiers answer — L2 (callback,
+///   `INITIALIZED`) and L1 (polling), for the same reason
+///   `nros_service_t::is_usable` covers both.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_action_server_get_action_name(
+    server: *const nros_action_server_t,
+) -> *const core::ffi::c_char {
+    if server.is_null() {
+        return core::ptr::null();
+    }
+    let server = &*server;
+    match server.state {
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED
+        | nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING => {
+            server.action_name.as_ptr() as *const core::ffi::c_char
+        }
+        _ => core::ptr::null(),
+    }
+}
+
+/// Is `goal` a goal this server still knows about?
+///
+/// rcl's `rcl_action_server_goal_exists` — phase-417 W4.b, ledger row
+/// `c:action_server_goal_exists`. TRUE while the goal is ACTIVE and while its
+/// completed result is still retained for a later `get_result`, which is
+/// rcl's own window (its goal-handle table keeps a terminated goal until
+/// `rcl_action_expire_goals` reclaims it).
+///
+/// **This is not what [`nros_action_get_goal_status`] answers**, and the row
+/// was open on the guess that it was. That lookup reads the ACTIVE set only,
+/// so it returns `NROS_RET_NOT_FOUND` for a goal that has completed and whose
+/// result is still sitting in the slab — i.e. for exactly the goals a client
+/// is in the middle of fetching. A ported `if (rcl_action_server_goal_exists
+/// (...))` guard written against that mapping would have been wrong in the one
+/// window it matters.
+///
+/// # Parameters
+/// * `server` - Pointer to an action server
+/// * `goal` - The goal handle (its 16-byte UUID is the key)
+///
+/// # Returns
+/// * `true` if the server knows the goal; `false` for a NULL argument, an
+///   uninitialised/finalised server, or an unknown goal. A predicate, so
+///   there is no separate error channel — the ported idiom is a guard, the
+///   same shape as `rcl_service_is_valid`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_goal_exists(
+    server: *mut nros_action_server_t,
+    goal: *const nros_goal_handle_t,
+) -> bool {
+    if server.is_null() || goal.is_null() {
+        return false;
+    }
+    let goal_id = nros_node::GoalId {
+        uuid: (*goal).uuid.uuid,
+    };
+    match (*server).state {
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED => {
+            let internal = get_internal(server);
+            if !internal.is_handle_set() {
+                return false;
+            }
+            let handle = internal.handle;
+            let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+            handle.goal_exists(executor, &goal_id)
+        }
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING => {
+            #[cfg(feature = "rmw-cffi")]
+            {
+                match polling_server_core(server) {
+                    Some(core) => core.goal_exists(&goal_id),
+                    None => false,
+                }
+            }
+            #[cfg(not(feature = "rmw-cffi"))]
+            {
+                false
+            }
+        }
+        _ => false,
+    }
+}
+
+/// Eagerly reclaim every completed result whose `get_result` reply has already
+/// been sent, and report how many were reclaimed.
+///
+/// rcl's `rcl_action_expire_goals` — phase-417 W4.b, ledger row
+/// `c:action_expire_goals`. **ADOPT-BOUNDED, and the envelope is the whole
+/// point of the row**: upstream's trigger is a CLOCK (a goal expires
+/// `result_timeout` after it terminates, 15 min by default) and it fills a
+/// caller-supplied `rcl_action_goal_info_t` array with the goals that went.
+/// Neither half survives here:
+///
+/// * **No timeout.** `ActionServerCore` is `no_std` with no time source
+///   threaded through it (RFC-0036), so there is nothing to measure a
+///   `result_timeout` against. The trigger is the CALLER, and reclamation
+///   otherwise happens on demand when a completion needs slab room — which is
+///   what already bounds the memory upstream's timer exists to bound.
+/// * **No `expired_goals` report.** An entry is reclaimed the moment its
+///   result has been delivered, so "which goals expired" is a question about
+///   a clock we do not have; the count is what remains true.
+///
+/// Calling this is OPTIONAL. It exists for a server that would rather return
+/// the slab eagerly (before a long idle period, say) than at the next
+/// completion.
+///
+/// # Parameters
+/// * `server` - Pointer to an action server
+/// * `num_expired` - Receives the number of results reclaimed (may be 0)
+///
+/// # Returns
+/// * `NROS_RET_OK` — `*num_expired` holds the count, which may legitimately be 0.
+/// * `NROS_RET_INVALID_ARGUMENT` — `server` or `num_expired` is NULL.
+/// * `NROS_RET_NOT_INIT` — the server is UNINITIALIZED or SHUTDOWN, was never
+///   registered with an executor, or is POLLING in a build without `rmw-cffi`.
+///
+/// `*num_expired` is left untouched on every error path, for the same reason
+/// [`nros_action_server_get_active_goal_count`] leaves its own out-parameter
+/// alone.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_expire_goals(
+    server: *mut nros_action_server_t,
+    num_expired: *mut usize,
+) -> nros_ret_t {
+    validate_not_null!(server, num_expired);
+
+    match (*server).state {
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED => {
+            let internal = get_internal(server);
+            if !internal.is_handle_set() {
+                return NROS_RET_NOT_INIT;
+            }
+            let handle = internal.handle;
+            let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+            *num_expired = handle.expire_goals(executor);
+            NROS_RET_OK
+        }
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING => {
+            #[cfg(feature = "rmw-cffi")]
+            {
+                match polling_server_core(server) {
+                    Some(core) => {
+                        *num_expired = core.expire_completed_results();
+                        NROS_RET_OK
+                    }
+                    None => NROS_RET_NOT_INIT,
+                }
+            }
+            #[cfg(not(feature = "rmw-cffi"))]
+            {
+                NROS_RET_NOT_INIT
+            }
+        }
+        _ => NROS_RET_NOT_INIT,
+    }
+}
+
 /// Look up a goal's current status in the arena by UUID.
 ///
 /// Returns `NROS_RET_OK` and writes the arena-sourced status on success.
@@ -1852,5 +2022,61 @@ mod verification {
             unsafe { nros_action_canceled(ptr::null_mut(), ptr::null(), ptr::null(), 0) },
             NROS_RET_INVALID_ARGUMENT,
         );
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The name accessor and the two predicates answer HONESTLY on a server
+    /// that was never initialised — phase-417 W4.b.
+    ///
+    /// Each of the three has an error channel that is easy to get wrong in the
+    /// same direction: a name accessor that returned the zeroed `action_name`
+    /// buffer would hand back an empty C string that reads like a real name,
+    /// and a predicate that returned `true` on an uninitialised server would
+    /// make the ported guard let the call through. rcl's accessor answers NULL
+    /// for a handle that is not usable (`rcl_service_get_service_name`'s
+    /// contract, which the C surface's other three name accessors already
+    /// follow), and a goal nobody accepted does not exist.
+    #[test]
+    fn accessors_refuse_an_unusable_server() {
+        let mut srv = rcl_action_get_zero_initialized_server();
+        let goal = nros_goal_handle_t {
+            uuid: nros_goal_uuid_t { uuid: [7u8; 16] },
+        };
+        let mut expired: usize = 12345;
+
+        // NULL handle.
+        assert!(unsafe { rcl_action_server_get_action_name(ptr::null()) }.is_null());
+        assert!(!unsafe { nros_action_server_goal_exists(ptr::null_mut(), &goal) });
+        assert_eq!(
+            unsafe { nros_action_expire_goals(ptr::null_mut(), &mut expired) },
+            NROS_RET_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe { nros_action_expire_goals(&mut srv, ptr::null_mut()) },
+            NROS_RET_INVALID_ARGUMENT
+        );
+
+        // UNINITIALIZED handle — NOT an empty string, and NOT `true`.
+        assert!(unsafe { rcl_action_server_get_action_name(&srv) }.is_null());
+        assert!(!unsafe { nros_action_server_goal_exists(&mut srv, &goal) });
+        assert!(!unsafe { nros_action_server_goal_exists(&mut srv, ptr::null()) });
+        assert_eq!(
+            unsafe { nros_action_expire_goals(&mut srv, &mut expired) },
+            NROS_RET_NOT_INIT
+        );
+
+        // The out-parameter is untouched on every error path, so a caller that
+        // ignores the return code reads back its own initialiser rather than a
+        // fabricated 0 — the same contract
+        // `nros_action_server_get_active_goal_count` states.
+        assert_eq!(expired, 12345);
     }
 }

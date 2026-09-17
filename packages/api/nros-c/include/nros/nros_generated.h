@@ -4011,6 +4011,32 @@ nros_ret_t nros_action_client_wait_for_action_server(struct nros_action_client_t
                                                      uint32_t timeout_ms);
 
 /**
+ * Read back the action name this client was created on.
+ *
+ * rcl's `rcl_action_client_get_action_name`, and the third of the C
+ * surface's name accessors — `rcl_service_get_service_name`,
+ * `rcl_subscription_get_topic_name` and `rcl_publisher_get_topic_name`
+ * already had this shape, and the action client and server were the two
+ * entities that did not (phase-417 W4.b, ledger row
+ * `c:action_client_get_action_name`). The name is the caller's own string,
+ * copied NUL-terminated into the handle at init, so this hands back a
+ * pointer into the handle and costs nothing.
+ *
+ * # Parameters
+ * * `client` - Pointer to an action client
+ *
+ * # Returns
+ * * Pointer to the action name (NUL-terminated), or NULL when `client` is
+ *   NULL or was never initialised. Every live state answers — an L1 polling
+ *   client (`nros_action_client_init_polling`) names its action just as an
+ *   executor-registered one does, which is the distinction
+ *   `nros_service_t::is_usable` exists to make (ledger row
+ *   `c:service_is_valid`).
+ */
+NROS_PUBLIC
+const char *rcl_action_client_get_action_name(const struct nros_action_client_t *client);
+
+/**
  * Non-blocking snapshot of action-server visibility. Mirrors
  * `rclcpp_action::Client::action_server_is_ready`. Takes `executor`
  * for the same reason as
@@ -4466,6 +4492,100 @@ nros_ret_t nros_action_execute(struct nros_action_server_t *server,
 NROS_PUBLIC
 nros_ret_t nros_action_server_get_active_goal_count(struct nros_action_server_t *server,
                                                     size_t *out);
+
+/**
+ * Read back the action name this server was created on.
+ *
+ * rcl's `rcl_action_server_get_action_name`, the server twin of
+ * [`rcl_action_client_get_action_name`](crate::action::client::rcl_action_client_get_action_name)
+ * — phase-417 W4.b, ledger row `c:action_server_get_action_name`. The name is
+ * the caller's own string, copied NUL-terminated into the handle at init, so
+ * this hands back a pointer into the handle and costs nothing.
+ *
+ * # Parameters
+ * * `server` - Pointer to an action server
+ *
+ * # Returns
+ * * Pointer to the action name (NUL-terminated), or NULL when `server` is
+ *   NULL or was never initialised. Both live tiers answer — L2 (callback,
+ *   `INITIALIZED`) and L1 (polling), for the same reason
+ *   `nros_service_t::is_usable` covers both.
+ */
+NROS_PUBLIC
+const char *rcl_action_server_get_action_name(const struct nros_action_server_t *server);
+
+/**
+ * Is `goal` a goal this server still knows about?
+ *
+ * rcl's `rcl_action_server_goal_exists` — phase-417 W4.b, ledger row
+ * `c:action_server_goal_exists`. TRUE while the goal is ACTIVE and while its
+ * completed result is still retained for a later `get_result`, which is
+ * rcl's own window (its goal-handle table keeps a terminated goal until
+ * `rcl_action_expire_goals` reclaims it).
+ *
+ * **This is not what [`nros_action_get_goal_status`] answers**, and the row
+ * was open on the guess that it was. That lookup reads the ACTIVE set only,
+ * so it returns `NROS_RET_NOT_FOUND` for a goal that has completed and whose
+ * result is still sitting in the slab — i.e. for exactly the goals a client
+ * is in the middle of fetching. A ported `if (rcl_action_server_goal_exists
+ * (...))` guard written against that mapping would have been wrong in the one
+ * window it matters.
+ *
+ * # Parameters
+ * * `server` - Pointer to an action server
+ * * `goal` - The goal handle (its 16-byte UUID is the key)
+ *
+ * # Returns
+ * * `true` if the server knows the goal; `false` for a NULL argument, an
+ *   uninitialised/finalised server, or an unknown goal. A predicate, so
+ *   there is no separate error channel — the ported idiom is a guard, the
+ *   same shape as `rcl_service_is_valid`.
+ */
+NROS_PUBLIC
+bool nros_action_server_goal_exists(struct nros_action_server_t *server,
+                                    const struct nros_goal_handle_t *goal);
+
+/**
+ * Eagerly reclaim every completed result whose `get_result` reply has already
+ * been sent, and report how many were reclaimed.
+ *
+ * rcl's `rcl_action_expire_goals` — phase-417 W4.b, ledger row
+ * `c:action_expire_goals`. **ADOPT-BOUNDED, and the envelope is the whole
+ * point of the row**: upstream's trigger is a CLOCK (a goal expires
+ * `result_timeout` after it terminates, 15 min by default) and it fills a
+ * caller-supplied `rcl_action_goal_info_t` array with the goals that went.
+ * Neither half survives here:
+ *
+ * * **No timeout.** `ActionServerCore` is `no_std` with no time source
+ *   threaded through it (RFC-0036), so there is nothing to measure a
+ *   `result_timeout` against. The trigger is the CALLER, and reclamation
+ *   otherwise happens on demand when a completion needs slab room — which is
+ *   what already bounds the memory upstream's timer exists to bound.
+ * * **No `expired_goals` report.** An entry is reclaimed the moment its
+ *   result has been delivered, so "which goals expired" is a question about
+ *   a clock we do not have; the count is what remains true.
+ *
+ * Calling this is OPTIONAL. It exists for a server that would rather return
+ * the slab eagerly (before a long idle period, say) than at the next
+ * completion.
+ *
+ * # Parameters
+ * * `server` - Pointer to an action server
+ * * `num_expired` - Receives the number of results reclaimed (may be 0)
+ *
+ * # Returns
+ * * `NROS_RET_OK` — `*num_expired` holds the count, which may legitimately be 0.
+ * * `NROS_RET_INVALID_ARGUMENT` — `server` or `num_expired` is NULL.
+ * * `NROS_RET_NOT_INIT` — the server is UNINITIALIZED or SHUTDOWN, was never
+ *   registered with an executor, or is POLLING in a build without `rmw-cffi`.
+ *
+ * `*num_expired` is left untouched on every error path, for the same reason
+ * [`nros_action_server_get_active_goal_count`] leaves its own out-parameter
+ * alone.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_expire_goals(struct nros_action_server_t *server,
+                                    size_t *num_expired);
 
 /**
  * Look up a goal's current status in the arena by UUID.
