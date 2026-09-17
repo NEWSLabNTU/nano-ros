@@ -527,7 +527,27 @@ pub fn is_in_lane(row: &Row, coords: &BTreeSet<Coord>) -> bool {
 ///
 /// `label` is for the message only; pass the row's dir.
 pub fn require_coord_in_lane(coord: &Coord, label: &str) -> TestResult<()> {
-    let Some(coords) = run_coords() else {
+    require_coord_in_lane_within(coord, label, run_coords())
+}
+
+/// [`require_coord_in_lane`] with this run's lane supplied rather than read —
+/// issue 1313.
+///
+/// One spelling of the decision, with the environment lifted to the boundary.
+/// `run_coords()` latches a process-wide `OnceLock` over `NROS_TEST_COORDS`, so
+/// a test that needed the un-narrowed answer had only one lever: `remove_var`
+/// before anything else latched. That is a write to the process environment
+/// racing every sibling's read of it (issue 1313's shape), plus an ORDERING
+/// requirement across tests that no harness guarantees —
+/// `the_row_resolver_uses_the_carve_out_profile`'s own comment said as much
+/// ("it must precede the first `lane::run_coords` call"). Passing `None` says
+/// the same thing with no global state and no ordering.
+pub fn require_coord_in_lane_within(
+    coord: &Coord,
+    label: &str,
+    coords: Option<&BTreeSet<Coord>>,
+) -> TestResult<()> {
+    let Some(coords) = coords else {
         return Ok(());
     };
     if let Some(reason) = skip_reason_for_coord(coord, label, coords) {

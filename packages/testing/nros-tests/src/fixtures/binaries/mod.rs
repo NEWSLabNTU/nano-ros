@@ -529,10 +529,26 @@ pub(crate) fn require_prebuilt_row_binary(
     row: &crate::fixtures::groups::GroupRow,
     rel: &Path,
 ) -> TestResult<PathBuf> {
-    crate::fixtures::lane::require_coord_in_lane(&row.coord, &row.dir)?;
+    require_prebuilt_row_binary_in(
+        row,
+        rel,
+        crate::fixtures::lane::run_coords(),
+        AbsenceEnv::from_process_env(),
+    )
+}
+
+/// [`require_prebuilt_row_binary`] with both ambient inputs supplied — issue
+/// 1313. `lane: None` is an un-narrowed run.
+pub(crate) fn require_prebuilt_row_binary_in(
+    row: &crate::fixtures::groups::GroupRow,
+    rel: &Path,
+    lane: Option<&std::collections::BTreeSet<crate::fixtures::lane::Coord>>,
+    env: AbsenceEnv,
+) -> TestResult<PathBuf> {
+    crate::fixtures::lane::require_coord_in_lane_within(&row.coord, &row.dir, lane)?;
     let rel = rel_at_row_profile(row, rel);
     let binary_path = crate::fixtures::groups::row_resolved_dir(row).join(&rel);
-    require_prebuilt_binary_checks(&binary_path)
+    require_prebuilt_binary_checks_in(&binary_path, env)
 }
 
 pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf> {
@@ -575,6 +591,89 @@ pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf>
 /// One helper, called by both. A second spelling is what this repo keeps paying
 /// for (the #282 / #326 class), so the fix is not to paste it across.
 fn absent_fixture_verdict(binary_path: &Path, remedy: &str) -> TestResult<PathBuf> {
+    absent_fixture_verdict_in(binary_path, remedy, AbsenceEnv::from_process_env())
+}
+
+/// The ambient inputs [`absent_fixture_verdict`] consults, read ONCE at the
+/// resolver's boundary rather than from inside the decision — issue 1313.
+///
+/// # Why this is a parameter and not two `env::var_os` calls
+///
+/// `gated_absence_is_a_hard_failure` and `ungated_absence_is_a_recoverable_error`
+/// are the two arms of one branch, so one of them has to make
+/// `gate_promised_fixtures()` true and the other has to make it false. They did
+/// that by WRITING to the process environment, on the stated grounds that
+/// "nextest runs each test in its own process" — and under nextest that is
+/// exactly right. Under plain `cargo test -p nros-tests --lib` the whole crate
+/// shares one process and libtest runs the cases on threads, so each was
+/// clobbering the other's precondition. Measured before this change, with the
+/// filter narrowed to the pair so they are always co-scheduled: **49 of 60 runs
+/// failed**, in both directions — the gated case reaching the `Err` arm, and the
+/// ungated case reaching the panic. Diluted across 214 `--lib` cases that is the
+/// ~1-in-213 flake issue 1313 was filed on, which is worse than a reliable
+/// failure: a red that goes away on retry teaches people to retry.
+///
+/// It was also a latent UB site. `set_var`/`remove_var` are `unsafe` in edition
+/// 2024 *precisely* because another thread may be in `getenv`, and the sibling
+/// case here is that thread by construction.
+///
+/// So the decision takes its inputs. The tests drive the REAL resolver — that
+/// part was right and is kept, because a test that reimplemented the branch
+/// would pass with the wiring bypassed (issue 0196) — they simply hand it the
+/// two booleans instead of shouting them through `environ`. There is no mutex,
+/// no ordering requirement, and nothing left for a sibling to clobber:
+/// `rg 'set_var|remove_var' packages/testing/nros-tests/src` now matches only
+/// prose, this paragraph included. A mutex was the other option 1313 offered and
+/// is the worse one — it keeps the shared mutable global and makes every future
+/// reader of this branch responsible for remembering it.
+///
+/// The swept siblings, for the next person:
+///
+/// * `tests/init_api.rs` — SAFE and unchanged. One `static` `env_lock()` taken
+///   by every live `#[test]` in the target, with RAII restore of the previous
+///   value (`EnvGuard`); the one case that does not lock is `#[ignore]`d with an
+///   empty body. That is 1313's option 2, done properly, and it is the right
+///   shape there because the thing under test READS `ROS_DOMAIN_ID` &c. from the
+///   process environment by design.
+/// * `tests/rtos_e2e.rs::enable_router_session_log` — a DIFFERENT shape, and not
+///   this bug. No sibling writes or clears `ZENOHD_LOG`; the write is guarded on
+///   "still unset" and every generated case of the one `#[rstest]` that calls it
+///   writes the same constant, so writers cannot disagree; and the value selects
+///   only whether the router keeps a log and at which level — never a verdict.
+///   What remains is the formal `setenv`-during-`getenv` hazard, which cannot be
+///   removed the same way: the filter is consumed inside `ZenohRouter::start_on`,
+///   reached through `platform.zenoh_router_start(..)`, and threading it as a
+///   parameter is a change across ~64 spawn sites in a fixture-gated target.
+///   Surveyed, not fixed here.
+///
+/// `NROS_FIXTURES_OPTIONAL` is in here for the same reason even though no test
+/// wrote it: the pair reads as env-independent now, and it was not — a host with
+/// that variable exported turns the gated case's panic into a `skip!`, so
+/// `#[should_panic(expected = "MISSING for an in-lane coordinate")]` would fail
+/// for a reason no message explains.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct AbsenceEnv {
+    /// `NROS_FIXTURES_OPTIONAL` — the light tier's opt-out.
+    pub(crate) fixtures_optional: bool,
+    /// A gate has already PROMISED this lane's fixtures exist and are fresh.
+    pub(crate) gate_promised: bool,
+}
+
+impl AbsenceEnv {
+    /// What a real run is: the one place these two variables are read.
+    fn from_process_env() -> Self {
+        Self {
+            fixtures_optional: std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some(),
+            gate_promised: gate_promised_fixtures(),
+        }
+    }
+}
+
+fn absent_fixture_verdict_in(
+    binary_path: &Path,
+    remedy: &str,
+    env: AbsenceEnv,
+) -> TestResult<PathBuf> {
     // Tier-aware (#25): the LIGHT host-integration lane (`NROS_FIXTURES_OPTIONAL=1`)
     // does not build every native fixture variant (TLS / cyclonedds / zero-copy /
     // workspace-entry need extra system deps + tools). There an unstaged fixture
@@ -603,7 +702,7 @@ fn absent_fixture_verdict(binary_path: &Path, remedy: &str) -> TestResult<PathBu
             reason.trim(),
         )));
     }
-    if std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some() {
+    if env.fixtures_optional {
         crate::skip!(
             "fixture binary not prebuilt: {} (light tier; run `{remedy}` for full coverage)",
             binary_path.display()
@@ -628,7 +727,7 @@ fn absent_fixture_verdict(binary_path: &Path, remedy: &str) -> TestResult<PathBu
     // and the junit rewrite counts it as the real failure it is. Ungated runs
     // (a bare `cargo nextest` on a developer box that built nothing) keep the
     // old `Err`, because there no one promised anything.
-    if gate_promised_fixtures() {
+    if env.gate_promised {
         panic!(
             "Test fixture binary MISSING for an in-lane coordinate: {}\n\
              A gated run already asserted this lane's fixtures are built and \n\
@@ -681,10 +780,19 @@ fn absent_fixture_verdict(binary_path: &Path, remedy: &str) -> TestResult<PathBu
 }
 
 fn require_prebuilt_binary_checks(binary_path: &Path) -> TestResult<PathBuf> {
+    require_prebuilt_binary_checks_in(binary_path, AbsenceEnv::from_process_env())
+}
+
+/// [`require_prebuilt_binary_checks`] with its ambient inputs supplied — issue
+/// 1313. Production always reaches it through the wrapper above; the
+/// `fixture_absence_class_tests` pair reaches it directly, so both arms of the
+/// branch can be exercised through the real resolver without either test
+/// writing to the process environment the other one reads.
+fn require_prebuilt_binary_checks_in(binary_path: &Path, env: AbsenceEnv) -> TestResult<PathBuf> {
     if binary_path.exists() {
         return Ok(binary_path.to_path_buf());
     }
-    absent_fixture_verdict(binary_path, "just build-test-fixtures")
+    absent_fixture_verdict_in(binary_path, "just build-test-fixtures", env)
 }
 
 /// Did something already PROMISE that this lane's fixtures are present?
@@ -5943,15 +6051,24 @@ mod fixture_absence_class_tests {
     /// `build_*` helpers all funnel through it, which is why the panic lives
     /// there and not at the ~500 call sites that launder its `Err` into
     /// `[SKIPPED] … not prebuilt`.
+    ///
+    /// Issue 1313 — both arms now INJECT the gate context through
+    /// [`AbsenceEnv`] instead of writing it into the process environment. They
+    /// are the two arms of one branch, so each had to set what the other had to
+    /// clear, and under plain `cargo test -p nros-tests --lib` (one process,
+    /// cases on threads) they clobbered each other: 49 of 60 runs failed with
+    /// the filter narrowed to the pair, in both directions. The resolver is
+    /// still the real one — that part was never the problem.
     #[test]
     fn ungated_absence_is_a_recoverable_error() {
-        // SAFETY: nextest runs each test in its own process.
-        unsafe {
-            std::env::remove_var("NROS_TEST_SCOPE");
-            std::env::remove_var("NROS_TEST_COORDS");
-        }
         let missing = std::path::Path::new("/nonexistent/nros-fixture-absence-probe");
-        let got = require_prebuilt_binary_checks(missing);
+        let got = require_prebuilt_binary_checks_in(
+            missing,
+            AbsenceEnv {
+                fixtures_optional: false,
+                gate_promised: false,
+            },
+        );
         assert!(
             matches!(&got, Err(crate::TestError::FixtureNotBuilt(_))),
             "ungated: expected a recoverable BuildFailed, got {got:?}"
@@ -5961,10 +6078,130 @@ mod fixture_absence_class_tests {
     #[test]
     #[should_panic(expected = "MISSING for an in-lane coordinate")]
     fn gated_absence_is_a_hard_failure() {
-        // SAFETY: nextest runs each test in its own process.
-        unsafe { std::env::set_var("NROS_TEST_SCOPE", "native") }
         let missing = std::path::Path::new("/nonexistent/nros-fixture-absence-probe");
-        let _ = require_prebuilt_binary_checks(missing);
+        let _ = require_prebuilt_binary_checks_in(
+            missing,
+            AbsenceEnv {
+                fixtures_optional: false,
+                gate_promised: true,
+            },
+        );
+    }
+
+    /// The light tier's opt-out is a THIRD arm of the same branch, and it had no
+    /// coverage — so nothing said what happens when both it and the gate are on.
+    ///
+    /// It is checked BEFORE the gate panic, which is the answer a reader would
+    /// not guess: `NROS_FIXTURES_OPTIONAL=1` wins, and the verdict is a skip.
+    /// Worth pinning now that the input is a parameter, because that ordering is
+    /// also why the gated arm above has to state `fixtures_optional: false`
+    /// rather than leave it to the host — on a machine with the variable
+    /// exported, the panic it expects never happens.
+    /// Injecting the decision's inputs must not mean NOTHING checks that a real
+    /// run derives them — that is issue 0196's shape in miniature, and it is the
+    /// cost the two arms above would otherwise pay for becoming hermetic.
+    ///
+    /// So this covers [`AbsenceEnv::from_process_env`] in a CHILD process: the
+    /// environment is supplied by `Command::env`, which is the safe way to write
+    /// one, and this process never calls `set_var`. No compilation happens —
+    /// `current_exe()` is the test binary cargo already built (CLAUDE.md: no
+    /// compilation inside tests).
+    ///
+    /// One recursive test rather than a test plus a probe, because a probe
+    /// `#[test]` that only prints is exactly what `check-no-vacuous-tests`
+    /// forbids: both branches below assert.
+    #[test]
+    fn from_process_env_reads_the_two_gate_variables() {
+        const MARKER: &str = "NROS_ABSENCE_ENV_EXPECT";
+
+        // Child branch: assert that what we derived is what the parent asked
+        // for. `gate/optional` as two `0`/`1` digits.
+        if let Some(want) = std::env::var_os(MARKER) {
+            let want = want.to_string_lossy().into_owned();
+            let got = AbsenceEnv::from_process_env();
+            let expect = AbsenceEnv {
+                gate_promised: want.starts_with('1'),
+                fixtures_optional: want.ends_with('1'),
+            };
+            assert_eq!(
+                got,
+                expect,
+                "AbsenceEnv::from_process_env misread the environment \
+                 (marker {want}): NROS_TEST_SCOPE={:?} NROS_TEST_COORDS={:?} \
+                 NROS_FIXTURES_OPTIONAL={:?}",
+                std::env::var_os("NROS_TEST_SCOPE"),
+                std::env::var_os("NROS_TEST_COORDS"),
+                std::env::var_os("NROS_FIXTURES_OPTIONAL"),
+            );
+            return;
+        }
+
+        // Parent branch: every combination that changes the answer. Both gate
+        // variables are covered separately — `gate_promised_fixtures` is an OR,
+        // so testing one of them would leave the other free to be deleted.
+        let exe = std::env::current_exe().expect("current_exe");
+        let cases: [(&str, &[(&str, &str)]); 5] = [
+            ("00", &[]),
+            ("10", &[("NROS_TEST_SCOPE", "native")]),
+            ("10", &[("NROS_TEST_COORDS", "/dev/null")]),
+            ("01", &[("NROS_FIXTURES_OPTIONAL", "1")]),
+            (
+                "11",
+                &[
+                    ("NROS_TEST_SCOPE", "native"),
+                    ("NROS_FIXTURES_OPTIONAL", "1"),
+                ],
+            ),
+        ];
+        for (want, vars) in cases {
+            let mut cmd = std::process::Command::new(&exe);
+            cmd.args([
+                "--exact",
+                "fixtures::binaries::fixture_absence_class_tests::\
+                 from_process_env_reads_the_two_gate_variables",
+                "--nocapture",
+            ]);
+            for k in [
+                "NROS_TEST_SCOPE",
+                "NROS_TEST_COORDS",
+                "NROS_FIXTURES_OPTIONAL",
+            ] {
+                cmd.env_remove(k);
+            }
+            cmd.env(MARKER, want);
+            for (k, v) in vars {
+                cmd.env(k, v);
+            }
+            let out = cmd.output().expect("re-exec the test binary");
+            assert!(
+                out.status.success(),
+                "child with {vars:?} expecting {want} failed:\n{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr),
+            );
+            // A filter that selects NOTHING is a libtest SUCCESS (`0 passed`),
+            // so the exit status alone would pass with the child never running
+            // the assertion — the vacuous-gate shape this repo keeps paying for.
+            let text = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                text.contains("1 passed"),
+                "the child ran no test, so nothing was asserted — the `--exact` \
+                 filter no longer names this function:\n{text}"
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "[SKIPPED]")]
+    fn the_light_tier_opt_out_wins_over_the_gate_promise() {
+        let missing = std::path::Path::new("/nonexistent/nros-fixture-absence-probe");
+        let _ = require_prebuilt_binary_checks_in(
+            missing,
+            AbsenceEnv {
+                fixtures_optional: true,
+                gate_promised: true,
+            },
+        );
     }
 }
 
@@ -6721,24 +6958,28 @@ mod tests {
     /// the path it went looking for.
     #[test]
     fn the_row_resolver_uses_the_carve_out_profile() {
-        // Neutralize any LANE narrowing first. This test drives the resolver
-        // with a FABRICATED row (`GroupRow::for_test`, an artifact_root that
-        // does not exist) to read back which profile the lookup asked for. Under
-        // a narrowed lane — `just ci-matrix` exports `NROS_TEST_COORDS` — the
-        // resolver's coordinate skip fires BEFORE it composes that path, so the
-        // assertion reads `[SKIPPED:lane] out of lane: … nuttx,rust,zenoh`
-        // instead of the profile dir, and the test can never pass in tier 2.
+        // This test drives the resolver with a FABRICATED row
+        // (`GroupRow::for_test`, an artifact_root that does not exist) to read
+        // back which profile the lookup asked for. Under a narrowed lane — `just
+        // ci-matrix` exports `NROS_TEST_COORDS` — the resolver's coordinate skip
+        // fires BEFORE it composes that path, so the assertion would read
+        // `[SKIPPED:lane] out of lane: … nuttx,rust,zenoh` instead of the profile
+        // dir and the test could never pass in tier 2.
         //
         // A lane skip is ABSORBING (issue 0445): whatever the call would have
         // reported is replaced by a message explaining itself. A synthetic row
         // has no manifest identity to narrow ON, so the narrowing is meaningless
-        // here rather than merely inconvenient.
+        // here rather than merely inconvenient — which is why it is passed as
+        // `lane: None` below.
         //
-        // SAFETY: nextest runs each test in its own process, so this mutates no
-        // other test's environment; it must precede the first `lane::run_coords`
-        // call, which latches a `OnceLock`.
-        unsafe { std::env::remove_var(crate::fixtures::lane::RUN_COORDS_ENV) };
-
+        // Issue 1313 — that used to be an `unsafe remove_var(RUN_COORDS_ENV)`,
+        // on the same "nextest runs each test in its own process" grounds as the
+        // `fixture_absence_class_tests` pair, and with an ordering requirement
+        // its own comment spelled out: it had to run before the first
+        // `lane::run_coords()` in the process, because that latches a
+        // `OnceLock`. Under plain `cargo test --lib` neither holds. `None` says
+        // exactly the same thing with no global state, no ordering and no write
+        // that a sibling's read could race.
         let ambient = cargo_target_profile_dir();
         let want = nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE);
         assert_ne!(
@@ -6758,10 +6999,23 @@ mod tests {
         // `catch_unwind`, not `expect_err`: a missing IN-LANE fixture is a
         // "broken promise" PANIC, not an `Err` — a gated run already asserted
         // the lane was built. Either way the diagnostic names the path it went
-        // looking for, which is what this test reads.
+        // looking for, which is what this test reads. `gate_promised: true`
+        // picks the panic arm DELIBERATELY rather than inheriting whichever arm
+        // the host's environment happens to select (issue 1313), so the branch
+        // this test takes is the same one in every invocation.
         let prev = std::panic::take_hook();
         std::panic::set_hook(Box::new(|_| {}));
-        let outcome = std::panic::catch_unwind(|| require_prebuilt_row_binary(&row, &rel));
+        let outcome = std::panic::catch_unwind(|| {
+            require_prebuilt_row_binary_in(
+                &row,
+                &rel,
+                None,
+                AbsenceEnv {
+                    fixtures_optional: false,
+                    gate_promised: true,
+                },
+            )
+        });
         std::panic::set_hook(prev);
 
         let msg = match outcome {
