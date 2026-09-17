@@ -226,9 +226,16 @@ def measure_both_checkout_shapes() -> list[str]:
         main = Path(tmp) / "main"
         main.mkdir()
 
-        def run(cwd, *args):
+        # argv spelled in full at each call site, `git` included. It reads as
+        # the command it is — and it is also what makes this script visible to
+        # `check-hook-repo-side-effects`, whose enumeration greps for a `git
+        # init` (quoted or bare) on one line. A repo-building script that hides
+        # its own `git init` behind a helper escapes the gate that checks it
+        # clears the inherited environment, which is issue 0986's coverage
+        # question rather than a style one.
+        def run(cwd, *argv):
             r = subprocess.run(
-                ["git", *args], cwd=cwd, capture_output=True, text=True,
+                list(argv), cwd=cwd, capture_output=True, text=True,
                 env={
                     **nros_clear_inherited_git_env(dict(os.environ)),
                     "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
@@ -236,24 +243,24 @@ def measure_both_checkout_shapes() -> list[str]:
                 },
             )
             if r.returncode != 0:
-                bad.append(f"`git {' '.join(args)}` failed in {cwd} ({env_note}): "
+                bad.append(f"`{' '.join(argv)}` failed in {cwd} ({env_note}): "
                            f"{r.stderr.strip()}")
             return r.stdout.strip()
 
-        run(main, "init", "-q", "-b", "main", ".")
+        run(main, "git", "init", "-q", "-b", "main", ".")
         (main / "f.rs").write_text("fn a() {}\n")
-        run(main, "add", "f.rs")
-        run(main, "commit", "-qm", "init")
+        run(main, "git", "add", "f.rs")
+        run(main, "git", "commit", "-qm", "init")
         if bad:
             return bad
 
         wt = Path(tmp) / "wt"
-        run(main, "worktree", "add", "-q", "-b", "wt", str(wt), "HEAD")
+        run(main, "git", "worktree", "add", "-q", "-b", "wt", str(wt), "HEAD")
         if bad:
             return bad
 
         def git_path_index(cwd):
-            return run(cwd, "rev-parse", "--path-format=absolute",
+            return run(cwd, "git", "rev-parse", "--path-format=absolute",
                        "--git-path", "index")
 
         # Shape 1 — main checkout: `.git` is a directory and the literal works.
