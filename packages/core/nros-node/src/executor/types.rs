@@ -1399,6 +1399,33 @@ impl GuardCondition {
             unsafe { cb(self.wake_ctx) };
         }
     }
+
+    /// Is this guard condition triggered and not yet dispatched?
+    ///
+    /// The RFC-0022 POLLING tier: a task that owns its own loop and never
+    /// reaches a callback still needs to see the flag another thread or an ISR
+    /// set. rcl has no such reader — a wait set is the only way to observe an
+    /// rcl guard condition — so this is ours, and phase-417 W4.e gave Rust and
+    /// C++ the reader C already had.
+    ///
+    /// **Bounded claim:** the executor CONSUMES the flag when it dispatches
+    /// (`guard_try_process` swaps it false and then calls the callback), so
+    /// this answers "set and not yet dispatched". A poller that also spins the
+    /// executor is racing itself, and should read the flag OR take the
+    /// callback, not both.
+    pub fn is_triggered(&self) -> bool {
+        self.flag.load(portable_atomic::Ordering::Acquire)
+    }
+
+    /// Clear the flag without dispatching — the other half of
+    /// [`is_triggered`](Self::is_triggered), for a polling owner that has just
+    /// handled the event itself.
+    ///
+    /// Returns what the flag WAS, so a poller can take-and-clear in one step
+    /// without a read/clear race against another thread's `trigger`.
+    pub fn clear(&self) -> bool {
+        self.flag.swap(false, portable_atomic::Ordering::AcqRel)
+    }
 }
 
 // ============================================================================

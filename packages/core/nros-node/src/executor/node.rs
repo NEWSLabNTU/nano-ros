@@ -1591,6 +1591,44 @@ impl<'e, 's> NodeCtx<'e, 's> {
             .register_timer_on(Some(self.node_id), period, callback, Some(group.name()))
     }
 
+    /// Create a guard condition on this node — phase-417 W4.e, the Rust half of
+    /// the one creation shape.
+    ///
+    /// A guard condition is the cross-thread / ISR wake source: any thread may
+    /// call [`GuardCondition::trigger`](super::types::GuardCondition::trigger)
+    /// and the `callback` runs on the executor's next `spin_once`. The flag
+    /// itself lives in the executor's arena, which is what makes the returned
+    /// handle `Send + Sync` with no allocation — so the NODE is the owner a
+    /// caller names and the EXECUTOR is where the entity lands, exactly as for
+    /// a timer or a subscription.
+    ///
+    /// Until 2026-09-18 the only Rust spelling was
+    /// [`Executor::register_guard_condition`](crate::Executor::register_guard_condition),
+    /// while C++ created one on the node and C needed three calls. That was the
+    /// three-owner state RFC-0089 stage 4 exists to remove; the executor form
+    /// survives as the ours-only primitive this calls.
+    ///
+    /// The returned [`HandleId`](super::types::HandleId) is the slot, for
+    /// `trigger_one` / `bind_handle_to_sched_context`; the
+    /// [`GuardCondition`](super::types::GuardCondition) is the trigger handle to
+    /// hand to the other thread.
+    ///
+    /// ```ignore
+    /// let (_id, guard) = node.create_guard_condition(|| { /* woken */ })?;
+    /// // from an ISR or another task:
+    /// guard.trigger();
+    /// ```
+    pub fn create_guard_condition<F>(
+        &mut self,
+        callback: F,
+    ) -> Result<(super::types::HandleId, super::types::GuardCondition), NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.executor
+            .register_guard_condition_on(Some(self.node_id), callback)
+    }
+
     /// Create a repeating timer on a chosen CLOCK — phase-430 W4, the
     /// node-level spelling of
     /// [`Executor::register_timer_on_clock`](crate::Executor::register_timer_on_clock)

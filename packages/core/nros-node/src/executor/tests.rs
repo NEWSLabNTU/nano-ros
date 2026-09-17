@@ -5808,6 +5808,115 @@ fn test_guard_condition_clears_after_trigger() {
     assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 2);
 }
 
+/// phase-417 W4.e — the guard condition has ONE owner in all three languages,
+/// and in Rust that owner is the node.
+///
+/// Until this item the only Rust spelling was `Executor::register_guard_condition`
+/// — the executor — while C++ created one on the node and C needed three calls
+/// on two objects. The ledger recorded that three-owner state as undecided
+/// ("Nothing about no_std picks between these"); stage 4 is where our three
+/// languages stop disagreeing.
+///
+/// The node-level verb is not a rename of the executor one: it binds the
+/// node, so the guard takes that node's default `SchedContext` like every other
+/// handle the node creates. That is the whole content of "the node owns it" for
+/// a callback sharing one executor with every other tier in the image.
+#[test]
+fn a_node_created_guard_condition_fires_and_is_bound_to_its_node() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let nid = executor.node_builder("guard_owner").build().unwrap();
+
+    let count = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
+    let count2 = count.clone();
+
+    let (id, handle) = {
+        let mut node = executor.node_mut(nid);
+        node.create_guard_condition(move || {
+            count2.fetch_add(1, portable_atomic::Ordering::SeqCst);
+        })
+        .expect("the node created a guard condition")
+    };
+
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        count.load(portable_atomic::Ordering::SeqCst),
+        0,
+        "nothing fires without a trigger"
+    );
+
+    handle.trigger();
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        count.load(portable_atomic::Ordering::SeqCst),
+        1,
+        "the trigger reached the callback the CREATION call bound"
+    );
+
+    // The handle is a real arena slot, usable by every other executor verb that
+    // takes one — this is what an unregistered `HandleId` could never be.
+    let sc = executor
+        .create_sched_context(crate::executor::sched_context::SchedContext {
+            class: crate::executor::sched_context::SchedClass::Fifo,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(
+        executor.bind_handle_to_sched_context(id, sc).is_ok(),
+        "the returned HandleId names a registered slot"
+    );
+}
+
+/// phase-417 W4.e — the polling half, which Rust and C++ did not have.
+///
+/// The ledger's `c:guard_condition_is_triggered` recorded the disagreement in
+/// its own words: "C ships `is_triggered` + `clear`, C++ ships neither (only
+/// `trigger` and `is_valid`), and Rust's `GuardCondition` ships only `trigger`.
+/// A polling C++ or Rust user cannot do what a polling C user can."
+///
+/// The bound is stated and asserted: the executor CONSUMES the flag when it
+/// dispatches, so the reader answers "set and not yet dispatched".
+#[test]
+fn a_guard_condition_flag_is_readable_and_clearable_without_dispatching() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    let count = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
+    let count2 = count.clone();
+    let (_id, handle) = executor
+        .register_guard_condition(move || {
+            count2.fetch_add(1, portable_atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+
+    assert!(!handle.is_triggered(), "a fresh guard condition is not set");
+
+    handle.trigger();
+    assert!(
+        handle.is_triggered(),
+        "the reader sees the flag BEFORE any spin -- that is what a polling tier needs"
+    );
+
+    assert!(handle.clear(), "clear reports what the flag WAS");
+    assert!(!handle.is_triggered(), "and it cleared it");
+
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        count.load(portable_atomic::Ordering::SeqCst),
+        0,
+        "a flag the poller took must not also dispatch the callback"
+    );
+
+    // And the executor's own consumption is visible to the reader.
+    handle.trigger();
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 1);
+    assert!(
+        !handle.is_triggered(),
+        "the dispatch consumed the flag, and the reader says so"
+    );
+}
+
 // ====================================================================
 // Phase 49: Raw subscription callback tests
 // ====================================================================
