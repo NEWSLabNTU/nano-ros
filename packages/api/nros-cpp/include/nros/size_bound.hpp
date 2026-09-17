@@ -4,7 +4,10 @@
 // for "how many bytes must a receive buffer for M hold". Every C++ subscribe
 // path fills `rx_buffer_hint` from it, so the number reaching the executor
 // arena and the zenoh payload class is the type's OWN derived bound and not a
-// figure the caller typed.
+// figure the caller typed. (That sentence was ASPIRATIONAL until phase-456 W7:
+// five registration sites in these headers reached the arena with a hint of 0
+// while the message type was in scope. It is true now, and
+// `check-cpp-subscription-bound-supplied` keeps it true.)
 //
 // issue 0964 — a SECOND spelling, `nros::rx_buffer_capacity<M>::value`, for the
 // ~13 places inside these headers that stack an actual `uint8_t buf[N]` on the
@@ -209,6 +212,27 @@ template <class M> struct tx_buffer_capacity {
 template <class M> struct rx_buffer_capacity {
     static constexpr size_t value = detail::buffer_bounds<M>::rx;
 };
+
+/// The bound a genuinely TYPE-ERASED registration passes — phase-456 W7.
+///
+/// A subscription registered with no bound takes issue 1319's `c_raw_no_hint`
+/// row, which is priced at the executor's closure buffer (`RX_BUF`) rather than
+/// at the message's own size, and which the sizing descriptor CANNOT see: it
+/// credits every C/C++ entry with `c_typed_hint`, because which row a call site
+/// takes is a property of that site and not of the image. So a site that takes
+/// the expensive row makes the descriptor's credit untrue for the whole entry.
+///
+/// That is a decision, and after W7 it is spelled as one. `rx_bytes` is a
+/// required parameter at every registration site in these headers; a site with
+/// a message type in scope passes `rx_buffer_capacity<M>::value`, and a site
+/// that genuinely has only a type NAME and a byte callback — `bind_subscription_raw`
+/// is the one such site in the tree — passes THIS, by name.
+///
+/// The value is 0, which is what the option field has always meant. Naming it
+/// changes nothing at runtime and everything about what a reader and a grep can
+/// tell apart: before W7 the tree had five registration sites passing 0 with an
+/// `M` sitting in scope, and they were indistinguishable from this one.
+constexpr size_t rx_bound_unknown = 0;
 
 } // namespace nros
 

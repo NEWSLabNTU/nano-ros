@@ -853,6 +853,11 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, F call
     // i.e. the default group.
     nros_cpp_subscription_options_t ffi_options = nros_cpp_subscription_default_options();
     ffi_options.sched_context = sched;
+    // phase-456 W7 — state the bound. `M` is a template parameter of this
+    // function, so the number was always available here; leaving it at the
+    // option default put this registration on issue 1319's `c_raw_no_hint` row
+    // while the sizing descriptor credited the entry with a supplied hint.
+    ffi_options.rx_buffer_hint = static_cast<uint32_t>(::nros::rx_buffer_capacity<M>::value);
     nros_cpp_ret_t ret = nros_cpp_subscription_register(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, &Subscription<M>::message_trampoline,
         &out, &handle, &ffi_options);
@@ -898,6 +903,9 @@ Result Node::create_subscription_in_group(const ::nros::CallbackGroup& group, Su
     nros_cpp_subscription_options_t ffi_options = nros_cpp_subscription_default_options();
     ffi_options.sched_context = sched;
     ffi_options.callback_group = group.get_name();
+    // phase-456 W7 — see the ungrouped form above. A grouped subscription costs
+    // the arena exactly what an ungrouped one does, so it states the same bound.
+    ffi_options.rx_buffer_hint = static_cast<uint32_t>(::nros::rx_buffer_capacity<M>::value);
     nros_cpp_ret_t ret = nros_cpp_subscription_register(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, &Subscription<M>::message_trampoline,
         &out, &handle, &ffi_options);
@@ -944,6 +952,10 @@ Result Node::create_subscription_with_info(Subscription<M>& out, const char* top
     // phase-402: `sched_context` is a FIELD now.
     nros_cpp_subscription_options_t ffi_options = nros_cpp_subscription_default_options();
     ffi_options.sched_context = sched;
+    // phase-456 W7 — the attachment rides beside the sample and does not change
+    // how many bytes the sample itself needs, so this is the same bound the
+    // plain callback form states.
+    ffi_options.rx_buffer_hint = static_cast<uint32_t>(::nros::rx_buffer_capacity<M>::value);
     nros_cpp_ret_t ret = nros_cpp_subscription_register_with_info(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
         &Subscription<M>::message_info_trampoline, &out, &handle, &ffi_options);
@@ -1004,6 +1016,9 @@ Result Node::create_subscription_with_safety(Subscription<M>& out, const char* t
     // phase-402: `sched_context` is a FIELD now.
     nros_cpp_subscription_options_t ffi_options = nros_cpp_subscription_default_options();
     ffi_options.sched_context = sched;
+    // phase-456 W7 — the validated path deserializes the same bytes; the safety
+    // status is computed from them, not received alongside them.
+    ffi_options.rx_buffer_hint = static_cast<uint32_t>(::nros::rx_buffer_capacity<M>::value);
     nros_cpp_ret_t ret = nros_cpp_subscription_register_validated(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
         &Subscription<M>::message_safety_trampoline, &out, &handle, &ffi_options);

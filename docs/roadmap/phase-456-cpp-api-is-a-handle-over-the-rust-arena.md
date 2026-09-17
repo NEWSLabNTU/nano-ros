@@ -271,18 +271,62 @@ sizing classification is unchanged by W2.
 caller that omits it registers with no hint while the image is credited with
 one. The default is the defect.
 
-* **W7 [cpp, core] — the C/C++ registration rows collapse from two to one.**
-  Make the bound non-optional at every C++ registration site, so
+* **W7 [cpp, core] — the C/C++ registration rows collapse from two to one.
+  LANDED.** Make the bound non-optional at every C++ registration site, so
   `c_raw_no_hint` becomes unreachable from C++ and the descriptor's credit stops
   being an assumption. `rx_buffer_capacity<M>` is available wherever the message
   type is, which is every typed site; a genuinely type-erased raw site is the
   one case that has to keep the row, and it should have to say so.
-  *Acceptance:* no C++ subscription registration defaults its bound to 0; the
-  descriptor's `c_typed_hint` credit is earned rather than assumed; issue 1319's
-  under-size is unreachable from the C++ API.
+
+  *What was actually there, measured.* **Five** sites reached the arena with a
+  hint of 0, and every one of them had the message type `M` in scope as a
+  template parameter: `Node::create_subscription` (callback form),
+  its callback-group sibling, `create_subscription_with_info`,
+  `create_subscription_validated` and `Node::create_subscription_in_group`.
+  Four of the five wrote no 0 at all — they started from
+  `nros_cpp_subscription_default_options()` and set only `sched_context`, so the
+  omission was invisible at the call site. The fifth inherited it from
+  `create_subscription_raw`'s `size_t rx_bytes = 0` default parameter.
+
+  `size_bound.hpp`'s own header comment had been asserting the opposite since
+  phase-408: *"Every C++ subscribe path fills `rx_buffer_hint` from it."* That
+  sentence is true now; it was aspirational when it was written.
+
+  *The shape.* `rx_bytes` loses its default at `create_subscription_raw`, so a
+  caller has to say which row it is taking. `nros::rx_bound_unknown` is the
+  `c_raw_no_hint` row spelled out loud — the value is still 0, and naming it
+  changes nothing at runtime and everything about what a grep can tell apart.
+  The tree has exactly one site that legitimately passes it,
+  `bind_subscription_raw`, whose callback takes bytes and whose type arrives as
+  a NAME.
+
+  *The gate.* `check-cpp-subscription-bound-supplied`, fast lane (`check cpp` is
+  `build-serial`, which no merge-gating event runs — issues 1225, 1226, 1331).
+  It requires every arena registration in these headers to state a bound whose
+  right-hand side says where the number came from, and it admits
+  `rx_bound_unknown` only from a function with no message type parameter in
+  scope. That is a structural rule rather than an authored allowlist, so the one
+  legitimate site is admitted by its shape and a second one would have to earn
+  it the same way. Four mutation cases in the selftest, plus a negative control
+  asserting the unmutated tree is clean.
+
+  *What is still not earned, stated rather than claimed.* The descriptor's
+  credit is now an assumption over a GREPPABLE set instead of five silent sites,
+  not a fact. Consumer code can still pass `options = NULL` with the type in
+  scope, and **seven C example listeners do** — issue 1376, with the remedy
+  (`nros_cpp_subscription_register_hinted`, which takes the QoS as an argument
+  and so serves the two sites with a custom profile) and the reason it is its
+  own change: it touches seven example leaves in four workspaces, so acceptance
+  there is a fixture build and a re-measure, not a header edit.
+
+  *Acceptance, met:* no C++ subscription registration defaults its bound to 0;
+  `c_raw_no_hint` is unreachable from the C++ API without naming it; the seven
+  compile probes that exercise these headers compile byte-identically to before
+  (swept against a `HEAD` worktree — the 14 that fail are the expected-failure
+  probes and fail identically on both trees).
   *Related:* issue 1340 is the sibling one row over — `rust_typed_in_place` is
   priced at the bound while claiming no region at all, worth ~9.7 KiB per
-  subscription.
+  subscription. Issue 1376 is the C consumer half of this item.
 
 * **W8 [core, cpp, abi] — one registration function, and the C/C++ side calls
   it.** W7 collapses the two C-family rows into one. This item asks the question
