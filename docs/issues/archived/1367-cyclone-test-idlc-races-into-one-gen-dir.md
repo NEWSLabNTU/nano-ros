@@ -2,11 +2,37 @@
 id: 1367
 title: "two concurrent `idlc` runs write one Cyclone test `gen/` dir: the
   truncated header survives the run that made it, and no later run repairs it"
-status: open
+status: resolved
 type: bug
 area: build, rmw-cyclonedds
-related: [issue-0834, phase-455]
+related: [issue-0834, issue-1311, phase-455]
 ---
+
+## RESOLVED as a DUPLICATE of [issue 1311](1311-cyclonedds-sumseq-generated-c-fails-to-compile.md)
+
+Filed 2026-09-18 from phase-455 W5's run, and **it should not have been filed**:
+issue 1311 had the same defect from 2026-09-11, and the fix landed at
+`f62c17359a` the same night this was written. Checking `docs/issues/` for an
+existing report of a symptom is the step that was skipped — CLAUDE.md says to,
+and the cost here was one duplicate rather than a wrong fix.
+
+1311's fix names the mechanism this issue could only guess at, and it is worse
+than "two callers agree on an output path": `tests/CMakeLists.txt` listed each
+generated-source list in the sources of MANY targets (10, 9, 4 and 2). Under the
+Makefile generator an `add_custom_command(OUTPUT …)` is copied into the
+`build.make` of every consuming target and `CMakeFiles/Makefile2` drives each
+through its own sub-make, so `cmake --build --parallel` ran one generator once
+per consuming target, concurrently, all writing the same file — **`idlc
+AddTwoInts.idl` eleven times at once**, measured from the failing build's own
+progress lines. This issue guessed at two colliding call sites and marked that
+NOT CONFIRMED; the real count was eleven, and the cause was target membership
+rather than a duplicated call.
+
+What this issue got right and is worth keeping: the state it leaves behind does
+not converge. The truncated header is newer than its IDL input, so the codegen
+edge reads up to date and no later run repairs it — issue 0834's shape. 1311 is
+still `status: open` at the time of writing even though its fix has landed; its
+acceptance belongs to whoever filed it, not here.
 
 ## Symptom, measured
 
