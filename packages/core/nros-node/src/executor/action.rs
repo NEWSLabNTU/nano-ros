@@ -15,8 +15,9 @@ use super::{
         ActionServerRawArenaEntry, BufferStrategy, CallbackMeta, EntryKind, TraceName,
         action_client_callback_try_process, action_client_raw_try_process,
         action_server_raw_try_process, action_server_try_process, always_ready,
-        as_active_goal_count, as_complete_goal, as_for_each_active_goal, as_publish_feedback,
-        as_raw_active_goal_count, as_raw_complete_goal, as_raw_for_each_active_goal,
+        as_active_goal_count, as_complete_goal, as_expire_goals, as_for_each_active_goal,
+        as_goal_exists, as_publish_feedback, as_raw_active_goal_count, as_raw_complete_goal,
+        as_raw_expire_goals, as_raw_for_each_active_goal, as_raw_goal_exists,
         as_raw_publish_feedback, as_raw_set_goal_status, as_set_goal_status, buffered_region_size,
         drop_entry, no_pre_sample,
     },
@@ -403,6 +404,24 @@ impl<'s> Executor<'s> {
                 FEEDBACK_BUF,
                 MAX_GOALS,
             >,
+            goal_exists_fn: as_goal_exists::<
+                A,
+                GoalF,
+                CancelF,
+                GOAL_BUF,
+                RESULT_BUF,
+                FEEDBACK_BUF,
+                MAX_GOALS,
+            >,
+            expire_goals_fn: as_expire_goals::<
+                A,
+                GoalF,
+                CancelF,
+                GOAL_BUF,
+                RESULT_BUF,
+                FEEDBACK_BUF,
+                MAX_GOALS,
+            >,
             for_each_active_goal_fn: as_for_each_active_goal::<
                 A,
                 GoalF,
@@ -440,6 +459,8 @@ pub struct ActionServerHandle<A: RosAction> {
     ) -> Result<(), NodeError>,
     set_goal_status_fn: unsafe fn(*mut u8, &nros_core::GoalId, nros_core::GoalStatus),
     active_goal_count_fn: unsafe fn(*const u8) -> usize,
+    goal_exists_fn: unsafe fn(*const u8, &nros_core::GoalId) -> bool,
+    expire_goals_fn: unsafe fn(*mut u8) -> usize,
     for_each_active_goal_fn: unsafe fn(*const u8, &mut dyn FnMut(&ActiveGoal<A>)),
     _phantom: PhantomData<A>,
 }
@@ -615,6 +636,52 @@ impl<A: RosAction> ActionServerHandle<A> {
                 unsafe {
                     let data_ptr = arena_ptr.add(meta.offset);
                     (self.active_goal_count_fn)(data_ptr)
+                }
+            }
+            None => 0,
+        }
+    }
+
+    /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
+    ///
+    /// rcl's `rcl_action_server_goal_exists`, and the Rust half of the ledger
+    /// row `c:action_server_goal_exists`. TRUE while the goal is active AND
+    /// while its completed result is still retained, which is a strictly wider
+    /// window than [`goal_status`](Self::goal_status) reports — see
+    /// [`ActionServerCore::goal_exists`](super::action_core::ActionServerCore::goal_exists).
+    ///
+    /// Returns `false` if the handle slot has been removed from the executor,
+    /// which is the same answer a caller wants there: nothing on this server
+    /// knows the goal any more.
+    pub fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalId) -> bool {
+        match executor.entries[self.entry_index].as_ref() {
+            Some(meta) => {
+                let arena_ptr = executor.arena.as_ptr() as *const u8;
+                unsafe {
+                    let data_ptr = arena_ptr.add(meta.offset);
+                    (self.goal_exists_fn)(data_ptr, goal_id)
+                }
+            }
+            None => false,
+        }
+    }
+
+    /// Eagerly reclaim every completed result whose `get_result` reply has
+    /// already been sent — phase-417 W4.b, ledger row `c:action_expire_goals`.
+    ///
+    /// Returns the number of entries reclaimed. rcl's `rcl_action_expire_goals`
+    /// is the same capability under a CLOCK: it reclaims goals whose
+    /// `result_timeout` has elapsed and reports which. Ours has no clock — the
+    /// `no_std` core takes no time source (RFC-0036) — so the trigger is the
+    /// caller, and reclamation is otherwise on demand inside `complete_goal`.
+    /// Calling this is OPTIONAL; a server that never does still runs forever.
+    pub fn expire_goals(&self, executor: &mut Executor) -> usize {
+        match executor.entries[self.entry_index].as_ref() {
+            Some(meta) => {
+                let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
+                unsafe {
+                    let data_ptr = arena_ptr.add(meta.offset);
+                    (self.expire_goals_fn)(data_ptr)
                 }
             }
             None => 0,
@@ -880,6 +947,8 @@ impl<'s> Executor<'s> {
                 FEEDBACK_BUF,
                 MAX_GOALS,
             >,
+            goal_exists_fn: as_raw_goal_exists::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
+            expire_goals_fn: as_raw_expire_goals::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
             for_each_active_goal_fn: as_raw_for_each_active_goal::<
                 GOAL_BUF,
                 RESULT_BUF,
@@ -913,6 +982,8 @@ pub struct ActionServerRawHandle {
     ) -> Result<(), NodeError>,
     set_goal_status_fn: unsafe fn(*mut u8, &nros_core::GoalId, nros_core::GoalStatus),
     active_goal_count_fn: unsafe fn(*const u8) -> usize,
+    goal_exists_fn: unsafe fn(*const u8, &nros_core::GoalId) -> bool,
+    expire_goals_fn: unsafe fn(*mut u8) -> usize,
     for_each_active_goal_fn: unsafe fn(*const u8, &mut dyn FnMut(&RawActiveGoal)),
 }
 
@@ -967,6 +1038,12 @@ impl ActionServerRawHandle {
         unsafe fn unreachable_active_goal_count(_: *const u8) -> usize {
             unreachable!("ActionServerRawHandle::active_goal_count called on invalid handle")
         }
+        unsafe fn unreachable_goal_exists(_: *const u8, _: &nros_core::GoalId) -> bool {
+            unreachable!("ActionServerRawHandle::goal_exists called on invalid handle")
+        }
+        unsafe fn unreachable_expire_goals(_: *mut u8) -> usize {
+            unreachable!("ActionServerRawHandle::expire_goals called on invalid handle")
+        }
         unsafe fn unreachable_for_each_active_goal(
             _: *const u8,
             _: &mut dyn FnMut(&RawActiveGoal),
@@ -979,6 +1056,8 @@ impl ActionServerRawHandle {
             complete_goal_fn: unreachable_complete_goal,
             set_goal_status_fn: unreachable_set_goal_status,
             active_goal_count_fn: unreachable_active_goal_count,
+            goal_exists_fn: unreachable_goal_exists,
+            expire_goals_fn: unreachable_expire_goals,
             for_each_active_goal_fn: unreachable_for_each_active_goal,
         }
     }
@@ -1087,6 +1166,41 @@ impl ActionServerRawHandle {
                 unsafe {
                     let data_ptr = arena_ptr.add(meta.offset);
                     (self.active_goal_count_fn)(data_ptr)
+                }
+            }
+            None => 0,
+        }
+    }
+
+    /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
+    ///
+    /// The raw twin of [`ActionServerHandle::goal_exists`], and what the C
+    /// surface's `nros_action_server_goal_exists` and the C++
+    /// `Server<A>::goal_exists` both resolve to. Active OR completed-with-a-
+    /// retained-result; `false` once the slot is gone from the executor.
+    pub fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalId) -> bool {
+        match executor.entries[self.entry_index].as_ref() {
+            Some(meta) => {
+                let arena_ptr = executor.arena.as_ptr() as *const u8;
+                unsafe {
+                    let data_ptr = arena_ptr.add(meta.offset);
+                    (self.goal_exists_fn)(data_ptr, goal_id)
+                }
+            }
+            None => false,
+        }
+    }
+
+    /// Eagerly reclaim delivered results — the raw twin of
+    /// [`ActionServerHandle::expire_goals`], and what C's
+    /// `nros_action_expire_goals` resolves to. phase-417 W4.b.
+    pub fn expire_goals(&self, executor: &mut Executor) -> usize {
+        match executor.entries[self.entry_index].as_ref() {
+            Some(meta) => {
+                let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
+                unsafe {
+                    let data_ptr = arena_ptr.add(meta.offset);
+                    (self.expire_goals_fn)(data_ptr)
                 }
             }
             None => 0,
@@ -1706,6 +1820,14 @@ mod terminal_verb_tests {
         unreachable!("the terminal-verb test never iterates active goals")
     }
 
+    unsafe fn unused_goal_exists(_data: *const u8, _goal_id: &nros_core::GoalId) -> bool {
+        unreachable!("the terminal-verb test never asks whether a goal exists")
+    }
+
+    unsafe fn unused_expire_goals(_data: *mut u8) -> usize {
+        unreachable!("the terminal-verb test never expires goals")
+    }
+
     unsafe fn never_processes(
         _data: *mut u8,
         _delta_us: u64,
@@ -1723,6 +1845,8 @@ mod terminal_verb_tests {
             complete_goal_fn: record_status,
             set_goal_status_fn: unused_set_status,
             active_goal_count_fn: unused_count,
+            goal_exists_fn: unused_goal_exists,
+            expire_goals_fn: unused_expire_goals,
             for_each_active_goal_fn: unused_for_each,
             _phantom: PhantomData,
         }

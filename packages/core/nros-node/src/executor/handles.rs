@@ -2725,6 +2725,29 @@ impl<
     pub fn active_goal_count(&self) -> usize {
         self.core.active_goal_count()
     }
+
+    /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
+    ///
+    /// See
+    /// [`ActionServerCore::goal_exists`](super::action_core::ActionServerCore::goal_exists)
+    /// for why the completed-result slab counts as well as the active set.
+    pub fn goal_exists(&self, goal_id: &nros_core::GoalId) -> bool {
+        self.core.goal_exists(goal_id)
+    }
+
+    /// Eagerly reclaim every completed result already delivered — phase-417 W4.b.
+    ///
+    /// rcl's `rcl_action_expire_goals`, C's `nros_action_expire_goals` and
+    /// `ActionServerHandle::expire_goals` are the same call; ONE vocabulary
+    /// across the three languages, which is what stage 4 is for. The core's own
+    /// spelling stays `expire_completed_results` because down there the
+    /// completed-result slab is the only thing that can be reclaimed, and no
+    /// clock is in sight — see
+    /// [`ActionServerCore::expire_completed_results`](super::action_core::ActionServerCore::expire_completed_results)
+    /// for the envelope rcl's timeout leaves behind.
+    pub fn expire_goals(&mut self) -> usize {
+        self.core.expire_completed_results()
+    }
 }
 
 // ============================================================================
