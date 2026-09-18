@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstddef>
 
+#include "nros/callback_context.hpp" // phase-456 W3 — the handler IS the arena context
 #include "nros/config.hpp"
 #include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/result.hpp"
@@ -116,12 +117,18 @@ template <typename S> class Service {
     using RequestType = typename S::Request;
     using ResponseType = typename S::Response;
 
-    /// Phase 189.M3.3.e — typed request-handler signatures for the
+    /// Phase 189.M3.3.e — typed request-handler signature for the
     /// *callback-style* service (rclcpp dispatch model). The handler fills
     /// `response` from `request`; the executor sends the reply during spin.
+    ///
+    /// phase-456 W3 deleted the `TypedServiceFnWithCtx` sibling. It was
+    /// write-only state: the SFINAE guard on `Node::create_service` admits only
+    /// a `void(*)(const Request&, Response&)`, so no overload could ever set it,
+    /// and the `else if` branch that read it in the trampoline was unreachable.
+    /// A handler that wants context binds it at compile time instead —
+    /// `nros::bind_service<Svc, C, &C::method>` in `component.hpp`, where `this` is
+    /// the context and no runtime pointer pair is needed.
     using TypedServiceFn = void (*)(const RequestType& request, ResponseType& response);
-    using TypedServiceFnWithCtx = void (*)(const RequestType& request, ResponseType& response,
-                                           void* ctx);
 
     /// Try to receive a typed request (non-blocking).
     ///
@@ -239,14 +246,23 @@ template <typename S> class Service {
     }
 
     // Move semantics (non-copyable). Poll-style relocation goes through the
-    // `nros_cpp_service_server_relocate` runtime call (Phase 84.C1). A
-    // callback-style service must NOT be moved after register — the arena holds
-    // `this` as the trampoline context (Phase 189.M3.3.e); the move only
-    // transfers bookkeeping and leaves that pointer stale, so don't.
+    // `nros_cpp_service_server_relocate` runtime call (Phase 84.C1).
+    //
+    // phase-456 W3 — a callback-style service is MOVABLE now, and the warning
+    // that used to stand here is gone with its subject. It said:
+    //
+    //     A callback-style service must NOT be moved after register — the arena
+    //     holds `this` as the trampoline context (Phase 189.M3.3.e); the move
+    //     only transfers bookkeeping and leaves that pointer stale, so don't.
+    //
+    // The arena holds the user's HANDLER as its context now, not `this`, so
+    // after registration nothing of the caller's is referenced and there is no
+    // pointer a move could leave stale. What moves is bookkeeping, which is
+    // what the warning said it was — the difference is that bookkeeping is now
+    // all there is.
     Service(Service&& other)
-        : initialized_(other.initialized_), user_fn_(other.user_fn_),
-          user_fn_ctx_(other.user_fn_ctx_), user_ctx_(other.user_ctx_),
-          handle_id_(other.handle_id_), callback_mode_(other.callback_mode_), service_name_{},
+        : initialized_(other.initialized_), handle_id_(other.handle_id_),
+          callback_mode_(other.callback_mode_), service_name_{},
           executor_(other.executor_) {
         ::nros::detail::assign_entity_name(service_name_, other.service_name_);
         if (other.initialized_ && !other.callback_mode_) {
@@ -261,9 +277,6 @@ template <typename S> class Service {
                 nros_cpp_service_server_destroy(storage_);
             }
             initialized_ = other.initialized_;
-            user_fn_ = other.user_fn_;
-            user_fn_ctx_ = other.user_fn_ctx_;
-            user_ctx_ = other.user_ctx_;
             handle_id_ = other.handle_id_;
             callback_mode_ = other.callback_mode_;
             ::nros::detail::assign_entity_name(service_name_, other.service_name_);
@@ -294,22 +307,21 @@ template <typename S> class Service {
 
     /// Phase 189.M3.3.e — raw request trampoline matching `RawServiceCallback`
     /// (`bool(req, req_len, resp, resp_cap, resp_len, ctx)`). Deserializes the
-    /// request, runs the user's typed handler, serializes the response. `ctx` is
-    /// the `Service` object (`this`).
+    /// request, runs the user's typed handler, serializes the response.
+    ///
+    /// phase-456 W3 — `ctx` is the USER'S HANDLER, carried by value in the
+    /// arena's own context slot (`nros::detail::fn_to_context`). It used to be
+    /// the `Service` object (`this`), which is what made the arena hold the
+    /// address of a caller-side object and what the move constructor had to
+    /// warn about. Nothing of the caller's is referenced here now.
     static bool request_trampoline(const uint8_t* req, size_t req_len, uint8_t* resp,
                                    size_t resp_cap, size_t* resp_len, void* ctx) {
-        auto* self = static_cast<Service*>(ctx);
-        if (self == nullptr) return false;
+        const TypedServiceFn user_fn = ::nros::detail::fn_from_context<TypedServiceFn>(ctx);
+        if (user_fn == nullptr) return false;
         RequestType request;
         if (RequestType::ffi_deserialize(req, req_len, &request) != 0) return false;
         ResponseType response;
-        if (self->user_fn_ != nullptr) {
-            self->user_fn_(request, response);
-        } else if (self->user_fn_ctx_ != nullptr) {
-            self->user_fn_ctx_(request, response, self->user_ctx_);
-        } else {
-            return false;
-        }
+        user_fn(request, response);
         size_t len = 0;
         if (ResponseType::ffi_serialize(&response, resp, resp_cap, &len) != 0) return false;
         *resp_len = len;
@@ -332,10 +344,10 @@ template <typename S> class Service {
 
     alignas(8) uint8_t storage_[NROS_SERVICE_SERVER_SIZE];
     bool initialized_;
-    // Callback-style state (Phase 189.M3.3.e); unused in poll mode.
-    TypedServiceFn user_fn_ = nullptr;
-    TypedServiceFnWithCtx user_fn_ctx_ = nullptr;
-    void* user_ctx_ = nullptr;
+    // Callback-style BOOKKEEPING (Phase 189.M3.3.e); unused in poll mode. The
+    // handler itself is not here — it lives in the arena (phase-456 W3), so
+    // these two are the caller's own record of a registration that no longer
+    // refers back to this object.
     size_t handle_id_ = static_cast<size_t>(-1);
     bool callback_mode_ = false;
     /// phase-444 — the service name, kept C++-side for `get_service_name()`.
@@ -384,8 +396,9 @@ Result Node::create_service(Service<S>& out, const char* service_name, const ::n
 namespace nros {
 
 // Phase 189.M3.3.e — callback-style (arena-registered) service. The arena owns
-// the server + dispatches `out`'s request handler during spin_once, so the
-// handle is real and `options.sched_context` is functional.
+// the server AND the request handler, and dispatches it during spin_once, so
+// the handle is real and `options.sched_context` is functional. `out` receives
+// the handle id and nothing the arena refers back to (phase-456 W3).
 } // namespace nros
 
 namespace rclcpp {
@@ -395,10 +408,12 @@ Result Node::create_service(Service<S>& out, const char* service_name, F callbac
     if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
 
-    // Store the user handler (compile error if F isn't convertible).
-    out.user_fn_ = typename Service<S>::TypedServiceFn(callback);
-    out.user_fn_ctx_ = nullptr;
-    out.user_ctx_ = nullptr;
+    // The user handler becomes the ARENA's context (phase-456 W3). The
+    // conversion is still the compile error for a non-convertible `F`; what
+    // changed is where the resulting pointer is stored — in the registration,
+    // not in `out`, so `out` is no longer an object the arena knows by address.
+    const typename Service<S>::TypedServiceFn user_fn =
+        typename Service<S>::TypedServiceFn(callback);
 
     uint8_t sched = (options.sched_context == ::nros::SCHED_CONTEXT_UNSET)
                         ? 0u
@@ -407,7 +422,7 @@ Result Node::create_service(Service<S>& out, const char* service_name, F callbac
     nros_cpp_ret_t ret = nros_cpp_service_server_register(
         &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos,
         reinterpret_cast<nros_cpp_service_request_callback_t>(&Service<S>::request_trampoline),
-        &out, sched, &handle);
+        ::nros::detail::fn_to_context(user_fn), sched, &handle);
     if (ret == 0) {
         out.handle_id_ = handle;
         out.callback_mode_ = true;

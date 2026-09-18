@@ -101,11 +101,16 @@ namespace nros {
 /// Relocatability belongs to the RMW handle, not to the C++ object. Where the
 /// runtime has been handed a pointer to the OBJECT, moving it leaves that
 /// pointer stale, and the tree says so in the move constructor of the type it
-/// applies to (`service.hpp`):
+/// applies to (`subscription.hpp`):
 ///
-///     A callback-style service must NOT be moved after register -- the arena
-///     holds `this` as the trampoline context (Phase 189.M3.3.e); the move only
-///     transfers bookkeeping and leaves that pointer stale, so don't.
+///     A callback-style subscription must NOT be moved after register -- the
+///     arena holds `this` as the trampoline context; the move only transfers
+///     bookkeeping and leaves that pointer stale, so don't.
+///
+/// `service.hpp` carried the same warning until phase-456 W3, which removed its
+/// subject rather than its text: a dispatch service's arena context is the
+/// user's HANDLER now, so `Service<S>` and `Client<S>` are movable and the list
+/// of types this limit applies to is one shorter.
 ///
 /// That is not a hole in `Owned<T>`; it is the boundary of where `Owned<T>`
 /// belongs. An entity the runtime knows by address is a DISPATCH entity, and a

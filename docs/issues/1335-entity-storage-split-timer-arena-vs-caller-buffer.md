@@ -6,7 +6,7 @@ title: "The C++ API uses the POLL path where it means the DISPATCH path, and
 status: open
 type: question
 area: [api, api-c, core, docs]
-related: [rfc-0022, rfc-0054, rfc-0096, phase-409, phase-412, phase-442]
+related: [rfc-0022, rfc-0054, rfc-0096, phase-409, phase-412, phase-442, phase-456]
 ---
 
 ## The question
@@ -77,6 +77,16 @@ object — as its trampoline context. That back-reference is exactly what
 
 A hazard that exists only because the C++ side kept an object the arena did not
 need.
+
+**The service and client half of that is FIXED (phase-456 W3).** The context is
+the user's HANDLER now, copied by value into the `void*` the registration
+already had, so nothing of the caller's is referenced after registration and
+both types are movable; the quoted comment is gone from `service.hpp` with its
+subject, which is why it reads here as a quotation of something absent. The
+issue stays open for the rest: the two-path split itself, the subscription
+out-ref form, and the ACTION types, whose C++ object genuinely IS the entity
+(`nros_cpp_action_server_register` is handed `out.storage_`) and which
+phase-456 W3b carries.
 
 ## Why it matters, in numbers
 

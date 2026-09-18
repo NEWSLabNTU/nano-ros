@@ -154,12 +154,19 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
 /// `HandleId` via `out_handle_id` (for cancel / introspection) and, when
 /// `sched_context != 0`, binds that handle to the scheduling context — the
 /// payoff this path unlocks (poll-style services have no dispatched callback to
-/// schedule). `callback` is the C++ template's raw trampoline; `context` is the
-/// `nros::Service<S>` object (`this`).
+/// schedule). `callback` is the C++ template's raw trampoline; `context` is
+/// whatever capture that trampoline needs, copied in by value.
+///
+/// phase-456 W3: the C++ side passes the USER'S HANDLER here, one word, rather
+/// than the address of its `nros::Service<S>` object. That is W1's "the arena
+/// carries the callback's capture" for a capture that already fits the slot, and
+/// it is why a callback-style service is movable again.
 ///
 /// # Safety
-/// All non-NULL pointers must be valid; `callback` must be a valid trampoline;
-/// `context` outlives the executor (no move after register).
+/// All non-NULL pointers must be valid; `callback` must be a valid trampoline.
+/// `context` is stored and handed back verbatim; when it POINTS at something
+/// rather than being the capture itself, that something must outlive the
+/// executor.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn nros_cpp_service_server_register(
@@ -528,12 +535,14 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
 /// `callback(response_cdr)` when a reply arrives. Requests are sent via
 /// `nros_cpp_service_client_send_on_handle` using the returned `out_handle_id`.
 /// Binds the handle to `sched_context` when non-zero (the payoff). `callback` is
-/// the C++ template's raw response trampoline; `context` is the `Client<S>`
-/// object (`this`).
+/// the C++ template's raw response trampoline; `context` is that trampoline's
+/// capture, copied in by value — since phase-456 W3 the C++ side passes the
+/// user's HANDLER rather than the address of its `Client<S>` object.
 ///
 /// # Safety
-/// All non-NULL pointers valid; `callback` a valid trampoline; `context`
-/// outlives the executor (no move after register).
+/// All non-NULL pointers valid; `callback` a valid trampoline. `context` is
+/// stored and handed back verbatim; when it POINTS at something rather than
+/// being the capture itself, that something must outlive the executor.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn nros_cpp_service_client_register(

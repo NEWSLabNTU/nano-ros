@@ -53,7 +53,8 @@ back-reference is what `service.hpp`'s move constructor warns about:
 > bookkeeping and leaves that pointer stale, so don't.
 
 A hazard that exists only because the C++ side kept an object the arena did not
-need.
+need. (Quoted from the tree as W3 found it. W3 has since deleted that comment
+along with its subject, so do not go looking for it in `service.hpp`.)
 
 ## The end state
 
@@ -178,11 +179,129 @@ Four things follow, and each is a simplification rather than a trade:
   immediately and without touching those 33; W2b is the tidy-up that makes the
   naming honest.
 
-* **W3 [cpp] — services, then actions.** Same audit, one kind at a time: the
-  trampoline context stops being `&out`, so the object the arena knows by
-  address ceases to exist. `service.hpp`'s move-constructor warning is DELETED
-  in the commit that removes its subject — a warning outliving its hazard is how
-  the next person learns to distrust the comments.
+* **W3 [cpp] — services and clients. LANDED. Actions AUDITED and split out.**
+  The item read "services, then actions. Same audit, one kind at a time." The
+  audit ran, and its answer is that the two halves of that sentence are not one
+  item: services and clients land together and actions do not belong with them.
+
+  *What LANDED, and it is the sentence the item asked for.* The trampoline
+  context stops being `&out` for both `Service<S>` and `Client<S>`. It is the
+  USER'S HANDLER now, carried by value in the `void*` the registration already
+  has — which is phase-456 W1's "the arena carries the callback's capture" for
+  the case where the capture is one word and the slot already fits it. No new
+  ABI entry point, no Rust arena change. `service.hpp`'s move-constructor
+  warning is deleted in the commit that removes its subject, and `client.hpp`'s
+  identical one with it; a callback-style service and client are MOVABLE.
+
+  *The measurement the shape had to answer first* — what a caller actually
+  INVOKES on each entity, across `examples/`, `tests/`, `book/` and `packages/`,
+  the same census W2 ran for subscriptions:
+
+  | entity, path | sites | what is invoked on it |
+  | --- | --- | --- |
+  | `Service<S>` **dispatch**, out-ref | 1 | **NOTHING** |
+  | `Service<S>` **dispatch**, `::SharedPtr` | 2 | **NOTHING** |
+  | `Service<S>` poll, out-ref | 5 | `take_request`, `send_response` |
+  | `Service<S>` poll, `::SharedPtr` | 1 | **NOTHING** (a probe; the factory exists to be `->take_request`'d) |
+  | `Client<S>` **dispatch**, out-ref | 2 | **`async_send_request`** (1 site), nothing (1) |
+  | `Client<S>` **dispatch**, `::SharedPtr` | 1 | **NOTHING** |
+  | `Client<S>` future, out-ref | 5 | `send_request`, `wait_for_service` |
+  | `ActionServer<A>` | 3 | `publish_feedback` `complete_goal` `accept_goal` `succeed` `abort` `canceled` `send_cancel_reply` `try_recv_goal_request` `try_recv_cancel_request` `set_goal_callback` `set_cancel_callback` `set_accepted_callback` |
+  | `ActionClient<A>` | 8 | `send_goal` `send_goal_async` `get_result` `get_result_async` `get_result_future` `cancel_goal` `send_cancel_request` `send_get_result_request` `try_recv_feedback` `feedback_stream` `wait_for_action_server` `set_callbacks` `poll` |
+  | **the ported templates** (`examples/templates/`) | **0** | there is no service, client or action in the ported corpus at all |
+
+  W2's finding HOLDS for a dispatch service — stored and dropped, a keep-alive —
+  and does NOT hold uniformly. Three different answers, and each changes the
+  design:
+
+  1. **A dispatch service is a keep-alive.** Nothing is called on it. The handle
+     shape follows exactly as it did for `Subscription<M>`.
+  2. **A dispatch client has one live verb.** `async_send_request` is measured
+     at `examples/native/cpp/service-client-callback/src/main.cpp:95`, and it
+     needs `{executor_, handle_id_}` and nothing else — two words, the same two
+     `SubscriptionHandle<M>` carries. So a `ClientHandle<S>` is the same shape
+     with a method on it, not an empty one. Saying "same as the subscription"
+     would have been wrong by exactly one verb.
+  3. **An action is not a handle candidate at all** — see below.
+
+  *The `&out` hazard was cheaper to remove than the phase doc assumed, and the
+  reason is a measured one.* The SFINAE guard on both callback-style factories
+  admits only a plain function pointer (`void(*)(const Request&, Response&)` /
+  `void(*)(const Response&)`), so the entire dispatch state the C++ object held
+  for the arena was ONE word. It did not need W1's `register_capturing` entry
+  point; it needed the `void* context` slot that had been there since
+  Phase 189.M3.3.e to carry the handler instead of the address of the object
+  holding the handler. `nros::detail::fn_to_context` /
+  `fn_from_context` (`callback_context.hpp`) is that carrier, and it copies the
+  object representation rather than `reinterpret_cast`ing, for a reason that was
+  MEASURED rather than assumed: the cast is conditionally-supported, and on
+  gcc 12.3 it is **silent** under `-Wall -Wextra -Wpedantic -Werror` (it needs
+  `-Wconditionally-supported`; clang needs `-Wc++98-compat-pedantic`), so it
+  would have shipped unremarked on a target where it does not hold. Both forms
+  emit the same single `movq` at `-O2`.
+
+  *Three dead members per class went with it, and they were dead by
+  construction.* `TypedServiceFnWithCtx` / `user_fn_ctx_` / `user_ctx_` on
+  `Service<S>`, and the `TypedResponseFnWithCtx` trio on `Client<S>`, were
+  written to `nullptr` at exactly one site each and read only by an `else if`
+  the SFINAE guard made unreachable. A handler that wants context binds it at
+  compile time — `nros::bind_service<Svc, C, &C::method>` — which is the shape
+  the one in-tree component server already uses.
+
+  *Cost, measured on x86-64:* `sizeof(rclcpp::Service<S>)` 576 → **552**,
+  `sizeof(rclcpp::Client<S>)` 584 → **560**. Three pointers each, and the
+  registration grows by nothing — the handler replaces the object pointer in a
+  slot that already existed.
+
+  *What this item did NOT do, and why — the alias cannot flip yet.* `W2` could
+  make `Subscription<M>::SharedPtr` a handle because upstream has no returning
+  poll subscription, so that factory is callback-ONLY. `Service<S>` is not in
+  that position: `Node::create_service<S>(name, qos)` — no callback — also
+  returns `Service<S>::SharedPtr`, and its whole purpose is
+  `service->take_request(...)`, as `node.hpp`'s own comment on it says. One
+  alias cannot be both a handle and a pointer to a poll object. So flipping
+  `Service<S>::SharedPtr` is blocked on the poll returning factory changing its
+  return type or going away — a decision about the POLL path, which this phase
+  says it does not touch. Recorded here rather than attempted.
+
+  *Two follow-ups this item found and did not take:*
+  - `nros.hpp`'s returning callback-style `create_service` / `create_client`
+    still `owned_entities.push_back(s)`. That push was LOAD-BEARING while the
+    arena held `&*s` — dropping the caller's pointer would have dangled it — and
+    it is now pure retention. One line each, in a file another work item owns.
+  - Nothing statically refuses a future re-registration of `&out`. The structural
+    pressure is that the fields such a trampoline would read are deleted, so
+    reinstating it is a visible act rather than a one-word edit; a gate over
+    `service.hpp`/`client.hpp`'s register calls would make it a failure instead.
+
+  *Acceptance, met:* the compile-probe sweep is unchanged (42 PASS / 14 FAIL,
+  identical set); `bind_service.cpp` now MOVES a registered callback-style
+  service and client and sends on the moved client, which is the operation the
+  deleted warning forbade; `check-cpp-{freestanding-includes,capability-layout,
+  freestanding-mechanisms,subscription-bound-supplied,ffi-error-mapping}`,
+  `check-ffi-struct-mirrors`, `check-unsafe-census` and `api-parity --check` all
+  green.
+
+* **W3b [cpp, core] — actions, measured and deliberately separate.** The audit
+  says an action is a different kind of thing from a service, on three counts,
+  and "same audit, one kind at a time" does not survive any of them:
+
+  1. **It is not a keep-alive.** 12 verbs on the server, 13 on the client, in
+     the table above. Every one of them is reached on the object.
+  2. **The C++ object IS the entity.** `nros_cpp_action_server_register` is
+     handed `out.storage_` — the `CppActionServerLayout` living inside the C++
+     object — not a context pointer, and Phase 87.6's own comment says the
+     name buffers live there too. `owned.hpp` already calls this out: it is
+     "the one type in nros-cpp that registers its storage address externally".
+  3. **Its move is a working mechanism, not a hazard.** `relocate` followed by
+     `install_callbacks()` re-registers the trampolines with the new `this`.
+     There is no warning here to delete, because the problem was solved rather
+     than documented.
+
+  So an action becomes a handle only by moving `CppActionServerLayout` into the
+  arena and giving all ~25 verbs arena-side entry points — a core Rust change of
+  a different order from W3, and one that wants W8's single registration
+  function underneath it. Not started.
 
 * **W4 [cpp] — publishers. DECIDED: `Owned<T>` stays, and an arena slot is
   refused.** No dispatch, so no arena slot exists today. `nros::Owned<T>` covers
