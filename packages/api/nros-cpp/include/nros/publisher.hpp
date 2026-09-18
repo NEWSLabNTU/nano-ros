@@ -98,6 +98,37 @@ namespace rclcpp {
 /// uncontracted publisher. Topic name metadata lives C++-side in
 /// `topic_name_`, avoiding a runtime hop for `get_topic_name()`.
 ///
+/// WHY THIS ONE IS NOT AN ARENA HANDLE — phase-456 W4
+///
+/// Every other entity in this API is moving to a two-word handle over the Rust
+/// executor arena, because the arena already owns the entity and the C++ object
+/// was a second copy of state. A publisher is the exception, decided rather
+/// than left over.
+///
+/// The arena holds only things the executor DISPATCHES to — its `EntryKind` is
+/// subscription, service, client, timer, action server, action client, guard
+/// condition — and a publisher is none of them. The Rust API says the same by
+/// construction: `Node::create_publisher_with_qos` hands back an
+/// `EmbeddedPublisher<M>` BY VALUE, a caller-owned value with a `Drop`. So the
+/// phase's principle, that entity lifetime is a Rust data structure's, is
+/// already satisfied here, and `nros::Owned<Publisher<M>>` mirrors that
+/// structure exactly.
+///
+/// It also could not be moved without losing something. The arena is a bump
+/// allocator with no removal path, so an arena publisher could never be
+/// destroyed before its executor — `~Publisher()` below and `Owned<T>::reset()`
+/// would become no-ops over a live RMW publisher.
+///
+/// Measured, so the question does not get re-opened on a size argument:
+/// `sizeof(Publisher<M>)` is 872 bytes and INDEPENDENT of `M` — identical for a
+/// 512-byte-bound string, an 8-byte `Int32` and a 65 552-byte image. It is
+/// `storage_` 608 + `topic_name_` 256 + `initialized_` + padding. **Nothing
+/// here is a transmit buffer sized from the type's bound**: serialisation goes
+/// into the backend's outbound buffer, and `publish_streamed` stages on the
+/// stack. That is what separates this type from the 888-byte `Subscription<M>`
+/// whose `storage_` went unused on the dispatch path, and from the 4 672-byte
+/// `Client<int>` that carried a reply buffer.
+///
 /// Usage:
 /// ```cpp
 /// nros::Publisher<std_msgs::msg::String> pub;

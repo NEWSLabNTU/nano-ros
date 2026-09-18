@@ -184,11 +184,121 @@ Four things follow, and each is a simplification rather than a trade:
   in the commit that removes its subject — a warning outliving its hazard is how
   the next person learns to distrust the comments.
 
-* **W4 [cpp] — publishers.** No dispatch, so no arena slot exists today.
-  `nros::Owned<T>` covers them, and the RMW handle relocates, so the entity can
-  live in the ported file's own member. Whether a publisher should get an arena
-  slot anyway, for uniformity, is the open question — it is small either way and
-  it is the only place `Owned<T>` is load-bearing.
+* **W4 [cpp] — publishers. DECIDED: `Owned<T>` stays, and an arena slot is
+  refused.** No dispatch, so no arena slot exists today. `nros::Owned<T>` covers
+  them, and the RMW handle relocates, so the entity can live in the ported
+  file's own member. Whether a publisher should get an arena slot anyway, for
+  uniformity, was the open question. It is answered NO, and not on grounds of
+  size — the arm that looked merely redundant turns out to cost correctness.
+
+  *What a publisher holds, measured.* `sizeof(rclcpp::Publisher<M>)` is **872
+  bytes and INDEPENDENT of `M`** — identical for a 512-byte-bound
+  `std_msgs/String`, an 8-byte `Int32` and a 65 552-byte `Image`. It decomposes
+  as `NROS_PUBLISHER_SIZE` 608 (the `RmwPublisher` handle) + `topic_name_` 256 +
+  one `bool` + 7 padding. **No part of it is a transmit buffer sized from the
+  type's bound**: serialisation goes into the backend's outbound buffer, and
+  `publish_streamed` stages on the stack.
+
+  That is why this phase's central size argument does not reach a publisher.
+  The 888-byte `Subscription<M>` whose `storage_` was unused on the dispatch
+  path, and the 4 672-byte `Client<int>` holding a reply buffer, are objects
+  carrying state the arena already keeps or state derived from `M`. A publisher
+  carries neither. Moving it to the arena would relocate 872 bytes, not remove
+  them.
+
+  *Does the Rust side have a publisher arena slot?* **No, and the absence is
+  structural rather than an omission.** `EntryKind` is
+  `{Subscription, Service, ServiceClient, Timer, ActionServer, ActionClient,
+  GuardCondition}` — seven kinds, every one of them something the executor
+  DISPATCHES to; `arena.rs` contains the word "publisher" exactly once, inside a
+  comment about a symptom. Both Rust creation paths —
+  `Node::create_publisher_with_qos` (`executor/node.rs`) and the context form
+  (`spin.rs:3525`) — return `EmbeddedPublisher<M>` **by value** to the caller,
+  which owns it and drops it.
+
+  So the phase's governing principle is ALREADY satisfied here. "Entity lifetime
+  is defined by a Rust data structure" — for a publisher that structure is
+  `EmbeddedPublisher<M>`, a caller-owned value with a `Drop`, and
+  `nros::Owned<Publisher<M>>` is a faithful C++ mirror of exactly it. Giving the
+  C++ publisher an arena slot would make the C++ lifetime model DIVERGE from the
+  Rust one, which is the opposite of what this phase is for.
+
+  *Why the refusal is about correctness, not tidiness.* The arena is a bump
+  allocator: `arena_used` only grows, and nothing anywhere sets an entry slot
+  back to `None`. **There is no removal path** — which is precisely why
+  `SubscriptionHandle<M>` offers no `cancel()` and says so. A subscription can
+  live with that, because a registration that fires forever is what a
+  dispatch subscription IS. A publisher cannot: `~Publisher()` calls
+  `nros_cpp_publisher_destroy` today, and `Owned<T>::reset()` destroys now. An
+  arena publisher would silently turn `pub_.reset()` and scope exit into no-ops
+  holding a live RMW publisher for the executor's lifetime — a regression
+  against upstream rclcpp (where the last reference destroys) and against our
+  own Rust API.
+
+  *What the corpus does with a publisher — the opposite of W2's finding.* W2
+  measured that the ported templates call **nothing** on a subscription. For
+  publishers, outside `nros-cpp/include`: **46 method calls**, of which
+  `publish` is 41, `publish_raw` 2, `loan` 1, `assert_liveliness` 1, `is_valid`
+  1, and `publish_streamed` / the two QoS-event setters 0. Fifteen go through
+  `->`, and **twelve of those fifteen are ported template or example node
+  bodies** — seven under `examples/templates/` (`cpp-port-minimal-publisher`,
+  `rclcpp-compat-smoke`, `workspace-shadowing`, `local-msg-package` ×4) and five
+  embedded `examples/*/cpp/talker`. The remaining three are this API's own
+  compile probes.
+
+  A publisher handle must therefore DEREFERENCE to something with the publish
+  API. `Owned<T>` has `operator->` returning the entity directly;
+  `SubscriptionHandle<M>` deliberately has none because there is nothing to
+  dereference. An arena handle would have to re-export nine methods as
+  forwarders, each doing an arena lookup, to deliver an API the caller already
+  reaches by pointer. That is the sense in which this is "the only place
+  `Owned<T>` is load-bearing" — and the load is bearing toward keeping it.
+
+  *A correction W4 found and made.* `nros.hpp`'s returning `create_publisher`
+  pushes the cell into `owned_entities` under the comment *"the arena stores
+  `&entity` as its dispatch context and there is no unregister"*. For a
+  publisher that sentence is false in both halves — nothing registers it and the
+  arena stores nothing of it. The retention is still correct (the returned
+  pointer must outlive the full-expression, and upstream's node owns its
+  publishers too), so only the stated reason changed. A rationale copied from
+  the dispatch entities is exactly the kind of comment that makes the next
+  reader believe a publisher is an arena entity.
+
+  *What W5 inherits, stated so the flip is a one-line change.*
+  `Publisher<M>::SharedPtr` becomes `nros::Owned<Publisher<M>>`;
+  `ported_create_publisher_freestanding_probe.cpp` and
+  `ros2_api_adoption.cpp:149` invert there, not here.
+  `owned_publisher_ported_shape.cpp` (added by W4) already compiles the ported
+  member pattern — default-construct from `nullptr`, move-assign, `->publish`,
+  `reset()` — against `Owned<Publisher<M>>` under C++14 and C++17, so W5 is
+  flipping to a shape that is already proven rather than discovering it.
+
+  `ConstSharedPtr` is the one thing that cannot be spelled the obvious way.
+  **Measured: `Owned<const T>` declares cleanly and is ill-formed on first move
+  or `reset()`** — the two operations a member performs — because both assign
+  through `value_`. That half-legality is worse than a refusal, so `owned.hpp`
+  now `static_assert`s against `Owned<const T>` and names the resolution:
+  `ConstSharedPtr` is the SAME type as `SharedPtr`, for `Owned<T>` the same
+  reason `SubscriptionHandle<M>` gives — a const/mutable distinction over a
+  handle presupposes shared ownership, which a sole owner does not have, and
+  `const Owned<T>&` already yields the `const T*` view.
+
+  *One measured follow-up, stated and NOT taken.* `topic_name_` is 256 of the
+  872 bytes (29 %) and exists to save a runtime hop in
+  `Publisher<M>::get_topic_name()`, which has **zero call sites in the tree**
+  outside its own definition. Deleting the cache — making the accessor a runtime
+  hop — would be the largest single saving available on this type, three times
+  what any arena move could offer. It is not W4's: `get_topic_name()` is
+  upstream API a porter may reach for, so this is an implementation change to a
+  live accessor, and `Subscription<M>` carries the identical 256-byte cache, so
+  it is a class fix and not a publisher fix.
+
+  *Acceptance, met:* the open question is answered with the measurements above
+  rather than by implementing the cheaper arm; `owned.hpp` and `publisher.hpp`
+  state why a publisher is not an arena entity, at the two places a reader
+  asking the question will look; the `Owned<const T>` trap is a compile error
+  naming its resolution; the compile-probe sweep is 43 PASS / 14 FAIL against a
+  42 / 14 baseline, the one addition being W4's own probe.
 
 * **W5 [cpp, examples] — THE FLIP, and it is ATOMIC with the corpus.** The
   moment `X::SharedPtr` stops being `std::shared_ptr`, every file spelling the

@@ -521,9 +521,18 @@ inline ::std::shared_ptr<Publisher<M>> Node::create_publisher(const ::std::strin
     auto p = ::std::make_shared<Publisher<M>>();
     ::rclcpp::detail::require_created(this->create_publisher<M>(*p, topic.c_str(), qos),
                                       "create_publisher", topic.c_str());
-    // OWNERSHIP: the arena stores `&entity` as its dispatch context and there
-    // is no unregister, so the cell must outlive the registration whatever the
-    // caller does with the pointer we hand back.
+    // OWNERSHIP: upstream's node owns the publishers it creates, and a ported
+    // body may drop the returned pointer at the end of the full-expression
+    // (`node->create_publisher<M>(…)->publish(m);`), so the node keeps a
+    // reference.
+    //
+    // phase-456 W4 — this comment used to read "the arena stores `&entity` as
+    // its dispatch context and there is no unregister". For a PUBLISHER both
+    // halves are false: nothing registers it and the arena holds nothing of it
+    // (`EntryKind` has no publisher, and the Rust `create_publisher` returns an
+    // `EmbeddedPublisher<M>` by value). The retention is still right; the
+    // reason was copied from the dispatch entities, and a rationale that makes
+    // the next reader believe a publisher is an arena entity is worse than none.
     this->hosted().owned_entities.push_back(p);
     return p;
 }
