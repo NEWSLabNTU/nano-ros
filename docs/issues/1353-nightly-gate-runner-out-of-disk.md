@@ -124,6 +124,56 @@ narrows where the space goes: the failure is a write into the HOST workspace's
 per-crate clippy — i.e. the tier-1 lane fills the same disk the compile tier
 does, without touching the compile tier at all.
 
+## Still live six days on, and the push lane's verdict rate is now measurable (2026-09-17/18)
+
+Re-measured because a lane that is red every cycle has no signal capacity, so
+"same as last time" is not a finding. It is the same cause, stated by cargo
+again rather than inferred — run **35282943543** (push, 22:37), job
+**105408801047**, step `just ci tier1`:
+
+```
+##[warning]You are running out of disk space. … Free space left: 84 MB
+error: failed to write to `/__w/nano-ros/nano-ros/target/debug/deps/rmetaia4cmc/full.rmeta`:
+  No space left on device (os error 28)
+error: recipe `test-targets` failed with exit code 101
+```
+
+Same step and same write target as the 2026-09-12 measurement above, so nothing
+about the cause has moved.
+
+What is new is the **rate**, which the earlier sections give for the scheduled
+`gate` lane but not for `host-tests` on push. Every `host-tests` run on `main`
+between 19:42 and 00:25 UTC:
+
+| run | created | outcome |
+| --- | --- | --- |
+| 35266432423 | 19:42 | failure — 1353 |
+| 35273285355 | 20:51 | failure — 1353 (`Free space left: 99 MB`, log truncated mid-compile) |
+| 35281018380 | 22:14 | cancelled by concurrency |
+| 35281878661 | 22:24 | cancelled by concurrency |
+| 35282943543 | 22:37 | failure — 1353 (quoted above) |
+| 35286479179 | 23:21 | cancelled by concurrency |
+| 35289417066 | 00:01 | cancelled by concurrency |
+| 35291099866 | 00:25 | in progress |
+
+**Three verdicts in five hours, all three this issue; four runs cancelled before
+reaching one.** So the push lane is worse off than the "uniformly red" shape the
+section above describes for the schedule: it is red *and* mostly pre-empted, and
+because each run takes 60–100 minutes it is routinely superseded by the next
+push before it can answer. A tier-1 regression landing in that window is
+invisible twice over.
+
+Two consequences worth carrying into the fix:
+
+* The `du`/`df` reporting item below should cover `host-tests` too, not only
+  `gate.yml`'s compile-tier steps — this lane fills the same disk without ever
+  entering the compile tier, which the 2026-09-12 section already established
+  and this confirms.
+* Whatever the disk fix turns out to be, the concurrency behaviour is a separate
+  and independent loss of signal on this lane. It is not part of this issue, but
+  a reader measuring "how often does tier 1 answer on `main`" will hit it
+  immediately and should not mistake it for this one.
+
 ## What would close it
 
 Measurement first, because the cause is not yet established and a guessed fix
