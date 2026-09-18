@@ -346,7 +346,8 @@ impl Endpoint {
         fact(&self.durability, "durability", &self.refused)
     }
 
-    /// Which of issue 1319's four registration paths this endpoint takes.
+    /// Which of issue 1319's registration paths this endpoint takes — three
+    /// since phase-456 W8.
     pub fn registration_path(&self) -> Fact<RegistrationPath> {
         fact(&self.registration_path, "registration_path", &self.refused)
     }
