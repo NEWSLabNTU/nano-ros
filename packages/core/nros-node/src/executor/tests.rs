@@ -544,8 +544,12 @@ fn executor_with_arena(session: MockSession, arena: usize) -> Executor<'static> 
 ///   size, so a typed Rust registration on either claims no region at all (672
 ///   bytes on `contract-monitor-sub`; issue 1340). What is reproduced here is
 ///   the mechanism and the two rows that do take it —
-///   `RegistrationPath::CRawNoHint`, which the C path reaches on every backend,
-///   and `RustTypedSchemaless` on a schemaless backend that buffers.
+///   `RegistrationPath::Unbounded` — a site that states no bound, against a
+///   backend that buffers. phase-456 W8 collapsed the five rows to three and
+///   took the language out of their names; the C half of this row used to be
+///   `CRawNoHint` and was reachable on EVERY backend, because the C path never
+///   consulted the in-place capability. It does now, so on zenoh or XRCE a C
+///   registration takes `InPlace` like a Rust one.
 /// * **the subscribed class below the closure bound** — `MODELLED_SLOT`
 ///   against `DEFAULT_RX_BUF_SIZE`. The reference island measures 880 against
 ///   1,496; the RATIO is not what matters, the direction is.
@@ -6099,36 +6103,179 @@ fn test_arena_subscription_capture_outlives_the_caller() {
     );
 }
 
-/// A capture the arena cannot hold is REJECTED, not truncated.
+// ====================================================================
+// phase-456 W8 — the C registration path consults the in-place capability
+// ====================================================================
+
+/// A C/C++ subscription on an in-place backend claims NO receive region, and
+/// still dispatches — phase-456 W8.
 ///
-/// The C++ side asserts the same bound at compile time
-/// (`NROS_CPP_CALLBACK_CAPACITY`), so reaching this means the two constants
-/// have drifted -- and storing part of a closure would be a corrupted dispatch
-/// rather than a failed registration.
+/// The measurement this item rests on: until W8 the executor asked
+/// `supports_process_in_place()` in exactly ONE registration path, the Rust
+/// typed one, so every C and C++ subscription on zenoh or XRCE allocated a
+/// receive region the backend does not need. The C callback is the better
+/// candidate for in-place dispatch, not the worse one —
+/// `RawSubscriptionCallback` is `(const uint8_t*, size_t, void*)`, which is
+/// already a borrowed-bytes signature.
+///
+/// Both halves are asserted, because either alone is satisfiable by a bug: an
+/// entry that claims nothing and delivers nothing would pass the first, and the
+/// old buffered path passes the second.
 #[test]
-fn test_arena_subscription_capture_over_budget_is_refused() {
-    let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+fn a_c_subscription_on_an_in_place_backend_claims_no_receive_region() {
+    static IN_PLACE_SEEN: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
+    static BUFFERED_SEEN: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
 
-    unsafe extern "C" fn unused_cb(_d: *const u8, _l: usize, _c: *mut core::ffi::c_void) {}
+    unsafe extern "C" fn in_place_cb(_d: *const u8, len: usize, _c: *mut core::ffi::c_void) {
+        IN_PLACE_SEEN.store(len, portable_atomic::Ordering::SeqCst);
+    }
+    unsafe extern "C" fn buffered_cb(_d: *const u8, len: usize, _c: *mut core::ffi::c_void) {
+        BUFFERED_SEEN.store(len, portable_atomic::Ordering::SeqCst);
+    }
 
-    let too_big = [0u8; crate::executor::arena::CALLBACK_CAPTURE_BYTES + 1];
-    let result = executor
-        .add_arena_subscription_c_callback_with_capture::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+    fn register(
+        exec: &mut Executor<'static>,
+        cb: crate::executor::types::RawSubscriptionCallback,
+    ) -> usize {
+        let before = exec.arena_used();
+        exec.add_arena_subscription_c_callback::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
             None,
-            "/too-big",
+            "/c-in-place",
             "test/msg/TestMsg",
             "test_hash",
             QoSProfile::default().keep_last(1),
-            unused_cb,
+            cb,
             core::ptr::null_mut(),
             None,
             0,
-            Some(&too_big),
-        );
+        )
+        .unwrap();
+        exec.arena_used() - before
+    }
+
+    let mut buffered: Executor = executor_with_clock(MockSession::new());
+    let buffered_bytes = register(&mut buffered, buffered_cb);
+
+    let mut in_place: Executor = executor_with_clock(MockSession::with_in_place_dispatch());
+    let in_place_bytes = register(&mut in_place, in_place_cb);
+
     assert!(
-        result.is_err(),
-        "an over-budget capture must fail the registration, never be truncated into it"
+        in_place_bytes < buffered_bytes,
+        "an in-place C registration must claim LESS than a buffered one: \
+         in-place {in_place_bytes} vs buffered {buffered_bytes}"
+    );
+    // The saving is the receive region, so it is at least the slot bound the
+    // buffered arm reserves three of at depth 1. Asserted as a LOWER bound
+    // rather than an exact figure: the arena aligns what it hands out, and the
+    // entry structs differ in size too.
+    assert!(
+        buffered_bytes - in_place_bytes >= crate::config::DEFAULT_RX_BUF_SIZE,
+        "the saving must be at least one receive slot ({} bytes); measured {}",
+        crate::config::DEFAULT_RX_BUF_SIZE,
+        buffered_bytes - in_place_bytes
+    );
+
+    // …and it still delivers. Both arms, so a delivery failure cannot read as
+    // a saving.
+    for (exec, seen) in [
+        (&mut buffered, &BUFFERED_SEEN),
+        (&mut in_place, &IN_PLACE_SEEN),
+    ] {
+        let (data, len) = encode_test_msg(7);
+        let meta = exec.entries[0].as_ref().unwrap();
+        let arena_ptr = exec.arena.as_ptr() as *const u8;
+        unsafe {
+            let sub_ptr = arena_ptr.add(meta.offset) as *const MockSubscriber;
+            (*sub_ptr).load(data, len);
+        }
+        exec.spin_once(core::time::Duration::from_millis(0));
+        assert_eq!(
+            seen.load(portable_atomic::Ordering::SeqCst),
+            len,
+            "the callback must receive the sample's bytes on both dispatch arms"
+        );
+    }
+}
+
+/// A capture LARGER than W1's old fixed budget now registers and dispatches —
+/// phase-456 W8.
+///
+/// This test used to assert the opposite: W1 held the capture in a
+/// `[u8; CALLBACK_CAPTURE_BYTES]` inside the entry and REFUSED anything longer,
+/// where that constant had to equal the C++ `NROS_CPP_CALLBACK_CAPACITY` macro
+/// by construction. The refusal was therefore reachable only when the two
+/// languages had drifted apart about a number — a failure mode nobody could
+/// test against on purpose, and a bound the C++ side had to know.
+///
+/// W8 made the capture a runtime length: `stow_capture` bump-allocates exactly
+/// `capture.len()` bytes and points `context` at them. The only bound left is
+/// the arena, which every other entry already shares. So the assertion inverts,
+/// and the number this test uses (`4 * size_of::<*const ()>() + 1`, W1's budget
+/// plus one) is deliberately the one that used to fail.
+#[test]
+fn test_arena_subscription_capture_longer_than_the_old_budget_dispatches() {
+    static SEEN: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
+    // Five pointers' worth: one more than W1's `4 * size_of::<*const ()>()`.
+    const CAPTURE_WORDS: usize = 5;
+    const MAGIC: usize = 0xC0FFEE;
+
+    unsafe extern "C" fn capturing_cb(_data: *const u8, _len: usize, ctx: *mut core::ffi::c_void) {
+        // The capture's LAST word is the one a truncating copy would lose.
+        let words = ctx as *const usize;
+        SEEN.store(
+            unsafe { *words.add(CAPTURE_WORDS - 1) },
+            portable_atomic::Ordering::SeqCst,
+        );
+    }
+
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    {
+        // Deliberately scoped: this is gone before the first spin.
+        let capture: [usize; CAPTURE_WORDS] = [1, 2, 3, 4, MAGIC];
+        let bytes = unsafe {
+            core::slice::from_raw_parts(
+                capture.as_ptr() as *const u8,
+                core::mem::size_of_val(&capture),
+            )
+        };
+        assert!(
+            bytes.len() > 4 * core::mem::size_of::<*const ()>(),
+            "this test is only meaningful for a capture past W1's old fixed budget"
+        );
+        executor
+            .add_arena_subscription_c_callback_with_capture::<{
+                crate::config::DEFAULT_RX_BUF_SIZE
+            }>(
+                None,
+                "/big-capture",
+                "test/msg/TestMsg",
+                "test_hash",
+                QoSProfile::default().keep_last(1),
+                capturing_cb,
+                core::ptr::null_mut(),
+                None,
+                0,
+                Some(bytes),
+            )
+            .expect("a capture longer than the old constant must register, not be refused");
+    }
+
+    let (data, len) = encode_test_msg(7);
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    unsafe {
+        let sub_ptr = arena_ptr.add(meta.offset) as *const MockSubscriber;
+        (*sub_ptr).load(data, len);
+    }
+    executor.spin_once(core::time::Duration::from_millis(0));
+
+    assert_eq!(
+        SEEN.load(portable_atomic::Ordering::SeqCst),
+        MAGIC,
+        "the arena must hold the WHOLE capture; reading anything else means it \
+         was truncated or the caller's buffer was referenced after it died"
     );
 }
 

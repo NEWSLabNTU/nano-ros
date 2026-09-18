@@ -1791,45 +1791,110 @@ pub(crate) unsafe fn sub_buffered_raw_safety_c_has_data(ptr: *const u8) -> bool 
     entry.handle.has_data()
 }
 
-/// How many bytes of caller capture an arena callback entry carries — phase-456 W1.
-///
-/// `4 * size_of::<*const ()>()` on a 64-bit target, which is phase-442 W0's
-/// measured default for `nros::InplaceFn`: the widest capture in this tree or
-/// the porting corpus is `[obj, method]` at three pointers, plus one pointer of
-/// headroom. The two sides agree on this number by construction --
-/// `NROS_CPP_CALLBACK_CAPACITY` is the same expression -- and a C++ capture
-/// larger than it is a `static_assert` at the call site, never a silent
-/// overflow here.
-pub(crate) const CALLBACK_CAPTURE_BYTES: usize = 4 * core::mem::size_of::<*const ()>();
-
 /// Buffered subscription entry for C-style raw callbacks (function pointer + context).
 ///
 /// Same as `SubBufferedRawEntry` but uses `RawSubscriptionCallback` instead of
 /// a Rust closure. Used by the C API and by `register_subscription_raw_*` methods.
+///
+/// # Where the caller's capture went — phase-456 W8
+///
+/// Phase-456 W1 put the caller's capture INSIDE this struct, as a fixed
+/// `[u8; CALLBACK_CAPTURE_BYTES]` with `CALLBACK_CAPTURE_BYTES` equal to a C++
+/// macro's value by construction. That made a number an ABI agreement between
+/// two languages, with a runtime `BufferTooSmall` as the only thing standing
+/// between a disagreement and a corrupted dispatch — a failure mode reachable
+/// ONLY when the two sides drifted, which is to say a failure mode nobody could
+/// test against.
+///
+/// W8 made the capture a RUNTIME LENGTH: `Executor::stow_capture` bump-allocates
+/// exactly `capture.len()` bytes from the arena and points `context` at them.
+/// The bound is now the arena, which every other allocation here already shares,
+/// and the constant is gone from both sides of the seam. The entry also stops
+/// carrying 32 bytes that every non-capturing C registration paid for.
 #[repr(C)]
 pub(crate) struct SubBufferedRawCEntry {
     pub(crate) handle: session::RmwSubscriber,
     pub(crate) buffer: BufferStrategy,
     pub(crate) callback: RawSubscriptionCallback,
+    /// The dispatch context. Either what the caller passed, or — when a capture
+    /// was supplied — a pointer into the arena's own copy of it, so nothing the
+    /// caller owns is referenced after registration returns.
     pub(crate) context: *mut core::ffi::c_void,
-    /// phase-456 W1 — the caller's CAPTURE, held by the arena.
-    ///
-    /// `context` is one pointer. That carries a C++ `[this]` capture and not a
-    /// `[this, state]` (two) or a `[obj, method]` (three, because a
-    /// pointer-to-member-function is two words on the Itanium ABI) -- the
-    /// distribution phase-442 W0 measured over this tree and the porting
-    /// corpus. A caller that cannot fit its capture in a pointer had to put it
-    /// somewhere, and every answer on the C++ side was an allocation or an
-    /// object the arena would then hold by address.
-    ///
-    /// So the capture lives HERE, beside the registration that uses it: the
-    /// entry never moves once allocated, `context` is pointed at these bytes
-    /// rather than at anything of the caller's, and the C++ side keeps nothing.
-    ///
-    /// Unused (and `context` left as the caller gave it) when no capture was
-    /// supplied, which is every existing caller -- the capturing entry point is
-    /// additive.
-    pub(crate) capture: [u8; CALLBACK_CAPTURE_BYTES],
+}
+
+// ============================================================================
+// In-place raw C subscription (phase-456 W8)
+// ============================================================================
+
+/// In-place C-callback subscription entry — **no arena buffer**.
+///
+/// The C-family twin of [`SubInplaceEntry`], and the one the executor should
+/// have had first: `RawSubscriptionCallback` is `(const uint8_t*, size_t,
+/// void*)`, which is already a BORROWED-BYTES signature, so handing it the
+/// backend's own receive slot costs nothing and needs no conversion — where the
+/// Rust typed path has to deserialize an owned `&M` out of the same bytes.
+///
+/// Until phase-456 W8 the C registration path never consulted
+/// `supports_process_in_place()`, so every C and C++ subscription on zenoh or
+/// XRCE allocated a receive region the backend does not need — the same order
+/// as issue 1340's ~9.7 KiB per subscription, and on the language surface that
+/// had the easiest time doing without it.
+#[repr(C)]
+pub(crate) struct SubInplaceRawCEntry {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) callback: RawSubscriptionCallback,
+    /// Same contract as [`SubBufferedRawCEntry::context`].
+    pub(crate) context: *mut core::ffi::c_void,
+}
+
+/// Dispatch for in-place C-style raw subscriptions.
+///
+/// Drains every pending sample, invoking the callback directly on the backend's
+/// borrowed slot. Returns `Ok(true)` if any sample was dispatched.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned [`SubInplaceRawCEntry`].
+pub(crate) unsafe fn sub_inplace_raw_c_try_process(
+    ptr: *mut u8,
+    _delta_us: u64,
+    desc_idx: u8,
+) -> Result<bool, TransportError> {
+    let entry = unsafe { &mut *(ptr as *mut SubInplaceRawCEntry) };
+    // Split-borrow the handle from the callback + context (disjoint fields).
+    let SubInplaceRawCEntry {
+        handle,
+        callback,
+        context,
+    } = entry;
+    let context = *context;
+    let callback = *callback;
+    let mut did_work = false;
+    loop {
+        // Phase 8 — hooked INSIDE the borrow closure, which the drain loop
+        // re-enters once per pending sample, so N samples produce N spans. The
+        // pair is fully contained in the closure, so the `?` below can never
+        // fire between a start and its end.
+        let processed = handle.process_raw_in_place(|raw| {
+            trace_cb_start(desc_idx);
+            unsafe { callback(raw.as_ptr(), raw.len(), context) };
+            trace_cb_end(desc_idx);
+        })?;
+        if processed {
+            did_work = true;
+        } else {
+            break;
+        }
+    }
+    Ok(did_work)
+}
+
+/// Readiness check for in-place C-style raw subscriptions.
+///
+/// # Safety
+/// `ptr` must point to a valid [`SubInplaceRawCEntry`].
+pub(crate) unsafe fn sub_inplace_raw_c_has_data(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubInplaceRawCEntry) };
+    entry.handle.has_data()
 }
 
 /// Drain helper for C-style raw buffered entries.

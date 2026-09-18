@@ -125,13 +125,19 @@ pub enum BackendSchema {
 /// Does the backend dispatch a received sample IN PLACE?
 ///
 /// **The axis issue 1319's four-row table did not have, and phase-454 W5
-/// measured.** `register_subscription_buffered_on` asks
+/// measured.** `Executor::open_subscription` asks
 /// `handle.supports_process_in_place()` BEFORE it computes a slot size, and
-/// returns through `SubInplaceEntry` when the answer is yes — so a Rust typed
-/// subscription on such a backend allocates no receive region at all, whatever
-/// its type's bound or the image's `RX_BUF` say. Measured on
-/// `contract-monitor-sub` over zenoh: 672 bytes of arena for the whole
-/// registration.
+/// returns through an in-place entry when the answer is yes — so a subscription
+/// on such a backend allocates no receive region at all, whatever its type's
+/// bound or the image's `RX_BUF` say. Measured on `contract-monitor-sub` over
+/// zenoh: 672 bytes of arena for the whole registration.
+///
+/// **phase-456 W8 made the question apply to every LANGUAGE.** Until W8 the
+/// capability was consulted in exactly one registration path — the Rust typed
+/// one — so this axis reached only Rust entries and the C arm of
+/// [`registration_path`] had to say so. The executor now has one consulting
+/// site, `open_subscription`, which every registration that creates its own
+/// subscriber goes through.
 ///
 /// It is a property of the BACKEND and not of the entry, which is why it sits
 /// beside [`BackendSchema`] rather than inside [`EntryLanguage`]: both of the
@@ -833,61 +839,69 @@ fn lookup_bound<'a>(bounds: &'a [(String, BoundState)], ty: &str) -> Option<&'a 
     bounds.iter().find(|(n, _)| n == ty).map(|(_, b)| b)
 }
 
-/// Which of issue 1319's four paths this endpoint's registration takes.
+/// Which of issue 1319's paths this endpoint's registration takes — three
+/// since phase-456 W8, and none of them named for a caller.
 ///
-/// An IMAGE fact, composed from two halves the build script cannot see: the
-/// entry's LANGUAGE and whether the linked backend carries type descriptors.
-/// `None` when either half is missing -- refused, not guessed, because the two
-/// schemaless rows are 1,848 bytes per subscription in the UNDER direction.
+/// An IMAGE fact, composed from halves the build script cannot see: whether the
+/// linked backend dispatches in place, whether it carries type descriptors, and
+/// — because this writer cannot see a call site — the entry's LANGUAGE as
+/// EVIDENCE for whether the site stated a bound. `None` when any half is
+/// missing: refused, not guessed, because the unbounded row is 1,848 bytes per
+/// subscription in the UNDER direction.
+///
+/// The language is still read and it is still only evidence. What W8 removed is
+/// the language from the ANSWER: a row called `c_typed_hint` invited a reader to
+/// think the runtime did something different for C, and it never did — the
+/// difference was always "did the site supply a bound".
 fn registration_path(
     kind: EndpointKind,
     inputs: &DescriptorInputs<'_>,
 ) -> Option<RegistrationPath> {
     // Only a subscription's slot size turns on this today. The field is written
     // for every kind anyway: a service server's request buffer takes the same
-    // four paths, and W6.b prices it.
+    // paths, and W6.b prices it.
     let _ = kind;
     match (
         inputs.language?,
         inputs.backend_schema?,
         inputs.backend_dispatch?,
     ) {
-        // A C/C++ entry that registers typed supplies `rx_size_bound<M>`; the
-        // raw no-hint row is a property of an individual call site, not of the
-        // image, and nothing this writer reads distinguishes them. The typed
-        // hint is therefore what a C/C++ entry is credited with, and W10 --
-        // which closes the C half of the declared-QoS check -- is where a
-        // per-call-site answer becomes available.
+        // phase-454 W5 -- in-place wins over every other question, because the
+        // capability test happens BEFORE any slot size is computed and returns
+        // through an entry that carries no receive region.
         //
-        // phase-456 W7 NARROWED what this credit assumes, and it is worth being
-        // exact about how far. Every registration site in the nros-cpp headers
-        // now states a bound, enforced by `check-cpp-subscription-bound-supplied`,
-        // so a C++ entry earns the credit unless it calls the one deliberately
-        // type-erased site (`nros::bind_subscription_raw`, which passes the
-        // named `nros::rx_bound_unknown`). The C API's own helper
+        // **phase-456 W8 made this arm reach the C family too.** Before W8 the
+        // C registration path never consulted the capability, so this writer
+        // had to exclude C from the in-place row and say so; the executor now
+        // consults it in exactly one place, for every language, so the arm is
+        // unconditional in the language.
+        (_, _, BackendDispatch::InPlace) => Some(RegistrationPath::InPlace),
+        // A C/C++ entry that registers typed supplies `rx_size_bound<M>`, so it
+        // is credited with a stated bound. That credit is an ASSUMPTION about
+        // call sites this writer cannot see, and phase-456 W7 narrowed how far
+        // it reaches: every registration site in the nros-cpp headers now states
+        // a bound, enforced by `check-cpp-subscription-bound-supplied`, so a C++
+        // entry earns it unless it calls the one deliberately type-erased site
+        // (`nros::bind_subscription_raw`, which passes the named
+        // `nros::rx_bound_unknown`). The C API's own helper
         // (`nros_cpp_subscription_register_hinted`) has always required the
         // hint. What remains untrue is CONSUMER code passing `options = NULL`
         // with the type in scope -- seven C example listeners do, which is
-        // issue 1376. So this arm is still an assumption, over a smaller and
-        // now GREPPABLE set of ways to break it rather than over five silent
-        // ones.
-        //
-        // The C path does NOT consult the in-place capability
-        // (`add_arena_subscription_c_callback` allocates a region
-        // unconditionally), so the dispatch axis does not reach this arm.
-        (EntryLanguage::CFamily, _, _) => Some(RegistrationPath::CTypedHint),
-        // phase-454 W5 -- in-place wins over the schema question, because the
-        // capability test in `register_subscription_buffered_on` happens BEFORE
-        // the slot size is computed. A descriptor-carrying backend that also
-        // dispatched in place would take this row too; none does today.
-        (EntryLanguage::Rust, _, BackendDispatch::InPlace) => {
-            Some(RegistrationPath::RustTypedInPlace)
+        // issue 1376.
+        (EntryLanguage::CFamily, _, BackendDispatch::Buffered) => {
+            Some(RegistrationPath::TypedBound)
         }
+        // Rust against a descriptor-carrying backend: the bound is reachable
+        // from `MessageForRmw`, so the registration is priced at the type.
         (EntryLanguage::Rust, BackendSchema::Descriptors, BackendDispatch::Buffered) => {
-            Some(RegistrationPath::RustTypedDescriptors)
+            Some(RegistrationPath::TypedBound)
         }
+        // Rust against a schemaless BUFFERING backend: no schema, so no bound
+        // exists to state at the type-erased site, and the registration takes
+        // `RX_BUF`. Not a configuration the tree currently ships -- both
+        // schemaless backends dispatch in place -- but one it admits.
         (EntryLanguage::Rust, BackendSchema::Schemaless, BackendDispatch::Buffered) => {
-            Some(RegistrationPath::RustTypedSchemaless)
+            Some(RegistrationPath::Unbounded)
         }
     }
 }
@@ -1975,13 +1989,15 @@ mod tests {
         // 1319's table assigned it.
         assert_eq!(
             ep.registration_path().stated(),
-            Some(&RegistrationPath::RustTypedInPlace)
+            Some(&RegistrationPath::InPlace)
         );
         assert_eq!(d.meta.status, Status::Derived);
     }
 
     /// The dispatch axis decides, and it decides BEFORE the schema question —
-    /// the same order `register_subscription_buffered_on` asks them in.
+    /// the same order the executor's one consulting site asks them in. Since
+    /// phase-456 W8 it also decides BEFORE the language, because the C
+    /// registration path consults the same capability.
     #[test]
     fn the_registration_path_reads_dispatch_before_schema() {
         let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
@@ -1989,22 +2005,22 @@ mod tests {
             (
                 BackendSchema::Schemaless,
                 BackendDispatch::InPlace,
-                RegistrationPath::RustTypedInPlace,
+                RegistrationPath::InPlace,
             ),
             (
                 BackendSchema::Descriptors,
                 BackendDispatch::InPlace,
-                RegistrationPath::RustTypedInPlace,
+                RegistrationPath::InPlace,
             ),
             (
                 BackendSchema::Schemaless,
                 BackendDispatch::Buffered,
-                RegistrationPath::RustTypedSchemaless,
+                RegistrationPath::Unbounded,
             ),
             (
                 BackendSchema::Descriptors,
                 BackendDispatch::Buffered,
-                RegistrationPath::RustTypedDescriptors,
+                RegistrationPath::TypedBound,
             ),
         ] {
             let mut i = base(&inv);
@@ -2017,16 +2033,22 @@ mod tests {
                 "{schema:?} + {dispatch:?}"
             );
         }
-        // A C/C++ entry is credited the typed hint whatever the backend does:
-        // its registration path never consults the capability.
-        for dispatch in [BackendDispatch::InPlace, BackendDispatch::Buffered] {
+        // phase-456 W8 — a C/C++ entry takes the SAME rows a Rust one does. It
+        // is credited with a stated bound when the backend buffers (W7), and it
+        // reaches the in-place row when the backend dispatches in place, which
+        // it could not before W8 gave the capability one consulting site.
+        for (dispatch, want) in [
+            (BackendDispatch::InPlace, RegistrationPath::InPlace),
+            (BackendDispatch::Buffered, RegistrationPath::TypedBound),
+        ] {
             let mut i = base(&inv);
             i.language = Some(EntryLanguage::CFamily);
             i.backend_dispatch = Some(dispatch);
             let d = build(&i);
             assert_eq!(
                 d.endpoints[0].registration_path().stated(),
-                Some(&RegistrationPath::CTypedHint)
+                Some(&want),
+                "C family + {dispatch:?}"
             );
         }
     }

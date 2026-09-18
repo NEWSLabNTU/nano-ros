@@ -458,13 +458,15 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
 /// caller's is referenced after this returns, so the caller may keep nothing at
 /// all — which is the point: the C++ side becomes a handle.
 ///
-/// `capture_len` must not exceed the arena's per-entry capture budget
-/// (`CALLBACK_CAPTURE_BYTES`, `4 * size_of::<*const ()>()`, the same expression
-/// as the C++ `NROS_CPP_CALLBACK_CAPACITY`). A longer capture is REJECTED with
-/// `INVALID_ARGUMENT` rather than truncated: the C++ side asserts the same
-/// bound at compile time, so reaching that check means the two constants have
-/// drifted, and storing part of a closure would be a corrupted dispatch rather
-/// than a failed registration.
+/// **`capture_len` is a LENGTH, not a budget — phase-456 W8.** W1 copied the
+/// capture into a fixed `[u8; CALLBACK_CAPTURE_BYTES]` inside the arena entry
+/// and refused anything longer, where that constant had to equal the C++
+/// `NROS_CPP_CALLBACK_CAPACITY` macro by construction; the refusal was
+/// therefore reachable only when the two languages had drifted apart about a
+/// number. The runtime now bump-allocates exactly `capture_len` bytes from the
+/// arena, so the only bound left is the arena every other entry already shares,
+/// and a registration that exhausts it fails the way every other arena
+/// allocation does.
 ///
 /// `capture_len == 0` (or a NULL `capture`) is exactly
 /// `nros_cpp_subscription_register`.

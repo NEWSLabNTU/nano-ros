@@ -67,6 +67,19 @@ pub struct MockSubscriber {
     queue: RefCell<heapless::Deque<MockTake, 8>>,
     /// phase-444 — the topic this subscription was created on.
     topic_name: MockName,
+    /// Does this mock advertise ZERO-COPY in-place dispatch — phase-456 W8.
+    ///
+    /// Off by default, so every test written against this mock keeps taking the
+    /// buffered path it was written for. A test that wants the other arm turns
+    /// it on with [`Self::set_in_place`] and gets what zenoh and XRCE give a
+    /// real image: `supports_process_in_place` true, and
+    /// `process_raw_in_place` handing the callback a borrowed slice of the
+    /// queued sample instead of copying it into a caller buffer.
+    ///
+    /// It was worth adding: until W8 the executor consulted this capability in
+    /// exactly one registration path, and the unit suite had no way to reach
+    /// the other arm at all.
+    in_place: Cell<bool>,
 }
 
 impl MockSubscriber {
@@ -80,12 +93,19 @@ impl MockSubscriber {
         Self {
             queue: RefCell::new(heapless::Deque::new()),
             topic_name: MockName::new(topic_name),
+            in_place: Cell::new(false),
         }
     }
 
     /// The topic this subscription was created on.
     pub fn topic_name(&self) -> &str {
         self.topic_name.as_str()
+    }
+
+    /// Make this mock advertise in-place dispatch — phase-456 W8. See
+    /// [`Self::in_place`].
+    pub fn set_in_place(&self, yes: bool) {
+        self.in_place.set(yes);
     }
 
     /// Enqueue one canned message (FIFO). Silently drops if the queue is full.
@@ -122,6 +142,28 @@ impl Subscription for MockSubscriber {
 
     fn deserialization_error(&self) -> TransportError {
         TransportError::DeserializationError
+    }
+
+    // phase-456 W8 — the in-place arm, off unless a test asks for it.
+    fn supports_process_in_place(&self) -> bool {
+        self.in_place.get()
+    }
+
+    fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, TransportError> {
+        if !self.in_place.get() {
+            return Err(TransportError::MessageTooLarge);
+        }
+        match self.queue.borrow_mut().pop_front() {
+            // The borrow is of the popped sample rather than of the queue, which
+            // is what a real backend's slot lease gives: the callback sees the
+            // bytes and nothing outlives the call.
+            Some(Ok((data, len))) => {
+                f(&data[..len]);
+                Ok(true)
+            }
+            Some(Err(err)) => Err(err),
+            None => Ok(false),
+        }
     }
 }
 
@@ -404,6 +446,11 @@ pub struct MockSession {
     /// into "empty". A test asserting THAT wants the default; a test asserting
     /// a forwarder reaches its own slot wants this.
     graph: bool,
+    /// phase-456 W8 — every subscriber this session creates advertises in-place
+    /// dispatch, as zenoh and XRCE unconditionally do. The capability belongs to
+    /// the BACKEND, so a test picks it when it picks the session rather than
+    /// reaching into a subscriber the executor owns.
+    subscribers_dispatch_in_place: bool,
 }
 
 impl MockSession {
@@ -413,6 +460,16 @@ impl MockSession {
             service_create_error: None,
             service_create_attempts: None,
             graph: false,
+            subscribers_dispatch_in_place: false,
+        }
+    }
+
+    /// phase-456 W8 — a session whose subscribers advertise in-place dispatch,
+    /// which is what a zenoh or XRCE image has. See the field doc.
+    pub fn with_in_place_dispatch() -> Self {
+        Self {
+            subscribers_dispatch_in_place: true,
+            ..Self::new()
         }
     }
 
@@ -427,6 +484,7 @@ impl MockSession {
             service_create_error: Some(error),
             service_create_attempts: Some(attempts),
             graph: false,
+            subscribers_dispatch_in_place: false,
         }
     }
 
@@ -437,6 +495,7 @@ impl MockSession {
             service_create_error: None,
             service_create_attempts: None,
             graph: false,
+            subscribers_dispatch_in_place: false,
         }
     }
 
@@ -454,6 +513,7 @@ impl MockSession {
             service_create_error: None,
             service_create_attempts: None,
             graph: true,
+            subscribers_dispatch_in_place: false,
         }
     }
 }
@@ -540,7 +600,9 @@ impl Session for MockSession {
         topic: &TopicInfo,
         _qos: QoSProfile,
     ) -> Result<MockSubscriber, TransportError> {
-        Ok(MockSubscriber::new_named(topic.name))
+        let sub = MockSubscriber::new_named(topic.name);
+        sub.set_in_place(self.subscribers_dispatch_in_place);
+        Ok(sub)
     }
 
     fn create_service(
