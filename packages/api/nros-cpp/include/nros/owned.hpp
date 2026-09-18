@@ -31,6 +31,38 @@ namespace nros {
 /// poll-style forms of the others. It is one kind and a fallback, not the
 /// shape of the API.
 ///
+/// FOR A PUBLISHER IT IS A DECISION, NOT A FALLBACK — phase-456 W4
+///
+/// The phase asked whether a publisher should get an arena slot anyway, for
+/// uniformity. It should not, and the reason is not that the slot would be
+/// redundant — it is that the slot would be WRONG.
+///
+/// The arena is a bump allocator with no removal path: `arena_used` only grows
+/// and nothing sets an entry slot back to `None`, which is why
+/// `SubscriptionHandle<M>` offers no `cancel()` and says so. A dispatch
+/// subscription lives with that, because firing until the executor dies is what
+/// it IS. A publisher cannot: `~Publisher()` calls
+/// `nros_cpp_publisher_destroy`, and `reset()` below destroys NOW. An arena
+/// publisher would turn both into no-ops holding a live RMW publisher forever —
+/// a regression against upstream rclcpp, where the last reference destroys, and
+/// against our own Rust API, where `EmbeddedPublisher<M>` is returned BY VALUE
+/// from `Node::create_publisher_with_qos` and has a `Drop`.
+///
+/// That last point is the whole argument in one line. This phase's principle is
+/// that entity lifetime is defined by a Rust data structure; for a publisher
+/// that structure is `EmbeddedPublisher<M>`, a caller-owned value. `Owned<T>`
+/// mirrors it exactly. An arena slot would make C++ DIVERGE from Rust here,
+/// which is the opposite of what the phase is for.
+///
+/// Measured (phase-456 W4), for anyone re-opening it: `sizeof(Publisher<M>)` is
+/// 872 bytes and INDEPENDENT of `M` — 608 handle + 256 topic-name cache + a
+/// `bool` — so no part of it is a type-derived buffer, and moving it to the
+/// arena would relocate those bytes rather than remove them. And the ported
+/// corpus calls `publish` on it 41 times, where W2 measured that it calls
+/// NOTHING on a subscription: a publisher handle must dereference to the
+/// entity, which is what `operator->` below does and what a two-word arena
+/// handle deliberately cannot.
+///
 /// WHY THAT DISTINCTION IS THE DESIGN AND NOT AN IMPLEMENTATION DETAIL
 ///
 /// The C/C++ API is a thin wrapper over the Rust API; entity lifetime is a Rust
@@ -99,7 +131,30 @@ namespace nros {
 /// There is also no `use_count()`, no `weak_ptr`, and no custom deleter. The
 /// entity's destructor runs when the holder does, which for the ported pattern
 /// is when the node does — the same observable lifetime upstream gives it.
+///
+/// AND THERE IS NO `Owned<const T>` — phase-456 W4
+///
+/// `X::ConstSharedPtr` is `X::SharedPtr`, the same type, and the `static_assert`
+/// below refuses the other spelling rather than letting it half-work.
+///
+/// It really is half: measured, `Owned<const T>` DECLARES cleanly and is
+/// ill-formed on the first move or `reset()`, because both assign through
+/// `value_`. A member that compiles at its declaration and breaks at its first
+/// use is a worse outcome than a refusal, so the refusal is up front and names
+/// its resolution.
+///
+/// The resolution is the same one `SubscriptionHandle<M>` gives for the same
+/// reason: a const/mutable distinction drawn over a HANDLE presupposes shared
+/// ownership, which a sole owner does not have. `const Owned<T>&` already yields
+/// the `const T*` view through the const `operator->` / `get()` below, so the
+/// const view exists — it is just not a distinct type.
 template <typename T> class Owned {
+    static_assert(tr::is_same<T, typename tr::remove_const<T>::type>::value,
+                  "nros::Owned<const T> is not the const flavour of nros::Owned<T> -- it "
+                  "declares cleanly and is ill-formed on the first move or reset(). "
+                  "X::ConstSharedPtr is X::SharedPtr; for a const VIEW, take a "
+                  "`const Owned<T>&` and use its const operator-> / get().");
+
   public:
     using element_type = T;
 

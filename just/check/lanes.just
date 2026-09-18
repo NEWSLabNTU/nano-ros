@@ -1213,6 +1213,23 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/polling_subscription.cpp
+    # phase-456 W4 — `nros::Owned<Publisher<M>>` supports the ported publisher
+    # member pattern, and a publisher carries nothing sized from the message
+    # type. W4 decided that a publisher does NOT get an executor-arena slot (the
+    # arena holds only what the executor dispatches to, and it has no removal
+    # path, so `~Publisher()` and `reset()` would become no-ops over a live RMW
+    # publisher). This TU is the consequence for W5: the alias it will flip to
+    # already compiles. The size assertion inside is the tripwire for the reason
+    # — if a transmit buffer ever appears in `Publisher<M>`, the arena question
+    # is worth re-opening and this fails first.
+    echo "  - Owned<Publisher<M>> ported shape + type-independent size (c++14)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/owned_publisher_ported_shape.cpp
     # phase-408 W1/W4 (issue 0896) — the receive-buffer hint a typed C++
     # subscription supplies is `nros::rx_size_bound<M>`, the type's own DERIVED
     # bound, and no longer `M::SERIALIZED_SIZE_MAX` (an estimate that
