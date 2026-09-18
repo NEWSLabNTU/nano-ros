@@ -161,23 +161,84 @@ Four things follow, and each is a simplification rather than a trade:
   cannot be green in between.
 
 * **W2b [cpp] — `Subscription<M>` becomes the dispatch type, and the taking API
-  moves out (candidate B).** W2's destination, and a separate item because it is
-  a rename of a widely-used type rather than a change to one factory.
+  moves out (candidate B). LANDED 2026-09-18.** W2's destination, and a separate
+  item because it is a rename of a widely-used type rather than a change to one
+  factory.
 
-  Upstream rclcpp has NO poll-style subscription — its taking goes through a
-  `WaitSet`. So `take()` / `take_serialized()` / `take_validated()` /
-  `take_sequence()` / `borrow()` on `Subscription<M>` are an nros extension
-  wearing an upstream name, which is what forces W2's alias/class split in the
-  first place. Moving them beside `PollingSubscription<M>` lets
-  `Subscription<M>` mean what rclcpp means by it, at which point
-  `SharedPtr::element_type` can be `Subscription<M>` again and W2's stated cost
-  is repaid.
+  *The premise this item was opened on is WRONG, and it is worth writing down
+  because the conclusion survives it.* The item said: "Upstream rclcpp has NO
+  poll-style subscription — its taking goes through a `WaitSet`. So `take()` /
+  `take_serialized()` / … on `Subscription<M>` are an nros extension wearing an
+  upstream name." Measured against the cached upstream surface
+  (`docs/reference/api-surface/rclcpp.json`, Humble):
+  `rclcpp::Subscription::take(ROSMessageType&, MessageInfo&)` exists, with a
+  second `take(TakeT&, MessageInfo&)` overload, and
+  `SubscriptionBase::take_serialized(SerializedMessage&, MessageInfo&)` exists.
+  They are upstream METHOD NAMES on that exact class, which is why phase-379 W6
+  renamed our `try_recv` to `take` in the first place and why
+  `cpp:Subscription::take` was a `divergence` (name matched, second parameter
+  differed) rather than an extension.
 
-  *Blast radius:* 33 in-tree poll call sites (`try_recv` 16, `take` 11,
-  `take_serialized` / `take_validated` 6). None in the ported templates.
-  *Not started, and deliberately after W2:* W2 removes a lying method set
-  immediately and without touching those 33; W2b is the tidy-up that makes the
-  naming honest.
+  What upstream does NOT have is a subscriber the CALLER owns. Every
+  `rclcpp::Subscription` belongs to the node; its `take` is reached on a
+  node-owned entity that a `WaitSet` has reported ready. So the split is right
+  and the reason is the OWNERSHIP, not the name — and it costs parity on two
+  names rather than repairing it. `cpp:Subscription::take` and
+  `cpp:Subscription::take_serialized` are theirs-only rows now, each carrying a
+  `provides` pointing at `nros::PollSubscription`, each saying so.
+
+  *What made the split worth that cost is a second measured thing, and it is not
+  the one the item argued.* `Subscription<M>` served both owners behind a
+  `callback_mode_` flag, and `storage_` — `NROS_SUBSCRIBER_SIZE`, 656 bytes — is
+  filled only by the poll creator. On the dispatch path it stayed
+  value-initialized, `initialized_` was true, and `take()` handed those zero
+  bytes to `nros_cpp_subscription_take_serialized`, whose first act is
+  `&mut *(storage as *mut RmwSubscriber)` (`packages/api/nros-cpp/src/
+  subscription.rs:693`). `nros.hpp` described that call as answering
+  `NotInitialized`; nothing on that path ever checked. The three QoS-event
+  setters had the same shape. So the method set was not merely useless on half
+  the objects — it was a call into an unfilled struct, and the split is what
+  makes it unwritable rather than discouraged.
+
+  *What landed.* `nros::PollSubscription<M>` in `nros/polling_subscription.hpp`,
+  beside `PollingSubscription<M>` (which holds one): the taking API, `View` +
+  `try_borrow`, `take_sequence`, the seven `[[deprecated]]` `try_recv*`
+  forwarders, `stream()`, `get_topic_name`, `is_valid`, the destructor (now
+  unconditional), the relocating moves, the three status-event setters, and the
+  two out-ref poll creators plus the value-returning `nros::create_subscription`
+  factory. `rclcpp::Subscription<M>` keeps the nested handle aliases, the
+  handler typedefs, the trampolines, `has_sched_handle` / `sched_handle_id`,
+  `get_topic_name` and `is_valid` — and loses `storage_`, `stream_` and
+  `callback_mode_` with the API that read them. Measured on this host's config (`NROS_SUBSCRIBER_SIZE` 656), with a
+  16-byte stub message: `sizeof(Subscription<M>)` **984 → 304**, and the poll
+  half is **936**. The dispatch object is what a ported file declares one of
+  per subscription; 256 of its 304 bytes are the topic name the four creators
+  now fill.
+  `SubscriptionHandle<M>` gains `element_type = Subscription<M>`, which is W2's
+  stated cost repaid.
+
+  Two defects fell out of the move rather than being sought.
+  `get_topic_name()` answered `""` for every callback-style subscription in the
+  tree — only the poll creator had ever written the field — and the four arena
+  creators now fill it. And `SubscriptionOptions::sched_context`'s
+  unreachability on the poll overload (ledgered by phase-428 W5 as a guard whose
+  second conjunct was constant-false) is structural now: the poll type has no
+  handle field for the guard to read.
+
+  *Blast radius, measured after the fact:* 8 example poll declarations (5 C++
+  listeners, the native safety-listener, 2 PX4 modules), 5 compile probes
+  (`receive_verb_aliases`, `receive_deprecation_probe`, `rx_size_bound`,
+  `serialization_format`, `ros2_api_adoption`), 2 book lines, and 24 parity
+  ledger rows. None in the ported templates, as predicted — they hold
+  `::SharedPtr` and call nothing.
+
+  *Acceptance, met:* the 56-probe compile sweep is unchanged at 42 PASS / 14
+  FAIL, same set; `check-cpp-subscription-bound-supplied` OK; `api-parity.py
+  --check --require-disposition` green over all three languages with the ledger
+  moved. `ros2_api_adoption.cpp` carries the structural half as two
+  `static_assert`s over a `has_take<T>` detector — the dispatch type must NOT
+  have `take`, the poll type must — plus the `element_type` identity, with the
+  first mutation-tested.
 
 * **W3 [cpp] — services and clients. LANDED. Actions AUDITED and split out.**
   The item read "services, then actions. Same audit, one kind at a time." The

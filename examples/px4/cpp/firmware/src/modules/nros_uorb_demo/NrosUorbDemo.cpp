@@ -98,7 +98,8 @@ class NrosUorbDemo : public ModuleBase<NrosUorbDemo>, public px4::ScheduledWorkI
 
     rclcpp::Node _node{};
     rclcpp::Publisher<DebugKeyValueTag> _debug_pub{};
-    rclcpp::Subscription<VehicleStatusTag> _status_sub{};
+    // phase-456 W2b — `take_serialized` lives on the poll subscriber.
+    nros::PollSubscription<VehicleStatusTag> _status_sub{};
 
     uint32_t _published{0};
     uint32_t _received{0};

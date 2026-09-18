@@ -12,6 +12,14 @@
 
 #include <cstddef>
 
+/// `rclcpp::Subscription<M>` is what this handle REFERS to, and `element_type`
+/// below names it. Declared rather than included: `nros/subscription.hpp`
+/// includes THIS header (the nested `SharedPtr` alias needs the type), and an
+/// alias member is satisfied by an incomplete type.
+namespace rclcpp {
+template <typename M> class Subscription;
+}
+
 namespace nros {
 
 /// A registered dispatch subscription — phase-456 W2.
@@ -58,6 +66,21 @@ template <typename M> class SubscriptionHandle {
   public:
     /// The message type, for the same reason `std::shared_ptr` exposes one.
     using message_type = M;
+    /// What this handle refers to — phase-456 W2b.
+    ///
+    /// W2 could not write this. `Subscription<M>` then carried `take()`,
+    /// `take_serialized()`, `take_validated()`, `take_sequence()` and
+    /// `borrow()`, so naming it as the referent would have promised operations
+    /// a registration cannot perform, and the alias was left off with the cost
+    /// recorded in the ledger instead. W2b moved that API to
+    /// `nros::PollSubscription<M>`, which is what repays it: every operation
+    /// `Subscription<M>` now has is one an arena registration has.
+    ///
+    /// It is a NAME, not a dereference — there is still no `operator->`, and
+    /// still no C++ object at the other end. `std::shared_ptr` exposes
+    /// `element_type` for generic code that needs to spell the pointee's type;
+    /// this is that, and no more.
+    using element_type = ::rclcpp::Subscription<M>;
 
     constexpr SubscriptionHandle() : executor_(nullptr), handle_id_(0) {}
     /// Null, spelled the way a ported file spells it

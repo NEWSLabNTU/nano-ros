@@ -31,9 +31,15 @@ uint64_t nros_cpp_time_ns(void);
 // declarations below name them there. A qualified friend cannot introduce a
 // name, hence these declarations.
 namespace rclcpp {
-template <typename M> class Subscription;
 template <typename S> class Client;
 } // namespace rclcpp
+
+// phase-456 W2b — the subscription that BINDS a stream is the poll one: a
+// stream reads through `nros_cpp_subscription_take_serialized` on a
+// caller-owned `RmwSubscriber`, which a dispatch registration does not have.
+namespace nros {
+template <typename M> class PollSubscription;
+} // namespace nros
 
 namespace rclcpp_action {
 template <typename A> class Client;
@@ -66,7 +72,7 @@ template <typename T> class Stream {
     Result try_next(T& out) { return try_next_sized<::nros::rx_buffer_capacity<T>::value>(out); }
 
     /// @ref try_next with the receive buffer sized by the CALLER.
-    /// See @ref Subscription::take_sized (issue 0964).
+    /// See @ref PollSubscription::take_sized (issue 0964).
     template <size_t Cap> Result try_next_sized(T& out) {
         if (!take_fn_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[Cap];
@@ -94,7 +100,7 @@ template <typename T> class Stream {
     }
 
     /// @ref wait_next with the receive buffer sized by the CALLER.
-    /// See @ref Subscription::take_sized (issue 0964).
+    /// See @ref PollSubscription::take_sized (issue 0964).
     template <size_t Cap>
     Result wait_next_sized(void* executor_handle, uint32_t timeout_ms, T& out,
                            uint32_t poll_ms = 10) {
@@ -154,7 +160,7 @@ template <typename T> class Stream {
     Stream(const Stream&) = delete;
     Stream& operator=(const Stream&) = delete;
 
-    template <typename M> friend class ::rclcpp::Subscription;
+    template <typename M> friend class ::nros::PollSubscription;
     template <typename A> friend class ::rclcpp_action::Client;
 
     using TakeFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*);
