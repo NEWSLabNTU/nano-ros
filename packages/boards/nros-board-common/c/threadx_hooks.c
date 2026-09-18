@@ -90,6 +90,18 @@ _Static_assert(sizeof(ULONG) == 4,
  * `nros_executor_t` objects are file-scope statics and were never drawn from
  * this pool, so there is nothing to give back.
  */
+/* The BASE is an undeclared number (issue 1145). The SUBTRAHEND below is
+ * carefully derived — one rung, two readers, never written down twice — and the
+ * 4 MiB it is subtracted FROM was chosen by nobody who wrote down why.
+ *
+ * Every image now prints its own `nros: byte pool peak` line so the next person
+ * reads a number instead of inheriting this one; the reporter is in
+ * nros-board-threadx/src/entry.rs, which records the first measurements and,
+ * more importantly, what they do not cover. Short version: a hosted
+ * threadx-linux talker touches 181,144 bytes of this, but that board's NetX
+ * init is a no-op overlay, so the packet pool and the IP/ARP/BSD stacks this
+ * block names as the pool's other consumers allocate nothing there. The RISC-V
+ * board is where the base has to be judged, and it has not been. */
 #define BYTE_POOL_BASE_SIZE     (4 * 1024 * 1024)
 
 #ifndef NROS_EXECUTOR_BACKING_U64S
@@ -149,6 +161,13 @@ __attribute__((weak)) void nros_board_compute_rng_seed(uint32_t *out)
 
 /* ---- Platform byte pool + RNG registration ---- */
 extern void nros_platform_threadx_set_byte_pool(TX_BYTE_POOL *pool);
+/* Issue 1145 — the pool's high-water lives in nros-platform-threadx beside the
+ * allocator, because ThreadX keeps no minimum-ever-available of its own.
+ * nros_platform_alloc notes itself; the three tx_byte_allocate calls in THIS
+ * file bypass that funnel and draw from the same pool, so each notes after a
+ * successful allocation. A site that allocates without noting turns the
+ * reported peak into an under-report. */
+extern void nros_platform_threadx_note_pool_usage(void);
 extern void nros_platform_threadx_seed_rng(uint32_t value);
 
 /* Legacy: zpico-sys C system.c reads this global. */
@@ -278,6 +297,7 @@ void tx_application_define(void *first_unused_memory)
         nros_board_log("ERROR: app thread stack alloc failed\n");
         return;
     }
+    nros_platform_threadx_note_pool_usage();
 
     status = tx_thread_create(&app_thread, "nros_app",
                                app_thread_entry, 0,
@@ -481,6 +501,7 @@ int nros_threadx_create_task(
         nros_board_log("ERROR: nros_threadx_create_task: stack alloc failed\n");
         return -1;
     }
+    nros_platform_threadx_note_pool_usage();
 
     thread = &nros_tx_task_blocks[nros_tx_task_count];
     nros_tx_task_entries[nros_tx_task_count] = entry;
@@ -515,7 +536,32 @@ void *nros_threadx_alloc(unsigned long bytes)
     if (tx_byte_allocate(&byte_pool, (VOID **)&p, (ULONG)bytes, TX_NO_WAIT) != TX_SUCCESS) {
         return 0;
     }
+    nros_platform_threadx_note_pool_usage();
     return p;
+}
+
+/* Sleep the calling thread for `ms` milliseconds (issue 1145).
+ *
+ * A shim rather than a Rust `extern "C" { fn tx_thread_sleep(...) }`, because
+ * tx_thread_sleep is a ThreadX MACRO — it expands to _txe_thread_sleep or
+ * _tx_thread_sleep depending on whether error checking is compiled in — so
+ * there is no symbol of that name to link against, and which one to pick is a
+ * property of the kernel's build rather than of the caller. Measured: declaring
+ * it in Rust links with `undefined symbol: tx_thread_sleep`.
+ *
+ * Taking MILLISECONDS is the other half. TX_TIMER_TICKS_PER_SECOND is the
+ * kernel's constant and it is visible here; a caller converting its own would be
+ * mirroring a number it cannot see, which is how a tick rate ends up asserted in
+ * two places and true in one. */
+void nros_threadx_sleep_ms(unsigned long ms)
+{
+    ULONG ticks = (ULONG)(((unsigned long long)ms * (unsigned long long)TX_TIMER_TICKS_PER_SECOND)
+                          / 1000ULL);
+    /* A nonzero request must not become a busy no-op. */
+    if (ticks == 0 && ms != 0) {
+        ticks = 1;
+    }
+    tx_thread_sleep(ticks);
 }
 
 /* Free a block previously returned by `nros_threadx_alloc`. */

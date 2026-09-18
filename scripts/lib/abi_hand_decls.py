@@ -93,6 +93,14 @@ SURFACES = {
                 "FreeRTOS port extension (nros-board-freertos), not part of the"
                 " portable ABI"
             ),
+            "nros_platform_threadx_pool_min_ever_free_bytes": (
+                "ThreadX port extension (issue 1145): the byte pool's"
+                " minimum-ever-available, maintained by the ThreadX allocator"
+                " because ThreadX keeps no such figure and the portable ABI's"
+                " nros_platform_heap_used_bytes is INSTANTANEOUS. Not portable —"
+                " a pool high-water is a property of this port's allocator, not"
+                " of the platform surface"
+            ),
             "nros_platform_stub_counter": (
                 "test-only counter in nros-platform-cffi's C stub port"
             ),
