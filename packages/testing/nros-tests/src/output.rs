@@ -610,6 +610,29 @@ pub fn multigoal_summary_line(
     )
 }
 
+/// Parse `key<n>` out of the multi-goal client's one summary line.
+///
+/// By KEY, not by position — the line GAINED `completed=`/`sent=`/
+/// `result_missing=` in phase-455 W2 and every consumer must keep reading the
+/// fields it cares about. A missing key PANICS naming the line, because a
+/// summary that lost a field is a different failure from a field with a wrong
+/// value and the two must not read alike.
+///
+/// Here rather than in one test file because phase-455 W4 gave the line a
+/// second consumer (`tests/zephyr.rs`, the same probe against a `native_sim`
+/// image). A second spelling of a parser is the #282 -> #326 shape.
+///
+/// # Panics
+/// If `key` does not appear in `summary`, or its value does not parse.
+#[must_use]
+pub fn multigoal_summary_field(summary: &str, key: &str) -> usize {
+    summary
+        .split_whitespace()
+        .find_map(|tok| tok.strip_prefix(key))
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_else(|| panic!("no `{key}<n>` in summary line: {summary}"))
+}
+
 /// issue 0902 / phase-455 W2 — the heartbeat `bins/action-server-concurrent`
 /// prints with its zenoh reply-slot refusal count.
 ///

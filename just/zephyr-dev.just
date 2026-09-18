@@ -443,6 +443,31 @@ test-ros2-qos verbose="":
 test-ros2-cortex-m verbose="":
     @just _test-focused 'binary(=pubsub_zephyr_cortex_m_ros2_interop_e2e)' {{verbose}}
 
+# Every ACCEPTED action goal returns a RESULT from a `native_sim` IMAGE, and the
+# image's zenoh reply-slot table refused nothing — issue 0902 / phase-455 W4.
+#
+# The same two questions `just native test-action-completion` asks of a host
+# process, asked of a Zephyr build with its own allocator and thread model. The
+# pair is the west-built `rust/action-server` leaf (the SERVER, so the queryable
+# and its reply-slot table are INSIDE the image) and the native
+# `action-client-multigoal` probe, both on one ephemeral `rmw_zenohd`.
+#
+# A RUNNER, not a sweep, for the reason the phase states: an unmet precondition
+# inside a sweep is a `skip!` rendered `<skipped>`, which nobody can tell from a
+# pass. `_test-focused` carries the shared skip accounting.
+#
+# Two build channels, so it skips on either: the west leaf
+# (`just zephyr build-one rust/action-server zenoh`) and the native fixture
+# (`just native build-fixture-rust`). Deliberately NOT sequenced after either —
+# running a whole lane to reach one cell is not something anyone would type.
+#
+# NOT a witness for a device: NSOS puts the sockets in the HOST kernel, so no
+# RTOS network stack is in the path (the `interop.rs:330-335` correction).
+# Runs one `zephyr` case; needs the west action-server leaf + `rmw_zenohd` + the native probe fixture.
+[group("debug")]
+test-action-completion verbose="":
+    @just _test-focused 'binary(=zephyr) and test(action_goal_completion_rate)' {{verbose}}
+
 # Run Zephyr C examples test
 [group("debug")]
 test-c:

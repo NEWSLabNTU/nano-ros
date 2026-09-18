@@ -40,8 +40,10 @@
 //! Bespoke tests kept below the matrix (NOT (rmw × lang × workload) cells):
 //! the zephyr↔native cross-platform interop pairs (pubsub both directions +
 //! bidirectional, service both directions, C++ pubsub both directions), the
-//! workspace-Entry native_sim e2e (Workspace kind), and the availability
-//! probe.
+//! workspace-Entry native_sim e2e (Workspace kind), and — phase-455 W4 — the
+//! goal-COMPLETION rate probe, which pairs the `rust/action-server` image with
+//! the NATIVE `bins/action-client-multigoal` rather than with its own
+//! `action-client` example. The availability probe is retired (see below).
 //!
 //! Run with: `cargo nextest run -p nros-tests --test zephyr`
 //! (slice a family: `-E 'binary(zephyr) and test(pubsub)'`).
@@ -1740,5 +1742,239 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
 
     eprintln!(
         "SUCCESS: workspace Entry talker delivered {received} message(s) to the external listener"
+    );
+}
+
+// =============================================================================
+// Bespoke: the goal-COMPLETION rate on NSOS — issue 0902 / phase-455 W4.
+//
+// NOT an (rmw × lang × workload) cell: it pairs the Zephyr `action-server`
+// image with a NATIVE probe binary (`bins/action-client-multigoal`) rather
+// than with its own `action-client` example, which is the same shape as the
+// zephyr↔native pairs above and cannot be expressed as a single-platform
+// matrix cell.
+// =============================================================================
+
+/// issue 0902 / phase-455 W4 — W2's completion-rate probe, on `native_sim`.
+///
+/// W2 asks, on the native host lane: does every ACCEPTED goal come back with a
+/// RESULT, and did the server's zenoh reply-slot table refuse anything? This
+/// asks the same two questions of an image that is a **Zephyr build with its
+/// own allocator and thread model** rather than a host process — which is the
+/// only thing it adds, and the reason it is worth a cell.
+///
+/// The pair is the Zephyr `rust/action-server` image (the SERVER, so the
+/// queryable and its reply-slot table are inside the image) and the native
+/// `action-client-multigoal` probe, both dialling one ephemeral `rmw_zenohd`.
+/// The probe is the fixture W2 extended, unchanged and re-aimed: `sent`,
+/// `completed` and `result_missing` mean here exactly what they mean there.
+///
+/// ## What it asserts, and why each is a statement rather than a sample
+///
+/// * `completed == sent` — every accepted goal's RESULT came back. 0902's
+///   shape is "accepted, executed, status published, no result, for ever",
+///   which an acceptance-only client cannot see.
+/// * `reply-slot: refusals=0`, read from INSIDE the image. The counter lives
+///   in the C shim of the process that owns the queryable, so no client can
+///   read it; the example reports it from `tick()` on a cadence (phase-455
+///   W4). A build with no zenoh shim prints `n/a no-zenoh-shim` and this
+///   assertion is RED — the safe value is never printed by a probe that could
+///   not measure.
+///
+/// The RATE is EVIDENCE, printed whatever the verdict, never the assertion:
+/// issue 0902's own words are that a 20–90 % spread with no observable cause
+/// is not measurable as a gate.
+///
+/// ## The conditions, kept from W2
+///
+/// An idle SOAK with the session live (0902's countdown is spent by elapsed
+/// time, not by goal traffic) and three peer up/down cycles BEFORE the goals
+/// fly (liveliness reaches the server's queryable through the same callback as
+/// a real request). Both are the probe's own knobs, so this cell configures
+/// rather than reimplements them.
+///
+/// ## What this does NOT witness
+///
+/// **Not a device.** `native_sim/native/64` reaches the router over HOST
+/// kernel sockets (NSOS) — no RTOS network stack is in the path, a correction
+/// `interop.rs:330-335` already had to make once about this platform. What is
+/// genuinely different from the native lane is the Zephyr kernel, its
+/// picolibc allocator and its thread model, which is what the image half of
+/// this pair is for.
+///
+/// **Not a reply-slot LEAK gate**, for the reason issue 1332 measured on the
+/// native lane: nothing on a loopback, multicast-off router sends the server
+/// the DECLINED queries that feed the leak, so the counter cannot move here
+/// either. `just native test-reply-slot-decline` is the control that can.
+#[test]
+fn zephyr_rust_zenoh_action_goal_completion_rate() {
+    use nros_tests::{
+        fixtures::{
+            ManagedProcess, Rmw as FixtureRmw, build_action_client_multigoal, require_zenohd,
+        },
+        output::{MULTIGOAL_SUMMARY_PREFIX, REPLY_SLOT_REPORT_PREFIX, multigoal_summary_field},
+    };
+    use std::process::Command;
+
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    /// Below the server's goal table, so every goal is accepted and the
+    /// equality below is about RESULTS rather than about rejections.
+    const GOALS: usize = 3;
+    /// Elapsed time with the session live, ON TOP of the peer churn. 0902's
+    /// own soak was 100 s; this is the affordable end of the same condition,
+    /// and matches W2's native probe so the two numbers compare.
+    const SOAK_MS: u64 = 10_000;
+
+    let server_bin = resolve_example(Lang::Rust, "action-server", Rmw::Zenoh);
+    let client_bin = build_action_client_multigoal(FixtureRmw::Zenoh)
+        .require("action-client-multigoal (zenoh)")
+        .to_path_buf();
+
+    let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
+    let locator = router.locator();
+    eprintln!("[w4] router: {} ({})", locator, router.launch_line());
+
+    let mut server =
+        ZephyrProcess::start_with_locator(&server_bin, ZephyrPlatform::NativeSim, &locator)
+            .expect("Failed to start the Zephyr action-server image");
+
+    // 60 s, as the sibling zenoh action cell budgets it: zenoh-pico serializes
+    // this image's queryable declarations. MEASURED 2026-09-18 on this host at
+    // ~4.2 s, so the budget is headroom, not the expected cost.
+    let boot = server.wait_for_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(60),
+    );
+    if !boot.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
+        // issue 0557 — lead with the GUEST's own error when it has one; a boot
+        // that died at node declaration is not a slow boot.
+        let verdict = match nros_tests::output::first_guest_failure(&boot) {
+            Some(line) => format!("FAILED AT BOOT: {line}"),
+            None => "never reached readiness within 60 s".to_string(),
+        };
+        server.kill();
+        panic!("[w4] zephyr rust zenoh action-server {verdict}.\nServer:\n{boot}");
+    }
+
+    /* The peer that probes: a second node brought UP and DOWN against the live
+     * image, three times, BEFORE the goals fly. `NROS_MULTIGOAL_GOALS=0` makes
+     * it a pure graph participant, so what reaches the image's queryable is
+     * discovery and liveliness — the traffic issue 0902 says consumes the
+     * reply slots.
+     *
+     * Sequential, not concurrent, and W2 measured why: peers running ALONGSIDE
+     * the goal sends overrun the server's 4-deep request ring and every
+     * `send_goal` times out, which measures the ring rather than the slots. */
+    for cycle in 0..3 {
+        let mut peer_cmd = Command::new(&client_bin);
+        peer_cmd.env("NROS_LOCATOR", &locator);
+        // `info`: the summary line this loop waits for is an `info!`, so a
+        // quieter peer is a precondition that can only ever fail.
+        peer_cmd.env("RUST_LOG", "info");
+        peer_cmd.env("NROS_MULTIGOAL_GOALS", "0");
+        peer_cmd.env("NROS_MULTIGOAL_SOAK_MS", "1000");
+        let mut peer = ManagedProcess::spawn_command(peer_cmd, format!("multigoal-peer-{cycle}"))
+            .expect("Failed to start the liveliness peer");
+        let peer_out = peer.collect_until(MULTIGOAL_SUMMARY_PREFIX, Duration::from_secs(30));
+        assert!(
+            peer_out.contains(MULTIGOAL_SUMMARY_PREFIX),
+            "[w4] liveliness peer {cycle} never reached its summary line, so the graph churn \
+             this cell depends on did not happen and a green below would prove nothing. \
+             Peer output:\n{peer_out}"
+        );
+        drop(peer);
+    }
+
+    let mut client_cmd = Command::new(&client_bin);
+    client_cmd.env("NROS_LOCATOR", &locator);
+    client_cmd.env("RUST_LOG", "info");
+    client_cmd.env("NROS_MULTIGOAL_GOALS", GOALS.to_string());
+    client_cmd.env("NROS_MULTIGOAL_SOAK_MS", SOAK_MS.to_string());
+    let mut client = ManagedProcess::spawn_command(client_cmd, "action-client-multigoal")
+        .expect("Failed to start the multi-goal probe");
+
+    // Generous on purpose: the soak, then GOALS handshakes, then GOALS results
+    // against an image that computes each sequence inline. A budget near the
+    // honest duration turns a loaded host into a fake reproduction of the very
+    // defect under test.
+    let client_out = client.collect_until(MULTIGOAL_SUMMARY_PREFIX, Duration::from_secs(180));
+
+    // One more image heartbeat after the probe is done, so the count read below
+    // covers the whole run rather than most of it.
+    let server_out = server
+        .wait_for_output(Duration::from_secs(3))
+        .unwrap_or_default();
+    server.kill();
+    drop(router);
+
+    eprintln!("[w4] probe output:\n{client_out}");
+
+    let summary = client_out
+        .lines()
+        .find(|l| l.contains(MULTIGOAL_SUMMARY_PREFIX))
+        .unwrap_or_else(|| {
+            panic!(
+                "[w4] the multi-goal probe printed no summary line, so this run has no \
+                 completion rate at all. Probe output:\n{client_out}\nServer:\n{server_out}"
+            )
+        });
+
+    let accepted = multigoal_summary_field(summary, "accepted=");
+    let completed = multigoal_summary_field(summary, "completed=");
+    let sent = multigoal_summary_field(summary, "sent=");
+    let result_missing = multigoal_summary_field(summary, "result_missing=");
+
+    let refusal_line = server_out
+        .lines()
+        .rfind(|l| l.contains(REPLY_SLOT_REPORT_PREFIX))
+        .unwrap_or_else(|| {
+            panic!(
+                "[w4] the Zephyr image printed no `{REPLY_SLOT_REPORT_PREFIX}` heartbeat, so \
+                 the W1 counter was never read and this run says NOTHING about reply-slot \
+                 exhaustion on NSOS — which is half the point of the cell. An image built \
+                 before phase-455 W4 does not print it; rebuild with \
+                 `just zephyr build-one rust/action-server zenoh`. Server output:\n{server_out}"
+            )
+        });
+
+    // EVIDENCE, printed whatever the verdict.
+    println!(
+        "phase-455 W4 evidence (zephyr native_sim/native/64): completed {completed}/{sent} \
+         after a {SOAK_MS} ms soak with 3 peer up/down cycles; image says \
+         `{}`",
+        refusal_line.trim()
+    );
+
+    assert_eq!(
+        accepted,
+        GOALS,
+        "[w4] expected all {GOALS} goals accepted (below the server's goal table), got \
+         {accepted}. Zero accepted with zero rejected means every `send_goal` TIMED OUT, \
+         which is a different failure from a goal the image refused. Image reply-slot line: \
+         `{}`.\nProbe:\n{client_out}\nServer:\n{server_out}",
+        refusal_line.trim()
+    );
+    assert_eq!(
+        completed,
+        sent,
+        "[w4] issue 0902: {result_missing} of {sent} accepted goals never returned a RESULT \
+         from the native_sim image. That is the defect's exact shape — accepted, executed, \
+         and then nothing. Read the image's reply-slot line (`{}`) to tell an exhausted \
+         reply table from a slow image.\nProbe:\n{client_out}\nServer:\n{server_out}",
+        refusal_line.trim()
+    );
+    assert!(
+        refusal_line.contains(&format!("{REPLY_SLOT_REPORT_PREFIX}0")),
+        "[w4] the image refused at least one reply-slot allocation during this run: `{}`. \
+         Every request after a refusal is accepted and can never be answered (issue 0902). \
+         `n/a no-zenoh-shim` means this image links no zenoh shim, so it could never have \
+         answered and the run proves nothing.\nServer:\n{server_out}",
+        refusal_line.trim()
     );
 }
