@@ -1,14 +1,14 @@
 ---
 id: 1362
-title: "Five platform names the tree builds are answered by no
-  `nros-platform.toml`, so each takes the BUILTIN knob defaults instead of its
-  own — silently, three warnings at a time"
+title: "TWO platform names boards declare are answered by no
+  `nros-platform.toml` and take the BUILTIN knob defaults — the other three
+  were fixture coordinate labels the gate mistook for platform names"
 status: open
 type: bug
 area: build, boards
 severity: medium
 found: 2026-09-13
-related: [1145, 0196, phase-448]
+related: [1145, 0196, 1382, phase-448]
 ---
 
 ## What this is
@@ -80,3 +80,80 @@ against the ones it would get from the candidate descriptor, on a built image;
 then either add the name and drop it from the baseline, or record why
 falling through is correct for it. `esp32` and `baremetal` need the decision
 above first.
+
+
+## CORRECTED 2026-09-18 — three of the five were never fall-throughs
+
+The measurement above is circular, and it took three names with it. It sets
+`NROS_PLATFORM_NAME=<name>` **by hand** and observes `or_builtin_rungs` warn.
+That proves the lookup answers an unknown name. It does not prove any build
+ever asks it one, and the sentence that bridged the gap — *"All five appear as
+`platform = "…"` rows in `examples/fixtures.toml`, so each is a platform the
+tree actually builds"* — is the unchecked step.
+
+A fixture row's `platform` is a **coordinate label**. It names the lane cell
+and feeds `build_subdir`; nothing looks a descriptor up by it. The name that
+reaches the lookup is emitted by `nros ws board-facts` from
+`descriptor.platform` (`nros-cli-core/src/cmd/board_facts.rs:233`) — the
+`platform = "…"` a **board** declares. The rows say so themselves:
+
+```toml
+platform = "freertos-posix"                                   # coordinate label
+cmake_defs = { NANO_ROS_PLATFORM = "freertos",
+               NANO_ROS_BOARD = "freertos-posix" }             # what is passed
+```
+
+Measured through the live path, not read off the files:
+
+```
+$ nros ws board-facts examples/workspaces/c/src/demo_bringup --board freertos-posix
+NROS_PLATFORM_NAME=freertos
+$ nros ws board-facts examples/workspaces/realtime-cpp/src/demo_bringup --board rv-virt-nuttx
+NROS_PLATFORM_NAME=nuttx
+$ nros ws board-facts examples/workspaces/features/src/demo_bringup --board zephyr
+NROS_PLATFORM_NAME=zephyr
+```
+
+All three are answered descriptors. `freertos-posix`, `nuttx-riscv` and
+`zephyr-cortex-m` never fell through, so three fifths of this issue was work
+that did not exist — and the "compare the knobs before and after" protocol
+would have compared nothing, because `freertos` and `nuttx` declare **no
+`[knobs.*]` at all**.
+
+### What is actually left
+
+Two, and the spelling matters:
+
+| name | declared by | why it is a decision |
+| --- | --- | --- |
+| `esp32` | `nros-board-esp32-qemu/nros-board.toml` | has an RTOS (ESP-IDF's FreeRTOS) and no descriptor; probably wants one |
+| `bare-metal` | `nros-board-mps2-an385/nros-board.toml` | no RTOS to describe; falling through may be the correct answer |
+
+The old baseline spelled the second one `baremetal`, which is the fixtures
+label. No board declares that string, so even the one real entry named
+something this population never produces.
+
+Both still need their knobs compared on a built image before either is claimed.
+
+### The gate now reads the right population
+
+`check-platform-name-answered` walked `examples/fixtures.toml`. It now walks
+`packages/boards/*/nros-board.toml` and reads each `[[board]]` element's
+`platform` — an array of tables, so a single file may declare several boards
+with different platforms, which a top-level key read would have missed.
+
+It keeps the catch it was built for: `nros-board-threadx-linux` declares
+`platform = "threadx-linux"`, so that name is in this population. Mutation
+tested — reverting the threadx descriptor to `names = ["threadx"]` reports both
+threadx names, each with the board file that declares it.
+
+`NOT_A_DESCRIPTOR_NAME` is empty now. It held `{"native", "linux"}` to excuse
+fixture rows spelling a ROLE in their coordinate label; no board declares
+either (`packages/boards/linux` declares `platform = "posix"`, correctly), and
+a board that did would be making the claim CLAUDE.md's Naming section forbids —
+which this gate should report, not excuse.
+
+Same shape as the rest of this campaign: the gate was authored, registered,
+mutation-tested, and watching the wrong names. It caught issue 1145 only
+because that board's declared platform and its fixtures label happen to be the
+same string.
