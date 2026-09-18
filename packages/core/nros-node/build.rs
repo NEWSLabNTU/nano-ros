@@ -158,9 +158,11 @@ fn descriptor_subscriptions(
 ///
 /// RFC-0100 D6's second half — *"always the safe direction and always loud"* —
 /// and here the safe direction is the CLOSURE buffer: `RX_BUF` is an upper
-/// bound on every one of the five rows (`_RX <= RX_BUF`,
-/// `min(framed(bound), RX_BUF) <= RX_BUF`), so a row whose path is unknown is
-/// priced at the one number none of them can exceed.
+/// bound on every one of the three rows (`_RX <= RX_BUF`,
+/// `min(framed(bound), RX_BUF) <= RX_BUF`, and `in_place` claims nothing at
+/// all), so a row whose path is unknown is priced at the one number none of
+/// them can exceed. (Five rows before phase-456 W8 collapsed the two that named
+/// a caller rather than a property of the registration.)
 fn row_slot_bytes(row: &SubEndpoint, rx_buf_size: usize) -> usize {
     let (slot, why) = row
         .slot
