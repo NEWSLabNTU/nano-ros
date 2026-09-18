@@ -29,7 +29,7 @@ use nros_tests::{
         ManagedProcess, ZenohRouter, action_client_multigoal_binary,
         action_server_concurrent_binary, require_zenohd, zenohd_unique,
     },
-    output::{MULTIGOAL_SUMMARY_PREFIX, REPLY_SLOT_REPORT_PREFIX},
+    output::{MULTIGOAL_SUMMARY_PREFIX, REPLY_SLOT_REPORT_PREFIX, multigoal_summary_field},
 };
 use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -39,20 +39,10 @@ const MAX_GOALS: usize = 4;
 /// Must match `GOALS_DEFAULT` in the client fixture.
 const GOALS_SENT: usize = 6;
 
-/// Parse `key<n>` out of the client's one summary line.
-///
-/// By KEY, not by position — the line gained `completed=`/`sent=`/
-/// `result_missing=` in phase-455 W2 and both tests here must keep reading the
-/// fields they care about. A missing key is a panic naming the line, because a
-/// summary that lost a field is a different failure from a field with a wrong
-/// value and the two must not read alike.
-fn summary_field(summary: &str, key: &str) -> usize {
-    summary
-        .split_whitespace()
-        .find_map(|tok| tok.strip_prefix(key))
-        .and_then(|v| v.parse().ok())
-        .unwrap_or_else(|| panic!("no `{key}<n>` in summary line: {summary}"))
-}
+// The `key<n>` parser moved to `nros_tests::output::multigoal_summary_field`
+// (phase-455 W4): the same summary line gained a second consumer in
+// `tests/zephyr.rs`, and a second spelling of a parser is the #282 -> #326
+// shape. It is imported above and used unchanged.
 
 #[rstest]
 fn full_goal_table_rejects_rather_than_acknowledging(
@@ -123,8 +113,8 @@ fn full_goal_table_rejects_rather_than_acknowledging(
 
     // Parse rather than string-match the whole line, so the failure message
     // can say WHICH number is wrong — the counts are the entire assertion.
-    let accepted = summary_field(summary, "accepted=");
-    let rejected = summary_field(summary, "rejected=");
+    let accepted = multigoal_summary_field(summary, "accepted=");
+    let rejected = multigoal_summary_field(summary, "rejected=");
 
     assert_eq!(
         accepted, MAX_GOALS,
@@ -302,10 +292,10 @@ fn every_accepted_goal_returns_a_result_and_no_reply_slot_is_refused(
             panic!("multi-goal client printed no summary line. Output:\n{out}");
         });
 
-    let accepted = summary_field(summary, "accepted=");
-    let completed = summary_field(summary, "completed=");
-    let sent = summary_field(summary, "sent=");
-    let result_missing = summary_field(summary, "result_missing=");
+    let accepted = multigoal_summary_field(summary, "accepted=");
+    let completed = multigoal_summary_field(summary, "completed=");
+    let sent = multigoal_summary_field(summary, "sent=");
+    let result_missing = multigoal_summary_field(summary, "result_missing=");
 
     // Give the server one more heartbeat after the client is done, so the count
     // read below covers the whole run rather than most of it.
