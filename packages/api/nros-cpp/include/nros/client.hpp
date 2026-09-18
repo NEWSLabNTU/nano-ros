@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstddef>
 
+#include "nros/callback_context.hpp" // phase-456 W3 — the handler IS the arena context
 #include "nros/config.hpp"
 #include "nros/log.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "nros/result.hpp"
@@ -102,12 +103,16 @@ template <typename S> class Client {
     using RequestType = typename S::Request;
     using ResponseType = typename S::Response;
 
-    /// Phase 189.M3.3.f — typed response-handler signatures for the
+    /// Phase 189.M3.3.f — typed response-handler signature for the
     /// *callback-style* client (rclcpp async dispatch). The handler runs during
     /// `spin_once` when a reply arrives for a request sent via
     /// `async_send_request`.
+    ///
+    /// phase-456 W3 deleted the `TypedResponseFnWithCtx` sibling, for the
+    /// reason stated on `Service<S>::TypedServiceFn`: the SFINAE guard on
+    /// `Node::create_client` admits only a `void(*)(const Response&)`, so no
+    /// overload could set it and the branch reading it was unreachable.
     using TypedResponseFn = void (*)(const ResponseType& response);
-    using TypedResponseFnWithCtx = void (*)(const ResponseType& response, void* ctx);
 
     /// Send a request and return a Future for the response (non-blocking).
     ///
@@ -330,12 +335,16 @@ template <typename S> class Client {
     }
 
     // Move semantics (non-copyable). Future-style relocation goes through the
-    // `nros_cpp_service_client_relocate` runtime call (Phase 84.C1). A
-    // callback-style client must NOT be moved after register — the arena holds
-    // `this` as the response trampoline context (M3.3.f).
+    // `nros_cpp_service_client_relocate` runtime call (Phase 84.C1).
+    //
+    // phase-456 W3 — a callback-style client is MOVABLE now. The warning that
+    // stood here ("must NOT be moved after register — the arena holds `this` as
+    // the response trampoline context") lost its subject with the same change
+    // `service.hpp` records: the arena holds the user's HANDLER, not `this`.
+    // What survives the move is the caller's own `{executor_, handle_id_}`,
+    // which is what `async_send_request` needs and all it needs.
     Client(Client&& other)
-        : executor_(other.executor_), initialized_(other.initialized_), user_fn_(other.user_fn_),
-          user_fn_ctx_(other.user_fn_ctx_), user_ctx_(other.user_ctx_),
+        : executor_(other.executor_), initialized_(other.initialized_),
           handle_id_(other.handle_id_), callback_mode_(other.callback_mode_) {
         if (other.initialized_ && !other.callback_mode_) {
             nros_cpp_service_client_relocate(other.storage_, storage_);
@@ -350,9 +359,6 @@ template <typename S> class Client {
             }
             executor_ = other.executor_;
             initialized_ = other.initialized_;
-            user_fn_ = other.user_fn_;
-            user_fn_ctx_ = other.user_fn_ctx_;
-            user_ctx_ = other.user_ctx_;
             handle_id_ = other.handle_id_;
             callback_mode_ = other.callback_mode_;
             if (other.initialized_ && !other.callback_mode_) {
@@ -375,26 +381,24 @@ template <typename S> class Client {
 
     /// Phase 189.M3.3.f — raw response trampoline matching `RawResponseCallback`
     /// (`void(data, len, ctx)`). Deserializes the reply, runs the user's typed
-    /// handler. `ctx` is the `Client` object (`this`).
+    /// handler.
+    ///
+    /// phase-456 W3 — `ctx` is the USER'S HANDLER, carried by value in the
+    /// arena's context slot, not the `Client` object (`this`).
     static void response_trampoline(const uint8_t* data, size_t len, void* ctx) {
-        auto* self = static_cast<Client*>(ctx);
-        if (self == nullptr) return;
+        const TypedResponseFn user_fn = ::nros::detail::fn_from_context<TypedResponseFn>(ctx);
+        if (user_fn == nullptr) return;
         ResponseType response;
         if (ResponseType::ffi_deserialize(data, len, &response) != 0) return;
-        if (self->user_fn_ != nullptr) {
-            self->user_fn_(response);
-        } else if (self->user_fn_ctx_ != nullptr) {
-            self->user_fn_ctx_(response, self->user_ctx_);
-        }
+        user_fn(response);
     }
 
     alignas(8) uint8_t storage_[NROS_SERVICE_CLIENT_SIZE];
     void* executor_;
     bool initialized_;
-    // Callback-style state (Phase 189.M3.3.f); unused in future mode.
-    TypedResponseFn user_fn_ = nullptr;
-    TypedResponseFnWithCtx user_fn_ctx_ = nullptr;
-    void* user_ctx_ = nullptr;
+    // Callback-style BOOKKEEPING (Phase 189.M3.3.f); unused in future mode. The
+    // handler lives in the arena (phase-456 W3); `{executor_, handle_id_}` is
+    // what `async_send_request` sends on, and it is the caller's own.
     size_t handle_id_ = static_cast<size_t>(-1);
     bool callback_mode_ = false;
 };
@@ -433,8 +437,9 @@ Result Node::create_client(Client<S>& out, const char* service_name, const ::nro
 namespace nros {
 
 // Phase 189.M3.3.f — callback-style (arena-registered) client. The arena owns
-// the client + dispatches `out`'s response handler during spin_once; requests
-// go through `async_send_request`. `options.sched_context` is functional.
+// the client AND the response handler, and dispatches it during spin_once;
+// requests go through `async_send_request`, which needs only `out`'s own
+// `{executor_, handle_id_}`. `options.sched_context` is functional.
 } // namespace nros
 
 namespace rclcpp {
@@ -444,9 +449,10 @@ Result Node::create_client(Client<S>& out, const char* service_name, F callback,
     if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
 
-    out.user_fn_ = typename Client<S>::TypedResponseFn(callback);
-    out.user_fn_ctx_ = nullptr;
-    out.user_ctx_ = nullptr;
+    // The user handler becomes the ARENA's context (phase-456 W3); the
+    // conversion is still the compile error for a non-convertible `F`.
+    const typename Client<S>::TypedResponseFn user_fn =
+        typename Client<S>::TypedResponseFn(callback);
 
     uint8_t sched = (options.sched_context == ::nros::SCHED_CONTEXT_UNSET)
                         ? 0u
@@ -455,7 +461,7 @@ Result Node::create_client(Client<S>& out, const char* service_name, F callback,
     nros_cpp_ret_t ret = nros_cpp_service_client_register(
         &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos,
         reinterpret_cast<nros_cpp_service_response_callback_t>(&Client<S>::response_trampoline),
-        &out, sched, &handle);
+        ::nros::detail::fn_to_context(user_fn), sched, &handle);
     if (ret == 0) {
         out.executor_ = executor_handle_;
         out.handle_id_ = handle;

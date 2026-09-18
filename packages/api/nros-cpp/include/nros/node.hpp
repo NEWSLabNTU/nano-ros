@@ -1469,8 +1469,9 @@ class Node {
     /// guard keeps the poll-style 3-arg overload unambiguous (a `QoS` is not
     /// convertible to the handler type).
     ///
-    /// CONSTRAINT: do not move `out` after this returns — the executor arena
-    /// holds `&out` as the dispatch context.
+    /// `out` is MOVABLE after this returns (phase-456 W3): the arena holds the
+    /// HANDLER as its dispatch context, not `&out`, so nothing of the caller's
+    /// is referenced after registration.
     template <typename S, typename F,
               typename = typename std::enable_if<std::is_convertible<
                   F, void (*)(const typename S::Request&, typename S::Response&)>::value>::type>
@@ -1496,8 +1497,9 @@ class Node {
     /// `Client<S>::async_send_request`. The SFINAE guard keeps the future-style
     /// 3-arg overload unambiguous.
     ///
-    /// CONSTRAINT: do not move `out` after this returns — the executor arena
-    /// holds `&out` as the response dispatch context.
+    /// `out` is MOVABLE after this returns (phase-456 W3): the arena holds the
+    /// HANDLER as its response context, not `&out`. What the move carries is
+    /// `{executor, handle_id}`, which is what `async_send_request` needs.
     template <typename S, typename F,
               typename = typename std::enable_if<
                   std::is_convertible<F, void (*)(const typename S::Response&)>::value>::type>
