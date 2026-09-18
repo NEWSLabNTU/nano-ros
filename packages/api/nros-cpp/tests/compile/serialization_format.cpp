@@ -67,7 +67,7 @@ inline ::nros::Result instantiate(::rclcpp::Node& node) {
     ::nros::Publisher<Int32> pub;
     ::nros::Result rp = node.create_publisher(pub, "/count");
 
-    ::nros::Subscription<Int32> sub;
+    ::nros::PollSubscription<Int32> sub;
     ::nros::Result rs = node.create_subscription(sub, "/count");
 
     ::nros::PollingSubscription<Int32> poll;

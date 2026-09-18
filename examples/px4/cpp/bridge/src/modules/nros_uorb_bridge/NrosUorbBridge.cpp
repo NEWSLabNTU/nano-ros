@@ -131,7 +131,8 @@ class NrosUorbBridge : public ModuleBase<NrosUorbBridge>, public px4::ScheduledW
 
     rclcpp::Node _in_node{};
     rclcpp::Node _out_node{};
-    rclcpp::Subscription<px4_msgs::msg::DebugKeyValue> _in_sub{};
+    // phase-456 W2b — `take_serialized` lives on the poll subscriber.
+    nros::PollSubscription<px4_msgs::msg::DebugKeyValue> _in_sub{};
     rclcpp::Publisher<px4_msgs::msg::DebugKeyValue> _out_pub{};
 
     uint32_t _forwarded{0};

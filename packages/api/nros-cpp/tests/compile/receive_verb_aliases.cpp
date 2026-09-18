@@ -1,7 +1,7 @@
 // Phase 379 W6 decision 1 — the C++ non-blocking receive verb under its rclcpp
 // name, and the old spellings kept alive as `[[deprecated]]` forwarders.
 //
-// `Subscription<M>::try_recv` and `rclcpp::Subscription::take` are THE SAME
+// `PollSubscription<M>::try_recv` and `rclcpp::Subscription::take` are THE SAME
 // OPERATION — non-blocking, consuming, reporting emptiness without failing —
 // so the ledger's `c:take` / `cpp:Subscription::take` /
 // `cpp:Subscription::take_serialized` / `cpp:Service::take_request` rows are a
@@ -47,7 +47,7 @@ struct AddTwoInts {
 };
 
 // 1. The renamed methods exist and their bodies type-check.
-inline ::nros::Result instantiate_new(::nros::Subscription<Int32>& sub,
+inline ::nros::Result instantiate_new(::nros::PollSubscription<Int32>& sub,
                                       ::nros::Service<AddTwoInts>& srv) {
     Int32 msg{};
     uint8_t buf[64];
@@ -73,7 +73,7 @@ inline ::nros::Result instantiate_new(::nros::Subscription<Int32>& sub,
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
-inline ::nros::Result instantiate_old(::nros::Subscription<Int32>& sub,
+inline ::nros::Result instantiate_old(::nros::PollSubscription<Int32>& sub,
                                       ::nros::Service<AddTwoInts>& srv) {
     Int32 msg{};
     uint8_t buf[64];
@@ -96,14 +96,14 @@ inline ::nros::Result instantiate_old(::nros::Subscription<Int32>& sub,
 
 // The forwarders must return exactly what they forward to — a `Result` that
 // became a `bool` on the way through would pass a name check.
-static_assert(std::is_same<decltype(std::declval<::nros::Subscription<Int32>&>().try_recv(
+static_assert(std::is_same<decltype(std::declval<::nros::PollSubscription<Int32>&>().try_recv(
                                std::declval<Int32&>())),
                            ::nros::Result>::value,
-              "Subscription<M>::try_recv must still return nros::Result");
-static_assert(std::is_same<decltype(std::declval<::nros::Subscription<Int32>&>().take(
+              "PollSubscription<M>::try_recv must still return nros::Result");
+static_assert(std::is_same<decltype(std::declval<::nros::PollSubscription<Int32>&>().take(
                                std::declval<Int32&>())),
                            ::nros::Result>::value,
-              "Subscription<M>::take must return nros::Result");
+              "PollSubscription<M>::take must return nros::Result");
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif

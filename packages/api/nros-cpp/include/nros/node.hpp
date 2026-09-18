@@ -186,6 +186,8 @@ namespace nros {
 // Phase 122.3.d.b — L1 polling-mode action wrappers.
 template <typename A> class PollingActionServer;
 template <typename A> class PollingActionClient;
+// phase-456 W2b — the two poll-side subscribers (`polling_subscription.hpp`).
+template <typename M> class PollSubscription;
 template <typename M> class PollingSubscription;
 
 /// Executor-bound node handle the generated entry hands to a node constructor
@@ -1359,22 +1361,30 @@ class Node {
     Result create_publisher(::rclcpp::Publisher<M>& out, const char* topic, const ::nros::QoS& qos,
                             const ::nros::PublisherOptions& options);
 
-    /// Create a subscription for a topic.
+    /// Create a POLL subscription for a topic — the caller owns the subscriber
+    /// and drains it with `take()`; nothing dispatches.
+    ///
+    /// phase-456 W2b — the out parameter is `nros::PollSubscription<M>`, not
+    /// `Subscription<M>`. Defined in `nros/polling_subscription.hpp`, beside
+    /// the type it creates.
     ///
     /// @tparam M  Message type (must define TYPE_NAME and TYPE_HASH).
     /// @param out    Receives the initialized subscription.
     /// @param topic  Topic name (null-terminated).
     /// @param qos    QoS profile (default: reliable, keep-last(10)).
     template <typename M>
-    Result create_subscription(::rclcpp::Subscription<M>& out, const char* topic,
+    Result create_subscription(::nros::PollSubscription<M>& out, const char* topic,
                                const ::nros::QoS& qos = ::nros::QoS::default_profile());
 
     /// Create a subscription with rclcpp-style named options (Phase 189.M3.1).
     ///
     /// `options` sits alongside `qos` (rclcpp convention) and carries the
-    /// non-QoS creation axes. `options.sched_context` (when set) lowers to a
-    /// create-then-bind via `nros_cpp_bind_handle_to_sched_context`;
-    /// `options.message_info` is reserved (M3.4). See `SubscriptionOptions`.
+    /// non-QoS creation axes. NEITHER reaches a poll subscription:
+    /// `sched_context` binds an executor `HandleId` and a poll subscription
+    /// registers no arena entry, and `message_info` is reserved (M3.4). See
+    /// `SubscriptionOptions`, and the definition in
+    /// `nros/polling_subscription.hpp` for why phase-456 W2b makes the first
+    /// one structural instead of a branch that could never be taken.
     ///
     /// @tparam M  Message type (must define TYPE_NAME and TYPE_HASH).
     /// @param out      Receives the initialized subscription.
@@ -1382,7 +1392,7 @@ class Node {
     /// @param qos      QoS profile.
     /// @param options  Named subscription options.
     template <typename M>
-    Result create_subscription(::rclcpp::Subscription<M>& out, const char* topic,
+    Result create_subscription(::nros::PollSubscription<M>& out, const char* topic,
                                const ::nros::QoS& qos, const ::nros::SubscriptionOptions& options);
 
     /// Create a **callback-style** subscription (rclcpp dispatch model; Phase

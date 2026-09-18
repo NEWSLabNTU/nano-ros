@@ -155,32 +155,50 @@ static_assert(std::is_same<::nros::Publisher<StringMsg>::ConstSharedPtr,
 static_assert(std::is_same<::nros::Publisher<StringMsg>::UniquePtr,
                            std::unique_ptr<::nros::Publisher<StringMsg>>>::value,
               "Publisher<M>::UniquePtr must be std::unique_ptr<Publisher<M>>");
-// phase-456 W2 — `Subscription<M>::SharedPtr` is DELIBERATELY not a pointer to
-// a `Subscription<M>`, and this assertion inverted to say so.
+// phase-456 W2 — `Subscription<M>::SharedPtr` is DELIBERATELY not a
+// `std::shared_ptr`, and this assertion inverted to say so.
 //
 // A subscription created with a callback is owned by the Rust executor arena,
 // which holds the subscriber, the rx buffer, the callback and its capture.
 // There is no C++ object to point at. What the factory used to hand back was a
 // `shared_ptr` aliasing into a heap cell, carrying `take()`,
 // `take_serialized()`, `take_validated()`, `take_sequence()` and `borrow()` --
-// every one of them guaranteed to answer `NotInitialized`, because the sample
-// went to the callback. `nros.hpp` said so in a comment while handing it out.
+// every one of them a call into 656 zero bytes the arena never filled.
 //
-// The POLL form is untouched: a `Subscription<M>` from the out-ref
-// `create_subscription(out, topic, qos)` still owns its storage and still
-// takes. phase-456 W2b moves that API out from under an upstream name whose
-// semantics it does not share, and at that point `element_type` can mean
-// `Subscription<M>` again.
+// phase-456 W2b then moved that API to `nros::PollSubscription<M>`, which is
+// the type that owns a subscriber, and REPAID W2's stated cost: the handle can
+// name `Subscription<M>` as its `element_type` again, because every operation
+// left on that class is one an arena registration can perform.
 static_assert(std::is_same<::nros::Subscription<StringMsg>::SharedPtr,
                            ::nros::SubscriptionHandle<StringMsg>>::value,
               "Subscription<M>::SharedPtr must be the two-word arena handle");
 static_assert(sizeof(::nros::Subscription<StringMsg>::SharedPtr) == 2 * sizeof(void*),
-              "the dispatch handle must stay two words -- it is what replaced an 888-byte "
-              "object plus a heap cell");
+              "the dispatch handle must stay two words -- it is what replaced a 984-byte "
+              "object plus a heap cell (measured phase-456 W2b; the dispatch class is "
+              "304 bytes now and the poll one carries the storage)");
 static_assert(std::is_same<::nros::Subscription<StringMsg>::ConstSharedPtr,
                            ::nros::Subscription<StringMsg>::SharedPtr>::value,
               "ConstSharedPtr is the same handle: there is no const/mutable distinction to "
               "draw over a registration that exposes no operation on the entity");
+static_assert(std::is_same<::nros::Subscription<StringMsg>::SharedPtr::element_type,
+                           ::nros::Subscription<StringMsg>>::value,
+              "phase-456 W2b: SharedPtr::element_type names the dispatch subscription again");
+
+// And the half that makes that name honest: the taking API is NOT reachable
+// through `Subscription<M>`. A REACHABILITY assertion, in the shape
+// `ros2_one_dispatch_path.cpp` uses for `Node::pump()` -- the method coming
+// back under any signature is what this has to catch, because a `take()` on
+// this class compiles, dispatches into an unfilled `RmwSubscriber`, and
+// reports nothing.
+template <typename T, typename = void> struct has_take : std::false_type {};
+template <typename T>
+struct has_take<T, decltype(void(std::declval<T&>().take(std::declval<StringMsg&>())))>
+    : std::true_type {};
+static_assert(!has_take<::nros::Subscription<StringMsg>>::value,
+              "phase-456 W2b: the dispatch subscription must not carry a take() -- the arena "
+              "owns the subscriber and this object has no storage to take from");
+static_assert(has_take<::nros::PollSubscription<StringMsg>>::value,
+              "phase-456 W2b: the poll subscription is where take() went");
 static_assert(std::is_same<::nros::PollingSubscription<StringMsg>::SharedPtr,
                            std::shared_ptr<::nros::PollingSubscription<StringMsg>>>::value,
               "PollingSubscription<M>::SharedPtr must be std::shared_ptr<PollingSubscription<M>>");

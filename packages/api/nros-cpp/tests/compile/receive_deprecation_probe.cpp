@@ -32,7 +32,7 @@ struct Int32 {
     }
 };
 
-inline ::nros::Result probe(::nros::Subscription<Int32>& sub) {
+inline ::nros::Result probe(::nros::PollSubscription<Int32>& sub) {
     Int32 msg{};
     return sub.try_recv(msg);
 }
