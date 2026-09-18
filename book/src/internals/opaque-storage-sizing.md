@@ -67,7 +67,7 @@ The `nros::sizes` module exports:
 |---|---|---|
 | `SESSION_SIZE` | `RmwSession` | `nros_support_t._opaque` |
 | `PUBLISHER_SIZE` | `RmwPublisher` | `nros_publisher_t._opaque`, `nros::Publisher<M>::storage_` |
-| `SUBSCRIBER_SIZE` | `RmwSubscriber` | `nros::Subscription<M>::storage_` |
+| `SUBSCRIBER_SIZE` | `RmwSubscriber` | `nros::PollSubscription<M>::storage_` |
 | `SERVICE_CLIENT_SIZE` | `RmwServiceClient` | `nros::Client<S>::storage_` |
 | `SERVICE_SERVER_SIZE` | `RmwServiceServer` | `nros::Service<S>::storage_` |
 | `EXECUTOR_SIZE` | `nros_node::Executor` | `nros_executor_t._opaque`, `nros::Executor::storage_` |

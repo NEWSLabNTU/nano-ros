@@ -39,7 +39,8 @@ int nros_app_main(int argc, char** argv) {
     NROS_TRY_RET(nros::create_node(node, "cpp_safety_listener"), 1);
 
     // Poll-mode subscription — the validated receive path is poll-only.
-    rclcpp::Subscription<std_msgs::msg::Int32> sub;
+    // phase-456 W2b gave that fact a type: `nros::PollSubscription<M>`.
+    nros::PollSubscription<std_msgs::msg::Int32> sub;
     NROS_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
     printf("Waiting for Int32 messages on /chatter...\n");
 

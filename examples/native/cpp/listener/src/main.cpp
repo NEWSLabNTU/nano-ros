@@ -53,7 +53,9 @@ int nros_app_main(int argc, char** argv) {
     NROS_TRY_RET(nros::create_node(node, "listener"), 1);
     printf("Node created: %s\n", node.get_name());
 
-    rclcpp::Subscription<std_msgs::msg::String> sub;
+    // phase-456 W2b — the taking subscriber is `nros::PollSubscription<M>`;
+    // `rclcpp::Subscription<M>` is the one the executor dispatches into.
+    nros::PollSubscription<std_msgs::msg::String> sub;
     NROS_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
     // phase-342 — the READINESS marker the test matrix waits on
     // (`nros_tests::output::LISTENER_READY_MARKER`). The rust and C listeners

@@ -190,8 +190,11 @@ template <class Payload> struct ActionOf {
 // Every RECEIVE site issue 0964 enumerates, instantiated. Taken by reference:
 // constructing these needs a Node, and the point is the template BODY.
 template <class M>
-inline ::nros::Result recv_paths(::nros::Subscription<M>& sub, ::nros::Stream<M>& stream, M& msg) {
-    (void)sub.try_recv(msg);                  // subscription.hpp -- derived where one exists
+inline ::nros::Result recv_paths(::nros::PollSubscription<M>& sub, ::nros::Stream<M>& stream,
+                                 M& msg) {
+    // phase-456 W2b — the taking API is `PollSubscription<M>`'s; see
+    // `nros/polling_subscription.hpp`.
+    (void)sub.try_recv(msg); // polling_subscription.hpp -- derived where one exists
     (void)sub.template take_sized<4096>(msg); // ... and the escape hatch
     nros_cpp_integrity_status_t status{};
     (void)sub.try_recv_validated(msg, status);
@@ -273,12 +276,14 @@ static_assert(
 /// `nros-codegen.toml`) or call the `_sized` form. The trade accepted is that a
 /// wrong number found at build time beats a buffer that cannot hold what the
 /// program sends.
-inline ::nros::Result instantiate_recv_paths(
-    ::nros::Subscription<Bounded>& bsub, ::nros::Stream<Bounded>& bstream, Bounded& bmsg,
-    ::nros::Client<SvcOf<Bounded>>& bclient, ::nros::Service<SvcOf<Bounded>>& bservice,
-    ::nros::TickCtx& tick, ::nros::ActionClient<ActionOf<Bounded>>& bac,
-    ::nros::PollingActionClient<ActionOf<Bounded>>& bpac,
-    ::nros::PollingActionServer<ActionOf<Bounded>>& bpas) {
+inline ::nros::Result instantiate_recv_paths(::nros::PollSubscription<Bounded>& bsub,
+                                             ::nros::Stream<Bounded>& bstream, Bounded& bmsg,
+                                             ::nros::Client<SvcOf<Bounded>>& bclient,
+                                             ::nros::Service<SvcOf<Bounded>>& bservice,
+                                             ::nros::TickCtx& tick,
+                                             ::nros::ActionClient<ActionOf<Bounded>>& bac,
+                                             ::nros::PollingActionClient<ActionOf<Bounded>>& bpac,
+                                             ::nros::PollingActionServer<ActionOf<Bounded>>& bpas) {
     (void)recv_paths<Bounded>(bsub, bstream, bmsg);
     (void)client_paths<Bounded>(bclient, bservice, tick, bmsg);
     (void)action_paths<Bounded>(bac, bpac, bpas, bmsg);

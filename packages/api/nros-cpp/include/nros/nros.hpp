@@ -578,10 +578,14 @@ namespace nros {
 // token advertises the placeholder instead of the real hash, so
 // `ros2 topic info --verbose` reads differently.
 //
-// WHAT THE RETURNED POINTER IS: a keep-alive, which is all upstream source does
+// WHAT THE RETURNED HANDLE IS: a keep-alive, which is all upstream source does
 // with it (`rclcpp::Subscription<M>::SharedPtr sub_;`). The executor owns the
-// real subscriber, so `sub->take(msg)` on it answers `NotInitialized` — the
-// sample went to your callback.
+// real subscriber. This comment used to say `sub->take(msg)` on it "answers
+// `NotInitialized`"; it did not — `initialized_` was true and the call reached
+// `&mut *(storage as *mut RmwSubscriber)` over bytes the arena never filled.
+// phase-456 W2 made the handle a type with no `operator->`, and W2b moved the
+// taking API to `nros::PollSubscription<M>`, so neither half of that sentence
+// has a subject any more.
 } // namespace nros
 
 namespace rclcpp {

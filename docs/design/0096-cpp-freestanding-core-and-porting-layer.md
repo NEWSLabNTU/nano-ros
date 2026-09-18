@@ -503,6 +503,12 @@ And the sizes follow from the shape, not from the entities:
 `Client<int>` is not large because a client is large. It is large because the
 C++ object holds the reply buffer.
 
+Measured again after phase-456 W2b (2026-09-18): the subscription row was
+**984** on the current config, and it has since become two rows —
+`rclcpp::Subscription<M>` is the arena handle's entity and carries no
+`storage_` at all, while the caller storage moved to
+`nros::PollSubscription<M>`, which is the only half that ever filled it.
+
 #### The requirement that survives either way
 
 Whatever holds the bytes, **address stability is a contract, not a fiction.**
