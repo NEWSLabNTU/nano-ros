@@ -7,16 +7,25 @@ document records as LANDED.** A status line that contradicts its own body is the
 defect phase-419 W2's gate exists for; it caught none of this, because every
 contradiction here was prose against prose.
 
-| stage | state (measured 2026-09-13) | what it was measured against |
+| stage | state (measured 2026-09-13; stages 4 and 5 re-measured 2026-09-18) | what it was measured against |
 | --- | --- | --- |
 | 0 — the instrument | **LANDED** | `disposition` is a live ledger field (16 `gap` rows carry one); `just check api-parity` runs `--require-disposition` (`just/check/lanes.just:47`) |
 | 1 — cheap unblockers | **LANDED** | acceptance met; `cpp-port-minimal-publisher/src/minimal_publisher.cpp` is upstream's file |
 | 2 — the node surface | **W2.b, W2.c, W2.d LANDED; only W2.a open** | `set_parameter<T>` on the node (`node.hpp:829`, `:846`); `create_service`/`create_client` (`node.hpp:734`–`775`); `Rate`/`WallRate` (`nros.hpp:1062`–`1125`). W2.a is issue 0793's **C half** — the legacy `nros_param_*` store is still exported and still disjoint. The C++ half closed in phase-426 W4 |
 | 2b — graph forwarders | **LANDED** | zero `cpp:Node::*` graph rows remain `gap`; the 18 graph gaps are all `c:` and `rust:` |
 | 3 — loudness | **W3.a, W3.c, W3.e, W3.f, W3.g, W3.h LANDED; W3.b and W3.d open** | see the stage-3 items; W3.f measured at `qos.hpp:743` (`ParametersQoS` reads the QoS table) and `options.hpp:295`–`315` (the inert setters `static_assert`) |
-| 4 — our three languages agree | **OPEN — this is the remaining body of work** | 132 `gap` rows, below |
-| 5 — C | **OPEN** | `c:` rows across `graph`, `service`, `pubsub`, `log`, `timer` |
+| 4 — our three languages agree | **EVERY NAMED WORK ITEM LANDED (W4.a–W4.f, the last four on 2026-09-18); what is left is row-level, not item-level** | 80 `gap` rows on 2026-09-18, down from 132 on 2026-09-13 — the table below |
+| 5 — C | **EVERY NAMED WORK ITEM LANDED (W5.a–W5.e)** | 24 `c:` `gap` rows remain: `graph` 8, `pubsub` 6, `service` 6, `log` 2, `lifecycle` 1 (`c:lifecycle_change_state`, open on purpose), `node` 1 |
 | 6 — the rename | **BOTH STEPS LANDED** | `rclcpp_compat.hpp` is gone; `deprecate-legacy-names` is retired (`nros-node/Cargo.toml:48` records it in the past tense); the `nros_node_init` forwarder is retired (`rcl_compat.h:299`) |
+
+**The stage-4 and stage-5 rows said OPEN until 2026-09-18, and by then no work
+item under either was open.** Four waves landed in four separate PRs — W5.e
+(#1059), W4.e (#1064), W4.b (#1065), W4.f (#1067) — each correctly updating its own bullet and
+deliberately not touching the shared summary lines, because a shared line is a
+merge-queue conflict site and the queue ejects every entry behind a conflict.
+The cost of that discipline is this: the summary is the LAST thing anyone
+updates and the first thing a reader believes. It is re-derived here from the
+per-item state, in one tree, with all four in it.
 
 **Stage 6 was never gated on stage 4 or 5, and it went first.** The old status
 line said the rename was "gated on stage 3 AND on the structural blocker"; both
@@ -366,10 +375,16 @@ shape `check c` / `check cpp` already use.
 
 ## Stage 4 — make our own three languages agree
 
-**This is the remaining body of work in the campaign**, with stage 5. A
-per-language drop-in claim is undermined while our own surfaces disagree about
+A per-language drop-in claim is undermined while our own surfaces disagree about
 the same capability. 37 such disagreements are catalogued; C++ is the odd one
 out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
+
+**All six work items below are LANDED as of 2026-09-18** (W4.a and W4.b's first
+half on 2026-09-13; W4.b's second half, W4.e and W4.f that day). This line said
+"this is the remaining body of work in the campaign" until then, which stopped
+being true while four waves were in flight and no one wave owned the sentence.
+What is left under this stage is not an item but a row count: 56 `cpp:` and
+`rust:` gap rows in the shards above, none of which has a wave named for it.
 
 * W4.a **[wrapper]** — **LANDED 2026-09-13.** Parameters: setter, type query,
   undeclare, descriptors (ranges, read-only) in all three.
@@ -780,6 +795,19 @@ out in 15. The sweep that catalogued them is issue 0788, homed in phase-381.
   `cpp:GuardCondition::is_valid`, `cpp:Node::create_guard_condition`,
   `rust:Executor::register_guard_condition`. Upstream's free-standing
   constructor from a `Context` stays REFUSED (`cpp:WaitSet`).
+
+  **Three findings the wave surfaced and did not fix, filed 2026-09-18.**
+  Writing `node_ref.executor.is_null()` instead of `is_multi_session()` was a
+  deliberate local choice, and the comment explaining it is what led back to
+  the other three sites that make the wrong choice — **issue 1384**, where a
+  single-node C image reads as a legacy node and every eager entity create
+  fails. Installing the backend wake callback on the C path was NOT done,
+  because `Executor::drop` never clears one and the C session outlives the
+  executor — **issue 1385**, two coupled defects in a fixed order. And the
+  `NROS_RET_STALE_NODE` this verb's own `# Returns` block documents cannot be
+  produced, because the liveness check compares a freshly-read generation with
+  itself — **issue 1386**. All three are reproduced against this tree, not
+  reasoned from it.
 * W4.f **[wrapper]** — **lifecycle, 15 rows, added 2026-09-13. LANDED
   2026-09-18: 14 of 15 closed, plus the `param.json` glob W4.a left here.**
   The shard was the third largest and no work item named it. `register_on_*`
@@ -1453,36 +1481,58 @@ against, so the next bump invalidates rows instead of silently outdating them.
 
 ### The `gap` rows are the queue, and this phase counts them
 
-**132 `gap` rows, measured 2026-09-13 straight off
-`docs/reference/api-parity-ledger/*.json`: C 39, C++ 58, Rust 35.**
+**80 `gap` rows, measured 2026-09-18 straight off
+`docs/reference/api-parity-ledger/*.json`: C 24, C++ 28, Rust 28.** The
+2026-09-13 measurement it replaces was **132: C 39, C++ 58, Rust 35**, and both
+lines stay, because the movement is the point and a single undated number is
+what went wrong here before.
 
-| shard | gaps | owner |
-| --- | ---: | --- |
-| pubsub | 29 | stage 4 / stage 5; most need the BACKEND to answer |
-| param | 27 | **stage 4 W4.a**, which enumerates them |
-| graph | 18 | stage 5 (`c:`, 8) and stage 4 (`rust:`, 10); the backend half is phase-444 W3 |
-| lifecycle | 15 | stage 4 W4.f |
-| service | 14 | stage 4 / stage 5 (W5.e) |
-| log | 8 | stage 4 W4.d |
-| timer | 6 | stage 4 / stage 5 (W5.c) |
-| action | ~~5~~ **0** | **stage 4 W4.b — CLOSED**, the first shard to reach zero |
-| qos | 3 | stage 4 |
-| init | 2 | W3.b's honouring half, and `rust:Context::domain_id` |
-| other | 2 | `rust:Session::serialization_format`, `cpp:State::label` |
-| exec, node, boot | 1 each | `cpp:Executor::spin_once` (carries `refuse-loud`), `c:node_get_graph_guard_condition`, `rust:BOOT_SET_NAMESPACE` |
+| shard | gaps 2026-09-13 | gaps 2026-09-18 | c / cpp / rust today | owner |
+| --- | ---: | ---: | --- | --- |
+| pubsub | 29 | 29 | 6 / 16 / 7 | stage 4 / stage 5; most need the BACKEND to answer |
+| graph | 18 | 18 | 8 / 0 / 10 | stage 5 (`c:`, 8) and stage 4 (`rust:`, 10); the backend half is phase-444 W3 |
+| service | 14 | 14 | 6 / 5 / 3 | stage 4 / stage 5; W5.e LANDED and closed none of these — it moved eleven services off hand-written CDR |
+| param | 27 | **0** | — | **stage 4 W4.a — CLOSED**, and W4.f took the last row (a `cpp:LifecycleNode` glob) with it |
+| lifecycle | 15 | **1** | 1 / 0 / 0 | **stage 4 W4.f**; the one left is `c:lifecycle_change_state`, open on purpose (see the item) |
+| log | 8 | **4** | 2 / 0 / 2 | stage 4 W4.d |
+| timer | 6 | **4** | 0 / 2 / 2 | stage 4 / stage 5 (W5.c) |
+| action | 5 | **0** | — | **stage 4 W4.b — CLOSED**, the first shard to reach zero |
+| qos | 3 | 3 | 0 / 3 / 0 | stage 4 |
+| init | 2 | 2 | 0 / 0 / 2 | W3.b's honouring half, and `rust:Context::domain_id` |
+| other | 2 | 2 | 0 / 1 / 1 | `rust:Session::serialization_format`, `cpp:State::label` |
+| exec, node, boot | 1 each | 1 each | — | `cpp:Executor::spin_once` (carries `refuse-loud`), `c:node_get_graph_guard_condition`, `rust:BOOT_SET_NAMESPACE` |
+
+**The `log` 8 and the `timer` 6 were stale within hours of being written.** The
+2026-09-13 snapshot predates W4.d and W5.c, which landed later the SAME day and
+took those shards to 4 and 4 (`git merge-base --is-ancestor` on the three
+commits says so). Neither wave updated this table, because neither wave's own
+bullet is this table. That is the argument for re-deriving all of it at once
+rather than editing the row you happen to be standing on: a per-row edit cannot
+see the rows nobody is standing on.
 
 **The count is the phase's own, not an inherited one, and that is the fix for
 what went wrong here.** This section previously carried phase-379's 158 and a
 pointer to phase-444's 149, neither re-derived; the true figure moved twice
 while the pointer stayed put, because the stage-3 loudness waves DELETE rows
 when they land. `python3 -c` over the ledger takes a second and is the only
-number worth writing down. 16 of the 132 carry a disposition; the rest record a
-missing name and nothing else.
+number worth writing down. 16 of the 80 carry a disposition (the same 16 that
+did at 132 — no wave has added one since); the rest record a missing name and
+nothing else.
 
 For context, the trajectory: phase-379 measured **158** (C++ 82, C 41, Rust 35);
 the 2026-09-11 truth pass found 20 of those already closed and 5 mis-verdicted,
 giving **149**; the three stage-3 waves that landed on 2026-09-11 removed a
-further 17, giving **132**.
+further 17, giving **132** (2026-09-13); W4.d and W5.c took `log` and `timer`
+down 6 and W4.b emptied `action`, giving **95** (C 24, C++ 43, Rust 28 —
+measured mid-round by W4.b, which updated only its own row to keep four
+sibling waves out of one merge-queue conflict); W4.f then closed 14 lifecycle
+rows and the `param` glob, giving **80** (2026-09-18).
+
+Every figure in that chain reproduces from the ledger at the commit that
+recorded it — `verdict == "gap"` over `docs/reference/api-parity-ledger/*.json`,
+counting `_doc` out and splitting the key on its language prefix. The 132 and
+the 95 were re-derived that way before the 80 was written, so the three are
+comparable rather than three people's definitions of a gap.
 
 **The precedent for how one closes.** `node_get_fully_qualified_name` shipped
 for all three languages in PR #567. What made it worth more than the row: the
@@ -1540,8 +1590,9 @@ owner. **Statuses re-read against `docs/issues/` on 2026-09-13** — five rows h
 described open work over a resolved-and-archived issue, which is the table doing
 the opposite of its job.
 
-**OPEN and owned here: 0793, 1042, 1302, 1303.** That is the whole live set;
-everything else in this table is kept as the record of what closing it meant.
+**OPEN and owned here: 0793, 1042, 1302, 1303, and — filed 2026-09-18 out of the
+stage-4/5 waves — 1384, 1385, 1386.** That is the whole live set; everything
+else in this table is kept as the record of what closing it meant.
 
 | issue | track | closing it means |
 | --- | --- | --- |
@@ -1555,6 +1606,9 @@ everything else in this table is kept as the record of what closing it meant.
 | 0829 | stage 5 — **RESOLVED, archived** (sentinel implementation, 2026-09-03) | `SYSTEM_DEFAULT` stops disagreeing with itself; folds into the named-profile transcription |
 | 1042 | correction (homed 2026-09-11) — **OPEN; the only live item on the correction track** | nine rows went false because the rclrs pin moved 0.5.1 → 0.7.0 and nothing re-measured them. Closing it means the ledger records the pin it was measured against, so the next bump invalidates rows instead of silently outdating them |
 | 0589 | stage 4 (W4.d) — **RESOLVED, archived** | the façade re-exports `nros_log`, so it is the easy path rather than `std::println!` |
+| 1384 | stage 4 (W4.e found it, outside its boundary) — **OPEN** | `is_multi_session()` stops standing in for "is this node executor-bound". The first node an executor builds takes slot 0, so a correctly bound single-node C image reads as a legacy node at four call sites: `nros_node_resolve_name` answers `NROS_RET_NOT_INIT`, every EAGER entity create fails the same way, and the launch remap table is silently dropped by a third site the second one currently masks. Measured with a stub-RMW C TU; the fix is one predicate and all four sites together |
+| 1385 | stage 4 (W4.e left it, deliberately) — **OPEN** | the C executor installs the backend wake callback the three Rust `Executor::open*` paths install — but only AFTER `Executor::drop` clears one, which it has never done although the callback's own SAFETY comment says it must. Two coupled defects with a fixed order; today a C image on zenoh or cyclone drives the transport for its full timeout where a Rust image is woken |
+| 1386 | stage 4 (W4.e's new verb documents the verdict) — **OPEN** | three `NROS_RET_STALE_NODE` arms become reachable. `node_ref_is_live(node_ref_of(node))` mints the generation it then compares against, so the check is constant true and `rcl_node_is_valid`'s documented generation test does nothing. Cheapest fixed with 1384 |
 | 1126 | correction — CLOSED | `nros_publisher_publish_streamed`'s doc (the raw entry point was never the site) stopped promising a `NROS_RET_`-prefixed `BUFFER_TOO_SMALL`; correct-the-doc won, no caller needs the two failures apart. The sweep found two more live sites and the class is now gated |
 
 ## What this phase does NOT promise
@@ -1568,7 +1622,7 @@ a ROS 2 node is actually written in compile and behave, everything else fails
 loudly — and the in-tree ported templates are the measurement.
 
 
-## Where the remaining work lives — re-measured 2026-09-13
+## Where the remaining work lives — re-measured 2026-09-13, again 2026-09-18
 
 Stage 6's rename is done for the call sites (step B) and the forwarders (W-B5).
 The three phases this section spun out are **all finished**, which is a change
@@ -1587,14 +1641,22 @@ since it was written on 2026-09-05:
   of those waves landed here on 2026-09-11.
 
 **So the remaining drop-in-replacement work is stages 4 and 5 of this document,
-and nothing else.** Stage 4 is the larger half by row count and the one a ported
-program notices: our own C, C++ and Rust surfaces disagree about the same
-capability in 37 places, and the queue is the 132 `gap` rows above — parameters
-(W4.a, 27), lifecycle (W4.f, 15), logging (W4.d, 8), actions (W4.b, 5 -> 0, closed),
-executor (W4.c) and guard conditions (W4.e). Stage 5 is the C surface: typed
-subscription delivery, the `RCL_RET_*` mapping, rclc-shaped presets, a typed
-service path. Everything else on this phase is bookkeeping: three issues
-(1042, 1302, 1303) plus 0793's C half, and one changelog entry.
+and nothing else — but as of 2026-09-18 it is no longer WORK ITEMS.** Every
+named wave under both stages has landed: parameters (W4.a, 27 rows), actions
+(W4.b, 5 -> 0), executor (W4.c), logging (W4.d), guard conditions (W4.e),
+lifecycle (W4.f, 15 -> 1), and stage 5's W5.a–W5.e (typed subscription
+delivery, the `RCL_RET_*` mapping, rclc-shaped presets, a typed service path).
+
+What is left is the residual row queue — **80 `gap` rows, C 24 / C++ 28 /
+Rust 28**, down from 132 on 2026-09-13 — concentrated in three shards nobody
+has a wave for: `pubsub` (29, most needing the BACKEND to answer), `graph` (18,
+whose backend half is phase-444 W3) and `service` (14). Sizing those three is
+the next planning decision this phase owes, and it is a different kind of
+decision from the six waves above: they were wrapper work over behaviour we
+already had, and these are not.
+
+Everything else on this phase is bookkeeping: three issues (1042, 1302, 1303)
+plus 0793's C half, and one changelog entry.
 
 The `#3 batch` (34 `declined` rows the spelling decision flips to `adopt`) stays
 here, and W-B6's changelog entry now has phase-427's two loudness items to carry
