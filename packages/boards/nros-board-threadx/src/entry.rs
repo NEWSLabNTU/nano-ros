@@ -338,7 +338,7 @@ where
 fn start_pool_peak_reporter<B: BoardPrint>() {
     let rc = unsafe {
         nros_threadx_create_task(
-            c"nros_pool_peak".as_ptr() as *const u8,
+            c"nros_pool_peak".as_ptr().cast(),
             pool_peak_task_entry::<B>,
             core::ptr::null_mut(),
             POOL_PEAK_STACK_BYTES,
