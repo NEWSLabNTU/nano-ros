@@ -25,6 +25,41 @@ question once, cheaply, at the one moment it is still cheap to answer.
 
 It is deliberately BUILDLESS — TOML and a manifest read, no cargo — so it runs
 on the fast line and does not depend on a build succeeding.
+
+WHICH NAMES IT READS, and why that changed (issue 1362, corrected 2026-09-18).
+
+This gate first read `platform = "…"` out of `examples/fixtures.toml`. That is
+the wrong population, and it put three false entries in the baseline below.
+
+A fixture row's `platform` is a COORDINATE LABEL — it names the lane cell and
+feeds `build_subdir` — and it is not what any build looks a descriptor up by.
+`NROS_PLATFORM_NAME` is emitted by `nros ws board-facts` from
+`descriptor.platform` (`nros-cli-core/src/cmd/board_facts.rs`), i.e. the
+`platform = "…"` a BOARD declares. The two disagree on purpose:
+
+    fixtures row              board declares      reaches the lookup
+    platform = "freertos-posix"   freertos            freertos
+    platform = "nuttx-riscv"      nuttx               nuttx
+    platform = "zephyr-cortex-m"  zephyr              zephyr
+
+MEASURED through the live path, not read off the files:
+
+    $ nros ws board-facts …/c/src/demo_bringup --board freertos-posix
+    NROS_PLATFORM_NAME=freertos
+    $ nros ws board-facts …/realtime-cpp/src/demo_bringup --board rv-virt-nuttx
+    NROS_PLATFORM_NAME=nuttx
+    $ nros ws board-facts …/features/src/demo_bringup --board zephyr
+    NROS_PLATFORM_NAME=zephyr
+
+So none of those three ever fell through, and baselining them recorded work
+that did not exist. The original measurement looked convincing and was
+circular: it EXPORTED `NROS_PLATFORM_NAME=freertos-posix` by hand and observed
+`or_builtin_rungs` warn — which proves the lookup answers an unknown name, not
+that any build ever asks it one.
+
+It still catches issue 1145: `nros-board-threadx-linux` declares
+`platform = "threadx-linux"`, so that name IS in this population, and reverting
+the threadx descriptor fix reports both threadx names again.
 """
 
 import os
@@ -37,8 +72,8 @@ except ModuleNotFoundError:  # py<3.11
     import tomli as tomllib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FIXTURES = os.path.join(ROOT, "examples", "fixtures.toml")
 PLATFORM_DIR = os.path.join(ROOT, "packages", "platform")
+BOARDS_DIR = os.path.join(ROOT, "packages", "boards")
 
 
 def declared_names(platform_dir=PLATFORM_DIR):
@@ -57,36 +92,80 @@ def declared_names(platform_dir=PLATFORM_DIR):
     return out
 
 
-def used_names(fixtures=FIXTURES):
-    """Every `platform = "X"` a fixture row names."""
-    if not os.path.isfile(fixtures):
-        return set()
-    with open(fixtures, encoding="utf8") as fh:
-        return set(re.findall(r'^\s*platform\s*=\s*"([^"]+)"', fh.read(), re.M))
+def looked_up_names(boards_dir=BOARDS_DIR):
+    """Every `platform = "X"` a BOARD declares -> the board files that declare it.
+
+    This is the population `NROS_PLATFORM_NAME` is drawn from, so it is the
+    population a descriptor has to answer. See the module docstring for why it
+    is not `examples/fixtures.toml`.
+    """
+    out = {}
+    if not os.path.isdir(boards_dir):
+        return out
+    for entry in sorted(os.listdir(boards_dir)):
+        path = os.path.join(boards_dir, entry, "nros-board.toml")
+        if not os.path.isfile(path):
+            continue
+        with open(path, "rb") as fh:
+            doc = tomllib.load(fh)
+        # `[[board]]` is an ARRAY of tables: one file may describe several
+        # boards, and they need not share a platform. Reading a top-level
+        # `platform` key finds nothing here — every declaration is inside an
+        # element.
+        for board in doc.get("board", []):
+            if not isinstance(board, dict):
+                continue
+            name = board.get("platform")
+            if isinstance(name, str) and name:
+                rel = os.path.relpath(path, ROOT)
+                if rel not in out.setdefault(name, []):
+                    out[name].append(rel)
+    return out
 
 
 # Names that are NOT platform-descriptor names. `native` is a ROLE (this is the
 # host build), not a software stack; CLAUDE.md's Naming section is explicit that
-# it is not a synonym for a reach. A row spelling one of these is answered by
-# the host path, which has no descriptor to find.
-NOT_A_DESCRIPTOR_NAME = {"native", "linux"}
+# it is not a synonym for a reach.
+#
+# EMPTY since the population became board-declared (issue 1362). It held
+# `{"native", "linux"}` to excuse fixture ROWS that spelled a role in their
+# coordinate label. No board declares either — `packages/boards/linux` declares
+# `platform = "posix"`, correctly — and a board that did would be making the
+# very claim CLAUDE.md forbids, which this gate should report rather than
+# excuse. Kept as a named seam, not deleted, because the next reader will
+# otherwise re-derive the question.
+NOT_A_DESCRIPTOR_NAME = frozenset()
 
 # A RATCHET, not an allowlist: this set may only SHRINK (issue 1362).
 #
-# These five fall through to the builtin knobs today — MEASURED, three
-# `cargo:warning` lines each (executor, params, memory), the same three
-# `or_builtin_rungs` call sites. They are baselined rather than fixed in the
-# same commit as threadx, because "add the name to a descriptor" is not a
-# no-op: it swaps builtin knob values for that descriptor's, and doing that to
-# four platforms on the strength of an assumption is how one fixed regression
-# becomes four new ones. `esp32` and `baremetal` have no platform package at
-# all, so for them it is not even a name — it is a decision.
+# TWO entries, down from five. The other three — `freertos-posix`,
+# `nuttx-riscv`, `zephyr-cortex-m` — were never fall-throughs at all: they are
+# fixture COORDINATE labels, and their boards declare `freertos` / `nuttx` /
+# `zephyr`, each already answered. See the module docstring for the measurement
+# that retired them.
+#
+# These two are real. Each is a `platform = "…"` a board declares and no
+# descriptor lists, so their builds take the BUILTIN knobs — three
+# `cargo:warning` lines each (executor, params, memory), the three
+# `or_builtin_rungs` call sites:
+#
+#   esp32       packages/boards/nros-board-esp32-qemu/nros-board.toml
+#   bare-metal  packages/boards/nros-board-mps2-an385/nros-board.toml
+#
+# Neither has a platform package, so neither is a missing NAME — it is a
+# decision: does it get a descriptor, or is falling through to builtins the
+# correct answer for a target with no RTOS to describe? `bare-metal` is the
+# clearer case for "correct as is"; `esp32` has an RTOS (ESP-IDF's FreeRTOS)
+# and so probably wants one. Both need their knobs compared on a built image
+# before either is claimed.
+#
+# NOTE the spelling. The board declares `bare-metal`; `examples/fixtures.toml`
+# labels the same rows `baremetal`. The old baseline carried the fixtures
+# spelling, so even its one real entry named a string this population never
+# produces.
 BASELINE_UNANSWERED = {
-    "baremetal",
+    "bare-metal",
     "esp32",
-    "freertos-posix",
-    "nuttx-riscv",
-    "zephyr-cortex-m",
 }
 
 
@@ -106,11 +185,17 @@ def self_test():
     """A gate nobody has watched fail reads exactly like one that passes."""
     cases = [
         # (used, declared, expected findings)
+        # issue 1145, the catch this gate exists for: the threadx descriptor
+        # answering only to "threadx" while a board declares "threadx-linux".
         ({"threadx-linux"}, {"threadx": "f"}, ["threadx-linux"]),
         ({"threadx-linux"}, {"threadx-linux": "f"}, []),
         ({"freertos", "freertos-lwip"}, {"freertos": "f", "freertos-lwip": "f"}, []),
-        ({"native"}, {}, []),           # a ROLE, never a descriptor name
         ({"zephyr", "nuttx"}, {"zephyr": "f"}, ["nuttx"]),
+        # issue 1362's correction: a fixture COORDINATE label is not in this
+        # population at all, so it can never be reported. `freertos-posix` is a
+        # fixtures label whose board declares `freertos`; what the gate sees is
+        # the board's name, and that one is answered.
+        ({"freertos"}, {"freertos": "f"}, []),
     ]
     # The ratchet: a baselined name is silent, and stops being baselined the
     # moment a descriptor answers it.
@@ -138,7 +223,8 @@ def main():
         return 1
 
     declared = declared_names()
-    used = used_names()
+    used_map = looked_up_names()
+    used = set(used_map)
     stale = stale_baseline(used, declared, BASELINE_UNANSWERED)
     if stale:
         print("check-platform-name-answered: FAIL — the baseline is STALE.", file=sys.stderr)
@@ -153,7 +239,8 @@ def main():
         print("check-platform-name-answered: FAIL — platform name(s) no descriptor answers to:",
               file=sys.stderr)
         for name in bad:
-            print(f"  {name!r} is used by a fixture row, and no "
+            where = ", ".join(used_map.get(name, []))
+            print(f"  {name!r} is declared by {where or 'a board'}, and no "
                   f"packages/platform/*/nros-platform.toml lists it in `names`.", file=sys.stderr)
         print("\n  An unanswered name is NOT fatal at build time — it warns and falls", file=sys.stderr)
         print("  through to the BUILTIN knob defaults, which are not that platform's", file=sys.stderr)
@@ -161,9 +248,10 @@ def main():
         print("  Add the name to that platform's `names`, the way `freertos` carries", file=sys.stderr)
         print("  `freertos-lwip`. names[0] stays canonical.", file=sys.stderr)
         return 1
-    print(f"check-platform-name-answered: OK ({len(used)} platform name(s) in fixtures, "
-          f"{len(declared)} answered by a descriptor, "
-          f"{len(BASELINE_UNANSWERED)} baselined — issue 1362)")
+    answered = sum(1 for n in used if n in declared)
+    print(f"check-platform-name-answered: OK ({len(used)} platform name(s) declared by "
+          f"boards: {answered} answered, {len(BASELINE_UNANSWERED)} baselined — issue 1362; "
+          f"descriptors answer to {len(declared)} name(s))")
     return 0
 
 
