@@ -340,16 +340,15 @@ impl Endpoint {
     /// actually claims at registration.
     ///
     /// [`storage_bytes`](Self::storage_bytes) is the whole region priced at the
-    /// TYPE'S bound, which is the right number for two of the four registration
-    /// paths and 1,848 bytes per subscription too small for the other two. This
+    /// TYPE'S bound, which is the right number for two of the three registration
+    /// paths and 1,848 bytes per subscription too small for the third. This
     /// is the per-slot half, and it is the half that turns on the path:
     ///
     /// | path | slot |
     /// | --- | --- |
-    /// | `c_typed_hint` | the type's own `_RX` |
-    /// | `rust_typed_descriptors` | `min(framed(bound), RX_BUF)` — at or below it |
-    /// | `rust_typed_schemaless` | `closure_buffer_bytes` |
-    /// | `c_raw_no_hint` | `closure_buffer_bytes` |
+    /// | `in_place` | the type's own bound — an over-statement (issue 1340) |
+    /// | `typed_bound` | the type's own `_RX` / `min(framed(bound), RX_BUF)` |
+    /// | `unbounded` | `closure_buffer_bytes` |
     ///
     /// `closure_buffer_bytes` is the consumer's `RX_BUF` — `DEFAULT_RX_BUF_SIZE`
     /// in the executor, `NROS_SUBSCRIPTION_BUFFER_SIZE` on the wire. It is not a
@@ -906,15 +905,15 @@ mod slot_table_tests {
     }
 
     /// The whole of issue 1319, as a table. Two rows take the type's bound and
-    /// two take the closure buffer; nothing else decides it.
+    /// one takes the closure buffer; nothing else decides it. (Four rows before
+    /// phase-456 W8 — the two that collapsed differed only in who called.)
     #[test]
     fn each_registration_path_claims_what_issue_1319_measured() {
         let bound = 700;
         for (path, expected) in [
-            (RegistrationPath::CTypedHint, bound),
-            (RegistrationPath::RustTypedDescriptors, bound),
-            (RegistrationPath::RustTypedSchemaless, CLOSURE),
-            (RegistrationPath::CRawNoHint, CLOSURE),
+            (RegistrationPath::TypedBound, bound),
+            (RegistrationPath::InPlace, bound),
+            (RegistrationPath::Unbounded, CLOSURE),
         ] {
             let ep = sub(Some(path), Some(bound));
             assert_eq!(
@@ -932,19 +931,13 @@ mod slot_table_tests {
         }
     }
 
-    /// The gap, priced. A schemaless row and a descriptor-carrying row over the
-    /// SAME type differ by exactly what the issue measured, and the model used
-    /// to charge both the smaller one.
+    /// The gap, priced. An unbounded row and a bound-stating row over the SAME
+    /// type differ by exactly what the issue measured, and the model used to
+    /// charge both the smaller one.
     #[test]
-    fn the_two_schemaless_rows_are_the_measured_gap_above_the_type_bound() {
-        let typed = sub(
-            Some(RegistrationPath::RustTypedDescriptors),
-            Some(SUBSCRIBED_CLASS),
-        );
-        let schemaless = sub(
-            Some(RegistrationPath::RustTypedSchemaless),
-            Some(SUBSCRIBED_CLASS),
-        );
+    fn the_unbounded_row_is_the_measured_gap_above_the_type_bound() {
+        let typed = sub(Some(RegistrationPath::TypedBound), Some(SUBSCRIBED_CLASS));
+        let schemaless = sub(Some(RegistrationPath::Unbounded), Some(SUBSCRIBED_CLASS));
         let typed = typed.claimed_slot_bytes(CLOSURE, SUBSCRIBED_CLASS).get();
         let schemaless = schemaless
             .claimed_slot_bytes(CLOSURE, SUBSCRIBED_CLASS)
@@ -961,7 +954,7 @@ mod slot_table_tests {
     /// `nros-node/build.rs` applies to `NROS_SUBSCRIBED_TYPE_BOUNDS`.
     #[test]
     fn an_unpriced_type_keeps_the_image_wide_class_rather_than_zero() {
-        let mut ep = sub(Some(RegistrationPath::CTypedHint), None);
+        let mut ep = sub(Some(RegistrationPath::TypedBound), None);
         ep.refuse("wire_bound_bytes", "`demo_msgs/msg/Mystery` was not priced");
         assert_eq!(
             ep.claimed_slot_bytes(CLOSURE, SUBSCRIBED_CLASS).stated(),
@@ -1003,7 +996,7 @@ mod slot_table_tests {
     #[test]
     fn a_kind_that_receives_no_topic_sample_claims_no_slot() {
         let mut ep = Endpoint::new(EndpointKind::Publisher, "std_msgs/msg/String", "/chatter");
-        ep.set_registration_path(Some(RegistrationPath::RustTypedSchemaless))
+        ep.set_registration_path(Some(RegistrationPath::Unbounded))
             .set_wire_bound_bytes(Some(700));
         assert_eq!(
             ep.claimed_slot_bytes(CLOSURE, SUBSCRIBED_CLASS).tag(),

@@ -17,22 +17,22 @@ use super::types::ExecutorConfig;
 // `alloc`-gated (a bare-metal entry is exactly the caller that needs it).
 use super::{
     arena::{
-        BufferStrategy, CALLBACK_CAPTURE_BYTES, CallbackMeta, EntryKind, GuardConditionEntry,
-        ServiceClientCallbackEntry, ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry,
-        SrvRawEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
-        SubBufferedRawInfoCEntry, SubBufferedRawInfoEntry, SubBufferedTypedCEntry,
-        SubBufferedViewEntry, SubInfoEntry, SubInplaceEntry, TimerClockSource, TimerEntry,
-        TimerHeader, TimerOverrunPolicy, TraceName, always_ready, buffered_region_size, drop_entry,
-        guard_has_data, guard_try_process, no_pre_sample, service_client_callback_try_process,
-        service_client_raw_try_process, srv_has_data, srv_raw_has_data, srv_raw_try_process,
-        srv_try_process, sub_buffered_has_data, sub_buffered_raw_c_has_data,
-        sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
-        sub_buffered_raw_info_c_has_data, sub_buffered_raw_info_c_try_process,
-        sub_buffered_raw_info_has_data, sub_buffered_raw_info_try_process,
-        sub_buffered_raw_try_process, sub_buffered_try_process, sub_buffered_typed_c_has_data,
-        sub_buffered_typed_c_try_process, sub_buffered_view_has_data,
-        sub_buffered_view_try_process, sub_info_has_data, sub_info_pre_sample,
-        sub_info_try_process, sub_inplace_has_data, sub_inplace_try_process, timer_try_process,
+        BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientCallbackEntry,
+        ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry, SrvRawEntry,
+        SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry, SubBufferedRawInfoCEntry,
+        SubBufferedRawInfoEntry, SubBufferedTypedCEntry, SubBufferedViewEntry, SubInfoEntry,
+        SubInplaceEntry, TimerClockSource, TimerEntry, TimerHeader, TimerOverrunPolicy, TraceName,
+        always_ready, buffered_region_size, drop_entry, guard_has_data, guard_try_process,
+        no_pre_sample, service_client_callback_try_process, service_client_raw_try_process,
+        srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process,
+        sub_buffered_has_data, sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process,
+        sub_buffered_raw_has_data, sub_buffered_raw_info_c_has_data,
+        sub_buffered_raw_info_c_try_process, sub_buffered_raw_info_has_data,
+        sub_buffered_raw_info_try_process, sub_buffered_raw_try_process, sub_buffered_try_process,
+        sub_buffered_typed_c_has_data, sub_buffered_typed_c_try_process,
+        sub_buffered_view_has_data, sub_buffered_view_try_process, sub_info_has_data,
+        sub_info_pre_sample, sub_info_try_process, sub_inplace_has_data, sub_inplace_try_process,
+        timer_try_process,
     },
     node::NodeHandle,
     spsc_ring::SpscRing,
@@ -44,6 +44,89 @@ use super::{
         SpinPeriodPollingResult, Trigger, TypedSubscriptionCallback,
     },
 };
+
+// ============================================================================
+// phase-456 W8 — one subscription registration, stated as one value
+// ============================================================================
+
+/// What a subscription registration STATES — phase-456 W8.
+///
+/// The thirteen `register_subscription_*` / `add_arena_subscription_*` entry
+/// points differ in their DELIVERY SHAPE (typed, raw, borrowed, with-info,
+/// validated) and used to differ in their LANGUAGE, and each re-derived the
+/// same prologue from positional parameters: node identity, topic info, the
+/// declared-depth check, the backend call. Twelve copies of it, and exactly
+/// ONE of them asked the backend whether it dispatches in place.
+///
+/// This is that prologue's argument, as one value. A struct rather than nine
+/// parameters because the fields are independently optional and a caller must
+/// be able to say "I state nothing here" without reordering a call — the same
+/// reason `DescriptorInputs` is a struct one layer up.
+///
+/// Two of its fields are the axes phase-456 W8 found under issue 1319's five
+/// rows: [`backend_hint`](Self::backend_hint) is "does this site know the
+/// type's bound", and [`in_place_capable`](Self::in_place_capable) is what
+/// lets `Executor::open_subscription` ask the third axis once, for every
+/// caller, in every language.
+pub(crate) struct SubscriptionRequest<'a> {
+    /// `None` is the legacy single-node path: identity comes from the
+    /// executor's own name and namespace and the session is slot 0.
+    pub(crate) node_id: Option<super::node_record::NodeId>,
+    pub(crate) topic_name: &'a str,
+    pub(crate) type_name: &'a str,
+    pub(crate) type_hash: &'a str,
+    pub(crate) qos: QoSProfile,
+    /// Bytes the CALL SITE says it expects to receive, for the BACKEND's
+    /// payload size class (phase-231 / RFC-0038, phase-402 W2).
+    ///
+    /// `None` — and, for a C caller whose ABI spells it `0`, a zero — means
+    /// "this site stated nothing", which is a different claim from "zero
+    /// bytes": `with_rx_buffer_hint(0)` would be the second.
+    pub(crate) backend_hint: Option<usize>,
+    /// Bytes ONE receive slot claims from the arena, already derived by the
+    /// caller that has the type.
+    ///
+    /// Not the same number as [`Self::backend_hint`] — the typed Rust path
+    /// hints the type's bound and sizes the slot from
+    /// `default_subscription_rx_bytes`, which may differ — so both travel.
+    /// Ignored entirely when [`SubscriptionOpen::in_place`] comes back true.
+    pub(crate) slot_bytes: usize,
+    /// Can THIS delivery shape dispatch out of the backend's own receive slot?
+    ///
+    /// A property of the shape, not of the backend: `process_raw_in_place`
+    /// hands the callback borrowed BYTES and nothing else, so a shape that
+    /// must also deliver a wire attachment (`_info`), an integrity status
+    /// (`_validated` / `_safety`) or a `MessageInfo` cannot use it however
+    /// capable the backend is. Stated per call site so an omission is a line
+    /// someone wrote rather than a question nobody asked — which is exactly
+    /// what the C path was before W8.
+    pub(crate) in_place_capable: bool,
+}
+
+/// The result of `Executor::open_subscription`: a claimed slot, a live backend
+/// subscriber, and the ONE answer to the in-place question.
+pub(crate) struct SubscriptionOpen {
+    /// The claimed entry slot. Claimed BEFORE the fallible work, per
+    /// `Executor::emplace_entry`'s rule.
+    pub(crate) slot: usize,
+    pub(crate) handle: session::RmwSubscriber,
+    /// **The only place in this crate that
+    /// `Subscription::supports_process_in_place` is read.**
+    ///
+    /// Before phase-456 W8 the read lived inside
+    /// `register_subscription_buffered_on`, which is the Rust typed path and
+    /// only that: every C and C++ subscription on zenoh or XRCE therefore
+    /// allocated a receive region the backend does not need, at the same order
+    /// as issue 1340's ~9.7 KiB per subscription. The irony phase-456 W8
+    /// measured is that the C callback is the BETTER candidate —
+    /// `RawSubscriptionCallback` is already `(const uint8_t*, size_t, void*)`,
+    /// a borrowed-bytes signature, where the Rust typed path has to produce an
+    /// owned `&M` from somewhere.
+    pub(crate) in_place: bool,
+    /// [`SubscriptionRequest::slot_bytes`], carried through so a caller's arena
+    /// arithmetic reads ONE local rather than re-deriving it.
+    pub(crate) slot_bytes: usize,
+}
 
 // ============================================================================
 // Phase 8 — callback registration event (paired stubs)
@@ -4739,6 +4822,93 @@ impl<'s> Executor<'s> {
         Ok(aligned_offset)
     }
 
+    /// Bump-allocate `size` bytes at `align` — phase-456 W8.
+    ///
+    /// The byte-shaped sibling of [`Self::arena_alloc`], for a region whose
+    /// length is a RUNTIME value rather than a type's size. Exactly one caller
+    /// today, [`Self::stow_capture`], and that is the point: a C++ callback's
+    /// capture is as long as that callback is, and pricing it as a constant is
+    /// what made the constant an ABI agreement between two languages.
+    pub(crate) fn arena_alloc_bytes(
+        &mut self,
+        size: usize,
+        align: usize,
+    ) -> Result<usize, NodeError> {
+        debug_assert!(
+            align.is_power_of_two(),
+            "arena alignment must be a power of two"
+        );
+        let aligned_offset = self.arena_used.next_multiple_of(align);
+        let new_used = aligned_offset + size;
+        if new_used > self.arena.len() {
+            super::arena::report_arena_exhausted(
+                "callback capture",
+                new_used - self.arena.len(),
+                self.arena_used,
+                self.arena.len(),
+            );
+            crate::boot_report::note_alloc_failed(size, new_used - self.arena.len());
+            return Err(NodeError::BufferTooSmall);
+        }
+        self.arena_used = new_used;
+        crate::boot_report::note_alloc(size, new_used);
+        Ok(aligned_offset)
+    }
+
+    /// Copy a caller's callback CAPTURE into the arena and return the context
+    /// pointer the entry should dispatch with — phase-456 W1, made a runtime
+    /// length by W8.
+    ///
+    /// `context` is one pointer. That carries a C++ `[this]` capture and not a
+    /// `[this, state]` (two) or a `[obj, method]` (three, because a
+    /// pointer-to-member-function is two words on the Itanium ABI) — the
+    /// distribution phase-442 W0 measured over this tree and the porting corpus.
+    /// A caller that cannot fit its capture in a pointer had to put it
+    /// somewhere, and every answer on the C++ side was an allocation or an
+    /// object the arena would then hold by address.
+    ///
+    /// So the capture lives HERE, beside the registration that uses it: arena
+    /// bytes never move once allocated, and the returned pointer is into them
+    /// rather than into anything of the caller's, so the C++ side keeps
+    /// nothing.
+    ///
+    /// **W8 removed the fixed budget.** W1 held the capture in a
+    /// `[u8; CALLBACK_CAPTURE_BYTES]` inside the entry and refused anything
+    /// longer, where `CALLBACK_CAPTURE_BYTES` had to equal the C++
+    /// `NROS_CPP_CALLBACK_CAPACITY` macro by construction — a number two
+    /// languages had to agree on, whose disagreement was the only way to reach
+    /// the refusal. The length now travels with the bytes, the only bound is
+    /// the arena every other entry already shares, and a non-capturing
+    /// registration stops paying 32 bytes for a field it does not use.
+    ///
+    /// `None` and an empty slice both mean "no capture", and both give the
+    /// caller's own `context` straight back, which is every pre-W1 caller.
+    fn stow_capture(
+        &mut self,
+        capture: Option<&[u8]>,
+        context: *mut core::ffi::c_void,
+    ) -> Result<*mut core::ffi::c_void, NodeError> {
+        let bytes = match capture {
+            Some(b) if !b.is_empty() => b,
+            _ => return Ok(context),
+        };
+        // A capture is pointers and scalars — a lambda's closure object, never
+        // an over-aligned type — so the arena's own `u64` grain covers it, and
+        // it is the same grain `arena_alloc_with_trailing` gives every trailing
+        // region.
+        let align = core::mem::align_of::<u64>();
+        let offset = self.arena_alloc_bytes(bytes.len(), align)?;
+        // SAFETY: `arena_alloc_bytes` returned an offset whose `bytes.len()`
+        // following bytes are inside the arena and claimed by nothing else, and
+        // `bytes` is a caller slice that cannot alias the arena (the arena is
+        // borrowed mutably by `self` for the whole call).
+        unsafe {
+            let dst = (self.arena.as_mut_ptr() as *mut u8).add(offset);
+            core::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
+            Ok(dst as *mut core::ffi::c_void)
+        }
+    }
+
     /// Bump-allocate space for `T` plus `trailing_bytes` extra bytes.
     ///
     /// Returns `(entry_offset, trailing_offset)`. The trailing region starts
@@ -4811,6 +4981,82 @@ impl<'s> Executor<'s> {
         self.entries[slot] = Some(meta);
     }
 
+    /// Open a subscription: claim a slot, resolve the node's identity, create
+    /// the backend subscriber, and answer the in-place question ONCE.
+    ///
+    /// **phase-456 W8 — the one prologue.** Every registration that creates its
+    /// own subscriber goes through here, in every language. The two callers
+    /// that do not are the two that cannot: `add_arena_subscription_callback`
+    /// is handed a subscriber someone else built (uORB needs a
+    /// `&'static orb_metadata`, which no `TopicInfo` can express), so there is
+    /// no topic to resolve and no session to reach — a fourth axis under issue
+    /// 1319's rows that W8's three-axis decomposition did not predict: WHO
+    /// CREATED THE SUBSCRIBER. It is a real axis, it is orthogonal to the other
+    /// three, and it has exactly one member.
+    ///
+    /// Everything downstream of this function differs per delivery shape: the
+    /// arena entry's type, its `try_process`, and whether it has a receive
+    /// region at all. That part is irreducible and stays at the call site.
+    pub(crate) fn open_subscription(
+        &mut self,
+        req: &SubscriptionRequest<'_>,
+    ) -> Result<SubscriptionOpen, NodeError> {
+        let slot = self.next_entry_slot()?;
+        let (node_name, ns, session_idx) = match req.node_id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                (r.name.clone(), r.namespace.clone(), r.session_idx)
+            }
+            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
+        };
+        let mut topic = TopicInfo::new(req.topic_name, req.type_name, req.type_hash)
+            .with_domain(self.domain_id)
+            .with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
+        // Phase 231 (RFC-0038) / phase-402 W2 — hand the backend a
+        // receive-buffer size so it can size-class its receive storage
+        // (zenoh-pico: small vs large). Only when the caller actually stated
+        // one: `with_rx_buffer_hint(0)` would be a claim of "zero bytes", not
+        // "no opinion".
+        if let Some(hint) = req.backend_hint {
+            if hint != 0 {
+                topic = topic.with_rx_buffer_hint(hint);
+            }
+        }
+        // phase-454 W10 — the depth this registration asks for against the
+        // depth this system DECLARED for the topic. Before the backend call,
+        // so a disagreement costs no subscription; `Ok` when nothing was
+        // declared, which is every image with no contract sidecar.
+        crate::declared_qos::check(topic.type_name, topic.name, req.qos.depth)?;
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_subscription(&topic, req.qos)
+                .map_err(NodeError::Transport)?
+        };
+        // Phase 231 Wave 0.2 (RFC-0038), phase-456 W8 — THE consulting site.
+        // Deliberately `&&`-guarded by the delivery shape rather than by the
+        // language: a shape that must hand the callback more than borrowed
+        // bytes cannot use the capability however capable the backend is.
+        let in_place = req.in_place_capable && {
+            use nros_rmw::Subscription as _;
+            handle.supports_process_in_place()
+        };
+        Ok(SubscriptionOpen {
+            slot,
+            handle,
+            in_place,
+            slot_bytes: req.slot_bytes,
+        })
+    }
+
     /// Typed buffered subscription core (the `node_mut(id).subscription(t)
     /// .typed::<M>()` builder lowers here). Routes the typed subscription
     /// through the [`NodeId`]'s session + identity (rclcpp `add_node` pattern).
@@ -4857,83 +5103,8 @@ impl<'s> Executor<'s> {
         // Phase 212.K.7.6.b — see `create_publisher_on`.
         crate::rmw_type_registry::register_type::<M>()?;
 
-        let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = {
-            let r = self
-                .nodes
-                .get(node_id.index())
-                .ok_or(NodeError::InvalidSchedContextBinding)?;
-            (r.name.clone(), r.namespace.clone(), r.session_idx)
-        };
-        let mut topic = TopicInfo::new(
-            topic_name,
-            <M as RosMessage>::TYPE_NAME,
-            <M as RosMessage>::TYPE_HASH,
-        )
-        .with_domain(self.domain_id)
-        .with_namespace(&ns)
-        // Phase 231 (RFC-0038) — hand the backend a receive-buffer size so it
-        // can size-class its receive storage (zenoh-pico: small vs large).
-        //
-        // Phase 392 W3a — the TYPE's bound, not `RX_BUF`. The arena slot size
-        // says nothing about the message: a 64-byte type and a 4 KiB type both
-        // hinted the same number, so the class was chosen from a value unrelated
-        // to what arrives. Falls back to `RX_BUF` for an unbounded type, where
-        // no bound exists to state (phase 380).
-        .with_rx_buffer_hint(crate::rmw_type_registry::subscription_rx_hint::<M>(RX_BUF));
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
         // W3b.5 — contracted-endpoint age hook (None = free).
         let age_mon = self.age_lookup::<M>(topic_name);
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
-        let handle = {
-            let session = self
-                .session_at_mut(session_idx)
-                .ok_or(NodeError::BackendMismatch)?;
-            session
-                .create_subscription(&topic, qos)
-                .map_err(NodeError::Transport)?
-        };
-
-        // Phase 231 Wave 0.2 (RFC-0038) — in-place dispatch when the backend
-        // advertises it: deserialize straight from the borrowed receive slot,
-        // no arena buffer (copy #1 removed). Else the buffered path below.
-        {
-            use nros_rmw::Subscription as _;
-            if handle.supports_process_in_place() {
-                let entry_offset = self.arena_alloc::<SubInplaceEntry<M, F>>()?;
-                unsafe {
-                    let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-                    let entry_ptr = arena_ptr.add(entry_offset) as *mut SubInplaceEntry<M, F>;
-                    core::ptr::write(
-                        entry_ptr,
-                        SubInplaceEntry {
-                            handle,
-                            callback,
-                            age_mon,
-                            _phantom: PhantomData,
-                        },
-                    );
-                }
-                let meta = CallbackMeta {
-                    offset: entry_offset,
-                    kind: EntryKind::Subscription,
-                    try_process: sub_inplace_try_process::<M, F>,
-                    has_data: sub_inplace_has_data::<M, F>,
-                    pre_sample: no_pre_sample,
-                    invocation: InvocationMode::OnNewData,
-                    drop_fn: drop_entry::<SubInplaceEntry<M, F>>,
-                };
-                self.emplace_entry(slot, meta, TraceName::Text(topic_name));
-                self.apply_node_default_sched(slot, Some(node_id), group);
-                return Ok(HandleId(slot));
-            }
-        }
 
         // Phase 403 W2 -- one number for the whole allocation. The region size,
         // the strategy's slot size and the pointer arithmetic must agree, so
@@ -4947,13 +5118,69 @@ impl<'s> Executor<'s> {
         // whichever one a wave happened to touch. An explicit `Some(n)` -- what
         // `.rx_buffer::<N>()` and `.rx_buffer_from_type()` pass -- is still
         // verbatim, so the opt-out and the opt-in both bypass this line.
-        let slot_size = match rx_bytes {
+        let slot_bytes = match rx_bytes {
             Some(n) => n,
             None => crate::rmw_type_registry::default_subscription_rx_bytes::<M>(RX_BUF)
                 .unwrap_or(RX_BUF),
         };
 
-        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, slot_size);
+        let open = self.open_subscription(&SubscriptionRequest {
+            node_id: Some(node_id),
+            topic_name,
+            type_name: <M as RosMessage>::TYPE_NAME,
+            type_hash: <M as RosMessage>::TYPE_HASH,
+            qos,
+            // Phase 392 W3a — the TYPE's bound, not `RX_BUF`. The arena slot
+            // size says nothing about the message: a 64-byte type and a 4 KiB
+            // type both hinted the same number, so the class was chosen from a
+            // value unrelated to what arrives. Falls back to `RX_BUF` for an
+            // unbounded type, where no bound exists to state (phase 380).
+            backend_hint: Some(crate::rmw_type_registry::subscription_rx_hint::<M>(RX_BUF)),
+            slot_bytes,
+            // A typed Rust callback takes `&M` and nothing else, so borrowed
+            // bytes are enough: deserialize straight from the backend's slot.
+            in_place_capable: true,
+        })?;
+        let SubscriptionOpen {
+            slot,
+            handle,
+            in_place,
+            slot_bytes,
+        } = open;
+
+        // Phase 231 Wave 0.2 (RFC-0038) — in-place dispatch when the backend
+        // advertises it: deserialize straight from the borrowed receive slot,
+        // no arena buffer (copy #1 removed). Else the buffered path below.
+        if in_place {
+            let entry_offset = self.arena_alloc::<SubInplaceEntry<M, F>>()?;
+            unsafe {
+                let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+                let entry_ptr = arena_ptr.add(entry_offset) as *mut SubInplaceEntry<M, F>;
+                core::ptr::write(
+                    entry_ptr,
+                    SubInplaceEntry {
+                        handle,
+                        callback,
+                        age_mon,
+                        _phantom: PhantomData,
+                    },
+                );
+            }
+            let meta = CallbackMeta {
+                offset: entry_offset,
+                kind: EntryKind::Subscription,
+                try_process: sub_inplace_try_process::<M, F>,
+                has_data: sub_inplace_has_data::<M, F>,
+                pre_sample: no_pre_sample,
+                invocation: InvocationMode::OnNewData,
+                drop_fn: drop_entry::<SubInplaceEntry<M, F>>,
+            };
+            self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+            self.apply_node_default_sched(slot, Some(node_id), group);
+            return Ok(HandleId(slot));
+        }
+
+        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, slot_bytes);
 
         let (entry_offset, trailing_offset) =
             self.arena_alloc_with_trailing::<Entry<M, F>>(trailing_bytes)?;
@@ -4961,9 +5188,9 @@ impl<'s> Executor<'s> {
         let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
 
         let buffer = if qos.depth <= 1 {
-            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, slot_size) })
+            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, slot_bytes) })
         } else {
-            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, slot_size, qos.depth as usize) })
+            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, slot_bytes, qos.depth as usize) })
         };
 
         unsafe {
@@ -5026,52 +5253,52 @@ impl<'s> Executor<'s> {
     where
         F: FnMut(&[u8]) + 'static,
     {
-        // Pull the Node's identity + session slot out first so the
-        // mutable session borrow doesn't conflict with the arena
-        // alloc inside `add_arena_subscription_callback`.
-        let (node_name, ns, session_idx, overrides) = {
-            let r = self
-                .nodes
-                .get(node_id.index())
-                .ok_or(NodeError::InvalidSchedContextBinding)?;
-            (
-                r.name.clone(),
-                r.namespace.clone(),
-                r.session_idx,
-                r.qos_overrides,
-            )
-        };
         // Issue #52 — fold the node's baked overrides for this topic before the
         // backend-compat check runs inside `create_subscription`.
+        //
+        // **This is the one registration that does it**, which phase-456 W8
+        // noticed while collapsing the twelve prologues into one and did NOT
+        // change: the other eleven reach `create_subscription` with the QoS
+        // their caller passed. Whether that is a defect or a deliberate limit
+        // of the generic bridge path is a question with a measurable answer and
+        // no answer here, so the asymmetry stays where it was, stated.
+        let overrides = self
+            .nodes
+            .get(node_id.index())
+            .ok_or(NodeError::InvalidSchedContextBinding)?
+            .qos_overrides;
         let qos = super::node_record::apply_qos_override_codes(
             qos,
             topic_name,
             nros_rmw::QoSOverrideRole::Subscription,
             overrides,
         );
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
-            .with_domain(self.domain_id)
-            .with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
-        let handle = {
-            let session = self
-                .session_at_mut(session_idx)
-                .ok_or(NodeError::BackendMismatch)?;
-            session
-                .create_subscription(&topic, qos)
-                .map_err(NodeError::Transport)?
-        };
-        let handle_id = self.add_arena_subscription_callback::<F, RX_BUF>(handle, qos, callback)?;
+
+        let SubscriptionOpen {
+            slot,
+            handle,
+            slot_bytes,
+            ..
+        } = self.open_subscription(&SubscriptionRequest {
+            node_id: Some(node_id),
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            backend_hint: None,
+            slot_bytes: RX_BUF,
+            // `FnMut(&[u8])` IS a borrowed-bytes callback, so this shape could
+            // take the in-place row exactly as the C raw path now does. It does
+            // not yet: the entry type is shared with
+            // `Self::add_arena_subscription_callback`, whose subscriber the
+            // caller supplies, and an in-place twin would have to serve both.
+            // Left `false` and written down rather than left unasked.
+            in_place_capable: false,
+        })?;
+        self.emplace_raw_buffered_subscription(slot, handle, qos, slot_bytes, callback)?;
         // Phase 104.C.4 — apply Node's default SchedContext.
-        self.apply_node_default_sched(handle_id.0, Some(node_id), None);
-        Ok(handle_id)
+        self.apply_node_default_sched(slot, Some(node_id), None);
+        Ok(HandleId(slot))
     }
 
     /// Register a borrowed (zero-copy) buffered subscription (Phase 229.6,
@@ -5107,37 +5334,24 @@ impl<'s> Executor<'s> {
             return Err(NodeError::Transport(TransportError::Unsupported));
         }
 
-        let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = {
-            let r = self
-                .nodes
-                .get(node_id.index())
-                .ok_or(NodeError::InvalidSchedContextBinding)?;
-            (r.name.clone(), r.namespace.clone(), r.session_idx)
-        };
-        let mut topic = TopicInfo::new(
-            topic_name,
-            <B as ViewableMessage>::TYPE_NAME,
-            <B as ViewableMessage>::TYPE_HASH,
-        )
-        .with_domain(self.domain_id)
-        .with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
-        let handle = {
-            let session = self
-                .session_at_mut(session_idx)
-                .ok_or(NodeError::BackendMismatch)?;
-            session
-                .create_subscription(&topic, qos)
-                .map_err(NodeError::Transport)?
-        };
+        let SubscriptionOpen { slot, handle, .. } =
+            self.open_subscription(&SubscriptionRequest {
+                node_id: Some(node_id),
+                topic_name,
+                type_name: <B as ViewableMessage>::TYPE_NAME,
+                type_hash: <B as ViewableMessage>::TYPE_HASH,
+                qos,
+                backend_hint: None,
+                slot_bytes: RX_BUF,
+                // The view borrows the arena's own triple-buffer slot for the
+                // callback's duration and `ViewableMessage::deserialize_view` is
+                // what produces it, so there is no `FnMut(&[u8])` here to hand a
+                // backend slot to. Making this shape in-place is a real option and
+                // a separate change: it would move the borrow from the arena to the
+                // backend's ring, which is a lifetime argument this item did not
+                // make.
+                in_place_capable: false,
+            })?;
 
         let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
         let (entry_offset, trailing_offset) =
@@ -5198,33 +5412,20 @@ impl<'s> Executor<'s> {
     {
         type Entry<F, const N: usize> = SubBufferedRawInfoEntry<F, N>;
 
-        let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = {
-            let r = self
-                .nodes
-                .get(node_id.index())
-                .ok_or(NodeError::InvalidSchedContextBinding)?;
-            (r.name.clone(), r.namespace.clone(), r.session_idx)
-        };
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
-            .with_domain(self.domain_id)
-            .with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
-        let handle = {
-            let session = self
-                .session_at_mut(session_idx)
-                .ok_or(NodeError::BackendMismatch)?;
-            session
-                .create_subscription(&topic, qos)
-                .map_err(NodeError::Transport)?
-        };
+        let SubscriptionOpen { slot, handle, .. } =
+            self.open_subscription(&SubscriptionRequest {
+                node_id: Some(node_id),
+                topic_name,
+                type_name,
+                type_hash,
+                qos,
+                backend_hint: None,
+                slot_bytes: RX_BUF,
+                // The callback also receives the sample's wire ATTACHMENT, which
+                // `process_raw_in_place` does not carry: it hands over borrowed
+                // payload bytes and nothing else. Not a limitation of the backend.
+                in_place_capable: false,
+            })?;
 
         let offset = self.arena_alloc::<Entry<F, RX_BUF>>()?;
         unsafe {
@@ -5282,33 +5483,20 @@ impl<'s> Executor<'s> {
         };
         type Entry<F, const N: usize> = SubBufferedRawSafetyEntry<F, N>;
 
-        let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = {
-            let r = self
-                .nodes
-                .get(node_id.index())
-                .ok_or(NodeError::InvalidSchedContextBinding)?;
-            (r.name.clone(), r.namespace.clone(), r.session_idx)
-        };
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
-            .with_domain(self.domain_id)
-            .with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
-        let handle = {
-            let session = self
-                .session_at_mut(session_idx)
-                .ok_or(NodeError::BackendMismatch)?;
-            session
-                .create_subscription(&topic, qos)
-                .map_err(NodeError::Transport)?
-        };
+        let SubscriptionOpen { slot, handle, .. } =
+            self.open_subscription(&SubscriptionRequest {
+                node_id: Some(node_id),
+                topic_name,
+                type_name,
+                type_hash,
+                qos,
+                backend_hint: None,
+                slot_bytes: RX_BUF,
+                // The sample is taken through `take_validated`, which computes the
+                // integrity status as it copies. `process_raw_in_place` has no
+                // validating form, so this shape cannot use it.
+                in_place_capable: false,
+            })?;
 
         let offset = self.arena_alloc::<Entry<F, RX_BUF>>()?;
         unsafe {
@@ -5369,10 +5557,36 @@ impl<'s> Executor<'s> {
     where
         F: FnMut(&[u8]) + 'static,
     {
+        let slot = self.next_entry_slot()?;
+        self.emplace_raw_buffered_subscription(slot, handle, qos, RX_BUF, callback)?;
+        Ok(HandleId(slot))
+    }
+
+    /// Write a raw buffered subscription entry into an already-claimed slot —
+    /// phase-456 W8.
+    ///
+    /// The shared tail of [`Self::add_arena_subscription_callback`] and
+    /// `register_subscription_buffered_raw_on`, which differ only in where the
+    /// subscriber came from: one is handed a live `RmwSubscriber`, the other
+    /// resolves a topic through [`Self::open_subscription`] and gets one back.
+    /// Both then build exactly this entry, and they used to build it twice —
+    /// the bridge path by CALLING the other, which meant it claimed a slot,
+    /// resolved a topic, and then let the callee claim a second slot it did not
+    /// need.
+    fn emplace_raw_buffered_subscription<F>(
+        &mut self,
+        slot: usize,
+        handle: session::RmwSubscriber,
+        qos: QoSProfile,
+        slot_bytes: usize,
+        callback: F,
+    ) -> Result<(), NodeError>
+    where
+        F: FnMut(&[u8]) + 'static,
+    {
         type Entry<F> = SubBufferedRawEntry<F>;
 
-        let slot = self.next_entry_slot()?;
-        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
+        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, slot_bytes);
 
         let (entry_offset, trailing_offset) =
             self.arena_alloc_with_trailing::<Entry<F>>(trailing_bytes)?;
@@ -5380,9 +5594,9 @@ impl<'s> Executor<'s> {
         let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
 
         let buffer = if qos.depth <= 1 {
-            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, RX_BUF) })
+            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, slot_bytes) })
         } else {
-            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, RX_BUF, qos.depth as usize) })
+            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, slot_bytes, qos.depth as usize) })
         };
 
         unsafe {
@@ -5408,7 +5622,7 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry<F>>,
         };
         self.emplace_entry(slot, meta, TraceName::Slot("sub", slot));
-        Ok(HandleId(slot))
+        Ok(())
     }
 
     pub(crate) fn register_subscription_with_info_sized_inner<M, F, const RX_BUF: usize>(
@@ -5427,40 +5641,20 @@ impl<'s> Executor<'s> {
         // Phase 212.K.7.6.b — see `create_publisher_on`.
         crate::rmw_type_registry::register_type::<M>()?;
 
-        let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = match node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
-        let mut topic = TopicInfo::new(
-            topic_name,
-            <M as RosMessage>::TYPE_NAME,
-            <M as RosMessage>::TYPE_HASH,
-        )
-        .with_domain(self.domain_id)
-        .with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
-        let handle = {
-            let session = self
-                .session_at_mut(session_idx)
-                .ok_or(NodeError::BackendMismatch)?;
-            session
-                .create_subscription(&topic, qos)
-                .map_err(NodeError::Transport)?
-        };
+        let SubscriptionOpen { slot, handle, .. } =
+            self.open_subscription(&SubscriptionRequest {
+                node_id,
+                topic_name,
+                type_name: <M as RosMessage>::TYPE_NAME,
+                type_hash: <M as RosMessage>::TYPE_HASH,
+                qos,
+                backend_hint: None,
+                slot_bytes: RX_BUF,
+                // The entry's `pre_sample` hook stages a `MessageInfo` beside the
+                // payload before the callback runs; an in-place drain has no
+                // pre-sample step to hang it on.
+                in_place_capable: false,
+            })?;
 
         let offset = self.arena_alloc::<Entry<M, F, RX_BUF>>()?;
 
@@ -5510,40 +5704,19 @@ impl<'s> Executor<'s> {
         // Phase 212.K.7.6.b — see `create_publisher_on`.
         crate::rmw_type_registry::register_type::<M>()?;
 
-        let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = match node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
-        let mut topic = TopicInfo::new(
-            topic_name,
-            <M as RosMessage>::TYPE_NAME,
-            <M as RosMessage>::TYPE_HASH,
-        )
-        .with_domain(self.domain_id)
-        .with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
-        let handle = {
-            let session = self
-                .session_at_mut(session_idx)
-                .ok_or(NodeError::BackendMismatch)?;
-            session
-                .create_subscription(&topic, qos)
-                .map_err(NodeError::Transport)?
-        };
+        let SubscriptionOpen { slot, handle, .. } =
+            self.open_subscription(&SubscriptionRequest {
+                node_id,
+                topic_name,
+                type_name: <M as RosMessage>::TYPE_NAME,
+                type_hash: <M as RosMessage>::TYPE_HASH,
+                qos,
+                backend_hint: None,
+                slot_bytes: RX_BUF,
+                // Same as the raw safety sibling: the status comes out of
+                // `take_validated`, which is a copying take.
+                in_place_capable: false,
+            })?;
 
         let offset = self.arena_alloc::<Entry<M, F, RX_BUF>>()?;
 
@@ -5969,17 +6142,20 @@ impl<'s> Executor<'s> {
     ///
     /// `context` is one pointer, which carries a C++ `[this]` capture and not a
     /// `[this, state]` or a `[obj, method]`. When `capture` is `Some`, its
-    /// bytes are copied into the entry and `context` is repointed at the
-    /// entry's own copy, so the caller keeps nothing and nothing the caller
-    /// owns is referenced after this returns. When it is `None` the behaviour
-    /// is exactly the pre-existing one, which is why the plain entry point
-    /// above is a wrapper rather than a second implementation.
+    /// bytes are copied into the arena and `context` is repointed at that copy,
+    /// so the caller keeps nothing and nothing the caller owns is referenced
+    /// after this returns. When it is `None` the behaviour is exactly the
+    /// pre-existing one, which is why the plain entry point above is a wrapper
+    /// rather than a second implementation.
     ///
-    /// A capture longer than `CALLBACK_CAPTURE_BYTES` is rejected rather than
-    /// truncated: the C++ side asserts the same bound at compile time
-    /// (`NROS_CPP_CALLBACK_CAPACITY`), so reaching this check means the two
-    /// sides disagree about the constant, and silently storing part of a
-    /// closure would be a corrupted dispatch rather than a failed one.
+    /// **phase-456 W8 changed two things here.** The capture is a RUNTIME
+    /// length — see [`Self::stow_capture`] — so there is no constant the C++
+    /// side has to match and no `BufferTooSmall` reachable only by drifting
+    /// from it. And this path now reaches the in-place dispatch that the Rust
+    /// typed path has had since phase-231: `RawSubscriptionCallback` is
+    /// `(const uint8_t*, size_t, void*)`, so the backend's borrowed receive
+    /// slot IS the argument, and a C or C++ subscription on zenoh or XRCE
+    /// claims no receive region at all.
     #[allow(clippy::too_many_arguments)]
     pub fn add_arena_subscription_c_callback_with_capture<const RX_BUF: usize>(
         &mut self,
@@ -5999,48 +6175,6 @@ impl<'s> Executor<'s> {
         rx_buffer_hint: usize,
         capture: Option<&[u8]>,
     ) -> Result<HandleId, NodeError> {
-        if let Some(bytes) = capture {
-            if bytes.len() > CALLBACK_CAPTURE_BYTES {
-                return Err(NodeError::BufferTooSmall);
-            }
-        }
-        let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = match node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
-            .with_domain(self.domain_id)
-            .with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        // phase-402 W2 — only when the caller actually stated one:
-        // `with_rx_buffer_hint(0)` would be a claim of "zero bytes", not
-        // "no opinion".
-        if rx_buffer_hint != 0 {
-            topic = topic.with_rx_buffer_hint(rx_buffer_hint);
-        }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
-        let handle = {
-            let session = self
-                .session_at_mut(session_idx)
-                .ok_or(NodeError::BackendMismatch)?;
-            session
-                .create_subscription(&topic, qos)
-                .map_err(NodeError::Transport)?
-        };
-
         // phase-403 W3/W5 -- size the arena slot from the TYPE, not from the
         // image-wide default. `rx_buffer_hint` already arrives here (phase-402
         // routed it to the backend's payload class and stopped); spending it on
@@ -6057,13 +6191,65 @@ impl<'s> Executor<'s> {
         // rather than "this type is unbounded" -- an unbounded type is a build
         // error now, so a zero here is a caller that did not ask, never a type
         // that could not answer.
-        let rx_bytes = if rx_buffer_hint != 0 {
+        let slot_bytes = if rx_buffer_hint != 0 {
             rx_buffer_hint
         } else {
             RX_BUF
         };
 
-        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, rx_bytes);
+        let SubscriptionOpen {
+            slot,
+            handle,
+            in_place,
+            slot_bytes,
+        } = self.open_subscription(&SubscriptionRequest {
+            node_id,
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            backend_hint: Some(rx_buffer_hint),
+            slot_bytes,
+            // phase-456 W8 — `RawSubscriptionCallback` takes borrowed bytes and
+            // a context, which is exactly what `process_raw_in_place` hands it.
+            in_place_capable: true,
+        })?;
+
+        // The capture is stowed AFTER the backend call and BEFORE either entry
+        // is written, so both dispatch shapes get the same context and a failed
+        // `create_subscription` costs no arena bytes.
+        let context = self.stow_capture(capture, context)?;
+
+        if in_place {
+            let entry_offset = self.arena_alloc::<super::arena::SubInplaceRawCEntry>()?;
+            unsafe {
+                let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+                let entry_ptr =
+                    arena_ptr.add(entry_offset) as *mut super::arena::SubInplaceRawCEntry;
+                core::ptr::write(
+                    entry_ptr,
+                    super::arena::SubInplaceRawCEntry {
+                        handle,
+                        callback,
+                        context,
+                    },
+                );
+            }
+            let meta = CallbackMeta {
+                offset: entry_offset,
+                kind: EntryKind::Subscription,
+                try_process: super::arena::sub_inplace_raw_c_try_process,
+                has_data: super::arena::sub_inplace_raw_c_has_data,
+                pre_sample: no_pre_sample,
+                invocation: InvocationMode::OnNewData,
+                drop_fn: drop_entry::<super::arena::SubInplaceRawCEntry>,
+            };
+            self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+            self.apply_node_default_sched(slot, node_id, group);
+            return Ok(HandleId(slot));
+        }
+
+        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, slot_bytes);
 
         let (entry_offset, trailing_offset) =
             self.arena_alloc_with_trailing::<SubBufferedRawCEntry>(trailing_bytes)?;
@@ -6071,9 +6257,9 @@ impl<'s> Executor<'s> {
         let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
 
         let buffer = if qos.depth <= 1 {
-            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, rx_bytes) })
+            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, slot_bytes) })
         } else {
-            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, rx_bytes, qos.depth as usize) })
+            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, slot_bytes, qos.depth as usize) })
         };
 
         unsafe {
@@ -6086,17 +6272,8 @@ impl<'s> Executor<'s> {
                     buffer,
                     callback,
                     context,
-                    capture: [0u8; CALLBACK_CAPTURE_BYTES],
                 },
             );
-            // The entry never moves once allocated, so its own bytes are a
-            // stable home for the caller's capture -- which is the whole point
-            // of holding it here rather than on the caller's side.
-            if let Some(bytes) = capture {
-                let dst = (*entry_ptr).capture.as_mut_ptr();
-                core::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
-                (*entry_ptr).context = dst as *mut core::ffi::c_void;
-            }
         }
 
         let meta = CallbackMeta {
@@ -6162,47 +6339,36 @@ impl<'s> Executor<'s> {
         // it rather than defaulting.
         rx_buffer_hint: usize,
     ) -> Result<HandleId, NodeError> {
-        let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = match node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
-            .with_domain(self.domain_id)
-            .with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        if rx_buffer_hint != 0 {
-            topic = topic.with_rx_buffer_hint(rx_buffer_hint);
-        }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
-        let handle = {
-            let session = self
-                .session_at_mut(session_idx)
-                .ok_or(NodeError::BackendMismatch)?;
-            session
-                .create_subscription(&topic, qos)
-                .map_err(NodeError::Transport)?
-        };
-
-        // phase-403 W3/W5, unchanged: the hint sizes the arena slot, and 0
-        // means "this caller stated nothing", never "this type is zero bytes".
-        let rx_bytes = if rx_buffer_hint != 0 {
-            rx_buffer_hint
-        } else {
-            RX_BUF
-        };
+        let SubscriptionOpen {
+            slot,
+            handle,
+            slot_bytes: rx_bytes,
+            ..
+        } = self.open_subscription(&SubscriptionRequest {
+            node_id,
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            backend_hint: Some(rx_buffer_hint),
+            // phase-403 W3/W5, unchanged: the hint sizes the arena slot, and 0
+            // means "this caller stated nothing", never "this type is zero
+            // bytes".
+            slot_bytes: if rx_buffer_hint != 0 {
+                rx_buffer_hint
+            } else {
+                RX_BUF
+            },
+            // The callback receives the caller's DESERIALISED storage, written
+            // by `deserialize` from the sample's bytes, so borrowed bytes would
+            // be enough and this shape could take the in-place row. It does not
+            // yet: `SubBufferedTypedCEntry` also owns the `msg` pointer and the
+            // deserialiser, so an in-place twin is a second entry type rather
+            // than a flag, and phase-456 W8's acceptance is the RAW C path.
+            // Stated here rather than left blank because a `false` nobody wrote
+            // down is what this whole item is about.
+            in_place_capable: false,
+        })?;
 
         let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, rx_bytes);
 
@@ -6274,55 +6440,31 @@ impl<'s> Executor<'s> {
     ) -> Result<HandleId, NodeError> {
         type Entry = SubBufferedRawInfoCEntry;
 
-        let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = match node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
-            .with_domain(self.domain_id)
-            .with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        // phase-408 W5a — only when the caller actually stated one:
-        // `with_rx_buffer_hint(0)` would be a claim of "zero bytes", not
-        // "no opinion".
-        if rx_buffer_hint != 0 {
-            topic = topic.with_rx_buffer_hint(rx_buffer_hint);
-        }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
-        let handle = {
-            let session = self
-                .session_at_mut(session_idx)
-                .ok_or(NodeError::BackendMismatch)?;
-            session
-                .create_subscription(&topic, qos)
-                .map_err(NodeError::Transport)?
-        };
-
-        // phase-408 W5b — the hint sizes the ARENA too, not just the backend's
-        // size class. ONE slot, not `buffered_region_size`: this entry hands the
-        // sample's attachment to the callback alongside the payload, so it
-        // dispatches exactly one sample per spin and has no queue to size. 0
-        // still means "this caller stated nothing", so `RX_BUF` — which is
-        // `DEFAULT_RX_BUF_SIZE` at every call site — is what it falls back to,
-        // and an unhinted registration claims the same bytes it always did.
-        let rx_bytes = if rx_buffer_hint != 0 {
-            rx_buffer_hint
-        } else {
-            RX_BUF
-        };
+        let SubscriptionOpen {
+            slot,
+            handle,
+            slot_bytes: rx_bytes,
+            ..
+        } = self.open_subscription(&SubscriptionRequest {
+            node_id,
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            backend_hint: Some(rx_buffer_hint),
+            // phase-408 W5b — the hint sizes the ARENA too, not just the
+            // backend's size class. 0 still means "this caller stated nothing",
+            // so `RX_BUF` -- `DEFAULT_RX_BUF_SIZE` at every call site -- is what
+            // it falls back to, and an unhinted registration claims the same
+            // bytes it always did.
+            slot_bytes: if rx_buffer_hint != 0 {
+                rx_buffer_hint
+            } else {
+                RX_BUF
+            },
+            // Carries the wire attachment — see the Rust `_raw_info_on` twin.
+            in_place_capable: false,
+        })?;
 
         let (offset, trailing_offset) = self.arena_alloc_with_trailing::<Entry>(rx_bytes)?;
         unsafe {
@@ -6391,53 +6533,29 @@ impl<'s> Executor<'s> {
         };
         type Entry = SubBufferedRawSafetyCEntry;
 
-        let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = match node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
-            .with_domain(self.domain_id)
-            .with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        // phase-408 W5a — only when the caller actually stated one:
-        // `with_rx_buffer_hint(0)` would be a claim of "zero bytes", not
-        // "no opinion".
-        if rx_buffer_hint != 0 {
-            topic = topic.with_rx_buffer_hint(rx_buffer_hint);
-        }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
-        let handle = {
-            let session = self
-                .session_at_mut(session_idx)
-                .ok_or(NodeError::BackendMismatch)?;
-            session
-                .create_subscription(&topic, qos)
-                .map_err(NodeError::Transport)?
-        };
-
-        // phase-408 W5b — same as the info sibling: one flat slot in the
-        // trailing region, sized from the hint, `RX_BUF` only as the
-        // stated-nothing fallback. The integrity status is per-sample side
-        // data, so this path also dispatches one sample per spin and wants no
-        // queue.
-        let rx_bytes = if rx_buffer_hint != 0 {
-            rx_buffer_hint
-        } else {
-            RX_BUF
-        };
+        let SubscriptionOpen {
+            slot,
+            handle,
+            slot_bytes: rx_bytes,
+            ..
+        } = self.open_subscription(&SubscriptionRequest {
+            node_id,
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            backend_hint: Some(rx_buffer_hint),
+            // phase-408 W5b — same as the info sibling: one flat slot in the
+            // trailing region, sized from the hint, `RX_BUF` only as the
+            // stated-nothing fallback.
+            slot_bytes: if rx_buffer_hint != 0 {
+                rx_buffer_hint
+            } else {
+                RX_BUF
+            },
+            // Carries the integrity status, which comes from `take_validated`.
+            in_place_capable: false,
+        })?;
 
         let (offset, trailing_offset) = self.arena_alloc_with_trailing::<Entry>(rx_bytes)?;
         unsafe {

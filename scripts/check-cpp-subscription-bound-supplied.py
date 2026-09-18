@@ -3,10 +3,13 @@
 
 WHAT IS BEING MEASURED
 
-Issue 1319 enumerated five `RegistrationPath` rows, and two of them are the C
-family: `c_typed_hint` (a bound was supplied) and `c_raw_no_hint` (none was).
-The second is priced at the executor's closure buffer rather than at the
-message's own size, and the sizing descriptor CANNOT tell them apart — its own
+Issue 1319 enumerated five `RegistrationPath` rows; phase-456 W8 found that two
+of them named who called rather than anything about the registration, and the
+vocabulary is now three. The distinction this gate is about survives the
+collapse intact: a site that states a bound takes `typed_bound`, a site that
+states none takes `unbounded`. The second is priced at the executor's closure
+buffer rather than at the message's own size, and the sizing descriptor CANNOT
+tell them apart — its own
 comment says so:
 
     A C/C++ entry that registers typed supplies `rx_size_bound<M>`; the raw
@@ -26,7 +29,7 @@ THE RULE, IN TWO HALVES
    NAMES where the number came from: `rx_buffer_capacity<M>`, `rx_size_bound<M>`,
    a required `rx_bytes` parameter, or `nros::rx_bound_unknown`.
 
-2. `rx_bound_unknown` is the `c_raw_no_hint` row said out loud, and it is legal
+2. `rx_bound_unknown` is the `unbounded` row said out loud, and it is legal
    only where no message type is in scope. A function whose template parameter
    list declares `typename M` HAS the type, so it has the bound, and passing the
    unknown from there is the defect this gate exists to catch rather than a
@@ -155,7 +158,7 @@ def audit_text(rel, text):
         if not m:
             problems.append(
                 "%s:%d: `%s` is called with no `rx_buffer_hint` stated in its function. "
-                "This registration takes issue 1319's `c_raw_no_hint` row while the sizing "
+                "This registration takes issue 1319's `unbounded` row while the sizing "
                 "descriptor credits the entry with a supplied hint. Set "
                 "`rx_buffer_hint` from `nros::rx_buffer_capacity<M>::value`, or name "
                 "`nros::rx_bound_unknown` if the site genuinely has no type."
@@ -319,7 +322,7 @@ def main():
         for p in problems:
             print("  " + p, file=sys.stderr)
         print(
-            "\nA subscription registered with no bound takes issue 1319's `c_raw_no_hint` "
+            "\nA subscription registered with no bound takes issue 1319's `unbounded` "
             "row, which the sizing descriptor cannot see and therefore credits as if the "
             "hint were supplied. phase-456 W7 made the bound non-optional at every C++ "
             "registration site so that credit is earned rather than assumed.",
@@ -336,7 +339,7 @@ def main():
 
     print(
         "check-cpp-subscription-bound-supplied: OK — every C++ arena registration states "
-        "its receive bound (%d call site(s)); `c_raw_no_hint` is reachable only by naming "
+        "its receive bound (%d call site(s)); `unbounded` is reachable only by naming "
         "`nros::rx_bound_unknown` from a function with no message type in scope" % sites
     )
     return 0

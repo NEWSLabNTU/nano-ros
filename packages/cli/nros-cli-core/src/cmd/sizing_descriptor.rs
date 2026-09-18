@@ -137,7 +137,7 @@ mod tests {
         );
         ep.set_history(Some(History::KeepLast))
             .set_depth(Some(10))
-            .set_registration_path(Some(RegistrationPath::RustTypedSchemaless))
+            .set_registration_path(Some(RegistrationPath::Unbounded))
             .set_wire_bound_bytes(Some(1170))
             .set_storage_bytes(Some(12914));
         d.endpoints.push(ep);
@@ -194,7 +194,7 @@ mod tests {
         // as a value nobody bothered to fill in, and those are the two states
         // `Fact` exists to keep apart.
         assert!(s.contains("max_fields        absent"), "{s}");
-        assert!(s.contains("rust_typed_schemaless"), "{s}");
+        assert!(s.contains("unbounded"), "{s}");
     }
 
     #[test]

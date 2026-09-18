@@ -348,7 +348,7 @@ mod tests {
             .set_depth(Some(10))
             .set_reliability(Some(Reliability::Reliable))
             .set_durability(Some(Durability::Volatile))
-            .set_registration_path(Some(RegistrationPath::RustTypedSchemaless))
+            .set_registration_path(Some(RegistrationPath::Unbounded))
             .set_storage_bytes(Some(280))
             .set_wire_bound_bytes(Some(1170));
         d.endpoints.push(sub);
