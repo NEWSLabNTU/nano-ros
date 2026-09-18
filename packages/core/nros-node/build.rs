@@ -298,11 +298,14 @@ fn subs_arena(
 ///
 /// | path | slot |
 /// | --- | --- |
-/// | `c_typed_hint` | the type's own `_RX` — matches the model |
-/// | `rust_typed_descriptors` | `min(framed(bound), RX_BUF)` — at or below it |
-/// | `rust_typed_in_place` | no region at all — the model OVER-states (issue 1340) |
-/// | **`rust_typed_schemaless`** | **`RX_BUF`** |
-/// | **`c_raw_no_hint`** | **`RX_BUF`** |
+/// | `typed_bound` | the type's own `_RX` — matches the model |
+/// | `in_place` | no region at all — the model OVER-states (issue 1340) |
+/// | **`unbounded`** | **`RX_BUF`** |
+///
+/// phase-456 W8 collapsed five rows to these three: two of the five named the
+/// caller's LANGUAGE rather than anything about the registration, and the two
+/// that took `RX_BUF` (`rust_typed_schemaless`, `c_raw_no_hint`) were one fact
+/// said twice.
 ///
 /// The last two are an UNDER-size, which lands as `NodeError::BufferTooSmall`
 /// at a registration `executor::arena_oracle` passed. It is not a repair the
