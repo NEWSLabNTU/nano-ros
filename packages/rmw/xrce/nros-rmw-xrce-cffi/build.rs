@@ -1202,6 +1202,10 @@ fn xrce_demand_selftest() {
             .set_reliability(rel)
             .set_depth(depth)
             .set_wire_bound_bytes(bound)
+            // phase-456 W8 collapsed the five rows to three. `rust_typed_schemaless`
+            // was "no bound reachable at this site", which is `Unbounded` — the
+            // row this selftest wants, because it is the one that claims the
+            // closure buffer and so derives a demand to assert against.
             .set_registration_path(Some(RegistrationPath::Unbounded));
         e
     };

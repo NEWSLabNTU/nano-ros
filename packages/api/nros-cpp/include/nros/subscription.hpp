@@ -81,9 +81,13 @@ nros_cpp_ret_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const
 /// caller's is referenced after the call returns, so the caller may keep
 /// nothing at all — which is what lets the C++ object become a handle.
 ///
-/// `capture_len` must not exceed `NROS_CPP_CALLBACK_CAPACITY`; a longer capture
-/// is rejected rather than truncated, and the C++ side asserts the same bound at
-/// compile time so that never reaches the runtime.
+/// `capture_len` is a LENGTH, not a budget — phase-456 W8. W1 copied the capture
+/// into a fixed `[u8; CALLBACK_CAPTURE_BYTES]` and refused anything longer,
+/// where that constant had to equal `NROS_CPP_CALLBACK_CAPACITY` by
+/// construction — so the refusal was reachable only when the two languages had
+/// drifted apart about a number. The runtime now allocates exactly
+/// `capture_len` bytes from the arena, and the only bound left is the arena
+/// every other entry already shares.
 nros_cpp_ret_t nros_cpp_subscription_register_capturing(
     const nros_cpp_node_t* node, const char* topic, const char* type_name, const char* type_hash,
     nros_cpp_qos_t qos, nros_cpp_subscription_message_callback_t callback, const uint8_t* capture,
@@ -646,9 +650,14 @@ namespace detail {
 template <typename M, typename Fn>
 inline Result register_subscription_capturing(::rclcpp::Node& node, const char* topic,
                                               const QoS& qos, const Fn& fn, size_t* out_handle_id) {
-    static_assert(sizeof(Fn) <= NROS_CPP_CALLBACK_CAPACITY + 2 * sizeof(void*),
-                  "the callable does not fit the arena's per-entry capture budget -- raise "
-                  "NROS_CPP_CALLBACK_CAPACITY, and the arena's CALLBACK_CAPTURE_BYTES with it");
+    // phase-456 W8 — the per-entry capture budget this used to assert is GONE.
+    // It read `sizeof(Fn) <= NROS_CPP_CALLBACK_CAPACITY + 2 * sizeof(void*)` and
+    // named `CALLBACK_CAPTURE_BYTES`, an arena constant that no longer exists:
+    // the runtime allocates exactly `capture_len` bytes now, so there is no
+    // cross-language number for the two sides to agree about and nothing here
+    // to assert. `InplaceFn`'s own capacity `static_assert` is untouched and is
+    // still the knob a too-large CALLABLE hits (`inplace_fn.hpp`), which is a
+    // property of that type rather than of this registration.
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
 
