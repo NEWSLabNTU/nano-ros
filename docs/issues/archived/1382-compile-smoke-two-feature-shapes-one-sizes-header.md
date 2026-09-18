@@ -3,12 +3,13 @@ id: 1382
 title: "`check-compile-smoke` builds two feature shapes that write ONE shared
   sizes header, so whichever runs second aborts — and deleting the header only
   swaps which one loses"
-status: open
+status: resolved
 type: bug
 area: [build, ci]
 severity: medium
 found: 2026-09-17
-related: [issue-0834, issue-0088, issue-1260, issue-0245, issue-0268]
+related: [issue-0834, issue-0088, issue-1260, issue-0245, issue-0268, issue-0616, issue-1383]
+resolved: 2026-09-18
 ---
 
 ## What happens
@@ -85,3 +86,54 @@ twice, and neither run may abort.
 
 Found while running the required PR gates for the phase-392 amendment B
 measurement wave.
+
+## Resolution (2026-09-18)
+
+Took the Direction's second option: the lane stops building two shapes into one
+`--target-dir`. In `just/check/lanes.just`, the `param-services` invocation now
+runs under its own target dir:
+
+```
+CARGO_TARGET_DIR="$(nros_scoped_target_dir param-services)" \
+    cargo check -p nros-c -p nros-cpp --no-default-features \
+        --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
+```
+
+**The guard was right and stays.** The two shapes genuinely resolve different
+layouts — confirmed by diffing the two headers the fix now produces:
+
+| define | shipped | +param-services |
+| --- | --- | --- |
+| `EXECUTOR_OPAQUE_U64S` | 11301 | 11306 |
+| `NROS_EXECUTOR_SIZE` | 90408 | 90448 |
+| `NROS_EXECUTOR_MAIN_STACK_MIN` | 3712 | 3792 |
+
+A C half sized from the other shape's answer would overflow its `_opaque`
+storage. What was wrong was pointing two correct answers at one mirror.
+
+**Acceptance, as this issue specified it** (delete the header, run twice,
+neither may abort):
+
+```
+RUN 1 (header deleted)  rc=0
+RUN 2 (header deleted)  rc=0
+RUN 3 (warm, no delete) rc=0
+```
+
+and two mirrors now exist where there was one:
+
+```
+./target/nros-c-generated/nros/nros_config_generated.h
+./target-param-services/nros-c-generated/nros/nros_config_generated.h
+```
+
+### The fix's own first attempt was wrong, and the wrongness is now issue 1383
+
+Passing the scoped dir as a `--target-dir` FLAG rather than as
+`CARGO_TARGET_DIR` mirrored both headers into the **repo root**, leaving
+untracked `nros-c-generated/` and `nros-cpp-generated/` beside `packages/`.
+Cause: `cargo_target_dir()`'s `$OUT_DIR` walk calls the component above the
+profile dir a target TRIPLE when its name contains a hyphen, and
+`nros_scoped_target_dir` always appends one. The env form takes that function's
+first branch and never reaches the heuristic. The heuristic itself is still
+wrong for the next caller — filed as issue 1383.

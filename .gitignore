@@ -95,6 +95,11 @@ tools/*
 # Phase 193 — separate target-dir for concurrent embedded clippy (just check workspace-all)
 /target-embedded/
 
+# Issue 1382 — the second feature shape in `just check compile-smoke` builds in
+# its own target dir, because two shapes resolve two different executor layouts
+# and a shared sizes-header mirror can only hold one of them.
+/target-param-services/
+
 # Per-RMW example build dirs (target-xrce/ etc.) — build output, never committed
 examples/**/target-*/
 

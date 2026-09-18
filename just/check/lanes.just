@@ -716,7 +716,41 @@ compile-smoke:
     # warnings = "deny"` reaches a plain `cargo check`, which is what lets this
     # line catch that class. Verified by reverting the fix: it fails on both
     # call sites. Measured 10 s cold, 2 s warm.
-    cargo check -p nros-c -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
+    #
+    # ITS OWN TARGET DIR, and that is the whole of issue 1382. `nros-sizes-build`
+    # keys its PROBE directory by (rustc, target, features) — correctly, so the
+    # two shapes above probe two different executor layouts, 40 bytes apart. But
+    # the header they emit was one shared path,
+    # `target/nros-c-generated/nros/nros_config_generated.h`, so whichever shape
+    # ran second hit `shared.rs`'s guard and aborted. Deleting the header did not
+    # help: re-running only swapped which shape got there first and which lost.
+    #
+    # The guard is RIGHT — two feature shapes really do resolve different
+    # layouts, and a C half sized from the C++ half's answer overflows its
+    # `_opaque` storage silently at runtime. What was wrong is pointing two
+    # shapes at one mirror. Issue 0616 settled the same rule one level up (a
+    # cargo `--target-dir` serves exactly ONE workspace root); a generated-header
+    # mirror serves exactly one FEATURE SHAPE, for the same reason.
+    #
+    # `nros_scoped_target_dir` is the one spelling for this (issue 0400 — it
+    # respects `CARGO_TARGET_DIR` so a ROS distrobox redirect is not undone by a
+    # relative override). The dir persists, so this is cold once and warm after.
+    #
+    # A required PR context that cannot converge is worse than one that fails:
+    # whether it was green depended on whether cargo re-ran the second shape's
+    # build script at all, which made it INTERMITTENT.
+    # As CARGO_TARGET_DIR, not `--target-dir`, and that distinction is load
+    # bearing. The mirror root is resolved by `nros_sizes_build::cargo_target_dir`,
+    # whose FIRST branch reads this variable and whose second WALKS `$OUT_DIR`,
+    # calling the component above the profile dir a target TRIPLE when its name
+    # contains `-`. `nros_scoped_target_dir` yields `target-param-services`, which
+    # contains `-`, so the walk would hand back that dir's PARENT and mirror the
+    # header into the repo ROOT — untracked `nros-c-generated/` beside `packages/`.
+    # Measured: the flag form produced exactly that. The env form never reaches
+    # the heuristic. (The heuristic itself is wrong for any hyphenated target dir,
+    # which the sanctioned helper always produces: issue 1383.)
+    CARGO_TARGET_DIR="$(nros_scoped_target_dir param-services)" \
+        cargo check -p nros-c -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
     echo "compile smoke: workspace + all targets check clean (no lints; see check-build);"
     echo "  nros-c + nros-cpp check clean in the shipped shape ({{C_API_SHIPPED_FEATURES}}),"
     echo "  and with param-services (issue 1260)."
