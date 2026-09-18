@@ -207,6 +207,151 @@ unsafe extern "C" {
 
 }
 
+// ---- ThreadX byte-pool peak reporter (issue 1145) ----
+//
+// The byte pool is the WHOLE allocator on this port: it hands out the boot app
+// thread's stack, every tier stack, zenoh-pico's buffers and nano-ros's own
+// allocations, plus NetX's packet pool and stacks on the boards that have one.
+// `BYTE_POOL_BASE_SIZE` in `threadx_hooks.c` is 4 MiB and nothing derived it —
+// the SUBTRAHEND paired against the `.bss` executor backing is carefully
+// derived (issue 1171), the BASE it is subtracted from is a literal.
+//
+// So every image prints its own number, which is what issue 1146 did for the
+// FreeRTOS app stack after a bisected 384 KiB survived three phases unmeasured.
+//
+// A WATCHER THREAD rather than a call at the end of the register pass, for the
+// reason the FreeRTOS twin documents: the pool keeps being drawn from after
+// registration, because zenoh-pico sizes fragment and batch buffers on the wire
+// it actually sees. Sampling once at the register pass reports a boot-time
+// floor as if it were the peak — the direction that silently under-sizes.
+//
+// It samples until the number STOPS MOVING rather than after a fixed delay.
+// `nros_platform_threadx_pool_min_ever_free_bytes` is monotone (it only ever
+// falls), so a later sample can only be a better answer, and a fixed delay is a
+// guess that a slow router turns into an under-report.
+//
+// UNLIKE the FreeRTOS twin this probe is not O(1): heap_4 maintains
+// `xMinimumEverFreeBytesRemaining` as it allocates, whereas ThreadX keeps no
+// minimum at all, so `nros-platform-threadx` maintains one by re-reading the
+// pool after every allocation. That cost is paid by the ALLOCATOR, not here;
+// this thread only reads the maintained value.
+//
+// The watcher's own stack comes out of the pool it is measuring, so the peak it
+// prints INCLUDES it. That is the honest figure for "what this image needs",
+// since the reporter ships in the image, but it is not the figure for an image
+// built without one.
+//
+// FIRST NUMBERS, threadx-linux on x86_64 against a live `rmw_zenohd`
+// (2026-09-18), 35 s per image:
+//
+//     talker     181,144 of 4,194,304 bytes   (4.3 %)
+//     listener   180,824 of 4,194,304 bytes   (4.3 %)
+//
+// and here is what those DO NOT establish, which is most of the question:
+//
+//   * They were taken with `backing_u64s = 0` — the executor backing declined
+//     and therefore drawn FROM this pool — because the board's stated 4,494 is
+//     below the default sizing and no ThreadX image compiles with it (issue
+//     1388). A build with the static taken would move those bytes out.
+//   * Two roles of six. `service-client` and `action-server` died on
+//     `Transport(ConnectionFailed)` about a second in, before the first sample
+//     at 6 s, so the HEAVIEST role by backing is unmeasured.
+//   * This board is the wrong one to size the base from. `nros_board_init_eth`
+//     is a no-op on the Linux overlay, so NetX Duo's packet pool, IP/ARP and
+//     BSD stacks — which `threadx_hooks.c` names as the pool's other consumers
+//     — allocate NOTHING here. The RISC-V board runs the full NetX setup and is
+//     where the base has to be judged.
+//
+// So `BYTE_POOL_BASE_SIZE` is deliberately NOT changed on the strength of this.
+// 4 MiB is 23x what a hosted talker touches, which is suggestive and is not a
+// measurement of the port the number exists for.
+
+/// After the netif is up, the session handshake, and the register pass.
+/// MILLISECONDS — `nros_threadx_sleep_ms` converts with the kernel's own
+/// `TX_TIMER_TICKS_PER_SECOND`, so the tick rate is not mirrored here.
+const POOL_PEAK_FIRST_MS: u32 = 6000;
+const POOL_PEAK_PERIOD_MS: u32 = 1000;
+const POOL_PEAK_STABLE_SAMPLES: u32 = 10;
+const POOL_PEAK_MAX_SAMPLES: u32 = 60;
+/// Bytes. One `core::fmt` line is not cheap, and a reporter that faults the
+/// image it is measuring is worse than no reporter.
+const POOL_PEAK_STACK_BYTES: core::ffi::c_ulong = 8192;
+/// Lowest useful priority: this thread must never preempt the work it measures.
+const POOL_PEAK_PRIORITY: core::ffi::c_uint = 30;
+
+unsafe extern "C" {
+    /// Sleep the calling thread. A C shim, because `tx_thread_sleep` is a
+    /// ThreadX macro with no linkable symbol of that name (measured: it links
+    /// with `undefined symbol: tx_thread_sleep`), and because the ms->ticks
+    /// conversion belongs where `TX_TIMER_TICKS_PER_SECOND` is visible.
+    fn nros_threadx_sleep_ms(ms: core::ffi::c_ulong);
+    /// The least the byte pool has ever had available. Monotone. Maintained in
+    /// `nros-platform-threadx` because ThreadX itself keeps no such figure —
+    /// the ABI's `nros_platform_heap_used_bytes` is INSTANTANEOUS, and a pool
+    /// size has to cover the peak.
+    fn nros_platform_threadx_pool_min_ever_free_bytes() -> usize;
+    /// `BYTE_POOL_SIZE`, which is a C macro and has no Rust spelling.
+    fn nros_platform_heap_total_bytes() -> usize;
+}
+
+unsafe extern "C" fn pool_peak_task_entry<B>(_arg: *mut c_void)
+where
+    B: BoardPrint,
+{
+    unsafe { nros_threadx_sleep_ms(POOL_PEAK_FIRST_MS as core::ffi::c_ulong) };
+
+    let mut prev = usize::MAX;
+    let mut stable = 0u32;
+    for _ in 0..POOL_PEAK_MAX_SAMPLES {
+        let free = unsafe { nros_platform_threadx_pool_min_ever_free_bytes() };
+        if free == prev {
+            stable += 1;
+            if stable >= POOL_PEAK_STABLE_SAMPLES {
+                break;
+            }
+        } else {
+            stable = 0;
+            prev = free;
+        }
+        unsafe { nros_threadx_sleep_ms(POOL_PEAK_PERIOD_MS as core::ffi::c_ulong) };
+    }
+
+    let total = unsafe { nros_platform_heap_total_bytes() };
+    let free = unsafe { nros_platform_threadx_pool_min_ever_free_bytes() };
+    B::println(format_args!(
+        "nros: byte pool peak {} of {} bytes ({} free) \
+         — the base is BYTE_POOL_BASE_SIZE in threadx_hooks.c (issue 1145)",
+        total.saturating_sub(free),
+        total,
+        free
+    ));
+
+    // No `tx_thread_delete(self)` counterpart to FreeRTOS's `vTaskDelete(NULL)`:
+    // ThreadX refuses to delete a thread that is not terminated, and a thread
+    // terminates by RETURNING from its entry. Returning also leaves the stack
+    // allocated, which is true of every thread on this port — nothing here frees
+    // a tier stack either.
+}
+
+/// Spawn the byte-pool peak reporter. Failure is reported and never fatal: a
+/// missing measurement must not cost the image its run.
+fn start_pool_peak_reporter<B: BoardPrint>() {
+    let rc = unsafe {
+        nros_threadx_create_task(
+            c"nros_pool_peak".as_ptr() as *const u8,
+            pool_peak_task_entry::<B>,
+            core::ptr::null_mut(),
+            POOL_PEAK_STACK_BYTES,
+            POOL_PEAK_PRIORITY,
+            -1,
+            0,
+        )
+    };
+    if rc != 0 {
+        B::println(format_args!("nros: byte pool peak reporter not started"));
+    }
+}
+
 // ============================================================================
 // Phase 297 W4 (RFC-0053) — ThreadX multi-tier `run_tiers`.
 //
@@ -859,6 +1004,11 @@ where
     // If a board ever does need to wait here, wait for the LINK, not for a
     // duration — a fixed delay does not just cost its time, it hides the
     // distribution underneath it (phase-342 W8).
+
+    // Issue 1145 — start the byte-pool peak reporter before the executor and
+    // the session are built, so its samples span every allocation this image
+    // makes rather than only what is left standing at the end.
+    start_pool_peak_reporter::<B>();
 
     // Issue #98 / RFC-0045 — node name from the baked `.nros_boot_config`
     // (a launch that names the node overrides the board default); locator +

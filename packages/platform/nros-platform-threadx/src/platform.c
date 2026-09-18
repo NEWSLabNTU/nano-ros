@@ -84,8 +84,14 @@ uint64_t nros_platform_epoch_us(void) {
 
 static TX_BYTE_POOL *s_byte_pool = NULL;
 
+/* Defined below, beside the high-water state it owns. */
+void nros_platform_threadx_note_pool_usage(void);
+
 void nros_platform_threadx_set_byte_pool(void *pool) {
     s_byte_pool = (TX_BYTE_POOL *) pool;
+    /* Establish the high-water baseline at registration, so a pool that is
+     * never allocated from reports 0 used rather than a sentinel. */
+    nros_platform_threadx_note_pool_usage();
 }
 
 /* ---- Alloc ---- */
@@ -98,6 +104,7 @@ void *nros_platform_alloc(size_t size) {
     if (tx_byte_allocate(s_byte_pool, &p, (ULONG) size, TX_WAIT_FOREVER) != TX_SUCCESS) {
         return NULL;
     }
+    nros_platform_threadx_note_pool_usage();
     return p;
 }
 
@@ -130,6 +137,56 @@ size_t nros_platform_heap_total_bytes(void) {
         return 0u;
     }
     return (size_t) s_byte_pool->tx_byte_pool_size;
+}
+
+/* ---- Byte-pool HIGH-WATER (issue 1145) ----
+ * ThreadX has no counterpart to heap_4's `xPortGetMinimumEverFreeHeapSize`. A
+ * TX_BYTE_POOL reports what is available NOW and keeps no minimum, so
+ * nros_platform_heap_used_bytes above is the INSTANTANEOUS figure — and a pool
+ * size has to cover the peak. The minimum is maintained here, by re-reading the
+ * pool after every allocation drawn from it.
+ *
+ * "Every allocation drawn from it" is the whole claim, and it is why this is a
+ * shared function rather than a counter private to the allocator below.
+ * nros_platform_alloc is the funnel for nano-ros AND zenoh-pico (Mode-A, see
+ * the heap-stats comment above) — but the BOARD's own tx_byte_allocate calls do
+ * not pass through it and draw from the same pool: the boot app-thread stack,
+ * every tier stack, and nros_threadx_alloc. Those sites call this directly. An
+ * allocating site that does not note makes the number an UNDER-report, which is
+ * the direction that silently under-sizes the pool.
+ *
+ * Cost is one tx_byte_pool_info_get per allocation. That is not free the way
+ * heap_4's O(1) counter is; it is accepted because the alternative is having no
+ * peak at all on this port. */
+static ULONG s_pool_min_ever_available = 0;
+static int s_pool_min_ever_valid = 0;
+
+void nros_platform_threadx_note_pool_usage(void) {
+    if (s_byte_pool == NULL) {
+        return;
+    }
+    ULONG available = 0;
+    if (tx_byte_pool_info_get(s_byte_pool, TX_NULL, &available, TX_NULL, TX_NULL, TX_NULL,
+                              TX_NULL) != TX_SUCCESS) {
+        return;
+    }
+    if (!s_pool_min_ever_valid || available < s_pool_min_ever_available) {
+        s_pool_min_ever_available = available;
+        s_pool_min_ever_valid = 1;
+    }
+}
+
+/* The least the pool has ever had available. Returns the pool's full size when
+ * nothing has been noted yet, so the peak derived from it reads 0 rather than a
+ * sentinel. */
+size_t nros_platform_threadx_pool_min_ever_free_bytes(void) {
+    if (s_byte_pool == NULL) {
+        return 0u;
+    }
+    if (!s_pool_min_ever_valid) {
+        return (size_t) s_byte_pool->tx_byte_pool_size;
+    }
+    return (size_t) s_pool_min_ever_available;
 }
 
 /* phase-230 1f (RFC-0034): the `z_malloc`/`z_free` funnel on ThreadX is owned
