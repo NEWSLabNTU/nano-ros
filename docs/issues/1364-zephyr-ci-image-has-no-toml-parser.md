@@ -97,3 +97,42 @@ A decision between the two defensible sites, then the gate that binds it:
 
 Acceptance is the `rows whose board is NOT this runner` job reaching its cells, and
 a gate that fails if the image loses the parser again.
+
+## Still reproducing six days later, and a third call site
+
+Re-measured 2026-09-19 from `live-peer regression` run **35420818887**
+(schedule, 04:15), which is the same two-job/two-cause shape this issue
+recorded on 2026-09-13:
+
+| job | id | cause |
+| --- | --- | --- |
+| `rows whose board IS this runner` | 105838049568 | `No space left on device : '…/_diag/Worker_20260919-041559-utc.log'` — [[issue-1353]], read from the check-run annotations because the log itself is 48 833 lines with no diagnostic in it |
+| `rows whose board is NOT this runner` | 105838225959 | this issue |
+
+So the lane has now been red on this cause for every scheduled run from
+2026-09-11 to 2026-09-19 inclusive. Nothing about the image changed in that
+window, which is what the issue predicts; it is recorded here because a lane red
+every night has no signal capacity, and the only way to keep it from absorbing a
+second fault is to re-read the text each time.
+
+**A third script dies on the same chain.** The issue names
+`scripts/build/fixtures-manifest.py` and `scripts/sdk/prereq-packages.py`. This
+run adds `scripts/check-interop-verdicts.py`, two seconds after the fixture
+build gives up:
+
+```
+File "/__w/nano-ros/nano-ros/scripts/check-interop-verdicts.py", line 100, in <module>
+    import tomllib
+ModuleNotFoundError: No module named 'tomllib'
+…
+  File "/__w/nano-ros/nano-ros/scripts/check-interop-verdicts.py", line 102, in <module>
+    import tomli as tomllib  # type: ignore
+ModuleNotFoundError: No module named 'tomli'
+error: recipe `interop-verdicts` failed on line 877 with exit code 1
+```
+
+That does not change the diagnosis, but it does change the shape of option 2
+above: the sweep is not "the scripts the fixture build happens to reach", it is
+every one of the 39 sites, because the job walks through them one recipe at a
+time and each dies on its own import. It also means the job would not reach its
+cells even if the fixture build were fixed on its own.
