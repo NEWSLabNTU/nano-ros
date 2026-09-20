@@ -217,19 +217,28 @@ self_test() {
     # Negative control. Break a copy the way the real defect did — a <depend>
     # that resolves to nothing — and require a FAIL. Uses the first buildable
     # template with a package.xml, so it cannot be outlived by a rename.
-    local tmpl work dest ws pkg rc
+    local tmpl work dest ws pkg rel rc
+    # The package.xml comes from the INDEX, not from a walk of the copy: it is
+    # a tracked file, and `check-no-tracked-file-find` is right that `find` is
+    # the wrong instrument for one (7m36s -> 0.8s over the same paths). The
+    # copy mirrors repo-relative paths, so the index path maps straight in.
+    rel=""
     for tmpl in $(discover_templates); do
         image_declaring_manifest "$tmpl" >/dev/null || continue
-        [ -n "$(git ls-files "$templates_dir/$tmpl" | grep '/package\.xml$' | head -1)" ] || continue
+        rel="$(git ls-files "$templates_dir/$tmpl" | sed -n '/\/package\.xml$/{p;q;}')"
+        [ -n "$rel" ] || continue
         break
     done
-    [ -n "${tmpl:-}" ] || { echo "self-test: no buildable template to break" >&2; return 2; }
+    [ -n "${tmpl:-}" ] && [ -n "$rel" ] || {
+        echo "self-test: no buildable template with a package.xml to break" >&2
+        return 2
+    }
 
     work="$(mktemp -d "${TMPDIR:-/tmp}/nros-template-selftest.XXXXXX")" || return 2
     dest="$work/copy"
     copy_out "$tmpl" "$dest" || { echo "self-test: copy failed" >&2; return 2; }
     ws="$dest/$templates_dir/$tmpl"
-    pkg="$(find "$ws" -name package.xml | head -1)"
+    pkg="$dest/$rel"
     # `nano-ros` is the exact name that resolved to nothing; a hyphen also makes
     # it an illegal ROS package name, so no future rung can rescue it.
     sed -i 's|</package>|  <depend>nano-ros</depend>\n</package>|' "$pkg"
@@ -264,7 +273,14 @@ buildable=()
 skipped=()
 for tmpl in $(discover_templates); do
     if [ "${#wanted[@]}" -gt 0 ]; then
-        printf '%s\n' "${wanted[@]}" | nros_grep_q -Fx "$tmpl" || continue
+        # No pipeline here (issue 1077): a matcher that exits early can kill
+        # the writer with SIGPIPE, and under `pipefail` a MATCH then reads as
+        # a MISS — which would silently drop the template the caller asked for.
+        want_hit=0
+        for w in "${wanted[@]}"; do
+            [ "$w" = "$tmpl" ] && { want_hit=1; break; }
+        done
+        [ "$want_hit" -eq 1 ] || continue
     fi
     if manifest="$(image_declaring_manifest "$tmpl")"; then
         buildable+=("$tmpl")
