@@ -101,6 +101,23 @@ jobs:
         id: doctor
         run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
 
+      # AFTER `setup`, BEFORE `build` — phase-449 W2.
+      #
+      # This gate already ran, inside `just ci matrix`, which is step 5. That is
+      # too late to be worth anything: the condition it detects makes the BUILD
+      # fail, ~15 minutes in, as a cmake error about an entity-inventory schema
+      # number. Runs 35190044677, 35315010126, 35426556624, 35494195364 and
+      # 35517366695 all died there, and `matrix-triage` reported five identical
+      # `NO VERDICT: stopped in the build` lines that named no cause.
+      #
+      # `just setup tier2` now REPAIRS the binding (unbind-manifest-project.sh
+      # --from-config, in the workspace-already-present branch). This is the
+      # verification that the repair took, placed where a failure costs seconds
+      # and names the workspace, the foreign checkout and the fix — which is
+      # what the script's own header argues a refusal must do.
+      - name: The Zephyr workspace belongs to this checkout
+        run: ./scripts/check-zephyr-workspace-checkout.sh
+
       # THE MISSING MIDDLE — phase-413 W2.
       #
       # The documented chain is `setup` -> `build` -> `test` (phase-411 W4), and

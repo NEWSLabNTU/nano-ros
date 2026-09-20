@@ -138,6 +138,20 @@ workspace comes from that one tree, measured in a downstream project's
       (`unbind-manifest-project.sh`, idempotent) rather than asking anyone to
       re-provision 4.6 GB.
 
+      **Correction (2026-09-20): that measurement was confounded, and the
+      conclusion it supports is false.** The "live bound workspace" it was taken
+      on is bound to THIS checkout, so "the resolved module is the CHECKOUT's"
+      was true for a reason the test could not distinguish from the claim — both
+      candidates were the same tree. On the self-hosted runner, where they
+      differ, the manifest project WINS and `-DZEPHYR_EXTRA_MODULES` does not
+      displace it: run 35517366695 carries the flag on its command line and
+      still resolved `cmake/NanoRosEntityInventory.cmake` out of
+      `<home>/src/nano-ros` while `NanoRosVerbs.cmake` came from `_work/...`.
+      Migration is therefore NOT transparent; an old workspace must be unbound,
+      which is what W2 now does in `just zephyr setup`. See
+      [issue 1389](../issues/1389-tier2-entity-inventory-schema-reader-behind.md)
+      "Step 1, answered".
+
 ### W2 — tier 2 builds the tree under test
 
 [Issue 1253](../issues/1253-zephyr-workspace-manifest-binds-foreign-module.md).
@@ -153,20 +167,46 @@ tree's entries and judged images no run of this tree made.
       only the TIER-1 `ci` recipe runs. So the gate written FOR this lane was
       never run BY it: phase-450's subject, arriving inside this phase.
       Wired into `_matrix-run` and `matrix-nightly`, immediately after
-      `_lane-gate` and BEFORE the build — issue 1253's complaint is not that
-      the refusal is missing but that it arrives fifteen minutes in, inside a
-      cmake configure, naming a binary rather than the workspace. Measured: on
-      a workspace bound to a foreign checkout it exits 1 and prints the
-      workspace, that checkout and this tree.
+      `_lane-gate` — issue 1253's complaint is not that the refusal is missing
+      but that it arrives fifteen minutes in, inside a cmake configure, naming
+      a binary rather than the workspace. Measured: on a workspace bound to a
+      foreign checkout it exits 1 and prints the workspace, that checkout and
+      this tree.
+
+      **"BEFORE the build" was wrong, and it is the whole point of the item.**
+      Those recipes open `just ci matrix`, which in `run-matrix.yml` is step 5.
+      Step 4 is `just build tier2` — the fixture build, which is exactly where
+      the foreign module lands and dies. So the gate ran after the thing it
+      exists to prevent, and five consecutive runs (35190044677, 35315010126,
+      35426556624, 35494195364, 35517366695) died in the build with the gate
+      never reached. It is now its own step in `run-matrix.yml`, between the
+      runner doctor and `just build tier2`.
+- [x] **The lane REPAIRS the binding, not just refuses it.** A refusal alone
+      leaves the runner red forever: its workspace was provisioned before W1,
+      and `just zephyr setup` skips `scripts/zephyr/setup.sh` — the script W1
+      taught to unbind — whenever the workspace already exists. So every
+      existing workspace stayed bound and `--force` (a full reprovision) was
+      the only repair. The skip branch now calls
+      `unbind-manifest-project.sh --from-config "$WORKSPACE"`, gated on itself
+      and idempotent, in the same `if` that issue 1279 taught to re-register
+      the SDK. `--from-config` reads the project name from the workspace's own
+      `.west/config`, because it is the basename of whichever checkout ran
+      `west init -l` and a shared store workspace is not the caller's to
+      assume. Measured end to end on a synthetic workspace with the runner's
+      exact shape: gate refuses and names all three paths, unbind repairs,
+      gate passes, second unbind is a no-op.
 - [ ] One scheduled tier-2 run reaches the cells and produces a verdict. This
-      is the acceptance; the three earlier failure texts are not.
+      is the acceptance; the earlier failure texts are not.
       **Still owed, and not claimable from a checkout.** A scheduled run is the
-      only thing that can satisfy it. As of 2026-09-18 `just matrix-triage`
-      reports 0 of 8 runs reaching the cells — 4 stopped in provisioning, 3 in
-      the build — so this item stays open until a nightly says otherwise.
-      W1 removes one cause; issue 1158 at
-      [phase-416](phase-416-tier2-lane-and-single-spelling.md) owns the rest,
-      and this item does not claim them.
+      only thing that can satisfy it. As of 2026-09-20 `just matrix-triage`
+      reports 0 of 8 runs reaching the cells — but the SPLIT has moved, which
+      is the signal W1 and this item were meant to produce: 3 stopped in
+      provisioning (all on or before 2026-09-16) and 5 in the build (every run
+      since). Provisioning is fixed; the build cause is identified and fixed
+      above. This item stays open until a nightly says otherwise, and issue
+      1158 at [phase-416](phase-416-tier2-lane-and-single-spelling.md) still
+      owns whatever is behind it — a lane that has never reached its cells has
+      no way to show what the next failure is.
 
 ### W3 — the Zephyr SDK lives in the store, not in a clone
 

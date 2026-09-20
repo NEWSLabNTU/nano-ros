@@ -48,6 +48,32 @@ setup *ARGS:
             bash scripts/zephyr/ensure-sdk-registered.sh \
                 "$(pwd)/scripts/zephyr/sdk/zephyr-sdk-$sdk_want"
         fi
+        # issue 1387 / 1253 / phase-449 W2 — the SAME gap one rung over, and it
+        # cost the tier-2 lane every run from 2026-09-17 to -20.
+        #
+        # W1 stopped `scripts/zephyr/setup.sh` binding the manifest project to
+        # the checkout that provisions it, and made that script unbind. But this
+        # branch does not call that script. A workspace provisioned BEFORE W1 —
+        # which every existing one is — stays bound forever, and `--force` (a
+        # full reprovision) was the only repair. On the self-hosted runner that
+        # meant `~/.nros/workspaces/zephyr/3.7/` kept pointing at the runner's
+        # own `<home>/src/nano-ros` while jobs build from `_work/...`, so cmake
+        # resolved `NanoRosEntityInventory.cmake` out of one checkout and
+        # `NanoRosVerbs.cmake` out of the other:
+        #
+        #   CMake Error at <home>/src/nano-ros/cmake/NanoRosEntityInventory.cmake:360
+        #     states entity-inventory schema version 6; this reader understands 3.
+        #
+        # Two checkouts, one image — the `3` is simply what the OLD tree's
+        # module says. `-DZEPHYR_EXTRA_MODULES` does not rescue it: west's
+        # manifest project already provides a module named `nros`, and it wins.
+        #
+        # `--from-config` because the project name is the basename of whichever
+        # checkout ran `west init -l`, which for a SHARED store workspace is not
+        # ours to assume. The script is idempotent and exits 0 when there is
+        # nothing to unbind, so this is gated on itself, exactly as the SDK
+        # registration above is.
+        bash scripts/zephyr/unbind-manifest-project.sh --from-config "$WORKSPACE"
     else
         NROS_ZEPHYR_MANIFEST="{{ZEPHYR_MANIFEST}}" NROS_ZEPHYR_WORKSPACE="$WORKSPACE" ./scripts/zephyr/setup.sh $ARGS
     fi
