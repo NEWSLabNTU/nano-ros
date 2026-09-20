@@ -197,7 +197,9 @@ build-fvp-ws-entry:
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
         nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up"
     fi
-    sdk="$(pwd)/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    # issue 1254 — ASK the resolver. This literal was one of four copies of a
+    # path the store now owns, and of a version `setup.sh` already chooses.
+    sdk="$(bash scripts/lib/zephyr-sdk.sh resolve)"
     if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
         nros_lane_skip "Zephyr/FVP-ws-entry skip: aarch64-zephyr-elf toolchain missing"
     fi
@@ -308,7 +310,8 @@ run-fvp-ws-entry:
     _sdk_ninja="$(nros sdk-path ninja)"
     cd "$workspace"
     export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
-    export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    # issue 1254 — the resolver, not a fifth spelling of the path.
+    export ZEPHYR_SDK_INSTALL_DIR="$(bash "$nros_root/scripts/lib/zephyr-sdk.sh" --root "$nros_root" resolve)"
     export NROS_REPO_DIR="$nros_root"
     export ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"
     west build -d build-fvp-ws-entry -t run
@@ -367,7 +370,9 @@ build-fvp-board-import:
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
         nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up"
     fi
-    sdk="$(pwd)/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    # issue 1254 — ASK the resolver. This literal was one of four copies of a
+    # path the store now owns, and of a version `setup.sh` already chooses.
+    sdk="$(bash scripts/lib/zephyr-sdk.sh resolve)"
     if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
         nros_lane_skip "Zephyr/FVP board-import skip: aarch64-zephyr-elf toolchain missing"
     fi
@@ -481,7 +486,8 @@ run-fvp-board-import:
     _sdk_ninja="$(nros sdk-path ninja)"
     cd "$workspace"
     export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
-    export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    # issue 1254 — the resolver, not a fifth spelling of the path.
+    export ZEPHYR_SDK_INSTALL_DIR="$(bash "$nros_root/scripts/lib/zephyr-sdk.sh" --root "$nros_root" resolve)"
     west build -d build-fvp-board-import -t run
 
 # phase-337 W7.b — the S32Z270-DC RTU0 board left the tree with the other

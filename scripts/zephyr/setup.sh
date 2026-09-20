@@ -105,6 +105,21 @@ case "$MANIFEST" in
         ;;
 esac
 
+# issue 1254 / phase-449 W3 — the SDK lives in the STORE, resolved by the one
+# resolver, with the in-checkout copy kept as the last arm so a host provisioned
+# before this keeps building.
+#
+# `SDK_INSTALL_DIR` ("$SCRIPT_DIR/sdk") is no longer the install target; it
+# survives only as that legacy arm, inside `zephyr-sdk.sh`.
+# shellcheck source=../lib/zephyr-sdk.sh
+. "$NANO_ROS_ROOT/scripts/lib/zephyr-sdk.sh"
+
+# Where it IS, if anywhere: override, then store, then the legacy checkout copy.
+SDK_PATH="$(nros_zephyr_sdk_resolve "$ZEPHYR_SDK_VERSION" "$NANO_ROS_ROOT" || true)"
+# Where it GOES when nothing has it yet: the store (RFC-0095 D2).
+SDK_STORE_PATH="$(nros_zephyr_sdk_store_dir "$ZEPHYR_SDK_VERSION")"
+[ -n "$SDK_PATH" ] || SDK_PATH="$SDK_STORE_PATH"
+
 # Parse arguments
 FORCE=false
 SKIP_SDK=false
@@ -185,7 +200,7 @@ echo "  nros Zephyr Workspace Setup"
 echo "========================================"
 echo ""
 log_info "Workspace: $WORKSPACE_DIR"
-log_info "SDK directory: $SDK_INSTALL_DIR"
+log_info "SDK directory: $SDK_PATH"
 log_info "nros: $NANO_ROS_ROOT"
 echo ""
 
@@ -311,7 +326,6 @@ log_success "Rust embedded targets ready"
 # Download and Install Zephyr SDK
 # =============================================================================
 
-SDK_PATH="$SDK_INSTALL_DIR/zephyr-sdk-$ZEPHYR_SDK_VERSION"
 
 
 
@@ -320,8 +334,10 @@ provision_sdk_via_nros() {
     # composing a URL here. `[tool.zephyr-sdk]` carries a `dist.<host>` row per
     # host and `nros setup` picks the one matching `host_key()`, downloads,
     # verifies the sha256 and unpacks it. The tarball has no top-level `bin/`,
-    # and `tar -xf` is run without `--strip-components`, so this lands exactly
-    # where the rest of this script expects: `$SDK_INSTALL_DIR/zephyr-sdk-<ver>`.
+    # and `tar -xf` is run without `--strip-components`, so the tarball's own
+    # top-level `zephyr-sdk-<ver>/` becomes the LAST component of the installed
+    # path — which is why `nros_zephyr_sdk_store_dir` appends it and why
+    # `nros sdk-path` alone is not the answer a consumer needs (issue 1254).
     #
     # This replaces a hand-rolled aria2c + sha256sum + tar block whose tarball
     # name and checksum were hardcoded to x86_64 — which fetched 1.3 GiB, PASSED
@@ -336,8 +352,17 @@ provision_sdk_via_nros() {
     source "$NANO_ROS_ROOT/scripts/build/cargo.sh"
     nros_bin="$(nros_cli_bin)"
     log_info "Provisioning Zephyr SDK $ZEPHYR_SDK_VERSION via nros (index entry: $ZEPHYR_SDK_TOOL, host-keyed dist)..."
+    # NO `--prefix` — issue 1254. `--prefix` is the documented out-of-store
+    # escape hatch: it "places it outside the shared store", the install is not
+    # recorded in `nros-sdk.lock`, so `nros sdk-path` cannot find it afterwards
+    # and `nros store gc` does not know it exists. Passing `$SCRIPT_DIR/sdk`
+    # therefore put the SDK inside whichever clone ran setup, and a downstream
+    # project's `env.sh` ended up naming a SIBLING checkout — one that
+    # `just clean-setup` deletes.
+    #
+    # Without it the same command installs where RFC-0095 D2 says, and the store
+    # is what `nros store list` / `gc` already understand.
     "$nros_bin" setup --tool "$ZEPHYR_SDK_TOOL" \
-        --prefix "$SDK_INSTALL_DIR" \
         --index "$NANO_ROS_ROOT/nros-sdk-index.toml"
 }
 
@@ -414,8 +439,23 @@ source "\$WORKSPACE/zephyr/zephyr-env.sh"
 export ZEPHYR_SDK_INSTALL_DIR="$SDK_PATH"
 export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 
-# nros paths
-export NANO_ROS_ROOT="\$WORKSPACE/$NANO_ROS_NAME"
+# nros paths — issues 1254 and 1258.
+#
+# This file is generated into a workspace that is SHARED by every project
+# wanting this Zephyr line, so it must not name one checkout. It used to export
+#     NANO_ROS_ROOT="\$WORKSPACE/$NANO_ROS_NAME"
+# which was a symlink to whichever clone ran setup; that symlink is gone (the
+# manifest project carries no checkout now), so the path would name a directory
+# holding only a manifest file.
+#
+# The checkout is the CALLER's, and every caller already has one: `activate.sh`
+# exports `NANO_ROS_ROOT`, and `just` derives it from `justfile_directory()`.
+# So this preserves what the caller set and says what to do when there is none,
+# rather than inventing an answer that is wrong for everybody but one tree.
+if [ -z "\${NANO_ROS_ROOT:-}" ]; then
+    echo "env.sh: NANO_ROS_ROOT is not set — source your checkout's activate.sh first." >&2
+    echo "        This workspace is shared, so it cannot name one for you." >&2
+fi
 
 # Local bin
 export PATH="\$HOME/.local/bin:\$PATH"
@@ -423,11 +463,12 @@ export PATH="\$HOME/.local/bin:\$PATH"
 echo "nros Zephyr environment ready"
 echo "  ZEPHYR_BASE: \$ZEPHYR_BASE"
 echo "  ZEPHYR_SDK: $SDK_PATH"
-echo "  NANO_ROS_ROOT: \$NANO_ROS_ROOT"
+echo "  NANO_ROS_ROOT: \${NANO_ROS_ROOT:-<unset — source activate.sh in your checkout>}"
 echo ""
-echo "Build example:"
+echo "Build example (from YOUR checkout, which supplies the nros module):"
 echo "  cd \$WORKSPACE"
-echo "  west build -b native_sim/native/64 $NANO_ROS_NAME/examples/zephyr/rust/talker -- -DCONF_FILE=\"prj.conf;prj-zenoh.conf\""
+echo "  west build -b native_sim/native/64 \$NANO_ROS_ROOT/examples/zephyr/rust/talker \\"
+echo "      -- -DZEPHYR_EXTRA_MODULES=\$NANO_ROS_ROOT -DCONF_FILE=\"prj.conf;prj-zenoh.conf\""
 ENVEOF
     chmod +x "$WORKSPACE_DIR/env.sh"
 }
