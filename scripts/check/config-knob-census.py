@@ -212,6 +212,15 @@ KNOB_CLASS = {
     # tunes; `ZPICO_MAX_QUERYABLES` / `CONFIG_NROS_MAX_QUERYABLES` is the knob
     # and still outranks it (it is the checked OVERRIDE this bounds from below).
     "NROS_DECLARED_NODES": ("infra", "a COUNT the resolver passes down, not a knob"),
+    # issue 1378 — the same shape a FOURTH time, into the same pool. A
+    # TRANSIENT_LOCAL publisher declares a cache queryable, and an action server
+    # has one for a `/status` topic nothing declares, so an action server costs
+    # four slots and not three. A COUNT the declaration passes down — the
+    # DESCRIPTOR answers this on the cargo-leaf road (phase-455 W5) and this
+    # carries it on the roads that have none (issue 1393) — never something a
+    # user tunes. `ZPICO_MAX_QUERYABLES` / `CONFIG_NROS_MAX_QUERYABLES` is the
+    # knob and still outranks it, bounded from below by this term.
+    "NROS_DECLARED_TL_PUBLISHERS": ("infra", "a COUNT the resolver passes down, not a knob"),
     # issue 1122 — the same shape one pool over: cmake DERIVES the large-payload
     # class count and this carries it to the build script as a DEFAULT on lanes
     # with no Kconfig. Not a knob: `ZPICO_MAX_LARGE_SUBSCRIBERS` is the knob and
