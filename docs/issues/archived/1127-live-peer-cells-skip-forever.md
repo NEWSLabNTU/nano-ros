@@ -183,7 +183,7 @@ Phase 433 owns this work.
 `.config/interop-verdicts.toml` + `scripts/check-interop-verdicts.py`
 (`just check interop-verdict-ledger`, fast lane; `just interop-verdicts` for
 the report). Design, and the four shapes rejected, in
-[phase-433 W5.a](../roadmap/phase-433-rmw-live-verification.md).
+[phase-433 W5.a](../../roadmap/phase-433-rmw-live-verification.md).
 
 The shape: **absence of an entry means NEVER RUN.** A cell that has met a peer
 has a dated entry naming the cases, the verdict, the command and what was
