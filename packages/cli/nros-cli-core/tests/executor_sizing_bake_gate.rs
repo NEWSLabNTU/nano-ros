@@ -42,6 +42,14 @@ fn temp_root(tag: &str) -> PathBuf {
 /// entities in total, which fits the default four-slot table with room to
 /// spare. `deploy` targets a firmware board, which drops per-entry sizing and
 /// opens at the build-time `NROS_EXECUTOR_MAX_CBS`.
+///
+/// Issue 1397 — the board is a name the CATALOG resolves. It used to be
+/// `mps2-an385`, which no descriptor claims (the FreeRTOS board there answers
+/// to `freertos`), and the bake never noticed because `args()` named the block
+/// `freertos` rather than this one: nothing reached the deploy, and the
+/// firmware verdict below came from the capacity check reading that block name
+/// as a PLATFORM name. This file's whole subject is a firmware board's
+/// behaviour, so it now names one.
 fn write_fixture(dir: &Path) {
     fs::write(
         dir.join("Cargo.toml"),
@@ -97,7 +105,7 @@ name = "listener"
 [deploy.qemu_freertos]
 kind = "freertos"
 target = "thumbv7m-none-eabi"
-board = "mps2-an385"
+board = "freertos"
 launch = "freertos.launch.xml"
 "#,
     )
@@ -200,11 +208,19 @@ fn write_sidecar(dir: &Path, timers: usize) {
     fs::write(dir.join("metadata/listener.json"), json).unwrap();
 }
 
+/// Issue 1397 — the target names the DEPLOY BLOCK that carries the firmware
+/// board, not a platform. `--target freertos` (what this said) names no block
+/// in this bringup at all; it only ever worked because the capacity check read
+/// the string as a platform name, so the test asserted a firmware verdict
+/// without the bake having resolved a firmware board.
+///
+/// Resolving a board loads the board catalog, which needs a nano-ros root
+/// (issue 1263's ladder) — the walk-up cannot answer from a `/tmp` workspace.
 fn args(ws: &Path, out: &Path) -> Args {
     Args {
         workspace: Some(ws.to_path_buf()),
         bringup: None,
-        target: Some("freertos".to_string()),
+        target: Some("qemu_freertos".to_string()),
         out: Some(out.to_path_buf()),
         ahead_of_vendor: None,
         file: None,
@@ -212,7 +228,12 @@ fn args(ws: &Path, out: &Path) -> Args {
         rmw: None,
         model: None,
         for_entry: None,
-        nano_ros_path: None,
+        nano_ros_path: Some(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("..")
+                .join(".."),
+        ),
     }
 }
 

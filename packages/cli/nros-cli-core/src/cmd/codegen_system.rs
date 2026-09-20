@@ -41,7 +41,7 @@ use crate::orchestration::{
     cargo_metadata_schema::{SystemComponentEntry, SystemToml, validate_and_warn_capabilities},
     nros_config::{BringupPackageEntry, NrosConfig},
     tier_resolver::{
-        ResolvedTierTable, collect_callback_groups, derive_target_rtos, resolve_system_tiers,
+        ResolvedTierTable, collect_callback_groups, derive_target_platform, resolve_system_tiers,
     },
 };
 
@@ -272,7 +272,10 @@ pub fn run(args: Args) -> Result<()> {
     // looked up, so those bakes need no SDK root.
     // The workspace's own packages can carry descriptors, exactly as for
     // `nros build`, so a workspace-declared board resolves here too.
-    let target_rtos = {
+    // Issue 1397 — resolve the image's PLATFORM once; `target_rtos` is a view
+    // of it, and so is what the executor capacity check reads below. The block
+    // id is the author's namespace and answers neither question.
+    let target_platform = {
         let catalog = if crate::orchestration::tier_resolver::target_board_id(
             &bringup.system,
             target.as_deref(),
@@ -301,10 +304,10 @@ pub fn run(args: Args) -> Result<()> {
         } else {
             crate::orchestration::board_descriptor::BoardCatalog::default()
         };
-        derive_target_rtos(&bringup.system, target.as_deref(), &catalog)
+        derive_target_platform(&bringup.system, target.as_deref(), &catalog)
             .map_err(|e| eyre::eyre!("codegen-system: {e}"))?
-            .to_string()
     };
+    let target_rtos = target_platform.tier_rtos_key().to_string();
     // phase-304 W2 (RFC-0056) — resolve + VALIDATE the declared ROS edition
     // (typo guard: an unknown `[system].ros_edition` fails the bake loudly, not
     // a silent humble fallback). Recorded so the operator sees the axis the
@@ -374,7 +377,7 @@ pub fn run(args: Args) -> Result<()> {
         );
         crate::orchestration::model_ingest::check_executor_capacity(
             &model,
-            target.as_deref(),
+            target_platform,
             crate::orchestration::model_ingest::declared_max_callbacks(&bringup.manifest_path),
             &metadata_slots,
         )?;
@@ -1936,6 +1939,184 @@ execution:
             !legacy.contains("\"priority\": 7,"),
             "the legacy target must not reach a zephyr sub-table: {legacy}"
         );
+    }
+
+    /// `write_tiered_workspace`, re-pointed at TWO images whose block names
+    /// disagree with the boards they build (issue 1397).
+    ///
+    /// `[image.rt_host]` builds the HOSTED board and `[image.native]` builds a
+    /// ZEPHYR one, so neither block id is its platform's name — the case a
+    /// reader of the block STRING gets backwards in both directions. The model
+    /// registers nine callback entities (eight subscriptions + one service
+    /// server), which derives twelve against a build default of four, so the
+    /// capacity check has something to say about both.
+    fn write_misnamed_image_workspace(dir: &Path) {
+        write_tiered_workspace(dir);
+        fs::write(
+            dir.join("demo_bringup/system.toml"),
+            r#"
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Control"
+name = "control_node"
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+
+[tiers.high]
+spin_period = "1000us"
+[tiers.high.posix]
+priority = 80
+[tiers.high.zephyr]
+priority = 7
+[tiers.low.posix]
+priority = 10
+[tiers.low.zephyr]
+priority = 9
+
+# A hosted image whose block is named for its ROLE. `linux` is the host
+# board's own id (`packages/boards/linux`, platform `posix`).
+[image.rt_host]
+board = "linux"
+launch = "system.launch.xml"
+
+# And a Zephyr image whose block carries the host's name. Legal: the block
+# namespace is the author's, and nothing ties it to a platform.
+[image.native]
+board = "native_sim/native/64"
+launch = "system.launch.xml"
+"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("demo_bringup/config/system_model.yaml"),
+            r#"
+meta:
+  version: 1
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /control_node:
+      scope: /
+      pkg: ctrl_pkg
+      exec: control_node
+    /telem_node:
+      scope: /
+      pkg: telem_pkg
+      exec: telem_node
+  topics:
+    /t0:
+      type: std_msgs/Int32
+      sub: [/control_node/t0]
+    /t1:
+      type: std_msgs/Int32
+      sub: [/control_node/t1]
+    /t2:
+      type: std_msgs/Int32
+      sub: [/control_node/t2]
+    /t3:
+      type: std_msgs/Int32
+      sub: [/control_node/t3]
+    /t4:
+      type: std_msgs/Int32
+      sub: [/telem_node/t4]
+    /t5:
+      type: std_msgs/Int32
+      sub: [/telem_node/t5]
+    /t6:
+      type: std_msgs/Int32
+      sub: [/telem_node/t6]
+    /t7:
+      type: std_msgs/Int32
+      sub: [/telem_node/t7]
+  services:
+    /add:
+      type: example_interfaces/srv/AddTwoInts
+      server: [/control_node/add]
+execution:
+  tiers:
+    high:
+      spin_period_us: 1000
+      posix:
+        priority: 80
+      zephyr:
+        priority: 7
+    low:
+      posix:
+        priority: 10
+      zephyr:
+        priority: 9
+"#,
+        )
+        .unwrap();
+    }
+
+    /// Issue 1397 — the executor capacity check follows the image's BOARD, not
+    /// the spelling of the block that names it.
+    ///
+    /// `--target` (and the `--for-entry` that resolves to the same block id)
+    /// names an `[image.*]`/`[deploy.*]` BLOCK. `check_executor_capacity` used
+    /// to read that same string as a PLATFORM name, which is true of
+    /// `native`/`posix` only because an image is conventionally named after
+    /// its platform. Both halves below run one bake over one workspace and one
+    /// model; the only difference is which image is named, and the two are
+    /// each other's negative control — they get OPPOSITE verdicts, so a fix
+    /// that simply inverted the predicate cannot pass both.
+    #[test]
+    fn an_image_takes_its_capacity_rule_from_its_board_not_its_block_name() {
+        crate::test_support::isolate_model_discovery();
+        let dir = scratch_dir("misnamed_image_capacity");
+        write_misnamed_image_workspace(&dir);
+
+        let bake = |out: &Path, target: &str| {
+            run(Args {
+                workspace: Some(dir.clone()),
+                bringup: None,
+                target: Some(target.to_string()),
+                for_entry: None,
+                nano_ros_path: Some(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")),
+                out: Some(out.to_path_buf()),
+                ahead_of_vendor: None,
+                file: None,
+                exec: None,
+                rmw: Some("zenoh".into()),
+                model: None,
+            })
+        };
+
+        // A HOSTED board honors the per-entry sizing the entry bake emits
+        // (`BoardEntry::run_with_deploy_sized`, phase-271), so the derived
+        // twelve covers the nine and there is nothing for the operator to do.
+        // Reading `rt_host` as a platform name makes it a firmware board: the
+        // bake refuses a system that is in fact fine.
+        bake(&dir.join("build/rt_host"), "rt_host").expect(
+            "issue 1397: `rt_host` builds the hosted board, which honors the derived \
+             sizing — the bake must not demand NROS_EXECUTOR_MAX_CBS for it",
+        );
+
+        // And the dangerous direction. A Zephyr board takes the default
+        // `BoardEntry` body, drops the sizing and opens at the compiled
+        // `MAX_CBS` — so nine entities against a table of four is the runtime
+        // `create_* (code=-6 Full)` issue 0257 exists to catch at bake time.
+        // Reading `native` as a platform name says "hosted, it derives its way
+        // out" and ships the image.
+        let err = bake(&dir.join("build/native"), "native")
+            .expect_err(
+                "issue 1397: `native` builds a ZEPHYR board, which ignores per-entry \
+                 sizing — 9 entities do not fit the default 4",
+            )
+            .to_string();
+        assert!(err.contains("registers 9 callback entities"), "got: {err}");
+        assert!(err.contains("NROS_EXECUTOR_MAX_CBS"), "got: {err}");
+        assert!(err.contains("0257"), "got: {err}");
     }
 
     /// phase-296 W5.12 — a workspace whose committed model declares NO

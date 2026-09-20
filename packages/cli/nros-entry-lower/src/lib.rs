@@ -89,6 +89,22 @@ impl BoardFamily {
         self != BoardFamily::Native
     }
 
+    /// Does this family's boards honor the per-entry executor sizing an entry
+    /// bake emits?
+    ///
+    /// Only the hosted boards override `BoardEntry::run_with_deploy_sized`
+    /// (phase-271 / issue #110); every firmware board takes the default trait
+    /// body, which drops the sizing and opens at the build-time `MAX_CBS`. So
+    /// this is a property of the FAMILY, and it lives here because two
+    /// namespaces ask it — the entry board keys
+    /// (`executor_sizing::board_honors_entry_sizing`, which the `nros::main!`
+    /// bake reads) and the board catalog's platform kinds (which the CLI bake
+    /// reads). Issue 1397: those two used to be one string doing both jobs,
+    /// and the string was neither.
+    pub fn honors_entry_sizing(self) -> bool {
+        self == BoardFamily::Native
+    }
+
     /// The C-ABI runners this family exports, or `None` when it has no C
     /// board surface at all.
     ///

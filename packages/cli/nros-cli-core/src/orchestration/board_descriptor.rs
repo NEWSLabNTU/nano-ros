@@ -155,6 +155,20 @@ impl PlatformKind {
         }
     }
 
+    /// Does an image on this platform honor the per-entry executor sizing the
+    /// entry bake emits?
+    ///
+    /// Issue 1397 — the CLI's half of
+    /// [`executor_sizing::board_honors_entry_sizing`](nros_orchestration_ir::executor_sizing::board_honors_entry_sizing),
+    /// which answers the same question in the entry board-KEY namespace. Both
+    /// route to [`BoardFamily::honors_entry_sizing`], so the two namespaces
+    /// cannot disagree about one fact; `board_key_and_platform_kind_agree`
+    /// (in `model_ingest`) holds them together over every board key.
+    pub fn honors_entry_sizing(self) -> bool {
+        self.board_family()
+            .is_some_and(nros_entry_lower::BoardFamily::honors_entry_sizing)
+    }
+
     /// The `[tiers.<name>.<rtos>]` key this platform's images read.
     /// [`NO_RTOS_TIER_KEY`](nros_entry_lower::NO_RTOS_TIER_KEY) for a
     /// platform with no RTOS.

@@ -175,11 +175,35 @@ pub fn derive_target_rtos(
     target: Option<&str>,
     catalog: &super::board_descriptor::BoardCatalog,
 ) -> Result<&'static str, String> {
+    Ok(derive_target_platform(system, target, catalog)?.tier_rtos_key())
+}
+
+/// The PLATFORM the selected target's image runs on, from the BOARD CATALOG.
+///
+/// Issue 1397 — the resolution [`derive_target_rtos`] is a view of. A bake
+/// needs more than the tier key: the executor capacity check needs the
+/// platform's NAME (the RFC-0049 platforms-tree vocabulary, for the `max_cbs`
+/// ladder) and whether the board honors per-entry sizing. Those used to be
+/// read out of the `--target` BLOCK NAME, which is a third vocabulary and
+/// answers neither question — it is right for `native`/`posix` only because an
+/// image is conventionally named after its platform.
+///
+/// One resolution, so every consumer agrees about what the image IS. The
+/// no-board default is the host, as documented on [`target_board_id`]: a
+/// `kind = "self"` deploy genuinely names no board, and a target naming no
+/// block at all takes the system-wide default, which for every other question
+/// this bake answers is the host too. Naming the image is what replaces the
+/// default with an answer — see issue 1312.
+pub fn derive_target_platform(
+    system: &SystemToml,
+    target: Option<&str>,
+    catalog: &super::board_descriptor::BoardCatalog,
+) -> Result<super::board_descriptor::PlatformKind, String> {
     let Some((origin, board)) = target_board_id(system, target) else {
-        return Ok(nros_entry_lower::BoardFamily::Native.tier_rtos_key());
+        return Ok(super::board_descriptor::PlatformKind::Posix);
     };
     let descriptor = super::image::resolve_board_id(catalog, &origin, &board)?;
-    Ok(descriptor.platform.tier_rtos_key())
+    Ok(descriptor.platform)
 }
 
 #[cfg(test)]
