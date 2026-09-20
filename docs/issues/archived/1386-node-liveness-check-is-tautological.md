@@ -2,12 +2,12 @@
 id: 1386
 title: "`node_ref_is_live(node_ref_of(node))` compares the current generation
   with itself, so three `NROS_RET_STALE_NODE` arms can never fire"
-status: open
+status: resolved
 type: bug
 area: [api]
 severity: medium
 found: 2026-09-18
-related: [phase-417, phase-379, issue-1384]
+related: [phase-417, phase-379, issue-1384, rfc-0089]
 ---
 
 ## What is true
@@ -177,7 +177,7 @@ the copy can see it. The measurement in "How it was measured" above therefore
 stays as recorded — what changes is that the doc comment stops promising the
 opposite.
 
-### Status
+### Status (at the time of the decision)
 
 The issue stays **open**: this is the settled fix SHAPE, not the fix. Acceptance
 changes with it — the old acceptance ("the copy of a finalised node must read
@@ -188,3 +188,103 @@ arm is reachable, not by reading the prose.
 
 Still cheapest fixed together with issue 1384, for the reason "Ordering" gives:
 two of the three sites are the same two functions.
+
+
+---
+
+## Resolution (2026-09-21)
+
+Fixed by the CATEGORY split the "Fix shape" section did not consider: the
+generation mechanism and `rcl_node_is_valid` are answering two different
+questions, and only one of them is ours.
+
+**Neither of the two options above was taken.** The node struct gained no
+binding-time generation (option 1: an ABI append for a check the caller can
+still defeat by copying the struct), and the surface did not merely drop its
+claims (option 2). Instead `rcl_node_is_valid` now answers UPSTREAM's question
+from state the node already has, which turned out to be a question nothing was
+asking.
+
+### What each of the four sites answers now
+
+The sweep was `grep -rn "node_ref_is_live\|node_ref_of" packages`, and it found
+**four** fresh-mint sites, not three. The fourth —
+`nros_executor_add_subscription_raw_with_info` passing
+`node_ref_of(node)` into `set_executor_node_identity` — has no return code, so
+it produced no unreachable verdict and the issue's measurement could not see it.
+
+| site | before | after |
+| --- | --- | --- |
+| `rcl_node_is_valid` | generation vs itself | the CONTEXT, through the executor |
+| `nros_node_resolve_name` | generation vs itself → `STALE_NODE` | `executor_context_is_valid` → `NROS_RET_NOT_INIT` |
+| `nros_node_create_guard_condition` | generation vs itself → `STALE_NODE` | deleted; the `validate_state!` below it already asks |
+| `set_executor_node_identity` (fresh-mint caller) | generation vs itself | `_from_node` form: NULL + `INITIALIZED` |
+
+`rcl/rcl/node.h` @ humble names three invalidity conditions — "the
+implementation is `NULL`", "rcl_shutdown has been called since the node has
+been initialized", "the node has been finalized with rcl_node_fini". The first
+and third are our one `state` field. The second is the CONTEXT, and an
+executor-bound node reaches it only through its executor, which **nothing
+checked**: the tautological arm stood exactly where that check belonged. So the
+fix is not a subtraction — `rcl_node_is_valid` answers strictly more than it
+did, on the node shape `nros_executor_node_init` builds.
+
+`executor_context_is_valid` (executor.rs) is the one new predicate:
+`nros_executor_is_valid` AND `nros_support_is_valid(executor->support)`, because
+`rclc_executor_fini` and `rclc_support_fini` each leave the other half looking
+fine — the same split state phase-417 stage 3 measured for a LEGACY node.
+
+### What was measured
+
+The negative control is three tests that fail on the pre-fix tree:
+
+```
+FAIL is_valid_reads_an_executor_bound_nodes_context_through_its_executor
+  a bound node over a finalised SUPPORT is not valid — rcl's
+  "rcl_shutdown has been called since the node has been initialized"
+FAIL the_context_question_reaches_the_primary_slot_too
+  slot 0 is a node like any other; its context can die the same way
+FAIL resolve_name_refuses_a_finalised_executors_remap_table
+  assertion `left == right` failed: left: 0, right: -7
+```
+
+That third line is the one worth keeping. Pre-fix, `nros_node_resolve_name` over
+a finalised executor did not crash — it walked into
+`get_executor(&mut executor._opaque)`, reinterpreted the zeroed storage as a
+live `CExecutor`, and returned **`NROS_RET_OK`** with a resolved name. The
+tautological guard was not merely inert; it was standing in front of that.
+
+### The acceptance criterion, revised and why
+
+This issue asked for "the copy of a finalised node must read invalid". **That is
+not what shipped, and it is not achievable without the struct change this fix
+declines.** `a_copy_of_a_finalised_node_reads_valid_and_the_stored_reference_is_
+what_catches_it` reproduces the probe and asserts the answer is still `true`,
+with the reason in the test name: a copy carries no evidence that its original
+was finalised, and upstream answers `true` for the analogous `rcl_node_t` copy
+for the same reason. Under RFC-0089 that is the correct contract for a name we
+took from rcl — a predicate that caught MORE than `rcl_node_is_valid` would be
+a divergence needing a ledger row, not a bonus.
+
+What does catch the class is a reference STORED before the fini, and the same
+test asserts that half: `node_ref_is_live(stored)` is false after
+`rcl_node_fini`. `publisher_fini_after_its_node_reports_a_stale_node` carries it
+to the return code, so `NROS_RET_STALE_NODE` has a reachable producer — which
+matters, because the other half of this defect was deleting three unreachable
+arms and leaving a constant nobody could obtain.
+
+### Doc claims corrected
+
+* `rcl_node_is_valid` — the "generation it was bound at" bullet is gone; the
+  boundary is stated instead.
+* `nros_node_create_guard_condition` — `NROS_RET_STALE_NODE` removed from its
+  `# Returns` (PR #1064).
+* `nros_node_get_domain_id` — "a retired node slot" was named as a reason it can
+  fail to answer; nothing on that path reads the generation.
+* The inverse, found by the same sweep: `nros_publisher_fini` and
+  `nros_subscription_fini` PRODUCE `NROS_RET_STALE_NODE` and did not document
+  it. Both now do.
+
+Not touched, and deliberately: `is_multi_session()` itself (issue 1384 owns that
+predicate). `rcl_node_is_valid` simply stopped reading it — whether a node's
+context is alive does not depend on how many siblings share its executor.

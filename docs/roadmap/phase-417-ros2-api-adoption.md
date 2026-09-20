@@ -806,8 +806,9 @@ What is left under this stage is not an item but a row count: 56 `cpp:` and
   executor — **issue 1385**, two coupled defects in a fixed order. And the
   `NROS_RET_STALE_NODE` this verb's own `# Returns` block documents cannot be
   produced, because the liveness check compares a freshly-read generation with
-  itself — **issue 1386**. All three are reproduced against this tree, not
-  reasoned from it.
+  itself — **issue 1386** (RESOLVED 2026-09-21: the verdict left the `# Returns`
+  block and the check became the CONTEXT question upstream actually asks).
+  All three are reproduced against this tree, not reasoned from it.
 * W4.f **[wrapper]** — **lifecycle, 15 rows, added 2026-09-13. LANDED
   2026-09-18: 14 of 15 closed, plus the `param.json` glob W4.a left here.**
   The shard was the third largest and no work item named it. `register_on_*`
@@ -1842,7 +1843,7 @@ else in this table is kept as the record of what closing it meant.
 | 0589 | stage 4 (W4.d) — **RESOLVED, archived** | the façade re-exports `nros_log`, so it is the easy path rather than `std::println!` |
 | 1384 | stage 4 (W4.e found it, outside its boundary) — **OPEN** | `is_multi_session()` stops standing in for "is this node executor-bound". The first node an executor builds takes slot 0, so a correctly bound single-node C image reads as a legacy node at four call sites: `nros_node_resolve_name` answers `NROS_RET_NOT_INIT`, every EAGER entity create fails the same way, and the launch remap table is silently dropped by a third site the second one currently masks. Measured with a stub-RMW C TU; the fix is one predicate and all four sites together |
 | 1385 | stage 4 (W4.e left it, deliberately) — **OPEN** | the C executor installs the backend wake callback the three Rust `Executor::open*` paths install — but only AFTER `Executor::drop` clears one, which it has never done although the callback's own SAFETY comment says it must. Two coupled defects with a fixed order; today a C image on zenoh or cyclone drives the transport for its full timeout where a Rust image is woken |
-| 1386 | stage 4 (W4.e's new verb documents the verdict) — **OPEN** | three `NROS_RET_STALE_NODE` arms become reachable. `node_ref_is_live(node_ref_of(node))` mints the generation it then compares against, so the check is constant true and `rcl_node_is_valid`'s documented generation test does nothing. Cheapest fixed with 1384 |
+| 1386 | stage 4 (W4.e's new verb documents the verdict) — **RESOLVED, archived 2026-09-21** | not by making the three arms reachable — by splitting the CATEGORY. `node_ref_is_live(node_ref_of(node))` minted the generation it compared against, so the check was constant true; the generation mechanism is OURS (a stored reference, caught at `_fini`) while `rcl_node_is_valid` is upstream's name for whether the node is initialised and its CONTEXT still valid. An executor-bound node's context (its executor, and that executor's support) was checked by NOTHING — the tautology stood exactly where that check belonged — so the verb answers MORE than it did, on the node shape `nros_executor_node_init` builds, with no `nros_node_t` layout change. The sweep found a fourth fresh-mint site the issue did not name (`set_executor_node_identity`). Measured: pre-fix `nros_node_resolve_name` over a finalised executor returned `NROS_RET_OK` out of zeroed `_opaque` |
 | 1126 | correction — CLOSED | `nros_publisher_publish_streamed`'s doc (the raw entry point was never the site) stopped promising a `NROS_RET_`-prefixed `BUFFER_TOO_SMALL`; correct-the-doc won, no caller needs the two failures apart. The sweep found two more live sites and the class is now gated |
 
 ## What this phase does NOT promise
