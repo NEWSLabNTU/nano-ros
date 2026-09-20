@@ -1163,6 +1163,15 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   patch `include` for a leaf a plain `cargo` or the metadata probe runs INSIDE, and the Zephyr
   west lane has no `--config` seam of its own (issue 1288). The gate is about TRACKED files,
   which is the invariant a clone and CI see.
+  **The root that breaks a build is the GITIGNORED one, so that gate's reach was narrower
+  than D9** (issue 1366, the 0196 shape): phase-383 W3.a's emitter is retired but the
+  `<ws>/Cargo.toml` it wrote sits in every checkout that ran it, listing a `src/esp32_entry`
+  phase-445 W5 deleted — and a member with no manifest makes cargo refuse to LOAD the
+  workspace at MANIFEST PARSE (0463's shape), which took `build-test-fixtures lane=native`
+  with it. `nros build` deletes it (`cargo_root::retire`), but only at stage 4 of the first
+  cargo image; `check-example-workspace-members` reads the ON-DISK roots ahead of that.
+  Never "drop the member line" — a generated entry is a cargo ROOT reaching `src/*` as path
+  deps, not a member of anything.
 - **Outside `examples/`, a leaf `.cargo/config.toml` is still `nros sync`-managed (RFC-0048 W9)**:
   one `include = ["…/nros-patch.toml"]` (central, gitignored, absolute paths) + leaf-local
   `generated/*` patches. Never hand-edit; moved checkout → re-run `nros sync`. Central

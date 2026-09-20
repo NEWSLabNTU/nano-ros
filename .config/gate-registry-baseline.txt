@@ -115,6 +115,7 @@ example-leaf-build-dirs
 example-leaf-target-dirs
 example-matrix
 example-platform-not-shadowed
+example-workspace-members
 executor-backing-arena-pairing
 export-f-closure
 eyre-context-alias

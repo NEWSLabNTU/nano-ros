@@ -178,8 +178,9 @@ case "$platform" in
     zephyr)
         if [ "${lang_filter:-}" = "rust" ]; then
             echo "[ERROR] the Zephyr rust workspace entries are west-built staticlibs" >&2
-            echo "        (workspace-EXCLUDED from cargo; see examples/workspaces/rust/" >&2
-            echo "        Cargo.toml). Build them via \`just zephyr build-fixtures\`" >&2
+            echo "        (west apps, not cargo members — RFC-0098 D9 leaves the" >&2
+            echo "        workspace no root manifest to exclude them from, issue" >&2
+            echo "        1288). Build them via \`just zephyr build-fixtures\`" >&2
             echo "        (scripts/build/zephyr-fixture-leaves.sh), not this script." >&2
             exit 2
         fi
