@@ -176,9 +176,49 @@ project's generated `env.sh` then exports a `ZEPHYR_SDK_INSTALL_DIR` pointing
 into a sibling clone. Every board build of that project has depended on that
 clone existing and on nobody running `just clean-setup` in it.
 
-- [ ] The SDK is provisioned under the store, per RFC-0095 D2 and the rung
-      [phase-447](phase-447-provisioning-revision.md) A1/A2 add.
-- [ ] A generated `env.sh` contains no path inside any nano-ros checkout.
+- [x] The SDK is provisioned under the store. `setup.sh` no longer passes
+      `--prefix` — which is the documented out-of-store escape hatch, and why
+      `nros sdk-path` could not find the SDK afterwards and `nros store gc` did
+      not know it existed — so `nros setup --tool` installs where RFC-0095 D2
+      says.
+      One resolver, `scripts/lib/zephyr-sdk.sh`, the sibling of
+      `zephyr-workspace.sh`: override, then STORE, then the in-checkout copy.
+      The store arm is FIRST here and last there, for the same reason — it is
+      existence-checked, so a host provisioned before this keeps resolving to
+      its checkout copy and nothing moves until something installs to the store.
+      All three arms measured: this host (legacy copy, empty store) resolves to
+      the checkout; a host with only a store copy resolves to the store; a host
+      with neither gets the store as the install TARGET.
+      It asks `nros sdk-path` for the store layout rather than restating
+      `sdk/<tool>/<version>`, and appends the tarball's own
+      `zephyr-sdk-<version>/` — the level `sdk-path` alone cannot give, and the
+      one thing issue 1254 says a consumer cannot get today.
+- [x] A generated `env.sh` contains no path inside any nano-ros checkout.
+      `ZEPHYR_SDK_INSTALL_DIR` is the resolved SDK, which is the store once
+      provisioning has run. And `NANO_ROS_ROOT` no longer names one either: it
+      used to be `$WORKSPACE/nano-ros`, the symlink W1 removed, so it would now
+      point at a directory holding only a manifest file. A shared workspace
+      cannot name one checkout — every caller already has one (`activate.sh`
+      exports it, `just` derives it) — so `env.sh` preserves what the caller set
+      and says what to do when there is none, instead of inventing an answer
+      that is wrong for everyone but one tree. Its build hint gained
+      `-DZEPHYR_EXTRA_MODULES` for the same reason.
+- [x] The seven readers that CONSTRUCTED the checkout path now ask: four in
+      `just/zephyr-setup.just` (which also carried four copies of the `0.16.8`
+      the resolver owns), the test harness in `nros-tests/src/zephyr.rs`, and
+      `runner-doctor.sh`'s ladder — which had env -> registry -> checkout and
+      no store arm at all.
+      The doctor's new arm is self-tested BOTH ways: a store copy is found and
+      beats a checkout copy staged beside it, and the cmake registry still
+      outranks the store. The first version of that arm read the library from
+      the tree under EXAMINATION rather than from the doctor, so it was
+      unreachable and the case passed by falling through — caught by the
+      self-test, which is what one is for.
+- [ ] `nros store list` shows the SDK and `nros store gc` respects it — OWED.
+      It needs an actual store install (a 1.3 GB download), which this change
+      makes possible and does not itself perform. The mechanical half is
+      verified (no `--prefix`, so the install is recorded in `nros-sdk.lock`
+      like every other tool); the observation is not, and is not claimed.
 
 ### W4 — a worktree build uses the worktree's SDK trees — DONE
 

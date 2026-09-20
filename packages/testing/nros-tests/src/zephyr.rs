@@ -669,9 +669,16 @@ impl Drop for ZephyrProcess {
 /// because both were previously hardcoded and both are owned elsewhere — the
 /// version by `scripts/zephyr/setup.sh`, the tuple by whatever host you are on.
 ///
-/// Search order mirrors the other resolvers in this file:
+/// Search order mirrors the other resolvers in this file, and gained its middle
+/// arm with issue 1254 / phase-449 W3 — the SDK is provisioned into the STORE
+/// now, and the in-checkout copy is the legacy arm a host provisioned earlier
+/// still resolves to:
 /// 1. `ZEPHYR_SDK_INSTALL_DIR` (the SDK's own variable, set by `west`/`setup.sh`)
-/// 2. `<project_root>/scripts/zephyr/sdk/zephyr-sdk-*`
+/// 2. `$NROS_STORE/sdk/<tool>/<version>/zephyr-sdk-*`
+/// 3. `<project_root>/scripts/zephyr/sdk/zephyr-sdk-*`
+///
+/// The store arm is GLOBBED at the same two levels the checkout arm is, for the
+/// same stated reason: neither the version nor the host tuple is owned here.
 ///
 /// Returns `None` when absent so the caller can report a diagnosable error
 /// rather than handing a nonexistent path to `Command`.
@@ -698,19 +705,49 @@ fn sdk_qemu_xilinx_aarch64() -> Option<String> {
 
     // Newest-first so a host carrying several SDKs picks the latest, matching
     // what `just zephyr setup` most recently provisioned.
-    let sdk_parent = crate::project_root().join("scripts/zephyr/sdk");
-    let mut roots: Vec<PathBuf> = std::fs::read_dir(&sdk_parent)
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with("zephyr-sdk-"))
-        })
-        .collect();
-    roots.sort();
-    roots.iter().rev().find_map(|r| in_sdk_root(r))
+    fn newest_sdk_root_under(parent: &Path) -> Option<String> {
+        let mut roots: Vec<PathBuf> = std::fs::read_dir(parent)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("zephyr-sdk-"))
+            })
+            .collect();
+        roots.sort();
+        roots.iter().rev().find_map(|r| in_sdk_root(r))
+    }
+
+    // issue 1254 — the STORE arm. `$NROS_STORE/sdk/<tool>/<version>/` holds the
+    // tarball's own `zephyr-sdk-<version>/`, so the SDK roots sit one level
+    // below the per-version directories; both levels are globbed rather than
+    // spelled, because the tool name and the version are owned by
+    // `scripts/zephyr/setup.sh` and `scripts/lib/zephyr-sdk.sh`, not here.
+    let store = std::env::var("NROS_STORE")
+        .or_else(|_| std::env::var("NROS_HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".nros"))
+        .join("sdk");
+    if let Ok(tools) = std::fs::read_dir(&store) {
+        let mut versions: Vec<PathBuf> = tools
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_str()
+                    .is_some_and(|n| n.starts_with("zephyr-sdk"))
+            })
+            .flat_map(|e| std::fs::read_dir(e.path()).into_iter().flatten().flatten())
+            .map(|e| e.path())
+            .collect();
+        versions.sort();
+        if let Some(found) = versions.iter().rev().find_map(|v| newest_sdk_root_under(v)) {
+            return Some(found);
+        }
+    }
+
+    newest_sdk_root_under(&crate::project_root().join("scripts/zephyr/sdk"))
 }
 
 /// Get the path to the Zephyr workspace

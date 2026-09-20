@@ -199,6 +199,30 @@ _nros_runner_zephyr_sdk_path() {
         return 0
     fi
 
+    # issue 1254 / phase-449 W3 — the STORE arm. Provisioning installs here now
+    # (`nros setup --tool zephyr-sdk`, no `--prefix`), so this is where a host
+    # set up after that change has its SDK. Existence-checked and placed ABOVE
+    # the checkout arm but BELOW the registry, so a host provisioned earlier
+    # keeps resolving exactly as it did.
+    #
+    # The layout is asked for, not restated: `scripts/lib/zephyr-sdk.sh` owns
+    # `sdk/<tool>/<version>/zephyr-sdk-<version>` and is the same file
+    # `setup.sh` and the `just` recipes read.
+    # From THIS script's own location, not from `$root`. `$root` is the tree
+    # being examined — in the self-test a staged directory with no `scripts/lib`
+    # at all — whereas the resolver is part of the doctor doing the examining.
+    # Reading it from `$root` made the arm silently unreachable and the case
+    # pass by falling through, which is the failure a self-test exists to catch.
+    local _sdk_lib _store=""
+    _sdk_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)/zephyr-sdk.sh"
+    if [ -r "$_sdk_lib" ]; then
+        _store="$(NROS_ZEPHYR_VERSION="" bash "$_sdk_lib" --version "$want" store-dir 2>/dev/null || true)"
+    fi
+    if [ -n "$_store" ] && [ -d "$_store" ]; then
+        printf '%s\tstore' "$_store"
+        return 0
+    fi
+
     printf '%s/scripts/zephyr/sdk/zephyr-sdk-%s\tcheckout default' "$root" "$want"
 }
 
@@ -804,7 +828,13 @@ _nros_runner_self_test() {
         printf '%s\n' "$3/cmake" > "$1/home/.cmake/packages/Zephyr-sdk/$2"
     }
     # _st_resolve <case-dir> -> "<path>\t<origin>"
-    _st_resolve() { HOME="$1/home" _nros_runner_zephyr_sdk_path 0.16.8 "$1/root"; }
+    # `NROS_STORE`/`NROS_HOME` are unset alongside `HOME` because the store arm
+    # (issue 1254) reads them: a developer running this with a real store set
+    # would otherwise have their own SDK leak into a staged case.
+    _st_resolve() {
+        HOME="$1/home" NROS_STORE="$1/store" NROS_HOME="$1/store" \
+            _nros_runner_zephyr_sdk_path 0.16.8 "$1/root"
+    }
     _st_expect() { # <label> <got> <want>
         [ "$2" = "$3" ] && _st_ok "$1" || _st_bad "$1" "got '$2'"
     }
@@ -852,6 +882,25 @@ _nros_runner_self_test() {
     got="$(_st_resolve "$d")"
     _st_expect "with no env and no registry the checkout default is used" \
         "$got" "$d/root/scripts/zephyr/sdk/zephyr-sdk-0.16.8	checkout default"
+
+    # issue 1254 — the STORE arm, and its ORDER. Both halves matter: that a
+    # store copy is found at all, and that it beats the checkout copy, which is
+    # staged here too so the case cannot pass by the checkout arm being absent.
+    d="$(_st_stage store)"
+    mkdir -p "$d/store/sdk/zephyr-sdk/0.16.8/zephyr-sdk-0.16.8"
+    mkdir -p "$d/root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    got="$(_st_resolve "$d")"
+    _st_expect "the store copy is used, and beats the in-checkout copy" \
+        "$got" "$d/store/sdk/zephyr-sdk/0.16.8/zephyr-sdk-0.16.8	store"
+
+    # ...and the registry still outranks the store, so a host that deliberately
+    # registered one SDK is not silently moved to another.
+    d="$(_st_stage store_vs_registry)"
+    mkdir -p "$d/store/sdk/zephyr-sdk/0.16.8/zephyr-sdk-0.16.8"
+    _st_register "$d" aaa "$tmp/live/zephyr-sdk-0.16.8" create
+    got="$(_st_resolve "$d")"
+    _st_expect "the cmake registry still outranks the store" \
+        "$got" "$tmp/live/zephyr-sdk-0.16.8	cmake package registry"
 
     # The explicit override wins over the registry, in both spellings.
     d="$(_st_stage env_sdk)"
