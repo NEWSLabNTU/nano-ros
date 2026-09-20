@@ -55,4 +55,14 @@ bool nros_stub_rmw_wake_cb_installed(void);
  *  path `drive_io(full timeout)` cannot observe. */
 bool nros_stub_rmw_invoke_wake(void);
 
+/** The topic / service name the LAST `create_*` slot was called with, or "" if
+ *  none has been. The slots still refuse, but they refuse AFTER the runtime has
+ *  resolved the name, so this is the only place a C test can read the WIRE name
+ *  a node computed rather than the source spelling it passed in (issue 1384). */
+const char* nros_stub_rmw_last_entity_name(void);
+
+/** Reset [`nros_stub_rmw_last_entity_name`] to "", so a later read cannot be
+ *  satisfied by an earlier call's value. */
+void nros_stub_rmw_clear_last_entity_name(void);
+
 #endif /* NROS_TESTS_STUB_RMW_BACKEND_H */

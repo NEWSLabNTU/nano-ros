@@ -177,12 +177,15 @@ pub unsafe extern "C" fn nros_node_create_guard_condition(
     // none cannot create one. Same answer, same reason, as
     // `nros_node_resolve_name` gives for the remap table.
     //
-    // The predicate is "is this node BOUND to an executor", NOT
-    // `is_multi_session()` — that one also requires `node_id != 0`, and the
-    // FIRST node `nros_executor_node_init` builds takes slot 0 (the primary
-    // slot; `executor_param_node_keying.c` asserts exactly that). A node's
-    // right to create an entity does not depend on how many siblings it has.
-    if node_ref.executor.is_null() {
+    // The predicate is "is this node BOUND to an executor". It used to be
+    // spelled out here because `is_multi_session()` also required
+    // `node_id != 0` and got the answer WRONG — the FIRST node
+    // `nros_executor_node_init` builds takes slot 0 (the primary slot;
+    // `executor_param_node_keying.c` asserts exactly that), and a node's right
+    // to create an entity does not depend on how many siblings it has. Issue
+    // 1384 fixed the shared helper, so this reads it rather than keeping a
+    // third spelling of the same question alive.
+    if !node_ref.is_executor_bound() {
         return NROS_RET_NOT_INIT;
     }
     // issue 1386 — a `node_ref_is_live(node_ref_of(node))` arm stood here and

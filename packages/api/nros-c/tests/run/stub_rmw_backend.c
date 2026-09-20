@@ -6,10 +6,36 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 #include <time.h>
 
 static int s_backend_data = 0;
 static uint32_t s_drive_io_calls = 0;
+
+/* The last name an entity slot was asked to create under. Recorded even though
+ * every slot REFUSES, because the refusal happens after the name has been
+ * resolved: this is the only place a test can read the wire name the runtime
+ * computed, rather than the source name it passed in. */
+static char s_last_entity_name[256] = {0};
+
+static void record_entity_name(const char* name) {
+    if (name == NULL) {
+        s_last_entity_name[0] = '\0';
+        return;
+    }
+    size_t n = strlen(name);
+    if (n >= sizeof(s_last_entity_name)) n = sizeof(s_last_entity_name) - 1;
+    memcpy(s_last_entity_name, name, n);
+    s_last_entity_name[n] = '\0';
+}
+
+const char* nros_stub_rmw_last_entity_name(void) {
+    return s_last_entity_name;
+}
+
+void nros_stub_rmw_clear_last_entity_name(void) {
+    s_last_entity_name[0] = '\0';
+}
 
 /* ---- Session lifecycle: the only slots that succeed ---------------------- */
 
@@ -56,9 +82,9 @@ static rmw_ret_t
 stub_create_publisher(const rmw_node_t* node, const rmw_message_type_support_t* type_support,
                       const char* topic_name, uint32_t domain_id, const rmw_qos_profile_t* qos,
                       const rmw_publisher_options_t* options, rmw_publisher_t* out) {
+    record_entity_name(topic_name);
     (void)node;
     (void)type_support;
-    (void)topic_name;
     (void)domain_id;
     (void)qos;
     (void)options;
@@ -81,9 +107,9 @@ static rmw_ret_t
 stub_create_subscription(const rmw_node_t* node, const rmw_message_type_support_t* type_support,
                          const char* topic_name, uint32_t domain_id, const rmw_qos_profile_t* qos,
                          const rmw_subscription_options_t* options, rmw_subscription_t* out) {
+    record_entity_name(topic_name);
     (void)node;
     (void)type_support;
-    (void)topic_name;
     (void)domain_id;
     (void)qos;
     (void)options;
@@ -118,9 +144,9 @@ static rmw_ret_t stub_create_service(const rmw_node_t* node,
                                      const rmw_service_type_support_t* type_support,
                                      const char* service_name, uint32_t domain_id,
                                      const rmw_qos_profile_t* qos, rmw_service_t* out) {
+    record_entity_name(service_name);
     (void)node;
     (void)type_support;
-    (void)service_name;
     (void)domain_id;
     (void)qos;
     (void)out;
@@ -163,9 +189,9 @@ static rmw_ret_t stub_create_client(const rmw_node_t* node,
                                     const rmw_service_type_support_t* type_support,
                                     const char* service_name, uint32_t domain_id,
                                     const rmw_qos_profile_t* qos, rmw_client_t* out) {
+    record_entity_name(service_name);
     (void)node;
     (void)type_support;
-    (void)service_name;
     (void)domain_id;
     (void)qos;
     (void)out;
