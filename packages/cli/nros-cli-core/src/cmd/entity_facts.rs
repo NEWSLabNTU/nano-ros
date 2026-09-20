@@ -583,9 +583,13 @@ mod tests {
         assert_eq!(f["NROS_DECLARED_SERVICE_SERVERS"], "1");
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "lifecycle");
         // phase-426 W3 — a third name in the contract; the consumer watches
-        // and parses all three.
+        // and parses all three. Issue 1378 added a FOURTH: a TRANSIENT_LOCAL
+        // publisher costs a cache queryable of its own, so the pool has to
+        // count it. The `len` assertion is the contract — a fifth name that
+        // arrives without a consumer must fail here.
         assert_eq!(f["NROS_DECLARED_NODES"], "0");
-        assert_eq!(f.len(), 3);
+        assert_eq!(f["NROS_DECLARED_TL_PUBLISHERS"], "0");
+        assert_eq!(f.len(), 4);
     }
 
     /// phase-426 W3 — the node count reaches the queryable pool, because the
@@ -628,7 +632,11 @@ mod tests {
         assert_eq!(f["NROS_DECLARED_SERVICE_SERVERS"], "0");
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "none");
         assert_eq!(f["NROS_DECLARED_NODES"], "1");
-        assert_eq!(f.len(), 3, "the leaf road emits the model road's three");
+        // A client declares no TRANSIENT_LOCAL publisher either, and a
+        // declared ZERO is the point of this road (issue 1142): the leaf that
+        // describes itself gets an exact pool, so every term must be stated.
+        assert_eq!(f["NROS_DECLARED_TL_PUBLISHERS"], "0");
+        assert_eq!(f.len(), 4, "the leaf road emits the model road's four");
     }
 
     /// The counting rule is the model road's: a service server is one
