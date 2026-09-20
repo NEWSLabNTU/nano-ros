@@ -549,7 +549,8 @@
   },
   "cpp:Timer::is_ready": {
     "verdict": "gap",
-    "why": "whether the timer is due to fire. Rust has `Timer::is_ready`; C++ and C do not. See `c:timer_is_ready`."
+    "disposition": "adopt",
+    "why": "whether the timer is due to fire. Rust has `Timer::is_ready`; C++ and C do not. See `c:timer_is_ready`.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT, and **THE ROW POINTS AT WORK THAT HAS LANDED.** It says \"See `c:timer_is_ready`\"; phase-417 stage 3 closed the C half — `rcl_timer_is_ready(const struct nros_timer_t *, bool *)` ships at `nros_generated.h:8317`, forwarding to the executor arena rather than to the `last_call_time_ns` that no dispatch path updated (issue 1049). `nros::Timer` (`timer.hpp:53`) has `cancel`, `reset`, `is_canceled` and `is_valid` and not this. A thin wrapper over shipped C, on the pattern the four siblings beside it already use."
   },
   "cpp:Timer::is_steady": {
     "verdict": "declined",
@@ -567,7 +568,8 @@
   },
   "cpp:Timer::time_until_trigger": {
     "verdict": "gap",
-    "why": "Rust has `Timer::time_until_next_call`; C++ does not. See `c:timer_get_next_call_time`."
+    "disposition": "adopt",
+    "why": "Rust has `Timer::time_until_next_call`; C++ does not. See `c:timer_get_next_call_time`.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT, and **THE ROW POINTS AT WORK THAT HAS LANDED.** Both C halves ship: `rcl_timer_get_time_until_next_call` (the relative one, phase-417 stage 3) and `rcl_timer_get_next_call_time` (`nros_generated.h:8464`, the absolute one). rclcpp's `time_until_trigger()` is the RELATIVE form, so the wrapper is over the first. Two envelope facts belong in its doc comment and are already recorded on the C side: the arena's timer accounting is MICROSECOND-based (issue #505), so a nanosecond answer is a microsecond quantity scaled by 1000; and a wall timer answers on the platform steady clock while a `nros_timer_init_on_clock` timer answers on its own."
   },
   "cpp:TimerCallbackType": {
     "verdict": "divergence",
@@ -932,7 +934,8 @@
   },
   "rust:Node::get_clock": {
     "verdict": "gap",
-    "why": "rclrs and rclcpp both hand a node's clock back; our Rust component reaches the clock through the executor rather than the node, and there is no accessor. See `cpp:Node::get_clock`."
+    "disposition": "adopt",
+    "why": "rclrs and rclcpp both hand a node's clock back; our Rust component reaches the clock through the executor rather than the node, and there is no accessor. See `cpp:Node::get_clock`.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT. The reason holds and the asymmetry is ours alone: `cpp:Node::get_clock` SHIPS (`packages/api/nros-cpp/include/nros/node.hpp:1079`, \"The node's clock — `rclcpp::Node::get_clock()`\", issue 0789), and only the Rust node lacks the accessor. Same receiver-forwarder shape as the graph family: the clock is the executor's and the node borrows it, so this is a delegation and not a second clock. Group it with the Rust forwarders."
   },
   "rust:Node::install_ros_time_source": {
     "verdict": "divergence",
@@ -1023,7 +1026,8 @@
   },
   "rust:Time::to_ros_msg": {
     "verdict": "gap",
-    "why": "converts to `builtin_interfaces/Time` for putting in a message header. Ours has `to_nanos` and the caller fills the message by hand, which is the single most common thing a publisher does. Phase 379 W3."
+    "disposition": "adopt",
+    "why": "converts to `builtin_interfaces/Time` for putting in a message header. Ours has `to_nanos` and the caller fills the message by hand, which is the single most common thing a publisher does. Phase 379 W3.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT, and **THE REASON OVERSTATES THE WORK WHILE MISSING THE REAL OBSTACLE.** It says \"Ours has `to_nanos` and the caller fills the message by hand\". `nros_core::time::Time` (`packages/core/nros-core/src/time.rs:36`) IS `builtin_interfaces/msg/Time`'s field set — `sec: i32`, `nanosec: u32`, with the doc comment saying so — so filling a header today is two field copies, not a conversion out of nanoseconds.\n\nTHE ACTUAL OBSTACLE IS LAYERING, and it is why this is not a three-line method. `to_ros_msg()` must return the GENERATED `builtin_interfaces::msg::Time`, and `nros-core` sits below codegen; `packages/interfaces/` ships `diagnostic-msgs`, `lifecycle-msgs`, `rcl-interfaces` and `rosgraph-msgs` and no `builtin-interfaces`, so there is no crate for the return type to come from and nros-core could not depend on it if there were. ADOPT: the name is takeable, as a conversion sited in the generated crate or the facade rather than as an inherent method on the core type. The decision that has to be made first is whether `builtin-interfaces` joins the pre-generated core set — that is the cost, not the body."
   },
   "rust:Time::to_sec_nanosec": {
     "verdict": "divergence",
