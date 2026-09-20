@@ -19,7 +19,7 @@ merely observed, and they are precisely the part with no compile step:
 | issue | the surface | what checks it today |
 | --- | --- | --- |
 | [#1058](../issues/1058-scaffold-output-is-grepped-never-built.md) | `nros new` scaffold output | ~30 substring assertions; nothing compiles the result |
-| [#1108](../issues/1108-templates-materialize-dead-entry-pkgs.md) | four copy-out templates | nothing — two declare no `[image.*]`, so `nros build` refuses them outright |
+| [#1108](../issues/archived/1108-templates-materialize-dead-entry-pkgs.md) | four copy-out templates | nothing — two declare no `[image.*]`, so `nros build` refuses them outright |
 | [#1107](../issues/1107-book-teaches-entry-pkg-per-target.md) | book pages | nothing — an out-of-tree consumer was scaffolded from the retired shape |
 | [#1116](../issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md) | rustdoc outside the six published crates | nothing — ~70 diagnostics, five crates fail to document at all |
 | [#1141](../issues/1141-book-visual-identity-favicon-logo-accent-css.md) | the book's front door | nothing — no favicon, logo or accent CSS |
@@ -46,7 +46,7 @@ Ordered so the two that hand a user a broken tree come first.
 
 ### W1 — the templates build
 
-[Issue 1108](../issues/1108-templates-materialize-dead-entry-pkgs.md). Four
+[Issue 1108](../issues/archived/1108-templates-materialize-dead-entry-pkgs.md). Four
 copy-out templates still materialize a `robot_entry` package; two declare no
 `[image.*]` at all.
 
