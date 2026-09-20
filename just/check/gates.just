@@ -100,6 +100,17 @@ interlock-visibility:
 lane-contracts:
     @python3 scripts/check-lane-contracts.py
 
+# A fixture build must ask whose checkout its provisioned roots are BEFORE it
+# compiles against them. The ownership guard (issue 1253) was correct and
+# arrived one step late: its three callers were all downstream of the build,
+# because CI runs `just build tier2` and `just ci matrix` as separate steps.
+# Issue 1395 widened the reach through one shared recipe; this re-derives it, so
+# the reach cannot narrow again silently — which is the only failure mode a gate
+# of this shape has.
+[private]
+provisioned-root-guard-reach:
+    @python3 scripts/check-provisioned-root-guard-reach.py
+
 # The lane-skip protocol is only a protocol where the CALLER reads it.
 # `nros_lane_skip` exits 78 and one driver interprets that; a producer reached
 # from anywhere else emits a skip nobody can hear, and 78 lands as a plain

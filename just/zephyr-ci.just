@@ -23,6 +23,29 @@ build-fixtures:
     #!/usr/bin/env bash
     bash scripts/dev/deprecated-scope-alias.sh zephyr build-fixtures "just build zephyr"
     set -e
+    # issue 1395 — WHICH CHECKOUT'S WORKSPACE IS THIS, asked before the first
+    # west build rather than fifteen minutes into one.
+    #
+    # A module cannot depend on a root recipe, so this is a call rather than a
+    # dependency — but it is the SAME `_require-owned-provisioned-roots`
+    # `build-test-fixtures` and `build-test-fixtures-leaves` depend on, running
+    # the same script. It is here as well as there because `just build zephyr`
+    # (the platform arm of `_build-scope`, and what `live-peer.yml` runs)
+    # reaches this lane through NEITHER of those, as do the filtered
+    # `just/zephyr-dev.just` convenience recipes.
+    #
+    # FIRST in the body, ahead of `nros_ensure_central_patch` — measured: that
+    # line invokes `nros`, so on a foreign workspace the lane died at the
+    # phase-431 ownership guard instead, reporting `this nros does not belong to
+    # the checkout` and naming a BINARY. That is issue 1253's original complaint
+    # verbatim, and a guard that runs after it replaces nothing.
+    #
+    # Before `nros_lane_platform`, therefore, which costs nothing: an
+    # unprovisioned host resolves no root here, exits 0, and still reaches its
+    # own SKIPPED verdict below (issue 0599). A FOREIGN workspace is not a skip
+    # — exit 1 takes the lane down whether it was NAMED or INCLUDED, because an
+    # image built against it is not a fact about this tree.
+    just _require-owned-provisioned-roots
     source scripts/build/cargo.sh
     # issue 1038 — the central `nros-patch.toml` this lane's Rust leaves
     # `include`, made EXPLICIT. This lane already got the file, but only as a

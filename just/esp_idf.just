@@ -52,6 +52,13 @@ doctor:
 build-c-port target='esp32c3':
     #!/usr/bin/env bash
     set -e
+    # issue 1395 — the esp-idf workspace is a PROVISIONED ROOT the ownership
+    # guard sweeps (phase-440 W5), so the same rule the Zephyr lane follows
+    # applies here: ask whose checkout it belongs to before compiling against
+    # it, not from `idf.py` several minutes in. Placed in `build-c-port`
+    # because both `esp_idf build` and `esp_idf build-fixtures` reach the
+    # workspace only through it.
+    just _require-owned-provisioned-roots
     if [ ! -f esp-idf-workspace/env.sh ]; then
         echo "esp-idf-workspace/env.sh missing — run: just esp_idf setup" >&2
         exit 2

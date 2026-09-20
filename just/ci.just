@@ -280,7 +280,14 @@ _matrix-run:
     # phase-450's subject. Cheap (it resolves two paths), and it must come before
     # the build rather than 15 minutes into a cmake configure, which is the whole
     # complaint issue 1253 files.
-    bash scripts/check-zephyr-workspace-checkout.sh
+    #
+    # issue 1395 — through the shared recipe, not a second `bash scripts/...`.
+    # Placing it here fixed the RUN lane and left the BUILD lane uncovered: CI
+    # runs `just build tier2` as its own EARLIER step, so this still arrived
+    # after the compile it is about. `_require-owned-provisioned-roots` is now
+    # a dependency of `build-test-fixtures` too, and one spelling is what lets
+    # `check-provisioned-root-guard-reach` audit the reach at all.
+    just _require-owned-provisioned-roots
     # issue 0368 F8 — tell the inner gates that this run is the tier-2 lane, not
     # the default `all`. Without it they DISAGREE: `_lane-gate tier2`
     # (content-based, over the tier-2 coordinates) passes, then the staleness
@@ -343,7 +350,14 @@ matrix-nightly:
     # phase-450's subject. Cheap (it resolves two paths), and it must come before
     # the build rather than 15 minutes into a cmake configure, which is the whole
     # complaint issue 1253 files.
-    bash scripts/check-zephyr-workspace-checkout.sh
+    #
+    # issue 1395 — through the shared recipe, not a second `bash scripts/...`.
+    # Placing it here fixed the RUN lane and left the BUILD lane uncovered: CI
+    # runs `just build tier2` as its own EARLIER step, so this still arrived
+    # after the compile it is about. `_require-owned-provisioned-roots` is now
+    # a dependency of `build-test-fixtures` too, and one spelling is what lets
+    # `check-provisioned-root-guard-reach` audit the reach at all.
+    just _require-owned-provisioned-roots
     # issue 0368 F8 (same class as ci-matrix) — require the tier2-nightly lane so
     # the inner `_require-fixtures` accepts a per-family build instead of
     # demanding the `all` stamp the lane ladder said to avoid. phase-340 W3 —
