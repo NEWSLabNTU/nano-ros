@@ -7515,6 +7515,31 @@ impl<'s> Executor<'s> {
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         let primary_drive_timeout_ms = {
             if was_woken {
+                // Issue 1385 — drain the wake PRIMITIVE too.
+                //
+                // `nros_rmw_runtime_wake_cb` sets both halves of one signal:
+                // the flag, and the platform primitive. The swap above
+                // consumed the flag and this arm returns without entering the
+                // wait, so a primitive left posted makes the NEXT spin's
+                // `wait_ms` return instantly on a signal already acted on —
+                // that spin does not wait at all, and whatever it should have
+                // waited for is dispatched a whole spin late.
+                //
+                // `wait_ms(0)` is the non-blocking take: every port's wait is a
+                // deadline (`sem_timedwait`, `k_sem_take`, `xSemaphoreTake`),
+                // so zero means "take it if it is there", never "wait
+                // forever".
+                //
+                // Measured, not reasoned: with the C executor installing a
+                // callback (the other half of 1385), an arrival taken by this
+                // arm left the spin after it returning in 0 ms where it owed
+                // 60 ms of waiting — which is what `node_guard_condition.c`'s
+                // mid-spin case caught, and what `executor_backend_wake.c`'s
+                // second lower bound now pins. Latent until then only because
+                // no C spin had ever entered the wait arm.
+                if let Some(wake) = self.node_wake.as_ref() {
+                    let _ = wake.wait_ms(0);
+                }
                 0
             } else if self.has_async_wake
                 && let Some(wake) = self.node_wake.as_ref()
