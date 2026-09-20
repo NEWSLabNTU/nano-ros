@@ -1553,6 +1553,240 @@ The doc comment that claimed otherwise was issue 1126, now closed: the sweep it
 prompted found the same defect in `rmw_vtable.h` and two more places, so the
 class is gated (`just check ret-code-citations`).
 
+### Disposition before implementation — the plan for the remaining rows (decided 2026-09-21)
+
+**The decision: disposition every `gap` row FIRST, then implement only what the
+dispositions call for.** Under RFC-0089 a gap closes two ways — implement the
+name, or decide it is `absent` / `adopt-bounded` / `refuse-loud` with a stated
+reason. Doing them in that order is not bookkeeping: a row whose disposition is
+`absent` costs nothing to close and a row whose disposition is `adopt` is a
+sized piece of work, and today the queue mixes the two, so any estimate of "how
+much is left" is a guess. Sixteen of eighty carry a disposition; the other
+sixty-four record a missing name and nothing else.
+
+**And the sorting key is NOT the shard. It is WHY UPSTREAM HAS THE NAME**,
+because the RTOS constraint is what decides most of them. A shard is a merge-
+conflict boundary, not a reason; sorting by it puts the loan family in three
+shards and makes the same argument three times, which is how
+`c:borrow_loaned_message` ended up carrying a "W5 should decide" note nobody
+could act on.
+
+Re-measured 2026-09-21 straight off `docs/reference/api-parity-ledger/*.json`:
+**80 `gap` rows — C 24, C++ 28, Rust 28 — of which 16 carry a disposition.**
+Identical to the 2026-09-18 figures above, in total and in every per-shard row,
+so nothing between those dates moved a gap row either way.
+
+| family | rows | c / cpp / rust | dispositioned | ruling |
+| --- | ---: | --- | ---: | --- |
+| **(1) upstream has an allocator and a host** | 8 | 2 / 5 / 1 | 0 | `absent`, constraint stated ONCE per family |
+| **(2) the stated reason is now FALSE** | 12 | 6 / 6 / 0 | 8 | re-read the reason before dispositioning |
+| **(3) answerable from the graph cache** | 26 | 11 / 2 / 13 | 0 | `adopt` — the backend already answers |
+| **(4) our own three languages disagree** | 11 | 0 / 5 / 6 | 0 | `adopt`; upstream is incidental |
+| **(5) singles** | 23 | 5 / 10 / 8 | 8 | one at a time, no family argument available |
+
+Which shards each family lands in: (1) pubsub 5, service 3. (2) pubsub 8,
+service 4. (3) graph 18, pubsub 7, node 1. (4) pubsub 4, service 4, timer 3.
+(5) log 4, qos 3, init 2, other 2, pubsub 5, service 3, boot/exec/lifecycle/
+timer 1 each.
+
+#### (1) Upstream has an allocator and a host — 8 rows, all `absent`
+
+`c:publisher_can_loan_messages`, `c:subscription_can_loan_messages`,
+`cpp:Publisher::can_loan_messages`, `cpp:Subscription::can_loan_messages`,
+`rust:Publisher::can_loan_messages`; `cpp:Client::prune_pending_requests`,
+`cpp:Client::prune_requests_older_than`, `cpp:Client::remove_pending_request`.
+
+The loan five are ruled by RFC-0089's new section, "The loan family: two things
+called zero-copy". Upstream's loan is zero-copy of the USER DATA STRUCTURE (it
+takes a type support and returns a typed struct in middleware memory, with no
+CDR stage at all); ours is zero-copy of the WIRE MESSAGE (it takes a length and
+returns bytes). They cannot be unified, upstream's typed form is `absent`
+because no backend we ship delivers a struct in layout, and ours is an
+`extension`. The runtime query is `absent` with it. Read the RFC section, do
+not re-derive the argument per row — and see **issue 1400** for the separate
+question of whether our byte loan earns its documentation.
+
+The prune three are the same shape one entity over: each pending request holds a
+promise until it is answered, which is a heap-backed map keyed by sequence
+number. Ours has a per-client timeout (`nros_client_set_timeout`) and a fixed
+slot table, so there is no growing collection to prune.
+
+**The precedent for how a family is closed once is the WAIT SET, and it is
+already done** — 27 rows across six shards, every one `declined` with
+`disposition: absent`, all pointing at `cpp:WaitSet`, which states the whole
+argument (RFC-0002 puts one executor on one RTOS task driving entities directly
+through the vtable, so no wait set is ever constructed) and says what a user
+loses. **Zero of the 80 gap rows are wait-set rows**, which is exactly the state
+families (1) and (3) should reach.
+
+#### (2) The stated reason is now FALSE — 12 rows, re-read before dispositioning
+
+The twelve `*_get_actual_qos` rows (8 pubsub, 4 service). Their `why` says the
+readback is "not retained for a getter" and that "nobody can answer it today".
+**That is still true at the API surface and it is no longer the whole picture.**
+Measured 2026-09-21:
+
+* `grep` over `packages/api/nros-c/include/`, `packages/api/nros-cpp/include/`,
+  `packages/core/nros-node/src/` and `packages/api/nros/src/` finds **no
+  `get_actual_qos` accessor in any of the three languages.** That half of the
+  reason holds.
+* What changed is one layer down. Issue 1327 (resolved) wired the four
+  client/service slots to a reader: `report_granted_qos`
+  (`packages/rmw/cffi/src/lib.rs:2417`) is called on every publisher, service
+  and client create (`:2561`, `:2740`, `:2747`, `:2824`, `:2831`) and RETURNS
+  the granted profile. Issue 1329 / PR #969 gave the vtable
+  `supported_qos_policies`, so the mask is the backend's own answer instead of
+  a union. The fact therefore EXISTS at create time; it is read, logged, and
+  then dropped.
+* **But "the RMW slots are filled" is only true for two backends, and not the
+  default one.** Cyclone fills all six
+  (`packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/vtable.cpp:430-435`); uORB
+  fills the publisher and subscription pair and NULLs the four service/client
+  ones (`packages/rmw/uorb/nros-rmw-uorb/src/vtable.cpp:127-132`); **zenoh and
+  XRCE fill none** (`get_actual_qos` appears zero times in
+  `packages/rmw/zenoh/nros-rmw-zenoh/src/lib.rs` and
+  `packages/rmw/xrce/nros-rmw-xrce/src/vtable.c`).
+
+So the work these rows name is not "build the readback" — it is **retain what
+`report_granted_qos` already computes and expose it**, plus the `*_UNKNOWN`
+half the eight `adopt` rows already state: a policy the backend cannot report
+must read back as UNKNOWN, not as the request. On zenoh, today's default RMW,
+every field would be UNKNOWN, and shipping the accessor without that half would
+ship the inverted meaning to users. The four rows with no disposition
+(`cpp:Client::get_request_publisher_actual_qos`,
+`cpp:Client::get_response_subscription_actual_qos`,
+`cpp:Service::get_request_subscription_actual_qos`,
+`cpp:Service::get_response_publisher_actual_qos`) take the same `adopt` as
+their eight siblings.
+
+The general lesson for the pass: **a `gap` row's `why` is a snapshot, and this
+family's snapshot went stale in under a week.** Re-read the reason against the
+tree before dispositioning any row; a disposition written on a stale reason is
+worse than no disposition, because it looks settled.
+
+#### (3) Answerable from the graph cache — 26 rows, `adopt`
+
+The 18 `graph` rows, `c:node_get_graph_guard_condition`, the two
+`rust:Node::get_*_info_by_topic` rows and the five matched-count rows in
+`pubsub`. **The backend layer already answers all of them.** The zenoh session
+implements `get_node_names`, `get_topic_names_and_types`,
+`get_service_names_and_types`, `get_names_and_types_by_node`,
+`get_endpoint_info_by_topic`, `count_publishers`, `count_subscribers` and
+`count_entities_on_topic`
+(`packages/rmw/zenoh/nros-rmw-zenoh/src/shim/session.rs:874,1393-1456`), over
+the liveliness-token graph cache phase-381 built for issue 0903 —
+one standing subscriber with history, not a `z_liveliness_get` per question,
+which is what made enumeration unreliable before. The vtable carries the whole
+family as optional slots
+(`packages/core/nros-rmw-abi/include/nros/rmw_vtable.h:1097-1145`).
+
+So these are **language-surface work, not backend work**: C is missing 11
+accessors, Rust 13 and C++ 2 (`Publisher::get_subscription_count`,
+`Subscription::get_publisher_count`) over a capability that exists. That is the cheapest
+family per row in the queue and the one where a `gap` verdict is most nearly
+literal. `c:node_get_graph_guard_condition` is the one exception inside it —
+the slot exists and no backend fills it — so it is `adopt` conditional on a
+backend, or `refuse-loud` if none will; it should not be dispositioned by
+analogy with its 25 neighbours.
+
+#### (4) Our own three languages disagree — 11 rows, `adopt`
+
+`rust:Publisher::topic_name`, `rust:Subscription::topic_name`,
+`rust:Subscription::qos`, `cpp:Publisher::get_gid`,
+`cpp:Client::get_service_name`, `cpp:Service::get_service_name`,
+`rust:Client::service_name`, `rust:Service::service_name`,
+`cpp:Timer::is_ready`, `cpp:Timer::time_until_trigger`, `rust:Node::get_clock`.
+
+Upstream has these names for the least interesting possible reason: a client
+library hands back what the entity stored. Every one of them is a field we
+already hold — and in each case **one or two of our three languages already
+expose it and the third does not** (C and C++ have `topic_name`, Rust does not;
+Rust has `Timer::is_ready`, C++ does not; Rust exposes `MessageInfo::publisher_gid`,
+C++ does not). No constraint is in play, so the disposition is `adopt` and the
+argument is stage 4's own — make our three languages agree — with upstream
+incidental. These should be dispositioned as ONE family and implemented in the
+language sweeps rather than row by row.
+
+#### (5) Singles — 23 rows
+
+No family argument is available, and pretending otherwise is how a row gets a
+disposition by analogy that does not hold (issue 1131's lesson in the pool-floor
+family: the last two agreed on the answer and disagreed entirely about why).
+Eight already carry one. The remaining fifteen go one at a time.
+
+#### Order, and what it costs
+
+1. **(1)** — 8 rows, `absent`, one RFC section already written. Hours.
+2. **(4)** — 11 rows, `adopt`, one family argument. Then they join the language
+   sweeps.
+3. **(2)** — 12 rows, but re-read each `why` first; the disposition is `adopt`
+   with the `*_UNKNOWN` half attached, and the implementation is retention plus
+   an accessor, not a backend.
+4. **(3)** — 26 rows, `adopt`, the largest and the cheapest per row.
+5. **(5)** — 15 undispositioned singles.
+
+Only after that does "implement the gaps" have a number attached to it. **No
+ledger row is edited by the decision itself** — this section is the plan the
+disposition pass executes, and RFC-0089's loan section is the ruling it applies
+to family (1).
+
+### W5.f (planned) — the typed service type comes from the CONTRACT, not from the caller's symbol
+
+**Not started. Recorded here because the decision is taken and the producer half
+lands on another road.**
+
+Today a C service server names its type by naming a symbol:
+
+```c
+example_interfaces_srv_add_two_ints_service_init(&app.service, &app.node,
+                                                 "/add_two_ints", &app.handler);
+```
+
+(`examples/native/c/service-server/src/main.c:137`, and four identical siblings).
+The generated forwarder binds the type support, the trampoline and the handler
+together so the three cannot disagree
+(`packages/cli/rosidl-codegen/packs/c/service.h.jinja`), which is why phase-417
+W5.e's "bind at creation vs bind at registration" question turned out to be
+narrow: the trampoline is DERIVED from the type, so there is nothing for a later
+`nros_executor_add_service_raw()` to decide. But that framing hides the real
+question, which is **why the caller is restating a fact the system already
+knows.**
+
+The contract knows it. `system.toml` and the SystemModel declare the entities,
+and `ServiceWiring` carries `srv_type` alongside its `server` / `client` lists
+(`packages/cli/nros-cli-core/src/orchestration/model_ingest.rs:871-878`). The
+facts road reads that structure and **drops the type, keeping only the count**:
+`declared_service_servers` sums `s.server.len()` over
+`model.structure.services` and emits `NROS_DECLARED_SERVICE_SERVERS`
+(`packages/cli/nros-cli-core/src/cmd/entity_facts.rs:98-99,190-208`).
+
+**Decision: the declared facts should carry service TYPES, not just counts, and
+codegen should emit the binding with the type already bound — the caller
+supplies only the handler and its context.** That retires the
+creation-vs-registration question entirely (there is no second moment at which a
+type could be named) and removes the second place a type could be stated, and
+therefore mismatched: today a `system.toml` naming
+`example_interfaces/srv/AddTwoInts` and a `main.c` naming a different generated
+symbol both compile, and nothing compares them.
+
+**The cost, stated honestly: this is a PRODUCER change on the contract road, not
+a pack tweak.** The type has to travel from `ServiceWiring` through
+`entity_facts` (whose output vocabulary is counts and tokens today) to codegen,
+which means RFC-0100 / phase-454 territory — the sizing descriptor and the
+declared-facts channel — before any `.jinja` changes. Two things make that
+non-trivial rather than merely wider:
+
+* the facts road has ONE spelling per fact and a consumer that refuses an
+  unknown one, so adding a type is adding a channel, not a value;
+* the leaf road (`entities = [...]` on a `[[component]]`, RFC-0098 D8) and the
+  model road must agree about it, or a standalone CMake project gets a
+  different answer from a bringup — the class issue 1142 already had to fix
+  once for counts.
+
+Acceptance, when it is built: a C service-server example whose `main.c` names no
+generated service symbol, only its handler; and a build whose `system.toml` and
+whose entry disagree about the service type FAILS, rather than compiling.
+
 ## Migration track — what moves, and in what order
 
 Inherited from phase-379 W7, which owns steps 1–3 and is in flight. This phase
