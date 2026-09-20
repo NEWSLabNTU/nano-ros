@@ -462,11 +462,13 @@
   },
   "cpp:operator!=": {
     "verdict": "gap",
-    "why": "see `cpp:operator==`."
+    "disposition": "adopt",
+    "why": "see `cpp:operator==`.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT; see `cpp:operator==`, which carries the reason and the C++17 correction. `!=` is `!(a == b)` and moves with it."
   },
   "cpp:operator==": {
     "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: `rclcpp::operator==` compares two profiles policy by policy, and our `nros::QoS` has no comparison at all -- while Rust's `QoSProfile` derives `PartialEq, Eq` and gets it for nothing. `QoS` is a POD of scalars and enums, so `==` is a defaulted member comparison with no allocator, no exceptions and no runtime cost; there is no platform reason for its absence. Ported code that compares a profile against a preset, and any test asserting one, has nothing to call. Phase 379 W3."
+    "disposition": "adopt",
+    "why": "OUR LANGUAGES DISAGREE: `rclcpp::operator==` compares two profiles policy by policy, and our `nros::QoS` has no comparison at all -- while Rust's `QoSProfile` derives `PartialEq, Eq` and gets it for nothing. `QoS` is a POD of scalars and enums, so `==` is a defaulted member comparison with no allocator, no exceptions and no runtime cost; there is no platform reason for its absence. Ported code that compares a profile against a preset, and any test asserting one, has nothing to call. Phase 379 W3.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT. The reason holds — `nros::QoS` (`packages/api/nros-cpp/include/nros/qos.hpp:188`) is a POD of scalars and enums with no comparison, Rust's `QoSProfile` derives `PartialEq, Eq`, and there is no platform argument for the asymmetry. ONE CORRECTION to the mechanics: the row says `==` is \"a defaulted member comparison\", and `= default` on a comparison operator is C++20. This surface's floor is `cxx_std_17` (`packages/api/nros-cpp/CMakeLists.txt:345` — `target_compile_features(nros-cpp-headers INTERFACE cxx_std_17)`), so it is ten hand-written field comparisons instead — still constexpr, still no allocator, still no exceptions, and the members are private so it is a member or a friend rather than a free function."
   },
   "cpp:qos_check_compatible": {
     "verdict": "declined",
@@ -475,7 +477,8 @@
   },
   "cpp:qos_policy_kind_to_cstr": {
     "verdict": "gap",
-    "why": "returns a policy kind's name as a `const char *`. Unlike its `std::string` sibling this is freestanding-safe -- a static string table costs a few dozen bytes of flash -- and we have the kind in three places with no way to print any of them: `nros_qos_override_t.policy` as a bare `uint8_t` whose meaning lives only in a doc comment, `QoSPolicyMask` as bits, and `QoSOverrideValue` as a Rust enum. The consequence is that an `INCOMPATIBLE_QOS` return names no policy, and naming the policy is the entire diagnostic. Phase 379 W3."
+    "disposition": "adopt",
+    "why": "returns a policy kind's name as a `const char *`. Unlike its `std::string` sibling this is freestanding-safe -- a static string table costs a few dozen bytes of flash -- and we have the kind in three places with no way to print any of them: `nros_qos_override_t.policy` as a bare `uint8_t` whose meaning lives only in a doc comment, `QoSPolicyMask` as bits, and `QoSOverrideValue` as a Rust enum. The consequence is that an `INCOMPATIBLE_QOS` return names no policy, and naming the policy is the entire diagnostic. Phase 379 W3.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT, and the reason is not only still true, it has acquired a second edge that is worth more than the row. The row says \"an `INCOMPATIBLE_QOS` return names no policy, and naming the policy is the entire diagnostic\". MEASURED: `QoSProfile::validate_against` (`packages/core/nros-rmw/src/traits.rs:2088`) is `if supported.contains(self.required_policies()) { Ok(()) } else { Err(TransportError::IncompatibleQos) }` — the offending bit is computed and thrown away. Every `create_*` in `nros-node/src/executor/node.rs` (six call sites, `:265` onward) goes through it.\n\n**AND A SHIPPED HEADER CLAIMS THE OPPOSITE.** The `supported_qos_policies` block in `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h` says of a NULL slot: \"NONE is loud rather than silent: the affected creates fail with `INCOMPATIBLE_QOS` at once, NAMING A POLICY\". They do not name a policy. That sentence is the argument issue 1329 used for choosing NONE over the union, so the choice is right and its stated evidence is not yet true — worth a design note rather than a silent fix.\n\nWHAT THE NAME COSTS: a static table over the twelve `QoSPolicyMask` bits (`traits.rs:1956-1965`), which is the SSoT the row's three unprintable spellings all reduce to — `nros_qos_override_t.policy`'s eight numbered kinds (`nros_generated.h:1243`, whose own comment names `nros_rmw::qos_override_policy` as the SSoT), the mask bits, and `QoSOverrideValue`. Freestanding-safe, a few dozen bytes of flash, and it is the prerequisite for the diagnostic above rather than a convenience beside it."
   },
   "cpp:qos_policy_name_from_kind": {
     "verdict": "declined",

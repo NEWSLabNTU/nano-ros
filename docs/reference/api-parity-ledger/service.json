@@ -277,7 +277,8 @@
   },
   "c:take_request_with_info": {
     "verdict": "gap",
-    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> gap: the verb question this row deferred to (`c:take_request`) is settled, and what it was hiding is an ABSENCE, not a spelling. `rcl_take_request_with_info` yields `rmw_service_info_t` (source and received timestamps, plus the request id) alongside the payload; our service path carries no per-request info channel at all, so there is nothing to rename. Written down rather than argued: nobody has needed it yet."
+    "disposition": "absent",
+    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> gap: the verb question this row deferred to (`c:take_request`) is settled, and what it was hiding is an ABSENCE, not a spelling. `rcl_take_request_with_info` yields `rmw_service_info_t` (source and received timestamps, plus the request id) alongside the payload; our service path carries no per-request info channel at all, so there is nothing to rename. Written down rather than argued: nobody has needed it yet.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ABSENT, and **THE REASON ABOVE OVERSTATES THE ABSENCE.** It says \"our service path carries no per-request info channel at all\". It carries the identifying HALF: `nros_service_take_request_raw` yields an `int64_t *sequence_number` (`nros_generated.h:7189`) and `nros_service_send_response_raw` requires it back, which is what `rmw_request_id_t` is for. What is genuinely absent is the TIMESTAMP pair `rmw_service_info_t` adds — `source_timestamp` and `received_timestamp` — and the seam agrees: `take_with_info` is `nullptr` in Cyclone's vtable (`nros-rmw-cyclonedds/src/vtable.cpp:437`), so no backend can supply them today.\n\nABSENT rather than ADOPT on RFC-0089's FREQUENCY test — would a real ported program name this? `rcl_take_request_with_info` is reached from `rclc_executor` and from `rclcpp::Service`'s internals, and both of those are machinery this campaign declines (`cpp:WaitSet`, and the rclc executor family). A user program takes a request through its callback. If someone does need the timestamps, the item is a BACKEND one — fill `take_with_info` — and this row should be re-opened rather than an accessor written over a fact nobody has."
   },
   "c:take_response": {
     "verdict": "declined",
@@ -290,7 +291,8 @@
   },
   "c:take_response_with_info": {
     "verdict": "gap",
-    "why": "the client side of `c:take_request_with_info`; same absence, same reason. RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1)."
+    "disposition": "absent",
+    "why": "the client side of `c:take_request_with_info`; same absence, same reason. RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1).\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ABSENT; the client side of `c:take_request_with_info`, same correction and same test. The sequence number is there, the timestamps are not, and `take_with_info` is NULL in every backend."
   },
   "cpp:CallbackGroup::find_client_ptrs_if": {
     "verdict": "declined",
@@ -419,7 +421,8 @@
   },
   "cpp:Client::get_service_name": {
     "verdict": "gap",
-    "why": "reads back the service a client or server was created on. rclrs has it (`Client::service_name`, `Service::service_name`) and our C and C++ do not -- the mirror image of the pubsub stage's `topic_name` gap, where Rust was the one missing it. Phase 379 W3."
+    "disposition": "adopt",
+    "why": "reads back the service a client or server was created on. rclrs has it (`Client::service_name`, `Service::service_name`) and our C and C++ do not -- the mirror image of the pubsub stage's `topic_name` gap, where Rust was the one missing it. Phase 379 W3.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT. The reason above holds, and the cost is the smallest in this shard: `nros-cpp`'s `Publisher` already solves the identical problem by storing the name C++-side (`publisher.hpp:83-84`, `:257` — \"Topic name metadata lives C++-side in `topic_name_`, avoiding a runtime hop\"), so `Client` and `Service` copy that pattern. No FFI, no arena lookup, no allocator."
   },
   "cpp:Client::handle_id": {
     "verdict": "extension",
@@ -451,15 +454,18 @@
   },
   "cpp:Client::prune_pending_requests": {
     "verdict": "gap",
-    "why": "rclcpp lets a caller drop requests whose replies will never arrive, because each pending request holds a promise until it is answered. Ours has a per-client timeout (`nros_client_set_timeout`) and no way to abandon a specific outstanding request, so a client that gave up still occupies its slot until the deadline. Bounded by the static request table rather than unbounded as in rclcpp -- but a device that retries has no way to reclaim early. Phase 379 W3."
+    "disposition": "adopt-bounded",
+    "why": "rclcpp lets a caller drop requests whose replies will never arrive, because each pending request holds a promise until it is answered. Ours has a per-client timeout (`nros_client_set_timeout`) and no way to abandon a specific outstanding request, so a client that gave up still occupies its slot until the deadline. Bounded by the static request table rather than unbounded as in rclcpp -- but a device that retries has no way to reclaim early. Phase 379 W3.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT-BOUNDED. The reason above holds and already contains the envelope: upstream's three verbs exist because each pending request holds a heap promise and the table grows without bound, and ours is a fixed request table with a per-client timeout (`nros_client_set_timeout`), so the MEMORY argument they answer has no subject here. The row is nevertheless right that a device which gave up still occupies its slot until the deadline, and a retrying device has no way to reclaim early — that loss is real and is what makes this ADOPT-BOUNDED rather than ABSENT.\n\nTHE ENVELOPE, which belongs in the doc comment and not in a book: the names are taken over a BOUNDED table, so pruning reclaims a SLOT and never memory, and `prune_requests_older_than` is a scan of at most `NROS_MAX_PENDING_REQUESTS` entries rather than upstream's unbounded map. Non-inverting: a ported call does what its name says, on a smaller universe. All three verbs move together — they are one concept and splitting them would leave a user the reclaim they did not ask for."
   },
   "cpp:Client::prune_requests_older_than": {
     "verdict": "gap",
-    "why": "see `cpp:Client::prune_pending_requests`."
+    "disposition": "adopt-bounded",
+    "why": "see `cpp:Client::prune_pending_requests`.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT-BOUNDED; see `cpp:Client::prune_pending_requests` for the envelope. All three verbs move together."
   },
   "cpp:Client::remove_pending_request": {
     "verdict": "gap",
-    "why": "see `cpp:Client::prune_pending_requests`."
+    "disposition": "adopt-bounded",
+    "why": "see `cpp:Client::prune_pending_requests`.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT-BOUNDED; see `cpp:Client::prune_pending_requests` for the envelope. All three verbs move together, and this is the cheapest of the three: the sequence number the take path already returns IS the key."
   },
   "cpp:Client::send_request": {
     "verdict": "extension",
@@ -636,7 +642,8 @@
   },
   "cpp:Service::get_service_name": {
     "verdict": "gap",
-    "why": "see `cpp:Client::get_service_name`."
+    "disposition": "adopt",
+    "why": "see `cpp:Client::get_service_name`.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT. The reason above holds, and the cost is the smallest in this shard: `nros-cpp`'s `Publisher` already solves the identical problem by storing the name C++-side (`publisher.hpp:83-84`, `:257` — \"Topic name metadata lives C++-side in `topic_name_`, avoiding a runtime hop\"), so `Client` and `Service` copy that pattern. No FFI, no arena lookup, no allocator."
   },
   "cpp:Service::handle_id": {
     "verdict": "extension",
@@ -834,7 +841,8 @@
   },
   "rust:Client::service_name": {
     "verdict": "gap",
-    "why": "see `cpp:Client::get_service_name` -- rclrs has this and our Rust client does not either."
+    "disposition": "adopt-bounded",
+    "why": "see `cpp:Client::get_service_name` -- rclrs has this and our Rust client does not either.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT-BOUNDED. The reason above holds; what it does not say is WHY this is not the same one-liner as the C++ half, and the difference is the receiver. Our Rust entity handle is a bare arena index with no back-reference — `PublisherHandle { index: usize, _marker }` (`nros-node/src/publisher.rs:10`) — so rclrs's `&self`-only signature cannot reach the string; the name lives in the arena entry, beside the `topic_name` the C `nros_publisher_t` stores. ADOPT-BOUNDED is the honest disposition: take upstream's NAME, on a signature that also takes the node or executor the handle indexes into. The weakening is visible — the compiler demands the argument, which is RFC-0089's mechanical-edit test — and it is forced by the fixed-arena model of RFC-0002, not chosen."
   },
   "rust:ClientAsyncCallback": {
     "verdict": "declined",
@@ -1075,7 +1083,8 @@
   },
   "rust:QoSProfile::parameter_services_default": {
     "verdict": "gap",
-    "why": "ROS 2 gives the parameter services their own profile — `rmw_qos_profile_parameters`: KEEP_LAST(1000), RELIABLE, VOLATILE. CORRECTION (2026-08-25): an earlier version of this row said transient-local, 'so a late-joining tool still sees declared parameters'. That was wrong -- upstream is VOLATILE, verified against `/opt/ros/humble/include/rmw/rmw/qos_profiles.h`. The real difference is the DEPTH: 1000 against the generic services profile's 10, which matters when a tool sets many parameters at once. Our services registered on `services_default()` until issue 0793 wired `parameters_default()`; the preset itself is still not exposed by name in every language."
+    "disposition": "adopt",
+    "why": "ROS 2 gives the parameter services their own profile — `rmw_qos_profile_parameters`: KEEP_LAST(1000), RELIABLE, VOLATILE. CORRECTION (2026-08-25): an earlier version of this row said transient-local, 'so a late-joining tool still sees declared parameters'. That was wrong -- upstream is VOLATILE, verified against `/opt/ros/humble/include/rmw/rmw/qos_profiles.h`. The real difference is the DEPTH: 1000 against the generic services profile's 10, which matters when a tool sets many parameters at once. Our services registered on `services_default()` until issue 0793 wired `parameters_default()`; the preset itself is still not exposed by name in every language.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT, and **THE CLOSING CLAIM IS FALSE FOR RUST**, which is the language this row is keyed on. It says \"the preset itself is still not exposed by name in every language\". In Rust it is, three ways: `QoSProfile::parameters_default()` (`packages/core/nros-rmw/src/traits.rs:1173`), the free const `QOS_PROFILE_PARAMETERS` and `QosPresets::PARAMETERS` (`packages/api/nros/src/lib.rs:1069`, `:1123`). The VALUE is right too — `QOS_PROFILE_PARAMETERS` is KEEP_LAST(1000), RELIABLE, VOLATILE, and issue 0793 moved the parameter services onto it.\n\nWHAT IS MISSING IS RCLRS'S NAME, and under RFC-0089's alias rule that is not ours to decline: upstream HAS `parameter_services_default` and we do not, so the alias is load-bearing for any text held to both libraries, and it must NOT be deprecated. One `const fn` returning `Self::QOS_PROFILE_PARAMETERS`. The cheapest row in this pass."
   },
   "rust:RawServiceCallback": {
     "verdict": "divergence",
@@ -1111,7 +1120,8 @@
   },
   "rust:Service::service_name": {
     "verdict": "gap",
-    "why": "see `cpp:Client::get_service_name`."
+    "disposition": "adopt-bounded",
+    "why": "see `cpp:Client::get_service_name`.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT-BOUNDED. The reason above holds; what it does not say is WHY this is not the same one-liner as the C++ half, and the difference is the receiver. Our Rust entity handle is a bare arena index with no back-reference — `PublisherHandle { index: usize, _marker }` (`nros-node/src/publisher.rs:10`) — so rclrs's `&self`-only signature cannot reach the string; the name lives in the arena entry, beside the `topic_name` the C `nros_publisher_t` stores. ADOPT-BOUNDED is the honest disposition: take upstream's NAME, on a signature that also takes the node or executor the handle indexes into. The weakening is visible — the compiler demands the argument, which is RFC-0089's mechanical-edit test — and it is forced by the fixed-arena model of RFC-0002, not chosen."
   },
   "rust:Service::set_async_callback": {
     "verdict": "declined",
