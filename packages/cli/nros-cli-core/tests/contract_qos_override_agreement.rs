@@ -181,8 +181,16 @@ fn a_contract_only_policy_builds() {
 ///
 /// This is what keeps every existing image building. Measured against the real
 /// file -- `multi-node-workspace-cpp`'s bringup sets
-/// `qos_overrides./chatter.publisher.reliability` and has no contract sidecar,
-/// and it is one of the two in-tree producers of a `qos_overrides.*` parameter.
+/// `qos_overrides./chatter.publisher.depth` and has no contract sidecar, and it
+/// is one of the two in-tree producers of a `qos_overrides.*` parameter.
+///
+/// The KEY is incidental to what this test proves (an override exists, no
+/// contract describes the wiring, so the check abstains) and it moved: that
+/// bringup used to set `reliability = best_effort`, which a DDS RMW never
+/// matches to the listener's reliable reader, so the template's own demo
+/// delivered nothing on its default CycloneDDS build. Asserting the key by name
+/// is still right -- a test that accepted "any qos_overrides.*" would keep
+/// passing if the parameter vanished.
 #[test]
 fn an_image_with_no_contract_is_untouched() {
     let repo = repo_root();
@@ -196,7 +204,7 @@ fn an_image_with_no_contract_is_untouched() {
     assert!(
         m.structure.nodes["/talker"]
             .params
-            .contains_key("qos_overrides./chatter.publisher.reliability"),
+            .contains_key("qos_overrides./chatter.publisher.depth"),
         "the override must be present, or this test proves nothing"
     );
     assert!(
