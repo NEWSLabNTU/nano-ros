@@ -39,6 +39,29 @@ WHAT COUNTS
   with the reason. An exemption is a claim about the application being built,
   so it names the file and the marker text, never a bare path.
 
+A NOTE FOR WHOEVER EXTENDS THIS
+-------------------------------
+
+Two defects were found in this gate before it merged, and they are the same
+defect: an AUTHORED PREDICATE whose reach is not the rule it enforces (issue
+0196's shape, which CLAUDE.md indexes and which the 2026-07-28 audit found in
+four gates at once). Neither was visible from reading the predicate, and both
+printed a confident OK.
+
+  * The file set was an `os.walk` that pruned directories named `build` — so
+    it never saw `scripts/build/`, which holds the tree's busiest west builder.
+    Reach NARROWER than the rule. Fixed by going through the git index
+    (`scripts/lib/tracked.py`), which `check-no-tracked-file-find` requires
+    anyway.
+  * The array exemption matched any `${x[@]}` anywhere in the command, so it
+    fired on the command NAME `"${west_cmd[@]}"` and stopped noticing a
+    missing flag in `just zephyr build-one` — the recipe issue 1379 was
+    reported from. Reach WIDER than the rule.
+
+So: when you widen or narrow anything here, write the mutant into `selftest()`
+FIRST and watch it fail. Every row in there is a real miss, not an imagined
+one, and the two above are rows 9-13.
+
 Run: python3 scripts/check-zephyr-module-binding.py [--list] [--selftest]
 """
 
@@ -96,10 +119,30 @@ TARGET_RUN = re.compile(r"(?:^|\s)-t\s+\S")
 # An invocation whose flags are ASSEMBLED elsewhere in the same file —
 # `scripts/build/zephyr-fixture-run-one.sh` builds its `-D` list with
 # `replace_or_append_arg` and expands it as `"${west_extra[@]}"`, so the
-# sanctioned token is thirty lines away from the `west build` line. Such an
-# invocation is accepted when the FILE uses the helper; it is still refused
-# when the file never mentions it, which is the case the gate is for.
+# sanctioned token is a hundred lines from the `west build` line.
+#
+# This exemption has to be narrow in TWO directions at once, because its first
+# version was wide in both and the wideness was invisible:
+#
+#   * it matched ANY `${x[@]}` in the command, including the command NAME.
+#     `just/zephyr-dev.just` invokes west as `"${west_cmd[@]}" build …` (the
+#     4.4 line runs west through a venv interpreter), so the exemption fired
+#     on the command word and the flag's presence stopped mattering — for the
+#     exact recipe issue 1379 was reported from. Deleting `"$nros_module_arg"`
+#     from that line left the gate printing OK. So a qualifying expansion must
+#     appear AFTER the `build` sub-command, where an ARGUMENT lives.
+#   * it accepted any sanctioned token ANYWHERE in the file, including the one
+#     on a `nros_module_arg=…` line whose value the mutated command no longer
+#     used. So the file must also demonstrably assemble the FLAG: one line
+#     naming `ZEPHYR_EXTRA_MODULES` and calling the helper.
+#
+# Either half alone closes that mutant; both are kept because they fail for
+# different reasons and a later edit is unlikely to defeat both at once.
 ARRAY_EXPANSION = re.compile(r"\$\{\w+\[@\]\}")
+# A line that builds the module flag itself — `replace_or_append_arg
+# "-DZEPHYR_EXTRA_MODULES" "$(nros_zephyr_module_root …)"`. The flag NAME and
+# the helper on one line is the evidence; either alone is not.
+FLAG_NAME = "ZEPHYR_EXTRA_MODULES"
 
 # file -> (marker substring, reason). The marker keeps the exemption pinned to
 # the invocation it was written for: move the build and the exemption stops
@@ -177,12 +220,35 @@ def offenders(root: str):
     return bad, harvested
 
 
+def carries_assembled_flags(cmd: str) -> bool:
+    """Does this command expand an array in ARGUMENT position?
+
+    Positionally, not by name: the array carrying the `-D` list is called
+    `west_extra` here and would be called something else in the next file, so
+    keying on the name would be a second authored list. What is structural is
+    that the command NAME sits before the `build` sub-command and an ARGUMENT
+    sits after it.
+    """
+    m = WEST_BUILD.search(cmd)
+    if not m:
+        return False
+    return bool(ARRAY_EXPANSION.search(cmd[m.end():]))
+
+
+def file_assembles_module_flag(file_text: str) -> bool:
+    """One line naming the flag AND calling the helper — the flag is built here."""
+    return any(
+        FLAG_NAME in line and any(t in line for t in SANCTIONED)
+        for line in file_text.splitlines()
+    )
+
+
 def is_offence(cmd: str, path: str, file_text: str) -> bool:
     if TARGET_RUN.search(cmd):
         return False
     if any(token in cmd for token in SANCTIONED):
         return False
-    if ARRAY_EXPANSION.search(cmd) and any(t in file_text for t in SANCTIONED):
+    if carries_assembled_flags(cmd) and file_assembles_module_flag(file_text):
         return False
     exempt = EXEMPT.get(path)
     if exempt and exempt[0] in cmd:
@@ -272,17 +338,47 @@ def selftest(root: str, quiet: bool = False) -> int:
     )
 
     expect(
-        "flags assembled into an array pass when the FILE uses the helper",
-        'nros_zephyr_module_root "$r"\n'
+        "flags assembled into an array pass when the file ASSEMBLES the flag",
+        '    replace_or_append_arg "-DZEPHYR_EXTRA_MODULES" '
+        '"$(nros_zephyr_module_root "$r")"\n'
         '    build_argv=(west build -b "$b" -d "$d" "$src" "${west_extra[@]}")\n',
         "scripts/x.sh",
         False,
     )
     expect(
-        "...and fail when the file never names it",
+        "...and fail when the file never names the helper",
         '    build_argv=(west build -b "$b" -d "$d" "$src" "${west_extra[@]}")\n',
         "scripts/x.sh",
         True,
+    )
+    expect(
+        "...and fail when the helper is called but never wired to the FLAG",
+        '    nros_module_arg="$(nros_zephyr_module_cmake_arg "$r")"\n'
+        '    build_argv=(west build -b "$b" -d "$d" "$src" "${west_extra[@]}")\n',
+        "scripts/x.sh",
+        True,
+    )
+    # THE MUTANT THE FIRST VERSION MISSED, and the reason this row exists at
+    # all: `"${west_cmd[@]}"` is the command NAME, so an exemption keyed on
+    # "any array expansion anywhere" fired on it and the module flag's absence
+    # stopped being detectable — in `just zephyr build-one`, the very recipe
+    # issue 1379 was reported from. The file DOES call the helper on the line
+    # above, which is what made the old second condition pass too.
+    expect(
+        "an array expansion in the COMMAND NAME does not earn the exemption",
+        '    nros_module_arg="$(nros_zephyr_module_cmake_arg "$(pwd)")"\n'
+        '    "${west_cmd[@]}" build -b "$board" -d "$bd" "$src" -- \\\n'
+        '        -DCONF_FILE="$conf"\n',
+        "just/x.just",
+        True,
+    )
+    expect(
+        "...and the same command WITH the flag still passes",
+        '    nros_module_arg="$(nros_zephyr_module_cmake_arg "$(pwd)")"\n'
+        '    "${west_cmd[@]}" build -b "$board" -d "$bd" "$src" -- \\\n'
+        '        -DCONF_FILE="$conf" "$nros_module_arg"\n',
+        "just/x.just",
+        False,
     )
     expect(
         "a backticked mention in prose is not a command",

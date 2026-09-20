@@ -71,7 +71,7 @@ under the invoking checkout. The second is closer to what "build where you run"
 means; the first is the smaller change.
 
 Found while making the phase-392 amendment B measurement
-([`docs/roadmap/phase-392-static-memory-space-campaign.md`](../roadmap/phase-392-static-memory-space-campaign.md)),
+([`docs/roadmap/phase-392-static-memory-space-campaign.md`](../../roadmap/phase-392-static-memory-space-campaign.md)),
 which had to abandon a Zephyr measurement image because of it.
 
 
@@ -181,12 +181,29 @@ its own negative control on every invocation.
   assembled into an array thirty lines before the `west build` — turns it red
   naming line 278. Restoring each turns it green at 9 harvested invocations.
 
-  The array shape is worth recording because the gate's first version could
-  not see that file at all: it walked the filesystem and pruned directories
-  named `build`, which is `scripts/build/`. Converting it to the git index
-  (`scripts/lib/tracked.py`, required by `check-no-tracked-file-find`) both
-  removed the walk and closed the hole — the gate was reporting OK over a set
-  that excluded the tree's busiest west builder.
+  **The gate carried this issue's own defect twice before it merged, and both
+  are worth recording**, because they are one shape: an authored predicate
+  whose reach is not the rule it enforces (issue 0196; the 2026-07-28 audit
+  found four gates like it).
+
+  * Reach NARROWER than the rule: the file set was an `os.walk` that pruned
+    directories named `build` — i.e. `scripts/build/` — so the gate reported
+    OK over a set excluding the tree's busiest west builder. Converting it to
+    the git index (`scripts/lib/tracked.py`, which `check-no-tracked-file-find`
+    requires anyway) removed the walk and closed the hole.
+  * Reach WIDER than the rule, found in review by the coordinator: the
+    exemption for flags assembled into an array matched ANY `${x[@]}` in the
+    command, including the command NAME. `just/zephyr-dev.just` invokes west as
+    `"${west_cmd[@]}" build …`, so the exemption fired on the command word and
+    the flag's presence stopped mattering — **in the exact recipe this issue
+    was reported from**. Measured: deleting `"$nros_module_arg"` from that line
+    left the gate printing `OK — 9 west build invocation(s)`. A qualifying
+    expansion must now appear AFTER the `build` sub-command, where an argument
+    lives, AND the file must assemble the flag itself (one line naming
+    `ZEPHYR_EXTRA_MODULES` and calling the helper). Either half alone closes
+    the mutant; both are kept because they fail for different reasons. Both
+    are `selftest()` rows now, along with the positive control that the same
+    command WITH the flag still passes.
 * `just check fast`: **326 gates ran, 2 skipped (unprovisioned FSP tree,
   unsynced nuttx-ffi leaves), 0 failed.**
 
