@@ -102,3 +102,64 @@ zenoh-pico micro-cdr micro-xrce-dds-client` (no fetch needed — the object stor
 are already in `.git/modules`) makes both pass.
 
 Found during phase-454 W8.
+
+## The same two gates, in a venue this issue did not name: the HOSTED push lane
+
+Measured 2026-09-20. `gate.yml`'s **push** lane on `main` fails on exactly this
+pair, and has done so on every completed push run for at least three days:
+
+```
+run 35505068333  push gate  main @ 1785cdc6  2026-09-20T10:26:17Z  failure
+  job 106063395162  check (fast on push; full on PR/nightly)
+    step `just check fast`
+      ===== FAIL (capability-conditionals, rc=2, 972ms) =====
+      ===== FAIL (xrce-vendored-versions, rc=1, 1029ms) =====
+      check-fast (parallel): 2 of 327 gate(s) FAILED
+```
+
+The messages are the ones above, verbatim, including their advice to run `just
+setup-worktree` — on a GitHub runner, where there is no worktree to set up.
+
+**The runner is not a worktree, and it is not misconfigured either.** The job's
+own step list says why: `Provision compile-tier sources` is **skipped** on a
+push event (it is gated to the compiling events), so the three vendored trees
+are absent by design on this lane, exactly as they are absent by default in an
+agent worktree. Two different environments, one rule: nothing provisioned the
+subject, and the gates call that a defect.
+
+**It is uniformly red, which is this issue's "no signal capacity" argument
+already happening.** Every completed `event=push`, `branch=main` run of
+`gate.yml` that the API returns is a failure:
+
+| run | created | head |
+| --- | --- | --- |
+| 35505068333 | 2026-09-20T10:26 | 1785cdc6 |
+| 35311024202 | 2026-09-18T05:29 | 3a3ec205 |
+| 35304501105 | 2026-09-18T03:47 | 5ddee305 |
+| 35301863424 | 2026-09-18T03:05 | b3316b38 |
+| 35291099863 | 2026-09-18T00:25 | 156a7ea1 |
+| 35289417069 | 2026-09-18T00:01 | 772b21e3 |
+| 35286479168 | 2026-09-17T23:21 | aebe59b2 |
+| 35282943532 | 2026-09-17T22:37 | 520db43a |
+
+Spot-checked rather than assumed: 35311024202's job 105492954955 prints the same
+three lines, `2 of 327 gate(s) FAILED` on the same two names. So a real
+`check fast` regression landing on `main` would arrive in a lane that has been
+red for every push since 2026-09-17 and would look exactly like it.
+
+Two consequences worth stating, because neither is obvious from the run list:
+
+- **Nothing is blocked by this.** The required context for a pull request is the
+  aggregator `CI` on the `pull_request` and `merge_group` events, where
+  `Provision compile-tier sources` does run; the push lane is advisory. That is
+  why it has been red for days without anyone's PR noticing.
+- **The withdrawal cost applies here too.** After `just check fast` fails, the
+  job's remaining steps — `check submodule-commits-reachable`, the fixtures, the
+  generated bindings, `test-unit`, `test-lane-contracts`, `check workspace-all` —
+  are all `skipped`. A lane that examined 325 of 327 gates and then abandoned the
+  rest reports as one word: `failure`.
+
+This does not change what a fix has to decide; it widens the sweep. Routing both
+gates through the skip ledger fixes the worktree case and this one at once,
+whereas provisioning the submodules on the push lane would fix only this one and
+leave the agent worktrees where they are.
