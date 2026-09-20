@@ -66,8 +66,29 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/nano_ros_use_board.cmake)
 # `include("${NROS_REPO_DIR}/cmake/compat/NrosRclcppCompat.cmake")`
 # for the Phase 210 find_package shape). Without CACHE the var only
 # lives in this directory's scope and the consumer sees an empty value.
+#
+# issue 1379 — FORCE, and that is the second half of the fix rather than
+# tidiness. A `set(... CACHE ...)` without FORCE does not overwrite an entry
+# the cache already holds (measured: a two-configure toy where the literal
+# changed between them reports the FIRST value both times). So a build
+# directory that was ever configured against a foreign module keeps compiling
+# that tree's `packages/platform/...`, `packages/api/...` and `cmake/...`
+# through every `${NROS_REPO_DIR}` below, even once the module binding itself
+# is correct — the same contamination, surviving the fix that was supposed to
+# end it. This value is DERIVED from where the module was found, never a knob:
+# nothing in the tree passes `-DNROS_REPO_DIR` (consumers read the ENV
+# variable of that name, which this does not touch), so there is no operator
+# choice for FORCE to overrule.
 set(NROS_REPO_DIR ${CMAKE_CURRENT_LIST_DIR}/.. CACHE PATH
-    "nano-ros repo root (parent of zephyr/ module dir)")
+    "nano-ros repo root (parent of zephyr/ module dir)" FORCE)
+
+# issue 1379 — and this is the FIRST thing done with it. `NROS_REPO_DIR` is
+# derived from where the MODULE was found, so on a west workspace bound to
+# another checkout (issue 1258) every line below silently reaches into that
+# tree while the application comes from this one. Refuse the mix here, at the
+# one point every route to this module passes through.
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_checkout_guard.cmake)
+nros_assert_single_checkout("${NROS_REPO_DIR}" "${APPLICATION_SOURCE_DIR}")
 
 # `zephyr_library()` would create a default library named after this
 # directory's path (e.g. `..__..__nano-ros__zephyr`). All sources below

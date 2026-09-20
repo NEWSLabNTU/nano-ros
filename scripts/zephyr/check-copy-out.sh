@@ -38,6 +38,10 @@ BOARD="${3:-native_sim/native/64}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NROS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$NROS_ROOT"
+# issue 1379 — the `-DZEPHYR_EXTRA_MODULES` below has ONE spelling now.
+# shellcheck source=scripts/lib/zephyr-module.sh
+. "$NROS_ROOT/scripts/lib/zephyr-module.sh"
+nros_module_arg="$(nros_zephyr_module_cmake_arg "$NROS_ROOT")"
 
 # shellcheck source=/dev/null
 source scripts/build/cargo.sh
@@ -136,7 +140,7 @@ set +e
         -b "$BOARD" -d "$bd" -p auto "$copied" -- \
         -DCONF_FILE="$conf" \
         -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" \
-        -DZEPHYR_EXTRA_MODULES="$NROS_ROOT" \
+        "$nros_module_arg" \
         -DMAKE="$make_bin"
 )
 rc=$?

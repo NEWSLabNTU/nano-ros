@@ -175,10 +175,13 @@ fi
 # that tree's `zephyr/` module. It is a manifest-only directory now, so the
 # module has to come from here.
 #
-# `$nros_root`, NOT `$nros_root/zephyr`: a zephyr module ROOT is the directory
-# holding `zephyr/module.yml`. Pointing at the subdirectory fails configure with
-# "is not a valid zephyr module", which names the variable and not the rule.
-replace_or_append_arg "-DZEPHYR_EXTRA_MODULES" "$nros_root"
+# issue 1379 — the flag has ONE spelling (`scripts/lib/zephyr-module.sh`),
+# because phase-449 W1 taught three builders to pass it and four others were
+# left without it. `replace_or_append_arg` takes the value, so the helper's
+# `root` mode is what this site wants.
+# shellcheck source=scripts/lib/zephyr-module.sh
+. "$nros_root/scripts/lib/zephyr-module.sh"
+replace_or_append_arg "-DZEPHYR_EXTRA_MODULES" "$(nros_zephyr_module_root "$nros_root")"
 
 west_extra=()
 if [ "${#extra_args[@]}" -gt 0 ]; then

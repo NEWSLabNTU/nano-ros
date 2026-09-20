@@ -734,6 +734,16 @@ zephyr-knob-agreement:
 zephyr-workspace-resolvers:
     @python3 scripts/check-zephyr-workspace-resolvers.py
 
+# Issue 1379 — a `west build` that configures a nano-ros image must name THIS
+# checkout's `nros` module. The workspace supplies one otherwise, and since
+# phase-440 W4 that workspace is shared by every checkout on the host: the
+# reported build linked one worktree's Rust half against another clone's C half
+# and said nothing. phase-449 W1 fixed three of the seven call sites; this gate
+# is what keeps the eighth from being written without it.
+[private]
+zephyr-module-binding:
+    @python3 scripts/check-zephyr-module-binding.py
+
 # Issue 1016 — `require_west_leaf_in_lane` fails OPEN on a build-dir name the
 # manifest does not model, so such a name is a leaf every lane's RUN demands and
 # no lane's BUILD produces. The verdict is a STALE message nobody can tell from a
