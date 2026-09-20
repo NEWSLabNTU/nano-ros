@@ -201,6 +201,24 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/node_guard_condition
     ./tmp/node_guard_condition
+    echo "  - issue 1385: a C executor INSTALLS the backend wake callback and HANDS IT BACK"
+    # The FIFTH compile+link+run TU, and the first whose subject is a POINTER
+    # the backend holds rather than a value a header states. Both halves of
+    # issue 1385 are invisible to every static check: `nros_executor_init`
+    # installing nothing compiles, and `Executor::drop` not clearing what it
+    # installed compiles — the second only becomes a use-after-free once the
+    # first is fixed, which is why the fix landed in that order and why this
+    # probe asserts the backend's own slot in BOTH directions
+    # (`nros_stub_rmw_wake_cb_installed`) before it measures anything.
+    #
+    # The timing half carries a LOWER bound as well as an upper one: a
+    # `spin_once` that never waited cuts every budget short and would pass an
+    # upper-bound-only probe while doing none of the waiting. Same stub backend
+    # and same archive as the probes above. `test -f` first — a missing TU must
+    # not read as a pass (issue 0196).
+    test -f packages/api/nros-c/tests/run/executor_backend_wake.c || {         echo "ERROR: executor_backend_wake.c is MISSING -- this check passes on absence." >&2;         exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE         -Itarget/nros-c-generated         -Ipackages/api/nros-c/include         -Ipackages/core/nros-rmw-abi/include         -Ipackages/platform/nros-platform-api/include         -Ipackages/api/nros-c/tests/run         packages/api/nros-c/tests/run/executor_backend_wake.c         packages/api/nros-c/tests/run/stub_rmw_backend.c         "$nros_c_lib" -lpthread -ldl -lm         -o tmp/executor_backend_wake
+    ./tmp/executor_backend_wake
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in

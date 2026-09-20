@@ -410,6 +410,29 @@ pub unsafe extern "C" fn nros_executor_init(
     }
     ptr::write(executor._opaque.as_mut_ptr() as *mut CExecutor, rust_exec);
 
+    // Issue 1385 — hand the backend the runtime wake callback, which is what
+    // the three Rust `Executor::open*` paths do and what this one did not.
+    // Without it `has_async_wake` stays false for the life of every C
+    // executor, on every backend that implements the slot (zenoh, cyclone),
+    // and `spin_once` takes the `else` arm: `drive_io(full timeout)`. An
+    // arrival signalled from a backend worker thread or an ISR — rather than
+    // from the recv we are parked in — then cannot cut the wait short, and the
+    // executor spends the caller's whole budget.
+    //
+    // AFTER the `ptr::write`, deliberately. The context the backend is handed
+    // is `Arc::as_ptr(&wake_ctx)` — a heap block, so it would survive the move
+    // — but taking it from the executor at its FINAL address removes the
+    // question instead of answering it in a comment.
+    //
+    // The matching clear is the executor's own (`clear_wake_signal`, run from
+    // `Drop`), and it landed FIRST: `rclc_executor_fini` `drop_in_place`s this
+    // executor and then ZERO-FILLS `_opaque` while the borrowed session lives
+    // on in `nros_support_t`, so installing without a clear is not a smaller
+    // bug than the one being fixed — it is a use-after-free with an arbitrary
+    // window.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    get_executor(&mut executor._opaque).install_wake_signal_on_primary();
+
     executor.max_handles = max_handles.min(NROS_EXECUTOR_MAX_HANDLES);
     executor.handle_count = 0;
     executor._handle_entities = [ptr::null_mut(); NROS_EXECUTOR_MAX_HANDLES];

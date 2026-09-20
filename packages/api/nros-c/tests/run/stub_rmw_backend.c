@@ -4,6 +4,7 @@
 
 #include <nros/rmw_vtable.h>
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <time.h>
 
@@ -191,9 +192,12 @@ static rmw_ret_t stub_destroy_client(rmw_client_t* client) {
  * from the stub's `nanosleep` into the platform's wake primitive, which is
  * where a real async backend spends it too.
  *
- * Nothing here ever invokes `cb`: this stub has no transport to be notified
- * from, and a guard condition's own trigger signals the executor directly
- * through `nros_rmw_runtime_wake_cb`, not through the backend. */
+ * Issue 1385 — the slot is also READ BACK, by
+ * `nros_stub_rmw_wake_cb_installed`, and driven on demand by
+ * `nros_stub_rmw_invoke_wake`. Storing a callback nobody can see and nobody
+ * can fire made the executor's half of this contract untestable in both
+ * directions: whether an install happened at all, and whether the teardown
+ * handed it back. */
 static void (*s_wake_cb)(void* ctx) = NULL;
 static void* s_wake_ctx = NULL;
 
@@ -231,4 +235,15 @@ int32_t nros_stub_rmw_register(void) {
 
 uint32_t nros_stub_rmw_drive_io_calls(void) {
     return s_drive_io_calls;
+}
+
+bool nros_stub_rmw_wake_cb_installed(void) {
+    return s_wake_cb != NULL;
+}
+
+bool nros_stub_rmw_invoke_wake(void) {
+    void (*cb)(void*) = s_wake_cb;
+    if (cb == NULL) return false;
+    cb(s_wake_ctx);
+    return true;
 }
