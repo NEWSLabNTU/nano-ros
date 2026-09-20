@@ -3,12 +3,13 @@ id: 1388
 title: "Every ThreadX-Linux image fails to COMPILE on main — the board's
   `backing_u64s = 4494` is below the default executor sizing, and the gate that
   exists to catch exactly this reads Zephyr confs only"
-status: open
+status: resolved
+resolved: 2026-09-20
 type: bug
 area: [core, boards, build]
 severity: high
 found: 2026-09-18
-related: [1145, 1171, 0196, 1362, phase-392, phase-448]
+related: [1145, 1171, 1284, 0196, 1362, phase-392, phase-448]
 ---
 
 ## What happens
@@ -143,3 +144,87 @@ disagree, which is the defect.
 Found while trying to measure the ThreadX byte pool's undeclared 4 MiB base
 (issue 1145's last open item) — which cannot be measured on an image that does
 not build.
+
+
+## RESOLVED 2026-09-20 — and the root cause is not what this issue guessed
+
+`backing_u64s` 4494 -> **11069**, plus the gate coverage that makes it checkable.
+`just threadx_linux build-examples` is green, rc=0, zero assertion failures.
+
+### It was never drift
+
+This issue leaned toward "the default grew past 4494 after 2026-09-12". It did
+not. 4494 is a TRUE measurement of the WRONG POPULATION.
+
+`nros sync` narrows each LEAF's executor knobs, so the derived default differs
+per role — which is what the board comment measured with `nm -S`, heaviest role
+35,952 B = 4494 words. But the rung is stated ONCE PER BOARD, and not every unit
+compiled with it gets a leaf's narrowing. Measured in ONE build of this board,
+`nros-node` resolves four different defaults:
+
+```
+2917   3626   4494   11069
+```
+
+The last is the synthesised `nros_ws_runtime` umbrella, compiled per CARGO ROOT
+rather than per image, which therefore takes the unnarrowed
+`ExecutorSizing::DEFAULT` — the same number the Zephyr confs state. The const
+assertion is `stated >= default` in EVERY unit, so the claim has to cover the
+largest, not the heaviest role.
+
+The cost is real and is the price of one statement per board: a talker reserves
+11,069 words where its own executor needs 2,917. It is not a memory cost — this
+rung MOVES bytes between `.bss` and the byte pool, which gives back the same
+number — so over-stating costs `mem-report` accuracy, not memory.
+
+### Correction: "the gate never looked" was too strong
+
+`check-executor-backing-arena-pairing` DOES have a ThreadX arm,
+`check_threadx_site`, and it checks the MECHANISM in both directions: that the C
+names a base, that the pool mentions the knob, and that the build-script
+forwarder forwards it. What it did not check is issue 1284's other half — is the
+stated number ENOUGH — which was built for the Zephyr CONF spelling and never
+extended to the board-descriptor spelling. The claim was unvouched-for, not
+unseen.
+
+Fixed: `board_toml_claims()` emits `[board.knobs.executor] backing_u64s` as a
+claim, `claim_half` merges it, and `executor_backing_claims.rs` compares it
+against the measured default in `just check node-std-tests` (pull_request AND
+merge_group). A claiming descriptor with no `BOARD_TOML_TARGETS` entry is
+REFUSED rather than assumed, the same discipline `BOARD_TARGETS` already has.
+
+Mutation tested — restoring 4494:
+
+```
+packages/boards/nros-board-threadx-linux/nros-board.toml states
+[board.knobs.executor] backing_u64s = 4494 for `threadx`, but the executor's
+default measured on this 64-bit host is 11069 words (6575 short). The image will
+not compile. Restate it as 11069; the pool subtracts the same rung, so there is
+nothing else to edit.
+```
+
+The remedy is per spelling: a Zephyr conf is told to re-pair its arena, a board
+descriptor is not, because on ThreadX the subtraction is done by the C
+preprocessor from this same rung and there is no arena to re-pair. Naming one
+would send the reader to a file this port does not have.
+
+### A second finding, measured and deliberately NOT fixed here
+
+The `nros-c`/`nros-cpp` SIZE PROBE spawns a nested cargo build, and that build
+inherits `NROS_BOARD_TOML` — so `env_opt_usize_laddered` picks the backing claim
+off the BOARD rung — while the image's sizing knobs, which arrive through the
+process env, do not reach it. Measured: 56 `NROS_*` vars in that build script's
+environment, none of them a sizing knob. So the probe judged the claim against
+an unnarrowed default too.
+
+Two rungs of one ladder arriving by different routes, only one surviving the
+process boundary. Setting `NROS_EXECUTOR_BACKING_U64S=0` for the nested probe
+(the documented opt-out; the static is a `.bss` reservation, not a term in
+`ExecutorSizing`) fixes that half, and was written and measured.
+
+It is NOT in this fix, because it is not load-bearing for it: with the claim at
+11069 the build is green WITHOUT the probe change, verified by reverting it and
+rebuilding. Shipping it here would claim a necessity it does not have. It stays
+worth doing — it is what would let a board state a per-image-correct number
+rather than the unnarrowed maximum — and wants its own issue and its own
+acceptance — filed as issue 1390.

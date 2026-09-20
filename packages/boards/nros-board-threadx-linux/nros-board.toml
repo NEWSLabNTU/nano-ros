@@ -67,17 +67,40 @@ pool.app = [15, 31]
 # is issue 1171's defect, and it is what a stated number buys over an `nm`
 # reading.
 #
-# THE NUMBER. `nros sync` derives each leaf's executor knobs, so the DERIVED
-# backing differs per role; measured on this board (x86_64, `nm -S`):
+# THE NUMBER, and why it is NOT the per-role measurement (issue 1388).
+#
+# It was 4,494 from 2026-09-12 to 2026-09-20, derived as `35,952 / 8` from the
+# heaviest ROLE's backing measured with `nm -S` on this board:
 #
 #     talker / listener / service-server   23,336 B
 #     action-client / action-server        29,008 B
-#     service-client                       35,952 B   <- the heaviest
+#     service-client                       35,952 B   <- the heaviest role
 #
-# 4,494 words is `35,952 / 8`, so it is at or above every role's requirement
-# and `nros-node`'s const assertion refuses the build if that ever stops being
-# true. A lighter role's static grows to this size and its pool shrinks by the
-# same amount, so the image's total falls by exactly the backing it used to
-# pay for twice.
+# That is a true measurement of the wrong population, and every ThreadX-Linux
+# image — Rust, and C/C++ through the size probe — failed to COMPILE on it.
+#
+# `nros sync` narrows each LEAF's executor knobs, so the derived default
+# differs per role. But this rung is stated ONCE per BOARD, and not every unit
+# compiled with it gets a leaf's narrowing. Measured in one build of this
+# board: `nros-node` resolves defaults of 2917, 3626, 4494 AND 11069 words.
+# The last is the synthesised `nros_ws_runtime` umbrella, which is compiled per
+# CARGO ROOT rather than per image and so takes the unnarrowed default —
+# the same `ExecutorSizing::DEFAULT` the Zephyr confs state.
+#
+# `nros-node`'s const assertion is `stated >= default` in EVERY unit it
+# compiles, so the statement has to cover the LARGEST of those, not the
+# heaviest role. Hence 11,069.
+#
+# The cost is real and is the price of one statement per board: a talker
+# reserves 11,069 words where its own executor needs 2,917, and gives back the
+# same 11,069 from the pool. The image's total is unchanged either way — this
+# rung MOVES bytes between `.bss` and the pool, it does not save them — so
+# over-stating costs `mem-report` accuracy, not memory.
+#
+# Checked now, in a lane that gates merges: `check-executor-backing-arena-pairing
+# --claims` emits this rung as a claim and
+# `nros-node/tests/executor_backing_claims.rs` compares it against the measured
+# default. Before issue 1388 that check read Zephyr confs only, so this claim
+# was the one spelling nothing vouched for.
 [board.knobs.executor]
-backing_u64s = 4494
+backing_u64s = 11069
