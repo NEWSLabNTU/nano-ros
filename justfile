@@ -1785,7 +1785,7 @@ build-compile-check-fixtures builder="":
 # `test-all` to mean anything, so the honest order is build-then-test, which
 # puts the expensive step first by construction.
 [group("full-matrix")]
-build-test-fixtures lane="all": check::fast _require-build-sources _clear-fixture-stamp _codegen build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
+build-test-fixtures lane="all": _require-owned-provisioned-roots check::fast _require-build-sources _clear-fixture-stamp _codegen build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
     #!/usr/bin/env bash
     set -e
     source scripts/build/fixture-lane.sh
@@ -1855,7 +1855,7 @@ _clear-fixture-stamp:
 # keeps the self-contained UX; aggregate paths that already ran `build` use
 # this to avoid repeating `generate-bindings` and `build-zenoh-posix-fixture`.
 [private]
-build-test-fixtures-leaves lane="all": _require-leaf-includes
+build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require-leaf-includes
     #!/usr/bin/env bash
     set -e
     # (The phase-177.9 `NROS_FIXTURE_SHARED_SIG` export lived here until
@@ -2269,6 +2269,34 @@ _codegen: setup-launch-resolve generate-bindings _require-leaf-includes
 # a raw cargo / build-script error naming a path with no mention of setup. The
 # union is the index's top-level `build_sources`. Bypass with
 # NROS_SKIP_BUILD_SOURCE_CHECK=1.
+# issue 1395 — does this tree OWN the roots it is about to compile against?
+#
+# `scripts/check-zephyr-workspace-checkout.sh` (issue 1253, generalised to every
+# provisioned root by phase-440 W5) already answers that, correctly and for ~4
+# path resolutions. Its problem was never the answer, it was WHEN: the three
+# callers it had were `check-tier-preconditions` (tier 1) and the two tier-2
+# recipes phase-449 W2 wired, and CI runs the build as its OWN step BEFORE any
+# of them — `just build tier2` then `just ci matrix`. So the refusal that names
+# the workspace, the foreign checkout and the fix arrived one step after the
+# thing it is about, and what the operator actually saw was issue 1253's
+# original complaint: an error about a BINARY, fifteen minutes into a cmake
+# configure, naming none of the three.
+#
+# This recipe is a REACH WIDENING, not a second check: it runs the same script.
+# It is a dependency of both `build-test-fixtures` (earliest point of a lane
+# build) and `build-test-fixtures-leaves` (so `build-all`, which calls the
+# fan-out directly, is covered too) — `just` runs a dependency at most once per
+# invocation, so the two edges cost one run. The Zephyr platform lane calls it
+# itself, because `just build zephyr` reaches that lane without passing either.
+#
+# NOT wired into `check::fast`, deliberately — see issue 1395 "Non-goals". That
+# lane must stay green on a tree that has not sourced `activate.sh`; a fixture
+# build already may not be (the CLAUDE.md sweep contract), which is what makes
+# this edge the honest home for an ENVIRONMENT question.
+[private]
+_require-owned-provisioned-roots:
+    @bash scripts/check-zephyr-workspace-checkout.sh
+
 [private]
 _require-build-sources:
     #!/usr/bin/env bash

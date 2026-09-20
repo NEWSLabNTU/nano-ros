@@ -242,6 +242,12 @@ build-fixtures: build-qemu build-logging-smoke
     #!/usr/bin/env bash
     bash scripts/dev/deprecated-scope-alias.sh esp32 build-fixtures "just build esp32"
     set -e
+    # issue 1395 — same rule as the Zephyr lane, for the other provisioned root
+    # the ownership guard sweeps: `esp-idf-workspace` (phase-440 W5). Reached
+    # via a lane build this is already answered by `build-test-fixtures`;
+    # `just build esp32` and `just esp32 build-fixtures` reach this lane
+    # through neither, which is the gap issue 1395 measured for zephyr.
+    just _require-owned-provisioned-roots
     # The ESP32-C3 QEMU workspace Entry (`esp32_entry`) that
     # `test_esp32_workspace_entry_e2e` consumes via
     # `get_prebuilt_esp32_qemu_workspace_entry`. Previously only `build-examples`
