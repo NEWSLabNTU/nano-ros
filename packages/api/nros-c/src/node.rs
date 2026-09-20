@@ -901,33 +901,46 @@ unsafe fn write_cstr_out(s: &str, out: *mut c_char, out_size: usize) -> nros_ret
 /// `nros_support_is_valid` for the support object; the node had no predicate
 /// that read its own state, which is the whole of gap `c:node_is_valid`.
 ///
-/// THREE questions, all answered, because any one alone is a lie (the count was
-/// two until phase-417 stage 3 — ledger row `c:node_is_valid` — and the missing
-/// one is the one that separates this from `rcl_node_is_valid_except_context`):
+/// **Upstream names exactly three invalidity conditions**, and they are what
+/// this answers — `rcl/rcl/node.h` @ humble, verbatim: "A node is invalid if:
+/// the implementation is `NULL` (rcl_node_init not called or failed);
+/// rcl_shutdown has been called since the node has been initialized; the node
+/// has been finalized with rcl_node_fini." Two of the three are one field
+/// here, so the implementation asks TWO questions:
 ///
-/// * the handle's own state is `INITIALIZED` — `rcl_node_fini` sets
-///   `SHUTDOWN`, so a finalised node reports false;
-/// * the CONTEXT it names is still valid. `rcl_node_is_valid` is false once the
-///   node's context is invalid; that is the whole of what
-///   `rcl_node_is_valid_except_context` exists to opt out of, and we decline
-///   that name precisely because this one answers the context question.
+/// * the handle's own state is `INITIALIZED` — never initialised leaves it
+///   `UNINITIALIZED`, and `rcl_node_fini` sets `SHUTDOWN`, which is rcl's first
+///   and third conditions on our one state field; and
+/// * the CONTEXT it names is still valid — rcl's second condition, and the
+///   whole of what `rcl_node_is_valid_except_context` exists to opt OUT of. We
+///   decline that name precisely because this one answers the context question.
 ///   `rclc_support_fini` drops the inline session, zeroes `_opaque` and marks
-///   the SUPPORT shut down while touching no node, so a node built by
-///   `rclc_node_init_default` still reads `INITIALIZED` over a dead session —
-///   the guard passed and the next publish dereferenced the zeroed `_opaque`.
-///   [`crate::support::nros_support_is_valid`] is the predicate that knows, so
-///   it is consulted rather than re-derived; and
-/// * the executor slot it is bound to still carries the generation it was
-///   bound at (phase-379 W4). C has no move semantics, so
-///   `nros_node_t copy = original;` is legal and silent — the copy keeps
-///   `state == INITIALIZED` after the original is finalised, and only the
-///   generation catches that.
+///   the SUPPORT shut down while touching no node, so a node still reads
+///   `INITIALIZED` over a dead session — the guard passed and the next publish
+///   dereferenced the zeroed `_opaque`.
 ///
-/// The last two apply to different SHAPES of node and neither is skipped
-/// silently: a legacy (`rclc_node_init_default`) node records its support and
-/// is not executor-bound, while `nros_executor_add_node` leaves `support` NULL
-/// on purpose (the multi-Node paths key off `node_id` + executor, phase-156
-/// sub-bug D) and the generation is what stands in for the context there.
+/// The context is reached by a different route per node SHAPE, and NEITHER
+/// route is skipped now (issue 1386): a legacy (`rclc_node_init_default`) node
+/// records its support directly, while `nros_executor_node_init` leaves
+/// `support` NULL on purpose (the multi-Node paths key off `node_id` +
+/// executor, phase-156 sub-bug D) and reaches the same support through the
+/// executor — [`crate::executor::executor_context_is_valid`], which consults
+/// [`crate::support::nros_support_is_valid`] rather than re-deriving it. An
+/// executor-bound node had NO context check at all before: the arm that stood
+/// there compared the slot's current generation with itself.
+///
+/// **What this deliberately does NOT claim.** C has no move semantics, so
+/// `nros_node_t copy = original;` is legal and silent, and after
+/// `rcl_node_fini(&original)` the copy still reads `INITIALIZED` over a live
+/// context. This answers `true` for it — measured, issue 1386 — and so does
+/// upstream for the analogous `rcl_node_t` copy, because a copy carries no
+/// evidence that its original was finalised. The phase-379 W4 generation
+/// (`nros_node_ref_t`) is what catches that class, and it can only catch it
+/// where a reference was STORED before the fini: an entity's
+/// `publisher.node` / `subscription.node` fails its own `_fini` with
+/// `NROS_RET_STALE_NODE`. A reference minted from the node inside this call is
+/// the current generation by construction, so comparing it with the current
+/// generation is constant true — which is what it was.
 ///
 /// # Safety
 /// * `node` must be NULL or point to a valid `nros_node_t`.
@@ -943,8 +956,14 @@ pub unsafe extern "C" fn rcl_node_is_valid(node: *const nros_node_t) -> bool {
     if !node_ref.support.is_null() && !crate::support::nros_support_is_valid(node_ref.support) {
         return false;
     }
-    if node_ref.is_multi_session() {
-        return node_ref_is_live(node_ref_of(node));
+    // NOT `is_multi_session()`: that also requires `node_id != 0`, and whether
+    // a node's context is alive does not depend on how many siblings share its
+    // executor. The primary slot is a node like any other (issue 1384 is the
+    // same predicate misused one class over).
+    if !node_ref.executor.is_null()
+        && !crate::executor::executor_context_is_valid(node_ref.executor)
+    {
+        return false;
     }
     true
 }
@@ -964,9 +983,13 @@ pub unsafe extern "C" fn rcl_node_is_valid(node: *const nros_node_t) -> bool {
 /// than "unset".
 ///
 /// Out-param + status rather than a bare return, because this genuinely can
-/// fail to answer — an uninitialised support context, a retired node slot, or
-/// a domain byte above `DOMAIN_ID_MAX` all have no domain to report, and
-/// `0` is a legal domain that must not stand in for any of them.
+/// fail to answer — an uninitialised support context, a node whose slot names
+/// no session on its executor, or a domain byte above `DOMAIN_ID_MAX` all have
+/// no domain to report, and `0` is a legal domain that must not stand in for
+/// any of them. (Issue 1386: this said "a retired node slot", which is not one
+/// of them — `rcl_node_fini` retires the phase-379 W4 GENERATION, and nothing
+/// on this path reads it. What the executor lookup can fail on is a slot that
+/// names no `NodeRecord`.)
 ///
 /// Returns `NROS_RET_UNSUPPORTED` in a build with no RMW (`rmw-cffi` off):
 /// there is no session, so there is no resolved domain to read.
@@ -1073,8 +1096,16 @@ pub unsafe extern "C" fn nros_node_resolve_name(
     if !node_ref.is_multi_session() {
         return NROS_RET_NOT_INIT;
     }
-    if !node_ref_is_live(node_ref_of(node)) {
-        return NROS_RET_STALE_NODE;
+    // issue 1386 — this arm used to be `node_ref_is_live(node_ref_of(node))`,
+    // which minted a reference from the node and compared it against the same
+    // counter: constant true, so the `NROS_RET_STALE_NODE` it guarded could
+    // never be returned. The reachable failure is the one the NEXT line makes
+    // load-bearing: `get_executor` reinterprets `_opaque` as a live executor,
+    // and `rclc_executor_fini` / `rclc_support_fini` leave it zeroed.
+    // `NROS_RET_NOT_INIT` for the same reason the arm above gives it — the
+    // remap table is UNREACHABLE from this node, not absent.
+    if !crate::executor::executor_context_is_valid(node_ref.executor) {
+        return NROS_RET_NOT_INIT;
     }
     let exec_mut = &mut *(node_ref.executor as *mut crate::executor::nros_executor_t);
     let rust_exec = crate::executor::get_executor(&mut exec_mut._opaque);
@@ -1661,6 +1692,174 @@ mod accessor_tests {
         assert!(!unsafe { rcl_node_is_valid(&node) });
     }
 
+    /// A support context that has been opened, with no RMW behind it. Enough
+    /// for every predicate that reads STATE rather than `_opaque`.
+    fn live_support() -> crate::support::nros_support_t {
+        let mut support = crate::support::nros_support_get_zero_initialized();
+        support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
+        support
+    }
+
+    /// An executor over that support, in the state `nros_executor_init` leaves.
+    /// Boxed because the struct carries the inline executor storage.
+    fn live_executor(
+        support: *const crate::support::nros_support_t,
+    ) -> std::boxed::Box<crate::executor::nros_executor_t> {
+        let mut executor =
+            std::boxed::Box::new(crate::executor::rclc_executor_get_zero_initialized_executor());
+        executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+        executor.support = support;
+        executor
+    }
+
+    /// The shape `nros_executor_node_init` builds: `support` NULL on purpose,
+    /// the context reachable only through the executor.
+    fn bound_node(
+        name: &str,
+        node_id: u8,
+        executor: *const crate::executor::nros_executor_t,
+    ) -> nros_node_t {
+        let mut node = unbound_node(name, "/");
+        node.support = ptr::null();
+        node.node_id = node_id;
+        node.executor = executor;
+        node
+    }
+
+    /// issue 1386 — an EXECUTOR-bound node has a context too, and until this
+    /// fix nothing asked about it.
+    ///
+    /// The arm that stood here was `node_ref_is_live(node_ref_of(node))`: it
+    /// minted a reference from the node and compared it against the same
+    /// counter, so it was constant true for any in-range slot. Every assertion
+    /// below that expects `false` therefore FAILS on the pre-fix tree — this
+    /// test is the negative control for the whole change.
+    ///
+    /// Both halves of the context fail independently, so both are exercised:
+    /// `rclc_support_fini` touches neither node nor executor, and
+    /// `rclc_executor_fini` touches neither node nor support.
+    #[test]
+    fn is_valid_reads_an_executor_bound_nodes_context_through_its_executor() {
+        let mut support = live_support();
+        let mut executor = live_executor(&support);
+        let node = bound_node("talker", 1, &*executor);
+
+        assert!(
+            unsafe { rcl_node_is_valid(&node) },
+            "a bound node over a live executor and a live support is usable"
+        );
+
+        // What `rclc_support_fini` leaves behind: the session is dropped and
+        // `_opaque` zeroed, while node and executor are untouched.
+        support.state = nros_support_state_t::NROS_SUPPORT_STATE_SHUTDOWN;
+        support._opaque = [0u64; crate::constants::SESSION_OPAQUE_U64S];
+        assert!(
+            !unsafe { rcl_node_is_valid(&node) },
+            "a bound node over a finalised SUPPORT is not valid — rcl's \
+             \"rcl_shutdown has been called since the node has been initialized\""
+        );
+
+        support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
+        assert!(
+            unsafe { rcl_node_is_valid(&node) },
+            "precondition: nothing else is holding the answer down"
+        );
+
+        // What `rclc_executor_fini` leaves behind: `_opaque` zeroed, state
+        // SHUTDOWN, `support` nulled — the support object itself is still live.
+        executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN;
+        executor.support = ptr::null();
+        assert!(
+            !unsafe { rcl_node_is_valid(&node) },
+            "a bound node over a finalised EXECUTOR is not valid — that storage \
+             is what the next `get_executor` would reinterpret"
+        );
+
+        // A SPINNING executor is a live one: a node asked about from inside a
+        // callback must not read invalid.
+        executor.support = &support;
+        executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
+        assert!(
+            unsafe { rcl_node_is_valid(&node) },
+            "SPINNING is a usable executor, not a finalised one"
+        );
+    }
+
+    /// The context question does not depend on how many nodes share the
+    /// executor, so the PRIMARY slot is asked it too.
+    ///
+    /// The pre-fix arm was reached only behind `is_multi_session()`, which also
+    /// requires `node_id != 0` — that predicate's own defect is issue 1384, and
+    /// this fix does not depend on it: `rcl_node_is_valid` no longer reads it.
+    #[test]
+    fn the_context_question_reaches_the_primary_slot_too() {
+        let mut support = live_support();
+        let executor = live_executor(&support);
+        let node = bound_node("primary", 0, &*executor);
+
+        assert!(unsafe { rcl_node_is_valid(&node) });
+
+        support.state = nros_support_state_t::NROS_SUPPORT_STATE_SHUTDOWN;
+        assert!(
+            !unsafe { crate::support::nros_support_is_valid(&support) },
+            "precondition: the support predicate must already know"
+        );
+        assert!(
+            !unsafe { rcl_node_is_valid(&node) },
+            "slot 0 is a node like any other; its context can die the same way"
+        );
+    }
+
+    /// issue 1386's own probe, reproduced — and the boundary of what this
+    /// predicate claims.
+    ///
+    /// C has no move semantics: `nros_node_t copy = original;` is legal and
+    /// silent, and after `rcl_node_fini(&original)` the copy still reads
+    /// `INITIALIZED` over a live context. `rcl_node_is_valid(&copy)` answers
+    /// TRUE — it did before this fix and it does after, because a copy carries
+    /// no evidence that its original was finalised and upstream's
+    /// `rcl_node_t` copy carries none either. The doc says so now instead of
+    /// claiming the generation catches it.
+    ///
+    /// What DOES catch the class is a reference STORED before the fini, which
+    /// is the other half of this test.
+    #[test]
+    fn a_copy_of_a_finalised_node_reads_valid_and_the_stored_reference_is_what_catches_it() {
+        let support = live_support();
+        let executor = live_executor(&support);
+        // Slot 2: `node_ref_tests` retires slot 3 and the wrap test retires
+        // MAX_NODES-1, and `NODE_GENERATIONS` is one process-wide static.
+        let mut node = bound_node("second", 2, &*executor);
+
+        // The reference an entity mints when it is created on this node.
+        let stored = unsafe { node_ref_of(&node) };
+        assert!(
+            node_ref_is_live(stored),
+            "precondition: a reference minted on a live node resolves"
+        );
+        assert!(unsafe { rcl_node_is_valid(&node) });
+
+        // What a C caller writes, and what nothing can stop them writing.
+        let copy: nros_node_t = unsafe { ptr::read(&node) };
+
+        assert_eq!(unsafe { rcl_node_fini(&mut node) }, NROS_RET_OK);
+
+        assert!(
+            !unsafe { rcl_node_is_valid(&node) },
+            "the ORIGINAL knows: its own state field says SHUTDOWN"
+        );
+        assert!(
+            unsafe { rcl_node_is_valid(&copy) },
+            "the COPY does not, and this predicate does not pretend to — \
+             issue 1386 measured exactly this, and so does upstream rcl"
+        );
+        assert!(
+            !node_ref_is_live(stored),
+            "the STORED reference is what catches it: `rcl_node_fini` retired \
+             the slot, so every entity holding one fails its own fini"
+        );
+    }
+
     /// The FQN is namespace + name, normalised by the SAME seam entity names
     /// go through. The root-namespace collapse is the case a hand-written
     /// `push(ns); push('/'); push(name)` gets wrong: it yields `//talker`.
@@ -1820,6 +2019,46 @@ mod accessor_tests {
         assert!(
             buf.iter().all(|&b| b == 0xAA),
             "the refusal must not look like a successful expansion"
+        );
+    }
+
+    /// issue 1386 — the arm that REPLACED the tautological stale-node check,
+    /// and the reason it is not merely cosmetic.
+    ///
+    /// The next statement after this guard is
+    /// `get_executor(&mut executor._opaque)`, which reinterprets that storage
+    /// as a live `CExecutor`. `rclc_executor_fini` zeroes it. The pre-fix guard
+    /// was constant true, so this input walked straight into that
+    /// reinterpretation; the fix answers `NROS_RET_NOT_INIT` — the same verdict
+    /// the un-bound node above gets, for the same reason: the remap table is
+    /// unreachable, not absent.
+    #[test]
+    fn resolve_name_refuses_a_finalised_executors_remap_table() {
+        let support = live_support();
+        let mut executor = live_executor(&support);
+        let node = bound_node("filter", 1, &*executor);
+
+        // What `rclc_executor_fini` leaves behind.
+        executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN;
+        executor.support = ptr::null();
+
+        let input_c = alloc_cstr("scan");
+        let mut buf = [0xAAu8; 64];
+        assert_eq!(
+            unsafe {
+                nros_node_resolve_name(
+                    &node,
+                    input_c.as_ptr() as *const c_char,
+                    false,
+                    buf.as_mut_ptr() as *mut c_char,
+                    buf.len(),
+                )
+            },
+            NROS_RET_NOT_INIT
+        );
+        assert!(
+            buf.iter().all(|&b| b == 0xAA),
+            "the refusal must not look like a successful resolution"
         );
     }
 

@@ -934,6 +934,16 @@ pub unsafe extern "C" fn nros_subscription_take_sequence(
     }
 }
 
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if `subscription` is NULL
+/// * `NROS_RET_NOT_INIT` if it is in no finalisable state
+/// * `NROS_RET_STALE_NODE` if a POLLING subscription's node has already been
+///   finalised — the teardown order was wrong, and nothing is dropped. Stated
+///   here because of issue 1386: that issue is three sites documenting a
+///   stale-node verdict they could not produce, and the same sweep found this
+///   one producing it without saying so.
+///
 /// # Safety
 /// * `subscription` must be a valid pointer
 #[unsafe(no_mangle)]

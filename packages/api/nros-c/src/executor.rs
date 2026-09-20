@@ -111,10 +111,51 @@ unsafe fn set_executor_node_identity(
     // caller-owned storage the runtime does not control. On an RTOS that
     // storage can be a task stack `vTaskDelete` has already freed. The record
     // holds the same two strings and outlives the caller's struct.
+    //
+    // The generation check belongs HERE and only here: `node` was minted when
+    // the entity was created and this call happens later, which is the whole
+    // premise. Eight of the nine callers pass such a stored reference; the
+    // ninth had a live `*const nros_node_t` and no stored reference, and used
+    // `node_ref_of` to make one on the spot — which is the same counter
+    // compared with itself (issue 1386). That caller takes
+    // [`set_executor_node_identity_from_node`] instead.
     if !crate::node::node_ref_is_live(node) {
         return;
     }
-    let id = nros_node::executor::NodeId::from_raw(node.node_id);
+    set_executor_node_identity_for_slot(rust_exec, node.node_id);
+}
+
+/// The same identity propagation, for a caller holding a LIVE node pointer.
+///
+/// issue 1386 — there is no stored reference here and therefore no generation
+/// to compare: the node is in hand, so the questions that can actually fail are
+/// "is there a node at all" and "is it initialised". `node` may legitimately be
+/// NULL (the legacy single-Node path), and a NULL node must leave the
+/// executor's identity alone rather than claim slot 0.
+///
+/// # Safety
+/// `node` must be NULL or point to a valid `nros_node_t`.
+unsafe fn set_executor_node_identity_from_node(
+    rust_exec: &mut CExecutor,
+    node: *const crate::node::nros_node_t,
+) {
+    if node.is_null() {
+        return;
+    }
+    let node = &*node;
+    if node.state != crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+        return;
+    }
+    set_executor_node_identity_for_slot(rust_exec, node.node_id);
+}
+
+/// The lookup both forms share: slot -> `NodeRecord` -> the executor's identity.
+///
+/// One helper rather than a second spelling of the same three lines — the two
+/// entry points differ ONLY in how they establish that the slot is worth
+/// reading (a stored reference's generation, or a live pointer's state).
+fn set_executor_node_identity_for_slot(rust_exec: &mut CExecutor, node_id: u8) {
+    let id = nros_node::executor::NodeId::from_raw(node_id);
     let Some(record) = rust_exec.node(id) else {
         return;
     };
@@ -2065,7 +2106,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw_with_info(
 
     {
         let rust_exec = get_executor(&mut executor._opaque);
-        set_executor_node_identity(rust_exec, unsafe { crate::node::node_ref_of(node) });
+        set_executor_node_identity_from_node(rust_exec, node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
@@ -3520,6 +3561,38 @@ pub unsafe extern "C" fn nros_executor_is_valid(executor: *const nros_executor_t
         nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
             | nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
     )
+}
+
+/// Is the executor usable AND is the context it names still valid?
+///
+/// issue 1386 — the question an executor-BOUND node has to ask to answer rcl's
+/// `rcl_node_is_valid`. `nros_executor_node_init` leaves `nros_node_t::support`
+/// NULL on purpose (the multi-Node paths key off `node_id` + executor,
+/// phase-156 sub-bug D), so such a node reaches its context only THROUGH the
+/// executor, and the two halves fail independently:
+///
+/// * `rclc_executor_fini` zeroes `_opaque` and marks the executor `SHUTDOWN` —
+///   `nros_executor_is_valid` knows;
+/// * `rclc_support_fini` drops the inline session, zeroes ITS `_opaque` and
+///   marks the SUPPORT shut down while touching neither node nor executor —
+///   only [`crate::support::nros_support_is_valid`] knows. That is the same
+///   split state phase-417 stage 3 measured for a legacy node (`node.rs`,
+///   `a_node_over_a_finalised_support_is_not_valid`); an executor-bound node
+///   had no predicate that reached it.
+///
+/// Both are also the precondition for `get_executor(&mut executor._opaque)`,
+/// which reinterprets that storage as a live `CExecutor` — over a zeroed
+/// `_opaque` that is UB, not a wrong answer.
+///
+/// `nros_executor_init` refuses a NULL or uninitialised support, so a valid
+/// executor always has one to consult.
+///
+/// # Safety
+/// `executor` must be NULL or point to a valid `nros_executor_t`.
+pub(crate) unsafe fn executor_context_is_valid(executor: *const nros_executor_t) -> bool {
+    // `nros_executor_is_valid` short-circuits NULL, so the deref below is only
+    // reached for a pointer it has already accepted.
+    nros_executor_is_valid(executor) && crate::support::nros_support_is_valid((*executor).support)
 }
 
 /// Get remaining total handle capacity.
