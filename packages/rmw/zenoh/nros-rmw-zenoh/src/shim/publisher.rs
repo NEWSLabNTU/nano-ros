@@ -561,14 +561,22 @@ impl ZenohPublisher {
             // that has no `std` logger still gets the sentence. The build-time
             // refusal in `build.rs` is the one that catches this on a DECLARED
             // image; this arm is the undeclared road's answer.
+            // Issue 1378's second defect, fixed for the whole family: THE CAUSE
+            // AND THE KNOB COME FIRST, the topic key LAST. `nros_log`'s
+            // call-site buffer is 256 bytes and truncates with a `…`
+            // (`nros_log::buffer`), and a ROS action topic key is ~90 of them
+            // ('0/fibonacci/_action/status/action_msgs::msg::dds_::GoalStatusArray_/
+            // TypeHashNotSupported'), so a message that opens with the topic
+            // spends its budget before it says anything. That is how issue 1378
+            // was reported reading `…could not be declared (Full…` — cut one
+            // word into the only fact the reader came for.
             nros_log::log_error!(
                 nros_log::get_logger("nros_rmw_zenoh"),
-                "qos: publisher '{}' asked for TRANSIENT_LOCAL and the retention pool \
-                 holds {} slot(s), all taken. Raise ZPICO_MAX_TL_PUBLISHERS. Each \
-                 transient-local publisher retains its last sample and answers a late \
-                 joiner's query from it.",
-                topic_key,
-                crate::config::MAX_TL_PUBLISHERS
+                "qos: TRANSIENT_LOCAL retention pool exhausted ({} slot(s), all taken) \
+                 — raise ZPICO_MAX_TL_PUBLISHERS. Each such publisher retains its last \
+                 sample and answers a late joiner's query from it. topic '{}'",
+                crate::config::MAX_TL_PUBLISHERS,
+                topic_key
             );
             return Err(TransportError::Backend(
                 "zenoh transient-local retention pool exhausted — raise \
@@ -601,11 +609,11 @@ impl ZenohPublisher {
             transient_local::release(slot);
             nros_log::log_error!(
                 nros_log::get_logger("nros_rmw_zenoh"),
-                "qos: publisher '{}' asked for TRANSIENT_LOCAL but its cache keyexpr \
-                 does not fit NROS_KEYEXPR_STRING_SIZE={}. The cache key is the topic \
-                 key plus 47 bytes; raise the knob.",
-                topic_key,
-                KEYEXPR_STRING_SIZE
+                "qos: TRANSIENT_LOCAL cache keyexpr does not fit \
+                 NROS_KEYEXPR_STRING_SIZE={}. The cache key is the topic key plus 47 \
+                 bytes; raise the knob. topic '{}'",
+                KEYEXPR_STRING_SIZE,
+                topic_key
             );
             return Err(TransportError::TopicNameInvalid);
         }
@@ -641,12 +649,16 @@ impl ZenohPublisher {
                 transient_local::release(slot);
                 nros_log::log_error!(
                     nros_log::get_logger("nros_rmw_zenoh"),
-                    "qos: publisher '{}' asked for TRANSIENT_LOCAL and its cache \
-                     queryable could not be declared ({:?}). If this is `Full`, the \
-                     image exceeded ZPICO_MAX_QUERYABLES — a transient-local publisher \
-                     is a queryable, on top of every service server.",
-                    topic_key,
-                    e
+                    // THE LINE ISSUE 1378 WAS REPORTED FROM, and it was cut at
+                    // `(Full…` because the topic key ate the 256-byte buffer
+                    // before the reason and the knob were reached. Cause first
+                    // now; the topic is the part that may truncate.
+                    "qos: TRANSIENT_LOCAL cache queryable refused ({:?}); if Full raise \
+                     ZPICO_MAX_QUERYABLES (Zephyr: CONFIG_NROS_MAX_QUERYABLES) — a TL \
+                     publisher is a queryable on top of every service server, and an \
+                     action server has one for /status. topic '{}'",
+                    e,
+                    topic_key
                 );
                 return Err(TransportError::from(e));
             }

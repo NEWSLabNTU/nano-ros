@@ -969,7 +969,12 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
 - **A service server IS a zenoh queryable** — `[param_services]` (6) + `[lifecycle]` (5) claim
   eleven slots before the app declares anything, against `ZPICO_MAX_QUERYABLES` = 8 embedded.
   Raise `CONFIG_NROS_MAX_QUERYABLES`; the table is a static array, so the default stays small.
-  → issue 0460.
+  → issue 0460. **So is a TRANSIENT_LOCAL publisher**, and an action server has one for a
+  `/status` topic nothing declares — an action server costs FOUR slots, not three. ONE rule
+  (`nros_sizing_descriptor::transient_local_publishers_over`); the cargo-leaf road feeds it a
+  DESCRIPTOR and every other road `NROS_DECLARED_TL_PUBLISHERS`, because only a cargo leaf has
+  a descriptor at all (1393). The images that FAILED were the two that described themselves —
+  an undeclared leaf falls to the 8-slot budget and boots on the headroom. → issue 1378.
 - **The interop DDS bus is pinned to LOOPBACK by a profile FILE the harness writes, not
   by a variable you export** (issue 1009) — `nros_tests::dds_isolation` generates the
   Fast-DDS / Cyclone profiles into a per-PROCESS dir and hands them out as

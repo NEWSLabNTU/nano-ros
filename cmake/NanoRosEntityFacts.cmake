@@ -114,6 +114,21 @@ function(nros_fold_entity_facts _out)
             if(NOT _have OR CMAKE_MATCH_1 GREATER _have)
                 set_property(GLOBAL PROPERTY NROS_ENTITY_NODES_MAX "${CMAKE_MATCH_1}")
             endif()
+        elseif(_line MATCHES "^NROS_DECLARED_TL_PUBLISHERS=([0-9]+)$")
+            # Issue 1378 -- a TRANSIENT_LOCAL publisher declares a cache
+            # queryable, so this is a term in the same pool. MAX across the
+            # configure's models for the reason the two above are: the shared
+            # staticlib holds the largest and the pool is sized once.
+            get_property(_have GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX)
+            if(NOT _have OR CMAKE_MATCH_1 GREATER _have)
+                set_property(GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX "${CMAKE_MATCH_1}")
+            endif()
+        elseif(_line MATCHES "^NROS_DECLARED_TL_PUBLISHERS=refused$")
+            # An entry that LOOKED and could not answer makes the whole
+            # configure's count unknown, exactly as an abstaining server count
+            # does: the staticlib is shared, and "unknown" is not smaller than
+            # anything.
+            set_property(GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_UNKNOWN TRUE)
         endif()
     endforeach()
     if(NOT _saw_servers)
@@ -753,6 +768,25 @@ function(nros_entity_facts_env _target)
         string(APPEND _app "; to declare it, author")
         string(APPEND _app " <bringup>/launch/<stem>.contract.yaml beside")
         string(APPEND _app " <stem>.launch.xml (RFC-0060)")
+    endif()
+
+    # Issue 1378 — the transient-local cache queryables. Carried beside the
+    # server count and NOT folded into it: that number is already multiplied by
+    # ACTION_SERVER_QUERYABLES, so a consumer holding `3` cannot tell one action
+    # server from three service servers, and only the first owes a cache slot.
+    #
+    # `refused` travels as a WORD rather than being dropped, so the consumer can
+    # say out loud that it is not budgeting for a term it knows exists — the
+    # same three-valued answer `nros_sizing_descriptor::Fact` carries on the
+    # cargo-leaf road, which already counts this and is why a Rust leaf boots
+    # where a declared C/C++ one did not.
+    get_property(_tl_unknown GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_UNKNOWN)
+    get_property(_tl GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX)
+    if(_tl_unknown)
+        list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=refused")
+    elseif(NOT _tl STREQUAL "")
+        list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=${_tl}")
+        string(APPEND _app ", ${_tl} transient-local publisher(s)")
     endif()
 
     if(_payload_env)
