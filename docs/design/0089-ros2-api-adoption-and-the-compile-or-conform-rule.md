@@ -1279,6 +1279,48 @@ implementation this rule exists to prevent.
 
 Resolves the C++ half of issue 0793.
 
+## Settled: the NODE owns a guard condition, and the callback binds at creation (2026-09-21)
+
+Landed as PR #1064 (phase-417 W4.e). The code carries the decision; the
+reasoning lived only in conversation, which is how a decision gets re-litigated
+by the next person who notices the arena.
+
+**The arena constraint does not pick a winner by itself.** The flag a guard
+condition sets lives in the executor's arena, so creation has to REACH an
+executor — and that is equally true of `nros_executor_create_guard_condition`,
+which was one of the shapes considered. "It needs the executor" is an argument
+about what the implementation must find, not about what the caller must name.
+The deciding fact is on the caller's side: **a porting user has a node.** They
+have just written `nros_executor_node_init`, they are holding an
+`nros_node_t *`, and every other entity they create — publisher, subscription,
+service, timer — is created on it. Making one entity ask for a different handle
+buys nothing and costs the reader a question at every call site. The node
+already knows its executor (`node->executor`), so the node-owned spelling
+reaches the arena with no extra argument; the executor-owned one would have
+forced a caller to fetch a handle they do not otherwise hold.
+
+**The callback binds at creation because the alternative is a shape we already
+refuse.** C's retired trio was `nros_guard_condition_init(guard, support)` then
+`nros_executor_add_guard_condition(...)` then a separate callback install — and
+between the first two calls the object was INERT: `handle_id == SIZE_MAX`, and
+a trigger fell back to a local flag no executor watches. That is the
+after-the-fact installation C++ already refuses at
+`GuardCondition::set_on_trigger_callback`. So one constraint was enforced in two
+languages and contradicted in the third, which is the compile-and-differ shape
+this RFC exists to remove — the C caller who followed the C spelling got an
+object that silently did nothing, not a diagnostic.
+
+Both halves of the decision therefore reduce to the same rule: **the creation
+call names what the caller has and states everything the entity needs, so there
+is no window in which a half-built entity exists.** All three retired names went
+with no forwarder (stage 6 step B) because the whole in-tree cost was one
+example.
+
+The residue is issue 1386 — `nros_node_create_guard_condition`'s own
+`NROS_RET_STALE_NODE` arm cannot fire — and that issue's settled fix is to
+delete the arm, not to add the state it would need. The precondition this
+creation call genuinely has is `executor != NULL`, and it checks that.
+
 # Part III — The node, the timer, and what stays invented
 
 ## The rclcpp node model, and what nano-ros actually needs from it (2026-09-05)
@@ -3029,6 +3071,135 @@ nothing in the row says so.
 That is the argument for the field. It is not metadata about the ledger; it is
 the only thing standing between a compatibility number and a false one. The
 gate exists (`--require-disposition`) and is off until W-M2 populates the rows.
+
+## The loan family: two things called zero-copy, and they are zero-copy of DIFFERENT THINGS (2026-09-21)
+
+The largest single family of un-dispositioned rows in the ledger, and the one
+where "our name differs from theirs" has been recorded four different ways over
+three phases. Measured this session, on `origin/main`.
+
+### Upstream's loan is zero-copy of the USER DATA STRUCTURE
+
+```
+rcl_borrow_loaned_message(const rcl_publisher_t *,
+                          const rosidl_message_type_support_t *,
+                          void **ros_message)
+```
+
+It takes a **type support** and hands back a **typed message struct in
+middleware memory**. The subscriber reads the same layout out of the same
+memory. There is no wire message and **no CDR stage at all** — the middleware
+needs the type precisely because it must lay out an object of it, and both ends
+agree on that layout by construction. The six loan symbols are in the derived
+88-symbol implementation contract, so every `librmw_*_cpp.so` defines them
+(`docs/reference/rmw-implementation-signatures.txt`).
+
+### Ours is zero-copy of the WIRE MESSAGE
+
+```c
+nros_ret_t nros_publisher_loan(const struct nros_publisher_t *publisher,
+                               size_t requested_len,
+                               uint8_t **out_buf, size_t *out_cap,
+                               void **out_token);
+```
+
+It takes a **length** and hands back **bytes** — the transport's outbound
+payload buffer. The encode still happens; it happens once, directly into the
+buffer that goes out. What it removes is a copy of the ENCODER'S OUTPUT, not the
+encode.
+
+### Therefore they cannot be unified, and the ledger should stop trying
+
+Every previous verdict on this family read the difference as a spelling or a
+shape problem to be reconciled — `c:borrow_loaned_message` still carries "W5
+should decide whether `loan`/`commit`/`discard` should read
+`borrow_loaned_message`/`publish_loaned_message`/…", and
+`cpp:Publisher::borrow_loaned_message` was re-verdicted from `rename` in
+2026-09-04 when someone noticed the word TYPED was doing all the work in the old
+reason. It is not a spelling question. **A verb that takes a type support and a
+verb that takes a length are answering different questions**, and giving them
+one name is the compile-and-differ failure this RFC is written about: a ported
+`borrow_loaned_message(type_support, &msg)` that came back with a byte span
+would compile nowhere useful and, where it did, would hand the caller
+uninitialised wire bytes typed as their struct.
+
+### The dispositions
+
+**Upstream's typed loan is `absent`.** Not `refuse-loud`, and the reason is the
+frequency test in "`absent` is a FREQUENCY test": the family is reached through
+`rosidl` type support, which is declined ABI-wide, so the refusal has already
+fired at the type — and diagnosing it twice teaches nothing (the corollary both
+classification passes derived independently). The substantive reason it is
+absent rather than a gap: **no backend we ship can deliver a struct in layout.**
+Cyclone 0.10.5's `dds_loan_sample` is typed and needs `DDS_HAS_SHM` plus a live
+iceoryx endpoint plus a `fixed_size` type, and iceoryx is not vendored; XRCE's
+`uxr_prepare_output_stream` is bytes, mandatory length up front, non-contiguous
+past one history block, and has no cancel; zenoh-pico has no loan API at all.
+And the one backend that natively COULD — uORB, whose samples are POD structs
+and whose `o_size` IS `sizeof(struct)` — leaves the vtable slot NULL and takes
+bytes through `orb_publish`
+(`packages/rmw/uorb/nros-rmw-uorb/src/{vtable.cpp:90,publisher.cpp:116-146}`).
+That is the strongest available evidence: the backend for which upstream's shape
+is natural declines it too.
+
+**Our byte loan is an `extension`.** ROS 2 has no verb that reserves `n` bytes of
+outbound wire buffer; the capability is real and the name is ours. It is
+recorded as an extension rather than a divergence because a divergence claims
+"the same thing, changed for a constraint", and this is not the same thing.
+
+**A typed in-layout loan is a POSSIBLE FUTURE `adopt-bounded`, and nothing
+more.** If a backend ever delivers in layout — a Cyclone-with-iceoryx
+deployment, a uORB port that exposes a writable queue slot — the right shape is
+upstream's NAME and upstream's ARGUMENTS, available only where the backend
+delivers in layout and **refusing loudly everywhere else**, with the envelope
+(which backends, which types) stated in the doc comment as the disposition
+requires. `nros_serdes::size::is_loan_eligible::<M>()` already exists and is
+`M::IS_PLAIN`, which is the same predicate Cyclone gates its own loan on; it was
+written for exactly this and has no caller.
+
+**If it is ever built, the typed and byte forms are TWO ENTRY POINTS sharing ONE
+commit/discard**, and the token carries which kind it is. A single verb that
+returns either a struct pointer or a byte buffer depending on the backend is the
+compile-and-differ class this campaign exists to remove — it type-checks at
+every call site and means something different at each one. Two entry points cost
+one extra name and make the difference a compile-time fact.
+
+### What this section does NOT settle
+
+Whether our byte loan earns its documentation is a separate question, and the
+answer measured alongside this one is no: on three of the four backends it is a
+heap allocation plus an encode plus a copy, strictly worse than the plain
+publish path, while presenting the API of an optimisation. That is **issue
+1400**, with the measurement and the options. This section rules on the NAMES;
+1400 is about the thing behind ours.
+
+### Rows this applies to
+
+`gap`, awaiting the disposition pass: `c:publisher_can_loan_messages`,
+`c:subscription_can_loan_messages`, `cpp:Publisher::can_loan_messages`,
+`cpp:Subscription::can_loan_messages`, `rust:Publisher::can_loan_messages` — all
+five are `absent` by the same argument (a runtime capability query over a
+capability no shipped backend has; `can_loan_messages` is already DERIVED from
+the vtable slot, `packages/rmw/cffi/src/lib.rs:2554`, so the fact is available,
+it is just uniformly false outside zenoh).
+
+`divergence`, to be re-read as `extension` + `absent` rather than one
+reconciliation: `c:borrow_loaned_message`, `c:publish_loaned_message`,
+`c:publisher_loan`, `c:return_loaned_message_from_publisher`,
+`c:return_loaned_message_from_subscription`, `c:take_loaned_message`,
+`cpp:LoanedMessage`, `cpp:Publisher::borrow_loaned_message`,
+`rust:LoanedMessage`, `rust:ReadOnlyLoanedMessage`,
+`rust:Publisher::borrow_loaned_message`, `rust:PublishLoan` and its members,
+`rust:EmbeddedRawPublisher::{loan,try_loan,loan_with_timeout}`,
+`rust:LoanError`. `cpp:Publisher::loan` is already `extension` and stays.
+
+Already settled and unchanged: `c:get_disable_loaned_message` and
+`cpp:Subscription::handle_loaned_message`, both `declined` /
+`disposition: absent`.
+
+The ledger edits themselves belong to the disposition pass — see
+`docs/roadmap/phase-417-ros2-api-adoption.md`, "Disposition before
+implementation", family **(1)**. This section is the ruling that pass applies.
 
 ## Consequences for RFC-0036
 
