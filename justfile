@@ -4837,6 +4837,29 @@ _doctor-host:
         echo "  [WARN] python deps missing for the Zephyr lanes ($py_for_lane):"
         echo "$py_report" | sed 's/^/         /'
     fi
+    # Does this host's Zephyr workspace name ANOTHER checkout? — issue 1387.
+    #
+    # Reported HERE because doctor is where someone asks whether their machine
+    # is ready, and the existing workspaces on this disk are already in the bad
+    # state: a box checkout's `zephyr-workspace/nano-ros` was a symlink to a
+    # different tree for a month, so every image built there was the
+    # application from one checkout and the nano-ros module from another. The
+    # gate is on the fast line as well; nobody will re-run `setup` because of
+    # it, which is exactly what item 3 of the issue says.
+    #
+    # Read-only and ~0.4 s. Exit 78 is "nothing provisioned" — not a finding,
+    # and the other doctor lines already say what is missing.
+    zws_rc=0
+    zws_out="$(python3 "{{justfile_directory()}}/scripts/check-zephyr-workspace-foreign-checkout.py" 2>&1)" || zws_rc=$?
+    if [ "$zws_rc" -eq 0 ]; then
+        echo "  [OK] Zephyr workspace names no other checkout (issue 1387)"
+    elif [ "$zws_rc" -eq 78 ]; then
+        echo "  [INFO] no Zephyr workspace provisioned — nothing to cross-check (issue 1387)"
+    else
+        echo "  [FAIL] the Zephyr workspace names ANOTHER nano-ros checkout (issue 1387):"
+        echo "$zws_out" | sed 's/^/         /'
+        host_rc=1
+    fi
     # NuttX's kconfig frontend. This one nano-ros DOES self-provision, into a
     # repo-local venv (scripts/nuttx/build-nuttx.sh), and it stays that way:
     # issue 0431 was every NuttX cell silently skipping on a host that had the

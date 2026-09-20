@@ -442,6 +442,17 @@ if [ -d "$WORKSPACE_DIR/.west" ]; then
         rm -rf "$WORKSPACE_DIR"
     else
         log_info "Workspace exists, updating..."
+        # Unbind an ALREADY-provisioned workspace too — issues 1258 + 1387.
+        #
+        # This branch used to go straight to `west update`, so the repair only
+        # ever reached a workspace being created. Every workspace carrying the
+        # pre-1258 symlink therefore stayed bound no matter how often setup was
+        # re-run, and issue 1387 is what that costs: a link into ANOTHER
+        # checkout, so `west build` took the application from one tree and the
+        # nano-ros module from another for a month. Idempotent — a project that
+        # is already a plain directory is left alone.
+        bash "$NANO_ROS_ROOT/scripts/zephyr/unbind-manifest-project.sh" \
+            "$WORKSPACE_DIR" "$NANO_ROS_NAME" "$MANIFEST" "$NANO_ROS_ROOT"
         cd "$WORKSPACE_DIR"
         west update
 

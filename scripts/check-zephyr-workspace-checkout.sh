@@ -53,48 +53,18 @@ set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
-# The checkout a west workspace's manifest resolves to, or empty when the
-# manifest is not a nano-ros checkout (a user workspace whose manifest is
-# their own app repo pulls nano-ros in some other way; not this check's case).
-manifest_checkout_of() {
-    local ws="$1" cfg path dir
-    cfg="$ws/.west/config"
-    [ -f "$cfg" ] || return 0
-    path="$(awk '
-        /^\[/ { in_manifest = ($0 ~ /^\[manifest\][[:space:]]*$/); next }
-        in_manifest && $1 == "path" { sub(/^[^=]*=[[:space:]]*/, ""); print; exit }
-    ' "$cfg")"
-    [ -n "$path" ] || return 0
-    dir="$(cd "$ws/$path" 2>/dev/null && pwd -P)" || return 0
-    [ -f "$dir/zephyr/module.yml" ] && [ -f "$dir/packages/core/nros-core/Cargo.toml" ] || return 0
-    printf '%s' "$dir"
-}
-
+# ONE implementation of that question, in the gate that owns it — issue 1387
+# generalised it (the manifest project, every build cache, the venv shebangs)
+# and this script used to carry its own copy of the walk. `--manifest-only`
+# keeps THIS caller's scope exactly as it was: a tier lane must not start
+# failing on a stale build dir it did not make. Exit 78 is "nothing
+# provisioned", which is not this check's business either.
 module_problems=0
-# The ONE resolver (phase-440 W1) — the same tree `just zephyr` and the fixture
-# builders compile against, never a fourth ladder.
-# shellcheck source=scripts/lib/zephyr-workspace.sh
-. "$repo_root/scripts/lib/zephyr-workspace.sh"
-zephyr_ws="$(nros_zephyr_ws_resolve_abs "" "$repo_root" 2>/dev/null || true)"
-if [ -n "$zephyr_ws" ] && [ -d "$zephyr_ws" ]; then
-    module_checkout="$(manifest_checkout_of "$zephyr_ws")"
-    if [ -n "$module_checkout" ] && [ "$module_checkout" != "$repo_root" ]; then
-        module_problems=1
-        cat >&2 <<EOF
-  zephyr workspace: $(cd "$zephyr_ws" && pwd -P)
-      its west manifest (the nano-ros Zephyr module) is $module_checkout
-      this tree:                                         $repo_root
-
-Every Zephyr image built against that workspace compiles $module_checkout's
-\`zephyr/\` module, platform sources and nros-cpp headers — not this tree's —
-next to entry code THIS tree generates. Whatever that checkout's commit is
-decides the result, so a failure (or a pass) is not a fact about this tree.
-
-Build against a workspace whose manifest is this checkout: the in-tree
-\`zephyr-workspace/\` from \`just zephyr setup\`, or, on a runner, the contained
-runner (\`just runner-up <labels>\`), which provisions it into its own checkout.
-EOF
-    fi
+rc=0
+python3 "$repo_root/scripts/check-zephyr-workspace-foreign-checkout.py" \
+    --manifest-only >/dev/null || rc=$?
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 78 ]; then
+    module_problems=1
 fi
 
 if [ "${NROS_SKIP_STALE_CHECK:-}" = "1" ]; then
