@@ -219,6 +219,37 @@ c: c-fmt
     test -f packages/api/nros-c/tests/run/executor_backend_wake.c || {         echo "ERROR: executor_backend_wake.c is MISSING -- this check passes on absence." >&2;         exit 1; }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE         -Itarget/nros-c-generated         -Ipackages/api/nros-c/include         -Ipackages/core/nros-rmw-abi/include         -Ipackages/platform/nros-platform-api/include         -Ipackages/api/nros-c/tests/run         packages/api/nros-c/tests/run/executor_backend_wake.c         packages/api/nros-c/tests/run/stub_rmw_backend.c         "$nros_c_lib" -lpthread -ldl -lm         -o tmp/executor_backend_wake
     ./tmp/executor_backend_wake
+    echo "  - issue 1384: an executor-bound node creates its EAGER entities from EITHER slot"
+    # The FIFTH compile+link+run TU, same reason as the four above: the defect
+    # is a behaviour every shape of which compiles. `is_multi_session()` read
+    # `node_id != 0 && executor != NULL`, and the FIRST node an executor builds
+    # takes slot 0 — so a correctly bound single-node C image (the commonest
+    # shape in the tree) routed through the LEGACY arm, whose `support` pointer
+    # `nros_executor_node_init` sets to NULL on purpose. Every eager entity
+    # create then answered NROS_RET_NOT_INIT without ever reaching the backend,
+    # and the header, the prototypes and every compile check are identical
+    # either way.
+    #
+    # It needs the stub backend for the same reason the guard-condition probe
+    # does — an executor needs a session — and it needs TWO nodes, because the
+    # assertion is a COMPARISON: the stub refuses every `create_*`, so "correct"
+    # here is "reached the backend and got its refusal", which is exactly what
+    # the second node (slot 1) always did and the primary node did not.
+    # `test -f` first — a missing TU must not read as a pass (issue 0196).
+    test -f packages/api/nros-c/tests/run/executor_bound_node.c || { \
+        echo "ERROR: executor_bound_node.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/executor_bound_node.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/executor_bound_node
+    ./tmp/executor_bound_node
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in

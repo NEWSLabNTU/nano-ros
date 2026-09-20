@@ -841,7 +841,10 @@ mod service_backed {
         if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
             return None;
         }
-        if !node.executor.is_null() && node.executor != executor.cast_const() {
+        // `is_executor_bound` rather than a fourth hand-written
+        // `executor.is_null()` (issue 1384): this helper was one of the three
+        // spellings of the same question, and the one that got it right.
+        if node.is_executor_bound() && node.executor != executor.cast_const() {
             return None;
         }
         let id = NodeId::from_raw(node.node_id);

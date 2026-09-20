@@ -207,16 +207,17 @@ pub struct nros_node_t {
     /// Reserved for future use (alignment + ABI stability).
     pub _reserved: [u8; 3],
     /// Opaque NodeId slot returned by `Executor::node_builder(...).build()`
-    /// when this Node is bound to an Executor. 0 = primary Node (legacy
-    /// single-Node path). Internal use only — readers should treat as
-    /// opaque.
+    /// when this Node is bound to an Executor. 0 = the PRIMARY slot, which an
+    /// executor-bound node gets whenever it is the first one built — it is NOT
+    /// a "this node is legacy" marker (issue 1384; the legacy marker is a NULL
+    /// `executor`). Internal use only — readers should treat as opaque.
     pub node_id: u8,
-    /// Phase 156 / 104.C.8.b — executor pointer for the multi-Session
+    /// Phase 156 / 104.C.8.b — executor pointer for the executor-bound
     /// dispatch path. `nros_executor_node_init` populates this when
     /// the Node is bound; per-entity `nros_*_init` paths
     /// (`rclc_publisher_init_default`, `nros_subscription_init`, etc.) branch
-    /// on `node_id != 0 && !executor.is_null()` to route through
-    /// `Executor::node_session_mut(NodeId)` instead of the legacy
+    /// on [`nros_node_t::is_executor_bound`] — i.e. on this pointer ALONE — to
+    /// route through `Executor::node_session_mut(NodeId)` instead of the legacy
     /// support-based dispatch. NULL = legacy single-Node path
     /// (`rclc_node_init_default` / `nros_node_init_ex`).
     pub executor: *const crate::executor::nros_executor_t,
@@ -1093,7 +1094,7 @@ pub unsafe extern "C" fn nros_node_resolve_name(
 
     // Remap rules live in the executor's table. No executor reachable means
     // the rules are unreadable, NOT absent — say so.
-    if !node_ref.is_multi_session() {
+    if !node_ref.is_executor_bound() {
         return NROS_RET_NOT_INIT;
     }
     // issue 1386 — this arm used to be `node_ref_is_live(node_ref_of(node))`,
@@ -1163,7 +1164,7 @@ pub(crate) unsafe fn resolve_entity_name_on_node(
     let struct_name = inline_str(&node.name, node.name_len);
     let struct_ns = inline_str(&node.namespace, node.namespace_len);
 
-    if !node.is_multi_session() {
+    if !node.is_executor_bound() {
         return nros_node::names::expand_name(source, struct_name, struct_ns).ok();
     }
 
@@ -1296,24 +1297,53 @@ impl nros_node_t {
         }
     }
 
-    /// Phase 156 Sub-bug D — true on Nodes bound via
-    /// `nros_executor_node_init` (multi-Session bridge path). False on
-    /// nodes initialised via `rclc_node_init_default` / `nros_node_init_ex`
-    /// (legacy single-Session path).
+    /// Does this node REACH an executor?
+    ///
+    /// True on a node bound via `nros_executor_node_init`, false on one
+    /// initialised via `rclc_node_init_default` / `nros_node_init_ex` (the
+    /// legacy support-based path, which reaches no executor at all).
+    ///
+    /// **This was `is_multi_session`, and it also required `node_id != 0`**
+    /// (issue 1384). The first node an executor builds takes slot 0 —
+    /// `NodeId::PRIMARY`, which `tests/run/executor_param_node_keying.c`
+    /// asserts in words — so a node bound through the very call that binds it
+    /// read as a legacy node whenever it was the only one, which is the
+    /// commonest shape in the tree. The predicate conflated "how many siblings
+    /// does this node have" with "does this node reach an executor", and only
+    /// the second question is the one its call sites ask: a node's right to
+    /// read the remap table, or to reach its session, does not depend on how
+    /// many siblings it has. The name went with the body, because nothing
+    /// about a second node makes a session "multi" — `nros_executor_node_init`
+    /// leaves `support` NULL and routes through the executor whether there is
+    /// one node or eight.
+    ///
+    /// ONE spelling, on purpose. `nros_node_create_guard_condition` and
+    /// `parameter.rs`'s `node_key` had each written their own
+    /// `executor.is_null()` test beside this one, which is how two of the three
+    /// were right while this one was wrong.
     #[inline]
-    pub(crate) fn is_multi_session(&self) -> bool {
-        self.node_id != 0 && !self.executor.is_null()
+    pub(crate) fn is_executor_bound(&self) -> bool {
+        !self.executor.is_null()
     }
 }
 
 /// Phase 156 Sub-bug D — resolve the per-Node session + effective
-/// domain id for entity-init paths. Branches on `is_multi_session`:
-///   * Multi-session: dereferences `node.executor`, walks the
+/// domain id for entity-init paths. Branches on
+/// [`nros_node_t::is_executor_bound`]:
+///   * Executor-bound: dereferences `node.executor`, walks the
 ///     NodeRecord table via [`Executor::node_session_mut`], pulls the
 ///     domain id from `node.domain_id_override` (or the executor's
 ///     support when the Node opted to inherit).
-///   * Single-session: falls back to `node.get_support_mut` +
+///   * Legacy: falls back to `node.get_support_mut` +
 ///     `support.get_session_mut`, mirrors the pre-Phase-156 dispatch.
+///
+/// The branch is the severe half of issue 1384. `nros_executor_node_init`
+/// leaves `support` NULL **on purpose**, so sending an executor-bound node down
+/// the legacy arm reads a NULL support, answers `None`, and every C entity
+/// created EAGERLY rather than at registration — `rclc_publisher_init_default`
+/// and its QoS/options siblings, the polling subscription, `nros_service_init`,
+/// `nros_client_init` — failed `NROS_RET_NOT_INIT` before reaching the backend.
+/// That is what the old `node_id != 0` term did to every single-node C image.
 ///
 /// Returns `None` when any lookup fails so callers can map to
 /// `NROS_RET_NOT_INIT`.
@@ -1322,7 +1352,7 @@ impl nros_node_t {
 pub(crate) unsafe fn resolve_session_and_domain(
     node: &nros_node_t,
 ) -> Option<(&mut nros::internals::RmwSession, u32)> {
-    if node.is_multi_session() {
+    if node.is_executor_bound() {
         let exec_mut = &mut *(node.executor as *mut crate::executor::nros_executor_t);
         let support_ptr = exec_mut.support;
         let rust_exec = crate::executor::get_executor(&mut exec_mut._opaque);
@@ -2124,6 +2154,207 @@ mod accessor_tests {
         assert_eq!(inline_str(&buf, 8), "abc");
         // A length past the buffer is clamped rather than read out of bounds.
         assert_eq!(inline_str(&buf, 999), "abc");
+    }
+
+    // ========================================================================
+    // issue 1384 — the executor-bound predicate
+    // ========================================================================
+
+    /// An executor whose `_opaque` holds a live `CExecutor`, built exactly as
+    /// `nros_executor_init` builds one except that the session pointer is NULL.
+    ///
+    /// Name resolution never touches the session: `declare_remap`,
+    /// `node_builder(..).build()` (which returns slot 0 without consulting a
+    /// session when no `.rmw()` override is given) and `resolve_entity_name_for`
+    /// are all table work. The eager-entity path DOES touch it, and that half is
+    /// asserted from C instead — `tests/run/executor_bound_node.c`, against the
+    /// stub RMW backend, because a session is what it is about.
+    ///
+    /// The executor is never dropped: it is written into a `[u64; N]`, which
+    /// carries no destructor. That is the same lifetime the C API gives it.
+    fn executor_with_null_session() -> std::boxed::Box<crate::executor::nros_executor_t> {
+        let mut executor =
+            std::boxed::Box::new(crate::executor::rclc_executor_get_zero_initialized_executor());
+        let sizing = nros_node::ExecutorSizing::DEFAULT;
+        unsafe {
+            let inline = executor._opaque.as_mut_ptr() as *mut nros_node::ExecutorInlineStorage;
+            let backing: &'static mut [core::mem::MaybeUninit<u64>] =
+                core::slice::from_raw_parts_mut((*inline).backing.as_mut_ptr(), sizing.u64_len());
+            let rust_exec = crate::executor::CExecutor::from_session_ptr_in(
+                core::ptr::null_mut(),
+                backing,
+                sizing,
+            );
+            core::ptr::write(
+                executor._opaque.as_mut_ptr() as *mut crate::executor::CExecutor,
+                rust_exec,
+            );
+        }
+        executor.max_handles = 8;
+        executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+        executor
+    }
+
+    /// Bind a node through the real entry point, so the slot a caller actually
+    /// gets is the slot under test.
+    fn bind_node(
+        executor: &mut crate::executor::nros_executor_t,
+        name: &str,
+        namespace: &str,
+    ) -> nros_node_t {
+        let mut node = rcl_get_zero_initialized_node();
+        let mut opts = nros_node_options_t::default();
+        opts.namespace[..namespace.len()].copy_from_slice(namespace.as_bytes());
+        opts.namespace_len = namespace.len();
+        let name_c = alloc_cstr(name);
+        assert_eq!(
+            unsafe {
+                crate::executor::nros_executor_node_init(
+                    executor,
+                    &mut node,
+                    name_c.as_ptr() as *const c_char,
+                    &opts,
+                )
+            },
+            NROS_RET_OK,
+            "binding {name:?} to the executor"
+        );
+        node
+    }
+
+    fn resolve_name(
+        node: &nros_node_t,
+        input: &str,
+        only_expand: bool,
+    ) -> (nros_ret_t, std::string::String) {
+        let input_c = alloc_cstr(input);
+        let mut buf = [0u8; 128];
+        let rc = unsafe {
+            nros_node_resolve_name(
+                node,
+                input_c.as_ptr() as *const c_char,
+                only_expand,
+                buf.as_mut_ptr() as *mut c_char,
+                buf.len(),
+            )
+        };
+        (rc, std::string::String::from(read_out(&buf)))
+    }
+
+    /// Declare the two rules both remap tests read, one per node.
+    fn declare_remaps(executor: &mut crate::executor::nros_executor_t) {
+        unsafe {
+            let rust_exec = crate::executor::get_executor(&mut executor._opaque);
+            rust_exec
+                .declare_remap("filter", "/sensing", "/sensing/scan", "/wire/primary")
+                .expect("remap table has room");
+            rust_exec
+                .declare_remap("shaper", "/sensing", "/sensing/scan", "/wire/second")
+                .expect("remap table has room");
+        }
+    }
+
+    /// The FIRST node an executor builds takes slot 0. The whole issue turns on
+    /// that, so it is asserted here as well as in
+    /// `tests/run/executor_param_node_keying.c` — a Rust test that ASSUMED it
+    /// and a C test that asserts it would drift apart in silence.
+    #[test]
+    fn the_first_executor_bound_node_takes_slot_zero_and_is_bound() {
+        let mut executor = executor_with_null_session();
+        let primary = bind_node(&mut executor, "filter", "/sensing");
+        let second = bind_node(&mut executor, "shaper", "/sensing");
+
+        assert_eq!(
+            primary.node_id, 0,
+            "the first node built is the primary slot"
+        );
+        assert_eq!(second.node_id, 1);
+        assert!(
+            !primary.executor.is_null() && !second.executor.is_null(),
+            "both nodes reach the executor that built them"
+        );
+        // The predicate is about REACH, not about how many siblings a node has.
+        // `node_id != 0` made this false for the primary node, which is the
+        // commonest shape in the tree (issue 1384).
+        assert!(
+            primary.is_executor_bound(),
+            "a node bound through nros_executor_node_init reaches an executor, slot 0 included"
+        );
+        assert!(second.is_executor_bound());
+        // A legacy node reaches none, and must keep answering so.
+        assert!(!unbound_node("legacy", "/").is_executor_bound());
+
+        assert!(unsafe { rcl_node_is_valid(&primary) });
+        assert!(unsafe { rcl_node_is_valid(&second) });
+    }
+
+    /// `nros_node_resolve_name(only_expand = false)` is ASKED for the remap
+    /// rules, so it must read them for every node that reaches an executor. The
+    /// primary node answered `NROS_RET_NOT_INIT` — the reported symptom of issue
+    /// 1384, and the mildest of its three outcomes.
+    #[test]
+    fn resolve_name_reads_the_remap_table_for_both_slots() {
+        let mut executor = executor_with_null_session();
+        let primary = bind_node(&mut executor, "filter", "/sensing");
+        let second = bind_node(&mut executor, "shaper", "/sensing");
+        declare_remaps(&mut executor);
+
+        // The ANSWER, not just the status: a node whose rules were unreadable
+        // could also return OK with the plain expansion, which is the silent
+        // half of this defect.
+        assert_eq!(
+            resolve_name(&primary, "scan", false),
+            (NROS_RET_OK, std::string::String::from("/wire/primary")),
+            "the primary node's remap rule must be applied, not dropped"
+        );
+        assert_eq!(
+            resolve_name(&second, "scan", false),
+            (NROS_RET_OK, std::string::String::from("/wire/second"))
+        );
+
+        // `only_expand` is answerable without the table and must not have moved.
+        assert_eq!(
+            resolve_name(&primary, "scan", true),
+            (NROS_RET_OK, std::string::String::from("/sensing/scan"))
+        );
+    }
+
+    /// The UNMASKING trap (issue 1384's third row). `resolve_entity_name_on_node`
+    /// runs BEFORE the session lookup at all four of its call sites, so while the
+    /// session predicate was also wrong this silently dropped the primary node's
+    /// remap table behind the louder `NROS_RET_NOT_INIT`. Fixing the session arm
+    /// ALONE would have turned a loud failure into a publisher and a
+    /// subscription, given the same string, landing on different wire names.
+    ///
+    /// Asserts the RESOLVED NAME, never a return code: an unremapped name is
+    /// exactly what "success" looks like when this regresses.
+    #[test]
+    fn entity_names_carry_the_remap_table_for_both_slots() {
+        let mut executor = executor_with_null_session();
+        let primary = bind_node(&mut executor, "filter", "/sensing");
+        let second = bind_node(&mut executor, "shaper", "/sensing");
+        declare_remaps(&mut executor);
+
+        let primary_name = unsafe { resolve_entity_name_on_node(&primary, "scan") }
+            .expect("an expandable name resolves");
+        assert_eq!(
+            primary_name.as_str(),
+            "/wire/primary",
+            "the primary node's entities must go on the wire REMAPPED; the expansion \
+             /sensing/scan is what the dropped-table bug produces"
+        );
+
+        let second_name = unsafe { resolve_entity_name_on_node(&second, "scan") }
+            .expect("an expandable name resolves");
+        assert_eq!(second_name.as_str(), "/wire/second");
+
+        // A legacy node reaches no executor, so there are no rules to drop — it
+        // expands, and says nothing about remaps. Unchanged by the fix, and
+        // asserted so the fix cannot become "make every node read some table".
+        let legacy = unbound_node("filter", "/sensing");
+        let legacy_name =
+            unsafe { resolve_entity_name_on_node(&legacy, "scan") }.expect("expandable");
+        assert_eq!(legacy_name.as_str(), "/sensing/scan");
     }
 
     /// Test-only NUL-terminated byte buffer. The crate is `no_std` but its

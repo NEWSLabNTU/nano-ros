@@ -1314,18 +1314,19 @@ typedef struct nros_node_t {
   uint8_t _reserved[3];
   /**
    * Opaque NodeId slot returned by `Executor::node_builder(...).build()`
-   * when this Node is bound to an Executor. 0 = primary Node (legacy
-   * single-Node path). Internal use only — readers should treat as
-   * opaque.
+   * when this Node is bound to an Executor. 0 = the PRIMARY slot, which an
+   * executor-bound node gets whenever it is the first one built — it is NOT
+   * a "this node is legacy" marker (issue 1384; the legacy marker is a NULL
+   * `executor`). Internal use only — readers should treat as opaque.
    */
   uint8_t node_id;
   /**
-   * Phase 156 / 104.C.8.b — executor pointer for the multi-Session
+   * Phase 156 / 104.C.8.b — executor pointer for the executor-bound
    * dispatch path. `nros_executor_node_init` populates this when
    * the Node is bound; per-entity `nros_*_init` paths
    * (`rclc_publisher_init_default`, `nros_subscription_init`, etc.) branch
-   * on `node_id != 0 && !executor.is_null()` to route through
-   * `Executor::node_session_mut(NodeId)` instead of the legacy
+   * on [`nros_node_t::is_executor_bound`] — i.e. on this pointer ALONE — to
+   * route through `Executor::node_session_mut(NodeId)` instead of the legacy
    * support-based dispatch. NULL = legacy single-Node path
    * (`rclc_node_init_default` / `nros_node_init_ex`).
    */
