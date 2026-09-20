@@ -1661,3 +1661,150 @@ plus 0793's C half, and one changelog entry.
 The `#3 batch` (34 `declined` rows the spelling decision flips to `adopt`) stays
 here, and W-B6's changelog entry now has phase-427's two loudness items to carry
 as well.
+
+## The gap-verdict pass, and the build list it produces (2026-09-21)
+
+**This section answers the sizing decision the section above says this phase
+owes.** It is the output of a pass that DECIDED every open `gap` row and
+implemented none of them, so what follows is a scope, not a plan of record: nine
+groups, each with what already exists underneath it, because that is what
+decides the cost.
+
+### What moved
+
+| | before | after |
+| --- | ---: | ---: |
+| `gap` rows | 80 | 80 |
+| carrying a disposition | 16 | **80** |
+| `adopt` | 12 | 54 |
+| `adopt-bounded` | 1 | 13 |
+| `absent` | 1 | 11 |
+| `refuse-loud` | 2 | 2 |
+
+Language split unchanged at C 24 / C++ 28 / Rust 28. No row's VERDICT moved —
+the pass had no licence to re-verdict, and several rows note where a later one
+probably should.
+
+**Sorted by why upstream has the name, not by shard.** The RTOS constraint
+decides most of these, and a family that argues once is a family a wave can be
+scoped from; eight of the nine groups below cross shard boundaries, and the
+18-row graph family spans two.
+
+### The nine groups
+
+**G1 — graph receiver forwarders. 18 rows (C 6, Rust 12). CHEAP.** Not a
+capability: the eleven graph entry points ship in all three languages
+(`nros_executor_*`, `nros::Executor::*`, `Executor::*`), Cyclone fills eleven of
+twelve slots since phase-444 W3 and zenoh answers eight verbs off the graph
+cache. Upstream hangs them off the NODE and we hang them off the executor —
+that is the whole of it. Precedent and sizing both come from stage 2b, which did
+the identical job for `cpp:Node::*`, which is why not one `cpp:Node::*` graph
+row is a gap. **Take this group first if the goal is rows closed per line
+written.**
+
+**G2 — the two `wait_for_*` helpers. 2 rows (C). CHEAP.** The count they wait on
+has shipped since phase-381 W4; what is missing is the loop, shaped like
+`nros_client_wait_for_service` — take the executor and drive it, so the timeout
+is reliable on a single-threaded transport (RFC-0021). Assert a LOWER bound on
+the wait in its test: an upper-bound-only one passes a spin that never waited.
+
+**G3 — granted-QoS read-back. 5 rows here, moving with 8 siblings that already
+carry `adopt` — 13 rows as one item. MEDIUM, and it is the group most likely to
+be under-costed.** Issue 1327 wired `report_granted_qos` into all six create
+paths and every call site DISCARDS what it returns, so "retain and expose" is
+real but small. The other half is not: Cyclone fills 6 of 6 slots, uORB 2 of 6,
+zenoh and XRCE **none**, so on the default backend the honest answer is
+`*_UNKNOWN` in every field — and no `*_get_actual_qos` implementation in the
+tree writes an `UNKNOWN` today. Shipping the accessor without that half ships
+the inverted meaning the existing `adopt` rows warn about. Budget two items:
+retain+expose, then a backend answer for zenoh.
+
+**G4 — matched-endpoint counts. 5 rows (C 2, C++ 2, Rust 1). CHEAP, with an
+envelope.** `count_{publishers,subscribers}(topic)` ships; the accessors are
+thin. `adopt-bounded` because upstream counts endpoints MATCHED to this entity
+and a topic-wide count includes one whose QoS does not match — that sentence
+belongs in the doc comment, which is the whole difference between this group and
+G1.
+
+**G5 — entity-name read-back. 6 rows (C++ 2, Rust 4). CHEAP then SMALL.** The
+C++ half copies what `nros-cpp`'s `Publisher` already does — store the name
+C++-side, no FFI hop. The Rust half is `adopt-bounded` for a structural reason:
+the handle is a bare arena index (`PublisherHandle { index, _marker }`), so
+rclrs's `&self`-only signature cannot reach the string and the accessor takes
+the node or executor.
+
+**G6 — the cheap singletons. 8 rows. CHEAPEST group in the pass; one wave.**
+`cpp:Timer::is_ready` and `cpp:Timer::time_until_trigger` (both C halves shipped
+in stage 3), `rust:Node::get_clock` (the C++ one ships), `cpp:State::label` (a
+`State` value type mirroring the `Transition` fifty lines above it),
+`cpp:operator==` / `!=` (ten field comparisons — hand-written, not `= default`,
+because the floor is `cxx_std_17`), `rust:QoSProfile::parameter_services_default`
+(one `const fn`; the preset and its value already exist), `rust:log` (un-hide a
+severity-taking macro, routing through the same throttle and `is_enabled` gate
+as the five level macros or the two spellings drift).
+
+**G7 — policy naming, and the diagnostic underneath it. 1 row, and the highest
+value per line here.** `cpp:qos_policy_kind_to_cstr` needs a static table over
+`QoSPolicyMask`'s twelve bits, which is the SSoT the row's three unprintable
+spellings all reduce to. What the table is FOR is the part worth scheduling:
+`QoSProfile::validate_against` computes the offending policy and returns a bare
+`TransportError::IncompatibleQos`, while `rmw_vtable.h`'s own
+`supported_qos_policies` block tells the reader those creates fail "NAMING A
+POLICY". The choice issue 1329 made is right; its stated evidence is not yet
+true, and this row is how it becomes true.
+
+**G8 — the rows that are capabilities rather than names. 9 rows. Size each
+separately.**
+
+| row | what it needs | size |
+| --- | --- | --- |
+| `c:lifecycle_change_state` | the `~/transition_event` publisher REP-2002 requires — a session ENTITY in every lifecycle image, so `EntityInventory::derive`'s publisher and liveliness-token counts and the `LIFECYCLE_SERVICE_QUERYABLES` family move, plus a hand-written CDR writer | MEDIUM-LARGE, its own item |
+| `c:node_get_graph_guard_condition` | graph-CHANGE detection in a backend (a zenoh `@ros2_lv` subscriber, a Cyclone builtin-topic listener). The only graph row that is not a forwarder; the slot is `nullptr` everywhere | LARGE, and it is BACKEND work |
+| `rust:Logger::set_default_level` | a process-wide default severity applied at REGISTRATION. Not an alias — see below | SMALL, but a capability |
+| `rust:BOOT_SET_NAMESPACE` | thread the namespace the macro already computes at `main_macro.rs:934` into the bake it discards at `:1425`, plus an `EnvRung` field | SMALL |
+| `cpp:Publisher::get_gid` | a wrapper over `get_gid_for_publisher`, which Cyclone fills and nothing reads; `UNSUPPORTED` where the slot is NULL | SMALL |
+| `cpp:Client::prune_pending_requests` + 2 siblings | the three verbs over the BOUNDED request table; `remove_pending_request` is cheapest because the sequence number the take path returns is already the key | SMALL, move together |
+| `rust:Time::to_ros_msg` | blocked on a DECISION, not on a body: does `builtin-interfaces` join the pre-generated core set? `nros-core` sits below codegen, so the conversion cannot be an inherent method | trivial after the decision |
+
+**G9 — costed at zero. 10 rows.** The five `can_loan_messages` probes (`absent`
+by the loan family's verdict — a member reached only through a refused family),
+`c:logging_rosout_enabled` (`absent` behind the `enable_rosout` refusal; it
+becomes `adopt` the day a `RosoutSink` exists and not before), and
+`c:take_{request,response}_with_info` (`absent`; the sequence number is there,
+the timestamps are not, and `take_with_info` is NULL in every backend — if
+anyone needs them the item is a BACKEND one and the row reopens).
+
+**And one item that costs about ten lines and is not in any group above.** The
+two `cpp:LifecycleNode::create_*` rows were stamped `refuse-loud` in this pass
+and the gate refused them inside the same pass: a refusal is a DECLARATION, and
+neither `static_assert` exists, so what a porting user gets today is `undeclared
+identifier`, which is `absent`. One `= delete` or dependent `static_assert` on
+`nros::LifecycleNode`, carrying the two-line replacement
+(`node.create_publisher(pub_.publisher(), …); lifecycle_node.add_managed_entity(&pub_);`),
+flips both rows to `refuse-loud` and could carry the already-`absent`
+`create_client` / `create_service` siblings in the same message. It is the
+cheapest loudness item left on the phase.
+
+### Two findings the pass produced that are not about the ledger
+
+1. **`IncompatibleQos` names no policy, and a shipped header says it does.**
+   Above, G7. Worth a design note in RFC-0089 or an issue of its own; the pass
+   recorded it in the row that found it rather than filing over a sibling wave.
+2. **`set_default_level` cannot be an alias.** rclrs's sets the threshold NEW
+   loggers start at; `DEFAULT_LOGGER.set_level` moves one logger's own.
+   `Logger::new` hard-codes `Severity::Info` and loggers are const-constructed
+   statics, so there is no "level new loggers start at" for the proposed alias
+   to move. Taking the name over it would compile, run, and silently not do what
+   it says — `PollingSubscription::take()` in miniature, which is the hazard
+   RFC-0089 Part I exists to refuse.
+
+### What a reader should NOT take from this section
+
+Eleven rows' stated reasons were false against this tree and each says so in
+place. Two of them make claims elsewhere in this document stale as well, and
+this section does not edit those: **stage 2b's "Cyclone fills 1 of 12 graph
+slots, which is phase-444 W3" is a 2026-09-18 reading and phase-444 W3 has since
+LANDED** — Cyclone fills eleven, and `graph_query.cpp` is in the tree. Whoever
+next touches stage 2b or the shard table should re-derive rather than carry
+those forward, which is the same instruction that section already gives about
+its own numbers.
