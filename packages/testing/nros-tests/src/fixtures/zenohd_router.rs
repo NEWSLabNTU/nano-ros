@@ -22,6 +22,34 @@ fn lease_ephemeral_port() -> std::io::Result<crate::port_lease::PortLease> {
     crate::port_lease::lease_port(crate::port_lease::Transport::Tcp)
 }
 
+/// Which `RUST_LOG` filter this router runs under, if any.
+///
+/// ONE place decides it, for every constructor (issue 1394):
+///
+/// 1. the OPERATOR's `ZENOHD_LOG` — someone debugging a run wins, and their
+///    `trace`/`debug` is a superset of anything a cell asks for;
+/// 2. else the filter the CALLER named, if it named one;
+/// 3. else nothing, and the router's output goes to null sinks unless
+///    `NROS_TEST_LOGS` asks for a file.
+///
+/// That is exactly the precedence `rtos_e2e`'s `enable_router_session_log`
+/// used to get by writing `ZENOHD_LOG` only when it was unset — expressed as a
+/// fallback here rather than as a guarded `set_var` in a threaded test binary.
+fn resolve_router_log_filter(caller_filter: Option<&str>) -> Option<String> {
+    router_log_filter(std::env::var("ZENOHD_LOG").ok(), caller_filter)
+}
+
+/// The precedence itself, with the operator's value handed in.
+///
+/// Split out from [`resolve_router_log_filter`] so the rule can be TESTED
+/// without a test writing process env — which is the whole point of issue
+/// 1394. The one line that is not covered here is the `env::var` read above,
+/// and deliberately: proving that needs a child process (issue 1313's shape)
+/// for a single read whose only effect is a diagnostic log level.
+fn router_log_filter(operator: Option<String>, caller_filter: Option<&str>) -> Option<String> {
+    operator.or_else(|| caller_filter.map(str::to_owned))
+}
+
 /// Kill any process listening on the given TCP port.
 ///
 /// Orphaned zenohd processes can survive across test runs when nextest
@@ -254,7 +282,13 @@ impl ZenohRouter {
     /// Slirp guests connect to the host through gateway `10.0.2.2`; binding
     /// only to loopback can leave those guest SYNs unreachable on some hosts.
     pub fn start_slirp(port: u16) -> TestResult<Self> {
-        Self::start_on("0.0.0.0", port)
+        Self::start_slirp_with_log_filter(port, None)
+    }
+
+    /// [`start_slirp`](Self::start_slirp), with the caller naming the log
+    /// filter — see [`start_on_with_log_filter`](Self::start_on_with_log_filter).
+    pub fn start_slirp_with_log_filter(port: u16, log_filter: Option<&str>) -> TestResult<Self> {
+        Self::start_on_with_log_filter("0.0.0.0", port, log_filter)
     }
 
     /// Start a new zenohd router on the specified bind address and port.
@@ -266,6 +300,26 @@ impl ZenohRouter {
     /// # Returns
     /// A managed router instance that will be stopped on drop
     pub fn start_on(bind_addr: &str, port: u16) -> TestResult<Self> {
+        Self::start_on_with_log_filter(bind_addr, port, None)
+    }
+
+    /// [`start_on`](Self::start_on), with the caller naming the `RUST_LOG`
+    /// filter the router should run under.
+    ///
+    /// Issue 1394 — a test that needs specific router output used to get it by
+    /// writing `ZENOHD_LOG` into the process environment before calling
+    /// `start_on`, which is a `setenv` racing every other thread's `getenv` in
+    /// a `cargo test` binary. The filter is a per-call input, so it is a
+    /// parameter; see [`resolve_router_log_filter`] for who wins.
+    ///
+    /// Every existing caller passes `None` through [`start_on`] and is
+    /// unaffected: with no filter and no `ZENOHD_LOG`, the behaviour is exactly
+    /// what it was.
+    pub fn start_on_with_log_filter(
+        bind_addr: &str,
+        port: u16,
+        log_filter: Option<&str>,
+    ) -> TestResult<Self> {
         if !crate::process::is_local_tcp_listener_available() {
             return Err(TestError::ProcessFailed(
                 "local TCP listeners unavailable in this environment".to_string(),
@@ -279,10 +333,11 @@ impl ZenohRouter {
 
         let mut cmd = router_command(&[format!("listen/endpoints=[\"{locator}\"]")])?;
         // Diagnostic log capture per port — opt-in, unified dir. Enabled by
-        // ZENOHD_LOG=trace|debug (also sets RUST_LOG level) or NROS_TEST_LOGS;
-        // the file lands in test-logs/fixtures/ (see fixtures::fixture_log_path).
-        // Defaults to null sinks so a normal run leaves nothing behind.
-        let zenohd_log = std::env::var("ZENOHD_LOG").ok();
+        // ZENOHD_LOG=trace|debug (also sets RUST_LOG level), by a caller-named
+        // filter, or by NROS_TEST_LOGS; the file lands in test-logs/fixtures/
+        // (see fixtures::fixture_log_path). Defaults to null sinks so a normal
+        // run leaves nothing behind.
+        let zenohd_log = resolve_router_log_filter(log_filter);
         if zenohd_log.is_some() || crate::fixtures::fixture_logs_enabled() {
             let log_path = crate::fixtures::fixture_log_path(&format!("zenohd-{port}"));
             let log = std::fs::File::create(&log_path).map_err(TestError::ProcessStart)?;
@@ -328,7 +383,7 @@ impl ZenohRouter {
             .join(",");
         let mut cmd = router_command(&[format!("listen/endpoints=[{endpoints}]")])?;
 
-        let zenohd_log = std::env::var("ZENOHD_LOG").ok();
+        let zenohd_log = resolve_router_log_filter(None);
         if zenohd_log.is_some() || crate::fixtures::fixture_logs_enabled() {
             let log_path = crate::fixtures::fixture_log_path("zenohd-serial");
             let log = std::fs::File::create(&log_path).map_err(TestError::ProcessStart)?;
@@ -624,6 +679,31 @@ mod tests {
             ports.len(),
             total,
             "two concurrently-held leases shared a port"
+        );
+    }
+
+    /// Issue 1394 — the three arms of [`router_log_filter`], asserted without
+    /// touching process env.
+    ///
+    /// The operator arm is the one that used to be implemented as "write
+    /// `ZENOHD_LOG` only if it is unset" in `rtos_e2e`: a cell's filter must
+    /// never displace a value someone exported to debug the run.
+    #[test]
+    fn an_operator_log_filter_outranks_the_one_a_cell_asks_for() {
+        assert_eq!(
+            router_log_filter(Some("trace".to_string()), Some("zenoh_transport=debug")),
+            Some("trace".to_string()),
+            "the operator's ZENOHD_LOG must win over a caller-named filter"
+        );
+        assert_eq!(
+            router_log_filter(None, Some("zenoh_transport=debug")),
+            Some("zenoh_transport=debug".to_string()),
+            "with no operator value the caller's filter is what the router runs under"
+        );
+        assert_eq!(
+            router_log_filter(None, None),
+            None,
+            "a caller that names no filter and no ZENOHD_LOG leaves logging off"
         );
     }
 }
