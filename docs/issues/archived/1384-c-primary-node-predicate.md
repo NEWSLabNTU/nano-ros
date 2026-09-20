@@ -3,13 +3,73 @@ id: 1384
 title: "`is_multi_session()` answers for the wrong node — the FIRST
   executor-bound C node takes slot 0, so every predicate keyed on
   `node_id != 0` reads it as a legacy node"
-status: open
+status: resolved
 type: bug
 area: [api, core]
 severity: high
 found: 2026-09-18
 related: [phase-417, phase-156, rfc-0089, issue-1385, issue-1386]
+resolved_in: (this commit)
 ---
+
+## Resolution
+
+`is_multi_session` is `is_executor_bound`, and its body is `!executor.is_null()`.
+The three remaining call sites moved together, in one commit, because two of
+them masked the third. `parameter.rs`'s `node_key` and
+`nros_node_create_guard_condition` — the two places that had each hand-written
+`executor.is_null()` beside the broken helper — now call the helper, so there is
+one spelling of the question rather than three.
+
+**Both halves were MEASURED, by mutating the fixed predicate back to
+`node_id != 0 && !executor.is_null()` and re-running:**
+
+* `cargo test -p nros-c --lib` — three new tests in `node::accessor_tests`, all
+  three red under the mutation. `nros_node_resolve_name` answered `(-7, "")` for
+  the primary node, which is this issue's own measurement; and
+  `resolve_entity_name_on_node` answered `/sensing/scan` where `/wire/primary`
+  had been declared — the silent third row, asserted on the resolved NAME rather
+  than a return code, because an unremapped name is what "success" looks like
+  when it regresses.
+* `packages/api/nros-c/tests/run/executor_bound_node.c` — a new compile+link+run
+  TU on the stub RMW backend, in `just check c`. 14 checks red under the same
+  mutation, **all of them on slot 0 and none on slot 1**. The stub now records
+  the name each `create_*` slot is handed, so the probe reads the WIRE name the
+  runtime computed rather than the source spelling it passed in.
+* `examples/native/c/custom-platform`, rebuilt against a live router:
+  `Publisher created: /baremetal_demo/counter` + eight `Published:` lines with
+  the fix; `Failed to init publisher: -7` with the mutation.
+
+### Two things this issue got wrong, corrected here
+
+**The `rcl_node_is_valid` row is gone, not fixed.** Issue 1386 (PR #1113)
+deleted that function's `node_ref_is_live` arm rather than repairing it, and
+replaced it with a CONTEXT question that does not depend on the predicate at
+all. So the fourth site needed no fix from this issue, and the two claims below
+that fixing 1384 "makes 1386's arm reachable for the first time" are FALSE: the
+arm no longer exists. They are left in place as written, with this correction
+above them, because the reasoning that produced them is the interesting part —
+two issues filed against overlapping code each assumed the other's shape would
+survive.
+
+**The eager-create list named `nros_service_init` / `nros_client_init`.** The
+affected spellings are the POLLING ones (`nros_service_init_polling`,
+`nros_client_init_polling`), which create inline; the callback-mode siblings
+register and resolve through the executor.
+
+### The sibling class, left OPEN
+
+`packages/api/nros-c/src/executor.rs` decodes `node_raw_id != 0` into an
+`Option<NodeId>` at **nine registration sites**, so a primary executor-bound
+node registers with `None`. That is this same conflation one layer over, and it
+is the defect `nros-cpp` closed with a +1 node-id bias (issue 0312: "eight
+`node_id != 0` checks read a single-node entry's only node as *no node*"; the
+visible symptom there was a listener that received fine and advertised no
+subscription to ROS 2 discovery). It is not folded in here because the fix shape
+differs — `nros_node_t::node_id` is public `repr(C)` ABI, so biasing it is an ABI
+change, and the identity the liveliness keyexpr needs is separately propagated by
+`set_executor_node_identity`, which is why nothing has surfaced yet. Filed as
+issue 1405.
 
 ## What is true
 
