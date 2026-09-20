@@ -122,6 +122,11 @@ fn descriptor_text(root: &Path) -> String {
         // second backend half the registration path is composed from.
         backend_dispatch: Some(BackendDispatch::InPlace),
         rmw: Some("zenoh".into()),
+        // The LEAF road, which has every input and therefore declares no
+        // horizon (phase-454 W14). The model road's own portability is
+        // asserted separately, in `sizing_descriptor_model_road.rs` — it has a
+        // path this one does not, the resolved model the inventory names.
+        horizon: None,
     };
     render(&build(&inputs))
 }

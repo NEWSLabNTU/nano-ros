@@ -1,6 +1,6 @@
 # phase-454 — the contract states the facts, every backend derives its own buffers
 
-**Status (2026-09-20). W1–W8 and W10–W13 are LANDED; W9 remains, and is
+**Status (2026-09-20). W1–W8 and W10–W14 are LANDED; W9 remains, and is still
 BLOCKED — see below.** The 2026-09-11 line said "Opened" and outlived that by a
 week: every wave but one is marked LANDED in the body, so the phase read as
 unstarted to anyone who stopped at the header. That is the same defect this
@@ -8,13 +8,21 @@ campaign corrected in phase-403 (`docs/roadmap/phase-403-type-bound-rx-sizing.md
 whose header listed W0 as remaining while its body said otherwise) — a header
 claiming LESS than the body is as misleading as one claiming more.
 
-**W9 is blocked, and not on effort.** It retires the ~35 `NROS_DECLARED_*` /
-`NROS_DERIVED_*` carriers. W11 measured that the descriptor reaches **one road of
-three**: a single-package cargo leaf is live, while a workspace cargo image and
-the cmake / Zephyr west / NuttX roads have **no producer at all**. For those two,
-the carriers are still the only working road, so retiring them would remove a
-working mechanism in favour of one that reaches a third of the tree —
+**W9 is blocked, and the REASON moved in W14.** It retires the ~35
+`NROS_DECLARED_*` / `NROS_DERIVED_*` carriers. W11 measured that the descriptor
+reached **one road of three**: a single-package cargo leaf was live, while a
+workspace cargo image and the cmake / Zephyr west / NuttX roads had **no
+producer at all**, so retiring the carriers would have removed a working
+mechanism in favour of one that reached a third of the tree —
 `check-knob-single-reader`'s own failure mode inverted.
+
+**All three roads now write one** (W14). What blocks W9 today is narrower and
+named: the model-only producer REFUSES `wire_bound_bytes`, `storage_bytes`,
+`[types]`'s three maxima and `registration_path`
+([issue 1393](../issues/1393-cmake-road-has-no-bound-inventory.md)), so a
+carrier that still delivers a payload class on those roads cannot be retired
+until the descriptor can state it. The carriers that deliver only COUNTS and
+QoS are a different matter, and W9 can take them first.
 
 **And the savings are not shipped yet.** The live producer fills its descriptor
 rows from the leaf's `metadata/` probe, **not from the contract**: `topic` is the
@@ -998,6 +1006,100 @@ reding a named test: dropping the NAME from the key reds
 `a_row_on_a_different_topic_refuses_rather_than_taking_the_lone_candidate`;
 dropping the reason from the row reds five of the nine; dropping the
 producer's publication of it reds both descriptor tests.
+
+### W14 — the SECOND producer: a descriptor from the model alone — **LANDED**
+
+W11's other closing finding, answered: *"the road that carries contracts writes
+no descriptor"*. W12 closed the second half on the LIVE road; this closes the
+first, on the two that had no producer at all.
+
+**THE RULING (owner's, RFC-0100 D6):**
+
+> Emit what the SystemModel knows. REFUSE every field you cannot source. Do not
+> invent a number, and do not fall back to one.
+
+| field | this producer | why |
+| --- | --- | --- |
+| entity counts, per-endpoint QoS (all four), topics, types | **Stated** | `EntityInventory::from_model` already resolves them |
+| `wire_bound_bytes` | Refused, naming issue 1393 | needs the bound inventory |
+| `storage_bytes` | Refused, naming 1393 | that bound, plus the board descriptor for THIS image |
+| `[types]` `max_fields` / `max_kinds` / `max_nested_depth` | Refused, naming 1393 | needs codegen's schema walk |
+| `registration_path` | Refused, naming 1393 | a model image is several packages, so there is no ONE entry language to read the spelling off |
+
+**Every refusal names the tracked issue in its reason**, so the artifact itself
+says what is missing and why — and the day 1393 closes, the refusals in a
+written descriptor are the checklist.
+
+| piece | where |
+| --- | --- |
+| the horizon | `sizing_descriptor::ModelHorizon` — the ROAD in prose plus the three reason builders; `MODEL_ONLY_ISSUE` is the one spelling of the id |
+| the producer | `sizing_descriptor::write_for_model` — the SAME `build()` composer as the leaf road, differing by exactly the fields the horizon names |
+| the workspace cargo road | `cmd::build` stage 4, `Driver::Cargo`: written under `image_dir`, named as a `relative = true` `[env]` row so the image stays self-contained |
+| the cmake road | `nano_ros_entry()` → `nros_sizing_descriptor_from_model()` → `nros ws sizing-descriptor --from-model`, then `nros_sizing_descriptor_read()` on the same path |
+| the cargo lane BEHIND cmake | `nros_sizing_descriptor_cargo_env()`, carried on `nros_entity_facts_env`'s deferred Corrosion flush — **on the emitted command**, issue 0460 |
+
+**NO CONTRACT, NO FILE.** `EntityInventory::from_model` returns `None` for a
+model that describes no wiring — 109 of 114 resolvable models — and this
+producer is not reached for one. An all-refused descriptor would move the
+`[meta] basis` every consumer guards on in order to say nothing. W12's own
+control, held on this road.
+
+**Measured, per consumer, by building each one twice** (no descriptor / the
+model-only descriptor) and diffing the knobs its build script emitted. The
+fixture is a four-endpoint contract — 2 pub, 2 sub, `std_msgs/msg/Int32`, all
+four QoS policies stated, `undeclared_endpoints = 0`:
+
+| consumer | what moved | driven by |
+| --- | --- | --- |
+| `nros-rmw-cffi` | `MAX_BACKENDS` 8→1, `MAX_NODES` 4→2, `SUBSCRIBER_SLOTS` 8→2 | STATED `[image]` counts. **No warning**: no refusal cost anything |
+| `nros-rmw-zenoh` | `SUBSCRIBER_RING_DEPTH` 4→1, `MAX_TL_PUBLISHERS` 2→0 | STATED depth and durability. `SERVICE_BUFFER_SIZE` unchanged — `wire_bound_bytes` is refused |
+| `nros-rmw-xrce-cffi` | `XRCE_STREAM_HISTORY`: no `-D` at all → `-D…=4`, i.e. the header's 16 down to the protocol floor | STATED `reliability = best_effort` on every row. W6.b's 98,304 bytes of session heap. The subscriber family keeps its defaults with a `cargo::warning` naming 1393 |
+| `nros-node`, cmake road | `arena_size` 26,800 → 10,240 | STATED `depth = 1` against the modelled `KEEP_LAST(10)`. The REFUSED `registration_path` priced each slot at the CLOSURE buffer and said so per row — the over-stating direction |
+| `nros-node`, cargo road | nothing but the watch edge | `NROS_ENTITY_COUNT_*` reaches the cmake road only, so the per-endpoint arena cannot fire there (issue 1393) |
+| uORB (cmake) | no `-D` at all → `REGISTRY_CAPACITY=2`, `PX4_MAX_CALLBACKS=2` | STATED topic identities and `subscriber_count`, floored at the pool |
+| Cyclone (`[env]`) | nothing | the three `[types]` maxima are refused, and the projection emits no row for a non-stated fact |
+| `nros-zpico-build` | the same `MAX_TL_PUBLISHERS` | STATED durability |
+
+**The acceptance that matters is the second column.** Every difference is
+attributable to a fact the contract STATED; not one is caused by a refusal. The
+refusals cost exactly two things: a `cargo::warning` naming 1393, and a
+consumer keeping the number it already had.
+
+**The leaf road is unaffected, measured.** `examples/native/rust/listener` —
+`nros sync`, then `cargo build --config build/native/nros-cargo.toml --release`
+— still writes `registration_path = "rust_typed_in_place"`, all three `[types]`
+maxima and `depth = 1`, and still links at **172,298 bytes**, W12's own number.
+
+**Negative control.** Mutating `Fact::is_stated()` to answer `true` for
+`Refused` — a refusal read as a value — reds
+`a_model_only_descriptor_states_the_declaration_and_refuses_the_five_leaf_facts`,
+`an_unattributable_row_refuses_its_qos_and_still_counts_as_undeclared` and
+`an_unknown_backend_refuses_the_registration_path`. It red NOTHING in
+`nros-sizing-descriptor`, the crate that defines the rule, so this wave gave it
+`fact::tests::a_refusal_yields_no_value_by_any_accessor` (plus two siblings) —
+which the same mutation now reds.
+
+Tests: 5 in `sizing_descriptor` (the ruling as one assertion, the road in the
+prose, the leaf/model declaration-identity control, `keep_all` keeping its own
+refusal, the Cyclone projection), 2 in `cmd::sizing_descriptor` (a model with no
+wiring writes nothing and exits 0; neither mode named is an error naming both),
+3 in `tests/sizing_descriptor_model_road.rs` (the acceptance end to end through
+the pinned resolver, issue 0320 portability, `keep_all`), 3 in
+`nros-sizing-descriptor`'s `fact`.
+
+**One deduplication this wave owed.** `NanoRosEntry.cmake` now has TWO askers of
+"which backend is this image" — the RMW user-config bake and this descriptor —
+against a mapping its own comment already said was mirrored by
+`nros_system_generate`. One function, `_nros_entry_resolve_rmw()`; a second copy
+is how two wirings come to disagree about which backend an image is.
+
+**What it does NOT close**, stated rather than implied: the five refused fields,
+which are [issue 1393](../issues/1393-cmake-road-has-no-bound-inventory.md), and
+W9's retirement of the ~35 `NROS_DECLARED_*` / `NROS_DERIVED_*` carriers. W9 was
+blocked on *"the carriers are still the only working road"* for two of three
+roads; all three now write a descriptor, so the block is the REFUSALS rather
+than the producer — a carrier that delivers a payload class the descriptor
+refuses cannot be retired yet.
 
 ## Acceptance for the phase
 

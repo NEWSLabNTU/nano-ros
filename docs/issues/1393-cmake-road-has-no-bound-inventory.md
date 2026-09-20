@@ -1,102 +1,125 @@
 ---
 id: 1393
-title: "A workspace image and a cmake/Zephyr/NuttX entry can never get
-  payload-class sizing: they have no bound inventory and no schema walk, so the
-  fields carrying most of phase-454's measured savings are unsourceable there"
+title: "The model-only sizing descriptor refuses five fields because a workspace
+  image and a cmake entry reach no bound inventory, no per-type schema walk and
+  no per-call-site registration spelling — the counts and the QoS travel, the
+  payload sizes do not"
 status: open
-type: enhancement
-area: build, cli, rmw
+type: tech-debt
+area: [build, core]
 severity: medium
 found: 2026-09-20
-related: [rfc-0100, phase-454, issue-1340]
+related: [1199, 1319, 0460, 1115]
 ---
 
-## What is true after phase-454
+## What is open
 
-The sizing descriptor reaches **one road of three**. A single-package cargo leaf
-has everything `write_for_leaf` needs — a `LeafImage`, the leaf's `metadata/`
-probe, and its `generated/` bound tables — and since W12 it carries the
-contract's facts, which is where the measured **−37 %** on
-`examples/native/rust/listener` comes from.
+phase-454 W14 gave the sizing descriptor (RFC-0100 D4) a **second producer**:
+`nros_cli_core::sizing_descriptor::write_for_model`, reached from the workspace
+cargo road (`cmd::build`, stage 4) and from the cmake road
+(`nano_ros_entry()` → `nros ws sizing-descriptor --from-model`). Before it, W11's
+measurement stood: *"the descriptor reaches one road of three"*, and every
+RFC-0100 D5 derivation was inert on the other two.
 
-A **workspace cargo image** and a **cmake / Zephyr west / NuttX entry** have none
-of those three. There is nothing to write a descriptor from, and naming
-`NROS_SIZING_DESCRIPTOR` at a file nobody writes is a hard build error by design,
-so it would break every C/C++ and workspace image rather than size one.
+That producer has ONE input — the resolved SystemModel — so it states what the
+contract declares and **refuses five fields by name**, each refusal naming this
+issue:
 
-## What a model-only producer can and cannot answer
-
-The owner's ruling is to take **option A now** — a second producer that emits
-what the SystemModel knows and **refuses** every field it cannot source. This
-issue is the follow-up that ends the refusals.
-
-| field | model-only producer | why |
+| field | what it needs | who has it today |
 | --- | --- | --- |
-| entity counts, per-endpoint QoS, topics, types | **Stated** | the SystemModel carries the declaration |
-| `wire_bound_bytes` | **Refused** | needs the bound inventory |
-| `storage_bytes` | **Refused** | target-ABI dependent; needs the board descriptor resolved for that image |
-| `[types]` `max_fields` / `max_kinds` / `max_nested_depth` | **Refused** | needs the schema walk codegen already performs |
-| `registration_path` | **Refused** | needs to know which subscribe spelling the image writes |
+| `[[endpoint]] wire_bound_bytes` | the message-bound inventory (`nros_message_bounds.json`) | codegen, beside a LEAF |
+| `[[endpoint]] storage_bytes` | that bound, plus the board descriptor resolved for THIS image | the leaf road's `write_for_leaf` |
+| `[types] max_fields` | codegen's per-type schema walk (`schema_value::schema_shape_for`) | the same table |
+| `[types] max_kinds` | ditto | ditto |
+| `[types] max_nested_depth` | ditto | ditto |
+| `[[endpoint]] registration_path` | which subscribe spelling each node writes | nobody, on a multi-package image |
 
-## Why this matters more than the field count suggests
+The refusals are correct and they are not free. What each costs, measured on a
+four-endpoint contract (2 pub, 2 sub, `std_msgs/msg/Int32`, all four QoS
+policies stated) — see "Measured" below.
 
-**The refused fields carry most of the savings.** The count-derived knobs are
-real but small — uORB −1,512 B, cffi −280 B. The large measured numbers are
-payload-class:
+## Why it is a refusal and not a default
 
-| wave | saving | class |
+RFC-0100 D6. `Fact::stated()` is the only accessor that yields a value, so a
+consumer cannot read a refusal as a number; the fallback is the consumer's own
+literal, always the safe direction and always loud. That property is what makes
+a PARTIAL descriptor safe to publish at all, and it is asserted directly by
+`nros-sizing-descriptor`'s `a_refusal_yields_no_value_by_any_accessor`.
+
+Inventing a bound here would be the opposite: a payload class is a per-TYPE
+number, and a guess is an under-size in the direction that ships
+`NodeError::BufferTooSmall`.
+
+## Measured — what the refusals cost, per consumer
+
+Each consumer built twice (no descriptor / model-only descriptor) and its
+emitted knobs diffed. Every field the refusals gate keeps its pre-wave value:
+
+| consumer | knob the refusal gates | stays at |
 | --- | --- | --- |
-| W6.b (XRCE) | −355,008 B (83 %) | payload + reliability |
-| W6.a (zenoh) | −124,032 B (22 %) | payload |
-| W12 (listener, end to end) | −101,504 B (37 %) | payload, via declared depth |
+| `nros-rmw-zenoh` | `SERVICE_BUFFERS`' slot size (`wire_bound_bytes`) | `ZPICO_SERVICE_BUFFER_SIZE`'s default |
+| `nros-rmw-xrce-cffi` | the SUBSCRIBER family's buffer + ring (`wire_bound_bytes`, refused with `depth` deliberately coupled) | the header's defaults, with a `cargo::warning` naming this issue |
+| `nros-node` | each subscription's receive slot (`registration_path`) | the CLOSURE buffer — a provable upper bound over all five paths, so the arena OVER-states rather than under-sizing |
+| Cyclone (`[env]` projection) | `MAX_FIELDS` / `MAX_KINDS` / `MAX_NESTED_DEPTH` | `dynamic_type.rs`'s `option_env!` literals (64 / 256 / 8) |
 
-So option A ships counts to two thirds of the tree and leaves **the majority of
-the benefit on the cargo-leaf road only**. That is an acceptable staging point
-and a poor terminal state, which is why this is filed rather than left implied.
+Cyclone's is the one with no worst-case argument behind it: the three literals
+are pre-existing defaults, not bounds derived from anything, so an image whose
+largest schema exceeds 64 fields is under-sized by the fallback exactly as it
+was before the descriptor existed. That is not a regression and it is the
+weakest of the four.
 
-## An extra obstacle, already measured
+## What CLOSING it looks like
 
-Even on the road that HAS a bound inventory, **no service or action endpoint can
-get a `wire_bound_bytes` today**: `BoundInventory::record_message` runs for
-`.msg` files only, so `pkg/srv/Name_Request` has no bound row. W6.a found this
-and correctly declined to fix it inside a backend wave.
+Three independent pieces, in rough order of value:
 
-So "give the cmake road a bound inventory" is really two things:
+1. **A bound inventory for a model image.** The leaf road reads
+   `generated/**/nros_message_bounds.json`, which codegen writes per LEAF. A
+   workspace or cmake image knows its subscribed TYPE SET (it is in the
+   descriptor's own `[[endpoint]]` rows) and the msg packages are resolvable;
+   what is missing is a producer that prices that set without a leaf. Closing
+   this one alone fills `wire_bound_bytes`, `[types]`'s three maxima, and — with
+   `[target]` below — `storage_bytes`.
+2. **`[target]` on the cmake road.** `nros_sizing_descriptor_from_model()`
+   passes `--host-build` when the configure is not cross-compiling and no
+   triple otherwise, so a CROSS cmake entry refuses `pointer_bytes` and
+   `max_align`. The board descriptor is resolved elsewhere in the same
+   configure; plumbing its triple and its `[board.knobs.memory] heap_bytes`
+   through is small and independent of (1). The workspace cargo road already
+   states both.
+3. **`registration_path` for a multi-package image.** The leaf road composes it
+   from the entry's LANGUAGE and the backend's two capabilities. A model image
+   is several packages, so "the entry's language" has no single answer —
+   W10's per-call-site declared-QoS machinery is where a real answer would come
+   from, per endpoint rather than per image.
 
-1. record bounds for service and action member messages, on **every** road; and
-2. produce a per-image bound inventory and schema shape where today only a cargo
-   leaf has one.
+## Two smaller things this wave uncovered and did not fix
 
-## What a fix has to decide
+* **`NROS_ENTITY_COUNT_*` reaches the CMAKE road only.** It is produced by
+  `cmake/NanoRosEntityInventory.cmake` and forwarded by
+  `zephyr/cmake/nros_cargo_build.cmake`; nothing on the workspace CARGO road
+  emits it. `nros-node`'s per-endpoint arena needs all five, so on that road the
+  arena cannot consult the descriptor at all — measured: byte-identical with and
+  without one. Not a defect this wave introduced, but it is why the arena saving
+  shows up on the cmake road and not the cargo one.
+* **`NROS_CYCLONEDDS_HEAP_BUDGET_BYTES` is written and never read.**
+  `WrittenDescriptor::cyclonedds_env` emits it as a cargo `[env]` row, and
+  `nros-rmw-cyclonedds-sys/build.rs`'s `KNOBS` list does not include it — so
+  `heap_budget.hpp`'s `kHeapBudgetStated` is always false on the cargo road and
+  D11's boot assertion is inert there.
 
-* **Where the second producer's inputs come from.** A cmake entry knows its
-  interface closure at configure time (`nros_generate_interfaces`), which is the
-  same information codegen walks. Whether that is re-derived or exported from
-  codegen is the design question — re-deriving it is a second opinion about the
-  bound, which is the class issue 0196 keeps finding.
-* **Whether `registration_path` is answerable at all** for a C/C++ entry. W4
-  credits one `c_typed_hint`, but whether a given call site passes
-  `rx_size_bound<M>` is per-call-site. Issue **1340** is blocked on the same
-  missing fact from the Rust side, and the two should be settled together rather
-  than twice.
-* **Whether the board descriptor can be resolved per image** on the cmake road,
-  which is what `storage_bytes` needs and what `[target]` already does for a
-  leaf.
+## Do not
 
-## Acceptance
+Do not "fill in a default" for any of the five. The whole point of the second
+producer is that a partial descriptor is honest; a descriptor that guessed would
+be the silent-default shape RFC-0100 exists to remove, and it would be worse
+than the no-descriptor state it replaced, because a consumer that sees a stated
+number stops printing the line that would have told a user to declare.
 
-`just check` has no natural home for this. The measurable form is: a cmake or
-Zephyr image with a contract derives the same payload-class knobs a cargo leaf
-with the same contract derives, and `mem-report --baseline` shows a comparable
-delta on a named image. Until then, every refusal this issue ends should name
-this id, so the descriptor itself says what is missing and why.
+## It also gates phase-454 W9
 
-## Not a regression
-
-Nothing is worse than before phase-454 on these roads: they keep the
-`NROS_DECLARED_*` / `NROS_DERIVED_*` carriers and behave exactly as they did.
-This issue is about the ceiling, not a fault.
-
-**It also gates phase-454 W9.** Retirement removes those carriers, and while two
-of three roads have no replacement they must stay — `check-knob-single-reader`'s
-rule inverted.
+Retirement removes the `NROS_DECLARED_*` / `NROS_DERIVED_*` carriers. While a
+payload-class fact is refused on two roads of three, those carriers are still the
+only road delivering it there — so retiring them would remove a working mechanism
+in favour of one that cannot state the fact. That is
+`check-knob-single-reader`'s own rule inverted: a mechanism that still resolves
+is a mechanism people still use, and the converse bites just as hard.

@@ -391,15 +391,59 @@ does not exist yet, so the first `nros sync` after a configure is what re-trigge
 one; the cargo side answers the same way for the same reason.
 
 **A consumer reading it is not a road delivering it.** `from_build_env()` answers
-`Ok(None)` unless something names a descriptor to that build, and as of
-2026-09-13 exactly one road does: `cmd::leaf_settings::write` on a
+`Ok(None)` unless something names a descriptor to that build. Through
+2026-09-13 exactly one road did: `cmd::leaf_settings::write` on a
 single-package cargo leaf, as a `relative = true` `[env]` row (the path is
 relative because the descriptor lives INSIDE the leaf and a package must stay
 self-contained — proved by copy-out, not by reading; re-proved in W12, where a
 copied-out leaf syncs and builds to the same 172,298 bytes with zero absolute
-paths in the file). A workspace cargo image and every cmake road write no
-descriptor at all, so every derivation in D5 is inert there. The open work, and
-the decision it carries, is phase-454 W11.
+paths in the file).
+
+### TWO producers, one composer (phase-454 W14)
+
+**Landed.** The other two roads — a workspace cargo image, and every cmake /
+Zephyr west / NuttX entry — now write one too. They have ONE input where the
+leaf has three: the resolved SystemModel. So the decision W11 left open —
+*"what a descriptor written from a model alone may CLAIM"* — is settled:
+
+> **Emit what the SystemModel knows. REFUSE every field you cannot source. Do
+> not invent a number, and do not fall back to one.**
+
+| field | model-only road | why |
+| --- | --- | --- |
+| entity counts, per-endpoint QoS (all four), topics, types | **Stated** | `EntityInventory::from_model` already resolves them |
+| `wire_bound_bytes` | **Refused** | needs the bound inventory, which codegen writes beside a LEAF |
+| `storage_bytes` | **Refused** | that bound, plus the board descriptor resolved for THIS image |
+| `[types]` `max_fields` / `max_kinds` / `max_nested_depth` | **Refused** | needs codegen's own per-type schema walk |
+| `registration_path` | **Refused** | a model image is SEVERAL PACKAGES, so "the entry's language" has no one answer — and the two schemaless rows are 1,848 bytes per subscription in the UNDER direction (issue 1319), so a guess is the failure |
+
+Every refusal names [issue 1393](../issues/1393-cmake-road-has-no-bound-inventory.md),
+so the artifact itself says what is missing and why, and the day that closes,
+the refusals in a written descriptor are the checklist.
+
+**This is D6 doing the work it exists for.** A partial descriptor is safe to
+publish precisely because `Fact::stated()` is the only accessor that yields a
+value: a consumer cannot read one of those refusals as a default, so its
+fallback is the literal it already had — always the safe direction and always
+loud. Measured across all seven consumers (each built twice, knobs diffed):
+**not one output difference is caused by a refusal.** Every difference is
+attributable to a fact the contract STATED — `MAX_BACKENDS` 8→1 and
+`SUBSCRIBER_SLOTS` 8→2 from the counts, `SUBSCRIBER_RING_DEPTH` 4→1 from the
+declared depth, `XRCE_STREAM_HISTORY` 16→4 from a declared `best_effort`,
+`arena_size` 26,800→10,240 from a declared `KEEP_LAST(1)`. The refusals cost a
+`cargo::warning` and nothing else.
+
+**No contract, no file.** `EntityInventory::from_model` returns `None` for a
+model that describes no wiring — 109 of 114 resolvable models — and the producer
+is not reached for one. An all-refused descriptor would move the `[meta] basis`
+every consumer guards on in order to say nothing, which is W12's own control
+held on a second road.
+
+**One composer, two callers.** `write_for_leaf` and `write_for_model` both go
+through `sizing_descriptor::build`, differing by a `ModelHorizon` and nothing
+else; the counts and all four QoS policies come out identical for one image on
+either road (asserted). A second composer is how two producers of one schema
+come to disagree.
 
 **What that one road CARRIES is a separate question from what it delivers, and
 W12 is the answer to it.** Through W11 the live road delivered the probe's rows:
