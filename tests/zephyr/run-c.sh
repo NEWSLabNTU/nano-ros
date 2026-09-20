@@ -21,6 +21,10 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# issue 1379 — ONE spelling of the `-DZEPHYR_EXTRA_MODULES` this build needs.
+# shellcheck source=scripts/lib/zephyr-module.sh
+. "$PROJECT_ROOT/scripts/lib/zephyr-module.sh"
+nros_module_arg="$(nros_zephyr_module_cmake_arg "$PROJECT_ROOT")"
 
 # issue 0660 — the router comes from ROS, not from a vendored build.
 #
@@ -205,7 +209,7 @@ build_zephyr_examples() {
 
     # Build C talker for native_sim/native/64
     log_info "Building zephyr-c-talker for native_sim/native/64..."
-    if west build -b native_sim/native/64 "$example_path" -d build-c-talker -p auto -- -DCONF_FILE="prj.conf;prj-zenoh.conf" -DZEPHYR_EXTRA_MODULES="$PROJECT_ROOT" 2>&1 | tee "$(tmpfile zephyr_build.txt)" | tail -10; then
+    if west build -b native_sim/native/64 "$example_path" -d build-c-talker -p auto -- -DCONF_FILE="prj.conf;prj-zenoh.conf" "$nros_module_arg" 2>&1 | tee "$(tmpfile zephyr_build.txt)" | tail -10; then
         log_success "Talker build complete"
     else
         log_error "Talker build failed"

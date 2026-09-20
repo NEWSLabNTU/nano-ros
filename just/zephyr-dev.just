@@ -16,6 +16,17 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     # this must happen BEFORE the recipe changes into the west workspace: the
     # path is relative to the repo root.
     source scripts/build/build-root.sh
+    # issue 1379 — this build names its OWN nros module, and it is resolved
+    # BEFORE the `cd "$workspace"` below because the root it is given is the
+    # current directory.
+    #
+    # phase-449 W1 taught three builders to do this and left this one — the
+    # exact command issue 1379 reports — still compiling whatever module the
+    # workspace happened to be bound to. On the host that filed it that was
+    # another clone entirely, so `build-one` linked half of one tree and half
+    # of another with nothing warning. Measurement: scripts/lib/zephyr-module.sh.
+    source scripts/lib/zephyr-module.sh
+    nros_module_arg="$(nros_zephyr_module_cmake_arg "$(pwd)")"
     # Phase 180.B — examples read the ROS interface package dirs from env
     # (no more hardcoded /opt/ros/humble/share/* PKG_DIR). Default to the
     # stock Humble install; override per package if your ROS lives elsewhere.
@@ -136,7 +147,7 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     shared_cargo_root="$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" zephyr)"
     "${west_cmd[@]}" build -b "{{board}}" -d "$bd" "$src" -- \
         -DCONF_FILE="$conf" -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" \
-        -DNROS_SHARED_CARGO_ROOT="$shared_cargo_root"
+        -DNROS_SHARED_CARGO_ROOT="$shared_cargo_root" "$nros_module_arg"
     echo "Built: $workspace/$bd/zephyr/zephyr.elf"
 
 # Phase 180.B item 5 — copy-out CI check. Copies an example OUT of the

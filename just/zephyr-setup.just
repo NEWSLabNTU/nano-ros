@@ -204,6 +204,10 @@ build-fvp-ws-entry:
         nros_lane_skip "Zephyr/FVP-ws-entry skip: aarch64-zephyr-elf toolchain missing"
     fi
     nros_root="$(pwd)"
+    # issue 1379 — resolved BEFORE the `cd "$workspace"` below, like the SDK
+    # prefixes: the root handed to the helper is this checkout.
+    source scripts/lib/zephyr-module.sh
+    nros_module_arg="$(nros_zephyr_module_cmake_arg "$nros_root")"
     echo "  → host nros-codegen (cargo)"
     source scripts/build/cargo.sh
     nros_cargo_ensure_codegen_c
@@ -241,10 +245,16 @@ build-fvp-ws-entry:
     # configure; last -C wins over the board default =1). AEMv8-R only.
     export ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"
     echo "Building examples/workspaces/realtime-cpp/src/fvp_entry (board from nano_ros_use_board)..."
+    # issue 1379 — name our OWN nros module. `-p auto` makes this recipe the
+    # quieter half of the same defect: west pristines a build dir whose cached
+    # application belongs to another checkout instead of refusing, so a shared
+    # store workspace hands this one a module from whichever tree provisioned it
+    # with no mismatch to notice. See scripts/lib/zephyr-module.sh.
     west build \
         -d build-fvp-ws-entry -p auto \
         "$nros_root/examples/workspaces/realtime-cpp/src/fvp_entry" \
-        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
+        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin" \
+        "$nros_module_arg"
     echo "phase-292 W1.a FVP AEMv8-R workspace-Entry (cpp/cyclonedds) build smoke OK"
 
 # phase-298 W3.1 (issue 0232) — run the realtime-cpp workspace Entry
@@ -382,6 +392,10 @@ build-fvp-board-import:
     # compile for any board with gpio nodes in its devicetree.
     bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$workspace"
     nros_root="$(pwd)"
+    # issue 1379 — resolved BEFORE the `cd "$workspace"` below, like the SDK
+    # prefixes: the root handed to the helper is this checkout.
+    source scripts/lib/zephyr-module.sh
+    nros_module_arg="$(nros_zephyr_module_cmake_arg "$nros_root")"
     echo "  → host nros-codegen (cargo)"
     source scripts/build/cargo.sh
     nros_cargo_ensure_codegen_c
@@ -419,10 +433,12 @@ build-fvp-board-import:
     # `find_package(Zephyr)`; export the repo root so the include resolves.
     export NROS_REPO_DIR="$nros_root"
     echo "Building board-import fixture via nano_ros_use_board(fvp-aemv8r-smp)..."
+    # issue 1379 — name our OWN nros module (see the sibling recipe above).
     west build \
         -d build-fvp-board-import -p auto \
         "$src" \
-        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
+        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin" \
+        "$nros_module_arg"
     echo "Phase 215.G.1 FVP board-import fixture build OK"
 
 # Phase 215.G.1 — run the board-import fixture on the FVP THROUGH the
