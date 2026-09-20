@@ -108,9 +108,19 @@ to `here`. The detector was never wrong; the `just` side was.
 What did change: its ANSWER is now advisory-only, so the "two foreign checkouts
 in one environment" case is **reported rather than refused**. That refusal
 existed because one prefix could not be right for both; per-value ownership has
-no such ambiguity. The stderr advisory ("re-rooting inherited paths from X onto
-Y") is kept and is now the call's only purpose — the gate asserts the call is
-still present, because nothing else would notice it being deleted as dead code.
+no such ambiguity — measured, an environment naming two other checkouts now
+resolves, each value re-rooted by its own owner, `rc=0`.
+
+**The advisory needed an explicit EDGE to stay reachable**, and this was caught
+by running it rather than reading it. Once nothing consumed
+`_NROS_INHERITED_FROM`, `just --evaluate` stopped printing the diagnostic
+entirely: a recipe run evaluates every assignment, but `--evaluate` does not
+force a private variable nothing depends on — and `--evaluate` is precisely the
+command a person runs when a path looks wrong. `_NROS_REROOT` is therefore an
+`if _NROS_INHERITED_FROM == "" { CMD } else { CMD }` whose two arms are the same
+string: it computes nothing and exists to make the detector a dependency of
+every export. Probe 6 of the gate MEASURES the advisory's presence on stderr
+(negative control: removing the edge reports exactly this, and nothing else).
 
 **3. `check-inherited-checkout-paths` measures BOTH checkout shapes.** Its three
 behaviour probes built synthetic checkouts SIDE BY SIDE in `/tmp`, so the nested
