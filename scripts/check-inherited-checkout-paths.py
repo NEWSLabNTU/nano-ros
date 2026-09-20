@@ -29,9 +29,22 @@ This gate checks three things:
      because the three build systems cannot call each other, not because the
      rule differs.
   3. BEHAVIOUR -- the shell rule, `nros_build_root`, and `just` itself are
-     each driven against real synthetic checkouts, for all three rows. A gate
+     each driven against real synthetic checkouts, for all three rows, in BOTH
+     checkout SHAPES: side by side, and one NESTED inside the other. A gate
      that only reads source would pass an implementation that never looks at
      the filesystem.
+
+The nested shape is issue 1391, and it is the shape agent sessions actually
+work in: a worktree at `<main>/.claude/worktrees/<id>`. 1280's fix was a
+LEXICAL PREFIX REWRITE in `just/sdk-env.just`, which is not the rule stated in
+`checkout-paths.sh` and cannot be — under nesting the parent's root is a strict
+prefix of the worktree's, so "keep" and "re-root" become the same lexical test
+and the rewrite fired on values that were already correct. Nine of the
+twenty-one exports came out DOUBLED
+(`<worktree>/<worktree-rel>/packages/platform/...`), and builds reported a
+missing source file rather than a broken environment. Every probe here
+therefore runs twice, and the nested pass asserts no evaluated path repeats the
+worktree's own relative segment.
 
 The self-test runs on the NORMAL path, every invocation: it mutates each parser
 and each comparison and asserts the failure IS reported. A negative control
@@ -58,9 +71,28 @@ LAUNCHER = ROOT / "packages/cli/nros-launcher/src/checkout.rs"
 
 # The wrapper every path-valued export must carry, and the root spelling the
 # two checkout-root variables must use instead.
-WRAPPER = "replace("
-REROOT_ARGS = "_NROS_OTHER, _NROS_HERE)"
+#
+# It is `shell(...)` and not `replace(...)` because of issue 1391: a lexical
+# prefix rewrite is not the rule, and under nesting it doubles the values it
+# should keep. Both halves are required — the helper NAME (so the rule is the
+# shared one, not a second spelling) and the `_NROS_HERE` argument (so it
+# re-roots onto THIS checkout).
+WRAPPER = "shell(_NROS_REROOT,"
+REROOT_ARGS = ", _NROS_HERE)"
 HERE = "_NROS_HERE"
+
+# The retired 1280 spelling. It must not come back: it is the defect, not a
+# slower-but-equivalent alternative.
+RETIRED_PREFIX_REWRITE = "_NROS_OTHER"
+
+# The advisory detector. Nothing consumes its VALUE any more, so a reader can
+# reasonably take it for dead code — but deleting it silences the one line that
+# tells anyone their paths were inherited from another checkout at all.
+ADVISORY_CALL = "foreign-checkout-root.sh"
+
+# The helper `_NROS_REROOT` must invoke, and the file it must live in.
+REROOT_SCRIPT = ROOT / "scripts/lib/reroot-checkout-path.sh"
+REROOT_FN = "nros_reroot_checkout_path"
 
 # Exports in `just/sdk-env.just` that do NOT name a path, with the reason. An
 # entry here is a claim that the value can never be a directory or file path;
@@ -93,10 +125,55 @@ def coverage_violations(text: str) -> list[str]:
         # nothing an inherited value could be more right about.
         if rhs.strip() == HERE:
             continue
-        if WRAPPER in rhs and REROOT_ARGS in rhs:
+        if WRAPPER in rhs and rhs.rstrip().endswith(REROOT_ARGS):
             continue
         bad.append(name)
     return bad
+
+
+def code_lines(text: str) -> str:
+    """The file with its comments removed.
+
+    The header of `sdk-env.just` explains the retired 1280 spelling at length —
+    that history is the reason the current shape looks the way it does, and a
+    ratchet that reads it as a violation would pay for itself by deleting the
+    explanation. The ratchets below therefore read CODE.
+    """
+    return "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
+
+
+def spelling_violations(text: str) -> list[str]:
+    """The three things about this file that a later edit could quietly undo."""
+    problems = []
+    code = code_lines(text)
+    if RETIRED_PREFIX_REWRITE in code:
+        problems.append(
+            f"just/sdk-env.just: `{RETIRED_PREFIX_REWRITE}` is back. That is 1280's "
+            "LEXICAL PREFIX rewrite, and issue 1391 measured it doubling every "
+            "defaulted path in a worktree nested inside its parent checkout — the "
+            "shape agent sessions work in. Put each value through "
+            f"`{WRAPPER} …{REROOT_ARGS}` instead."
+        )
+    if ADVISORY_CALL not in code:
+        problems.append(
+            f"just/sdk-env.just: the `{ADVISORY_CALL}` call is gone. Its value is "
+            "unused by design (issue 1391 made re-rooting per-value), but the call "
+            "is what prints `re-rooting inherited paths from X onto Y` — the only "
+            "line telling a reader their environment came from another checkout."
+        )
+    if not REROOT_SCRIPT.exists():
+        problems.append(f"{REROOT_SCRIPT.relative_to(ROOT)}: missing")
+    elif REROOT_FN not in REROOT_SCRIPT.read_text():
+        problems.append(
+            f"{REROOT_SCRIPT.relative_to(ROOT)}: does not call `{REROOT_FN}`, so the "
+            "`just` side is no longer running the ONE rule in checkout-paths.sh"
+        )
+    elif not os.access(REROOT_SCRIPT, os.X_OK):
+        problems.append(
+            f"{REROOT_SCRIPT.relative_to(ROOT)}: not executable — every `shell()` in "
+            "just/sdk-env.just would abort the run"
+        )
+    return problems
 
 
 def marker_of(path: Path, pattern: str) -> str | None:
@@ -288,6 +365,144 @@ def probe_just(tmp: Path) -> list[str]:
     return problems
 
 
+# The files a synthetic checkout needs for `just/sdk-env.just` to evaluate in
+# it. Real copies, not stubs: the point is to run the shipped rule.
+SYNTHETIC_FILES = [
+    "just/sdk-env.just",
+    "scripts/lib/checkout-paths.sh",
+    "scripts/lib/reroot-checkout-path.sh",
+    "scripts/lib/foreign-checkout-root.sh",
+]
+
+
+def make_synthetic_checkout(root: Path) -> Path:
+    """A checkout `just` can evaluate `sdk-env.just` in, at an arbitrary path."""
+    make_checkout(root)
+    for rel in SYNTHETIC_FILES:
+        dst = root / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / rel, dst)
+        if rel.endswith(".sh"):
+            dst.chmod(0o755)
+    # `import` and not a copy of the real justfile: `sdk-env.just` is the unit
+    # under test and it imports nothing itself.
+    (root / "justfile").write_text("import 'just/sdk-env.just'\n")
+    return root
+
+
+def probe_just_nested(tmp: Path) -> list[str]:
+    """Issue 1391 — the shape agent worktrees actually have.
+
+    `<parent>/.claude/worktrees/<id>` is a checkout INSIDE a checkout, so the
+    parent's root is a strict PREFIX of the worktree's. Measured, not grepped,
+    and for both halves of the rule at once: a DEFAULTED path must come out
+    rooted once at the worktree, and an INHERITED path naming the parent must
+    still be re-rooted (that is 1280, and this fix must not undo it).
+    """
+    if shutil.which("just") is None:
+        return ["`just` not on PATH, so the nested-checkout arm of this gate could not run"]
+
+    parent = make_synthetic_checkout(tmp / "nested/parent")
+    rel = ".claude/worktrees/agent-0000"
+    inner = make_synthetic_checkout(parent / rel)
+    problems: list[str] = []
+
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": os.environ.get("HOME", str(tmp)),
+        "NROS_QUIET_ACTIVATE": "1",
+        # What a worktree shell really inherits: the parent checkout, named by
+        # a variable that is NOT one of the exports below, so the detector has
+        # something to find while every export falls back to its default.
+        "NROS_REPO_DIR": str(parent),
+        # And one that IS an export, to keep the 1280 row live here too.
+        "NUTTX_DIR": f"{parent}/third-party/nuttx/nuttx",
+    }
+    p = subprocess.run(
+        ["just", "--justfile", str(inner / "justfile"), "--evaluate"],
+        capture_output=True,
+        text=True,
+        cwd=inner,
+        env=env,
+    )
+    if p.returncode != 0:
+        return [
+            "just (nested checkout): --evaluate failed — "
+            f"rc={p.returncode}: {p.stderr.strip()[:400]}"
+        ]
+
+    values = {}
+    for line in p.stdout.splitlines():
+        if ' := "' not in line:
+            continue
+        name = line.split(None, 1)[0]
+        values[name] = line.split(' := "', 1)[1].rstrip('"')
+
+    if len(values) < 20:
+        return [
+            f"just (nested checkout): only {len(values)} variables parsed — "
+            "the probe is not measuring what it claims"
+        ]
+
+    # 1. Nothing doubles. The worktree's own relative segment may appear once
+    #    (it is part of `inner`) and never twice — that repetition IS the bug,
+    #    and it is what a reader sees in the build error.
+    for name, value in sorted(values.items()):
+        if value.count(rel) > 1:
+            problems.append(
+                f"just (nested checkout): {name} repeats the worktree segment "
+                f"{rel!r} {value.count(rel)}x — {value} (issue 1391)"
+            )
+
+    # 2. Every path that names a checkout names THIS one, and the path exists
+    #    as a spelling rooted there (the defaults are all `inner`-relative).
+    for name, value in sorted(values.items()):
+        if not value.startswith("/"):
+            continue
+        if value.startswith(str(parent) + "/") and not value.startswith(str(inner)):
+            problems.append(
+                f"just (nested checkout): {name} still names the PARENT checkout "
+                f"— {value} (issue 1280)"
+            )
+
+    # 3. The 1280 row, explicitly: an inherited value naming the parent is
+    #    re-rooted onto the worktree, not kept and not doubled.
+    want = f"{inner}/third-party/nuttx/nuttx"
+    if values.get("NUTTX_DIR") != want:
+        problems.append(
+            "just (nested checkout): an inherited NUTTX_DIR naming the parent was not "
+            f"re-rooted — got {values.get('NUTTX_DIR')!r}, expected {want!r}"
+        )
+
+    # 4. The 1391 row, explicitly: a DEFAULTED value is already correct and
+    #    must be left alone.
+    want = f"{inner}/packages/platform/nros-platform-api/include"
+    if values.get("NROS_PLATFORM_CFFI_INCLUDE") != want:
+        problems.append(
+            "just (nested checkout): a DEFAULTED NROS_PLATFORM_CFFI_INCLUDE was rewritten "
+            f"— got {values.get('NROS_PLATFORM_CFFI_INCLUDE')!r}, expected {want!r} "
+            "(issue 1391)"
+        )
+
+    # 5. Row 1 of the rule survives nesting too: a path outside any checkout is
+    #    kept, even though `parent` is a prefix of `inner`.
+    vendor = str(tmp / "nested/opt/vendor/px4")
+    p = subprocess.run(
+        ["just", "--justfile", str(inner / "justfile"), "--evaluate", "PX4_AUTOPILOT_DIR"],
+        capture_output=True,
+        text=True,
+        cwd=inner,
+        env={**env, "PX4_AUTOPILOT_DIR": vendor},
+    )
+    got = p.stdout.strip() if p.returncode == 0 else f"<rc={p.returncode}>"
+    if got != vendor:
+        problems.append(
+            f"just (nested checkout): an out-of-tree PX4_AUTOPILOT_DIR was rewritten — got {got!r}"
+        )
+
+    return problems
+
+
 # --------------------------------------------------------------------------
 
 
@@ -321,12 +536,51 @@ def self_test() -> bool:
         "an unwrapped new export was NOT reported",
         set(coverage_violations(mutant)) - base == {"NROS_NEW_SDK_DIR"},
     )
-    # A wrapper that rewrites the wrong way round is not coverage either.
-    mutant = text.replace(REROOT_ARGS, "_NROS_HERE, _NROS_OTHER)", 1)
-    chk(
-        "a reversed re-root was NOT reported",
-        len(set(coverage_violations(mutant)) - base) == 1,
+    # The 1280 spelling, put back on one line: a LEXICAL prefix rewrite is not
+    # the rule (issue 1391), so it is not coverage either.
+    # Mutations target one EXPORT line, found by name, so the header comment
+    # (which quotes both spellings on purpose) cannot absorb them.
+    def mutate_export(name: str, old: str, new: str) -> str:
+        out = []
+        for line in text.splitlines():
+            if line.startswith(f"export {name} :="):
+                line = line.replace(old, new)
+            out.append(line)
+        return "\n".join(out)
+
+    first = next(n for n, r in exports if WRAPPER in r)
+    mutant = mutate_export(
+        first, f'{WRAPPER} env(', "replace(env("
     )
+    mutant = "\n".join(
+        l.replace(REROOT_ARGS, ", _NROS_OTHER, _NROS_HERE)")
+        if l.startswith(f"export {first} :=")
+        else l
+        for l in mutant.splitlines()
+    )
+    chk(
+        "a reverted prefix rewrite was NOT reported as uncovered",
+        set(coverage_violations(mutant)) - base == {first},
+    )
+    # …and the same mutant must also trip the spelling ratchet by name.
+    chk(
+        "a reverted prefix rewrite was NOT reported by the spelling check",
+        any(RETIRED_PREFIX_REWRITE in p for p in spelling_violations(mutant)),
+    )
+    # A wrapper naming some OTHER helper is not the shared rule.
+    mutant = mutate_export(first, WRAPPER, "shell(_NROS_SOMETHING_ELSE,")
+    chk(
+        "a re-root through a different helper was NOT reported",
+        set(coverage_violations(mutant)) - base == {first},
+    )
+    # Deleting the advisory call must be reported, because nothing else can
+    # notice: its value is unused.
+    mutant = "\n".join(l for l in text.splitlines() if ADVISORY_CALL not in l)
+    chk(
+        "deleting the advisory detector call was NOT reported",
+        any(ADVISORY_CALL in p for p in spelling_violations(mutant)),
+    )
+    chk("the live file trips the spelling ratchet", spelling_violations(text) == [])
 
     chk(
         "a missing marker constant was NOT reported",
@@ -349,8 +603,8 @@ def self_test() -> bool:
 
     if ok:
         print(
-            "  self-test ok: coverage parser (2 mutations), marker comparison, "
-            "shell rule negative rows"
+            "  self-test ok: coverage parser (3 mutations), spelling ratchet "
+            "(2 mutations), marker comparison, shell rule negative rows"
         )
     return ok
 
@@ -367,10 +621,11 @@ def main() -> int:
     for name in bad:
         problems.append(
             f"just/sdk-env.just: `{name}` resolves env-first with no re-root. Wrap it:\n"
-            f"    export {name} := replace(env(\"{name}\", {HERE} / \"<rel>\"), "
+            f"    export {name} := {WRAPPER} env(\"{name}\", {HERE} / \"<rel>\")"
             f"{REROOT_ARGS}\n"
             f"  or, if it names no path, add it to NOT_A_PATH in this script with a reason."
         )
+    problems += spelling_violations(text)
     problems += marker_violations()
 
     with tempfile.TemporaryDirectory(prefix="nros-1280-") as td:
@@ -378,6 +633,7 @@ def main() -> int:
         problems += probe_shell_rule(tmp)
         problems += probe_build_root(tmp)
         problems += probe_just(tmp)
+        problems += probe_just_nested(tmp)
 
     if problems:
         print("check-inherited-checkout-paths: FAILED (issue 1280)", file=sys.stderr)
@@ -389,7 +645,8 @@ def main() -> int:
     print(
         f"check-inherited-checkout-paths: ok — {covered} path exports re-rooted, "
         f"{len(NOT_A_PATH)} declared non-path, one checkout marker across "
-        f"{len(MARKER_SITES)} spellings, behaviour proven for shell / build-root / just"
+        f"{len(MARKER_SITES)} spellings, behaviour proven for shell / build-root / just, "
+        "in both checkout shapes (side-by-side and nested)"
     )
     return 0
 

@@ -691,11 +691,22 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   measured the wrong tree. The discriminator is not "is the variable set", it
   is where the value points — **outside any checkout → KEEP** (the reason
   env-first exists), **a DIFFERENT checkout → RE-ROOT here**, this one → keep.
-  ONE rule, `scripts/lib/checkout-paths.sh`, mirrored in `just/sdk-env.just`
-  (one prefix rewrite covers every export) and
-  `nros_build_paths::reroot_foreign` (every `build.rs`); "which checkout" is
+  ONE rule, `scripts/lib/checkout-paths.sh`, reached by `just/sdk-env.just`
+  through `scripts/lib/reroot-checkout-path.sh` and by every `build.rs`
+  through `nros_build_paths::reroot_foreign`; "which checkout" is
   the marker walk, never `.git` — a worktree's `.git` is a FILE (issue 1336).
-  Gate: `check-inherited-checkout-paths`.
+  **The `just` side was a LEXICAL PREFIX REWRITE and that is not the rule**
+  (issue 1391): an agent worktree at `<main>/.claude/worktrees/<id>` NESTS, so
+  the parent's root is a strict prefix of the worktree's, "keep" and "re-root"
+  become the same lexical test, and the rewrite fired on the DEFAULTS —
+  9 of 21 exports came out `<worktree>/<worktree-rel>/packages/…`, reported as
+  `fatal error: nros/platform.h: No such file or directory`, i.e. as a missing
+  source file rather than a broken environment (two lost lane runs). Only the
+  DEEPEST owning checkout separates the two rows, which is per-VALUE and no
+  prefix can answer it; measured price of doing it right is `just --evaluate`
+  30 ms → 46 ms. Gate: `check-inherited-checkout-paths`, whose three behaviour
+  probes built synthetic checkouts SIDE BY SIDE only — the 0196 reach gap — and
+  now run in both shapes.
 - **Nothing may MODEL git's layout — ask `rev-parse --path-format=absolute
   --git-path <n>`** (issue 1336, which absorbed 1306). `build.rs` watched
   `root.join(".git/index")` behind an `exists()` guard that fails OPEN, so in

@@ -2,12 +2,25 @@
 # Which OTHER nano-ros checkout did this environment come from? — issue 1280.
 #
 # Prints that checkout's root on stdout, or nothing when the environment names
-# none. `just/sdk-env.just` calls this ONCE per `just` invocation and uses the
-# answer as a prefix to rewrite with: every inherited SDK path was rooted at
-# one `justfile_directory()` in the shell that exported them, so one prefix
-# rewrites all of them, and a value pointing OUTSIDE any checkout does not
-# contain the prefix and is therefore left exactly as it was — which is the
-# out-of-tree-SDK case env-first exists to serve.
+# none. `just/sdk-env.just` calls this ONCE per `just` invocation, for the
+# stderr ADVISORY below — the line that tells a reader their paths came from
+# another checkout at all.
+#
+# It used to be load-bearing: 1280 rewrote every inherited SDK path by LEXICAL
+# PREFIX, with this script's answer as the prefix. Issue 1391 measured why that
+# could not be the rule. An agent worktree lives at
+# `<main>/.claude/worktrees/<id>`, so the two checkouts NEST, the parent's root
+# is a strict prefix of the worktree's, and the rewrite fired on values that
+# were already correct — `<worktree>/<worktree-rel>/packages/...`, a path that
+# does not exist, reported as a missing source file. Under nesting only the
+# DEEPEST owning checkout separates "keep" from "re-root", which is a per-VALUE
+# question and no prefix can answer it. `just/sdk-env.just` now puts each value
+# through `nros_reroot_checkout_path` (via `reroot-checkout-path.sh`) instead.
+#
+# A note this script is NOT wrong about, since 1391 asked: a parent checkout
+# IS foreign to a worktree nested inside it. An inherited value naming the
+# parent must still be re-rooted — that is exactly 1280 — and a value naming
+# the worktree is already skipped below, because its owner resolves to `here`.
 #
 # The scan is over the WHOLE environment rather than over a list of names. The
 # issue's own census was 19 variables and was already short by five, and its
@@ -71,21 +84,26 @@ if [ -z "$found" ]; then
 fi
 
 if [ -n "$extra" ]; then
-    # Two or more foreign checkouts in one environment: a single prefix rewrite
-    # cannot be right for both, so REFUSE naming every path involved rather
-    # than silently picking one. `just` aborts on a failed `shell()` and shows
-    # this text.
-    {
-        echo "nano-ros: this environment names MORE THAN ONE other nano-ros checkout,"
-        echo "  so the inherited absolute paths cannot be re-rooted onto this one."
-        echo "    building here: $here_real"
-        echo "    inherited from: $found"
-        for other in $(printf '%s' "$extra" | tr ':' ' '); do
-            echo "                    $other"
-        done
-        echo "  Start a clean shell in this checkout and \`source ./activate.sh\` (issue 1280)."
-    } >&2
-    exit 1
+    # Two or more foreign checkouts in one environment. Under 1280's single
+    # prefix rewrite this had to REFUSE, because one prefix cannot be right for
+    # both. Per-VALUE re-rooting has no such ambiguity — each value is judged
+    # against its own owning checkout — so this is now REPORTED, not refused
+    # (issue 1391). Still worth saying out loud: an environment assembled from
+    # several checkouts is rarely what anyone meant.
+    if [ -z "${NROS_QUIET_ACTIVATE:-}" ]; then
+        {
+            echo "nano-ros: this environment names MORE THAN ONE other nano-ros checkout."
+            echo "  Inherited paths are re-rooted onto this one, each by its own owner."
+            echo "    building here: $here_real"
+            echo "    inherited from: $found"
+            for other in $(printf '%s' "$extra" | tr ':' ' '); do
+                echo "                    $other"
+            done
+            echo "  Start a clean shell in this checkout and \`source ./activate.sh\` (issue 1280)."
+        } >&2
+    fi
+    printf '%s' "$found"
+    exit 0
 fi
 
 if [ -z "${NROS_QUIET_ACTIVATE:-}" ]; then
