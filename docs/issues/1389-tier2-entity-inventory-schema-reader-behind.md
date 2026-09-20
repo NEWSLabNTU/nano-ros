@@ -85,8 +85,10 @@ schema reader is the sibling that still has it.
   (`stopped in the build`). This is not a provisioning failure.
 * **Not a stale `nros` binary.** The fragment carries the version today's
   producer writes.
-* **Not 1253.** That is the workspace manifest binding a foreign module; this is
-  a cached cmake variable inside a build directory.
+* ~~**Not 1253.**~~ **It IS 1253** — see "Step 1, answered" below. This entry
+  was written before the call stack was read and is wrong; it is struck through
+  rather than deleted because it is the reason nobody looked at the manifest
+  binding for three more runs.
 
 ## What would close it
 
@@ -117,3 +119,73 @@ there is more than one defensible fix site:
 A gate is only worth designing after step 1: whether the right check is
 "no schema reader may be `CACHE INTERNAL`" or something narrower depends on what
 the provenance turns out to be.
+
+## Step 1, answered (2026-09-20) — an older module, not the cache
+
+Run 35517366695 (`workflow_dispatch`, 14:43 UTC) reproduces it, and the call
+stack in that run settles the question the issue could not:
+
+```
+CMake Error at /home/runner/src/nano-ros/cmake/NanoRosEntityInventory.cmake:360 (message):
+  nros:
+  /home/runner/.nros/workspaces/zephyr/3.7/build-cortex-m-c-talker-zenoh/nros/entity_inventory.cmake
+  states entity-inventory schema version 6; this reader understands 3.
+Call Stack (most recent call first):
+  /home/runner/_work/nano-ros/nano-ros/cmake/NanoRosNodeRegister.cmake:173
+  /home/runner/_work/nano-ros/nano-ros/cmake/NanoRosVerbs.cmake:82
+```
+
+**Two checkouts, one configure.** `NanoRosNodeRegister.cmake` and
+`NanoRosVerbs.cmake` resolve under `/home/runner/_work/nano-ros/nano-ros` — the
+job's checkout. `NanoRosEntityInventory.cmake` resolves under
+`/home/runner/src/nano-ros` — the runner's own provisioning checkout. The `3`
+is not a cached value that went stale; it is simply what that older tree's
+module file says, read out of a file this checkout does not contain.
+
+That makes hypothesis 2 of step 1 the answer and hypothesis 1 wrong, so fix
+sites 2 and 4 — the `CACHE INTERNAL` treatment and a contract for cached
+variables — address a defect that is not here. Fix site 3 stands on its own
+merits and would have answered this in one run: a message that named the file
+it read the supported version from makes "which checkout is this?" unmissable.
+
+### Why `ZEPHYR_EXTRA_MODULES` did not rescue it
+
+phase-449 W1 added `-DZEPHYR_EXTRA_MODULES=<checkout>` to the fixture runner,
+and the failing command line carries it:
+
+```
+-DZEPHYR_EXTRA_MODULES=/home/runner/_work/nano-ros/nano-ros
+```
+
+It loses anyway. West's manifest project ALREADY provides a module named
+`nros`, and an extra module does not displace one the manifest supplies. So the
+flag is necessary but not sufficient: the manifest project has to stop being a
+checkout at all, which is what `unbind-manifest-project.sh` does.
+
+### Why it survived W1
+
+W1 removed the binding from `scripts/zephyr/setup.sh` and made that script
+unbind — but `just zephyr setup` does not call it when the workspace already
+exists, and every existing workspace was provisioned before W1. So a host that
+had one kept it, and `--force` (a full reprovision) was the only repair.
+`~/.nros/workspaces/zephyr/3.7/` on the self-hosted runner is one of those. The
+same gap that issue 1279 found for SDK registration, one rung over, in the same
+`if` statement.
+
+### Fixed by
+
+* `just/zephyr-setup.just` — the workspace-already-present branch now calls
+  `unbind-manifest-project.sh --from-config "$WORKSPACE"`. `--from-config`
+  because the project directory is named after the basename of whichever
+  checkout ran `west init -l`, which for a shared store workspace is not the
+  caller's to assume.
+* `.github/workflows/run-matrix.yml` — `check-zephyr-workspace-checkout.sh`
+  moved ahead of `just build tier2`. It already ran inside `just ci matrix`,
+  which is the step AFTER the build it needed to prevent.
+
+Measured end to end on a synthetic workspace with the runner's exact shape (a
+`.west/config` whose `[manifest] path` is a symlink to a foreign checkout
+carrying `zephyr/module.yml`, `packages/core/nros-core/Cargo.toml` and
+`packages/cli/Cargo.toml`): the gate refuses and names all three paths, the
+unbind repairs it, and the gate then passes. The gate is also idempotent on an
+already-unbound workspace.

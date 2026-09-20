@@ -31,13 +31,59 @@
 # Idempotent: a project that is already a plain directory is left alone, so
 # this is safe to call before every build as well as from provisioning.
 #
+# ## Repairing a workspace someone else provisioned
+#
+# `--from-config <workspace>` reads the project name and manifest file from the
+# workspace's own `.west/config` instead of taking them as arguments. That is
+# the only correct source for a SHARED store workspace: the project directory is
+# named after the basename of whichever checkout ran `west init -l`, so a caller
+# that derives it from ITS OWN checkout gets the right answer only when it is
+# also the one that provisioned it — which is precisely the case that needs no
+# repair. On the self-hosted runner the workspace under
+# `~/.nros/workspaces/zephyr/3.7/` was provisioned by a checkout at
+# `<home>/src/nano-ros` while jobs run from `_work/...`, and the tier-2 lane
+# built every Zephyr image half out of each tree for as long as that lasted.
+#
 # Usage: unbind-manifest-project.sh <workspace-dir> <project-name> <manifest-file> [<manifest-source-dir>]
+#        unbind-manifest-project.sh --from-config <workspace-dir> [<manifest-source-dir>]
 set -euo pipefail
 
-ws="${1:?workspace dir}"
-name="${2:?manifest project name}"
-manifest="${3:?manifest file name}"
-src="${4:-}"
+# One field out of `.west/config`'s `[manifest]` section.
+west_config_field() {
+    local cfg="$1" key="$2"
+    [ -f "$cfg" ] || return 1
+    awk -v key="$key" '
+        /^\[/ { in_manifest = ($0 ~ /^\[manifest\][[:space:]]*$/); next }
+        in_manifest && $1 == key { sub(/^[^=]*=[[:space:]]*/, ""); print; exit }
+    ' "$cfg"
+}
+
+if [ "${1:-}" = "--from-config" ]; then
+    ws="${2:?workspace dir}"
+    src="${3:-}"
+    # A workspace that does not exist yet is not an error — provisioning calls
+    # this before there is anything to read.
+    [ -d "$ws" ] || exit 0
+    cfg="$ws/.west/config"
+    if [ ! -f "$cfg" ]; then
+        echo "unbind-manifest-project: $ws has no .west/config — nothing to unbind" >&2
+        exit 0
+    fi
+    name="$(west_config_field "$cfg" path || true)"
+    manifest="$(west_config_field "$cfg" file || true)"
+    # `file` is optional in west; its default is `west.yml`. `path` is not
+    # optional, and a workspace without one is one we must not guess about.
+    [ -n "$manifest" ] || manifest="west.yml"
+    if [ -z "$name" ]; then
+        echo "unbind-manifest-project: $cfg names no [manifest] path — refusing to guess" >&2
+        exit 1
+    fi
+else
+    ws="${1:?workspace dir}"
+    name="${2:?manifest project name}"
+    manifest="${3:?manifest file name}"
+    src="${4:-}"
+fi
 
 proj="$ws/$name"
 
