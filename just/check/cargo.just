@@ -152,6 +152,16 @@ example-cargo-dirs:
 workspace-root-build-files:
     @python3 scripts/check-workspace-root-build-files.py
 
+# issue 1366 (RFC-0098 D9) — the ON-DISK half of the rule above. The root that
+# takes a build down is the one phase-383 W3.a GENERATED: it is gitignored, so
+# the tracked-file gate cannot see it, and it sits in every checkout that ran
+# the pre-phase-445 builder while being absent from a clone. A member of it that
+# no tracked directory and no generator provides makes cargo refuse to LOAD the
+# workspace, at MANIFEST PARSE — which is what stopped `build-test-fixtures
+# lane=native`.
+example-workspace-members:
+    @python3 scripts/check-example-workspace-members.py
+
 # issue 0820 — a cmake custom command that RUNS cargo must carry a `DEPFILE`.
 #
 # `add_custom_command(OUTPUT ...)` rebuilds only when an input it NAMES is newer
