@@ -102,3 +102,89 @@ read invalid, and `nros_node_resolve_name` on it must answer
 Cheapest fixed together with issue 1384: two of the three sites are the same
 two functions, and 1384's fix is what makes this arm reachable on a
 single-node image for the first time.
+
+---
+
+## DECIDED 2026-09-21 — this is a category error, not an ABI question
+
+The issue's "Fix shape" offers two options and both treat the generation as the
+thing `rcl_node_is_valid` is trying to check. That framing is the defect, and
+it is why the cheaper option looked like a surrender. **Two different things
+wear one name here.**
+
+**The generation mechanism is OURS.** `NODE_GENERATIONS`, `nros_node_ref_t`,
+`node_ref_of`, `node_ref_is_live` were invented in phase-379 W4 to answer *has
+the executor slot this reference names been reused since the reference was
+taken?* Upstream has no such concept — there is no `rcl_node_ref_t`, no slot
+table and no generation counter, because rcl nodes are heap objects reached
+through `node->impl` rather than indices into a fixed arena. The mechanism
+exists because our arena is fixed and slots are recycled; it is a correct answer
+to a question only we have.
+
+**`rcl_node_is_valid` is upstream's name for a different question**: is this
+node initialised, and is the context it names still valid. Its signature is
+`bool rcl_node_is_valid(const rcl_node_t *)`
+(`docs/reference/api-surface/rclc.json:1102-1115`) — one argument, no reference,
+nothing stored from an earlier moment. Everything it can answer, it answers from
+state the handle itself carries.
+
+Ours already has that state and already reads it: `state ==
+NROS_NODE_STATE_INITIALIZED`, and `nros_support_is_valid(node->support)` when a
+support object is recorded (`packages/api/nros-c/src/node.rs:938-944`). Those
+two arms ARE upstream's question, and the ledger row for
+`c:node_is_valid_except_context` already says so in as many words — the
+`_except_context` variant is declined precisely because this name answers the
+context half.
+
+### The decision
+
+> **`rcl_node_is_valid` answers upstream's question from state the node already
+> has. The generation check is used only where a reference was STORED
+> earlier.**
+
+Consequences, all three of them subtractive:
+
+* The `is_multi_session()` / `node_ref_is_live(node_ref_of(node))` arm in
+  `rcl_node_is_valid` (`packages/api/nros-c/src/node.rs:946-948`) goes, together
+  with the third bullet of its doc comment. It is not a weakened check; it is a
+  check of a question this name does not ask.
+* `nros_node_resolve_name` (`:1076`) and `nros_node_create_guard_condition`
+  (`packages/api/nros-c/src/guard_condition.rs:189`) mint-and-compare the same
+  way. Both lose the call and the `NROS_RET_STALE_NODE` line from their
+  `# Returns` blocks, so the surface stops documenting a verdict it cannot
+  produce. Neither loses a guard it had: `nros_node_create_guard_condition`
+  already refuses a node with `executor == NULL`, and that is the real
+  precondition it needs.
+* `publisher.rs:767`, `subscription.rs:959` and `executor.rs:114` are
+  UNCHANGED. Each compares a reference minted when the entity was created
+  against the slot's counter now, which is exactly what the mechanism is for.
+
+**No `nros_node_t` layout change and no ABI break.** The issue's first option
+proposed appending a binding-time generation field; that is now unnecessary,
+which removes both the append and the argument about whether appending is safe.
+And no dead return arms survive: every documented `NROS_RET_STALE_NODE` either
+becomes reachable (the stored-reference sites always were) or is deleted with
+the check that could not produce it.
+
+### What this does NOT claim
+
+It does not claim the C copy-after-fini case is caught. `nros_node_t copy =
+original;` followed by `rcl_node_fini(&original)` leaves the copy reading
+`INITIALIZED`, and after this change it still will. That is a property of C
+struct assignment over a handle, upstream has it too (an `rcl_node_t` copy keeps
+a pointer to an `impl` that `rcl_node_fini` freed), and no predicate reading only
+the copy can see it. The measurement in "How it was measured" above therefore
+stays as recorded — what changes is that the doc comment stops promising the
+opposite.
+
+### Status
+
+The issue stays **open**: this is the settled fix SHAPE, not the fix. Acceptance
+changes with it — the old acceptance ("the copy of a finalised node must read
+invalid") is now explicitly out of scope, and what replaces it is that no
+`# Returns` block in the three named functions lists a code the function cannot
+return, checked the way issue 1167's family is checked: by asking whether the
+arm is reachable, not by reading the prose.
+
+Still cheapest fixed together with issue 1384, for the reason "Ordering" gives:
+two of the three sites are the same two functions.
