@@ -764,3 +764,39 @@ west-leaf-vocabulary:
 [group("check")]
 cross-toolchain-provenance:
     @python3 scripts/check-cross-toolchain-provenance.py
+
+# Issue 1387 — a Zephyr west workspace inside one checkout can NAME ANOTHER,
+# so every image built there is half of each and nothing says so. Measured: a
+# box checkout's `zephyr-workspace/nano-ros` was a symlink to a different tree,
+# so `west build` took the application from one and the nano-ros module — zpico
+# C shim, platform/board headers, RMW dispatch, knob inventory — from another,
+# on another branch, for a month. A mixed image BUILDS, links and runs.
+#
+# Issue 1280's rule, applied to workspace DATA rather than to `$ENV`: outside
+# any checkout KEEP, this checkout KEEP, a DIFFERENT checkout FAIL — with
+# "which checkout" answered by the marker walk, never `.git` (issue 1336). The
+# marker is READ from `scripts/lib/checkout-paths.sh`, not restated, because
+# 1280's gate refuses a fourth spelling of it.
+#
+# Buildless (0.4 s: one config file, a glob of `CMakeCache.txt`, a directory of
+# first lines) and it runs no west command, so it sits here rather than in the
+# build tier. With nothing provisioned it is a RECORDED skip, never an OK — a
+# gate that passes silently when its subject is absent is the failure mode this
+# repo keeps filing (issue 0650). The manifest half is also reached from
+# `check-zephyr-workspace-checkout.sh --manifest-only`, which front-runs the
+# ownership guard for `check-tier-preconditions`; one implementation, two
+# callers.
+[private]
+zephyr-workspace-foreign-checkout:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rc=0
+    out="$(python3 scripts/check-zephyr-workspace-foreign-checkout.py)" || rc=$?
+    if [ "$rc" -eq 78 ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zephyr-workspace-foreign-checkout "$out"
+        exit 0
+    fi
+    printf '%s\n' "$out"
+    exit "$rc"

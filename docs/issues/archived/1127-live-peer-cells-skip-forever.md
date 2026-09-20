@@ -1,7 +1,7 @@
 ---
 id: 1127
 title: "no live-peer cell has ever produced a verdict: the lane that carries them has not finished in 30 runs (issue 1136), and nothing would tell a permanent skip from a pass if it did"
-status: open
+status: resolved
 type: bug
 area: testing, rmw
 severity: high
@@ -235,3 +235,94 @@ W2's verdicts land, instead of a prose table nothing can check. This mechanism
 cannot tell that a hand-written entry is TRUE, only that it is well-formed and
 cites real non-binding cases; and it cannot know when a recorded verdict goes
 stale, which is what the scheduled lane is for.
+
+## Resolution (2026-09-20) — every clause of the title is now false, MEASURED
+
+The title says three things. Each was true when it was written and none of them
+is true today, which is its own defect on an open issue: it has been aiming
+readers at a claim that stopped holding.
+
+**"No live-peer cell has ever produced a verdict."** `python3
+scripts/check-interop-verdicts.py --report`:
+
+```
+  25 of 28 Runtime cells have ever produced a verdict; 3 have not.
+```
+
+Twenty-five recorded PASSes, dated 2026-09-07 through 2026-09-18, each naming
+the cases it ran, the command, where it ran and what was observed.
+
+**"The lane that carries them has not finished in 30 runs (issue 1136)."**
+`LAUNCH_ARGS` came back — `cmake/NanoRosEntry.cmake:116-141` carries both the
+reason and the `cmake_parse_arguments` keyword list (phase-433 W0), so the
+fixture configure that killed every run no longer fails. (Issue 1136 itself
+stays open for its remaining half: nothing yet compares the keyword set the CLI
+EMITS against the set `nano_ros_entry` PARSES. That is a producer/consumer gate,
+not this issue.)
+
+**"Nothing would tell a permanent skip from a pass if it did."** That was item 5
+and it is the one that had to exist; it landed 2026-09-06 and is
+`.config/interop-verdicts.toml` + `scripts/check-interop-verdicts.py` (`just
+check interop-verdict-ledger`, fast line). The three cells below are not hidden
+by it — they are NAMED by it, on every run, as `NEVER`, which is precisely the
+property this issue asked for.
+
+### The Direction list, item by item
+
+| # | what it asked for | where it landed |
+| --- | --- | --- |
+| 0 | fix issue 1136 so the lane reaches the cells | `cmake/NanoRosEntry.cmake:116-141` (phase-433 W0) — the keyword is restored and wired |
+| 1 | a recipe that runs ONE cell end to end | the focused recipes: `just freertos test-ros2` (`just/freertos.just:404`), `just zephyr test-ros2-cortex-m` (`just/zephyr-dev.just:443`), `just native test-ros2-multinode-rust` (`just/native.just:1036`), and the rest |
+| 2 | run each cell once and record the verdict | 25 of 28 recorded, all `pass`; see the report above |
+| 3 | a lane over the cells that passed | `.github/workflows/live-peer.yml` — membership DERIVED from the ledger (`--list-passing`), schedule + dispatch only, split host/board by each cell's own platform coordinate (phase-441 W4) |
+| 4 | a gate that a Runtime cell is named by a FOCUSED recipe | `scripts/check-interop-cell-runners.py` (phase-433 W4) — what G1's doc comment claimed to be |
+| 5 | make a permanent skip VISIBLE | the ledger, `just interop-verdicts`, the `_test-summary` tail line, and `check interop-verdict-ledger` on the fast line |
+
+### The three cells with no verdict, and why each is OUTSIDE this issue
+
+None of the three is blocked by anything this issue describes. Each needs one
+run on a host that has the peer and the board, and each is already owned by the
+roadmap item that shipped it:
+
+* **`native-multinode-rust-cyclone`** (`rust_multi_node_per_node_graph`,
+  `interop.rs:509`). Host runner, no board, no SDK: it needs ROS 2 with
+  `rmw_cyclonedds_cpp` and one `just native test-ros2-multinode-rust`. Nothing
+  blocks it. Its driving issue, 1269, is RESOLVED and says so itself
+  (`docs/issues/archived/1269-…:37`: "It needs a live ROS 2 peer and has NOT
+  been run here — it starts life with no verdict, as every new live-peer cell
+  does"). The sibling zenoh cell passing says nothing about it, deliberately:
+  Cyclone announces nodes through `ros_discovery_info`, not liveliness tokens.
+
+* **`zephyr-cortex-m-pubsub-c-zenoh`** (phase-441 W1;
+  `docs/roadmap/phase-441-rmw-on-target-verification.md:199-213` already records
+  "**A live verdict is still owed**"). Needs a Zephyr SDK, `qemu-system-arm` and
+  a ROS host. One MECHANICAL blocker beyond that, worth naming because it is not
+  obvious from the cell: recording it also needs a `BOARD_FIXTURE_NARROWING` row
+  (`scripts/check-interop-verdicts.py:232`), which today holds only
+  `zephyr-qos-rust-zenoh`; a recorded board cell missing from it is a hard
+  `LedgerError` by design.
+
+* **`freertos-mps2-pubsub-c-zenoh-n2r`** (phase-441 W3;
+  `…phase-441-…:413` — "the cell is LANDED and has NEVER MET A PEER … which is
+  what 'never run' is supposed to look like here, not an oversight", and
+  `:490-494` states the one command left). Needs ROS 2, `arm-none-eabi-gcc`,
+  `qemu-system-arm` and the FreeRTOS + lwIP trees — and its fixture row
+  `workspace-c-freertos` needs ament for `std_msgs`/`example_interfaces`, so
+  BOTH halves want the same ROS host. It additionally cannot enter the
+  `live-peer.yml` board job as it stands: that job's image provisions only
+  `zephyr|qemu` and refuses a `freertos` scope loudly on purpose
+  (`live-peer.yml:430-444`) — "give that board its own job (or its own image)".
+
+The `board` job is NOT dead by construction, which a reading of the ledger's
+three `NEVER` rows might suggest: `zephyr-qos-rust-zenoh` is platform
+`ZephyrNativeSim`, classified `board`, and has a recorded pass — so
+`has_board == 'true'` today and that job runs. (Its current red is issue 1364,
+the Zephyr CI image having no TOML parser; a lane problem, not a cell problem.)
+
+### What this issue can no longer do for anyone
+
+Its subject was the MECHANISM — a cell that has never run must not read as
+covered. That mechanism exists, is on the fast line, and reports the three
+outstanding cells by name on every run. Keeping the issue open would make it a
+duplicate of the ledger's own output, and of two roadmap acceptance items that
+already state what is owed. Closed here; the residue is tracked by the fix.
