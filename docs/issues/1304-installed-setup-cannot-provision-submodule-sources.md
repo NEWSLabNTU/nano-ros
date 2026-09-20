@@ -2,7 +2,7 @@
 id: 1304
 title: "An installed `nros` cannot run `nros setup native`: every source the board
   needs is a SUBMODULE, and a release has no checkout to read a gitlink from"
-status: open
+status: resolved
 type: bug
 area: cli, provisioning, release
 related: [rfc-0099, phase-447, rfc-0097, issue-0204]
@@ -111,3 +111,35 @@ tags A3 had put on it, so between then and this fix the installed track
 extracted no scaffold or build step at all and died in the verifier with "the
 Build step never configured". The tags are back (50, 60) and the verifier reads
 `build/posix-cyclonedds-native/cmake/`, where `nros build` puts the cmake tree.
+
+## Resolved (2026-09-20)
+
+`just probe installed` passes end to end: install a release into a pristine
+container, `nros setup native --rmw cyclonedds`, `nros new my_robot
+--workspace`, `nros sync`, `nros build`, run the entry — no nano-ros checkout on
+the host. The probe also asserts the build linked the Cyclone `nros setup`
+provisioned (`CycloneDDS_DIR` under `~/.nros/sdk/cyclonedds/`), not one compiled
+behind the user's back.
+
+Six defects stood between the issue as filed and that green, each found by
+re-running the probe rather than by reading:
+
+1. **The pins** (this issue's headline) — a release records url + gitlink SHA
+   per submodule-backed source and clones at it.
+2. **No Rust toolchain** — `[rust.rustup]` pins a sha256-verified `rustup-init`;
+   `nros setup` runs it only when neither rustup nor rustc+cargo is found.
+3. **The `<depend>` preflight** never knew about the msg packages the toolchain
+   BUNDLES, so `std_msgs` resolved to nothing. On a host with ROS the ambient
+   rung answered, so it refused only where nobody looked.
+4. **`nros sync`'s probe path** used a checkout-only two-rung chain, so every
+   C/C++ component reported "no producer (no nano-ros path)".
+5. **The generated cmake root** never received `nano_ros_ROOT`, so
+   `find_package(nano_ros)` failed after `nros build` had resolved that root.
+6. **The RMW ladder** — a `--rmw cyclonedds` workspace built the ZENOH backend,
+   because the builder read `[image.*]` alone and defaulted to zenoh. Invisible
+   on a checkout (zenoh-pico is a submodule); fatal installed.
+
+Fixing 6 made the build coordinate carry its RMW, which renamed
+`build/posix-native` -> `build/posix-<rmw>-native` (and `build/posix` ->
+`build/posix-<rmw>` on the cargo road) — the shape `cmake_root`'s header and
+`workspace-entry-pkg.md` already described. Every reference moved with it.
