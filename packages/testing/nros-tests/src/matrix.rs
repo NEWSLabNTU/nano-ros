@@ -377,6 +377,20 @@ pub enum Workload {
     /// `nros_platform_task_init` prove `errno` is PER-THREAD (issue 0680).
     /// Single image, self-contained, no peer.
     Errno,
+    /// issue 1384 — a node created through `nros_executor_node_init` (bound to
+    /// an executor, `support` left NULL on purpose) BOOTS: it creates its guard
+    /// condition, its eager publisher and its timer, and publishes.
+    ///
+    /// Its own workload rather than a case of [`Workload::Pubsub`], for the
+    /// same reason [`Workload::Errno`] is not one: there is no peer and nothing
+    /// to deliver to. The subject is the node→executor BINDING, which fails
+    /// entirely inside one process — `rclc_publisher_init_default` answered
+    /// `NROS_RET_NOT_INIT` for four phases and the only in-tree caller
+    /// (`examples/native/c/custom-platform`) was a build-only fixture, so
+    /// nothing ran the binary and nothing saw it. A pubsub cell would not have
+    /// caught it either: every pubsub example uses the LEGACY
+    /// `rclc_node_init_default`, which was never affected.
+    ExecutorBoundNode,
     /// phase-381 — READ the ROS graph. The node enumerates a live stock
     /// `rmw_zenoh_cpp` peer and is compared against `ros2 node list`.
     ///
@@ -433,6 +447,8 @@ impl Workload {
             // Needs no port: the fixture opens no socket and has no peer.
             // The offset only has to be unique within the band.
             Workload::Errno => 94,
+            // Same reason as Errno: no peer dials this image.
+            Workload::ExecutorBoundNode => 99,
             Workload::Graph => 95,
             Workload::AdvertisedState => 96,
             // Needs no port of its own: the fixture's peer is reached over the
@@ -566,6 +582,11 @@ pub const CELLS: &[Cell] = &[
     cell(Linux, Rust, Zenoh,      Pubsub,  Example, Runtime),
     cell(Linux, C,    Zenoh,      Pubsub,  Example, Runtime),
     cell(Linux, Cpp,  Zenoh,      Pubsub,  Example, Runtime),
+    // issue 1384 — `examples/native/c/custom-platform`, the one in-tree caller
+    // of `nros_executor_node_init` that creates an eager entity. Its
+    // fixtures.toml row was BUILD-ONLY, so nothing ran the binary and its
+    // publisher failed NROS_RET_NOT_INIT unobserved for four phases.
+    cell(Linux, C,    Zenoh,      ExecutorBoundNode, Example, Runtime),
     cell(Linux, Rust, Zenoh,      Service, Example, Runtime),
     cell(Linux, C,    Zenoh,      Service, Example, Runtime),
     cell(Linux, Cpp,  Zenoh,      Service, Example, Runtime),

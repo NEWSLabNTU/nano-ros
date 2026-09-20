@@ -2671,10 +2671,17 @@ dir = "packages/testing/nros-tests/bins/action-raw-goal-probe"
 
 # Phase 275 W2 (#102 H3) — native/c variant examples that shipped with zero
 # fixtures. All use the standard `-DNROS_RMW` cmake path (default zenoh), so a
-# zenoh row build-asserts each. UNVERIFIED (host RAM #115): custom-platform +
-# custom-transport-loopback demo bespoke layers over zenoh RMW — confirm they
-# build under the standard harness on good hardware; add a runtime assertion for
-# the transport-loopback path as follow-up.
+# zenoh row build-asserts each. UNVERIFIED (host RAM #115): custom-transport-
+# loopback demos a bespoke layer over zenoh RMW — confirm it builds under the
+# standard harness on good hardware; add a runtime assertion for it as follow-up.
+#
+# custom-platform is no longer in that list: issue 1384 gave it a RUNTIME cell
+# (`matrix::CELLS`, `Workload::ExecutorBoundNode`, consumed by
+# `native_example_executor_bound_node_e2e.rs`). It had to. Being build-only is
+# what let its `rclc_publisher_init_default` answer NROS_RET_NOT_INIT for four
+# phases after PR #1064 moved it onto `nros_executor_node_init` — the row
+# compiled and linked in every lane that built it, and no lane ever ran the
+# binary. A build-only row reads as coverage and is not.
 [[fixture]]
 platform = "linux"
 lang = "c"

@@ -70,6 +70,10 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         // Also a verdict: the evidence is that a status event reached an
         // application callback at all, which no message count can express.
         Workload::QosEvents => output::QOS_EVENT_LIVELINESS_CHANGED,
+        // Not delivery either — there is no peer (issue 1384). The image's own
+        // publish line is the evidence that its eager publisher was CREATED on
+        // an executor-bound node and is being driven; nothing receives it.
+        Workload::ExecutorBoundNode => output::INT32_TALKER_LOG_PREFIX,
     }
 }
 
