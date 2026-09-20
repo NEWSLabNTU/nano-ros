@@ -3191,7 +3191,10 @@ mod effective_images_tests {
     /// omit `rmw` to mean "undeclared" — it carries the EMPTY string, which is
     /// what `resolved_rmw` reads as undeclared and what a workspace that never
     /// chose one actually holds.
-    fn sys(header_rmw: &str, image_extra: &str) -> crate::orchestration::cargo_metadata_schema::SystemToml {
+    fn sys(
+        header_rmw: &str,
+        image_extra: &str,
+    ) -> crate::orchestration::cargo_metadata_schema::SystemToml {
         let text = format!(
             "[system]\nname = \"demo\"\nrmw = \"{header_rmw}\"\ndomain_id = 0\n\n\
              [image.native]\nboard = \"native\"\n{image_extra}"
