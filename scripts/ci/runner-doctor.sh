@@ -115,6 +115,10 @@ _nros_runner_ok()      { [ -n "${NROS_RUNNER_QUIET:-}" ] || printf '  [OK] %s\n'
 _nros_runner_info()    { [ -n "${NROS_RUNNER_QUIET:-}" ] || printf '  [INFO] %s\n' "$*"; }
 _nros_runner_missing() { printf '  [MISSING] %s\n' "$*" >&2; }
 _nros_runner_fix()     { printf '            %s\n' "$*" >&2; }
+# Evidence, not a remedy. `_fix` lines tell the operator what to DO; a finding
+# that names two paths needs somewhere to say what it SAW, and folding the two
+# into one helper makes a report where every line reads as an instruction.
+_nros_runner_detail()  { printf '          %s\n' "$*" >&2; }
 
 # --- nros-sdk-zephyr ---------------------------------------------------------
 #
@@ -261,6 +265,64 @@ _nros_runner_check_sdk_zephyr() {
     fi
 
     if [ -d "$ws/zephyr" ]; then
+        # issue 1166 / phase-449 W7 — EXISTS is not the question this step is
+        # named for.
+        #
+        # The step is "Verify this runner's labels are true", and it used to
+        # print `[OK] Zephyr workspace: <path>` for any directory containing
+        # `zephyr/`. So when the runner's `.env` pinned
+        # `NROS_ZEPHYR_WORKSPACE` into a DEVELOPER's working tree, every
+        # scheduled tier-2 run built Zephyr images into that tree — sources and
+        # `nros` from the runner's checkout, build dirs in someone else's — and
+        # the lane's own verification called it OK. Measured on the 07:10
+        # nightly: a `CMakeCache.txt` inside the developer tree whose
+        # `APPLICATION_SOURCE_DIR` names the runner checkout.
+        #
+        # A verification that cannot fail on the condition it is named for is
+        # the vacuous-pass class this tree gates elsewhere
+        # (`check-no-vacuous-tests`), and it is what made the sharing invisible.
+        #
+        # THE RULE IS THREE-VALUED, not "inside this checkout". A store
+        # workspace (RFC-0095 D2, phase-440 W4) is deliberately outside every
+        # checkout and shared on purpose, so demanding containment would fail
+        # the configuration the tree is moving TO. The same classification
+        # issue 1280 settled for inherited paths applies here:
+        #
+        #   outside any checkout  -> fine, that is the store
+        #   inside THIS checkout  -> fine
+        #   inside ANOTHER one    -> this defect, and it is reported
+        #
+        # `nros_checkout_root` is the tree's one marker walk — never `.git`,
+        # which is a FILE in a linked worktree (issue 1336).
+        # The library comes from THIS script, not from `$root`. `$root` is the
+        # tree being examined — in the self-test a staged directory with no
+        # `scripts/lib` at all — while the marker walk belongs to the doctor
+        # doing the examining. Reading it from `$root` makes the whole arm
+        # silently unreachable and the case pass by falling through.
+        #
+        # Written out because I did exactly that twice in one sitting: here and
+        # in the SDK ladder's store arm. Both times a self-test caught it, which
+        # is the argument for staging the WRONG configuration rather than only
+        # the right one.
+        local _ws_owner="" _here="" _cp_lib=""
+        _cp_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)/checkout-paths.sh"
+        # shellcheck source=../lib/checkout-paths.sh
+        if [ -r "$_cp_lib" ]; then
+            . "$_cp_lib"
+            _ws_owner="$(nros_checkout_root "$(cd "$ws" 2>/dev/null && pwd -P)" 2>/dev/null || true)"
+            _here="$(cd "$root" 2>/dev/null && pwd -P)"
+        fi
+        if [ -n "$_ws_owner" ] && [ "$_ws_owner" != "$_here" ]; then
+            _nros_runner_missing "Zephyr workspace belongs to another checkout: $ws"
+            _nros_runner_detail "  its checkout: $_ws_owner"
+            _nros_runner_detail "  this one:     $_here"
+            _nros_runner_detail "  Every image this lane builds lands in that tree, while its"
+            _nros_runner_detail "  sources come from this one. A result from that pair is a fact"
+            _nros_runner_detail "  about neither (issue 1166)."
+            _nros_runner_fix "point NROS_ZEPHYR_WORKSPACE at this checkout's workspace or at the store"
+            _nros_runner_fix "(the store is \$NROS_STORE/workspaces/zephyr/<version> — shared on purpose)"
+            return 1
+        fi
         _nros_runner_ok "Zephyr workspace: $ws"
     else
         _nros_runner_missing "no Zephyr workspace at $ws"
@@ -845,6 +907,45 @@ _nros_runner_self_test() {
         _st_bad "a runner with its SDK outside the checkout verifies clean" \
             "$(printf '%s' "$out" | grep -E 'MISSING|FAIL' | head -2 | tr '\n' ';')"
     fi
+
+    # issue 1166 / phase-449 W7 — THE CONFIGURATION THIS STEP USED TO CALL OK.
+    #
+    # The workspace is moved inside a SECOND checkout (a directory carrying the
+    # checkout marker). Before the fix this printed
+    # `[OK] Zephyr workspace: <path>` and the lane went on to build the runner's
+    # sources into that tree.
+    #
+    # Three assertions, because the first alone would pass against a check that
+    # simply refuses every workspace:
+    #   1. it FAILS when the workspace is in another checkout;
+    #   2. it names BOTH trees, so the operator can act on the message;
+    #   3. the same workspace OUTSIDE any checkout still passes — that is the
+    #      shared store (RFC-0095 D2), which must not be collateral damage.
+    mkdir -p "$e2e/other/packages/core/nros-core" "$e2e/other/ws/zephyr"
+    : > "$e2e/other/packages/core/nros-core/Cargo.toml"
+    printf '0.16.8\n' > "$e2e/other/ws/zephyr/SDK_VERSION"
+    _st_doctor_ws() { # <workspace>
+        PATH="$e2e/bin:$PATH" HOME="$e2e/home" NROS_RUNNER_REPO_ROOT="$e2e/root" \
+        NROS_ZEPHYR_WORKSPACE="$1" NROS_RUNNER_NO_ACTIVATE=1 \
+        _NROS_RUNNER_SELFTEST_CHILD=1 \
+        ZEPHYR_SDK_INSTALL_DIR= bash "$self" nros-sdk-zephyr 2>&1
+    }
+    out="$(_st_doctor_ws "$e2e/other/ws")"
+    case "$out" in
+        *"belongs to another checkout"*) _st_ok "a workspace inside another checkout is REFUSED" ;;
+        *) _st_bad "a workspace inside another checkout is REFUSED" "got '$(printf '%s' "$out" | head -2 | tr '\n' ';')'" ;;
+    esac
+    case "$out" in
+        *"$e2e/other"*"$e2e/root"*|*"$e2e/root"*"$e2e/other"*)
+            _st_ok "the refusal names both trees" ;;
+        *) _st_bad "the refusal names both trees" "got '$(printf '%s' "$out" | head -3 | tr '\n' ';')'" ;;
+    esac
+    out="$(_st_doctor_ws "$e2e/ws")"
+    case "$out" in
+        *"belongs to another checkout"*)
+            _st_bad "a workspace outside every checkout still passes" "the store was refused" ;;
+        *) _st_ok "a workspace outside every checkout still passes" ;;
+    esac
 
     # ...and it can still FAIL. With no registry entry and no SDK anywhere, the
     # check must go red — a doctor that cannot fail is the vacuous gate this

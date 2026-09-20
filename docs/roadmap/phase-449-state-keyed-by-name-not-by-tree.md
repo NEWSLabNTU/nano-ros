@@ -280,11 +280,39 @@ self-hosted runner's `.env` pins `NROS_ZEPHYR_WORKSPACE` into a developer's
 working tree, the lane's own verification reports that as `[OK]`, and a west
 build dir carries neither the board nor the checkout in its name.
 
-- [ ] The runner's workspace is its own.
-- [ ] The verification that printed `[OK]` fails on the configuration it
-      passed. A check that could not have failed is the subject of
-      [phase-450](phase-450-gate-reach-narrower-than-its-rule.md); this item
-      owes it one worked case.
+- [x] The verification that printed `[OK]` fails on the configuration it
+      passed — **the worked case phase-450 was owed.**
+      The step is named *"Verify this runner's labels are true"* and it asked
+      whether a Zephyr workspace EXISTS. So when the runner's `.env` pinned
+      `NROS_ZEPHYR_WORKSPACE` into a developer's tree, it printed
+      `[OK] Zephyr workspace: <that tree>` while the lane built the runner's
+      sources into it.
+      **The rule is three-valued, not "inside this checkout".** A store
+      workspace (RFC-0095 D2, and where W3 now puts the SDK) is deliberately
+      outside every checkout and shared on purpose, so demanding containment
+      would refuse the configuration the tree is moving TO. The classification
+      issue 1280 settled applies unchanged: outside any checkout is fine, this
+      checkout is fine, ANOTHER checkout is the defect — resolved by
+      `nros_checkout_root`, the one marker walk, never `.git` (issue 1336).
+      Measured all three ways, and self-tested all three ways, because the
+      first assertion alone would pass against a check that refuses every
+      workspace: it fails on a workspace inside a second checkout, the refusal
+      NAMES both trees, and a workspace outside every checkout still passes.
+- [ ] The runner's workspace is its own — **NOT DONE, and not mine to do.**
+      This is host configuration: the runner checkout has no `zephyr-workspace/`
+      and no `.west/`, so repointing `.env` means provisioning it a workspace
+      first (or pointing it at the store, which W3 makes viable). The issue
+      records it as the maintainer's call and says the other two defects are
+      what let it go unnoticed; one of those is now closed, so the condition is
+      reported instead of silently passed.
+
+**Issue 1166's third defect is out of this item's scope and stays open.** A west
+build dir is `build-<example>-<rmw>` — no board, no checkout — so `mps2_an385`
+and `native_sim` builds of one example collide, and across checkouts west
+refuses with an error about the developer's own command. Renaming it moves
+`check-west-leaf-vocabulary`'s modelled names, every `…/zephyr/zephyr.elf`
+literal and the test-side resolver together (the #393 rule), which is a larger
+change than this item's two boxes and is left recorded rather than half-done.
 
 ### W8 — `just setup zephyr` can repair what it skips
 
