@@ -37,7 +37,7 @@ fn cmake_workspace_metadata_emits_components_cmake() -> nros_tests::TestResult<(
         // the template's own root, which used to put it at the fixture root).
         nros_tests::fixtures::require_cmake_fixture(
             "metadata_cpp",
-            "build/posix-native/cmake/nros-metadata.json",
+            "build/posix-zenoh-native/cmake/nros-metadata.json",
         )?;
     assert!(
         metadata.is_file(),

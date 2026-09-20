@@ -110,4 +110,4 @@ The flow it asserts is first-project.md's own, and that page was rewritten to
 tags A3 had put on it, so between then and this fix the installed track
 extracted no scaffold or build step at all and died in the verifier with "the
 Build step never configured". The tags are back (50, 60) and the verifier reads
-`build/posix-native/cmake/`, where `nros build` puts the cmake tree.
+`build/posix-cyclonedds-native/cmake/`, where `nros build` puts the cmake tree.

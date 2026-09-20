@@ -18,5 +18,5 @@ file.
 export NROS_REPO_DIR=/path/to/nano-ros
 nros sync
 nros build native
-./build/posix-native/cmake/native_entry
+./build/posix-zenoh-native/cmake/native_entry
 ```

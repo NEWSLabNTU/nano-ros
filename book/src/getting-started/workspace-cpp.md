@@ -22,7 +22,7 @@ changes language-side is the cmake-fn / macro surface.
 | **The entry** | GENERATED into `build/<coord>/native_entry/` — a `Cargo.toml` and a `nros::main!(launch = "demo_bringup")` | GENERATED into `build/<coord>/CMakeLists.txt` — a `nano_ros_add_executable(native_entry BOARD … BRINGUP … LAUNCH … LANG cpp TYPED DEPLOY native)` call, plus the `main` TU the verb emits |
 | **Workspace root** | none — the generated entry's own `Cargo.toml` is the cargo root | none — the generated `build/<coord>/CMakeLists.txt` is the cmake root, calling `nano_ros_workspace(WORKSPACE_ROOT … BACKEND zenoh PLATFORM posix SYSTEM demo_bringup SUBDIRS …)` |
 | **Build** | `nros sync` then `nros build native` | `nros sync` then `nros build native` |
-| **Boot** | `./build/posix/native_entry/target/debug/native_entry` | `./build/posix-zenoh-native/cmake/native_entry` |
+| **Boot** | `./build/posix-zenoh/native_entry/target/debug/native_entry` | `./build/posix-zenoh-native/cmake/native_entry` |
 
 The reference C++ workspace ships in-tree at
 [`examples/workspaces/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp).

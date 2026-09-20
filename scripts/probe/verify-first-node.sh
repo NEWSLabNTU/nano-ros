@@ -36,7 +36,7 @@ cd "$ws"
 NROS_REPO_DIR="$repo_root" nros sync
 NROS_REPO_DIR="$repo_root" nros build
 
-bin=build/posix-native/cmake/native_entry
+bin=build/posix-cyclonedds-native/cmake/native_entry
 [ -x "$bin" ] || { echo "PROBE FAIL: entry binary missing at $bin"; exit 1; }
 
 # CycloneDDS: no router to start. The scaffold's talker prints `Published: N`
@@ -77,7 +77,7 @@ NROS_REPO_DIR="$repo_root" nros build
 # Expected RED until issue 1295: on CycloneDDS the generated Rust entry
 # fails `PublisherCreationFailed` at startup. The assertion stays — a probe
 # that is green over a real bug is the thing issue 0204 exists to prevent.
-timeout 60 ./build/posix/native_entry/target/debug/native_entry >/tmp/quickstart_rs.log 2>&1 &
+timeout 60 ./build/posix-cyclonedds/native_entry/target/debug/native_entry >/tmp/quickstart_rs.log 2>&1 &
 rs_pid=$!
 deadline=$((SECONDS + 45))
 until grep -q "Publishing: 1" /tmp/quickstart_rs.log; do

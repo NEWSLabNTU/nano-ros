@@ -58,5 +58,5 @@ cd examples/workspaces/realtime-rust
 nros setup native
 nros sync
 nros build native
-./build/posix/native_entry/target/debug/native_entry
+./build/posix-zenoh/native_entry/target/debug/native_entry
 ```

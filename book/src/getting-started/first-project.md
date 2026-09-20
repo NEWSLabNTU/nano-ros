@@ -48,7 +48,7 @@ prints the root it would use and where that came from.
 ## Run
 
 ```bash
-./build/posix-native/cmake/native_entry
+./build/posix-cyclonedds-native/cmake/native_entry
 ```
 
 ```text
@@ -79,7 +79,7 @@ nros new my_rust_robot --workspace --lang rust
 cd my_rust_robot
 nros sync
 nros build
-RUST_LOG=info ./build/posix/native_entry/target/debug/native_entry
+RUST_LOG=info ./build/posix-cyclonedds/native_entry/target/debug/native_entry
 ```
 
 ```text
@@ -105,7 +105,7 @@ file: the entry is generated per image under `build/`.
 
 - `nros: RMW session open failed` on a busy machine usually means the
   DDS port range on your `ROS_DOMAIN_ID` is contended — pick another:
-  `ROS_DOMAIN_ID=57 ./build/posix-native/cmake/native_entry`.
+  `ROS_DOMAIN_ID=57 ./build/posix-cyclonedds-native/cmake/native_entry`.
 - Everything else: [Troubleshooting — First 10 Minutes](troubleshooting-first-10-min.md).
 
 ## Where to go next
