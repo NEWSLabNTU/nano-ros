@@ -101,6 +101,23 @@ pub const INT32_TALKER_LOG_PREFIX: &str = "Published:";
 /// See [`INT32_TALKER_LOG_PREFIX`] — the listener/sink side (`"Received:"`).
 pub const INT32_LISTENER_LOG_PREFIX: &str = "Received:";
 
+/// issue 1384 — `examples/native/c/custom-platform` announcing the EAGER
+/// publisher it created on an executor-bound node.
+///
+/// Its own constant because it is the only marker in the tree that proves an
+/// eager `rclc_publisher_init_default` succeeded on a node from
+/// `nros_executor_node_init`. The demo prints it only after the `NROS_RET_OK`;
+/// the failing shape prints [`CUSTOM_PLATFORM_PUBLISHER_FAILED_PREFIX`]
+/// instead and used to exit 0 anyway.
+pub const CUSTOM_PLATFORM_PUBLISHER_CREATED_PREFIX: &str = "Publisher created:";
+
+/// The negative marker beside [`CUSTOM_PLATFORM_PUBLISHER_CREATED_PREFIX`].
+///
+/// Asserted as ABSENT, because "the success line never appeared" and "the
+/// failure line appeared" are different verdicts and only the second one names
+/// the return code.
+pub const CUSTOM_PLATFORM_PUBLISHER_FAILED_PREFIX: &str = "Failed to init publisher:";
+
 /// phase-370 — the PURE-C workspace talker's publish marker
 /// (`examples/workspaces/c/src/talker_pkg/src/Talker.c`).
 ///

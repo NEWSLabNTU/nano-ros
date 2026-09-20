@@ -246,6 +246,14 @@ int nros_app_main(int argc, char** argv) {
     printf("  - Timer-based publishing\n");
     printf("\n");
 
+    // Every `goto cleanup_*` below is a FAILED init, and this demo used to fall
+    // through all of them into a `return 0` — so an image whose publisher never
+    // opened printed one line to stderr and then reported success to whoever ran
+    // it. That is what let issue 1384's `Failed to init publisher: -7` sit here
+    // unnoticed: a build-only fixture never ran the binary, and a run would not
+    // have said anything either. An init that failed exits non-zero.
+    int exit_code = 0;
+
     // Initialize static application state
     memset(&app, 0, sizeof(app));
     app.running = true;
@@ -282,6 +290,7 @@ int nros_app_main(int argc, char** argv) {
     ret = nros_executor_init(&app.executor, &app.support, 4);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init executor: %d\n", ret);
+        exit_code = 1;
         goto cleanup_support;
     }
 
@@ -289,6 +298,7 @@ int nros_app_main(int argc, char** argv) {
     ret = nros_executor_node_init(&app.executor, &app.node, "baremetal_demo", NULL);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init node: %d\n", ret);
+        exit_code = 1;
         goto cleanup_executor;
     }
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
@@ -305,6 +315,7 @@ int nros_app_main(int argc, char** argv) {
                                       "/baremetal_demo/counter");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init publisher: %d\n", ret);
+        exit_code = 1;
         goto cleanup_node;
     }
     printf("Publisher created: %s\n", rcl_publisher_get_topic_name(&app.publisher));
@@ -314,6 +325,7 @@ int nros_app_main(int argc, char** argv) {
     ret = nros_timer_init(&app.timer, &app.support, 500000000ULL, timer_callback, NULL);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init timer: %d\n", ret);
+        exit_code = 1;
         goto cleanup_publisher;
     }
     printf("Timer created (500ms period)\n");
@@ -322,6 +334,7 @@ int nros_app_main(int argc, char** argv) {
     ret = rclc_executor_add_timer(&app.executor, &app.timer);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add timer: %d\n", ret);
+        exit_code = 1;
         goto cleanup_timer;
     }
     printf("Executor initialized with %d handles\n", nros_executor_get_handle_count(&app.executor));
@@ -378,7 +391,7 @@ cleanup_support:
     printf("  Total static:      %zu bytes\n", sizeof(app) + sizeof(g_serialize_buffer));
     printf("\n");
 
-    return 0;
+    return exit_code;
 }
 
 NROS_APP_MAIN_REGISTER()
