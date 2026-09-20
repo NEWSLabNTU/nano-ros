@@ -795,10 +795,13 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     #[cfg(feature = "wake-latency-probe")]
     super::wake_probe::on_wake();
     // SAFETY: ctx points at a `WakeCtx` owned by an Executor still
-    // alive at the time of the call. Executor::drop must clear the
-    // callback via `set_wake_callback(None, _)` on all sessions
-    // before dropping wake_ctx; this happens in `install_wake_*`
-    // teardown path.
+    // alive at the time of the call. `Executor::clear_wake_signal`
+    // discharges that obligation — `set_wake_callback(None, _)` on the
+    // primary and every extra session — from `Executor::close` (before
+    // the session closes) and from the end of `Executor::drop` (before
+    // `wake_ctx` is dropped). Issue 1385: until then this comment named
+    // an "`install_wake_*` teardown path" that did not exist, and
+    // `set_wake_callback(None` occurred nowhere in the tree but here.
     let wake = unsafe { &*(ctx as *const WakeCtx) };
     // Lock-free: the `flag` store is SeqCst and therefore happens-before any
     // subsequent acquire in the waiter, so a wake cannot be missed even though
@@ -1451,6 +1454,16 @@ pub struct Executor<'s> {
     /// in backends remains valid.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) wake_ctx: Option<portable_atomic_util::Arc<WakeCtx>>,
+    /// Issue 1385 — has THIS executor handed `wake_ctx`'s pointer to a
+    /// backend? The predicate `clear_wake_signal` reads at teardown.
+    ///
+    /// Not `wake_ctx.is_some()`: the ctx is also allocated by `signal_fd()`
+    /// and by every guard condition, neither of which installs anything on a
+    /// session, and a tier executor built over a BORROWED session installs
+    /// nothing at all. Clearing on those would clear a callback this executor
+    /// never owned.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) wake_cb_installed: bool,
     /// Phase 124.B.7.c — lazily-allocated Linux signalfd worker.
     /// Owned by the Executor; spawned on first `signal_fd()` call.
     /// Drop joins the worker thread and closes the fd.
@@ -1786,6 +1799,8 @@ impl<'s> Executor<'s> {
             node_wake: super::node_wake::NodeWake::new().map(portable_atomic_util::Arc::new),
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             wake_ctx: None,
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+            wake_cb_installed: false,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             has_async_wake: false,
             // Phase 141.A.3 — alloc-mode wake state init. Constructed
@@ -3632,11 +3647,18 @@ impl<'s> Executor<'s> {
         use nros_rmw::Session as _;
         let ctx = self.wake_ctx_ptr();
         // SAFETY: `ctx` points at executor-owned wake state that outlives
-        // the session callback installation and is cleared on executor drop.
+        // the session callback installation and is cleared by
+        // `clear_wake_signal` on `close()`/drop.
         unsafe {
             self.session
                 .set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
         }
+        // Issue 1385 — record that WE are the executor whose ctx the backend
+        // now holds. The clear reads this and nothing else: a tier executor
+        // over a BORROWED session (`open_with_session*`) installs nothing, so
+        // it must not clear the boot executor's callback out from under it
+        // when the tier task ends.
+        self.wake_cb_installed = true;
         if self.session.supports_wake_callback() {
             self.has_async_wake = true;
         }
@@ -3655,10 +3677,56 @@ impl<'s> Executor<'s> {
             unsafe {
                 s.set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
             }
+            // Issue 1385 — as on the primary.
+            self.wake_cb_installed = true;
             if s.supports_wake_callback() {
                 self.has_async_wake = true;
             }
         }
+    }
+
+    /// Issue 1385 — the teardown half of `install_wake_signal_on_*`, and the
+    /// obligation `nros_rmw_runtime_wake_cb`'s own SAFETY comment has asserted
+    /// since phase 124: *"Executor::drop must clear the callback via
+    /// `set_wake_callback(None, _)` on all sessions before dropping
+    /// wake_ctx"*. Nothing did. The string `set_wake_callback(None` occurred
+    /// exactly once in the tree — in that comment.
+    ///
+    /// The context the backend holds is `Arc::as_ptr(&self.wake_ctx)`, freed
+    /// with this executor. Leaving it installed is a dangling callback the
+    /// backend may invoke from a worker thread or an ISR. On the Rust `open*`
+    /// paths the session is `SessionStore::Owned` and dies in the same drop,
+    /// so the window is narrow; on the C path it is arbitrary —
+    /// `rclc_executor_fini` drops the executor and zero-fills `_opaque` while
+    /// the session lives on in `nros_support_t` until `rclc_support_fini`.
+    ///
+    /// Clears the primary and every extra session, then latches off, so
+    /// `close()` followed by drop clears once.
+    ///
+    /// Only fires when THIS executor installed (see
+    /// `install_wake_signal_on_primary`). Two executors sharing one session
+    /// is still last-writer-wins on the backend's single slot: the first to
+    /// tear down clears the second's wake and the second degrades to
+    /// `drive_io(full timeout)`. That is a lost optimisation where the
+    /// alternative is a freed pointer, which is the trade this direction of
+    /// the fix makes deliberately.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) fn clear_wake_signal(&mut self) {
+        use nros_rmw::Session as _;
+        if !self.wake_cb_installed {
+            return;
+        }
+        self.wake_cb_installed = false;
+        // SAFETY: clearing takes no context, and both sessions are still live
+        // here — this runs BEFORE `Session::close` in `close()` and before the
+        // session field is dropped in `Drop`.
+        unsafe {
+            self.session.set_wake_callback(None, core::ptr::null_mut());
+            for s in self.extra_sessions.iter_mut() {
+                s.set_wake_callback(None, core::ptr::null_mut());
+            }
+        }
+        self.has_async_wake = false;
     }
 
     /// Phase 124.B.2 — opaque context pointer the runtime wake
@@ -4063,6 +4131,12 @@ impl<'s> Executor<'s> {
     /// pull-down, a watchdog-driven output disable), not a callback.
     pub fn close(&mut self) -> Result<(), NodeError> {
         self.run_shutdown_hooks(super::types::ShutdownPhase::Pre);
+        // Issue 1385 — hand the callback back BEFORE closing the session that
+        // holds it. `close()` leaves the executor alive, so without this a
+        // later `set_wake_callback` from the drop sweep would reach a session
+        // the backend has already torn down.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        self.clear_wake_signal();
         let result = self
             .session
             .close()
@@ -10765,6 +10839,19 @@ impl<'s> Drop for Executor<'s> {
         // Issue 0790 — the post-teardown half, after the entities are gone.
         // Same "already empty after `close()`" note as the pre pass above.
         self.run_shutdown_hooks(super::types::ShutdownPhase::Post);
+        // Issue 1385 — LAST in the body, and that is the whole point: the
+        // context the backend holds is `wake_ctx`, a field, so it is still
+        // alive for every line above and is freed only after `drop` returns.
+        // Clearing here is therefore the SHORTEST window in which a callback
+        // can fire into live state, not the longest — entity teardown above
+        // may still be talking to the backend.
+        //
+        // A no-op after `close()` (the latch), and a no-op for an executor
+        // that never installed. For the C path this is the only clear there
+        // is: `rclc_executor_fini` runs this `drop_in_place` and THEN
+        // zero-fills the storage the callback pointed into.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        self.clear_wake_signal();
     }
 }
 
