@@ -214,11 +214,24 @@ clone existing and on nobody running `just clean-setup` in it.
       the tree under EXAMINATION rather than from the doctor, so it was
       unreachable and the case passed by falling through — caught by the
       self-test, which is what one is for.
-- [ ] `nros store list` shows the SDK and `nros store gc` respects it — OWED.
-      It needs an actual store install (a 1.3 GB download), which this change
-      makes possible and does not itself perform. The mechanical half is
-      verified (no `--prefix`, so the install is recorded in `nros-sdk.lock`
-      like every other tool); the observation is not, and is not claimed.
+- [x] `nros store list` shows the SDK and `nros store gc` respects it —
+      OBSERVED, not inferred. `nros setup --tool zephyr-sdk` was run against
+      this change:
+
+          7.9 GiB  installed  sdk/zephyr-sdk/0.16.8          # store list
+          sdk/zephyr-sdk/0.16.8  (nros-sdk-index.toml, nros-sdk.lock)   # gc
+
+      The `nros-sdk.lock` membership is the whole point: `--prefix` is what kept
+      it out, which is why `nros sdk-path` could not find the SDK and `gc` did
+      not know it existed. `gc --older-than 30d --dry-run` lists it among the
+      entries attributable to an install and would remove nothing.
+      The installed tree is **7.9 GiB**, not the 1.3 GiB this file first guessed
+      — that figure was the DOWNLOAD the old hand-rolled aria2c block fetched,
+      and the unpacked SDK with its toolchains is six times it. Recorded because
+      the disk cost is the argument for sharing one copy between checkouts.
+      And the ladder moved, exactly as designed: with a store copy AND the
+      legacy checkout copy both present, the resolver now answers with the
+      store. Nothing moved until something installed there.
 
 ### W4 — a worktree build uses the worktree's SDK trees — DONE
 
