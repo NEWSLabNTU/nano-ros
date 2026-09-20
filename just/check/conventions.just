@@ -123,3 +123,20 @@ set-e-bare-assignment:
 [private]
 example-parameter-stores:
     @python3 scripts/check/check-example-parameter-stores.py
+
+# issue 1386 — `node_ref_is_live(node_ref_of(node))` mints a reference from the
+# node and compares it against the counter it was just read from, so it is
+# CONSTANT TRUE. Four sites wrote that independently, and behind three of them
+# sat a `NROS_RET_STALE_NODE` arm no caller could ever obtain — one of them
+# documented in a `# Returns` block. The fourth had no return code, so it
+# produced no evidence at all and the issue's own measurement missed it.
+#
+# A reviewer cannot catch this by eye (it reads exactly like a guard) and no
+# test can: a tautology satisfies every assertion that expects `true`. The
+# generation mechanism has ONE legitimate shape — a reference the entity STORED
+# at creation, compared later — which this does not touch. Source-only, ~0.3 s;
+# self-tests its pattern on every run, three positive and six negative cases,
+# including the comments that record the retired shape.
+[private]
+node-ref-fresh-mint:
+    @python3 scripts/check-node-ref-fresh-mint.py
