@@ -228,24 +228,27 @@ int main(void) {
 
     /* 4c. Case TWO: the trigger lands while the executor is ALREADY parked.
      *
-     * It is still dispatched, by the spin it landed in, and the bound is the
-     * spin's own budget — NOT sooner, and this probe asserts the bound rather
-     * than pretending to a latency C cannot deliver today.
+     * When this was written the bound was the spin's whole budget: the C
+     * executor installed no backend wake callback, so `has_async_wake` was
+     * false, so the spin parked inside `drive_io(400 ms)` where a guard's
+     * signal could not reach it. This comment said so and named it as a
+     * separate defect. Issue 1385 fixed it — `nros_executor_init` installs the
+     * callback now — and the number moved with it: MEASURED 400 ms before,
+     * 51 ms after, for the same trigger at 50 ms.
      *
-     * Why not sooner, measured rather than assumed: the executor only parks in
-     * an interruptible wait when the BACKEND has been told the runtime wake
-     * callback (`supports_wake_callback` → `has_async_wake`), and the three
-     * Rust `Executor::open*` paths install it while the C path does not —
-     * `nros_executor_init` reaches `from_session_ptr_in`, which assembles an
-     * executor over a session it BORROWS from the support context and installs
-     * nothing. So a C executor parks inside the transport, where a guard's
-     * signal cannot reach it, whatever backend it runs on. Installing it there
-     * is not a one-liner: `Executor::drop` does not clear the callback (the
-     * runtime cb's own safety comment says it must), and on the C path the
-     * session OUTLIVES the executor — `nros_executor_fini` then
-     * `nros_support_fini` — so a backend would be left holding a callback into
-     * freed wake state. That is a separate defect and it is named, not
-     * smuggled into this item. */
+     * So this case asserts BOTH bounds now. The lower one is not decoration: a
+     * spin that returns before the trigger was even issued dispatches on the
+     * NEXT spin and would sail through any upper bound alone. (It also caught
+     * a real one — `spin_once`'s fast arm consumed the wake FLAG without
+     * draining the wake PRIMITIVE, so the spin after a between-spins trigger
+     * did not wait at all. Fixed with 1385; `executor_backend_wake.c` pins it
+     * from the backend's side.)
+     *
+     * The two probes measure two SENDERS. A guard condition signals the
+     * executor's wake primitive directly (`GuardCondition::set_wake_cb`); an
+     * arrival signalled by the BACKEND, from a worker thread or an ISR, goes
+     * through `set_wake_callback`, which is what 1385 was about and what
+     * `executor_backend_wake.c` covers. */
     s_trigger_delay_ms = 50;
     CHECK(pthread_create(&th, NULL, trigger_thread, NULL) == 0, "parked-wake thread started");
     const uint64_t parked_start = now_ms();
@@ -257,6 +260,17 @@ int main(void) {
     CHECK(s_ctx.fires == 2, "the trigger that arrived mid-spin was dispatched by that spin");
     CHECK(parked_ms <= control_ms + 100,
           "a mid-spin trigger must be dispatched within the spin's own budget");
+    CHECK(parked_ms >= 40,
+          "LOWER BOUND: the spin must have been PARKED when the trigger arrived at 50 ms -- a "
+          "spin that returned first dispatches on the next one and passes every upper bound");
+    CHECK(parked_ms * 2 < control_ms,
+          "UPPER BOUND (issue 1385): the trigger CUTS THE PARK SHORT. Before the C executor "
+          "installed a backend wake callback this spin sat inside drive_io for its whole "
+          "budget -- 400 ms measured, against 51 ms now");
+    if (parked_ms < 40 || parked_ms * 2 >= control_ms) {
+        fprintf(stderr, "       idle spin %llu ms, parked wake %llu ms\n",
+                (unsigned long long)control_ms, (unsigned long long)parked_ms);
+    }
 
     /* ---- rcl's spelling reaches the same place --------------------------- */
 

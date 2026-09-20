@@ -18,6 +18,7 @@
 #ifndef NROS_TESTS_STUB_RMW_BACKEND_H
 #define NROS_TESTS_STUB_RMW_BACKEND_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 /** The backend name this registers under. Pass it as the `rmw` selector to
@@ -32,5 +33,26 @@ int32_t nros_stub_rmw_register(void);
 /** How many times the executor drove the stub's I/O. A spin that never reached
  *  the backend is a probe that measured nothing. */
 uint32_t nros_stub_rmw_drive_io_calls(void);
+
+/** Issue 1385 — does this backend currently hold a runtime wake callback?
+ *
+ *  The executor's side of `set_wake_callback` is otherwise unobservable from a
+ *  test: `has_async_wake` is private and the only symptom of a missing install
+ *  is a spin that waits longer, which is a number and not a fact. This is the
+ *  fact — the backend's own slot, read back.
+ *
+ *  It answers BOTH halves of 1385: false after `nros_executor_init` means the
+ *  C path installed nothing, and true after `rclc_executor_fini` means a
+ *  backend is holding a callback into storage the fini has zero-filled. */
+bool nros_stub_rmw_wake_cb_installed(void);
+
+/** Issue 1385 — invoke the stored wake callback, as a real backend's worker
+ *  thread or ISR would on an arrival. Returns false (and calls nothing) when
+ *  no callback is installed.
+ *
+ *  This is the arrival a C executor could not be woken by: it is signalled
+ *  from OUTSIDE the `drive_io` the executor is parked in, which is exactly the
+ *  path `drive_io(full timeout)` cannot observe. */
+bool nros_stub_rmw_invoke_wake(void);
 
 #endif /* NROS_TESTS_STUB_RMW_BACKEND_H */

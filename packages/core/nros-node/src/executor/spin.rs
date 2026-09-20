@@ -3642,8 +3642,21 @@ impl<'s> Executor<'s> {
     /// `Session::set_wake_callback` (poll-only XRCE, bare-metal)
     /// ignore the call and continue to be drained on the executor's
     /// deadline-bound cv-wait boundary.
+    ///
+    /// `pub` for issue 1385, and for the same reason
+    /// [`set_primary_identity`](Self::set_primary_identity) is: the three
+    /// `Executor::open*` paths call this automatically, and a binding that
+    /// builds its executor over a session it BORROWS
+    /// ([`from_session_ptr_in`](Self::from_session_ptr_in)) reaches none of
+    /// them, so it has to call it itself. `nros_executor_init` is that
+    /// binding, and until 1385 it did not — leaving `has_async_wake` false
+    /// for the life of every C executor on every backend.
+    ///
+    /// Pairs with [`clear_wake_signal`](Self::clear_wake_signal), which the
+    /// executor runs from `close()` and from `drop`. A caller that installs
+    /// owes nothing further: the teardown is the executor's.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-    fn install_wake_signal_on_primary(&mut self) {
+    pub fn install_wake_signal_on_primary(&mut self) {
         use nros_rmw::Session as _;
         let ctx = self.wake_ctx_ptr();
         // SAFETY: `ctx` points at executor-owned wake state that outlives
