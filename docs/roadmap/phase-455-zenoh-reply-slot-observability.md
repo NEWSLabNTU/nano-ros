@@ -80,7 +80,7 @@ caught 1361. The hook is in the mock now.
 **Two defects W5's run surfaced outside this phase**, filed rather than fixed
 inside it:
 
-* **[#1366](../issues/1366-rust-workspace-lists-a-deleted-esp32-entry-member.md)** —
+* **#1366** (resolved) —
   `examples/workspaces/rust/Cargo.toml` lists `src/esp32_entry`, which
   phase-445 W5 deleted, so `just build-test-fixtures lane=native` cannot
   complete from a clone. phase-445 owns the decision (is a generated entry a
