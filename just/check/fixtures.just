@@ -104,6 +104,24 @@ example-leaf-target-dirs:
 example-matrix:
     @bash scripts/check-example-matrix.sh
 
+# issue 1108 / phase-452 W1 — build every copy-out template FROM A COPY.
+#
+# `examples/templates/` is the one part of the tree a stranger copies, and
+# nothing built it: the static gates beside this one ask about the files, and a
+# template can satisfy every one of them while `nros build` refuses it. Its
+# first run found two real defects that had been green for the template's whole
+# life — an unresolvable `<depend>nano-ros</depend>`, and a Rust manifest
+# path-depping five levels up into this checkout, so it built in place and
+# nowhere else.
+#
+# On the BUILD lane, not the fast one, because it really does build: ~10 min
+# per template. It resolves nothing it did not build itself, so it satisfies
+# `check-lane-contracts` on any lane that can afford it.
+[private]
+template-copy-out:
+    @bash scripts/check-template-copy-out.sh --self-test
+    @bash scripts/check-template-copy-out.sh
+
 # Issue 1025 -- a packer must not invent the row's cargo args or env. The shared
 # cargo group key is a function of (platform, args, env); a consumer supplying
 # two of the three gets a directory the build never wrote to, and only once that

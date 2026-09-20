@@ -8,7 +8,7 @@
 
   <buildtool_depend>cmake</buildtool_depend>
 
-  <depend>nano-ros</depend>
+  <depend>nros</depend>
   <depend>std_msgs</depend>
 
   <export>

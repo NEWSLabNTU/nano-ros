@@ -44,6 +44,15 @@ cli-tests
 launch-resolve-builds
 required-features-tests
 source-gates
+# template-copy-out runs `nros sync` + `nros build --workspace` on a copy of
+# each template, so it needs the CLI — and it needs ~15 min WARM (measured:
+# 14:45 for six templates on a 24-core host, ~2.5 min each, and a cold host
+# pays a full nano-ros build per copy because a cargo target dir serves exactly
+# one workspace root, issue 0616, so the copies cannot share one). That is the
+# cost of the thing it checks: a user's first build IS a build from scratch.
+# Pristine worktree, PATH=/usr/bin:/bin, no `nros` anywhere:
+#   c-and-cpp-mixed-workspace: FAIL — no `nros` CLI to build with
+template-copy-out
 
 # --- need an RMW backend or its vendored sources to resolve ---
 embedded-feature-unification

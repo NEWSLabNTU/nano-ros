@@ -267,6 +267,7 @@ build-serial: \
     sched-dim-arms \
     source-gates \
     staticlib-symbols \
+    template-copy-out \
     test-targets \
     workspace-all \
     workspace-features \
