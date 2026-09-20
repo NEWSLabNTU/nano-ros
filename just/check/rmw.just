@@ -109,45 +109,86 @@ declared-qos-header:
 # writes all look exactly like "no mismatch here" — which is the shape six
 # mechanisms in this campaign have already had.
 #
-# So the lane builds nros-node TWICE and asserts the difference:
+# So the lane builds nros-node THREE times and asserts the differences:
 #
-#   1. WITH the variable, the `nros_declared_qos_table` cfg is on, the
-#      declared-image test exists and must PASS. That test's own control is a
-#      depth 10 registered against a declared 1.
-#   2. WITHOUT it the same filter must match NOTHING. Otherwise a cfg that was
-#      always on would make step 1 green while proving nothing about delivery.
+#   1. WITH the cmake road's variable, the `nros_declared_qos_table` cfg is on,
+#      both declared-image tests exist and must PASS — the REFUSAL (a depth 10
+#      registered against a declared 1 on the C/C++ seams' `check`) and the
+#      TAKE (an unstated Rust call site's `QoSProfile::default()` coming back
+#      at the declared 1).
+#   2. WITH the cargo LEAF road's carrier instead — a sizing descriptor and NO
+#      variable — the same two tests must pass over the same table. phase-454 W13:
+#      `NROS_ENTITY_DECLARED_DEPTHS` is written by the cmake entity inventory
+#      and by nothing on the leaf road, so for two waves `DECLARED_QOS_ROWS`
+#      was `None` on exactly the road W12 taught to read a contract, and the
+#      check had nothing to compare. A carrier that reaches one road and not
+#      the other reads, from inside the crate, exactly like a carrier that
+#      works.
+#   3. WITHOUT either, the same filter must match NOTHING. Otherwise a cfg that
+#      was always on would make steps 1 and 2 green while proving nothing about
+#      delivery.
 #
-# A separate CARGO_TARGET_DIR because the env var is part of the build
-# fingerprint: sharing the tree's would rebuild nros-node and everything above
-# it on every subsequent command.
+# CARGO_TARGET_DIRs OUTSIDE the tree's, because a carrier is a build input:
+# sharing the tree's would rebuild nros-node and everything above it on every
+# subsequent command.
+#
+# And ONE PER CARRIER, which is not tidiness. `NROS_SIZING_DESCRIPTOR` names a
+# PATH, so by issue 0491's rule the build script watches the descriptor's
+# CONTENT and deliberately does NOT declare the variable a fingerprint input —
+# so going from "descriptor set" to "nothing set" leaves cargo up to date, and
+# the no-carrier step would re-run the PREVIOUS step's binary and report its
+# table as proof that no table exists. Measured: the third step passed 2 tests
+# that step 2 had built. A `touch` on build.rs would also force it and would
+# re-stale every prebuilt fixture in the tree; a second directory costs ~4 s.
 declared-qos-registration:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "Checking the Rust declared-QoS registration check (phase-454 W10)..."
+    echo "Checking the Rust declared-QoS registration check (phase-454 W10/W13)..."
     _dqr_dir="tmp/declared-qos-registration"
     mkdir -p "$_dqr_dir"
     _filter="declared_qos::tests::declared_image"
-    echo "  - WITH a declared table: the check refuses a disagreeing depth"
+    _dqr_desc="$PWD/packages/core/nros-node/tests/fixtures/declared-qos-descriptor.toml"
+    [ -f "$_dqr_desc" ] || { echo "ERROR: missing descriptor fixture $_dqr_desc" >&2; exit 1; }
+    echo "  - carrier 1/2, the cmake road: NROS_ENTITY_DECLARED_DEPTHS"
+    _dqr_rc=0
     _dqr_with="$(NROS_ENTITY_DECLARED_DEPTHS='std_msgs/msg/Int32|/chatter=1' \
-        CARGO_TARGET_DIR="$_dqr_dir" \
-        cargo test -p nros-node --lib "$_filter" -- --exact \
-            declared_qos::tests::declared_image::refuses_a_disagreeing_depth_and_accepts_an_agreeing_one \
-        2>&1)"
+        CARGO_TARGET_DIR="$_dqr_dir/env" \
+        cargo test -p nros-node --lib "$_filter" 2>&1)" || _dqr_rc=$?
+    [ "$_dqr_rc" -eq 0 ] || _dqr_with="cargo exited $_dqr_rc"$'\n'"$_dqr_with"
     case "$_dqr_with" in \
-        *"1 passed"*) ;; \
-        *) echo "ERROR: the declared-image test did not run and pass." >&2; \
+        *"2 passed"*) ;; \
+        *) echo "ERROR: the declared-image tests did not both run and pass." >&2; \
            echo "       Either NROS_ENTITY_DECLARED_DEPTHS is not reaching" >&2; \
            echo "       nros-node/build.rs, or the rows were dropped by the parse --" >&2; \
-           echo "       in which case every Rust subscription registers unchecked." >&2; \
+           echo "       in which case every Rust subscription registers unchecked" >&2; \
+           echo "       and none takes the depth its build reserved for." >&2; \
            echo "--- cargo said ---" >&2; echo "$_dqr_with" >&2; exit 1 ;; \
     esac
-    echo "  - WITHOUT one: that test does not exist, so the cfg is load-bearing"
-    _dqr_without="$(CARGO_TARGET_DIR="$_dqr_dir" \
-        cargo test -p nros-node --lib "$_filter" 2>&1)"
+    echo "  - carrier 2/2, the cargo leaf road: a sizing descriptor, no variable"
+    _dqr_rc=0
+    _dqr_desc_out="$(NROS_SIZING_DESCRIPTOR="$_dqr_desc" \
+        CARGO_TARGET_DIR="$_dqr_dir/descriptor" \
+        cargo test -p nros-node --lib "$_filter" 2>&1)" || _dqr_rc=$?
+    [ "$_dqr_rc" -eq 0 ] || _dqr_desc_out="cargo exited $_dqr_rc"$'\n'"$_dqr_desc_out"
+    case "$_dqr_desc_out" in \
+        *"2 passed"*) ;; \
+        *) echo "ERROR: a sizing descriptor's declared endpoints did not reach" >&2; \
+           echo "       DECLARED_QOS_ROWS. That is the ONLY carrier the" >&2; \
+           echo "       single-package cargo leaf road has -- nothing there sets" >&2; \
+           echo "       NROS_ENTITY_DECLARED_DEPTHS -- so a Rust image built from" >&2; \
+           echo "       a contract would register a depth its build never" >&2; \
+           echo "       reserved for, silently (phase-454 W13)." >&2; \
+           echo "--- cargo said ---" >&2; echo "$_dqr_desc_out" >&2; exit 1 ;; \
+    esac
+    echo "  - WITHOUT either: those tests do not exist, so the cfg is load-bearing"
+    _dqr_rc=0
+    _dqr_without="$(CARGO_TARGET_DIR="$_dqr_dir/none" \
+        cargo test -p nros-node --lib "$_filter" 2>&1)" || _dqr_rc=$?
+    [ "$_dqr_rc" -eq 0 ] || _dqr_without="cargo exited $_dqr_rc"$'\n'"$_dqr_without"
     case "$_dqr_without" in \
         *"0 passed"*) ;; \
-        *) echo "ERROR: the declared-image test ran WITHOUT a declared table." >&2; \
-           echo "       Its cfg is then always on, the step above proves nothing" >&2; \
+        *) echo "ERROR: the declared-image tests ran WITHOUT a declared table." >&2; \
+           echo "       Their cfg is then always on, the steps above prove nothing" >&2; \
            echo "       about delivery, and this lane is a gate that cannot fail." >&2; \
            echo "--- cargo said ---" >&2; echo "$_dqr_without" >&2; exit 1 ;; \
     esac

@@ -4886,11 +4886,14 @@ impl<'s> Executor<'s> {
         }
         // W3b.5 — contracted-endpoint age hook (None = free).
         let age_mon = self.age_lookup::<M>(topic_name);
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
+        // phase-454 W10/W13 — the depth this registration asks for
+        // against the depth this system DECLARED for the topic. Before the
+        // backend call AND before the arena claim below, so the region this
+        // registration takes and the one the build reserved are the same
+        // number; unchanged when nothing was declared, which is every image
+        // with no contract sidecar. See `declared_qos::honour` for why Rust
+        // TAKES the declared depth where C and C++ assert it at the call site.
+        let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5055,11 +5058,14 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
+        // phase-454 W10/W13 — the depth this registration asks for
+        // against the depth this system DECLARED for the topic. Before the
+        // backend call AND before the arena claim below, so the region this
+        // registration takes and the one the build reserved are the same
+        // number; unchanged when nothing was declared, which is every image
+        // with no contract sidecar. See `declared_qos::honour` for why Rust
+        // TAKES the declared depth where C and C++ assert it at the call site.
+        let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5125,11 +5131,14 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
+        // phase-454 W10/W13 — the depth this registration asks for
+        // against the depth this system DECLARED for the topic. Before the
+        // backend call AND before the arena claim below, so the region this
+        // registration takes and the one the build reserved are the same
+        // number; unchanged when nothing was declared, which is every image
+        // with no contract sidecar. See `declared_qos::honour` for why Rust
+        // TAKES the declared depth where C and C++ assert it at the call site.
+        let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5212,11 +5221,14 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
+        // phase-454 W10/W13 — the depth this registration asks for
+        // against the depth this system DECLARED for the topic. Before the
+        // backend call AND before the arena claim below, so the region this
+        // registration takes and the one the build reserved are the same
+        // number; unchanged when nothing was declared, which is every image
+        // with no contract sidecar. See `declared_qos::honour` for why Rust
+        // TAKES the declared depth where C and C++ assert it at the call site.
+        let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5296,11 +5308,14 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
+        // phase-454 W10/W13 — the depth this registration asks for
+        // against the depth this system DECLARED for the topic. Before the
+        // backend call AND before the arena claim below, so the region this
+        // registration takes and the one the build reserved are the same
+        // number; unchanged when nothing was declared, which is every image
+        // with no contract sidecar. See `declared_qos::honour` for why Rust
+        // TAKES the declared depth where C and C++ assert it at the call site.
+        let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5448,11 +5463,14 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
+        // phase-454 W10/W13 — the depth this registration asks for
+        // against the depth this system DECLARED for the topic. Before the
+        // backend call AND before the arena claim below, so the region this
+        // registration takes and the one the build reserved are the same
+        // number; unchanged when nothing was declared, which is every image
+        // with no contract sidecar. See `declared_qos::honour` for why Rust
+        // TAKES the declared depth where C and C++ assert it at the call site.
+        let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5531,11 +5549,14 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
+        // phase-454 W10/W13 — the depth this registration asks for
+        // against the depth this system DECLARED for the topic. Before the
+        // backend call AND before the arena claim below, so the region this
+        // registration takes and the one the build reserved are the same
+        // number; unchanged when nothing was declared, which is every image
+        // with no contract sidecar. See `declared_qos::honour` for why Rust
+        // TAKES the declared depth where C and C++ assert it at the call site.
+        let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5978,11 +5999,14 @@ impl<'s> Executor<'s> {
         if rx_buffer_hint != 0 {
             topic = topic.with_rx_buffer_hint(rx_buffer_hint);
         }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
+        // phase-454 W10/W13 — the depth this registration asks for
+        // against the depth this system DECLARED for the topic. Before the
+        // backend call AND before the arena claim below, so the region this
+        // registration takes and the one the build reserved are the same
+        // number; unchanged when nothing was declared, which is every image
+        // with no contract sidecar. See `declared_qos::honour` for why Rust
+        // TAKES the declared depth where C and C++ assert it at the call site.
+        let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -6124,11 +6148,14 @@ impl<'s> Executor<'s> {
         if rx_buffer_hint != 0 {
             topic = topic.with_rx_buffer_hint(rx_buffer_hint);
         }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
+        // phase-454 W10/W13 — the depth this registration asks for
+        // against the depth this system DECLARED for the topic. Before the
+        // backend call AND before the arena claim below, so the region this
+        // registration takes and the one the build reserved are the same
+        // number; unchanged when nothing was declared, which is every image
+        // with no contract sidecar. See `declared_qos::honour` for why Rust
+        // TAKES the declared depth where C and C++ assert it at the call site.
+        let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -6239,11 +6266,14 @@ impl<'s> Executor<'s> {
         if rx_buffer_hint != 0 {
             topic = topic.with_rx_buffer_hint(rx_buffer_hint);
         }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
+        // phase-454 W10/W13 — the depth this registration asks for
+        // against the depth this system DECLARED for the topic. Before the
+        // backend call AND before the arena claim below, so the region this
+        // registration takes and the one the build reserved are the same
+        // number; unchanged when nothing was declared, which is every image
+        // with no contract sidecar. See `declared_qos::honour` for why Rust
+        // TAKES the declared depth where C and C++ assert it at the call site.
+        let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -6356,11 +6386,14 @@ impl<'s> Executor<'s> {
         if rx_buffer_hint != 0 {
             topic = topic.with_rx_buffer_hint(rx_buffer_hint);
         }
-        // phase-454 W10 — the depth this registration asks for against the
-        // depth this system DECLARED for the topic. Before the backend call,
-        // so a disagreement costs no subscription; `Ok` when nothing was
-        // declared, which is every image with no contract sidecar.
-        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
+        // phase-454 W10/W13 — the depth this registration asks for
+        // against the depth this system DECLARED for the topic. Before the
+        // backend call AND before the arena claim below, so the region this
+        // registration takes and the one the build reserved are the same
+        // number; unchanged when nothing was declared, which is every image
+        // with no contract sidecar. See `declared_qos::honour` for why Rust
+        // TAKES the declared depth where C and C++ assert it at the call site.
+        let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)

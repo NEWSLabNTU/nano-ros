@@ -1,0 +1,38 @@
+# A sizing descriptor whose ONLY job is to carry one declared endpoint —
+# phase-454 W13, the Rust half of W10.
+#
+# `just check declared-qos-registration` builds `nros-node` against this and
+# asserts the same `declared_qos::tests::declared_image` module the
+# `NROS_ENTITY_DECLARED_DEPTHS` step asserts. The two carriers must deliver the
+# SAME table, because they are the same fact arriving on two roads: the cmake
+# road (native C/C++, Zephyr west, NuttX) sets the variable, and the
+# single-package cargo leaf road — the one phase-454 W12 taught to read a
+# contract — names a descriptor and sets no variable at all. W10 shipped with
+# only the first, so `DECLARED_QOS_ROWS` was `None` on exactly the road that had
+# a contract to compare against.
+#
+# The row deliberately matches the lane's variable
+# (`std_msgs/msg/Int32|/chatter=1`) so one test body proves both.
+#
+# `undeclared_endpoints = 1` is DELIBERATE and is the second thing this fixture
+# proves. It makes `descriptor_subscriptions` refuse — arena sizing prices every
+# subscription or none, so a partial picture is no picture — while leaving the
+# per-endpoint row available to the registration check, which needs no such
+# guard: whether `/chatter`'s declared depth matches the depth registered on
+# `/chatter` is a question about `/chatter`. If the check ever starts borrowing
+# the sizing guard, this fixture stops producing a table and the lane goes red.
+
+schema_version = 1
+
+[meta]
+entry = "declared-qos-fixture"
+status = "partial"
+basis = "contract"
+undeclared_endpoints = 1
+
+[[endpoint]]
+kind = "subscription"
+type = "std_msgs/msg/Int32"
+topic = "/chatter"
+history = "keep_last"
+depth = 1
