@@ -237,6 +237,18 @@ sizing-descriptor-reader:
     fi
     ./tests/cmake-sizing-descriptor-tests.sh
 
+# issue 1396 (class: issue 1312) — a build shim's `--target` must name an
+# `[image.<id>]` / `[deploy.<id>]` block some bringup declares.
+#
+# `--target` selects that block, and an id naming NONE is not refused: the tier
+# resolver falls through to `BoardFamily::Native`, so an embedded image silently
+# bakes the HOST's `[tiers.*.posix]` priorities. Four shims had synthesised one;
+# 1312 fixed two and left NuttX and PlatformIO with no tracked id in their
+# comments, which is why it could add no gate. Buildless; `--self-test` drives
+# both verdicts over synthetic files including the two real pre-fix shim bodies.
+shim-codegen-target:
+    @python3 scripts/check-shim-codegen-target.py
+
 # issue 0946 — the connect locator has exactly ONE producer.
 #
 # `NROS_ENTRY_LOCATOR` (the address an embedded image dials) was computed by two

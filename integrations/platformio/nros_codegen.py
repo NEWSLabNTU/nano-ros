@@ -33,10 +33,6 @@ def _nros_bin():
             or (in_tree if in_tree and os.path.isfile(in_tree) else None)
             or os.path.expanduser("~/.nros/bin/nros"))
 
-def _framework():
-    fws = env.get("PIOFRAMEWORK") or []
-    return fws[0] if fws else "native"
-
 def _run_codegen():
     bringup = _bringup_name()
     if not bringup:
@@ -49,16 +45,32 @@ def _run_codegen():
     workspace = os.environ.get("NROS_WORKSPACE", env["PROJECT_DIR"])
     out_dir = os.path.join(env["PROJECT_BUILD_DIR"], env["PIOENV"], "nros-system")
     os.makedirs(out_dir, exist_ok=True)
-    cmd = [nros, "codegen-system", "--ahead-of-vendor",
+    # Issue 1396 — three defects in one command line, none of which this script
+    # could ever have reported:
+    #
+    #   * `--ahead-of-vendor` is a value_enum (`pio` | `px4`) and REQUIRES its
+    #     value. Passed bare it swallowed the next token and clap rejected the
+    #     whole invocation, so this hook has never once run to completion.
+    #   * `--framework` is not a flag `codegen-system` defines. The bake reads
+    #     the framework from the workspace, not from PIO.
+    #   * `--target platformio` named an `[image.*]` / `[deploy.*]` block no
+    #     bringup declares, and an unknown block is taken SILENTLY: the tier
+    #     resolver answers with the host's table (issue 1312). The question a
+    #     framework hook can actually answer is which image claims the
+    #     application directory — `--for-entry`, the same spelling the ESP-IDF
+    #     shim uses for the IDF project dir. An entry no image claims degrades
+    #     to exactly these defaults, with a note printed by the CLI.
+    cmd = [nros, "codegen-system", "--ahead-of-vendor", "pio",
            "--workspace", workspace, "--bringup", bringup,
-           "--target", "platformio", "--framework", _framework(),
+           "--for-entry", env["PROJECT_DIR"],
            "--out", out_dir]
     sys.stderr.write("[nros] %s\n" % " ".join(cmd))
-    try:
-        subprocess.check_call(cmd)
-    except (FileNotFoundError, subprocess.CalledProcessError) as e:
-        sys.stderr.write("[nros] codegen-system failed: %s (continuing — verb may not yet exist)\n" % e)
-        return None
+    # No `except` here. The swallow this replaced said "continuing — verb may
+    # not yet exist", which stopped being true when Phase 212.E shipped
+    # `codegen-system`; what it hid afterwards was this script's own broken
+    # argv. A bake that does not run leaves the image with no baked config, so
+    # failing the PIO build is the honest outcome.
+    subprocess.check_call(cmd)
     return out_dir
 
 _out = _run_codegen()

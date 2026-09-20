@@ -21,8 +21,8 @@ include $(APPDIR)/Make.defs
 include $(APPDIR)/external/nano-ros/Make.defs
 
 # Per-bringup pinning fragment written by the staging script. Carries
-# `NROS_BRINGUP_NAME`, `NROS_BRINGUP_WORKSPACE`, and (optional)
-# `NROS_BRINGUP_TARGET_TRIPLE` overrides.
+# `NROS_BRINGUP_NAME`, `NROS_BRINGUP_WORKSPACE`, `NROS_BRINGUP_IMAGE`,
+# and (optional) `NROS_BRINGUP_TARGET_TRIPLE` overrides.
 -include $(CURDIR)/nros_bringup.mk
 
 # Default to demo if the pinning fragment is absent (template-as-is).
@@ -30,6 +30,21 @@ NROS_BRINGUP_NAME      ?= demo_bringup
 NROS_BRINGUP_WORKSPACE ?= $(NANO_ROS_ROOT)/packages/testing/nros-tests/fixtures/multi_pkg_workspace_nuttx
 NROS_BRINGUP_BUILD     ?= $(CURDIR)/build
 NROS_BRINGUP_OUT       ?= $(NROS_BRINGUP_BUILD)/nros-system
+
+# Issue 1396 — which `[image.<id>]` of the bringup this app IS, pinned by
+# `stage-external-apps.sh --image <id>` (which checks it against the
+# bringup's `system.toml`). `--target` names that block, and a string that
+# names none is taken silently: the tier resolver then answers with the
+# HOST's `[tiers.*.posix]` table for a NuttX image. This used to pass a
+# synthesised `--target nuttx`, which named no block in the one bringup
+# anything in-tree stages here. Unset ⇒ pass no `--target` and say so;
+# the Zephyr/ESP-IDF `--for-entry` spelling is unavailable to this shim
+# because the app lives in the NuttX apps tree, where no `[image.*]` can
+# claim it.
+NROS_BRINGUP_IMAGE     ?=
+NROS_CODEGEN_TARGET_ARG = $(if $(NROS_BRINGUP_IMAGE),--target $(NROS_BRINGUP_IMAGE))
+# No commas in either branch: `$(if)` splits its arguments on them.
+NROS_CODEGEN_IMAGE_NOTE = $(if $(NROS_BRINGUP_IMAGE),image $(NROS_BRINGUP_IMAGE),NO IMAGE PINNED - this bake takes the system-wide defaults including the HOST tier tables; re-stage with `--image <id>` (issue 1396))
 
 # Where the host `nros` CLI lives. Mirrors scripts/build/cargo.sh::nros_cli_bin.
 # Post-Phase-218 canonical path is `packages/cli/target/release/nros` (built
@@ -46,9 +61,10 @@ ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
 context::
 	@mkdir -p $(NROS_BRINGUP_OUT)
 	@echo "  [nros codegen-system] $(NROS_BRINGUP_NAME) → $(NROS_BRINGUP_OUT)"
+	@echo '  [nros codegen-system] $(NROS_CODEGEN_IMAGE_NOTE)'
 	$(Q) $(NROS_BIN) codegen-system \
 		--bringup $(NROS_BRINGUP_NAME) \
-		--target nuttx \
+		$(NROS_CODEGEN_TARGET_ARG) \
 		--out $(NROS_BRINGUP_OUT) \
 		--workspace $(NROS_BRINGUP_WORKSPACE)
 ifeq ($(NROS_BRINGUP_TARGET_TRIPLE),)
