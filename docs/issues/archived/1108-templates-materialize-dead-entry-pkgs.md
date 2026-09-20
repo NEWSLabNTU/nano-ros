@@ -1,7 +1,7 @@
 ---
 id: 1108
 title: "Four copy-out templates still materialize a `robot_entry` package — two of them declare no `[image.*]` at all, so `nros build` refuses them outright"
-status: open
+status: resolved
 type: tech-debt
 area: examples, tooling, docs
 severity: high
@@ -361,3 +361,35 @@ The files OUTSIDE `examples/templates/**` that must move in the same commit:
   the lane builds `nros-relwithdebinfo`, which sets every key that block set.
 - **Still open**: 4 (`multi-node-workspace`, the Rust template, has no lane),
   and the book pages (issue 1107).
+
+## Resolution (2026-09-20)
+
+Both halves, but not the way the issue expected — and the table above was
+already stale when it was written.
+
+**The complaint is gone; the lane that would have caught it was what was
+missing.** Re-measured before acting: SIX templates declare `[image.*]`, not
+"four of which two declare none"; NONE tracks a root build file; and the
+`multi-node-workspace/src/robot_entry` this issue names is an untracked empty
+directory, not a materialized package. phase-383 W9/W10.a and phase-445 W6
+closed that between this filing and now.
+
+**What was still true is the reason the issue was right to exist.**
+`scripts/check-template-copy-out.sh` (phase-452 W1) builds each template from a
+copy of its tracked file set, and its first run found two defects that every
+static gate and the colcon-parity job had been green over for the template's
+whole life:
+
+1. `<depend>nano-ros</depend>` in `multi-package-workspace` — a name that
+   resolves to nothing, and not a legal ROS package name.
+2. `pkg_rust_publisher/Cargo.toml` path-depping five levels up into this
+   checkout, so the template built in place and nowhere else.
+
+Neither is the shape this issue is named for. Both are the same underlying
+fact: a template that is only ever read is a template nobody has run.
+
+The gate is on `check::build-serial`, registered in
+`.config/ungated-gates.txt` with the pristine-worktree measurement that file
+requires. Discovery is derived from `[image.*]`, the same question `nros build`
+asks, so the set cannot drift from the builder — which is what keeps this issue
+from recurring with a different count.
