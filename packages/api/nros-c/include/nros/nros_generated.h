@@ -5879,9 +5879,8 @@ NROS_PUBLIC struct nros_guard_condition_t rcl_get_zero_initialized_guard_conditi
  * # Returns
  * * `NROS_RET_OK` — created, registered, and the callback is bound.
  * * `NROS_RET_INVALID_ARGUMENT` — `node` or `out` is NULL.
- * * `NROS_RET_NOT_INIT` — the node is uninitialised, or is not bound to an
- *   executor.
- * * `NROS_RET_STALE_NODE` — the node slot has been retired.
+ * * `NROS_RET_NOT_INIT` — the node is uninitialised, is not bound to an
+ *   executor, or that executor has been finalised.
  * * `NROS_RET_BAD_SEQUENCE` — `out` is not zero-initialised (a double create).
  * * `NROS_RET_FULL` — the executor's handle table is full.
  *
@@ -6544,33 +6543,46 @@ NROS_PUBLIC const void *nros_node_get_logger(const struct nros_node_t *node);
  * `nros_support_is_valid` for the support object; the node had no predicate
  * that read its own state, which is the whole of gap `c:node_is_valid`.
  *
- * THREE questions, all answered, because any one alone is a lie (the count was
- * two until phase-417 stage 3 — ledger row `c:node_is_valid` — and the missing
- * one is the one that separates this from `rcl_node_is_valid_except_context`):
+ * **Upstream names exactly three invalidity conditions**, and they are what
+ * this answers — `rcl/rcl/node.h` @ humble, verbatim: "A node is invalid if:
+ * the implementation is `NULL` (rcl_node_init not called or failed);
+ * rcl_shutdown has been called since the node has been initialized; the node
+ * has been finalized with rcl_node_fini." Two of the three are one field
+ * here, so the implementation asks TWO questions:
  *
- * * the handle's own state is `INITIALIZED` — `rcl_node_fini` sets
- *   `SHUTDOWN`, so a finalised node reports false;
- * * the CONTEXT it names is still valid. `rcl_node_is_valid` is false once the
- *   node's context is invalid; that is the whole of what
- *   `rcl_node_is_valid_except_context` exists to opt out of, and we decline
- *   that name precisely because this one answers the context question.
+ * * the handle's own state is `INITIALIZED` — never initialised leaves it
+ *   `UNINITIALIZED`, and `rcl_node_fini` sets `SHUTDOWN`, which is rcl's first
+ *   and third conditions on our one state field; and
+ * * the CONTEXT it names is still valid — rcl's second condition, and the
+ *   whole of what `rcl_node_is_valid_except_context` exists to opt OUT of. We
+ *   decline that name precisely because this one answers the context question.
  *   `rclc_support_fini` drops the inline session, zeroes `_opaque` and marks
- *   the SUPPORT shut down while touching no node, so a node built by
- *   `rclc_node_init_default` still reads `INITIALIZED` over a dead session —
- *   the guard passed and the next publish dereferenced the zeroed `_opaque`.
- *   [`crate::support::nros_support_is_valid`] is the predicate that knows, so
- *   it is consulted rather than re-derived; and
- * * the executor slot it is bound to still carries the generation it was
- *   bound at (phase-379 W4). C has no move semantics, so
- *   `nros_node_t copy = original;` is legal and silent — the copy keeps
- *   `state == INITIALIZED` after the original is finalised, and only the
- *   generation catches that.
+ *   the SUPPORT shut down while touching no node, so a node still reads
+ *   `INITIALIZED` over a dead session — the guard passed and the next publish
+ *   dereferenced the zeroed `_opaque`.
  *
- * The last two apply to different SHAPES of node and neither is skipped
- * silently: a legacy (`rclc_node_init_default`) node records its support and
- * is not executor-bound, while `nros_executor_add_node` leaves `support` NULL
- * on purpose (the multi-Node paths key off `node_id` + executor, phase-156
- * sub-bug D) and the generation is what stands in for the context there.
+ * The context is reached by a different route per node SHAPE, and NEITHER
+ * route is skipped now (issue 1386): a legacy (`rclc_node_init_default`) node
+ * records its support directly, while `nros_executor_node_init` leaves
+ * `support` NULL on purpose (the multi-Node paths key off `node_id` +
+ * executor, phase-156 sub-bug D) and reaches the same support through the
+ * executor — [`crate::executor::executor_context_is_valid`], which consults
+ * [`crate::support::nros_support_is_valid`] rather than re-deriving it. An
+ * executor-bound node had NO context check at all before: the arm that stood
+ * there compared the slot's current generation with itself.
+ *
+ * **What this deliberately does NOT claim.** C has no move semantics, so
+ * `nros_node_t copy = original;` is legal and silent, and after
+ * `rcl_node_fini(&original)` the copy still reads `INITIALIZED` over a live
+ * context. This answers `true` for it — measured, issue 1386 — and so does
+ * upstream for the analogous `rcl_node_t` copy, because a copy carries no
+ * evidence that its original was finalised. The phase-379 W4 generation
+ * (`nros_node_ref_t`) is what catches that class, and it can only catch it
+ * where a reference was STORED before the fini: an entity's
+ * `publisher.node` / `subscription.node` fails its own `_fini` with
+ * `NROS_RET_STALE_NODE`. A reference minted from the node inside this call is
+ * the current generation by construction, so comparing it with the current
+ * generation is constant true — which is what it was.
  *
  * # Safety
  * * `node` must be NULL or point to a valid `nros_node_t`.
@@ -6593,9 +6605,13 @@ NROS_PUBLIC bool rcl_node_is_valid(const struct nros_node_t *node);
  * than "unset".
  *
  * Out-param + status rather than a bare return, because this genuinely can
- * fail to answer — an uninitialised support context, a retired node slot, or
- * a domain byte above `DOMAIN_ID_MAX` all have no domain to report, and
- * `0` is a legal domain that must not stand in for any of them.
+ * fail to answer — an uninitialised support context, a node whose slot names
+ * no session on its executor, or a domain byte above `DOMAIN_ID_MAX` all have
+ * no domain to report, and `0` is a legal domain that must not stand in for
+ * any of them. (Issue 1386: this said "a retired node slot", which is not one
+ * of them — `rcl_node_fini` retires the phase-379 W4 GENERATION, and nothing
+ * on this path reads it. What the executor lookup can fail on is a slot that
+ * names no `NodeRecord`.)
  *
  * Returns `NROS_RET_UNSUPPORTED` in a build with no RMW (`rmw-cffi` off):
  * there is no session, so there is no resolved domain to read.
@@ -6962,6 +6978,11 @@ nros_ret_t nros_publisher_discard(const struct nros_publisher_t *publisher,
  * * `NROS_RET_OK` on success
  * * `NROS_RET_INVALID_ARGUMENT` if publisher is NULL
  * * `NROS_RET_NOT_INIT` if not initialized
+ * * `NROS_RET_STALE_NODE` if the node this publisher was created on has
+ *   already been finalised — the teardown order was wrong, and nothing is
+ *   dropped. Undocumented until issue 1386, which is the opposite defect to
+ *   the one it was filed for: three sites DOCUMENTED a verdict they could not
+ *   produce while this one produced a verdict it did not document.
  *
  * # Safety
  * * `publisher` must be a valid pointer
@@ -7900,6 +7921,16 @@ int32_t nros_subscription_take_sequence(struct nros_subscription_t *subscription
                                         size_t *out_lens);
 
 /**
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if `subscription` is NULL
+ * * `NROS_RET_NOT_INIT` if it is in no finalisable state
+ * * `NROS_RET_STALE_NODE` if a POLLING subscription's node has already been
+ *   finalised — the teardown order was wrong, and nothing is dropped. Stated
+ *   here because of issue 1386: that issue is three sites documenting a
+ *   stale-node verdict they could not produce, and the same sweep found this
+ *   one producing it without saying so.
+ *
  * # Safety
  * * `subscription` must be a valid pointer
  */

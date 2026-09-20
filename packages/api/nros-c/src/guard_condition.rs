@@ -142,9 +142,8 @@ pub extern "C" fn rcl_get_zero_initialized_guard_condition() -> nros_guard_condi
 /// # Returns
 /// * `NROS_RET_OK` — created, registered, and the callback is bound.
 /// * `NROS_RET_INVALID_ARGUMENT` — `node` or `out` is NULL.
-/// * `NROS_RET_NOT_INIT` — the node is uninitialised, or is not bound to an
-///   executor.
-/// * `NROS_RET_STALE_NODE` — the node slot has been retired.
+/// * `NROS_RET_NOT_INIT` — the node is uninitialised, is not bound to an
+///   executor, or that executor has been finalised.
 /// * `NROS_RET_BAD_SEQUENCE` — `out` is not zero-initialised (a double create).
 /// * `NROS_RET_FULL` — the executor's handle table is full.
 ///
@@ -186,9 +185,12 @@ pub unsafe extern "C" fn nros_node_create_guard_condition(
     if node_ref.executor.is_null() {
         return NROS_RET_NOT_INIT;
     }
-    if !crate::node::node_ref_is_live(crate::node::node_ref_of(node)) {
-        return NROS_RET_STALE_NODE;
-    }
+    // issue 1386 — a `node_ref_is_live(node_ref_of(node))` arm stood here and
+    // returned `NROS_RET_STALE_NODE`. It minted a reference from `node` and
+    // compared it against the same counter, so it was constant true and the
+    // verdict was unreachable. The reachable question is whether the executor
+    // is still usable, which the `validate_state!` below already asks — a
+    // finalised executor is `SHUTDOWN` and answers `NROS_RET_NOT_INIT`.
 
     let executor = &mut *(node_ref.executor as *mut crate::executor::nros_executor_t);
     validate_state!(

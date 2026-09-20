@@ -745,6 +745,11 @@ pub unsafe extern "C" fn nros_publisher_discard(
 /// * `NROS_RET_OK` on success
 /// * `NROS_RET_INVALID_ARGUMENT` if publisher is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized
+/// * `NROS_RET_STALE_NODE` if the node this publisher was created on has
+///   already been finalised — the teardown order was wrong, and nothing is
+///   dropped. Undocumented until issue 1386, which is the opposite defect to
+///   the one it was filed for: three sites DOCUMENTED a verdict they could not
+///   produce while this one produced a verdict it did not document.
 ///
 /// # Safety
 /// * `publisher` must be a valid pointer
@@ -1045,6 +1050,60 @@ mod name_resolution_tests {
         assert_eq!(
             ret, NROS_RET_INVALID_ARGUMENT,
             "a name the resolver cannot expand must be refused, never published raw"
+        );
+    }
+}
+
+/// issue 1386 — the arm that STAYS, and the proof that it fires.
+///
+/// The generation mechanism (phase-379 W4) has one legitimate shape: a
+/// reference minted when the entity was created, compared LATER against the
+/// slot's current generation. Three call sites minted and compared in the same
+/// expression, which is constant true, and those are gone. This is the shape
+/// that is not — and `NROS_RET_STALE_NODE` has to stay reachable from
+/// somewhere, or the code would be the second half of the same defect.
+#[cfg(test)]
+mod stale_node_tests {
+    use super::*;
+
+    /// Finalising a publisher AFTER its node is a reported error, not a silent
+    /// success. Before phase-379 W4 the entity held a `*const nros_node_t` that
+    /// nothing dereferenced, so the caller's teardown-order obligation was
+    /// unenforceable.
+    #[test]
+    fn publisher_fini_after_its_node_reports_a_stale_node() {
+        // Slot 1 is untouched by the other generation tests in this binary
+        // (`node.rs` uses 2, 3 and MAX_NODES-1); `NODE_GENERATIONS` is one
+        // process-wide static.
+        let mut node = crate::node::rcl_get_zero_initialized_node();
+        node.state = nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+        node.node_id = 1;
+
+        let mut publisher = rcl_get_zero_initialized_publisher();
+        publisher.state = nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED;
+        // What `rclc_publisher_init_default` records at creation.
+        publisher.node = unsafe { crate::node::node_ref_of(&node) };
+        assert!(
+            publisher.node.is_bound(),
+            "precondition: the entity recorded a binding"
+        );
+
+        // The caller gets the order wrong: node first.
+        assert_eq!(
+            unsafe { crate::node::rcl_node_fini(&mut node) },
+            NROS_RET_OK
+        );
+
+        assert_eq!(
+            unsafe { nros_publisher_fini(&mut publisher) },
+            NROS_RET_STALE_NODE,
+            "a publisher outliving its node must SAY so — this is the one \
+             verdict the generation scheme exists to produce"
+        );
+        assert_eq!(
+            publisher.state,
+            nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED,
+            "a refused fini must not half-finalise the handle"
         );
     }
 }
