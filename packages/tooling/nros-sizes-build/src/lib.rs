@@ -437,46 +437,7 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
         }
     }
 
-    // Phase 118.E.2 (corrosion compat): scrub env vars that the outer
-    // cross-build (typically corrosion-driven CMake) injects globally
-    // and which break the nested cargo's host-side proc-macro compiles.
-    // `RUSTFLAGS` applies to every rustc invocation under cargo,
-    // including host crates like `proc-macro2`; cross-target link-args
-    // (`-C link-arg=...`, `-C linker=...`) make those fail. Stripping
-    // them is safe for size-probing because:
-    //   * rlibs don't link, so link-args don't matter;
-    //   * `size_of::<T>()` depends on the target *triple*'s data
-    //     layout, not on `-C target-cpu` / `-C target-feature` (those
-    //     control codegen, not layout).
-    // We keep `CARGO_TARGET_<TRIPLE>_RUSTFLAGS` because it's already
-    // target-scoped and won't poison host builds.
-    // ISSUE 0022 — strip the make jobserver from the nested probe cargo. This is
-    // the SOURCE fix for the cyclone fixture deadlock (every platform's cyclone
-    // build goes through `nros`, hence this probe). When the outer build runs
-    // under a GNU make jobserver (the fixture builder uses `make
-    // --jobserver-style=fifo`), the outer cargo holds jobserver tokens and then
-    // BLOCKS in this build script waiting for the nested probe cargo below; if
-    // the probe inherited the same jobserver it would wait for a token the outer
-    // cargo holds → circular wait (cargo does not release its tokens before
-    // blocking on a child cargo — a known recursive-cargo jobserver hazard).
-    // Removing `MAKEFLAGS` / `CARGO_MAKEFLAGS` makes the probe use its OWN job
-    // budget, so it never competes for the parent's tokens and the deadlock
-    // cannot form — on ANY platform, without disabling jobserver coordination
-    // for the outer build. DO NOT drop these two without restoring an
-    // equivalent jobserver strip (see the issue-0022 box in
-    // scripts/build/fixture-make-driver.sh).
-    for var in [
-        "RUSTFLAGS",
-        "CARGO_BUILD_RUSTFLAGS",
-        "CARGO_ENCODED_RUSTFLAGS",
-        "CARGO_BUILD_TARGET",
-        "CARGO_BUILD_TARGET_DIR",
-        "MAKEFLAGS",
-        "CARGO_MAKEFLAGS",
-        "MAKELEVEL",
-    ] {
-        cmd.env_remove(var);
-    }
+    isolate_probe_env(&mut cmd);
 
     // Phase 118.E.2: derive the feature set for the nested invocation
     // by intersecting the consumer's active features (CARGO_FEATURE_*
@@ -1064,6 +1025,94 @@ fn write_key_provenance(dir: &Path, target: &str, features: &[String]) -> std::i
     }
 }
 
+/// The one executor knob the nested probe must NOT take from the ladder.
+///
+/// Named rather than spelled twice: it is pinned on the nested command below
+/// AND argued into [`KNOBS_THAT_CANNOT_CHANGE_A_SIZE`], and those two halves
+/// are only sound TOGETHER (see `isolate_probe_env`).
+const EXECUTOR_BACKING_KNOB: &str = "NROS_EXECUTOR_BACKING_U64S";
+
+/// Give the nested probe cargo an environment that is about MEASURING a layout
+/// and nothing else: drop what the outer cross-build injected, and pin the one
+/// knob the probe would otherwise inherit and has no business honouring.
+///
+/// # What is dropped, and why that is safe (phase 118.E.2, corrosion compat)
+///
+/// The outer cross-build (typically corrosion-driven CMake) injects env vars
+/// globally that break the nested cargo's HOST-side proc-macro compiles.
+/// `RUSTFLAGS` applies to every rustc invocation under cargo, including host
+/// crates like `proc-macro2`; cross-target link-args (`-C link-arg=...`,
+/// `-C linker=...`) make those fail. Stripping them is safe for size-probing
+/// because:
+///
+///   * rlibs don't link, so link-args don't matter;
+///   * `size_of::<T>()` depends on the target *triple*'s data layout, not on
+///     `-C target-cpu` / `-C target-feature` (those control codegen, not
+///     layout).
+///
+/// `CARGO_TARGET_<TRIPLE>_RUSTFLAGS` is KEPT because it is already
+/// target-scoped and won't poison host builds.
+///
+/// ISSUE 0022 — the make jobserver is stripped here too, and that is the SOURCE
+/// fix for the cyclone fixture deadlock (every platform's cyclone build goes
+/// through `nros`, hence this probe). When the outer build runs under a GNU
+/// make jobserver (the fixture builder uses `make --jobserver-style=fifo`), the
+/// outer cargo holds jobserver tokens and then BLOCKS in this build script
+/// waiting for the nested probe cargo; if the probe inherited the same
+/// jobserver it would wait for a token the outer cargo holds → circular wait
+/// (cargo does not release its tokens before blocking on a child cargo — a
+/// known recursive-cargo jobserver hazard). Removing `MAKEFLAGS` /
+/// `CARGO_MAKEFLAGS` makes the probe use its OWN job budget, so it never
+/// competes for the parent's tokens and the deadlock cannot form — on ANY
+/// platform, without disabling jobserver coordination for the outer build. DO
+/// NOT drop these two without restoring an equivalent jobserver strip (see the
+/// issue-0022 box in `scripts/build/fixture-make-driver.sh`).
+///
+/// # Why the executor backing knob is PINNED rather than dropped (issue 1390)
+///
+/// `nros-node` resolves `NROS_EXECUTOR_BACKING_U64S` with the RFC-0049 ladder:
+/// the env var first, else the board descriptor named by `NROS_BOARD_TOML`. The
+/// probe inherits `NROS_BOARD_TOML` — it has to, because that file's CONTENT
+/// carries sizing knobs that DO change a probed size, which is why the name is
+/// one of the four `knob_identity()` may never exclude. So the probe picks up
+/// the board's `[board.knobs.executor] backing_u64s` claim.
+///
+/// The image's SIZING knobs do not arrive that way. They reach a leaf through
+/// its own process env, and that env does not cross into this build script:
+/// MEASURED on threadx-linux, 2026-09-20, by dumping this script's own
+/// environment before the spawn — 56 `NROS_*` variables, not one of them a
+/// sizing knob. So `nros-node`'s const assertion (`stated >= default`) would
+/// rule INSIDE the probe on a pairing that exists in no image: the board's
+/// statement against an UNNARROWED default.
+///
+/// Zero is that knob's documented opt-out: no static, no
+/// `nros_executor_backing_static` cfg, and therefore no const assertion. It
+/// changes nothing the probe measures — `EXECUTOR_BACKING` is a `.bss`
+/// reservation `backing::take` hands out, not a term in `ExecutorSizing`, and
+/// the header's `NROS_EXECUTOR_SIZE` is the executor VALUE plus its carved
+/// storage. Measured: the generated `NROS_EXECUTOR_SIZE` / `*_OPAQUE_U64S` for
+/// every threadx-linux workspace header are byte-identical with and without the
+/// pin.
+///
+/// Dropping the variable instead of pinning it would leave the board rung on
+/// the ladder, which is the whole defect; pinning is what takes the probe out
+/// of the population that judges a board's claim.
+fn isolate_probe_env(cmd: &mut Command) {
+    for var in [
+        "RUSTFLAGS",
+        "CARGO_BUILD_RUSTFLAGS",
+        "CARGO_ENCODED_RUSTFLAGS",
+        "CARGO_BUILD_TARGET",
+        "CARGO_BUILD_TARGET_DIR",
+        "MAKEFLAGS",
+        "CARGO_MAKEFLAGS",
+        "MAKELEVEL",
+    ] {
+        cmd.env_remove(var);
+    }
+    cmd.env(EXECUTOR_BACKING_KNOB, "0");
+}
+
 fn probe_key(target: &str, features: &[String]) -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     let mut mix = |b: &[u8]| {
@@ -1209,6 +1258,16 @@ const KNOBS_THAT_CANNOT_CHANGE_A_SIZE: &[(&str, &str)] = &[
     (
         "NROS_PLATFORM_THREADX_SRC",
         "C source dir for the ThreadX platform shim",
+    ),
+    // --- issue 1390: pinned on the nested command, so it cannot reach a size ---
+    (
+        EXECUTOR_BACKING_KNOB,
+        "the executor backing reservation; `isolate_probe_env` PINS it to 0 on \
+         the nested command, so whatever the outer build resolved never reaches \
+         the probe — and the reservation is a `.bss` static, not a term in \
+         `ExecutorSizing`, so it could not change a probed size even unpinned. \
+         This exclusion is only sound WITH that pin; the two move together, \
+         asserted by `the_pinned_backing_knob_is_also_argued_out_of_the_key`",
     ),
     ("NROS_LAN9118_LWIP_DIR", "vendored driver source dir"),
     ("NROS_VIRTIO_NET_NETX_DIR", "vendored driver source dir"),
@@ -2338,6 +2397,106 @@ mod tests {
                  CONTENT carries sizing knobs — that is issue 0528 by a new route"
             );
         }
+    }
+
+    /// Issue 1390 — the nested probe DECLINES the executor backing static, and
+    /// keeps the outer build's cross-compile env out.
+    ///
+    /// `nros-node` resolves `NROS_EXECUTOR_BACKING_U64S` off the RFC-0049
+    /// ladder, whose board rung is the `NROS_BOARD_TOML` this probe must
+    /// inherit. Without the pin the probe therefore judges a BOARD's backing
+    /// claim against an UNNARROWED default — a pairing that exists in no image
+    /// — and a board that states its own per-image number cannot build at all.
+    ///
+    /// POSITIVE CONTROL, measured 2026-09-20 by running the nested command by
+    /// hand against `nros-board-threadx-linux` with the claim lowered to 4494:
+    /// without `NROS_EXECUTOR_BACKING_U64S=0` it exits 101 with
+    /// `error[E0080] ... NROS_EXECUTOR_BACKING_U64S is below the default
+    /// executor sizing`; with it, rc=0. So deleting the `cmd.env` line below is
+    /// not a cosmetic change, and this test is what says so.
+    ///
+    /// The removals are asserted in the same test because they share one
+    /// function and one reason — the nested cargo's environment is about
+    /// MEASURING a layout, not about building an image.
+    #[test]
+    fn the_nested_probe_declines_the_executor_backing_static() {
+        let mut cmd = Command::new("cargo");
+        // Present in the parent's spelling of the child env, so a `env_remove`
+        // shows up as an explicit `None` in `get_envs()` rather than as absence.
+        cmd.env("RUSTFLAGS", "-C linker=arm-none-eabi-gcc");
+        cmd.env("MAKEFLAGS", "--jobserver-auth=fifo:/tmp/x");
+        isolate_probe_env(&mut cmd);
+
+        let envs: Vec<(String, Option<String>)> = cmd
+            .get_envs()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().into_owned(),
+                    v.map(|v| v.to_string_lossy().into_owned()),
+                )
+            })
+            .collect();
+        let get = |name: &str| envs.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone());
+
+        assert_eq!(
+            get(EXECUTOR_BACKING_KNOB),
+            Some(Some("0".to_string())),
+            "the nested probe must PIN {EXECUTOR_BACKING_KNOB}=0 (issue 1390). \
+             Unpinned, it takes the board rung off the ladder through the \
+             NROS_BOARD_TOML the probe has to inherit, and `nros-node`'s \
+             `stated >= default` assertion then rules on the board's claim \
+             against a default belonging to no image."
+        );
+        for var in [
+            "RUSTFLAGS",
+            "CARGO_BUILD_RUSTFLAGS",
+            "CARGO_ENCODED_RUSTFLAGS",
+            "CARGO_BUILD_TARGET",
+            "CARGO_BUILD_TARGET_DIR",
+            "MAKEFLAGS",
+            "CARGO_MAKEFLAGS",
+            "MAKELEVEL",
+        ] {
+            assert_eq!(
+                get(var),
+                Some(None),
+                "{var} must be REMOVED from the nested probe env: the \
+                 cross-compile flags break its host-side proc-macro compiles, \
+                 and inheriting the jobserver is issue 0022's deadlock."
+            );
+        }
+        assert_eq!(
+            get("CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS"),
+            None,
+            "the target-scoped RUSTFLAGS spelling is deliberately KEPT"
+        );
+    }
+
+    /// The pin and the key-exclusion are two halves of ONE decision.
+    ///
+    /// `knob_identity()` sweeps every `NROS_*` in the environment into the probe
+    /// key, which is right for an unknown knob (issue 0528). This one is argued
+    /// out — and the argument is only true BECAUSE the nested command pins it,
+    /// so an exclusion that outlived the pin would be a claim nothing supports.
+    /// Asserting both here is what makes either half's removal a red test rather
+    /// than a silent drift.
+    #[test]
+    fn the_pinned_backing_knob_is_also_argued_out_of_the_key() {
+        assert!(
+            knob_is_excluded(EXECUTOR_BACKING_KNOB),
+            "{EXECUTOR_BACKING_KNOB} is pinned on the nested command, so letting \
+             it key the probe splits the shared directory on a value the child \
+             never sees"
+        );
+        let mut cmd = Command::new("cargo");
+        isolate_probe_env(&mut cmd);
+        assert!(
+            cmd.get_envs()
+                .any(|(k, v)| k == EXECUTOR_BACKING_KNOB && v.map(|v| v == "0").unwrap_or(false)),
+            "{EXECUTOR_BACKING_KNOB} is argued out of the probe key on the \
+             grounds that the nested command pins it — restore the pin, or \
+             remove the exclusion"
+        );
     }
 
     /// The knobs the 2026-08-15 census caught splitting the key run-to-run.

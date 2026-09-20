@@ -162,7 +162,17 @@ fn every_stated_executor_backing_meets_the_measured_default() {
                                 "[board.knobs.executor] backing_u64s".to_string(),
                                 format!(
                                     "Restate it as {default}; the pool subtracts the same \
-                                     rung, so there is nothing else to edit."
+                                     rung, so there is nothing else to edit. A LOWER number \
+                                     is not a smaller reservation you may choose (issue \
+                                     1390): the rung is stated once per BOARD and reaches \
+                                     every `nros-node` unit built with this descriptor, \
+                                     including the per-cargo-root `nros_ws_runtime` \
+                                     umbrella, which serves every entry in a configure and \
+                                     therefore carries no image's narrowing. The unnarrowed \
+                                     default is also the only number a host-side lane can \
+                                     MEASURE (issue 1197), so a claim below it is one \
+                                     nothing vouches for -- which is how issue 1388 \
+                                     happened."
                                 ),
                             )
                         } else {

@@ -102,5 +102,47 @@ pool.app = [15, 31]
 # `nros-node/tests/executor_backing_claims.rs` compares it against the measured
 # default. Before issue 1388 that check read Zephyr confs only, so this claim
 # was the one spelling nothing vouched for.
+#
+# WHY THIS NUMBER CANNOT BE LOWERED, and what was measured to say so (issue
+# 1390). 1388 left open whether the unnarrowed default is a real floor or just
+# the first obstacle. It is a floor, for two independent reasons.
+#
+#   1. MECHANISM. `nros-node`'s build script was instrumented to log, per unit,
+#      the knobs it resolved and the answer the RFC-0049 ladder gave, and one
+#      serial `just threadx_linux build-examples` was run (2026-09-20). It
+#      compiles `nros-node` 18 times. Exactly TWO of those units both carry this
+#      rung AND have no image's narrowing:
+#
+#        * the synthesised `nros_ws_runtime` umbrella of `examples/workspaces/
+#          mixed`, which `nros_board_facts_env()` hands this descriptor and
+#          which is compiled per CARGO ROOT, so it serves every entry in the
+#          configure and can belong to no single image's knobs;
+#        * the `nros-c` / `nros-cpp` SIZE PROBE spawned beneath it, which
+#          inherits `NROS_BOARD_TOML` and nothing else.
+#
+#      Every other rung-carrying unit is a standalone Rust example leaf, where
+#      `nros sync` narrows the knobs and the derived defaults are 2917 / 3626 /
+#      4494. Every other UNNARROWED unit — `nros_c-static` / `nros_cpp-static`
+#      in the three cmake workspace roots, the cargo-built `workspaces/rust` and
+#      `workspaces/realtime-rust` entries, and their own probes — resolves NO
+#      rung at all, so it sizes the static at its own default and the assertion
+#      there compares a number with itself.
+#
+#      Issue 1390 removed the probe from that population (it never links, never
+#      opens an executor, and the reservation is not a term in anything it
+#      measures, so it declines the static outright). The umbrella stays, and a
+#      per-cargo-root crate has no image's narrowing BY CONSTRUCTION — so it
+#      pins the floor at the unnarrowed default, which is this number.
+#
+#   2. VOUCHABILITY, and this one holds even if the umbrella were fixed.
+#      Issue 1197 established that nothing outside `nros-node`'s own dependency
+#      graph can DERIVE this size: it is `arena + repr(Rust) tables`, laid out
+#      by the target compiler. So the only number a host-side lane can measure
+#      is the unnarrowed `ExecutorSizing::DEFAULT`, and a board's narrowed
+#      maximum could be established only by building every image for the board.
+#      A claim below the default is therefore a claim nothing vouches for —
+#      which is exactly the state issue 1388 was caused by. Lowering this rung
+#      would buy ~52 KB of byte pool in six leaf images and pay for it by
+#      trading a MEASURED claim for an asserted one.
 [board.knobs.executor]
 backing_u64s = 11069
