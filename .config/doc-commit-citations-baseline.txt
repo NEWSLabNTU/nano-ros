@@ -75,3 +75,18 @@ adb4c592e
 # `origin/main`; for this one it is NOT.
 d1d88f660
 ea9fbfae9
+
+# `docs/roadmap/phase-453-codegen-followups-handoff.md`, the "one rescue" row.
+# `a270ceb3e` is the only fix on file for issue 1039 and it lives on
+# `wip/zenoh-linux-test`, a branch that was never merged — the doc's own
+# sentence says so, and says the work was re-derived onto main on
+# `fix/1039-nuttx-conforming-bool`. So the commit is GENUINELY ELSEWHERE, which
+# is the case this baseline exists for, and the citation is load-bearing: it is
+# how the next person finds the original if the re-derivation is ever doubted.
+#
+# Not added by the branch that carries this line — the gate is red on `main`
+# itself (measured on a clean `origin/main` worktree), and `pre-push` runs it,
+# so every branch inherits the refusal. Same asymmetry as `d1d88f660` above:
+# a clone that has fetched that branch resolves the hash and needs no entry.
+# Remove this when `wip/zenoh-linux-test` is deleted or merged.
+a270ceb3e

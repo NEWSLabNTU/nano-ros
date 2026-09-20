@@ -70,7 +70,7 @@ build without a checkout. That is why A1/A2 could ship broken.
 container with no checkout; it fails before A1+A2 and passes after.
 
 *Status (2026-09-11): the gate landed and is RED — on a defect A1+A2 did not
-reach, filed as [issue 1304](../issues/1304-installed-setup-cannot-provision-submodule-sources.md).*
+reach, filed as [issue 1304](../issues/archived/1304-installed-setup-cannot-provision-submodule-sources.md).*
 
 - **What runs.** `just probe bootstrap` runs both front doors; the new
   `installed` track (`just probe installed`) installs a release into a pristine
@@ -104,7 +104,7 @@ reach, filed as [issue 1304](../issues/1304-installed-setup-cannot-provision-sub
 
 ### A4 — the installed path provisions without a checkout
 
-Closes [issue 1304](../issues/1304-installed-setup-cannot-provision-submodule-sources.md).
+Closes [issue 1304](../issues/archived/1304-installed-setup-cannot-provision-submodule-sources.md).
 **Blocks A3's pass direction and this phase's headline acceptance**: with A1+A2
 in place, the installed journey still dead-ended at `nros setup`, one step
 EARLIER than D1 described, for every RMW.
