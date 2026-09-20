@@ -104,6 +104,44 @@ function(nros_platform_link_app_deferred target)
         "cmake_language(DEFER CALL nros_platform_link_app_once [[${target}]])")
 endfunction()
 
+# _nros_entry_resolve_rmw(<out_var>)
+#
+# WHICH BACKEND this image is, as far as an entry can tell. Empty when nothing
+# in this configure has chosen one yet, which is a legitimate state — so this
+# never FATALs, unlike `nano_ros_link_rmw`.
+#
+# Same resolution ORDER as `nano_ros_link_rmw`'s fallback list
+# ("NANO_ROS_DEFAULT_RMW;NANO_ROS_RMW"), then KCONFIG.
+#
+# THE KCONFIG ARM IS NOT DECORATION. A west Zephyr image selects its backend
+# with `CONFIG_NROS_RMW_<X>=y` and sets NEITHER cmake variable: measured on
+# `build-ws-cpp-entry-cyclonedds`, whose CMakeCache has no `NANO_ROS_RMW` at all
+# while its `.config` carries `CONFIG_NROS_RMW_CYCLONEDDS=y`. Without it the
+# user-config bake was skipped and the image linked Cyclone (`ddsi_` x14283)
+# carrying none of the user's bytes — configure clean, compile clean, silently
+# unconfigured.
+#
+# ONE FUNCTION, because there are now two askers in this file (the user-config
+# bake and phase-454 W14's sizing descriptor) and the mapping is already
+# mirrored by `nros_system_generate`. A second copy is how two wirings come to
+# disagree about which backend an image is, which is the class CLAUDE.md's
+# "fix the CLASS, not the reported site" names.
+function(_nros_entry_resolve_rmw _out_var)
+    set(_rmw "")
+    if(DEFINED NANO_ROS_DEFAULT_RMW AND NOT "${NANO_ROS_DEFAULT_RMW}" STREQUAL "")
+        set(_rmw "${NANO_ROS_DEFAULT_RMW}")
+    elseif(DEFINED NANO_ROS_RMW AND NOT "${NANO_ROS_RMW}" STREQUAL "")
+        set(_rmw "${NANO_ROS_RMW}")
+    elseif(CONFIG_NROS_RMW_CYCLONEDDS)
+        set(_rmw "cyclonedds")
+    elseif(CONFIG_NROS_RMW_XRCE)
+        set(_rmw "xrce")
+    elseif(CONFIG_NROS_RMW_ZENOH)
+        set(_rmw "zenoh")
+    endif()
+    set(${_out_var} "${_rmw}" PARENT_SCOPE)
+endfunction()
+
 function(nano_ros_entry)
     # Phase 219.D — LAUNCH + ARGS + LANG keyword args.
     # R1 / W4.2 — MODEL <system_model.yaml>: the canonical resolved-model
@@ -537,35 +575,7 @@ function(nano_ros_entry)
     # gets a warning rather than silence -- a config that does not apply must not
     # look like one that did.
     if(_NRA_BRINGUP)
-        # Same resolution ORDER as `nano_ros_link_rmw`'s fallback list
-        # ("NANO_ROS_DEFAULT_RMW;NANO_ROS_RMW"), not that function itself: it
-        # FATAL_ERRORs when nothing resolves, and an entry with no RMW chosen yet
-        # is a legitimate state here.
-        # ...and then KCONFIG, which is the answer on Zephyr and the reason the
-        # first version of this block baked nothing there (phase-206 W2, final
-        # item). A west Zephyr image selects its backend with
-        # `CONFIG_NROS_RMW_<X>=y` and sets NEITHER cmake variable: measured on
-        # `build-ws-cpp-entry-cyclonedds`, whose CMakeCache has no
-        # `NANO_ROS_RMW` at all while its `.config` carries
-        # `CONFIG_NROS_RMW_CYCLONEDDS=y`. So `_nra_rmw` came out empty, the bake
-        # was skipped, and the image linked Cyclone (`ddsi_` x14283) carrying
-        # none of the user's bytes -- configure clean, compile clean, silently
-        # unconfigured. Exactly the shape this work item exists to stop.
-        #
-        # Same mapping and same order as `nros_system_generate`'s, so the two
-        # wirings cannot disagree about which backend an image is.
-        set(_nra_rmw "")
-        if(DEFINED NANO_ROS_DEFAULT_RMW AND NOT "${NANO_ROS_DEFAULT_RMW}" STREQUAL "")
-            set(_nra_rmw "${NANO_ROS_DEFAULT_RMW}")
-        elseif(DEFINED NANO_ROS_RMW AND NOT "${NANO_ROS_RMW}" STREQUAL "")
-            set(_nra_rmw "${NANO_ROS_RMW}")
-        elseif(CONFIG_NROS_RMW_CYCLONEDDS)
-            set(_nra_rmw "cyclonedds")
-        elseif(CONFIG_NROS_RMW_XRCE)
-            set(_nra_rmw "xrce")
-        elseif(CONFIG_NROS_RMW_ZENOH)
-            set(_nra_rmw "zenoh")
-        endif()
+        _nros_entry_resolve_rmw(_nra_rmw)
 
         if(_nra_rmw)
             set(_nra_cfg_dir "${CMAKE_BINARY_DIR}/nros-rmw-user-config")
@@ -1111,6 +1121,37 @@ function(_nros_entry_invoke_codegen)
     # configure that knows which one. The deferred calls run at the end of the
     # top-level directory, i.e. after this.
     _nros_declared_qos_record_model("${_NRX_MODEL}")
+
+    # phase-454 W14 (RFC-0100 D4) — the SECOND descriptor producer, on the road
+    # that had none.
+    #
+    # The same model, a third time, for the artifact the other two carriers are
+    # being retired in favour of. W11 measured that a cmake entry writes no
+    # descriptor at all, so every D5 derivation was inert here; the producer
+    # states what the model knows — the counts and all four QoS policies — and
+    # REFUSES every field that needs a leaf's inventories, naming issue 1393 in
+    # each reason.
+    #
+    # HERE and not in `nano_ros_node_register`, for the same reason the entity
+    # inventory composes here: an entry is declared LAST in a configure by
+    # design, so this is the first point guaranteed to be after every
+    # registration and after the model is resolved.
+    #
+    # WRITE then READ, in that order and both unconditional. The read registers
+    # BOTH the descriptor and the CLI in `CMAKE_CONFIGURE_DEPENDS` (issue 1018)
+    # even when no file exists, so an image that has none today picks one up on
+    # the sync or re-resolve that creates one.
+    include("${_NROS_ENTRY_DIR}/NanoRosSizingDescriptor.cmake")
+    _nros_entry_resolve_rmw(_nrx_rmw)
+    nros_sizing_descriptor_from_model(_nrx_sizing_descriptor
+        CLI       "${_nros_bin}"
+        MODEL     "${_NRX_MODEL}"
+        ENTRY     "${_NRX_NAME}"
+        BUILD_DIR "${CMAKE_BINARY_DIR}"
+        RMW       "${_nrx_rmw}")
+    nros_sizing_descriptor_path(_nrx_sizing_path "${CMAKE_BINARY_DIR}" "${_NRX_NAME}")
+    nros_sizing_descriptor_read("${_nrx_sizing_path}")
+
     # issue 1033 — tell the deferred non-entry composer to stand down. An entry
     # composes HERE, after its own registrations, which is the earliest correct
     # point; the deferred one exists only for images that never call this verb.

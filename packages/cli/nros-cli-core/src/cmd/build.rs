@@ -414,7 +414,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
             &platform,
             &board,
         );
-        let resolved_dir = resolved.as_ref().map(|(d, _)| d.clone());
+        let resolved_dir = resolved.as_ref().map(|r| r.dir.clone());
 
         // ---- stage 4 ----------------------------------------------------
         let mut cmake_configure: Option<Handoff> = None;
@@ -514,8 +514,75 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     eyre::bail!("no nano-ros checkout; the board catalog could not have loaded");
                 };
                 let mut env = generated.entity_facts.clone();
-                if let Some((_, r)) = &resolved {
-                    env.extend(derived_pool_env(r));
+                if let Some(r) = &resolved {
+                    env.extend(derived_pool_env(&r.resolved));
+                }
+                // phase-454 W14 (RFC-0100 D4) — the SECOND descriptor producer.
+                //
+                // A workspace image has no leaf inventories: its entity facts
+                // come from the resolved SystemModel and its bound inventory
+                // does not exist at all. So it writes what the model KNOWS —
+                // the counts and all four QoS policies — and REFUSES every
+                // field that needs a leaf, each refusal naming issue 1393. D6
+                // is what makes that safe to publish: `Fact::stated()` is the
+                // only accessor that yields a value, so no consumer can read a
+                // refusal as a default.
+                //
+                // Written UNDER `image_dir`, so the `[env]` row below is
+                // relative to the cargo config's GRANDPARENT (`build/<coord>/`)
+                // and the image stays self-contained — the same rule and the
+                // same base the leaf road proved by copy-out (W11/W12).
+                //
+                // NO CONTRACT, NO FILE. `resolve_image` hands back an inventory
+                // only when the model described wiring, and an all-refused
+                // descriptor would move the `[meta] basis` every consumer
+                // guards on in order to say nothing.
+                let mut path_env: std::collections::BTreeMap<String, PathBuf> =
+                    std::collections::BTreeMap::new();
+                if let Some(inv) = resolved.as_ref().and_then(|r| r.inventory.as_ref()) {
+                    match crate::sizing_descriptor::write_for_model(
+                        &crate::sizing_descriptor::ModelImage {
+                            build_dir: &image_dir,
+                            entry: &image_id,
+                            inventory: inv,
+                            target_triple: descriptor.target.clone(),
+                            // A board that pins no rustc triple builds for the
+                            // host, and that is the ONE case where this
+                            // process's own width is the target's.
+                            host_build: descriptor.target.is_none(),
+                            heap_budget_bytes: board_heap_budget(descriptor, &board),
+                            rmw: image.rmw.clone(),
+                            road: "a workspace cargo image",
+                        },
+                    ) {
+                        Ok(written) => {
+                            eprintln!(
+                                "nros build:   sizing descriptor → {}",
+                                written.path.display()
+                            );
+                            // phase-454 W6.c — the four Cyclone facts a
+                            // `cc::Build` cannot read from a file. All four are
+                            // refused on this road today (they are `[types]`
+                            // maxima and the board heap), so this adds no row;
+                            // it is here so the two producers stay one shape
+                            // rather than two that happen to agree.
+                            for (k, v) in written.cyclonedds_env() {
+                                env.insert(k, v);
+                            }
+                            path_env.insert(
+                                nros_sizing_descriptor::DESCRIPTOR_ENV.to_string(),
+                                written.path,
+                            );
+                        }
+                        // NOT fatal, and the same argument stage 3.5 makes:
+                        // making the descriptor a new way for a build to stop
+                        // would be a regression paid by every image for the
+                        // benefit of the few that derive.
+                        Err(e) => eprintln!(
+                            "nros build: warning: `{image_id}`'s sizing descriptor was not \
+                             written ({e}); every consumer keeps its own defaults"
+                        ),
+                    }
                 }
                 // phase-445 W6 — what the image's declared TRANSPORT implies,
                 // then the APP rung. Same two layers, same order and the same
@@ -543,6 +610,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                         workspace: root.clone(),
                         target_dir: image_dir.join("target"),
                         env,
+                        path_env,
                         patches: registry_patches(&root, nros_root, &manifest_dir),
                         ..Default::default()
                     },
@@ -2401,6 +2469,54 @@ fn entries_for_other_boards(
 /// launch file (`<bringup>/launch/<stem>.contract.yaml`), folded into the
 /// resolved SystemModel — which is where phase-412 already put the statement of
 /// what an image creates when it retired the `ENTITIES` argument.
+/// `[board.knobs.memory] heap_bytes` for the board this image names.
+///
+/// The RFC-0049 board rung, read off the descriptor's own file. The leaf road
+/// reaches the same number through `NROS_BOARD_TOML`, which `board_facts`
+/// resolved for it; a workspace image has no such table, but it has the
+/// descriptor, and the descriptor knows where it was parsed from.
+///
+/// `None` for an in-memory descriptor, a board that states no memory rung, or a
+/// file that no longer parses — and `None` is an ANSWER here: `[target]` then
+/// refuses `heap_budget_bytes`, which is Cyclone's "a board that states no heap
+/// gets no judgement" (RFC-0100 D11).
+fn board_heap_budget(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    board: &str,
+) -> Option<usize> {
+    let src = descriptor.source.as_deref()?;
+    nros_board_common::platform_config::BoardKnobsFile::load_for_board(
+        std::path::Path::new(src),
+        Some(board),
+    )
+    .ok()?
+    .knobs
+    .memory
+    .heap_bytes
+}
+
+/// What stage 3.5 resolved for one image.
+///
+/// The INVENTORY rides beside [`crate::resolve::Resolved`] rather than inside
+/// it, and that is not tidiness. `Resolved` is the `resolved.toml` artifact's
+/// data model and holds only derived VALUES — *"`Refused` carries prose and NO
+/// numbers"* — while phase-454 W14's second descriptor producer needs the ROWS:
+/// every endpoint's kind, type, topic and four QoS policies. Folding those into
+/// `Resolved` would put a second, wider schema behind a file that publishes a
+/// narrower one.
+struct ResolvedImage {
+    /// `build/<bringup>__<entry>/`, where `resolved.toml` was written.
+    dir: std::path::PathBuf,
+    resolved: crate::resolve::Resolved,
+    /// The composed inventory, when the model described wiring at all.
+    ///
+    /// `None` is the ordinary state: 109 of 114 resolvable models describe no
+    /// wiring, and `EntityInventory::from_model` returns `None` for each. It is
+    /// also the signal that NO descriptor is written for this image — "no
+    /// contract, no change" (phase-454 W12's control, held on this road too).
+    inventory: Option<crate::entity_inventory::EntityInventory>,
+}
+
 fn resolve_image(
     root: &std::path::Path,
     bringup: &str,
@@ -2409,7 +2525,7 @@ fn resolve_image(
     image: &crate::orchestration::image::ImageBlock,
     platform: &str,
     board: &str,
-) -> Option<(std::path::PathBuf, crate::resolve::Resolved)> {
+) -> Option<ResolvedImage> {
     use crate::{
         entity_inventory::EntityInventory,
         orchestration::model_location,
@@ -2486,6 +2602,13 @@ fn resolve_image(
             })
     })();
 
+    // Cloned BEFORE `write_resolved` consumes the reference, so the second
+    // descriptor producer (phase-454 W14) reads the SAME composition this
+    // resolve published rather than re-parsing the model into a second one --
+    // which is the drift `nros_derive_entity_inventory_knobs`'s own header warns
+    // about one artifact over ("a second count in cmake is how two green tools
+    // come to disagree").
+    let composed = inventory.as_ref().ok().cloned();
     let written = match inventory {
         Ok(inv) => write_resolved(&dir, ident, &inv),
         Err(reason) => {
@@ -2543,7 +2666,11 @@ fn resolve_image(
                     w.toml_path.display()
                 ),
             }
-            Some((dir, w.resolved))
+            Some(ResolvedImage {
+                dir,
+                resolved: w.resolved,
+                inventory: composed,
+            })
         }
     }
 }

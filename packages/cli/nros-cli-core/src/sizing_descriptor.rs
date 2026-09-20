@@ -57,6 +57,35 @@
 //! maximum over the image's types. The refusal survives for the case it was
 //! always for — a type whose schema codegen could not build — and now names that
 //! type instead of a wave.
+//!
+//! # Two producers, one composer (phase-454 W14)
+//!
+//! [`write_for_leaf`] is the LEAF road: a single-package cargo leaf, which has
+//! all three inventories. [`write_for_model`] is the second, and it has ONE —
+//! the resolved SystemModel. A workspace cargo image and every cmake / Zephyr
+//! west / NuttX entry reach a model and nothing else, so through W12 they got no
+//! descriptor at all and every D5 derivation was inert there.
+//!
+//! What a model-only descriptor may CLAIM is the decision W11 left open, and it
+//! is settled by [`ModelHorizon`]: **emit what the SystemModel knows and REFUSE
+//! every field it cannot source, naming the follow-up in each reason.** Nothing
+//! is invented and nothing falls back — D6 is what makes a partial descriptor
+//! safe to publish at all, because [`nros_sizing_descriptor::Fact::stated`] is
+//! the only accessor that yields a value, so a consumer cannot read a refusal as
+//! a default.
+//!
+//! The five fields it refuses, and why each is leaf-side:
+//!
+//! | field | needs |
+//! | --- | --- |
+//! | `wire_bound_bytes` | the bound inventory, which codegen writes beside a LEAF |
+//! | `storage_bytes` | that bound, plus the board descriptor resolved for this image |
+//! | `[types] max_fields` / `max_kinds` / `max_nested_depth` | codegen's own per-type schema walk |
+//! | `registration_path` | which subscribe spelling the image writes |
+//!
+//! Every one of those reasons names [`MODEL_ONLY_ISSUE`], so the artifact itself
+//! says what is missing and why — and so the day that issue closes, the
+//! refusals in a written descriptor are the checklist.
 
 use nros_sizing_descriptor::{
     Basis, Durability, Endpoint, EndpointKind, History, RegistrationPath, Reliability,
@@ -116,6 +145,91 @@ pub enum BackendDispatch {
     Buffered,
 }
 
+/// The follow-up every model-only refusal names (phase-454 W14).
+///
+/// ONE spelling, so the day it closes the refusals in a written descriptor are
+/// the checklist and a grep over this constant is the work list. Written into
+/// the artifact rather than only into a build log, because a log nobody kept is
+/// exactly the place RFC-0100 D6 says a refusal must not go.
+pub const MODEL_ONLY_ISSUE: &str = "issue 1393";
+
+/// What a producer that has ONLY the resolved SystemModel cannot source.
+///
+/// [`write_for_leaf`] has three inventories; [`write_for_model`] has one. The
+/// difference is not a degree of completeness, it is a set of named inputs that
+/// live beside a LEAF — codegen's bound table, codegen's per-type schema walk,
+/// and the call sites that decide a subscription's registration spelling.
+///
+/// Carrying it as a value rather than a `bool` is what lets a refusal say WHICH
+/// road it was written on: "a workspace cargo image" and "a cmake entry" want
+/// different remedies, and a reader holding the file has no other way to tell
+/// which producer wrote it.
+#[derive(Debug, Clone)]
+pub struct ModelHorizon {
+    road: String,
+}
+
+impl ModelHorizon {
+    /// `road` names the producer in prose — "a workspace cargo image",
+    /// "a cmake entry". It appears verbatim in every refusal.
+    pub fn new(road: impl Into<String>) -> Self {
+        Self { road: road.into() }
+    }
+
+    /// The `bounds_error` a model-only producer supplies.
+    ///
+    /// It reaches TWO families through the code that already exists:
+    /// `wire_bound_bytes` on every row, and `[types]`'s three maxima. Neither
+    /// needs a special case here, because "there is no bound inventory" is
+    /// exactly what both of those refusals are already written to say — the
+    /// only thing this adds is WHY there is none, and what tracks fixing it.
+    pub fn bound_inventory(&self) -> String {
+        format!(
+            "this descriptor was written from the resolved SystemModel alone ({road}), which \
+             carries no message-bound inventory -- codegen writes one beside a LEAF, and the \
+             per-type schema walk that prices it with it. Tracked by {MODEL_ONLY_ISSUE}",
+            road = self.road
+        )
+    }
+
+    /// `registration_path`'s refusal.
+    ///
+    /// Not composed from [`registration_path_refusal`]'s missing halves,
+    /// because on this road the halves are not what is missing: an image
+    /// resolved from a model is a set of nodes from several packages, so "the
+    /// entry's language" has no single answer even where the backend does.
+    /// Saying "the language is unknown" would aim the reader at a fact nobody
+    /// can supply.
+    pub fn registration_path(&self) -> String {
+        format!(
+            "this descriptor was written from the resolved SystemModel alone ({road}), which \
+             does not say which subscribe spelling each node writes -- and a model image is \
+             several packages, so there is no one entry language to read it off. A Rust typed \
+             registration on a schemaless backend claims the closure buffer rather than the \
+             type's bound (issue 1319), so the path is refused rather than assumed. Tracked by \
+             {MODEL_ONLY_ISSUE}",
+            road = self.road
+        )
+    }
+
+    /// `storage_bytes`'s refusal.
+    ///
+    /// Refused DIRECTLY rather than through [`set_storage_bytes`]'s chain,
+    /// because on this road the chain's first test is the wrong diagnosis: a
+    /// `[target]` this producer CAN state would leave the reader with
+    /// "the type's wire bound is not available" and no road back to why. The
+    /// region needs both halves and this producer has neither.
+    pub fn storage_bytes(&self) -> String {
+        format!(
+            "this descriptor was written from the resolved SystemModel alone ({road}), so a \
+             receive region has neither of its two sizes: the type's wire bound (no message-bound \
+             inventory) nor the board descriptor resolved for THIS image, whose pointer width \
+             sizes the per-slot length word. Tracked by {MODEL_ONLY_ISSUE}",
+            road = self.road
+        )
+    }
+}
+
 /// Everything the producer needs, stated by the caller that HAS it.
 ///
 /// A struct rather than nine arguments because every one of these is
@@ -160,6 +274,15 @@ pub struct DescriptorInputs<'a> {
     pub backend_dispatch: Option<BackendDispatch>,
     /// The backend's name, for prose only.
     pub rmw: Option<String>,
+    /// phase-454 W14 — this producer's HORIZON, when it is narrower than the
+    /// leaf road's. `None` on the leaf road, which has every input.
+    ///
+    /// `Some` switches two fields from "composed from what I was given" to
+    /// "refused, and here is the road and the tracked follow-up". It does NOT
+    /// switch off anything the SystemModel does answer: the counts and all four
+    /// QoS policies are stated exactly as they are on the leaf road, because
+    /// they come from the same [`EntityInventory`].
+    pub horizon: Option<ModelHorizon>,
 }
 
 /// Build the descriptor.
@@ -444,9 +567,19 @@ fn endpoint_row(
     // degrades another consumer's facts.
     let bound = set_wire_bound(&mut ep, ty, inputs);
 
-    ep.set_registration_path(registration_path(kind, inputs));
-    if ep.registration_path().stated().is_none() {
-        ep.refuse("registration_path", registration_path_refusal(inputs));
+    // phase-454 W14 — a model-only producer refuses the path OUTRIGHT, with its
+    // own reason. It does not fall through the composer below: that one reports
+    // which HALF it is missing, and on this road neither half is the answer.
+    match &inputs.horizon {
+        Some(h) => {
+            ep.refuse("registration_path", h.registration_path());
+        }
+        None => {
+            ep.set_registration_path(registration_path(kind, inputs));
+            if ep.registration_path().stated().is_none() {
+                ep.refuse("registration_path", registration_path_refusal(inputs));
+            }
+        }
     }
 
     // Only a subscription claims a topic-sample receive region. Every other kind
@@ -454,7 +587,13 @@ fn endpoint_row(
     // refused it, there is simply no such region. A publisher serializes into a
     // per-call stack array, which is a transmit buffer and a different question.
     if kind.receives_topic_sample() {
-        if unattributed.is_some() {
+        if let Some(h) = &inputs.horizon {
+            // phase-454 W14 — same shape as the path above, and the same
+            // reason: the chain in `set_storage_bytes` would report whichever
+            // of its three inputs it tested first, which on this road is not
+            // the diagnosis a reader needs.
+            ep.refuse("storage_bytes", h.storage_bytes());
+        } else if unattributed.is_some() {
             ep.refuse(
                 "storage_bytes",
                 "`depth` is refused (this endpoint was not attributed to a contract \
@@ -941,6 +1080,8 @@ pub fn write_for_leaf(
         backend_schema: rmw.as_deref().and_then(backend_schema),
         backend_dispatch: rmw.as_deref().and_then(backend_dispatch),
         rmw,
+        // The leaf road HAS every input, so it has no horizon to declare.
+        horizon: None,
     };
     let desc = build(&inputs);
     let body = nros_sizing_descriptor::render(&desc);
@@ -958,6 +1099,102 @@ pub fn write_for_leaf(
     }
 
     let path = descriptor_path_for_leaf(leaf, &img.image_id);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| eyre::eyre!("create `{}`: {e}", dir.display()))?;
+    }
+    crate::atomic_file::atomic_write(&path, &body)
+        .map_err(|e| eyre::eyre!("write `{}`: {e}", path.display()))?;
+    Ok(WrittenDescriptor { path, desc })
+}
+
+// --- the model road: the second producer (phase-454 W14) ---------------------
+
+/// One image, as a road that has only the resolved SystemModel can describe it.
+///
+/// A struct for the same reason [`DescriptorInputs`] is one: every field is
+/// independently unknown, and a caller must be able to say "I do not know this"
+/// without reordering a call.
+#[derive(Debug)]
+pub struct ModelImage<'a> {
+    /// The image's build directory. The descriptor lands at
+    /// `<build_dir>/nros/sizing/<entry>.toml`, by
+    /// [`nros_sizing_descriptor::descriptor_path`] — the ONE path rule, so a
+    /// consumer holding only the build directory finds it without knowing this
+    /// road.
+    pub build_dir: &'a std::path::Path,
+    /// `[meta] entry`, and the file stem.
+    pub entry: &'a str,
+    /// What the contract declares, resolved through `EntityInventory::from_model`.
+    pub inventory: &'a EntityInventory,
+    /// The rustc triple the board pins, when this road knows it.
+    pub target_triple: Option<String>,
+    /// Is the target the host? Decides whether an absent triple is an answer.
+    pub host_build: bool,
+    /// `[board.knobs.memory] heap_bytes`, when this road knows it.
+    pub heap_budget_bytes: Option<usize>,
+    /// The backend this image links, when the image names one.
+    pub rmw: Option<String>,
+    /// The road, in prose, for every refusal this producer writes.
+    pub road: &'a str,
+}
+
+/// Build the descriptor a MODEL-only road can honestly write, and write it.
+///
+/// **The caller decides whether to call this at all, and the rule is the W12
+/// control**: no contract, no descriptor. `EntityInventory::from_model` returns
+/// `None` for a model that describes no wiring — 109 of 114 resolvable models
+/// are in that state — and writing an all-refused file for one of those would
+/// put an artifact in front of seven consumers in order to say nothing, while
+/// changing the `[meta] basis` every one of them guards on. So this function
+/// takes an inventory by reference rather than an `Option`: reaching it at all
+/// is the statement that a contract was authored.
+///
+/// Write-if-changed through [`crate::atomic_file::atomic_write`], because the
+/// cmake consumer registers the result in `CMAKE_CONFIGURE_DEPENDS` (issue 1018)
+/// and identical bytes must keep their mtime.
+pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> {
+    let horizon = ModelHorizon::new(img.road);
+    let inputs = DescriptorInputs {
+        entry: img.entry.to_string(),
+        inventory: Some(img.inventory),
+        // EMPTY, with the reason beside it. `bounds_error` is not an error
+        // channel here -- it is the one place the existing composer already
+        // asks "why is there no bound table", and answering it is what carries
+        // the tracked issue into `wire_bound_bytes` and `[types]`'s three
+        // maxima without a second refusal path for either.
+        bounds: Vec::new(),
+        schema_shapes: Vec::new(),
+        bounds_error: Some(horizon.bound_inventory()),
+        target_triple: img.target_triple.clone(),
+        host_build: img.host_build,
+        heap_budget_bytes: img.heap_budget_bytes,
+        // Refused through the horizon, not through these. See
+        // `ModelHorizon::registration_path` for why naming a missing half here
+        // would be the wrong diagnosis.
+        language: None,
+        backend_schema: None,
+        backend_dispatch: None,
+        rmw: img.rmw.clone(),
+        horizon: Some(horizon),
+    };
+    let desc = build(&inputs);
+    let body = nros_sizing_descriptor::render(&desc);
+
+    // Issue 0320, the same rule the leaf road holds to and for the same reason:
+    // two checkouts of one tree at different paths must render identical bytes,
+    // or every freshness comparison against this file is a lie. The directories
+    // this producer read from are the build dir and the model the inventory
+    // names.
+    let source = std::path::PathBuf::from(&img.inventory.source);
+    let mut roots: Vec<&std::path::Path> = vec![img.build_dir];
+    if let Some(parent) = source.parent() {
+        roots.push(parent);
+    }
+    if let Some(why) = nros_sizing_descriptor::portability_violation(&body, &roots) {
+        return Err(eyre::eyre!("{why}"));
+    }
+
+    let path = nros_sizing_descriptor::descriptor_path(img.build_dir, img.entry);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| eyre::eyre!("create `{}`: {e}", dir.display()))?;
     }
@@ -1378,6 +1615,26 @@ mod tests {
             backend_schema: Some(BackendSchema::Schemaless),
             backend_dispatch: Some(BackendDispatch::InPlace),
             rmw: Some("zenoh".into()),
+            horizon: None,
+        }
+    }
+
+    /// The same image, as the MODEL-only road can describe it (phase-454 W14).
+    ///
+    /// Built by SUBTRACTION from [`base`] rather than spelled independently, so
+    /// a new input the leaf road gains cannot be silently absent here: the two
+    /// producers differ by exactly the fields named below.
+    fn model_only<'a>(inv: &'a EntityInventory) -> DescriptorInputs<'a> {
+        let horizon = ModelHorizon::new("a workspace cargo image");
+        DescriptorInputs {
+            bounds: Vec::new(),
+            schema_shapes: Vec::new(),
+            bounds_error: Some(horizon.bound_inventory()),
+            language: None,
+            backend_schema: None,
+            backend_dispatch: None,
+            horizon: Some(horizon),
+            ..base(inv)
         }
     }
 
@@ -1888,5 +2145,201 @@ mod tests {
             out.contains("set(NROS_SIZING_IMAGE_BACKEND_COUNT_REFUSED "),
             "{out}"
         );
+    }
+
+    // --- phase-454 W14: the model-only producer -----------------------------
+
+    /// THE RULING, as one assertion: emit what the SystemModel knows, refuse
+    /// every field that needs a leaf, and NAME the follow-up in each reason.
+    ///
+    /// The five refused fields are enumerated rather than counted. A count
+    /// would pass if a refusal moved from one field to another, which is the
+    /// shape of every silent mis-description this model exists to remove.
+    #[test]
+    fn a_model_only_descriptor_states_the_declaration_and_refuses_the_five_leaf_facts() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(3))]);
+        let d = build(&model_only(&inv));
+        let ep = &d.endpoints[0];
+
+        // STATED — the SystemModel carries every one of these.
+        assert_eq!(ep.depth().stated(), Some(&3));
+        assert_eq!(ep.history().stated(), Some(&History::KeepLast));
+        assert_eq!(d.image.node_count().stated(), Some(&1));
+        assert_eq!(d.image.backend_count().stated(), Some(&1));
+        assert_eq!(d.image.subscriber_count().stated(), Some(&1));
+        assert_eq!(d.types.distinct_count().stated(), Some(&1));
+        // `[target]` comes from the BOARD, which this road also has.
+        assert_eq!(d.target.pointer_bytes().stated(), Some(&4));
+        assert_eq!(d.meta.undeclared_endpoints().stated(), Some(&0));
+        assert_eq!(d.meta.basis, Basis::Contract);
+
+        // REFUSED — and every reason names the tracked follow-up, so the
+        // artifact is the checklist the day it closes.
+        for (what, reason) in [
+            ("wire_bound_bytes", ep.wire_bound_bytes().refusal()),
+            ("storage_bytes", ep.storage_bytes().refusal()),
+            ("registration_path", ep.registration_path().refusal()),
+            ("types.max_fields", d.types.max_fields().refusal()),
+            ("types.max_kinds", d.types.max_kinds().refusal()),
+            (
+                "types.max_nested_depth",
+                d.types.max_nested_depth().refusal(),
+            ),
+        ] {
+            let reason =
+                reason.unwrap_or_else(|| panic!("`{what}` must be REFUSED, not stated or absent"));
+            assert!(
+                reason.contains(MODEL_ONLY_ISSUE),
+                "`{what}`'s refusal must name {MODEL_ONLY_ISSUE}: {reason}"
+            );
+        }
+        // A partial descriptor says so in `[meta]`, so a reader who only
+        // glances is not told "derived".
+        assert_eq!(d.meta.status, Status::Partial);
+    }
+
+    /// The refusals say WHICH ROAD wrote the file.
+    ///
+    /// Two producers reach this code and their remedies differ; a reader
+    /// holding the artifact has no other way to tell which one wrote it.
+    #[test]
+    fn a_model_only_refusal_names_the_road_it_was_written_on() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(3))]);
+        let mut i = model_only(&inv);
+        let horizon = ModelHorizon::new("a cmake entry");
+        i.bounds_error = Some(horizon.bound_inventory());
+        i.horizon = Some(horizon);
+        let d = build(&i);
+        let ep = &d.endpoints[0];
+        for reason in [
+            ep.wire_bound_bytes().refusal().expect("refused"),
+            ep.storage_bytes().refusal().expect("refused"),
+            ep.registration_path().refusal().expect("refused"),
+        ] {
+            assert!(reason.contains("a cmake entry"), "{reason}");
+        }
+    }
+
+    /// The horizon refuses exactly THREE per-row fields and degrades nothing
+    /// else — RFC-0100 D6's "a refusal never degrades another consumer's
+    /// facts", asserted against the leaf road's own answer for the same image.
+    ///
+    /// The negative control for the whole wave: if the horizon ever started
+    /// switching off a QoS policy or a count, this is what reds.
+    #[test]
+    fn the_horizon_refuses_only_the_leaf_facts_and_the_declaration_is_identical() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(3))]);
+        let leaf = build(&base(&inv));
+        let model = build(&model_only(&inv));
+        assert_eq!(leaf.endpoints.len(), model.endpoints.len());
+        let (l, m) = (&leaf.endpoints[0], &model.endpoints[0]);
+        assert_eq!(l.kind, m.kind);
+        assert_eq!(l.topic, m.topic);
+        assert_eq!(l.type_name, m.type_name);
+        assert_eq!(l.depth(), m.depth());
+        assert_eq!(l.history(), m.history());
+        assert_eq!(l.reliability(), m.reliability());
+        assert_eq!(l.durability(), m.durability());
+        assert_eq!(leaf.image.node_count(), model.image.node_count());
+        assert_eq!(leaf.image.backend_count(), model.image.backend_count());
+        assert_eq!(
+            leaf.image.subscriber_count(),
+            model.image.subscriber_count()
+        );
+        assert_eq!(leaf.target.pointer_bytes(), model.target.pointer_bytes());
+        assert_eq!(
+            leaf.meta.undeclared_endpoints(),
+            model.meta.undeclared_endpoints()
+        );
+        assert_eq!(leaf.types.distinct_count(), model.types.distinct_count());
+        // And the leaf road still STATES the three the horizon refuses, so
+        // this test cannot pass by both sides being empty.
+        assert!(l.wire_bound_bytes().is_stated());
+        assert!(l.storage_bytes().is_stated());
+        assert!(l.registration_path().is_stated());
+    }
+
+    /// `keep_all` still refuses `depth` on this road, with its OWN reason.
+    ///
+    /// The horizon must not swallow a refusal the DECLARATION earns: a
+    /// `keep_all` queue has no static bound whoever wrote the file, and a
+    /// reader told "no bound inventory" there would go looking for codegen.
+    #[test]
+    fn keep_all_keeps_its_own_refusal_under_a_horizon() {
+        let mut d = sub("std_msgs/msg/String", "/image", Some(1));
+        d.history = Some(QoSHistoryPolicy::KeepAll);
+        let inv = inventory(vec![d]);
+        let desc = build(&model_only(&inv));
+        let ep = &desc.endpoints[0];
+        let depth = ep.depth();
+        let why = depth.refusal().expect("keep_all refuses depth");
+        assert!(why.contains("KEEP_ALL"), "{why}");
+        assert_eq!(ep.history().stated(), Some(&History::KeepAll));
+    }
+
+    /// CYCLONE, acceptance row 2: a model-only descriptor emits NO `[types]`
+    /// cargo `[env]` row, so the descriptor builder keeps `dynamic_type.rs`'s
+    /// `option_env!` defaults exactly as it did with no descriptor at all.
+    ///
+    /// Cyclone reads `[types]`'s three maxima and `[target].heap_budget_bytes`
+    /// and nothing else. The three maxima are REFUSED here and the projection
+    /// drops a non-stated fact — there is no value in that table meaning "I
+    /// looked and found nothing" — so the three literals stand.
+    ///
+    /// The heap budget is the exception and is NOT a refusal leaking through:
+    /// it is the BOARD's `[board.knobs.memory] heap_bytes`, which this road
+    /// does have. It is asserted rather than excluded, because a test that
+    /// only said "empty" would also pass if the board rung stopped travelling.
+    ///
+    /// Asserted here rather than in a build because a build cannot show an
+    /// ABSENT row — only that nothing changed, which is also what a projection
+    /// broken for everyone looks like. Hence the leaf-road control below.
+    #[test]
+    fn a_model_only_descriptor_emits_no_cyclonedds_type_row() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(3))]);
+        let written = WrittenDescriptor {
+            path: std::path::PathBuf::from("<test>"),
+            desc: build(&model_only(&inv)),
+        };
+        let rows = written.cyclonedds_env();
+        for refused in [
+            "NROS_CYCLONEDDS_MAX_FIELDS",
+            "NROS_CYCLONEDDS_MAX_KINDS",
+            "NROS_CYCLONEDDS_MAX_NESTED_DEPTH",
+        ] {
+            assert!(
+                !rows.contains_key(refused),
+                "a refused fact must emit no row: {refused}"
+            );
+        }
+        assert_eq!(
+            rows.get("NROS_CYCLONEDDS_HEAP_BUDGET_BYTES")
+                .map(String::as_str),
+            Some("65536"),
+            "the BOARD's heap rung is stated on this road and must still travel"
+        );
+        // The leaf road, same image, emits all four — so this test cannot pass
+        // by the projection being broken for everyone.
+        let leaf = WrittenDescriptor {
+            path: std::path::PathBuf::from("<test>"),
+            desc: build(&base(&inv)),
+        };
+        assert_eq!(leaf.cyclonedds_env().len(), 4);
+    }
+
+    /// A model-only descriptor round-trips through the shared reader.
+    ///
+    /// Not a formality: the renderer enforces three parse rules (D4), one of
+    /// which is that a key must not appear in BOTH the value slot and
+    /// `refused`. The horizon writes refusals for fields the composer might
+    /// also have set, so this is the test that would catch it.
+    #[test]
+    fn a_model_only_descriptor_parses_back() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(3))]);
+        let d = build(&model_only(&inv));
+        let body = nros_sizing_descriptor::render(&d);
+        let back = nros_sizing_descriptor::parse(&body, std::path::Path::new("<test>"))
+            .expect("a model-only descriptor is a legal descriptor");
+        assert_eq!(back, d);
     }
 }

@@ -142,3 +142,54 @@ impl<T: fmt::Display> fmt::Display for Fact<T> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Fact;
+
+    /// The whole safety argument of a PARTIAL descriptor, as three assertions.
+    ///
+    /// phase-454 W14 made this load-bearing rather than theoretical: the
+    /// model-only producer publishes a descriptor in which five fields are
+    /// refused on purpose, and every consumer keeping its default there is what
+    /// makes that safe to publish at all. Before this test the property was
+    /// stated only in prose — measured by mutating `is_stated` to answer `true`
+    /// for `Refused`, which reds three tests in `nros-cli-core` and **none** in
+    /// the crate that defines the rule.
+    #[test]
+    fn a_refusal_yields_no_value_by_any_accessor() {
+        let refused: Fact<usize> = Fact::Refused("no bound inventory".into());
+        assert_eq!(refused.stated(), None);
+        assert_eq!(refused.get(), None);
+        assert!(!refused.is_stated());
+        assert_eq!(refused.clone().into_stated(), None);
+        assert_eq!(refused.tag(), "refused");
+        // And it keeps its prose, which is the half `Absent` does not have.
+        assert_eq!(refused.refusal(), Some("no bound inventory"));
+    }
+
+    /// "Nobody said" and "I looked and there is no number" stay apart.
+    #[test]
+    fn absent_and_refused_are_different_statements() {
+        let absent: Fact<usize> = Fact::Absent;
+        assert_eq!(absent.refusal(), None);
+        assert_eq!(absent.tag(), "absent");
+        assert_ne!(absent.tag(), Fact::<usize>::Refused(String::new()).tag());
+    }
+
+    /// The fallback is LOUD on both non-yielding arms, and silent on neither.
+    ///
+    /// D6's second half — *"always the safe direction and always loud"*. A
+    /// fallback that said nothing is exactly the silent default the descriptor
+    /// exists to remove.
+    #[test]
+    fn the_fallback_explains_itself_on_every_arm_that_yields_no_value() {
+        assert_eq!(Fact::Stated(3usize).or_report("depth", 10), (3, None));
+        let (v, why) = Fact::<usize>::Refused("keep_all".into()).or_report("depth", 10);
+        assert_eq!(v, 10);
+        assert!(why.expect("a refusal explains itself").contains("keep_all"));
+        let (v, why) = Fact::<usize>::Absent.or_report("depth", 10);
+        assert_eq!(v, 10);
+        assert!(why.expect("an absence explains itself").contains("depth"));
+    }
+}

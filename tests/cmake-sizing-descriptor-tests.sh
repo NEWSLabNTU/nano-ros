@@ -296,6 +296,135 @@ if ! nros_grep_q "nros sync" <<<"$OUT"; then
 fi
 
 # ---------------------------------------------------------------------------
+# G. the WRITER (phase-454 W14) -- `nros_sizing_descriptor_from_model` and the
+#    cargo row it feeds.
+#
+# CMake owns three facts here and the Rust side owns none of them:
+#
+#   G1. a model that produces no descriptor (the CLI prints nothing) leaves the
+#       out-var EMPTY and does not fail the configure -- "no contract, no
+#       change", and an image with no contract is most of the tree;
+#   G2. ONE descriptor in a configure yields the cargo `[env]` row, which is
+#       how the knob reaches the emitted command rather than `set(ENV{})`
+#       (issue 0460);
+#   G3. TWO descriptors yield NO row. One shared cargo archive serves every
+#       entry and `NROS_SIZING_DESCRIPTOR` names a single file, so handing
+#       cargo one of N would size the archive from one image and call it
+#       derived. This is the negative control for G2 -- a function that always
+#       produced a row would pass G2 and fail nothing.
+# ---------------------------------------------------------------------------
+WRITER_STUB="$TEST_TMPDIR/nros-writer-stub"
+cat > "$WRITER_STUB" <<'STUB_EOF'
+#!/bin/bash
+# Mimics `nros ws sizing-descriptor --from-model`: writes the file at the path
+# rule and echoes it. NROS_WRITER_SILENT=1 mimics a model with no wiring.
+build_dir="" entry="" prev=""
+for a in "$@"; do
+    case "$prev" in
+        --build-dir) build_dir="$a" ;;
+        --entry) entry="$a" ;;
+    esac
+    prev="$a"
+done
+if [ -n "${NROS_WRITER_SILENT:-}" ]; then exit 0; fi
+mkdir -p "$build_dir/nros/sizing"
+echo 'schema_version = 1' > "$build_dir/nros/sizing/$entry.toml"
+echo "$build_dir/nros/sizing/$entry.toml"
+STUB_EOF
+chmod +x "$WRITER_STUB"
+
+MODEL="$TEST_TMPDIR/system_model.yaml"
+echo 'meta: {}' > "$MODEL"
+
+WRITER_DRIVER="$TEST_TMPDIR/writer-driver.cmake"
+cat > "$WRITER_DRIVER" <<'EOF'
+include("$ENV{NROS_TEST_MODULE}")
+nros_sizing_descriptor_from_model(_first
+    CLI       "$ENV{NROS_TEST_CLI}"
+    MODEL     "$ENV{NROS_TEST_MODEL}"
+    ENTRY     "one"
+    BUILD_DIR "${CMAKE_BINARY_DIR}"
+    RMW       "zenoh")
+message(STATUS "WROTE_FIRST=${_first}")
+nros_sizing_descriptor_cargo_env(_row)
+message(STATUS "CARGO_ROW_ONE=${_row}")
+if(DEFINED ENV{NROS_TEST_SECOND})
+    nros_sizing_descriptor_from_model(_second
+        CLI       "$ENV{NROS_TEST_CLI}"
+        MODEL     "$ENV{NROS_TEST_MODEL}"
+        ENTRY     "two"
+        BUILD_DIR "${CMAKE_BINARY_DIR}"
+        RMW       "zenoh")
+    nros_sizing_descriptor_cargo_env(_row2)
+    message(STATUS "CARGO_ROW_TWO=${_row2}")
+endif()
+EOF
+
+WPROJ="$TEST_TMPDIR/wproj"
+mkdir -p "$WPROJ"
+cat > "$WPROJ/CMakeLists.txt" <<'EOF'
+cmake_minimum_required(VERSION 3.20)
+project(nros_sizing_descriptor_writer_test NONE)
+include("$ENV{NROS_TEST_DRIVER}")
+EOF
+
+# run_writer <silent> <second> -> stdout+stderr
+run_writer() {
+    rm -rf "$WPROJ/build"
+    NROS_TEST_MODULE="$MODULE_ENV" \
+    NROS_TEST_DRIVER="$WRITER_DRIVER" \
+    NROS_TEST_CLI="$WRITER_STUB" \
+    NROS_TEST_MODEL="$MODEL" \
+    NROS_WRITER_SILENT="$1" \
+    NROS_TEST_SECOND="$2" \
+        cmake -S "$WPROJ" -B "$WPROJ/build" 2>&1
+}
+MODULE_ENV="$MODULE"
+
+log_info "G1. a model that writes no descriptor is a no-op, not a failure"
+OUT="$(NROS_TEST_SECOND= run_writer 1 "")"
+RC=$?
+check
+if [ "$RC" -ne 0 ]; then
+    fail "G1: a model with no wiring failed the configure -- most of the tree has no \
+contract and every one of those images must configure -- $OUT"
+fi
+check
+if ! nros_grep_q "WROTE_FIRST=$" <<<"$OUT"; then
+    fail "G1: the out-var was not empty, so a caller would name a file nobody wrote -- $OUT"
+fi
+check
+if ! nros_grep_q "CARGO_ROW_ONE=$" <<<"$OUT"; then
+    fail "G1: a cargo row was emitted for a descriptor that does not exist -- every \
+consumer treats a NAMED-but-absent descriptor as a hard error -- $OUT"
+fi
+
+log_info "G2. ONE descriptor reaches cargo as an env row (issue 0460)"
+OUT="$(run_writer "" "")"
+check
+if ! nros_grep_q "WROTE_FIRST=.*/nros/sizing/one.toml" <<<"$OUT"; then
+    fail "G2: the writer did not report the path it wrote -- $OUT"
+fi
+check
+if ! nros_grep_q "CARGO_ROW_ONE=NROS_SIZING_DESCRIPTOR=.*/nros/sizing/one.toml" <<<"$OUT"; then
+    fail "G2: no cargo env row, so the Rust half of a cmake image sizes from its own \
+literals while the C half reads the descriptor (issue 0460's shape) -- $OUT"
+fi
+
+log_info "G3. TWO descriptors in one configure name NONE to cargo"
+OUT="$(run_writer "" 1)"
+check
+if ! nros_grep_q "CARGO_ROW_TWO=$" <<<"$OUT"; then
+    fail "G3: a row was emitted with two entries in scope -- one shared cargo archive \
+would be sized from one of N images and read as derived -- $OUT"
+fi
+check
+if ! nros_grep_q "sizing descriptors in this configure" <<<"$OUT"; then
+    fail "G3: the refusal was silent -- 'the fallback decided' and 'the declaration \
+decided' must not look alike in a log (issue 0973's rule) -- $OUT"
+fi
+
+# ---------------------------------------------------------------------------
 echo
 if [ "$FAILURES" -eq 0 ]; then
     log_success "cmake sizing-descriptor reader: $CHECKS checks passed"

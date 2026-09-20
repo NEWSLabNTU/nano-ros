@@ -696,6 +696,24 @@ function(nros_entity_facts_env _target)
         list(APPEND _payload_env "${_depth_table_env}")
     endif()
 
+    # phase-454 W14 (RFC-0100 D4, issue 0460) -- the SIZING DESCRIPTOR's path.
+    #
+    # Not a derived number but the file every derived number now travels in, and
+    # it rides this carrier for the reason 0460 records: `set(ENV{...})` touches
+    # only the configure-time process, so a knob published that way reaches the
+    # C lane and not the Rust one. Putting it on the emitted command is the fix,
+    # and this is the emitted command.
+    #
+    # It is a PATH, and nothing watches the VARIABLE (issue 0491) -- the rebuild
+    # edge is on the file's CONTENT, in
+    # `nros_sizing_descriptor::load_for_build_script`.
+    if(COMMAND nros_sizing_descriptor_cargo_env)
+        nros_sizing_descriptor_cargo_env(_sizing_env)
+        if(_sizing_env)
+            list(APPEND _payload_env "${_sizing_env}")
+        endif()
+    endif()
+
     # phase-446 W4 -- the parameter store, from the contract's `params:`.
     _nros_param_store_env(_param_env)
     if(_param_env)
