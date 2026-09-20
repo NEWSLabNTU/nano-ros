@@ -326,6 +326,61 @@ fn endpoint_kind(k: EntityKind) -> Option<EndpointKind> {
     })
 }
 
+/// How many cache queryables an image's DECLARED ENTITIES imply — issue 1378.
+///
+/// **This is not a second rule.** It is
+/// [`nros_sizing_descriptor::transient_local_publishers`]'s rule, fed from the
+/// other kind of row: a `[[component]] entities = [...]` declaration rather
+/// than a descriptor's `[[endpoint]]` table. The two mappings it goes through
+/// ([`endpoint_kind`], [`map_durability`]) are the ones the descriptor writer
+/// already uses, so a kind or a durability spelling cannot mean one thing here
+/// and another there.
+///
+/// It exists because the road that FAILED has no descriptor to read. Measured
+/// 2026-09-20 on `examples/qemu-armv7a-nuttx/c/action-server`, the image issue
+/// 1378 was filed against: `nros ws entity-facts --leaf` answered
+/// `NROS_DECLARED_SERVICE_SERVERS=3` / `INFRA_QUERYABLES=none`, the zenoh
+/// backend sized `ZPICO_MAX_QUERYABLES=3` from exactly that, and the action
+/// server's own `/status` cache queryable was the FOURTH declaration — `Full`,
+/// at boot, with `nros_executor_add_action_server` returning -1. The cargo-leaf
+/// road never saw it because `nros sync` writes that road a descriptor, whose
+/// `action_server` row phase-455 W5 already counts.
+///
+/// A row with no type or no topic still counts: the rule reads only `kind` and
+/// `durability`, and the two names are for the refusal prose. Skipping such a
+/// row would be an under-report, which is the one direction this number must
+/// never go.
+pub fn transient_local_publishers_from_decls(
+    decls: &[crate::entity_inventory::EntityDecl],
+) -> nros_sizing_descriptor::Fact<usize> {
+    let answer =
+        nros_sizing_descriptor::transient_local_publishers_over(decls.iter().filter_map(|d| {
+            endpoint_kind(d.kind).map(|kind| nros_sizing_descriptor::TlRow {
+                kind,
+                durability: match d.durability.and_then(map_durability) {
+                    Some(v) => nros_sizing_descriptor::Fact::Stated(v),
+                    None => nros_sizing_descriptor::Fact::Absent,
+                },
+                topic: d.name.as_deref().unwrap_or("<unnamed>"),
+                type_name: d.type_name.as_deref().unwrap_or("<untyped>"),
+            })
+        }));
+    // WHETHER A DECLARATION EXISTS is this adapter's question; WHAT IT IMPLIES
+    // is the rule's. They come apart for exactly one input: a component that
+    // declares only timers and guard conditions. `endpoint_kind` drops those
+    // (they carry no topic and no type, so no endpoint table can key on them),
+    // which leaves the rule with no rows and makes it answer `Absent` — "nobody
+    // said". Nobody did say: such an image declared its whole surface and none
+    // of it is a publisher, so the honest answer is ZERO, and reporting it as a
+    // refusal would make a consumer warn about a number it has.
+    match answer {
+        nros_sizing_descriptor::Fact::Absent if !decls.is_empty() => {
+            nros_sizing_descriptor::Fact::Stated(0)
+        }
+        other => other,
+    }
+}
+
 fn endpoint_row(
     kind: EndpointKind,
     ty: &str,
@@ -1198,7 +1253,7 @@ fn cmake_escape(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::entity_inventory::{ComponentEntities, EntityDecl};
-    use nros_orchestration_ir::qos_override::QoSHistoryPolicy;
+    use nros_orchestration_ir::qos_override::{QoSDurabilityPolicy, QoSHistoryPolicy};
 
     fn inventory(decls: Vec<EntityDecl>) -> EntityInventory {
         let mut inv = EntityInventory::new("metadata");
@@ -1220,6 +1275,73 @@ mod tests {
         d.depth = depth;
         d.history = Some(QoSHistoryPolicy::KeepLast);
         d
+    }
+
+    /// Issue 1378 — the adapter answers with the DESCRIPTOR's rule, over rows a
+    /// road with no descriptor can supply.
+    #[test]
+    fn declared_entities_price_their_transient_local_cache_queryables() {
+        use nros_sizing_descriptor::Fact;
+        let decl = |k: EntityKind, ty: &str, name: &str| {
+            EntityDecl::bare(k, Some(ty.into()), Some(name.into()))
+        };
+
+        // The image issue 1378 was filed against: one action server, whose
+        // `/status` publisher is TRANSIENT_LOCAL below the declaration.
+        assert_eq!(
+            transient_local_publishers_from_decls(&[decl(
+                EntityKind::ActionServer,
+                "example_interfaces/action/Fibonacci",
+                "/fibonacci",
+            )]),
+            Fact::Stated(1),
+        );
+
+        // A service server publishes nothing, so it owes no cache slot. The two
+        // terms are carried separately for exactly this reason.
+        assert_eq!(
+            transient_local_publishers_from_decls(&[decl(
+                EntityKind::ServiceServer,
+                "example_interfaces/srv/AddTwoInts",
+                "/add",
+            )]),
+            Fact::Stated(0),
+        );
+
+        // A publisher that states no durability REFUSES: a count over the rows
+        // that answered is not a bound on the row that did not.
+        assert!(matches!(
+            transient_local_publishers_from_decls(&[decl(
+                EntityKind::Publisher,
+                "std_msgs/msg/String",
+                "/chatter",
+            )]),
+            Fact::Refused(_),
+        ));
+
+        // A stated one is counted or not, as stated.
+        let tl = |d: QoSDurabilityPolicy| {
+            let mut p = decl(EntityKind::Publisher, "std_msgs/msg/String", "/chatter");
+            p.durability = Some(d);
+            transient_local_publishers_from_decls(&[p])
+        };
+        assert_eq!(tl(QoSDurabilityPolicy::TransientLocal), Fact::Stated(1));
+        assert_eq!(tl(QoSDurabilityPolicy::Volatile), Fact::Stated(0));
+
+        // A component whose whole surface is timers declared it, and none of it
+        // is a publisher: that is a measured ZERO, not a refusal. `Absent` here
+        // would make the consumer warn about a number it has.
+        assert_eq!(
+            transient_local_publishers_from_decls(&[EntityDecl::bare(
+                EntityKind::Timer,
+                None,
+                None
+            )]),
+            Fact::Stated(0),
+        );
+
+        // Nothing declared at all is the one case that IS `Absent`.
+        assert_eq!(transient_local_publishers_from_decls(&[]), Fact::Absent);
     }
 
     fn bounded(ty: &str, rx: usize) -> (String, BoundState) {

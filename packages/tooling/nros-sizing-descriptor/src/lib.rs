@@ -106,14 +106,47 @@ pub use vocabulary::{
 /// Nothing here is floored (D7): whether zero is a legal SIZE is a property of
 /// the consumer's storage.
 pub fn transient_local_publishers(desc: &SizingDescriptor) -> Fact<usize> {
-    if desc.endpoints.is_empty() {
-        return Fact::Absent;
-    }
+    transient_local_publishers_over(desc.endpoints.iter().map(|e| TlRow {
+        kind: e.kind,
+        durability: e.durability(),
+        topic: &e.topic,
+        type_name: &e.type_name,
+    }))
+}
+
+/// One row of the [`transient_local_publishers`] rule.
+///
+/// Issue 1378 — the rule needed a SECOND caller, and the descriptor is not it.
+/// A cmake / Zephyr / NuttX entry has no sizing descriptor at all (issue 1393),
+/// so the only rows it can offer are its DECLARED ENTITIES. Without a row shape
+/// to offer them as, such a caller's only alternative is to re-implement "an
+/// action server has a transient-local `/status` publisher" somewhere else,
+/// which is issue 1025's defect exactly: one number, two derivations, agreeing
+/// until the day they do not.
+#[derive(Debug, Clone)]
+pub struct TlRow<'a> {
+    pub kind: EndpointKind,
+    pub durability: Fact<Durability>,
+    pub topic: &'a str,
+    pub type_name: &'a str,
+}
+
+/// [`transient_local_publishers`] over any source of rows — **the rule itself**.
+///
+/// No rows means [`Fact::Absent`]: "there is no declaration to read", never
+/// "this image has no transient-local publisher". The callers differ only in
+/// where their rows come from.
+pub fn transient_local_publishers_over<'a, I>(rows: I) -> Fact<usize>
+where
+    I: IntoIterator<Item = TlRow<'a>>,
+{
     let mut count = 0usize;
-    for e in &desc.endpoints {
+    let mut any = false;
+    for e in rows {
+        any = true;
         match e.kind {
             EndpointKind::ActionServer => count += 1,
-            EndpointKind::Publisher => match e.durability() {
+            EndpointKind::Publisher => match e.durability {
                 Fact::Stated(Durability::TransientLocal) => count += 1,
                 Fact::Stated(Durability::Volatile) => {}
                 f => {
@@ -128,6 +161,9 @@ pub fn transient_local_publishers(desc: &SizingDescriptor) -> Fact<usize> {
             },
             _ => {}
         }
+    }
+    if !any {
+        return Fact::Absent;
     }
     Fact::Stated(count)
 }

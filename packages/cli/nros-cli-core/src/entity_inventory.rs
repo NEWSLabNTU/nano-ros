@@ -2356,6 +2356,10 @@ impl EntityInventory {
         // registers. Counted in this loop, beside the per-kind totals, so the
         // cell bound and every other knob read one pass over one declaration.
         let mut max_cell_entities = 0usize;
+        // Issue 1378 -- the rows the transient-local cache-queryable rule reads.
+        // Collected rather than counted inline, because the rule is
+        // `nros_sizing_descriptor`'s and this loop must not restate it.
+        let mut tl_decls: Vec<EntityDecl> = Vec::new();
         for c in self.components() {
             let mut slots = 0usize;
             let mut count = 0usize;
@@ -2377,6 +2381,7 @@ impl EntityInventory {
                     *cell.entry(e.kind.tag()).or_insert(0) += 1;
                 }
                 count += 1;
+                tl_decls.push(e.clone());
             }
             max_cell_entities = max_cell_entities.max(cell.values().copied().max().unwrap_or(0));
             max_cbs += slots;
@@ -2430,8 +2435,31 @@ impl EntityInventory {
         let components = self.components.len();
         let infra_queryables = self.infra.queryables(components);
         let param_service_nodes = self.infra.param_nodes(components);
+        // Issue 1378 -- plus one cache queryable per TRANSIENT_LOCAL publisher.
+        // Such a publisher retains its last sample and declares a queryable on
+        // `<keyexpr>/@adv/pub/<zid>/<eid>/_` so a late joiner's history query
+        // can reach it, exactly as a service server declares one for requests.
+        // An action server owes one whatever it declares: `nros-node` creates
+        // its `<action>/_action/status` publisher with
+        // `rcl_action_qos_profile_status_default`, which is TRANSIENT_LOCAL, and
+        // no contract mentions that topic. Counting the three action SERVICES
+        // and not the fourth queryable is what left `ZPICO_MAX_QUERYABLES` one
+        // short on every declared action image (issue 1378, measured on
+        // `examples/qemu-armv7a-nuttx/c/action-server`).
+        //
+        // A REFUSAL contributes zero, the same direction every other refusal
+        // here takes: the number stays what it was and the reason is published
+        // beside it, rather than a build failing on a pool it cannot price.
+        let tl_queryables =
+            match crate::sizing_descriptor::transient_local_publishers_from_decls(&tl_decls) {
+                nros_sizing_descriptor::Fact::Stated(n) => n,
+                nros_sizing_descriptor::Fact::Refused(_) | nros_sizing_descriptor::Fact::Absent => {
+                    0
+                }
+            };
         let max_queryables = n(EntityKind::ServiceServer.tag())
             + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES
+            + tl_queryables
             + infra_queryables;
         let max_nodes = self.components().len();
         // Issue 1198 -- slot 0 is RESERVED for the default Fifo context
@@ -5110,6 +5138,40 @@ execution:
 
         // `safety` is a real feature and not a queryable question.
         assert_eq!(knobs("safety").max_queryables, 1);
+    }
+
+    /// Issue 1378 -- **an action server costs FOUR queryables, not three.**
+    ///
+    /// The three are `send_goal` / `cancel_goal` / `get_result`. The fourth is
+    /// the cache queryable its `<action>/_action/status` publisher declares:
+    /// `nros-node` creates that publisher with
+    /// `rcl_action_qos_profile_status_default` (TRANSIENT_LOCAL), and on zenoh a
+    /// transient-local publisher serves its retained sample from a queryable.
+    /// Nothing declares that topic, so the action-server row is the only thing
+    /// that can pay for it -- which is why this term is unconditional here and
+    /// in `nros_sizing_descriptor::transient_local_publishers`, whose rule this
+    /// derivation calls rather than restates.
+    ///
+    /// Measured before the fix on `examples/qemu-armv7a-nuttx/c/action-server`:
+    /// the table was sized to exactly three and the fourth declaration failed
+    /// `Full` at boot, taking `nros_executor_add_action_server` to -1.
+    #[test]
+    fn an_action_server_owes_a_fourth_queryable_for_its_status_cache() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated("p", "n", &["action_server:example/action/Fib:/fib"]));
+        let d = inv.derive();
+        let k = d.knobs().expect("derived");
+        assert_eq!(
+            k.max_queryables,
+            ACTION_SERVER_QUERYABLES + 1,
+            "three action services plus the /status cache queryable"
+        );
+
+        // A SERVICE server owes no cache slot: it has no publisher at all. The
+        // two terms must not be folded into one multiplier.
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated("p", "n", &["service_server:example/srv/Add:/add"]));
+        assert_eq!(inv.derive().knobs().expect("derived").max_queryables, 1);
     }
 
     /// Issue 1270 -- the configure's inventory is metadata MERGED with the

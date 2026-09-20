@@ -248,10 +248,11 @@ FACT_DISPOSITION = {
             "registration failure at boot rather than a smaller pool"),
         "declared": NotCarried(
             _LEAF, _QUERYABLES_COMPLETED,
-            "the declared road carries the three RAW inputs "
+            "the declared road carries the four RAW inputs "
             "(NROS_DECLARED_SERVICE_SERVERS + NROS_DECLARED_INFRA_QUERYABLES "
-            "+ NROS_DECLARED_NODES, the last since phase-426 W3) and the "
-            "consumer completes the sum, so the derived count itself has "
+            "+ NROS_DECLARED_NODES, the third since phase-426 W3, "
+            "+ NROS_DECLARED_TL_PUBLISHERS, the fourth since issue 1378) and "
+            "the consumer completes the sum, so the derived count itself has "
             "nothing to carry"),
     },
     "NROS_DERIVED_EXECUTOR_MAX_NODES": {
@@ -424,6 +425,20 @@ ROAD_UNPAIRED = {
         "is NOT the executor node table -- NROS_DERIVED_EXECUTOR_MAX_NODES "
         "travels the declared road as NROS_DECLARED_EXECUTOR_MAX_NODES "
         "(issue 1233) -- and only the zpico build script reads this.",
+    "NROS_DECLARED_TL_PUBLISHERS":
+        "a FOURTH raw input to the same queryable sizing (issue 1378): a "
+        "TRANSIENT_LOCAL publisher declares a CACHE QUERYABLE, and an action "
+        "server has one for a `/status` topic nothing declares, so an action "
+        "server costs four slots and not three. It cannot ride on "
+        "NROS_DECLARED_SERVICE_SERVERS -- that number is already multiplied by "
+        "ACTION_SERVER_QUERYABLES, so a consumer holding `3` cannot tell one "
+        "action server from three service servers, and only the first owes a "
+        "cache slot. No leaf twin, for TWO reasons: no inventory publishes it "
+        "as an NROS_DERIVED_* fact, and the cargo-leaf road answers this "
+        "question from its SIZING DESCRIPTOR instead (phase-455 W5). This "
+        "carrier exists for the roads that have no descriptor at all, which is "
+        "every cmake / Zephyr west / NuttX entry (issue 1393) -- and that gap "
+        "is exactly what 1378 measured.",
     "NROS_DECLARED_MAX_QOS_DEPTH":
         "the largest DECLARED QoS depth (phase-412 W3), reduced at the "
         "producer from the inventory's `type|topic=depth` triples and only "

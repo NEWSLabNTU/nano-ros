@@ -166,6 +166,11 @@ fn resolve_queryable_default() -> QueryableSizing {
     // siblings: an entry that gains a node changes the number this script
     // must produce.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_NODES");
+    // Issue 1378 — the transient-local cache queryables, on the DECLARED road.
+    // Watched for the same reason as its three siblings: an entry that gains an
+    // action server changes this number, and a fact nothing watches reads as
+    // applied while being stale.
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_TL_PUBLISHERS");
     let declared = std::env::var("NROS_DECLARED_SERVICE_SERVERS").ok();
     let infra = std::env::var("NROS_DECLARED_INFRA_QUERYABLES").ok();
     let nodes = std::env::var("NROS_DECLARED_NODES").ok();
@@ -213,10 +218,32 @@ fn resolve_queryable_default() -> QueryableSizing {
 /// every other refusal here — the builtin budget stands — and unlike the
 /// retention pool, under-counting this one is survivable on a hosted image,
 /// whose undeclared default is 32.
+///
+/// # Issue 1378 — the descriptor is only ONE of the two roads here
+///
+/// `NROS_SIZING_DESCRIPTOR` is written by `nros sync` for a single-package
+/// CARGO leaf and by nothing else: a cmake / Zephyr west / NuttX entry has no
+/// descriptor at all, and issue 1393 is the standing record of why. So this
+/// term was live on the Rust road and dead on the C/C++ one — which is the
+/// whole of the asymmetry issue 1378 opens with. Measured 2026-09-20:
+/// `examples/qemu-armv7a-nuttx/{c,cpp}/action-server` are the only two leaves
+/// in the tree that DECLARE their entities, `nros ws entity-facts --leaf`
+/// answered `SERVICE_SERVERS=3 / INFRA=none` for both, the table was sized to
+/// exactly those three, and the `/status` cache queryable was the fourth.
+/// Every other action leaf declares nothing, falls to the undeclared budget of
+/// eight, and boots on the headroom — so the images that described themselves
+/// were the ones that failed.
+///
+/// `NROS_DECLARED_TL_PUBLISHERS` is that road's carrier, composed by
+/// `cmake/NanoRosEntityFacts.cmake` from the same rule (`nros ws entity-facts`
+/// ->`transient_local_publishers_from_decls` -> the descriptor crate's own
+/// `transient_local_publishers_over`). The descriptor still WINS when both are
+/// present: it is derived from the richer input, and a road that has one has
+/// no need of the other.
 fn transient_local_publishers() -> usize {
     match nros_sizing_descriptor::transient_local_publishers_from_build_env() {
         Ok(nros_sizing_descriptor::Fact::Stated(n)) => n,
-        Ok(nros_sizing_descriptor::Fact::Absent) => 0,
+        Ok(nros_sizing_descriptor::Fact::Absent) => declared_transient_local_publishers(),
         Ok(nros_sizing_descriptor::Fact::Refused(reason)) => {
             println!(
                 "cargo:warning=the zenoh queryable table is NOT budgeting for any \
@@ -230,6 +257,56 @@ fn transient_local_publishers() -> usize {
         // zenoh crate one layer over panics on the same condition. Matching it
         // here keeps one failure for one cause.
         Err(e) => panic!("{e}"),
+    }
+}
+
+/// Issue 1378 — the DECLARED road's transient-local count, for an image with no
+/// sizing descriptor.
+///
+/// Parsed rather than derived: `cmake/NanoRosEntityFacts.cmake` composes the
+/// number from `nros ws entity-facts`, which runs the descriptor crate's own
+/// rule over the entry's declared entities. This side only reads it, the same
+/// division of labour `NROS_DECLARED_NODES` keeps — the declarer states the
+/// fact, the consumer states what it costs.
+///
+/// `refused` is a WORD and not a number on purpose: the composing side LOOKED
+/// and could not answer, and collapsing that into `0` here is the silent
+/// under-count this whole term exists to remove. Absent is the undeclared road
+/// and contributes nothing without comment, because there is nothing to
+/// comment on.
+///
+/// A malformed value PANICS rather than falling back, for the reason
+/// [`declared_nodes`] gives: a value that reads as applied and is not is worse
+/// than no value.
+fn declared_transient_local_publishers() -> usize {
+    // The RULE takes a string, for the reason `queryable_default_from` gives:
+    // a build script reading env directly is untestable in-process, which is
+    // how a sizing rule ends up verified by reading.
+    declared_transient_local_publishers_from(std::env::var("NROS_DECLARED_TL_PUBLISHERS").ok())
+}
+
+fn declared_transient_local_publishers_from(v: Option<String>) -> usize {
+    match v {
+        None => 0,
+        Some(v) if v.trim() == "refused" => {
+            println!(
+                "cargo:warning=the zenoh queryable table is NOT budgeting for any \
+                 transient-local publisher: the entry declares endpoints whose \
+                 `durability` nothing states, so a count over the rows that answered \
+                 would not be a bound. A transient-local publisher declares a cache \
+                 queryable, so an image that has one may exhaust ZPICO_MAX_QUERYABLES \
+                 at boot (issues 1341/1378)."
+            );
+            0
+        }
+        Some(v) => match v.trim().parse::<usize>() {
+            Ok(n) => n,
+            Err(_) => panic!(
+                "NROS_DECLARED_TL_PUBLISHERS={v:?} is neither a count nor `refused`. \
+                 It is how many TRANSIENT_LOCAL publishers the entry declares, each of \
+                 which opens a cache queryable (issue 1378)."
+            ),
+        },
     }
 }
 
@@ -538,6 +615,42 @@ mod queryable_default_tests {
             "the BUDGET moves with the floor too, or the derived default itself \
              cannot boot the image"
         );
+    }
+
+    /// Issue 1378 — **the SECOND road to that term.** The rule above was right
+    /// and only one kind of image could reach it: a descriptor is written for a
+    /// single-package cargo leaf and for nothing else (issue 1393), so every
+    /// cmake / Zephyr / NuttX entry supplied `0` here however many action
+    /// servers it declared.
+    #[test]
+    fn the_declared_road_supplies_the_same_term_when_there_is_no_descriptor() {
+        assert_eq!(
+            declared_transient_local_publishers_from(Some("1".into())),
+            1,
+            "the NuttX C action-server leaf: one action server, one /status cache"
+        );
+        assert_eq!(
+            declared_transient_local_publishers_from(Some("0".into())),
+            0
+        );
+        // Undeclared is the road that carries nothing, and it contributes
+        // nothing WITHOUT comment: there is no event to report.
+        assert_eq!(declared_transient_local_publishers_from(None), 0);
+        // A composer that LOOKED and could not answer contributes nothing and
+        // says so. The word survives the wire rather than collapsing into a
+        // zero indistinguishable from a measured one.
+        assert_eq!(
+            declared_transient_local_publishers_from(Some("refused".into())),
+            0
+        );
+    }
+
+    /// A value that reads as applied and is not is worse than no value —
+    /// `declared_nodes`'s rule, one carrier over.
+    #[test]
+    #[should_panic(expected = "NROS_DECLARED_TL_PUBLISHERS")]
+    fn a_malformed_transient_local_count_is_a_build_failure() {
+        declared_transient_local_publishers_from(Some("yes".into()));
     }
 
     /// The refusal has to reach the reader through this term as well, or

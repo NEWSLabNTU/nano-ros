@@ -117,7 +117,53 @@ pub fn facts_from_model(model: &SystemModel) -> BTreeMap<String, String> {
         "NROS_DECLARED_NODES".to_string(),
         model.structure.nodes.len().to_string(),
     );
+    // Issue 1378 — the transient-local cache queryables, on the MODEL road.
+    //
+    // Emitted only when the model describes wiring at all, on the same
+    // abstention `declared_service_servers` makes and for the same reason: a
+    // zero from a model that says nothing about endpoints is not a measurement.
+    //
+    // **The action-server half is all this road can state, and that is
+    // structural, not an omission.** `ros_launch_manifest_model::TopicWiring`
+    // carries `type` / `pub` / `sub` and NO QoS at all, so "is this publisher
+    // transient-local?" has no field to read here — it reaches the CLI through
+    // a contract sidecar, as an `EntityDecl::durability`, which is what
+    // `transient_local_publishers_from_decls` reads one road over. An action
+    // server needs no such field: its `/status` publisher is created by
+    // `nros-node` with `rcl_action_qos_profile_status_default` (TRANSIENT_LOCAL)
+    // whatever anything declares, which is why the descriptor counts an
+    // `action_server` row unconditionally too.
+    //
+    // So this number is exact for every image whose transient-local publishers
+    // are action servers — which is every one in the tree today — and a lower
+    // bound for a model that also declares a hand-written TRANSIENT_LOCAL
+    // topic publisher. Closing that needs the model-only descriptor producer of
+    // issue 1393; until it exists, stating the half that IS provable is what
+    // the failing images need, and stating nothing is what they had.
+    if let Some(n) = declared_action_servers(model) {
+        out.insert(TL_PUBLISHERS.to_string(), n.to_string());
+    }
     out
+}
+
+/// Action servers the model declares, one cache queryable each — issue 1378.
+///
+/// Separate from [`declared_service_servers`] because that function returns a
+/// number already multiplied by [`ACTION_SERVER_QUERYABLES`], and a consumer
+/// holding `3` cannot tell one action server from three service servers. Only
+/// the first of those owes a `/status` cache slot.
+fn declared_action_servers(model: &SystemModel) -> Option<usize> {
+    if !describes_wiring(model) {
+        return None;
+    }
+    Some(
+        model
+            .structure
+            .actions
+            .values()
+            .map(|a| a.server.len())
+            .sum(),
+    )
 }
 
 /// Whether this model DESCRIBES the graph's wiring at all.
@@ -286,7 +332,46 @@ pub fn facts_from_leaf(dir: &std::path::Path) -> Result<Option<BTreeMap<String, 
         infra.token().to_string(),
     );
     out.insert("NROS_DECLARED_NODES".to_string(), nodes.to_string());
+    // Issue 1378 — the FOURTH fact, and the one whose absence was a boot
+    // failure. A TRANSIENT_LOCAL publisher is a queryable too: it retains its
+    // last sample and declares a cache queryable on
+    // `<keyexpr>/@adv/pub/<zid>/<eid>/_` so a late joiner's history query can
+    // reach it. `servers` above cannot carry it — that number is already
+    // multiplied, so a consumer holding `3` cannot tell one action server from
+    // three service servers, and only the first of those owes a cache slot.
+    out.insert(
+        TL_PUBLISHERS.to_string(),
+        tl_token(&crate::sizing_descriptor::transient_local_publishers_from_decls(&decls)),
+    );
     Ok(Some(out))
+}
+
+/// The carrier for "how many cache queryables this image's transient-local
+/// publishers declare" — issue 1378.
+///
+/// Named for the FACT and not for its cost, like `NROS_DECLARED_NODES` and
+/// unlike `NROS_DECLARED_SERVICE_SERVERS`: the consumer
+/// (`nros-zpico-build::resolve_queryable_default`) owns what a slot costs, and
+/// its refusal message already explains this term to whoever set the knob.
+pub const TL_PUBLISHERS: &str = "NROS_DECLARED_TL_PUBLISHERS";
+
+/// The value word for [`TL_PUBLISHERS`], preserving all three answers.
+///
+/// A `Fact` has three arms and an env variable is a string, so the mapping has
+/// to be written down somewhere; writing it here keeps `refused` from
+/// collapsing into `0` on the way out. The consumer treats `refused` the way it
+/// already treats a refused DESCRIPTOR — contribute nothing and say so out loud
+/// — rather than as a number it can size from.
+///
+/// `Absent` emits nothing at all, so the variable's presence means "this road
+/// looked", which is the distinction issue 0973 is about.
+fn tl_token(f: &nros_sizing_descriptor::Fact<usize>) -> String {
+    match f {
+        nros_sizing_descriptor::Fact::Stated(n) => n.to_string(),
+        nros_sizing_descriptor::Fact::Refused(_) | nros_sizing_descriptor::Fact::Absent => {
+            "refused".to_string()
+        }
+    }
 }
 
 pub fn run(args: EntityFactsArgs) -> Result<()> {
@@ -402,6 +487,49 @@ mod tests {
              \n      server: [\"/a/fib\"]\n",
         );
         assert_eq!(declared_service_servers(&m), Some(ACTION_SERVER_QUERYABLES));
+    }
+
+    /// Issue 1378 — **an action server costs a FOURTH queryable**, and it is
+    /// not one of the three.
+    ///
+    /// `nros-node` creates the action's `<action>/_action/status` publisher
+    /// with `rcl_action_qos_profile_status_default`, which is TRANSIENT_LOCAL,
+    /// and on zenoh a transient-local publisher declares a cache queryable. No
+    /// contract mentions that topic, so nothing but the action-server row can
+    /// pay for it. Counting only `ACTION_SERVER_QUERYABLES` is what left
+    /// `ZPICO_MAX_QUERYABLES = 3` on an image that declares four.
+    #[test]
+    fn an_action_server_also_costs_one_transient_local_cache_queryable() {
+        let m = model(
+            "meta:\n  version: 1\nstructure:\n  actions:\n    /fib:\n      type: example/action/Fib\n\
+             \n      server: [\"/a/fib\"]\n",
+        );
+        assert_eq!(declared_action_servers(&m), Some(1));
+        assert_eq!(facts_from_model(&m)[TL_PUBLISHERS], "1");
+    }
+
+    /// The two numbers are carried SEPARATELY because the first is already
+    /// multiplied: a consumer holding `NROS_DECLARED_SERVICE_SERVERS=3` cannot
+    /// tell one action server from three service servers, and only the first
+    /// owes a cache slot.
+    #[test]
+    fn a_service_server_owes_no_cache_queryable() {
+        let m = model(
+            "meta:\n  version: 1\nstructure:\n  services:\n    /add:\n      type: example/srv/Add\n\
+             \n      server: [\"/a/add\", \"/b/add\", \"/c/add\"]\n",
+        );
+        assert_eq!(declared_service_servers(&m), Some(3));
+        assert_eq!(facts_from_model(&m)[TL_PUBLISHERS], "0");
+    }
+
+    /// A model that describes no wiring abstains here too, on the same argument
+    /// `declared_service_servers` makes: a zero nobody measured would size the
+    /// table to the infrastructure alone.
+    #[test]
+    fn an_undescribed_model_states_no_transient_local_count() {
+        let m = model(EMPTY);
+        assert_eq!(declared_action_servers(&m), None);
+        assert!(!facts_from_model(&m).contains_key(TL_PUBLISHERS));
     }
 
     #[test]
