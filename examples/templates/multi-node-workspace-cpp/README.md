@@ -32,7 +32,7 @@ nros build native
 
 ```sh
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
-./build/posix-native/cmake/native_entry
+./build/posix-zenoh-native/cmake/native_entry
 ```
 
 ## Expected output

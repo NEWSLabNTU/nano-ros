@@ -17,7 +17,7 @@ source ./activate.sh
 cd examples/workspaces/sizing
 nros sync            # produces the sidecar, the generated entry and its settings
 nros build native
-NROS_ENTRY_SPIN_MS=3000 ./build/posix/native_entry/target/debug/native_entry
+NROS_ENTRY_SPIN_MS=3000 ./build/posix-zenoh/native_entry/target/debug/native_entry
 ```
 
 There is no `Cargo.toml` at the workspace root to build — the cargo root is the

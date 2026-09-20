@@ -210,7 +210,7 @@ compiler per configure — the board. So `[image.native]` in
 names the entry package it wrote as it goes:
 
 ```text
-nros build:   entry → …/build/posix/native_entry
+nros build:   entry → …/build/posix-zenoh/native_entry
 ```
 
 The generated cmake root lists **every** image on that coordinate, not just the

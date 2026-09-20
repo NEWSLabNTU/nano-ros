@@ -81,7 +81,7 @@ the growth rule: **configuration is a new block, never a restructure.**
 There is no entry directory under `src/`. `nros build` reads each
 `[image.<id>]` in `system.toml` and generates its entry under `build/`
 (for the scaffold's `[image.native]`, the binary is
-`build/posix-native/cmake/native_entry`). That entry resolves the
+`build/posix-cyclonedds-native/cmake/native_entry`). That entry resolves the
 bringup's launch file and has a `main()` that constructs each declared
 component, applies launch parameters and QoS overrides, and runs them on
 one executor — the launch product *is* the binary. There is no separate

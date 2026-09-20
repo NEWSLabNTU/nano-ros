@@ -89,7 +89,7 @@ generated `[build] target`, not on your command line.
 
 For a workspace the binary is the generated entry, inside that entry's own
 target dir — the Rust scaffold's `native` image is
-`build/posix/native_entry/target/debug/native_entry`.
+`build/posix-cyclonedds/native_entry/target/debug/native_entry`.
 
 `<profile-dir>` is `debug` unless the image declares
 `[image.<id>] profile = …`, in which case it is that profile's directory

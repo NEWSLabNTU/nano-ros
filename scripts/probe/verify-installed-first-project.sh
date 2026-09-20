@@ -30,7 +30,7 @@ marker_hits="$(find / -xdev \( -path /proc -o -path "$nros_store" \) -prune -o \
 # produces a working binary: without this check, a configure that stopped
 # finding the provisioned dist would still pass the Run step below, and the
 # prebuilt RFC-0099 D4 prefers would silently stop being used.
-cache=./build/posix-native/cmake/CMakeCache.txt
+cache=./build/posix-cyclonedds-native/cmake/CMakeCache.txt
 [ -f "$cache" ] || probe_fail "no $PWD/${cache#./} — the Build step never configured (`nros build` drives cmake under build/<coord>/cmake)"
 cyclone_dir="$(sed -n 's/^CycloneDDS_DIR:[A-Z]*=//p' "$cache")"
 # The prefix is ASKED for, never matched with a version wildcard (issue 0625,
@@ -52,7 +52,7 @@ esac
 # from the talker and `Received: N` from the listener, both in one process.
 # Require the SECOND tick of each, so the timer fired more than once and
 # delivery is a stream rather than a coincidence.
-bin=./build/posix-native/cmake/native_entry
+bin=./build/posix-cyclonedds-native/cmake/native_entry
 [ -x "$bin" ] || probe_fail "the entry binary first-project.md runs is missing at $PWD/${bin#./}"
 
 log=/tmp/installed-first-project.log

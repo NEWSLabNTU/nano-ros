@@ -3581,7 +3581,7 @@ output = "topic_state_monitor"
 # have no root build file any more, so `cmake-configure` builds them the way a
 # user does: a staged copy, `nros sync` + `nros build` (see
 # `build_cmake_fixture`). The three with a bringup build their one
-# `[image.native]` through the generated root (`build/posix-native/cmake`,
+# `[image.native]` through the generated root (`build/posix-zenoh-native/cmake`,
 # its generated entry `native_entry` in place of the deleted `src/robot_entry`,
 # node packages under `pkg/<name>/`); the two with none build package by
 # package (`build/<pkg>/cmake`, the package under `pkg/<pkg>/`). The ids keep
@@ -3590,19 +3590,19 @@ output = "topic_state_monitor"
 id = "cpp_robot_entry"
 builder = "cmake-configure"
 dir = "examples/templates/multi-node-workspace-cpp"
-output = "build/posix-native/cmake/native_entry"
+output = "build/posix-zenoh-native/cmake/native_entry"
 
 [[compile_check_fixture]]
 id = "c_mixed_workspace"
 builder = "cmake-configure"
 dir = "examples/templates/c-and-cpp-mixed-workspace"
-output = "build/posix-native/cmake/native_entry"
+output = "build/posix-zenoh-native/cmake/native_entry"
 
 [[compile_check_fixture]]
 id = "pure_c_workspace"
 builder = "cmake-configure"
 dir = "examples/templates/pure-c-workspace"
-output = "build/posix-native/cmake/native_entry"
+output = "build/posix-zenoh-native/cmake/native_entry"
 
 [[compile_check_fixture]]
 id = "shadowing"
@@ -3636,7 +3636,7 @@ output = "smoke"
 id = "metadata_cpp"
 builder = "cmake-configure"
 dir = "examples/templates/multi-node-workspace-cpp"
-output = "build/posix-native/cmake/nros-metadata.json"
+output = "build/posix-zenoh-native/cmake/nros-metadata.json"
 
 [[compile_check_fixture]]
 id = "node_register_cpp"

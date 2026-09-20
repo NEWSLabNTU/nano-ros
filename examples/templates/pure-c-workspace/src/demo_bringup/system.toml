@@ -21,7 +21,7 @@ name = "listener"
 [host.native]
 
 # The buildable unit (RFC-0065 D6). `nros build native` generates the cmake root
-# and this image's entry (`native_entry`) under `build/posix-native/` —
+# and this image's entry (`native_entry`) under `build/posix-zenoh-native/` —
 # the hand-written root `CMakeLists.txt` and `src/robot_entry` it replaces are
 # gone (RFC-0098 D9, phase-445 W5).
 [image.native]
