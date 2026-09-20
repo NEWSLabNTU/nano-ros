@@ -2,12 +2,13 @@
 id: 1394
 title: "`enable_router_session_log` calls `std::env::set_var` inside a
   multi-threaded test binary, a `setenv`-during-`getenv` hazard"
-status: open
+status: resolved
 type: bug
 area: testing
 severity: low
 found: 2026-09-20
 related: [issue-1313, issue-1056, issue-0906]
+resolved_in: "branch fix/1394-rtos-e2e-setenv-race"
 ---
 
 ## What is true
@@ -121,3 +122,98 @@ No CALL of `set_var`/`remove_var` exists anywhere in
 * `cargo test -p nros-tests --test rtos_e2e --no-run` builds.
 * The router's log behaviour is unchanged for every caller that does not ask
   for a filter, and an operator `ZENOHD_LOG` still wins.
+
+---
+
+## Resolution (2026-09-20)
+
+Fixed by **injection**, the option 1313 preferred and judged unaffordable here.
+No mutex, no `Once`, and no `set_var` left in the target.
+
+### What changed
+
+`packages/testing/nros-tests/src/fixtures/zenohd_router.rs`
+
+* `ZenohRouter::start_on_with_log_filter(bind_addr, port, Option<&str>)` and
+  `start_slirp_with_log_filter(port, Option<&str>)` are new. `start_on` and
+  `start_slirp` call them with `None`, so **all 73 other
+  `ZenohRouter::start*` call sites compile unchanged**.
+* `resolve_router_log_filter(caller)` is the one place the precedence lives,
+  and both log-keeping constructors (`start_on`, `start_serial`) go through
+  it. It delegates to a pure `router_log_filter(operator, caller)` so the rule
+  can be asserted by a unit test that touches no environment — a test that
+  wrote env to test an env-write fix would be the bug again.
+
+`packages/testing/nros-tests/tests/rtos_e2e.rs`
+
+* `enable_router_session_log` is deleted.
+* `Platform::zenoh_router_start` grew a `log_filter` parameter. Three call
+  sites: pubsub passes `Some(ROUTER_SESSION_LOG_FILTER)`, service and action
+  pass `None` — which is what they effectively had.
+* Two messages in `assert_no_session_churn` name the new seam, and the "fewer
+  than two session lines" failure now names the third cause it could not see
+  before: an operator `ZENOHD_LOG` is deferred to by design, and
+  `ZENOHD_LOG=info` selects none of those lines.
+
+### Behaviour delta
+
+Under nextest — the runner these lanes use — **none**: each case is its own
+process, so the deferred-to operator value and the cell's own filter resolve
+exactly as before.
+
+Under plain `cargo test --test rtos_e2e` there is one change, and it is a
+removal: the pubsub cases no longer leak `ZENOHD_LOG` into the process, so the
+service and action cells in the same binary stop inheriting a log they never
+asked for. Nothing relied on that; it was a side effect of the mechanism.
+
+### The cost claim, measured
+
+| claim | measured |
+| --- | --- |
+| "~64 spawn sites" (issue 1313's note) | 74 `ZenohRouter::start*` call sites under `packages/` — the count is real |
+| sites that actually had to change | **5**: two constructors gained a defaulting wrapper, and `zenoh_router_start` plus its 3 call sites took a parameter |
+
+The inference, not the arithmetic, was the error: the filter only has to reach
+`start_on`, and the test reaches `start_on` through one helper.
+
+### Alternatives, and why not
+
+* **`OnceLock`/`Once`.** Would make the write happen once per process — which
+  it already did. The hazard is a write concurrent with another thread's read,
+  not a repeated write, so this addresses nothing.
+* **`EnvGuard` + static lock (`tests/init_api.rs`'s shape).** Right there,
+  wrong here. It is 1313's "option 2 done properly" for code that reads process
+  env BY DESIGN and has nothing to inject; this code had something to inject.
+  It would also be weaker than it looks: it serialises writers, while the
+  readers that matter are libc and `Command::spawn` in sibling cases, which
+  take no lock.
+
+### Sweep
+
+`rg -n 'set_var|remove_var' packages/testing/nros-tests`
+
+| site | verdict |
+| --- | --- |
+| `tests/rtos_e2e.rs:878` | **GONE** — the function it lived in is deleted |
+| `tests/init_api.rs:42,49,59,60` | **SAFE, unchanged.** `EnvGuard` + `env_lock()`; re-verified, 4 `#[test]`s, 3 live, all 3 take the lock, the 4th `#[ignore]`d with an empty body |
+| `src/fixtures/lane.rs`, `src/fixtures/binaries/mod.rs` (5 hits) | **PROSE.** Doc and code comments; the `binaries/mod.rs` one that described this site as "surveyed, not fixed" now records the fix and the corrected cost |
+
+No `set_var`/`remove_var` CALL remains anywhere in
+`packages/testing/nros-tests` outside `init_api.rs`'s documented discipline.
+
+### Verified
+
+| | result |
+| --- | --- |
+| `cargo test -p nros-tests --test rtos_e2e --no-run` | builds |
+| `cargo test -p nros-tests --lib` | **216 passed, 0 failed** |
+| the new `an_operator_log_filter_outranks_the_one_a_cell_asks_for` | passes; all three arms |
+| `cargo clippy -p nros-tests --tests -- -D warnings` | clean |
+| `just check fast` | **324 of 327 green**; the 3 reds are this worktree's provisioning — `capability-conditionals` and `xrce-vendored-versions` name uninitialised submodules in their own output, and `codegen-version-refusal` check E emits 3 against a tree at 6 because the in-worktree `nros` CLI was never built. None reads `packages/testing/` |
+
+**What was NOT verified, and cannot be here:** no cell of `rtos_e2e` ran. All
+12 pubsub cases fail in `build_pair` with `FixtureNotBuilt` before a router is
+ever started, on an unprovisioned host — so the changed line has **zero runtime
+coverage** from this work, and the evidence above is compile-time plus the unit
+test of the precedence rule. Running it needs `just build-test-fixtures` and a
+QEMU/RTOS toolchain.
