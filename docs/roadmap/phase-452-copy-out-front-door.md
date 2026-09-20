@@ -50,9 +50,58 @@ Ordered so the two that hand a user a broken tree come first.
 copy-out templates still materialize a `robot_entry` package; two declare no
 `[image.*]` at all.
 
-- [ ] The four templates carry the `[image.*]` shape `nros build` reads.
-- [ ] A lane copies each template out and builds it. Copying out is the point —
+- [x] The four templates carry the `[image.*]` shape `nros build` reads.
+      **Closed by other work before this phase started, and the issue's table
+      was stale when it was written.** Re-measured 2026-09-20: SIX templates
+      declare `[image.*]`, not four of which two were missing it; none tracks a
+      root build file; and the `multi-node-workspace/src/robot_entry` the issue
+      names is an untracked empty directory, not a materialized package.
+      phase-383 W9/W10.a and phase-445 W6 did this. Recording it as done rather
+      than quietly dropping it, because a box that was closed elsewhere and a
+      box nobody did look identical in a checklist.
+- [x] A lane copies each template out and builds it. Copying out is the point —
       a template built in place is not the thing a user gets.
+      `scripts/check-template-copy-out.sh`, on the BUILD lane
+      (`check::build-serial`) because it really builds: ~10 min per template,
+      six templates. The set is DISCOVERED — a template is buildable iff some
+      tracked `system.toml` under it declares an `[image.<id>]`, the same
+      question `nros build` asks — so it cannot drift from the builder, and the
+      templates that declare none are reported as skipped with that reason.
+      The copy is `git ls-files` (the TRACKED set, which is what a clone hands
+      over) with WORKTREE content, so a contributor tests the edit rather than
+      HEAD and a template that has come to depend on an uncommitted file shows
+      up as a build failure.
+
+      **It was not green on day one, which is the answer to whether it was
+      worth writing.** Its first run found two defects in
+      `multi-package-workspace` that every static gate and the colcon-parity
+      job had been green over since the template was written:
+
+      1. `<depend>nano-ros</depend>` in two `package.xml` files resolves to
+         nothing. `[prereq.nros]` is the key; `nano-ros` with a hyphen is not
+         even a legal ROS package name. 122 of the tree's 125 `package.xml`
+         omit the client-library dep entirely and 3 declare it — these two were
+         outliers AND misspelled. Fixed to `nros`, and the template's third
+         package, which declared nothing, made consistent with its siblings.
+      2. `pkg_rust_publisher/Cargo.toml` path-depped
+         `../../../../../packages/api/nros` — five levels up and out of the
+         template. In place that resolves; copied out, cargo reports
+         `failed to read <copy-root>/packages/api/nros/Cargo.toml`. Its own
+         comment described a `src/nano-ros/` vendored layout the manifest never
+         implemented. Now `version = "*"`, resolved through the
+         `[patch.crates-io]` block `nros sync` writes — the shape
+         `local-msg-package/src/rust_consumer` already used, which is why that
+         one survived a copy-out and this one did not.
+
+      The artifact predicate is an ELF the build made, not a path: measured,
+      the templates produce three different spellings. rc=0 alone would be
+      vacuous, and `--self-test` covers both arms — an unresolvable `<depend>`
+      must FAIL, and `is_elf` must accept an ELF and reject a script. That
+      second arm exists because the first spelling of `is_elf` compared against
+      `\0177ELF` where `od -An -c` emits `177ELF`, so the predicate could never
+      return true and every template would have been reported as building
+      nothing. The build-arm control never reached it — a self-test whose reach
+      was narrower than the rule, inside the phase about exactly that.
 
 ### W2 — the scaffold compiles in its own test
 

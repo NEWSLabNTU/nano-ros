@@ -1,7 +1,7 @@
 # Escape the in-repo nano-ros workspace — this example deliberately
-# behaves like a downstream Pattern-A consumer: standalone Cargo
-# project that path-depends on the nano-ros checkout under
-# src/nano-ros/.
+# behaves like a downstream consumer: a standalone Cargo project that
+# resolves the nano-ros crates through the `[patch.crates-io]` block
+# `nros sync` writes, exactly as `local-msg-package` does.
 [workspace]
 
 [package]
@@ -13,13 +13,20 @@ publish = false
 
 # Phase 123.A.10 — multi-package workspace demo (Rust publisher).
 #
-# Path-relative dependency on the in-workspace nano-ros checkout
-# at ../../../../.., matching Pattern A (one src/nano-ros/ source tree
-# per workspace). Crates.io publishing isn't available for `nros`
-# because the package depends transitively on C/C++ submodules
-# (zenoh-pico, mbedtls); see the "Open question" in
-# docs/roadmap/phase-123-build-and-api-revision.md about
-# publishing only nros-core.
+# The nano-ros crates are named by VERSION, not by path. A `path =
+# "../../../../../packages/api/nros"` walks five levels up and out of the
+# template, so it resolves only while the template sits inside this checkout:
+# copied out the way a user copies it, cargo reports `failed to read
+# <copy-root>/packages/api/nros/Cargo.toml`. That is what it did until
+# 2026-09-20, when `check-template-copy-out.sh` built a copy for the first
+# time. `version = "*"` is resolved by the `[patch.crates-io]` block `nros
+# sync` writes, which points at whatever nano-ros the user has — the same
+# shape `local-msg-package/src/rust_consumer` uses, and the reason that one
+# survives a copy-out.
+#
+# Crates.io publishing isn't available for `nros` because the package depends
+# transitively on C/C++ submodules (zenoh-pico, mbedtls); the patch block is
+# what stands in for a registry here.
 
 # Phase 244.C4 — single-pkg clean shape. `src/lib.rs` is the agnostic Node
 # (`nros::node!(Talker)` emits `register`); `src/main.rs` is the Entry
@@ -44,10 +51,10 @@ path = "src/main.rs"
 [dependencies]
 # Board crate — hosted Linux native board. Supplies the
 # `LinuxBoard` ZST the macro resolves; force-links the zenoh RMW.
-nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
+nros-board-linux = { version = "*" }
 # nros — `nros::node!` (lib) + `nros::main!` (bin) macros + Node API.
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
 # Phase 248 C5c — posix platform symbols via a direct `nros-platform` dep
-nros-platform = { path = "../../../../../packages/platform/nros-platform", default-features = false, features = ["platform-posix"] }
+nros-platform = { version = "*", default-features = false, features = ["platform-posix"] }
 std_msgs = { path = "../../generated/std_msgs" }
 builtin_interfaces = { path = "../../generated/builtin_interfaces" }
