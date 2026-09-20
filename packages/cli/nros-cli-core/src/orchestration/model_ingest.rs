@@ -415,32 +415,22 @@ pub fn count_callbacks_with_metadata(
     )
 }
 
-/// Issue 0257 — the CLI twin of the `nros::main!` capacity check: refuse to
-/// bake a system whose modelled entity count cannot fit the executor callback
-/// table the image will compile with.
-///
-/// Capacity mirrors the macro exactly (shared derivation in
-/// `nros_orchestration_ir::executor_sizing`, so the two bakes cannot drift):
-///
-/// - an entry that declares `max_callbacks` is sized by it;
-/// - otherwise a board that honors per-entry sizing gets the DERIVED size, so
-///   it always fits and the check is vacuous;
-/// - every other board opens at the build-time `NROS_EXECUTOR_MAX_CBS`
-///   (read from the env when the bake sets it, else the default).
-///
-/// A model with no wiring counts zero and is never checked — the pre-0257
-/// bake, unchanged.
 /// phase-400 W6 — the ladder's answer for `executor.max_cbs`, or `None` when no
 /// platform tree is reachable.
 ///
+/// `platform` is a name in the RFC-0049 PLATFORMS-TREE vocabulary
+/// (`PlatformKind::kebab`: `posix`, `zephyr`, `freertos`, `nuttx`,
+/// `threadx-linux`, …) — never an `[image.*]` / `[deploy.*]` block id, which is
+/// the author's namespace and names no platform (issue 1397).
+///
 /// Deliberately tolerant: this is a CHECK, and a check that hard-fails because
 /// it could not find a config tree is a worse outcome than one that falls back
-/// to the documented default.
-fn resolve_max_cbs_through_ladder(platform: Option<&str>) -> Option<usize> {
+/// to the documented default. A platform with no tree entry of its own
+/// (`esp32`, `stm32`, `orin-spe`) takes the same fallback.
+fn resolve_max_cbs_through_ladder(platform: &str) -> Option<usize> {
     use nros_board_common::platform_config::PlatformsTree;
     use nros_orchestration_ir::executor_sizing as sz;
 
-    let platform = platform?;
     let mut dir = std::env::current_dir().ok()?;
     let repo = loop {
         if dir.join("nros-sdk-index.toml").exists() {
@@ -470,9 +460,35 @@ fn resolve_max_cbs_through_ladder(platform: Option<&str>) -> Option<usize> {
         .map(|(_, r)| r.value)
 }
 
+/// Issue 0257 — the CLI twin of the `nros::main!` capacity check: refuse to
+/// bake a system whose modelled entity count cannot fit the executor callback
+/// table the image will compile with.
+///
+/// Capacity mirrors the macro exactly (shared derivation in
+/// `nros_orchestration_ir::executor_sizing`, so the two bakes cannot drift):
+///
+/// - an entry that declares `max_callbacks` is sized by it;
+/// - otherwise a board that honors per-entry sizing gets the DERIVED size, so
+///   it always fits and the check is vacuous;
+/// - every other board opens at the build-time `NROS_EXECUTOR_MAX_CBS`
+///   (read from the env when the bake sets it, else the default).
+///
+/// A model with no wiring counts zero and is never checked — the pre-0257
+/// bake, unchanged.
+///
+/// Issue 1397 — `platform` is the image's RESOLVED platform
+/// ([`tier_resolver::derive_target_platform`](super::tier_resolver::derive_target_platform)),
+/// not the `--target` / `--for-entry` block id. Both facts this check needs —
+/// the `max_cbs` ladder's platform name and whether the board honors per-entry
+/// sizing — are read off it through their own accessors, so no one string
+/// carries two meanings. It used to take the BLOCK ID and spend it on both,
+/// which is right for `native`/`posix` only because an image is conventionally
+/// named after its platform: a hosted image called `rt_host` was told to raise
+/// `NROS_EXECUTOR_MAX_CBS` for a model it sizes its way out of, and a Zephyr
+/// image called `native` was waved through to a boot-time `code=-6 Full`.
 pub fn check_executor_capacity(
     model: &SystemModel,
-    deploy_key: Option<&str>,
+    platform: super::board_descriptor::PlatformKind,
     declared: Option<usize>,
     slots: &BTreeMap<(String, String), usize>,
 ) -> Result<()> {
@@ -497,7 +513,7 @@ pub fn check_executor_capacity(
     // Falls back to the previous behaviour when no platform tree is reachable
     // (an out-of-tree consumer, or no platform named), because a capacity check
     // that refuses to run is worse than one using the built-in default.
-    let build_default = resolve_max_cbs_through_ladder(deploy_key).unwrap_or_else(|| {
+    let build_default = resolve_max_cbs_through_ladder(platform.kebab()).unwrap_or_else(|| {
         nros_board_common::platform_config::executor_env_only("max_cbs", sz::DEFAULT_MAX_CBS)
     });
     let (capacity, fix) = match declared {
@@ -509,7 +525,7 @@ pub fn check_executor_capacity(
                 sz::derive_max_callbacks(counted)
             ),
         ),
-        None if deploy_key.is_some_and(sz::board_honors_entry_sizing) => (
+        None if platform.honors_entry_sizing() => (
             sz::derive_max_callbacks(counted).max(build_default),
             String::new(),
         ),
@@ -795,6 +811,15 @@ mod executor_capacity_tests {
     use std::collections::BTreeMap;
 
     use super::check_executor_capacity;
+    use crate::orchestration::board_descriptor::PlatformKind;
+
+    /// The two platforms these tests contrast: one whose boards honor the
+    /// per-entry sizing and one whose boards drop it. Named as PLATFORMS
+    /// because that is what the check takes (issue 1397); they used to be the
+    /// strings `"posix"` / `"zephyr"`, which are also block ids and also board
+    /// keys, so a test could not tell which reading it was exercising.
+    const POSIX: PlatformKind = PlatformKind::Posix;
+    const ZEPHYR: PlatformKind = PlatformKind::Zephyr;
 
     /// The pre-307 world: no sidecars ⇒ the model bound alone.
     fn no_metadata() -> BTreeMap<(String, String), usize> {
@@ -827,11 +852,11 @@ mod executor_capacity_tests {
     #[test]
     fn recorded_timers_raise_the_count_past_the_model_bound() {
         let model = with_node(model_with(1), "/listener0", "listener_pkg", "listener");
-        check_executor_capacity(&model, Some("zephyr"), None, &no_metadata())
+        check_executor_capacity(&model, ZEPHYR, None, &no_metadata())
             .expect("model bound alone: 2 entities fit the default 4");
         let err = check_executor_capacity(
             &model,
-            Some("zephyr"),
+            ZEPHYR,
             None,
             &slots(&[("listener_pkg", "listener", 6)]),
         )
@@ -846,14 +871,10 @@ mod executor_capacity_tests {
     #[test]
     fn metadata_never_lowers_the_model_bound() {
         let model = with_node(model_with(8), "/adder", "adder_pkg", "adder");
-        let err = check_executor_capacity(
-            &model,
-            Some("zephyr"),
-            None,
-            &slots(&[("adder_pkg", "adder", 0)]),
-        )
-        .expect_err("still 9")
-        .to_string();
+        let err =
+            check_executor_capacity(&model, ZEPHYR, None, &slots(&[("adder_pkg", "adder", 0)]))
+                .expect_err("still 9")
+                .to_string();
         assert!(err.contains("registers 9 callback entities"), "got: {err}");
     }
 
@@ -884,18 +905,13 @@ mod executor_capacity_tests {
         // The pre-0257 bake for every in-tree example that authors no
         // `<stem>.contract.yaml` beside its launch file — 109 of 114 on
         // 2026-09-06 (issue 0973).
-        check_executor_capacity(
-            &SystemModel::default(),
-            Some("zephyr"),
-            None,
-            &no_metadata(),
-        )
-        .expect("nothing to count");
+        check_executor_capacity(&SystemModel::default(), ZEPHYR, None, &no_metadata())
+            .expect("nothing to count");
     }
 
     #[test]
     fn over_capacity_model_on_a_firmware_board_fails_the_bake() {
-        let err = check_executor_capacity(&model_with(8), Some("zephyr"), None, &no_metadata())
+        let err = check_executor_capacity(&model_with(8), ZEPHYR, None, &no_metadata())
             .expect_err("9 entities do not fit the default 4")
             .to_string();
         assert!(err.contains("registers 9 callback entities"), "got: {err}");
@@ -906,7 +922,7 @@ mod executor_capacity_tests {
 
     #[test]
     fn declared_max_callbacks_below_the_count_fails_the_bake() {
-        let err = check_executor_capacity(&model_with(8), Some("posix"), Some(4), &no_metadata())
+        let err = check_executor_capacity(&model_with(8), POSIX, Some(4), &no_metadata())
             .expect_err("declared 4 does not fit 9")
             .to_string();
         assert!(err.contains("max_callbacks"), "got: {err}");
@@ -915,7 +931,7 @@ mod executor_capacity_tests {
 
     #[test]
     fn declared_max_callbacks_above_the_count_passes() {
-        check_executor_capacity(&model_with(8), Some("zephyr"), Some(32), &no_metadata())
+        check_executor_capacity(&model_with(8), ZEPHYR, Some(32), &no_metadata())
             .expect("32 fits 9");
     }
 
@@ -923,8 +939,131 @@ mod executor_capacity_tests {
     fn sizing_honoring_board_derives_its_way_out() {
         // posix opens via `run_with_deploy_sized`, so the derived size applies
         // and no operator action is needed — mirroring the macro.
-        check_executor_capacity(&model_with(8), Some("posix"), None, &no_metadata())
+        check_executor_capacity(&model_with(8), POSIX, None, &no_metadata())
             .expect("derived sizing covers the count on a hosted board");
+    }
+
+    /// Issue 1397, the other half — the string
+    /// [`resolve_max_cbs_through_ladder`] resolves with must be a name the
+    /// PLATFORMS TREE knows.
+    ///
+    /// This half is not observable from a bake today and that is the finding,
+    /// not a gap in the test: no platform declares `max_cbs`, so the ladder and
+    /// the env-only fallback end at the same number and a block id handed to
+    /// `PlatformsTree::chain` fails over to exactly the right answer. The first
+    /// platform to declare one would have split them silently. So the boundary
+    /// is asserted directly: every platform a board can resolve to answers in
+    /// the tree, and the block ids that used to be passed instead answer in no
+    /// tree at all.
+    #[test]
+    fn the_ladder_is_handed_a_name_the_platforms_tree_knows() {
+        use nros_board_common::platform_config::PlatformsTree;
+
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        // No `$NROS_PLATFORMS_DIR` root: env is process-global and racy under a
+        // parallel runner, and the in-tree answer is the one under test.
+        let tree =
+            PlatformsTree::load_search_path(&PlatformsTree::default_search_path(&repo, None))
+                .expect("in-tree platforms tree");
+
+        // Every platform that ships a `nros-platform.toml`. `esp32`, `stm32`
+        // and `orin-spe` are deliberately absent — they have no tree entry, so
+        // they take the documented fallback, which is what tolerance is for.
+        for kind in [
+            PlatformKind::Posix,
+            PlatformKind::Zephyr,
+            PlatformKind::Freertos,
+            PlatformKind::Nuttx,
+            PlatformKind::ThreadxLinux,
+            PlatformKind::ThreadxRiscv64,
+            PlatformKind::BareMetal,
+        ] {
+            tree.platform_executor_rungs(kind.kebab())
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "platform `{}` must resolve in the platforms tree: {e}",
+                        kind.kebab()
+                    )
+                });
+        }
+
+        // And the namespace that used to be passed here. These are block ids
+        // from this file's own fixtures and from the in-tree bringups; none is
+        // a platform, and the ladder answers `None` for every one of them.
+        for block in [
+            "rt_host",
+            "zephyr_native_sim",
+            "robot",
+            "fw",
+            "zephyr-zenoh",
+        ] {
+            assert!(
+                tree.platform_executor_rungs(block).is_err(),
+                "`{block}` is an [image.*]/[deploy.*] block id — the ladder must \
+                 not resolve one as a platform (issue 1397)"
+            );
+        }
+
+        // The resolver itself, not just the vocabularies: a platform name gets
+        // an answer off the ladder and a block id gets the tolerant fallback.
+        // Value-free on purpose — `NROS_EXECUTOR_MAX_CBS` is the ladder's top
+        // rung and the runner's environment is not ours to pin.
+        assert!(
+            super::resolve_max_cbs_through_ladder(PlatformKind::Zephyr.kebab()).is_some(),
+            "a platform name must reach the ladder"
+        );
+        assert!(
+            super::resolve_max_cbs_through_ladder("zephyr_native_sim").is_none(),
+            "a block id reaches no ladder — which is why passing one here was \
+             invisible: it fell back to the same default (issue 1397)"
+        );
+    }
+
+    /// Issue 1397 — "which boards honor per-entry sizing" is ONE fact asked in
+    /// two namespaces: the entry board KEYS (`nros::main!` reads
+    /// `executor_sizing::board_honors_entry_sizing`) and the board catalog's
+    /// platform KINDS (this bake reads `PlatformKind::honors_entry_sizing`).
+    /// Both route to `BoardFamily::honors_entry_sizing`; this holds them to it
+    /// over every key in the table, because the two crates cannot see each
+    /// other (`nros-orchestration-ir` does not dep `nros-entry-lower`) and this
+    /// is the one crate that sees both.
+    #[test]
+    fn the_two_namespaces_agree_about_who_honors_entry_sizing() {
+        use nros_orchestration_ir::executor_sizing as sz;
+        for (key, family) in nros_entry_lower::BOARD_KEYS {
+            assert_eq!(
+                sz::board_honors_entry_sizing(key),
+                family.honors_entry_sizing(),
+                "board key `{key}`"
+            );
+        }
+        // And every catalog platform answers for its family, so a PlatformKind
+        // added without choosing shows up here rather than as a wrong verdict.
+        for kind in [
+            PlatformKind::Posix,
+            PlatformKind::Freertos,
+            PlatformKind::BareMetal,
+            PlatformKind::Nuttx,
+            PlatformKind::Zephyr,
+            PlatformKind::ThreadxLinux,
+            PlatformKind::ThreadxRiscv64,
+            PlatformKind::Esp32,
+            PlatformKind::Stm32,
+            PlatformKind::OrinSpe,
+        ] {
+            assert_eq!(
+                kind.honors_entry_sizing(),
+                kind.board_family()
+                    .is_some_and(nros_entry_lower::BoardFamily::honors_entry_sizing),
+                "platform `{}`",
+                kind.kebab()
+            );
+        }
+        // The fact itself, stated once so the loops above cannot both be
+        // vacuously true: the host honors it, firmware does not.
+        assert!(PlatformKind::Posix.honors_entry_sizing());
+        assert!(!PlatformKind::Zephyr.honors_entry_sizing());
+        assert!(!PlatformKind::BareMetal.honors_entry_sizing());
     }
 }
 
