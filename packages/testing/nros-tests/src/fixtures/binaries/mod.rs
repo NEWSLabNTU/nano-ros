@@ -636,15 +636,17 @@ fn absent_fixture_verdict(binary_path: &Path, remedy: &str) -> TestResult<PathBu
 ///   shape there because the thing under test READS `ROS_DOMAIN_ID` &c. from the
 ///   process environment by design.
 /// * `tests/rtos_e2e.rs::enable_router_session_log` — a DIFFERENT shape, and not
-///   this bug. No sibling writes or clears `ZENOHD_LOG`; the write is guarded on
-///   "still unset" and every generated case of the one `#[rstest]` that calls it
-///   writes the same constant, so writers cannot disagree; and the value selects
+///   this bug. No sibling writes or clears `ZENOHD_LOG`; the write was guarded on
+///   "still unset" and every generated case of the one `#[rstest]` that called it
+///   wrote the same constant, so writers could not disagree; and the value selects
 ///   only whether the router keeps a log and at which level — never a verdict.
-///   What remains is the formal `setenv`-during-`getenv` hazard, which cannot be
-///   removed the same way: the filter is consumed inside `ZenohRouter::start_on`,
-///   reached through `platform.zenoh_router_start(..)`, and threading it as a
-///   parameter is a change across ~64 spawn sites in a fixture-gated target.
-///   Surveyed, not fixed here.
+///   What remained was the formal `setenv`-during-`getenv` hazard, filed as issue
+///   1394 and since FIXED by injection, the same way this one was: the filter is a
+///   parameter of `ZenohRouter::start_on_with_log_filter`. The cost stated here —
+///   "~64 spawn sites" — was a real count of `ZenohRouter::start*` call sites (74)
+///   and a wrong inference: the filter only has to reach `start_on`, the test
+///   reaches it through ONE helper with three call sites, and a defaulting wrapper
+///   left the other 73 signatures alone.
 ///
 /// `NROS_FIXTURES_OPTIONAL` is in here for the same reason even though no test
 /// wrote it: the pair reads as env-independent now, and it was not — a host with

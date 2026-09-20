@@ -217,15 +217,31 @@ impl Platform {
         self.zenohd_base().zenohd_port_for(pv, pl)
     }
 
-    fn zenoh_router_start(self, variant: Variant, lang: Lang) -> TestResult<ZenohRouter> {
+    /// Start this platform's router for one cell.
+    ///
+    /// `log_filter` is the `RUST_LOG` filter the router should run under when
+    /// the caller needs its output, or `None` when it does not care. Issue 1394
+    /// — this used to be steered by writing `ZENOHD_LOG` into the process
+    /// environment from the test body, which is a `setenv` concurrent with
+    /// every sibling case's `getenv` under plain `cargo test`. An operator's
+    /// own `ZENOHD_LOG` still wins over anything passed here; see
+    /// `ZenohRouter::start_on_with_log_filter`.
+    fn zenoh_router_start(
+        self,
+        variant: Variant,
+        lang: Lang,
+        log_filter: Option<&str>,
+    ) -> TestResult<ZenohRouter> {
         // ThreadX Linux is bridge-networked (veth pairs), so zenohd must
         // bind to 0.0.0.0 to be reachable from the bridged simulation
         // interface. The QEMU-based platforms use slirp and reach zenohd
         // via the slirp gateway (10.0.2.2) forwarded to host localhost.
         let port = self.zenohd_port_for(variant, lang);
         match self {
-            Platform::ThreadxLinux => ZenohRouter::start_on("0.0.0.0", port),
-            _ => ZenohRouter::start_slirp(port),
+            Platform::ThreadxLinux => {
+                ZenohRouter::start_on_with_log_filter("0.0.0.0", port, log_filter)
+            }
+            _ => ZenohRouter::start_slirp_with_log_filter(port, log_filter),
         }
     }
 
@@ -864,21 +880,6 @@ const MAX_ROUTER_SESSIONS: usize = 3;
 /// affordable window covers the top of the band.
 const COVERED_LEASE_SECS: u32 = 14;
 
-/// Turn on the router's accept log for this test process.
-///
-/// SAFETY / why an env var: `ZenohRouter` reads `ZENOHD_LOG` when it SPAWNS the
-/// router, and there is no per-call switch. nextest runs each case as its own
-/// process, so this write happens once, before this cell's router exists and
-/// before any thread that could read the environment concurrently. An operator
-/// value is left alone — `ZENOHD_LOG=trace` is someone debugging, and its log
-/// is a superset of what this needs.
-fn enable_router_session_log() {
-    if std::env::var_os("ZENOHD_LOG").is_none() {
-        // SAFETY: single-threaded, once, at the top of the test.
-        unsafe { std::env::set_var("ZENOHD_LOG", ROUTER_SESSION_LOG_FILTER) };
-    }
-}
-
 /// Seconds between consecutive `ROUTER_SESSION_MARKER` lines, rendered for a
 /// human (issue 1044).
 ///
@@ -940,8 +941,9 @@ fn assert_no_session_churn(platform: Platform, lang: Lang, port: u16, window: Du
         panic!(
             "{platform} {lang} pubsub E2E: cannot read the router log at {} ({e}).\n\
              This cell asserts on it, so an unreadable log is a failure, not a pass. \
-             `enable_router_session_log` sets ZENOHD_LOG before the router starts; \
-             if that no longer reaches `ZenohRouter`, this is where it shows.",
+             This cell passes `ROUTER_SESSION_LOG_FILTER` to `zenoh_router_start`, which \
+             is what makes `ZenohRouter` keep a log at all; if that no longer reaches \
+             `ZenohRouter::start_on_with_log_filter`, this is where it shows.",
             log_path.display()
         )
     });
@@ -968,9 +970,12 @@ fn assert_no_session_churn(platform: Platform, lang: Lang, port: u16, window: Du
          `{ROUTER_SESSION_MARKER}` lines, yet both nodes demonstrably talked to it — so \
          this cell's session-churn check just measured nothing.\n\
          That line is third-party text (RFC-0075: the router is whatever ROS ships). \
-         Either the filter `{ROUTER_SESSION_LOG_FILTER}` no longer selects it or this \
-         zenoh renamed it; fix ROUTER_SESSION_MARKER / ROUTER_SESSION_LOG_FILTER in this \
-         file. Log: {}",
+         Either the filter `{ROUTER_SESSION_LOG_FILTER}` no longer selects it, or this \
+         zenoh renamed it, or a `ZENOHD_LOG` is exported in this shell that is NOT a \
+         superset of it — an operator value wins over the one this cell asks for, by \
+         design, and `ZENOHD_LOG=info` selects none of these lines. Check the \
+         environment first, then fix ROUTER_SESSION_MARKER / ROUTER_SESSION_LOG_FILTER \
+         in this file. Log: {}",
         log_path.display(),
     );
     // Bound before the assertion rather than formatted inside it: a `format!`
@@ -1067,13 +1072,13 @@ fn test_rtos_pubsub_e2e(
 
     let (talker_bin, listener_bin) = build_pair(platform, lang, Variant::Pubsub);
 
-    // Ask the router to record its TCP accepts BEFORE starting it — that log is
-    // this cell's only window onto session CONTINUITY (see
-    // `assert_no_session_churn`), and `ZenohRouter` decides whether to keep one
-    // at spawn time.
-    enable_router_session_log();
+    // Ask the router to record its TCP accepts — that log is this cell's only
+    // window onto session CONTINUITY (see `assert_no_session_churn`), and
+    // `ZenohRouter` decides whether to keep one at spawn time, so the filter
+    // goes in with the start call rather than into the process environment
+    // ahead of it (issue 1394).
     let zenohd = platform
-        .zenoh_router_start(Variant::Pubsub, lang)
+        .zenoh_router_start(Variant::Pubsub, lang, Some(ROUTER_SESSION_LOG_FILTER))
         .expect("Failed to start zenohd");
 
     eprintln!(
@@ -1266,7 +1271,7 @@ fn test_rtos_service_e2e(
     let (server_bin, client_bin) = build_pair(platform, lang, Variant::Service);
 
     let zenohd = platform
-        .zenoh_router_start(Variant::Service, lang)
+        .zenoh_router_start(Variant::Service, lang, None)
         .expect("Failed to start zenohd");
 
     eprintln!("[{} {}] service: starting server/client...", platform, lang);
@@ -1395,7 +1400,7 @@ fn test_rtos_action_e2e(
     let (server_bin, client_bin) = build_pair(platform, lang, Variant::Action);
 
     let zenohd = platform
-        .zenoh_router_start(Variant::Action, lang)
+        .zenoh_router_start(Variant::Action, lang, None)
         .expect("Failed to start zenohd");
 
     eprintln!("[{} {}] action: starting server/client...", platform, lang);
