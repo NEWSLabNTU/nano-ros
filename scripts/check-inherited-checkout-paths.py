@@ -485,19 +485,33 @@ def probe_just_nested(tmp: Path) -> list[str]:
         )
 
     # 5. Row 1 of the rule survives nesting too: a path outside any checkout is
-    #    kept, even though `parent` is a prefix of `inner`.
+    #    kept, even though `parent` is a prefix of `inner`. Run with the
+    #    advisory UNSILENCED, because this doubles as probe 6.
     vendor = str(tmp / "nested/opt/vendor/px4")
+    loud = {k: v for k, v in env.items() if k != "NROS_QUIET_ACTIVATE"}
     p = subprocess.run(
         ["just", "--justfile", str(inner / "justfile"), "--evaluate", "PX4_AUTOPILOT_DIR"],
         capture_output=True,
         text=True,
         cwd=inner,
-        env={**env, "PX4_AUTOPILOT_DIR": vendor},
+        env={**loud, "PX4_AUTOPILOT_DIR": vendor},
     )
     got = p.stdout.strip() if p.returncode == 0 else f"<rc={p.returncode}>"
     if got != vendor:
         problems.append(
             f"just (nested checkout): an out-of-tree PX4_AUTOPILOT_DIR was rewritten — got {got!r}"
+        )
+
+    # 6. The advisory REACHES the reader. Measured, not grepped: nothing
+    #    consumes `_NROS_INHERITED_FROM`'s value, so without the explicit edge
+    #    in `sdk-env.just` `just --evaluate` never forces the private variable
+    #    and the diagnostic silently stops existing for the one command a
+    #    person runs when a path looks wrong.
+    if "re-rooting inherited paths from" not in p.stderr:
+        problems.append(
+            "just (nested checkout): `just --evaluate` printed no re-rooting advisory. "
+            "`_NROS_INHERITED_FROM` must stay a DEPENDENCY of `_NROS_REROOT`; a private "
+            "variable nothing depends on is not evaluated by --evaluate (issue 1391)."
         )
 
     return problems

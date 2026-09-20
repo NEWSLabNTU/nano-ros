@@ -57,17 +57,25 @@ _NROS_HERE := justfile_directory()
 
 # The one invocation spelling, so the 21 lines below differ only in the name
 # and the default. `$1` is the value, `$2` is this checkout.
-_NROS_REROOT := '"$2"/scripts/lib/reroot-checkout-path.sh "$1" "$2"'
+_NROS_REROOT_CMD := '"$2"/scripts/lib/reroot-checkout-path.sh "$1" "$2"'
 
 # ADVISORY ONLY, and deliberately kept: this prints "re-rooting inherited paths
 # from X onto Y" on stderr once per `just` run, which is the line that tells a
-# reader their environment came from another checkout at all. Nothing below
-# consumes its value any more — the per-value rule above needs no prefix — but
-# deleting the call silences the diagnostic, so `check-inherited-checkout-paths`
-# asserts it is still here. It no longer has to pick ONE foreign root either:
-# per-value ownership handles an environment naming several, so that case is
-# now reported rather than refused (issue 1391).
+# reader their environment came from another checkout at all. Its VALUE is
+# consumed by nothing — the per-value rule above needs no prefix — so
+# `check-inherited-checkout-paths` asserts the call is still here.
+# It no longer has to pick ONE foreign root either: per-value ownership handles
+# an environment naming several, so that case is now reported rather than
+# refused (issue 1391).
 _NROS_INHERITED_FROM := shell('"$1"/scripts/lib/foreign-checkout-root.sh "$1"', _NROS_HERE)
+
+# …and this is the EDGE that keeps the advisory reachable. Both arms are
+# `_NROS_REROOT_CMD`, so the `if` computes nothing; what it does is make the
+# detector a DEPENDENCY of every export below. Without it the advisory reaches
+# a recipe run (which evaluates every assignment) but NOT `just --evaluate`,
+# which does not force a private variable nothing depends on — and that is the
+# command a person reaches for when a path looks wrong.
+_NROS_REROOT := if _NROS_INHERITED_FROM == "" { _NROS_REROOT_CMD } else { _NROS_REROOT_CMD }
 
 # The checkout a build is FOR. Not `env(...)`: `justfile_directory()` is
 # definitionally the checkout this `just` is running in, so there is nothing an
