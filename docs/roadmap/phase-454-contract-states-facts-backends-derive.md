@@ -1,6 +1,6 @@
 # phase-454 — the contract states the facts, every backend derives its own buffers
 
-**Status (2026-09-18). W1–W8, W10 and W11 are LANDED; W9 remains, and is
+**Status (2026-09-20). W1–W8 and W10–W13 are LANDED; W9 remains, and is
 BLOCKED — see below.** The 2026-09-11 line said "Opened" and outlived that by a
 week: every wave but one is marked LANDED in the body, so the phase read as
 unstarted to anyone who stopped at the header. That is the same defect this
@@ -589,7 +589,7 @@ Also stale and worth fixing while here: the hint text at
 Acceptance: the gate lists each retired knob with its single legitimate reader,
 and a second reader is a hard red.
 
-### W10 — the C and Rust halves of the declared-QoS check — **LANDED**
+### W10 — the C and Rust halves of the declared-QoS check — **LANDED** (Rust half finished in W13)
 
 `_nros_declared_qos_arm` returns early for Rust and INTERFACE targets, and there
 is no C equivalent of `NROS_ASSERT_DECLARED_DEPTH`. The descriptor is
@@ -874,7 +874,120 @@ the same, so on the cargo leaf road `DECLARED_QOS_ROWS` is unpopulated and W10's
 registration check cannot compare the two. That is W10's gap, not one this wave
 opens — but it is what a Rust image would need before a declared depth could be
 trusted on a BUFFERED backend, where the arena and the registration must agree
-rather than merely clamp.
+rather than merely clamp. **Closed by W13 below.**
+
+### W13 — the Rust half of W10, closed — **LANDED**
+
+W12's own closing paragraph, answered. Three things were wrong and they were
+one thing: a Rust registration neither obtained the declared depth nor could
+have compared against it.
+
+**The carrier.** `NROS_ENTITY_DECLARED_DEPTHS` is written by
+`entity_inventory::render_declared_depths` into the CMAKE fragment, and by
+nothing on the single-package cargo leaf road — `cmd::leaf_settings::write`
+composes that road's `[env]` rows and has no per-endpoint row among them. So
+`DECLARED_QOS_ROWS` was `None` on exactly the road W12 taught to read a
+contract. The leaf road's carrier is the one it already uses for every other
+per-endpoint fact: the SIZING DESCRIPTOR, whose `[[endpoint]]` rows carry
+`kind`, `type`, `topic` and `depth` after `contract_join`. `declared_qos_rows`
+reads both and UNIONS them; a `(type, topic)` both state at different depths is
+a build error naming both, because silently preferring one of two answers is how
+a road ends up checked against a number nobody on it wrote.
+
+Read **without** `descriptor_subscriptions`' two guards, deliberately, and it is
+the same split W10 already made for the env carrier: arena sizing needs
+`basis == contract` and `undeclared_endpoints == 0` because it prices every
+subscription or none, while a per-endpoint check needs neither. The gate's
+fixture descriptor sets `undeclared_endpoints = 1` so that stays true by
+measurement rather than by comment.
+
+**TAKE, not check — and why the rule is asymmetric.** C++ settles this by
+ARITY: the three-argument `NROS_SUBSCRIBE` states no QoS and
+`qos_from_declared_depth` builds one from the declaration ("nothing to assert —
+there is only ever one number"); the four-argument form `static_assert`s. Rust
+has neither half of that seam, and by the time a QoS reaches a registration
+"the caller wrote this" and "a constructor defaulted it" are the same
+`QoSProfile` — the declarative road folds both into one `EntityMetadata::qos`
+field long before it. So the distinction is not available, and the two simple
+rules each fail: CHECK ONLY refuses every `QoSProfile::default()` call site the
+moment its endpoint is declared at anything but 10, which is the entire point of
+declaring one; TAKE ALWAYS silently widens a queue a caller narrowed
+(`create_subscription_viewable` requires KEEP_LAST(1)).
+
+What the contract states is **what the build RESERVED** — W12 made that literal
+for the arena, the zenoh ring and both payload pools. So:
+
+| | | |
+| --- | --- | --- |
+| `asked > declared` | the registration wants more slots than were bought | **TAKEN**, reported once per endpoint |
+| `asked < declared` | it fits, but taking would widen what the code narrowed, and the image paid for slots nothing wants | **REFUSED** (RFC-0100 D8), naming both |
+| equal, or undeclared | | unchanged, silent |
+
+`nros_node::declared_qos::honour` at the fourteen Rust registration sites;
+`check` stays at the C and C++ FFI seams, which took the declared depth at their
+own call site and so reach a registration where a disagreement is real.
+
+**The take is REPORTED**, because the C surfaces' number is visible in the source
+at the call site and Rust's is not. Severity is the DIRECTION, the rule
+`nros-rmw-zenoh`'s `shim/qos.rs` already states for its own grants: a shallower
+take can drop a sample under a burst, so WARN.
+
+**Measured on `examples/native/rust/listener`**, the leaf W12 measured, through
+`nros sync` + the generated `nros-cargo.toml` and against a real `rmw_zenohd`:
+
+```
+[WARN] nros: declared depth: taking KEEP_LAST(1) on `/chatter`; the call site
+       asked 10 and the build reserved 1. Raise the contract row to keep more
+       (type `std_msgs::msg::dds_::String_`).
+```
+
+27 of 27 messages delivered from a `ros2 topic pub` talker. The zenoh clamp line
+that stood beside it before — *"asked for KEEP_LAST(10); this image's receive
+ring holds 1"* — is GONE, which is the point: the arena, the ring and the
+registration now state one number instead of three reconciled by a clamp.
+Static RAM 172,298 → **172,426 B**, the +128 being the declared table itself,
+against W12's −101,504.
+
+**The negative control**, forced and reverted: the contract raised to `depth: 20`
+against the call site's 10 refuses at registration —
+`[ERROR] declared depth: '/chatter' registers KEEP_LAST(10) and the contract
+declares 20 -- DEEPER.` then `NodeError::DeclaredDepthMismatch`, the node
+declaration fails and the process exits. 0 messages.
+
+**No contract, no change** — the same leaf with its sidecar removed, rebuilt on
+both trees: `.bss + .data` **273,802 B** and every attributed symbol identical
+to `origin/main`'s, `DECLARED_QOS_ROWS = None`, and NO `declared_qos` symbol in
+the image at all. That last one needed `#[inline]` on `honour` and the `Option`
+matched there rather than threaded in as an argument: a 40-byte `QoSProfile`
+moving in and out by value is past LLVM's inlining budget, so the first version
+left a real `T nros_node::declared_qos::honour` symbol and +144 B of text on an
+image with no contract. The linked binary is not BYTE-identical and cannot be —
+a source change to a linked crate reshuffles LLVM codegen-unit hashes, which
+moves `.llvm.<N>` symbol suffixes and 16 bytes of `.text`/`.gcc_except_table`
+layout with no functional content.
+
+Gate: `check-declared-qos-registration` builds `nros-node` three times — once per
+carrier, once with neither — each in its OWN `CARGO_TARGET_DIR`. That last part
+is not tidiness: `NROS_SIZING_DESCRIPTOR` names a PATH, so by issue 0491's rule
+the build script watches the descriptor's CONTENT and does not declare the
+variable a fingerprint input, and the no-carrier step therefore re-ran the
+descriptor step's binary and reported ITS table as proof that no table exists.
+Measured before it was fixed. The recipe's three command substitutions also
+picked up issue 1249's `rc=0; out=... || rc=$?` shape, having died at the
+assignment under `set -e` with the diagnostic unreachable.
+
+Mutation-checked four ways, each reding a named test: dropping the take reds
+`an_endpoint_asking_deeper_than_its_declaration_registers_at_the_declared_depth`
+and `the_take_matches_the_spelling_a_typed_call_site_carries`; dropping the
+refusal reds `a_declaration_deeper_than_the_registration_is_refused_not_taken`;
+dropping the descriptor carrier reds the gate's carrier-2 step; dropping
+`check`'s refusal reds
+`declared_image::refuses_a_disagreeing_depth_and_accepts_an_agreeing_one`.
+
+**Not closed here.** RFC-0100 D8's other half — a `qos_overrides` parameter that
+states a depth the contract does not — still never meets the contract. `honour`
+runs after `apply_overrides`, so an override that diverges is TAKEN or REFUSED
+by the same rule as any other ask rather than named as the override it is.
 
 Tests: 9 in `contract_join` (the key, both halves of it, the relative spelling,
 the remapped node, the both-sides uniqueness rule, the untouched no-contract

@@ -552,7 +552,7 @@ fn main() {
     // phase-454 W10 — the per-endpoint declared depths, for the REGISTRATION
     // check. Same carrier `subs_arena` sizes from, different guard: see
     // `declared_qos_rows`.
-    let declared_qos_rows = declared_qos_rows();
+    let declared_qos_rows = declared_qos_rows(sizing.as_ref());
     // phase-454 W10 — "this build was handed a contract's depths".
     //
     // Emitted so the declared-image half of `declared_qos`'s tests can EXIST
@@ -1450,13 +1450,49 @@ fn declared_param_service_shapes() -> String {
 /// every image that has not opted in. A MALFORMED row refuses the build rather
 /// than being dropped: a row silently skipped is a check silently disabled, and
 /// that is indistinguishable from an image whose depths all agree.
-fn declared_qos_rows() -> String {
+///
+/// # TWO carriers, because there are two roads -- phase-454 W13
+///
+/// `NROS_ENTITY_DECLARED_DEPTHS` is the CMAKE road's carrier (native C/C++,
+/// Zephyr west, NuttX): `entity_inventory::render_declared_depths` writes it
+/// into the generated cmake fragment from the resolved SystemModel. Nothing on
+/// the single-package CARGO LEAF road writes it -- `cmd::leaf_settings::write`
+/// composes that road's `[env]` rows and has no per-endpoint row among them --
+/// so for two waves `DECLARED_QOS_ROWS` was `None` on exactly the road
+/// phase-454 W12 taught to read a contract, and the check it feeds could never
+/// compare anything there.
+///
+/// The leaf road's carrier is the SIZING DESCRIPTOR, which is where that road
+/// puts every other per-endpoint fact (RFC-0100 D4). Its
+/// `[[endpoint]]` rows already carry `kind`, `type`, `topic` and `depth` --
+/// `contract_join` having put the contract's depth there -- so the rows are
+/// READ from it rather than re-carried through a second env knob, which is the
+/// 0460/0491 shape this whole model exists to avoid.
+///
+/// **The descriptor is read WITHOUT `descriptor_subscriptions`' two guards, and
+/// that is the same split W10 already made one layer up.** Arena sizing refuses
+/// a partial picture (`basis == contract`, `undeclared_endpoints == 0`) because
+/// it prices every subscription or none. A per-ENDPOINT check needs neither:
+/// whether `/chatter`'s declared depth matches the depth registered on
+/// `/chatter` is a question about `/chatter`, and requiring the whole image to
+/// declare before any of it is checked would turn one silent endpoint into no
+/// checking at all. An endpoint whose `depth` is REFUSED or absent contributes
+/// no row -- absence is not zero.
+///
+/// The two carriers are disjoint in practice, so they are UNIONED rather than
+/// ranked; a `(type, topic)` both state with DIFFERENT depths fails the build,
+/// because silently preferring one of two answers is how a road ends up checked
+/// against a number nobody on it wrote.
+fn declared_qos_rows(desc: Option<&nros_sizing_descriptor::SizingDescriptor>) -> String {
     // The name is an ARGUMENT and not written at the `env::var` call, for the
     // reason `declared_param_service_shapes` records: a literal
     // `env::var("<forwarded knob>")` is issue 0460's shape.
     println!("cargo:rerun-if-env-changed=NROS_ENTITY_DECLARED_DEPTHS");
     let raw = declared_fact("NROS_ENTITY_DECLARED_DEPTHS").unwrap_or_default();
-    let mut rows: Vec<String> = Vec::new();
+    // `(type, topic, depth)`, in the ROS type spelling. The DDS-mangled twin is
+    // added at RENDER time, once, so a row arriving from either carrier gets
+    // both and neither carrier has to know about the mangling.
+    let mut declared: Vec<(String, String, u32)> = Vec::new();
     // cmake hands a list over as `;`-separated; be liberal about `,` too --
     // the Zephyr lane converts one to the other on its way through
     // `nros_cargo_build.cmake`.
@@ -1492,9 +1528,51 @@ fn declared_qos_rows() -> String {
         if type_name.is_empty() || topic.is_empty() {
             malformed()
         }
+        declared.push((type_name.to_string(), topic.to_string(), depth));
+    }
+    // The leaf road's carrier. Subscriptions only, because that is what
+    // `declared_qos::check` is asked about and what `NROS_ENTITY_DECLARED_DEPTHS`
+    // itself carries (a publisher's declared depth rides its own variable and
+    // sizes a different thing).
+    if let Some(desc) = desc {
+        for ep in desc
+            .endpoints
+            .iter()
+            .filter(|ep| ep.kind == nros_sizing_descriptor::EndpointKind::Subscription)
+        {
+            // A refused or absent depth contributes NO row. The endpoint exists
+            // and nobody stated what it keeps, which is exactly the case
+            // "absence is not zero" is about -- a default taken here would be
+            // checked against as if a human had written it.
+            let Some(depth) = ep.depth().get() else {
+                continue;
+            };
+            if let Some((ty, topic, other)) = declared
+                .iter()
+                .find(|(ty, topic, d)| ty == &ep.type_name && topic == &ep.topic && *d != depth)
+            {
+                panic!(
+                    "\n\nnros-node: two carriers state a declared QoS depth for `{ty}` on \
+                     `{topic}` and they disagree: NROS_ENTITY_DECLARED_DEPTHS says {other}, this \
+                     image's sizing descriptor says {depth}. They are two statements about one \
+                     fact (RFC-0100 D8), so the build stops rather than picking one -- the \
+                     registration check would otherwise hold every subscription to a number \
+                     nobody on this road wrote.\n"
+                );
+            }
+            if !declared
+                .iter()
+                .any(|(ty, topic, _)| ty == &ep.type_name && topic == &ep.topic)
+            {
+                declared.push((ep.type_name.clone(), ep.topic.clone(), depth));
+            }
+        }
+    }
+    let mut rows: Vec<String> = Vec::new();
+    for (type_name, topic, depth) in &declared {
         rows.push(format!("({type_name:?}, {topic:?}, {depth})"));
         let dds = dds_type_name(type_name);
-        if dds != type_name {
+        if &dds != type_name {
             rows.push(format!("({dds:?}, {topic:?}, {depth})"));
         }
     }
