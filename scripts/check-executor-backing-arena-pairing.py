@@ -103,6 +103,8 @@ except ModuleNotFoundError:  # python < 3.11
     import tomli as tomllib
 
 BACKING_KEY = "CONFIG_NROS_EXECUTOR_BACKING_U64S"
+# The same claim as BACKING_KEY, spelled for a port with no Kconfig (issue 1388).
+BOARD_BACKING_KEY = "[board.knobs.executor] backing_u64s"
 ARENA_KEY = "CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE"
 BASE_MARKER = "nros-arena-base"
 
@@ -213,6 +215,21 @@ PORTS = {
 # mode one layer up -- and on this port it is SILENT: the pool simply stays at
 # its base and the image pays twice, which is exactly what this gate exists to
 # notice.
+# Issue 1388 — the ports with no Kconfig state the same claim in a BOARD
+# descriptor instead of a conf. `claims()` reads both, because issue 1284's
+# "is the number ENOUGH" half has to cover every way the claim can be spelled;
+# it covered only the Zephyr spelling, and a ThreadX board's claim went
+# unchecked until every ThreadX image stopped compiling.
+BOARD_TOML_GLOB = "packages/boards/*/nros-board.toml"
+
+# A board claim's pointer width and cross target, by board-descriptor path.
+# AUTHORED, like BOARD_TARGETS and for the same reason: a width this file
+# guessed is a measurement nobody made. A claiming descriptor with no entry
+# here is REFUSED, not assumed.
+BOARD_TOML_TARGETS = {
+    "packages/boards/nros-board-threadx-linux/nros-board.toml": (64, None),
+}
+
 THREADX_POOL_C = "packages/boards/nros-board-common/c/threadx_hooks.c"
 THREADX_FORWARDER = "packages/boards/nros-board-common/src/threadx_sources.rs"
 THREADX_POOL_BASE_TOKEN = "BYTE_POOL_BASE_SIZE"
@@ -663,6 +680,48 @@ def claims(repo, stating):
     return out, refused
 
 
+def board_toml_claims(repo):
+    """-> (claims, refusals) for `[board.knobs.executor] backing_u64s` claims.
+
+    Same shape as a conf claim — (source, words, board, width, cross) — so the
+    consumers need no second code path.
+
+    This claim is judged against the UNNARROWED default, and that is not an
+    approximation: a board states ONE number, and units compiled with it do not
+    all get the image's knob narrowing. Measured on threadx-linux (issue 1388),
+    `nros-node` resolves defaults of 2917, 3626, 4494 and 11069 in one build —
+    the last from the synthesised `nros_ws_runtime` umbrella, which is compiled
+    per CARGO ROOT rather than per image. The claim has to cover the largest, so
+    the right comparison is the same `ExecutorSizing::DEFAULT` every conf claim
+    is checked against.
+    """
+    out, refused = [], []
+    for path in sorted(repo.glob(BOARD_TOML_GLOB)):
+        rel = path.relative_to(repo).as_posix()
+        try:
+            doc = tomllib.loads(path.read_text(errors="replace"))
+        except Exception as exc:  # a descriptor this gate cannot read is a refusal
+            refused.append((rel, f"could not be parsed as TOML: {exc}"))
+            continue
+        for board in doc.get("board", []):
+            if not isinstance(board, dict):
+                continue
+            words = (board.get("knobs") or {}).get("executor", {}).get("backing_u64s")
+            if not isinstance(words, int) or words <= 0:
+                continue  # absent derives, 0 declines — neither is a claim
+            if rel not in BOARD_TOML_TARGETS:
+                refused.append((rel, (
+                    f"states {BOARD_BACKING_KEY}={words} and has no entry in "
+                    f"BOARD_TOML_TARGETS: no pointer width is known for it, so "
+                    f"nothing can say whether the claim is enough. Add one; do "
+                    f"not guess."
+                )))
+                continue
+            width, cross = BOARD_TOML_TARGETS[rel]
+            out.append((rel, words, board.get("names", ["?"])[0], width, cross))
+    return out, refused
+
+
 def claim_half(repo, confs):
     """-> (claims, refusals, knob complaints) over the tracked `confs`."""
     stating = {}
@@ -676,7 +735,8 @@ def claim_half(repo, confs):
     build_rs = (repo / "packages/core/nros-node/build.rs").read_text(errors="replace")
     complaints = classify(set(NAME_LITERAL_RE.findall(build_rs)))
     got, refused = claims(repo, stating)
-    return got, refused, complaints
+    board_got, board_refused = board_toml_claims(repo)
+    return got + board_got, refused + board_refused, complaints
 
 
 def print_claims(repo, confs):

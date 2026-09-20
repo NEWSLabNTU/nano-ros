@@ -147,12 +147,42 @@ fn every_stated_executor_backing_meets_the_measured_default() {
                     if words >= default {
                         met += 1;
                     } else {
+                        // The claim has two spellings and they take two
+                        // remedies (issue 1388). A Zephyr conf states the
+                        // Kconfig symbol and pairs it against an arena the
+                        // same conf sets, so restating means editing both. A
+                        // board descriptor states the RFC-0049 rung, and on
+                        // ThreadX the subtraction is done by the C
+                        // preprocessor from that one rung — there is no arena
+                        // to re-pair, and naming one sends the reader to a
+                        // file this port does not have.
+                        let is_board_toml = conf.ends_with("nros-board.toml");
+                        let (key, remedy) = if is_board_toml {
+                            (
+                                "[board.knobs.executor] backing_u64s".to_string(),
+                                format!(
+                                    "Restate it as {default}; the pool subtracts the same \
+                                     rung, so there is nothing else to edit."
+                                ),
+                            )
+                        } else {
+                            (
+                                format!("CONFIG_NROS_EXECUTOR_BACKING_U64S={words}"),
+                                format!(
+                                    "Restate it as {default} and re-pair the arena \
+                                     (`arena = nros-arena-base - 8 * {default}`)."
+                                ),
+                            )
+                        };
+                        let key = if is_board_toml {
+                            format!("{key} = {words}")
+                        } else {
+                            key
+                        };
                         failures.push(format!(
-                            "{conf} states CONFIG_NROS_EXECUTOR_BACKING_U64S={words} for \
-                             `{board}`, but the executor's default measured on this \
-                             {host_width}-bit host is {default} words ({} short). The image \
-                             will not compile. Restate it as {default} and re-pair the arena \
-                             (`arena = nros-arena-base - 8 * {default}`).",
+                            "{conf} states {key} for `{board}`, but the executor's default \
+                             measured on this {host_width}-bit host is {default} words \
+                             ({} short). The image will not compile. {remedy}",
                             default - words
                         ));
                     }
