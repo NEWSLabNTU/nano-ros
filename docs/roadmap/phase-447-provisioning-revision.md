@@ -526,7 +526,7 @@ where it matters.
 
 | work | branch | state |
 | --- | --- | --- |
-| #1304 (A4) | `work/1304-installed-setup-provisions-without-a-checkout` | rebased onto main and finished: the release carries its submodule pins, `nros setup` provisions a Rust toolchain, the Cyclone dist is found by configure, and `nros_rust_tool` resolves cargo/rustc where PATH does not. Also re-tagged first-project.md, whose `probe=` tags phase-445 W5 had dropped — the installed probe had been extracting no build step |
+| #1304 (A4) | `a4/1304` | DONE — `just probe installed` passes end to end (install -> setup -> scaffold -> sync -> build -> run, no checkout). Six defects, not one; see the issue's Resolved section |
 
 ### What is left
 
