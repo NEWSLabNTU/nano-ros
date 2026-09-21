@@ -197,8 +197,51 @@ install = "make -j$(nproc) && make install"
 # lib-dynload, all resolving against the shared library — so `import struct`
 # works there and can never work on x86_64. The build asserts exactly that, per
 # host, before publishing.
+#
+# -nros5 finishes arm64's lib-dynload and MEASURES the remainder (issue 0932's
+# residue). That residue note named two modules and was written from reading; a
+# sweep of all 44 found FOUR unimportable on jammy, and the one it missed was
+# the one that matters — `_ctypes`, which has no pure-Python fallback and is
+# what a gdb pretty-printer can reach:
+#
+#   _ctypes   libffi.so.7      not installed on a stock jammy   -> NOW BUNDLED
+#   _decimal  libmpdec.so.2    no such package on jammy         -> NOW BUNDLED
+#   _hashlib  libcrypto.so.1.1 no such package on jammy         -> still fails
+#   _ssl      libssl.so.1.1    no such package on jammy         -> still fails
+#
+# The two bundled libs are 35 KB and 215 KB, need only the libc family, and top
+# out at GLIBC_2.17 — the floors below are unchanged, re-measured, not carried.
+# The TLS pair is deliberately NOT bundled: 0932's decision restated, since a
+# deprecated OpenSSL inside a debugger is a cost with no user and this index
+# already declares `[prereq.libssl3]` for other tools.
+#
+# And the set is now a MEASURED FACT rather than a sentence: the build imports
+# every lib-dynload module inside the shipped gdb and fails if the unimportable
+# set differs from its recorded baseline, in EITHER direction. The arm64 runner
+# printed `lib-dynload 44 module(s), unimportable = [_hashlib _ssl] (baseline)`.
+#
+# WHAT `system` DOES NOT SAY, and why. The arm64 artifact's external closure is
+# 13 sonames, because lib-dynload's optional extensions each name one
+# (libbz2/liblzma/libsqlite3/libncursesw/libtinfo/libpanelw/libreadline/libdb/
+# libuuid/libnsl, plus the two OpenSSL 1.1 ones). `system` stays `libcrypt1`:
+# it declares what the dist needs to FUNCTION, and a debugger needs none of
+# those. Declaring the OpenSSL pair would be actively harmful — they are
+# unobtainable on jammy, so D1's backward half would refuse the whole toolchain
+# over two unimportable Python modules. Consequence worth knowing:
+# `check-dist-runtime-deps` derives that closure from a PROVISIONED dist, so on
+# an arm64 host that has installed this toolchain it will report those sonames
+# as undeclared. That predates -nros5 (nros4 shipped the same modules and two
+# MORE undeclared sonames) and is a gate-reach question, not a dist defect.
+#
+# x86_64 and macos-arm64 were re-cut with it because `build-tool.yml` publishes
+# one tag across the matrix, NOT because either needed the fix: none of the
+# above can apply to x86_64 (static CPython, zero C-API exports, so no
+# extension module loads on any host) and macOS takes a different path
+# entirely. macos-arm64 came out BYTE-IDENTICAL to -nros4, which is the
+# evidence; x86_64's bytes did move, from the runner image's own bundled
+# libraries being newer, not from this change.
 [tool.arm-none-eabi-gcc]
-version = "13.2-nros4"
+version = "13.2-nros5"
 smoke = [
     { run = "bin/arm-none-eabi-gcc --version", expect = "Arm GNU Toolchain" },
     { run = "bin/arm-none-eabi-gdb --version", expect = "GNU gdb" },
@@ -210,9 +253,9 @@ smoke = [
 system = ["libcrypt1"]
 upstream = "13.2.rel1" # ARM release id (SSOT — build script no longer hand-derives)
 # Repackaged from ARM's release; no in-repo source build (binary toolchain).
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros4/arm-none-eabi-gcc-linux-x86_64.tar.zst", sha256 = "27d5e5f6f9428157df7900c91b000486184f99fbc1a35ea5c3ca219be9068197", floor = { glibc = "2.34", glibcxx = "3.4.19" } }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros4/arm-none-eabi-gcc-linux-arm64.tar.zst", sha256 = "841e456d571e3f60244652a5ac7287f9e06a9c61f1fc93d2fbbc037b05f5a6ab", floor = { glibc = "2.34", glibcxx = "3.4.22" } }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros4/arm-none-eabi-gcc-macos-arm64.tar.zst", sha256 = "d1a2311ff7590e6370be8df34e6dea3d572df83aa95672eb484026f2fd4b6748", floor = { macos = "11.0" } }
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros5/arm-none-eabi-gcc-linux-x86_64.tar.zst", sha256 = "af5b2e04c6fd39e57a93671ed7e89e9e5d12ad50aad93d5c209d0d173976ea84", floor = { glibc = "2.34", glibcxx = "3.4.19" } }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros5/arm-none-eabi-gcc-linux-arm64.tar.zst", sha256 = "0871860d6c4233ffe3ed14b4bdaddd6b7a4f86fd611156f9fee0e8f5d0e27d96", floor = { glibc = "2.34", glibcxx = "3.4.22" } }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros5/arm-none-eabi-gcc-macos-arm64.tar.zst", sha256 = "d1a2311ff7590e6370be8df34e6dea3d572df83aa95672eb484026f2fd4b6748", floor = { macos = "11.0" } }
 
 [tool.zephyr-sdk]
 # The Zephyr SDK, host-keyed (issue 0610). `scripts/zephyr/setup.sh` used to

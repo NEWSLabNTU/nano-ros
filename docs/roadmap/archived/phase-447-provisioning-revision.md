@@ -316,6 +316,16 @@ bundles focal's CPython 3.8, whose `lib-dynload/_ssl` module needs
 gdb's Python on the host it was built for. gdb itself is unaffected. A
 `nano-ros-sdk` re-cut question.
 
+> **Correction, 2026-09-21 — discharged, and the finding was understated.**
+> The re-cut happened (`arm-none-eabi-gcc-13.2-nros5`). Sweeping all 44
+> lib-dynload modules found **four** unimportable on jammy, not one:
+> `_ctypes` (libffi.so.7) and `_decimal` (libmpdec.so.2) as well as
+> `_ssl`/`_hashlib`. The first two are now bundled; the OpenSSL 1.1 pair is
+> deliberately not, and the build now MEASURES the remainder against a
+> baseline. `import ssl` still fails, on purpose. The live description is
+> issue 0932's "Residue" section — not this paragraph, which is kept as the
+> record of what was known at the time.
+
 ### D2 — manager fields gain an OS-version dimension
 
 `apt = [...]` stays valid and means every version; `apt.noble = [...]` overrides.
@@ -603,7 +613,7 @@ at all, and a `just queue-triage` window measured in runs rather than minutes.
 
 ## Open findings, not fixed here
 
-- The **arm64 `arm-none-eabi-gcc` dist's bundled Python `_ssl` needs `libssl.so.1.1`**, which jammy does not ship — `import ssl` fails inside that gdb. Needs a re-cut in `nano-ros-sdk`.
+- ~~The **arm64 `arm-none-eabi-gcc` dist's bundled Python `_ssl` needs `libssl.so.1.1`**, which jammy does not ship — `import ssl` fails inside that gdb. Needs a re-cut in `nano-ros-sdk`.~~ **DISCHARGED 2026-09-21** by `arm-none-eabi-gcc-13.2-nros5`: the sweep found four such modules, `_ctypes`/`_decimal` are bundled, the OpenSSL 1.1 pair stays declined by decision, and the residue is now checked at build time against a baseline. Live description: issue 0932's "Residue".
 - **`nros-launch-resolve`'s floor is declared but not enforced** until `[tool.nros]` carries dist rows (phase-431 W5).
 - **`nros::init::ros_args_refusal_tests`** reads `ROS_DOMAIN_ID` with no lock while `env.rs`'s tests mutate it under `env_lock()`, in the same binary. A flake, observed once under a full parallel run.
 - **`just queue-triage` looks back 15 runs, not a time window**, so a minutes-old ejection had already scrolled out of it on a busy queue. #918's was found with `gh` directly.
