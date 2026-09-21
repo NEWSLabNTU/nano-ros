@@ -127,6 +127,12 @@ impl RegisteredNode {
             tiers: Default::default(),
             node_overrides: Vec::new(),
             resolved_tiers: None,
+            // Issue 0794 — `nano_ros_node_register` has no syntax for a domain,
+            // a locator or an RMW selector either, so the baked session rung is
+            // empty here for the same reason the rest of this plan is. Such an
+            // image still gets its locator and domain from the entry gate's
+            // `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`.
+            session: Default::default(),
         }
     }
 

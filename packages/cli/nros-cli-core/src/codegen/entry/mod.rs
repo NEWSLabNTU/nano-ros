@@ -102,6 +102,11 @@ pub struct Plan {
     /// `None` until the caller invokes the resolver. Emitters check this to gate
     /// sched-context wiring: `None` or `is_single_tier()` → byte-identical output.
     pub resolved_tiers: Option<ResolvedTierTable>,
+    /// Issue 0794 — the image's RFC-0045 baked SESSION rung, folded from the
+    /// model's per-node `execution.deploy` entries by [`baked_session`].
+    /// `Default` (everything `None`) for a plan whose model declares none,
+    /// which is what every hand-built test plan wants.
+    pub session: BakedSession,
 }
 
 // phase-326 (issue 0364): `Plan::for_host` / `Plan::hosts` / `PlanNode.host`
@@ -630,75 +635,201 @@ pub(crate) fn sched_view(tiers: &ResolvedTierTable, plan: &Plan) -> SchedView {
     }
 }
 
+/// Issue 0794 — the image-level half of the RFC-0045 baked rung: the SESSION
+/// facts the `.nros_boot_config` blob carries beside the node's identity.
+///
+/// The model states these PER NODE (`execution.deploy.<fqn>.{domain, locator,
+/// rmw}`, documented there as "RFC-0045 baked rung on embedded"), because a
+/// deploy entry is per node. The blob has ONE of each, because an image opens
+/// one session. [`baked_session`] is the fold between the two, and it is the
+/// only place that decision is taken.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BakedSession {
+    /// `execution.deploy.<fqn>.domain`, when every deployed node agrees.
+    ///
+    /// `Some(0)` is a real answer and NOT the same as `None`: domain 0 is a
+    /// legal ROS domain, which is the whole reason the blob carries presence
+    /// BITS rather than reading a zero field as unset.
+    pub domain: Option<u8>,
+    /// `execution.deploy.<fqn>.locator`, when every deployed node agrees.
+    /// An empty string is normalised to `None` — issue 0330's "absent, let the
+    /// backend discover" is the established meaning of an empty locator, so
+    /// baking `""` WITH the bit set would assert a configured-empty endpoint.
+    pub locator: Option<String>,
+    /// `execution.deploy.<fqn>.rmw`, when every deployed node agrees. Empty is
+    /// normalised to `None` for the same reason `nros_support_init` does it
+    /// (issue 1050 defect (3)): an empty selector is "unset", never a backend
+    /// named `""`.
+    pub rmw: Option<String>,
+    /// Field names at least one node DECLARED but the image could not agree
+    /// on, in `domain`/`locator`/`rmw` order.
+    ///
+    /// The bit is left CLEAR for these — the blob cannot represent "node A on
+    /// domain 5, node B on the default", and baking either one would put a
+    /// fact in the image that no node asked for. That is not a silent drop:
+    /// the generated blob carries a comment naming each field here, which is
+    /// where a reader of the emitted TU is already looking.
+    pub conflicts: Vec<String>,
+}
+
+/// Fold per-node deploy facts into one image-level answer.
+///
+/// Unanimity, and nothing weaker: every node must declare the SAME value.
+/// Any node silent, or any two disagreeing, yields `None` — a partial
+/// declaration is a placement the blob cannot express, not a majority vote.
+///
+/// Returns `(value, declared_by_someone)`; the caller reports the second as a
+/// conflict when the first is `None`.
+fn unanimous<T: Clone + PartialEq>(vals: &[Option<T>]) -> (Option<T>, bool) {
+    let declared = vals.iter().any(Option::is_some);
+    let mut it = vals.iter();
+    let first = match it.next() {
+        Some(v) => v.clone(),
+        None => return (None, false),
+    };
+    if first.is_some() && it.all(|v| *v == first) {
+        (first, declared)
+    } else {
+        (None, declared)
+    }
+}
+
+/// Build a [`BakedSession`] from the deployed nodes' `(domain, locator, rmw)`.
+///
+/// The empty-string normalisation happens HERE, before the fold, so that a
+/// `Plan` never carries `Some("")` for a field whose bit would then be set on
+/// a value that means "unset" to every reader.
+fn baked_session(per_node: &[(Option<u8>, Option<String>, Option<String>)]) -> BakedSession {
+    fn nonempty(s: &Option<String>) -> Option<String> {
+        s.as_deref().filter(|v| !v.is_empty()).map(str::to_string)
+    }
+    let domains: Vec<Option<u8>> = per_node.iter().map(|(d, _, _)| *d).collect();
+    let locators: Vec<Option<String>> = per_node.iter().map(|(_, l, _)| nonempty(l)).collect();
+    let rmws: Vec<Option<String>> = per_node.iter().map(|(_, _, r)| nonempty(r)).collect();
+
+    let (domain, domain_declared) = unanimous(&domains);
+    let (locator, locator_declared) = unanimous(&locators);
+    let (rmw, rmw_declared) = unanimous(&rmws);
+
+    let mut conflicts = Vec::new();
+    if domain.is_none() && domain_declared {
+        conflicts.push("domain".to_string());
+    }
+    if locator.is_none() && locator_declared {
+        conflicts.push("locator".to_string());
+    }
+    if rmw.is_none() && rmw_declared {
+        conflicts.push("rmw".to_string());
+    }
+    BakedSession {
+        domain,
+        locator,
+        rmw,
+        conflicts,
+    }
+}
+
 /// Phase 266 (W5b/W6) — the `NROS_BOOT_CONFIG` blob, as its template sees it.
 ///
 /// phase-432 W2.3 — this used to be `emit_boot_config_static`, a string writer
 /// both entry emitters called and both carried as a pre-rendered `String` in
-/// their view. It is now a fact pair rendered by ONE shared partial
-/// (`boot_config.c.jinja`), which is what "the IR carries no rendered text"
+/// their view. It is now a fact set rendered by ONE shared partial
+/// (`boot_config.jinja`), which is what "the IR carries no rendered text"
 /// means for this field.
 ///
-/// For a **single-node** plan the blob bakes the launch node name, and its
-/// namespace when the node has one; a post-link tool (or the runner's inline
-/// call to `nros_boot_config_node_name`) reads them back. For a **multi-node**
-/// plan, or a single node with no resolvable name, both are `None` — the flags
-/// come out clear, `nros_boot_config_node_name` returns NULL, and the runner
-/// falls back to the unified `"node"` default.
+/// The five facts split into two kinds, and the kind decides what a multi-node
+/// image gets:
+///
+/// * **Identity** — `node_name`, `namespace`. Per NODE, so a multi-node plan
+///   (or a single node with no resolvable name) leaves both `None`: the flags
+///   come out clear, `nros_boot_config_node_name` returns NULL, and the runner
+///   falls back to the unified `"node"` default. There is no such thing as
+///   "the" name of an image that runs three nodes.
+/// * **Session** — `domain`, `locator`, `rmw`. Per IMAGE, so they survive a
+///   multi-node plan whenever every deployed node agrees on them
+///   ([`BakedSession`]). This is the "emit what is COMMON" half: a two-node
+///   image whose nodes both deploy to domain 7 bakes domain 7; one whose nodes
+///   disagree bakes neither and says so.
 ///
 /// issue 0794 — the producer used to set `NROS_BOOT_SET_NODE_NAME` and nothing
-/// else, while the blob defines four fields and the reader
-/// (`nros-node/src/executor/types.rs`) branches on all four. A launch file that
-/// declared a namespace produced an image that came up at `/`, silently: the
-/// field, the bit, the packer and the reader all existed and worked, and only
-/// the producer was missing.
+/// else, while the blob defines five fields and the reader
+/// (`nros-node/src/executor/types.rs`) branches on all five. The namespace half
+/// was fixed 2026-08-25; the session half is this. Measured before the fix, on
+/// a bringup declaring all three: `.set_flags = NROS_BOOT_SET_NODE_NAME |
+/// NROS_BOOT_SET_NAMESPACE`, `.domain_id = 0`, `.locator = ""`, `.rmw = ""`.
 #[derive(serde::Serialize)]
 pub(crate) struct BootConfigView {
     /// RAW. The pack quotes it.
     pub node_name: Option<String>,
     pub namespace: Option<String>,
+    /// RAW `uint32_t` — the blob's field is `uint32_t`, the model's is `u8`.
+    pub domain: Option<u32>,
+    /// RAW. The pack quotes it.
+    pub locator: Option<String>,
+    /// RAW. The pack quotes it.
+    pub rmw: Option<String>,
+    /// [`BakedSession::conflicts`], rendered as a comment above the blob.
+    pub conflicts: Vec<String>,
 }
 
-/// Resolve the blob's two facts, refusing a name the C field cannot hold.
+/// Resolve the blob's five facts, refusing a value the C field cannot hold.
 ///
 /// # Errors
 ///
-/// Returns `Err` if the resolved node name or namespace exceeds 63 bytes: both
-/// C fields are `char [64]`, which must hold the string **and** a NUL. The
-/// caller gets a clear diagnostic instead of a confusing C-compiler
-/// array-initialiser error. This is a correctness check, so it stays in
-/// compiled Rust rather than moving into the template with the layout.
+/// Returns `Err` when a resolved string exceeds its fixed C buffer minus the
+/// NUL: `node_name` and `namespace_` are `char [64]` (63 bytes), `locator` is
+/// `char [96]` (95) and `rmw` is `char [32]` (31). The caller gets a clear
+/// diagnostic instead of a confusing C-compiler array-initialiser error. This
+/// is a correctness check, so it stays in compiled Rust rather than moving into
+/// the template with the layout.
+///
+/// The domain is NOT range-checked here. `DOMAIN_ID_MAX` lives in `nros-node`,
+/// which this crate does not depend on, and mirroring the constant would be a
+/// second authored copy of a cap the resolver already enforces at boot
+/// (`BootConfigError::DomainIdRange`). A too-large baked domain fails loud
+/// there rather than silently becoming domain 0.
 pub(crate) fn boot_config_view(plan: &Plan) -> Result<BootConfigView, String> {
-    fn fits(what: &str, raw: &str, field: &str) -> Result<(), String> {
-        if raw.len() > 63 {
+    fn fits(what: &str, raw: &str, field: &str, cap: usize) -> Result<(), String> {
+        if raw.len() > cap {
             return Err(format!(
                 "node {what} '{raw}' is {} bytes; the .nros_boot_config {field} field \
-                 holds at most 63 bytes + NUL",
+                 holds at most {cap} bytes + NUL",
                 raw.len(),
             ));
         }
         Ok(())
     }
 
+    // Session facts are image-level: they are resolved the same way whether the
+    // plan holds one node or ten. Identity is resolved below, and only for one.
+    let s = &plan.session;
+    if let Some(loc) = s.locator.as_deref() {
+        fits("locator", loc, "locator", 95)?;
+    }
+    if let Some(rmw) = s.rmw.as_deref() {
+        fits("rmw", rmw, "rmw", 31)?;
+    }
+    let mut view = BootConfigView {
+        node_name: None,
+        namespace: None,
+        domain: s.domain.map(u32::from),
+        locator: s.locator.clone(),
+        rmw: s.rmw.clone(),
+        conflicts: s.conflicts.clone(),
+    };
+
     if plan.nodes.len() != 1 {
-        return Ok(BootConfigView {
-            node_name: None,
-            namespace: None,
-        });
+        return Ok(view);
     }
     let n = &plan.nodes[0];
     let raw = n.name.as_deref().unwrap_or(&n.exec);
-    fits("name", raw, "node_name")?;
-    let namespace = match n.namespace.as_deref() {
-        Some(ns) => {
-            fits("namespace", ns, "namespace_")?;
-            Some(ns.to_string())
-        }
-        None => None,
-    };
-    Ok(BootConfigView {
-        node_name: Some(raw.to_string()),
-        namespace,
-    })
+    fits("name", raw, "node_name", 63)?;
+    if let Some(ns) = n.namespace.as_deref() {
+        fits("namespace", ns, "namespace_", 63)?;
+        view.namespace = Some(ns.to_string());
+    }
+    view.node_name = Some(raw.to_string());
+    Ok(view)
 }
 
 /// Sanitise a pkg name into a valid identifier (`-` → `_`).
@@ -838,10 +969,20 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     };
 
     let mut nodes: Vec<PlanNode> = Vec::new();
+    // Issue 0794 — the RFC-0045 baked SESSION rung, collected per deployed node
+    // and folded once below. `execution.deploy.<fqn>.{domain, locator, rmw}` is
+    // the model's own name for this ("RFC-0045 baked rung on embedded"), and it
+    // was read here for the board SLICE and for nothing else, so a launch that
+    // declared a domain or a locator produced an image whose blob said neither.
+    let mut deploy_facts: Vec<(Option<u8>, Option<String>, Option<String>)> = Vec::new();
     for (fqn, inst) in &model.structure.nodes {
         if !keep(fqn) {
             continue;
         }
+        deploy_facts.push(match model.execution.deploy.get(fqn) {
+            Some(d) => (d.domain, d.locator.clone(), d.rmw.clone()),
+            None => (None, None, None),
+        });
         let bare = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
         let namespace = {
             let ns = &fqn[..fqn.len() - bare.len()];
@@ -954,6 +1095,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
         tiers,
         node_overrides: Vec::new(),
         resolved_tiers: None,
+        session: baked_session(&deploy_facts),
     })
 }
 
@@ -1345,6 +1487,7 @@ contracts: {}
             tiers: Default::default(),
             node_overrides: Vec::new(),
             resolved_tiers: None,
+            session: Default::default(),
         }
     }
 
@@ -1528,6 +1671,7 @@ contracts: {}
             tiers,
             node_overrides,
             resolved_tiers: None,
+            session: Default::default(),
         };
 
         resolve_plan_sched(&mut plan, "posix").expect("resolve_plan_sched should succeed");
@@ -1652,6 +1796,7 @@ contracts: {}
             tiers,
             node_overrides: Vec::new(), // no [[node_overrides]] needed
             resolved_tiers: None,
+            session: Default::default(),
         };
 
         resolve_plan_sched(&mut plan, "posix").expect("resolve_plan_sched should succeed");
@@ -1726,6 +1871,7 @@ contracts: {}
                 tiers: Default::default(),
                 node_overrides: Vec::new(),
                 resolved_tiers: None,
+                session: Default::default(),
             }
         }
 
@@ -1749,6 +1895,172 @@ contracts: {}
             "an undeclared namespace must not set the bit:\n{without}"
         );
         assert!(without.contains("NROS_BOOT_SET_NODE_NAME"));
+    }
+
+    /// issue 0794, the session half — a launch-declared domain, locator and RMW
+    /// must reach the blob with their bits set.
+    ///
+    /// Measured against the writer this replaces, on a bringup whose
+    /// `system.toml` declares `domain_id = 7` and `locator =
+    /// "tcp/10.0.2.2:7447"` and whose launch pushes `/robot1`:
+    ///
+    /// ```text
+    /// .set_flags  = NROS_BOOT_SET_NODE_NAME | NROS_BOOT_SET_NAMESPACE,
+    /// .domain_id  = 0,
+    /// .locator    = "",
+    /// .rmw        = "",
+    /// ```
+    ///
+    /// The resolver put all three in `execution.deploy./robot1/talker`; the
+    /// emitter read that map for the board slice only.
+    #[test]
+    fn a_launch_declared_session_reaches_the_baked_boot_config() {
+        let mut plan = single_node_plan("talker");
+        plan.session = BakedSession {
+            domain: Some(7),
+            locator: Some("tcp/10.0.2.2:7447".into()),
+            rmw: Some("zenoh".into()),
+            conflicts: Vec::new(),
+        };
+        let out = boot_config_text(&plan).expect("emit ok");
+        for expect in [
+            "NROS_BOOT_SET_DOMAIN",
+            "NROS_BOOT_SET_LOCATOR",
+            "NROS_BOOT_SET_RMW",
+            ".domain_id  = 7u",
+            ".locator    = \"tcp/10.0.2.2:7447\"",
+            ".rmw        = \"zenoh\"",
+        ] {
+            assert!(out.contains(expect), "missing `{expect}`:\n{out}");
+        }
+
+        // The other direction, and the reason the bits exist: nothing declared
+        // must leave every session bit CLEAR, so the reader falls through to
+        // the next RFC-0045 rung instead of reading domain 0 / `""` as a
+        // configured answer.
+        let bare = boot_config_text(&single_node_plan("talker")).expect("emit ok");
+        for absent in [
+            "NROS_BOOT_SET_DOMAIN",
+            "NROS_BOOT_SET_LOCATOR",
+            "NROS_BOOT_SET_RMW",
+        ] {
+            assert!(
+                !bare.contains(absent),
+                "`{absent}` must stay clear:\n{bare}"
+            );
+        }
+        assert!(bare.contains(".domain_id  = 0,"), "{bare}");
+        assert!(bare.contains(".locator    = \"\","), "{bare}");
+        assert!(bare.contains(".rmw        = \"\","), "{bare}");
+    }
+
+    /// issue 0794 — the multi-node decision, stated as a test because it is the
+    /// question the fix had to answer.
+    ///
+    /// A node NAME and a NAMESPACE are per-node identity, so an image running
+    /// two nodes has neither and both bits stay clear (unchanged behaviour). A
+    /// domain, a locator and an RMW selector are per-SESSION and an image opens
+    /// one, so they survive the multi-node case whenever every node agrees.
+    #[test]
+    fn a_multi_node_image_keeps_its_session_rung_and_drops_its_identity() {
+        let mut plan = single_node_plan("talker");
+        plan.nodes.push(plan.nodes[0].clone());
+        plan.nodes[1].exec = "listener".into();
+        plan.session = BakedSession {
+            domain: Some(7),
+            locator: Some("tcp/10.0.2.2:7447".into()),
+            rmw: None,
+            conflicts: vec!["rmw".into()],
+        };
+        let out = boot_config_text(&plan).expect("emit ok");
+        assert!(!out.contains("NROS_BOOT_SET_NODE_NAME"), "{out}");
+        assert!(!out.contains("NROS_BOOT_SET_NAMESPACE"), "{out}");
+        assert!(out.contains("NROS_BOOT_SET_DOMAIN"), "{out}");
+        assert!(out.contains("NROS_BOOT_SET_LOCATOR"), "{out}");
+        assert!(!out.contains("NROS_BOOT_SET_RMW"), "{out}");
+        // A dropped fact is reported in the generated TU, never dropped in
+        // silence — the emitted comment is where a reader of the entry looks.
+        assert!(
+            out.contains("issue 0794 — NOT baked: rmw"),
+            "a conflict must be named in the emitted blob:\n{out}"
+        );
+    }
+
+    /// issue 0794 — the fold from the model's PER-NODE deploy entries to the
+    /// blob's ONE session, with every case the emitter has to answer.
+    #[test]
+    fn baked_session_folds_only_what_every_deployed_node_agrees_on() {
+        let s =
+            |d, l: Option<&str>, r: Option<&str>| (d, l.map(str::to_string), r.map(str::to_string));
+
+        // Unanimous: the image's answer.
+        let got = baked_session(&[
+            s(Some(7), Some("tcp/a:7447"), Some("zenoh")),
+            s(Some(7), Some("tcp/a:7447"), Some("zenoh")),
+        ]);
+        assert_eq!(got.domain, Some(7));
+        assert_eq!(got.locator.as_deref(), Some("tcp/a:7447"));
+        assert_eq!(got.rmw.as_deref(), Some("zenoh"));
+        assert!(got.conflicts.is_empty());
+
+        // Disagreement: no answer, and it is REPORTED. A blob holds one domain,
+        // so baking either node's would put a fact in the image that the other
+        // node contradicts.
+        let got = baked_session(&[s(Some(7), None, None), s(Some(9), None, None)]);
+        assert_eq!(got.domain, None);
+        assert_eq!(got.conflicts, vec!["domain".to_string()]);
+
+        // Partial declaration is a disagreement too: the silent node's answer
+        // is "the compiled default", which is not 7.
+        let got = baked_session(&[s(Some(7), None, None), s(None, None, None)]);
+        assert_eq!(got.domain, None);
+        assert_eq!(got.conflicts, vec!["domain".to_string()]);
+
+        // Domain 0 is a real domain, not "unset" — the whole reason the blob
+        // carries presence bits rather than reading a zero field as absent.
+        let got = baked_session(&[s(Some(0), None, None)]);
+        assert_eq!(got.domain, Some(0));
+        assert!(got.conflicts.is_empty());
+
+        // An empty string is UNSET, never a configured-empty value: issue 0330
+        // for the locator ("absent, let the backend discover"), issue 1050 for
+        // the selector ("unset, not a backend named `\"\"`").
+        let got = baked_session(&[s(None, Some(""), Some(""))]);
+        assert_eq!(got.locator, None);
+        assert_eq!(got.rmw, None);
+        assert!(
+            got.conflicts.is_empty(),
+            "an empty value is not a declaration, so it is not a conflict"
+        );
+
+        // Nothing declared, nothing reported.
+        assert_eq!(
+            baked_session(&[s(None, None, None)]),
+            BakedSession::default()
+        );
+        assert_eq!(baked_session(&[]), BakedSession::default());
+    }
+
+    /// issue 0794 — a value longer than its fixed C buffer is refused with a
+    /// diagnostic naming the field, not passed to the C compiler as an
+    /// over-long array initialiser. The budgets differ per field
+    /// (`locator[96]`, `rmw[32]`), which the single 63-byte check could not say.
+    #[test]
+    fn a_session_value_too_long_for_its_c_field_is_refused() {
+        let mut plan = single_node_plan("talker");
+        plan.session.locator = Some("t".repeat(96));
+        let err = boot_config_text(&plan).expect_err("96 bytes does not fit locator[96] + NUL");
+        assert!(err.contains("locator"), "{err}");
+        assert!(err.contains("95 bytes"), "{err}");
+
+        let mut plan = single_node_plan("talker");
+        plan.session.locator = Some("t".repeat(95));
+        boot_config_text(&plan).expect("95 bytes fits locator[96] with its NUL");
+
+        let mut plan = single_node_plan("talker");
+        plan.session.rmw = Some("r".repeat(32));
+        let err = boot_config_text(&plan).expect_err("32 bytes does not fit rmw[32] + NUL");
+        assert!(err.contains("rmw"), "{err}");
     }
 
     #[test]
@@ -1781,6 +2093,7 @@ contracts: {}
             tiers: Default::default(),
             node_overrides: Vec::new(),
             resolved_tiers: None,
+            session: Default::default(),
         };
         resolve_plan_sched(&mut plan, "posix").expect("no-op should succeed");
         assert!(
@@ -1876,6 +2189,7 @@ contracts: {}
                 },
             ],
             resolved_tiers: None,
+            session: Default::default(),
         };
         resolve_plan_sched(&mut plan, "posix").expect("resolve_plan_sched");
         let table = plan.resolved_tiers.clone().expect("resolved_tiers");

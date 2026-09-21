@@ -596,6 +596,22 @@ pub struct EnvRung<'a> {
     pub mode: Option<SessionMode>,
     /// `$NROS_NODE_NAME`.
     pub node_name: Option<&'a str>,
+    /// `$NROS_NODE_NAMESPACE`.
+    ///
+    /// Issue 0794 — this rung did not exist, so the namespace had TWO levels
+    /// (explicit, baked) where every other field of this struct had three, and
+    /// RFC-0045 said nothing about the asymmetry. It was not a decision that a
+    /// namespace is un-overridable identity: `node_name` is identity too and
+    /// has always had its rung, and ROS 2 itself honours `$ROS_NAMESPACE`. It
+    /// was the same unwired-producer shape as the baked rung one level down.
+    ///
+    /// The name is `$NROS_NODE_NAMESPACE` — the nano-ros vocabulary, matching
+    /// `$NROS_NODE_NAME`. `$ROS_NAMESPACE` is deliberately NOT folded in, for
+    /// the reason `rmw_selector` does not fold in `$RMW_IMPLEMENTATION`: a
+    /// variable this tree does not own would start deciding identity for every
+    /// nano-ros process in a sourced ROS shell, which is a behaviour change no
+    /// nano-ros config asked for.
+    pub namespace: Option<&'a str>,
     /// `$NROS_RMW` — the backend selector, resolved through
     /// `nros::rmw_selector` so every reader agrees on what "unset" means.
     pub rmw: Option<&'a str>,
@@ -682,7 +698,10 @@ impl<'a> ExecutorConfig<'a> {
             mode: env.mode.unwrap_or(SessionMode::Client),
             domain_id,
             node_name: env.node_name.or(baked.node_name).unwrap_or("node"),
-            namespace: baked.namespace.unwrap_or(""),
+            // Issue 0794 — `env > baked`, like every other field here. It read
+            // `baked.namespace` alone, because the rung had no namespace to
+            // read; the asymmetry was in the rung, not in this line's intent.
+            namespace: env.namespace.or(baked.namespace).unwrap_or(""),
             clock_us: None,
             // A rung means a hosted caller, and a hosted caller has a wall
             // clock — the same one `from_env` installs. `default_epoch_us_fn`
@@ -1690,6 +1709,49 @@ mod boot_config_tests {
         };
         let resolved = ExecutorConfig::resolve_with(baked, Some(EnvRung::default()));
         assert_eq!(resolved.rmw, Some("uorb"));
+    }
+
+    /// issue 0794 — the namespace is a full THREE-rung field now.
+    ///
+    /// Before, `EnvRung` had no namespace at all, so `try_resolve_with` read
+    /// `baked.namespace` alone: the namespace had two rungs where locator,
+    /// domain, node name and rmw had three, and RFC-0045 never said why. These
+    /// three assertions are the ladder, in the same shape as `rmw`'s above.
+    #[test]
+    fn namespace_resolves_over_all_three_rungs() {
+        let baked = BootConfig {
+            namespace: Some("/baked"),
+            ..Default::default()
+        };
+        // env > baked
+        let env = EnvRung {
+            namespace: Some("/from_env"),
+            ..Default::default()
+        };
+        assert_eq!(
+            ExecutorConfig::resolve_with(baked, Some(env)).namespace,
+            "/from_env"
+        );
+        // a silent rung falls through to baked rather than erasing it
+        assert_eq!(
+            ExecutorConfig::resolve_with(baked, Some(EnvRung::default())).namespace,
+            "/baked"
+        );
+        // nothing anywhere is the compiled default, which stays `""`
+        assert_eq!(
+            ExecutorConfig::resolve_with(BootConfig::default(), Some(EnvRung::default())).namespace,
+            ""
+        );
+        // and the env rung reaches an image with NOTHING baked — the case that
+        // had no expression at all before, on either rung.
+        let env = EnvRung {
+            namespace: Some("/robot1"),
+            ..Default::default()
+        };
+        assert_eq!(
+            ExecutorConfig::resolve_with(BootConfig::default(), Some(env)).namespace,
+            "/robot1"
+        );
     }
 
     // ── T4: env rung overrides baked ─────────────────────────────────────────

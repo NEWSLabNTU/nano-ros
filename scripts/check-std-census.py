@@ -184,7 +184,19 @@ BASELINE = {
     # capability's own reads (12 of the 14), `init`'s `Path`, and the
     # `RMW_IMPLEMENTATION` hint — all of them `env`, which REQUIRES `std`
     # because a process environment is a `std` facility.
-    "nros": {"cfg": 5, "path": 14},
+    #
+    # issue 0794 — path 14 -> 16, DELIBERATELY. RFC-0045's env rung had no
+    # namespace field, so the namespace resolved over two rungs where every
+    # other identity field had three. Closing that means reading one more
+    # variable, and a variable is read twice here by design: `env_cache` takes
+    # the VALUE (so the resolved config can hand out `&'static str`) and
+    # `env_rung` takes the PRESENCE live (issue 0607 — a test that sets a var
+    # must see its effect against an already-frozen cache). Both reads are
+    # `std::env::var` in `src/env.rs`, the ONE file in the tree that reads the
+    # process environment and the one compiled only under `env`. Spelling them
+    # through a `use std::env::var` import would move this number without
+    # changing what the build links, which is gaming the ratchet.
+    "nros": {"cfg": 5, "path": 16},
     #
     # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
     # PAIRS — clock, wall clock, sleep — and every C consumer links a platform
