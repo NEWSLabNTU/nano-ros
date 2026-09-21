@@ -1,0 +1,7 @@
+<launch>
+  <!-- phase-460 W1 (issue 1420): two nodes joined by one contracted topic;
+       the test edits system.contract.yaml beside this file into something
+       the resolver refuses, then restores it. -->
+  <node pkg="talker_pkg" exec="talker" name="talker"/>
+  <node pkg="listener_pkg" exec="listener" name="listener"/>
+</launch>

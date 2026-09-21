@@ -32,7 +32,6 @@ use clap::{Args as ClapArgs, Subcommand, ValueEnum};
 use eyre::{Result, WrapErr, bail, eyre};
 use rosidl_bindgen::ament::Package;
 use rosidl_codegen::RosEdition;
-use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
@@ -1415,80 +1414,30 @@ impl WsPkg {
     }
 }
 
-/// phase-267 W1c/C3e — generate `<bringup>/nros-bridge.toml` for every bringup
-/// whose `system.toml` declares a `[[bridge]]`. Plans the bringup (resolving each
-/// bridge topic NAME to its ROS type from the node pkgs' synthetic `publishes`
-/// metadata — pre-build, no sidecar), then renders the runtime bridge config the
-/// entry's `nros_bridge::run_from_config` consumes. No bridge ⇒ no file written
-/// (and a stale one is removed). Non-bridge workspaces never plan here.
-/// R-code UX — materialize each bringup's SystemModel as part of `nros
-/// sync`, so the user's canonical flow (sync → west/cargo/cmake) never
-/// hand-runs the resolver. For every pkg with a `launch/` dir: resolve
-/// `config/system_model.yaml` when it is missing or older than any input
-/// (launch XMLs, system.toml). When the helper is absent, a model that needs no
-/// refresh is used as-is; a model that DOES need one is a hard error, never a
-/// silent staleness.
-/// Multi-launch bringups also refresh per-launch `config/<name>_model.yaml`
-/// siblings that were previously committed (variant models stay opt-in:
-/// only refreshed, never created, for non-default launches).
-///
-/// Issue 0320 — content-addressed staleness. A committed model records a
-/// `sha256` for every input under `meta.inputs`. This re-hashes each recorded
-/// input against the file on disk and returns `Some(reason)` when the recorded
-/// provenance no longer holds: a non-portable absolute path (which regenerates
-/// the machine-specific legacy models on any checkout), a recorded input that
-/// no longer exists, or a hash that has changed (an input the mtime gate does
-/// not watch — a sibling include or the `--sched` platform file). `None` means
-/// the model's provenance is intact. A model that cannot be parsed returns
-/// `None` so the caller falls back to the mtime gate rather than force-churning.
-///
-/// Relative paths resolve against `bringup_dir` (the package root), matching
-/// how the resolver strips the launch file's grandparent as the base and how
-/// `main_macro` re-joins them.
-fn model_provenance_stale(model_path: &Path, bringup_dir: &Path) -> Option<String> {
-    let raw = std::fs::read_to_string(model_path).ok()?;
-    let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw).ok()?;
-    for input in &model.meta.inputs {
-        let recorded = Path::new(&input.path);
-        if recorded.is_absolute() {
-            return Some(format!("non-portable absolute input path `{}`", input.path));
-        }
-        let resolved = bringup_dir.join(recorded);
-        let Ok(bytes) = std::fs::read(&resolved) else {
-            return Some(format!("recorded input missing `{}`", input.path));
-        };
-        let digest = format!("{:x}", Sha256::digest(&bytes));
-        if digest != input.sha256 {
-            return Some(format!("input hash changed `{}`", input.path));
-        }
-    }
-    // Issue 0427 — the resolver identity is a freshness input too. A resolver fix
-    // (node ordering, params, remaps, tiers) changes the OUTPUT for byte-identical
-    // inputs, so a model produced by a DIFFERENT resolver pin is stale even when
-    // every input hash matches. nano-ros stamps `meta.resolver.version` with
-    // `NROS_PLAY_LAUNCH_SHA` at resolve time (`stamp_resolver_pin`) — the pin
-    // `verify_resolver_pin` already agrees on — because the resolver's own
-    // self-version is unreliable (it wrote `0.1.0` while the tool was v0.1.4).
-    // Skip when our pin is unverifiable, matching `verify_resolver_pin`.
-    let ours = env!("NROS_PLAY_LAUNCH_SHA");
-    if ours != "unknown" {
-        match model.meta.resolver.as_ref().map(|r| r.version.as_str()) {
-            Some(v) if v == ours => {}
-            Some(v) => {
-                return Some(format!(
-                    "resolver pin changed (model `{}` ≠ ours `{}`)",
-                    &v[..v.len().min(12)],
-                    &ours[..ours.len().min(12)]
-                ));
-            }
-            None => return Some("no resolver pin recorded".into()),
-        }
-    }
-    None
-}
+// phase-267 W1c/C3e — generate `<bringup>/nros-bridge.toml` for every bringup
+// whose `system.toml` declares a `[[bridge]]`. Plans the bringup (resolving each
+// bridge topic NAME to its ROS type from the node pkgs' synthetic `publishes`
+// metadata — pre-build, no sidecar), then renders the runtime bridge config the
+// entry's `nros_bridge::run_from_config` consumes. No bridge ⇒ no file written
+// (and a stale one is removed). Non-bridge workspaces never plan here.
+// R-code UX — materialize each bringup's SystemModel as part of `nros
+// sync`, so the user's canonical flow (sync → west/cargo/cmake) never
+// hand-runs the resolver. For every pkg with a `launch/` dir: resolve
+// `config/system_model.yaml` when it is missing or older than any input
+// (launch XMLs, system.toml). When the helper is absent, a model that needs no
+// refresh is used as-is; a model that DOES need one is a hard error, never a
+// silent staleness.
+// Multi-launch bringups also refresh per-launch `config/<name>_model.yaml`
+// siblings that were previously committed (variant models stay opt-in:
+// only refreshed, never created, for non-default launches).
+//
+// Issue 0320 / phase-460 W1 (issue 1420) -- `model_provenance_stale` moved to
+// `crate::model_gate::provenance_stale`. It lived here where only `run_sync`
+// could call it, which is how a refused resolve left a model every OTHER
+// consumer trusted; now every door calls the one gate.
 
 /// Issue 0427 — record the resolver PIN (`NROS_PLAY_LAUNCH_SHA`) into a freshly
-/// resolved model's `meta.resolver`, so [`model_provenance_stale`] treats a
+/// resolved model's `meta.resolver`, so [`crate::model_gate::provenance_stale`] treats a
 /// resolver change as staleness. Overwrites the resolver's own unreliable
 /// self-version (it stamped `0.1.0` at v0.1.4). Called on the STAGED file before
 /// it is promoted, so a mid-resolve failure leaves no half-stamped model.
@@ -1509,48 +1458,15 @@ fn stamp_resolver_pin(staged: &Path) -> Result<()> {
     Ok(())
 }
 
-/// phase-326 (issue 0364) — the exact launch-argument binding a committed
-/// model was resolved from (`meta.args`). Re-resolving MUST replay it: the
-/// binding reaches the parser, where `<arg>` defaults and `if=`/`unless=`
-/// conditions evaluate, so a per-host variant model
-/// (`multihost_robot1_model.yaml`, resolved with `host:=robot1`) re-resolved
-/// without its binding would silently become the default configuration.
-/// Unparsable/missing model ⇒ empty binding (the plain resolve).
-/// phase-330 W4.0 — file names referenced by `<include file="…">` in a launch
-/// file.
-///
-/// A targeted scan, not a full parse: `parse_launch_file` resolves
-/// substitutions and needs a `PkgIndex`, and all this decision needs is "is
-/// this launch file pulled in by another one". Only the file NAME is compared,
-/// so a `$(find-pkg-share …)` prefix does not defeat it.
-fn launch_include_names(path: &Path) -> Vec<String> {
-    let Ok(raw) = std::fs::read(path) else {
-        return Vec::new();
-    };
-    let mut reader = quick_xml::Reader::from_reader(raw.as_slice());
-    let mut buf = Vec::new();
-    let mut out = Vec::new();
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(quick_xml::events::Event::Eof) | Err(_) => break,
-            Ok(quick_xml::events::Event::Start(e) | quick_xml::events::Event::Empty(e))
-                if e.name().as_ref() == b"include" =>
-            {
-                for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"file"
-                        && let Ok(v) = attr.unescape_value()
-                        && let Some(n) = Path::new(v.as_ref()).file_name().and_then(|s| s.to_str())
-                    {
-                        out.push(n.to_string());
-                    }
-                }
-            }
-            _ => {}
-        }
-        buf.clear();
-    }
-    out
-}
+// phase-326 (issue 0364) — the exact launch-argument binding a committed
+// model was resolved from (`meta.args`). Re-resolving MUST replay it: the
+// binding reaches the parser, where `<arg>` defaults and `if=`/`unless=`
+// conditions evaluate, so a per-host variant model
+// (`multihost_robot1_model.yaml`, resolved with `host:=robot1`) re-resolved
+// without its binding would silently become the default configuration.
+// Unparsable/missing model ⇒ empty binding (the plain resolve).
+// phase-330 W4.0 / phase-460 W1 -- `launch_include_names` moved to
+// `crate::model_gate`, whose launch-tree walk asks the same question.
 
 /// phase-330 W4.0 — a `[[model]]` declaration in a bringup's `system.toml`.
 ///
@@ -1979,7 +1895,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                         .and_then(|n| n.to_str())
                         .is_some_and(|n| n.ends_with(".launch.xml"))
                     {
-                        names.extend(launch_include_names(&path));
+                        names.extend(crate::model_gate::launch_include_names(&path));
                     }
                 }
             }
@@ -2097,7 +2013,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
         // are read from `[[model]]` below.
         let included: std::collections::HashSet<String> = launches
             .iter()
-            .flat_map(|lf| launch_include_names(lf))
+            .flat_map(|lf| crate::model_gate::launch_include_names(lf))
             .chain(workspace_included.iter().cloned())
             .collect();
         // A launch file with `[[model]]` declarations is fully described by
@@ -2247,9 +2163,13 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
             // absolute-path models, which are otherwise never mtime-stale.
             let provenance = model
                 .exists()
-                .then(|| model_provenance_stale(&model, &pkg.dir))
+                .then(|| crate::model_gate::provenance_stale(&model, Some(pkg.dir.as_path())))
                 .flatten();
-            if !stale(&model) && provenance.is_none() {
+            // phase-460 W1 (issue 1420) -- a marker left by a refused resolve
+            // forces a re-resolve whatever the inputs say now: only a
+            // SUCCESSFUL resolve may clear it.
+            let refused = crate::model_gate::marker_path(&model).is_file();
+            if !stale(&model) && provenance.is_none() && !refused {
                 continue;
             }
             let Some(pl) = &play_launch else {
@@ -2262,6 +2182,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                     match (&provenance, model.exists()) {
                         (Some(why), _) => why.as_str(),
                         (None, true) => "older than its inputs",
+                        (None, false) if refused => "refused by its last resolve",
                         (None, false) => "missing",
                     },
                     launch
@@ -2325,11 +2246,48 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                 .wrap_err_with(|| format!("sync: spawn nros-launch-resolve for {}", pkg.name))?;
             if !out.status.success() {
                 let _ = std::fs::remove_file(&staged);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                // phase-460 W1 (issue 1420) -- QUARANTINE. The previous model
+                // was intact by every check it would ever meet (its recorded
+                // inputs are those of the resolve that SUCCEEDED), so leaving
+                // it in place let every consumer derive from a contract the
+                // tree no longer states. Move it aside and leave a marker
+                // naming the check and the input; `model_gate::verify`
+                // refuses on that marker at every door until a resolve
+                // succeeds -- even if the inputs are edited back.
+                let lines = || stderr.lines().map(str::trim).filter(|l| !l.is_empty());
+                let check = lines()
+                    .find(|l| l.contains("refusing"))
+                    .or_else(|| lines().find(|l| l.contains("error")))
+                    .or_else(|| lines().next())
+                    .unwrap_or("nros-launch-resolve exited non-zero");
+                let input = match (&provenance, model.exists(), refused) {
+                    (Some(why), _, _) => why.clone(),
+                    (None, true, _) => "older than its inputs (mtime)".to_string(),
+                    (None, false, true) => "still refused from the previous resolve".to_string(),
+                    (None, false, false) => "no previous model".to_string(),
+                };
+                let kept = crate::model_gate::quarantine(&model, check, &input)
+                    .wrap_err_with(|| format!("sync: quarantine {}", model.display()))?;
+                let marker = crate::model_gate::marker_path(&model);
                 eyre::bail!(
-                    "sync: nros-launch-resolve failed for `{}` ({}):\n{}",
+                    "sync: nros-launch-resolve failed for `{}` ({}):\n{}\n{}",
                     pkg.name,
                     launch.display(),
-                    String::from_utf8_lossy(&out.stderr),
+                    stderr,
+                    match kept {
+                        Some(k) => format!(
+                            "The previous model was moved to {} and {} marks it refused: \
+                             every consumer refuses the model until a resolve succeeds.",
+                            k.display(),
+                            marker.display()
+                        ),
+                        None => format!(
+                            "{} marks the model refused: every consumer refuses it until a \
+                             resolve succeeds.",
+                            marker.display()
+                        ),
+                    },
                 );
             }
             // issue 0409 direction 3 — assert the resolver actually PERFORMED the
@@ -2340,12 +2298,15 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                 format!("sync: resolved model for `{}` is missing data", pkg.name)
             })?;
             // Issue 0427 — stamp the resolver pin so a later resolver change makes
-            // this model stale (`model_provenance_stale`) instead of reading fresh
+            // this model stale (`model_gate::provenance_stale`) instead of reading fresh
             // forever on unchanged inputs.
             stamp_resolver_pin(&staged)
                 .wrap_err_with(|| format!("sync: stamp resolver pin for `{}`", pkg.name))?;
             std::fs::rename(&staged, &model)
                 .wrap_err_with(|| format!("sync: commit resolved model {}", model.display()))?;
+            // phase-460 W1 -- only a SUCCESSFUL resolve clears the refusal marker.
+            crate::model_gate::clear(&model)
+                .wrap_err_with(|| format!("sync: clear refusal marker for {}", model.display()))?;
             if verbose {
                 println!("sync: resolved {}", model.display());
             } else {
@@ -6610,138 +6571,12 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
 
 #[cfg(test)]
 mod provenance_tests {
-    // Issue 0320 — content-addressed staleness for committed SystemModels.
+    // Issue 0320 — content-addressed staleness; the provenance tests themselves
+    // live in `model_gate` now, this module keeps the narrowing guard's.
     use super::*;
 
-    fn sha(bytes: &[u8]) -> String {
-        format!("{:x}", Sha256::digest(bytes))
-    }
-
-    fn write_model(dir: &Path, inputs: Vec<(String, String)>) -> PathBuf {
-        write_model_with_pin(dir, inputs, env!("NROS_PLAY_LAUNCH_SHA"))
-    }
-
-    fn write_model_with_pin(dir: &Path, inputs: Vec<(String, String)>, pin: &str) -> PathBuf {
-        let mut m = ros_launch_manifest_model::SystemModel::default();
-        m.meta.version = ros_launch_manifest_model::SCHEMA_VERSION;
-        m.meta.inputs = inputs
-            .into_iter()
-            .map(|(path, sha256)| ros_launch_manifest_model::InputHash { path, sha256 })
-            .collect();
-        // Issue 0427 — stamp the resolver pin the same way `stamp_resolver_pin` does.
-        m.meta.resolver = Some(ros_launch_manifest_model::ResolverInfo {
-            tool: "nros-launch-resolve".into(),
-            version: pin.into(),
-        });
-        let p = dir.join("system_model.yaml");
-        std::fs::write(&p, serde_yaml_ng::to_string(&m).unwrap()).unwrap();
-        p
-    }
-
-    #[test]
-    fn intact_provenance_is_not_stale() {
-        let tmp = tempfile::tempdir().unwrap();
-        let bringup = tmp.path();
-        let content = b"[system]\n";
-        std::fs::write(bringup.join("system.toml"), content).unwrap();
-        let model = write_model(bringup, vec![("system.toml".into(), sha(content))]);
-        assert_eq!(model_provenance_stale(&model, bringup), None);
-    }
-
-    #[test]
-    fn changed_hash_is_stale() {
-        let tmp = tempfile::tempdir().unwrap();
-        let bringup = tmp.path();
-        std::fs::write(bringup.join("system.toml"), b"new\n").unwrap();
-        let model = write_model(bringup, vec![("system.toml".into(), sha(b"old\n"))]);
-        assert!(
-            model_provenance_stale(&model, bringup)
-                .unwrap()
-                .contains("hash changed")
-        );
-    }
-
-    /// The 43 legacy models: an absolute path is non-portable and must
-    /// regenerate even when the file it points at still exists and matches.
-    #[test]
-    fn absolute_path_is_stale_even_when_file_matches() {
-        let tmp = tempfile::tempdir().unwrap();
-        let bringup = tmp.path();
-        let abs = bringup.join("system.toml");
-        std::fs::write(&abs, b"x\n").unwrap();
-        let model = write_model(bringup, vec![(abs.display().to_string(), sha(b"x\n"))]);
-        assert!(
-            model_provenance_stale(&model, bringup)
-                .unwrap()
-                .contains("absolute")
-        );
-    }
-
-    #[test]
-    fn missing_input_is_stale() {
-        let tmp = tempfile::tempdir().unwrap();
-        let bringup = tmp.path();
-        let model = write_model(bringup, vec![("gone.toml".into(), sha(b"x"))]);
-        assert!(
-            model_provenance_stale(&model, bringup)
-                .unwrap()
-                .contains("missing")
-        );
-    }
-
-    /// Issue 0427 — a model whose inputs are byte-identical but was produced by a
-    /// DIFFERENT resolver pin is stale, so a resolver fix reaches existing models.
-    #[test]
-    fn resolver_pin_change_is_stale() {
-        // Skip when our own pin is unverifiable — the check itself is disabled then.
-        if env!("NROS_PLAY_LAUNCH_SHA") == "unknown" {
-            return;
-        }
-        let tmp = tempfile::tempdir().unwrap();
-        let bringup = tmp.path();
-        let content = b"[system]\n";
-        std::fs::write(bringup.join("system.toml"), content).unwrap();
-        // Same inputs + hash, but a stale resolver pin.
-        let model = write_model_with_pin(
-            bringup,
-            vec![("system.toml".into(), sha(content))],
-            "deadbeefdeadbeef",
-        );
-        assert!(
-            model_provenance_stale(&model, bringup)
-                .unwrap()
-                .contains("resolver pin changed"),
-            "a model with a foreign resolver pin must be stale"
-        );
-    }
-
-    /// Issue 0427 — a model with NO recorded resolver pin (pre-fix / legacy) is
-    /// stale, so it re-resolves and gains the pin.
-    #[test]
-    fn missing_resolver_pin_is_stale() {
-        if env!("NROS_PLAY_LAUNCH_SHA") == "unknown" {
-            return;
-        }
-        let tmp = tempfile::tempdir().unwrap();
-        let bringup = tmp.path();
-        let content = b"[system]\n";
-        std::fs::write(bringup.join("system.toml"), content).unwrap();
-        // Build a model with inputs but NO resolver stamp.
-        let mut m = ros_launch_manifest_model::SystemModel::default();
-        m.meta.version = ros_launch_manifest_model::SCHEMA_VERSION;
-        m.meta.inputs = vec![ros_launch_manifest_model::InputHash {
-            path: "system.toml".into(),
-            sha256: sha(content),
-        }];
-        let model = bringup.join("system_model.yaml");
-        std::fs::write(&model, serde_yaml_ng::to_string(&m).unwrap()).unwrap();
-        assert!(
-            model_provenance_stale(&model, bringup)
-                .unwrap()
-                .contains("no resolver pin"),
-            "a model with no resolver pin must be stale"
-        );
-    }
+    // The issue-0320 / issue-0427 provenance tests moved to
+    // `crate::model_gate::tests` with the function (phase-460 W1).
 
     /// phase-327 W5 (issue 0368 F4) — the narrowing guard's decision table.
     /// A still-requested generated crate missing from the new entry set is a

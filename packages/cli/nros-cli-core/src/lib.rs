@@ -50,6 +50,11 @@ pub mod leaf_payload_classes;
 /// `NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE` half of
 /// `cmake/NanoRosMessageBounds.cmake`.
 pub mod leaf_take_buffer;
+/// phase-460 W1 (issue 1420) -- the ONE door a consumer opens a resolved
+/// SystemModel through: the refusal marker `nros sync` leaves on a refused
+/// resolve, and the provenance check that used to live in `cmd/ws.rs` where
+/// only sync could call it.
+pub mod model_gate;
 /// phase-454 W8 (RFC-0100 D9) — `buffer: latest | queue`, the two diagnostics
 /// it earns and the rate-derived depth default it selects.
 ///

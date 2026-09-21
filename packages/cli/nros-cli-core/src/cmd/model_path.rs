@@ -11,6 +11,11 @@
 //! `$NROS_MODEL_DIR` → `$OUT_DIR/nros` → the committed copy) — the first
 //! existing candidate, else the committed location so the error a caller
 //! surfaces names the file a user can create.
+//!
+//! phase-460 W1 (issue 1420) -- and VERIFIES it first, through the one
+//! `model_gate`. cmake takes the printed path straight into the entry bake,
+//! so a model whose producer last refused, or whose inputs changed since, is
+//! a refusal HERE, at configure, rather than an image derived from it.
 
 use std::path::PathBuf;
 
@@ -54,7 +59,18 @@ pub fn run(args: Args) -> Result<()> {
         &launch_args,
     )
     .map_err(|e| eyre::eyre!(e))?;
-    let path = nros_orchestration_ir::model_location::resolve_model_path(&bringup_dir, &model_rel);
+    // phase-460 W1 (issue 1420) -- verify at this door. A missing model with
+    // no marker still prints the committed location: that is not a model whose
+    // producer said no, and the consumer's own resolve-from-inputs stands (W1
+    // refuses; it does not re-resolve, which would put the launch parser back
+    // on the cmake path phase-296 deleted).
+    let path = match crate::model_gate::verify_search(&bringup_dir, &model_rel) {
+        Ok(Some(found)) => found,
+        Ok(None) => {
+            nros_orchestration_ir::model_location::resolve_model_path(&bringup_dir, &model_rel)
+        }
+        Err(refusal) => bail!("model-path: {refusal}"),
+    };
     println!("{}", path.display());
     Ok(())
 }
