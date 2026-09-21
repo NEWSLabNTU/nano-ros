@@ -115,7 +115,7 @@ pub fn ret_from_error(err: &TransportError) -> NrosRmwRet {
         TransportError::InvalidConfig => NROS_RMW_RET_INVALID_CONFIG,
         TransportError::Unsupported => NROS_RMW_RET_UNSUPPORTED,
         TransportError::BadAlloc => NROS_RMW_RET_BAD_ALLOC,
-        TransportError::IncompatibleQos => NROS_RMW_RET_INCOMPATIBLE_QOS,
+        TransportError::IncompatibleQos(_) => NROS_RMW_RET_INCOMPATIBLE_QOS,
         TransportError::TopicNameInvalid => NROS_RMW_RET_TOPIC_NAME_INVALID,
         TransportError::NodeNameNonExistent => NROS_RMW_RET_NODE_NAME_NON_EXISTENT,
         TransportError::LoanNotSupported => NROS_RMW_RET_LOAN_NOT_SUPPORTED,
@@ -161,7 +161,14 @@ pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
         NROS_RMW_RET_INVALID_ARGUMENT => TransportError::InvalidArgument,
         NROS_RMW_RET_INVALID_CONFIG => TransportError::InvalidConfig,
         NROS_RMW_RET_UNSUPPORTED => TransportError::Unsupported,
-        NROS_RMW_RET_INCOMPATIBLE_QOS => TransportError::IncompatibleQos,
+        // phase-417 G7 — `NONE`, and that is the honest answer rather than a
+        // default: `rmw_ret_t` is one integer, so a C backend's refusal
+        // crosses this boundary with no policy attached. `policy_name()`
+        // then reports `None` and the diagnostic says the backend named no
+        // policy, instead of naming one nobody identified.
+        NROS_RMW_RET_INCOMPATIBLE_QOS => {
+            TransportError::IncompatibleQos(nros_rmw::QoSPolicyMask::NONE)
+        }
         NROS_RMW_RET_TOPIC_NAME_INVALID => TransportError::TopicNameInvalid,
         NROS_RMW_RET_NODE_NAME_NON_EXISTENT => TransportError::NodeNameNonExistent,
         NROS_RMW_RET_LOAN_NOT_SUPPORTED => TransportError::LoanNotSupported,

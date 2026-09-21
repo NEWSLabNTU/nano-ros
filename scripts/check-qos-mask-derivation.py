@@ -177,6 +177,28 @@ def parse_bits(traits: str) -> tuple[dict[str, int], dict[str, set[str]]]:
     return atomic, alias
 
 
+def parse_named(traits: str) -> dict[str, str]:
+    """`pub const NAMED: &'static [(Self, &'static CStr)]` inside `impl QoSPolicyMask`.
+
+    Returns {constant name -> the string it is paired with}. Read by SHAPE,
+    like `parse_bits`: each entry is `(Self::<IDENT>, c"<TEXT>")`, in any
+    formatting rustfmt produces. A missing table is an empty mapping, which
+    R8 then reports as every bit lacking a name — the loud direction.
+    """
+    block = _impl_block(traits, "impl QoSPolicyMask {")
+    if block is None:
+        raise Fail("traits.rs: no `impl QoSPolicyMask` block — the vocabulary has moved")
+    m = re.search(r"pub const NAMED\s*:[^=]+=\s*&\[(.*?)\];", block, re.S)
+    if m is None:
+        return {}
+    return {
+        ident: text
+        for ident, text in re.findall(
+            r"\(\s*Self::([A-Z][A-Z0-9_]*)\s*,\s*c\"([^\"]*)\"\s*,?\s*\)", m.group(1)
+        )
+    }
+
+
 def parse_c_bits(header: str) -> tuple[dict[str, int], dict[str, set[str]]]:
     """`#define NROS_RMW_QOS_POLICY_<NAME> …` in `rmw_entity.h`.
 
@@ -721,6 +743,45 @@ def check(files: dict[str, str]) -> tuple[list[str], list[Backend]]:
                     f"{rel}: claims to honour {bit}, which no backend advertises. Either the "
                     "mask lost the bit and the claim is stale, or the mask should have it."
                 )
+
+    # R8 — a policy's NAME is its own constant's identifier, and every bit has
+    # one (phase-417 G7).
+    #
+    # `QoSPolicyMask::NAMED` is what the three surfaces print when a create is
+    # refused: `TransportError::IncompatibleQos` carries the bit, `nros-node`
+    # logs the name, and `nros_qos_policy_kind_to_cstr` /
+    # `nros::qos_policy_kind_to_cstr` hand the same bytes to C and C++. So the
+    # table is the one place a policy could acquire a SECOND name — which is
+    # precisely the failure this whole gate exists over, and which the header
+    # block above names twice (the parity map's 28 stale slots, the layout
+    # gate's three authored type names).
+    #
+    # The rule is therefore not "every bit is in the table" but the stronger
+    # "the table is not an authoring decision at all": an entry's string must
+    # be its constant's identifier, so there is nothing to choose and nothing
+    # to drift. A bit added to the `pub const` block with no entry is an error
+    # here rather than a policy that silently prints as nothing.
+    named = parse_named(traits)
+    for bit in sorted(set(atomic) - set(named)):
+        errs.append(
+            f"QoSPolicyMask::{bit} has no `NAMED` entry, so a create refused for it "
+            "names no policy. Add `(Self::"
+            f"{bit}, c\"{bit}\")`."
+        )
+    for bit in sorted(set(named) - set(atomic)):
+        errs.append(
+            f"`QoSPolicyMask::NAMED` names `{bit}`, which is not a declared policy bit. "
+            "NONE and CORE are not policies — the empty mask and a union are never the "
+            "answer to 'which policy was refused'."
+        )
+    for bit in sorted(set(named) & set(atomic)):
+        if named[bit] != bit:
+            errs.append(
+                f"`QoSPolicyMask::NAMED` spells {bit} as {named[bit]!r}. A policy's name is "
+                "its constant's own identifier — a second choice of word here is a second "
+                "vocabulary, which is what `nros_qos_policy_kind_to_cstr` exists to avoid."
+            )
+
     return errs, backends
 
 
@@ -916,6 +977,45 @@ def _mutation_self_test(files: dict[str, str], verbose: bool) -> int:
         1,
     )
     red("a C policy bit moves under the Rust one", m, "in C and")
+
+    # ---- phase-417 G7: the naming table -------------------------------
+    #
+    # Both directions of R8, on the live tree. A gate whose subject list is
+    # authored is this campaign's recurring failure, and a naming table is the
+    # easiest place for one to reappear — so the control has to show that an
+    # entry can neither go missing nor say something other than its own
+    # constant's name.
+
+    traits_rel = str(TRAITS.relative_to(ROOT))
+
+    # 12. A policy bit loses its `NAMED` entry — the shape of adding a
+    #     thirteenth bit and forgetting the table. The refusal would then name
+    #     no policy at all, which is the state G7 closed.
+    m = dict(files)
+    m[traits_rel] = m[traits_rel].replace('(Self::DEADLINE, c"DEADLINE"),', "", 1)
+    red("a policy bit loses its name", m, "QoSPolicyMask::DEADLINE has no `NAMED` entry")
+
+    # 13. An entry is spelled as something other than its constant. It would
+    #     compile, print, and be a second vocabulary — which is exactly what
+    #     the zenoh shim's hand-written `"history"` / `"durability"` words
+    #     were before this wave folded them onto the mask.
+    m = dict(files)
+    m[traits_rel] = m[traits_rel].replace(
+        '(Self::LIFESPAN, c"LIFESPAN"),', '(Self::LIFESPAN, c"SAMPLE_EXPIRY"),', 1
+    )
+    red("a policy is given a second name", m, "spells LIFESPAN as 'SAMPLE_EXPIRY'")
+
+    # 14. A composite is listed as though it were a policy. `CORE` is a union
+    #     and `NONE` is the empty mask; neither can ever be the answer to
+    #     "which policy was refused", and naming one would let a diagnostic
+    #     report a union as a single policy.
+    m = dict(files)
+    m[traits_rel] = m[traits_rel].replace(
+        '(Self::RELIABILITY, c"RELIABILITY"),',
+        '(Self::CORE, c"CORE"),\n        (Self::RELIABILITY, c"RELIABILITY"),',
+        1,
+    )
+    red("a union is listed as a policy", m, "names `CORE`, which is not a declared policy bit")
 
     if verbose:
         print(f"  {ran} live-tree mutation controls passed")

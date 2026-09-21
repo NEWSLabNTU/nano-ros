@@ -31,7 +31,7 @@ pub(crate) fn transport_error_to_ret(err: nros_rmw::TransportError) -> nros_ret_
         E::PublishFailed => NROS_RET_PUBLISH_FAILED,
         E::ServiceRequestFailed | E::ServiceReplyFailed => NROS_RET_SERVICE_FAILED,
         E::Unsupported | E::LoanNotSupported => NROS_RET_NOT_ALLOWED,
-        E::IncompatibleQos | E::IncompatibleAbi => NROS_RET_REJECTED,
+        E::IncompatibleQos(_) | E::IncompatibleAbi => NROS_RET_REJECTED,
         E::PublisherCreationFailed
         | E::SubscriberCreationFailed
         | E::ServiceServerCreationFailed

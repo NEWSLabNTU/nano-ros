@@ -930,7 +930,7 @@ pub(crate) fn transport_error_to_cpp_ret(err: nros_rmw::TransportError) -> nros_
         T::InvalidConfig | T::InvalidArgument => NROS_CPP_RET_INVALID_ARGUMENT,
         T::TopicNameInvalid => NROS_CPP_RET_INVALID_ARGUMENT,
         T::NodeNameNonExistent => NROS_CPP_RET_NOT_FOUND,
-        T::IncompatibleQos => NROS_CPP_RET_NOT_ALLOWED,
+        T::IncompatibleQos(_) => NROS_CPP_RET_NOT_ALLOWED,
         T::Unsupported | T::LoanNotSupported => NROS_CPP_RET_UNSUPPORTED,
         T::TaskStartFailed => NROS_CPP_RET_ERROR,
 
@@ -1026,7 +1026,7 @@ fn transport_error_class(err: &nros_rmw::TransportError) -> u32 {
         T::InvalidArgument => 22,
         T::Unsupported => 23,
         T::BadAlloc => 24,
-        T::IncompatibleQos => 25,
+        T::IncompatibleQos(_) => 25,
         T::TopicNameInvalid => 26,
         T::NodeNameNonExistent => 27,
         T::LoanNotSupported => 28,
