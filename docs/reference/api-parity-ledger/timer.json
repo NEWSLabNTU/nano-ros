@@ -3,6 +3,10 @@
     "Schema: see docs/reference/api-parity-ledger/SCHEMA.md — the one home for what",
     "a row means. Do NOT copy it back here; issue 1095 is what that cost."
   ],
+  "rust:TimerKind": {
+    "verdict": "extension",
+    "why": "which executor-side entry a recorded `timers[]` row came through -- wall / clock / oneshot / in-group / guard condition (phase-463 W1). rclrs has one timer and no recorder; here the census that compares a contract with the code must tell a repeating wall timer from a one-shot delay and from a guard condition, while the slot count the sidecar is sized from stays one per row. See `rust:SourceMetadataExport`."
+  },
   "c:clock_add_jump_callback": {
     "verdict": "declined",
     "disposition": "absent",

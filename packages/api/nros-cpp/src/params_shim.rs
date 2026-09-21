@@ -428,6 +428,11 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool(
     #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
+        // phase-463 W1 -- the census hook. Unconditional call, `#[cfg]` body:
+        // a no-op unless `metadata-mode` is on. Sits BEFORE the store so a
+        // declaration the code makes is recorded whatever the store answers
+        // (an adopted launch seed is still a declaration).
+        crate::metadata_hooks::on_param_declare(name, &ParameterValue::from_bool(value));
         declare_on_node(ctx, id, name, ParameterValue::from_bool(value))
     }
     #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
@@ -451,6 +456,11 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer(
     #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
+        // phase-463 W1 -- the census hook. Unconditional call, `#[cfg]` body:
+        // a no-op unless `metadata-mode` is on. Sits BEFORE the store so a
+        // declaration the code makes is recorded whatever the store answers
+        // (an adopted launch seed is still a declaration).
+        crate::metadata_hooks::on_param_declare(name, &ParameterValue::from_integer(value));
         declare_on_node(ctx, id, name, ParameterValue::from_integer(value))
     }
     #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
@@ -474,6 +484,11 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double(
     #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
+        // phase-463 W1 -- the census hook. Unconditional call, `#[cfg]` body:
+        // a no-op unless `metadata-mode` is on. Sits BEFORE the store so a
+        // declaration the code makes is recorded whatever the store answers
+        // (an adopted launch seed is still a declaration).
+        crate::metadata_hooks::on_param_declare(name, &ParameterValue::from_double(value));
         declare_on_node(ctx, id, name, ParameterValue::from_double(value))
     }
     #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
@@ -505,6 +520,8 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_string(
         let Some(pv) = ParameterValue::from_string(value) else {
             return NROS_CPP_RET_FULL;
         };
+        // phase-463 W1 -- the census hook; see `nros_cpp_node_declare_param_bool`.
+        crate::metadata_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
@@ -854,6 +871,8 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double_array(
         let Some(pv) = ParameterValue::from_double_array(slice) else {
             return NROS_CPP_RET_FULL;
         };
+        // phase-463 W1 -- the census hook; see `nros_cpp_node_declare_param_bool`.
+        crate::metadata_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
@@ -884,6 +903,8 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer_array(
         let Some(pv) = ParameterValue::from_integer_array(slice) else {
             return NROS_CPP_RET_FULL;
         };
+        // phase-463 W1 -- the census hook; see `nros_cpp_node_declare_param_bool`.
+        crate::metadata_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
@@ -914,6 +935,8 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool_array(
         let Some(pv) = ParameterValue::from_bool_array(slice) else {
             return NROS_CPP_RET_FULL;
         };
+        // phase-463 W1 -- the census hook; see `nros_cpp_node_declare_param_bool`.
+        crate::metadata_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]

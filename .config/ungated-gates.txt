@@ -31,6 +31,11 @@ sched-dim-arms
 # --- compile a crate and read what it generates ---
 borrowed-e2e
 c
+# census-hooks-complete links nros-cpp with `metadata-mode` on and runs the
+# fixture census through the real ABI (phase-463 W1). Its buildless half --
+# every entry point calls its hook, seven mutations red -- is the script the
+# recipe runs first; the cargo half is what keeps it off the fast line.
+census-hooks-complete
 cpp
 node-std-tests
 nros-log-riscv32

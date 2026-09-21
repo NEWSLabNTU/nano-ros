@@ -57,8 +57,8 @@ use alloc::{string::String, vec::Vec};
 use nros_rmw::sync::Mutex;
 
 use crate::node_metadata::{
-    EntityId, EntityKind, EntityMetadataSpec, MetadataRecorder, NodeId, SourceMetadataExport,
-    entity_metadata,
+    EntityId, EntityKind, EntityMetadataSpec, MetadataRecorder, NodeId, ParameterDefault,
+    SourceMetadataExport, TimerKind, entity_metadata,
 };
 
 /// The recorder every non-Rust adapter feeds, plus the current-node cursor.
@@ -122,6 +122,46 @@ pub fn begin_node(name: &str, namespace: &str, domain_id: u32) -> bool {
     })
 }
 
+/// phase-463 W1 -- everything an adapter can say about one entity.
+///
+/// A struct rather than a seventh positional argument: the two adapters (the
+/// recording RMW backend and `nros-cpp`'s executor-side hooks) each fill a
+/// different subset, and a call site with five adjacent `Option`s is how the
+/// QoS was dropped for two phases without anyone noticing (issue 1419).
+#[derive(Debug, Clone, Copy)]
+pub struct EntityRecord<'a> {
+    pub kind: EntityKind,
+    /// The name as the code spelled it (the RMW seam hands over the RESOLVED
+    /// name; see `nros-rmw-metadata`).
+    pub source_name: &'a str,
+    pub type_name: &'a str,
+    pub callback_id: Option<&'a str>,
+    pub period_ms: Option<u64>,
+    /// The profile the entity was created with -- AFTER launch overrides,
+    /// because that is the one the executor sizes for. `None` records the
+    /// default profile, which is only honest for an entity that has no QoS
+    /// (a timer, a guard condition).
+    pub qos: Option<crate::QoSProfile>,
+    /// Which timer entry point the entity came through; ignored for every
+    /// kind but [`EntityKind::Timer`].
+    pub timer_kind: TimerKind,
+}
+
+impl<'a> EntityRecord<'a> {
+    /// A record with only the identifying fields set.
+    pub const fn new(kind: EntityKind, source_name: &'a str, type_name: &'a str) -> Self {
+        Self {
+            kind,
+            source_name,
+            type_name,
+            callback_id: None,
+            period_ms: None,
+            qos: None,
+            timer_kind: TimerKind::Wall,
+        }
+    }
+}
+
 /// Record one entity against the current node.
 ///
 /// `callback_id` and `period_ms` are what distinguish a timer from a
@@ -131,6 +171,10 @@ pub fn begin_node(name: &str, namespace: &str, domain_id: u32) -> bool {
 ///
 /// phase-428 W6 remainder: see [`begin_node`] — a dropped `false` here is an
 /// entity missing from the emitted metadata with nothing said about it.
+///
+/// phase-463 W1 -- the positional form, kept for the shape every existing
+/// caller and test spells; it records the DEFAULT QoS. An adapter that has a
+/// QoS to report (every RMW-bound endpoint) goes through [`record`].
 #[must_use]
 pub fn record_entity(
     kind: EntityKind,
@@ -139,30 +183,82 @@ pub fn record_entity(
     callback_id: Option<&str>,
     period_ms: Option<u64>,
 ) -> bool {
+    record(EntityRecord {
+        callback_id,
+        period_ms,
+        ..EntityRecord::new(kind, source_name, type_name)
+    })
+}
+
+/// Record one entity, with everything the adapter knows about it, against the
+/// current node. See [`record_entity`] for the refusal contract.
+#[must_use]
+pub fn record(rec: EntityRecord<'_>) -> bool {
     state().with(|st| {
         let Some(node_id) = st.current_node.clone() else {
             return false;
         };
-        let type_name = intern(type_name);
+        let type_name = intern(rec.type_name);
         st.leaked.push(type_name);
         st.seq += 1;
-        let id = alloc::format!("{}#{}", source_name, st.seq);
+        let id = alloc::format!("{}#{}", rec.source_name, st.seq);
         let spec = EntityMetadataSpec {
             id: EntityId::new(&id),
             node_id: NodeId::new(&node_id),
-            kind,
-            source_name,
+            kind: rec.kind,
+            source_name: rec.source_name,
             type_name,
+            type_hash: "",
+            qos: rec.qos.unwrap_or_default(),
+        };
+        let Ok(mut entity) = entity_metadata(spec) else {
+            return false;
+        };
+        entity.period_ms = rec.period_ms;
+        entity.timer_kind = rec.timer_kind;
+        if let Some(cb) = rec.callback_id {
+            entity.callback_id = crate::node_metadata::metadata_string(cb).ok();
+        }
+        st.recorder.push_entity(entity).is_ok()
+    })
+}
+
+/// phase-463 W1 -- record a parameter the current node DECLARED, with the
+/// type and default the code passed.
+///
+/// Fed by `nros-cpp`'s `on_param_declare` hook, which sits on the
+/// `nros_cpp_node_declare_param_*` family: C++ has no way to declare a
+/// parameter that does not cross that ABI, so what lands here is complete by
+/// construction. Before this hook existed `parameters: []` in a C++ sidecar
+/// meant "nobody looked", not "this node declares none" (issue 1419).
+///
+/// Same refusal contract as [`record_entity`]: `false` when no node is open or
+/// the recorder is full, never a silent drop.
+#[must_use]
+pub fn record_parameter(name: &str, value: &crate::ParameterValue) -> bool {
+    let Ok(default) = ParameterDefault::from_value(value) else {
+        return false;
+    };
+    state().with(|st| {
+        let Some(node_id) = st.current_node.clone() else {
+            return false;
+        };
+        st.seq += 1;
+        let id = alloc::format!("{}#{}", name, st.seq);
+        let spec = EntityMetadataSpec {
+            id: EntityId::new(&id),
+            node_id: NodeId::new(&node_id),
+            kind: EntityKind::Parameter,
+            source_name: name,
+            type_name: "",
             type_hash: "",
             qos: crate::QoSProfile::default(),
         };
         let Ok(mut entity) = entity_metadata(spec) else {
             return false;
         };
-        entity.period_ms = period_ms;
-        if let Some(cb) = callback_id {
-            entity.callback_id = crate::node_metadata::metadata_string(cb).ok();
-        }
+        entity.parameter_type = Some(value.param_type());
+        entity.parameter_default = Some(default);
         st.recorder.push_entity(entity).is_ok()
     })
 }
@@ -280,6 +376,121 @@ mod tests {
             "a client must carry no callback field: {}",
             &tail[..end]
         );
+        reset();
+    }
+
+    /// phase-463 W1 -- the whole truth reaches the sidecar: the QoS an
+    /// endpoint was created with, a timer's kind, a guard condition under its
+    /// own kind (still one row of `timers[]`), and a declared parameter with
+    /// its type and default.
+    ///
+    /// Asserted on the SERIALISED form, scoped to the array each fact lives
+    /// in, for the reason `client_entities_reach_the_sidecar` gives: the
+    /// defects this wave fixes were all in what reached the JSON.
+    #[test]
+    fn schema_v2_records_qos_timer_kind_guard_and_parameters() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset();
+        assert!(begin_node("fixture", "/", 0));
+        let depth_one = crate::QoSProfile {
+            depth: 1,
+            ..crate::QoSProfile::default()
+        };
+        assert!(record(EntityRecord {
+            qos: Some(depth_one),
+            callback_id: Some("on_cmd"),
+            ..EntityRecord::new(
+                EntityKind::Subscription,
+                "/control/command/control_cmd",
+                "autoware_control_msgs/msg/Control",
+            )
+        }));
+        assert!(record(EntityRecord {
+            qos: Some(depth_one),
+            ..EntityRecord::new(
+                EntityKind::ServiceServer,
+                "/system/mrm/operate",
+                "tier4_system_msgs/srv/OperateMrm",
+            )
+        }));
+        assert!(record(EntityRecord {
+            period_ms: Some(250),
+            callback_id: Some("once0"),
+            timer_kind: TimerKind::Oneshot,
+            ..EntityRecord::new(EntityKind::Timer, "once0", "")
+        }));
+        assert!(record(EntityRecord {
+            callback_id: Some("guard0"),
+            timer_kind: TimerKind::GuardCondition,
+            ..EntityRecord::new(EntityKind::Timer, "guard0", "")
+        }));
+        assert!(record_parameter(
+            "rate",
+            &crate::ParameterValue::from_double(30.0)
+        ));
+        assert!(record_parameter(
+            "use_pull_over",
+            &crate::ParameterValue::from_bool(false)
+        ));
+        // Five entities plus two parameters: parameters are entities in the
+        // recorder (one slot of its capacity each) and rows of `parameters[]`
+        // in the sidecar, never of a node's entity arrays.
+        assert_eq!(entity_count(), 6);
+
+        let export = SourceMetadataExport::new("fixture_pkg", "fixture").language("cpp");
+        let json = to_json(&export).expect("serialize");
+        assert!(json.contains("\"version\":2"), "got: {json}");
+
+        let subs = &json[json.find("\"subscribers\":").expect("array")..];
+        let subs = &subs[..subs.find(']').unwrap()];
+        assert!(
+            subs.contains("\"depth\":1"),
+            "the QoS the endpoint was created with must reach the row: {subs}"
+        );
+        let services = &json[json.find("\"services\":").expect("array")..];
+        let services = &services[..services.find(']').unwrap()];
+        assert!(
+            services.contains("\"qos\":{") && services.contains("\"depth\":1"),
+            "v2 carries qos on every endpoint kind: {services}"
+        );
+        let timers = &json[json.find("\"timers\":").expect("array")..];
+        let timers = &timers[..timers.find(']').unwrap()];
+        assert!(
+            timers.contains("\"kind\":\"oneshot\",\"period_ms\":250"),
+            "the timer kind sits beside the period: {timers}"
+        );
+        assert!(
+            timers.contains("\"kind\":\"guard_condition\""),
+            "a guard condition is a timers[] row under its own kind: {timers}"
+        );
+        assert_eq!(
+            timers.matches("\"kind\":").count(),
+            2,
+            "one timer, one guard condition, one slot each: {timers}"
+        );
+        let params = &json[json.find("\"parameters\":").expect("array")..];
+        let params = &params[..params.find(']').unwrap()];
+        assert!(
+            params.contains("\"name\":\"rate\",\"type\":\"double\",\"default\":30.0"),
+            "the declared type and the code default: {params}"
+        );
+        assert!(
+            params.contains("\"name\":\"use_pull_over\",\"type\":\"bool\",\"default\":false"),
+            "got: {params}"
+        );
+        reset();
+    }
+
+    /// A parameter recorded with no open node is refused like any entity.
+    #[test]
+    fn parameters_without_a_node_are_refused() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset();
+        assert!(!record_parameter(
+            "rate",
+            &crate::ParameterValue::from_double(30.0)
+        ));
+        assert_eq!(entity_count(), 0);
         reset();
     }
 

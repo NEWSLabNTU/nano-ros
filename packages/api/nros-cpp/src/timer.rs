@@ -64,8 +64,9 @@ pub unsafe extern "C" fn nros_cpp_timer_create(
             }
             // phase-308 — timers never reach the RMW, so the recording backend
             // cannot see them; this hook is how they enter the sidecar. No-op
-            // unless `metadata-mode` is on.
-            crate::metadata_hooks::on_timer_create(period_ms);
+            // unless `metadata-mode` is on. phase-463 W1 -- the KIND rides with
+            // the period, so a census can tell this entry from the three below.
+            crate::metadata_hooks::on_timer_create(nros::node_metadata::TimerKind::Wall, period_ms);
             NROS_CPP_RET_OK
         }
         Err(_) => NROS_CPP_RET_FULL,
@@ -150,7 +151,10 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
             unsafe {
                 *out_handle_id = handle_id.0;
             }
-            crate::metadata_hooks::on_timer_create(period_ms);
+            crate::metadata_hooks::on_timer_create(
+                nros::node_metadata::TimerKind::Clock,
+                period_ms,
+            );
             NROS_CPP_RET_OK
         }
         Err(_) => NROS_CPP_RET_FULL,
@@ -206,8 +210,13 @@ pub unsafe extern "C" fn nros_cpp_timer_create_oneshot(
             }
             // phase-308 — timers never reach the RMW, so the recording backend
             // cannot see them; this hook is how they enter the sidecar. No-op
-            // unless `metadata-mode` is on.
-            crate::metadata_hooks::on_timer_create(delay_ms);
+            // unless `metadata-mode` is on. phase-463 W1 -- recorded as a
+            // ONESHOT: its "period" is a delay, and a contract `rate_hz` must
+            // not be matched against it.
+            crate::metadata_hooks::on_timer_create(
+                nros::node_metadata::TimerKind::Oneshot,
+                delay_ms,
+            );
             NROS_CPP_RET_OK
         }
         Err(_) => NROS_CPP_RET_FULL,
@@ -291,8 +300,12 @@ pub unsafe extern "C" fn nros_cpp_timer_create_in_group(
             }
             // phase-308 — timers never reach the RMW, so the recording backend
             // cannot see them; this hook is how they enter the sidecar. No-op
-            // unless `metadata-mode` is on.
-            crate::metadata_hooks::on_timer_create(period_ms);
+            // unless `metadata-mode` is on. phase-463 W1 -- the kind names the
+            // group entry.
+            crate::metadata_hooks::on_timer_create(
+                nros::node_metadata::TimerKind::InGroup,
+                period_ms,
+            );
             NROS_CPP_RET_OK
         }
         Err(_) => NROS_CPP_RET_FULL,

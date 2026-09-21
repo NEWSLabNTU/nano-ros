@@ -30,6 +30,17 @@
 //! boundary has been crossed and the count this whole mechanism exists to
 //! produce has two definitions again.
 //!
+//! # What it records of the QoS (phase-463 W1)
+//!
+//! The profile handed to each `create_*` -- which, for the C++ path, is the
+//! one `apply_qos_overrides` produced from the code's spelling and the launch
+//! overrides. That is the profile the executor sizes for, so it is the one a
+//! census compares with the contract. This backend used to take `_qos` and
+//! drop it, so a sidecar said `depth: 10` for a subscription the code created
+//! at `QoS(1)`: a default, not an observation (issue 1419). The code's own
+//! spelling is not visible at this seam; the hooks in `nros-cpp` are where it
+//! would be recorded if a census ever needs both.
+//!
 //! # Reads and receives
 //!
 //! Every receive path returns "nothing available" and every send succeeds
@@ -86,9 +97,13 @@ fn record(
     kind: EntityKind,
     name: &str,
     type_name: &str,
-    period_ms: Option<u64>,
+    qos: nros_rmw::QoSProfile,
 ) -> Result<(), TransportError> {
-    if nros::metadata_mode::record_entity(kind, name, type_name, None, period_ms) {
+    let rec = nros::metadata_mode::EntityRecord {
+        qos: Some(qos),
+        ..nros::metadata_mode::EntityRecord::new(kind, name, type_name)
+    };
+    if nros::metadata_mode::record(rec) {
         Ok(())
     } else {
         Err(TransportError::PublisherCreationFailed)
@@ -119,31 +134,31 @@ impl Session for MetadataSession {
     fn create_publisher(
         &mut self,
         topic: &TopicInfo<'_>,
-        _qos: nros_rmw::QoSProfile,
+        qos: nros_rmw::QoSProfile,
     ) -> Result<Self::PublisherHandle, Self::Error> {
-        record(EntityKind::Publisher, topic.name, topic.type_name, None)?;
+        record(EntityKind::Publisher, topic.name, topic.type_name, qos)?;
         Ok(MetadataPublisher)
     }
 
     fn create_subscription(
         &mut self,
         topic: &TopicInfo<'_>,
-        _qos: nros_rmw::QoSProfile,
+        qos: nros_rmw::QoSProfile,
     ) -> Result<Self::SubscriptionHandle, Self::Error> {
-        record(EntityKind::Subscription, topic.name, topic.type_name, None)?;
+        record(EntityKind::Subscription, topic.name, topic.type_name, qos)?;
         Ok(MetadataSubscription)
     }
 
     fn create_service(
         &mut self,
         service: &ServiceInfo<'_>,
-        _qos: nros_rmw::QoSProfile,
+        qos: nros_rmw::QoSProfile,
     ) -> Result<Self::ServiceHandle, Self::Error> {
         record(
             EntityKind::ServiceServer,
             service.name,
             service.type_name,
-            None,
+            qos,
         )?;
         Ok(MetadataService)
     }
@@ -151,13 +166,13 @@ impl Session for MetadataSession {
     fn create_client(
         &mut self,
         service: &ServiceInfo<'_>,
-        _qos: nros_rmw::QoSProfile,
+        qos: nros_rmw::QoSProfile,
     ) -> Result<Self::ClientHandle, Self::Error> {
         record(
             EntityKind::ServiceClient,
             service.name,
             service.type_name,
-            None,
+            qos,
         )?;
         Ok(MetadataClient)
     }
@@ -293,6 +308,48 @@ mod tests {
             .expect("cli");
 
         assert_eq!(nros::metadata_mode::entity_count(), 4);
+        nros::metadata_mode::reset();
+    }
+
+    /// phase-463 W1 -- the QoS the session is handed is the QoS the sidecar
+    /// carries, on every endpoint kind. This backend used to drop it, which is
+    /// how the island's sidecars said `depth: 10` for a `QoS(1)` subscription.
+    #[test]
+    fn the_qos_received_is_the_qos_recorded() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        nros::metadata_mode::reset();
+        assert!(nros::metadata_mode::begin_node("cpp_talker", "/", 0));
+
+        let mut session = MetadataRmw.open(&RmwConfig::default()).expect("open");
+        let depth_one = nros_rmw::QoSProfile {
+            depth: 1,
+            reliability: nros_rmw::QoSReliabilityPolicy::BestEffort,
+            ..nros_rmw::QoSProfile::default()
+        };
+        let topic = TopicInfo::new(
+            "/control/command/control_cmd",
+            "autoware_control_msgs/msg/Control",
+            "",
+        );
+        session.create_subscription(&topic, depth_one).expect("sub");
+        let service = ServiceInfo::new("/operate", "tier4_system_msgs/srv/OperateMrm", "");
+        session.create_service(&service, depth_one).expect("srv");
+
+        let export =
+            nros::node_metadata::SourceMetadataExport::new("pkg", "cpp_talker").language("cpp");
+        let json = nros::metadata_mode::to_json(&export).expect("serialize");
+        for array in ["\"subscribers\":", "\"services\":"] {
+            let rows = &json[json.find(array).expect("array present")..];
+            let rows = &rows[..rows.find(']').unwrap()];
+            assert!(
+                rows.contains("\"depth\":1") && rows.contains("\"reliability\":\"best_effort\""),
+                "{array} must carry the profile the session was handed, got {rows}"
+            );
+            assert!(
+                !rows.contains("\"depth\":10"),
+                "a default is not an observation: {rows}"
+            );
+        }
         nros::metadata_mode::reset();
     }
 
