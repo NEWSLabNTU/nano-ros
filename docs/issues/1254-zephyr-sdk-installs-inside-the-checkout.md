@@ -90,6 +90,15 @@ checkout arm last so a host provisioned earlier keeps working.
   `nros sdk-path` learns the tarball's inner directory, or a helper beside
   `scripts/lib/zephyr-workspace.sh` answers "the SDK for Zephyr line V" from the
   same `case` that picks the version today.
+  **DONE (issue 1259, 2026-09-21): the first of those.** `[tool.*] subdir` in
+  `nros-sdk-index.toml` states the tarball's own top-level directory with
+  `{version}` substituted from the pin, and `nros sdk-path <tool>` now answers
+  the SDK ROOT. So "the one thing a consumer cannot get from `nros sdk-path`
+  alone", above, no longer holds — it was a gap in the CLI, not a fact about the
+  artifact. `scripts/lib/zephyr-sdk.sh` stops appending `zephyr-sdk-<version>`
+  by hand and forwards the CLI's answer; its no-CLI fallback arm still composes
+  the same path. The rest of this issue (the checkout-relative READERS in the
+  table above, and the acceptance below) is untouched.
 - The test harness and runner doctor read that answer rather than globbing.
 
 ## Acceptance
