@@ -2,7 +2,7 @@
 id: 1398
 title: "`check-leaf-lockfiles` reads a central patch table as proof the tree is
   provisioned, so an absent submodule reports as two broken nuttx leaves"
-status: open
+status: resolved
 type: bug
 area: gates, build, nuttx
 related: [issue-0466, issue-1184, issue-1226, issue-0378]
@@ -106,3 +106,36 @@ checked out, `just check leaf-lockfiles` names the missing submodule and the
 `git submodule update --init` remedy, rather than blaming the leaves' patch
 tables. With the submodule checked out it stays green, and a leaf that is
 genuinely broken on a synced tree still fails hard.
+
+## Resolution
+
+Fixed by classifying the provisioning gap on its own, **before** the
+`unsynced` / `broken` split and independently of the patch-table test —
+candidate two of the two the Fix section offered, with candidate one's remedy
+text. `check-leaf-lockfiles` now reads each failing leaf's declared `path =`
+targets (its `.cargo/config.toml` and its manifest, both resolved relative to
+the leaf directory) and asks whether any of them is a DECLARED submodule
+(`.gitmodules`) with no `Cargo.toml`. If so the leaf is NOT VERIFIED: recorded
+through the `nros_check_skip` ledger (issue 1184), reported with
+`git submodule update --init <path>`, exit 0 (issue 0466 — this gate is on the
+`pre-push` fast line and must not refuse a push over a checkout the lane does
+not provide). Issue 1043's three-outcome vocabulary, third series.
+
+Reading the path deps rather than cargo's wording is the sturdier half: a
+message is something upstream can reword, a missing `Cargo.toml` is not.
+Requiring the target to be a declared submodule is what keeps the gate honest —
+a `path =` pointing at a directory nobody can check out is a broken tree, not a
+missing checkout, and still fails hard. Measured with the submodule present and
+one extra `path` row added to `nros-nuttx-ffi`'s config: exit 1, naming that
+leaf.
+
+`nros-patch.toml` now means only what it can mean — `nros sync` ran here — and
+the hard failure it guards is left for the sync-shaped gap it was written for.
+
+The gate gained a selftest that runs on the NORMAL path (so it left
+`.config/gate-selftest-baseline.txt`), covering both directions plus the third
+that makes them non-vacuous: an absent submodule reads as a provisioning gap;
+the same leaf with the target checked out does not; an absent path dep that is
+NOT a declared submodule does not either. It is pure — directories and files,
+no `git init`, so issue 0986 cannot apply. Each arm was confirmed live by
+mutating the classifier and watching the selftest go red.
