@@ -409,8 +409,8 @@ pub unsafe extern "C" fn nros_cpp_publisher_destroy(storage: *mut c_void) -> nro
 ///
 /// Neither the `RmwPublisher` nor the monitor cell pointer beside it
 /// references the storage address, so relocation is a straight `ptr::read`
-/// + `ptr::write` (the cell itself is a static the executor owns). Called
-/// by the C++ `Publisher` move ctor / move assignment.
+/// plus `ptr::write` (the cell itself is a static the executor owns).
+/// Called by the C++ `Publisher` move ctor / move assignment.
 ///
 /// # Safety
 /// Both `old_storage` and `new_storage` must be valid, 8-aligned buffers of
