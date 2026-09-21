@@ -9,8 +9,8 @@
 use core::cell::{Cell, RefCell};
 
 use nros_rmw::{
-    ClientTrait, Publisher, QoSProfile, ServiceInfo, ServiceRequest, ServiceTrait, Session,
-    Subscription, TopicInfo, TransportError,
+    ClientTrait, GraphEntityKind, Publisher, QoSProfile, ServiceInfo, ServiceRequest, ServiceTrait,
+    Session, Subscription, TopicInfo, TransportError,
 };
 
 /// Mock subscriber that can be loaded with canned CDR data. Holds a small
@@ -303,6 +303,15 @@ pub struct MockSession {
     /// "asked once and gave up" from "asks again on every spin". A `&'static`
     /// the TEST owns, for the reason `close_observer` documents above.
     service_create_attempts: Option<&'static core::sync::atomic::AtomicUsize>,
+    /// phase-444 — answer the RFC-0036 graph slots with a canned graph instead
+    /// of the trait default.
+    ///
+    /// OFF by default, and that default is load-bearing: the `Session` trait
+    /// answers every graph slot `Unsupported`, which is what a backend with no
+    /// graph (XRCE) reports and what the contract says must never be collapsed
+    /// into "empty". A test asserting THAT wants the default; a test asserting
+    /// a forwarder reaches its own slot wants this.
+    graph: bool,
 }
 
 impl MockSession {
@@ -311,6 +320,7 @@ impl MockSession {
             close_observer: None,
             service_create_error: None,
             service_create_attempts: None,
+            graph: false,
         }
     }
 
@@ -324,6 +334,7 @@ impl MockSession {
             close_observer: None,
             service_create_error: Some(error),
             service_create_attempts: Some(attempts),
+            graph: false,
         }
     }
 
@@ -333,8 +344,62 @@ impl MockSession {
             close_observer: Some(observer),
             service_create_error: None,
             service_create_attempts: None,
+            graph: false,
         }
     }
+
+    /// phase-444 — a session that answers the graph slots with [`CANNED`]
+    /// instead of `Unsupported`.
+    ///
+    /// Every slot answers DISTINGUISHABLY, because the bug a forwarder
+    /// actually has is reaching the wrong slot: the two counts differ, the
+    /// four `by_node` kinds each emit their own marker, and each `by_node`
+    /// walk echoes the `node_name` and `node_namespace` it was handed so a
+    /// forwarder that swapped them fails rather than passes.
+    pub fn with_graph() -> Self {
+        Self {
+            close_observer: None,
+            service_create_error: None,
+            service_create_attempts: None,
+            graph: true,
+        }
+    }
+}
+
+/// The canned graph [`MockSession::with_graph`] reports. Public so a test
+/// asserts against the same constants the mock emits rather than re-typing
+/// them (a re-typed literal is how a test stops testing the mapping).
+pub mod canned {
+    /// `get_node_names` — one node WITH an enclave, one WITHOUT, because
+    /// `None` is a partial answer the contract admits and not an error.
+    pub const NODES: [(&str, &str, Option<&str>); 2] = [
+        ("talker", "/", Some("/enclave_t")),
+        ("listener", "/demo", None),
+    ];
+    /// `get_topic_names_and_types` — one topic carrying TWO types, which is
+    /// one visit with two entries and not two visits.
+    pub const TOPIC: (&str, [&str; 2]) =
+        ("/chatter", ["std_msgs/msg/String", "std_msgs/msg/Header"]);
+    /// `get_service_names_and_types`.
+    pub const SERVICE: (&str, [&str; 1]) = ("/add_two_ints", ["example_interfaces/srv/AddTwoInts"]);
+    /// `count_publishers`. Distinct from [`SUBSCRIBERS`] so a forwarder wired
+    /// to the other counter fails.
+    pub const PUBLISHERS: usize = 3;
+    /// `count_subscribers`.
+    pub const SUBSCRIBERS: usize = 7;
+
+    /// The marker `get_names_and_types_by_node` emits for each entity kind.
+    /// A forwarder that passes the wrong `GraphEntityKind` sees another
+    /// kind's marker, which is the failure this exists to produce.
+    pub const BY_NODE_PUBLISHER: &str = "/by_node/publisher";
+    /// See [`BY_NODE_PUBLISHER`].
+    pub const BY_NODE_SUBSCRIBER: &str = "/by_node/subscriber";
+    /// See [`BY_NODE_PUBLISHER`].
+    pub const BY_NODE_SERVICE: &str = "/by_node/service";
+    /// See [`BY_NODE_PUBLISHER`].
+    pub const BY_NODE_CLIENT: &str = "/by_node/client";
+    /// The type every `by_node` marker carries.
+    pub const BY_NODE_TYPE: &str = "test_msgs/msg/Marker";
 }
 
 impl Session for MockSession {
@@ -404,6 +469,94 @@ impl Session for MockSession {
 
     fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), TransportError> {
         // Mock transport: no I/O to drive.
+        Ok(())
+    }
+
+    // ---- phase-444 — RFC-0036 graph slots ----
+    //
+    // Overridden ONLY when `graph` is set. Left alone, every one of these
+    // keeps the trait default (`Unsupported`), which is the answer a backend
+    // with no graph gives and the answer the contract forbids collapsing into
+    // "empty" — so the default mock is itself the fixture for that half.
+
+    fn get_node_names(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str, Option<&str>) -> bool,
+    ) -> Result<(), Self::Error> {
+        if !self.graph {
+            return Err(TransportError::Unsupported);
+        }
+        for (name, ns, enclave) in canned::NODES {
+            if !visit(name, ns, enclave) {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn get_topic_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), Self::Error> {
+        if !self.graph {
+            return Err(TransportError::Unsupported);
+        }
+        let (name, types) = canned::TOPIC;
+        visit(name, &types);
+        Ok(())
+    }
+
+    fn get_service_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), Self::Error> {
+        if !self.graph {
+            return Err(TransportError::Unsupported);
+        }
+        let (name, types) = canned::SERVICE;
+        visit(name, &types);
+        Ok(())
+    }
+
+    fn count_publishers(&mut self, _topic_name: &str) -> Result<usize, Self::Error> {
+        if !self.graph {
+            return Err(TransportError::Unsupported);
+        }
+        Ok(canned::PUBLISHERS)
+    }
+
+    fn count_subscribers(&mut self, _topic_name: &str) -> Result<usize, Self::Error> {
+        if !self.graph {
+            return Err(TransportError::Unsupported);
+        }
+        Ok(canned::SUBSCRIBERS)
+    }
+
+    /// Emits THREE entries: the kind's own marker, then the `node_name` and
+    /// `node_namespace` verbatim. The marker catches a forwarder that passed
+    /// the wrong [`GraphEntityKind`]; echoing the two names catches one that
+    /// passed them in the wrong order, which no fixed canned answer can.
+    fn get_names_and_types_by_node(
+        &mut self,
+        kind: GraphEntityKind,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), Self::Error> {
+        if !self.graph {
+            return Err(TransportError::Unsupported);
+        }
+        let marker = match kind {
+            GraphEntityKind::Publisher => canned::BY_NODE_PUBLISHER,
+            GraphEntityKind::Subscriber => canned::BY_NODE_SUBSCRIBER,
+            GraphEntityKind::Service => canned::BY_NODE_SERVICE,
+            GraphEntityKind::Client => canned::BY_NODE_CLIENT,
+        };
+        for name in [marker, node_name, node_namespace] {
+            if !visit(name, &[canned::BY_NODE_TYPE]) {
+                break;
+            }
+        }
         Ok(())
     }
 }

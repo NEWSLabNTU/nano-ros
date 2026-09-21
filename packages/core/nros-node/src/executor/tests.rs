@@ -10078,3 +10078,215 @@ fn the_headroom_query_runs_at_most_once_per_interval() {
         "one full interval later it queries again"
     );
 }
+
+// ===========================================================================
+// phase-444 — the graph family on upstream's receiver.
+//
+// `NodeCtx` (which the api-parity correlator sees as `Node`, the receiver
+// rclrs hangs these off) forwards each graph verb to the executor it already
+// borrows. The capability is phase-381 W4's and is tested where it lives;
+// what these tests own is the FORWARDING, and the bug a forwarder actually
+// has is reaching the WRONG SLOT — `count_subscriptions` wired to
+// `count_publishers`, a `by_node` walk passing the wrong `GraphEntityKind`,
+// or the node name and namespace swapped. A canned graph that answered every
+// slot alike could not fail on any of those, so `MockSession::with_graph`
+// answers each one distinguishably and these assert the mapping.
+// ===========================================================================
+
+/// Collect a `(name, types)` walk into something comparable.
+fn collect_names_and_types(
+    walk: impl FnOnce(&mut dyn FnMut(&str, &[&str]) -> bool) -> Result<(), NodeError>,
+) -> std::vec::Vec<(std::string::String, std::vec::Vec<std::string::String>)> {
+    use crate::alloc::string::ToString;
+    let mut seen = std::vec::Vec::new();
+    walk(&mut |name, types| {
+        seen.push((
+            name.to_string(),
+            types.iter().map(|t| t.to_string()).collect(),
+        ));
+        true
+    })
+    .expect("the canned graph answers this slot");
+    seen
+}
+
+#[test]
+fn node_ctx_forwards_each_graph_verb_to_its_own_slot() {
+    use crate::{alloc::string::ToString, mock::canned};
+
+    let mut executor: Executor = executor_with_clock(MockSession::with_graph());
+    let nid = executor.node_builder("grapher").build().unwrap();
+
+    // --- get_node_names: namespace, and NOT the enclave ---
+    let mut names = std::vec::Vec::new();
+    executor
+        .node_mut(nid)
+        .get_node_names(&mut |name, ns| {
+            names.push((name.to_string(), ns.to_string()));
+            true
+        })
+        .expect("the canned graph answers get_node_names");
+    let expect_names: std::vec::Vec<_> = canned::NODES
+        .iter()
+        .map(|(n, ns, _)| (n.to_string(), ns.to_string()))
+        .collect();
+    assert_eq!(
+        names, expect_names,
+        "get_node_names must visit every node with its namespace"
+    );
+
+    // --- get_node_names_with_enclaves: the SAME nodes, plus the enclave.
+    // One node's enclave is `None` on purpose: that is a partial answer the
+    // contract admits, not an error, and a forwarder that filtered it would
+    // drop a node the graph reported.
+    let mut with_enclaves = std::vec::Vec::new();
+    executor
+        .node_mut(nid)
+        .get_node_names_with_enclaves(&mut |name, ns, enclave| {
+            with_enclaves.push((
+                name.to_string(),
+                ns.to_string(),
+                enclave.map(|e| e.to_string()),
+            ));
+            true
+        })
+        .expect("the canned graph answers get_node_names_with_enclaves");
+    let expect_enclaves: std::vec::Vec<_> = canned::NODES
+        .iter()
+        .map(|(n, ns, e)| (n.to_string(), ns.to_string(), e.map(|e| e.to_string())))
+        .collect();
+    assert_eq!(
+        with_enclaves, expect_enclaves,
+        "the enclave form must report the same node set, with enclaves"
+    );
+    assert!(
+        expect_enclaves.iter().any(|(_, _, e)| e.is_none()),
+        "the canned graph must keep a None enclave, or this asserts nothing"
+    );
+
+    // --- topics: ONE visit per topic, carrying BOTH its types ---
+    let topics = collect_names_and_types(|v| executor.node_mut(nid).get_topic_names_and_types(v));
+    let (topic, topic_types) = canned::TOPIC;
+    assert_eq!(
+        topics,
+        std::vec![(
+            topic.to_string(),
+            topic_types
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<std::vec::Vec<_>>()
+        )],
+        "a topic carrying two types is one visit with two entries, not two visits"
+    );
+
+    // --- services: a DIFFERENT slot from topics ---
+    let services =
+        collect_names_and_types(|v| executor.node_mut(nid).get_service_names_and_types(v));
+    let (svc, svc_types) = canned::SERVICE;
+    assert_eq!(
+        services,
+        std::vec![(
+            svc.to_string(),
+            svc_types
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<std::vec::Vec<_>>()
+        )],
+        "get_service_names_and_types must reach the service slot, not the topic one"
+    );
+
+    // --- the two counters, which differ so a swap cannot pass ---
+    assert_eq!(
+        executor.node_mut(nid).count_publishers("/chatter").unwrap(),
+        canned::PUBLISHERS,
+        "count_publishers must reach the publisher counter"
+    );
+    assert_eq!(
+        executor
+            .node_mut(nid)
+            .count_subscriptions("/chatter")
+            .unwrap(),
+        canned::SUBSCRIBERS,
+        "count_subscriptions is rclrs's spelling of the SUBSCRIBER counter — \
+         a forward to count_publishers reads the other number"
+    );
+
+    // --- the four by_node walks: right kind, and the two names in the right
+    // order. The mock echoes `node_name` then `node_namespace` after its kind
+    // marker, so a swapped pair fails here and nowhere else.
+    //
+    // Spelled out per verb rather than driven from a table of fn pointers:
+    // the four signatures are higher-ranked over the visitor's lifetimes and
+    // a `dyn Fn` table cannot hold them without pinning `NodeCtx`'s own two.
+    macro_rules! assert_by_node {
+        ($verb:ident, $marker:expr) => {{
+            let seen =
+                collect_names_and_types(|v| executor.node_mut(nid).$verb("talker", "/demo", v));
+            let got: std::vec::Vec<&str> = seen.iter().map(|(n, _)| n.as_str()).collect();
+            assert_eq!(
+                got,
+                std::vec![$marker, "talker", "/demo"],
+                concat!(
+                    stringify!($verb),
+                    " must pass its own entity kind, and the node name before \
+                     the namespace"
+                )
+            );
+        }};
+    }
+    assert_by_node!(
+        get_publisher_names_and_types_by_node,
+        canned::BY_NODE_PUBLISHER
+    );
+    assert_by_node!(
+        get_subscription_names_and_types_by_node,
+        canned::BY_NODE_SUBSCRIBER
+    );
+    assert_by_node!(get_service_names_and_types_by_node, canned::BY_NODE_SERVICE);
+    assert_by_node!(get_client_names_and_types_by_node, canned::BY_NODE_CLIENT);
+}
+
+#[test]
+fn node_ctx_graph_reports_unsupported_rather_than_an_empty_graph() {
+    // RFC-0036: a backend that CANNOT tell you (XRCE) is a different answer
+    // from one that has seen nobody yet. The plain `MockSession` is such a
+    // backend — every graph slot keeps the trait default — so this pins the
+    // distinction the whole contract rests on: `Err`, and NOT a walk that
+    // visits nothing and returns `Ok`. Collapsing the two is the failure
+    // mode issue 1087 already cost us one entity kind over.
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("no_graph").build().unwrap();
+
+    let mut visited = 0usize;
+    let ret = executor.node_mut(nid).get_node_names(&mut |_, _| {
+        visited += 1;
+        true
+    });
+    assert!(
+        matches!(
+            ret,
+            Err(NodeError::Transport(nros_rmw::TransportError::Unsupported))
+        ),
+        "a backend with no graph must say Unsupported, not report an empty graph: {ret:?}"
+    );
+    assert_eq!(
+        visited, 0,
+        "an Unsupported answer must visit nothing — a zero-visit Ok would be \
+         indistinguishable from a graph nobody has joined"
+    );
+
+    assert!(
+        matches!(
+            executor.node_mut(nid).count_publishers("/chatter"),
+            Err(NodeError::Transport(nros_rmw::TransportError::Unsupported))
+        ),
+        "a count from a backend with no graph must not read as 0"
+    );
+    assert!(
+        matches!(
+            executor.node_mut(nid).count_subscriptions("/chatter"),
+            Err(NodeError::Transport(nros_rmw::TransportError::Unsupported))
+        ),
+        "a count from a backend with no graph must not read as 0"
+    );
+}
