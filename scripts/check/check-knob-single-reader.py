@@ -316,9 +316,40 @@ _COUNTS = "the descriptor's producer sees a poorer inventory on this road"
 # a model-written descriptor; it is also the road issue 1378 measured failing.
 _LEAF_ROAD = "carried for a standalone leaf, which has no model and so no descriptor"
 
-# Issue 1408 -- the parameter store. Not refused by a producer: the D4 schema
-# has no section that could hold it, on ANY road including the leaf.
-_NO_SECTION = "the descriptor schema has no parameter section, on any road"
+# Issue 1408 -- the parameter store. The gap that KEPT these has CLOSED at both
+# ends: `[params]` exists in the D4 schema and the shared composer fills it on
+# BOTH producer roads, and `nros-params`/`nros-node` read it at the rung the
+# carrier occupies. What is left is the RETIREMENT, which is deliberately its
+# own wave (W9's lesson, and this whole ledger's reason for existing): a carrier
+# comes out only once both roads are MEASURED delivering on every road that
+# carries it, and three do not have a descriptor at all today --
+#
+#   * a STANDALONE cargo leaf with no resolved model (the 1407 `_LEAF_ROAD`
+#     shape one section up: no model, so no `write_for_model`, and a leaf with
+#     no `system.contract.yaml` has no `ParamDeclarations` either);
+#   * a MULTI-ENTRY cmake configure, which names no descriptor to cargo while
+#     the facts still travel;
+#   * the Zephyr west lane, which has no `--config` seam of its own (1288).
+#
+# So both roads run, ranked with the descriptor first -- measured identical on
+# the road that has both (`nros_params_config.rs` byte-for-byte, and
+# `DECLARED_PARAM_SERVICE_SHAPES` byte-for-byte).
+_BOTH_ROADS = (
+    "the descriptor now states it and is read FIRST; the carrier is the only "
+    "road for a standalone leaf, a multi-entry cmake configure and the Zephyr "
+    "west lane, so retirement is its own wave"
+)
+
+# The three BOARD capacities. These are not waiting on a wave at all: they are
+# RFC-0100 D1 *target* facts owned by `[board.knobs.params]`, so they have no
+# descriptor spelling BY DESIGN and never will -- an MCU and a PC want different
+# string lengths for the same node, so a contract cannot name the number. What
+# the descriptor carries is the NEED (`needs_max_*`), which is the half the
+# contract owns; these carry the RESOLVED number for the cmake road.
+_BOARD_CAPACITY = (
+    "a BOARD capacity (RFC-0100 D1 target fact), deliberately absent from the "
+    "descriptor -- the contract states the NEED, never the size"
+)
 
 KEPT = {
     # ---- payload class (issue 1393) -------------------------------------
@@ -373,15 +404,15 @@ KEPT = {
         "not a count -- the schema has no field of that kind",
     ),
     # ---- the parameter store (issue 1408) -------------------------------
-    "NROS_DECLARED_MAX_PARAMETERS": Kept(1408, _NO_SECTION),
-    "NROS_DECLARED_MAX_PARAM_NAME_LEN": Kept(1408, _NO_SECTION),
-    "NROS_DECLARED_MAX_STRING_VALUE_LEN": Kept(1408, _NO_SECTION),
-    "NROS_DECLARED_MAX_ARRAY_LEN": Kept(1408, _NO_SECTION),
-    "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": Kept(1408, _NO_SECTION),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": Kept(1408, _NO_SECTION),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1408, _NO_SECTION),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1408, _NO_SECTION),
-    "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1408, _NO_SECTION),
+    "NROS_DECLARED_MAX_PARAMETERS": Kept(1408, _BOTH_ROADS),
+    "NROS_DECLARED_MAX_PARAM_NAME_LEN": Kept(1408, _BOTH_ROADS),
+    "NROS_DECLARED_MAX_STRING_VALUE_LEN": Kept(1408, _BOARD_CAPACITY),
+    "NROS_DECLARED_MAX_ARRAY_LEN": Kept(1408, _BOARD_CAPACITY),
+    "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": Kept(1408, _BOARD_CAPACITY),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": Kept(1408, _BOTH_ROADS),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1408, _BOTH_ROADS),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1408, _BOTH_ROADS),
+    "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1408, _BOTH_ROADS),
     # ---- QoS depth (issue 1407) -----------------------------------------
     # The one carrier whose FACT the descriptor states on all three roads. It
     # stays for the road reason above, and because its sibling

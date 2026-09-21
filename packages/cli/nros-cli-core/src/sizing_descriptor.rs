@@ -88,12 +88,14 @@
 //! refusals in a written descriptor are the checklist.
 
 use nros_sizing_descriptor::{
-    Basis, Durability, Endpoint, EndpointKind, History, RegistrationPath, Reliability,
-    SizingDescriptor, Status, Target, Types,
+    Basis, CapacityNeed, Durability, Endpoint, EndpointKind, History, Params, RegistrationPath,
+    Reliability, SizingDescriptor, Status, Target, Types,
 };
 use rosidl_codegen::bounds::BoundState;
 
-use crate::entity_inventory::{Declaration, EntityInventory, EntityKind};
+use crate::entity_inventory::{
+    Declaration, EntityInventory, EntityKind, ParamCapacity, ParamDeclarations, ParamServiceShape,
+};
 
 /// Which of issue 1319's registration paths an entry's Rust or C code takes.
 ///
@@ -266,6 +268,24 @@ pub struct DescriptorInputs<'a> {
     pub heap_budget_bytes: Option<usize>,
     /// The entry's language, for the registration path.
     pub language: Option<EntryLanguage>,
+    /// phase-454 (issue 1408) — what the contract says about this image's
+    /// PARAMETERS, for `[params]`.
+    ///
+    /// A field of its own rather than a read off [`Self::inventory`], because
+    /// the two arrive by different roads and only one road has both. The leaf
+    /// road's inventory is PROBED out of the leaf's own metadata and carries no
+    /// parameter declarations at all; its parameters come from the resolved
+    /// SystemModel beside it. The model road's inventory carries them already,
+    /// having been composed from the same model. Reading
+    /// `inventory.param_declarations()` here would therefore answer
+    /// [`ParamDeclarations::Absent`] on the leaf road for a leaf whose contract
+    /// declares parameters — "nobody said" for a statement that was made, which
+    /// is the one mistake this whole schema exists to prevent.
+    ///
+    /// `None` is the same statement as `Some(&ParamDeclarations::Absent)` and
+    /// is what a caller with no model at all passes; both leave `[params]`
+    /// empty.
+    pub params: Option<&'a ParamDeclarations>,
     /// Whether the linked backend carries type descriptors.
     pub backend_schema: Option<BackendSchema>,
     /// Whether the linked backend dispatches in place (phase-454 W5). `None`
@@ -316,6 +336,13 @@ pub fn build(inputs: &DescriptorInputs<'_>) -> SizingDescriptor {
 
     desc.image = image_facts(inputs);
     desc.types = type_facts(inputs, &desc.endpoints);
+    // phase-454 (issue 1408) — `[params]`. On the SHARED composer, so both
+    // producers fill it from the one derivation: a second `param_facts` beside
+    // `write_for_model` is exactly how two producers of one schema come to
+    // disagree, which is issue 1025 one artifact over.
+    //
+    // Deliberately NOT folded into `overall_status` — see `overall_status`.
+    desc.params = param_facts(inputs);
     // `[policy]` stays empty. See the module docs: a policy fact is STATED, and
     // nothing states one yet.
     desc.sort_endpoints();
@@ -879,6 +906,117 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
     img
 }
 
+/// `[params]` — the parameter store, from the contract (issue 1408, RFC-0100 D4).
+///
+/// The three-state [`ParamDeclarations`] maps onto the section exactly:
+///
+/// | declaration | `[params]` |
+/// | --- | --- |
+/// | `Absent` | EMPTY — every field [`nros_sizing_descriptor::Fact::Absent`], "nobody said" |
+/// | `Refused` | every field REFUSED, carrying the derivation's own prose |
+/// | `Declared` | every field STATED |
+///
+/// `Absent` writes nothing rather than refusing, and that is the difference the
+/// whole schema turns on: an image whose contract says nothing about parameters
+/// has not been looked at and failed, it has not been asked. A refusal there
+/// would put a reason in front of every reader of every descriptor in the tree
+/// in order to say that a feature nobody used was not used — and, worse, would
+/// make a fully-derived descriptor carry a refused field.
+///
+/// **The refusal prose is the derivation's, not this function's.**
+/// [`ParamDeclarations::Refused`] already names the silent nodes and says what
+/// declaring would buy; restating it here would be a second author for one
+/// diagnosis. Where a field is refused only BECAUSE another is — the three
+/// capacity needs and the service shape follow from the declarations that
+/// `Refused` withheld — the reason says so first, the way
+/// [`set_storage_bytes`] does when `depth` is refused.
+fn param_facts(inputs: &DescriptorInputs<'_>) -> Params {
+    let mut p = Params::default();
+    let Some(decl) = inputs.params else {
+        return p;
+    };
+    match decl {
+        // Nobody said. `Fact::Absent` on every accessor, which is what an
+        // untouched `Params` already answers.
+        ParamDeclarations::Absent => {}
+        ParamDeclarations::Refused { reason } => {
+            // The two counts the refusal gates DIRECTLY: they are sums and
+            // maxima over the declarations, and `Refused` is precisely the
+            // statement that the declaration set is a subset of the image.
+            p.refuse("declared", reason.clone());
+            p.refuse("max_parameters", reason.clone());
+            p.refuse("max_param_name_len", reason.clone());
+            // And the four that are refused only BECAUSE those are. A reader
+            // who finds `needs_max_array_len` refused must not go looking for
+            // a second, independent reason.
+            let consequent = |what: &str| {
+                format!(
+                    "the contract's parameter declarations are refused, and {what} is derived \
+                     from them. The refusal: {reason}"
+                )
+            };
+            p.refuse(
+                "needs_max_string_value_len",
+                consequent("whether any declared parameter is a `string` or a `string_array`"),
+            );
+            p.refuse(
+                "needs_max_array_len",
+                consequent("whether any declared parameter is an array"),
+            );
+            p.refuse(
+                "needs_max_byte_array_len",
+                consequent("whether any declared parameter is a `byte_array`"),
+            );
+            p.refuse(
+                "service_shape",
+                consequent("each node's parameter-service shape"),
+            );
+        }
+        ParamDeclarations::Declared { .. } => {
+            // Both of these are `Some` for a `Declared`, by their own
+            // contracts. `expect` rather than a silent skip: a `None` here
+            // would be this module quietly publishing an empty `[params]` for
+            // an image that declared, which is the under-report D6 forbids.
+            let z = decl
+                .sizing()
+                .expect("a `Declared` contract sizes its store");
+            let shapes = decl
+                .service_shapes()
+                .expect("a `Declared` contract shapes its parameter services");
+            p.set_declared(Some(z.declared))
+                .set_max_parameters(Some(z.max_parameters))
+                .set_max_param_name_len(Some(z.max_param_name_len))
+                .set_needs_max_string_value_len(Some(capacity_need(&z.string_value_len)))
+                .set_needs_max_array_len(Some(capacity_need(&z.array_len)))
+                .set_needs_max_byte_array_len(Some(capacity_need(&z.byte_array_len)))
+                // The TOKEN, not a re-spelling. `nros-node/build.rs` parses
+                // exactly this grammar and `ParamServiceShape::token` is its
+                // one author; see `Params::service_shape`'s own doc for why
+                // the descriptor carries the string rather than nine numbers.
+                .set_service_shape(Some(ParamServiceShape::token(&shapes)));
+        }
+    }
+    p
+}
+
+/// [`ParamCapacity`] (the producer's) onto [`CapacityNeed`] (the schema's).
+///
+/// Two vocabularies for one fact, and they stay two because the crates are on
+/// opposite sides of the file: `ParamCapacity` carries a whole
+/// [`crate::entity_inventory::DeclaredParam`] (node, name AND type), and the
+/// descriptor carries only the two names — the type is the derivation's input,
+/// not a fact a consumer of the file needs. `Unused` maps to `Unused`, which is
+/// a STATEMENT on both sides and never an absence.
+fn capacity_need(c: &ParamCapacity) -> CapacityNeed {
+    match c {
+        ParamCapacity::Unused => CapacityNeed::Unused,
+        ParamCapacity::NeededBy(p) => CapacityNeed::NeededBy {
+            node: p.node.clone(),
+            name: p.name.clone(),
+        },
+    }
+}
+
 /// `[types]` — Cyclone's whole appetite (RFC-0100 D5).
 ///
 /// phase-454 W6.c filled the three sub-fields W4 left REFUSED. They are the
@@ -975,6 +1113,45 @@ fn count_undeclared(rows: &[Endpoint]) -> usize {
 }
 
 /// `[meta] status` — a SUMMARY of the per-field statuses, never a substitute.
+///
+/// # `[params]` is deliberately NOT folded in (issue 1408)
+///
+/// The rule this function holds is not "any refused field anywhere". It is a
+/// short, named list — `[target] pointer_bytes`, and each endpoint's
+/// `wire_bound_bytes` and `registration_path` — and the members have one thing
+/// in common: **every image has them**. A pointer width and a per-endpoint
+/// payload size are facts of any image that has endpoints at all, so a refusal
+/// there is a gap in a fact that was always going to be needed, and `partial`
+/// is the honest summary.
+///
+/// `[params]` is not like that. It is refused exactly when SOME node declared
+/// `params:` and another did not — a state only an image that uses parameters
+/// at all can reach — and it is ABSENT, not refused, for the overwhelming
+/// majority of images, which declare no parameters. Folding it in would be
+/// wrong in both directions:
+///
+/// * **`Absent` must not count.** If it did, every descriptor in the tree would
+///   read `partial` the day this section landed, for a section nobody filled.
+///   The brief for this wave states the requirement directly: *a refused
+///   `[params]` on an image that declares no parameters must NOT make a
+///   fully-derived descriptor read `partial`* — and `Absent` is precisely that
+///   image's state.
+/// * **`Refused` must not count either**, which is the less obvious half. A
+///   summary status is read by consumers that size from the WHOLE file;
+///   `nros-node`'s `descriptor_subscriptions` guards on `[meta]` before it will
+///   look at a single endpoint row. Letting a parameter-store gap move that
+///   summary would make one image's half-authored `params:` cost every
+///   UNRELATED derivation in the file its status, with no refusal anywhere near
+///   the field that lost it. That is the "silently widens the basis" failure D6
+///   names, run in reverse.
+///
+/// The per-FIELD refusal is not lost by this: `Fact::stated()` is still the only
+/// accessor that yields a value, so the parameter consumer keeps its own rung
+/// and prints the reason. The summary says what a summary can say, and the
+/// fields say the rest. That is D6's own division, and the reason `[image]`,
+/// `[types]` and `[policy]` are not folded in either — this function has never
+/// been "count the refusals", and adding `[params]` would be the first step to
+/// making it that.
 fn overall_status(desc: &SizingDescriptor) -> Status {
     let any_refused = !desc.target.pointer_bytes().is_stated()
         || desc
@@ -1028,7 +1205,13 @@ pub fn write_for_leaf(
     // A leaf with no contract sidecar reaches `contract_seen == false` and its
     // rows come back untouched, which is what keeps such a leaf byte-identical
     // to every build before this wave.
-    let inventory = match (inventory, crate::leaf_entity_env::leaf_model(leaf)) {
+    // phase-454 (issue 1408) — the contract's PARAMETERS, from the same model
+    // the join below reads, resolved ONCE and kept whether or not the probe
+    // found any endpoints. A leaf may declare parameters and create nothing
+    // else; the endpoint table being empty says nothing about the store.
+    let model = crate::leaf_entity_env::leaf_model(leaf);
+    let params = model.as_ref().map(ParamDeclarations::from_model);
+    let inventory = match (inventory, model) {
         (Some(inv), Some(model)) => {
             let joined = crate::contract_join::join(&inv, &model);
             for note in &joined.notes {
@@ -1074,6 +1257,7 @@ pub fn write_for_leaf(
         // the ONE case where this process's own width is the target's.
         host_build: img.target.is_none(),
         heap_budget_bytes: heap_budget(path_env, &img.board),
+        params: params.as_ref(),
         // A cargo leaf is a Rust entry by construction: this road is cargo, and
         // the C/C++ images go through cmake.
         language: Some(EntryLanguage::Rust),
@@ -1168,6 +1352,14 @@ pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> 
         target_triple: img.target_triple.clone(),
         host_build: img.host_build,
         heap_budget_bytes: img.heap_budget_bytes,
+        // phase-454 (issue 1408) — and this road needs no horizon for them.
+        // `[params]` is derived from the contract ALONE, which is the one
+        // inventory a model-only producer has, so it states exactly what the
+        // leaf road states. It rides on the inventory here rather than beside
+        // it because this road's inventory was composed from the same model
+        // (`resolve_image` / `write_from_model` both attach it) — see
+        // `DescriptorInputs::params` for why the leaf road cannot do that.
+        params: Some(img.inventory.param_declarations()),
         // Refused through the horizon, not through these. See
         // `ModelHorizon::registration_path` for why naming a missing half here
         // would be the wrong diagnosis.
@@ -1611,6 +1803,12 @@ mod tests {
             target_triple: Some("thumbv7em-none-eabihf".into()),
             host_build: false,
             heap_budget_bytes: Some(65536),
+            // The DEFAULT for these tests is "this image says nothing about
+            // parameters", which is the state almost every image is in. Tests
+            // about `[params]` supply their own, so the rest of the file keeps
+            // asserting a descriptor whose `[params]` is empty -- which is the
+            // byte-identity control (issue 1408).
+            params: None,
             language: Some(EntryLanguage::Rust),
             backend_schema: Some(BackendSchema::Schemaless),
             backend_dispatch: Some(BackendDispatch::InPlace),
@@ -2341,5 +2539,232 @@ mod tests {
         let back = nros_sizing_descriptor::parse(&body, std::path::Path::new("<test>"))
             .expect("a model-only descriptor is a legal descriptor");
         assert_eq!(back, d);
+    }
+
+    // --- phase-454 (issue 1408): `[params]` ---------------------------------
+
+    fn declared_param(
+        node: &str,
+        name: &str,
+        ty: ros_launch_manifest_model::ParamType,
+    ) -> crate::entity_inventory::DeclaredParam {
+        crate::entity_inventory::DeclaredParam {
+            node: node.into(),
+            name: name.into(),
+            ty,
+        }
+    }
+
+    /// Two nodes, one `string` parameter and one `integer`.
+    fn declared_params() -> ParamDeclarations {
+        use ros_launch_manifest_model::ParamType as T;
+        ParamDeclarations::Declared {
+            nodes: vec!["/a".into(), "/b".into()],
+            params: vec![
+                declared_param("/a", "greeting", T::String),
+                declared_param("/b", "rate", T::Integer),
+            ],
+        }
+    }
+
+    /// THE RULING for `Declared`, as one assertion: every field STATED, each
+    /// from the derivation that already owns it.
+    ///
+    /// The numbers are spelled out rather than recomputed from `sizing()`,
+    /// because a test that calls the producer to check the producer asserts
+    /// only that the call happened.
+    #[test]
+    fn a_declared_contract_states_every_parameter_fact() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
+        let decl = declared_params();
+        let d = build(&DescriptorInputs {
+            params: Some(&decl),
+            ..base(&inv)
+        });
+
+        assert_eq!(d.params.declared().stated(), Some(&2));
+        // Per node: `/a` has `greeting` + the seeded `use_sim_time`, `/b` has
+        // `rate` + the seed. `ParamStoreSizing::max_parameters` SUMS them.
+        assert_eq!(d.params.max_parameters().stated(), Some(&4));
+        // `use_sim_time` is 12 bytes, `greeting` 8, `rate` 4.
+        assert_eq!(d.params.max_param_name_len().stated(), Some(&12));
+
+        // The capacity NEEDS. `Unused` is a STATEMENT, not an absence -- the
+        // distinction this section exists to carry.
+        assert_eq!(
+            d.params.needs_max_string_value_len().stated(),
+            Some(&CapacityNeed::NeededBy {
+                node: "/a".into(),
+                name: "greeting".into()
+            })
+        );
+        assert_eq!(
+            d.params.needs_max_array_len().stated(),
+            Some(&CapacityNeed::Unused)
+        );
+        assert_eq!(
+            d.params.needs_max_byte_array_len().stated(),
+            Some(&CapacityNeed::Unused)
+        );
+
+        // The TOKEN, byte-identical to the one
+        // `NROS_DECLARED_PARAM_SERVICE_SHAPE` carries -- which is the whole
+        // reason `service_shape` is a string. `nros-node/build.rs` parses
+        // exactly this grammar and nothing re-spells it.
+        let shapes = decl.service_shapes().expect("a declared contract shapes");
+        assert_eq!(
+            d.params.service_shape().stated().map(String::as_str),
+            Some(ParamServiceShape::token(&shapes).as_str())
+        );
+    }
+
+    /// `Absent` writes NOTHING, and that is the byte-identity control.
+    ///
+    /// An image whose contract says nothing about parameters has not been
+    /// looked at and failed -- it has not been asked. A refusal here would put
+    /// a reason in front of every reader of every descriptor in the tree to say
+    /// that a feature nobody used was not used, and would make a fully-derived
+    /// descriptor carry a refused field.
+    #[test]
+    fn an_absent_contract_leaves_the_section_empty_and_the_file_unchanged() {
+        use nros_sizing_descriptor::Fact;
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
+        let none = nros_sizing_descriptor::render(&build(&base(&inv)));
+        let absent = build(&DescriptorInputs {
+            params: Some(&ParamDeclarations::Absent),
+            ..base(&inv)
+        });
+        assert_eq!(
+            none,
+            nros_sizing_descriptor::render(&absent),
+            "`None` and `Absent` are the same statement and must render alike"
+        );
+        // The HEADER is unconditional, exactly as `[policy]`'s is -- the
+        // renderer writes every section and `emit_values` skips the keys with
+        // no value. So an image that says nothing about parameters carries an
+        // EMPTY `[params]`, with no key and no refusal, which is the honest
+        // artifact: the section exists in the schema and this image filled none
+        // of it.
+        assert!(none.contains("\n[params]\n\n[policy]\n"), "{none}");
+        assert!(!none.contains("[params.refused]"), "{none}");
+        assert_eq!(absent.params.declared(), Fact::Absent);
+        assert_eq!(
+            absent.params.needs_max_array_len(),
+            Fact::Absent,
+            "ABSENT, never `Unused` -- nobody said is not the same as `no array`"
+        );
+        // And the SUMMARY is untouched: a fully-derived descriptor that says
+        // nothing about parameters still reads `derived`.
+        assert_eq!(absent.meta.status, Status::Derived);
+    }
+
+    /// `Refused` refuses every field, carries the derivation's OWN prose, and
+    /// says which refusals are consequences of which.
+    #[test]
+    fn a_refused_contract_refuses_every_field_and_keeps_the_derivations_reason() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
+        // The real prose: `ParamDeclarations::from_model` names the silent
+        // nodes. Restating it in this module would be a second author for one
+        // diagnosis, so the composer CARRIES it and this test asserts it did.
+        let decl = ParamDeclarations::Refused {
+            reason: "1 of 2 nodes in this image declare no `params:` in their contract: /b."
+                .to_string(),
+        };
+        let d = build(&DescriptorInputs {
+            params: Some(&decl),
+            ..base(&inv)
+        });
+
+        for (what, r) in [
+            ("declared", d.params.declared().refusal()),
+            ("max_parameters", d.params.max_parameters().refusal()),
+            (
+                "max_param_name_len",
+                d.params.max_param_name_len().refusal(),
+            ),
+            (
+                "needs_max_string_value_len",
+                d.params.needs_max_string_value_len().refusal(),
+            ),
+            (
+                "needs_max_array_len",
+                d.params.needs_max_array_len().refusal(),
+            ),
+            (
+                "needs_max_byte_array_len",
+                d.params.needs_max_byte_array_len().refusal(),
+            ),
+            ("service_shape", d.params.service_shape().refusal()),
+        ] {
+            let r = r.unwrap_or_else(|| panic!("`{what}` must be REFUSED"));
+            assert!(
+                r.contains("/b"),
+                "`{what}` must carry the derivation's own reason, which names the node: {r}"
+            );
+        }
+        // The four CONSEQUENT refusals say they are consequences, the way
+        // `set_storage_bytes` does when `depth` is refused -- so a reader does
+        // not go looking for a second, independent cause.
+        assert!(
+            d.params
+                .needs_max_array_len()
+                .refusal()
+                .is_some_and(|r| r.starts_with("the contract's parameter declarations are refused")),
+            "{:?}",
+            d.params.needs_max_array_len().refusal()
+        );
+        // And the SUMMARY is STILL `derived`: a parameter-store gap must not
+        // cost every unrelated derivation in the file its status. See
+        // `overall_status` for the argument.
+        assert_eq!(d.meta.status, Status::Derived);
+    }
+
+    /// A `[params]`-bearing descriptor round-trips through the shared reader.
+    ///
+    /// The same reason the model-only round trip exists: the renderer enforces
+    /// the D4 parse rules, and a field that were both set AND refused would be
+    /// caught only here.
+    #[test]
+    fn a_params_descriptor_parses_back() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(3))]);
+        for decl in [
+            declared_params(),
+            ParamDeclarations::Refused {
+                reason: "/b said nothing".into(),
+            },
+            ParamDeclarations::Absent,
+        ] {
+            let d = build(&DescriptorInputs {
+                params: Some(&decl),
+                ..base(&inv)
+            });
+            let body = nros_sizing_descriptor::render(&d);
+            let back = nros_sizing_descriptor::parse(&body, std::path::Path::new("<test>"))
+                .unwrap_or_else(|e| panic!("`{}` must render a legal descriptor: {e}", decl.tag()));
+            assert_eq!(back, d, "{}", decl.tag());
+        }
+    }
+
+    /// BOTH producers fill it, from the ONE composer.
+    ///
+    /// `[params]` is derived from the contract ALONE, which is the one
+    /// inventory a model-only road has -- so unlike `wire_bound_bytes` it is
+    /// NOT narrowed by the horizon, and the two roads must agree exactly.
+    #[test]
+    fn the_model_only_road_states_the_same_parameter_facts_as_the_leaf_road() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(3))]);
+        let decl = declared_params();
+        let leaf = build(&DescriptorInputs {
+            params: Some(&decl),
+            ..base(&inv)
+        });
+        let model = build(&DescriptorInputs {
+            params: Some(&decl),
+            ..model_only(&inv)
+        });
+        assert_eq!(leaf.params, model.params);
+        // ...and the model road really is narrower elsewhere, so this test
+        // cannot pass by the horizon having stopped working.
+        assert!(model.endpoints[0].wire_bound_bytes().refusal().is_some());
     }
 }

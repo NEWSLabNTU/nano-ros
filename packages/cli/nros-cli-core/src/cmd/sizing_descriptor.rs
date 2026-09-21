@@ -150,10 +150,23 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
     crate::cmd::entity_inventory::reject_unknown_qos_values(&model)?;
     crate::cmd::entity_inventory::reject_qos_override_divergence(&model)?;
 
-    let Some(inventory) = crate::entity_inventory::EntityInventory::from_model(
+    let inventory = crate::entity_inventory::EntityInventory::from_model(
         model_path.display().to_string(),
         &model,
-    ) else {
+    )
+    // phase-454 (issue 1408) — the contract's `params:` ride along, exactly as
+    // the configure-time producer and `nros build`'s seed attach them
+    // (`cmd::entity_inventory`, `cmd::build::resolve_image`). Three composers
+    // of one inventory must attach the same things, or the descriptor this
+    // verb writes and the one a build writes describe different images
+    // (issue 1228's shape).
+    .map(|mut inv| {
+        inv.set_param_declarations(crate::entity_inventory::ParamDeclarations::from_model(
+            &model,
+        ));
+        inv
+    });
+    let Some(inventory) = inventory else {
         eprintln!(
             "nros ws sizing-descriptor: `{}` describes no wiring, so no sizing descriptor is \
              written and every consumer keeps its own defaults. State what each node creates in \

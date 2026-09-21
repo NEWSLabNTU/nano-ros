@@ -81,3 +81,76 @@ The nine carriers STAY, and they are registered as KEPT against this issue in
 `nros-params` and `nros-node` reading crate defaults with nothing on any road to
 correct them — "absence is not zero" with no replacement at all, which is
 strictly worse than the other two blockers, where at least one road answers.
+
+## What has LANDED (phase-454, RFC-0100 D4)
+
+The vertical slice: the section, the composer that fills it and the consumers
+that read it. **The issue stays OPEN for the retirement alone** — see the last
+section.
+
+The four questions above, answered:
+
+1. **Per image or per node?** BOTH, per field, because the storage is. `declared`
+   is the image total; `max_parameters` and `max_param_name_len` are the store's,
+   which is per node. There is no partial per-node state to model, because
+   `ParamDeclarations::from_model` refuses outright unless every node declares —
+   so the section is one table and not a row per node.
+2. **Capacities or declarations?** NEITHER, for the three capacities: they are
+   RFC-0100 D1 **target** facts owned by `[board.knobs.params]` (an MCU and a PC
+   want different string lengths for the same node), so the schema deliberately
+   does NOT carry them. It carries the NEED — `CapacityNeed`, whose `Unused` arm
+   is a STATEMENT carried by `Fact::Stated` and distinct from an absent key.
+   `service_shape` stays the TOKEN, because re-spelling its nine counts as TOML
+   would make the schema crate the second author of a grammar it does not own
+   (issue 1025's defect).
+3. **Does it move `[meta] basis`?** No, and it does not move `[meta] status`
+   either. `overall_status` folds `[target] pointer_bytes` and each endpoint's
+   `wire_bound_bytes` / `registration_path` — facts EVERY image has — and
+   `[params]` is not like that: it is ABSENT for the overwhelming majority of
+   images and REFUSED only for one that half-declared. Folding `Absent` in would
+   make every descriptor in the tree read `partial` for a section nobody filled;
+   folding `Refused` in would let one image's half-authored `params:` cost every
+   unrelated derivation in the file its summary. The argument is written out at
+   `overall_status` in `packages/cli/nros-cli-core/src/sizing_descriptor.rs`.
+4. **Does `nros-params` gain a descriptor read?** Yes — `from_build_env()`, at
+   the rung the carrier occupied, with the carrier read BELOW it.
+
+Measured, four builds of `nros-params` + `nros-node` differing only in
+`NROS_SIZING_DESCRIPTOR`:
+
+| descriptor | `MAX_PARAMETERS` | `MAX_PARAM_NAME_LEN` | `DECLARED_PARAM_SERVICE_SHAPES` |
+| --- | --- | --- | --- |
+| none | 32 | 64 | `None` |
+| `[params]` empty (`Absent`) | 32 | 64 | `None` |
+| `[params]` fully REFUSED | 32 | 64 | `None` |
+| `[params]` STATED | **5** | **15** | `Some(&[[3,24,0,0,1,1,0,0,0],[2,27,0,0,0,0,0,0,0]])` |
+
+The first three rows are BYTE-IDENTICAL `nros_params_config.rs`, which is the
+control: a refusal is never a value. And the STATED row is byte-identical to the
+same contract delivered by the nine env carriers, which is the parity proof —
+the two roads are one derivation.
+
+A declared `string` with no board capacity still REFUSES the build, loudly and
+by name, on the descriptor road exactly as on the carrier road.
+
+## What is STILL open
+
+The retirement. A carrier comes out only once both roads are measured delivering
+on every road that carries it, and three roads have no descriptor at all today:
+
+* a STANDALONE cargo leaf with no resolved model (issue 1407's `_LEAF_ROAD`
+  shape — no model, so no `write_for_model`);
+* a MULTI-ENTRY cmake configure, which names no descriptor to cargo;
+* the Zephyr west lane, which has no `--config` seam of its own (issue 1288).
+
+So the nine stay KEPT, with their ledger reasons rewritten to say this rather
+than "the schema has no parameter section", which is no longer true. The three
+BOARD capacities are a separate case and will never retire into the descriptor —
+they are D1 target facts by design.
+
+There is one adjacent gap this slice did NOT close: a **parameter-only** contract
+(no topics, services, actions or node paths) still reaches no descriptor on the
+cargo road, because `EntityInventory::from_model` returns `None` for a model that
+describes no wiring and the road nests the `ParamDeclarations` attach inside that
+`Some` arm. That is issue 1436, fixed separately; nothing here depends on it, and
+every road that already writes a descriptor now carries `[params]`.
