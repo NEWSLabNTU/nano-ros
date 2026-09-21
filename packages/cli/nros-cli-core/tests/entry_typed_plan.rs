@@ -124,8 +124,16 @@ fn typed_plan_from_template_emits_constructed_components() {
     assert!(src.contains("static ::listener_pkg::Listener __nros_comp_1;"));
     assert!(src.contains("__nros_comp_0.configure(__nros_node_0)"));
     // Phase 266: boot config blob always emitted; session name threaded from it.
+    // Issue 1434: the NAMESPACE is threaded from the same blob, beside the name.
+    // Asserted as ONE string rather than two `contains` calls, because the two
+    // readers must reach the SAME runner call — a name on `run_components` and
+    // a namespace anywhere else in the file would satisfy a split assertion.
     assert!(src.contains("NROS_BOOT_CONFIG_MAGIC"));
-    assert!(src.contains("::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"));
+    assert!(src.contains(
+        "::nros::board::LinuxBoard::run_components(\
+         nros_boot_config_node_name(&NROS_BOOT_CONFIG), \
+         nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+    ));
     // No legacy interpreter seam.
     assert!(!src.contains("__nros_component_"));
     assert!(!src.contains("NodeContext"));
