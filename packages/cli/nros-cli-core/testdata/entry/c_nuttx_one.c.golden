@@ -47,7 +47,7 @@ __attribute__((section(".nros_boot_config"), used))
 = {
 .magic      = NROS_BOOT_CONFIG_MAGIC,
 .version    = NROS_BOOT_CONFIG_VERSION,
-.set_flags  = NROS_BOOT_SET_NODE_NAME,
+.set_flags  = 0 | NROS_BOOT_SET_NODE_NAME,
 .domain_id  = 0,
 .node_name  = "talker",
 .locator    = "",

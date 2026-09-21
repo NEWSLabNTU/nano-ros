@@ -245,6 +245,9 @@ fn probe_plan(o: &CmakeProbeOptions) -> Plan {
         tiers: Default::default(),
         node_overrides: Vec::new(),
         resolved_tiers: None,
+        // The probe is a host binary that opens no session, so it bakes no
+        // session rung (issue 0794).
+        session: Default::default(),
     }
 }
 

@@ -677,6 +677,68 @@ execution:
     );
 }
 
+/// issue 0794 — the model's `execution.deploy.<fqn>.{domain, locator, rmw}` is
+/// documented in the model schema as "RFC-0045 baked rung on embedded", and
+/// `plan_from_model` read that map for the board SLICE and for nothing else.
+///
+/// So a bringup whose `system.toml` declared `domain_id = 7` and a locator
+/// produced a `.nros_boot_config` reading `.domain_id = 0`, `.locator = ""`,
+/// both bits clear — measured end to end before this fix. This asserts the
+/// whole road: model → plan → emitted blob.
+#[test]
+fn a_launch_declared_session_reaches_the_plan_and_the_blob() {
+    use nros_cli_core::codegen::entry::{emit_c, plan_from_model};
+    let tmp = temp_root("model-plan-session");
+    let model_path = tmp.join("system_model.yaml");
+    fs::write(
+        &model_path,
+        r#"meta:
+  version: 1
+structure:
+  nodes:
+    /robot1/talker:
+      scope: /
+      pkg: robot_pkg
+      exec: talker
+execution:
+  deploy:
+    /robot1/talker:
+      target: linux
+      domain: 7
+      locator: tcp/10.0.2.2:7447
+      rmw: zenoh
+"#,
+    )
+    .unwrap();
+
+    let mut plan = plan_from_model(&model_path, None).expect("native plan");
+    assert_eq!(
+        plan.session.domain,
+        Some(7),
+        "the domain must reach the plan"
+    );
+    assert_eq!(plan.session.locator.as_deref(), Some("tcp/10.0.2.2:7447"));
+    assert_eq!(plan.session.rmw.as_deref(), Some("zenoh"));
+    assert!(plan.session.conflicts.is_empty());
+
+    // The component's LANGUAGE comes from the cmake metadata seam, not the
+    // model, so the emitter gets it here the way `--metadata` would.
+    plan.nodes[0].lang = Some("c".into());
+    let src = emit_c::emit_typed(&plan).expect("typed C emit ok");
+    for expect in [
+        "NROS_BOOT_SET_DOMAIN",
+        "NROS_BOOT_SET_LOCATOR",
+        "NROS_BOOT_SET_RMW",
+        "NROS_BOOT_SET_NAMESPACE",
+        ".domain_id  = 7u",
+        ".locator    = \"tcp/10.0.2.2:7447\"",
+        ".namespace_ = \"/robot1\"",
+        ".rmw        = \"zenoh\"",
+    ] {
+        assert!(src.contains(expect), "missing `{expect}` in:\n{src}");
+    }
+}
+
 /// W4.3 — an Mcu deploy naming a CONCRETE board ("fvp-aemv8r-smp") still
 /// slices under the entry codegen's board-FAMILY key ("zephyr") via the
 /// integrator's `[deploy.<t>] kind` (carried in `extra.kind`).

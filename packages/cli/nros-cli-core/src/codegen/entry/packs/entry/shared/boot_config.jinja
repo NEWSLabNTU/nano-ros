@@ -7,18 +7,29 @@
   phase-432 exists to remove. If a language ever needs a different spelling of
   this blob, it gets its own partial then; today none does.
 
-  The view carries FACTS, not flags: whether a node name and a namespace were
-  resolved, and their raw text. `NROS_BOOT_SET_*` are this header's spelling of
-  those facts and belong here. The 63-byte field budget is NOT here — it is a
-  correctness check that refuses to emit, and it stays in Rust.
+  The view carries FACTS, not flags: which of the five fields were resolved, and
+  their raw values. `NROS_BOOT_SET_*` are this header's spelling of those facts
+  and belong here. The per-field byte budgets are NOT here — they are a
+  correctness check that refuses to emit, and they stay in Rust.
 
-  `domain_id`, `locator` and `rmw` are emitted empty with their bits clear, and
-  that is a scope statement rather than an oversight: all three are properties
-  of the IMAGE rather than of a node, and `Plan` carries no such field. A C/C++
-  image gets its RMW selector from the `NROS_ENTRY_RMW` compile definition the
-  entry gate bakes. They are spelled out rather than left to the designated
-  initialiser's zero fill so the fields stay visible in the generated code.
+  issue 0794 — `domain_id`, `locator` and `rmw` used to be emitted empty with
+  their bits clear whatever the launch declared, which is why the blob carries a
+  set-bit per field at all: a cleared bit must mean "the baked rung does not
+  speak", and it meant "the producer was never written". They come from the
+  model's `execution.deploy.<fqn>.{domain, locator, rmw}` now, folded to ONE
+  value per image by `baked_session`.
+
+  `set_flags` is written as `0 | FLAG | …` rather than a joined list so each
+  fact contributes exactly one independent line. An image with nothing baked
+  still emits `.set_flags  = 0,`.
 -#}
+{% if boot_config.conflicts -%}
+/* issue 0794 — NOT baked: {{ boot_config.conflicts | join(", ") }}. At least one
+ * deployed node declares each, and the deployed nodes do not agree on a single
+ * value. The blob holds one session, so the bit stays CLEAR and the resolver
+ * falls through to the next RFC-0045 rung rather than baking a value no node
+ * asked for. */
+{% endif -%}
 /* Phase 266 (RFC-0045) — baked boot config: post-link readable + session name. */
 static const struct nros_baked_boot_config NROS_BOOT_CONFIG
 #if defined(__GNUC__) || defined(__clang__)
@@ -27,10 +38,15 @@ __attribute__((section(".nros_boot_config"), used))
 = {
 .magic      = NROS_BOOT_CONFIG_MAGIC,
 .version    = NROS_BOOT_CONFIG_VERSION,
-.set_flags  = {% if boot_config.node_name is none %}0{% else %}NROS_BOOT_SET_NODE_NAME{% if boot_config.namespace is not none %} | NROS_BOOT_SET_NAMESPACE{% endif %}{% endif %},
-.domain_id  = 0,
+.set_flags  = 0
+{%- if boot_config.node_name is not none %} | NROS_BOOT_SET_NODE_NAME{% endif %}
+{%- if boot_config.namespace is not none %} | NROS_BOOT_SET_NAMESPACE{% endif %}
+{%- if boot_config.locator is not none %} | NROS_BOOT_SET_LOCATOR{% endif %}
+{%- if boot_config.domain is not none %} | NROS_BOOT_SET_DOMAIN{% endif %}
+{%- if boot_config.rmw is not none %} | NROS_BOOT_SET_RMW{% endif %},
+.domain_id  = {% if boot_config.domain is not none %}{{ boot_config.domain }}u{% else %}0{% endif %},
 .node_name  = "{% if boot_config.node_name is not none %}{{ boot_config.node_name | c_str }}{% endif %}",
-.locator    = "",
+.locator    = "{% if boot_config.locator is not none %}{{ boot_config.locator | c_str }}{% endif %}",
 .namespace_ = "{% if boot_config.namespace is not none %}{{ boot_config.namespace | c_str }}{% endif %}",
-.rmw        = "",
+.rmw        = "{% if boot_config.rmw is not none %}{{ boot_config.rmw | c_str }}{% endif %}",
 };

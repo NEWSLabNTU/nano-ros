@@ -38,6 +38,10 @@ struct EnvCache {
     mode: SessionMode,
     /// RFC-0045 model A — `NROS_NODE_NAME` env rung (issue #206 parity).
     node_name: String,
+    /// RFC-0045 model A — `NROS_NODE_NAMESPACE` env rung (issue 0794). The
+    /// ladder was uneven: every other identity field had three rungs and the
+    /// namespace had two.
+    namespace: String,
     /// issue 0687 — `$NROS_RMW`, through [`rmw_selector`] so the snapshot and
     /// the live reader cannot disagree about what "unset" means.
     rmw: Option<String>,
@@ -106,10 +110,12 @@ fn env_cache() -> &'static EnvCache {
             _ => SessionMode::Client,
         };
         let node_name = std::env::var("NROS_NODE_NAME").unwrap_or_default();
+        let namespace = std::env::var("NROS_NODE_NAMESPACE").unwrap_or_default();
         EnvCache {
             locator,
             mode,
             node_name,
+            namespace,
             rmw: rmw_selector().map(|s| s.as_str().to_string()),
         }
     }
@@ -185,6 +191,13 @@ fn env_rung() -> Result<EnvRung<'static>, BootConfigError> {
     let node_name_present = std::env::var("NROS_NODE_NAME")
         .map(|s| !s.is_empty())
         .unwrap_or(false);
+    // Issue 0794 — an EMPTY value is not a declaration here, same as the node
+    // name: `""` is what an unset namespace already resolves to, so honouring
+    // it would make `NROS_NODE_NAMESPACE=` indistinguishable from "override the
+    // baked namespace back to root", which is a different request.
+    let namespace_present = std::env::var("NROS_NODE_NAMESPACE")
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
 
     Ok(EnvRung {
         locator: locator_present.then_some(cache.locator.as_str()),
@@ -194,6 +207,7 @@ fn env_rung() -> Result<EnvRung<'static>, BootConfigError> {
         // conditional for exactly that reason.
         mode: Some(cache.mode),
         node_name: node_name_present.then_some(cache.node_name.as_str()),
+        namespace: namespace_present.then_some(cache.namespace.as_str()),
         rmw: cache.rmw.as_deref(),
     })
 }
@@ -458,6 +472,41 @@ mod tests {
             cfg.node_name, "env_node",
             "env rung must override baked with its own value"
         );
+    }
+
+    /// issue 0794 — the hosted edge fills the namespace rung.
+    ///
+    /// Before, `EnvRung` had no namespace field, so this variable could not
+    /// exist: a hosted node's namespace came from the baked rung or from a
+    /// hand-written `ExecutorConfig::namespace(..)` — the per-board lore
+    /// RFC-0045 exists to abolish.
+    #[test]
+    fn try_resolve_namespace_env_rung() {
+        let _l = env_lock();
+        let baked = BootConfig {
+            namespace: Some("/baked"),
+            ..BootConfig::default()
+        };
+
+        let g = EnvGuard::set("NROS_NODE_NAMESPACE", "/robot1");
+        let cfg = try_resolve_hosted(baked).expect("resolve ok");
+        assert_eq!(
+            cfg.namespace, "/robot1",
+            "env rung must override the baked namespace with its own value"
+        );
+        drop(g);
+
+        // Unset falls through to baked, which is the rung below it.
+        let _g = EnvGuard::unset("NROS_NODE_NAMESPACE");
+        let cfg = try_resolve_hosted(baked).expect("resolve ok");
+        assert_eq!(cfg.namespace, "/baked");
+
+        // EMPTY is unset, not "override back to root": `""` is already what an
+        // unset namespace resolves to, so honouring it would give `NROS_NODE_
+        // NAMESPACE=` a meaning no caller can distinguish from absence.
+        let _g = EnvGuard::set("NROS_NODE_NAMESPACE", "");
+        let cfg = try_resolve_hosted(baked).expect("resolve ok");
+        assert_eq!(cfg.namespace, "/baked");
     }
 
     /// issue 0687 — the selector reaches the config, which is how

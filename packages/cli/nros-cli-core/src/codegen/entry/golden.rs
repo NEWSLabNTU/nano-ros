@@ -89,6 +89,7 @@ fn plan(board: &str, nodes: Vec<PlanNode>) -> Plan {
         tiers: Default::default(),
         node_overrides: Vec::new(),
         resolved_tiers: None,
+        session: Default::default(),
     }
 }
 

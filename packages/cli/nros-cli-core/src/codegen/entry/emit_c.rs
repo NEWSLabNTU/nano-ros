@@ -355,6 +355,7 @@ mod tests {
             tiers: Default::default(),
             node_overrides: Vec::new(),
             resolved_tiers: None,
+            session: Default::default(),
         }
     }
 
@@ -760,6 +761,7 @@ mod tests {
             resolved_tiers: Some(ResolvedTierTable {
                 tiers: vec![high_tier, low_tier],
             }),
+            session: Default::default(),
         }
     }
 
