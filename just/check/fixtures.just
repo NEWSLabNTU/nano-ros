@@ -117,6 +117,23 @@ example-matrix:
 # On the BUILD lane, not the fast one, because it really does build: ~10 min
 # per template. It resolves nothing it did not build itself, so it satisfies
 # `check-lane-contracts` on any lane that can afford it.
+# issue 1058 / 1412 / phase-452 W2 — COMPILE what `nros new` emits.
+#
+# The scaffold tests verify every variant by substring match (~30 of them) and
+# nothing builds the result, so they answer "did we emit the string we meant to
+# emit" — a question about the template, not about the scaffold. A user's first
+# build is the first compile the emitted code ever gets.
+#
+# Its first real run found the Rust component template built on the `Component*`
+# trait family retired in 212.N.12, broken for three and a half months (#1412).
+#
+# BUILD lane, not the fast one: ~1 min for six variants warm, and it needs the
+# in-tree CLI. It builds everything it resolves, so `check-lane-contracts` holds.
+[private]
+scaffold-builds:
+    @bash scripts/check-scaffold-builds.sh --self-test
+    @bash scripts/check-scaffold-builds.sh
+
 [private]
 template-copy-out:
     @bash scripts/check-template-copy-out.sh --self-test
