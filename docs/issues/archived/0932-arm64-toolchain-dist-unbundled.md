@@ -106,10 +106,73 @@ The arm64 tarball's sha256 finally CHANGED — it had been byte-identical to
 -nros2 across three releases, which is how each of those proved it had touched
 only x86_64.
 
-## Residue
+## Residue — SURVEYED AND HALVED, 2026-09-21 (`-nros5`)
 
-A few lib-dynload modules carry focal-era dependencies jammy lacks (`_ssl` and
-`_hashlib` want `libssl.so.1.1`), so those imports fail with an ImportError
-naming the library. That is the normal shape of an optional extension with an
-unmet dependency, a debugger needs none of them, and bundling a deprecated TLS
-stack so `import ssl` works inside gdb would ship it for no user.
+**This section is the live description of what the artifact does.** The
+phase-447 doc's "needs a re-cut in nano-ros-sdk" line is discharged by it; see
+the dated note there.
+
+The original text of this section named `_ssl` and `_hashlib` and said the
+whole set was "a few modules". It was written from reading, not measured, and
+it was wrong by half. Sweeping all 44 lib-dynload modules (their `DT_NEEDED`
+from the focal arm64 debs the build already extracts, against jammy's package
+set) found **four** unimportable, and the one it missed is the one that
+matters:
+
+| module | needs | on jammy | now |
+| --- | --- | --- | --- |
+| `_ctypes` | `libffi.so.7` | not installed by default | **bundled** |
+| `_decimal` | `libmpdec.so.2` | **no such package** (jammy has libmpdec3) | **bundled** |
+| `_hashlib` | `libcrypto.so.1.1` | **no such package** (jammy has libssl3) | still fails |
+| `_ssl` | `libssl.so.1.1` + `libcrypto.so.1.1` | **no such package** | still fails |
+
+The other nine externals (bz2, lzma, sqlite3, ncursesw, tinfo, panelw,
+readline, db-5.3, uuid) jammy does ship. `ctypes` has no pure-Python fallback
+and is what a gdb pretty-printer can plausibly reach; `decimal` falls back to
+`_pydecimal`, but its library was in the same walk and costs 215 KB.
+
+**The TLS pair is still declined, and that half of the original text stands**:
+a deprecated OpenSSL shipped so `import ssl` works *inside a debugger* is a
+cost with no user, and `nros-sdk-index.toml` already declares
+`[prereq.libssl3]` for other tools — two OpenSSL majors in one store is worse
+than an unimportable `ssl`. The failure stays loud: the ImportError names the
+library.
+
+### Why not the policy fix
+
+The structural cause is that `bundle_linux_libs` is called with
+`"$topdir"/bin/*`, so the lib-dynload `.so`s sit in no bundler root and the
+policy that makes the rest of the dist self-contained never sees them. Passing
+them as extra roots was the preferred fix and is blocked three ways, measured:
+
+1. the bundler resolves through `ldd` and `exit 1`s on a soname it cannot
+   resolve — and `libmpdec2`/`libssl1.1` are *no such package* on jammy, so
+   they cannot be installed for it to find. (`libncurses5` works as a
+   precedent only because jammy still ships it.) Passing lib-dynload as roots
+   therefore fails the build unless OpenSSL 1.1 is bundled, the one thing ruled
+   out.
+2. it applies one hardcoded `$ORIGIN/../lib` rpath to every root — correct for
+   `bin/`, wrong four directories down.
+3. its verification pass shares that assumption.
+
+Changing a helper five dists share to buy two libraries is the wrong trade, so
+`-nros5` stages the two from the focal pool (the same route libpython already
+takes) and applies the rpath **uniformly to every lib-dynload module**, so no
+module is named and a future ARM bump that adds one is covered.
+
+### And the residue is now measured, not described
+
+`verify_libdynload_residue` imports every lib-dynload module inside the shipped
+gdb and fails the build when the unimportable set differs from its recorded
+baseline **in either direction** — a module that starts failing is a
+regression, one that starts working is a fix, and both want a human. A probe
+that produces no verdict is a failure, not an empty residue. That is what stops
+this section drifting again. The arm64 runner printed:
+
+```
+gdb-check: lib-dynload 44 module(s), unimportable = [_hashlib _ssl] (baseline)
+```
+
+x86_64 is untouched throughout: its gdb links a static CPython exporting no
+C-API symbols, so no extension module can load there on any host, and the probe
+is guarded on a shared libpython.
