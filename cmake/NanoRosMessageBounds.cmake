@@ -171,6 +171,9 @@
 
 include_guard(GLOBAL)
 
+# What a schema refusal must be able to cite (issue 1389).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSchemaReader.cmake")
+
 # Both constants below are `CACHE INTERNAL` and not plain variables, for the
 # `_NROS_ENTRY_DIR` reason (AGENTS.md, CMake Pitfalls) sharpened by
 # `include_guard(GLOBAL)`. This file is reached through
@@ -188,6 +191,14 @@ include_guard(GLOBAL)
 # never read field-by-field on the hope that nothing moved.
 set(NROS_MESSAGE_BOUNDS_SCHEMA_SUPPORTED 1 CACHE INTERNAL
     "phase-403 W8: the nros_message_bounds fragment schema this tree reads")
+
+# Issue 1389 — WHICH FILE that number came from. Two copies of this module at
+# two paths both run and the last one wins, so a refusal quoting only the two
+# numbers cannot name the reader that answered. Paired with its partner by
+# `check-schema-reader-provenance`.
+set(NROS_MESSAGE_BOUNDS_SCHEMA_SUPPORTED_FROM "${CMAKE_CURRENT_LIST_FILE}"
+    CACHE INTERNAL
+    "issue 1389: the module file NROS_MESSAGE_BOUNDS_SCHEMA_SUPPORTED was read from")
 
 # Where this module lives, so the join can reach its sibling
 # `NanoRosEntityInventory.cmake` for the ENTITY fragment's schema constant.
@@ -469,14 +480,17 @@ function(nros_derive_message_bound_knobs)
         endif()
         if(NOT NROS_MESSAGE_BOUNDS_SCHEMA_VERSION EQUAL
            NROS_MESSAGE_BOUNDS_SCHEMA_SUPPORTED)
+            nros_schema_mismatch_diagnosis(_diag
+                SUPPORTED_VAR NROS_MESSAGE_BOUNDS_SCHEMA_SUPPORTED
+                ARTIFACT "${_frag}"
+                ARTIFACT_VERSION "${NROS_MESSAGE_BOUNDS_SCHEMA_VERSION}"
+                REGENERATE "Rebuild the `nros` CLI so the producer and the reader come from one tree: `./scripts/bootstrap.sh` (contributors: `just setup-cli`).")
             message(FATAL_ERROR
                 "nros: ${_frag} states message-bound schema version "
                 "${NROS_MESSAGE_BOUNDS_SCHEMA_VERSION}; this reader understands "
                 "${NROS_MESSAGE_BOUNDS_SCHEMA_SUPPORTED}.\n"
                 "  Refusing rather than reading fields that may have moved.\n"
-                "  Rebuild the `nros` CLI so the producer and the reader come "
-                "from one tree: `./scripts/bootstrap.sh` (contributors: "
-                "`just setup-cli`).")
+                "${_diag}")
         endif()
     endforeach()
 
@@ -793,6 +807,15 @@ function(_nros_bounds_join_subscribed _frag _ceiling
         # dir would be stuck until someone deleted the file by hand. Nothing is
         # read from the fragment either way: the payload classes fall to the
         # closure, which over-approximates in the safe direction.
+        #
+        # Issue 1389 — this reader is the one that reads the OTHER module's
+        # constant, so "which copy answered" is a live question here even when
+        # the two modules come from one checkout. The diagnosis names the file.
+        nros_schema_mismatch_diagnosis(_diag
+            SUPPORTED_VAR NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED
+            ARTIFACT "${_frag}"
+            ARTIFACT_VERSION "${NROS_ENTITY_INVENTORY_SCHEMA_VERSION}"
+            REGENERATE "Rebuild the `nros` CLI so the producer and the reader come from one tree (`./scripts/bootstrap.sh`; contributors: `just setup-cli`) and re-configure; the fragment is rewritten by `nano_ros_entry()` later in that configure and this reader picks it up on the one after.")
         message(WARNING
             "nros: ${_frag} states entity-inventory schema version "
             "`${NROS_ENTITY_INVENTORY_SCHEMA_VERSION}`; the payload-class join "
@@ -802,11 +825,7 @@ function(_nros_bounds_join_subscribed _frag _ceiling
             "at all, so this image's payload classes derive over its whole "
             "LINKED CLOSURE, which is an upper bound and not the answer its "
             "declaration would give.\n"
-            "  Rebuild the `nros` CLI so the producer and the reader come from "
-            "one tree (`./scripts/bootstrap.sh`; contributors: "
-            "`just setup-cli`) and re-configure; the fragment is "
-            "rewritten by `nano_ros_entry()` later in that configure and this "
-            "reader picks it up on the one after.")
+            "${_diag}")
         set(${_o_basis} "closure" PARENT_SCOPE)
         return()
     endif()
