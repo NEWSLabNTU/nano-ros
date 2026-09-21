@@ -332,6 +332,7 @@ version = "0.5.0"
 dependencies = [
  "heapless",
  "nros-board-common",
+ "nros-sizing-descriptor",
  "nros-zephyr-build",
 ]
 

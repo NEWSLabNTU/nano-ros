@@ -116,6 +116,10 @@ fn descriptor_text(root: &Path) -> String {
         target_triple: Some("thumbv7em-none-eabihf".into()),
         host_build: false,
         heap_budget_bytes: Some(65536),
+        // This fixture's leaf has no contract, so it declares no parameters
+        // and `[params]` stays empty — which is also what keeps this test's
+        // subject unchanged by issue 1408.
+        params: None,
         language: Some(EntryLanguage::Rust),
         backend_schema: Some(BackendSchema::Schemaless),
         // phase-454 W5 — zenoh dispatches IN PLACE (measured), which is the

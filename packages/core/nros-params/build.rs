@@ -279,14 +279,13 @@ fn need(
         // uses this capacity") and not an absence, so it must stop the fallback
         // rather than fall through to a carrier that might say otherwise.
         if let Some(c) = f.stated() {
-            return match c.needed_by() {
-                None => None,
-                Some((node, name)) => Some(Need {
-                    node: node.to_string(),
-                    name: name.to_string(),
-                    ty: None,
-                }),
-            };
+            return c.needed_by().map(|(node, name)| Need {
+                node: node.to_string(),
+                name: name.to_string(),
+                // The descriptor states the node and the parameter, never the
+                // type. See `Need`.
+                ty: None,
+            });
         }
     }
     let raw = env::var(key).ok().filter(|v| !v.trim().is_empty())?;
