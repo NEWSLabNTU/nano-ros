@@ -1,5 +1,5 @@
 ---
-id: 1416
+id: 1425
 title: "Heap exhaustion is a printk that returns NULL, and a BufferTooSmall on
   the C++ take path returns RET_FULL with out_len 0 - neither reaches
   nros_platform_panic or the boot report, so on a board with no console

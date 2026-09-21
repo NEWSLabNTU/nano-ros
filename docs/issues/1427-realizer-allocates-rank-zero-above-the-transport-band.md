@@ -1,5 +1,5 @@
 ---
-id: 1418
+id: 1427
 title: "The realizer maps dense rank 0 to Zephyr priority 0, above the
   transport band the image's Kconfig implies - the board priority plan RFC-0079
   declares is read by two scripts and not by nros-orchestration-ir"
@@ -8,7 +8,7 @@ type: bug
 area: [codegen, zephyr, scheduling]
 severity: medium
 found: 2026-09-21
-related: [issue-0623, issue-0852, issue-1417, phase-459, rfc-0079, rfc-0052]
+related: [issue-0623, issue-0852, issue-1426, phase-459, rfc-0079, rfc-0052]
 ---
 
 ## The allocation (verified at 783cdfa14)

@@ -1,5 +1,5 @@
 ---
-id: 1417
+id: 1426
 title: "For a cmake image the tier derivation is unreachable twice: codegen-system
   collects callback groups from cargo metadata only, and codegen entry never
   derives at all - derived tiers reach nros-plan.json and no image"
@@ -70,7 +70,7 @@ was declared. On the cmake road it is the only case.
 * `--target zephyr-<rmw>` naming no block: issues 1312 and 1397, resolved;
   the Zephyr module passes `--for-entry` (`zephyr/cmake/nros_system_generate.cmake:217-224`).
 * The allocation placing rank 0 at Zephyr priority 0, above the transport:
-  issue 1418.
+  issue 1427.
 
 ## What would fix it
 

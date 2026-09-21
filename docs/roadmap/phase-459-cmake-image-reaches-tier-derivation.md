@@ -5,8 +5,8 @@ phases 456-458 were being opened concurrently by other sessions; this is
 highest-existing (455) + 4. Its sibling, phase-460, covers the formal checks the
 same investigation found missing on the contract chain.
 
-Owns [issue 1417](../issues/1417-cmake-callback-groups-never-reach-codegen-system-and-the-entry-never-derives.md)
-and [issue 1418](../issues/1418-realizer-allocates-rank-zero-above-the-transport-band.md).
+Owns [issue 1426](../issues/1426-cmake-callback-groups-never-reach-codegen-system-and-the-entry-never-derives.md)
+and [issue 1427](../issues/1427-realizer-allocates-rank-zero-above-the-transport-band.md).
 Closes the reachability half of
 [issue 1371](../issues/1371-tier-derivation-silent-on-empty-callback-groups.md)
 (the silence half stays 1371's) and takes item 2 of
@@ -74,7 +74,7 @@ Two more facts change what "reaching it" has to mean:
   `scripts/lib/priority_plan.py:resolve_zephyr_plan`, judged by
   `scripts/check-tier-priority-plan-image.py`), and nothing in
   `nros-orchestration-ir` reads it: `grep priority_plan packages/core` is
-  empty. Issue 1418.
+  empty. Issue 1427.
 * **Equal periods collapse to one rank.** The pinned ranker
   (`ros-launch-manifest-sched` v0.1.35, `chain_aware_mapper.rs:364-375`)
   gives every fact with the same `(criticality, budget_ms)` one `fine_group`,

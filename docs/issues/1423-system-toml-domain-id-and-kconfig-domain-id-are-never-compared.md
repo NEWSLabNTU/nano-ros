@@ -1,5 +1,5 @@
 ---
-id: 1414
+id: 1423
 title: "system.toml's domain_id is baked as NROS_SYSTEM_DOMAIN_ID and read by
   nothing; the Zephyr image takes CONFIG_NROS_DOMAIN_ID, and no layer compares
   the two"
