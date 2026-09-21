@@ -64,9 +64,9 @@ use std::path::{Path, PathBuf};
 
 pub use fact::Fact;
 pub use render::{portability_violation, render};
-pub use schema::{Endpoint, Image, Meta, Policy, SizingDescriptor, Target, Types};
+pub use schema::{Endpoint, Image, Meta, Params, Policy, SizingDescriptor, Target, Types};
 pub use vocabulary::{
-    Basis, Durability, EndpointKind, History, RegistrationPath, Reliability, Status,
+    Basis, CapacityNeed, Durability, EndpointKind, History, RegistrationPath, Reliability, Status,
 };
 
 /// How many TRANSIENT_LOCAL publishers this image declares.
@@ -591,6 +591,221 @@ mod tests {
         d.image = Image::new(Some(1), Some(1), Some(0));
         let back = parse(&render(&d), Path::new("p.toml")).unwrap();
         assert_eq!(back.image.subscriber_count().stated(), Some(&0));
+    }
+
+    // --- `[params]`, issue 1408 ---------------------------------------------
+
+    /// The island's parameter store, fully derived: three declarations on two
+    /// nodes, one of them a `string`.
+    fn with_params(d: &mut SizingDescriptor) {
+        d.params
+            .set_declared(Some(3))
+            .set_max_parameters(Some(4))
+            .set_max_param_name_len(Some(9))
+            .set_needs_max_string_value_len(Some(CapacityNeed::NeededBy {
+                node: "/a".into(),
+                name: "label".into(),
+            }))
+            .set_needs_max_array_len(Some(CapacityNeed::Unused))
+            .set_needs_max_byte_array_len(Some(CapacityNeed::Unused))
+            .set_service_shape(Some("4:31:1:5:1:0:0:0:0,2:17:0:0:0:0:0:0:0".into()));
+    }
+
+    #[test]
+    fn a_fully_stated_params_section_round_trips() {
+        let mut d = island();
+        with_params(&mut d);
+        let text = render(&d);
+        let back = parse(&text, Path::new("talker.toml")).unwrap();
+
+        assert_eq!(back.params.declared().stated(), Some(&3));
+        assert_eq!(back.params.max_parameters().stated(), Some(&4));
+        assert_eq!(back.params.max_param_name_len().stated(), Some(&9));
+        assert_eq!(
+            back.params
+                .needs_max_string_value_len()
+                .stated()
+                .and_then(|c| c.needed_by()),
+            Some(("/a", "label"))
+        );
+        assert_eq!(
+            back.params.needs_max_array_len().stated(),
+            Some(&CapacityNeed::Unused)
+        );
+        assert_eq!(
+            back.params.needs_max_byte_array_len().stated(),
+            Some(&CapacityNeed::Unused)
+        );
+        assert_eq!(
+            back.params.service_shape().stated().map(String::as_str),
+            Some("4:31:1:5:1:0:0:0:0,2:17:0:0:0:0:0:0:0")
+        );
+
+        // The typed value and the BYTES both survive: an artifact that is
+        // compared and written write-if-changed has to render identically from
+        // what it parsed, or every freshness comparison is a false negative.
+        assert_eq!(back, d);
+        assert_eq!(render(&back), text);
+    }
+
+    /// Every field of `[params]` must be in `FIELDS`, because `FIELDS` is what
+    /// the writer emits and what `refuse()` and the parse rules police. A field
+    /// present in the struct and missing from the list is silently DROPPED on
+    /// render while every accessor still reads it in memory — the shape that
+    /// looks like it works until somebody re-reads the file.
+    #[test]
+    fn every_params_field_is_rendered_and_read_back() {
+        let mut d = SizingDescriptor::new("p", Status::Derived, Basis::Contract);
+        with_params(&mut d);
+        let text = render(&d);
+        for field in [
+            "declared",
+            "max_parameters",
+            "max_param_name_len",
+            "needs_max_string_value_len",
+            "needs_max_array_len",
+            "needs_max_byte_array_len",
+            "service_shape",
+        ] {
+            assert!(
+                text.contains(&format!("\n{field} = ")),
+                "[params] did not render `{field}`:\n{text}"
+            );
+        }
+        assert_eq!(parse(&text, Path::new("p.toml")).unwrap(), d);
+    }
+
+    #[test]
+    fn a_refused_params_field_yields_no_value_and_degrades_nothing_else() {
+        let mut d = island();
+        with_params(&mut d);
+        // The model road has the declarations and not the token: a shape is
+        // per NODE and an image built from a probe has no node list to walk.
+        d.params.set_service_shape(None).refuse(
+            "service_shape",
+            "no per-node parameter shape on this road -- issue 1393",
+        );
+        let back = parse(&render(&d), Path::new("t.toml")).unwrap();
+
+        assert_eq!(back.params.service_shape().tag(), "refused");
+        assert!(back.params.service_shape().stated().is_none());
+        assert!(
+            back.params
+                .service_shape()
+                .refusal()
+                .unwrap()
+                .contains("1393")
+        );
+        // D6: a refusal degrades nothing else, in this section or any other.
+        assert_eq!(back.params.max_parameters().stated(), Some(&4));
+        assert_eq!(back.types.distinct_count().stated(), Some(&7));
+    }
+
+    #[test]
+    fn a_params_field_both_stated_and_refused_is_a_contradiction() {
+        let mut d = island();
+        with_params(&mut d);
+        let text = format!(
+            "{}\n[params.refused]\nmax_parameters = \"nobody counted\"\n",
+            render(&d)
+        );
+        let err = parse(&text, Path::new("t.toml")).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("both states and refuses"), "{msg}");
+        assert!(msg.contains("max_parameters"), "{msg}");
+    }
+
+    #[test]
+    fn a_params_refusal_naming_no_field_is_an_error() {
+        // A refusal nobody can read is worse than none -- the consumer defaults
+        // silently and the producer believes it warned.
+        let d = SizingDescriptor::new("p", Status::Partial, Basis::Contract);
+        let text = format!(
+            "{}\n[params.refused]\nmax_paramters = \"typo\"\n",
+            render(&d)
+        );
+        let err = parse(&text, Path::new("p.toml")).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("max_paramters"), "{msg}");
+        assert!(msg.contains("max_parameters"), "{msg}");
+    }
+
+    /// `unused` is a STATEMENT and an absent key is not, asserted in ONE test so
+    /// the distinction cannot collapse silently. An image that declares
+    /// parameters and uses no array type has told the board its
+    /// `MAX_ARRAY_LEN` buys nothing; an image that declares none has said
+    /// nothing at all, and the consumer must keep its builtin there.
+    #[test]
+    fn unused_is_stated_and_an_absent_field_is_not() {
+        let mut d = SizingDescriptor::new("p", Status::Partial, Basis::Contract);
+        d.params
+            .set_declared(Some(1))
+            .set_needs_max_array_len(Some(CapacityNeed::Unused));
+        let back = parse(&render(&d), Path::new("p.toml")).unwrap();
+
+        let unused = back.params.needs_max_array_len();
+        let absent = back.params.needs_max_byte_array_len();
+        assert_eq!(unused.stated(), Some(&CapacityNeed::Unused));
+        assert_eq!(unused.tag(), "stated");
+        assert_eq!(absent.tag(), "absent");
+        assert_eq!(absent.stated(), None);
+        assert!(absent.refusal().is_none());
+        assert_ne!(unused.tag(), absent.tag());
+    }
+
+    #[test]
+    fn an_unknown_capacity_need_spelling_refuses_rather_than_guessing() {
+        let mut d = SizingDescriptor::new("p", Status::Partial, Basis::Contract);
+        d.params.set_needs_max_array_len(Some(CapacityNeed::Unused));
+        let text = render(&d).replace("\"unused\"", "\"maybe\"");
+        let err = parse(&text, Path::new("p.toml")).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("maybe"), "{msg}");
+        assert!(msg.contains("unused"), "{msg}");
+        assert!(msg.contains("needed_by:"), "{msg}");
+    }
+
+    /// Backward compatibility: `[params]` is purely ADDITIVE, so
+    /// `SCHEMA_VERSION` stays 1 and a descriptor written before it exists parses
+    /// unchanged. Every accessor then answers `Absent`, which is the true
+    /// answer — the file's writer knew nothing about parameters.
+    #[test]
+    fn a_descriptor_with_no_params_section_parses_and_reads_absent() {
+        let text = "\
+schema_version = 1
+
+[meta]
+entry = \"legacy\"
+status = \"derived\"
+basis = \"contract\"
+";
+        let back = parse(text, Path::new("legacy.toml")).unwrap();
+        assert_eq!(back.params, Params::default());
+        assert_eq!(back.params.declared().tag(), "absent");
+        assert_eq!(back.params.max_parameters().tag(), "absent");
+        assert_eq!(back.params.max_param_name_len().tag(), "absent");
+        assert_eq!(back.params.needs_max_string_value_len().tag(), "absent");
+        assert_eq!(back.params.needs_max_array_len().tag(), "absent");
+        assert_eq!(back.params.needs_max_byte_array_len().tag(), "absent");
+        assert_eq!(back.params.service_shape().tag(), "absent");
+        // And none of them yields a value by any accessor.
+        assert!(back.params.declared().stated().is_none());
+        assert!(back.params.service_shape().stated().is_none());
+    }
+
+    /// Zero declared parameters is a DEMAND, not an absence (D7). An image that
+    /// declares `params:` on every node and names none of them has said its
+    /// store holds only the seeded `use_sim_time`.
+    #[test]
+    fn zero_declared_parameters_is_a_demand_and_survives_unfloored() {
+        let mut d = SizingDescriptor::new("p", Status::Derived, Basis::Contract);
+        d.params
+            .set_declared(Some(0))
+            .set_max_parameters(Some(1))
+            .set_max_param_name_len(Some(12));
+        let back = parse(&render(&d), Path::new("p.toml")).unwrap();
+        assert_eq!(back.params.declared().stated(), Some(&0));
+        assert_eq!(back.params.max_parameters().stated(), Some(&1));
     }
 
     // --- negative controls: a reader that would default silently -------------

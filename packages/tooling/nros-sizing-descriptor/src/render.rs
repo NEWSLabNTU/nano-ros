@@ -25,7 +25,7 @@
 //! writes freely, and the one place an interpolated `Path::display()` would slip
 //! in. A refusal that names a file names it relative, or names the entry instead.
 
-use crate::schema::{Endpoint, Image, Meta, Policy, SizingDescriptor, Target, Types};
+use crate::schema::{Endpoint, Image, Meta, Params, Policy, SizingDescriptor, Target, Types};
 
 /// The header every descriptor carries.
 const HEADER: &str = "\
@@ -91,6 +91,10 @@ pub fn render(desc: &SizingDescriptor) -> String {
     emit_values(&mut out, Types::FIELDS, |f| desc.types.raw_value(f));
     emit_refusals(&mut out, "types.refused", desc.types.refusals());
 
+    out.push_str("\n[params]\n");
+    emit_values(&mut out, Params::FIELDS, |f| desc.params.raw_value(f));
+    emit_refusals(&mut out, "params.refused", desc.params.refusals());
+
     out.push_str("\n[policy]\n");
     emit_values(&mut out, Policy::FIELDS, |f| desc.policy.raw_value(f));
     emit_refusals(&mut out, "policy.refused", desc.policy.refusals());
@@ -131,7 +135,7 @@ fn emit_refusals(
 /// A newline inside a refusal would split the key/value line and produce a file
 /// that parses as something else — the failure mode is a WRONG descriptor, not a
 /// broken one, so it is normalised here rather than trusted to every producer.
-fn escape(s: &str) -> String {
+pub(crate) fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
