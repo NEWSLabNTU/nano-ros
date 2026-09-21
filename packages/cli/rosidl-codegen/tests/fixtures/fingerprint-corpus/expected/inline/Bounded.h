@@ -15,8 +15,8 @@
 
 #include <nros/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 6. */
-#define NROS_EMITTED_CODEGEN_VERSION 6
+/* RFC-0090 — emitted by nano-ros codegen version 7. */
+#define NROS_EMITTED_CODEGEN_VERSION 7
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."

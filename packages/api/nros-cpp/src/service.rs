@@ -868,3 +868,115 @@ pub unsafe extern "C" fn nros_cpp_service_client_relocate(
     }
     NROS_CPP_RET_OK
 }
+
+// ============================================================================
+// issue 1437 / phase-444 — the granted-QoS read-back, service + client.
+//
+// ONE `create` builds TWO endpoints that negotiate against different peers,
+// so a service and a client each answer TWICE and neither half stands for the
+// other; `rmw_service_t` and `rmw_client_t` carry no `qos` field for that
+// reason. Both directions come back from one call rather than two, because
+// they are read from one handle and a caller comparing them against its
+// request wants them together.
+//
+// Both roads answer: `storage` non-NULL is the poll/future-style handle that
+// owns its entity, otherwise `(executor, handle_id)` names the arena entry a
+// callback-style one registered. See
+// `nros_cpp_subscription_get_actual_qos` for why serving only the first would
+// be absent where it is used.
+// ============================================================================
+
+/// The QoS the backend GRANTED a service server's two endpoints — issue 1437.
+///
+/// `out_request` is `rmw_service_request_subscription_get_actual_qos`,
+/// `out_response` is `rmw_service_response_publisher_get_actual_qos`. Either
+/// may be NULL to skip it. A policy the backend cannot report comes back as
+/// that enum's `UNKNOWN`, never as the request.
+///
+/// # Safety
+/// Exactly one of `storage` / `executor` identifies a live service; the
+/// non-NULL out-pointers must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_server_get_actual_qos(
+    storage: *const c_void,
+    executor: *mut c_void,
+    handle_id: usize,
+    out_request: *mut nros_cpp_qos_t,
+    out_response: *mut nros_cpp_qos_t,
+) -> nros_cpp_ret_t {
+    if out_request.is_null() && out_response.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let (request, response) = if !storage.is_null() {
+        let server = unsafe { &*(storage as *const nros::internals::RmwServiceServer) };
+        (
+            ServiceTrait::request_subscription_actual_qos(server),
+            ServiceTrait::response_publisher_actual_qos(server),
+        )
+    } else {
+        let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        match unsafe { ctx.executor.service_server_handle(handle_id) } {
+            Some(handle) => (
+                ServiceTrait::request_subscription_actual_qos(handle),
+                ServiceTrait::response_publisher_actual_qos(handle),
+            ),
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    };
+    if !out_request.is_null() {
+        unsafe { *out_request = nros_cpp_qos_t::from_qos_settings(request) };
+    }
+    if !out_response.is_null() {
+        unsafe { *out_response = nros_cpp_qos_t::from_qos_settings(response) };
+    }
+    NROS_CPP_RET_OK
+}
+
+/// The QoS the backend GRANTED a service client's two endpoints — issue 1437.
+///
+/// `out_request` is `rmw_client_request_publisher_get_actual_qos`,
+/// `out_response` is `rmw_client_response_subscription_get_actual_qos`.
+/// Sibling of [`nros_cpp_service_server_get_actual_qos`]; same rules.
+///
+/// # Safety
+/// Exactly one of `storage` / `executor` identifies a live client; the
+/// non-NULL out-pointers must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_client_get_actual_qos(
+    storage: *const c_void,
+    executor: *mut c_void,
+    handle_id: usize,
+    out_request: *mut nros_cpp_qos_t,
+    out_response: *mut nros_cpp_qos_t,
+) -> nros_cpp_ret_t {
+    if out_request.is_null() && out_response.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let (request, response) = if !storage.is_null() {
+        let client = unsafe { &*(storage as *const nros::internals::RmwServiceClient) };
+        (
+            ClientTrait::request_publisher_actual_qos(client),
+            ClientTrait::response_subscription_actual_qos(client),
+        )
+    } else {
+        let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        match unsafe { ctx.executor.service_client_handle(handle_id) } {
+            Some(handle) => (
+                ClientTrait::request_publisher_actual_qos(handle),
+                ClientTrait::response_subscription_actual_qos(handle),
+            ),
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    };
+    if !out_request.is_null() {
+        unsafe { *out_request = nros_cpp_qos_t::from_qos_settings(request) };
+    }
+    if !out_response.is_null() {
+        unsafe { *out_response = nros_cpp_qos_t::from_qos_settings(response) };
+    }
+    NROS_CPP_RET_OK
+}

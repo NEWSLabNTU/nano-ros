@@ -303,12 +303,35 @@ const fn u64s_for<T>() -> usize {
 // QoS types (passed from C++ to Rust by value)
 // ============================================================================
 
+// The two sentinels — issue 1437, phase-444.
+//
+// These four enums carried concrete values only, which was sound while a
+// `nros_cpp_qos_t` could only travel C++ -> Rust as a REQUEST. The
+// `*_get_actual_qos` family reverses the direction, and a GRANT has two
+// answers a request never has: `UNKNOWN` ("the backend looked and cannot
+// say", upstream's `RMW_QOS_POLICY_*_UNKNOWN`, an ABSENCE) and
+// `SYSTEM_DEFAULT` ("nobody stated this policy, so the middleware chose").
+// Appended, never renumbered.
+//
+// Values are IDENTICAL to `nros::ReliabilityPolicy` and its three siblings in
+// `<nros/qos.hpp>`, which is what lets `detail::qos_to_ffi` /
+// `detail::qos_from_ffi` `static_cast` between them. That is a deliberate
+// value-for-value mirror between two C++-side vocabularies — NOT the RMW
+// ABI's numbering, which is skewed against both in all four enums (see
+// `nros-c/src/qos.rs`'s header for the table). Nothing here may be cast to or
+// from an `NROS_RMW_*` value.
+
 /// QoS reliability policy.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nros_cpp_qos_reliability_t {
     NROS_CPP_QOS_RELIABLE = 0,
     NROS_CPP_QOS_BEST_EFFORT = 1,
+    /// Nobody stated a reliability policy — the middleware chose.
+    NROS_CPP_QOS_RELIABILITY_SYSTEM_DEFAULT = 2,
+    /// The backend could not determine this policy. An absence, never a
+    /// request.
+    NROS_CPP_QOS_RELIABILITY_UNKNOWN = 3,
 }
 
 /// QoS durability policy.
@@ -317,6 +340,10 @@ pub enum nros_cpp_qos_reliability_t {
 pub enum nros_cpp_qos_durability_t {
     NROS_CPP_QOS_VOLATILE = 0,
     NROS_CPP_QOS_TRANSIENT_LOCAL = 1,
+    /// Nobody stated a durability policy — the middleware chose.
+    NROS_CPP_QOS_DURABILITY_SYSTEM_DEFAULT = 2,
+    /// The backend could not determine this policy.
+    NROS_CPP_QOS_DURABILITY_UNKNOWN = 3,
 }
 
 /// QoS history policy.
@@ -325,16 +352,25 @@ pub enum nros_cpp_qos_durability_t {
 pub enum nros_cpp_qos_history_t {
     NROS_CPP_QOS_KEEP_LAST = 0,
     NROS_CPP_QOS_KEEP_ALL = 1,
+    /// Nobody stated a history policy — the middleware chose.
+    NROS_CPP_QOS_HISTORY_SYSTEM_DEFAULT = 2,
+    /// The backend could not determine this policy.
+    NROS_CPP_QOS_HISTORY_UNKNOWN = 3,
 }
 
 /// QoS liveliness policy. Phase 108.B.7 — matches DDS `LIVELINESS`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nros_cpp_qos_liveliness_t {
+    /// Also the "nobody stated a liveliness policy" slot — discriminant 0 is
+    /// what the RMW ABI spells `SYSTEM_DEFAULT`, so this enum gains no
+    /// separate one.
     NROS_CPP_QOS_LIVELINESS_NONE = 0,
     NROS_CPP_QOS_LIVELINESS_AUTOMATIC = 1,
     NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
     NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
+    /// The backend could not determine this policy.
+    NROS_CPP_QOS_LIVELINESS_UNKNOWN = 4,
 }
 
 /// QoS settings (passed by value from C++).
@@ -379,16 +415,32 @@ impl nros_cpp_qos_t {
                 nros_cpp_qos_reliability_t::NROS_CPP_QOS_BEST_EFFORT => {
                     QoSReliabilityPolicy::BestEffort
                 }
+                nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABILITY_SYSTEM_DEFAULT => {
+                    QoSReliabilityPolicy::SystemDefault
+                }
+                nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABILITY_UNKNOWN => {
+                    QoSReliabilityPolicy::Unknown
+                }
             },
             durability: match self.durability {
                 nros_cpp_qos_durability_t::NROS_CPP_QOS_VOLATILE => QoSDurabilityPolicy::Volatile,
                 nros_cpp_qos_durability_t::NROS_CPP_QOS_TRANSIENT_LOCAL => {
                     QoSDurabilityPolicy::TransientLocal
                 }
+                nros_cpp_qos_durability_t::NROS_CPP_QOS_DURABILITY_SYSTEM_DEFAULT => {
+                    QoSDurabilityPolicy::SystemDefault
+                }
+                nros_cpp_qos_durability_t::NROS_CPP_QOS_DURABILITY_UNKNOWN => {
+                    QoSDurabilityPolicy::Unknown
+                }
             },
             history: match self.history {
                 nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_LAST => QoSHistoryPolicy::KeepLast,
                 nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_ALL => QoSHistoryPolicy::KeepAll,
+                nros_cpp_qos_history_t::NROS_CPP_QOS_HISTORY_SYSTEM_DEFAULT => {
+                    QoSHistoryPolicy::SystemDefault
+                }
+                nros_cpp_qos_history_t::NROS_CPP_QOS_HISTORY_UNKNOWN => QoSHistoryPolicy::Unknown,
             },
             liveliness_kind: match self.liveliness_kind {
                 nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_NONE => {
@@ -403,6 +455,9 @@ impl nros_cpp_qos_t {
                 nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE => {
                     QoSLivelinessPolicy::ManualByNode
                 }
+                nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_UNKNOWN => {
+                    QoSLivelinessPolicy::Unknown
+                }
             },
             depth: self.depth as u32,
             deadline_ms: self.deadline_ms,
@@ -410,6 +465,84 @@ impl nros_cpp_qos_t {
             liveliness_lease_ms: self.liveliness_lease_ms,
             avoid_ros_namespace_conventions: self.avoid_ros_namespace_conventions != 0,
             tx_express: self.tx_express != 0,
+        }
+    }
+
+    /// The C++-FFI spelling of a profile that came OUT of the transport —
+    /// issue 1437, the inverse of [`to_qos_settings`](Self::to_qos_settings).
+    ///
+    /// Written for the `*_get_actual_qos` family, which is the only direction
+    /// that produces one. Total over `QoSProfile`, including the two answers
+    /// only a grant can carry: folding either onto a concrete policy would
+    /// report a value where the backend reported an absence.
+    pub(crate) fn from_qos_settings(qos: nros_rmw::QoSProfile) -> Self {
+        use nros_rmw::{
+            QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSReliabilityPolicy,
+        };
+
+        Self {
+            reliability: match qos.reliability {
+                QoSReliabilityPolicy::Reliable => nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABLE,
+                QoSReliabilityPolicy::BestEffort => {
+                    nros_cpp_qos_reliability_t::NROS_CPP_QOS_BEST_EFFORT
+                }
+                QoSReliabilityPolicy::SystemDefault => {
+                    nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABILITY_SYSTEM_DEFAULT
+                }
+                QoSReliabilityPolicy::Unknown => {
+                    nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABILITY_UNKNOWN
+                }
+            },
+            durability: match qos.durability {
+                QoSDurabilityPolicy::Volatile => nros_cpp_qos_durability_t::NROS_CPP_QOS_VOLATILE,
+                QoSDurabilityPolicy::TransientLocal => {
+                    nros_cpp_qos_durability_t::NROS_CPP_QOS_TRANSIENT_LOCAL
+                }
+                QoSDurabilityPolicy::SystemDefault => {
+                    nros_cpp_qos_durability_t::NROS_CPP_QOS_DURABILITY_SYSTEM_DEFAULT
+                }
+                QoSDurabilityPolicy::Unknown => {
+                    nros_cpp_qos_durability_t::NROS_CPP_QOS_DURABILITY_UNKNOWN
+                }
+            },
+            history: match qos.history {
+                QoSHistoryPolicy::KeepLast => nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_LAST,
+                QoSHistoryPolicy::KeepAll => nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_ALL,
+                QoSHistoryPolicy::SystemDefault => {
+                    nros_cpp_qos_history_t::NROS_CPP_QOS_HISTORY_SYSTEM_DEFAULT
+                }
+                QoSHistoryPolicy::Unknown => nros_cpp_qos_history_t::NROS_CPP_QOS_HISTORY_UNKNOWN,
+            },
+            liveliness_kind: match qos.liveliness_kind {
+                QoSLivelinessPolicy::None => {
+                    nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_NONE
+                }
+                QoSLivelinessPolicy::Automatic => {
+                    nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_AUTOMATIC
+                }
+                QoSLivelinessPolicy::ManualByTopic => {
+                    nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC
+                }
+                QoSLivelinessPolicy::ManualByNode => {
+                    nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE
+                }
+                QoSLivelinessPolicy::Unknown => {
+                    nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_UNKNOWN
+                }
+            },
+            // A runtime read-back, so `c_int::MAX` saturates rather than
+            // wrapping into a negative queue depth. No in-tree backend can
+            // reach it; a future one must not get it silently wrong.
+            depth: if qos.depth > c_int::MAX as u32 {
+                c_int::MAX
+            } else {
+                qos.depth as c_int
+            },
+            deadline_ms: qos.deadline_ms,
+            lifespan_ms: qos.lifespan_ms,
+            liveliness_lease_ms: qos.liveliness_lease_ms,
+            avoid_ros_namespace_conventions: u8::from(qos.avoid_ros_namespace_conventions),
+            tx_express: u8::from(qos.tx_express),
         }
     }
 }

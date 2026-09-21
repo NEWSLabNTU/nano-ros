@@ -103,6 +103,20 @@ pub struct nros_subscription_t {
     /// `RawSubscription<MESSAGE_BUFFER_SIZE>`. Zeroed in callback (L2)
     /// mode; populated by `nros_subscription_init_polling`.
     pub _opaque: [u64; SUBSCRIPTION_OPAQUE_U64S],
+    /// issue 1437 — the `nros_executor_t` holding this subscription's arena
+    /// entry, or NULL. Set beside [`handle_id`](Self::handle_id) by
+    /// `nros_executor_add_subscription*`; NULL on the L1 polling road, where
+    /// the subscriber is inline in `_opaque` and there is no executor.
+    ///
+    /// The pair is the same `(executor_ptr, arena_entry_index)` that
+    /// `ServiceServerInternal` and `ServiceClientInternal` already carry —
+    /// this struct was the one L2 entity that recorded the INDEX and not the
+    /// arena it indexes, so a reader holding a subscription could not reach
+    /// the entity the executor owns. Appended AFTER `_opaque` so every
+    /// existing field offset is unchanged.
+    ///
+    /// Internal: treat as opaque.
+    pub _executor: *mut c_void,
 }
 
 impl Default for nros_subscription_t {
@@ -122,6 +136,7 @@ impl Default for nros_subscription_t {
             handle_id: usize::MAX,
             sched_context_id: 0,
             _opaque: [0u64; SUBSCRIPTION_OPAQUE_U64S],
+            _executor: ptr::null_mut(),
         }
     }
 }
@@ -309,6 +324,10 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
     // Subscriber creation is deferred to nros_executor_add_subscription(),
     // which calls nros_node::Executor::add_arena_subscription_c_callback().
     subscription.handle_id = usize::MAX;
+    // issue 1437 — the index and the arena it indexes are ONE fact;
+    // clearing half would leave a stale executor pointer paired with
+    // "not registered".
+    subscription._executor = ptr::null_mut();
     subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED;
 
     NROS_RET_OK
@@ -489,6 +508,10 @@ pub unsafe extern "C" fn nros_subscription_init_polling_with_qos(
     subscription_mut.callback = None;
     subscription_mut.context = ptr::null_mut();
     subscription_mut.handle_id = usize::MAX;
+    // issue 1437 — the index and the arena it indexes are ONE fact;
+    // clearing half would leave a stale executor pointer paired with
+    // "not registered".
+    subscription_mut._executor = ptr::null_mut();
 
     // Resolve the SOURCE topic name to its wire name. The L2 (callback) path
     // gets this from `nros_executor_add_subscription`; the L1 path creates the
@@ -934,6 +957,73 @@ pub unsafe extern "C" fn nros_subscription_take_sequence(
     }
 }
 
+/// The QoS profile this subscription is ACTUALLY running — issue 1437.
+///
+/// `rcl_subscription_get_actual_qos`. See
+/// [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos)
+/// for what "actual" means, why an unreportable policy reads back as
+/// `NROS_QOS_*_UNKNOWN` rather than as your request, and why this API returns
+/// a status with an out-parameter where `rcl` returns an interior pointer.
+///
+/// Answers on BOTH roads a C subscription can be on: the L1 polling road,
+/// where the subscriber is inline in the handle, and the L2 callback road,
+/// where the executor arena owns it and the handle carries only
+/// `(executor, handle_id)`. The callback road is the one `rclc`-shaped code
+/// takes, so an accessor that served only the first would be missing where it
+/// is most used.
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `NROS_RET_NOT_INIT` if the subscription is in neither state, or is in
+///   the callback state but has not been added to an executor yet — there is
+///   no entity to ask, which is a different answer from `UNKNOWN` ("there is
+///   an entity and it cannot say")
+///
+/// # Safety
+/// * `subscription` must be a valid pointer to an initialized subscription.
+/// * `out_qos` must be a valid, writable `nros_qos_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_subscription_get_actual_qos(
+    subscription: *const nros_subscription_t,
+    out_qos: *mut nros_qos_t,
+) -> nros_ret_t {
+    validate_not_null!(subscription, out_qos);
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let subscription = &*subscription;
+        let granted = match subscription.state {
+            nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_POLLING => {
+                let handle = &*(subscription._opaque.as_ptr()
+                    as *const nros_node::RawSubscription<{ crate::config::MESSAGE_BUFFER_SIZE }>);
+                handle.qos()
+            }
+            nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED => {
+                if subscription._executor.is_null() || subscription.handle_id == usize::MAX {
+                    return NROS_RET_NOT_INIT;
+                }
+                let exec_t =
+                    &mut *(subscription._executor as *mut crate::executor::nros_executor_t);
+                let exec = crate::executor::get_executor(&mut exec_t._opaque);
+                match exec.subscription_handle(subscription.handle_id) {
+                    Some(handle) => nros_rmw::Subscription::actual_qos(handle),
+                    None => return NROS_RET_NOT_INIT,
+                }
+            }
+            _ => return NROS_RET_NOT_INIT,
+        };
+        *out_qos = nros_qos_t::from_qos_settings(granted);
+        NROS_RET_OK
+    }
+
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = subscription;
+        NROS_RET_NOT_INIT
+    }
+}
+
 /// # Returns
 /// * `NROS_RET_OK` on success
 /// * `NROS_RET_INVALID_ARGUMENT` if `subscription` is NULL
@@ -981,6 +1071,10 @@ pub unsafe extern "C" fn nros_subscription_fini(
     }
 
     subscription.handle_id = usize::MAX;
+    // issue 1437 — the index and the arena it indexes are ONE fact;
+    // clearing half would leave a stale executor pointer paired with
+    // "not registered".
+    subscription._executor = ptr::null_mut();
     subscription.callback = None;
     subscription.context = ptr::null_mut();
     subscription.node = crate::node::nros_node_ref_t::none();
@@ -1070,9 +1164,16 @@ impl nros_subscription_t {
         self.qos.to_qos_settings()
     }
 
-    /// Set the handle ID from executor registration
-    pub(crate) fn set_handle_id(&mut self, id: nros_node::HandleId) {
+    /// Record the arena entry this subscription was registered into.
+    ///
+    /// issue 1437 — ONE setter, taking BOTH halves. It used to be
+    /// `set_handle_id(id)` alone, and the executor pointer that makes the
+    /// index resolvable was simply not stored; three call sites would each
+    /// have had to remember the second assignment, which is how a mirror
+    /// drifts. A single setter cannot be half-called.
+    pub(crate) fn set_arena_entry(&mut self, id: nros_node::HandleId, executor: *mut c_void) {
         self.handle_id = id.0;
+        self._executor = executor;
     }
 }
 

@@ -580,6 +580,16 @@ typedef enum nros_qos_reliability_t {
    * Reliable delivery - retransmit if needed
    */
   NROS_QOS_RELIABILITY_RELIABLE = 1,
+  /**
+   * The caller stated no reliability policy — the middleware chose.
+   * Upstream's `RMW_QOS_POLICY_RELIABILITY_SYSTEM_DEFAULT`.
+   */
+  NROS_QOS_RELIABILITY_SYSTEM_DEFAULT = 2,
+  /**
+   * The backend could not determine this policy — an ABSENCE, never a
+   * request. Upstream's `RMW_QOS_POLICY_RELIABILITY_UNKNOWN`.
+   */
+  NROS_QOS_RELIABILITY_UNKNOWN = 3,
 } nros_qos_reliability_t;
 
 /**
@@ -594,6 +604,16 @@ typedef enum nros_qos_durability_t {
    * Transient local - persist for late joiners
    */
   NROS_QOS_DURABILITY_TRANSIENT_LOCAL = 1,
+  /**
+   * The caller stated no durability policy — the middleware chose.
+   * Upstream's `RMW_QOS_POLICY_DURABILITY_SYSTEM_DEFAULT`.
+   */
+  NROS_QOS_DURABILITY_SYSTEM_DEFAULT = 2,
+  /**
+   * The backend could not determine this policy — an ABSENCE, never a
+   * request. Upstream's `RMW_QOS_POLICY_DURABILITY_UNKNOWN`.
+   */
+  NROS_QOS_DURABILITY_UNKNOWN = 3,
 } nros_qos_durability_t;
 
 /**
@@ -608,6 +628,16 @@ typedef enum nros_qos_history_t {
    * Keep all samples
    */
   NROS_QOS_HISTORY_KEEP_ALL = 1,
+  /**
+   * The caller stated no history policy — the middleware chose.
+   * Upstream's `RMW_QOS_POLICY_HISTORY_SYSTEM_DEFAULT`.
+   */
+  NROS_QOS_HISTORY_SYSTEM_DEFAULT = 2,
+  /**
+   * The backend could not determine this policy — an ABSENCE, never a
+   * request. Upstream's `RMW_QOS_POLICY_HISTORY_UNKNOWN`.
+   */
+  NROS_QOS_HISTORY_UNKNOWN = 3,
 } nros_qos_history_t;
 
 /**
@@ -616,6 +646,13 @@ typedef enum nros_qos_history_t {
 typedef enum nros_qos_liveliness_t {
   /**
    * No liveliness assertion or tracking.
+   *
+   * This is ALSO the "nobody stated a liveliness policy" slot — it is
+   * discriminant 0, the value the RMW ABI spells
+   * `NROS_RMW_LIVELINESS_SYSTEM_DEFAULT`, and a backend that sees it omits
+   * the DDS call entirely. So this enum gains no separate
+   * `SYSTEM_DEFAULT`: it would be a second name for a value that already
+   * has one, which is how a vocabulary starts disagreeing with itself.
    */
   NROS_QOS_LIVELINESS_NONE = 0,
   /**
@@ -630,6 +667,11 @@ typedef enum nros_qos_liveliness_t {
    * Application calls `assert_liveliness()` at the node level.
    */
   NROS_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
+  /**
+   * The backend could not determine this policy — an ABSENCE, never a
+   * request. Upstream's `RMW_QOS_POLICY_LIVELINESS_UNKNOWN`.
+   */
+  NROS_QOS_LIVELINESS_UNKNOWN = 4,
 } nros_qos_liveliness_t;
 
 /**
@@ -1937,6 +1979,22 @@ typedef struct nros_subscription_t {
    * mode; populated by `nros_subscription_init_polling`.
    */
   uint64_t _opaque[SUBSCRIPTION_OPAQUE_U64S];
+  /**
+   * issue 1437 — the `nros_executor_t` holding this subscription's arena
+   * entry, or NULL. Set beside [`handle_id`](Self::handle_id) by
+   * `nros_executor_add_subscription*`; NULL on the L1 polling road, where
+   * the subscriber is inline in `_opaque` and there is no executor.
+   *
+   * The pair is the same `(executor_ptr, arena_entry_index)` that
+   * `ServiceServerInternal` and `ServiceClientInternal` already carry —
+   * this struct was the one L2 entity that recorded the INDEX and not the
+   * arena it indexes, so a reader holding a subscription could not reach
+   * the entity the executor owns. Appended AFTER `_opaque` so every
+   * existing field offset is unchanged.
+   *
+   * Internal: treat as opaque.
+   */
+  void *_executor;
 } nros_subscription_t;
 
 /**
@@ -7066,6 +7124,52 @@ nros_ret_t nros_publisher_discard(const struct nros_publisher_t *publisher,
                                   void *token);
 
 /**
+ * The QoS profile this publisher is ACTUALLY running — issue 1437.
+ *
+ * `rcl_publisher_get_actual_qos`. What the BACKEND GRANTED, which differs
+ * from what `nros_publisher_init_with_qos` was handed whenever the backend
+ * serves something else (zenoh clamps history depth to its receive ring;
+ * DDS negotiates; a launch-lowered `nros_node_set_qos_overrides` row has
+ * already been folded in before either). That difference is what answers
+ * "why is nothing arriving": a RELIABLE reader does not match a BEST_EFFORT
+ * writer, and a clamped depth drops samples the caller believed were kept.
+ *
+ * **Per policy, and a policy the backend cannot report is an ABSENCE**, not
+ * your request echoed back: it reads `NROS_QOS_*_UNKNOWN`. A backend with no
+ * read-back at all (XRCE) answers UNKNOWN in every field. Compare against
+ * your request field by field; do NOT assume agreement where you find it
+ * without checking for the sentinel first.
+ *
+ * Free: the profile was read once at create and retained, so this never
+ * re-enters the transport and is safe from a callback.
+ *
+ * # Parameters
+ * * `publisher` - an initialized publisher
+ * * `out_qos` - written on success; untouched on every error
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+ * * `NROS_RET_NOT_INIT` if the publisher is not initialized
+ *
+ * # Shape, and why it is not upstream's
+ * `rcl` returns `const rmw_qos_profile_t *` — an interior pointer into the
+ * handle. That costs a retained `nros_qos_t` in every `nros_publisher_t`,
+ * i.e. RAM in every image including those that never ask, and it hands out a
+ * pointer whose lifetime the caller has to reason about with no ownership
+ * types to help. An out-parameter plus a status is this API's own shape
+ * (RFC-0018), and it is the shape that lets the NOT_INIT case be reported
+ * rather than encoded as NULL.
+ *
+ * # Safety
+ * * `publisher` must be a valid pointer to an initialized publisher.
+ * * `out_qos` must be a valid, writable `nros_qos_t`.
+ */
+NROS_PUBLIC
+nros_ret_t nros_publisher_get_actual_qos(const struct nros_publisher_t *publisher,
+                                         struct nros_qos_t *out_qos);
+
+/**
  * Finalize a publisher.
  *
  * # Parameters
@@ -7678,6 +7782,98 @@ NROS_PUBLIC const char *rcl_client_get_service_name(const struct nros_client_t *
 NROS_PUBLIC bool rcl_client_is_valid(const struct nros_client_t *client);
 
 /**
+ * The QoS the backend GRANTED this service's REQUEST endpoint — the
+ * subscription that receives calls.
+ *
+ * `rcl_service_request_subscription_get_actual_qos`. **A policy the backend could not report reads back as
+ * `NROS_QOS_*_UNKNOWN`**, never as your request — see
+ * [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos).
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+ * * `NROS_RET_NOT_INIT` if the handle is in no usable state, or is
+ *   callback-mode and not yet added to an executor — there is no entity to
+ *   ask, which is a different answer from `UNKNOWN` ("there is an entity and
+ *   it cannot say")
+ *
+ * # Safety
+ * Both pointers must be valid; `out_qos` must be writable.
+ */
+NROS_PUBLIC
+nros_ret_t nros_service_request_subscription_get_actual_qos(const struct nros_service_t *handle,
+                                                            struct nros_qos_t *out_qos);
+
+/**
+ * The QoS the backend GRANTED this service's RESPONSE endpoint — the
+ * publisher that sends replies.
+ *
+ * `rcl_service_response_publisher_get_actual_qos`. **A policy the backend could not report reads back as
+ * `NROS_QOS_*_UNKNOWN`**, never as your request — see
+ * [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos).
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+ * * `NROS_RET_NOT_INIT` if the handle is in no usable state, or is
+ *   callback-mode and not yet added to an executor — there is no entity to
+ *   ask, which is a different answer from `UNKNOWN` ("there is an entity and
+ *   it cannot say")
+ *
+ * # Safety
+ * Both pointers must be valid; `out_qos` must be writable.
+ */
+NROS_PUBLIC
+nros_ret_t nros_service_response_publisher_get_actual_qos(const struct nros_service_t *handle,
+                                                          struct nros_qos_t *out_qos);
+
+/**
+ * The QoS the backend GRANTED this client's REQUEST endpoint — the
+ * publisher that sends calls.
+ *
+ * `rcl_client_request_publisher_get_actual_qos`. **A policy the backend could not report reads back as
+ * `NROS_QOS_*_UNKNOWN`**, never as your request — see
+ * [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos).
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+ * * `NROS_RET_NOT_INIT` if the handle is in no usable state, or is
+ *   callback-mode and not yet added to an executor — there is no entity to
+ *   ask, which is a different answer from `UNKNOWN` ("there is an entity and
+ *   it cannot say")
+ *
+ * # Safety
+ * Both pointers must be valid; `out_qos` must be writable.
+ */
+NROS_PUBLIC
+nros_ret_t nros_client_request_publisher_get_actual_qos(const struct nros_client_t *handle,
+                                                        struct nros_qos_t *out_qos);
+
+/**
+ * The QoS the backend GRANTED this client's RESPONSE endpoint — the
+ * subscription that receives replies.
+ *
+ * `rcl_client_response_subscription_get_actual_qos`. **A policy the backend could not report reads back as
+ * `NROS_QOS_*_UNKNOWN`**, never as your request — see
+ * [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos).
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+ * * `NROS_RET_NOT_INIT` if the handle is in no usable state, or is
+ *   callback-mode and not yet added to an executor — there is no entity to
+ *   ask, which is a different answer from `UNKNOWN` ("there is an entity and
+ *   it cannot say")
+ *
+ * # Safety
+ * Both pointers must be valid; `out_qos` must be writable.
+ */
+NROS_PUBLIC
+nros_ret_t nros_client_response_subscription_get_actual_qos(const struct nros_client_t *handle,
+                                                            struct nros_qos_t *out_qos);
+
+/**
  * Get a zero-initialized subscription.
  */
 NROS_PUBLIC struct nros_subscription_t rcl_get_zero_initialized_subscription(void);
@@ -8016,6 +8212,38 @@ int32_t nros_subscription_take_sequence(struct nros_subscription_t *subscription
                                         size_t per_msg_cap,
                                         size_t max_msgs,
                                         size_t *out_lens);
+
+/**
+ * The QoS profile this subscription is ACTUALLY running — issue 1437.
+ *
+ * `rcl_subscription_get_actual_qos`. See
+ * [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos)
+ * for what "actual" means, why an unreportable policy reads back as
+ * `NROS_QOS_*_UNKNOWN` rather than as your request, and why this API returns
+ * a status with an out-parameter where `rcl` returns an interior pointer.
+ *
+ * Answers on BOTH roads a C subscription can be on: the L1 polling road,
+ * where the subscriber is inline in the handle, and the L2 callback road,
+ * where the executor arena owns it and the handle carries only
+ * `(executor, handle_id)`. The callback road is the one `rclc`-shaped code
+ * takes, so an accessor that served only the first would be missing where it
+ * is most used.
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+ * * `NROS_RET_NOT_INIT` if the subscription is in neither state, or is in
+ *   the callback state but has not been added to an executor yet — there is
+ *   no entity to ask, which is a different answer from `UNKNOWN` ("there is
+ *   an entity and it cannot say")
+ *
+ * # Safety
+ * * `subscription` must be a valid pointer to an initialized subscription.
+ * * `out_qos` must be a valid, writable `nros_qos_t`.
+ */
+NROS_PUBLIC
+nros_ret_t nros_subscription_get_actual_qos(const struct nros_subscription_t *subscription,
+                                            struct nros_qos_t *out_qos);
 
 /**
  * # Returns

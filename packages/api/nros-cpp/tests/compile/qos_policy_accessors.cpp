@@ -204,4 +204,85 @@ static_assert(kMarshalled.liveliness_kind == NROS_CPP_QOS_LIVELINESS_MANUAL_BY_N
               "liveliness marshals");
 static_assert(kMarshalled.tx_express == 1, "tx_express marshals");
 
+// -- issue 1437: the two sentinels, and the mirror they depend on ---------
+//
+// `detail::qos_to_ffi` and `detail::qos_from_ffi` `static_cast` between
+// `nros::ReliabilityPolicy` and `nros_cpp_qos_reliability_t` (and three
+// siblings). That is only correct while the two vocabularies agree
+// ENUMERATOR FOR ENUMERATOR, and the phase-444 sentinels made each of them
+// longer — the exact shape in which a mirror goes stale. So the agreement is
+// MEASURED here rather than asserted in a comment beside the cast.
+//
+// NOTE these are NOT the RMW ABI's numbers. `<nros/rmw_entity.h>` spells
+// reliability SYSTEM_DEFAULT 0 / RELIABLE 1 / BEST_EFFORT 2, durability
+// SYSTEM_DEFAULT 0 / TRANSIENT_LOCAL 1 / VOLATILE 2, history SYSTEM_DEFAULT 0
+// / KEEP_LAST 1 / KEEP_ALL 2, and liveliness with MANUAL_BY_NODE and
+// MANUAL_BY_TOPIC TRANSPOSED against this header. All four differ; nothing
+// may cast between these values and those.
+
+static_assert(nros::ReliabilitySystemDefault == NROS_CPP_QOS_RELIABILITY_SYSTEM_DEFAULT &&
+                  nros::ReliabilityUnknown == NROS_CPP_QOS_RELIABILITY_UNKNOWN &&
+                  nros::Reliable == NROS_CPP_QOS_RELIABLE &&
+                  nros::BestEffort == NROS_CPP_QOS_BEST_EFFORT,
+              "nros::ReliabilityPolicy must mirror nros_cpp_qos_reliability_t value for value");
+static_assert(nros::DurabilitySystemDefault == NROS_CPP_QOS_DURABILITY_SYSTEM_DEFAULT &&
+                  nros::DurabilityUnknown == NROS_CPP_QOS_DURABILITY_UNKNOWN &&
+                  nros::Volatile == NROS_CPP_QOS_VOLATILE &&
+                  nros::TransientLocal == NROS_CPP_QOS_TRANSIENT_LOCAL,
+              "nros::DurabilityPolicy must mirror nros_cpp_qos_durability_t value for value");
+static_assert(nros::HistorySystemDefault == NROS_CPP_QOS_HISTORY_SYSTEM_DEFAULT &&
+                  nros::HistoryUnknown == NROS_CPP_QOS_HISTORY_UNKNOWN &&
+                  nros::KeepLast == NROS_CPP_QOS_KEEP_LAST &&
+                  nros::KeepAll == NROS_CPP_QOS_KEEP_ALL,
+              "nros::HistoryPolicy must mirror nros_cpp_qos_history_t value for value");
+static_assert(nros::LivelinessUnknown == NROS_CPP_QOS_LIVELINESS_UNKNOWN &&
+                  nros::LivelinessNone == NROS_CPP_QOS_LIVELINESS_NONE &&
+                  nros::LivelinessAutomatic == NROS_CPP_QOS_LIVELINESS_AUTOMATIC &&
+                  nros::LivelinessManualByTopic == NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC &&
+                  nros::LivelinessManualByNode == NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE,
+              "nros::LivelinessPolicy must mirror nros_cpp_qos_liveliness_t value for value");
+
+// The sentinels are APPENDED. Renumbering one would be an ABI break for every
+// shipped image, and it would be invisible: the enumerator names would still
+// resolve.
+static_assert(nros::ReliabilitySystemDefault == 2 && nros::ReliabilityUnknown == 3,
+              "the reliability sentinels are appended at 2 and 3");
+static_assert(nros::DurabilitySystemDefault == 2 && nros::DurabilityUnknown == 3,
+              "the durability sentinels are appended at 2 and 3");
+static_assert(nros::HistorySystemDefault == 2 && nros::HistoryUnknown == 3,
+              "the history sentinels are appended at 2 and 3");
+static_assert(nros::LivelinessUnknown == 4, "the liveliness sentinel is appended at 4");
+
+// `qos_from_ffi` is `qos_to_ffi`'s inverse, including for a profile NO SETTER
+// CAN BUILD — which is the whole reason it writes `QoS`'s members directly.
+// `qos_all_unknown()` is that profile and is itself built through
+// `qos_from_ffi`, so asserting on it measures both.
+//
+// Not written as a `constexpr` lambda initialising a `nros_cpp_qos_t`: this TU
+// is compiled at C++14 as well (the freestanding syntax probe), where a lambda
+// is not implicitly `constexpr` and the whole block goes non-constant.
+
+static_assert(nros::detail::qos_all_unknown().reliability() == nros::ReliabilityUnknown,
+              "an unreportable reliability survives the read-back conversion");
+static_assert(nros::detail::qos_all_unknown().liveliness() == nros::LivelinessUnknown,
+              "an unreportable liveliness survives the read-back conversion");
+static_assert(nros::detail::qos_all_unknown().durability() == nros::DurabilityUnknown,
+              "the all-absent profile is absent in every field");
+static_assert(nros::detail::qos_all_unknown().history() == nros::HistoryUnknown,
+              "the all-absent profile is absent in every field");
+
+// Round-trip through both conversions for an ordinary REQUEST profile: what a
+// caller wrote is what a read-back of the same values reports.
+static_assert(nros::detail::qos_from_ffi(kMarshalled) ==
+                  QoS()
+                      .deadline(Duration(0, 100000000u))
+                      .lifespan(Duration(1, 0))
+                      .liveliness_lease_duration(Duration(0, 5000000u))
+                      .best_effort()
+                      .transient_local()
+                      .keep_all()
+                      .liveliness(nros::LivelinessManualByNode)
+                      .tx_express(true),
+              "qos_from_ffi inverts qos_to_ffi");
+
 } // namespace

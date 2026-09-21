@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 6;
+pub const NROS_CODEGEN_VERSION: u32 = 7;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -109,6 +109,24 @@ pub const NROS_CODEGEN_VERSION: u32 = 6;
 /// under exactly those spellings. So the floor stays where it is. The gate is
 /// fail-closed on the extracted surface and cannot know which names nothing
 /// reached, which is the property that makes it worth keeping.
+///
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 7 (issue 1437, phase-444).
+/// ADDITIVE on the surface generated code names, plus one APPEND to a struct
+/// nothing generated declares. The additions are six new C entry points
+/// (`nros_{publisher,subscription}_get_actual_qos` and the four service /
+/// client halves) and two enumerators on each of the four `nros_qos_*_t`
+/// enums (`UNKNOWN`, and `SYSTEM_DEFAULT` on three of them), appended so every
+/// existing discriminant keeps its value. The append is `_executor` on
+/// `nros_subscription_t`, placed after `_opaque` so every existing field
+/// offset is unchanged — it grows the struct, which is why this is a surface
+/// move at all, and a version-6 tree that only names the struct by pointer is
+/// unaffected. Nothing was withdrawn, so the floor stays where it is.
+///
+/// The gate reports the move as two CHANGED types rather than as the four
+/// added prototypes, because a `const struct nros_service_t *` parameter is a
+/// tagged reference and keys on the same `c|type|<header>|<name>` row as the
+/// struct itself. That is the gate being fail-closed on text, which is the
+/// property the version-4 paragraph above argues for keeping.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

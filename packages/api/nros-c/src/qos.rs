@@ -1,4 +1,52 @@
 //! QoS (Quality of Service) settings for the C API.
+//!
+//! # The two sentinels, and why they are here (issue 1437, phase-444)
+//!
+//! Until phase-444 the four enums below carried CONCRETE VALUES ONLY. That
+//! was sound while a `nros_qos_t` could only ever travel one way — a C caller
+//! WRITES a profile and hands it to `nros_*_init_with_qos` — because a
+//! request is always a concrete demand.
+//!
+//! `nros_*_get_actual_qos` reverses the direction: the struct now also
+//! carries what a BACKEND GRANTED, and a grant has two answers a request
+//! never has. `rmw_vtable.h` has always owed both:
+//!
+//! * `*_UNKNOWN` — **the backend looked and cannot say.** Upstream's
+//!   `RMW_QOS_POLICY_*_UNKNOWN`, and what `rmw_publisher_get_actual_qos`
+//!   requires for a policy an implementation cannot determine. An ABSENCE,
+//!   not a value. A profile that is unknown in EVERY field is the honest
+//!   answer from a backend with no read-back at all (XRCE has none).
+//! * `*_SYSTEM_DEFAULT` — **nobody stated this policy, so the middleware
+//!   chose.** Upstream's `RMW_QOS_POLICY_*_SYSTEM_DEFAULT`; discriminant 0 in
+//!   the RMW ABI, which is why a backend can report it without meaning to.
+//!
+//! The two are DIFFERENT statements and the C API had one word for neither,
+//! so a read-back had to either invent a concrete value or conflate them.
+//! Both are now spellable. They are appended, never renumbered: these
+//! discriminants are baked into shipped images.
+//!
+//! # These discriminants are NOT the RMW ABI's — convert, never cast
+//!
+//! This is the application API's vocabulary. `<nros/rmw_entity.h>` has its
+//! own, and **all four enums are skewed against it**, not just the one that
+//! is famous for it:
+//!
+//! | policy | this header | `NROS_RMW_*` (rmw_entity.h) |
+//! |---|---|---|
+//! | reliability | BEST_EFFORT 0, RELIABLE 1 | SYSTEM_DEFAULT 0, RELIABLE 1, BEST_EFFORT 2 |
+//! | durability | VOLATILE 0, TRANSIENT_LOCAL 1 | SYSTEM_DEFAULT 0, TRANSIENT_LOCAL 1, VOLATILE 2 |
+//! | history | KEEP_LAST 0, KEEP_ALL 1 | SYSTEM_DEFAULT 0, KEEP_LAST 1, KEEP_ALL 2 |
+//! | liveliness | NONE 0, AUTOMATIC 1, MANUAL_BY_TOPIC 2, MANUAL_BY_NODE 3 | SYSTEM_DEFAULT 0, AUTOMATIC 1, MANUAL_BY_NODE 2, MANUAL_BY_TOPIC 3 |
+//!
+//! Reliability and durability AGREE on exactly one enumerator each and
+//! disagree on the other; history agrees on none; liveliness has the two
+//! MANUAL kinds transposed (phase-376 W5/B2 fixed the RMW side and left this
+//! one, correctly — the value crossing the ABI is the RMW one). So a numeric
+//! cast between the two vocabularies is wrong in every enum, and it is wrong
+//! SILENTLY: `MANUAL_BY_TOPIC` becomes `MANUAL_BY_NODE` on the wire, and an
+//! appended sentinel would become a concrete policy. Every conversion in this
+//! file is an explicit match for that reason, and the bridge to the RMW ABI
+//! is `nros-rmw`'s `QoSProfile`, never an `as`.
 
 use core::ffi::c_int;
 
@@ -10,6 +58,12 @@ pub enum nros_qos_reliability_t {
     NROS_QOS_RELIABILITY_BEST_EFFORT = 0,
     /// Reliable delivery - retransmit if needed
     NROS_QOS_RELIABILITY_RELIABLE = 1,
+    /// The caller stated no reliability policy — the middleware chose.
+    /// Upstream's `RMW_QOS_POLICY_RELIABILITY_SYSTEM_DEFAULT`.
+    NROS_QOS_RELIABILITY_SYSTEM_DEFAULT = 2,
+    /// The backend could not determine this policy — an ABSENCE, never a
+    /// request. Upstream's `RMW_QOS_POLICY_RELIABILITY_UNKNOWN`.
+    NROS_QOS_RELIABILITY_UNKNOWN = 3,
 }
 
 /// QoS durability policy
@@ -20,6 +74,12 @@ pub enum nros_qos_durability_t {
     NROS_QOS_DURABILITY_VOLATILE = 0,
     /// Transient local - persist for late joiners
     NROS_QOS_DURABILITY_TRANSIENT_LOCAL = 1,
+    /// The caller stated no durability policy — the middleware chose.
+    /// Upstream's `RMW_QOS_POLICY_DURABILITY_SYSTEM_DEFAULT`.
+    NROS_QOS_DURABILITY_SYSTEM_DEFAULT = 2,
+    /// The backend could not determine this policy — an ABSENCE, never a
+    /// request. Upstream's `RMW_QOS_POLICY_DURABILITY_UNKNOWN`.
+    NROS_QOS_DURABILITY_UNKNOWN = 3,
 }
 
 /// QoS history policy
@@ -30,6 +90,12 @@ pub enum nros_qos_history_t {
     NROS_QOS_HISTORY_KEEP_LAST = 0,
     /// Keep all samples
     NROS_QOS_HISTORY_KEEP_ALL = 1,
+    /// The caller stated no history policy — the middleware chose.
+    /// Upstream's `RMW_QOS_POLICY_HISTORY_SYSTEM_DEFAULT`.
+    NROS_QOS_HISTORY_SYSTEM_DEFAULT = 2,
+    /// The backend could not determine this policy — an ABSENCE, never a
+    /// request. Upstream's `RMW_QOS_POLICY_HISTORY_UNKNOWN`.
+    NROS_QOS_HISTORY_UNKNOWN = 3,
 }
 
 /// QoS liveliness policy. Phase 109 — matches DDS `LIVELINESS`.
@@ -37,6 +103,13 @@ pub enum nros_qos_history_t {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nros_qos_liveliness_t {
     /// No liveliness assertion or tracking.
+    ///
+    /// This is ALSO the "nobody stated a liveliness policy" slot — it is
+    /// discriminant 0, the value the RMW ABI spells
+    /// `NROS_RMW_LIVELINESS_SYSTEM_DEFAULT`, and a backend that sees it omits
+    /// the DDS call entirely. So this enum gains no separate
+    /// `SYSTEM_DEFAULT`: it would be a second name for a value that already
+    /// has one, which is how a vocabulary starts disagreeing with itself.
     NROS_QOS_LIVELINESS_NONE = 0,
     /// Backend's keepalive task asserts liveliness automatically.
     NROS_QOS_LIVELINESS_AUTOMATIC = 1,
@@ -44,6 +117,9 @@ pub enum nros_qos_liveliness_t {
     NROS_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
     /// Application calls `assert_liveliness()` at the node level.
     NROS_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
+    /// The backend could not determine this policy — an ABSENCE, never a
+    /// request. Upstream's `RMW_QOS_POLICY_LIVELINESS_UNKNOWN`.
+    NROS_QOS_LIVELINESS_UNKNOWN = 4,
 }
 
 /// Full DDS-shaped QoS profile (Phase 109).
@@ -240,6 +316,10 @@ impl nros_qos_t {
                 QoSReliabilityPolicy::BestEffort
             }
             nros_qos_reliability_t::NROS_QOS_RELIABILITY_RELIABLE => QoSReliabilityPolicy::Reliable,
+            nros_qos_reliability_t::NROS_QOS_RELIABILITY_SYSTEM_DEFAULT => {
+                QoSReliabilityPolicy::SystemDefault
+            }
+            nros_qos_reliability_t::NROS_QOS_RELIABILITY_UNKNOWN => QoSReliabilityPolicy::Unknown,
         };
 
         let durability = match self.durability {
@@ -247,11 +327,17 @@ impl nros_qos_t {
             nros_qos_durability_t::NROS_QOS_DURABILITY_TRANSIENT_LOCAL => {
                 QoSDurabilityPolicy::TransientLocal
             }
+            nros_qos_durability_t::NROS_QOS_DURABILITY_SYSTEM_DEFAULT => {
+                QoSDurabilityPolicy::SystemDefault
+            }
+            nros_qos_durability_t::NROS_QOS_DURABILITY_UNKNOWN => QoSDurabilityPolicy::Unknown,
         };
 
         let history = match self.history {
             nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST => QoSHistoryPolicy::KeepLast,
             nros_qos_history_t::NROS_QOS_HISTORY_KEEP_ALL => QoSHistoryPolicy::KeepAll,
+            nros_qos_history_t::NROS_QOS_HISTORY_SYSTEM_DEFAULT => QoSHistoryPolicy::SystemDefault,
+            nros_qos_history_t::NROS_QOS_HISTORY_UNKNOWN => QoSHistoryPolicy::Unknown,
         };
 
         let liveliness_kind = match self.liveliness_kind {
@@ -263,6 +349,7 @@ impl nros_qos_t {
             nros_qos_liveliness_t::NROS_QOS_LIVELINESS_MANUAL_BY_NODE => {
                 QoSLivelinessPolicy::ManualByNode
             }
+            nros_qos_liveliness_t::NROS_QOS_LIVELINESS_UNKNOWN => QoSLivelinessPolicy::Unknown,
         };
 
         nros_node::QoSProfile {
@@ -277,6 +364,97 @@ impl nros_qos_t {
             avoid_ros_namespace_conventions: self.avoid_ros_namespace_conventions != 0,
             tx_express: self.tx_express != 0,
         }
+    }
+
+    /// The C-API spelling of a profile that came OUT of the transport —
+    /// issue 1437, the inverse of [`to_qos_settings`](Self::to_qos_settings).
+    ///
+    /// Written for `nros_*_get_actual_qos`, which is the only direction that
+    /// produces one: the caller's own request goes the other way. Total over
+    /// `QoSProfile`, including the two answers only a grant can carry —
+    /// `SystemDefault` and `Unknown` — because a conversion that folded
+    /// either onto a concrete policy would report a value where the backend
+    /// reported an absence, which is the defect issue 1437 exists to close.
+    ///
+    /// One arm per variant, no numeric cast: the two vocabularies are skewed
+    /// in all four enums (see this module's header).
+    pub(crate) fn from_qos_settings(qos: nros_node::QoSProfile) -> Self {
+        use nros_node::{
+            QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSReliabilityPolicy,
+        };
+
+        Self {
+            reliability: match qos.reliability {
+                QoSReliabilityPolicy::BestEffort => {
+                    nros_qos_reliability_t::NROS_QOS_RELIABILITY_BEST_EFFORT
+                }
+                QoSReliabilityPolicy::Reliable => {
+                    nros_qos_reliability_t::NROS_QOS_RELIABILITY_RELIABLE
+                }
+                QoSReliabilityPolicy::SystemDefault => {
+                    nros_qos_reliability_t::NROS_QOS_RELIABILITY_SYSTEM_DEFAULT
+                }
+                QoSReliabilityPolicy::Unknown => {
+                    nros_qos_reliability_t::NROS_QOS_RELIABILITY_UNKNOWN
+                }
+            },
+            durability: match qos.durability {
+                QoSDurabilityPolicy::Volatile => {
+                    nros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE
+                }
+                QoSDurabilityPolicy::TransientLocal => {
+                    nros_qos_durability_t::NROS_QOS_DURABILITY_TRANSIENT_LOCAL
+                }
+                QoSDurabilityPolicy::SystemDefault => {
+                    nros_qos_durability_t::NROS_QOS_DURABILITY_SYSTEM_DEFAULT
+                }
+                QoSDurabilityPolicy::Unknown => nros_qos_durability_t::NROS_QOS_DURABILITY_UNKNOWN,
+            },
+            history: match qos.history {
+                QoSHistoryPolicy::KeepLast => nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,
+                QoSHistoryPolicy::KeepAll => nros_qos_history_t::NROS_QOS_HISTORY_KEEP_ALL,
+                QoSHistoryPolicy::SystemDefault => {
+                    nros_qos_history_t::NROS_QOS_HISTORY_SYSTEM_DEFAULT
+                }
+                QoSHistoryPolicy::Unknown => nros_qos_history_t::NROS_QOS_HISTORY_UNKNOWN,
+            },
+            liveliness_kind: match qos.liveliness_kind {
+                QoSLivelinessPolicy::None => nros_qos_liveliness_t::NROS_QOS_LIVELINESS_NONE,
+                QoSLivelinessPolicy::Automatic => {
+                    nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC
+                }
+                QoSLivelinessPolicy::ManualByTopic => {
+                    nros_qos_liveliness_t::NROS_QOS_LIVELINESS_MANUAL_BY_TOPIC
+                }
+                QoSLivelinessPolicy::ManualByNode => {
+                    nros_qos_liveliness_t::NROS_QOS_LIVELINESS_MANUAL_BY_NODE
+                }
+                QoSLivelinessPolicy::Unknown => nros_qos_liveliness_t::NROS_QOS_LIVELINESS_UNKNOWN,
+            },
+            depth: c_depth_saturating(qos.depth),
+            deadline_ms: qos.deadline_ms,
+            lifespan_ms: qos.lifespan_ms,
+            liveliness_lease_ms: qos.liveliness_lease_ms,
+            avoid_ros_namespace_conventions: u8::from(qos.avoid_ros_namespace_conventions),
+            tx_express: u8::from(qos.tx_express),
+        }
+    }
+}
+
+/// A backend-reported depth, narrowed to the width this C API carries.
+///
+/// The compile-time [`c_depth`] cannot serve here — the value is a RUNTIME
+/// read-back, so there is no constant to assert on. Saturating rather than
+/// wrapping, because `as c_int` on a depth past `INT_MAX` reinterprets into a
+/// NEGATIVE queue depth, and a caller comparing it against its request would
+/// read that as "the backend shrank my queue to nonsense" instead of "the
+/// number does not fit". No in-tree backend can reach this; it is here so
+/// that a future one which does cannot get it silently wrong.
+const fn c_depth_saturating(depth: u32) -> c_int {
+    if depth > c_int::MAX as u32 {
+        c_int::MAX
+    } else {
+        depth as c_int
     }
 }
 

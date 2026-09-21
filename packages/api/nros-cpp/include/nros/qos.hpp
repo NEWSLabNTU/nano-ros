@@ -56,20 +56,27 @@ extern "C" {
 enum nros_cpp_qos_reliability_t {
     NROS_CPP_QOS_RELIABLE = 0,
     NROS_CPP_QOS_BEST_EFFORT = 1,
+    NROS_CPP_QOS_RELIABILITY_SYSTEM_DEFAULT = 2,
+    NROS_CPP_QOS_RELIABILITY_UNKNOWN = 3,
 };
 enum nros_cpp_qos_durability_t {
     NROS_CPP_QOS_VOLATILE = 0,
     NROS_CPP_QOS_TRANSIENT_LOCAL = 1,
+    NROS_CPP_QOS_DURABILITY_SYSTEM_DEFAULT = 2,
+    NROS_CPP_QOS_DURABILITY_UNKNOWN = 3,
 };
 enum nros_cpp_qos_history_t {
     NROS_CPP_QOS_KEEP_LAST = 0,
     NROS_CPP_QOS_KEEP_ALL = 1,
+    NROS_CPP_QOS_HISTORY_SYSTEM_DEFAULT = 2,
+    NROS_CPP_QOS_HISTORY_UNKNOWN = 3,
 };
 enum nros_cpp_qos_liveliness_t {
     NROS_CPP_QOS_LIVELINESS_NONE = 0,
     NROS_CPP_QOS_LIVELINESS_AUTOMATIC = 1,
     NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
     NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
+    NROS_CPP_QOS_LIVELINESS_UNKNOWN = 4,
 };
 struct nros_cpp_qos_t {
     enum nros_cpp_qos_reliability_t reliability;
@@ -96,11 +103,32 @@ namespace nros {
 // the getters had to hand back `int` — a public getter cannot name a private
 // type. Ledger: `cpp:ReliabilityPolicy` and its three siblings.
 //
-// Two deliberate differences from rclcpp survive the rename, both ledgered:
-//   * no `SystemDefault` — it means "defer to the middleware" and there is
-//     none to defer to; the backend is linked at build time (RFC-0036).
-//   * no `Unknown` — it is a discovery artefact for a policy read off a remote
-//     endpoint, and we do no dynamic discovery.
+// The two rclcpp enumerators we used to decline ARRIVED in phase-444 (issue
+// 1437), and the reason each was declined is the reason it is now needed:
+//
+//   * `SystemDefault` — "defer to the middleware". Declined because nothing
+//     DEFERS: the backend is linked at build time (RFC-0036). True of a
+//     REQUEST, and a `QoS` is no longer only a request — `get_actual_qos()`
+//     hands one back, and a backend CAN report that a policy was never stated.
+//   * `Unknown` — declined as "a discovery artefact for a policy read off a
+//     remote endpoint, and we do no dynamic discovery". It is not that: it is
+//     what `rmw_*_get_actual_qos` owes for a policy the backend looked at and
+//     cannot determine, on the LOCAL endpoint. `rmw_vtable.h` has always said
+//     so, and until issue 1437 no implementation anywhere wrote one.
+//
+// What is still declined is `rclcpp::SystemDefaultsQoS` — the all-sentinel
+// PRESET, whose two RMWs resolve it to depth 1 and depth 42 (issue 0829).
+// A value a backend may REPORT is not a profile a caller may REQUEST, and the
+// refusal on that class stands (`NROS_RCLCPP_REFUSE_SYSTEM_DEFAULTS_QOS`).
+//
+// The enumerators are PREFIXED — `ReliabilityUnknown`, not `Unknown` — because
+// these are UNSCOPED enums at namespace scope, so four bare `Unknown`s in
+// `nros::` would be a redeclaration rather than four policies. rclcpp's are
+// `enum class` and pay no such cost. `LivelinessPolicy` already had the
+// prefix for the same reason, so this is the file's existing convention, not
+// a new one. `LivelinessSystemDefault` is absent on purpose: `LivelinessNone`
+// IS discriminant 0, which is the sentinel's value, and a second name for one
+// value is how a vocabulary starts disagreeing with itself.
 //
 // These are UNSCOPED enums, not rclcpp's `enum class`. Both spellings work as a
 // result: `nros::Reliable` (ours, historical) and `nros::ReliabilityPolicy::
@@ -111,18 +139,31 @@ namespace nros {
 enum ReliabilityPolicy {
     Reliable = 0,
     BestEffort = 1,
+    /// Nobody stated a reliability policy — the middleware chose. Reportable
+    /// by `get_actual_qos()`; not a value to request.
+    ReliabilitySystemDefault = 2,
+    /// The backend could not determine this policy. An ABSENCE.
+    ReliabilityUnknown = 3,
 };
 
 /// Durability policy. Matches DDS `DURABILITY_QOS_POLICY`.
 enum DurabilityPolicy {
     Volatile = 0,
     TransientLocal = 1,
+    /// Nobody stated a durability policy — the middleware chose.
+    DurabilitySystemDefault = 2,
+    /// The backend could not determine this policy. An ABSENCE.
+    DurabilityUnknown = 3,
 };
 
 /// History policy. Matches DDS `HISTORY_QOS_POLICY`.
 enum HistoryPolicy {
     KeepLast = 0,
     KeepAll = 1,
+    /// Nobody stated a history policy — the middleware chose.
+    HistorySystemDefault = 2,
+    /// The backend could not determine this policy. An ABSENCE.
+    HistoryUnknown = 3,
 };
 
 /// Liveliness policy kind. Matches DDS `LIVELINESS_QOS_POLICY`.
@@ -138,6 +179,9 @@ enum LivelinessPolicy {
     LivelinessAutomatic = 1,
     LivelinessManualByTopic = 2,
     LivelinessManualByNode = 3,
+    /// The backend could not determine this policy. An ABSENCE, reportable by
+    /// `get_actual_qos()` and never a value to request.
+    LivelinessUnknown = 4,
 };
 
 class QoS;
@@ -172,6 +216,11 @@ constexpr uint32_t qos_window_ms(const Duration& d) {
 constexpr Duration qos_window_duration(uint32_t ms) {
     return Duration::from_nanoseconds(static_cast<int64_t>(ms) * 1000000);
 }
+
+/// issue 1437 — declared here, defined below `QoS`, and named as a friend of
+/// it. See the definition for what it is for and why it is the one function
+/// in this header that writes `QoS`'s members.
+constexpr QoS qos_from_ffi(const nros_cpp_qos_t& f);
 
 } // namespace detail
 
@@ -431,6 +480,18 @@ class QoS {
     }
 
   private:
+    // issue 1437 — the ONE function allowed to write these directly.
+    //
+    // `qos_from_ffi` builds the profile a backend GRANTED, and a grant can
+    // state `ReliabilityUnknown` / `HistorySystemDefault` / ... which NO
+    // public setter can produce: the setters are `reliable()`,
+    // `best_effort()`, `keep_last(n)` — the vocabulary of a REQUEST, and a
+    // request may not carry a sentinel. Adding enum-taking setters to reach
+    // them would hand every caller a way to ask for one, which is the refusal
+    // `NROS_RCLCPP_REFUSE_SYSTEM_DEFAULTS_QOS` exists to keep. A friend for
+    // the read-back direction alone keeps both properties.
+    friend constexpr QoS detail::qos_from_ffi(const nros_cpp_qos_t& f);
+
     // The private members keep their `_ms_` spelling: they hold exactly what
     // the C ABI carries (`uint32_t` milliseconds), and renaming them would say
     // the storage changed when only the accessors did.
@@ -678,6 +739,62 @@ constexpr nros_cpp_qos_t qos_to_ffi(const QoS& qos) {
     f.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
     f.tx_express = qos.tx_express() ? 1 : 0;
     return f;
+}
+
+/// The all-absent profile — issue 1437.
+///
+/// Every policy `UNKNOWN`: "there is nothing here that can tell you". What a
+/// `get_actual_qos()` returns when the handle it was asked of is not live, so
+/// the answer is never a plausible-looking concrete profile the caller would
+/// then compare against its request and find agreeable. `QOS_PROFILE_UNKNOWN`
+/// in Rust, `NROS_RMW_QOS_PROFILE_UNKNOWN` across the RMW ABI; this is the
+/// same statement in this header's vocabulary.
+///
+/// Written from the `nros::` enumerators and `static_cast` across, NOT from
+/// the `NROS_CPP_QOS_*` ones: this header defines those itself only when
+/// `nros_cpp_ffi.h` was NOT included first, and when it WAS, cbindgen has
+/// spelled them `nros_cpp_qos_reliability_t_NROS_CPP_QOS_RELIABILITY_UNKNOWN`
+/// — type-name-prefixed. So a bare enumerator here compiles in one include
+/// order and not the other, which is how the first version of this function
+/// broke the C++ surface extraction while every C++ test still passed.
+constexpr QoS qos_all_unknown() {
+    nros_cpp_qos_t f{};
+    f.reliability = static_cast<nros_cpp_qos_reliability_t>(ReliabilityUnknown);
+    f.durability = static_cast<nros_cpp_qos_durability_t>(DurabilityUnknown);
+    f.history = static_cast<nros_cpp_qos_history_t>(HistoryUnknown);
+    f.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(LivelinessUnknown);
+    f.depth = 0;
+    return qos_from_ffi(f);
+}
+
+/// The inverse of `qos_to_ffi` — issue 1437.
+///
+/// Used by the `get_actual_qos()` family, which is the only direction that
+/// produces a profile the CALLER did not write. The four `static_cast`s are
+/// the same value-for-value mirror `qos_to_ffi` relies on in the other
+/// direction: `nros::ReliabilityPolicy` and `nros_cpp_qos_reliability_t` agree
+/// enumerator for enumerator, sentinels included, and the static_asserts in
+/// `tests/compile/qos_policy_accessors.cpp` measure that rather than trusting
+/// it. Neither vocabulary is the RMW ABI's, whose numbering differs from both
+/// in all four enums — nothing here may be cast to an `NROS_RMW_*` value.
+///
+/// Writes `QoS`'s members directly — see the `friend` declaration on the
+/// class for why this one function may and no setter can. The three windows
+/// are stored as the milliseconds the ABI carries, so the round-trip through
+/// `qos_to_ffi` is exact.
+constexpr QoS qos_from_ffi(const nros_cpp_qos_t& f) {
+    QoS q;
+    q.reliability_ = static_cast<ReliabilityPolicy>(f.reliability);
+    q.durability_ = static_cast<DurabilityPolicy>(f.durability);
+    q.history_ = static_cast<HistoryPolicy>(f.history);
+    q.liveliness_ = static_cast<LivelinessPolicy>(f.liveliness_kind);
+    q.depth_ = f.depth;
+    q.deadline_ms_ = f.deadline_ms;
+    q.lifespan_ms_ = f.lifespan_ms;
+    q.liveliness_lease_ms_ = f.liveliness_lease_ms;
+    q.avoid_ros_namespace_conventions_ = f.avoid_ros_namespace_conventions;
+    q.tx_express_ = f.tx_express;
+    return q;
 }
 
 } // namespace detail

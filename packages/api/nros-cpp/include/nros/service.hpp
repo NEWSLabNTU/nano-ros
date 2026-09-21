@@ -26,6 +26,15 @@
 
 #include "nros_cpp_ffi.h"
 
+// issue 1437 — `get_actual_qos()` returns a `nros::QoS` BY VALUE from an
+// inline body, so the complete type must be here, not only by the time
+// `nros/node.hpp` is pulled in below.
+//
+// AFTER `nros_cpp_ffi.h`, never before: `qos.hpp` defines the four
+// `nros_cpp_qos_*_t` enums ITSELF under `#ifndef NROS_CPP_FFI_H`, so
+// reaching it first makes the cbindgen header a REDEFINITION of all four.
+#include "nros/qos.hpp"
+
 // Phase 189.M3.3.e — `nros_cpp_service_server_register` is excluded from
 // cbindgen (its Rust signature uses `RawServiceCallback`, an external-crate
 // type alias cbindgen names without defining). Declare it locally with a plain
@@ -195,6 +204,27 @@ template <typename S> class Service {
     /// owns its `storage_` and the callback-style one the executor arena owns.
     const char* get_service_name() const { return initialized_ ? service_name_ : ""; }
 
+    /// The QoS the backend GRANTED this service's REQUEST endpoint — the
+    /// subscription that receives calls. Issue 1437.
+    ///
+    /// `rclcpp::Service::get_request_subscription_actual_qos`. ONE
+    /// `create_service` builds TWO endpoints that negotiate against DIFFERENT
+    /// peers, so this and @ref get_response_publisher_actual_qos are two
+    /// answers and neither stands for the other: a reliable reply path over a
+    /// best-effort request path is a working service that drops calls.
+    ///
+    /// A policy the backend cannot report is an ABSENCE (`ReliabilityUnknown`
+    /// and friends), never the request echoed back — see
+    /// @ref Publisher::get_actual_qos. Answers on both the poll-style road
+    /// (this object owns the entity) and the callback-style one (the executor
+    /// arena does).
+    ::nros::QoS get_request_subscription_actual_qos() const { return actual_qos_half(true); }
+
+    /// The QoS the backend GRANTED this service's RESPONSE endpoint — the
+    /// publisher that sends replies. Issue 1437; see
+    /// @ref get_request_subscription_actual_qos.
+    ::nros::QoS get_response_publisher_actual_qos() const { return actual_qos_half(false); }
+
     /// Destructor — releases service server resources.
     ///
     /// Poll-style services own an `RmwServiceServer` in `storage_` and free it
@@ -216,7 +246,8 @@ template <typename S> class Service {
     Service(Service&& other)
         : initialized_(other.initialized_), user_fn_(other.user_fn_),
           user_fn_ctx_(other.user_fn_ctx_), user_ctx_(other.user_ctx_),
-          handle_id_(other.handle_id_), callback_mode_(other.callback_mode_), service_name_{} {
+          handle_id_(other.handle_id_), callback_mode_(other.callback_mode_), service_name_{},
+          executor_(other.executor_) {
         ::nros::detail::assign_entity_name(service_name_, other.service_name_);
         if (other.initialized_ && !other.callback_mode_) {
             nros_cpp_service_server_relocate(other.storage_, storage_);
@@ -236,6 +267,9 @@ template <typename S> class Service {
             handle_id_ = other.handle_id_;
             callback_mode_ = other.callback_mode_;
             ::nros::detail::assign_entity_name(service_name_, other.service_name_);
+
+            // issue 1437 — moves with the index it pairs with.
+            executor_ = other.executor_;
             if (other.initialized_ && !other.callback_mode_) {
                 nros_cpp_service_server_relocate(other.storage_, storage_);
             }
@@ -282,6 +316,20 @@ template <typename S> class Service {
         return true;
     }
 
+    /// The two directions differ only in which out-pointer is read, so one
+    /// body serves both and they cannot end up swapped (issue 1437).
+    ::nros::QoS actual_qos_half(bool request) const {
+        nros_cpp_qos_t req{};
+        nros_cpp_qos_t resp{};
+        if (!initialized_) return ::nros::detail::qos_all_unknown();
+        const void* storage = callback_mode_ ? nullptr : static_cast<const void*>(storage_);
+        if (nros_cpp_service_server_get_actual_qos(storage, executor_, handle_id_, &req, &resp) !=
+            0) {
+            return ::nros::detail::qos_all_unknown();
+        }
+        return ::nros::detail::qos_from_ffi(request ? req : resp);
+    }
+
     alignas(8) uint8_t storage_[NROS_SERVICE_SERVER_SIZE];
     bool initialized_;
     // Callback-style state (Phase 189.M3.3.e); unused in poll mode.
@@ -293,6 +341,11 @@ template <typename S> class Service {
     /// phase-444 — the service name, kept C++-side for `get_service_name()`.
     /// See `Client`'s field of the same name.
     char service_name_[::nros::SERVICE_NAME_MAX];
+
+    // issue 1437 — the executor whose arena holds this service, recorded with
+    // the index that names it there. `handle_id_` alone points into an arena
+    // this object could not otherwise reach.
+    void* executor_ = nullptr;
 };
 
 } // namespace rclcpp
@@ -360,6 +413,9 @@ Result Node::create_service(Service<S>& out, const char* service_name, F callbac
         out.callback_mode_ = true;
         // phase-444 — see the poll-style overload above.
         ::nros::detail::assign_entity_name(out.service_name_, service_name);
+
+        // issue 1437 — the arena that owns the entity, beside its index.
+        out.executor_ = executor_handle_;
         out.initialized_ = true;
     }
     return Result(ret);

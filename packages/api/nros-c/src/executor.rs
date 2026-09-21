@@ -1785,6 +1785,11 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
     }
 
     {
+        // issue 1437 — taken BEFORE `get_executor` borrows `executor`
+        // mutably, because the subscription records the arena it was
+        // registered into and the borrow checker will not hand out a second
+        // `&mut` inside the same block.
+        let executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
         let rust_exec = get_executor(&mut executor._opaque);
 
         // Extract metadata from subscription struct
@@ -1849,7 +1854,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
             Ok(handle_id) => {
                 // Store the handle ID in the subscription for later reference
                 let sub_mut = &mut *subscription;
-                sub_mut.set_handle_id(handle_id);
+                sub_mut.set_arena_entry(handle_id, executor_ptr);
                 record_trigger_entity(
                     &mut executor._handle_entities,
                     handle_id,
@@ -2061,6 +2066,11 @@ pub unsafe extern "C" fn nros_executor_add_subscription_typed_sized(
     }
 
     {
+        // issue 1437 — taken BEFORE `get_executor` borrows `executor`
+        // mutably, because the subscription records the arena it was
+        // registered into and the borrow checker will not hand out a second
+        // `&mut` inside the same block.
+        let executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
         let rust_exec = get_executor(&mut executor._opaque);
 
         let topic_str = core::str::from_utf8_unchecked(
@@ -2111,7 +2121,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_typed_sized(
         match result {
             Ok(handle_id) => {
                 let sub_mut = &mut *subscription;
-                sub_mut.set_handle_id(handle_id);
+                sub_mut.set_arena_entry(handle_id, executor_ptr);
                 record_trigger_entity(
                     &mut executor._handle_entities,
                     handle_id,
@@ -2412,6 +2422,11 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
     }
 
     {
+        // issue 1437 — taken BEFORE `get_executor` borrows `executor`
+        // mutably, because the subscription records the arena it was
+        // registered into and the borrow checker will not hand out a second
+        // `&mut` inside the same block.
+        let executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
         let rust_exec = get_executor(&mut executor._opaque);
 
         let topic_str = core::str::from_utf8_unchecked(
@@ -2473,7 +2488,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
         match result {
             Ok(handle_id) => {
                 let sub_mut = &mut *subscription;
-                sub_mut.set_handle_id(handle_id);
+                sub_mut.set_arena_entry(handle_id, executor_ptr);
                 record_trigger_entity(
                     &mut executor._handle_entities,
                     handle_id,

@@ -736,6 +736,62 @@ pub unsafe extern "C" fn nros_publisher_discard(
     }
 }
 
+/// The QoS profile this publisher is ACTUALLY running — issue 1437.
+///
+/// `rcl_publisher_get_actual_qos`. What the BACKEND GRANTED, which differs
+/// from what `nros_publisher_init_with_qos` was handed whenever the backend
+/// serves something else (zenoh clamps history depth to its receive ring;
+/// DDS negotiates; a launch-lowered `nros_node_set_qos_overrides` row has
+/// already been folded in before either). That difference is what answers
+/// "why is nothing arriving": a RELIABLE reader does not match a BEST_EFFORT
+/// writer, and a clamped depth drops samples the caller believed were kept.
+///
+/// **Per policy, and a policy the backend cannot report is an ABSENCE**, not
+/// your request echoed back: it reads `NROS_QOS_*_UNKNOWN`. A backend with no
+/// read-back at all (XRCE) answers UNKNOWN in every field. Compare against
+/// your request field by field; do NOT assume agreement where you find it
+/// without checking for the sentinel first.
+///
+/// Free: the profile was read once at create and retained, so this never
+/// re-enters the transport and is safe from a callback.
+///
+/// # Parameters
+/// * `publisher` - an initialized publisher
+/// * `out_qos` - written on success; untouched on every error
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `NROS_RET_NOT_INIT` if the publisher is not initialized
+///
+/// # Shape, and why it is not upstream's
+/// `rcl` returns `const rmw_qos_profile_t *` — an interior pointer into the
+/// handle. That costs a retained `nros_qos_t` in every `nros_publisher_t`,
+/// i.e. RAM in every image including those that never ask, and it hands out a
+/// pointer whose lifetime the caller has to reason about with no ownership
+/// types to help. An out-parameter plus a status is this API's own shape
+/// (RFC-0018), and it is the shape that lets the NOT_INIT case be reported
+/// rather than encoded as NULL.
+///
+/// # Safety
+/// * `publisher` must be a valid pointer to an initialized publisher.
+/// * `out_qos` must be a valid, writable `nros_qos_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_publisher_get_actual_qos(
+    publisher: *const nros_publisher_t,
+    out_qos: *mut nros_qos_t,
+) -> nros_ret_t {
+    validate_not_null!(publisher, out_qos);
+    let publisher = &*publisher;
+    validate_state!(
+        publisher,
+        nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
+    );
+    let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
+    *out_qos = nros_qos_t::from_qos_settings(nros_rmw::Publisher::actual_qos(pub_handle));
+    NROS_RET_OK
+}
+
 /// Finalize a publisher.
 ///
 /// # Parameters

@@ -17,6 +17,7 @@ use crate::{
     node::{nros_node_state_t, nros_node_t},
     opaque_sizes::{SERVICE_CLIENT_OPAQUE_U64S, SERVICE_SERVER_OPAQUE_U64S},
     publisher::nros_service_type_t,
+    qos::nros_qos_t,
 };
 
 // ============================================================================
@@ -2754,6 +2755,273 @@ mod verification {
     fn client_name_getter_null() {
         let result = unsafe { rcl_client_get_service_name(ptr::null()) };
         assert!(result.is_null());
+    }
+}
+
+// ============================================================================
+// issue 1437 / phase-444 — the granted-QoS read-back, service + client.
+//
+// ONE service `create` builds TWO endpoints — a request subscription and a
+// response publisher — and they negotiate against DIFFERENT peers, so the
+// grant is two answers and neither stands for the other. `rmw_service_t` and
+// `rmw_client_t` have no `qos` field for exactly that reason, and upstream
+// ships four accessors rather than two. So do we.
+//
+// Both roads answer. L1 (`*_init_polling`) keeps the entity inline in
+// `_opaque`; L2 (`nros_executor_add_service` / `_add_client`) hands it to the
+// executor arena and leaves `_internal = (executor_ptr, arena_entry_index)`
+// behind. A reader that served only the first would be absent from the road
+// `rclc`-shaped code actually takes.
+// ============================================================================
+
+/// The `(request, response)` grant of an L1-or-L2 service, or the status to
+/// report. Written once so the two entry points below cannot disagree about
+/// which road a handle is on.
+#[cfg(feature = "rmw-cffi")]
+unsafe fn service_granted_qos(
+    service: &nros_service_t,
+) -> Result<(nros_rmw::QoSProfile, nros_rmw::QoSProfile), nros_ret_t> {
+    match service.state {
+        nros_service_state_t::NROS_SERVICE_STATE_POLLING => {
+            let raw = &*(service._opaque.as_ptr()
+                as *const nros_node::RawServiceServer<
+                    { crate::config::MESSAGE_BUFFER_SIZE },
+                    { crate::config::MESSAGE_BUFFER_SIZE },
+                >);
+            Ok((
+                raw.request_subscription_actual_qos(),
+                raw.response_publisher_actual_qos(),
+            ))
+        }
+        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED => {
+            let internal = &service._internal;
+            if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
+                return Err(NROS_RET_NOT_INIT);
+            }
+            let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+            let exec = crate::executor::get_executor(&mut exec_t._opaque);
+            match exec.service_server_handle(internal.arena_entry_index as usize) {
+                Some(handle) => Ok((
+                    nros_rmw::ServiceTrait::request_subscription_actual_qos(handle),
+                    nros_rmw::ServiceTrait::response_publisher_actual_qos(handle),
+                )),
+                None => Err(NROS_RET_NOT_INIT),
+            }
+        }
+        _ => Err(NROS_RET_NOT_INIT),
+    }
+}
+
+/// The `(request, response)` grant of an L1-or-L2 client. Sibling of
+/// [`service_granted_qos`].
+#[cfg(feature = "rmw-cffi")]
+unsafe fn client_granted_qos(
+    client: &nros_client_t,
+) -> Result<(nros_rmw::QoSProfile, nros_rmw::QoSProfile), nros_ret_t> {
+    match client.state {
+        nros_client_state_t::NROS_CLIENT_STATE_POLLING => {
+            let raw = &*(client._opaque.as_ptr()
+                as *const nros_node::RawServiceClient<
+                    { crate::config::MESSAGE_BUFFER_SIZE },
+                    { crate::config::MESSAGE_BUFFER_SIZE },
+                >);
+            Ok((
+                raw.request_publisher_actual_qos(),
+                raw.response_subscription_actual_qos(),
+            ))
+        }
+        nros_client_state_t::NROS_CLIENT_STATE_REGISTERED => {
+            let internal = &client._internal;
+            if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
+                return Err(NROS_RET_NOT_INIT);
+            }
+            let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+            let exec = crate::executor::get_executor(&mut exec_t._opaque);
+            match exec.service_client_handle(internal.arena_entry_index as usize) {
+                Some(handle) => Ok((
+                    nros_rmw::ClientTrait::request_publisher_actual_qos(handle),
+                    nros_rmw::ClientTrait::response_subscription_actual_qos(handle),
+                )),
+                None => Err(NROS_RET_NOT_INIT),
+            }
+        }
+        _ => Err(NROS_RET_NOT_INIT),
+    }
+}
+
+// The four entry points below differ only in WHICH HALF of a pair they
+// return, and the pair is computed once per entity kind above — so a wrong
+// half is the one mistake available here, and it is visible in a two-line
+// diff. They are written out rather than macro-generated because cbindgen
+// parses the source and does not expand macros: a macro here emits four
+// symbols the committed C header never declares, which is a link error for
+// every C caller and passes every Rust-side check.
+
+/// The QoS the backend GRANTED this service's REQUEST endpoint — the
+/// subscription that receives calls.
+///
+/// `rcl_service_request_subscription_get_actual_qos`. **A policy the backend could not report reads back as
+/// `NROS_QOS_*_UNKNOWN`**, never as your request — see
+/// [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos).
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `NROS_RET_NOT_INIT` if the handle is in no usable state, or is
+///   callback-mode and not yet added to an executor — there is no entity to
+///   ask, which is a different answer from `UNKNOWN` ("there is an entity and
+///   it cannot say")
+///
+/// # Safety
+/// Both pointers must be valid; `out_qos` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_service_request_subscription_get_actual_qos(
+    handle: *const nros_service_t,
+    out_qos: *mut nros_qos_t,
+) -> nros_ret_t {
+    if handle.is_null() || out_qos.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        match service_granted_qos(&*handle) {
+            Ok(pair) => {
+                *out_qos = nros_qos_t::from_qos_settings(pair.0);
+                NROS_RET_OK
+            }
+            Err(ret) => ret,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = handle;
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// The QoS the backend GRANTED this service's RESPONSE endpoint — the
+/// publisher that sends replies.
+///
+/// `rcl_service_response_publisher_get_actual_qos`. **A policy the backend could not report reads back as
+/// `NROS_QOS_*_UNKNOWN`**, never as your request — see
+/// [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos).
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `NROS_RET_NOT_INIT` if the handle is in no usable state, or is
+///   callback-mode and not yet added to an executor — there is no entity to
+///   ask, which is a different answer from `UNKNOWN` ("there is an entity and
+///   it cannot say")
+///
+/// # Safety
+/// Both pointers must be valid; `out_qos` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_service_response_publisher_get_actual_qos(
+    handle: *const nros_service_t,
+    out_qos: *mut nros_qos_t,
+) -> nros_ret_t {
+    if handle.is_null() || out_qos.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        match service_granted_qos(&*handle) {
+            Ok(pair) => {
+                *out_qos = nros_qos_t::from_qos_settings(pair.1);
+                NROS_RET_OK
+            }
+            Err(ret) => ret,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = handle;
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// The QoS the backend GRANTED this client's REQUEST endpoint — the
+/// publisher that sends calls.
+///
+/// `rcl_client_request_publisher_get_actual_qos`. **A policy the backend could not report reads back as
+/// `NROS_QOS_*_UNKNOWN`**, never as your request — see
+/// [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos).
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `NROS_RET_NOT_INIT` if the handle is in no usable state, or is
+///   callback-mode and not yet added to an executor — there is no entity to
+///   ask, which is a different answer from `UNKNOWN` ("there is an entity and
+///   it cannot say")
+///
+/// # Safety
+/// Both pointers must be valid; `out_qos` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_request_publisher_get_actual_qos(
+    handle: *const nros_client_t,
+    out_qos: *mut nros_qos_t,
+) -> nros_ret_t {
+    if handle.is_null() || out_qos.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        match client_granted_qos(&*handle) {
+            Ok(pair) => {
+                *out_qos = nros_qos_t::from_qos_settings(pair.0);
+                NROS_RET_OK
+            }
+            Err(ret) => ret,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = handle;
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// The QoS the backend GRANTED this client's RESPONSE endpoint — the
+/// subscription that receives replies.
+///
+/// `rcl_client_response_subscription_get_actual_qos`. **A policy the backend could not report reads back as
+/// `NROS_QOS_*_UNKNOWN`**, never as your request — see
+/// [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos).
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `NROS_RET_NOT_INIT` if the handle is in no usable state, or is
+///   callback-mode and not yet added to an executor — there is no entity to
+///   ask, which is a different answer from `UNKNOWN` ("there is an entity and
+///   it cannot say")
+///
+/// # Safety
+/// Both pointers must be valid; `out_qos` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_response_subscription_get_actual_qos(
+    handle: *const nros_client_t,
+    out_qos: *mut nros_qos_t,
+) -> nros_ret_t {
+    if handle.is_null() || out_qos.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        match client_granted_qos(&*handle) {
+            Ok(pair) => {
+                *out_qos = nros_qos_t::from_qos_settings(pair.1);
+                NROS_RET_OK
+            }
+            Err(ret) => ret,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = handle;
+        NROS_RET_NOT_INIT
     }
 }
 

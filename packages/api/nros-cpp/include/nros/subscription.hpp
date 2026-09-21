@@ -31,6 +31,15 @@
 
 #include "nros_cpp_ffi.h"
 
+// issue 1437 — `get_actual_qos()` returns a `nros::QoS` BY VALUE from an
+// inline body, so the complete type must be here, not only by the time
+// `nros/node.hpp` is pulled in below.
+//
+// AFTER `nros_cpp_ffi.h`, never before: `qos.hpp` defines the four
+// `nros_cpp_qos_*_t` enums ITSELF under `#ifndef NROS_CPP_FFI_H`, so
+// reaching it first makes the cbindgen header a REDEFINITION of all four.
+#include "nros/qos.hpp"
+
 // Phase 189.M3.x — `nros_cpp_subscription_register` is excluded from cbindgen
 // (its Rust signature uses `RawSubscriptionCallback`, an external-crate type
 // alias cbindgen names without defining). Declare it locally with a plain
@@ -494,6 +503,8 @@ template <typename M> class Subscription {
         user_ctx_ = other.user_ctx_;
         callback_mode_ = other.callback_mode_;
         sched_handle_id_ = other.sched_handle_id_;
+        // issue 1437 — moves with the index it pairs with.
+        executor_ = other.executor_;
         if (other.initialized_ && !other.callback_mode_) {
             nros_cpp_subscription_relocate(other.storage_, storage_);
             ::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
@@ -515,6 +526,8 @@ template <typename M> class Subscription {
             user_ctx_ = other.user_ctx_;
             callback_mode_ = other.callback_mode_;
             sched_handle_id_ = other.sched_handle_id_;
+            // issue 1437 — moves with the index it pairs with.
+            executor_ = other.executor_;
             if (other.initialized_ && !other.callback_mode_) {
                 nros_cpp_subscription_relocate(other.storage_, storage_);
                 ::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
@@ -542,6 +555,28 @@ template <typename M> class Subscription {
     /// `Node` is a friend and sets this on create when a handle is available.
     bool has_sched_handle() const { return sched_handle_id_ != static_cast<size_t>(-1); }
     size_t sched_handle_id() const { return sched_handle_id_; }
+
+    /// The QoS profile this subscription is ACTUALLY running — issue 1437.
+    ///
+    /// `rclcpp::Subscription::get_actual_qos`. See
+    /// @ref Publisher::get_actual_qos for what "actual" means and why a
+    /// policy the backend cannot report is an ABSENCE (`ReliabilityUnknown`,
+    /// ...) rather than your request echoed back.
+    ///
+    /// Answers on BOTH roads a subscription can be on: the poll-style one,
+    /// which owns its subscriber, and the callback-style one, where the
+    /// executor arena owns it and this object holds only `(executor,
+    /// handle_id)`. The callback form is what a ported `rclcpp` node writes,
+    /// so serving only the first would be absent exactly where it is used.
+    ::nros::QoS get_actual_qos() const {
+        nros_cpp_qos_t f{};
+        if (!initialized_) return ::nros::detail::qos_all_unknown();
+        const void* storage = callback_mode_ ? nullptr : static_cast<const void*>(storage_);
+        if (nros_cpp_subscription_get_actual_qos(storage, executor_, sched_handle_id_, &f) != 0) {
+            return ::nros::detail::qos_all_unknown();
+        }
+        return ::nros::detail::qos_from_ffi(f);
+    }
 
     // ====================================================================
     // Phase 108 — status events
@@ -644,6 +679,11 @@ template <typename M> class Subscription {
     TypedSubscriptionInfoFn user_fn_info_ = nullptr;
     void* user_ctx_ = nullptr;
     bool callback_mode_ = false;
+    // issue 1437 — the executor whose arena holds this subscription, set
+    // alongside `callback_mode_`. `sched_handle_id_` alone names an entry in
+    // an arena this object could not otherwise reach, so the two are one
+    // fact; `get_actual_qos()` is the first reader to need both.
+    void* executor_ = nullptr;
 #if defined(NANO_ROS_SAFETY_E2E)
     // Phase 269 W3 — handler for the integrity-carrying callback path; nullptr
     // when not using `create_subscription_with_safety`.
@@ -766,6 +806,9 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, F call
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.callback_mode_ = true;
+        // issue 1437 — the arena that owns the entity, recorded with the
+        // index that names it inside that arena.
+        out.executor_ = executor_handle_;
         out.initialized_ = true;
     }
     return Result(ret);
@@ -808,6 +851,9 @@ Result Node::create_subscription_in_group(const ::nros::CallbackGroup& group, Su
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.callback_mode_ = true;
+        // issue 1437 — the arena that owns the entity, recorded with the
+        // index that names it inside that arena.
+        out.executor_ = executor_handle_;
         out.initialized_ = true;
     }
     return Result(ret);
@@ -851,6 +897,9 @@ Result Node::create_subscription_with_info(Subscription<M>& out, const char* top
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.callback_mode_ = true;
+        // issue 1437 — the arena that owns the entity, recorded with the
+        // index that names it inside that arena.
+        out.executor_ = executor_handle_;
         out.initialized_ = true;
     }
     return Result(ret);
@@ -908,6 +957,9 @@ Result Node::create_subscription_with_safety(Subscription<M>& out, const char* t
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.callback_mode_ = true;
+        // issue 1437 — the arena that owns the entity, recorded with the
+        // index that names it inside that arena.
+        out.executor_ = executor_handle_;
         out.initialized_ = true;
     }
     return Result(ret);
