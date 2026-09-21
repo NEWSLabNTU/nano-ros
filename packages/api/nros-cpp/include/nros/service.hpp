@@ -14,6 +14,7 @@
 #include <cstddef>
 
 #include "nros/config.hpp"
+#include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/result.hpp"
 #include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 
@@ -185,6 +186,15 @@ template <typename S> class Service {
     /// Check if the service is initialized and valid.
     bool is_valid() const { return initialized_; }
 
+    /// Read back the service name this server was created on — phase-444.
+    ///
+    /// rclcpp's `ServiceBase::get_service_name`, and the server half of
+    /// `Client::get_service_name`; see that method for why the name lives
+    /// C++-side and why the accessor returns `""` rather than NULL on an
+    /// uninitialised server. Both modes answer — the poll-style server that
+    /// owns its `storage_` and the callback-style one the executor arena owns.
+    const char* get_service_name() const { return initialized_ ? service_name_ : ""; }
+
     /// Destructor — releases service server resources.
     ///
     /// Poll-style services own an `RmwServiceServer` in `storage_` and free it
@@ -206,7 +216,8 @@ template <typename S> class Service {
     Service(Service&& other)
         : initialized_(other.initialized_), user_fn_(other.user_fn_),
           user_fn_ctx_(other.user_fn_ctx_), user_ctx_(other.user_ctx_),
-          handle_id_(other.handle_id_), callback_mode_(other.callback_mode_) {
+          handle_id_(other.handle_id_), callback_mode_(other.callback_mode_), service_name_{} {
+        ::nros::detail::assign_entity_name(service_name_, other.service_name_);
         if (other.initialized_ && !other.callback_mode_) {
             nros_cpp_service_server_relocate(other.storage_, storage_);
         }
@@ -224,6 +235,7 @@ template <typename S> class Service {
             user_ctx_ = other.user_ctx_;
             handle_id_ = other.handle_id_;
             callback_mode_ = other.callback_mode_;
+            ::nros::detail::assign_entity_name(service_name_, other.service_name_);
             if (other.initialized_ && !other.callback_mode_) {
                 nros_cpp_service_server_relocate(other.storage_, storage_);
             }
@@ -234,7 +246,7 @@ template <typename S> class Service {
 
     /// Default constructor — creates an uninitialized service server.
     /// Use `Node::create_service()` to initialize.
-    Service() : storage_(), initialized_(false) {}
+    Service() : storage_(), initialized_(false), service_name_{} {}
 
     /// Executor handle for the callback-style service (Phase 189.M3.3.e);
     /// `SIZE_MAX` for poll-style / uninitialized.
@@ -278,6 +290,9 @@ template <typename S> class Service {
     void* user_ctx_ = nullptr;
     size_t handle_id_ = static_cast<size_t>(-1);
     bool callback_mode_ = false;
+    /// phase-444 — the service name, kept C++-side for `get_service_name()`.
+    /// See `Client`'s field of the same name.
+    char service_name_[::nros::SERVICE_NAME_MAX];
 };
 
 } // namespace rclcpp
@@ -304,6 +319,9 @@ Result Node::create_service(Service<S>& out, const char* service_name, const ::n
     nros_cpp_ret_t ret = nros_cpp_service_server_create(
         &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
     if (ret == 0) {
+        // phase-444 — remember the name for `get_service_name()`; the runtime
+        // takes `service_name` and drops it.
+        ::nros::detail::assign_entity_name(out.service_name_, service_name);
         out.initialized_ = true;
     }
     return Result(ret);
@@ -340,6 +358,8 @@ Result Node::create_service(Service<S>& out, const char* service_name, F callbac
     if (ret == 0) {
         out.handle_id_ = handle;
         out.callback_mode_ = true;
+        // phase-444 — see the poll-style overload above.
+        ::nros::detail::assign_entity_name(out.service_name_, service_name);
         out.initialized_ = true;
     }
     return Result(ret);

@@ -16,6 +16,7 @@
 
 #include "nros/traits.hpp"
 #include "nros/config.hpp"
+#include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/result.hpp"
 #include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 // RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creators below.
@@ -678,12 +679,7 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
                                                       ffi_qos, out.storage_);
     if (ret == 0) {
         // Phase 87.6: topic name lives C++-side now.
-        size_t topic_len = 0;
-        while (topic[topic_len] != '\0' && topic_len + 1 < sizeof(out.topic_name_)) {
-            out.topic_name_[topic_len] = topic[topic_len];
-            ++topic_len;
-        }
-        out.topic_name_[topic_len] = '\0';
+        ::nros::detail::assign_entity_name(out.topic_name_, topic);
         out.initialized_ = true;
     }
     return Result(ret);

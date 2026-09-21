@@ -22,6 +22,42 @@ use nros_rmw::{
 /// unreadable.
 type MockTake = Result<([u8; 256], usize), TransportError>;
 
+/// Bound on the name a mock entity remembers. 64, not the 256 a real
+/// `CffiPublisher` keeps: the mock exists to answer a unit test, and a test
+/// topic that needs more than 64 bytes is testing the truncation rather than
+/// the accessor.
+const MOCK_NAME_MAX: usize = 64;
+
+/// The name an entity was created on, retained the way every real backend
+/// handle retains it (`CffiPublisher::topic_name` writes the caller's string
+/// into the handle at create and never re-resolves it).
+///
+/// ONE spelling for all four mock entities — phase-444. The accessor on the
+/// node-side handle (`EmbeddedPublisher::topic_name` and its five siblings)
+/// forwards to the CONCRETE backend handle, so the mock has to answer it too
+/// or `nros-node`'s own unit build does not compile.
+#[derive(Default, Debug, Clone)]
+pub struct MockName(heapless::String<MOCK_NAME_MAX>);
+
+impl MockName {
+    /// Retain `name`, truncated at a char boundary if it does not fit.
+    pub fn new(name: &str) -> Self {
+        let mut buf: heapless::String<MOCK_NAME_MAX> = heapless::String::new();
+        for c in name.chars() {
+            if buf.push(c).is_err() {
+                break;
+            }
+        }
+        Self(buf)
+    }
+
+    /// The retained name. `""` for a handle built by a bare `new()`, which is
+    /// what a test that never named one asked for.
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 pub struct MockSubscriber {
     /// FIFO of canned OUTCOMES, not canned messages. A queue of `Ok` only
     /// cannot express the case issue 0757 is about — a take that FAILS — so
@@ -29,13 +65,27 @@ pub struct MockSubscriber {
     /// the four copies of the drain loop that swallowed a non-`Ok` take were
     /// unreachable by the unit suite for as long as they existed.
     queue: RefCell<heapless::Deque<MockTake, 8>>,
+    /// phase-444 — the topic this subscription was created on.
+    topic_name: MockName,
 }
 
 impl MockSubscriber {
     pub fn new() -> Self {
+        Self::new_named("")
+    }
+
+    /// phase-444 — a subscriber that remembers its topic, so
+    /// `Subscription::topic_name` has something to hand back.
+    pub fn new_named(topic_name: &str) -> Self {
         Self {
             queue: RefCell::new(heapless::Deque::new()),
+            topic_name: MockName::new(topic_name),
         }
+    }
+
+    /// The topic this subscription was created on.
+    pub fn topic_name(&self) -> &str {
+        self.topic_name.as_str()
     }
 
     /// Enqueue one canned message (FIFO). Silently drops if the queue is full.
@@ -90,15 +140,29 @@ pub struct MockServiceServer {
     pub next_seq: Cell<i64>,
     /// Replies recorded by `send_response`: `(seq, data, len)`.
     pub sent: core::cell::RefCell<heapless::Vec<(i64, [u8; 256], usize), 8>>,
+    /// phase-444 — the service this server was created on.
+    service_name: MockName,
 }
 
 impl MockServiceServer {
     pub fn new() -> Self {
+        Self::new_named("")
+    }
+
+    /// phase-444 — a server that remembers its service name, so
+    /// `EmbeddedServiceServer::service_name` has something to hand back.
+    pub fn new_named(service_name: &str) -> Self {
         Self {
             pending: Cell::new(None),
             next_seq: Cell::new(0),
             sent: core::cell::RefCell::new(heapless::Vec::new()),
+            service_name: MockName::new(service_name),
         }
+    }
+
+    /// The service this server was created on.
+    pub fn service_name(&self) -> &str {
+        self.service_name.as_str()
     }
 
     pub fn load(&self, data: [u8; 256], len: usize) {
@@ -166,14 +230,28 @@ pub type MockPublished = ([u8; MOCK_PUBLISH_RECORD], usize);
 pub struct MockPublisher {
     published: RefCell<heapless::Deque<MockPublished, 8>>,
     count: Cell<usize>,
+    /// phase-444 — the topic this publisher was created on.
+    topic_name: MockName,
 }
 
 impl MockPublisher {
     pub fn new() -> Self {
+        Self::new_named("")
+    }
+
+    /// phase-444 — a publisher that remembers its topic, so
+    /// `EmbeddedPublisher::topic_name` has something to hand back.
+    pub fn new_named(topic_name: &str) -> Self {
         Self {
             published: RefCell::new(heapless::Deque::new()),
             count: Cell::new(0),
+            topic_name: MockName::new(topic_name),
         }
+    }
+
+    /// The topic this publisher was created on.
+    pub fn topic_name(&self) -> &str {
+        self.topic_name.as_str()
     }
 
     /// Total number of `publish_raw` calls, including samples aged out of the
@@ -234,15 +312,29 @@ pub struct MockServiceClient {
     pub next_seq: Cell<i64>,
     /// The id of the most recent send; what a reply is reported against.
     pub last_sent_seq: Cell<Option<i64>>,
+    /// phase-444 — the service this client was created on.
+    service_name: MockName,
 }
 
 impl MockServiceClient {
     pub fn new() -> Self {
+        Self::new_named("")
+    }
+
+    /// phase-444 — a client that remembers its service name, so
+    /// `EmbeddedServiceClient::service_name` has something to hand back.
+    pub fn new_named(service_name: &str) -> Self {
         Self {
             pending_reply: Cell::new(None),
             next_seq: Cell::new(0),
             last_sent_seq: Cell::new(None),
+            service_name: MockName::new(service_name),
         }
+    }
+
+    /// The service this client was created on.
+    pub fn service_name(&self) -> &str {
+        self.service_name.as_str()
     }
 
     /// Load a reply that will be returned by the next `take_response_raw` call.
@@ -424,23 +516,23 @@ impl Session for MockSession {
 
     fn create_publisher(
         &mut self,
-        _topic: &TopicInfo,
+        topic: &TopicInfo,
         _qos: QoSProfile,
     ) -> Result<MockPublisher, TransportError> {
-        Ok(MockPublisher::new())
+        Ok(MockPublisher::new_named(topic.name))
     }
 
     fn create_subscription(
         &mut self,
-        _topic: &TopicInfo,
+        topic: &TopicInfo,
         _qos: QoSProfile,
     ) -> Result<MockSubscriber, TransportError> {
-        Ok(MockSubscriber::new())
+        Ok(MockSubscriber::new_named(topic.name))
     }
 
     fn create_service(
         &mut self,
-        _service: &ServiceInfo,
+        service: &ServiceInfo,
         _qos: QoSProfile,
     ) -> Result<MockServiceServer, TransportError> {
         if let Some(attempts) = self.service_create_attempts {
@@ -449,15 +541,15 @@ impl Session for MockSession {
         if let Some(e) = self.service_create_error.as_ref() {
             return Err(e.clone());
         }
-        Ok(MockServiceServer::new())
+        Ok(MockServiceServer::new_named(service.name))
     }
 
     fn create_client(
         &mut self,
-        _service: &ServiceInfo,
+        service: &ServiceInfo,
         _qos: QoSProfile,
     ) -> Result<MockServiceClient, TransportError> {
-        Ok(MockServiceClient::new())
+        Ok(MockServiceClient::new_named(service.name))
     }
 
     fn close(&mut self) -> Result<(), TransportError> {

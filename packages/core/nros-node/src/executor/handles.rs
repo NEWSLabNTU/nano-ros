@@ -355,6 +355,35 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
             },
         )
     }
+
+    /// The topic this publisher was created on — rclrs's
+    /// `PublisherState::topic_name`, C's `rcl_publisher_get_topic_name`,
+    /// C++'s `Publisher::get_topic_name`. phase-444.
+    ///
+    /// **`&self`, which is upstream's own signature.** The ledger row this
+    /// closes (`rust:Publisher::topic_name`) argued the accessor had to take
+    /// the node or the executor as well, because "our Rust entity handle is a
+    /// bare arena index with no back-reference — `PublisherHandle { index,
+    /// _marker }`". Measured, that is a DIFFERENT type:
+    /// [`NodeCtx::create_publisher`](super::node::NodeCtx::create_publisher)
+    /// hands back an `EmbeddedPublisher`, which OWNS its backend handle, and
+    /// that handle has retained the name since creation
+    /// (`CffiPublisher::topic_name`, written from the caller's string at
+    /// `publisher_create`). Nothing is indexed and nothing is re-resolved.
+    ///
+    /// BORROWED, never owned: rclrs returns `String`, which needs an allocator
+    /// a 128 KiB target does not have. The bytes live in the backend handle for
+    /// as long as the publisher does, so a caller that wants an owned copy can
+    /// make one and a caller that does not pays nothing.
+    ///
+    /// **Not on the [`nros_rmw::Publisher`] trait, deliberately.** The C-ABI
+    /// shim above every backend already retains the name, so a trait method
+    /// would make each backend keep a SECOND copy of a 256-byte string for a
+    /// call that never reaches it. Contrast `actual_qos`, which IS on the trait
+    /// because only the backend can answer it.
+    pub fn topic_name(&self) -> &str {
+        self.handle.topic_name()
+    }
 }
 
 /// Cap on registered event callbacks per entity. Subscribers can hold
@@ -895,6 +924,13 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
             registered: false,
         }
     }
+
+    /// The topic this publisher was created on — see
+    /// [`EmbeddedPublisher::topic_name`] for the contract and for why the
+    /// accessor is here rather than on the RMW trait. phase-444.
+    pub fn topic_name(&self) -> &str {
+        self.handle.topic_name()
+    }
 }
 
 /// Future returned by [`EmbeddedRawPublisher::loan`]. Phase 99.H'
@@ -1385,6 +1421,14 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     pub fn qos(&self) -> nros_rmw::QoSProfile {
         nros_rmw::Subscription::actual_qos(&self.handle)
     }
+
+    /// The topic this subscription was created on — rclrs's
+    /// `SubscriptionState::topic_name`. See
+    /// [`EmbeddedPublisher::topic_name`] for the contract and for why the
+    /// accessor is here rather than on the RMW trait. phase-444.
+    pub fn topic_name(&self) -> &str {
+        self.handle.topic_name()
+    }
 }
 
 // ============================================================================
@@ -1716,6 +1760,12 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     pub fn qos(&self) -> nros_rmw::QoSProfile {
         nros_rmw::Subscription::actual_qos(&self.handle)
     }
+
+    /// The topic this subscription was created on — see
+    /// [`EmbeddedPublisher::topic_name`]. phase-444.
+    pub fn topic_name(&self) -> &str {
+        self.handle.topic_name()
+    }
 }
 
 // ============================================================================
@@ -1801,6 +1851,12 @@ impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP
             .send_response(sequence_number, data)
             .map_err(|_| NodeError::ServiceReplyFailed)
     }
+
+    /// The service this server was created on — see
+    /// [`EmbeddedPublisher::topic_name`]. phase-444.
+    pub fn service_name(&self) -> &str {
+        self.handle.service_name()
+    }
 }
 
 /// Typeless service-client handle. L1 counterpart of
@@ -1867,6 +1923,12 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
     /// [`take_response_raw`](Self::take_response_raw) call.
     pub fn reply_buffer(&self) -> &[u8] {
         &self.reply_buffer
+    }
+
+    /// The service this client was created on — see
+    /// [`EmbeddedPublisher::topic_name`]. phase-444.
+    pub fn service_name(&self) -> &str {
+        self.handle.service_name()
     }
 }
 
@@ -2027,6 +2089,15 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// Check if a request is available.
     pub fn has_request(&self) -> bool {
         self.handle.has_request()
+    }
+
+    /// The service this server was created on — rclrs's
+    /// `ServiceState::service_name`, C's `rcl_service_get_service_name`,
+    /// C++'s `Service::get_service_name`. See
+    /// [`EmbeddedPublisher::topic_name`] for the contract and for why the
+    /// accessor is here rather than on the RMW trait. phase-444.
+    pub fn service_name(&self) -> &str {
+        self.handle.service_name()
     }
 }
 
@@ -2318,6 +2389,15 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     pub fn service_is_ready(&self) -> Result<bool, NodeError> {
         use nros_rmw::ClientTrait;
         self.handle.service_is_ready().map_err(NodeError::Transport)
+    }
+
+    /// The service this client was created on — rclrs's
+    /// `ClientState::service_name`, C's `rcl_client_get_service_name`,
+    /// C++'s `Client::get_service_name`. See
+    /// [`EmbeddedPublisher::topic_name`] for the contract and for why the
+    /// accessor is here rather than on the RMW trait. phase-444.
+    pub fn service_name(&self) -> &str {
+        self.handle.service_name()
     }
 }
 

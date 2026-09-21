@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "nros/config.hpp"
+#include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/result.hpp"
 // issue 0964 — the feedback/result TX buffers below size through
 // `detail::buffer_bounds`, so this header needs it directly rather than by
@@ -728,12 +729,7 @@ Result Node::create_action_server(::nros::ActionServer<A>& out, const char* acti
         // copy, as `Subscription`'s and the two polling tiers' do: a name longer
         // than `nros::ACTION_NAME_MAX` is not a reason to fail a create that the
         // runtime already accepted.
-        size_t name_len = 0;
-        while (action_name[name_len] != '\0' && name_len + 1 < sizeof(out.action_name_)) {
-            out.action_name_[name_len] = action_name[name_len];
-            ++name_len;
-        }
-        out.action_name_[name_len] = '\0';
+        ::nros::detail::assign_entity_name(out.action_name_, action_name);
         out.initialized_ = true;
     }
     return Result(ret);
