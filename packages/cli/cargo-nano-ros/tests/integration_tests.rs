@@ -758,11 +758,28 @@ mod component_scaffold {
             "manifest must stay minimal: {nros_toml}"
         );
 
-        // A real `nros::Component` impl in a `crate::talker` module.
+        // issue 1412 — the node type at the CRATE ROOT, against the live API.
+        //
+        // These stay substring assertions on purpose, and they are NOT the
+        // coverage: `scripts/check-scaffold-builds.sh` compiles what this
+        // emits, which is the gap issue 1058 named. Asserting more strings
+        // here would deepen the proxy rather than close it — the previous
+        // spelling asserted `impl nros::Component for Component` and passed
+        // for three and a half months over a template that compiled in no
+        // configuration.
         let lib = fs::read_to_string(dir.join("src/lib.rs")).unwrap();
-        assert!(lib.contains("impl nros::Component for Component"));
+        assert!(lib.contains("impl Node for Talker"));
         assert!(lib.contains(r#"const NAME: &'static str = "talker""#));
-        assert!(lib.contains("pub mod talker"));
+        assert!(lib.contains("nros::node!(Talker);"));
+        assert!(
+            !lib.contains("pub mod talker"),
+            "the node type lives at the crate root — `nros::node!(Class)` and \
+             the manifest's `class` key both assume no module segment:\n{lib}"
+        );
+
+        // The declared type path, without which the metadata harness guesses
+        // `<crate>::<module>::Component` and fails to compile.
+        assert!(nros_toml.contains(r#"class = "my_comp::Talker""#));
 
         // A library crate (rlib), not a binary.
         let cargo = fs::read_to_string(dir.join("Cargo.toml")).unwrap();
@@ -792,7 +809,9 @@ mod component_scaffold {
         let nros_toml = fs::read_to_string(tmp.path().join("svc/nros.toml")).unwrap();
         assert!(nros_toml.contains(r#"component = "svc::service""#));
         let lib = fs::read_to_string(tmp.path().join("svc/src/lib.rs")).unwrap();
-        assert!(lib.contains("pub mod service"));
+        // The use case names the NODE and its type, not a module.
+        assert!(lib.contains(r#"const NAME: &'static str = "service""#));
+        assert!(lib.contains("impl Node for Service"));
     }
 
     #[test]
