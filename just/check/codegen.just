@@ -260,6 +260,19 @@ sizing-descriptor-reader:
     fi
     ./tests/cmake-sizing-descriptor-tests.sh
 
+# issue 1436 — the parameter inventory is a PEER of the entity inventory, not a
+# passenger on it.
+#
+# `EntityInventory::from_model`'s predicate asked "does this describe WIRING?",
+# narrower than the question its own doc claims ("did anybody author a
+# contract?"), so a contract declaring only `params:` answered `None` — and the
+# cargo road, which nests the parameter attach inside that `Some` arm, dropped
+# every parameter fact and failed the resolve naming wiring. The cmake road
+# attaches unconditionally and was always correct. Buildless; the self-test is
+# a negative control on both halves, on the normal path.
+param-inventory-road-parity:
+    @python3 scripts/check/check-param-inventory-road-parity.py
+
 # issue 1396 (class: issue 1312) — a build shim's `--target` must name an
 # `[image.<id>]` / `[deploy.<id>]` block some bringup declares.
 #

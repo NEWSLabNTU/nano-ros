@@ -1817,9 +1817,19 @@ impl EntityInventory {
     /// The endpoint ref is still what the depth is LOOKED UP by; it is just not
     /// what the row is KEYED by.
     ///
-    /// Returns `None` when the model describes no wiring, so a caller cannot
-    /// mistake "nobody authored a contract" for "this image creates nothing".
-    /// That distinction is the one this module exists to preserve.
+    /// Returns `None` when NOBODY AUTHORED A CONTRACT, so a caller cannot
+    /// mistake that for "this image creates nothing". That distinction is the
+    /// one this module exists to preserve.
+    ///
+    /// Issue 1436 -- the predicate used to ask "does this describe WIRING?",
+    /// which is a narrower question than the one above and made the two roads
+    /// disagree. A contract that declares only `params:` is authored, states a
+    /// real fact, and described no wiring, so it answered `None`: on the cmake
+    /// road `ParamDeclarations` is attached beside this call and survived,
+    /// while on the cargo road it is attached INSIDE the `Some` arm and was
+    /// discarded -- and the resolve failed with a message about wiring. The
+    /// repo's own canonical parameter fixture
+    /// (`tests/fixtures/param_declarations/`) is exactly that shape.
     pub fn from_model(
         source: impl Into<String>,
         model: &ros_launch_manifest_model::SystemModel,
@@ -1828,10 +1838,18 @@ impl EntityInventory {
         // component whose only callback is a timer describes real wiring, and
         // an image made only of such components would otherwise read as "no
         // contract authored" and fall back to nothing.
+        //
+        // `node_params` counts for that same reason one step further out
+        // (issue 1436): a node that declares only parameters creates no
+        // endpoint and no callback, and the contract that says so is still a
+        // contract somebody wrote. The inventory it yields has zero entity
+        // rows, which is the TRUE answer for such an image -- not the absence
+        // of an answer.
         if model.structure.topics.is_empty()
             && model.structure.services.is_empty()
             && model.structure.actions.is_empty()
             && model.contracts.node_paths.is_empty()
+            && model.contracts.node_params.is_empty()
         {
             return None;
         }

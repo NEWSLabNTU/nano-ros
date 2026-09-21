@@ -17,7 +17,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use nros_cli_core::entity_inventory::ParamDeclarations;
+use nros_cli_core::entity_inventory::{EntityInventory, ParamDeclarations};
 use ros_launch_manifest_model::SystemModel;
 
 /// `/b` says `params: {}`: the image declares, and `/b` gets only its seeded
@@ -73,6 +73,56 @@ fn a_missing_params_resolves_to_a_refusal_naming_the_node() {
         other => panic!("a node with no `params:` must refuse, got {other:?}"),
     }
     assert_eq!(d.sizing(), None);
+}
+
+/// Issue 1436 -- the two inventories are INDEPENDENT, and a contract that
+/// declares only `params:` must survive the ENTITY inventory's predicate.
+///
+/// The two tests above call `ParamDeclarations::from_model` directly, which is
+/// exactly how this went unnoticed for two phases: BOTH roads compose the
+/// parameter inventory beside `EntityInventory::from_model`, and the cargo road
+/// nested the attach inside that call's `Some` arm. `declared` describes
+/// parameters and no wiring, so the entity predicate answered `None`, the
+/// nested attach never ran, and the resolve failed naming wiring the user was
+/// never asked for.
+///
+/// Asserts the PREDICATE, not the road, because the predicate is the fix: a
+/// parameter-only contract is an authored contract, and the inventory it yields
+/// has zero entity rows -- the true answer for such an image, not the absence
+/// of one.
+#[test]
+fn a_parameter_only_contract_is_still_an_authored_contract() {
+    let m = resolve("declared");
+    assert!(
+        m.structure.topics.is_empty()
+            && m.structure.services.is_empty()
+            && m.structure.actions.is_empty(),
+        "this fixture must stay parameter-only, or it stops covering issue 1436: {:?}",
+        m.structure.topics
+    );
+
+    let mut inv = EntityInventory::from_model("param_declarations/declared", &m)
+        .expect("a contract declaring only `params:` is authored, so the inventory composes");
+    assert!(
+        inv.is_empty(),
+        "zero entity rows is the TRUE answer here, not a missing inventory"
+    );
+
+    // What each road then does, and the half that used to be dropped.
+    inv.set_param_declarations(ParamDeclarations::from_model(&m));
+    let ParamDeclarations::Declared { params, .. } = inv.param_declarations() else {
+        panic!(
+            "the parameter facts must survive composition, got {:?}",
+            inv.param_declarations()
+        );
+    };
+    assert_eq!(
+        params
+            .iter()
+            .map(|p| (p.node.as_str(), p.name.as_str()))
+            .collect::<Vec<_>>(),
+        [("/a", "rate")],
+    );
 }
 
 /// Resolve `launch/<stem>.launch.xml` (with its `<stem>.contract.yaml`

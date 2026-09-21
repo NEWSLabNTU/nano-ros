@@ -2584,17 +2584,37 @@ fn resolve_image(
         // phase-446 W4 -- the contract's `params:` ride along, exactly as the
         // configure-time producer attaches them, so the two fragments agree
         // byte for byte (issue 1228).
+        //
+        // Issue 1436 -- composed BEFORE the entity inventory, and independently
+        // of it. The cmake road states the rule in its own words ("a model with
+        // no topics can still declare parameters"); this road nested the
+        // parameter half inside the entity half's `Some` arm, so a
+        // parameter-only contract lost every parameter fact AND failed the
+        // resolve with a message about wiring.
+        //
+        // Nesting the attach is safe now, and ONLY because `from_model`'s
+        // predicate covers `node_params` too: `None` here implies the contract
+        // declared no parameters either. The `debug_assert!` pins that
+        // implication, so narrowing the predicate again fails loudly here
+        // instead of silently dropping the facts a second time.
+        let params = crate::entity_inventory::ParamDeclarations::from_model(&model);
         EntityInventory::from_model(model_path.display().to_string(), &model)
             .map(|mut inv| {
-                inv.set_param_declarations(crate::entity_inventory::ParamDeclarations::from_model(
-                    &model,
-                ));
+                inv.set_param_declarations(params.clone());
                 inv
             })
             .ok_or_else(|| {
+                debug_assert!(
+                    matches!(params, crate::entity_inventory::ParamDeclarations::Absent),
+                    "issue 1436: no entity inventory, but the contract declares parameters \
+                     (`{}`) -- `EntityInventory::from_model` no longer covers `node_params` \
+                     and this road is discarding them again",
+                    params.tag()
+                );
                 format!(
-                    "the launch tree resolved, and it describes no wiring. Nothing here can \
-                 derive a count. State what each node creates in the contract sidecar \
+                    "the launch tree resolved, and it declares neither wiring nor \
+                 parameters. Nothing here can derive a count. State what each node \
+                 creates -- or what parameters it declares -- in the contract sidecar \
                  beside the launch file ({}/launch/<stem>.contract.yaml); until then this \
                  image keeps its configured pool knobs.",
                     bringup_dir.display()
