@@ -659,7 +659,7 @@ impl ServiceTrait for ZenohServiceServer {
         Ok(())
     }
 
-    /// See [`ZenohServiceServer::granted_qos`] — one granted profile serves
+    /// See this server's `granted_qos` field — one granted profile serves
     /// both directions on this backend.
     fn request_subscription_actual_qos(&self) -> nros_rmw::QoSProfile {
         self.granted_qos
@@ -1170,7 +1170,7 @@ impl ClientTrait for ZenohServiceClient {
         }
     }
 
-    /// See [`ZenohServiceServer::granted_qos`] — one granted profile serves
+    /// See this server's `granted_qos` field — one granted profile serves
     /// both directions on this backend.
     fn request_publisher_actual_qos(&self) -> nros_rmw::QoSProfile {
         self.granted_qos
