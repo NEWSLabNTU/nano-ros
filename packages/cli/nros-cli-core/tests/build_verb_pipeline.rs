@@ -458,6 +458,25 @@ fn shape_drift_on_a_materialized_entry_warns_and_never_errors() {
 fn a_cargo_image_generates_an_entry_from_the_launch_file() {
     // phase-383 W3.b — D4's headline claim. The node deps are DERIVED: the
     // launch file names talker_pkg, so that is what the entry links.
+    //
+    // Issue 1411 — the precondition, stated LOUDLY and up front. Generating the
+    // entry needs a SystemModel, which needs `nros-launch-resolve`; without it
+    // the builder warns and carries on, which is right for a build and useless
+    // for this test, whose whole subject is what the generator derives. This
+    // file's own header says why the tolerant version was wrong: "a test that
+    // SKIPS when the binary is absent reports PASS on the very host it was
+    // meant to warn about". Six sibling tests in this crate state the same
+    // precondition the same way.
+    //
+    // Asked through `launch_resolver_bin`, which is the ladder the code under
+    // test uses ($NROS_LAUNCH_RESOLVE, $NROS_REPO_DIR, $NROS_HOME/bin) — a
+    // hand-written path here could disagree with it in either direction.
+    assert!(
+        nros_cli_core::orchestration::model_location::launch_resolver_bin().is_some(),
+        "nros-launch-resolve not found — run `just setup-launch-resolve`, or point \
+         $NROS_LAUNCH_RESOLVE at one. This test cannot answer its question without \
+         it, and must say so rather than pass quietly."
+    );
     let tmp = tempfile::tempdir().unwrap();
     fixture(tmp.path());
     write(
@@ -469,18 +488,26 @@ fn a_cargo_image_generates_an_entry_from_the_launch_file() {
     assert!(plans[0].handoff.is_some());
 
     let entry = tmp.path().join("build/posix-zenoh/native_entry");
-    if !entry.is_dir() {
-        // The launch resolver is a separate binary; when it is absent the
-        // builder WARNS and carries on (D13 — an un-migrated workspace must
-        // keep building). Assert that documented fallback rather than skipping.
-        assert!(
-            !tmp.path().join("src/native_entry").exists(),
-            "no entry was generated and none was hand-written — the build must \
-             still have produced a handoff, which it did"
-        );
-        return;
-    }
-    let manifest = std::fs::read_to_string(entry.join("Cargo.toml")).unwrap();
+    let manifest_path = entry.join("Cargo.toml");
+    // Issue 1411 — the ARTIFACT, never the directory holding it. This read
+    // `if !entry.is_dir()` and fell back to a weaker assertion, on the premise
+    // that the entry generator is the only thing that creates that directory.
+    // RFC-0098 D1 (phase-445 W4/W5, carried into phase-454) ended that: the
+    // image's `nros-cargo.toml` lands in `build/<coord>/<entry>/` too, and
+    // `cmd::build` writes it on the failure path as well — so the directory
+    // exists whether or not a package was generated, the fallback became
+    // unreachable, and the read below panicked with a bare `NotFound` five
+    // lines under a guard that read as though it handled exactly that.
+    // `a_hand_written_entry_suppresses_generation` below already names the
+    // file rather than the directory, for the same reason.
+    assert!(
+        manifest_path.is_file(),
+        "no entry package was generated at {} — the settings file may be there \
+         (it is written either way), but `Cargo.toml` is the artifact this test \
+         is about",
+        entry.display()
+    );
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
     assert!(
         manifest.contains("talker_pkg"),
         "derived from the launch: {manifest}"

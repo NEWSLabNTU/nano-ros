@@ -18,6 +18,8 @@
 //! Run with:
 //! `cargo test --manifest-path packages/cli/Cargo.toml --test contract_qos_policies_resolve`
 
+mod common;
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -272,12 +274,7 @@ fn resolve(stem: &str) -> SystemModel {
         .ancestors()
         .nth(3)
         .expect("repo root");
-    let resolver = repo.join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
-    assert!(
-        resolver.is_file(),
-        "nros-launch-resolve not built at {} -- run `just setup-launch-resolve`",
-        resolver.display()
-    );
+    let resolver = common::pinned_launch_resolver();
     let bringup = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/qos_policies");
     let out = temp_output(repo, stem);
     fs::create_dir_all(&out).expect("create model out dir");

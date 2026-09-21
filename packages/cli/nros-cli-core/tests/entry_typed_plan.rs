@@ -11,6 +11,8 @@
 //! Phase-296 R-code retired the launch-XML plan path this test used to drive;
 //! the model is the only plan input now.
 
+mod common;
+
 use nros_cli_core::codegen::entry::{self, metadata};
 
 /// The template's committed model, shipped in-tree.
@@ -32,14 +34,13 @@ fn template_model(dir: &std::path::Path) -> std::path::PathBuf {
         .nth(3)
         .expect("repo root");
     let bringup = repo.join("examples/templates/multi-node-workspace-cpp/src/demo_bringup");
-    let resolver = repo.join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
-    if !resolver.is_file() {
-        eprintln!(
-            "[SKIPPED] nros-launch-resolve not built at {} — run `just setup-launch-resolve`",
-            resolver.display()
-        );
-        return std::path::PathBuf::new();
-    }
+    // Issue 1411 — this printed `[SKIPPED]` and returned an empty path, so the
+    // one test below returned before its first assertion and the binary
+    // reported `ok` on every host without the resolver. `cargo test` captures
+    // the `eprintln!`, so nothing in the output said otherwise. CLAUDE.md:
+    // "Bare `eprintln!`+`return` reports PASS — never". Six sibling tests in
+    // this crate assert the same precondition; they now share this spelling.
+    let resolver = common::pinned_launch_resolver();
     let out = dir.join("system_model.yaml");
     let output = std::process::Command::new(&resolver)
         .arg(bringup.join("launch/system.launch.xml"))
@@ -79,9 +80,6 @@ const METADATA: &str = r#"{
 fn typed_plan_from_template_emits_constructed_components() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let model = template_model(tmp.path());
-    if model.as_os_str().is_empty() {
-        return; // resolver not built — the helper printed the skip reason
-    }
 
     let plan = entry::plan_from_model(&model, Some("native".into())).expect("plan from model");
 
