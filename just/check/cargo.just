@@ -260,6 +260,28 @@ cc-build-policy:
 cli-source-dirs:
     @python3 scripts/gen-cli-source-dirs.py --check
 
+# Issue 1018 — every input the CLI source stamp folds must be one the stale-CLI
+# refusal can NAME.
+#
+# The sibling above decides WHICH dirs the stamp watches; this one decides
+# whether the refusal built on it can explain itself. The stamp is one FNV fold
+# over inputs of different kinds, and one number cannot say which moved, so the
+# message used to guess by elimination — "no uncommitted CLI edits, therefore
+# your checkout moved, e.g. a branch switch". Issue 1018's stop 2 is a
+# contributor who had moved a submodule pin and touched nothing else being told
+# exactly that. The refusal was RIGHT (phase-429 measured it: the pin is a CLI
+# build input, issue 0561) and its explanation was about a different tree.
+#
+# So the stamp is folded per input and baked per input, and three places must
+# agree: the component seeds, `STAMP_INPUTS`, and the `// ATTRIBUTES:` arms in
+# `stale_guard.rs`. Checked in BOTH directions — a list that names a phantom is
+# how an authored map drifts toward OK. Buildless; the behavioural half is
+# `stale_guard::attribution_tests`, whose match over the labels has no
+# catch-all, so a new input with no perturbation case does not compile.
+[group("ci")]
+stale-cli-attribution:
+    @python3 scripts/check-stale-cli-attribution.py
+
 # phase-340 W2.d — `--core-only` selects by the derived variant predicate; this
 # holds it equivalent to the authored-`target_dir` spelling it replaced, on
 # every platform a caller actually passes.
