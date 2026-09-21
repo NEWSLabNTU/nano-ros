@@ -575,14 +575,30 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # parser for a current one that silently mis-parses, so the ref stays where the
 # binary still works and the gap is declared instead of hidden.
 #
-# `838ce948` is the newest commit at which
-# `cargo install --path …/crates/play_launch_parser` yields a Python-capable
-# binary. Closing it is upstream work in `NEWSLabNTU/play_launch` (register a
-# `pyload` backend in the CLI and ship `libplay_launch_parser_pyexec.so` beside
-# it — the pair shape `nros-launch-resolve` already ships), not a re-cut here.
+# `838ce948` is NOT, however, the newest Python-capable commit, and saying so
+# would be this issue's own mistake one level down. MEASURED: pyo3 left in
+# `f7f6d2cf` ("the Python half is its own crate"), so its parent `27b6749b` is
+# the newest ref whose `cargo install` still yields a Python-capable binary —
+# built and run here: `libpython3.10.so.1.0` in `DT_NEEDED`, `.launch.py` ->
+# `/from_python`, `$(eval '1 + 1')` -> `/from_eval_2`. That is **54 commits
+# NEWER than this pin**, with a further 54 to the gitlink.
+#
+# So the lag splits in two and only the second half is blocked:
+#
+#   838ce948 -> 27b6749b   54 commits, SAFE, and a real bump — but it re-cuts
+#                          the dist (0.1.0-nros2) and `just/workspace.just`
+#                          names its acceptance: re-run the L.6 gate tests
+#                          `phase212_l6_launch_synth::*`. Not taken here
+#                          because that acceptance was not run, and a bump
+#                          whose acceptance nobody ran is how pins move wrong.
+#   27b6749b -> 07f0461e   54 commits, BLOCKED on upstream: register a `pyload`
+#                          backend in the CLI and ship
+#                          `libplay_launch_parser_pyexec.so` beside it — the
+#                          pair shape `nros-launch-resolve` already ships and
+#                          `launch_py_resolves_as_shipped` already tests.
 # Gate: `check-play-launch-parser-ref`, which asserts ancestry, the two
 # spellings agreeing, and that this declaration exists while they differ.
-# ref-lag: issue 1413 — 07f0461e drops the CLI's Python backend, so `$(eval …)` would silently stop expanding
+# ref-lag: issue 1413 — past 27b6749b the CLI loses its Python backend and `$(eval …)` silently stops expanding; the safe half of the bump (to 27b6749b) needs a dist re-cut plus the L.6 gate tests
 #
 # SEEDED 2026-09-21 (issue 1273 / RFC-0099 D4) — the dist we said we would build
 # ourselves now exists. `nano-ros-sdk`'s `scripts/build-play_launch_parser.sh`
