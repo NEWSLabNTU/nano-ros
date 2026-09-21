@@ -1132,10 +1132,19 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `examples/**/.cargo/*`) and `check-workspace-root-build-files` (no workspace-root
   `Cargo.toml`/`CMakeLists.txt` under `examples/{workspaces,templates}`; a single-package
   template is exempt BY SHAPE — a `package.xml` at its root — never by name).
+  **That root gate reads the DISK as well as the index since issue 1404**, because TRACKED
+  protects a clone and says nothing about a machine that has been here since before
+  RFC-0098: an untracked, eighteen-day-old generated root in `examples/workspaces/rust`
+  named a member RFC-0098 deleted, which fails `cargo metadata` for EVERY package in that
+  workspace — so `build-test-fixtures` died on it, four frames below anything that names
+  the file, while both gates for the rule stayed green. Only the immediate children are
+  walked (a `build/<coord>/<entry>/Cargo.toml` is the root `nros build` is SUPPOSED to
+  write), and `nros build` deletes the stale one when it runs, which is why nobody who
+  builds that exact workspace ever sees it.
   **A leaf may still hold a gitignored `.cargo/config.toml` on disk**: sync writes the central
   patch `include` for a leaf a plain `cargo` or the metadata probe runs INSIDE, and the Zephyr
-  west lane has no `--config` seam of its own (issue 1288). The gate is about TRACKED files,
-  which is the invariant a clone and CI see.
+  west lane has no `--config` seam of its own (issue 1288). That one is about TRACKED files
+  — the `.cargo` gate, not the root gate.
 - **Outside `examples/`, a leaf `.cargo/config.toml` is still `nros sync`-managed (RFC-0048 W9)**:
   one `include = ["…/nros-patch.toml"]` (central, gitignored, absolute paths) + leaf-local
   `generated/*` patches. Never hand-edit; moved checkout → re-run `nros sync`. Central

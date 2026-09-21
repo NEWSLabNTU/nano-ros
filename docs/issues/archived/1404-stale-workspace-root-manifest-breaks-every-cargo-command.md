@@ -3,7 +3,7 @@ id: 1404
 title: "A pre-RFC-0098 workspace-root `Cargo.toml` survives on disk and breaks
   every cargo command in that workspace; only a successful `nros build` of it
   removes the file, and `nros sync` leaves it alone"
-status: open
+status: resolved
 type: bug
 area: cli, examples, build
 severity: high
@@ -120,3 +120,61 @@ currently inert only by luck.
   for an unrelated package 700 lines into a fixture-build log.
 * `examples/workspaces/rust/src/esp32_entry/` and
   `examples/workspaces/safety/Cargo.toml` are gone.
+
+## Fix
+
+The second remedy, as argued above: `check-workspace-root-build-files` now
+reports an UNTRACKED workspace-root build file as well as a tracked one. The
+rule did not change — only its reach, which was narrower than the rule it
+enforces (the issue-0196 shape). The tracked arm protects a clone; the untracked
+arm is about the machine where the failure actually happens.
+
+`untracked_offenders()` walks the immediate children of `examples/workspaces`
+and `examples/templates` and stats two names in each — about sixty stats, and it
+never descends. That matters: `examples/**` is full of untracked generated
+trees, and a gate that walked them would report a `build/<coord>/<entry>/
+Cargo.toml`, which is the root `nros build` is SUPPOSED to write. A path that is
+tracked is left to the tracked arm, so one file never produces two findings with
+two different remedies. The exemption is still the SHAPE — a `package.xml` at
+the root — and it is now read from the index **and** from disk, so an untracked
+single-package leaf is exempt on the machine that has it.
+
+The message for an untracked finding says what a tracked one cannot: the file is
+in no commit, a clone does not have it, and the remedy is `rm` (or `nros build`,
+which deletes it) rather than a change to a commit.
+
+### Selftest
+
+Six cases, in the gate's own `self_test()` which runs on the normal path:
+
+* the untracked arm is EMPTY while only tracked roots exist — without this,
+  every case below could pass by re-reporting the tracked findings;
+* the 1404 shape itself: a root manifest on disk, in no commit, is found;
+* a member manifest at `src/<pkg>/` and a generated entry at
+  `build/<img>/<entry>/` are NOT found — the false-positive direction;
+* an untracked single-package leaf with a `package.xml` is exempt, and the same
+  leaf without one is a finding, so the exemption is measured;
+* a tracked root is reported once, by the tracked arm.
+
+Mutation-tested: an arm that returns `[]`, an arm that walks recursively, and an
+arm that drops the shape exemption are each caught by these cases. Verified
+against the pre-fix gate on a reproduction of the exact defect
+(`examples/workspaces/rust/Cargo.toml` naming `src/esp32_entry`): the old gate
+prints `OK (no tracked root …)`, the new one names the file.
+
+## What is left, and why it is not in a commit
+
+`examples/workspaces/rust/src/esp32_entry/` — a directory whose only content is
+a `.cargo/config.toml` including the `nros-board.toml` that phase-445 W6
+deleted — still exists on the developer machine where this was measured. It is
+untracked residue of one checkout: no clone has it, nothing in the tree
+references it, and a commit cannot remove it. `rm -rf
+examples/workspaces/rust/src/esp32_entry` is the whole of it. It is recorded
+here rather than left implicit because it is the other half of the same
+superseded layout, and because the file that made it FATAL — the root manifest
+naming it — is what this gate now catches.
+
+Note for whoever touches this next: the tracked half of this rule is enforced
+TWICE, by this gate and by `check-no-tracked-workspace-roots` (phase-383 W10.c).
+Neither covered the untracked half; the arm landed here, once, rather than in
+both, so a finding is reported once.
