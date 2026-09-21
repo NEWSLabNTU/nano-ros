@@ -12,7 +12,7 @@ related: [1058, phase-452, phase-417, phase-307]
 
 # The Rust half of issue 1058, in the language that issue never examined
 
-[Issue 1058](../1058-scaffold-output-is-grepped-never-built.md) says the scaffold
+[Issue 1058](1058-scaffold-output-is-grepped-never-built.md) says the scaffold
 tests verify every variant by substring match and never compile the result, and
 proves it with the C++ template: phase-417 W-B3 renamed four type names to
 `::rclcpp::` and three of the four did not exist. That half was fixed.
