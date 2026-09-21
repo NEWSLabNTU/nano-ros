@@ -13,6 +13,34 @@
   how to quote one — quoting is a correctness property and a template that got
   it wrong would fail silently.
 
+  ## `links_std` — the one place this template may name `std`
+
+  Issue 1409, which is issue 1381 in this producer. The hosted `fn main()`
+  below is the only `std`-naming text here, and it is emitted only when
+  `links_std` is true. That flag is
+  `nros_orchestration_ir::board_entry_links_std(board)`, the same fact
+  `nros::main!`'s `hosted_std_scaffold_ts` is gated on.
+
+  A `#[cfg]` cannot answer this and this one used to try. `#[cfg(not(target_os
+  = "none"))]` asks "is the TARGET hosted"; the question is "does this CRATE
+  have `std`", and `#![no_std]` is orthogonal to the target OS. The SAME tool
+  writes `#![no_std]` at the top of a `board-run` / `zephyr-staticlib` entry TU
+  (`builder/entry.rs`), and such a crate built with no `--target` compiles for
+  the HOST, takes the hosted arm, and still has no `std` in its crate root.
+  Measured: that TU, host triple, `error[E0433]: cannot find std in the crate
+  root`, twice.
+
+  The cfg STAYS on what is emitted, because a hosted-main board (native,
+  `threadx-linux`) is still built for more than one OS — and it is the
+  proc-macro's wider spelling now. The narrow one also let NuttX through, and
+  NuttX has been `#![no_std]` since phase-359 W7; the `target_os = "nuttx"`
+  C-ABI `main` below is the arm the proc-macro emits for it and this template
+  did not have.
+
+  There is no `core`/`alloc` spelling for an exit status: the fix is not to
+  spell it differently but not to emit it. An entry that cannot link libstd has
+  no process to exit.
+
   Whitespace is load-bearing: this output is byte-compared against
   `testdata/rust_native_one.rs`.
 -#}
@@ -50,12 +78,24 @@ fn __nros_entry_run() -> ::core::result::Result<
     )
 }
 
-
-#[cfg(not(target_os = "none"))]
+{% if links_std %}
+#[cfg(not(any(target_os = "none", target_os = "nuttx")))]
 fn main() {
     if let ::core::result::Result::Err(e) = __nros_entry_run() {
         ::std::eprintln!("{}: {}", ::core::env!("CARGO_PKG_NAME"), e);
         ::std::process::exit(1);
+    }
+}
+{% endif %}
+#[cfg(target_os = "nuttx")]
+#[unsafe(no_mangle)]
+pub extern "C" fn main(
+    _argc: i32,
+    _argv: *const *const ::core::ffi::c_char,
+) -> i32 {
+    match __nros_entry_run() {
+        ::core::result::Result::Ok(()) => 0,
+        ::core::result::Result::Err(_) => 1,
     }
 }
 
