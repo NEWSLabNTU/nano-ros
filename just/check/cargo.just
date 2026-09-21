@@ -367,6 +367,33 @@ just-recipe-refs:
 leaf-lockfiles:
     @bash scripts/check-leaf-lockfiles.sh
 
+# Issue 1428 — a generated message crate's IDENTITY: its version, and the wire
+# types it claims. Three rules, one scan, buildless.
+#
+# `builtin_interfaces` is generated THREE times (each of rcl-interfaces,
+# diagnostic-msgs and rosgraph-msgs carries its own flat transitive closure),
+# the three Rust sources are byte-identical, and all three declare
+# `TYPE_NAME = "builtin_interfaces/msg/Time"` — one type on the wire, three in
+# Rust, no conversion between them. Collapsing that is a codegen change and is
+# still open on the issue; what the gate forbids is a FOURTH arriving unnoticed,
+# which is how the third arrived.
+#
+# The version rules are the live half. Three of the eight tracked generated
+# crates predate issue 0394 and carried `version.workspace = true` — the release
+# version — and FIVE dep rows across `packages/core`, `packages/rmw` and the
+# generated tree pinned it as `version = "0.5.0"`. A path dep's version is still
+# a requirement, so `^0.5.0` stops resolving the moment the workspace version
+# bumps, and that is resolve-time: it takes every cargo command in the tree. The
+# issue reported ONE of those five rows, so the gate reads every tracked
+# manifest rather than the interfaces tree (CLAUDE.md's 0196 reach rule).
+#
+# `#[cfg(test)]` claims are excluded, and that is what keeps the gate useful: of
+# the four type names duplicated across crates, two were hand-written fixture
+# structs in `mod tests` that are never linked into an image.
+[private]
+message-crate-identity:
+    @python3 scripts/check-message-crate-identity.py
+
 # issue 0722 — a manifest is read by whichever workspace claims it, and this
 # tree has many roots. A crate no root claims can carry a duplicate key that
 # cargo REFUSES, while `cargo metadata` from the repo root stays green.
