@@ -484,6 +484,14 @@ mod tests {
         let mut checked = 0usize;
         let mut hosted = 0usize;
         for key in nros_orchestration_ir::board_path_keys() {
+            // Issue 1435 — the pack now REFUSES a board whose framework is not
+            // `owned-spin`, so those keys have no emitted entry to assert a
+            // `std` path about. Skipped through the production predicate
+            // itself, not a second list of framework names: the day a board
+            // changes framework, this follows it.
+            if refuse_non_owned_spin(key).is_err() {
+                continue;
+            }
             let links_std = nros_orchestration_ir::board_entry_links_std(key)
                 .expect("a key from the table is in the table");
             let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
