@@ -395,6 +395,16 @@ fn scaffold_component_rust(cfg: &ComponentScaffoldConfig) -> Result<()> {
 
     let crate_name = cfg.name.replace('-', "_");
     let module = &cfg.use_case; // constrained by the CLI to a valid Rust ident
+    // The node TYPE. `nros::node!()` and `[package.metadata.nros.node] class`
+    // both name it, and every in-tree Node pkg names it after the node rather
+    // than calling it `Component` — a word the 212.N.12 rename retired.
+    let class_name = {
+        let mut c = module.chars();
+        match c.next() {
+            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            None => String::from("Node"),
+        }
+    };
 
     let package_xml = format!(
         r#"<?xml version="1.0"?>
@@ -404,6 +414,7 @@ fn scaffold_component_rust(cfg: &ComponentScaffoldConfig) -> Result<()> {
   <description>{name} — nano-ros reusable component.</description>
   {maintainer}
   <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
   <export>
     <build_type>nros_cargo</build_type>
   </export>
@@ -424,77 +435,126 @@ edition = "2024"
 # when dropped under a colcon workspace's src/.
 [workspace]
 
+# Node pkg shape — a library, with no binary target. `nros::node!()` exports the
+# register / init / dispatch trampolines; an Entry pkg brings up the executor and
+# spin loop via `nros::main!()`.
+[lib]
+path = "src/lib.rs"
+
+# Platform/RMW-AGNOSTIC. The concrete backend is linked by the board crate the
+# sibling Entry pkg deps, never named here; `rmw-cffi` is the vtable seam only.
+[package.metadata.nros.node]
+class = "{crate_name}::{class_name}"
+name = "{module}"
+default_namespace = "/"
+
 # A reusable component is a library (rlib); the deployed system links it.
 # nano-ros crates are not published to crates.io (RFC-0040) — `version = "*"` is
 # only the patched left-hand side. Run `nros sync` (with NROS_REPO_DIR set) to
 # write the nros-managed [patch.crates-io] block redirecting `nros` to your
 # nano-ros checkout, then `cargo build`.
 [dependencies]
-nros = {{ version = "*", default-features = false }}
+nros = {{ version = "*", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "macros",
+] }}
+std_msgs = {{ version = "*", default-features = false }}
+# A node logs through the `log` facade; the board registers the sink at boot.
+log = {{ version = "0.4", default-features = false }}
 "#,
         name = cfg.name,
+        crate_name = crate_name,
+        class_name = class_name,
+        module = module,
     );
     fs::write(dir.join("Cargo.toml"), cargo_toml)?;
 
+    // phase-452 W2 / issue 1412 — written against the LIVE API and matched to
+    // what the C++ component template demonstrates.
+    //
+    // The previous body targeted the `Component*` trait family that phase
+    // 212.N.12 retired on 2026-06-03 (`Component` -> `Node`,
+    // `ComponentContext` -> `NodeContext`, `ComponentResult` -> `NodeResult`,
+    // `nros::component!` deleted), so `nros new --component --lang rust`
+    // emitted a package that compiled by neither documented route for three
+    // and a half months. Nothing noticed because the scaffold tests assert
+    // substrings and never build the result — issue 1058, whose C++ half was
+    // fixed and whose Rust half was never examined.
+    //
+    // A rename alone would NOT have been enough, which is the same trap
+    // phase-417 fell into one language over: `create_node` also lost its
+    // `NodeId` first argument (that form is `create_node_with_id` now), and a
+    // node declaring a callback must impl `ExecutableNode` or the generated
+    // runtime has no body to dispatch to.
+    //
+    // Feature parity with the C++ component template, deliberately: the same
+    // `std_msgs/Int32` on `/chatter`, the same 1 Hz period, the same counter
+    // state, and a log line on success where C++ prints one.
     let lib_rs = format!(
         r#"#![no_std]
 
-//! `{name}` — a reusable nano-ros component (planned mode).
+//! `{name}` — a reusable nano-ros Node pkg (planned mode).
 //!
-//! `nros plan` and Entry codegen link this crate into a system and call
-//! `{module}::Component::register`. `nros metadata --build` records its
-//! declarations into `metadata/{module}.json`. Platform + RMW are chosen at
-//! Entry-package build time, not here.
+//! `nros plan` and Entry codegen link this crate into a system and call the
+//! `register` trampoline `nros::node!()` exports. Platform + RMW are chosen at
+//! Entry-package build time, not here — this crate names neither.
+//!
+//! `register()` declares the node, a publisher and a 1 Hz timer;
+//! `ExecutableNode::on_callback` publishes a counter on every tick.
 
-pub mod {module} {{
-    use nros::{{
-        CallbackId, CdrReader, CdrWriter, ComponentContext, ComponentResult, DeserError,
-        Deserialize, EntityId, NodeId, NodeOptions, RosMessage, SerError, Serialize, TimerDuration,
-    }};
+use nros::{{
+    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    TimerDuration,
+}};
+use std_msgs::msg::Int32;
 
-    pub struct Component;
+/// {class_name} — counter state plus a chatter publish on every tick.
+pub struct {class_name};
 
-    impl nros::Component for Component {{
-        const NAME: &'static str = "{module}";
+impl Node for {class_name} {{
+    const NAME: &'static str = "{module}";
 
-        fn register(context: &mut ComponentContext<'_>) -> ComponentResult<()> {{
-            let mut node =
-                context.create_node(NodeId::new("node_{module}"), NodeOptions::new("{module}"))?;
-            let _publisher =
-                node.create_publisher::<StringMsg>(EntityId::new("pub_chatter"), "chatter")?;
-            let _timer = node.create_timer(
-                EntityId::new("timer_publish"),
-                CallbackId::new("cb_timer"),
-                TimerDuration::from_millis(100),
-            )?;
-            Ok(())
-        }}
-    }}
+    /// Exact bounds: one publisher (a timer needs no registry slot).
+    /// Declaring them stops this node paying for capacity it never fills.
+    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(1, 0, 0, 0, 0);
 
-    /// Minimal hand-rolled `std_msgs/String` stand-in. Replace with a generated
-    /// message type (`nros generate-rust`) for real payloads.
-    pub struct StringMsg;
-    impl Serialize for StringMsg {{
-        fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {{
-            Ok(())
-        }}
-    }}
-    impl Deserialize for StringMsg {{
-        fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {{
-            Ok(Self)
-        }}
-    }}
-    impl RosMessage for StringMsg {{
-        const TYPE_NAME: &'static str = "std_msgs::msg::dds_::String_";
-        const TYPE_HASH: &'static str = "std_msgs/String";
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {{
+        let mut node = ctx.create_node(NodeOptions::new("{module}"))?;
+        let publisher = node.create_publisher_for_topic::<Int32>("/chatter")?;
+        node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
+        node.callback_for_name("on_tick")
+            .publishes_entity(&publisher)?;
+        Ok(())
     }}
 }}
 
-// The planner links the component via the Rust type path above. To also expose
-// the C / dynamic registration symbol (`__nros_component_register`), add:
-//     nros::component!({module}::Component);
+impl ExecutableNode for {class_name} {{
+    /// Monotonic counter — the next int32 to publish.
+    type State = i32;
+
+    fn init() -> Self::State {{
+        0
+    }}
+
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {{
+        if callback.as_str() == "on_tick" {{
+            let msg = Int32 {{ data: *state }};
+            let _ = ctx.publish_to_topic::<Int32, 8>("/chatter", &msg);
+            log::info!("{module} publishing chatter seq={{}}", *state);
+            *state = state.wrapping_add(1);
+        }}
+    }}
+}}
+
+// Exports the register / init / dispatch trampolines the Entry pkg links.
+// The type lives at the CRATE ROOT with no module segment — the shape
+// `nros::node!(Class)` and the manifest's `class` key both assume.
+nros::node!({class_name});
 "#,
         name = cfg.name,
+        module = module,
+        class_name = class_name,
     );
     fs::write(dir.join("src/lib.rs"), lib_rs)?;
 
@@ -510,6 +570,12 @@ pub mod {module} {{
 version = 1
 package = "{name}"
 component = "{crate_name}::{module}"
+# phase-307 W1 / issue 1412 — the registered type's fully qualified path.
+# Without it the metadata harness falls back to guessing
+# `<crate>::<module>::Component`, which the shipping `nros::node!(Class)` shape
+# (`impl Node for Class` at the crate root, no `Component`, no module segment)
+# never matches — and the harness then fails to compile.
+class = "{crate_name}::{class_name}"
 language = "rust"
 
 [component.metadata]
