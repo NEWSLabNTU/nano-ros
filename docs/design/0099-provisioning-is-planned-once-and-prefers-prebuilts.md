@@ -2,7 +2,7 @@
 
 **Status:** Draft (2026-09-11)
 
-Implemented by [phase-447](../roadmap/phase-447-provisioning-revision.md).
+Implemented by [phase-447](../roadmap/archived/phase-447-provisioning-revision.md).
 Amends the provisioning model of [RFC-0014](0014-nros-setup-toolchain-management.md)
 and the dependency SSoT of [RFC-0062](0062-unified-dependency-ssot.md); the
 release/version axes it composes with are [RFC-0097](0097-release-composition-and-version-axes.md).
