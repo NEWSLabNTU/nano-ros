@@ -1978,6 +1978,21 @@ because the floor is `cxx_std_17`), `rust:QoSProfile::parameter_services_default
 severity-taking macro, routing through the same throttle and `is_enabled` gate
 as the five level macros or the two spellings drift).
 
+**G6 LANDED 2026-09-21.** All eight rows are closed and the group cost two of
+the eight rather more than "one `const fn`" — both of those because the
+BUILD-LIST entry above was right about the capability and wrong about the
+receiver:
+
+| row | what it turned out to need |
+| --- | --- |
+| `cpp:Timer::is_ready` | a new `nros_cpp_timer_is_ready` FFI slot. The row said "both C halves shipped in stage 3", which is true of `rcl_timer_is_ready(nros_timer_t*)` and is not the seam `nros::Timer` has: the C++ timer holds `(executor, handle_id)` and reaches the arena through `nros_cpp_timer_*`, never through `nros_timer_t`. RETIRED |
+| `cpp:Timer::time_until_trigger` | the same, plus a DECISION the row did not price: rclcpp returns `std::chrono::nanoseconds` and this header is freestanding, so it returns `nros::Duration`. That keeps a ledger row, RE-VERDICTED `gap` -> `divergence` + `adopt-bounded` |
+| `rust:Node::get_clock` | one delegation on `NodeCtx`, as costed. `Clock` is a stateless tag over a process-global override, so it is not a second clock. RETIRED |
+| `cpp:State::label` | the `State` value type, as the verdict pass said — and it closes FOUR rows, not one. `cpp:State`, `cpp:State::State` and `cpp:State::id` were `divergence` **theirs-only** on the argument that "ours is an enum rather than a class"; the class exists now, so all three are RE-VERDICTED with dispositions, and `cpp:State::state` / `cpp:State::valid` are new `extension` rows mirroring `Transition`'s. `cpp:state_label` and `cpp:LifecycleState` both carried `why` text arguing AGAINST the type and are corrected |
+| `cpp:operator==` / `!=` | ten hand-written comparisons from the public accessors — no `friend`, because all ten members already have one. As costed. RETIRED |
+| `rust:QoSProfile::parameter_services_default` | **a RENAME, not an addition.** The build list costed "one `const fn`", which would have been a FOURTH spelling of one preset beside `parameters_default`, `QOS_PROFILE_PARAMETERS` and `QosPresets::PARAMETERS` — and would have left `rust:QoSProfile::parameters_default` (`rename`, i.e. ours is the one that should change) open for good. Ours took rclrs's name with no deprecated forwarder; TWO rows retired |
+| `rust:log` | as costed — one macro over `__nros_log_emit!`, gated by `severity_enabled_at_compile_time` and `is_enabled` exactly as the five level macros are, with a test that asserts both spellings answer one threshold. RETIRED |
+
 **G7 — policy naming, and the diagnostic underneath it. 1 row, and the highest
 value per line here.** `cpp:qos_policy_kind_to_cstr` needs a static table over
 `QoSPolicyMask`'s twelve bits, which is the SSoT the row's three unprintable
@@ -1987,6 +2002,40 @@ spellings all reduce to. What the table is FOR is the part worth scheduling:
 `supported_qos_policies` block tells the reader those creates fail "NAMING A
 POLICY". The choice issue 1329 made is right; its stated evidence is not yet
 true, and this row is how it becomes true.
+
+**G7 LANDED 2026-09-21, and issue 1329's sentence is now true.** The row is
+RE-VERDICTED `gap` -> `divergence` + `adopt-bounded` rather than retired,
+because the shape differs for a platform reason and a reader has to be told:
+upstream takes a `rclcpp::QosPolicyKind` enum and we take the MASK BIT.
+
+*Where the vocabulary comes from.* `QoSPolicyMask::NAMED` pairs each of the
+twelve `pub const` bits with its own IDENTIFIER as a `&'static CStr` — the name
+is never an independent choice of word, which is what keeps this from becoming
+the parallel table this campaign has paid for twice. All three surfaces read
+that one table: `QoSPolicyMask::policy_name` (Rust, `&str`),
+`nros_qos_policy_kind_to_cstr` (C, the table's own pointer, no NUL-terminated
+copy in `nros-c`) and `nros::qos_policy_kind_to_cstr` (C++, forwarding to the C
+entry point). Gated by `check-qos-mask-derivation` **R8**, in both directions
+and on the spelling, with three new live-tree mutation controls (a bit loses
+its entry; a bit is given a second name; a union is listed as a policy).
+
+*How the policy reaches a caller with no allocator.* `TransportError::
+IncompatibleQos` CARRIES the refused `QoSPolicyMask` bit, and the name is a
+borrowed `'static` string out of flash — no allocator, no formatter, reaches a
+bare-metal target (checked on `thumbv7m-none-eabi`). `QoSPolicyMask::NONE` is
+the honest payload where a refusal crossed `rmw_ret_t`, which has no room for a
+mask, and `policy_name()` then answers `None` rather than naming a policy
+nobody identified. A C or C++ caller still gets only a return code, so the
+name reaches THEM through the log: `nros_node::executor::node::
+validate_qos_or_report` is ONE helper behind all eleven `validate_against` call
+sites (six in `NodeHandle`, five in `Executor`), and it logs the policy at
+ERROR before returning.
+
+*One thing the row did not ask for and the sweep found.* The zenoh shim's
+`refuse()` already printed a policy word — `"history"`, `"durability"`,
+`"liveliness"` — hand-written, lowercase, and bound to nothing. That was a
+second QoS vocabulary; it is the mask now, and `refuse()` RETURNS the error it
+logged so a site cannot log one policy and return another.
 
 **G8 — the rows that are capabilities rather than names. 9 rows. Size each
 separately.**
