@@ -199,6 +199,9 @@
 
 include_guard(GLOBAL)
 
+# What a schema refusal must be able to cite (issue 1389).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSchemaReader.cmake")
+
 # The inventory schema this reader understands --
 # `nros_cli_core::entity_inventory::ENTITY_INVENTORY_SCHEMA_VERSION`. A fragment
 # that states anything else is REFUSED, never read field-by-field on the hope
@@ -255,6 +258,19 @@ include_guard(GLOBAL)
 # requirement every call site has to match.
 set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED 6 CACHE INTERNAL
     "phase-403 W9: the nros_entity_inventory fragment schema this tree reads")
+
+# Issue 1389 — WHICH FILE the number above came from, so a refusal can name it.
+#
+# Not a redundancy: two copies of this module at two paths BOTH run
+# (`include_guard(GLOBAL)` keys on the resolved path) and the last one wins,
+# constant and `function()` definitions alike. A refusal that prints only the
+# two numbers therefore cannot distinguish "the producer is stale" from "the
+# older of two checkouts answered", and it told tier 2 the wrong one of those
+# for three runs. `CACHE INTERNAL` for its partner's reason, and paired with it
+# by `check-schema-reader-provenance`.
+set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED_FROM "${CMAKE_CURRENT_LIST_FILE}"
+    CACHE INTERNAL
+    "issue 1389: the module file NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED was read from")
 
 # nros_entity_inventory_knobs_file(<out_var>)
 #
@@ -461,14 +477,17 @@ function(nros_derive_entity_inventory_knobs)
     endif()
     if(NOT NROS_ENTITY_INVENTORY_SCHEMA_VERSION EQUAL
        NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED)
+        nros_schema_mismatch_diagnosis(_diag
+            SUPPORTED_VAR NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED
+            ARTIFACT "${_output}"
+            ARTIFACT_VERSION "${NROS_ENTITY_INVENTORY_SCHEMA_VERSION}"
+            REGENERATE "Rebuild the `nros` CLI so the producer and the reader come from one tree: `./scripts/bootstrap.sh` (contributors: `just setup-cli`).")
         message(FATAL_ERROR
             "nros: ${_output} states entity-inventory schema version "
             "${NROS_ENTITY_INVENTORY_SCHEMA_VERSION}; this reader understands "
             "${NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED}.\n"
             "  Refusing rather than reading fields that may have moved.\n"
-            "  Rebuild the `nros` CLI so the producer and the reader come from "
-            "one tree: `./scripts/bootstrap.sh` (contributors: "
-            "`just setup-cli`).")
+            "${_diag}")
     endif()
 
     # Republish everything the fragment set. `include()` inside a function keeps

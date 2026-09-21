@@ -173,6 +173,29 @@ config-header-single-writer:
 config-fallback-macros:
     @python3 scripts/check-config-fallback-macros.py
 
+# A schema refusal must be able to name the READER that answered — issue 1389.
+#
+# tier 2 died configuring a leaf against the persistent Zephyr workspace:
+# "states entity-inventory schema version 6; this reader understands 3", with
+# no `3` anywhere in the checkout that drove the configure, and the advice
+# "rebuild the `nros` CLI" — which could not have moved either number, since a
+# newer CLI cannot have written an older fragment. The `3` came from a SECOND
+# nano-ros checkout: the workspace's west MANIFEST PROJECT was still the
+# runner's provisioning tree, so Zephyr's module lane loaded its copy too.
+# `include_guard(GLOBAL)` keys on the RESOLVED PATH, so both copies run and the
+# last one wins — constant and `function()` definitions alike.
+#
+# So: a declared `NROS_*_SCHEMA_SUPPORTED` records the file it came from in a
+# `_FROM` partner, and every version comparison builds its message with
+# `nros_schema_mismatch_diagnosis()`, which states that file AND the DIRECTION
+# of the mismatch. NOT a ban on `CACHE INTERNAL`: that storage is correct here
+# and re-forced every configure (measured — a module bump is picked up on the
+# next configure of the same build dir, cache entry and all). Buildless,
+# self-testing, whole-tree reach.
+[group("checks")]
+schema-reader-provenance:
+    @python3 scripts/check-schema-reader-provenance.py
+
 # `nros sync` skips the leaf with a count instead of a name. Buildless.
 # RFC-0087 D4 / phase-420 W5 — a descriptor carries only what no convention can
 # produce, so a field it DOES state must equal the value convention derives.
