@@ -53,3 +53,37 @@ may only shrink.
 `[prereq.libpython310]`'s `why` also named a play_launch_parser dist that
 never existed; corrected to name the real reason (`nros-launch-resolve`'s
 `DT_NEEDED` on `libpython3.10.so.1.0`, phase-447 A1 / PR #896).
+
+## Follow-up, 2026-09-21 — the play_launch_parser dist is seeded
+
+The one decision above that ended "no release exists yet" now does.
+`nano-ros-sdk`'s `work/phase-447-c2-play-launch-parser-dist` was
+fast-forwarded onto that repo's `main` (53e2871 -> 9babb72, ancestry checked
+before the push), `build-tool.yml` was dispatched with
+`tool=play_launch_parser version=0.1.0-nros1 upstream=838ce948`, and tag
+`play_launch_parser-0.1.0-nros1` carries one `.tar.zst` + `.sha256` per matrix
+host. `[tool.play_launch_parser]` leaves the dist-or-reason ratchet with
+`dist.linux-x86_64` and `dist.linux-arm64`, each `floor = { glibc = "2.34" }`
+measured off the published artifact.
+
+Two things the measurement said that the decision had not anticipated:
+
+* The linux binaries name exactly ONE external `DT_NEEDED`,
+  `libpython3.10.so.1.0` — the same hard single-minor pyo3 link
+  `nros-launch-resolve` has. So `[prereq.libpython310]` acquires a SECOND
+  consumer, and the sentence at the bottom of this issue ("named a
+  play_launch_parser dist that never existed") is now true of its history and
+  not of the present; its `why` names both binaries.
+* macos-arm64 BUILT and PUBLISHED, and is deliberately not declared. Its
+  `LC_LOAD_DYLIB` is an absolute
+  `/Library/Frameworks/Python.framework/Versions/3.14/Python` with no
+  `@rpath` — the python.org framework the `macos-14` runner happens to carry
+  — so it cannot start on a mac without that exact version, and D1's backward
+  half (which would refuse it) reads `ldconfig` and is Linux-only. Declared,
+  the row would hand most macs a loader error INSTEAD of the source build that
+  works. Same shape as `[tool.esp32-qemu]`'s decline: measured, then declined,
+  with the measurement written into the index beside the entry.
+
+The entry also gained its first `smoke` probe (measured with
+LD_LIBRARY_PATH/PYTHONPATH/PYTHONHOME stripped, the way the smoke path spawns
+it), so it leaves `.config/smoke-or-reason-baseline.txt` as well.

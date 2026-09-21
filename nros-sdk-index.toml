@@ -553,20 +553,54 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # and `nros sdk-path` keep working for an out-of-tree consumer, and its `ref` is
 # the submodule pin so the two cannot disagree.
 #
-# STILL SOURCE-ONLY (issue 1273 / RFC-0099 D4) — DECIDED, not a gap: we build
-# this dist ourselves and publish it into `NEWSLabNTU/nano-ros-sdk`, on our own
-# schedule, rather than waiting on an upstream release cycle for a repo we own
-# (`play_launch` has none to wait on). A `nano-ros-sdk` build script for it
-# exists now (phase-447 C2), but no release asset does yet — adding a
-# `dist.<host>` row that names an asset nobody has published is exactly the
-# lie `check-vendor-fetch-pinned`-style verification exists to catch, so this
-# entry stays on the dist-or-reason ratchet
-# (`.config/dist-or-reason-baseline.txt`) until that asset is seeded and this
-# row gains a `dist.linux-x86_64`.
+# SEEDED 2026-09-21 (issue 1273 / RFC-0099 D4) — the dist we said we would build
+# ourselves now exists. `nano-ros-sdk`'s `scripts/build-play_launch_parser.sh`
+# (phase-447 C2) landed on that repo's `main`, `build-tool.yml` was dispatched
+# with `tool=play_launch_parser version=0.1.0-nros1 upstream=<the ref below>`,
+# and tag `play_launch_parser-0.1.0-nros1` carries one asset per matrix host.
+# This entry leaves the dist-or-reason ratchet accordingly.
+#
+# TWO OF THREE HOSTS, and the third is a MEASURED decline, not a gap. Read off
+# the published artifacts themselves (`scripts/sdk/measure-dist-floor.py`, and
+# the Mach-O load commands for the macOS one):
+#
+#   linux-x86_64 / linux-arm64 — one dynamic ELF, floor glibc 2.34, and exactly
+#     ONE external `DT_NEEDED`: `libpython3.10.so.1.0` (pyo3 `auto-initialize`,
+#     the same hard single-minor link `nros-launch-resolve` has — issue 0897).
+#     libexpat/libz are reached THROUGH libpython, not named by this binary, so
+#     `system` keeps them and gains `libpython310`: that is the soname-exact
+#     `[prereq.*]` whose `apt.noble = []` is what D1's backward half reads to
+#     refuse this dist on a host that ships 3.12, before downloading it.
+#   macos-arm64 — BUILT and PUBLISHED, and deliberately NOT declared here. Its
+#     `LC_LOAD_DYLIB` names `/Library/Frameworks/Python.framework/Versions/3.14/
+#     Python`, an ABSOLUTE path to the python.org framework the macos-14 runner
+#     happens to carry; there is no `@rpath`, so the binary cannot start on a
+#     mac lacking that exact framework version. The backward half that would
+#     catch this is Linux-only (`ldconfig` answers, `otool` has no equivalent
+#     probe here), and `floor = { macos = "11.0" }` — which is what the artifact
+#     truly declares — would let every mac download it. Declaring the row would
+#     hand most macs a tool that dies in the loader INSTEAD of the source build
+#     that works, so the row stays out until the dist links a relocatable
+#     interpreter. Same shape as `[tool.esp32-qemu]`'s decline: measured, then
+#     declined, with the measurement written down. (macos-arm64 is therefore
+#     still source-built, which is what it was yesterday — nothing regressed.)
 [tool.play_launch_parser]
 version = "0.1.0-nros1"
-system = ["libexpat1", "libpython3", "libz1"]
+# `libpython3` is the SOURCE build's requirement (this host's own CPython);
+# `libpython310` is the DIST's (a hard single-minor `DT_NEEDED`, measured).
+system = ["libexpat1", "libpython3", "libpython310", "libz1"]
+# Measured 2026-09-21 on the published linux-x86_64 dist, with
+# LD_LIBRARY_PATH/PYTHONPATH/PYTHONHOME stripped the way the smoke path
+# spawns it: exit 0, the line below first on STDOUT, stderr empty. The
+# string is the crate `description`, so it moves only when the tool is
+# redescribed — not on every version bump, which is the objection that
+# keeps `[tool.ninja]` probe-less.
+smoke = [
+    { run = "bin/play_launch_parser --help", expect = "High-performance ROS 2 launch file parser" },
+]
 upstream = "838ce948551f8ba263648fbb7eeb572cec9d5950" # = source.ref (play_launch pin; no upstream tags)
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/play_launch_parser-0.1.0-nros1/play_launch_parser-linux-x86_64.tar.zst", sha256 = "8b4d5848048ee9e12c30f59f9aba6c3931393752ea4f321792394aa5a17e6b39", floor = { glibc = "2.34" } }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/play_launch_parser-0.1.0-nros1/play_launch_parser-linux-arm64.tar.zst", sha256 = "15c76bddedb51468b82b3c61179d22a0c9210efd069d37488d9abb6deeec396c", floor = { glibc = "2.34" } }
 [tool.play_launch_parser.source]
 git = "https://github.com/NEWSLabNTU/play_launch"
 ref = "838ce948551f8ba263648fbb7eeb572cec9d5950"
@@ -2334,14 +2368,21 @@ check = { sharedlib = "libpython3." }
 # The soname-EXACT sibling of `[prereq.libpython3]` above: the two keys are two
 # requirements that the old single key conflated (phase-447 D2).
 #
-# Corrected for issue 1273 / RFC-0099 D4 — `play_launch_parser` has no dist (it
-# is on the dist-or-reason ratchet, `.config/dist-or-reason-baseline.txt`), so
-# that could never have been the true reason. The real one: PR #896
+# Corrected for issue 1273 / RFC-0099 D4 — when this was written
+# `play_launch_parser` had no dist (it was on the dist-or-reason ratchet), so
+# that could not have been the reason it named. The original one: PR #896
 # (phase-447 A1) made `nros-launch-resolve` ship in the release
 # (`.github/workflows/release-nros.yml`'s "Stage the prefix" step), and it
 # links `libpython3.10.so.1.0` as a hard `DT_NEEDED` (pyo3's
-# `auto-initialize`) — this prereq exists for THAT binary, not for a dist that
-# does not exist.
+# `auto-initialize`).
+#
+# SECOND CONSUMER, 2026-09-21: the `play_launch_parser` linux dists were seeded
+# (tag `play_launch_parser-0.1.0-nros1`) and they link the SAME soname, for the
+# same pyo3 reason — measured on the published artifacts. So this key now
+# serves two binaries, and `[tool.play_launch_parser] system` names it. That
+# does not make the paragraph above wrong; it makes `libpython3` vs
+# `libpython310` the distinction that carried the weight, which is exactly what
+# phase-447 D2 split them for.
 #
 # For a binary linked against one minor, the minor IS the requirement, so here
 # the version in the key is right. phase-447 D2 lets it say where that minor
@@ -2351,7 +2392,7 @@ check = { sharedlib = "libpython3." }
 # Ubuntu LTS that packages 3.10, and a default would claim the others do.
 [prereq.libpython310]
 role = "infra"
-why = "runtime dep of the nros-launch-resolve release binary (pyo3 auto-initialize links libpython3.10.so.1.0; phase-447 A1 / PR #896)"
+why = "runtime dep of the nros-launch-resolve release binary and of the play_launch_parser dist(s) — both link libpython3.10.so.1.0 via pyo3 auto-initialize (phase-447 A1 / PR #896; issue 1273)"
 apt = { jammy = ["libpython3.10"], noble = [] }
 dnf = ["python3.10-libs"]
 pacman = ["python310"]

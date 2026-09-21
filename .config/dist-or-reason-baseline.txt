@@ -17,5 +17,4 @@ esp32-qemu        # upstream's matching asset is a full GUI QEMU build (~55 libs
 genromfs          # upstream (chexum/genromfs) publishes no GitHub Releases at all
 make              # DECIDED (RFC-0099 D4): stays [tool.*]; GNU ftp ships source tarballs only
 nros              # circular: no nros release exists yet to point a dist at (phase-431 W5)
-play_launch_parser # DECIDED (issue 1273): we build + publish this dist ourselves; not seeded yet
 rustfilt          # upstream's only release asset is a macOS-only Homebrew bottle
