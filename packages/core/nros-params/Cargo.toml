@@ -42,3 +42,9 @@ nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
 nros-board-common = { path = "../../boards/nros-board-common", features = [
     "build-helpers",
 ], default-features = false }
+
+# phase-454 (issue 1408) — RFC-0100 D4's `[params]`, the descriptor road for the
+# five parameter-store facts the contract derives. Build-only and host-only, the
+# same shape `nros-node` and `nros-rmw-cffi` already have; this crate stays
+# `no_std` at compile time.
+nros-sizing-descriptor = { path = "../../tooling/nros-sizing-descriptor" }

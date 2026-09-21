@@ -1965,6 +1965,7 @@ dependencies = [
  "heapless",
  "nros-board-common",
  "nros-ghost-types",
+ "nros-sizing-descriptor",
  "nros-zephyr-build",
 ]
 

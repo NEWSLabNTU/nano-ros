@@ -548,7 +548,7 @@ fn main() {
     } else {
         4096
     };
-    let param_svc_shapes = declared_param_service_shapes();
+    let param_svc_shapes = declared_param_service_shapes(sizing.as_ref());
     // phase-454 W10 — the per-endpoint declared depths, for the REGISTRATION
     // check. Same carrier `subs_arena` sizes from, different guard: see
     // `declared_qos_rows`.
@@ -1384,7 +1384,23 @@ fn env_usize_declared(name: &str, declared: &str, default: usize) -> usize {
 /// or empty is `None` -- no declaration, so the configured size stands. A
 /// MALFORMED value refuses the build: a mis-read shape would size the buffer
 /// too small, and the first symptom would be a `ros2 param` call timing out.
-fn declared_param_service_shapes() -> String {
+///
+/// phase-454 (issue 1408) -- the DESCRIPTOR states the same token, and is read
+/// FIRST. `[params] service_shape` carries the string rather than nine numbers
+/// per node precisely so that this parser stays the token's only reader: the
+/// grammar belongs to `ParamServiceShape::token` and to this function, and a
+/// third spelling in the schema crate would be issue 1025's defect. So the two
+/// roads deliver BYTE-IDENTICAL text and everything below this point is
+/// unchanged -- including the malformed-value refusal, which now also guards a
+/// descriptor whose `service_shape` a hand edit broke.
+///
+/// A `Refused` or `Absent` fact falls through to the carrier, which is RFC-0100
+/// D6: `Fact::stated` is the only accessor that yields a value. The carrier is
+/// NOT retired here -- see `contract` in `nros-params/build.rs` for the roads
+/// that still need it, and `check-knob-single-reader.py`'s KEPT ledger.
+fn declared_param_service_shapes(
+    desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
+) -> String {
     // Both spellings are literal, and each is a gate's evidence: the watch is
     // what `check-declared-fact-carriers` looks for, and the name being an
     // ARGUMENT rather than written at the `env::var` call is what
@@ -1396,7 +1412,10 @@ fn declared_param_service_shapes() -> String {
     // shape as nros-params' build script, which reads W4's
     // `NROS_DECLARED_PARAM_NEEDS_*` facts off the same road.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_SERVICE_SHAPE");
-    let raw = declared_fact("NROS_DECLARED_PARAM_SERVICE_SHAPE").unwrap_or_default();
+    let raw = desc
+        .and_then(|d| d.params.service_shape().into_stated())
+        .or_else(|| declared_fact("NROS_DECLARED_PARAM_SERVICE_SHAPE"))
+        .unwrap_or_default();
     let raw = raw.trim();
     if raw.is_empty() {
         return "None".into();
