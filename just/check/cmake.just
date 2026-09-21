@@ -87,6 +87,17 @@ cmake-find-program-shadowed:
 # reporting to nobody; this is the reader.
 #
 # The retired set is DISCOVERED from the cmake sources, so the next retirement
+# issue 1429 — a `get_property()` result tested with an UNQUOTED `STREQUAL ""`.
+#
+# An unset property leaves the variable UNDEFINED, and CMake's `if()` then
+# compares the TOKEN against "" — always true — so the guard written to suppress
+# a row is exactly what emits it, with the value expanding to nothing. That put
+# `NROS_DECLARED_TL_PUBLISHERS=` on the cargo command, where zpico's
+# three-valued reader panics on `Some("")`, and three of six copy-out templates
+# could not be built by a user. Buildless; the self-test drives both verdicts.
+cmake-get-property-guards:
+    @python3 scripts/check/check-cmake-get-property-guards.py
+
 # arms this gate by itself and a moved wording makes it BLIND, not permissive.
 retired-cmake-keywords:
     @python3 scripts/check-retired-cmake-keywords.py

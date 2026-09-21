@@ -3,7 +3,7 @@ id: 1429
 title: "`NROS_DECLARED_TL_PUBLISHERS=\"\"` panics the zpico build script, so tier 1
   cannot build its workspace fixtures — the reader has three arms and the
   workspace road delivers a fourth"
-status: open
+status: resolved
 type: bug
 area: [zenoh, tooling, testing]
 severity: high
@@ -139,3 +139,99 @@ only `NROS_DECLARED_TL_PUBLISHERS` writers a grep of `main` finds outside
 from them — reproducing it needs the failing fixture's actual command line,
 which the CI log does not print. That is the next measurement, and it is why
 this is still filed rather than patched.
+
+
+---
+
+# RESOLVED — a CMake language gotcha, not a producer-contract question
+
+**The diagnosis above is wrong about WHERE, and the correction matters**, because
+its "what would close it" aims at a road that is not the failing one and cost the
+next reader an hour.
+
+## The real cause
+
+`cmake/NanoRosEntityFacts.cmake:805`, the CMAKE road — not
+`leaf_entity_env.rs`, and not the cargo-leaf road:
+
+```cmake
+get_property(_tl GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX)
+if(_tl_unknown)
+    list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=refused")
+elseif(NOT _tl STREQUAL "")                       # <-- always TRUE
+    list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=${_tl}")   # <-- expands EMPTY
+```
+
+`get_property()` on a property that was never set leaves the variable
+**UNDEFINED, not empty**. CMake's `if()` dereferences an unquoted argument only
+when a variable of that name is DEFINED, and otherwise compares the **token
+itself** — so `NOT _tl STREQUAL ""` asks whether the string `_tl` differs from
+the empty string, which is always true.
+
+**The guard written to suppress the row is exactly what appends it.** No model in
+the failing templates declares a TRANSIENT_LOCAL publisher, so the property is
+unset, so the row is emitted with an empty value on every such image.
+
+Measured, with a temporary probe and `cmake --trace-expand`:
+
+```
+-- TLPROBE target=nros_c-static unknown=[] tl=[] envbefore=[...NODES=2]
+NanoRosEntityFacts.cmake(804):  if(_tl_unknown )
+NanoRosEntityFacts.cmake(806):  elseif(NOT _tl STREQUAL  )
+NanoRosEntityFacts.cmake(807):  list(APPEND _env NROS_DECLARED_TL_PUBLISHERS= )
+```
+
+`_tl` is empty and the `elseif` fires anyway. That is the whole bug.
+
+## What the original analysis got right, and what it got wrong
+
+Right: the value is a fourth case the three-valued reader cannot take, and
+`Some("")` is not `None`. Right: the cmake parser at `:117-131` and the
+`refused` path are correct. Right: nothing argued for a silent default.
+
+Wrong: **"The failing road is the workspace/leaf one: `leaf_entity_env.rs`."**
+That file has no `TL_PUBLISHERS` handling because it needs none — it is not on
+this path. The trace above shows the emission inside `nros_entity_facts_env`.
+
+Wrong, in consequence: **neither of the two "defensible sites" was the fix.**
+The producer's contract was already three-valued *in intent*; only the guard
+failed to work. No reader change, and no new emission rule.
+
+## The fix
+
+Quote the value — a quoted argument is always a string, so an undefined
+variable expands to `""` and compares equal:
+
+```cmake
+elseif(NOT "${_tl}" STREQUAL "")
+```
+
+Three guards in that file had the unsafe spelling and all three are fixed
+(`_nodes` :769, `_max` :775, `_tl` :805). Only `_tl` was reachable in practice —
+`_nodes` is set by any model with nodes, and `_max` is protected by the
+`_unknown` term ahead of it — but the idiom is wrong in all three and the class
+is what recurs.
+
+## Acceptance — measured
+
+* the empty row is gone from the emitted command: `NROS_DECLARED_INFRA_QUERYABLES=none`,
+  `NROS_DECLARED_NODES=2`, and no `TL_PUBLISHERS` row at all;
+* `pure-c-workspace`, previously unbuildable by a user copying it out, builds to
+  `[100%] Built target c_talker_pkg`, rc=0.
+
+## Gate
+
+`check-cmake-get-property-guards` (`just check cmake-get-property-guards`, fast
+line, buildless). A variable filled by `get_property()` and tested with an
+unquoted `STREQUAL ""` is a hard failure. Scoped to TRACKED cmake files: the
+provisioned esp-idf trees under `esp-idf-workspace/` and `external/` carry the
+same idiom in upstream code that is not ours to change, and `git ls-files` needs
+no skip entry when a new vendored tree appears.
+
+Verified as a negative control against the REAL line, not only a synthetic one:
+restoring `elseif(NOT _tl STREQUAL "")` reds the gate naming
+`cmake/NanoRosEntityFacts.cmake` and the rewrite to use.
+
+Deliberately NOT flagged: an unquoted `STREQUAL ""` on a variable from `set()`,
+`string()`, `file(READ)` or `list(GET)`. Those are defined-though-possibly-empty
+and the idiom is safe, so reporting them is noise — 20 such sites exist.

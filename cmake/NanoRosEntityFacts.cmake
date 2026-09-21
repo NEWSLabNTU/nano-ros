@@ -766,13 +766,13 @@ function(nros_entity_facts_env _target)
     # creates the servers), and this side only states the count. Absent means
     # undeclared, which the consumer reads as one -- the pre-W3 number.
     get_property(_nodes GLOBAL PROPERTY NROS_ENTITY_NODES_MAX)
-    if(NOT _nodes STREQUAL "")
+    if(NOT "${_nodes}" STREQUAL "")
         list(APPEND _env "NROS_DECLARED_NODES=${_nodes}")
     endif()
 
     get_property(_unknown GLOBAL PROPERTY NROS_ENTITY_SERVERS_UNKNOWN)
     get_property(_max GLOBAL PROPERTY NROS_ENTITY_SERVERS_MAX)
-    if(NOT _unknown AND NOT _max STREQUAL "")
+    if(NOT _unknown AND NOT "${_max}" STREQUAL "")
         list(APPEND _env "NROS_DECLARED_SERVICE_SERVERS=${_max}")
         set(_app "${_max} declared service server(s)")
     else()
@@ -798,11 +798,27 @@ function(nros_entity_facts_env _target)
     # same three-valued answer `nros_sizing_descriptor::Fact` carries on the
     # cargo-leaf road, which already counts this and is why a Rust leaf boots
     # where a declared C/C++ one did not.
+    # Issue 1429 -- the `"${...}"` around every value tested below is LOAD
+    # BEARING, and dropping it is what emitted `NROS_DECLARED_TL_PUBLISHERS=`.
+    #
+    # `get_property()` on a property that was never set leaves the variable
+    # UNDEFINED, not empty. CMake's `if()` dereferences an unquoted argument
+    # only when a variable of that name is DEFINED, and otherwise compares the
+    # TOKEN ITSELF -- so `NOT _tl STREQUAL ""` asks whether the string `_tl`
+    # differs from the empty string, which is always true. The guard written to
+    # SUPPRESS the row is then exactly what appends it, with `${_tl}` expanding
+    # to nothing.
+    #
+    # That reached `nros-zpico-build`, whose reader is deliberately three-valued
+    # (a count, `refused`, or absent) and panics on a fourth: `Some("")` is not
+    # `None`. Three of six copy-out templates could not be built by a user.
+    # Quoting fixes it because a quoted argument is always a string, so an
+    # undefined variable expands to "" and compares equal.
     get_property(_tl_unknown GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_UNKNOWN)
     get_property(_tl GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX)
     if(_tl_unknown)
         list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=refused")
-    elseif(NOT _tl STREQUAL "")
+    elseif(NOT "${_tl}" STREQUAL "")
         list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=${_tl}")
         string(APPEND _app ", ${_tl} transient-local publisher(s)")
     endif()
