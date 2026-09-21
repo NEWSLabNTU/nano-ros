@@ -14,17 +14,29 @@
 # tools and a silent success over the other 13.
 #
 # A reason says what WOULD be probed and why nobody does. Two kinds appear
-# below, and the difference matters: `corrosion` and the `zephyr-sdk` pair have
-# STRUCTURAL reasons that will not change, everything else is DEBT and reads
-# like it.
+# below, and the difference matters: `corrosion` has a STRUCTURAL reason that
+# will not change, everything else is DEBT and reads like it.
+#
+# The `zephyr-sdk` pair used to sit under "structural" too, and issue 1259
+# measured that reason wrong. It argued that a probe's prefix-relative argv
+# could not reach a tarball unpacking to `<prefix>/zephyr-sdk-<version>/`
+# without restating the pin — true of the schema as it then was, and an
+# argument about the SCHEMA, not about the tool. `[tool.*] subdir` now states
+# that directory once (with `{version}` substituted from the pin), so both
+# entries carry real probes. The second half of that reason — "the toolchains
+# are not even present until `setup.sh -t` fetches them" — was a description of
+# the BUG: `nros setup --tool zephyr-sdk-1-0-1` reported success over 68 MB with
+# no toolchain in it. `[tool.*] post_install` runs that installer, and the
+# probes measure what it produced.
+#
+# Worth keeping in view: a written reason is load-bearing, so it can also be
+# WRONG, and being written down is what made this one reviewable.
 #
 # Format: `<tool>: <reason>`, one per line; `#` comments.
 
 # --- structural: there is nothing a prefix-relative argv can run --------------
 
 corrosion: installs CMake package files and no executable — measured, the 0.6.1-nros1 prefix holds only lib/cmake/Corrosion and share/cmake. Its usability is answered at CONFIGURE time by the `nano-ros: Corrosion <ver> via <origin>` line (issue 0500), which is where a wrong version actually bites.
-zephyr-sdk: a probe's `run` is prefix-relative argv and this dist unpacks to `<prefix>/zephyr-sdk-<version>/`, not `<prefix>/bin` — so any probe would restate the version already on the line above it, and drift from it on the next bump. The SDK's own `setup.sh -t <target>` is what makes it usable, and that has no expression in this schema.
-zephyr-sdk-1-0-1: same layout as [tool.zephyr-sdk] above, and the same version-in-the-argv objection. These are the `_minimal` archives, so the toolchains are not even present until `setup.sh -t` fetches them — a probe of the unpacked prefix would measure the part nobody builds with.
 
 # --- debt: a probe is possible and nobody has measured one -------------------
 

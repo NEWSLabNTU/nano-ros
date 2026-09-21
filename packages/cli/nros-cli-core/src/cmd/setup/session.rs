@@ -609,7 +609,14 @@ impl<'i> SessionPlan<'i> {
 fn will_install(action: &InstallAction) -> bool {
     matches!(
         action,
-        InstallAction::Prebuilt { .. } | InstallAction::Source { .. }
+        InstallAction::Prebuilt { .. }
+            | InstallAction::Source { .. }
+            // issue 1259 — finishing an unpacked prefix IS installing. A step
+            // that only completes a post-install still downloads (the SDK's own
+            // installer fetches its toolchains) and still needs the system
+            // packages that step requires, so counting it as a no-op would put
+            // it back on the silent path this issue is about.
+            | InstallAction::Complete { .. }
     )
 }
 
@@ -1801,6 +1808,7 @@ mod tests {
             kind: crate::orchestration::sdk_store::ProvenanceKind::Source,
             version: v.into(),
             sha256: None,
+            post_install: None,
         };
         let lock = dir.join("lock");
         let mut run = SessionRun::new(&plan);
@@ -1901,6 +1909,7 @@ mod tests {
             kind: crate::orchestration::sdk_store::ProvenanceKind::Source,
             version: v.into(),
             sha256: None,
+            post_install: None,
         }
     }
 

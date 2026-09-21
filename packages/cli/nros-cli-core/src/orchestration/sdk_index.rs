@@ -11,7 +11,10 @@
 //! resolution, fetch/cache, the CI release gate — is Phase 187.2–187.5). See
 //! `docs/design/0014-nros-setup-toolchain-management.md`.
 
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use eyre::{Result, WrapErr, bail};
 use serde::{Deserialize, Serialize};
@@ -1024,6 +1027,39 @@ pub struct ToolPackage {
     /// fails on (phase-431 W2) and `nros build` refuses (W1).
     #[serde(default)]
     pub front: Vec<String>,
+    /// issue 1259 — the directory INSIDE the prefix that is the tool's root,
+    /// when the archive is not prefix-rooted.
+    ///
+    /// Most dists here are repackaged into the mirror shape (`<prefix>/bin/…`),
+    /// so the prefix IS the root and this is `None`. The Zephyr SDK is upstream's
+    /// own tarball, which carries a top-level `zephyr-sdk-<version>/` and is
+    /// unpacked without `--strip-components` — so the root is one level down, and
+    /// three different things needed to know it: `post_install`'s working
+    /// directory, a `smoke` probe's argv base, and `nros sdk-path`.
+    ///
+    /// `{version}` is substituted from [`ToolPackage::version`], so the entry
+    /// states the layout once and cannot drift from the pin on the next bump.
+    /// That drift is the objection the smoke-or-reason baseline recorded against
+    /// probing this pair at all, and it is what this key removes.
+    #[serde(default)]
+    pub subdir: Option<String>,
+    /// issue 1259 — the step that turns an UNPACKED prefix into a USABLE one.
+    ///
+    /// Download → verify → unpack answers "did the bytes arrive". For a bundle
+    /// that is DESIGNED to be completed by its own installer it does not answer
+    /// "is the tool there": `zephyr-sdk-1-0-1` pins upstream's `_minimal`
+    /// tarball, whose toolchains are separate downloads its `setup.sh` fetches.
+    /// Without this key `nros setup --tool zephyr-sdk-1-0-1` exited 0 over 68 MB
+    /// with no `gnu/arm-zephyr-eabi` in it, and the first `west build` failed
+    /// inside `FindZephyr-sdk.cmake` naming neither the missing toolchain nor
+    /// the step that should have fetched it.
+    ///
+    /// Run with [`Self::root_of`] as its working directory, and RECORDED in
+    /// `.nros-provenance` on success only — so a second `nros setup` is a no-op
+    /// and a prefix whose post-install failed is resumed at this step rather
+    /// than re-downloaded.
+    #[serde(default)]
+    pub post_install: Option<PostInstall>,
     /// `system` resolved to its `[prereq.*]` entries — filled by
     /// [`SdkIndex::parse`], never authored.
     ///
@@ -1046,6 +1082,30 @@ pub struct BuildTypeEntry {
     pub packages: Vec<String>,
     #[serde(default)]
     pub why: Option<String>,
+}
+
+/// `[tool.<name>.post_install]` — the step that COMPLETES an install (issue 1259).
+///
+/// Deliberately the same free-form shell as a dist's `install` and a source
+/// recipe's `install`: the thing being run is somebody else's installer, and a
+/// schema for its arguments would be a second model of a program we do not own.
+/// What this type adds over a bare string is the two facts the install path
+/// needs: it runs in the tool's ROOT (`prefix` + `subdir`), and its text is what
+/// gets recorded as "done", so changing the command re-runs it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PostInstall {
+    /// Shell command, run with the tool ROOT as its working directory.
+    /// `{root}` and `{prefix}` are substituted, as `install` substitutes
+    /// `{archive}`/`{prefix}`.
+    pub run: String,
+    /// What it completes, in prose — printed while it runs, because these are
+    /// the long steps (the Zephyr SDK's own installer fetches toolchains) and a
+    /// silent multi-minute pause reads as a hang.
+    ///
+    /// Required: a post-install that cannot say what it is for is a shell
+    /// command in a data file, and the next reader has no way to judge it.
+    pub why: String,
 }
 
 /// One "does it actually run?" probe for a `[tool.*]` dist (issue 0929).
@@ -1851,6 +1911,35 @@ impl ToolPackage {
     /// source recipe to fall back to. (`false` ⇒ no prebuilt + no source.)
     pub fn installable_on(&self, host: &str) -> bool {
         self.dist.contains_key(host) || self.source.is_some()
+    }
+
+    /// The tool's ROOT inside `prefix` — issue 1259, and the ONE spelling of it.
+    ///
+    /// Four things resolve a path against an install: the post-install step's
+    /// working directory, a `smoke` probe's argv, `nros sdk-path`, and whatever
+    /// a consumer exports. Before this they each knew (or, in
+    /// `scripts/lib/zephyr-sdk.sh`, hand-appended) the tarball's own top-level
+    /// directory. That is a fact about the ARTIFACT, so it belongs in the index
+    /// row that names the artifact, and everyone else asks.
+    ///
+    /// `{version}` is substituted so `subdir = "zephyr-sdk-{version}"` tracks the
+    /// pin. Nothing else is: a `subdir` is a directory name, not a recipe.
+    pub fn root_of(&self, prefix: &Path) -> PathBuf {
+        tool_root(prefix, self.subdir.as_deref(), &self.version)
+    }
+}
+
+/// [`ToolPackage::root_of`] against an explicit version — the free-function core.
+///
+/// `front_newest` resolves the NEWEST installed version rather than the pinned
+/// one (a deliberate difference: the fronted command must not silently
+/// downgrade), so it cannot go through the `ToolPackage`. Two callers, ONE
+/// substitution — a second `replace("{version}", …)` a few modules over is how
+/// a pattern language grows a dialect.
+pub fn tool_root(prefix: &Path, subdir: Option<&str>, version: &str) -> PathBuf {
+    match subdir {
+        None => prefix.to_path_buf(),
+        Some(sub) => prefix.join(sub.replace("{version}", version)),
     }
 }
 
