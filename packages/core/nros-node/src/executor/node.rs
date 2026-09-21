@@ -2135,6 +2135,184 @@ impl<'e, 's> NodeCtx<'e, 's> {
             { crate::config::DEFAULT_RX_BUF_SIZE },
         >(self.node_id, name, QoSProfile::services_default(), callback)
     }
+
+    // ====================================================================
+    // Graph introspection — RFC-0036, phase-444.
+    //
+    // Upstream hangs the graph family off the NODE (`rclrs::Node::
+    // get_node_names`, `rcl_get_node_names(node, ...)`). We open ONE transport
+    // session per image and the Executor owns it, so the capability lives on
+    // [`Executor`](super::spin::Executor) — see phase-381 W4. These are the
+    // forwarders that let a ported node keep upstream's receiver and upstream's
+    // verb, the same forwarders phase-417 stage 2b wrote for C++ `nros::Node`.
+    //
+    // They add no behaviour: each is a one-line delegation to the executor
+    // this handle already borrows.
+    //
+    // THE CONTRACT EVERY ONE OF THEM KEEPS (RFC-0036 §"Static CONNECTION,
+    // dynamic GRAPH"), stated once here and referenced from each:
+    //
+    //  * It reports what has been DISCOVERED, and NEVER BLOCKS. The backend
+    //    keeps a standing view fed by `spin`, so a first call legitimately
+    //    returns a partial graph and the view fills in over successive calls.
+    //    Code waiting for a peer must poll, not call once and conclude.
+    //  * An empty answer is "nobody seen yet", NEVER "nobody exists".
+    //  * `Err(Transport(Unsupported))` — a backend that cannot tell you, such
+    //    as XRCE — is a DIFFERENT answer from empty, and must not be collapsed
+    //    into zero or into an empty enumeration.
+    //
+    // SHAPE DIVERGENCE from rclrs, and why: rclrs returns owned heap
+    // containers (`Vec<NodeNameInfo>`, `TopicNamesAndTypes`). The graph has no
+    // bound the caller can know, so a caller-sized buffer is an unanswerable
+    // question and an owned container needs an allocator a 128 KiB target does
+    // not have. We stream through a visitor instead, which costs one entry of
+    // peak RAM. Every `&str` handed to a visitor is BORROWED for the duration
+    // of that call — copy anything you keep. Returning `false` stops the walk.
+    // ====================================================================
+
+    /// Every node on the graph, with its namespace — rclrs's
+    /// [`Node::get_node_names`].
+    ///
+    /// `visit(name, namespace)` once per node. For the enclave as well, use
+    /// [`get_node_names_with_enclaves`](Self::get_node_names_with_enclaves):
+    /// one backend slot answers both, exactly as `rmw_get_node_names` and
+    /// `rmw_get_node_names_with_enclaves` are one query upstream.
+    ///
+    /// Reports what has been DISCOVERED and never blocks, so an empty
+    /// enumeration means "nobody seen yet", not "nobody exists";
+    /// `Err(Transport(Unsupported))` from a backend with no graph is a
+    /// different answer from empty. See the module note above.
+    pub fn get_node_names(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str) -> bool,
+    ) -> Result<(), NodeError> {
+        self.executor
+            .get_node_names(&mut |name, ns, _enclave| visit(name, ns))
+    }
+
+    /// Every node on the graph with its namespace AND its enclave — rclrs's
+    /// [`Node::get_node_names_with_enclaves`].
+    ///
+    /// `visit(name, namespace, enclave)`. `enclave` is `None` when the backend
+    /// reports the node but not its enclave, which is a partial answer rather
+    /// than an error — reporting the node without the enclave beats dropping
+    /// it. Same discovery envelope as [`get_node_names`](Self::get_node_names).
+    pub fn get_node_names_with_enclaves(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str, Option<&str>) -> bool,
+    ) -> Result<(), NodeError> {
+        self.executor.get_node_names(visit)
+    }
+
+    /// Every topic on the graph, with the types on it — rclrs's
+    /// [`Node::get_topic_names_and_types`].
+    ///
+    /// `visit(topic_name, types)` once per distinct TOPIC: a topic carrying
+    /// two types is one call with two entries, not two calls. `types` may
+    /// legitimately be empty on a partially discovered graph. Same discovery
+    /// envelope as [`get_node_names`](Self::get_node_names).
+    pub fn get_topic_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), NodeError> {
+        self.executor.get_topic_names_and_types(visit)
+    }
+
+    /// Every service on the graph, with its types — rclrs's
+    /// [`Node::get_service_names_and_types`]. As
+    /// [`get_topic_names_and_types`](Self::get_topic_names_and_types), over
+    /// servers and clients.
+    pub fn get_service_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), NodeError> {
+        self.executor.get_service_names_and_types(visit)
+    }
+
+    /// How many publishers are visible on `topic_name` — rclrs's
+    /// [`Node::count_publishers`].
+    ///
+    /// **This is the GRAPH's count, not this node's.** The number of
+    /// publishers this node itself DECLARED is
+    /// [`StandaloneNode::publisher_count`](crate::StandaloneNode), a different
+    /// question with a different answer.
+    ///
+    /// A count reflects what has been DISCOVERED, so it can be low right after
+    /// startup and is never a proof of absence. See
+    /// [`get_node_names`](Self::get_node_names).
+    pub fn count_publishers(&mut self, topic_name: &str) -> Result<usize, NodeError> {
+        self.executor.count_publishers(topic_name)
+    }
+
+    /// How many subscriptions are visible on `topic_name` — rclrs's
+    /// [`Node::count_subscriptions`].
+    ///
+    /// **`subscriptions`, not `subscribers`** — this is rclrs's spelling, and
+    /// the Rust surface takes its vocabulary from rclrs so a user porting Rust
+    /// ROS 2 code types what they already know. The C surface says
+    /// `subscribers` because rcl does, and the vtable slot says `subscribers`
+    /// because upstream rmw does. Three layers, three upstreams, one word each
+    /// — not drift.
+    ///
+    /// The graph's count, not this node's; see
+    /// [`count_publishers`](Self::count_publishers) for that distinction and
+    /// for the discovery caveats.
+    pub fn count_subscriptions(&mut self, topic_name: &str) -> Result<usize, NodeError> {
+        self.executor.count_subscribers(topic_name)
+    }
+
+    /// What one named node PUBLISHES, with the types — rclrs's
+    /// [`Node::get_publisher_names_and_types_by_node`].
+    ///
+    /// A node the graph has not discovered yields no visits, which is not an
+    /// error — see [`get_node_names`](Self::get_node_names) for why an empty
+    /// answer means "not seen yet".
+    pub fn get_publisher_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), NodeError> {
+        self.executor
+            .get_publisher_names_and_types_by_node(node_name, node_namespace, visit)
+    }
+
+    /// What one named node SUBSCRIBES to, with the types — rclrs's
+    /// [`Node::get_subscription_names_and_types_by_node`]. See
+    /// [`count_subscriptions`](Self::count_subscriptions) on the spelling.
+    pub fn get_subscription_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), NodeError> {
+        self.executor
+            .get_subscription_names_and_types_by_node(node_name, node_namespace, visit)
+    }
+
+    /// What services one named node SERVES, with the types — rclrs's
+    /// [`Node::get_service_names_and_types_by_node`].
+    pub fn get_service_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), NodeError> {
+        self.executor
+            .get_service_names_and_types_by_node(node_name, node_namespace, visit)
+    }
+
+    /// What services one named node CALLS, with the types — rclrs's
+    /// [`Node::get_client_names_and_types_by_node`].
+    pub fn get_client_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), NodeError> {
+        self.executor
+            .get_client_names_and_types_by_node(node_name, node_namespace, visit)
+    }
 }
 
 /// Service-server builder on a [`NodeCtx`] — `node.service(name)`.
