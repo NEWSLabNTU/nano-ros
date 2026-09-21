@@ -18,7 +18,7 @@ merely observed, and they are precisely the part with no compile step:
 
 | issue | the surface | what checks it today |
 | --- | --- | --- |
-| [#1058](../issues/1058-scaffold-output-is-grepped-never-built.md) | `nros new` scaffold output | ~30 substring assertions; nothing compiles the result |
+| [#1058](../issues/archived/1058-scaffold-output-is-grepped-never-built.md) | `nros new` scaffold output | ~30 substring assertions; nothing compiles the result |
 | [#1108](../issues/archived/1108-templates-materialize-dead-entry-pkgs.md) | four copy-out templates | nothing — two declare no `[image.*]`, so `nros build` refuses them outright |
 | [#1107](../issues/1107-book-teaches-entry-pkg-per-target.md) | book pages | nothing — an out-of-tree consumer was scaffolded from the retired shape |
 | [#1116](../issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md) | rustdoc outside the six published crates | nothing — ~70 diagnostics, five crates fail to document at all |
@@ -105,15 +105,51 @@ copy-out templates still materialize a `robot_entry` package; two declare no
 
 ### W2 — the scaffold compiles in its own test
 
-[Issue 1058](../issues/1058-scaffold-output-is-grepped-never-built.md). A
+[Issue 1058](../issues/archived/1058-scaffold-output-is-grepped-never-built.md). A
 template can name three undeclared types and every test passes.
 
-- [ ] Every scaffold variant is COMPILED by its test, not grepped.
-- [ ] The three undeclared types the issue found are a red before they are a
-      fix — a test that passes on the broken input proves nothing about the
-      new one.
-- [ ] No compilation inside the test process: this is a build-stage fixture and
+- [x] Every scaffold variant is COMPILED by its test, not grepped.
+      `scripts/check-scaffold-builds.sh`, on `check::build-serial`. All SIX
+      variants — three languages the CLI declares, times `--component` and
+      project mode — scaffolded and built OUTSIDE the checkout. Outside is
+      measured, not stylistic: scaffolding into `<repo>/tmp/` makes
+      `find_package(nano_ros)` walk up and resolve the repository's own root,
+      which dies on the CLI ownership guard and never reaches the question.
+      Discovery is doubled so neither list can drift — the LANGUAGES come from
+      `nros new --help`'s own `[possible values: …]`, the BUILD ROAD from what
+      the scaffold emits (`Cargo.toml` → cargo, `CMakeLists.txt` → cmake).
+      The cargo road runs the scaffold's OWN documented flow (`nros sync` with
+      `NROS_REPO_DIR`, then `cargo build`); skipping it reports
+      `no matching package named \`nros\``, which reads as the #378 defect and
+      is really the harness omitting a step.
+- [x] ~~The three undeclared types the issue found are a red before they are a
+      fix~~ — **not obtainable, and saying so is the honest answer.** All three
+      resolve today: `rclcpp::Result` is `using ::nros::Result;` in
+      `result.hpp`, `rclcpp::Timer` is `using Timer = ::nros::Timer;` at
+      `timer.hpp:268`, and `rclcpp::Node` became the node type's own home in
+      RFC-0089 / phase-427 W7. phase-417's rename was finished correctly after
+      issue 1058 was filed, so there is no historical red left to reproduce —
+      the negative control reported "this checker cannot fail" twice, once per
+      name, before the headers were read. It now breaks a copy with a synthetic
+      absent type, which proves the checker can fail without pretending to
+      reproduce a defect the tree no longer has.
+
+      **The red the box wanted exists — in Rust.** The gate's first real run
+      found the Rust component template built on the `Component*` trait family
+      retired 2026-06-03, broken for three and a half months by both its
+      documented routes (issue 1412).
+      Three undeclared names, same count, same cause, in the language issue
+      1058 never examined.
+- [x] No compilation inside the test process: this is a build-stage fixture and
       the test consumes the artifact, per CLAUDE.md's rule.
+      A GATE, not a test — the issue's own proposed fix ("build at least one
+      scaffold variant per language in `check-cli-tests`") would have put a
+      cmake and a cargo build inside a test process, which that rule forbids.
+      The artifact predicate keys on the SCAFFOLD'S OWN source: the first
+      spelling counted any `*.c.o` under `CMakeFiles/`, which readmitted the
+      vacuity it was written to remove — `c_project` reported 40 "own"
+      artifacts, the example being a GENERATED message TU that compiles
+      whatever the template says.
 
 ### W3 — the book teaches the shape the tree builds
 

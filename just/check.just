@@ -264,6 +264,7 @@ build-serial: \
     rmw-cyclonedds \
     rmw-uorb \
     rmw-xrce \
+    scaffold-builds \
     sched-dim-arms \
     source-gates \
     staticlib-symbols \

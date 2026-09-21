@@ -53,6 +53,15 @@ source-gates
 # Pristine worktree, PATH=/usr/bin:/bin, no `nros` anywhere:
 #   c-and-cpp-mixed-workspace: FAIL — no `nros` CLI to build with
 template-copy-out
+# scaffold-builds runs `nros new` for every variant the CLI declares, then
+# `nros sync` + cargo / cmake on each, OUTSIDE the checkout (measured:
+# scaffolding inside it makes `find_package(nano_ros)` walk up and resolve the
+# repository's own root, which dies on the CLI ownership guard and never
+# reaches the question). ~1 min for six variants warm, and it needs the
+# in-tree CLI for every step including variant discovery.
+# Pristine worktree, PATH=/usr/bin:/bin, no `nros` anywhere:
+#   check-scaffold-builds: could not read `nros new --help`'s --lang values.
+scaffold-builds
 
 # --- need an RMW backend or its vendored sources to resolve ---
 embedded-feature-unification

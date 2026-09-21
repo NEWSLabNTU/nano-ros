@@ -2,7 +2,7 @@
 id: 1058
 title: "`nros new` scaffold tests grep the emitted text and never build it, so a
   template can name three undeclared types and every test passes"
-status: open
+status: resolved
 type: bug
 area: cli, api
 related: [phase-417, rfc-0043, phase-452]
@@ -67,3 +67,45 @@ declared in the headers, by grepping the header set. That catches the
 undeclared-type half (2 of the 3 here) without a build, but not the
 `rclcpp::Node` half, whose name resolves and whose SHAPE differs — the
 compile-or-conform hazard RFC-0089 exists for.
+
+## Resolution (2026-09-21)
+
+`scripts/check-scaffold-builds.sh` (phase-452 W2) compiles what `nros new`
+emits — all six variants, scaffolded OUTSIDE the checkout and built by each
+one's own documented flow. On `check::build-serial`, registered in
+`.config/ungated-gates.txt` with the pristine-worktree measurement that file
+requires.
+
+**Not as this issue proposed.** Its Fix section says to build a variant per
+language *in `check-cli-tests`*, which would put cmake and cargo inside a test
+process — the thing CLAUDE.md's "no compilation inside tests" rule forbids. It
+is a build-stage gate instead.
+
+**The C++ evidence has expired; the defect had not.** All three names this
+issue tabulates as undeclared now resolve — `rclcpp::Result` is
+`using ::nros::Result;` in `result.hpp`, `rclcpp::Timer` is
+`using Timer = ::nros::Timer;` at `timer.hpp:268`, `rclcpp::Node` became the
+node type's home in RFC-0089. phase-417's rename was finished correctly after
+this was filed.
+
+The gate's first real run found the same disease in the language this issue
+never examined: the **Rust** component template was built on the `Component*`
+trait family retired 2026-06-03, and compiled by neither of its two documented
+routes for three and a half months — three undeclared names, same count, same
+cause. Issue 1412.
+
+That is the answer to "why it matters more than one bad edit": the gap was
+systematic, and it had already claimed a second template while the first was
+being fixed.
+
+**Two vacuity traps the gate had to be measured out of**, both of which passed
+review by inspection first:
+
+1. `is_elf` compared against `\0177ELF` where `od -An -c` emits `177ELF`, so the
+   artifact predicate could never return true.
+2. The predicate then counted any `*.c.o` under `CMakeFiles/` as the scaffold's
+   own — `c_project` reported 40 "own" artifacts, the example being a generated
+   message TU.
+
+Both were caught by running the thing, not by reading it, which is this issue's
+own thesis applied to its fix.

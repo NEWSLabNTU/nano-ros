@@ -33,5 +33,7 @@
 #
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
+docs/roadmap/phase-452-copy-out-front-door.md:1412
 just/check/docs.just:1110
+just/check/fixtures.just:1412
 scripts/build/rustdoc-set.sh:1110
