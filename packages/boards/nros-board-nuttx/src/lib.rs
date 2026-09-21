@@ -594,15 +594,15 @@ where
     // — the connection then never leaves the guest over virtio-net and
     // fails fast with `Transport(ConnectionFailed)`. Bake via
     // `option_env!` (the freertos/esp32 pattern; CLAUDE.md "compile-time
-    // on embedded") and fall back to `from_env` only when nothing was
-    // baked (hosted/dev use).
+    // on embedded"); an unset one is the EMPTY locator issue 0330 defines,
+    // which the backend then defaults.
     const BAKED_LOCATOR: Option<&str> = option_env!("NROS_LOCATOR");
     const BAKED_DOMAIN: Option<&str> = option_env!("NROS_DOMAIN_ID");
-    // Issue #98 / RFC-0045 — derive the node name from the baked boot config
-    // supplied by `run_with_deploy`; fall back to `"nros_app"` when called from
-    // `run` (boot_config = None) or when the baked config carries no name.
-    // Hoisted out of the BAKED_LOCATOR match so the no-baked-locator path
-    // (`from_env`) also applies the launch-declared node name (W4d fix).
+    // Issue #98 / RFC-0045 — the node name comes from the baked boot config
+    // `run_with_deploy` supplies; `"nros_app"` when called from `run`
+    // (boot_config = None) or when the bake carries no name. It applies on
+    // BOTH locator arms (W4d fix) — before that it was inside the match and a
+    // guest with no baked locator lost its launch-declared name.
     // Issue 1434 — ONE spelling of the board rung, the same
     // `BootConfig::over_board_defaults` the other five embedded boards reach.
     //
@@ -889,28 +889,10 @@ where
     // back to loopback and never leave the guest). See `run_entry` for detail.
     const BAKED_LOCATOR: Option<&str> = option_env!("NROS_LOCATOR");
     const BAKED_DOMAIN: Option<&str> = option_env!("NROS_DOMAIN_ID");
-    // Issue 1434 — ONE spelling of the board rung, the same
-    // `BootConfig::over_board_defaults` the other five embedded boards reach.
-    //
-    // This site did NOT say `namespace: None` — it built an `ExecutorConfig`
-    // with the BUILDER and pulled exactly one field, `node_name`, out of the
-    // bake. So it is the same defect wearing a different spelling, which is
-    // why the issue's grep for `namespace: None` found six sites and not
-    // eight, and why folding it into the shared function matters more than
-    // adding a `.namespace(...)` call here would.
-    //
-    // Two things follow from the fold, both deliberate:
-    //   * `rmw` now reaches the resolver from the bake, as it already did on
-    //     every other board (issue 1050 defect (3) missed this spelling for
-    //     the same reason 1434 did).
-    //   * an out-of-range baked `NROS_DOMAIN_ID` is now a loud resolver error
-    //     instead of a domain the DDS layer rejects later — `resolve` applies
-    //     `DOMAIN_ID_MAX` for every caller, and this one was outside it.
-    //
-    // phase-359 W7 — the no-baked-locator arm is `""`, not `from_env()`:
-    // `from_env` is std-only, this guest has NO populated environment (which
-    // is why the locator is baked at all), and issue 0330 defines an unset
-    // locator as EMPTY, which the backend then defaults.
+    // Issue 1434 — the same board rung as `run_entry`, through the same
+    // `BootConfig::over_board_defaults`. See there for why this spelling was
+    // invisible to the issue's `namespace: None` grep, and for the two things
+    // the fold changes (`rmw` from the bake, a loud out-of-range domain).
     let baked = boot_config
         .map(::nros::BootConfig::from_baked)
         .unwrap_or_default();
