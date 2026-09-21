@@ -511,6 +511,31 @@ no-direct-kernel-alloc:
 no-std-stdio:
     @python3 scripts/check-no-std-stdio.py
 
+# Issue 1381 — the same rule one level up: no `std` path in Rust entry code an
+# nros producer EMITS.
+#
+# `no-std-stdio` scans a crate's own `src/` and says so in its own comment: a
+# proc macro links libstd by definition, and its emitted `::std::println!` "is
+# that crate's business, checked there". 1381 is the hole in "there" — the
+# caller's source is the single line `nros::main!(…)`, so a source-scanning gate
+# sees nothing, and `nros::main!` emitted nine `::std::` paths into a
+# `#![no_std]` bare-metal leaf. All nine sat under `#[cfg(not(any(target_os =
+# "none", target_os = "nuttx")))]`, which answers "is the TARGET hosted" — the
+# wrong question, because a `#![no_std]` crate built with no `--target` compiles
+# for the host and still has no `std` in its crate root.
+#
+# A mirror rather than an extension: that rule is about libstd STDIO on Zephyr
+# native_sim (issue 0589) in authored source; this is about ANY `std` path in
+# emitted tokens. Scope is emission-only — `main_macro.rs` reads files and the
+# environment and names `std::fs` / `std::env` dozens of times in its own body.
+#
+# Buildless. `--self-test` drives 10 synthetic producers, including the two
+# readings that would make it useless: host-side `std::` outside a `quote!`, and
+# a second function borrowing the hosted emitter's licence.
+[group("ci")]
+no-std-entry-emission:
+    @python3 scripts/check-no-std-entry-emission.py
+
 # Its sibling on the other half of the same claim. `no-std-stdio` checks that a
 # `#![no_std]` crate does not reach for `std` stdio; this checks that the core
 # crates SAY `#![no_std]` in the first place, unconditionally.

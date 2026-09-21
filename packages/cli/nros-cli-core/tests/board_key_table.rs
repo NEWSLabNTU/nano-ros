@@ -189,7 +189,7 @@ fn rust_zst_family() -> BTreeMap<&'static str, Option<BoardFamily>> {
 fn the_rust_pack_key_set_agrees_with_the_family_table() {
     let zst_family = rust_zst_family();
     let mut used = BTreeSet::new();
-    for &(key, path) in nros_orchestration_ir::BOARD_PATHS {
+    for &(key, path, _links_std) in nros_orchestration_ir::BOARD_PATHS {
         let want = *zst_family.get(path).unwrap_or_else(|| {
             panic!("`{key}` names ZST `{path}`, which this test has no family for")
         });
@@ -310,5 +310,69 @@ fn c_abi_runners_name_only_symbols_that_exist() {
         "the scan found a definition of the symbol issue 1285 says does not exist \
          — either ThreadX gained a C runner (update c_abi_runners and this test) or \
          the scan is too loose"
+    );
+}
+
+/// Issue 1381 — `BOARD_PATHS`'s `links_std` column agrees with the board
+/// descriptors' `entry_kind`, for every key a descriptor knows.
+///
+/// The column exists because the two Rust EMITTERS need the answer where no
+/// descriptor is reachable: `nros::main!` runs as a proc macro with a board KEY
+/// and no catalog. So it is a restatement, and a restatement that nothing
+/// checks is a mirror waiting to drift — the class this file was opened for.
+///
+/// `entry_kind` is the authority because it is also what WRITES the attribute:
+/// `builder::entry` puts `#![no_std]` at the top of a `board-run` and a
+/// `zephyr-staticlib` entry TU and nothing at the top of a `hosted-main` one.
+///
+/// Keys a descriptor does not name (`mps2-an385`, `freertos`, `nuttx-riscv`, …
+/// are Rust-pack spellings) are skipped rather than failed: this asserts
+/// agreement where both sides speak, not that the two key sets are equal —
+/// `an_unknown_key_errors_at_every_consumer` above records that they are not.
+#[test]
+fn the_links_std_column_agrees_with_the_descriptors_entry_kind() {
+    use nros_cli_core::orchestration::board_descriptor::{BoardCatalog, EntryKind};
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        // packages/cli/nros-cli-core -> cli -> packages -> repo root
+        .ancestors()
+        .nth(3)
+        .expect("repo root")
+        .to_path_buf();
+    // No `Err(_) => return`: this asserts about the SHIPPED descriptors, so a
+    // catalog that will not load is a failure, not a green having checked
+    // nothing (issue 0571's shape).
+    let catalog = BoardCatalog::load(&root)
+        .unwrap_or_else(|e| panic!("shipped board catalog under {}: {e}", root.display()));
+
+    let mut checked = 0;
+    for &(key, _, links_std) in nros_orchestration_ir::BOARD_PATHS {
+        let Some(d) = catalog
+            .descriptors()
+            .iter()
+            .find(|d| d.names.iter().any(|n| n == key))
+        else {
+            continue;
+        };
+        let want = match d.entry_kind {
+            EntryKind::HostedMain => true,
+            EntryKind::BoardRun | EntryKind::ZephyrStaticlib => false,
+        };
+        assert_eq!(
+            links_std, want,
+            "`{key}`: BOARD_PATHS says links_std = {links_std}, but its descriptor \
+             declares entry_kind = {:?}. An emitter reads the column and would write a \
+             `std::` path into a `#![no_std]` entry (issue 1381) — or drop the hosted \
+             `fn main()` from one that needs it.",
+            d.entry_kind
+        );
+        checked += 1;
+    }
+    // A scan that matched nothing would pass silently. Eleven of the 22 keys
+    // are named by a descriptor as of 2026-09-21.
+    assert!(
+        checked >= 8,
+        "only {checked} BOARD_PATHS keys were matched to a descriptor — the name \
+         matching has probably broken, so this test is checking nothing"
     );
 }

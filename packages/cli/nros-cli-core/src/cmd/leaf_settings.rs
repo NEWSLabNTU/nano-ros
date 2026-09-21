@@ -30,14 +30,26 @@
 //! The writer carries them now, so the working directory carries no build fact.
 //!
 //! This road still runs cargo from the directory ABOVE the leaf. That was
-//! REQUIRED while the leaf had its own `.cargo/config.toml`: its `include` of
-//! the board projection repeated the board's `[target.<triple>] rustflags`, and
-//! cargo JOINS arrays across config files, so reading both doubled the link
-//! script — measured on the mps2 bare-metal talker, `rust-lld: error:
-//! memory.x:19: region 'FLASH' already defined`. phase-445 W6 deleted every
-//! `examples/**/.cargo/`, so running from the leaf is now equivalent; the
-//! invocation stays where it is because the fixture lane and its staleness
-//! probe share it, and a second spelling is a permanent false-STALE.
+//! REQUIRED while the leaf had its own AUTHORED `.cargo/config.toml`: its
+//! `include` of the board projection repeated the board's
+//! `[target.<triple>] rustflags`, and cargo JOINS arrays across config files,
+//! so reading both doubled the link script — measured on the mps2 bare-metal
+//! talker, `rust-lld: error: memory.x:19: region 'FLASH' already defined`.
+//! phase-445 W6 deleted every `examples/**/.cargo/`, so running from the leaf
+//! is now equivalent; the invocation stays where it is because the fixture lane
+//! and its staleness probe share it, and a second spelling is a permanent
+//! false-STALE.
+//!
+//! **Issue 1381 — and a plain `cargo build` INSIDE the leaf works too.**
+//! [`wire_settings_into_leaf_config`] puts an `include` of this file into the
+//! leaf's own (gitignored) `.cargo/config.toml`, the one sync already writes
+//! for the central patch. Cargo discovers that file from the working directory,
+//! so the board's triple and link group finally reach an invocation that names
+//! no flags — which is what "standalone copy-out project" has to mean. It costs
+//! the lane nothing: the lane's working directory is ABOVE the leaf, where that
+//! file is not on cargo's discovery path, so the doubling above cannot come
+//! back through it. Combining the two BY HAND still doubles, and the generated
+//! file's own header says so.
 //!
 //! ## What the file carries
 //!
@@ -68,7 +80,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use eyre::{Result, bail, eyre};
+use eyre::{Result, WrapErr, bail, eyre};
 use nros_orchestration_ir::leaf_system::{self, LeafSystem};
 
 use crate::{
@@ -311,8 +323,16 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
     let (_cwd, args) = build_command(&img);
     let hint = format!(
         "(from the directory ABOVE the package, so the package's own\n\
-         `.cargo/config.toml` is not read a second time; phase-445 W6 deletes it)\n\
-         cargo {}",
+         `.cargo/config.toml` is not read a second time)\n\
+         cargo {}\n\
+         \n\
+         or, from INSIDE the package, with no flags at all:\n\
+         cargo build --release\n\
+         because `nros sync` wires this file into the leaf's own (gitignored)\n\
+         `.cargo/config.toml` as an `include` — issue 1381. Do NOT combine the\n\
+         two: cargo JOINS `rustflags` arrays across config files, so reading\n\
+         this file twice links `link.x` twice (`region 'FLASH' already\n\
+         defined`).",
         args.join(" ")
     );
     let spec = cargo_config::CargoConfigSpec {
@@ -332,7 +352,127 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
     };
     cargo_config::write(&spec, &img.config_path)
         .map_err(|e| eyre!("writing the settings for `{}`: {e}", img.image_id))?;
+    wire_settings_into_leaf_config(leaf, &img.image_id, who)?;
     Ok(Some(img))
+}
+
+/// The `include` a leaf's own `.cargo/config.toml` carries so that a plain
+/// `cargo build` RUN INSIDE THE LEAF reads the generated settings.
+///
+/// Relative to the config file's directory (`<leaf>/.cargo/`), which is how
+/// cargo resolves an `include` entry.
+fn settings_include_rel(image_id: &str) -> String {
+    format!("../build/{image_id}/{}", cargo_config::FILE_NAME)
+}
+
+/// Issue 1381 — make the leaf STANDALONE: `nros sync` + `cargo build` inside it.
+///
+/// The generated settings file is a `--config` file, and cargo does not
+/// discover one; it discovers `.cargo/config.toml` upward from the WORKING
+/// DIRECTORY. So a leaf that states its board in `system.toml` and carries no
+/// `[build] target` of its own built for the HOST under a bare `cargo build` —
+/// which for a `#![no_std]` firmware leaf cannot work at all (measured: the
+/// `nros::main!` hosted arm, then `unwinding panics are not supported without
+/// std`, then no `main` symbol to link). The fixture lane never saw it because
+/// it builds from the directory above with `--config` NAMED.
+///
+/// One `include` line closes that, and it costs nothing elsewhere: the lane's
+/// working directory is ABOVE the leaf, so the file this writes is not on
+/// cargo's discovery path there and cannot double the board's `rustflags`
+/// (phase-445 W6's `region 'FLASH' already defined`). The file is gitignored
+/// (`**/.cargo/config.toml`), sync already writes it for the central patch
+/// `include`, and `render_patch_config` preserves entries it does not own — so
+/// this line survives every later sync without being re-added.
+///
+/// SKIPPED for a leaf whose config already states `[build] target` or any
+/// `[target.*] rustflags`: there the authored file and the generated one would
+/// both be read from inside the leaf, and cargo JOINS `rustflags`. No in-tree
+/// leaf is in that shape (zero of the 23 tracked `.cargo/config.toml` sit
+/// beside a `system.toml`), but an out-of-tree consumer may be, and silently
+/// doubling its link script would be worse than leaving it on the `--config`
+/// road it is already using.
+fn wire_settings_into_leaf_config(leaf: &Path, image_id: &str, who: &str) -> Result<()> {
+    use toml_edit::{DocumentMut, Value, value};
+
+    let cfg_dir = leaf.join(".cargo");
+    let cfg = cfg_dir.join("config.toml");
+    let existing = std::fs::read_to_string(&cfg).unwrap_or_default();
+    let mut doc: DocumentMut = existing
+        .parse()
+        .wrap_err_with(|| format!("{who}: parse {}", cfg.display()))?;
+
+    if states_its_own_build_flags(&doc) {
+        println!(
+            "{who}: {} states its own `[build] target` / `rustflags`, so the generated \
+             settings stay on the `--config` road (issue 1381)",
+            cfg.display()
+        );
+        return Ok(());
+    }
+
+    let want = settings_include_rel(image_id);
+    let current: Vec<String> = doc
+        .as_table()
+        .get("include")
+        .and_then(|i| i.as_value())
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    // A leaf that switches `[image.<id>]` would otherwise keep an include of the
+    // PREVIOUS image's settings file, which sync no longer writes — and a
+    // missing `include` target is a HARD cargo error during manifest parse, not
+    // a silent drop (issue 0463). So the whole family is re-decided, never just
+    // appended to.
+    let is_ours = |s: &str| s.starts_with("../build/") && s.ends_with(cargo_config::FILE_NAME);
+    let mut desired: Vec<String> = current.iter().filter(|s| !is_ours(s)).cloned().collect();
+    desired.push(want);
+    if current == desired {
+        // Never rewrite an identical file: the mtime alone re-stales every
+        // fixture keyed on this leaf (the rule `render_patch_config` records).
+        return Ok(());
+    }
+
+    let item = doc
+        .as_table_mut()
+        .entry("include")
+        .or_insert_with(|| value(toml_edit::Array::new()));
+    let arr = item
+        .as_value_mut()
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| eyre!("{who}: `include` in {} is not an array", cfg.display()))?;
+    arr.retain(|v| v.as_str().is_none_or(|s| !is_ours(s)));
+    arr.push(&desired[desired.len() - 1]);
+
+    std::fs::create_dir_all(&cfg_dir)
+        .wrap_err_with(|| format!("{who}: mkdir {}", cfg_dir.display()))?;
+    crate::atomic_file::atomic_write(&cfg, &doc.to_string())?;
+    Ok(())
+}
+
+/// Does this `.cargo/config.toml` already carry build flags the generated
+/// settings file would duplicate? See [`wire_settings_into_leaf_config`].
+fn states_its_own_build_flags(doc: &toml_edit::DocumentMut) -> bool {
+    if doc
+        .as_table()
+        .get("build")
+        .and_then(|b| b.as_table_like())
+        .is_some_and(|b| b.get("target").is_some())
+    {
+        return true;
+    }
+    doc.as_table()
+        .get("target")
+        .and_then(|t| t.as_table_like())
+        .is_some_and(|t| {
+            t.iter().any(|(_, v)| {
+                v.as_table_like()
+                    .is_some_and(|tt| tt.get("rustflags").is_some())
+            })
+        })
 }
 
 #[cfg(test)]
@@ -441,5 +581,117 @@ mod tests {
                 "talker/build/native/nros-cargo.toml"
             ]
         );
+    }
+
+    /// Issue 1381 — the leaf's own `.cargo/config.toml` gains the `include`, so
+    /// `cargo build` INSIDE the leaf reads the generated settings.
+    ///
+    /// This is what makes a single-package leaf standalone. Without it the
+    /// board's triple lives only in a `--config` file, which cargo does not
+    /// discover, so a bare `cargo build` in a bare-metal leaf compiled for the
+    /// HOST and could not succeed on any path.
+    #[test]
+    fn the_leaf_config_gains_an_include_of_the_generated_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path();
+        wire_settings_into_leaf_config(leaf, "mps2-an385-baremetal", "sync").unwrap();
+        let text = std::fs::read_to_string(leaf.join(".cargo/config.toml")).unwrap();
+        assert!(
+            text.contains("../build/mps2-an385-baremetal/nros-cargo.toml"),
+            "{text}"
+        );
+    }
+
+    /// Idempotent, and the second run does not TOUCH the file: an identical
+    /// rewrite still moves the mtime, which re-stales every fixture keyed on
+    /// this leaf (the rule `render_patch_config` records for the same file).
+    #[test]
+    fn a_second_sync_neither_duplicates_the_include_nor_touches_the_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path();
+        wire_settings_into_leaf_config(leaf, "native", "sync").unwrap();
+        let cfg = leaf.join(".cargo/config.toml");
+        let first = std::fs::read_to_string(&cfg).unwrap();
+        let mtime = std::fs::metadata(&cfg).unwrap().modified().unwrap();
+
+        wire_settings_into_leaf_config(leaf, "native", "sync").unwrap();
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), first);
+        assert_eq!(std::fs::metadata(&cfg).unwrap().modified().unwrap(), mtime);
+        assert_eq!(first.matches("nros-cargo.toml").count(), 1, "{first}");
+    }
+
+    /// An `include` a user or an earlier sync put there survives — sync's own
+    /// central-patch entry among them.
+    #[test]
+    fn an_existing_include_entry_is_preserved() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path();
+        std::fs::create_dir_all(leaf.join(".cargo")).unwrap();
+        std::fs::write(
+            leaf.join(".cargo/config.toml"),
+            "include = [\"../../nros-patch.toml\"]\n",
+        )
+        .unwrap();
+        wire_settings_into_leaf_config(leaf, "native", "sync").unwrap();
+        let text = std::fs::read_to_string(leaf.join(".cargo/config.toml")).unwrap();
+        assert!(text.contains("../../nros-patch.toml"), "{text}");
+        assert!(text.contains("../build/native/nros-cargo.toml"), "{text}");
+    }
+
+    /// A leaf that states its OWN `[build] target` / `rustflags` keeps the
+    /// `--config` road: cargo JOINS `rustflags` arrays across config files, so
+    /// reading the board's link group twice is `region 'FLASH' already defined`
+    /// (measured by phase-445 W6, which is why every `examples/**/.cargo/` went).
+    #[test]
+    fn a_leaf_with_authored_build_flags_is_left_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path();
+        std::fs::create_dir_all(leaf.join(".cargo")).unwrap();
+        let authored = "[build]\ntarget = \"thumbv7m-none-eabi\"\n";
+        std::fs::write(leaf.join(".cargo/config.toml"), authored).unwrap();
+        wire_settings_into_leaf_config(leaf, "native", "sync").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(leaf.join(".cargo/config.toml")).unwrap(),
+            authored
+        );
+    }
+
+    /// The same refusal for the other half of the hazard — a leaf that carries
+    /// only `[target.<triple>] rustflags`.
+    #[test]
+    fn authored_rustflags_alone_also_keep_the_config_road() {
+        let doc: toml_edit::DocumentMut =
+            "[target.thumbv7m-none-eabi]\nrustflags = [\"-C\", \"link-arg=-Tlink.x\"]\n"
+                .parse()
+                .unwrap();
+        assert!(states_its_own_build_flags(&doc));
+        let clean: toml_edit::DocumentMut =
+            "[target.thumbv7m-none-eabi]\nrunner = \"qemu-system-arm\"\n"
+                .parse()
+                .unwrap();
+        assert!(!states_its_own_build_flags(&clean));
+    }
+
+    /// A leaf that changes `[image.<id>]` loses the PREVIOUS image's include.
+    ///
+    /// Leaving it would point at a file sync no longer writes, and a missing
+    /// `include` target is a HARD cargo error during manifest parse — the leaf
+    /// stops being READABLE, not merely buildable (issue 0463).
+    #[test]
+    fn switching_image_replaces_the_stale_settings_include() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path();
+        wire_settings_into_leaf_config(leaf, "native", "sync").unwrap();
+        wire_settings_into_leaf_config(leaf, "mps2-an385-baremetal", "sync").unwrap();
+        let text = std::fs::read_to_string(leaf.join(".cargo/config.toml")).unwrap();
+        assert!(
+            !text.contains("../build/native/nros-cargo.toml"),
+            "the stale include survived: {text}"
+        );
+        assert!(
+            text.contains("../build/mps2-an385-baremetal/nros-cargo.toml"),
+            "{text}"
+        );
+        assert_eq!(text.matches("nros-cargo.toml").count(), 1, "{text}");
     }
 }
