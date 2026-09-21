@@ -114,7 +114,7 @@ Track A, the census, is independent of track B and of everything in M2.
 | phase-459-W5, W6 | the hand-run form is refused; code and keyword agree | gates | 459-W2 |
 | phase-459-W7 | the trigger rate is read from the shared input | test | 457-W2 |
 | phase-463-W5, W6 | compatibility invariants as gates; retire the max, flip the island | gates; island-W2 | 463-W4 |
-| island-W2 | the island's census is a configure gate | `just board-build` refuses a stale census | 463-W4 |
+| island-W2 | the island's census is a configure gate | the island's board-build recipe refuses a stale census | 463-W4 |
 
 ### M3 - the board runs (one to two weeks; overlaps M1 and M2; the only milestone needing hardware)
 
