@@ -1382,6 +1382,38 @@ pub unsafe extern "C" fn nros_board_native_run_components_named(
     session_name: *const c_char,
     setup: Option<unsafe extern "C" fn(executor: *mut c_void) -> i32>,
 ) -> i32 {
+    // Issue 1434 — delegates with a NULL namespace, which is "this image
+    // declares none" and resolves to the root. Kept as its own symbol because
+    // it is the one a pre-1434 generated entry calls, and an entry TU outlives
+    // the library it was generated against.
+    unsafe { nros_board_native_run_components_named_ns(session_name, core::ptr::null(), setup) }
+}
+
+/// Issue 1434 — [`nros_board_native_run_components_named`] with the primary
+/// session's NAMESPACE.
+///
+/// `node_namespace` is the launch-declared namespace the generated entry reads
+/// out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or
+/// empty means the image declares none, which resolves to the root — NOT to the
+/// empty namespace. It is the BAKED rung of RFC-0045's precedence model A, and
+/// this is the HOSTED runner, so `$NROS_NODE_NAMESPACE` still outranks it
+/// (`nros_cpp_init` → `try_resolve_hosted` reads
+/// `env.namespace.or(baked.namespace)`).
+///
+/// Additive rather than a third parameter on the symbol above, for the reason
+/// `nros_cpp_init_rmw` is additive over `nros_cpp_init` (issue 1050): the older
+/// spelling is what every already-generated entry TU calls.
+///
+/// # Safety
+/// As [`nros_board_native_run_components_named`], plus: `node_namespace` must
+/// be NULL or a valid null-terminated string.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_board_native_run_components_named_ns(
+    session_name: *const c_char,
+    node_namespace: *const c_char,
+    setup: Option<unsafe extern "C" fn(executor: *mut c_void) -> i32>,
+) -> i32 {
     let setup = match setup {
         Some(f) => f,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
@@ -1404,6 +1436,18 @@ pub unsafe extern "C" fn nros_board_native_run_components_named(
     // `$ROS_DOMAIN_ID` into a SILENT domain 0, which is the failure mode #206
     // fixed for every other language. Passing NULL/0 (the unset sentinels)
     // hands the whole question to the one resolver.
+    // Issue 1434 — an EMPTY namespace is "unset", not the empty namespace, for
+    // the same reason an empty `session_name` above is not a node called "".
+    // `nros_boot_config_namespace` returns NULL when the bit is clear, so the
+    // empty case only arises from a bake macro that did not resolve.
+    let ns_resolved: *const c_char = if !node_namespace.is_null()
+        && !unsafe { core::ffi::CStr::from_ptr(node_namespace) }.is_empty()
+    {
+        node_namespace
+    } else {
+        core::ptr::null()
+    };
+
     let mut storage = core::mem::MaybeUninit::<CppContext>::uninit();
     let sptr = storage.as_mut_ptr() as *mut c_void;
     let rc = unsafe {
@@ -1411,7 +1455,7 @@ pub unsafe extern "C" fn nros_board_native_run_components_named(
             core::ptr::null(),
             0,
             name_resolved.as_ptr(),
-            core::ptr::null(),
+            ns_resolved,
             sptr,
         )
     };

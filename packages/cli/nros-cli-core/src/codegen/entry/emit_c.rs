@@ -423,7 +423,7 @@ mod tests {
             src.contains("__nros_c_component_talker_pkg_configure(&__nros_node_0, executor, self)")
         );
         // main drives the real-executor lifecycle via the named runner.
-        assert!(src.contains("nros_board_native_run_components_named(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"));
+        assert!(src.contains("nros_board_native_run_components_named_ns(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"));
         // single-node: boot config has the node name baked in.
         assert!(src.contains("NROS_BOOT_SET_NODE_NAME"));
         assert!(src.contains(".node_name  = \"talker\""));

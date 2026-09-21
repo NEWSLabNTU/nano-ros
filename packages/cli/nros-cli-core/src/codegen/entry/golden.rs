@@ -709,8 +709,21 @@ fn branch_of(src: &str) -> super::ExecutorShape {
         && src.contains("nros_cpp_bind_node_name_sched(")
         && src.contains("nros_cpp_bind_group_sched(");
     let any_sched = src.contains("nros_cpp_create_sched_context_from_policy(");
-    // Native C spells its runner `…_run_components_named(`.
-    let components = src.contains("run_components(") || src.contains("run_components_named(");
+    // The runner is spelled four ways across the packs and boards, and every
+    // one of them is `run_components` plus a suffix: native C carries `_named`
+    // from its two-overload history, and issue 1434 added `_ns` to both C-ABI
+    // runners when the launch-declared namespace became an argument. Read the
+    // PREFIX and let the suffix be anything identifier-shaped, rather than
+    // listing the spellings — the list was two long and it reported "no
+    // recognisable branch" for all four of 1434's, a failure about this test's
+    // vocabulary rather than about the branch it exists to check.
+    let components = src.split("run_components").skip(1).any(|rest| {
+        let suffix: &str = rest.split('(').next().unwrap_or("");
+        rest.len() > suffix.len()
+            && suffix
+                .chars()
+                .all(|c| c == '_' || c.is_ascii_lowercase() || c.is_ascii_digit())
+    });
     match (tiers, sched, any_sched, components) {
         (true, false, false, false) => ExecutorShape::Tiers,
         (false, true, true, true) => ExecutorShape::SchedContexts,

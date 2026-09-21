@@ -74,6 +74,24 @@ NROS_PUBLIC int32_t nros_board_native_run_components(nros_c_entry_setup_fn setup
 NROS_PUBLIC int32_t nros_board_native_run_components_named(const char* session_name,
                                                            nros_c_entry_setup_fn setup);
 
+/* Issue 1434 — the same runner, plus the primary session's NAMESPACE.
+ *
+ * `node_namespace` is the launch-declared namespace the generated entry reads
+ * out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or empty
+ * means the image declares none, which resolves to the ROOT — never to the
+ * empty namespace, which would read as "configured to nothing" to every rung
+ * above it. Both identity fields are the BAKED rung of RFC-0045's precedence
+ * model A; this runner is HOSTED, so `$NROS_NODE_NAME` and
+ * `$NROS_NODE_NAMESPACE` still outrank them.
+ *
+ * Additive rather than a third parameter above, for the reason
+ * `nros_cpp_init_rmw` is additive over `nros_cpp_init` (issue 1050): an entry
+ * TU generated before this existed still calls the two-parameter spelling.
+ * Defined in nros-cpp. */
+NROS_PUBLIC int32_t nros_board_native_run_components_named_ns(const char* session_name,
+                                                              const char* node_namespace,
+                                                              nros_c_entry_setup_fn setup);
+
 /* Phase 274.W2 (RFC-0015 Model 1) — per-tier spec for
  * `nros_board_native_run_tiers`.
  *
@@ -231,6 +249,22 @@ NROS_PUBLIC int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t d
 NROS_PUBLIC int32_t nros_board_rtos_run_components(const char* locator, uint8_t domain_id,
                                                    const char* session_name,
                                                    nros_c_entry_setup_fn setup);
+
+/* Issue 1434 — the same runner, plus the primary session's NAMESPACE.
+ *
+ * `node_namespace` is the launch-declared namespace the generated entry reads
+ * out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or empty
+ * means the image declares none, which resolves to the ROOT — never to the
+ * empty namespace. There is no environment rung on an RTOS, so on these boards
+ * the bake IS the answer.
+ *
+ * Additive rather than a fifth parameter above: an entry TU generated before
+ * this existed still calls the four-parameter spelling. Same file, same
+ * lane. */
+NROS_PUBLIC int32_t nros_board_rtos_run_components_ns(const char* locator, uint8_t domain_id,
+                                                      const char* session_name,
+                                                      const char* node_namespace,
+                                                      nros_c_entry_setup_fn setup);
 
 /* phase-281 W3a (RFC-0015 Model 1) — run a multi-tier embedded C/C++ entry on
  * Zephyr: open ONE RMW session on the caller's thread (the Zephyr `main()`

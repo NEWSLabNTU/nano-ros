@@ -25,6 +25,17 @@
   from a prefix here would be a second, guessing spelling of a fact
   `BoardFamily::c_abi_runners` in `nros-entry-lower` already holds exactly
   (issue 1285).
+
+  Issue 1434 — the `run_components` call passes the launch-declared NAMESPACE
+  beside the node name, both read out of the blob this entry already carries.
+  Before that the namespace was baked and read by nothing: the blob stated it,
+  `nros_boot_config_namespace()` could return it, and no call site asked.
+
+  The `run_tiers` calls above deliberately do NOT, yet — issue 1442. Giving
+  them one means a `_ns` twin of four more C-ABI symbols (native plus the three
+  per-RTOS tier runners), which is a wider ABI move than the single-executor
+  path needed, and the blob only ever carries identity for a ONE-NODE plan
+  (`boot_config_view`), which a tiered plan rarely is.
 -#}
 {%- set call -%}
 {%- if boot.tiers -%}
@@ -34,9 +45,9 @@
 {{ boot.run_tiers_fn }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u)
 {%- endif -%}
 {%- elif boot.shape == "host" -%}
-{{ boot.run_components_fn }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)
+{{ boot.run_components_fn }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)
 {%- else -%}
-{{ boot.run_components_fn }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)
+{{ boot.run_components_fn }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)
 {%- endif -%}
 {%- endset -%}
 {%- if boot.shape == "kernel" -%}

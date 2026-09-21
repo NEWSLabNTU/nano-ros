@@ -117,20 +117,24 @@ impl BoardFamily {
     /// The names are carried, not assembled from a prefix. The C ABI does not
     /// name them uniformly: `native` keeps the `_named` suffix its
     /// two-overload history left behind, and the RTOS runners have no such
-    /// pair. Where each is DEFINED:
+    /// pair. Both now carry the `_ns` suffix issue 1434 added when the
+    /// launch-declared NAMESPACE became a runner argument — additive symbols,
+    /// because an entry TU generated before 1434 still calls the older
+    /// spelling and those are what it must keep resolving to. Where each is
+    /// DEFINED:
     ///
-    /// - `Native` — `nros_board_native_run_components_named` and
+    /// - `Native` — `nros_board_native_run_components_named_ns` and
     ///   `nros_board_native_run_tiers`, both `extern "C"` in Rust
     ///   (`packages/api/nros-cpp/src/lib.rs`).
     /// - `Freertos`, `Zephyr`, `Nuttx` — ONE `run_components`,
-    ///   `nros_board_rtos_run_components`
+    ///   `nros_board_rtos_run_components_ns`
     ///   (`packages/boards/nros-board-common/c/nros_rtos_run_components.c`),
     ///   because the single-executor path differs only in a per-tick yield.
     ///   `run_tiers` is per-board: a FreeRTOS task, a Zephyr `k_thread` and a
     ///   NuttX pthread are three different things. The three are
     ///   `nros_board_{freertos,zephyr,nuttx}_run_tiers`, in each board crate's
     ///   `c/<rtos>_run_tiers.c`.
-    /// - `Threadx` — the same shared `nros_board_rtos_run_components`, and NO
+    /// - `Threadx` — the same shared `nros_board_rtos_run_components_ns`, and NO
     ///   `run_tiers` (issue 1286). ThreadX's C++ `run_components` is the
     ///   FreeRTOS one line for line, and the shared runner already has no
     ///   per-tick yield off Zephyr, so there was nothing ThreadX-specific to
@@ -151,23 +155,23 @@ impl BoardFamily {
     pub fn c_abi_runners(self) -> Option<CAbiRunners> {
         match self {
             BoardFamily::Native => Some(CAbiRunners {
-                run_components: Some("nros_board_native_run_components_named"),
+                run_components: Some("nros_board_native_run_components_named_ns"),
                 run_tiers: Some("nros_board_native_run_tiers"),
             }),
             BoardFamily::Freertos => Some(CAbiRunners {
-                run_components: Some("nros_board_rtos_run_components"),
+                run_components: Some("nros_board_rtos_run_components_ns"),
                 run_tiers: Some("nros_board_freertos_run_tiers"),
             }),
             BoardFamily::Zephyr => Some(CAbiRunners {
-                run_components: Some("nros_board_rtos_run_components"),
+                run_components: Some("nros_board_rtos_run_components_ns"),
                 run_tiers: Some("nros_board_zephyr_run_tiers"),
             }),
             BoardFamily::Nuttx => Some(CAbiRunners {
-                run_components: Some("nros_board_rtos_run_components"),
+                run_components: Some("nros_board_rtos_run_components_ns"),
                 run_tiers: Some("nros_board_nuttx_run_tiers"),
             }),
             BoardFamily::Threadx => Some(CAbiRunners {
-                run_components: Some("nros_board_rtos_run_components"),
+                run_components: Some("nros_board_rtos_run_components_ns"),
                 run_tiers: None,
             }),
         }
@@ -491,7 +495,7 @@ mod tests {
         assert_eq!(
             BoardFamily::Threadx.c_abi_runners(),
             Some(CAbiRunners {
-                run_components: Some("nros_board_rtos_run_components"),
+                run_components: Some("nros_board_rtos_run_components_ns"),
                 run_tiers: None,
             })
         );
