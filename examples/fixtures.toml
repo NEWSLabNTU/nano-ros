@@ -1750,6 +1750,19 @@ platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/contract-monitor"
 
+# phase-462 W1 (RFC-0052) -- the C++ twin of contract-monitor-pub: the same
+# min_rate_hz row installed through `nros_cpp_install_monitors`, the stock
+# `Publisher<Header>` bumping its cell, `nros_cpp_executor_drain_violations`
+# reporting. A CMake C++ leaf like any other; consumed by the two C++ cases
+# in tests/contract_monitor_parity.rs (violating twin reports
+# rate-hierarchy-runtime; the CM_CONTRACT=0 twin installs zero rows and stays
+# silent).
+[[fixture]]
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/contract-monitor-cpp"
+
 # issue 0441 — the zero-copy pair. Both halves are the MessageInfo OBSERVER, not
 # the listener example: `CallbackCtx` exposes no MessageInfo, so no example
 # written against the Node API can observe the receive path this feature

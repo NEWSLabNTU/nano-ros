@@ -1,0 +1,32 @@
+{#-
+  phase-462 W1 (RFC-0052) -- install one contract monitor table on one
+  executor, inside the setup function that is about to create that executor's
+  nodes. `m` is the table (its rows and its symbol tag), `mexec` the executor
+  expression the caller hands in: the process-global handle in the single
+  setup, the tier's own `executor` in a tiered one. Designated initialisers
+  for the same reason the tier table uses them (see entry.cpp.jinja).
+
+  Whitespace: this comment closes WITHOUT the dash so the newline after it
+  survives -- it is the line break between the statement the caller rendered
+  last and this block's first line (every tag around the include strips its
+  own leading whitespace). The trailing newline of this file is dropped by
+  the renderer, so the caller's next line follows the closing brace directly.
+#}
+    /* phase-462 W1 -- contract monitor table{{ m.where_ }}: installed BEFORE any node
+     * exists, because a publisher attaches its counter cell at create time. */
+    {
+        void* __mexec = {{ mexec }};
+        if (__mexec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        ::nros_cpp_monitor_tables_t __mtables = {
+            .rows = {% if m.rows %}__nros_mon_rows{{ m.tag }}{% else %}nullptr{% endif %},
+            .n_rows = {{ m.rows | length }}u,
+            .row_storage = {% if m.rows %}__nros_mon_storage{{ m.tag }}{% else %}nullptr{% endif %},
+            .row_storage_len = {% if m.rows %}sizeof(__nros_mon_storage{{ m.tag }}){% else %}0u{% endif %},
+            .ages = {% if m.ages %}__nros_age_rows{{ m.tag }}{% else %}nullptr{% endif %},
+            .n_ages = {{ m.ages | length }}u,
+            .age_storage = {% if m.ages %}__nros_age_storage{{ m.tag }}{% else %}nullptr{% endif %},
+            .age_storage_len = {% if m.ages %}sizeof(__nros_age_storage{{ m.tag }}){% else %}0u{% endif %},
+        };
+        nros_cpp_ret_t __mret = nros_cpp_install_monitors(__mexec, &__mtables);
+        if (__mret != NROS_CPP_RET_OK) return static_cast<int32_t>(__mret);
+    }

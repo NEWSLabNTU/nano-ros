@@ -3465,6 +3465,312 @@ pub unsafe extern "C" fn nros_cpp_executor_set_min_stack_headroom(
     NROS_CPP_RET_OK
 }
 
+// ---------------------------------------------------------------------------
+// phase-462 W1 (RFC-0052) -- the contract monitor table, from the C++ side of
+// the ABI.
+//
+// A Rust entry installs `&'static [MonitorSpec]` through
+// `Executor::set_monitor_table`; the spec names its counter cell by reference
+// and its topic by `&'static str`, neither of which a C++ TU can spell. So the
+// generated C++ entry bakes the ROWS in a C layout and hands the runtime a
+// static byte buffer to build the Rust table in. Nothing is decided here: the
+// rows are `model_ingest::monitor_rows` / `age_rows` rendered by `emit_cpp`,
+// the table is the executor's own type, the storage is the entry's. An
+// uncontracted image emits no rows, no buffer and no call, which is RFC-0052's
+// zero-cost claim by construction rather than by dead-code elimination.
+// ---------------------------------------------------------------------------
+
+/// One contracted publisher row as the generated C++ entry bakes it: the C
+/// spelling of `nros_node::executor::monitor::MonitorSpec` minus the cell,
+/// which `nros_cpp_install_monitors` allocates inside the caller's storage.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_monitor_row_t {
+    /// Topic EXACTLY as the node passes it to `create_publisher`;
+    /// NUL-terminated UTF-8 with static lifetime (a literal in the entry).
+    pub topic: *const c_char,
+    /// Endpoint ref (`<node FQN>/<endpoint>`), the violation report key;
+    /// same lifetime rule as `topic`.
+    pub fqn: *const c_char,
+    /// Declared publisher guarantee, milli-Hz. 0 = no rate contract.
+    pub min_rate_hz_milli: u32,
+    /// Node-path budget (ms) for paths whose output is this endpoint.
+    /// 0 = no latency contract.
+    pub max_latency_ms: u32,
+}
+
+/// One contracted subscriber age row (`sub_endpoints.max_age_ms`), the C
+/// spelling of `AgeMonitorSpec` minus the cell.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_age_row_t {
+    /// Topic EXACTLY as the node passes it to `create_subscription`.
+    pub topic: *const c_char,
+    /// Endpoint ref, the violation report key.
+    pub fqn: *const c_char,
+    /// Declared max take-age, ms.
+    pub max_age_ms: u32,
+}
+
+/// Bytes of caller storage ONE publisher row needs: its `PubMonitorCell` plus
+/// its `MonitorSpec`, with the alignment step between the two regions. A
+/// bound rather than the exact sum because the exact sum is target-dependent
+/// (two fat pointers and a reference), and the entry is a C++ TU that cannot
+/// ask. `nros_cpp_install_monitors` checks the real requirement against the
+/// buffer it is handed and refuses a short one.
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_MONITOR_ROW_STORAGE: usize = 64;
+
+/// Bytes of caller storage ONE age row needs (`SubMonitorCell` +
+/// `AgeMonitorSpec`); same rule as [`NROS_CPP_MONITOR_ROW_STORAGE`].
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_AGE_ROW_STORAGE: usize = 64;
+
+#[cfg(feature = "rmw-cffi")]
+const _: () = {
+    use core::mem::{align_of, size_of};
+    use nros::monitor::{AgeMonitorSpec, MonitorSpec, PubMonitorCell, SubMonitorCell};
+    // The single-row layout is the tight one (one alignment step, not
+    // amortised); `n` rows need at most `n * bound` once `n >= 2`.
+    assert!(
+        size_of::<PubMonitorCell>().next_multiple_of(align_of::<MonitorSpec>())
+            + size_of::<MonitorSpec>()
+            <= NROS_CPP_MONITOR_ROW_STORAGE
+    );
+    assert!(
+        size_of::<SubMonitorCell>().next_multiple_of(align_of::<AgeMonitorSpec>())
+            + size_of::<AgeMonitorSpec>()
+            <= NROS_CPP_AGE_ROW_STORAGE
+    );
+    // The entry declares its buffers `alignas(8)`.
+    assert!(align_of::<MonitorSpec>() <= 8 && align_of::<PubMonitorCell>() <= 8);
+    assert!(align_of::<AgeMonitorSpec>() <= 8 && align_of::<SubMonitorCell>() <= 8);
+};
+
+/// Both tables of one install, so the call has one argument and a row added
+/// later is a field appended here rather than a tenth parameter.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_monitor_tables_t {
+    /// `n_rows` publisher rows, or NULL when `n_rows == 0`.
+    pub rows: *const nros_cpp_monitor_row_t,
+    pub n_rows: usize,
+    /// At least `n_rows * NROS_CPP_MONITOR_ROW_STORAGE` bytes, 8-aligned,
+    /// static (the executor keeps pointers into it for its whole life).
+    pub row_storage: *mut c_void,
+    pub row_storage_len: usize,
+    /// `n_ages` age rows, or NULL when `n_ages == 0`.
+    pub ages: *const nros_cpp_age_row_t,
+    pub n_ages: usize,
+    /// At least `n_ages * NROS_CPP_AGE_ROW_STORAGE` bytes, 8-aligned, static.
+    pub age_storage: *mut c_void,
+    pub age_storage_len: usize,
+}
+
+/// Carve `n` cells then `n` specs out of `storage`, returning the two region
+/// pointers, or `None` when the buffer is too short or misaligned.
+#[cfg(feature = "rmw-cffi")]
+fn carve_monitor_storage<C, S>(
+    storage: *mut c_void,
+    len: usize,
+    n: usize,
+) -> Option<(*mut C, *mut S)> {
+    use core::mem::{align_of, size_of};
+    if storage.is_null() || storage as usize % align_of::<C>().max(align_of::<S>()) != 0 {
+        return None;
+    }
+    let cells_bytes = size_of::<C>().checked_mul(n)?;
+    let specs_at = cells_bytes.checked_next_multiple_of(align_of::<S>())?;
+    let needed = specs_at.checked_add(size_of::<S>().checked_mul(n)?)?;
+    if needed > len {
+        return None;
+    }
+    let base = storage as *mut u8;
+    Some((base as *mut C, unsafe { base.add(specs_at) } as *mut S))
+}
+
+/// Install the baked contract-monitor tables on this executor, the C++ mirror
+/// of the Rust entry's `set_monitor_table` + `set_age_table`. Call from the
+/// entry's setup BEFORE any node is created: `nros_cpp_publisher_create`
+/// attaches each contracted endpoint's cell by exact topic match at create
+/// time, so a table installed later monitors nothing.
+///
+/// Rows beyond the executor's `MAX_MONITORS` are REFUSED (`NROS_CPP_RET_FULL`)
+/// rather than truncated: the executor checks only the first `MAX_MONITORS`
+/// specs of a table, and an image that boots with six of its fourteen
+/// contracts silently unwatched is the class of failure this table exists to
+/// remove. A short or misaligned storage buffer is refused the same way.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL. `tables`
+/// must point at a valid `nros_cpp_monitor_tables_t` whose row arrays, string
+/// pointers and storage buffers all outlive the executor (statics in the
+/// generated entry). Each `topic` / `fqn` must be NUL-terminated UTF-8.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_install_monitors(
+    handle: *mut c_void,
+    tables: *const nros_cpp_monitor_tables_t,
+) -> nros_cpp_ret_t {
+    use nros::monitor::{AgeMonitorSpec, MonitorSpec, PubMonitorCell, SubMonitorCell};
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(t) = (unsafe { tables.as_ref() }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if t.n_rows > nros_node::executor::monitor::MAX_MONITORS
+        || t.n_ages > nros_node::executor::monitor::MAX_MONITORS
+    {
+        return NROS_CPP_RET_FULL;
+    }
+    // `'static` is the caller's contract (see Safety); the executor keeps
+    // these `&str`s for its whole life exactly as it keeps a Rust entry's.
+    let static_str = |p: *const c_char| -> Option<&'static str> { unsafe { cstr_to_str(p) } };
+
+    let pub_table: &'static [MonitorSpec] = if t.n_rows == 0 {
+        &[]
+    } else {
+        if t.rows.is_null() {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        }
+        let Some((cells, specs)) = carve_monitor_storage::<PubMonitorCell, MonitorSpec>(
+            t.row_storage,
+            t.row_storage_len,
+            t.n_rows,
+        ) else {
+            return NROS_CPP_RET_FULL;
+        };
+        let rows = unsafe { core::slice::from_raw_parts(t.rows, t.n_rows) };
+        for (i, row) in rows.iter().enumerate() {
+            let (Some(topic), Some(fqn)) = (static_str(row.topic), static_str(row.fqn)) else {
+                return NROS_CPP_RET_INVALID_ARGUMENT;
+            };
+            unsafe {
+                let cell = cells.add(i);
+                core::ptr::write(cell, PubMonitorCell::new());
+                core::ptr::write(
+                    specs.add(i),
+                    MonitorSpec {
+                        topic,
+                        fqn,
+                        min_rate_hz_milli: row.min_rate_hz_milli,
+                        max_latency_ms: row.max_latency_ms,
+                        cell: &*cell,
+                    },
+                );
+            }
+        }
+        unsafe { core::slice::from_raw_parts(specs, t.n_rows) }
+    };
+
+    let age_table: &'static [AgeMonitorSpec] = if t.n_ages == 0 {
+        &[]
+    } else {
+        if t.ages.is_null() {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        }
+        let Some((cells, specs)) = carve_monitor_storage::<SubMonitorCell, AgeMonitorSpec>(
+            t.age_storage,
+            t.age_storage_len,
+            t.n_ages,
+        ) else {
+            return NROS_CPP_RET_FULL;
+        };
+        let rows = unsafe { core::slice::from_raw_parts(t.ages, t.n_ages) };
+        for (i, row) in rows.iter().enumerate() {
+            let (Some(topic), Some(fqn)) = (static_str(row.topic), static_str(row.fqn)) else {
+                return NROS_CPP_RET_INVALID_ARGUMENT;
+            };
+            unsafe {
+                let cell = cells.add(i);
+                core::ptr::write(cell, SubMonitorCell::new());
+                core::ptr::write(
+                    specs.add(i),
+                    AgeMonitorSpec {
+                        topic,
+                        fqn,
+                        max_age_ms: row.max_age_ms,
+                        cell: &*cell,
+                    },
+                );
+            }
+        }
+        unsafe { core::slice::from_raw_parts(specs, t.n_ages) }
+    };
+
+    ctx.executor.set_monitor_table(pub_table);
+    ctx.executor.set_age_table(age_table);
+    NROS_CPP_RET_OK
+}
+
+/// One drained contract violation, the C spelling of
+/// `nros_node::executor::monitor::Violation`. `rule` and `fqn` are NOT
+/// NUL-terminated (they are the runtime's own `&'static str`s), hence the
+/// explicit lengths; print them with `%.*s`.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_violation_t {
+    /// Rule id in the play_launch vocabulary (`rate-hierarchy-runtime`, ...).
+    pub rule: *const c_char,
+    pub rule_len: usize,
+    /// Violating endpoint ref, from the installed row's `fqn`.
+    pub fqn: *const c_char,
+    pub fqn_len: usize,
+    /// Measured value; unit is per rule (milli-Hz for rate, ms for age and
+    /// latency, us for deadline misses).
+    pub measured: u32,
+    /// Declared bound, same unit as `measured`.
+    pub declared: u32,
+}
+
+/// Drain callback: called once per pending violation, in ring order.
+#[cfg(feature = "rmw-cffi")]
+pub type nros_cpp_violation_cb_t =
+    Option<unsafe extern "C" fn(ctx: *mut c_void, v: *const nros_cpp_violation_t)>;
+
+/// Drain every pending contract violation from this executor's ring, the C++
+/// mirror of `Executor::drain_violations`. The entry glue hands each one to
+/// the reporter it links (the same rule vocabulary play_launch enforces on
+/// the Linux side, RFC-0050). Call between spins, never from a callback.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL. `cb` must
+/// be a valid function pointer; `ctx` is passed through untouched.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_drain_violations(
+    handle: *mut c_void,
+    cb: nros_cpp_violation_cb_t,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(cb) = cb else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if cpp.in_dispatch {
+        return NROS_CPP_RET_REENTRANT;
+    }
+    cpp.executor.drain_violations(|v| {
+        let out = nros_cpp_violation_t {
+            rule: v.rule.as_ptr() as *const c_char,
+            rule_len: v.rule.len(),
+            fqn: v.fqn.as_ptr() as *const c_char,
+            fqn_len: v.fqn.len(),
+            measured: v.measured,
+            declared: v.declared,
+        };
+        unsafe { cb(ctx, &out) };
+    });
+    NROS_CPP_RET_OK
+}
+
 /// Declare one `from -> to` remap for a node, from the C++ side of the ABI.
 ///
 /// `node_namespace` may be NULL, which means `/`; every other pointer is

@@ -145,6 +145,168 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     emit_typed_with_tail(plan, &EntryTail::Board)
 }
 
+// ---------------------------------------------------------------------------
+// phase-462 W1 (RFC-0052) -- the contract monitor table region.
+//
+// The Rust road bakes `model_ingest::monitor_rows` / `age_rows` into
+// `system_monitors.rs` (`render_monitor_rs`); this is the same rows on the
+// C++ road. The entry declares them as `nros_cpp_monitor_row_t` /
+// `nros_cpp_age_row_t` statics plus the storage the runtime builds its own
+// spec/cell tables in, and installs them through `nros_cpp_install_monitors`
+// at the top of every setup function, BEFORE any node is created -- the
+// order `Executor::set_monitor_table` requires, because the publisher cell
+// attaches at `create_publisher`. No rows: no statics, no call, and the TU is
+// byte-identical to what it was before this region existed.
+//
+// Two slices happen here and nowhere else. The model's rows cover every node
+// of the system, so a row is kept only when its node (`fqn` minus the
+// endpoint) is one this entry constructs; and in the run_tiers shape each
+// tier's setup installs only its own nodes' rows on its own executor, since a
+// row installed on two executors would be checked -- and reported -- twice.
+// ---------------------------------------------------------------------------
+
+/// phase-462 W1 -- the shipping typed entry WITH the contract monitor table.
+/// `emit_typed` is this with no rows.
+pub fn emit_typed_monitored(
+    plan: &Plan,
+    monitors: &[crate::orchestration::model_ingest::MonitorRow],
+    ages: &[crate::orchestration::model_ingest::AgeRow],
+) -> Result<String, String> {
+    emit_typed_with_tail_monitored(plan, &EntryTail::Board, monitors, ages)
+}
+
+/// One baked monitor table: the rows for one executor (the whole entry in
+/// the single-executor shape; one tier's in the run_tiers shape).
+#[derive(serde::Serialize, Debug, Clone, PartialEq)]
+struct CppMonitorTableView {
+    /// Symbol suffix (`""` for the single table, `"_t<i>"` per tier).
+    tag: String,
+    /// Prose for the banner comment (`" (tier[1] telem)"` or empty).
+    where_: String,
+    rows: Vec<CppMonitorRowView>,
+    ages: Vec<CppAgeRowView>,
+}
+
+#[derive(serde::Serialize, Debug, Clone, PartialEq)]
+struct CppMonitorRowView {
+    /// RAW; the pack quotes it with `c_str`.
+    topic: String,
+    fqn: String,
+    min_rate_hz_milli: u32,
+    max_latency_ms: u32,
+}
+
+#[derive(serde::Serialize, Debug, Clone, PartialEq)]
+struct CppAgeRowView {
+    topic: String,
+    fqn: String,
+    max_age_ms: u32,
+}
+
+impl CppMonitorTableView {
+    fn is_empty(&self) -> bool {
+        self.rows.is_empty() && self.ages.is_empty()
+    }
+}
+
+/// The node FQN a plan node registers under (`<namespace>/<name>`), the key
+/// a contract row's `fqn` starts with.
+fn plan_node_fqn(n: &super::PlanNode) -> String {
+    let name = n.name.as_deref().unwrap_or(&n.exec);
+    match n.namespace.as_deref() {
+        None | Some("/") | Some("") => format!("/{name}"),
+        Some(ns) => format!("{}/{name}", ns.trim_end_matches('/')),
+    }
+}
+
+/// The node half of an endpoint ref (`/ns/node/endpoint` -> `/ns/node`).
+fn row_node_fqn(endpoint_ref: &str) -> &str {
+    endpoint_ref
+        .rsplit_once('/')
+        .map(|(node, _)| node)
+        .unwrap_or("")
+}
+
+/// Build the table for the nodes `keep` admits, in row order.
+fn monitor_table_view(
+    tag: &str,
+    where_: &str,
+    monitors: &[crate::orchestration::model_ingest::MonitorRow],
+    ages: &[crate::orchestration::model_ingest::AgeRow],
+    keep: impl Fn(&str) -> bool,
+) -> CppMonitorTableView {
+    CppMonitorTableView {
+        tag: tag.to_string(),
+        where_: where_.to_string(),
+        rows: monitors
+            .iter()
+            .filter(|r| keep(row_node_fqn(&r.fqn)))
+            .map(|r| CppMonitorRowView {
+                topic: r.topic.clone(),
+                fqn: r.fqn.clone(),
+                min_rate_hz_milli: r.min_rate_hz_milli,
+                max_latency_ms: r.max_latency_ms,
+            })
+            .collect(),
+        ages: ages
+            .iter()
+            .filter(|r| keep(row_node_fqn(&r.fqn)))
+            .map(|r| CppAgeRowView {
+                topic: r.topic.clone(),
+                fqn: r.fqn.clone(),
+                max_age_ms: r.max_age_ms,
+            })
+            .collect(),
+    }
+}
+
+/// The single-executor table: every row whose node this entry constructs.
+fn monitor_table_single(
+    plan: &Plan,
+    monitors: &[crate::orchestration::model_ingest::MonitorRow],
+    ages: &[crate::orchestration::model_ingest::AgeRow],
+) -> Option<CppMonitorTableView> {
+    let nodes: Vec<String> = plan.nodes.iter().map(plan_node_fqn).collect();
+    let t = monitor_table_view("", "", monitors, ages, |node| {
+        nodes.iter().any(|n| n == node)
+    });
+    (!t.is_empty()).then_some(t)
+}
+
+/// The per-tier tables: tier `ti` gets the rows of the nodes its setup
+/// constructs (the same `node -> tier` map the setups are built from).
+fn monitor_tables_tiered(
+    plan: &Plan,
+    tiers: &super::ResolvedTierTable,
+    monitors: &[crate::orchestration::model_ingest::MonitorRow],
+    ages: &[crate::orchestration::model_ingest::AgeRow],
+) -> Vec<Option<CppMonitorTableView>> {
+    tiers
+        .tiers
+        .iter()
+        .enumerate()
+        .map(|(ti, tier)| {
+            let nodes: Vec<String> = plan
+                .nodes
+                .iter()
+                .filter(|n| {
+                    let node_name = n.name.as_deref().unwrap_or(&n.exec);
+                    tier.members.iter().any(|(m, _)| m == node_name)
+                })
+                .map(plan_node_fqn)
+                .collect();
+            let t = monitor_table_view(
+                &format!("_t{ti}"),
+                &format!(" (tier[{ti}] {})", tier.name),
+                monitors,
+                ages,
+                |node| nodes.iter().any(|n| n == node),
+            );
+            (!t.is_empty()).then_some(t)
+        })
+        .collect()
+}
+
 /// phase-308 W1 — the metadata probe: the same TU an entry would be, with a
 /// recording tail.
 pub fn emit_typed_probe(plan: &Plan, export: &ProbeExport) -> Result<String, String> {
@@ -182,6 +344,12 @@ struct CppEntryView {
     sched: Option<super::SchedView>,
     /// Single-executor path only; empty when `tiers` is set.
     setup_nodes: Vec<CppNodeView>,
+    /// phase-462 W1 -- the single-executor contract monitor table, installed
+    /// at the top of `__nros_entry_setup`. `None` when the entry has no rows.
+    monitors: Option<CppMonitorTableView>,
+    /// phase-462 W1 -- every non-empty table (the single one, or one per
+    /// tier), for the file-scope row and storage statics.
+    monitor_tables: Vec<CppMonitorTableView>,
     /// The param-services / lifecycle facts. The template includes
     /// `cpp_service_trailer.cpp.jinja` where they belong, with the `tiered`
     /// flag that picks the executor expression.
@@ -222,6 +390,9 @@ struct CppTiersView {
 struct CppTierSetupView {
     index: usize,
     name: String,
+    /// phase-462 W1 -- this tier's contract monitor rows, installed on its
+    /// executor at the top of its setup. `None` when it has none.
+    monitors: Option<CppMonitorTableView>,
     nodes: Vec<CppNodeView>,
     /// Only tier 0 registers param services and lifecycle.
     emits_services: bool,
@@ -309,6 +480,16 @@ fn node_view(n: &super::PlanNode, i: usize, on_executor: usize, tiered: bool) ->
 }
 
 pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String, String> {
+    emit_typed_with_tail_monitored(plan, tail, &[], &[])
+}
+
+/// phase-462 W1 -- `emit_typed_with_tail` plus the contract monitor rows.
+pub fn emit_typed_with_tail_monitored(
+    plan: &Plan,
+    tail: &EntryTail<'_>,
+    monitors: &[crate::orchestration::model_ingest::MonitorRow],
+    ages: &[crate::orchestration::model_ingest::AgeRow],
+) -> Result<String, String> {
     // Issue 1285 — refuse an unknown board key HERE, naming the known ones.
     // Every board helper in this module relies on it (see `family`).
     nros_entry_lower::board_family(&plan.board).map_err(|e| format!("typed entry emit: {e}"))?;
@@ -404,6 +585,11 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
     let mut tiers_view: Option<CppTiersView> = None;
     let mut sched_view: Option<super::SchedView> = None;
     let mut setup_nodes: Vec<CppNodeView> = Vec::new();
+    // phase-462 W1 -- the monitor table(s): one per tier setup, or one for
+    // the single executor. `monitor_tables` is every non-empty one, for the
+    // file-scope statics; each setup names its own by `tag`.
+    let mut single_monitors: Option<CppMonitorTableView> = None;
+    let mut monitor_tables: Vec<CppMonitorTableView> = Vec::new();
 
     if use_run_tiers {
         let tiers = plan.resolved_tiers.as_ref().unwrap();
@@ -432,13 +618,15 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
             })
             .collect();
 
-        let setups = tiers
+        let mut tier_monitors = monitor_tables_tiered(plan, tiers, monitors, ages);
+        let setups: Vec<CppTierSetupView> = tiers
             .tiers
             .iter()
             .enumerate()
             .map(|(ti, tier)| CppTierSetupView {
                 index: ti,
                 name: tier.name.clone(),
+                monitors: tier_monitors[ti].take(),
                 nodes: plan
                     .nodes
                     .iter()
@@ -463,6 +651,7 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
         // tiers, and the rule that is left is the same for both.
         let groups_per_tier = super::tier_group_keys(tiers, plan);
 
+        monitor_tables = setups.iter().filter_map(|s| s.monitors.clone()).collect();
         tiers_view = Some(CppTiersView {
             n: tiers.tiers.len(),
             setups,
@@ -481,6 +670,8 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
             .enumerate()
             .map(|(i, n)| node_view(n, i, i, false))
             .collect();
+        single_monitors = monitor_table_single(plan, monitors, ages);
+        monitor_tables.extend(single_monitors.iter().cloned());
     }
 
     let probe = match tail {
@@ -529,6 +720,8 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
             tiers: tiers_view,
             sched: sched_view,
             setup_nodes,
+            monitors: single_monitors,
+            monitor_tables,
             services: services_view(plan),
             probe,
             boot_config,
@@ -1985,6 +2178,235 @@ would collide with the one the board defines"
         assert!(
             embedded.contains("run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name("),
             "an embedded entry passes NROS_ENTRY_LOCATOR: {embedded}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // phase-462 W1 (RFC-0052) -- the contract monitor table region.
+    // -----------------------------------------------------------------------
+
+    use crate::orchestration::model_ingest::{AgeRow, MonitorRow, render_monitor_rs};
+
+    fn monitor_fixture_rows() -> (Vec<MonitorRow>, Vec<AgeRow>) {
+        (
+            vec![MonitorRow {
+                topic: "/chatter".into(),
+                fqn: "/talker/chatter".into(),
+                min_rate_hz_milli: 10_000,
+                max_latency_ms: 30,
+            }],
+            vec![AgeRow {
+                topic: "/chatter".into(),
+                fqn: "/listener/chatter".into(),
+                max_age_ms: 150,
+            }],
+        )
+    }
+
+    /// The C++ entry bakes the SAME rows the Rust road renders into
+    /// `system_monitors.rs`, field for field, and installs them before the
+    /// first node exists.
+    #[test]
+    fn typed_emit_bakes_monitor_table_before_nodes() {
+        let plan = fixture_plan_typed(&[
+            (
+                "talker_pkg",
+                "talker",
+                "talker",
+                "talker_pkg::Talker",
+                "talker_pkg/Talker.hpp",
+            ),
+            (
+                "listener_pkg",
+                "listener",
+                "listener",
+                "listener_pkg::Listener",
+                "listener_pkg/Listener.hpp",
+            ),
+        ]);
+        let (rows, ages) = monitor_fixture_rows();
+        let src = emit_typed_monitored(&plan, &rows, &ages).expect("monitored emit ok");
+        let rust = render_monitor_rs(&rows, &ages);
+
+        // Row parity, one row at a time: what the Rust table says, the C++
+        // table says, in its own spelling.
+        for r in &rows {
+            let cpp_row = format!(
+                "{{ \"{}\", \"{}\", {}u, {}u }},",
+                r.topic, r.fqn, r.min_rate_hz_milli, r.max_latency_ms
+            );
+            let rust_row = format!(
+                "topic: {:?}, fqn: {:?}, min_rate_hz_milli: {}u32, max_latency_ms: {}u32",
+                r.topic, r.fqn, r.min_rate_hz_milli, r.max_latency_ms
+            );
+            assert!(
+                src.contains(&cpp_row),
+                "C++ row `{cpp_row}` missing; src:\n{src}"
+            );
+            assert!(
+                rust.contains(&rust_row),
+                "Rust row `{rust_row}` missing; rs:\n{rust}"
+            );
+        }
+        for a in &ages {
+            let cpp_row = format!("{{ \"{}\", \"{}\", {}u }},", a.topic, a.fqn, a.max_age_ms);
+            let rust_row = format!(
+                "topic: {:?}, fqn: {:?}, max_age_ms: {}u32",
+                a.topic, a.fqn, a.max_age_ms
+            );
+            assert!(
+                src.contains(&cpp_row),
+                "C++ age row `{cpp_row}` missing; src:\n{src}"
+            );
+            assert!(
+                rust.contains(&rust_row),
+                "Rust age row `{rust_row}` missing; rs:\n{rust}"
+            );
+        }
+        assert_eq!(src.matches("__nros_mon_rows[1]").count(), 1, "{src}");
+        assert_eq!(src.matches("__nros_age_rows[1]").count(), 1, "{src}");
+        assert!(
+            src.contains("__nros_mon_storage[1 * NROS_CPP_MONITOR_ROW_STORAGE]"),
+            "{src}"
+        );
+        assert!(
+            src.contains(".n_rows = 1u,") && src.contains(".n_ages = 1u,"),
+            "{src}"
+        );
+
+        // Installed BEFORE entity creation, on the process-global executor.
+        let install_at = src
+            .find("nros_cpp_install_monitors(")
+            .expect("install call");
+        let create_at = src.find("::nros::create_node(").expect("create_node");
+        assert!(
+            install_at < create_at,
+            "install must precede create_node; src:\n{src}"
+        );
+        assert!(
+            src.contains("void* __mexec = ::nros::global_handle();"),
+            "{src}"
+        );
+    }
+
+    /// RFC-0052's zero-cost claim, at the source: no rows, no table, no
+    /// call -- and the TU is the byte-identical one the unmonitored emitter
+    /// produces (the goldens are that emitter's).
+    #[test]
+    fn typed_emit_no_monitor_rows_is_byte_identical() {
+        let plan = fixture_plan_typed(&[(
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        )]);
+        let plain = emit_typed(&plan).expect("emit ok");
+        let monitored = emit_typed_monitored(&plan, &[], &[]).expect("emit ok");
+        assert_eq!(plain, monitored);
+        assert!(!plain.contains("nros_cpp_install_monitors"), "{plain}");
+        assert!(!plain.contains("nros_cpp_monitor_row_t"), "{plain}");
+        assert!(!plain.contains("NROS_CPP_MONITOR_ROW_STORAGE"), "{plain}");
+    }
+
+    /// The model's rows cover every node in the system; a row whose node this
+    /// entry does not construct is not this entry's to watch.
+    #[test]
+    fn typed_emit_keeps_only_rows_of_nodes_it_constructs() {
+        let plan = fixture_plan_typed(&[(
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        )]);
+        let (rows, ages) = monitor_fixture_rows();
+        // `ages` is `/listener/chatter`; no listener here.
+        let src = emit_typed_monitored(&plan, &rows, &ages).expect("emit ok");
+        assert!(src.contains("\"/talker/chatter\""), "{src}");
+        assert!(!src.contains("\"/listener/chatter\""), "{src}");
+        assert!(
+            src.contains(".ages = nullptr,") && src.contains(".n_ages = 0u,"),
+            "{src}"
+        );
+        assert!(!src.contains("__nros_age_rows"), "{src}");
+
+        // Nothing of ours at all -> no region.
+        let other = vec![MonitorRow {
+            topic: "/x".into(),
+            fqn: "/elsewhere/x".into(),
+            min_rate_hz_milli: 1_000,
+            max_latency_ms: 0,
+        }];
+        let src = emit_typed_monitored(&plan, &other, &[]).expect("emit ok");
+        assert_eq!(src, emit_typed(&plan).unwrap());
+    }
+
+    /// A namespaced node keys its rows by its full name.
+    #[test]
+    fn typed_emit_monitor_rows_match_namespaced_nodes() {
+        let mut plan =
+            fixture_plan_typed(&[("cm_pkg", "pub", "pub", "cm_pkg::Pub", "cm_pkg/Pub.hpp")]);
+        plan.nodes[0].namespace = Some("/cm".into());
+        let rows = vec![MonitorRow {
+            topic: "/cm_header".into(),
+            fqn: "/cm/pub/cm_header".into(),
+            min_rate_hz_milli: 10_000,
+            max_latency_ms: 0,
+        }];
+        let src = emit_typed_monitored(&plan, &rows, &[]).expect("emit ok");
+        assert!(
+            src.contains("{ \"/cm_header\", \"/cm/pub/cm_header\", 10000u, 0u },"),
+            "{src}"
+        );
+    }
+
+    /// run_tiers shape: each tier installs ITS nodes' rows on ITS executor,
+    /// so a row is checked once. Here `ctrl` is on tier 0 and `telem` on
+    /// tier 1.
+    #[test]
+    fn typed_emit_tiers_slice_monitor_rows_per_tier() {
+        let plan = fixture_plan_with_tiers();
+        let rows = vec![
+            MonitorRow {
+                topic: "/cmd".into(),
+                fqn: "/ctrl/cmd".into(),
+                min_rate_hz_milli: 100_000,
+                max_latency_ms: 5,
+            },
+            MonitorRow {
+                topic: "/telemetry".into(),
+                fqn: "/telem/telemetry".into(),
+                min_rate_hz_milli: 1_000,
+                max_latency_ms: 0,
+            },
+        ];
+        let src = emit_typed_monitored(&plan, &rows, &[]).expect("tiered emit ok");
+        assert!(
+            src.contains("__nros_mon_rows_t0[1]") && src.contains("__nros_mon_rows_t1[1]"),
+            "{src}"
+        );
+        let t0 = src
+            .find("static int32_t __nros_entry_setup_tier_0(void* executor)")
+            .unwrap();
+        let t1 = src
+            .find("static int32_t __nros_entry_setup_tier_1(void* executor)")
+            .unwrap();
+        let setup0 = &src[t0..t1];
+        let setup1 = &src[t1..];
+        assert!(setup0.contains(".rows = __nros_mon_rows_t0,"), "{setup0}");
+        assert!(!setup0.contains("__nros_mon_rows_t1"), "{setup0}");
+        assert!(setup1.contains(".rows = __nros_mon_rows_t1,"), "{setup1}");
+        assert!(setup1.contains("void* __mexec = executor;"), "{setup1}");
+        // Each install precedes that tier's first node.
+        let i0 = setup0.find("nros_cpp_install_monitors(").unwrap();
+        let c0 = setup0.find("::nros::create_node_on(").unwrap();
+        assert!(i0 < c0, "{setup0}");
+        // And the whole tier table region is absent when no tier has rows.
+        assert!(
+            !emit_typed(&plan)
+                .unwrap()
+                .contains("nros_cpp_install_monitors")
         );
     }
 }

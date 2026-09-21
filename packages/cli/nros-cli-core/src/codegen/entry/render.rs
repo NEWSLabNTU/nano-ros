@@ -74,6 +74,11 @@ const TEMPLATES: &[(&str, &str)] = &[
         "node_body_cpp.jinja",
         include_str!("packs/entry/cpp/node_body.jinja"),
     ),
+    // phase-462 W1 -- the contract monitor install block, once per setup fn.
+    (
+        "monitor_install_cpp.jinja",
+        include_str!("packs/entry/cpp/monitor_install.jinja"),
+    ),
     (
         "boot_wrapper_cpp.jinja",
         include_str!("packs/entry/cpp/boot_wrapper.jinja"),

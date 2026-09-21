@@ -86,12 +86,41 @@ static ::{{ s.class }} __nros_comp_{{ s.index }};
 {%- endif %}
 {%- endif %}
 {%- endfor %}
+{%- for m in monitor_tables %}
+
+/* phase-462 W1 (RFC-0052) -- contract monitor rows{{ m.where_ }}: one per contracted
+ * publisher and per age contract, the same rows the Rust road bakes into
+ * `system_monitors.rs`. The runtime builds its spec/cell tables in the storage
+ * below at install (`nros_cpp_install_monitors`), so an image with no contract
+ * carries none of this. */
+{%- if m.rows %}
+static const ::nros_cpp_monitor_row_t __nros_mon_rows{{ m.tag }}[{{ m.rows | length }}] = {
+{%- for r in m.rows %}
+    { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.min_rate_hz_milli }}u, {{ r.max_latency_ms }}u },
+{%- endfor %}
+};
+alignas(8) static unsigned char __nros_mon_storage{{ m.tag }}[{{ m.rows | length }} * NROS_CPP_MONITOR_ROW_STORAGE];
+{%- endif %}
+{%- if m.ages %}
+static const ::nros_cpp_age_row_t __nros_age_rows{{ m.tag }}[{{ m.ages | length }}] = {
+{%- for r in m.ages %}
+    { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.max_age_ms }}u },
+{%- endfor %}
+};
+alignas(8) static unsigned char __nros_age_storage{{ m.tag }}[{{ m.ages | length }} * NROS_CPP_AGE_ROW_STORAGE];
+{%- endif %}
+{%- endfor %}
 
 {% if tiers -%}
 {%- for setup in tiers.setups -%}
 /* Phase 274.W2 — tier[{{ setup.index }}] ({{ setup.name }}) setup: creates only this tier's nodes. */
 static int32_t __nros_entry_setup_tier_{{ setup.index }}(void* executor) {
     if (executor == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+{%- if setup.monitors %}
+{%- with m = setup.monitors, mexec = "executor" %}
+{%- include "monitor_install_cpp.jinja" %}
+{%- endwith %}
+{%- endif %}
 {%- for n in setup.nodes %}
     {
 {%- with decls = n.decls %}
@@ -184,6 +213,11 @@ static int32_t __nros_entry_setup() {
         }
 {%- endfor %}
     }
+{%- endif %}
+{%- if monitors %}
+{%- with m = monitors, mexec = "::nros::global_handle()" %}
+{%- include "monitor_install_cpp.jinja" %}
+{%- endwith %}
 {%- endif %}
 {%- for n in setup_nodes %}
     {
