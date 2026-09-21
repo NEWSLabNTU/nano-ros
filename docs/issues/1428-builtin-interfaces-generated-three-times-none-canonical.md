@@ -175,3 +175,133 @@ the workspace. The collapse itself needs the reuse map in (2) above, and that is
 an RFC-sized decision about whether a generated tree may reference a crate outside
 itself — which is the same question `nros sync`'s central `[patch.crates-io]` file
 answers for a different set of crates.
+
+## What landed — 2026-09-21 (the triplication is NOT collapsed; read on)
+
+Every measurement above was re-verified before anything was touched, and all of
+them held: the three paths; the four byte-identical sources (md5 `924b3f2d…`,
+`15a1c8e1…`, `c6c0bcb8…`, `f386bd08…`, one value each across all three crates);
+the shared `TYPE_NAME = "builtin_interfaces/msg/Time"`; the `links` +
+`build.rs` + `nros_message_bounds.json` on `-clock` alone; the version-carrying
+dep row in `nros-rcl-interfaces`; and `nros-tests` path-depping two copies at
+once.
+
+### The shape chosen: leave three, fix the version spelling, gate a fourth
+
+Not collapsed, deliberately. The issue's own section three is right that this is
+a codegen change and not a file move, and there is a fourth argument for leaving
+it that the section does not make:
+
+**a canonical crate would make generated trees non-relocatable.** Today every
+closure is flat and self-contained, so a `generated/` tree can be copied,
+regenerated or moved with no reference outside itself. Pointing the three
+parents at one shared crate means a generated manifest naming a path outside its
+own tree — and for an out-of-tree consumer that path leads into the nano-ros
+checkout. That collides head-on with "Examples are standalone copy-out projects;
+no workspace walk-up" (CLAUDE.md, RFC-0026), and it is the same question
+`nros sync`'s central `[patch.crates-io]` file answers for a different set of
+crates, with a different answer. So the collapse is not merely expensive; it
+trades a property the tree currently has. That is an RFC-sized decision and it
+stays open here rather than being pre-empted by a file move.
+
+Against "leave three and say nothing", which is the status quo: one of the three
+carried a spelling CLAUDE.md forbids, and nothing in the tree could notice a
+fourth copy. Both are fixed below.
+
+### The version spelling — the class was FIVE rows, not one
+
+The issue named `nros-rcl-interfaces/Cargo.toml:27`. A sweep of every tracked
+manifest found the same defect in four more places, and a second half the issue
+did not name:
+
+* **three generated crates carried `version.workspace = true`** — the *release*
+  version — rather than the `0.0.0` constant: `nros-builtin-interfaces`,
+  `nros-rcl-interfaces` and **`nros-lifecycle-msgs`**, which is in neither of the
+  issue's tables but is the same hand-adapted vintage.
+* **five dep rows pinned it**: `nros-rcl-interfaces/Cargo.toml:27`,
+  `packages/core/nros-node/Cargo.toml:231,232` and
+  `packages/rmw/cyclonedds/nros-rmw-cyclonedds/Cargo.toml:95,96`.
+
+This is not only a style rule. A path dep's `version` is still a REQUIREMENT:
+the workspace version is `0.5.0` and all five rows read `version = "0.5.0"`, so
+`^0.5.0` stops matching the day the workspace bumps to `0.6.0` — a resolve-time
+failure, which takes every cargo command in the tree rather than one consumer.
+The tree was one version bump away from that.
+
+All eight sites are now the constant `0.0.0` with `path` alone, which is also
+exactly what codegen emits (`rosidl-bindgen/src/generator.rs:768`, asserted at
+`:1487`) — so the three hand-adapted manifests moved *toward* the emitted shape
+on this field rather than away from it. Lock impact, via `just lock-update`
+only: three lines in the root `Cargo.lock`, two in
+`bins/sim-clock-listener/Cargo.lock` (which is tracked and was NOT in the
+drift baseline, so it had to move with them). Nothing else re-resolved.
+
+Out-of-tree consumers are untouched: codegen already emitted `0.0.0`, so no
+user's `nros sync` closure ever had this shape.
+
+### The gate — `check-message-crate-identity`
+
+`scripts/check-message-crate-identity.py`, buildless, on the derived fast lane
+(`just check message-crate-identity`). Three rules:
+
+1. a tracked generated message crate's `version` is the constant `0.0.0`;
+2. no dep row, in **any** tracked manifest, pins one of their versions;
+3. no wire `TYPE_NAME` is claimed by more than one shipped crate.
+
+Rule 3 is a shrink-only ratchet, `.config/duplicate-wire-type-baseline.txt`,
+holding exactly the six claims of the `builtin_interfaces` triple
+(`Time` and `Duration` × three crates). A new duplicate fails; a baselined one
+that stops duplicating fails as *stale*, so the debt cannot silently go hollow
+(the issue-0743 class). **This is what makes a fourth copy impossible to land
+unnoticed**, which is how the third arrived.
+
+Reach, per CLAUDE.md's 0196 rule: rules 1–2 read all **328** tracked manifests
+across every workspace root, not the interfaces tree — which is what found the
+four extra sites. Rule 3 reads every tracked `.rs`.
+
+`#[cfg(test)]` claims are excluded, and that exclusion is load-bearing. Measured:
+**four** type names are claimed by more than one crate, but two
+(`std_msgs/msg/Header`, `std_msgs/msg/Int32`) and three extra claimants
+(`nros-serdes` on `builtin_interfaces/msg/Time`, `nros-rmw-cyclonedds`) are
+hand-written fixture structs inside `#[cfg(test)] mod tests`. A fixture is never
+linked into an image, so it cannot collide on the wire; counting them would have
+put two non-problems in the baseline beside the real one. The shipped duplicate
+population is exactly the triple.
+
+Five planted violations, each confirmed red and reverted: a version-carrying dep
+row; a generated crate off `0.0.0`; a fourth crate claiming
+`std_msgs/msg/Header`; a baselined duplicate removed (stale); and the control —
+a `#[cfg(test)]` fixture claiming a duplicate, which must stay GREEN and does.
+The script also self-tests its Rust scanner (comments, raw strings, lifetimes
+vs. char literals, nested `cfg(test)`) on every run, per phase-395.
+
+## What is deliberately LEFT, and why
+
+**The collapse itself.** Phase-sized, and argued above: it needs the
+package→(crate name, path) reuse map at `generator.rs:811-819`, a skip in
+`filter_interface_packages` / `codegen_ament_deps_for`, and a decision on
+whether a generated tree may reference a crate outside itself — which costs the
+relocatability property. Not started.
+
+**The `links` rename hazard** (this issue's "Direction, not decided"). Still
+live: `apply_package_renames` (`cargo-nano-ros/src/lib.rs:453-529`) rewrites
+`name`, dep keys, `"../<dep>"` and `<pkg>/std`, and does **not** touch `links`,
+so giving the two older copies the `links` + `build.rs` pair a current `nros`
+emits still wedges the workspace on `more than one crate with
+links=nros_msgs_builtin_interfaces`. Left on purpose, with a new measurement
+that bears on how to fix it: **nothing in the tree reads
+`DEP_<LINKS>_BOUNDS_*` from a Rust build script today** — the only in-tree
+reader of the bounds is cmake, via the JSON file
+(`NanoRosGenerateInterfaces.cmake:390`). So the channel-naming convention is
+still free to choose, and choosing it now (rewrite `links` to follow the new
+crate name? refuse the rename? stop renaming `builtin_interfaces` entirely?)
+would pre-empt the collapse decision, since the third option only makes sense
+if the collapse lands. It should be decided WITH the collapse, not before it.
+
+**Two Rust types for one wire type** in any consumer reaching both: unchanged.
+`nros-tests` still path-deps two copies.
+
+So: the bleeding this issue names is not stopped — a regeneration still wedges —
+but the tree is no longer one version bump from an unresolvable workspace, and a
+fourth copy can no longer arrive unnoticed. Status stays **open** for the
+collapse and the `links` decision.
