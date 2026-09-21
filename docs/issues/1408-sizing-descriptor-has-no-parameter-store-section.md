@@ -148,9 +148,11 @@ than "the schema has no parameter section", which is no longer true. The three
 BOARD capacities are a separate case and will never retire into the descriptor —
 they are D1 target facts by design.
 
-There is one adjacent gap this slice did NOT close: a **parameter-only** contract
-(no topics, services, actions or node paths) still reaches no descriptor on the
-cargo road, because `EntityInventory::from_model` returns `None` for a model that
-describes no wiring and the road nests the `ParamDeclarations` attach inside that
-`Some` arm. That is issue 1436, fixed separately; nothing here depends on it, and
-every road that already writes a descriptor now carries `[params]`.
+There is one adjacent gap this slice did NOT close, and it is being fixed on its
+own branch rather than here: a **parameter-only** contract (no topics, services,
+actions or node paths) reaches no descriptor on the cargo road at all, because
+`EntityInventory::from_model` returns `None` for a model that describes no wiring
+and the road nests the `ParamDeclarations` attach inside that `Some` arm — so a
+contract that declares only parameters loses every parameter fact. Nothing in
+this slice depends on it: every road that already writes a descriptor now carries
+`[params]`, and that one adds a road that did not.
