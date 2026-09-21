@@ -93,6 +93,30 @@ walk_file() {
         function std_frame(line) {
             if (line !~ /NROS_CPP_STD/) { return 0 }
             if (line ~ /__has_include/ && line !~ /__STDC_HOSTED__/) { return 0 }
+            # ISSUE 1431 — the MIRROR of the line above, and it was missing.
+            #
+            # The rule is that BOTH probes are needed; this function enforced
+            # only one ordering of that. A region widened by `__STDC_HOSTED__`
+            # with no `__has_include` beside it named the token, carried no
+            # `__has_include`, and so fell through to `return 1` and scored
+            # SAFE:
+            #
+            #   #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+            #
+            # That `||` arm is live on every shipped configuration (nothing
+            # defines NROS_CPP_STD) and it is live on ZEPHYR, whose compiler is
+            # hosted and whose include path is not. phase-417 W4.a put
+            # `<map>` in such a block in `node.hpp` and this gate passed it;
+            # measured with `g++ -nostdinc++ -I zephyr/cxx-compat`, the image
+            # died at `node.hpp:18:10: fatal error: map: No such file or
+            # directory`. Our only C++ Zephyr fixture board is native_sim, which
+            # builds against the host libstdc++ and cannot reach the condition,
+            # so nothing else was going to find it either.
+            #
+            # 0112 is this direction, 1240 is the other, and the gate documented
+            # both while checking one — the 0196 shape its own comment above
+            # claims to be applying.
+            if (line ~ /__STDC_HOSTED__/ && line !~ /__has_include/) { return 0 }
             return 1
         }
         # Enter an NROS_CPP_STD region: `#ifdef NROS_CPP_STD`,
@@ -185,6 +209,21 @@ selftest() {
 #include <memory>
 #else
 #include <vector>
+#endif
+'
+  # 2b. ISSUE 1431 — the MIRROR of case 1: widened by `__STDC_HOSTED__` with no
+  # `__has_include` beside it. Names the token, carries no `__has_include`, and
+  # so scored SAFE until the mirror check landed. This is the exact shape
+  # phase-417 W4.a gave `<map>` in `node.hpp`, which a hosted-but-`-nostdinc++`
+  # Zephyr build could not satisfy.
+  _case 'hosted arm with no __has_include' 1 hit '#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#include <map>
+#endif
+'
+  # 2c. The positive control for 2b: the SAME widened shape is clean once both
+  # probes are present, so the check refuses the widening and not the token.
+  _case 'both probes present' 1 clean '#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<map>))
+#include <map>
 #endif
 '
   # 3. The correct shape stays clean.
