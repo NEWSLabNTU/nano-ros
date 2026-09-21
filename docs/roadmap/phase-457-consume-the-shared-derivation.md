@@ -182,7 +182,7 @@ Claim: phase-457-W4. Depends on: phase-457-W2; phase-459-W4 for order on rtos_re
 ## Gates
 
 - `cargo test -p nros-orchestration-ir` - W1 fixtures, W3 parity, W4 fold.
-- `just check-no-tracked-models` still green: the re-resolved island model is
+- `scripts/check-no-tracked-models.sh` still green: the re-resolved island model is
   a build artifact, and W3's fixture model is a test input under
   `nros-tests`, hashed into the test, not a model under `build/`.
 - `git grep -n min_rate_hz packages/core/nros-orchestration-ir` returns
