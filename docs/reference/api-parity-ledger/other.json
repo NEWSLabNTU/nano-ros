@@ -114,6 +114,22 @@
     "verdict": "declined",
     "why": "see `cpp:TypeAdapter`."
   },
+  "cpp:Owned": {
+    "verdict": "extension",
+    "why": "phase-456 W5 — what `rclcpp::Publisher<M>::SharedPtr` names, and with it `PollingSubscription<M>::SharedPtr` and the return of the poll `create_service`. Upstream's is a `std::shared_ptr<T>`; ours OWNS THE ENTITY BY VALUE and speaks pointer — move-only, one owner, `operator->`, destroys when the holder does, and no allocator, control block or `<memory>` anywhere.\\n\\nOURS-ONLY BECAUSE THE CONSTRAINT IS OURS: a freestanding target has no allocator, so upstream's shape is not available to alias. It landed in phase-442 W8 and became PUBLIC here, when the entity aliases stopped being `std::shared_ptr` and started naming it.\\n\\nWHERE IT APPLIES, which is narrower than it looks: only entities with NO arena dispatch, where the C++ object genuinely IS the entity — publishers and the poll-style forms. A DISPATCH entity's handle is `nros::SubscriptionHandle<M>` / `nros::ServiceHandle<S>`, two words over `{executor, handle_id}`, because the Rust arena owns that entity and there is nothing to dereference.\\n\\nWHAT IT COSTS AGAINST `std::shared_ptr`, stated: no `use_count()`, no `weak_ptr`, no custom deleter, and no COPY. The phase-442 W0 census found no entity handle copied anywhere in this tree or the porting corpus, so the copy costs nothing measured. `Owned<const T>` is a hard `static_assert` rather than a half-legal type — measured, it declares cleanly and is ill-formed on the first move or `reset()` — so `X::ConstSharedPtr` is the SAME type as `X::SharedPtr`, and so is `X::UniquePtr`, because `Owned<T>` already IS unique ownership."
+  },
+  "cpp:Owned::Owned<T>": {
+    "verdict": "extension",
+    "why": "the holder's constructors: default, `nullptr`, and an EXPLICIT `Owned(T&&)`, plus move operations with copies deleted. Ours-only for the reason at `cpp:Owned`. The `nullptr` form exists because ported code writes `Publisher<M>::SharedPtr pub_ = nullptr;`; the take-ownership form is explicit so an entity does not silently become a holder at a call site that meant to keep the value."
+  },
+  "cpp:Owned::get": {
+    "verdict": "extension",
+    "why": "`shared_ptr::get`'s shape with a narrower contract, stated on the method: the entity's address, or null when empty, valid until this holder is moved from or destroyed. That last clause is the one thing a caller must NOT assume about `std::shared_ptr::get()`, where a surviving copy keeps the pointee alive — there are no copies here, so it is said out loud rather than left to be discovered."
+  },
+  "cpp:Owned::reset": {
+    "verdict": "extension",
+    "why": "`shared_ptr::reset`'s shape, and unlike `cpp:SubscriptionHandle::reset` it does the same THING: it destroys the entity now. Ported code writes `pub_.reset()` meaning 'drop my reference'; here there is exactly one reference, so dropping it destroys — which is what upstream does when it was the last one.\\n\\nThis verb is the measured reason a publisher is NOT an arena entity (phase-456 W4). The arena is a bump allocator with no removal path, so an arena publisher would make this a no-op over a live RMW publisher for the executor's lifetime."
+  },
   "cpp:RCLCPP_DEBUG_THROTTLE": {
     "verdict": "declined",
     "disposition": "refuse-loud",

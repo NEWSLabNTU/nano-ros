@@ -28,6 +28,7 @@
 
 #include "nros/traits.hpp"
 #include "nros/result.hpp"
+#include "nros/owned.hpp" // phase-456 W5 — the return type of the poll `create_service`
 #include "nros/hosted_block.hpp"
 #include "nros/nros_cpp_config_generated.h"
 #include "nros/qos.hpp"
@@ -189,6 +190,8 @@ template <typename A> class PollingActionClient;
 // phase-456 W2b — the two poll-side subscribers (`polling_subscription.hpp`).
 template <typename M> class PollSubscription;
 template <typename M> class PollingSubscription;
+// phase-456 W5 — the poll-side service server (`polling_service.hpp`).
+template <typename S> class PollService;
 
 /// Executor-bound node handle the generated entry hands to a node constructor
 /// (RFC-0044 §Design.1, merged onto `Node` by phase-427 W4).
@@ -708,15 +711,19 @@ class Node {
 
     // -- entity creation, upstream's signatures (bodies in `nros.hpp`) -------
 
-    /// `create_publisher<M>(topic, qos)` — upstream's shape.
+    /// `create_publisher<M>(topic, qos)` — upstream's shape, `std::string` key.
+    ///
+    /// A forwarder to the `const char*` overload declared OUTSIDE this block,
+    /// which is the one a ported `create_publisher<M>("chatter", 10)` binds.
+    /// This one exists for a caller that already holds a `std::string`.
     template <typename M>
-    ::std::shared_ptr<::rclcpp::Publisher<M>> create_publisher(const ::std::string& topic,
-                                                               const ::nros::QoS& qos);
+    typename ::rclcpp::Publisher<M>::SharedPtr create_publisher(const ::std::string& topic,
+                                                                const ::nros::QoS& qos);
 
     /// `create_publisher<M>(topic, depth)` — the integer-depth spelling.
     template <typename M>
-    ::std::shared_ptr<::rclcpp::Publisher<M>> create_publisher(const ::std::string& topic,
-                                                               ::size_t depth);
+    typename ::rclcpp::Publisher<M>::SharedPtr create_publisher(const ::std::string& topic,
+                                                                ::size_t depth);
 
     /// `create_subscription<M>(topic, qos, callback)` — upstream's shape.
     /// Accepts ANY callable; the executor dispatches it.
@@ -738,15 +745,22 @@ class Node {
     /// Poll-style service server (`create_service<S>(name, qos)`). Not an
     /// upstream signature — upstream requires a callback — so it claims
     /// nothing. Drain with `service->take_request(...)`.
+    ///
+    /// phase-456 W5 — returns `nros::Owned<nros::PollService<S>>`, which is the
+    /// poll server BY VALUE with an `operator->` so the drain spelling above
+    /// keeps working. It is deliberately NOT `Service<S>::SharedPtr`: that
+    /// alias is a dispatch handle now, and one alias cannot be both a handle
+    /// and a pointer to a poll object. W3 recorded that collision as the
+    /// blocker on the flip; splitting the poll half out is its removal.
     template <typename S>
-    ::std::shared_ptr<::rclcpp::Service<S>>
+    ::nros::Owned<::nros::PollService<S>>
     create_service(const ::std::string& name, const ::nros::QoS& qos = ::nros::QoS::services());
 
     /// Callback-style service server (`void(const S::Request&, S::Response&)`).
     template <typename S, typename F,
               typename = typename std::enable_if<std::is_convertible<
                   F, void (*)(const typename S::Request&, typename S::Response&)>::value>::type>
-    ::std::shared_ptr<::rclcpp::Service<S>>
+    typename ::rclcpp::Service<S>::SharedPtr
     create_service(const ::std::string& name, F callback,
                    const ::nros::QoS& qos = ::nros::QoS::services());
 
@@ -758,7 +772,7 @@ class Node {
                   !std::is_convertible<F, void (*)(const typename S::Request&,
                                                    typename S::Response&)>::value>::type,
               typename = void>
-    ::std::shared_ptr<::rclcpp::Service<S>>
+    typename ::rclcpp::Service<S>::SharedPtr
     create_service(const ::std::string&, F, const ::nros::QoS& = ::nros::QoS::services());
 
     /// Future-style service client — pair with `spin_until_future_complete`.
@@ -796,6 +810,37 @@ class Node {
     }
 
 #endif // NROS_CPP_NODE_HOSTED
+
+    // -- the ported publisher line, on EVERY target — phase-456 W5 ----------
+    //
+    // OUTSIDE `NROS_CPP_NODE_HOSTED`, and that is the point rather than a
+    // placement detail. `create_publisher<M>("chatter", 10)` is the single most
+    // copied line in the porting corpus, and until W5 it was gated: the return
+    // type was `std::shared_ptr<Publisher<M>>`, so on a minimal freestanding
+    // libcpp the overload did not exist and the line did not compile.
+    // `ported_create_publisher_freestanding_probe.cpp` asserted exactly that,
+    // and the lane's own error text named the reason — "the hosted overload
+    // returns std::shared_ptr and there is no allocator here".
+    //
+    // The return type is `Publisher<M>::SharedPtr` = `nros::Owned<Publisher<M>>`
+    // now, which needs no allocator and exists everywhere, so the reason is
+    // gone and the gate goes with it. RFC-0096 D1: ONE API, byte-for-byte the
+    // same shape on every target, reached by removing what made it differ.
+    //
+    // The `const char*` key is what makes it freestanding — a `std::string`
+    // parameter would have re-imposed the gate through the argument instead of
+    // the return. A string literal binds here exactly (array-to-pointer), so a
+    // ported call reaches this overload on a hosted target too; the
+    // `std::string` forwarders above stay for a caller that already holds one.
+
+    /// `create_publisher<M>(topic, qos)` — available on every target.
+    template <typename M>
+    typename ::rclcpp::Publisher<M>::SharedPtr
+    create_publisher(const char* topic, const ::nros::QoS& qos = ::nros::QoS::default_profile());
+
+    /// `create_publisher<M>(topic, depth)` — the integer-depth spelling.
+    template <typename M>
+    typename ::rclcpp::Publisher<M>::SharedPtr create_publisher(const char* topic, ::size_t depth);
 
     // -- parameters (bodies in `nros.hpp`) ----------------------------------
     //
@@ -1459,14 +1504,22 @@ class Node {
                                            const ::nros::SubscriptionOptions& options = {});
 #endif // NANO_ROS_SAFETY_E2E
 
-    /// Create a service server.
+    /// Create a POLL-style service server.
+    ///
+    /// phase-456 W5 — the out parameter is `nros::PollService<S>`, not
+    /// `rclcpp::Service<S>`. This overload creates a server the CALLER owns, in
+    /// the caller's own storage, drained with `take_request()` /
+    /// `send_response()`; the dispatch overload below registers a handler into
+    /// the executor arena and the caller invokes nothing. One class used to be
+    /// both, behind a `callback_mode_` flag, which meant `take_request()` was
+    /// offered on objects whose storage the arena never filled.
     ///
     /// @tparam S  Service type (must define nested Request and Response with TYPE_NAME/TYPE_HASH).
     /// @param out           Receives the initialized service server.
     /// @param service_name  Service name (null-terminated).
     /// @param qos           QoS profile (default: services preset).
     template <typename S>
-    Result create_service(::rclcpp::Service<S>& out, const char* service_name,
+    Result create_service(::nros::PollService<S>& out, const char* service_name,
                           const ::nros::QoS& qos = ::nros::QoS::services());
 
     /// Create a **callback-style** service server (rclcpp dispatch model;

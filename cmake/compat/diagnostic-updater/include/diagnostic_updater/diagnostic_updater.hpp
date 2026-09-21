@@ -46,12 +46,11 @@
 namespace diagnostic_updater {
 
 class Updater {
-public:
+  public:
     using TaskCallback = std::function<void(DiagnosticStatusWrapper&)>;
 
-    Updater(std::shared_ptr<rclcpp::Node> node, double period_seconds = 1.0)
-        : node_(std::move(node)),
-          period_seconds_(period_seconds > 0.0 ? period_seconds : 1.0),
+    Updater(rclcpp::Node::SharedPtr node, double period_seconds = 1.0)
+        : node_(std::move(node)), period_seconds_(period_seconds > 0.0 ? period_seconds : 1.0),
           last_publish_(std::chrono::steady_clock::now()) {
         if (node_) {
             publisher_ = node_->create_publisher<::diagnostic_msgs::msg::DiagnosticArray>(
@@ -61,7 +60,7 @@ public:
 
     // Legacy upstream form: (node, period_seconds, frequency_hz). Frequency
     // arg is ignored — `period_seconds` wins.
-    Updater(std::shared_ptr<rclcpp::Node> node, double period_seconds, double /*freq_hz*/)
+    Updater(rclcpp::Node::SharedPtr node, double period_seconds, double /*freq_hz*/)
         : Updater(std::move(node), period_seconds) {}
 
     Updater(const Updater&) = delete;
@@ -79,8 +78,7 @@ public:
     }
 
     template <typename T>
-    void add(const std::string& name, T* obj,
-             void (T::*method)(DiagnosticStatusWrapper&)) {
+    void add(const std::string& name, T* obj, void (T::*method)(DiagnosticStatusWrapper&)) {
         add(name, [obj, method](DiagnosticStatusWrapper& w) { (obj->*method)(w); });
     }
 
@@ -111,9 +109,9 @@ public:
         }
         ::diagnostic_msgs::msg::DiagnosticArray array;
         ::diagnostic_msgs::msg::DiagnosticStatus status;
-        status.level       = level;
-        status.name        = (const char*) "";
-        status.message     = message.c_str();
+        status.level = level;
+        status.name = (const char*)"";
+        status.message = message.c_str();
         status.hardware_id = hardware_id_.c_str();
         array.status.push_back(std::move(status));
         publisher_->publish(array);
@@ -124,7 +122,7 @@ public:
         period_seconds_ = period_seconds > 0.0 ? period_seconds : period_seconds_;
     }
 
-private:
+  private:
     using Task = std::pair<std::string, TaskCallback>;
 
     void publish_now() {
@@ -135,7 +133,7 @@ private:
         for (const auto& task : tasks_) {
             DiagnosticStatusWrapper w;
             task.second(w);
-            w.name        = task.first.c_str();
+            w.name = task.first.c_str();
             w.hardware_id = hardware_id_.c_str();
             array.status.push_back(static_cast<::diagnostic_msgs::msg::DiagnosticStatus>(w));
         }
@@ -143,14 +141,17 @@ private:
         last_publish_ = std::chrono::steady_clock::now();
     }
 
-    std::shared_ptr<rclcpp::Node> node_;
+    rclcpp::Node::SharedPtr node_;
     double period_seconds_;
     std::chrono::steady_clock::time_point last_publish_;
     std::string hardware_id_;
     std::vector<Task> tasks_;
-    std::shared_ptr<::rclcpp::Publisher<::diagnostic_msgs::msg::DiagnosticArray>> publisher_;
+    // phase-456 W5 -- the nested alias, never `std::shared_ptr<...>`. nano-ros
+    // spells a publisher handle `nros::Owned<Publisher<M>>`; upstream spells it
+    // `std::shared_ptr`. Only the alias compiles against both.
+    ::rclcpp::Publisher<::diagnostic_msgs::msg::DiagnosticArray>::SharedPtr publisher_;
 };
 
-}  // namespace diagnostic_updater
+} // namespace diagnostic_updater
 
-#endif  // NROS_DIAGNOSTIC_UPDATER_DIAGNOSTIC_UPDATER_HPP
+#endif // NROS_DIAGNOSTIC_UPDATER_DIAGNOSTIC_UPDATER_HPP

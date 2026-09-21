@@ -480,7 +480,9 @@ Four things follow, and each is a simplification rather than a trade:
   naming its resolution; the compile-probe sweep is 43 PASS / 14 FAIL against a
   42 / 14 baseline, the one addition being W4's own probe.
 
-* **W5 [cpp, examples] — THE FLIP, and it is ATOMIC with the corpus.** The
+* **W5 [cpp, examples] — THE FLIP, and it is ATOMIC with the corpus. LANDED
+  2026-09-21 for publishers and services; CLIENTS, TIMERS AND `Node` DID NOT
+  MOVE, and the reasons are below rather than deferred silently.** The
   moment `X::SharedPtr` stops being `std::shared_ptr`, every file spelling the
   pointer type explicitly stops compiling, and the tree cannot be green in
   between. This is why phase-442's "W9 is deliberately last" does not survive:
@@ -543,6 +545,82 @@ Four things follow, and each is a simplification rather than a trade:
   a poll-path change, which this phase said it would not make; that sentence in
   "What this phase does not do" is now narrower than the phase, and W2b is where
   it stopped being true.
+
+  ### What LANDED, and the three things the item said that measurement did not
+
+  All three settled decisions landed as written. `Publisher<M>::SharedPtr` is
+  `nros::Owned<Publisher<M>>`, with `ConstSharedPtr` and `UniquePtr` collapsed
+  into it; `nros::PollService<S>` (`nros/polling_service.hpp`) carries the
+  taking API and the caller-owned `RmwServiceServer`, `rclcpp::Service<S>` is
+  bookkeeping over `{handle_id, initialized}`, and `Service<S>::SharedPtr` is
+  `nros::ServiceHandle<S>` (`nros/service_handle.hpp`) — the same two-word shape
+  W2 gave subscriptions. `PollingSubscription<M>`'s three aliases went to
+  `Owned<T>` in the same pass, because they were `std::shared_ptr` for no reason
+  the split left standing. Every alias is UNCONDITIONAL now: four
+  `#ifdef NROS_CPP_HAS_SHARED_PTR` blocks are gone, along with the
+  `std_detect.hpp` include in `publisher.hpp` and `polling_subscription.hpp`.
+
+  **1. The 23-spelling / 22-file blast radius was measured against a flip of
+  FIVE entity families, not three.** Of the 23, only nine actually break under
+  the three settled decisions: four `std::shared_ptr<rclcpp::Publisher<…>>`
+  members in `local-msg-package`, one each in `rclcpp-compat-smoke` and
+  `workspace-shadowing`, one in the book, and the two `ros2_api_adoption.cpp`
+  publisher `static_assert`s. The other fourteen are `Node` (7) and `TimerBase`
+  / `Timer` (7) spellings, which compile unchanged because those aliases did not
+  move. They were rewritten to `X::SharedPtr` anyway — that is the hygiene the
+  item asked for and it makes any later flip a one-line change — but a reader
+  should not expect 23 compile errors from reverting this commit.
+
+  **2. `ported_create_publisher_freestanding_probe.cpp` inverting is NOT a
+  consequence of the alias, and the item's framing hid a second change.**
+  Flipping the return type does not make that line compile freestanding: the
+  hosted overload is keyed on `const std::string&`, so with the return type
+  fixed the gate simply moves from the return to the ARGUMENT and the probe goes
+  on failing for a reason nobody wrote down. Making it invert took a second,
+  unlisted change — a `const char*`-keyed `create_publisher` declared OUTSIDE
+  `NROS_CPP_NODE_HOSTED`, with the `std::string` forms kept as hosted
+  forwarders. A string literal binds the `const char*` overload exactly, so a
+  ported call reaches it on every target and the hosted one still serves a
+  caller holding a `std::string`. Verified by compiling the probe
+  `-ffreestanding -nostdinc++` against the ThreadX shim; the lane in
+  `just/check/lanes.just` flipped from expected-failure to expected-success in
+  the same commit, and its error text now names the two ways to break it.
+
+  **3. A publisher's node co-ownership is GONE, and that is a behaviour change
+  the three decisions imply without saying.** `nros.hpp`'s returning
+  `create_publisher` used to `make_shared` and push the cell into
+  `hosted().owned_entities`. `Owned<T>` is sole ownership, so there is no second
+  reference to keep. For the member pattern the corpus uses this is identical to
+  upstream (the node is the last owner either way), and for
+  `node->create_publisher<M>(…)->publish(m);` the temporary still outlives the
+  full-expression. What no longer happens is a publisher outliving its own
+  handle. Recorded at `cpp:Node::create_publisher` in the ledger rather than left
+  for someone to discover.
+
+  *What did NOT move, with the reason each is its own item:*
+
+  - **`Client<S>::SharedPtr`.** W3 measured the right shape (a `ClientHandle<S>`
+    carrying `async_send_request`), but the FUTURE-style
+    `create_client<S>(name, qos)` returns the same alias and is drained with
+    `send_request` / `wait_for_service` — the identical collision the poll
+    `create_service` was, needing the identical remedy (a `PollClient<S>`). It
+    is a second split, not a line of this one.
+  - **`Timer::SharedPtr`.** Not blocked by an alias at all: `create_wall_timer`
+    returns a `shared_ptr` ALIASING into a heap `detail::WallTimer` cell that
+    holds the callback's `std::function`. Flipping it needs W1's
+    capture-in-the-arena treatment for timers first, which is core Rust work.
+  - **`Node::SharedPtr`.** `std::make_shared<rclcpp::Node>("talker")` is the
+    ported `main`, and the whole `NROS_CPP_NODE_HOSTED` block is spelled in
+    `std::string` / `std::vector` / `std::function`. That is W6's subject, not
+    an alias flip.
+
+  *Verification:* the 57-probe compile sweep is unchanged at 43 PASS / 14 FAIL,
+  same set (the four probes that inverted were rewritten in the same commit, so
+  they pass on the new assertion rather than the old one); the ported probe also
+  compiles `-ffreestanding -nostdinc++`; `api-parity --check
+  --require-disposition` green with 16 rows added and 6 amended;
+  `check-cpp-{freestanding-includes,capability-layout,freestanding-mechanisms,
+  subscription-bound-supplied,ffi-error-mapping,no-std-stdio}` all OK.
 
 * **W6 [ci] — the gates become structural.** phase-442 W10, inherited:
   `check-cpp-freestanding-includes` loses its baseline;

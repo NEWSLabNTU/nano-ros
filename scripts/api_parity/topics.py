@@ -373,6 +373,16 @@ KEY_OVERRIDES = {
     "Client::set_callbacks": "action",
     "Client::try_recv_feedback": "action",
     "Client::try_recv_feedback_sized": "action",
+    # phase-456 W5 — the same shape one topic over. The pubsub pattern claims
+    # any `try_recv`, which is right for `PollSubscription::try_recv*` and
+    # wrong for a service REQUEST: nothing about the pubsub API is incomplete
+    # without a way to drain a service request. It only surfaced now because
+    # the deprecated spelling had no ledger row until the poll server became
+    # its own type — `Service::try_recv_request` would have routed here too.
+    # An override rather than a narrowed pattern, for the reason stated above:
+    # `try_recv(?!_request)` would be a pattern edit made to fix two names.
+    "PollService::try_recv_request": "service",
+    "PollService::try_recv_request_sized": "service",
 }
 
 

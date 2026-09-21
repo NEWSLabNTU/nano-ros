@@ -80,11 +80,18 @@ class MixedConsumer : public rclcpp::Node {
     // hierarchy, so `rclcpp::TimerBase` is a flat alias for `rclcpp::Timer`
     // there; this line is the only spelling that compiles BOTH ways, which is
     // the whole property this template exists to hold. Do not "modernise" it.
-    std::shared_ptr<rclcpp::TimerBase> timer_;
-    std::shared_ptr<rclcpp::Publisher<local_msgs::msg::Greeting>> greeting_pub_;
-    std::shared_ptr<rclcpp::Publisher<extra_msgs::msg::Echo>> echo_pub_;
-    std::shared_ptr<rclcpp::Publisher<geometry_msgs::msg::Point>> point_pub_;
-    std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::Imu>> imu_pub_;
+    rclcpp::TimerBase::SharedPtr timer_;
+    // phase-456 W5 — `Publisher<M>::SharedPtr` is the ONLY spelling that
+    // compiles both ways now, and for a sharper reason than the timer above.
+    // Upstream's alias is `std::shared_ptr<Publisher<M>>`; nano-ros's is
+    // `nros::Owned<Publisher<M>>`, the publisher by value, because a
+    // freestanding target has no allocator and no `<memory>`. Writing
+    // `std::shared_ptr<rclcpp::Publisher<M>>` here would pin one of the two and
+    // stop compiling against the other. Do not "modernise" these either.
+    rclcpp::Publisher<local_msgs::msg::Greeting>::SharedPtr greeting_pub_;
+    rclcpp::Publisher<extra_msgs::msg::Echo>::SharedPtr echo_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr point_pub_;
+    rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
     size_t count_;
 };
 

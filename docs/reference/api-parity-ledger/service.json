@@ -551,7 +551,7 @@
   "cpp:Node::create_service": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
-    "why": "phase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-9. Two of the seven discarding call sites are here — `packages/api/nros-cpp/include/nros/nros.hpp:849` (poll form) and `:861` (callback form) — each dropping the create's `Result` with `(void)` and returning a non-null pointer to an entity whose `initialized_` is false. SILENTLY WRONG; `[[nodiscard]]` cannot reach an explicit `(void)` inside our own header. See `cpp:Node::create_publisher` for upstream's contract, the full call-site list and the disposition.\n\nphase-428 Q1 (2026-09-06) -- adopt -> adopt-bounded, and the discarded-Result finding above is CLOSED: every `create_*` in the adapter now goes through `detail::require_created` (`packages/api/nros-cpp/include/nros/nros.hpp:382`), which calls `abort_failed_create` (`:374`, `NROS_RCLCPP_ABORT_FAILED_CREATE`) instead of handing back a pointer to a dead entity. The line numbers in that paragraph are pre-fix.\n\nWHAT IS ADOPTED: the name, the call shape (name first, `shared_ptr` back), the poll-style and callback-style overloads. THE ENVELOPE, and where the compiler points: the handler signature. Ours hands the request and response BY REFERENCE into caller-owned storage -- `void(const S::Request&, S::Response&)` -- because a per-request heap allocation on the delivery path is exactly what RFC-0022 forbids.\n\nTHE REFUSAL SITE: `packages/api/nros-cpp/include/nros/nros.hpp:953-957` -- a third `create_service` overload, enabled only for a callable that is neither a QoS nor convertible to our handler type, whose body is `static_assert(detail::refuse<F>::value, NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK)` (`:955`; message `packages/api/nros-cpp/include/nros/log.hpp:245`). So upstream's `[](const std::shared_ptr<Req>, std::shared_ptr<Resp>) {...}` is not `no matching function` -- it is a diagnostic naming the constraint and the by-reference signature to change to. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_service_callback_probe.cpp`. The name is adopt-bounded rather than refuse-loud because the refusal is on ONE overload of a working verb; a row's disposition is per key, and the key is the verb."
+    "why": "phase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-9. Two of the seven discarding call sites are here — `packages/api/nros-cpp/include/nros/nros.hpp:849` (poll form) and `:861` (callback form) — each dropping the create's `Result` with `(void)` and returning a non-null pointer to an entity whose `initialized_` is false. SILENTLY WRONG; `[[nodiscard]]` cannot reach an explicit `(void)` inside our own header. See `cpp:Node::create_publisher` for upstream's contract, the full call-site list and the disposition.\n\nphase-428 Q1 (2026-09-06) -- adopt -> adopt-bounded, and the discarded-Result finding above is CLOSED: every `create_*` in the adapter now goes through `detail::require_created` (`packages/api/nros-cpp/include/nros/nros.hpp:382`), which calls `abort_failed_create` (`:374`, `NROS_RCLCPP_ABORT_FAILED_CREATE`) instead of handing back a pointer to a dead entity. The line numbers in that paragraph are pre-fix.\n\nWHAT IS ADOPTED: the name, the call shape (name first, `shared_ptr` back), the poll-style and callback-style overloads. THE ENVELOPE, and where the compiler points: the handler signature. Ours hands the request and response BY REFERENCE into caller-owned storage -- `void(const S::Request&, S::Response&)` -- because a per-request heap allocation on the delivery path is exactly what RFC-0022 forbids.\n\nTHE REFUSAL SITE: `packages/api/nros-cpp/include/nros/nros.hpp:953-957` -- a third `create_service` overload, enabled only for a callable that is neither a QoS nor convertible to our handler type, whose body is `static_assert(detail::refuse<F>::value, NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK)` (`:955`; message `packages/api/nros-cpp/include/nros/log.hpp:245`). So upstream's `[](const std::shared_ptr<Req>, std::shared_ptr<Resp>) {...}` is not `no matching function` -- it is a diagnostic naming the constraint and the by-reference signature to change to. Probe: `packages/api/nros-cpp/tests/compile/ros2_refuse_service_callback_probe.cpp`. The name is adopt-bounded rather than refuse-loud because the refusal is on ONE overload of a working verb; a row's disposition is per key, and the key is the verb.\n\nAMENDED 2026-09-21 (phase-456 W5): the two overloads now return DIFFERENT types, and that is the item's substance rather than a detail.\n\nThe CALLBACK form returns `Service<S>::SharedPtr`, which is `nros::ServiceHandle<S>` — two words over `{executor, handle_id}`, because the arena owns the server and (W3) the handler, so there is no C++ object to point at. The POLL form returns `nros::Owned<nros::PollService<S>>` — the poll server BY VALUE, with an `operator->` so the documented `service->take_request(...)` drain keeps working.\n\nThey could not stay one type. W3 recorded the collision: one alias cannot be both an arena handle and a pointer to a poll object, and while it was both, `take_request()` was offered on objects whose storage the arena never filled. The poll form has no upstream signature (upstream REQUIRES a handler), so its return type claims nothing against rclcpp; the callback form keeps the adopted shape with the handle substituted for the `shared_ptr`, which is the same substitution `cpp:Node::create_subscription` carries.\n\nThe refusal overload and its probe are unchanged."
   },
   "cpp:Node::get_node_services_interface": {
     "verdict": "declined",
@@ -581,6 +581,38 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "no allocator, so no refcounted factory; see the `no-shared-ptr` rule."
+  },
+  "cpp:PollService": {
+    "verdict": "extension",
+    "why": "phase-456 W5 — the poll-style service server, split out of `Service<S>`, exactly as W2b split `nros::PollSubscription<M>` out of `Subscription<M>`. Ours-only because of its OWNERSHIP, not its method names: the caller declares it in its own frame, it holds the `RmwServiceServer` in `storage_`, nothing dispatches, and the caller drains it with `take_request()` / `send_response()`. Upstream has no such entity — `rclcpp::Node::create_service` REQUIRES a handler and the node owns the result.\\n\\nWHY IT WAS SPLIT, and the reason is the same one measured for subscriptions. One class served both owners behind a `callback_mode_` flag, and `storage_` is filled only on the poll path — the arena owns the server on the other one. So `take_request()` on a callback-mode object handed `NROS_SERVICE_SERVER_SIZE` value-initialized zero bytes to `nros_cpp_service_server_take_request_raw`, with `initialized_` true and nothing on the path checking. Splitting the types makes that call unwritable rather than merely discouraged.\\n\\nAND IT UNBLOCKED THE ALIAS. W3 recorded the blocker: `create_service<S>(name, qos)` with no handler returned `Service<S>::SharedPtr` and existed to be `->take_request()`'d, so one alias could not be both an arena handle and a pointer to a poll object. It returns `nros::Owned<PollService<S>>` now, and `Service<S>::SharedPtr` is `nros::ServiceHandle<S>`."
+  },
+  "cpp:PollService::PollService<S>": {
+    "verdict": "extension",
+    "why": "the constructor set of an ours-only type: a default constructor plus move operations, with copies deleted. See `cpp:PollService`. The MOVE is sound here — this half owns its server and relocates it through `nros_cpp_service_server_relocate`, and no arena entry holds its address."
+  },
+  "cpp:PollService::is_valid": {
+    "verdict": "extension",
+    "why": "see the pubsub stage's `cpp:Publisher::is_valid`."
+  },
+  "cpp:PollService::send_reply": {
+    "verdict": "extension",
+    "why": "the deprecated `send_reply` spelling of `cpp:PollService::send_response`, carried across the W5 split with its `[[deprecated]]` attribute intact. Substantive verdict at `cpp:Service::send_response`."
+  },
+  "cpp:PollService::send_response": {
+    "verdict": "extension",
+    "why": "phase-456 W5 — the reply verb moved here with the storage it writes through. Substantive verdict at `cpp:Service::send_response`, including the correlation-token divergence (`int64_t` sequence number vs `rmw_request_id_t`); this row records the move. See `cpp:PollService`."
+  },
+  "cpp:PollService::take_request": {
+    "verdict": "extension",
+    "why": "phase-456 W5 — the taking verb moved here from `Service<S>`, so the NAME that used to sit beside upstream's now belongs to an ours-only type. The substantive verdict on the name and on the correlation token stays at `cpp:Service::take_request`, which is where the comparison against `rclcpp::Service::take_request` lives; this row records where our half went and why (`cpp:PollService`). Same shape as `cpp:PollSubscription::take` after W2b."
+  },
+  "cpp:PollService::try_recv_request": {
+    "verdict": "extension",
+    "why": "the deprecated `try_recv_request` spelling of `cpp:PollService::take_request`, carried across the W5 split with its `[[deprecated]]` attribute intact. Substantive verdict at `cpp:Service::take_request`; the retirement is the tree's deprecated-items batch."
+  },
+  "cpp:PollService::try_recv_request_sized": {
+    "verdict": "extension",
+    "why": "the caller-sized receive, the escape hatch for a request type with no derived bound and the way to override a bounded type's own number (issue 0964). Ours-only because the buffer is OURS: rclcpp deserializes into an allocated message, so there is no capacity for a caller to name. Kept under the `try_recv_` prefix rather than renamed with its sibling, because it is the `_sized` form of a deprecated name and retires with it."
   },
   "cpp:QoS::services": {
     "verdict": "extension",
@@ -663,25 +695,31 @@
   },
   "cpp:Service::send_reply": {
     "verdict": "rename",
-    "why": "the deprecated `send_reply` spelling of `cpp:Service::send_response`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). `Service::send_response()` is the live name; this one survives as a `[[deprecated]]` forwarder in `nros/service.hpp` whose message names the replacement, the shape `nros::QoS`'s `*_raw()` / `*_ms()` established. Header-only and inline, so there is no ABI cost and no second definition. Removal is deferred on purpose with the rest of the tree's deprecated items (see `rust:BoardConfig::zenoh_locator` in boot.json). Substantive verdict on the row it forwards to.",
+    "why": "the deprecated `send_reply` spelling of `cpp:Service::send_response`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). `Service::send_response()` is the live name; this one survives as a `[[deprecated]]` forwarder in `nros/service.hpp` whose message names the replacement, the shape `nros::QoS`'s `*_raw()` / `*_ms()` established. Header-only and inline, so there is no ABI cost and no second definition. Removal is deferred on purpose with the rest of the tree's deprecated items (see `rust:BoardConfig::zenoh_locator` in boot.json). Substantive verdict on the row it forwards to.\n\nAMENDED 2026-09-21 (phase-456 W5): the deprecated forwarder moved to `nros::PollService<S>` with the verb it forwards to. It is still in the retire-later batch.",
     "rename": {
       "from": "Service::send_reply",
       "to": "Service::send_response",
       "status": "landed",
       "category": "A",
       "residue": "the `[[deprecated]]` forwarder is retained ON PURPOSE, in the retire-later batch."
-    }
+    },
+    "provides": [
+      "nros::PollService::send_reply"
+    ]
   },
   "cpp:Service::send_response": {
     "verdict": "divergence",
-    "why": "LANDED 2026-08-27 (phase-379 W5). THE RENAME IS DONE and this row is retained for its history. What it recorded: rcl, rclcpp and rclrs all say `send_response`, our C already said it, and our C++ and Rust said `send_reply` -- with C contradicting ITSELF, `nros_service_send_response` sitting beside `nros_service_send_reply_raw`. Three languages, two words, one of them using both, and nothing about an RTOS preferring either. `send_reply`, `send_reply_raw` and `ServiceTrait::send_reply` all moved to `send_response`; the two C spellings and `Service::send_reply` survive as deprecated forwarders (their own rows), and the Rust trait method did not, because a required trait method is implemented by every backend and a defaulted forwarder there would turn a compile error into a runtime surprise.\n\nWHAT STILL DIFFERS, and it is not the name: the correlation token. Ours is `send_response(int64_t seq_id, const ResponseType& resp)`; rclcpp's is `send_response(rmw_request_id_t& req_id, ServiceT::Response& response)`. Two arguments each, which is why the correlator now reports this arity-only rather than as a rename. `rmw_request_id_t` is a 16-byte writer GUID plus a sequence number, so a reply can be correlated across a client restart; ours is the bare sequence number, because the entity table is STATIC and a request cannot outlive its client, and because a DDS writer GUID does not generalise to the zenoh query id or the XRCE request id our other backends correlate with. Cheaper, and it cannot express a reply to a client that has been recreated. Same constraint, written up once, at `rust:RequestId`; see also `cpp:Client::create_request_header`.",
+    "why": "LANDED 2026-08-27 (phase-379 W5). THE RENAME IS DONE and this row is retained for its history. What it recorded: rcl, rclcpp and rclrs all say `send_response`, our C already said it, and our C++ and Rust said `send_reply` -- with C contradicting ITSELF, `nros_service_send_response` sitting beside `nros_service_send_reply_raw`. Three languages, two words, one of them using both, and nothing about an RTOS preferring either. `send_reply`, `send_reply_raw` and `ServiceTrait::send_reply` all moved to `send_response`; the two C spellings and `Service::send_reply` survive as deprecated forwarders (their own rows), and the Rust trait method did not, because a required trait method is implemented by every backend and a defaulted forwarder there would turn a compile error into a runtime surprise.\n\nWHAT STILL DIFFERS, and it is not the name: the correlation token. Ours is `send_response(int64_t seq_id, const ResponseType& resp)`; rclcpp's is `send_response(rmw_request_id_t& req_id, ServiceT::Response& response)`. Two arguments each, which is why the correlator now reports this arity-only rather than as a rename. `rmw_request_id_t` is a 16-byte writer GUID plus a sequence number, so a reply can be correlated across a client restart; ours is the bare sequence number, because the entity table is STATIC and a request cannot outlive its client, and because a DDS writer GUID does not generalise to the zenoh query id or the XRCE request id our other backends correlate with. Cheaper, and it cannot express a reply to a client that has been recreated. Same constraint, written up once, at `rust:RequestId`; see also `cpp:Client::create_request_header`.\n\nAMENDED 2026-09-21 (phase-456 W5): ours moved to `nros::PollService<S>::send_response` with the storage it writes through. The correlation-token divergence recorded above is unchanged. See `cpp:Service::take_request` for why the split put the verb on the poll half and the upstream name on the dispatch one.",
     "rename": {
       "from": "Service::send_reply / send_reply_raw / ServiceTrait::send_reply",
       "to": "send_response",
       "status": "landed",
       "category": "A",
       "residue": "the residual difference is the correlation token (`int64_t` vs `rmw_request_id_t`), which is the divergence this row now carries. The RMW-ABI layer's own prose still says `send_reply` in `nros-rmw-abi/docs/mainpage.md`, `rmw_entity.h`, `rmw_vtable.h` and the `docs/design/0035` slot table -- pre-existing phase-376 W3.b drift (the vtable SLOT has been `send_response` since then), left alone here because touching `rmw_entity.h` forces a bindgen regeneration of `nros-rmw-cffi/src/generated.rs`."
-    }
+    },
+    "provides": [
+      "nros::PollService::send_response"
+    ]
   },
   "cpp:Service::set_on_new_request_callback": {
     "verdict": "divergence",
@@ -689,7 +727,10 @@
   },
   "cpp:Service::take_request": {
     "verdict": "divergence",
-    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence: the name now MATCHES (`Service<S>::take_request`, renamed from `try_recv_request`), and what the report still calls a difference is the second parameter's TYPE. rclcpp's is `rmw_request_id_t&`; ours is a bare `int64_t&` sequence number, because a nano-ros client keeps ONE call in flight (the `in_flight` flag and `reset_in_flight()` on the handle) rather than a correlation table with a writer GUID in it -- the same constraint `c:send_request` and `rust:RequestId` record."
+    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence: the name now MATCHES (`Service<S>::take_request`, renamed from `try_recv_request`), and what the report still calls a difference is the second parameter's TYPE. rclcpp's is `rmw_request_id_t&`; ours is a bare `int64_t&` sequence number, because a nano-ros client keeps ONE call in flight (the `in_flight` flag and `reset_in_flight()` on the handle) rather than a correlation table with a writer GUID in it -- the same constraint `c:send_request` and `rust:RequestId` record.\n\nAMENDED 2026-09-21 (phase-456 W5): the name no longer matches, because ours moved to `nros::PollService<S>::take_request`. The divergence above — the correlation token — is unchanged and is still what this row is about; what changed is which of OUR types carries it.\n\nWHY, and it is the ownership rather than the name. Upstream's `rclcpp::Service::take_request` is reached on a NODE-OWNED server that an executor has reported ready. We have two service servers and upstream has one: the dispatch server, which the Rust arena owns and which a ported file declares as `Service<S>::SharedPtr`, and the poll server, which the caller declares in its own frame and drains itself. The upstream NAME went to the dispatch half; the VERB went with the storage it reads. Keeping `take_request()` on the dispatch class is what shipped until W5, and it compiled into an unfilled `RmwServiceServer` rather than refusing — `initialized_` was true on that path and nothing checked. Exactly the finding W2b measured one entity over; see `cpp:Subscription::take`.",
+    "provides": [
+      "nros::PollService::take_request"
+    ]
   },
   "cpp:Service::take_type_erased_request": {
     "verdict": "declined",
@@ -704,6 +745,22 @@
   "cpp:ServiceClientStorage": {
     "verdict": "extension",
     "why": "the caller-owned byte buffer a component must declare for a raw, poll-style service client -- `alignas(8) uint8_t bytes[NROS_SERVICE_CLIENT_SIZE]`, app lifetime. It exists because there is no allocator: the client has to live somewhere the component owns, where rclcpp's `Node::create_client` returns a heap `SharedPtr`. USER-FACING -- `examples/workspaces/{cpp,mixed}/src/*_client_pkg` declare one and pass `client_.bytes`. Same shape as `cpp:ActionServerStorage` and `cpp:ActionClientStorage`, and one layer up as the `alignas(8)` inline arrays `cpp:Executor::create` records."
+  },
+  "cpp:ServiceHandle": {
+    "verdict": "extension",
+    "why": "phase-456 W5 — what `rclcpp::Service<S>::SharedPtr` names. Upstream's is a `std::shared_ptr<Service<S>>`; ours is a two-word `{executor, handle_id}` value, and the difference is not an optimisation. A service created with a HANDLER is owned by the Rust executor arena, which holds the `RmwServiceServer` and — since phase-456 W3 — the handler itself as its trampoline context. Nothing of the caller's is referenced after registration, so there is no C++ object for a pointer to point at and none is made.\\n\\nMEASURED (phase-456 W3), across `examples/`, `tests/`, `book/` and `packages/`: a DISPATCH service has NOTHING invoked on it, at any site, out-ref or `::SharedPtr`. It is stored and dropped. That is a keep-alive, and a keep-alive is two words.\\n\\nThe taking API a caller might have reached for is `nros::PollService<S>`'s, on the half that owns a server. Exactly the shape `cpp:SubscriptionHandle` carries one entity over."
+  },
+  "cpp:ServiceHandle::ServiceHandle<S>": {
+    "verdict": "extension",
+    "why": "the handle's constructors: default, `nullptr`, and `{executor, handle_id}`. Ours-only for the reason at `cpp:ServiceHandle`. The `nullptr` form exists because ported code writes `Service<S>::SharedPtr srv_ = nullptr;`."
+  },
+  "cpp:ServiceHandle::handle_id": {
+    "verdict": "extension",
+    "why": "the executor arena slot this registration occupies. Ours-only: rclcpp has no arena and no slot. Present for introspection and for tests that assert a registration happened; there is no operation to perform with it through this API today, which is why it is an accessor and not a verb. Same as `cpp:SubscriptionHandle::handle_id`."
+  },
+  "cpp:ServiceHandle::reset": {
+    "verdict": "extension",
+    "why": "`shared_ptr::reset`'s shape, with a deliberately different contract, stated on the method. It drops the handle's reference and does NOT unregister the service — the arena has no removal path, so the handler goes on being dispatched. Upstream's `reset()` on the last `shared_ptr` destroys the service. Ported code writes `srv_.reset()` meaning 'I am done with this handle', and that is what this does; a caller who meant 'stop serving' has no verb here, and that absence is honest rather than hidden behind one that no-ops. Same as `cpp:SubscriptionHandle::reset`."
   },
   "cpp:ServiceOptions": {
     "verdict": "extension",

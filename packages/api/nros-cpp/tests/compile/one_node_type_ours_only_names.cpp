@@ -79,23 +79,43 @@ struct CounterMsg {
 //
 // `decltype` on the call expression, not a comment: this asks the compiler
 // which overload it PICKED, which is the only question that matters. A
-// `shared_ptr` return means upstream's; anything else means an ours-only
-// candidate survived the rename and is stealing ported calls again.
+// `Publisher<M>::SharedPtr` return means the ported family's; a bare
+// `Publisher<M>` means an ours-only candidate survived the rename and is
+// stealing ported calls again.
+//
+// phase-456 W5 — WHAT THESE TWO ASSERTIONS USED TO SAY, and why the change is
+// not a weakening. They named `std::shared_ptr<Publisher<M>>` literally, which
+// was the ported family's return type until W5 made it
+// `nros::Owned<Publisher<M>>`. The distinction this file exists to draw is
+// between the PORTED family and the OURS-ONLY one, and both are still
+// distinguishable by return type: the ported verb hands back a HOLDER
+// (`::SharedPtr`), the `_in` verb hands back the publisher itself. Naming the
+// alias rather than one of its spellings is what keeps that question asked
+// after the alias moves — and the third assertion below, which pins the
+// ours-only verb to the bare `Publisher<M>`, is what stops the pair collapsing
+// into a tautology now that the two types are related.
 
 void ported_spellings_bind_upstream(::rclcpp::Node& node) {
     using DepthCall = decltype(node.create_publisher<CounterMsg>(::std::string("chatter"), 10));
     static_assert(
-        ::std::is_same<DepthCall, ::std::shared_ptr<::nros::Publisher<CounterMsg>>>::value,
-        "create_publisher(topic, depth) must reach UPSTREAM's shared_ptr overload");
+        ::std::is_same<DepthCall, typename ::nros::Publisher<CounterMsg>::SharedPtr>::value,
+        "create_publisher(topic, depth) must reach the PORTED overload, which returns the "
+        "Publisher<M>::SharedPtr holder");
 
     // The spelling that USED to bind ours — a string literal plus an explicit
     // QoS. This is the regression test proper: before the rename this exact
     // line returned `Publisher<CounterMsg>` by value.
     using QosCall = decltype(node.create_publisher<CounterMsg>("chatter", ::rclcpp::QoS(10)));
-    static_assert(::std::is_same<QosCall, ::std::shared_ptr<::nros::Publisher<CounterMsg>>>::value,
-                  "create_publisher(\"literal\", QoS) must reach UPSTREAM's shared_ptr overload -- "
-                  "if this fires, an ours-only create_publisher is back on the type and a ported "
-                  "file is silently getting a different type, lifetime and failure channel");
+    static_assert(
+        ::std::is_same<QosCall, typename ::nros::Publisher<CounterMsg>::SharedPtr>::value,
+        "create_publisher(\"literal\", QoS) must reach the PORTED overload -- if this fires, "
+        "an ours-only create_publisher is back on the type and a ported file is silently "
+        "getting a different type, lifetime and failure channel");
+    // The two are still DIFFERENT types, which is what makes the pair above a
+    // question rather than a tautology.
+    static_assert(!::std::is_same<QosCall, ::nros::Publisher<CounterMsg>>::value,
+                  "the ported verb must not return the publisher by value -- that IS the "
+                  "ours-only shape, and the collision is what the `_in` rename removed");
 
     // And the ours-only verb still exists, under its own name, returning by
     // value. `_in` is REACHABLE — the rename must not have deleted the
