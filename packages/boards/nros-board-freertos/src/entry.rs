@@ -319,16 +319,18 @@ where
         .boot_config
         .map(::nros::BootConfig::from_baked)
         .unwrap_or_default();
-    let exec_cfg = ::nros::ExecutorConfig::resolve(::nros::BootConfig {
-        node_name: baked.node_name.or(Some("nros_app")),
-        locator: Some(ctx.config.base.zenoh_locator),
-        domain_id: Some(ctx.config.base.domain_id),
-        namespace: None,
-        // Issue 1050 defect (3) — the baked rung reaches the resolver. This
-        // board has no environment to read, so before it existed an image here
-        // could not name its backend at all.
-        rmw: baked.rmw,
-    });
+    // Issue 1434 — ONE spelling of the board rung
+    // (`BootConfig::over_board_defaults`). This was a hand-written struct
+    // literal, six of them across four board crates, and every one wrote
+    // `namespace: None` — so a launch-declared namespace reached the blob,
+    // `from_baked` read it, and the board dropped it here. Identity (name,
+    // namespace) comes from the bake; the locator and domain stay the
+    // board's, unchanged, and issue 1050's `rmw` rides the bake as before.
+    let exec_cfg = ::nros::ExecutorConfig::resolve(baked.over_board_defaults(
+        ctx.config.base.zenoh_locator,
+        ctx.config.base.domain_id,
+        "nros_app",
+    ));
     let executor = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {
@@ -817,16 +819,18 @@ where
         .boot_config
         .map(::nros::BootConfig::from_baked)
         .unwrap_or_default();
-    let exec_cfg = ::nros::ExecutorConfig::resolve(::nros::BootConfig {
-        node_name: baked.node_name.or(Some("nros_app")),
-        locator: Some(ctx.config.base.zenoh_locator),
-        domain_id: Some(ctx.config.base.domain_id),
-        namespace: None,
-        // Issue 1050 defect (3) — the baked rung reaches the resolver. This
-        // board has no environment to read, so before it existed an image here
-        // could not name its backend at all.
-        rmw: baked.rmw,
-    });
+    // Issue 1434 — ONE spelling of the board rung
+    // (`BootConfig::over_board_defaults`). This was a hand-written struct
+    // literal, six of them across four board crates, and every one wrote
+    // `namespace: None` — so a launch-declared namespace reached the blob,
+    // `from_baked` read it, and the board dropped it here. Identity (name,
+    // namespace) comes from the bake; the locator and domain stay the
+    // board's, unchanged, and issue 1050's `rmw` rides the bake as before.
+    let exec_cfg = ::nros::ExecutorConfig::resolve(baked.over_board_defaults(
+        ctx.config.base.zenoh_locator,
+        ctx.config.base.domain_id,
+        "nros_app",
+    ));
     let boot_exec = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {
