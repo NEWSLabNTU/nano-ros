@@ -384,6 +384,42 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     pub fn topic_name(&self) -> &str {
         self.handle.topic_name()
     }
+
+    /// How many subscriptions are on this publisher's topic, RIGHT NOW —
+    /// rclcpp's `Publisher::get_subscription_count`, rcl's
+    /// `rcl_publisher_get_subscription_count`. phase-444.
+    ///
+    /// **A WEAKER QUESTION THAN UPSTREAM'S, and the difference belongs here
+    /// rather than in a surprise.** Upstream counts the subscriptions MATCHED
+    /// to THIS publisher — peers whose QoS is compatible with it. This counts
+    /// every subscription DISCOVERED on the topic, matched or not, because
+    /// that is what the graph can answer and a backend with no QoS
+    /// negotiation cannot tell the two apart at all.
+    ///
+    /// Non-inverting, and in the safe direction: a topic nobody subscribes to
+    /// still reads `0`, so the use this exists for — skip the work when
+    /// nobody is listening — is answered exactly. An INCOMPATIBLE peer makes
+    /// it read `1` where upstream reads `0`, i.e. you do work nobody
+    /// receives. Never the reverse.
+    ///
+    /// **Takes the executor**, which upstream does not, and that is forced: we
+    /// open ONE transport session per image and the [`Executor`] owns it, so
+    /// the graph is the executor's to read — the same receiver difference as
+    /// every other graph verb (phase-381 W4). The compiler demands the
+    /// argument, which is RFC-0089's mechanical-edit test.
+    ///
+    /// Reports what has been DISCOVERED and never blocks, so a small answer
+    /// right after startup is "not seen yet", never "not there"; and
+    /// `Err(Transport(Unsupported))` from a backend with no graph is a
+    /// DIFFERENT answer from `0`, which must not be collapsed into one.
+    ///
+    /// [`Executor`]: super::spin::Executor
+    pub fn get_subscription_count(
+        &self,
+        executor: &mut super::spin::Executor<'_>,
+    ) -> Result<usize, NodeError> {
+        executor.count_subscribers(self.handle.topic_name())
+    }
 }
 
 /// Cap on registered event callbacks per entity. Subscribers can hold
@@ -1428,6 +1464,21 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     /// accessor is here rather than on the RMW trait. phase-444.
     pub fn topic_name(&self) -> &str {
         self.handle.topic_name()
+    }
+
+    /// How many publishers are on this subscription's topic, RIGHT NOW —
+    /// rclcpp's `Subscription::get_publisher_count`, rcl's
+    /// `rcl_subscription_get_publisher_count`. phase-444.
+    ///
+    /// The subscription half of
+    /// [`EmbeddedPublisher::get_subscription_count`], which states the
+    /// weakening (topic-wide, not matched-to-this-entity), why the executor
+    /// is an argument, and why `Unsupported` is not `0`.
+    pub fn get_publisher_count(
+        &self,
+        executor: &mut super::spin::Executor<'_>,
+    ) -> Result<usize, NodeError> {
+        executor.count_publishers(self.handle.topic_name())
     }
 }
 

@@ -10433,3 +10433,169 @@ fn every_entity_handle_reads_back_its_own_name() {
     assert_eq!(raw_server.service_name(), "/raw_server");
     assert_eq!(raw_client.service_name(), "/raw_client");
 }
+
+/// phase-444 — the matched-count pair reaches ITS OWN graph counter.
+///
+/// `MockSession::with_graph` answers `count_publishers` and `count_subscribers`
+/// with DIFFERENT numbers on purpose, so a publisher wired to the publisher
+/// counter (or a subscription to the subscriber one) fails here rather than
+/// at a user's build.
+#[test]
+fn the_matched_counts_reach_their_own_graph_counter() {
+    let mut executor: Executor = executor_with_clock(MockSession::with_graph());
+    let (publisher, subscription) = {
+        let mut node = executor.create_node("counts").expect("node");
+        let publisher = node
+            .create_publisher::<TestMsg>("/counted")
+            .expect("publisher");
+        let subscription = node
+            .create_subscription::<TestMsg>("/counted")
+            .expect("subscription");
+        (publisher, subscription)
+    };
+
+    assert_eq!(
+        publisher.get_subscription_count(&mut executor).unwrap(),
+        crate::mock::canned::SUBSCRIBERS,
+        "a publisher counts SUBSCRIBERS on its topic, not publishers"
+    );
+    assert_eq!(
+        subscription.get_publisher_count(&mut executor).unwrap(),
+        crate::mock::canned::PUBLISHERS,
+        "a subscription counts PUBLISHERS on its topic, not subscribers"
+    );
+}
+
+/// phase-444 — a backend with no graph answers `Unsupported`, and that is a
+/// DIFFERENT answer from `0`.
+///
+/// The plain `MockSession` keeps the trait default on every graph slot, which
+/// is what XRCE reports. Collapsing it into a count is the failure this pins:
+/// `0` means "nobody is listening, skip the work" and a caller that acts on a
+/// fabricated `0` stops publishing on a backend that simply cannot tell.
+#[test]
+fn a_backend_with_no_graph_does_not_report_a_count_of_zero() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let (publisher, subscription) = {
+        let mut node = executor.create_node("counts").expect("node");
+        let publisher = node
+            .create_publisher::<TestMsg>("/counted")
+            .expect("publisher");
+        let subscription = node
+            .create_subscription::<TestMsg>("/counted")
+            .expect("subscription");
+        (publisher, subscription)
+    };
+
+    assert!(
+        matches!(
+            publisher.get_subscription_count(&mut executor),
+            Err(NodeError::Transport(nros_rmw::TransportError::Unsupported))
+        ),
+        "a count from a backend with no graph must not read as 0"
+    );
+    assert!(
+        matches!(
+            subscription.get_publisher_count(&mut executor),
+            Err(NodeError::Transport(nros_rmw::TransportError::Unsupported))
+        ),
+        "a count from a backend with no graph must not read as 0"
+    );
+}
+
+/// phase-444 — `NodeCtx`'s two `*_info_by_topic` forwarders reach their OWN
+/// side of the backend slot.
+///
+/// One backend slot serves both, discriminated by a single `bool`, so the
+/// defect a forwarder of this shape has is passing the wrong one — and it is
+/// invisible unless the two sides answer differently. `MockSession::with_graph`
+/// makes them differ in node name, type AND the `is_publisher` flag, so each
+/// assertion fails on its own.
+#[test]
+fn the_endpoint_info_forwarders_reach_their_own_side() {
+    use crate::mock::canned;
+
+    let mut executor: Executor = executor_with_clock(MockSession::with_graph());
+    let nid = executor.node_builder("endpoints").build().unwrap();
+
+    let mut visits = 0usize;
+    executor
+        .node_mut(nid)
+        .get_publishers_info_by_topic("/chatter", &mut |info| {
+            visits += 1;
+            assert_eq!(
+                info.node_name,
+                canned::ENDPOINT_PUBLISHER_NODE,
+                "get_publishers_info_by_topic must reach the PUBLISHER side of the slot"
+            );
+            assert_eq!(info.topic_type, canned::ENDPOINT_PUBLISHER_TYPE);
+            assert!(info.is_publisher, "the publisher side must say so");
+            assert_eq!(
+                info.node_namespace, "/chatter",
+                "the topic must be forwarded"
+            );
+            true
+        })
+        .expect("publisher side answers");
+    assert_eq!(
+        visits, 1,
+        "the canned graph reports exactly one endpoint per side"
+    );
+
+    visits = 0;
+    executor
+        .node_mut(nid)
+        .get_subscriptions_info_by_topic("/chatter", &mut |info| {
+            visits += 1;
+            assert_eq!(
+                info.node_name,
+                canned::ENDPOINT_SUBSCRIBER_NODE,
+                "get_subscriptions_info_by_topic must reach the SUBSCRIPTION side of the slot"
+            );
+            assert_eq!(info.topic_type, canned::ENDPOINT_SUBSCRIBER_TYPE);
+            assert!(!info.is_publisher, "the subscription side must say so");
+            true
+        })
+        .expect("subscription side answers");
+    assert_eq!(
+        visits, 1,
+        "the canned graph reports exactly one endpoint per side"
+    );
+}
+
+/// phase-444 — and the same backend with no graph answers `Unsupported` here
+/// too, rather than walking nothing and returning `Ok`.
+///
+/// A zero-visit `Ok` is indistinguishable from a topic nobody has joined,
+/// which is the collapse issue 1087 already cost one entity kind over.
+#[test]
+fn the_endpoint_info_forwarders_do_not_collapse_unsupported_into_empty() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("no_graph").build().unwrap();
+
+    let mut visited = 0usize;
+    let ret = executor
+        .node_mut(nid)
+        .get_publishers_info_by_topic("/chatter", &mut |_| {
+            visited += 1;
+            true
+        });
+    assert!(
+        matches!(
+            ret,
+            Err(NodeError::Transport(nros_rmw::TransportError::Unsupported))
+        ),
+        "a backend with no graph must say Unsupported, not report an empty topic: {ret:?}"
+    );
+    assert_eq!(visited, 0, "an Unsupported answer must visit nothing");
+
+    assert!(
+        matches!(
+            executor
+                .node_mut(nid)
+                .get_subscriptions_info_by_topic("/chatter", &mut |_| true),
+            Err(NodeError::Transport(nros_rmw::TransportError::Unsupported))
+        ),
+        "the subscription side must say Unsupported too"
+    );
+}

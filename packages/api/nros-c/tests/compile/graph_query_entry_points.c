@@ -18,7 +18,7 @@
 /* The two visitor typedefs are part of the surface — a caller cannot write a
  * visitor without them, and they are what a macro-generated entry point would
  * also have failed to emit. */
-static bool visit_node(void *ctx, const char *name, const char *ns, const char *enclave) {
+static bool visit_node(void* ctx, const char* name, const char* ns, const char* enclave) {
     (void)ctx;
     (void)name;
     (void)ns;
@@ -28,7 +28,7 @@ static bool visit_node(void *ctx, const char *name, const char *ns, const char *
     return enclave == NULL;
 }
 
-static bool visit_names_and_types(void *ctx, const char *name, const char *const *types,
+static bool visit_names_and_types(void* ctx, const char* name, const char* const* types,
                                   size_t types_count) {
     (void)ctx;
     (void)name;
@@ -40,15 +40,15 @@ static bool visit_names_and_types(void *ctx, const char *name, const char *const
 int main(void) {
     /* Each pointer fails to compile if the declaration is missing or its
      * signature drifted. */
-    nros_ret_t (*p_node_names)(struct nros_executor_t *, nros_node_visit_fn, void *) =
+    nros_ret_t (*p_node_names)(struct nros_executor_t*, nros_node_visit_fn, void*) =
         nros_executor_get_node_names;
-    nros_ret_t (*p_topics)(struct nros_executor_t *, nros_names_and_types_visit_fn, void *) =
+    nros_ret_t (*p_topics)(struct nros_executor_t*, nros_names_and_types_visit_fn, void*) =
         nros_executor_get_topic_names_and_types;
-    nros_ret_t (*p_services)(struct nros_executor_t *, nros_names_and_types_visit_fn, void *) =
+    nros_ret_t (*p_services)(struct nros_executor_t*, nros_names_and_types_visit_fn, void*) =
         nros_executor_get_service_names_and_types;
-    nros_ret_t (*p_count_pub)(struct nros_executor_t *, const char *, size_t *) =
+    nros_ret_t (*p_count_pub)(struct nros_executor_t*, const char*, size_t*) =
         nros_executor_count_publishers;
-    nros_ret_t (*p_count_sub)(struct nros_executor_t *, const char *, size_t *) =
+    nros_ret_t (*p_count_sub)(struct nros_executor_t*, const char*, size_t*) =
         nros_executor_count_subscribers;
 
     /* phase-381 W3/W4 — the six per-node and per-topic forms.
@@ -58,24 +58,22 @@ int main(void) {
      * (`rcl_get_subscriber_names_and_types_by_node`), while C++ and Rust take
      * rclcpp's and rclrs's `subscription`. If someone "aligns" the three, this
      * line stops compiling — which is the point of naming it here. */
-    nros_ret_t (*p_pub_by_node)(struct nros_executor_t *, const char *, const char *,
-                                nros_names_and_types_visit_fn, void *) =
+    nros_ret_t (*p_pub_by_node)(struct nros_executor_t*, const char*, const char*,
+                                nros_names_and_types_visit_fn, void*) =
         nros_executor_get_publisher_names_and_types_by_node;
-    nros_ret_t (*p_sub_by_node)(struct nros_executor_t *, const char *, const char *,
-                                nros_names_and_types_visit_fn, void *) =
+    nros_ret_t (*p_sub_by_node)(struct nros_executor_t*, const char*, const char*,
+                                nros_names_and_types_visit_fn, void*) =
         nros_executor_get_subscriber_names_and_types_by_node;
-    nros_ret_t (*p_srv_by_node)(struct nros_executor_t *, const char *, const char *,
-                                nros_names_and_types_visit_fn, void *) =
+    nros_ret_t (*p_srv_by_node)(struct nros_executor_t*, const char*, const char*,
+                                nros_names_and_types_visit_fn, void*) =
         nros_executor_get_service_names_and_types_by_node;
-    nros_ret_t (*p_cli_by_node)(struct nros_executor_t *, const char *, const char *,
-                                nros_names_and_types_visit_fn, void *) =
+    nros_ret_t (*p_cli_by_node)(struct nros_executor_t*, const char*, const char*,
+                                nros_names_and_types_visit_fn, void*) =
         nros_executor_get_client_names_and_types_by_node;
-    nros_ret_t (*p_pubs_info)(struct nros_executor_t *, const char *,
-                              nros_endpoint_info_visit_fn, void *) =
-        nros_executor_get_publishers_info_by_topic;
-    nros_ret_t (*p_subs_info)(struct nros_executor_t *, const char *,
-                              nros_endpoint_info_visit_fn, void *) =
-        nros_executor_get_subscriptions_info_by_topic;
+    nros_ret_t (*p_pubs_info)(struct nros_executor_t*, const char*, nros_endpoint_info_visit_fn,
+                              void*) = nros_executor_get_publishers_info_by_topic;
+    nros_ret_t (*p_subs_info)(struct nros_executor_t*, const char*, nros_endpoint_info_visit_fn,
+                              void*) = nros_executor_get_subscriptions_info_by_topic;
 
     (void)p_pub_by_node;
     (void)p_sub_by_node;
@@ -83,6 +81,20 @@ int main(void) {
     (void)p_cli_by_node;
     (void)p_pubs_info;
     (void)p_subs_info;
+
+    /* phase-444 — the matched-count pair, on the ENTITY receiver upstream
+       uses (`rcl_publisher_get_subscription_count`). Declared here rather
+       than in their own TU because the weakening is in the SIGNATURE: an
+       executor parameter rcl does not take, and a `nros_ret_t` return in
+       place of rcl's `rcl_ret_t`-plus-out-parameter shape. A pointer pins
+       both; a call would not. */
+    nros_ret_t (*p_pub_sub_count)(const struct nros_publisher_t*, struct nros_executor_t*,
+                                  size_t*) = rcl_publisher_get_subscription_count;
+    nros_ret_t (*p_sub_pub_count)(const struct nros_subscription_t*, struct nros_executor_t*,
+                                  size_t*) = rcl_subscription_get_publisher_count;
+
+    (void)p_pub_sub_count;
+    (void)p_sub_pub_count;
 
     /* And the visitor typedefs must accept a conforming function. */
     nros_node_visit_fn nv = visit_node;

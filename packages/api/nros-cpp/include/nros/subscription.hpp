@@ -17,6 +17,7 @@
 #include "nros/traits.hpp"
 #include "nros/config.hpp"
 #include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
+#include "nros/executor.hpp"    // phase-444 — the graph counter these forward to
 #include "nros/result.hpp"
 #include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 // RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creators below.
@@ -457,6 +458,17 @@ template <typename M> class Subscription {
 
     /// Get the topic name.
     const char* get_topic_name() const { return initialized_ ? topic_name_ : ""; }
+
+    /// How many publishers are on this subscription's topic, RIGHT NOW —
+    /// rclcpp's `Subscription::get_publisher_count`. phase-444.
+    ///
+    /// The subscription half of `Publisher::get_subscription_count`, which
+    /// states the weakening (topic-wide, not matched-to-this-entity), why the
+    /// executor and the out-parameter are there, and why an error is not `0`.
+    Result get_publisher_count(::nros::Executor& executor, size_t* out_count) const {
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        return executor.count_publishers(topic_name_, out_count);
+    }
 
     /// Get a reference to the subscription's message stream.
     ///

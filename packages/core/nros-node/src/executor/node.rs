@@ -2313,6 +2313,40 @@ impl<'e, 's> NodeCtx<'e, 's> {
         self.executor
             .get_client_names_and_types_by_node(node_name, node_namespace, visit)
     }
+
+    /// The PUBLISHERS on `topic_name`, one visit each — rclrs's
+    /// [`Node::get_publishers_info_by_topic`].
+    ///
+    /// The last two members of the graph family to reach upstream's receiver.
+    /// `visit(info)` per discovered endpoint; every `&str` on the
+    /// [`GraphEndpointInfo`](nros_rmw::GraphEndpointInfo) is BORROWED for the
+    /// duration of that call, so copy anything you keep, and returning `false`
+    /// stops the walk. The module note above states the rest of the envelope.
+    ///
+    /// It carries NO QoS, and that absence is the point: the GRANTED profile is
+    /// what answers "why is nothing arriving", no backend can read a remote's
+    /// back yet, and reporting the remote's DECLARED profile instead would be
+    /// the confident wrong answer the field exists to avoid.
+    pub fn get_publishers_info_by_topic(
+        &mut self,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), NodeError> {
+        self.executor
+            .get_publishers_info_by_topic(topic_name, visit)
+    }
+
+    /// The SUBSCRIPTIONS on `topic_name`, one visit each — rclrs's
+    /// [`Node::get_subscriptions_info_by_topic`]. See
+    /// [`get_publishers_info_by_topic`](Self::get_publishers_info_by_topic).
+    pub fn get_subscriptions_info_by_topic(
+        &mut self,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), NodeError> {
+        self.executor
+            .get_subscriptions_info_by_topic(topic_name, visit)
+    }
 }
 
 /// Service-server builder on a [`NodeCtx`] — `node.service(name)`.

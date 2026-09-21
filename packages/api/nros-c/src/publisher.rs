@@ -886,6 +886,67 @@ pub unsafe extern "C" fn rcl_publisher_get_topic_name(
     publisher.topic_name.as_ptr() as *const c_char
 }
 
+/// How many subscriptions are on this publisher's topic, right now.
+///
+/// rcl's `rcl_publisher_get_subscription_count` — phase-444, ledger row
+/// `c:publisher_get_subscription_count`.
+///
+/// # A WEAKER QUESTION THAN UPSTREAM'S, stated here rather than discovered
+///
+/// Upstream counts the subscriptions MATCHED to THIS publisher — peers whose
+/// QoS is compatible with it. This counts every subscription DISCOVERED on the
+/// topic, matched or not, because that is what the graph can answer and a
+/// backend with no QoS negotiation cannot tell the two apart at all.
+///
+/// Non-inverting, and in the safe direction: a topic nobody subscribes to
+/// still reads `0`, so the use this exists for — skip the work when nobody is
+/// listening — is answered exactly. An INCOMPATIBLE peer makes it read `1`
+/// where upstream reads `0`, i.e. you do work nobody receives. Never the
+/// reverse.
+///
+/// # The EXECUTOR parameter, which upstream does not take
+///
+/// We open ONE transport session per image and the executor owns it, so the
+/// graph is the executor's to read — the same receiver difference as every
+/// `nros_executor_get_*` graph verb (phase-381 W4). The name is upstream's so
+/// a ported file finds it; the extra argument is what the compiler makes the
+/// porter notice (RFC-0089's mechanical-edit test).
+///
+/// # Parameters
+/// * `publisher` - Pointer to a publisher
+/// * `executor` - The executor whose session sees the graph
+/// * `out_count` - Receives the count
+///
+/// # Returns
+/// * `NROS_RET_OK` — `*out_count` written.
+/// * `NROS_RET_INVALID_ARGUMENT` — a NULL pointer.
+/// * `NROS_RET_NOT_INIT` — publisher or executor not usable.
+/// * `NROS_RET_UNSUPPORTED` — the backend cannot read the graph (XRCE). A
+///   DIFFERENT answer from `0`, and `*out_count` is not written.
+///
+/// # Safety
+/// * `publisher` and `executor` must be valid pointers or NULL
+/// * `out_count` must point to a writable `size_t` or be NULL
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_publisher_get_subscription_count(
+    publisher: *const nros_publisher_t,
+    executor: *mut crate::executor::nros_executor_t,
+    out_count: *mut usize,
+) -> nros_ret_t {
+    if publisher.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let publisher = &*publisher;
+    if !publisher.is_usable() {
+        return NROS_RET_NOT_INIT;
+    }
+    crate::executor::nros_executor_count_subscribers(
+        executor,
+        publisher.topic_name.as_ptr() as *const c_char,
+        out_count,
+    )
+}
+
 /// Is this publisher handle usable?
 ///
 /// rcl's `rcl_publisher_is_valid`, whose contract is "true for any handle that

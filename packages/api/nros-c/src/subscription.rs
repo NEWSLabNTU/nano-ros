@@ -1125,6 +1125,42 @@ pub unsafe extern "C" fn rcl_subscription_get_topic_name(
     subscription.topic_name.as_ptr() as *const c_char
 }
 
+/// How many publishers are on this subscription's topic, right now.
+///
+/// rcl's `rcl_subscription_get_publisher_count` — phase-444, ledger row
+/// `c:subscription_get_publisher_count`. The subscription half of
+/// [`rcl_publisher_get_subscription_count`](crate::publisher::rcl_publisher_get_subscription_count),
+/// which states the weakening (topic-wide, not matched-to-this-entity), why
+/// the executor is a parameter, and why `NROS_RET_UNSUPPORTED` is not `0`.
+///
+/// # Parameters
+/// * `subscription` - Pointer to a subscription
+/// * `executor` - The executor whose session sees the graph
+/// * `out_count` - Receives the count
+///
+/// # Safety
+/// * `subscription` and `executor` must be valid pointers or NULL
+/// * `out_count` must point to a writable `size_t` or be NULL
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_subscription_get_publisher_count(
+    subscription: *const nros_subscription_t,
+    executor: *mut crate::executor::nros_executor_t,
+    out_count: *mut usize,
+) -> nros_ret_t {
+    if subscription.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let subscription = &*subscription;
+    if !subscription.is_usable() {
+        return NROS_RET_NOT_INIT;
+    }
+    crate::executor::nros_executor_count_publishers(
+        executor,
+        subscription.topic_name.as_ptr() as *const c_char,
+        out_count,
+    )
+}
+
 /// Is this subscription handle usable?
 ///
 /// rcl's `rcl_subscription_is_valid`, whose contract is "true for any handle
