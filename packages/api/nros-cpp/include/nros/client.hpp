@@ -14,6 +14,7 @@
 #include <cstddef>
 
 #include "nros/config.hpp"
+#include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/log.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "nros/result.hpp"
 #include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
@@ -220,6 +221,28 @@ template <typename S> class Client {
     /// Check if the client is initialized and valid.
     bool is_valid() const { return initialized_; }
 
+    /// Read back the service name this client was created on — phase-444.
+    ///
+    /// rclcpp's `ClientBase::get_service_name`, and the client half of "four
+    /// entity families, one accessor" (ledger rows `cpp:Client::get_service_name`
+    /// and `cpp:Service::get_service_name`): `Publisher` and `Subscription` have
+    /// had `get_topic_name()` all along, both action tiers gained
+    /// `get_action_name()` in phase-417 W4.b, and the service pair was the one
+    /// family with no accessor in any C++ tier.
+    ///
+    /// The name lives C++-side in `service_name_`, for the reason
+    /// `ActionServer::get_action_name` states: the runtime does NOT own it.
+    /// `nros_cpp_service_client_create` takes `service_name` and drops it, so
+    /// there is nothing FFI-side to hand back, and a borrowed `const char*`
+    /// was rejected because `create_client` takes a pointer a hosted caller may
+    /// well have obtained from a temporary.
+    ///
+    /// Returns `""` (never NULL) on an uninitialised client, matching
+    /// `Publisher::get_topic_name` and both action tiers. Both client modes
+    /// answer — the future-style client that owns its `storage_` and the
+    /// callback-style one the executor arena owns.
+    const char* get_service_name() const { return initialized_ ? service_name_ : ""; }
+
     /// Phase 124.C.3 — graph-aware "is the matching server up?" probe.
     ///
     /// Returns the count from the RMW backend's matched-server view:
@@ -336,7 +359,8 @@ template <typename S> class Client {
     Client(Client&& other)
         : executor_(other.executor_), initialized_(other.initialized_), user_fn_(other.user_fn_),
           user_fn_ctx_(other.user_fn_ctx_), user_ctx_(other.user_ctx_),
-          handle_id_(other.handle_id_), callback_mode_(other.callback_mode_) {
+          handle_id_(other.handle_id_), callback_mode_(other.callback_mode_), service_name_{} {
+        ::nros::detail::assign_entity_name(service_name_, other.service_name_);
         if (other.initialized_ && !other.callback_mode_) {
             nros_cpp_service_client_relocate(other.storage_, storage_);
         }
@@ -355,6 +379,7 @@ template <typename S> class Client {
             user_ctx_ = other.user_ctx_;
             handle_id_ = other.handle_id_;
             callback_mode_ = other.callback_mode_;
+            ::nros::detail::assign_entity_name(service_name_, other.service_name_);
             if (other.initialized_ && !other.callback_mode_) {
                 nros_cpp_service_client_relocate(other.storage_, storage_);
             }
@@ -365,7 +390,7 @@ template <typename S> class Client {
 
     /// Default constructor -- creates an uninitialized service client.
     /// Use `Node::create_client()` to initialize.
-    Client() : storage_(), executor_(nullptr), initialized_(false) {}
+    Client() : storage_(), executor_(nullptr), initialized_(false), service_name_{} {}
 
   private:
     Client(const Client&) = delete;
@@ -397,6 +422,10 @@ template <typename S> class Client {
     void* user_ctx_ = nullptr;
     size_t handle_id_ = static_cast<size_t>(-1);
     bool callback_mode_ = false;
+    /// phase-444 — the service name, kept C++-side for `get_service_name()`.
+    /// `::nros::SERVICE_NAME_MAX` bytes, the same bound every other entity
+    /// family uses.
+    char service_name_[::nros::SERVICE_NAME_MAX];
 };
 
 } // namespace rclcpp
@@ -424,6 +453,9 @@ Result Node::create_client(Client<S>& out, const char* service_name, const ::nro
         &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
     if (ret == 0) {
         out.executor_ = executor_handle_;
+        // phase-444 — remember the name for `get_service_name()`; the runtime
+        // takes `service_name` and drops it.
+        ::nros::detail::assign_entity_name(out.service_name_, service_name);
         out.initialized_ = true;
     }
     return Result(ret);
@@ -460,6 +492,8 @@ Result Node::create_client(Client<S>& out, const char* service_name, F callback,
         out.executor_ = executor_handle_;
         out.handle_id_ = handle;
         out.callback_mode_ = true;
+        // phase-444 — see the future-style overload above.
+        ::nros::detail::assign_entity_name(out.service_name_, service_name);
         out.initialized_ = true;
     }
     return Result(ret);

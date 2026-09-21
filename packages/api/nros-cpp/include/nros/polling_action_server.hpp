@@ -23,6 +23,7 @@
 
 #include "nros/action_server.hpp" // GoalResponse / CancelResponse / GoalStatus
 #include "nros/config.hpp"
+#include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/node.hpp"
 #include "nros/nros_cpp_config_generated.h"
 #include "nros/result.hpp"
@@ -347,12 +348,7 @@ Result Node::create_polling_action_server(::nros::PollingActionServer<A>& out,
         nros_cpp_action_server_init_polling(&handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH,
                                             reinterpret_cast<void*>(out.storage_));
     if (ret != 0) return Result(ret);
-    size_t name_len = 0;
-    while (action_name[name_len] != '\0' && name_len + 1 < sizeof(out.action_name_)) {
-        out.action_name_[name_len] = action_name[name_len];
-        ++name_len;
-    }
-    out.action_name_[name_len] = '\0';
+    ::nros::detail::assign_entity_name(out.action_name_, action_name);
     out.initialized_ = true;
     return Result::success();
 }

@@ -16,6 +16,7 @@
 
 #include "nros/traits.hpp"
 #include "nros/config.hpp"
+#include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/result.hpp"
 // RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creator below.
 #include "nros/serialization_format.hpp"
@@ -374,12 +375,7 @@ Result Node::create_publisher(Publisher<M>& out, const char* topic, const ::nros
     if (ret == 0) {
         // Topic name lives C++-side; copy + null-terminate into the
         // fixed-size buffer. Truncation is silent.
-        size_t topic_len = 0;
-        while (topic[topic_len] != '\0' && topic_len + 1 < sizeof(out.topic_name_)) {
-            out.topic_name_[topic_len] = topic[topic_len];
-            ++topic_len;
-        }
-        out.topic_name_[topic_len] = '\0';
+        ::nros::detail::assign_entity_name(out.topic_name_, topic);
         out.initialized_ = true;
     }
     return Result(ret);

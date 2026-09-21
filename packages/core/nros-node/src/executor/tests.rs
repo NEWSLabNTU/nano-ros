@@ -10386,3 +10386,50 @@ fn node_ctx_graph_reports_unsupported_rather_than_an_empty_graph() {
         "a count from a backend with no graph must not read as 0"
     );
 }
+
+/// phase-444 — every entity handle reads back the name it was created on, and
+/// reads back ITS OWN.
+///
+/// Eight handles, eight DISTINCT names, on purpose: the bug an accessor of this
+/// shape actually has is reaching the wrong handle, and a fixture where two
+/// entities share a name cannot see it. Each assertion fails on its own if the
+/// forward is cross-wired.
+#[test]
+fn every_entity_handle_reads_back_its_own_name() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut node = executor.create_node("names").expect("node");
+
+    let publisher = node
+        .create_publisher::<TestMsg>("/typed_pub")
+        .expect("typed publisher");
+    let subscription = node
+        .create_subscription::<TestMsg>("/typed_sub")
+        .expect("typed subscription");
+    let raw_publisher = node
+        .create_publisher_raw("/raw_pub", "test/msg/TestMsg", "test_hash")
+        .expect("raw publisher");
+    let raw_subscription = node
+        .create_subscription_raw("/raw_sub", "test/msg/TestMsg", "test_hash")
+        .expect("raw subscription");
+    let server = node
+        .create_service::<TestService>("/typed_server")
+        .expect("typed service server");
+    let client = node
+        .create_client::<TestService>("/typed_client")
+        .expect("typed service client");
+    let raw_server = node
+        .create_service_raw("/raw_server", "test/srv/TestService", "test_hash")
+        .expect("raw service server");
+    let raw_client = node
+        .create_client_raw("/raw_client", "test/srv/TestService", "test_hash")
+        .expect("raw service client");
+
+    assert_eq!(publisher.topic_name(), "/typed_pub");
+    assert_eq!(subscription.topic_name(), "/typed_sub");
+    assert_eq!(raw_publisher.topic_name(), "/raw_pub");
+    assert_eq!(raw_subscription.topic_name(), "/raw_sub");
+    assert_eq!(server.service_name(), "/typed_server");
+    assert_eq!(client.service_name(), "/typed_client");
+    assert_eq!(raw_server.service_name(), "/raw_server");
+    assert_eq!(raw_client.service_name(), "/raw_client");
+}

@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "nros/config.hpp"
+#include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/log.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "nros/result.hpp"
 #include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
@@ -606,12 +607,7 @@ Result Node::create_action_client(::nros::ActionClient<A>& out, const char* acti
         out.executor_ = executor_handle_;
         // phase-417 W4.b — remember the name for `get_action_name()`, truncating
         // at `nros::ACTION_NAME_MAX` exactly as the server and the polling tiers do.
-        size_t name_len = 0;
-        while (action_name[name_len] != '\0' && name_len + 1 < sizeof(out.action_name_)) {
-            out.action_name_[name_len] = action_name[name_len];
-            ++name_len;
-        }
-        out.action_name_[name_len] = '\0';
+        ::nros::detail::assign_entity_name(out.action_name_, action_name);
         out.initialized_ = true;
     }
     return Result(ret);

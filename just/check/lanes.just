@@ -1649,7 +1649,7 @@ cpp: cpp-fmt
     # nothing about the surface. (It used to say `rclcpp_compat.hpp`; that
     # header was deleted in stage 6 step A and the class moved into
     # `nros.hpp`.)
-    for probe in ros2_api_adoption node_graph_forwarders; do \
+    for probe in ros2_api_adoption node_graph_forwarders entity_name_accessors; do \
         test -f "packages/api/nros-cpp/tests/compile/$probe.cpp" || { \
             echo "ERROR: $probe.cpp is MISSING -- this check would pass on absence." >&2; \
             exit 1; \
@@ -1664,7 +1664,7 @@ cpp: cpp-fmt
     # explicit and is what a real ported consumer now writes too
     # (`cmake/compat/NrosRclcppCompat.cmake` sets it for exactly these files).
     for probe in ros2_api_adoption node_graph_forwarders ros2_api_adoption_stage2 ros2_one_dispatch_path \
-                 ros2_init_argv_refusal action_goal_uuid executor_cancel; do \
+                 ros2_init_argv_refusal action_goal_uuid executor_cancel entity_name_accessors; do \
         c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
             -Itarget/nros-cpp-generated \
             -Itarget/nros-c-generated \
