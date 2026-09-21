@@ -1857,6 +1857,32 @@ impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP
     pub fn service_name(&self) -> &str {
         self.handle.service_name()
     }
+
+    /// The QoS the backend GRANTED this service's REQUEST endpoint — issue
+    /// 1437.
+    ///
+    /// `rmw_service_request_subscription_get_actual_qos`. One `create` builds
+    /// TWO endpoints that negotiate against different peers, so the two
+    /// directions are two answers and neither stands for the other; a
+    /// reliable reply path over a best-effort request path is a working
+    /// service that drops calls.
+    ///
+    /// **A policy the backend could not report reads back as its `Unknown`
+    /// variant**, never as the request. A backend with no read-back at all
+    /// answers [`QoSProfile::QOS_PROFILE_UNKNOWN`](nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN),
+    /// every field an absence.
+    ///
+    /// Free: read once at create and retained, so this never re-enters the
+    /// transport.
+    pub fn request_subscription_actual_qos(&self) -> nros_rmw::QoSProfile {
+        nros_rmw::ServiceTrait::request_subscription_actual_qos(&self.handle)
+    }
+
+    /// The QoS the backend GRANTED this service's RESPONSE endpoint — issue
+    /// 1437. See [`request_subscription_actual_qos`](Self::request_subscription_actual_qos).
+    pub fn response_publisher_actual_qos(&self) -> nros_rmw::QoSProfile {
+        nros_rmw::ServiceTrait::response_publisher_actual_qos(&self.handle)
+    }
 }
 
 /// Typeless service-client handle. L1 counterpart of
@@ -1887,6 +1913,20 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
             reply_buffer: [0u8; REPLY_BUF],
             _phantom_req: PhantomData,
         }
+    }
+
+    /// The QoS the backend GRANTED this client's REQUEST endpoint — issue
+    /// 1437. The client-side mirror of
+    /// [`RawServiceServer::request_subscription_actual_qos`]: same topic pair,
+    /// the other end of it, and the two need not agree.
+    pub fn request_publisher_actual_qos(&self) -> nros_rmw::QoSProfile {
+        nros_rmw::ClientTrait::request_publisher_actual_qos(&self.handle)
+    }
+
+    /// The QoS the backend GRANTED this client's RESPONSE endpoint — issue
+    /// 1437. See [`request_publisher_actual_qos`](Self::request_publisher_actual_qos).
+    pub fn response_subscription_actual_qos(&self) -> nros_rmw::QoSProfile {
+        nros_rmw::ClientTrait::response_subscription_actual_qos(&self.handle)
     }
 
     /// Send a raw CDR request. Non-blocking; the reply arrives via

@@ -4851,6 +4851,87 @@ impl<'s> Executor<'s> {
         }
     }
 
+    // ------------------------------------------------------------------
+    // issue 1437 / phase-444 — the ARENA half of the granted-QoS read-back.
+    //
+    // An entity registered with a callback lives in the executor arena, and
+    // the C / C++ handle the user holds is then bookkeeping: its inline
+    // storage is untouched and the only identity it carries is the entry
+    // index. So an accessor that reads the user's own storage answers for
+    // the POLL road and returns an absence on the CALLBACK road — which is
+    // the road a ported `rclcpp` node takes, i.e. the common one. These
+    // three close that reach.
+    //
+    // Each reads the entry's HANDLE and nothing else, which is why one
+    // function per kind serves every entry SHAPE of that kind: every arena
+    // entry is `#[repr(C)]` with its handle as the first field (12
+    // subscription shapes, 2 service-server, 2 service-client), so
+    // `arena_base + offset` IS the handle pointer whatever buffer sizes and
+    // callback types the shape was monomorphised with.
+    // `service_client_entry_mut` above has to name ONE shape because it
+    // reaches past the handle; these do not, and that is the whole
+    // difference. `arena::tests::every_arena_entry_begins_with_its_handle`
+    // pins the invariant.
+
+    /// The `RmwSubscriber` of an arena-registered subscription, by entry index.
+    ///
+    /// `None` when `entry_index` names no entry, or names one that is not a
+    /// subscription.
+    ///
+    /// # Safety
+    /// `entry_index` must be an index this executor handed out. The borrow is
+    /// valid only while the arena is not re-entered.
+    pub unsafe fn subscription_handle(
+        &self,
+        entry_index: usize,
+    ) -> Option<&session::RmwSubscriber> {
+        let meta = self.entries.get(entry_index)?.as_ref()?;
+        if !matches!(meta.kind, EntryKind::Subscription) {
+            return None;
+        }
+        let arena_ptr = self.arena.as_ptr() as *const u8;
+        // SAFETY: `meta.offset` is inside the arena by construction, and every
+        // subscription entry shape begins with its `RmwSubscriber`.
+        Some(unsafe { &*(arena_ptr.add(meta.offset) as *const session::RmwSubscriber) })
+    }
+
+    /// The `RmwServiceServer` of an arena-registered service, by entry index.
+    ///
+    /// # Safety
+    /// See [`Executor::subscription_handle`].
+    pub unsafe fn service_server_handle(
+        &self,
+        entry_index: usize,
+    ) -> Option<&session::RmwServiceServer> {
+        let meta = self.entries.get(entry_index)?.as_ref()?;
+        if !matches!(meta.kind, EntryKind::Service) {
+            return None;
+        }
+        let arena_ptr = self.arena.as_ptr() as *const u8;
+        // SAFETY: as above; every service-server entry shape begins with its
+        // `RmwServiceServer`.
+        Some(unsafe { &*(arena_ptr.add(meta.offset) as *const session::RmwServiceServer) })
+    }
+
+    /// The `RmwServiceClient` of an arena-registered client, by entry index.
+    ///
+    /// # Safety
+    /// See [`Executor::subscription_handle`].
+    pub unsafe fn service_client_handle(
+        &self,
+        entry_index: usize,
+    ) -> Option<&session::RmwServiceClient> {
+        let meta = self.entries.get(entry_index)?.as_ref()?;
+        if !matches!(meta.kind, EntryKind::ServiceClient) {
+            return None;
+        }
+        let arena_ptr = self.arena.as_ptr() as *const u8;
+        // SAFETY: as above; both service-client entry shapes begin with their
+        // `RmwServiceClient` — the typed one through `ServiceClientSendHeader`,
+        // itself `#[repr(C)]` and handle-first.
+        Some(unsafe { &*(arena_ptr.add(meta.offset) as *const session::RmwServiceClient) })
+    }
+
     /// Set the executor-level trigger condition.
     ///
     /// Controls which handles must be ready before `spin_once` dispatches

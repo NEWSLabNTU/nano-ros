@@ -493,3 +493,31 @@ pub unsafe extern "C" fn nros_cpp_publisher_assert_liveliness(
         Err(_) => NROS_CPP_RET_ERROR,
     }
 }
+
+/// The QoS profile this publisher is ACTUALLY running — issue 1437.
+///
+/// `rmw_publisher_get_actual_qos`: what the backend GRANTED, which differs
+/// from the request whenever the backend serves something else (zenoh clamps
+/// history depth to its receive ring; DDS negotiates). A policy the backend
+/// cannot report comes back as that enum's `UNKNOWN`, never as the request.
+///
+/// Read once at create and retained on the handle, so this never re-enters
+/// the transport.
+///
+/// # Safety
+/// `storage` must be a live publisher storage (initialised by
+/// `nros_cpp_publisher_create`); `out_qos` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_publisher_get_actual_qos(
+    storage: *const c_void,
+    out_qos: *mut nros_cpp_qos_t,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || out_qos.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let publisher = unsafe { &*(storage as *const nros::internals::RmwPublisher) };
+    unsafe {
+        *out_qos = nros_cpp_qos_t::from_qos_settings(PublisherTrait::actual_qos(publisher));
+    }
+    NROS_CPP_RET_OK
+}

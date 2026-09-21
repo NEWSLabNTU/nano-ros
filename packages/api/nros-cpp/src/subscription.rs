@@ -981,3 +981,48 @@ pub unsafe extern "C" fn nros_cpp_subscription_set_message_lost(
 ) -> nros_cpp_ret_t {
     crate::NROS_CPP_RET_UNSUPPORTED
 }
+
+/// The QoS profile this subscription is ACTUALLY running — issue 1437.
+///
+/// `rmw_subscription_get_actual_qos`. See
+/// [`nros_cpp_publisher_get_actual_qos`](crate::publisher::nros_cpp_publisher_get_actual_qos)
+/// for what "actual" means and why an unreportable policy reads back as that
+/// enum's `UNKNOWN` rather than as the request.
+///
+/// **Two roads, one entry point.** A poll-style `nros::Subscription<M>` owns
+/// its subscriber in `storage`; a callback-style one does NOT — the executor
+/// arena owns it and the C++ object holds only `(executor, handle_id)`. The
+/// callback form is what a ported `rclcpp` node writes, so an accessor that
+/// served only the first would be absent exactly where it is used. `storage`
+/// non-NULL selects the first; otherwise `(executor, handle_id)` is resolved.
+///
+/// # Safety
+/// Exactly one of `storage` / `executor` identifies a live subscription;
+/// `out_qos` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_get_actual_qos(
+    storage: *const c_void,
+    executor: *mut c_void,
+    handle_id: usize,
+    out_qos: *mut nros_cpp_qos_t,
+) -> nros_cpp_ret_t {
+    if out_qos.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let granted = if !storage.is_null() {
+        let subscriber = unsafe { &*(storage as *const nros::internals::RmwSubscriber) };
+        SubscriberTrait::actual_qos(subscriber)
+    } else {
+        let Some(ctx) = (unsafe { crate::cpp_ctx_checked(executor) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        match unsafe { ctx.executor.subscription_handle(handle_id) } {
+            Some(handle) => SubscriberTrait::actual_qos(handle),
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    };
+    unsafe {
+        *out_qos = nros_cpp_qos_t::from_qos_settings(granted);
+    }
+    NROS_CPP_RET_OK
+}

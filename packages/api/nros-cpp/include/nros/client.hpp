@@ -28,6 +28,15 @@
 
 #include "nros_cpp_ffi.h"
 
+// issue 1437 — `get_actual_qos()` returns a `nros::QoS` BY VALUE from an
+// inline body, so the complete type must be here, not only by the time
+// `nros/node.hpp` is pulled in below.
+//
+// AFTER `nros_cpp_ffi.h`, never before: `qos.hpp` defines the four
+// `nros_cpp_qos_*_t` enums ITSELF under `#ifndef NROS_CPP_FFI_H`, so
+// reaching it first makes the cbindgen header a REDEFINITION of all four.
+#include "nros/qos.hpp"
+
 // Phase 189.M3.3.f — `nros_cpp_service_client_register` is excluded from
 // cbindgen (its Rust signature uses `RawResponseCallback`, an external-crate
 // type alias). Declare it locally with a matching fn-ptr typedef.
@@ -243,6 +252,26 @@ template <typename S> class Client {
     /// callback-style one the executor arena owns.
     const char* get_service_name() const { return initialized_ ? service_name_ : ""; }
 
+    /// The QoS the backend GRANTED this client's REQUEST endpoint — the
+    /// publisher that sends calls. Issue 1437.
+    ///
+    /// `rclcpp::Client::get_request_publisher_actual_qos`. ONE
+    /// `create_client` builds TWO endpoints that negotiate against DIFFERENT
+    /// peers, so this and @ref get_response_subscription_actual_qos are two
+    /// answers and neither stands for the other.
+    ///
+    /// A policy the backend cannot report is an ABSENCE (`ReliabilityUnknown`
+    /// and friends), never the request echoed back — see
+    /// @ref Publisher::get_actual_qos. Answers on both the future-style road
+    /// (this object owns the entity) and the callback-style one (the executor
+    /// arena does).
+    ::nros::QoS get_request_publisher_actual_qos() const { return actual_qos_half(true); }
+
+    /// The QoS the backend GRANTED this client's RESPONSE endpoint — the
+    /// subscription that receives replies. Issue 1437; see
+    /// @ref get_request_publisher_actual_qos.
+    ::nros::QoS get_response_subscription_actual_qos() const { return actual_qos_half(false); }
+
     /// Phase 124.C.3 — graph-aware "is the matching server up?" probe.
     ///
     /// Returns the count from the RMW backend's matched-server view:
@@ -411,6 +440,20 @@ template <typename S> class Client {
         } else if (self->user_fn_ctx_ != nullptr) {
             self->user_fn_ctx_(response, self->user_ctx_);
         }
+    }
+
+    /// The two directions differ only in which out-pointer is read, so one
+    /// body serves both and they cannot end up swapped (issue 1437).
+    ::nros::QoS actual_qos_half(bool request) const {
+        nros_cpp_qos_t req{};
+        nros_cpp_qos_t resp{};
+        if (!initialized_) return ::nros::detail::qos_all_unknown();
+        const void* storage = callback_mode_ ? nullptr : static_cast<const void*>(storage_);
+        if (nros_cpp_service_client_get_actual_qos(storage, executor_, handle_id_, &req, &resp) !=
+            0) {
+            return ::nros::detail::qos_all_unknown();
+        }
+        return ::nros::detail::qos_from_ffi(request ? req : resp);
     }
 
     alignas(8) uint8_t storage_[NROS_SERVICE_CLIENT_SIZE];

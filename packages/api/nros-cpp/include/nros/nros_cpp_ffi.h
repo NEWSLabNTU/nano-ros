@@ -173,6 +173,15 @@ typedef uint8_t nros_cpp_deadline_policy_t;
 typedef enum nros_cpp_qos_reliability_t {
   nros_cpp_qos_reliability_t_NROS_CPP_QOS_RELIABLE = 0,
   nros_cpp_qos_reliability_t_NROS_CPP_QOS_BEST_EFFORT = 1,
+  /**
+   * Nobody stated a reliability policy — the middleware chose.
+   */
+  nros_cpp_qos_reliability_t_NROS_CPP_QOS_RELIABILITY_SYSTEM_DEFAULT = 2,
+  /**
+   * The backend could not determine this policy. An absence, never a
+   * request.
+   */
+  nros_cpp_qos_reliability_t_NROS_CPP_QOS_RELIABILITY_UNKNOWN = 3,
 } nros_cpp_qos_reliability_t;
 
 /**
@@ -181,6 +190,14 @@ typedef enum nros_cpp_qos_reliability_t {
 typedef enum nros_cpp_qos_durability_t {
   nros_cpp_qos_durability_t_NROS_CPP_QOS_VOLATILE = 0,
   nros_cpp_qos_durability_t_NROS_CPP_QOS_TRANSIENT_LOCAL = 1,
+  /**
+   * Nobody stated a durability policy — the middleware chose.
+   */
+  nros_cpp_qos_durability_t_NROS_CPP_QOS_DURABILITY_SYSTEM_DEFAULT = 2,
+  /**
+   * The backend could not determine this policy.
+   */
+  nros_cpp_qos_durability_t_NROS_CPP_QOS_DURABILITY_UNKNOWN = 3,
 } nros_cpp_qos_durability_t;
 
 /**
@@ -189,16 +206,33 @@ typedef enum nros_cpp_qos_durability_t {
 typedef enum nros_cpp_qos_history_t {
   nros_cpp_qos_history_t_NROS_CPP_QOS_KEEP_LAST = 0,
   nros_cpp_qos_history_t_NROS_CPP_QOS_KEEP_ALL = 1,
+  /**
+   * Nobody stated a history policy — the middleware chose.
+   */
+  nros_cpp_qos_history_t_NROS_CPP_QOS_HISTORY_SYSTEM_DEFAULT = 2,
+  /**
+   * The backend could not determine this policy.
+   */
+  nros_cpp_qos_history_t_NROS_CPP_QOS_HISTORY_UNKNOWN = 3,
 } nros_cpp_qos_history_t;
 
 /**
  * QoS liveliness policy. Phase 108.B.7 — matches DDS `LIVELINESS`.
  */
 typedef enum nros_cpp_qos_liveliness_t {
+  /**
+   * Also the "nobody stated a liveliness policy" slot — discriminant 0 is
+   * what the RMW ABI spells `SYSTEM_DEFAULT`, so this enum gains no
+   * separate one.
+   */
   nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_NONE = 0,
   nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_AUTOMATIC = 1,
   nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
   nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
+  /**
+   * The backend could not determine this policy.
+   */
+  nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_UNKNOWN = 4,
 } nros_cpp_qos_liveliness_t;
 
 /**
@@ -2168,6 +2202,24 @@ nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(void *_storage,
 nros_cpp_ret_t nros_cpp_publisher_assert_liveliness(void *storage);
 
 /**
+ * The QoS profile this publisher is ACTUALLY running — issue 1437.
+ *
+ * `rmw_publisher_get_actual_qos`: what the backend GRANTED, which differs
+ * from the request whenever the backend serves something else (zenoh clamps
+ * history depth to its receive ring; DDS negotiates). A policy the backend
+ * cannot report comes back as that enum's `UNKNOWN`, never as the request.
+ *
+ * Read once at create and retained on the handle, so this never re-enters
+ * the transport.
+ *
+ * # Safety
+ * `storage` must be a live publisher storage (initialised by
+ * `nros_cpp_publisher_create`); `out_qos` must be writable.
+ */
+nros_cpp_ret_t nros_cpp_publisher_get_actual_qos(const void *storage,
+                                                 struct nros_cpp_qos_t *out_qos);
+
+/**
  * Create a service server on a node.
  *
  * The caller provides `storage` — a pointer to a buffer of at least
@@ -2354,6 +2406,41 @@ nros_cpp_ret_t nros_cpp_service_client_destroy(void *storage);
 nros_cpp_ret_t nros_cpp_service_client_relocate(void *old_storage, void *new_storage);
 
 /**
+ * The QoS the backend GRANTED a service server's two endpoints — issue 1437.
+ *
+ * `out_request` is `rmw_service_request_subscription_get_actual_qos`,
+ * `out_response` is `rmw_service_response_publisher_get_actual_qos`. Either
+ * may be NULL to skip it. A policy the backend cannot report comes back as
+ * that enum's `UNKNOWN`, never as the request.
+ *
+ * # Safety
+ * Exactly one of `storage` / `executor` identifies a live service; the
+ * non-NULL out-pointers must be writable.
+ */
+nros_cpp_ret_t nros_cpp_service_server_get_actual_qos(const void *storage,
+                                                      void *executor,
+                                                      size_t handle_id,
+                                                      struct nros_cpp_qos_t *out_request,
+                                                      struct nros_cpp_qos_t *out_response);
+
+/**
+ * The QoS the backend GRANTED a service client's two endpoints — issue 1437.
+ *
+ * `out_request` is `rmw_client_request_publisher_get_actual_qos`,
+ * `out_response` is `rmw_client_response_subscription_get_actual_qos`.
+ * Sibling of [`nros_cpp_service_server_get_actual_qos`]; same rules.
+ *
+ * # Safety
+ * Exactly one of `storage` / `executor` identifies a live client; the
+ * non-NULL out-pointers must be writable.
+ */
+nros_cpp_ret_t nros_cpp_service_client_get_actual_qos(const void *storage,
+                                                      void *executor,
+                                                      size_t handle_id,
+                                                      struct nros_cpp_qos_t *out_request,
+                                                      struct nros_cpp_qos_t *out_response);
+
+/**
  * Create a subscription on a node.
  *
  * The caller provides `storage` — a pointer to a buffer of at least
@@ -2524,6 +2611,30 @@ nros_cpp_ret_t nros_cpp_subscription_set_requested_deadline_missed(void *_storag
 nros_cpp_ret_t nros_cpp_subscription_set_message_lost(void *_storage,
                                                       nros_cpp_subscriber_count_cb_t _cb,
                                                       void *_user_context);
+
+/**
+ * The QoS profile this subscription is ACTUALLY running — issue 1437.
+ *
+ * `rmw_subscription_get_actual_qos`. See
+ * [`nros_cpp_publisher_get_actual_qos`](crate::publisher::nros_cpp_publisher_get_actual_qos)
+ * for what "actual" means and why an unreportable policy reads back as that
+ * enum's `UNKNOWN` rather than as the request.
+ *
+ * **Two roads, one entry point.** A poll-style `nros::Subscription<M>` owns
+ * its subscriber in `storage`; a callback-style one does NOT — the executor
+ * arena owns it and the C++ object holds only `(executor, handle_id)`. The
+ * callback form is what a ported `rclcpp` node writes, so an accessor that
+ * served only the first would be absent exactly where it is used. `storage`
+ * non-NULL selects the first; otherwise `(executor, handle_id)` is resolved.
+ *
+ * # Safety
+ * Exactly one of `storage` / `executor` identifies a live subscription;
+ * `out_qos` must be writable.
+ */
+nros_cpp_ret_t nros_cpp_subscription_get_actual_qos(const void *storage,
+                                                    void *executor,
+                                                    size_t handle_id,
+                                                    struct nros_cpp_qos_t *out_qos);
 
 /**
  * Create a repeating timer and register it with the executor.

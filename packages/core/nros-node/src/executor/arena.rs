@@ -3996,3 +3996,59 @@ mod timer_overrun_tests {
         assert_eq!(t.overruns, u32::MAX);
     }
 }
+
+/// issue 1437 / phase-444 — the layout invariant the three
+/// `Executor::*_handle` accessors read the arena through.
+///
+/// Those accessors resolve an arena entry to its transport handle from
+/// `(EntryKind, offset)` ALONE, with no knowledge of the shape the entry was
+/// monomorphised into — 12 subscription shapes, 2 service-server, 2
+/// service-client, differing in buffer sizes, message types and callback
+/// types. That works because every one of them is `#[repr(C)]` with its
+/// handle as the FIRST field, so `arena_base + offset` is the handle pointer
+/// for all of them.
+///
+/// It is an invariant nothing else states and a compiler would not catch:
+/// prepending a field to any entry below leaves every caller compiling and
+/// makes the accessors read the new field AS a handle. So it is measured
+/// here, per shape, rather than asserted in a comment beside the cast.
+#[cfg(test)]
+mod handle_offset_tests {
+    use super::*;
+
+    /// One instantiation per SHAPE. The const-generic buffer sizes are
+    /// deliberately not the defaults — a shape whose handle offset depended
+    /// on them would be exactly the bug this exists to catch, and equal
+    /// numbers everywhere would hide it.
+    macro_rules! handle_at_zero {
+        ($($name:literal => $ty:ty),* $(,)?) => {
+            $(assert_eq!(
+                core::mem::offset_of!($ty, handle),
+                0,
+                concat!($name, " must begin with its handle — \
+                         Executor::*_handle resolves an arena entry by \
+                         (kind, offset) and casts arena_base + offset \
+                         straight to the handle type"),
+            );)*
+        };
+    }
+
+    #[test]
+    fn every_arena_entry_begins_with_its_handle() {
+        type Cb = fn();
+        handle_at_zero! {
+            "SubInfoEntry"            => SubInfoEntry<u8, Cb, 37>,
+            "SubBufferedEntry"        => SubBufferedEntry<u8, Cb>,
+            "SubInplaceEntry"         => SubInplaceEntry<u8, Cb>,
+            "SubBufferedRawEntry"     => SubBufferedRawEntry<Cb>,
+            "SubBufferedViewEntry"    => SubBufferedViewEntry<u8, Cb>,
+            "SubBufferedRawInfoEntry" => SubBufferedRawInfoEntry<Cb, 41>,
+            "SubBufferedRawInfoCEntry" => SubBufferedRawInfoCEntry,
+            "SubBufferedRawCEntry"    => SubBufferedRawCEntry,
+            "SubBufferedTypedCEntry"  => SubBufferedTypedCEntry,
+            "SrvRawEntry"             => SrvRawEntry<43, 47>,
+            "ServiceClientRawArenaEntry" => ServiceClientRawArenaEntry<53>,
+            "ServiceClientSendHeader" => ServiceClientSendHeader<59>,
+        }
+    }
+}

@@ -114,6 +114,81 @@ for tag, prefix_map in CHECKS:
         )
 
 # ---------------------------------------------------------------------------
+# Family 1b — the four QoS policy ENUMS, mirrored by hand in TWO headers.
+#
+# issue 1437. `nros_cpp_qos_t` is compared field-for-field above, and its four
+# enum-typed fields were the only thing about it nothing checked: a mirror may
+# carry the right FIELD and a SHORTER enum, and every TU still compiles.
+# phase-444 appended `UNKNOWN` / `SYSTEM_DEFAULT` to all four, which is exactly
+# the append that has drifted a mirror every previous time (`callback_group`,
+# `tx_express`).
+#
+# Two mirrors, one canonical:
+#   * `component.h`, so a plain-C component TU can name the policies;
+#   * `qos.hpp`'s `#ifndef NROS_CPP_FFI_H` block, so that header stays
+#     self-contained for a caller that does not pull in the cbindgen one.
+#
+# The canonical spelling is cbindgen's, which PREFIXES each enumerator with its
+# type name (`nros_cpp_qos_reliability_t_NROS_CPP_QOS_RELIABLE`). That prefix
+# is why the mirrors are not interchangeable with the real header at the source
+# level, and why a function in `qos.hpp` must never name a bare enumerator: it
+# resolves in one include order and not the other. See `qos_all_unknown`.
+# ---------------------------------------------------------------------------
+
+QOS_ENUM_TAGS = [
+    "nros_cpp_qos_reliability_t",
+    "nros_cpp_qos_durability_t",
+    "nros_cpp_qos_history_t",
+    "nros_cpp_qos_liveliness_t",
+]
+
+QOS_ENUM_MIRRORS = [
+    # (path, tag spelling in that file, enumerator prefix map)
+    (MIRROR, lambda tag: tag.replace("nros_cpp_", "nros_c_"), {"NROS_C_QOS_": "NROS_CPP_QOS_"}),
+    ("packages/api/nros-cpp/include/nros/qos.hpp", lambda tag: tag, {}),
+]
+
+
+def enumerators(text, tag, strip_prefix="", prefix_map=None):
+    """`[(NAME, value)]` for `enum <tag> { ... }`, in declaration order."""
+    m = re.search(r"enum\s+%s\s*\{(.*?)\}" % re.escape(tag), text, re.S)
+    if not m:
+        sys.exit(f"check-ffi-struct-mirrors: enum '{tag}' not found")
+    out = []
+    for item in strip_comments(m.group(1)).split(","):
+        item = " ".join(item.split())
+        if not item:
+            continue
+        name, _, value = item.partition("=")
+        name = name.strip()
+        if strip_prefix and name.startswith(strip_prefix):
+            name = name[len(strip_prefix):]
+        for old, new in (prefix_map or {}).items():
+            if name.startswith(old):
+                name = new + name[len(old):]
+        out.append((name, value.strip()))
+    return out
+
+
+canonical_text = read(CANONICAL)
+for tag in QOS_ENUM_TAGS:
+    canonical_enum = enumerators(canonical_text, tag, strip_prefix=tag + "_")
+    for path, spell, prefix_map in QOS_ENUM_MIRRORS:
+        mirror_enum = enumerators(read(path), spell(tag), prefix_map=prefix_map)
+        if mirror_enum != canonical_enum:
+            fail(f"FFI enum mirror DRIFTED: {tag} in {path}")
+            print(f"  canonical ({CANONICAL}): {canonical_enum}", file=sys.stderr)
+            print(f"  mirror    ({path}): {mirror_enum}", file=sys.stderr)
+            print(
+                "  An enumerator appended to the canonical enum MUST be appended to\n"
+                "  every hand mirror, with the SAME value. A mirror that is merely\n"
+                "  SHORTER still compiles everywhere and silently has no name for a\n"
+                "  value the FFI can deliver (issue 1437 / the #131 stale-mirror\n"
+                "  class, one level inside the struct this gate already compares).",
+                file=sys.stderr,
+            )
+
+# ---------------------------------------------------------------------------
 # Family 2 — nros_native_tier_spec_t across its six declarations and two
 # codegen initialisers.
 # ---------------------------------------------------------------------------

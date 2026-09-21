@@ -23,6 +23,15 @@
 
 #include "nros_cpp_ffi.h"
 
+// issue 1437 — `get_actual_qos()` returns a `nros::QoS` BY VALUE from an
+// inline body, so the complete type must be here, not only by the time
+// `nros/node.hpp` is pulled in below.
+//
+// AFTER `nros_cpp_ffi.h`, never before: `qos.hpp` defines the four
+// `nros_cpp_qos_*_t` enums ITSELF under `#ifndef NROS_CPP_FFI_H`, so
+// reaching it first makes the cbindgen header a REDEFINITION of all four.
+#include "nros/qos.hpp"
+
 // phase-417 W1.a — the nested pointer aliases below (`Publisher<M>::SharedPtr`
 // and friends, the spelling nearly every rclcpp source uses for a member) are
 // `std::shared_ptr` / `std::unique_ptr`, so they need `<memory>` — which a
@@ -260,6 +269,33 @@ template <typename M> class Publisher {
 
     /// Get the topic name.
     const char* get_topic_name() const { return initialized_ ? topic_name_ : ""; }
+
+    /// The QoS profile this publisher is ACTUALLY running — issue 1437.
+    ///
+    /// `rclcpp::Publisher::get_actual_qos`: what the BACKEND GRANTED, which
+    /// differs from what `create_publisher` was handed whenever the backend
+    /// serves something else — zenoh clamps history depth to its receive
+    /// ring, DDS negotiates, and a launch-lowered QoS override has already
+    /// been folded in before either. That difference is what answers "why is
+    /// nothing arriving": a RELIABLE reader does not match a BEST_EFFORT
+    /// writer, and a clamped depth drops samples the caller believed kept.
+    ///
+    /// **Per policy, and a policy the backend cannot report is an ABSENCE** —
+    /// `ReliabilityUnknown`, `DurabilityUnknown`, ... — not your request
+    /// echoed back. A backend with no read-back at all (XRCE) answers
+    /// `Unknown` in every field. So compare field by field and check for the
+    /// sentinel first; agreement you did not check for may be silence.
+    ///
+    /// Free: read once at create and retained on the handle, so this never
+    /// re-enters the transport and is safe from a callback. An uninitialized
+    /// publisher answers the all-absent profile.
+    ::nros::QoS get_actual_qos() const {
+        nros_cpp_qos_t f{};
+        if (!initialized_ || nros_cpp_publisher_get_actual_qos(storage_, &f) != 0) {
+            return ::nros::detail::qos_all_unknown();
+        }
+        return ::nros::detail::qos_from_ffi(f);
+    }
 
     /// Check if the publisher is initialized and valid.
     bool is_valid() const { return initialized_; }

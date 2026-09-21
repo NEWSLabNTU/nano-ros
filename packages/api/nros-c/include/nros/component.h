@@ -118,15 +118,38 @@ typedef void (*nros_c_subscription_validated_callback_t)(const uint8_t* data, si
                                                          int64_t gap, bool duplicate,
                                                          int8_t crc_valid, void* ctx);
 
-/* --- QoS mirror (layout-identical to the C++ `nros_cpp_qos_t`) ----------- */
-enum nros_c_qos_reliability_t { NROS_C_QOS_RELIABLE = 0, NROS_C_QOS_BEST_EFFORT = 1 };
-enum nros_c_qos_durability_t { NROS_C_QOS_VOLATILE = 0, NROS_C_QOS_TRANSIENT_LOCAL = 1 };
-enum nros_c_qos_history_t { NROS_C_QOS_KEEP_LAST = 0, NROS_C_QOS_KEEP_ALL = 1 };
+/* --- QoS mirror (layout-identical to the C++ `nros_cpp_qos_t`) -----------
+ *
+ * issue 1437 — the SENTINELS are mirrored too, not just the concrete values.
+ * A mirror that carries a subset of its original is the stale-mirror class
+ * (#131 / issue 0160) one field at a time: a C component handed a profile
+ * whose reliability reads 3 would have no name for it here, and the natural
+ * repair is to invent one that disagrees with the FFI. They are values on the
+ * REPORTING side — a component still requests only concrete policies. */
+enum nros_c_qos_reliability_t {
+    NROS_C_QOS_RELIABLE = 0,
+    NROS_C_QOS_BEST_EFFORT = 1,
+    NROS_C_QOS_RELIABILITY_SYSTEM_DEFAULT = 2,
+    NROS_C_QOS_RELIABILITY_UNKNOWN = 3
+};
+enum nros_c_qos_durability_t {
+    NROS_C_QOS_VOLATILE = 0,
+    NROS_C_QOS_TRANSIENT_LOCAL = 1,
+    NROS_C_QOS_DURABILITY_SYSTEM_DEFAULT = 2,
+    NROS_C_QOS_DURABILITY_UNKNOWN = 3
+};
+enum nros_c_qos_history_t {
+    NROS_C_QOS_KEEP_LAST = 0,
+    NROS_C_QOS_KEEP_ALL = 1,
+    NROS_C_QOS_HISTORY_SYSTEM_DEFAULT = 2,
+    NROS_C_QOS_HISTORY_UNKNOWN = 3
+};
 enum nros_c_qos_liveliness_t {
     NROS_C_QOS_LIVELINESS_NONE = 0,
     NROS_C_QOS_LIVELINESS_AUTOMATIC = 1,
     NROS_C_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
-    NROS_C_QOS_LIVELINESS_MANUAL_BY_NODE = 3
+    NROS_C_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
+    NROS_C_QOS_LIVELINESS_UNKNOWN = 4
 };
 
 /** Layout-identical mirror of the C++ `nros_cpp_qos_t` (same field order/types),
