@@ -367,37 +367,29 @@ pub struct ComponentMetadata {
     /// [`publishes`](Self::publishes).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subscribes: Vec<TopicDecl>,
-    /// Issue 1061 — every entity this component creates, in the
-    /// `nano_ros_node_register(... ENTITIES ...)` grammar:
-    /// `["publisher:std_msgs/msg/String:/chatter", "timer", "sub*2"]`.
-    ///
-    /// # Why this is not `publishes` + `subscribes`
-    ///
-    /// Those two answer a DATA-FLOW question for the planner — which topics a
-    /// bridge can resolve pre-build. This answers a SLOT-DEMAND question: how
-    /// many callback entries, subscriber rings and queryables the image must
-    /// reserve. Timers, service servers and actions cost slots and carry no
-    /// topic, so they cannot be expressed there, and `MAX_CBS` /
-    /// `MAX_QUERYABLES` cannot be derived without them.
-    ///
-    /// # Why it exists at all
-    ///
-    /// The metadata PROBE normally answers this by compiling the component for
-    /// the host and reading what it declares. A leaf that sets
-    /// `[unstable] build-std` for a foreign target, or depends on a board crate
-    /// with no host build, cannot be probed — its metadata is
-    /// `<component>.json.unprobeable` — and before this it had no way to say
-    /// what it creates, so its pools kept the crate defaults. On a board where
-    /// `.bss` is subtracted from the stack that is not a footprint nicety
-    /// (issue 1052).
-    ///
-    /// # It does not become a way to disagree with the code
-    ///
-    /// Where the probe CAN run, `leaf_entity_env::reconcile` compares this list
-    /// against it per kind and REFUSES on a mismatch. The declaration is for
-    /// leaves with nothing to check it against; it is not an override.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub entities: Vec<String>,
+    // phase-454 W9 — `entities` is RETIRED from this struct, and it is the one
+    // carrier of this campaign that retired because it had ALREADY stopped
+    // resolving rather than because something replaced it.
+    //
+    // Issue 1061 put it here so a leaf that cannot be host-probed could state
+    // its slot demand in the `nano_ros_node_register(... ENTITIES ...)`
+    // grammar. Both halves of that sentence have since moved: the cmake
+    // producer of the grammar became a `FATAL_ERROR` (phase-412,
+    // `cmake/NanoRosNodeRegister.cmake`), and the DECLARATION moved to
+    // `system.toml`'s `[[component]] entities` (RFC-0098 D8, phase-445 W3),
+    // whose one reader is `nros_orchestration_ir::leaf_system::read`.
+    //
+    // It was PARSED AND DROPPED. `leaf_system::read` has had no manifest
+    // fallback since phase-445 W5, so between that wave and this one nothing
+    // in the tree read this field — measured at W9: zero readers, and zero
+    // leaves declaring it. `examples/esp32-c3-baremetal/rust/{talker,listener}`,
+    // the two the retirement plan named, state theirs in `system.toml` and say
+    // so in their manifests.
+    //
+    // A parsed-and-dropped declaration surface is worse than an absent one: it
+    // accepts what a user writes and sizes nothing from it. Registered in
+    // `scripts/check/check-knob-single-reader.py` so it cannot come back as a
+    // second surface nobody joins to the first.
 }
 
 /// phase-267 W1c/C3a — one declared topic endpoint in node Cargo metadata:
@@ -1370,9 +1362,11 @@ pub struct SystemComponentEntry {
     /// wherever the probe runs (`leaf_entity_env::reconcile`).
     ///
     /// `None` = not declared (the probe is the source); `Some([])` = declared to
-    /// create nothing. Replaces `[package.metadata.nros.component] entities`.
-    /// The resolver's own `[[component]]` reader is lenient, so this key costs
-    /// it nothing.
+    /// create nothing. It REPLACED `[package.metadata.nros.component] entities`,
+    /// whose manifest fallback phase-445 W5 deleted and whose struct field
+    /// phase-454 W9 retired — so this is now the ONLY declaration surface, not
+    /// the preferred one of two. The resolver's own `[[component]]` reader is
+    /// lenient, so this key costs it nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entities: Option<Vec<String>>,
     /// Issue 1278 (phase-445 W3b) — the component's dispatch strategy,

@@ -972,8 +972,10 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   → issue 0460. **So is a TRANSIENT_LOCAL publisher**, and an action server has one for a
   `/status` topic nothing declares — an action server costs FOUR slots, not three. ONE rule
   (`nros_sizing_descriptor::transient_local_publishers_over`); the cargo-leaf road feeds it a
-  DESCRIPTOR and every other road `NROS_DECLARED_TL_PUBLISHERS`, because only a cargo leaf has
-  a descriptor at all (1393). The images that FAILED were the two that described themselves —
+  DESCRIPTOR and every other road `NROS_DECLARED_TL_PUBLISHERS`. That carrier did NOT retire when
+  W14 gave the other two roads a producer, and the reason moved: a STANDALONE LEAF has no
+  SystemModel, so it can never have a model-written descriptor (issue 1407, not 1393) — and it is
+  the road that failed. The images that FAILED were the two that described themselves —
   an undeclared leaf falls to the 8-slot budget and boots on the headroom. → issue 1378.
 - **The interop DDS bus is pinned to LOOPBACK by a profile FILE the harness writes, not
   by a variable you export** (issue 1009) — `nros_tests::dds_isolation` generates the

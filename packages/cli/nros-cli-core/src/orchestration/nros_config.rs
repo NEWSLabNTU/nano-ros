@@ -593,10 +593,65 @@ fn parse_package_metadata_nros(
     let Some(nros) = value.get("nros") else {
         return Ok(None);
     };
+    refuse_retired_entities_key(nros)?;
     let normalised = normalise_node_alias(nros.clone())?;
     PackageMetadataNros::deserialize(normalised)
         .map(Some)
         .map_err(|e| e.to_string())
+}
+
+/// phase-454 W9 — a manifest still carrying the RETIRED `entities` key, refused
+/// BY NAME rather than by `deny_unknown_fields`.
+///
+/// Retiring `ComponentMetadata::entities` (nothing read it — the manifest
+/// fallback went in phase-445 W5) turns the key from silently ignored into a
+/// parse error, because the struct denies unknown fields. That is the right
+/// direction: a declaration that sizes nothing is worse than none. But serde's
+/// message is `unknown field 'entities', expected one of ...`, which tells a
+/// user their declaration is invalid and not where the declaration now lives —
+/// and this file already records what that costs at issue 1033, where *"the one
+/// remedy the refusal named was the one thing the caller could not do"*.
+///
+/// So the refusal happens HERE, ahead of the deserialize, over every shape the
+/// `nros` table can carry a component in.
+fn refuse_retired_entities_key(nros: &serde_json::Value) -> Result<(), String> {
+    let mut found: Vec<String> = Vec::new();
+    let mut note = |path: String, v: &serde_json::Value| {
+        if v.get("entities").is_some() {
+            found.push(path);
+        }
+    };
+    for single in ["component", "node"] {
+        if let Some(v) = nros.get(single) {
+            note(format!("[package.metadata.nros.{single}] entities"), v);
+        }
+    }
+    for multi in ["components", "nodes"] {
+        let Some(obj) = nros.get(multi).and_then(|v| v.as_object()) else {
+            continue;
+        };
+        for (name, v) in obj {
+            note(
+                format!("[package.metadata.nros.{multi}.{name}] entities"),
+                v,
+            );
+        }
+    }
+    if found.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "{} — RETIRED (phase-454 W9): nothing has read it since phase-445 W5 removed the \
+         manifest fallback, so it was accepted and then dropped, and the pools were sized \
+         without it. State what the component creates in the leaf's `system.toml`:\n\
+         \n    [[component]]\n    name = \"<component>\"\n    entities = \
+         [\"sub:std_msgs/msg/Int32:/chatter\", \"timer\"]\n\n\
+         (RFC-0098 D8 — same grammar, one surface.) An image that runs from a launch file \
+         states it once per system instead, in the contract sidecar beside that file \
+         (<bringup>/launch/<stem>.contract.yaml), which the resolver folds into the \
+         SystemModel. Delete the manifest key.",
+        found.join(", "),
+    ))
 }
 
 /// Phase 212.N.12 — accept `node` as the canonical alias for `component`
@@ -863,6 +918,44 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
 mod tests {
     use super::*;
     use std::fs;
+
+    /// phase-454 W9 — the retired `entities` key is refused BY NAME, in every
+    /// shape the `nros` table can carry a component in.
+    ///
+    /// The point of the test is the MESSAGE, not the rejection: removing the
+    /// struct field already makes `deny_unknown_fields` reject it, and a
+    /// rejection that does not say where the declaration went is the shape
+    /// issue 1033 records. So each case asserts the replacement is named.
+    #[test]
+    fn a_retired_manifest_entities_key_is_refused_by_name() {
+        for body in [
+            serde_json::json!({"nros": {"component": {"entities": ["timer"]}}}),
+            serde_json::json!({"nros": {"node": {"entities": ["timer"]}}}),
+            serde_json::json!({"nros": {"components": {"A": {"entities": ["timer"]}}}}),
+            serde_json::json!({"nros": {"nodes": {"A": {"entities": ["timer"]}}}}),
+        ] {
+            let err = parse_package_metadata_nros(&body)
+                .expect_err("a retired key must not parse silently");
+            assert!(err.contains("RETIRED"), "{err}");
+            assert!(
+                err.contains("system.toml") && err.contains("[[component]]"),
+                "the refusal must name the surviving surface: {err}"
+            );
+            assert!(
+                !err.contains("unknown field"),
+                "serde's generic message reached the user instead of ours: {err}"
+            );
+        }
+    }
+
+    /// And the refusal must not fire on a component that carries none — the
+    /// arm that would make every workspace in the tree unreadable.
+    #[test]
+    fn a_component_without_the_retired_key_still_parses() {
+        let body = serde_json::json!({"nros": {"node": {"class": "demo::Listener"}}});
+        let got = parse_package_metadata_nros(&body).expect("a clean manifest parses");
+        assert!(got.is_some());
+    }
 
     /// Issue 0455 — scratch naming lives in ONE place; see
     /// `crate::test_support`. The local spellings this replaced differed

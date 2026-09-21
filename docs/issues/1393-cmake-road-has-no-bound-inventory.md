@@ -115,7 +115,7 @@ be the silent-default shape RFC-0100 exists to remove, and it would be worse
 than the no-descriptor state it replaced, because a consumer that sees a stated
 number stops printing the line that would have told a user to declare.
 
-## It also gates phase-454 W9
+## It also gates phase-454 W9 — for FOUR of the 26 carriers, not all of them
 
 Retirement removes the `NROS_DECLARED_*` / `NROS_DERIVED_*` carriers. While a
 payload-class fact is refused on two roads of three, those carriers are still the
@@ -123,3 +123,24 @@ only road delivering it there — so retiring them would remove a working mechan
 in favour of one that cannot state the fact. That is
 `check-knob-single-reader`'s own rule inverted: a mechanism that still resolves
 is a mechanism people still use, and the converse bites just as hard.
+
+**W9 ran that test per fact and found this issue blocks four carriers**
+(`SUBSCRIBER_BUFFER_SIZE`, `SUBSCRIPTION_BUFFER_SIZE`, `LARGE_SUBSCRIBERS`,
+`SUBSCRIBER_LARGE_SIZE`, plus `NROS_SUBSCRIBED_TYPE_BOUNDS` off the same
+inventory) **— and that the other 22 are blocked by something else.** Closing
+this issue therefore does NOT unblock the retirement:
+
+* the entity counts and the queryable raw inputs are
+  [issue 1407](1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)
+  — the model-only producer reads a POORER inventory than the carriers' verb
+  does, and a standalone leaf has no model to read at all. Neither mechanism is
+  touched by filling in a bound;
+* the nine parameter-store carriers are
+  [issue 1408](1408-sizing-descriptor-has-no-parameter-store-section.md) — the
+  D4 schema has no section that could hold them, so they are not refused here,
+  they are unspellable.
+
+The full per-fact ledger is the `KEPT` registry in
+`scripts/check/check-knob-single-reader.py`, and it is enforced: a carrier with
+no row fails, and a row whose blocking issue is no longer `status: open` fails,
+so closing this one re-opens the retirement question for exactly its four.
