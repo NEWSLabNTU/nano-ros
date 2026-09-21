@@ -332,22 +332,28 @@ pub fn run(args: Args) -> Result<()> {
     // vendor seam that shells this verb — the zephyr module, the pio
     // extra_script, the fixture builder) never spell the flag; explicit
     // `--model` stays as the override for out-of-tree/variant models.
-    let discovered_model: Option<PathBuf> = args.model.clone().or_else(|| {
-        // phase-330 W4.0b — same search order as every other consumer.
-        let conv = bringup.manifest_path.parent().map(|d| {
-            crate::orchestration::model_location::resolve_model_path(d, "config/system_model.yaml")
-        })?;
-        if conv.exists() {
-            eprintln!(
-                "codegen-system: using committed SystemModel {} (convention \
-                 discovery; pass --model to override)",
-                conv.display()
-            );
-            Some(conv)
-        } else {
-            None
-        }
-    });
+    let discovered_model: Option<PathBuf> = match args.model.clone() {
+        Some(explicit) => Some(explicit),
+        None => match bringup.manifest_path.parent() {
+            None => None,
+            // phase-330 W4.0b — same search order as every other consumer.
+            // phase-460 W1 (issue 1420) -- with the refusal marker checked on
+            // every rung: after a refused resolve no rung holds a file, and
+            // baking with NO model is exactly the silent path.
+            Some(d) => match crate::model_gate::verify_search(d, "config/system_model.yaml") {
+                Ok(Some(conv)) => {
+                    eprintln!(
+                        "codegen-system: using committed SystemModel {} (convention \
+                         discovery; pass --model to override)",
+                        conv.display()
+                    );
+                    Some(conv)
+                }
+                Ok(None) => None,
+                Err(refusal) => return Err(eyre::eyre!("codegen-system: {refusal}")),
+            },
+        },
+    };
     // Issue 0259 — realizer verdicts for this bake, carried into
     // `nros-plan.json` so `nros explain` can show them. Declared out here
     // because the derivation happens inside the model-ingest arm below while
@@ -355,6 +361,10 @@ pub fn run(args: Args) -> Result<()> {
     // declared tiers realize nothing and produce no verdicts.
     let mut sched_warnings: Vec<crate::orchestration::plan::PlanSchedWarning> = Vec::new();
     let bringup = if let Some(model_path) = &discovered_model {
+        // phase-460 W1 (issue 1420) -- verify at this door, for the explicit
+        // `--model` road as well (discovery verified on its ladder above).
+        crate::model_gate::verify(model_path, bringup.manifest_path.parent())
+            .map_err(|e| eyre::eyre!("codegen-system: {e}"))?;
         let model = crate::orchestration::model_ingest::load_model(model_path)?;
         // R1-N1 — contracted-publisher monitors ride the bake.
         model_monitors = crate::orchestration::model_ingest::monitor_rows(&model)?;

@@ -56,7 +56,7 @@ is 460 W1 (`load_for_build_script`) then 461 W6 (the :1397 assert).
 Phases 457 and 462 share no file with this phase.
 
 Owns these issues, one per wave:
-[1420](../issues/1420-refused-resolve-leaves-the-previous-model-for-every-consumer.md),
+[1420](../issues/archived/1420-refused-resolve-leaves-the-previous-model-for-every-consumer.md),
 [1421](../issues/archived/1421-partial-params-declaration-falls-to-crate-defaults-silently.md),
 [1422](../issues/1422-plain-blit-eligibility-is-computed-and-read-by-nothing.md),
 [1423](../issues/archived/1423-system-toml-domain-id-and-kconfig-domain-id-are-never-compared.md),

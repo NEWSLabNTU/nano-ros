@@ -1,0 +1,18 @@
+# phase-460 W1 (issue 1420) -- the smallest bringup `nros sync` resolves and
+# every model consumer reads. Two components, one contracted topic.
+
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[[component]]
+pkg = "listener_pkg"
+class = "listener_pkg::Listener"
+name = "listener"

@@ -1,0 +1,29 @@
+# phase-460 W1 (issue 1420) -- the contract the test breaks and restores.
+#
+# `depth: 4` is the line the test rewrites to `depht: 4` (the phase doc's
+# example of an edit the resolver refuses) before running `nros sync`.
+
+version: 1
+
+nodes:
+  talker:
+    pub:
+      chatter: {}
+    paths:
+      tick:
+        output: [chatter]
+        trigger: { timer: { rate_hz: 10 } }
+
+  listener:
+    sub:
+      chatter:
+        qos:
+          history: keep_last
+          depth: 4
+
+topics:
+  /chatter:
+    type: std_msgs/msg/Int32
+    rate_hz: 10
+    pub: [talker/chatter]
+    sub: [listener/chatter]

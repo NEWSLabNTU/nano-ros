@@ -226,6 +226,11 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
     // phase-446 W6 -- rendered from the same model, when there is one.
     let mut params_header: Option<String> = None;
     if let Some(model_path) = &args.model {
+        // phase-460 W1 (issue 1420) -- verify at this door. cmake hands over a
+        // path `model-path` already verified; a hand run meets the same gate.
+        // The bringup is recovered from where `nros sync` put the model.
+        crate::model_gate::verify(model_path, None)
+            .map_err(|e| eyre::eyre!("entity-inventory: {e}"))?;
         let raw = std::fs::read_to_string(model_path)
             .wrap_err_with(|| format!("read model `{}`", model_path.display()))?;
         let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)

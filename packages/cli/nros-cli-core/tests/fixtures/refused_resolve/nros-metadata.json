@@ -1,0 +1,28 @@
+{
+  "components": [
+    {
+      "name": "talker",
+      "pkg": "talker_pkg",
+      "class": "talker_pkg::Talker",
+      "class_header": "talker_pkg/Talker.hpp",
+      "sources": ["src/Talker.cpp"],
+      "deploy": ["native"],
+      "pkg_dir": "/ws/src/talker_pkg",
+      "lang": "cpp",
+      "entities": ["pub", "timer"]
+    },
+    {
+      "name": "listener",
+      "pkg": "listener_pkg",
+      "class": "listener_pkg::Listener",
+      "class_header": "listener_pkg/Listener.hpp",
+      "sources": ["src/Listener.cpp"],
+      "deploy": ["native"],
+      "pkg_dir": "/ws/src/listener_pkg",
+      "lang": "cpp",
+      "entities": ["sub"]
+    }
+  ],
+  "applications": [],
+  "deploy_targets": {}
+}

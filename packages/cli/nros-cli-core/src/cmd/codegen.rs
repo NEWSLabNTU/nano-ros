@@ -317,6 +317,8 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     }
 
     let mut plan = if let Some(model_path) = &args.model {
+        // phase-460 W1 (issue 1420) -- verify at this door before the bake.
+        crate::model_gate::verify(model_path, None).map_err(|e| eyre!("codegen entry: {e}"))?;
         entry_codegen::plan_from_model(model_path, args.board.clone())?
     } else if args.launch.is_some() {
         // phase-296 R-code.1 — the launch-XML entry bake is REMOVED. The

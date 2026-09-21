@@ -82,6 +82,46 @@ model without reverse-engineering it. The `build/` location must be documented
 and stable, and `nros ws model-dims` (issue 0380) already reads a model from an
 arbitrary path.
 
+## Amendment (phase-460 W1, 2026-09-21) -- a refused resolve leaves no model to trust
+
+Issue 1420. The build-directory artifact turned out to have one way of
+silently disagreeing with its inputs that object files do not: the producer
+can REFUSE. `nros-launch-resolve` writes only after a successful resolve, so a
+contract edit the resolver rejects left the previous model in place, and that
+model was intact by every check it would meet -- `meta.inputs` records the
+inputs of the resolve that succeeded, not the edit that was refused. On the
+Autoware Safety Island (brief D, E7b) the entity inventory, the system bake
+and the entry bake all derived from a contract the tree no longer stated.
+
+Two rules, both in `nros_cli_core::model_gate`:
+
+* **Quarantine.** On refusal `nros sync` moves the previous model to
+  `<stem>.refused-<utc-stamp>.yaml` beside it (kept for diffing, never
+  deleted) and writes a two-line `<stem>.refused` marker: the refusing check
+  and the input that changed. The path a consumer opens no longer exists. The
+  marker is removed only by the next SUCCESSFUL resolve; editing the inputs
+  back does not clear it, because a model whose producer last said no is not
+  current.
+* **Every consumer verifies provenance.** `nros model-path`,
+  `ws entity-inventory`, `codegen-system`, `codegen entry` and `run_sync`
+  itself call the one gate before opening a model: the marker, the resolver
+  pin (issue 0427), the recorded input hashes (issue 0320), and a launch-tree
+  input the model never recorded (issue 1121 made visible, not fixed). A stale
+  or refused model is a refusal naming the input; nothing re-resolves at the
+  consumer, which would put the launch parser back on the cmake path
+  phase-296 deleted.
+
+"The ordinary build-system freshness rules apply" (Consequences, above) is
+therefore amended: they apply to the SUCCESS path. The refusal path needs the
+marker, because a build system's notion of freshness has no state for "the
+producer ran and declined to produce".
+
+Not gated by this amendment: the `nros::main!` macro, which opens the model
+through `model_location::ensure_model` and cannot depend on the CLI crate. It
+re-resolves from the inputs when the artifact is absent -- which is what
+quarantine leaves -- so it never reads a quarantined model, but it does not
+read the marker.
+
 ## Open questions
 
 - **Config surface for the dims.** Exact schema for per-platform scoped tiers
