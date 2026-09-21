@@ -81,11 +81,17 @@ python:
 # can never fail would print -- so the check that matters is whether it still
 # detects a dir that is genuinely unloadable. Real cmake + real ninja,
 # `project(... NONE)`, no compiler, ~2 s.
+#
+# Since issue 1406 it also drives the OTHER shape, which every case here used
+# to miss: a manifest that LOADS and names a file that is gone. Ninja does not
+# stat an edge's inputs until it runs the edge, so 38 such manifests sat in the
+# OK column for seventeen days and one of them killed the native fixture build.
+# A selftest made only of unparseable manifests would have left the gate there.
 reconfigure-stale:
     #!/usr/bin/env bash
     set -euo pipefail
     _missing=""
-    for _t in cmake ninja; do
+    for _t in cmake ninja python3; do
         command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
     done
     if [ -n "$_missing" ]; then
