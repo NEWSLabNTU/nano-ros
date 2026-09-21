@@ -34,6 +34,40 @@
 
 use std::{collections::BTreeSet, path::Path, process::Command};
 
+/// The stamp's INPUTS, by label — issue 1018.
+///
+/// The stamp is one number, and one number cannot say WHAT moved. That is not a
+/// cosmetic gap: the stamp's inputs are not all the same KIND of thing, and the
+/// refusal built on it told a contributor who had moved a submodule pin that
+/// their "checkout moved, e.g. a branch switch". The checkout had not moved.
+/// Issue 1018 reported exactly that as one of its three stops, and phase-429
+/// then measured the stop to be CORRECT — the pin IS a CLI build input
+/// (`build.rs` bakes it as `NROS_PLAY_LAUNCH_SHA`; issue 0561 is what happens
+/// when the stamp is blind to it). A correct refusal explaining itself wrongly
+/// is worse than one that says nothing, because it aims the reader at a tree
+/// that is fine.
+///
+/// So the stamp is computed PER INPUT and folded, and this list is the thing
+/// three places agree on:
+///
+/// * [`source_stamp_components`] emits one entry per label, in this order;
+/// * `build.rs` bakes those entries beside the fold, so the run-time side can
+///   diff component-wise instead of guessing by elimination;
+/// * `stale_guard` carries one attribution arm per label, and
+///   `check-stale-cli-attribution` fails when the two sets disagree in EITHER
+///   direction (the authored-map lesson: a map that drifts toward OK is how two
+///   green tools came to disagree by 25 symbols).
+///
+/// The compiler holds the fourth corner: the test below matches on the label
+/// with no catch-all, so a new input that reaches this list without a
+/// perturbation case does not compile.
+/// Two, not three: tracked and untracked CLI sources are ONE input. A `git add`
+/// moves a file between them without changing a byte, so separating them would
+/// make every `git add` re-stale a binary built seconds earlier — the
+/// 2026-08-01 regression this file's encoding rule exists for. The attribution
+/// still distinguishes them; that is a reporting question, not a stamp one.
+pub const STAMP_INPUTS: [&str; 2] = ["cli_sources", "play_launch_pin"];
+
 /// FNV-1a, 64-bit. Stable by construction: the constants are in this file, so
 /// `build.rs` and the runtime cannot disagree the way two std-hasher versions
 /// could.
@@ -110,7 +144,7 @@ const PLAY_LAUNCH_DIR: &str = "packages/cli/third-party/play_launch";
 /// and `git -C <empty dir> rev-parse HEAD` walks UP to the enclosing repo and
 /// returns the SUPERPROJECT's HEAD — which would make this component move with
 /// every nano-ros commit and re-stale the CLI constantly.
-fn play_launch_pin(root: &Path) -> Option<String> {
+pub fn play_launch_pin(root: &Path) -> Option<String> {
     let dir = root.join(PLAY_LAUNCH_DIR);
     if !dir.join(".git").exists() {
         return None;
@@ -336,6 +370,139 @@ pub fn cli_input_files(root: &Path) -> Vec<String> {
     out
 }
 
+/// CLI inputs that are present but not tracked — new sources someone has
+/// written and not yet added.
+///
+/// Factored out for issue 1018: it is both a stamp component and an attribution
+/// arm, and this file's own rule is one expression per stamp input, shared with
+/// every reader through the `include!`. Spelling it twice is how the stamp came
+/// to watch something different from what the build baked (issue 0561).
+///
+/// Scoped to `packages/cli` rather than the whole closure, matching the stamp:
+/// an untracked file in a path-dep crate outside `packages/cli` is somebody
+/// else's work in progress, and staling the CLI on it is the over-watch issue
+/// 0604 measured.
+pub fn untracked_cli_files(root: &Path) -> Vec<String> {
+    let Some(others) = git(
+        root,
+        &[
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "packages/cli",
+        ],
+    ) else {
+        return Vec::new();
+    };
+    others
+        .lines()
+        .filter(|l| is_cli_input(l))
+        .map(str::to_string)
+        .collect()
+}
+
+/// The stamp, one hash per [`STAMP_INPUTS`] label, in that order — or `None` in
+/// exactly the cases [`source_stamp`] returns `None`.
+///
+/// Each component is seeded with its own label, so the label is LOAD-BEARING
+/// rather than decorative: it is part of the hashed domain, which is what lets
+/// `check-stale-cli-attribution` harvest the input set from the code that folds
+/// it instead of from a list somebody remembered to update.
+pub fn source_stamp_components(root: &Path) -> Option<Vec<(&'static str, String)>> {
+    // Issue 0604 — without the generated closure list the watched set silently
+    // shrinks to `packages/cli`, and a smaller closure reports FRESH for a CLI
+    // that is not. `None` sends the caller down the same path as "outside a git
+    // checkout": skip the check, never guess.
+    if !cli_source_dirs_file_present(root) {
+        return None;
+    }
+    let modified: std::collections::HashMap<String, String> = {
+        let files = modified_cli_files(root);
+        hash_objects(root, &files)
+            .into_iter()
+            .zip(files)
+            .map(|(sha, path)| (path, sha))
+            .collect()
+    };
+    let mut out: Vec<(&'static str, String)> = Vec::new();
+
+    // STAMP INPUT: cli_sources
+    //
+    // Every CLI source's content, tracked or not, in ONE path-sorted stream.
+    //
+    // Tracked and untracked are not two inputs, and splitting them into two
+    // components is a bug this file already knows the shape of: a `git add` of
+    // a new source moves it from one set to the other without changing a byte,
+    // so two components would both move and the fold would differ — the
+    // 2026-08-01 regression (build, commit, and the next verb refuses) arriving
+    // through the other door. The old code folded them into one running hash
+    // and survived only because the untracked file happened to sort last;
+    // sorting the merged map makes the invariant STRUCTURAL instead of lucky.
+    //
+    // The closure is `packages/cli` plus its local path-dep closure, the same
+    // one the rest of this file uses. Hardcoding `packages/cli` here is what
+    // let an edit to `packages/core/nros-orchestration-ir` leave the stamp
+    // unchanged.
+    let mut entries: std::collections::BTreeMap<String, String> = Default::default();
+    let idx = git_over_closure(root, &["ls-files", "-s"])?;
+    for line in idx.lines() {
+        // "<mode> <sha> <stage>\t<path>" — skip anything that does not parse
+        // rather than aborting the whole stamp on one odd entry.
+        let Some((meta, path)) = line.split_once('\t') else {
+            continue;
+        };
+        if !is_cli_input(path) {
+            continue;
+        }
+        let mut fields = meta.split_whitespace();
+        let mode = fields.next().unwrap_or("100644");
+        let index_sha = fields.next().unwrap_or("");
+        let sha = modified.get(path).map(String::as_str).unwrap_or(index_sha);
+        entries.insert(path.to_string(), format!("{mode} {sha} 0"));
+    }
+    // Untracked sources, same encoding, mode from the filesystem — which is the
+    // mode git would record for them, so an entry's value is byte-identical
+    // before and after it is committed.
+    let untracked = untracked_cli_files(root);
+    let shas = hash_objects(root, &untracked);
+    for (rel, sha) in untracked.iter().zip(shas) {
+        let mode = file_index_mode(&root.join(rel));
+        entries.insert(rel.clone(), format!("{mode} {sha} 0"));
+    }
+    let mut h = fnv1a(b"cli_sources", FNV_OFFSET);
+    for (path, meta) in &entries {
+        h = fnv1a(path.as_bytes(), h);
+        h = fnv1a(meta.as_bytes(), h);
+    }
+    out.push(("cli_sources", format!("{h:016x}")));
+
+    // STAMP INPUT: play_launch_pin
+    //
+    // Issue 0561. Not a file under any watched directory — and `is_cli_input`
+    // excludes `/third-party/` besides — but `build.rs` bakes it into the
+    // binary, so by this file's own rule ("any input list here that watches
+    // less than what the build consumes is the issue-0196 shape") it belongs in
+    // the stamp. Folded in unconditionally, including the uninitialised case,
+    // so that `git submodule update --init` moves the stamp: that init changes
+    // what the next build bakes.
+    let mut h = fnv1a(b"play_launch_pin", FNV_OFFSET);
+    h = fnv1a(
+        play_launch_pin(root)
+            .unwrap_or_else(|| "unknown".to_string())
+            .as_bytes(),
+        h,
+    );
+    out.push(("play_launch_pin", format!("{h:016x}")));
+
+    debug_assert_eq!(
+        out.iter().map(|(l, _)| *l).collect::<Vec<_>>(),
+        STAMP_INPUTS.to_vec(),
+        "the component order must match STAMP_INPUTS — every reader joins on it"
+    );
+    Some(out)
+}
+
 /// A stamp of the CLI sources as they exist right now, or `None` outside a git
 /// checkout (a tarball build, a vendored copy) — in which case the caller must
 /// skip the check rather than guess.
@@ -362,85 +529,19 @@ pub fn cli_input_files(root: &Path) -> Vec<String> {
 /// touched-but-identical file simply is not reported as modified. And blob
 /// SHAs are what make a COMMIT silent: identical bytes hash identically
 /// whether they sit in the worktree, the index, or HEAD.
+///
+/// Issue 1018 made this the FOLD of [`source_stamp_components`] rather than a
+/// second walk over the same inputs. The alternative — a component function
+/// beside an unchanged whole-stamp function — is the shape this file's own
+/// header warns about ("before this there were three spellings of *is the CLI
+/// stale*, two of them real implementations"): two walks agree by inspection
+/// until one of them gains an input.
 pub fn source_stamp(root: &Path) -> Option<String> {
-    // Issue 0604 — without the generated closure list the watched set silently
-    // shrinks to `packages/cli`, and a smaller closure reports FRESH for a CLI
-    // that is not. `None` sends the caller down the same path as "outside a git
-    // checkout": skip the check, never guess.
-    if !cli_source_dirs_file_present(root) {
-        return None;
-    }
     let mut h = FNV_OFFSET;
-    let modified: std::collections::HashMap<String, String> = {
-        let files = modified_cli_files(root);
-        hash_objects(root, &files)
-            .into_iter()
-            .zip(files)
-            .map(|(sha, path)| (path, sha))
-            .collect()
-    };
-
-    // 1. index side (worktree blob SHA substituted for dirty files), over the
-    // SAME closure the rest of this file uses — `packages/cli` plus its local
-    // path-dep closure. Hardcoding `packages/cli` here is what let an edit to
-    // `packages/core/nros-orchestration-ir` leave the stamp unchanged.
-    let idx = git_over_closure(root, &["ls-files", "-s"])?;
-    for line in idx.lines() {
-        // "<mode> <sha> <stage>\t<path>" — skip anything that does not parse
-        // rather than aborting the whole stamp on one odd entry.
-        let Some((meta, path)) = line.split_once('\t') else {
-            continue;
-        };
-        if !is_cli_input(path) {
-            continue;
-        }
-        h = fnv1a(path.as_bytes(), h);
-        let mut fields = meta.split_whitespace();
-        let mode = fields.next().unwrap_or("100644");
-        let index_sha = fields.next().unwrap_or("");
-        let sha = modified.get(path).map(String::as_str).unwrap_or(index_sha);
-        h = fnv1a(format!("{mode} {sha} 0").as_bytes(), h);
+    for (label, part) in source_stamp_components(root)? {
+        h = fnv1a(label.as_bytes(), h);
+        h = fnv1a(part.as_bytes(), h);
     }
-
-    // 3. untracked sources — same encoding, mode from the filesystem.
-    if let Some(others) = git(
-        root,
-        &[
-            "ls-files",
-            "--others",
-            "--exclude-standard",
-            "--",
-            "packages/cli",
-        ],
-    ) {
-        let files: Vec<String> = others
-            .lines()
-            .filter(|l| is_cli_input(l))
-            .map(str::to_string)
-            .collect();
-        let shas = hash_objects(root, &files);
-        for (rel, sha) in files.iter().zip(shas) {
-            let mode = file_index_mode(&root.join(rel));
-            h = fnv1a(rel.as_bytes(), h);
-            h = fnv1a(format!("{mode} {sha} 0").as_bytes(), h);
-        }
-    }
-
-    // 4. the play_launch pin (issue 0561). Not a file under any watched
-    // directory — and `is_cli_input` excludes `/third-party/` besides — but
-    // `build.rs` bakes it into the binary, so by this file's own rule ("any
-    // input list here that watches less than what the build consumes is the
-    // issue-0196 shape") it belongs in the stamp. Folded in unconditionally,
-    // including the uninitialised case, so that `git submodule update --init`
-    // moves the stamp: that init changes what the next build bakes.
-    h = fnv1a(b"play_launch_pin", h);
-    h = fnv1a(
-        play_launch_pin(root)
-            .unwrap_or_else(|| "unknown".to_string())
-            .as_bytes(),
-        h,
-    );
-
     Some(format!("{h:016x}"))
 }
 

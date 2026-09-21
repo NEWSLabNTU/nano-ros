@@ -31,6 +31,164 @@ use crate::source_stamp;
 /// install.
 const BUILT_STAMP: &str = env!("NROS_CLI_SOURCE_STAMP");
 
+/// The same stamp, PER INPUT — `label=hash,label=hash,…`, also from `build.rs`.
+///
+/// Issue 1018. Empty when the build could not stamp at all, and possibly
+/// missing labels when an older binary meets a newer input list; both are
+/// "cannot attribute", never "nothing moved".
+const BUILT_COMPONENTS: &str = env!("NROS_CLI_SOURCE_STAMP_COMPONENTS");
+
+/// The hash `built` (a `label=hash,…` string) carries for one stamp input.
+fn built_component<'a>(built: &'a str, label: &str) -> Option<&'a str> {
+    built
+        .split(',')
+        .filter_map(|kv| kv.split_once('='))
+        .find(|(k, _)| *k == label)
+        .map(|(_, v)| v)
+}
+
+/// Which stamp inputs differ between a binary's baked components and `root` —
+/// issue 1018.
+///
+/// `built` is passed in rather than read from `BUILT_COMPONENTS` inside, for
+/// the reason [`refuse_if_foreign_to_workspace`]'s workspace argument is: it
+/// makes the decision a pure function of its inputs, so its tests can build a
+/// checkout and a baked-component string instead of needing a binary that was
+/// compiled from that checkout — which no test can produce.
+///
+/// `None` means the question cannot be answered here: a binary with no baked
+/// components (built before they existed), or a tree that cannot be stamped.
+/// The caller then says less rather than something wrong.
+///
+/// An input this binary has no baked hash for is NOT reported as moved. A newer
+/// tree adding a stamp input is a real staleness, but naming it as "moved"
+/// would assert a comparison that was never made; [`attribution`]'s empty arm
+/// covers it and says exactly that.
+fn moved_inputs(built: &str, root: &Path) -> Option<Vec<&'static str>> {
+    if built.is_empty() {
+        return None;
+    }
+    let now = source_stamp::source_stamp_components(root)?;
+    let mut compared = 0usize;
+    let mut moved = Vec::new();
+    for (label, hash) in now {
+        let Some(built_hash) = built_component(built, label) else {
+            continue;
+        };
+        compared += 1;
+        if built_hash != hash {
+            moved.push(label);
+        }
+    }
+    (compared > 0).then_some(moved)
+}
+
+/// A 40-hex sha abbreviated for reading; anything else (`unknown`,
+/// `uninitialised`) passed through — those words are the answer, not an id.
+fn short(sha: &str) -> String {
+    if sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+        sha[..12].to_string()
+    } else {
+        sha.to_string()
+    }
+}
+
+/// `<head>` plus up to three indented paths, then a count. Three because the
+/// refusal is read inside a cmake error block, where it is already re-wrapped
+/// once per line and a full file list would bury the remedy.
+fn listed(head: &str, files: &[String]) -> String {
+    let mut s = String::from(head);
+    for f in files.iter().take(3) {
+        s.push_str(&format!("\n\x20       {f}"));
+    }
+    if files.len() > 3 {
+        s.push_str(&format!("\n\x20       … and {} more", files.len() - 3));
+    }
+    s
+}
+
+/// One sentence per stamp input that moved, naming the input and what to do.
+///
+/// Every arm is tagged `ATTRIBUTES:` because that tag is what
+/// `check-stale-cli-attribution` joins against `source_stamp::STAMP_INPUTS`, in
+/// both directions: a stamp input with no arm is a refusal that has to guess,
+/// and an arm naming no input is a rule about something that stopped existing.
+fn attribution(built_pin: &str, root: &Path, moved: &[&str]) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for label in moved {
+        match *label {
+            // ATTRIBUTES: cli_sources
+            //
+            // The CLI's source content. One stamp input, but three shapes a
+            // reader needs told apart — and the second and third are the ones
+            // the pre-1018 message could not see:
+            //
+            //   * uncommitted edits — the common case, already named before;
+            //   * a new source written but not `git add`ed, which compiles into
+            //     the binary and so stales it while showing up in no diff;
+            //   * committed content that differs, which IS a checkout move.
+            //
+            // The old sentence asserted the third for all three.
+            "cli_sources" => {
+                let dirty = source_stamp::modified_cli_files(root);
+                let new = source_stamp::untracked_cli_files(root);
+                if !dirty.is_empty() {
+                    lines.push(listed("CLI sources: uncommitted edits", &dirty));
+                }
+                if !new.is_empty() {
+                    lines.push(listed("CLI sources: new, untracked", &new));
+                }
+                if dirty.is_empty() && new.is_empty() {
+                    lines.push(
+                        "CLI sources: committed content differs from the build's,\n\
+                         \x20     with nothing uncommitted here — a branch switch, rebase or pull"
+                            .to_string(),
+                    );
+                }
+            }
+            // ATTRIBUTES: play_launch_pin
+            //
+            // Issue 1018's stop 2, the one it calls interesting: nothing in the
+            // consumer's tree changed, and the CLI is correctly stale anyway.
+            // `build.rs` bakes this pin as `NROS_PLAY_LAUNCH_SHA` and the
+            // issue-0409 guard compares it, so a pin move IS a source change to
+            // the CLI — it is just not one in any file. Phase-429 measured the
+            // stop to be right; what was wrong was calling it a checkout move.
+            "play_launch_pin" => {
+                // The two SHAs, not the two component hashes: the pin is the
+                // one stamp input a person can act on directly, and `<sha> ->
+                // <sha>` is what `git -C packages/cli/third-party/play_launch
+                // log` will confirm. `NROS_PLAY_LAUNCH_SHA` is the same value
+                // `build.rs` baked, so this cannot drift from what was built.
+                let now = source_stamp::play_launch_pin(root);
+                lines.push(format!(
+                    "the pinned play_launch submodule moved: {} -> {}\n\
+                     \x20     (a pin is a CLI build input — `build.rs` bakes it as\n\
+                     \x20      NROS_PLAY_LAUNCH_SHA and the issue-0409 guard compares it.\n\
+                     \x20      Moving the pin, or `git submodule update --init`, stales the\n\
+                     \x20      CLI although no file in your tree changed: expected, and not\n\
+                     \x20      a mistake on your part. Rebuild and carry on.)",
+                    short(built_pin),
+                    short(now.as_deref().unwrap_or("uninitialised")),
+                ));
+            }
+            other => lines.push(format!("{other} (no attribution for this input)")),
+        }
+    }
+    if lines.is_empty() {
+        // Every comparable input agrees, yet the fold differs: this binary's
+        // input SET is not this tree's. Say that, rather than blaming content.
+        return "  what moved: the stamp's INPUT SET — this binary predates one of the\n\
+                \x20 inputs this tree stamps, so there is nothing to compare it against"
+            .to_string();
+    }
+    let mut out = String::from("  what moved:\n");
+    for line in lines {
+        out.push_str(&format!("\x20   - {line}\n"));
+    }
+    out.trim_end().to_string()
+}
+
 /// Commands that consume the crate→path table or emit generated artifacts.
 ///
 /// Deliberately NOT every command. `nros --version` / `completions` / `doctor`
@@ -138,21 +296,32 @@ pub fn refuse_if_stale(command_name: &str) -> Result<(), String> {
     if current == BUILT_STAMP {
         return Ok(());
     }
-    // Name the files actually being edited. The mtime predicate could only
-    // report whichever tracked file sorted first, which was frequently not the
-    // one the developer had touched.
-    let dirty = source_stamp::modified_cli_files(&root);
-    let detail = if dirty.is_empty() {
-        "  (no uncommitted CLI edits — the checkout moved, e.g. a branch switch)".to_string()
-    } else {
-        let mut s = String::from("  uncommitted CLI edits:\n");
-        for f in dirty.iter().take(3) {
-            s.push_str(&format!("    {f}\n"));
+    // Name the INPUT that moved, then the files under it. The mtime predicate
+    // could only report whichever tracked file sorted first; naming the dirty
+    // files fixed that for the one cause it covers, and issue 1018 is the rest:
+    // a cause the message could not see was reported as the cause it could.
+    let detail = match moved_inputs(BUILT_COMPONENTS, &root) {
+        Some(moved) => attribution(env!("NROS_PLAY_LAUNCH_SHA"), &root, &moved),
+        // No baked components — a binary built before issue 1018. Attribution
+        // is unavailable, so fall back to what CAN be said without it, which is
+        // the pre-1018 sentence. Saying nothing here would be a regression for
+        // the case that message did cover.
+        None => {
+            let dirty = source_stamp::modified_cli_files(&root);
+            if dirty.is_empty() {
+                "  (this binary bakes no per-input stamp, so what moved cannot be named)"
+                    .to_string()
+            } else {
+                let mut s = String::from("  uncommitted CLI edits:\n");
+                for f in dirty.iter().take(3) {
+                    s.push_str(&format!("    {f}\n"));
+                }
+                if dirty.len() > 3 {
+                    s.push_str(&format!("    … and {} more\n", dirty.len() - 3));
+                }
+                s.trim_end().to_string()
+            }
         }
-        if dirty.len() > 3 {
-            s.push_str(&format!("    … and {} more\n", dirty.len() - 3));
-        }
-        s.trim_end().to_string()
     };
     Err(format!(
         "in-tree nros CLI is STALE — its sources changed since it was built\n\
@@ -256,6 +425,308 @@ pub fn stamp_pair() -> Option<(String, String)> {
     let root = checkout_root_of(&exe)?;
     let current = source_stamp::source_stamp(&root)?;
     Some((BUILT_STAMP.to_string(), current))
+}
+
+/// Issue 1018 — every stamp input must be nameable by the refusal, measured.
+///
+/// The gate `check-stale-cli-attribution` asks the same question of the TEXT,
+/// on the fast line and without a compiler. This asks it of the BEHAVIOUR:
+/// perturb one input in a real checkout and read what the refusal says. Both
+/// are needed for the reason issue 1167 records one lane over — a guard that
+/// exists is not a guard that fires.
+#[cfg(test)]
+mod attribution_tests {
+    use super::*;
+    use crate::source_stamp::STAMP_INPUTS;
+    use std::fs;
+
+    fn sh(dir: &Path, cmd: &str) {
+        // Issues 0986/0988 — a test that runs `git init` in a temp dir must not
+        // be steerable by an inherited git environment: under a `GIT_DIR` (which
+        // every linked worktree here sets) `git init <tmp>` builds nothing and
+        // writes into the CALLER's repository instead. The list is ASKED of git
+        // so it cannot drift, exactly as `source_stamp`'s own tests do.
+        let vars: Vec<String> = std::process::Command::new("git")
+            .args(["rev-parse", "--local-env-vars"])
+            .output()
+            .ok()
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .split_whitespace()
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut command = std::process::Command::new("sh");
+        for var in vars {
+            command.env_remove(var);
+        }
+        let ok = command
+            .args(["-c", cmd])
+            .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        assert!(ok, "command failed: {cmd}");
+    }
+
+    /// A checkout the stamp will answer for: the generated closure list (issue
+    /// 0604 — without it `source_stamp` refuses), one CLI source, and an
+    /// initialised play_launch submodule so the pin has somewhere to move FROM.
+    fn checkout(root: &Path) {
+        fs::create_dir_all(root.join("packages/cli/x/src")).unwrap();
+        fs::write(root.join("packages/cli/cli-source-dirs.txt"), "# test\n").unwrap();
+        fs::write(root.join("packages/cli/x/src/lib.rs"), "fn a() {}\n").unwrap();
+        sh(root, "git init -q -b main .");
+        // Named paths, never `git add -A`: once the nested play_launch repo
+        // exists a blanket add stages it as an embedded gitlink, which is the
+        // hazard CLAUDE.md records for the real tree and is just as wrong in a
+        // fixture — it would put the submodule's own commit into the stamp's
+        // tracked side and stop the pin from being an independent input.
+        sh(root, "git add packages/cli && git commit -qm init");
+        let sub = root.join("packages/cli/third-party/play_launch");
+        fs::create_dir_all(&sub).unwrap();
+        sh(
+            &sub,
+            "git init -q -b main . && git commit -q --allow-empty -m pin1",
+        );
+    }
+
+    fn baked(root: &Path) -> String {
+        crate::source_stamp::source_stamp_components(root)
+            .expect("a checkout must stamp")
+            .into_iter()
+            .map(|(l, h)| format!("{l}={h}"))
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    /// Move exactly ONE stamp input, and say what the refusal must then name.
+    ///
+    /// No catch-all arm, deliberately: adding a label to `STAMP_INPUTS` without
+    /// deciding how to perturb it is a COMPILE error here, which is the one
+    /// corner a text gate cannot hold. `check-stale-cli-attribution` holds the
+    /// other three.
+    fn perturb(label: &str, root: &Path) -> &'static str {
+        match label {
+            "cli_sources" => {
+                fs::write(
+                    root.join("packages/cli/x/src/lib.rs"),
+                    "fn a() {}\nfn b() {}\n",
+                )
+                .unwrap();
+                "uncommitted edits"
+            }
+            "play_launch_pin" => {
+                sh(
+                    &root.join("packages/cli/third-party/play_launch"),
+                    "git commit -q --allow-empty -m pin2",
+                );
+                "play_launch submodule moved"
+            }
+            other => panic!("STAMP_INPUTS gained `{other}` with no perturbation case"),
+        }
+    }
+
+    /// The whole rule, per input: move it alone, and the refusal names IT.
+    #[test]
+    fn every_stamp_input_is_named_when_it_moves() {
+        for label in STAMP_INPUTS {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path();
+            checkout(root);
+            let built = baked(root);
+            let built_pin = crate::source_stamp::play_launch_pin(root).expect("pin after init");
+
+            let want = perturb(label, root);
+            let moved = moved_inputs(&built, root).expect("components are comparable");
+            assert_eq!(
+                moved,
+                vec![label],
+                "moving `{label}` alone must report `{label}` alone — reporting more \
+                 is the guess this issue was about, reporting fewer is silence"
+            );
+            let text = attribution(&built_pin, root, &moved);
+            assert!(
+                text.contains(want),
+                "the refusal for `{label}` must contain {want:?}, got:\n{text}"
+            );
+        }
+    }
+
+    /// Issue 1018's stop 2, the one it calls interesting — and the negative
+    /// control for the sentence it USED to print.
+    ///
+    /// A contributor moves a submodule pin forward and touches nothing else.
+    /// The refusal is correct (phase-429 measured that: the pin IS a CLI build
+    /// input), and it used to explain itself with "no uncommitted CLI edits —
+    /// the checkout moved, e.g. a branch switch". The checkout had not moved.
+    #[test]
+    fn a_pin_move_is_not_reported_as_a_checkout_move() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        checkout(root);
+        let built = baked(root);
+        let built_pin = crate::source_stamp::play_launch_pin(root).unwrap();
+
+        sh(
+            &root.join("packages/cli/third-party/play_launch"),
+            "git commit -q --allow-empty -m forward",
+        );
+        let now_pin = crate::source_stamp::play_launch_pin(root).unwrap();
+        assert_ne!(built_pin, now_pin, "the fixture must actually move the pin");
+
+        let moved = moved_inputs(&built, root).unwrap();
+        let text = attribution(&built_pin, root, &moved);
+        assert!(
+            text.contains("play_launch submodule moved"),
+            "a pin move must be named as a pin move: {text}"
+        );
+        assert!(
+            text.contains(&built_pin[..12]) && text.contains(&now_pin[..12]),
+            "and it must name BOTH shas, so `git log` in the submodule confirms it: {text}"
+        );
+        assert!(
+            !text.contains("branch switch") && !text.contains("committed content"),
+            "it must NOT be reported as a checkout move — that was the defect: {text}"
+        );
+        assert!(
+            text.contains("a mistake on your part"),
+            "a correct refusal for something the user did right must say so: {text}"
+        );
+    }
+
+    /// `cli_sources` is one input with three shapes, and the two the pre-1018
+    /// message could not see are asserted here: a new untracked source, and
+    /// both shapes at once.
+    ///
+    /// An untracked source is the quieter of the two — it compiles into the
+    /// binary and appears in no diff, so the old message called it a branch
+    /// switch and a contributor went looking at their git log.
+    #[test]
+    fn an_untracked_source_is_named_as_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        checkout(root);
+        let built = baked(root);
+        let built_pin = crate::source_stamp::play_launch_pin(root).unwrap();
+
+        fs::write(root.join("packages/cli/x/src/new.rs"), "fn c() {}\n").unwrap();
+        let moved = moved_inputs(&built, root).unwrap();
+        assert_eq!(moved, vec!["cli_sources"]);
+        let text = attribution(&built_pin, root, &moved);
+        assert!(text.contains("new, untracked"), "{text}");
+        assert!(
+            text.contains("x/src/new.rs"),
+            "it must name the file: {text}"
+        );
+        assert!(
+            !text.contains("branch switch"),
+            "a file you just wrote is not a checkout move: {text}"
+        );
+
+        // Both shapes at once — the residual arm must stay out of the way.
+        fs::write(
+            root.join("packages/cli/x/src/lib.rs"),
+            "fn a() {}\nfn b() {}\n",
+        )
+        .unwrap();
+        let text = attribution(&built_pin, root, &moved_inputs(&built, root).unwrap());
+        assert!(text.contains("uncommitted edits"), "{text}");
+        assert!(text.contains("new, untracked"), "{text}");
+        assert!(!text.contains("committed content differs"), "{text}");
+    }
+
+    /// Two inputs moving at once must both be named. This is what elimination
+    /// could never do: with one number and a dirty-file probe, a pin move
+    /// alongside an edit is invisible behind the edit.
+    #[test]
+    fn two_inputs_moving_are_both_named() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        checkout(root);
+        let built = baked(root);
+        let built_pin = crate::source_stamp::play_launch_pin(root).unwrap();
+
+        perturb("cli_sources", root);
+        perturb("play_launch_pin", root);
+        let moved = moved_inputs(&built, root).unwrap();
+        assert_eq!(moved.len(), 2, "both inputs moved: {moved:?}");
+        let text = attribution(&built_pin, root, &moved);
+        assert!(text.contains("uncommitted edits"), "{text}");
+        assert!(text.contains("play_launch submodule moved"), "{text}");
+    }
+
+    /// The residual arm: committed content differs and nothing is dirty. That
+    /// IS a checkout move, and the old sentence was right about this one case —
+    /// which is why the fix is attribution rather than a reworded message.
+    #[test]
+    fn a_commit_with_nothing_dirty_reads_as_a_checkout_move() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        checkout(root);
+        let built = baked(root);
+        let built_pin = crate::source_stamp::play_launch_pin(root).unwrap();
+
+        fs::write(
+            root.join("packages/cli/x/src/lib.rs"),
+            "fn a() {}\nfn b() {}\n",
+        )
+        .unwrap();
+        sh(
+            root,
+            "git add packages/cli/x/src/lib.rs && git commit -qm second",
+        );
+
+        let moved = moved_inputs(&built, root).unwrap();
+        assert_eq!(moved, vec!["cli_sources"]);
+        let text = attribution(&built_pin, root, &moved);
+        assert!(text.contains("committed content differs"), "{text}");
+        assert!(text.contains("rebase or pull"), "{text}");
+    }
+
+    /// A binary with no baked components cannot attribute, and must say so
+    /// rather than report that nothing moved — "assume fresh" is the one answer
+    /// a freshness probe must never give (`source_stamp`'s own rule).
+    #[test]
+    fn a_binary_with_no_components_cannot_attribute() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        checkout(root);
+        assert!(
+            moved_inputs("", root).is_none(),
+            "no baked components means the question is unanswerable, not answered `no`"
+        );
+    }
+
+    /// A binary that predates ONE input still compares the others, and when
+    /// they all agree it names the input SET as what moved — never content.
+    #[test]
+    fn an_input_this_binary_never_baked_is_not_called_moved() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        checkout(root);
+        let full = baked(root);
+        let partial: String = full
+            .split(',')
+            .filter(|kv| !kv.starts_with("play_launch_pin="))
+            .collect::<Vec<_>>()
+            .join(",");
+        perturb("play_launch_pin", root);
+
+        let moved = moved_inputs(&partial, root).expect("the other inputs are comparable");
+        assert!(
+            moved.is_empty(),
+            "an input with no baked hash was never compared, so it cannot be \
+             REPORTED as moved: {moved:?}"
+        );
+        let text = attribution("unknown", root, &moved);
+        assert!(text.contains("INPUT SET"), "{text}");
+    }
 }
 
 #[cfg(test)]

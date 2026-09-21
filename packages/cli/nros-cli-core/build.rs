@@ -87,6 +87,33 @@ fn main() {
     let stamp = source_stamp(&root).unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=NROS_CLI_SOURCE_STAMP={stamp}");
 
+    // Issue 1018 — bake the stamp PER INPUT beside the fold, so the run-time
+    // refusal can say WHICH input moved instead of inferring it.
+    //
+    // Without this the guard has one number and has to guess by elimination:
+    // "no uncommitted CLI edits here, so your checkout must have moved" — which
+    // is what a contributor who had done nothing but move a submodule pin was
+    // told, and it is false. Elimination cannot be made correct, either: two
+    // inputs can move at once, and the residual arm would then name only the
+    // one it happened to check last.
+    //
+    // A flat `label=hash,label=hash` string rather than anything structured:
+    // `rustc-env` carries text, the labels are `[A-Za-z_]`, and a parser in
+    // `stale_guard` that can fail is one more thing between a contributor and
+    // the sentence they need. A binary built before this exists simply has no
+    // components, which `stale_guard` treats as "cannot attribute" and falls
+    // back to the pre-1018 wording — never as "nothing moved".
+    let components = source_stamp_components(&root)
+        .map(|parts| {
+            parts
+                .into_iter()
+                .map(|(label, hash)| format!("{label}={hash}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .unwrap_or_default();
+    println!("cargo:rustc-env=NROS_CLI_SOURCE_STAMP_COMPONENTS={components}");
+
     // issue 0409 — the play_launch pin this CLI was built against. `nros sync`
     // shells out to `nros-launch-resolve`, which stamps the SAME value from its
     // own build; a mismatch means the resolver was compiled from a different
