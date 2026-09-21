@@ -3756,7 +3756,8 @@ fn carve_monitor_storage<C, S>(
     n: usize,
 ) -> Option<(*mut C, *mut S)> {
     use core::mem::{align_of, size_of};
-    if storage.is_null() || storage as usize % align_of::<C>().max(align_of::<S>()) != 0 {
+    if storage.is_null() || !(storage as usize).is_multiple_of(align_of::<C>().max(align_of::<S>()))
+    {
         return None;
     }
     let cells_bytes = size_of::<C>().checked_mul(n)?;
