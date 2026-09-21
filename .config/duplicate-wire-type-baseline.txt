@@ -1,0 +1,19 @@
+# Wire type names claimed by MORE THAN ONE tracked crate (issue 1428).
+#
+# A RATCHET, not an allowlist: this file may only shrink. `builtin_interfaces`
+# is generated three times because codegen emits each package's whole
+# transitive closure into its own flat directory with no cross-tree reuse map,
+# so three closures each carry their own copy. Collapsing them is a codegen
+# change; until it lands the three are the cost of flat closures.
+#
+# What this file buys is that a FOURTH copy cannot appear unnoticed -- which is
+# exactly how the third arrived.
+#
+# Format: <wire type name><TAB><crate directory>, one line per claimant.
+# Regenerate: python3 scripts/check-message-crate-identity.py --write-baseline
+builtin_interfaces/msg/Duration	packages/interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag
+builtin_interfaces/msg/Duration	packages/interfaces/rcl-interfaces/generated/humble/nros-builtin-interfaces
+builtin_interfaces/msg/Duration	packages/interfaces/rosgraph-msgs/generated/humble/nros-builtin-interfaces-clock
+builtin_interfaces/msg/Time	packages/interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag
+builtin_interfaces/msg/Time	packages/interfaces/rcl-interfaces/generated/humble/nros-builtin-interfaces
+builtin_interfaces/msg/Time	packages/interfaces/rosgraph-msgs/generated/humble/nros-builtin-interfaces-clock
