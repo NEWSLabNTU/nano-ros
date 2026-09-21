@@ -1752,7 +1752,7 @@ dependencies = [
 
 [[package]]
 name = "nros-builtin-interfaces"
-version = "0.5.0"
+version = "0.0.0"
 dependencies = [
  "heapless",
  "nros-core",
@@ -1881,7 +1881,7 @@ version = "0.5.0"
 
 [[package]]
 name = "nros-lifecycle-msgs"
-version = "0.5.0"
+version = "0.0.0"
 dependencies = [
  "heapless",
  "nros-core",
@@ -2070,7 +2070,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rcl-interfaces"
-version = "0.5.0"
+version = "0.0.0"
 dependencies = [
  "heapless",
  "nros-builtin-interfaces",
