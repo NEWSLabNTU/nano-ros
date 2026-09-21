@@ -24,6 +24,42 @@ include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
 
+# _nros_entity_fact(<out-var> <PROPERTY>)
+#
+# Read one accumulator property into a variable that is ALWAYS DEFINED, so
+# `if(NOT <out-var> STREQUAL "")` means what it reads as.
+#
+# THE TRAP THIS EXISTS FOR (issue 1429). `get_property()` leaves its output
+# variable UNDEFINED when the property was never set -- it does not set it to
+# the empty string. `if()` dereferences a bare word only when it names a DEFINED
+# variable and otherwise compares the LITERAL NAME, so for an unset property
+# `if(NOT _tl STREQUAL "")` compares `_tl` against `""`, which is never equal,
+# and the guard that exists to skip an absent fact takes its branch instead --
+# emitting `NROS_DECLARED_TL_PUBLISHERS=` with no value.
+#
+# That is a FOURTH answer on a carrier whose contract has three (absent,
+# `refused`, a count), and the consumer is written to be loud about a value it
+# cannot read rather than to guess one -- 1015 and 1033 are what guessing costs.
+# So an unset property reached `NROS_DECLARED_TL_PUBLISHERS="" is neither a
+# count nor `refused`', a panic in `nros-zpico-build`'s build script, on every
+# C/C++ workspace whose model describes no wiring.
+#
+# Measured, not reasoned: a property SET to the empty string skips correctly
+# (the variable is then defined), which is why this reads as a fix for a case
+# that cannot happen. The two cases differ, and only the unset one is live.
+#
+# ONE SPELLING, not a quoted `if()` per site. `if(NOT "${_tl}" STREQUAL "")` is
+# equally correct and was the first draft; it is rejected because it is
+# invisible -- three sites already carried the unquoted form, two of them masked
+# by an accident of which properties happen to be set, and nothing distinguishes
+# a site that was fixed from one nobody looked at. A named reader is greppable,
+# and `check-declared-fact-carriers` reads it. (Same shape as #282 -> #326: a
+# second idiom beside the first is how a class fix stops being one.)
+function(_nros_entity_fact _out _prop)
+    get_property(_v GLOBAL PROPERTY ${_prop})
+    set(${_out} "${_v}" PARENT_SCOPE)
+endfunction()
+
 # nros_record_entity_facts(<model-path>)
 #
 # Ask `nros ws entity-facts` about ONE entry's model and fold the answer into
@@ -765,13 +801,13 @@ function(nros_entity_facts_env _target)
     # what a node COSTS (`PARAM_SERVICE_QUERYABLES`, beside the code that
     # creates the servers), and this side only states the count. Absent means
     # undeclared, which the consumer reads as one -- the pre-W3 number.
-    get_property(_nodes GLOBAL PROPERTY NROS_ENTITY_NODES_MAX)
+    _nros_entity_fact(_nodes NROS_ENTITY_NODES_MAX)
     if(NOT _nodes STREQUAL "")
         list(APPEND _env "NROS_DECLARED_NODES=${_nodes}")
     endif()
 
-    get_property(_unknown GLOBAL PROPERTY NROS_ENTITY_SERVERS_UNKNOWN)
-    get_property(_max GLOBAL PROPERTY NROS_ENTITY_SERVERS_MAX)
+    _nros_entity_fact(_unknown NROS_ENTITY_SERVERS_UNKNOWN)
+    _nros_entity_fact(_max NROS_ENTITY_SERVERS_MAX)
     if(NOT _unknown AND NOT _max STREQUAL "")
         list(APPEND _env "NROS_DECLARED_SERVICE_SERVERS=${_max}")
         set(_app "${_max} declared service server(s)")
@@ -798,8 +834,8 @@ function(nros_entity_facts_env _target)
     # same three-valued answer `nros_sizing_descriptor::Fact` carries on the
     # cargo-leaf road, which already counts this and is why a Rust leaf boots
     # where a declared C/C++ one did not.
-    get_property(_tl_unknown GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_UNKNOWN)
-    get_property(_tl GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX)
+    _nros_entity_fact(_tl_unknown NROS_ENTITY_TL_PUBLISHERS_UNKNOWN)
+    _nros_entity_fact(_tl NROS_ENTITY_TL_PUBLISHERS_MAX)
     if(_tl_unknown)
         list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=refused")
     elseif(NOT _tl STREQUAL "")
