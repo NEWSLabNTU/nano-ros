@@ -751,6 +751,133 @@ pub unsafe extern "C" fn nros_executor_count_subscribers(
     nros_executor_count_impl(executor, topic_name, out_count, CountKind::Subscribers)
 }
 
+/// phase-444 — block until at least `count` publishers are visible on
+/// `topic_name`, or `timeout_ms` elapses. Upstream's `rcl_wait_for_publishers`.
+///
+/// The startup-ordering primitive one entity kind over from
+/// [`nros_client_wait_for_service`](crate::service::nros_client_wait_for_service),
+/// and built the same way: a spin on the discovery count, so other
+/// subscriptions and timers keep making progress while it waits (RFC-0021 —
+/// a blocking helper takes the executor and drives it, which is what makes
+/// the timeout reliable on a single-threaded transport).
+///
+/// This is the one BLOCKING member of the graph family, and it does not
+/// weaken the family's contract — it composes it. `nros_executor_count_publishers`
+/// underneath still reports only what has been DISCOVERED and still never
+/// blocks; what waits is this loop, by polling it.
+///
+/// A backend that cannot see the graph at all (XRCE) returns
+/// `NROS_RET_UNSUPPORTED` IMMEDIATELY rather than waiting out the budget.
+/// That differs deliberately from `nros_client_wait_for_service`, which waits
+/// and reports `NROS_RET_TIMEOUT` (issue 1087): for a service probe,
+/// not-yet-answerable is a transient; for the graph it is permanent, and
+/// spending the budget to say `TIMEOUT` would report "none appeared" for a
+/// backend that cannot see publishers at all — collapsing "cannot tell you"
+/// into "not there", which is the distinction RFC-0036 exists to keep.
+///
+/// `count == 0` returns `NROS_RET_OK` immediately without asking the backend:
+/// "at least zero" is true of every graph and needs no discovery.
+///
+/// # Returns
+/// * `NROS_RET_OK` — at least `count` publishers are visible.
+/// * `NROS_RET_TIMEOUT` — `timeout_ms` elapsed with fewer than `count`.
+/// * `NROS_RET_UNSUPPORTED` — the backend cannot read the graph.
+/// * `NROS_RET_REENTRANT` — called from inside a dispatch.
+/// * `NROS_RET_NOT_INIT` — executor not initialised.
+/// * `NROS_RET_INVALID_ARGUMENT` — `executor` or `topic_name` is null.
+///
+/// # Safety
+/// * `executor` must point to an initialised executor.
+/// * `topic_name` must be a valid NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_wait_for_publishers(
+    executor: *mut nros_executor_t,
+    topic_name: *const core::ffi::c_char,
+    count: usize,
+    timeout_ms: u32,
+) -> nros_ret_t {
+    nros_executor_wait_for_endpoints_impl(executor, topic_name, count, timeout_ms, true)
+}
+
+/// phase-444 — block until at least `count` subscribers are visible on
+/// `topic_name`. Upstream's `rcl_wait_for_subscribers`. See
+/// `nros_executor_wait_for_publishers` for the contract, the return codes,
+/// and why a backend with no graph answers immediately.
+///
+/// # Safety
+/// * `executor` must point to an initialised executor.
+/// * `topic_name` must be a valid NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_wait_for_subscribers(
+    executor: *mut nros_executor_t,
+    topic_name: *const core::ffi::c_char,
+    count: usize,
+    timeout_ms: u32,
+) -> nros_ret_t {
+    nros_executor_wait_for_endpoints_impl(executor, topic_name, count, timeout_ms, false)
+}
+
+/// The shared body of the two `wait_for_*` entry points.
+///
+/// Written as a private helper with the two entry points LONGHAND above, for
+/// the reason `NamesAndTypesKind` documents: cbindgen does not expand macros,
+/// so a macro-generated `#[no_mangle]` function gets no header declaration and
+/// is uncallable from C.
+///
+/// The WAIT itself is the Rust `Executor::wait_for_publishers` /
+/// `wait_for_subscribers` — RFC-0019/0020, behaviour in Rust and a thin
+/// wrapper in C. This function translates pointers and error codes and does
+/// not decide anything.
+unsafe fn nros_executor_wait_for_endpoints_impl(
+    executor: *mut nros_executor_t,
+    topic_name: *const core::ffi::c_char,
+    count: usize,
+    timeout_ms: u32,
+    publishers: bool,
+) -> nros_ret_t {
+    validate_not_null!(executor);
+    if topic_name.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let exec_t = &mut *executor;
+    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    {
+        return NROS_RET_NOT_INIT;
+    }
+    // RFC-0021's reentrancy guard: this helper drives the executor, so
+    // calling it from inside a callback would re-enter the dispatch loop.
+    if exec_t.in_dispatch {
+        return NROS_RET_REENTRANT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let Ok(topic) = core::ffi::CStr::from_ptr(topic_name).to_str() else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let timeout = core::time::Duration::from_millis(timeout_ms as u64);
+        let exec = get_executor(&mut exec_t._opaque);
+        let r = if publishers {
+            exec.wait_for_publishers(topic, count, timeout)
+        } else {
+            exec.wait_for_subscribers(topic, count, timeout)
+        };
+        match r {
+            Ok(true) => NROS_RET_OK,
+            Ok(false) => NROS_RET_TIMEOUT,
+            Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+                NROS_RET_UNSUPPORTED
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (topic_name, count, timeout_ms, publishers);
+        NROS_RET_UNSUPPORTED
+    }
+}
+
 /// Which enumeration `nros_executor_names_and_types_impl` runs.
 ///
 /// The four entry points above are written LONGHAND, not generated by a macro,

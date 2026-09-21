@@ -122,6 +122,14 @@ pub mod action;
 #[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
 mod tests;
 
+// phase-444 — the two `wait_for_*` decisions, in their own file rather
+// than appended to `tests.rs`. Same gate, same fixture (`MockSession`);
+// separate because what they pin is a CONTRACT choice, not executor
+// mechanics, and a reader looking for "why does Unsupported not wait?"
+// should not have to find it inside a 10 000-line file.
+#[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
+mod graph_wait_tests;
+
 // Flat re-exports so users write `executor::Executor` etc.
 #[cfg(any(has_rmw, test))]
 pub use action::{
