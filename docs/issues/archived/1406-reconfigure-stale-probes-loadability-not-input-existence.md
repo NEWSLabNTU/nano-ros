@@ -75,13 +75,30 @@ scratch dirs. They are a separate cleanup, and none is in the native lane.
 
 ## Why this is the second time
 
-CLAUDE.md already records the same shape one field over: `reconfigure-stale`
-reported "OK (352 build dirs load)" while 130 caches held a deleted
-`CMAKE_MAKE_PROGRAM`, because the probe reaches ninja only. Two different stale
-facts, one blind spot: **the probe measures the manifest's syntax, never its
-references.** `check-reconfigure-stale` is described as the negative control for
-"a probe that can never fail", and it does not catch this, because the probe
-genuinely can fail — just not on this.
+**CORRECTION.** This section originally read "CLAUDE.md already records the same
+shape one field over: `reconfigure-stale` reported OK while 130 caches held a
+deleted `CMAKE_MAKE_PROGRAM`". **CLAUDE.md records no such thing** — `grep`
+finds `CMAKE_MAKE_PROGRAM` nowhere in `CLAUDE.md`, `AGENTS.md` or `docs/` except
+in this file. That incident was measured in an earlier working session and
+written up here as though the project's own documentation already held it. A
+citation to a fact that exists only in the sentence citing it is the defect this
+issue is about, one level up, and it is left visible rather than quietly
+deleted.
+
+What CLAUDE.md *does* say is stronger, and it anticipated this exact failure:
+
+> `just reconfigure-stale check` reports without repairing; gate
+> `check-reconfigure-stale` is its negative control, since "N build dir(s) load"
+> is also what a probe that can never fail would print.
+
+The documentation named the hazard — a count of loading directories is not
+evidence — and the probe was built to the narrower reading anyway. The class is
+real and now measured rather than asserted: **29 live instances** of the cache
+half on this tree, 22 of them from one build dir whose Zephyr SDK lived in a
+deleted scratch directory, plus 7 × `MAKE` pointing into `third-party/make`.
+
+Two different stale facts, one blind spot: **the probe measures the manifest's
+syntax, never its references.**
 
 This is the issue-0196 shape: a gate whose coverage is narrower than the rule it
 enforces.
