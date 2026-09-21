@@ -1,0 +1,18 @@
+# phase-459 W0 - nano-ros derived-tiers C++ workspace Entry as a Zephyr sample
+# (Twister-discoverable). Boots the four components whose tiers the bake derives
+# from the contract's timer rates.
+sample:
+  name: nano-ros C++ Derived-Tiers Workspace Entry
+  description: nano-ros derived-tiers C++ workspace Entry on Zephyr, zenoh RMW
+common:
+  tags:
+    - nano-ros
+    - nros
+  harness: console
+tests:
+  sample.nano-ros.cpp.ws-derived-tiers-entry.zenoh:
+    build_only: true
+    platform_allow:
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64

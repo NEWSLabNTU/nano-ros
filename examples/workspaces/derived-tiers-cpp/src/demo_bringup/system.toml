@@ -1,0 +1,48 @@
+[system]
+name = "derived_tiers_cpp"
+rmw = "zenoh"
+domain_id = 0
+
+# phase-459 W0 - the derived-tiers fixture. Four C++ components in the shape
+# of the Autoware Safety Island: one wall timer each, two at 30 Hz and two at
+# 10 Hz. Every component declares `CALLBACK_GROUPS main` in its CMakeLists
+# and NOTHING here: no `group_tiers`, no `[tiers.*]`. The rates are in
+# launch/system.contract.yaml. The tier table is what the rate-monotonic
+# derivation produces from those two inputs, not what an author wrote three
+# times (compare realtime-cpp, the authored-tier neighbour).
+[[component]]
+pkg = "emergency_stop_pkg"
+class = "emergency_stop_pkg::MrmEmergencyStopOperator"
+name = "mrm_emergency_stop_operator"
+
+[[component]]
+pkg = "comfortable_stop_pkg"
+class = "comfortable_stop_pkg::MrmComfortableStopOperator"
+name = "mrm_comfortable_stop_operator"
+
+[[component]]
+pkg = "stop_mode_pkg"
+class = "stop_mode_pkg::StopModeOperator"
+name = "stop_mode_operator"
+
+[[component]]
+pkg = "mrm_handler_pkg"
+class = "mrm_handler_pkg::MrmHandler"
+name = "mrm_handler"
+
+# Issue 0951 - the implicit machine this system runs on. Unscoped and with no
+# `nodes`, so it governs every launch file and every node.
+[host.native]
+
+# RFC-0065 D6 - images are the buildable unit. The native entry is generated;
+# the Zephyr one is the hand-written west application in src/zephyr_entry.
+[image_defaults]
+rmw = "zenoh"
+
+[image.native]
+board = "native"
+
+[image.zephyr]
+board = "native_sim/native/64"
+entry = "zephyr_entry"
+conf = ["prj-zenoh.conf"]

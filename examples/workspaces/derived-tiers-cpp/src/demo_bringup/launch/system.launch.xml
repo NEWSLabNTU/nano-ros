@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!-- phase-459 W0 (ws-derived-tiers-cpp) - four nodes, one timer each. The node
+     `name`s must match system.toml [[component]].name (RFC-0032 section 7
+     instance identity) and the `nodes:` keys of system.contract.yaml beside
+     this file, which is where each node's timer rate is stated. -->
+<launch>
+    <node pkg="emergency_stop_pkg" exec="mrm_emergency_stop_operator" name="mrm_emergency_stop_operator"/>
+    <node pkg="comfortable_stop_pkg" exec="mrm_comfortable_stop_operator" name="mrm_comfortable_stop_operator"/>
+    <node pkg="stop_mode_pkg" exec="stop_mode_operator" name="stop_mode_operator"/>
+    <node pkg="mrm_handler_pkg" exec="mrm_handler" name="mrm_handler"/>
+</launch>
