@@ -7203,6 +7203,54 @@ NROS_PUBLIC nros_ret_t nros_publisher_fini(struct nros_publisher_t *publisher);
 NROS_PUBLIC const char *rcl_publisher_get_topic_name(const struct nros_publisher_t *publisher);
 
 /**
+ * How many subscriptions are on this publisher's topic, right now.
+ *
+ * rcl's `rcl_publisher_get_subscription_count` — phase-444, ledger row
+ * `c:publisher_get_subscription_count`.
+ *
+ * # A WEAKER QUESTION THAN UPSTREAM'S, stated here rather than discovered
+ *
+ * Upstream counts the subscriptions MATCHED to THIS publisher — peers whose
+ * QoS is compatible with it. This counts every subscription DISCOVERED on the
+ * topic, matched or not, because that is what the graph can answer and a
+ * backend with no QoS negotiation cannot tell the two apart at all.
+ *
+ * Non-inverting, and in the safe direction: a topic nobody subscribes to
+ * still reads `0`, so the use this exists for — skip the work when nobody is
+ * listening — is answered exactly. An INCOMPATIBLE peer makes it read `1`
+ * where upstream reads `0`, i.e. you do work nobody receives. Never the
+ * reverse.
+ *
+ * # The EXECUTOR parameter, which upstream does not take
+ *
+ * We open ONE transport session per image and the executor owns it, so the
+ * graph is the executor's to read — the same receiver difference as every
+ * `nros_executor_get_*` graph verb (phase-381 W4). The name is upstream's so
+ * a ported file finds it; the extra argument is what the compiler makes the
+ * porter notice (RFC-0089's mechanical-edit test).
+ *
+ * # Parameters
+ * * `publisher` - Pointer to a publisher
+ * * `executor` - The executor whose session sees the graph
+ * * `out_count` - Receives the count
+ *
+ * # Returns
+ * * `NROS_RET_OK` — `*out_count` written.
+ * * `NROS_RET_INVALID_ARGUMENT` — a NULL pointer.
+ * * `NROS_RET_NOT_INIT` — publisher or executor not usable.
+ * * `NROS_RET_UNSUPPORTED` — the backend cannot read the graph (XRCE). A
+ *   DIFFERENT answer from `0`, and `*out_count` is not written.
+ *
+ * # Safety
+ * * `publisher` and `executor` must be valid pointers or NULL
+ * * `out_count` must point to a writable `size_t` or be NULL
+ */
+NROS_PUBLIC
+nros_ret_t rcl_publisher_get_subscription_count(const struct nros_publisher_t *publisher,
+                                                struct nros_executor_t *executor,
+                                                size_t *out_count);
+
+/**
  * Is this publisher handle usable?
  *
  * rcl's `rcl_publisher_is_valid`, whose contract is "true for any handle that
@@ -8273,6 +8321,29 @@ NROS_PUBLIC nros_ret_t nros_subscription_fini(struct nros_subscription_t *subscr
  */
 NROS_PUBLIC
 const char *rcl_subscription_get_topic_name(const struct nros_subscription_t *subscription);
+
+/**
+ * How many publishers are on this subscription's topic, right now.
+ *
+ * rcl's `rcl_subscription_get_publisher_count` — phase-444, ledger row
+ * `c:subscription_get_publisher_count`. The subscription half of
+ * [`rcl_publisher_get_subscription_count`](crate::publisher::rcl_publisher_get_subscription_count),
+ * which states the weakening (topic-wide, not matched-to-this-entity), why
+ * the executor is a parameter, and why `NROS_RET_UNSUPPORTED` is not `0`.
+ *
+ * # Parameters
+ * * `subscription` - Pointer to a subscription
+ * * `executor` - The executor whose session sees the graph
+ * * `out_count` - Receives the count
+ *
+ * # Safety
+ * * `subscription` and `executor` must be valid pointers or NULL
+ * * `out_count` must point to a writable `size_t` or be NULL
+ */
+NROS_PUBLIC
+nros_ret_t rcl_subscription_get_publisher_count(const struct nros_subscription_t *subscription,
+                                                struct nros_executor_t *executor,
+                                                size_t *out_count);
 
 /**
  * Is this subscription handle usable?

@@ -17,6 +17,7 @@
 #include "nros/traits.hpp"
 #include "nros/config.hpp"
 #include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
+#include "nros/executor.hpp"    // phase-444 — the graph counter these forward to
 #include "nros/result.hpp"
 // RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creator below.
 #include "nros/serialization_format.hpp"
@@ -295,6 +296,39 @@ template <typename M> class Publisher {
             return ::nros::detail::qos_all_unknown();
         }
         return ::nros::detail::qos_from_ffi(f);
+    }
+
+    /// How many subscriptions are on this publisher's topic, RIGHT NOW —
+    /// rclcpp's `Publisher::get_subscription_count`. phase-444.
+    ///
+    /// **A WEAKER QUESTION THAN UPSTREAM'S, and it is stated here rather than
+    /// discovered.** Upstream counts the subscriptions MATCHED to THIS
+    /// publisher — peers whose QoS is compatible with it. This counts every
+    /// subscription DISCOVERED on the topic, matched or not, because that is
+    /// what the graph can answer and a backend with no QoS negotiation cannot
+    /// tell the two apart at all.
+    ///
+    /// Non-inverting, and in the safe direction: a topic nobody subscribes to
+    /// still reads `0`, so the use this exists for — skip the work when nobody
+    /// is listening — is answered exactly. An INCOMPATIBLE peer makes it read
+    /// `1` where upstream reads `0`, i.e. you do work nobody receives. Never
+    /// the reverse.
+    ///
+    /// **Takes the executor and an out-parameter**, neither of which upstream
+    /// does. The executor because we open ONE transport session per image and
+    /// it owns the session, so the graph is the executor's to read — the same
+    /// receiver difference as every `Executor::get_*` graph verb (phase-381
+    /// W4). The out-parameter because RFC-0018 forbids exceptions, so the
+    /// error has to be the return value. Both weakenings are ones the compiler
+    /// makes a porter notice, which is RFC-0089's mechanical-edit test.
+    ///
+    /// Reports what has been DISCOVERED and never blocks, so a small answer
+    /// right after startup is "not seen yet", never "not there"; a backend
+    /// that cannot read the graph returns an error, which is a DIFFERENT
+    /// answer from `0` and leaves `*out_count` untouched.
+    Result get_subscription_count(::nros::Executor& executor, size_t* out_count) const {
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        return executor.count_subscribers(topic_name_, out_count);
     }
 
     /// Check if the publisher is initialized and valid.

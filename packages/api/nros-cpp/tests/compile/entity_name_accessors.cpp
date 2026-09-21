@@ -114,6 +114,26 @@ PollingServerNameFn polling_server_name = &::nros::PollingActionServer<StubActio
 using PollingClientNameFn = const char* (::nros::PollingActionClient<StubAction>::*)() const;
 PollingClientNameFn polling_client_name = &::nros::PollingActionClient<StubAction>::get_action_name;
 
+// ── The MATCHED-COUNT pair, phase-444 ──────────────────────────────────────
+//
+// The other half of the pubsub introspection family (ledger rows
+// `cpp:Publisher::get_subscription_count` and
+// `cpp:Subscription::get_publisher_count`). Here as method pointers for the
+// same reason the names are: the weakening is in the SIGNATURE — an executor
+// and an out-parameter upstream does not take — so the signature is the thing
+// that must not drift back.
+//
+// `const`, because upstream's is (`rclcpp::PublisherBase::
+// get_subscription_count() const`) and a ported file often holds a const ref.
+
+using PubCountFn = ::nros::Result (::rclcpp::Publisher<Payload>::*)(::nros::Executor&,
+                                                                    size_t*) const;
+PubCountFn publisher_subscription_count = &::rclcpp::Publisher<Payload>::get_subscription_count;
+
+using SubCountFn = ::nros::Result (::rclcpp::Subscription<Payload>::*)(::nros::Executor&,
+                                                                       size_t*) const;
+SubCountFn subscription_publisher_count = &::rclcpp::Subscription<Payload>::get_publisher_count;
+
 // ── The contract every one of them keeps ───────────────────────────────────
 //
 // An uninitialised entity answers `""`, NEVER NULL. A ported file writes

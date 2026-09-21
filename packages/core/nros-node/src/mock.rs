@@ -492,6 +492,19 @@ pub mod canned {
     pub const BY_NODE_CLIENT: &str = "/by_node/client";
     /// The type every `by_node` marker carries.
     pub const BY_NODE_TYPE: &str = "test_msgs/msg/Marker";
+
+    /// `get_endpoint_info_by_topic(publishers = true)` — the node it reports.
+    /// Distinct from [`ENDPOINT_SUBSCRIBER_NODE`] so a forwarder that hands
+    /// the slot the wrong side fails; that boolean is the whole difference
+    /// between the two entry points.
+    pub const ENDPOINT_PUBLISHER_NODE: &str = "/endpoint/publisher_node";
+    /// See [`ENDPOINT_PUBLISHER_NODE`].
+    pub const ENDPOINT_SUBSCRIBER_NODE: &str = "/endpoint/subscriber_node";
+    /// The type the publisher side reports. Also distinct, so a test that
+    /// asserts on the type alone still separates the two sides.
+    pub const ENDPOINT_PUBLISHER_TYPE: &str = "test_msgs/msg/PublisherSide";
+    /// See [`ENDPOINT_PUBLISHER_TYPE`].
+    pub const ENDPOINT_SUBSCRIBER_TYPE: &str = "test_msgs/msg/SubscriberSide";
 }
 
 impl Session for MockSession {
@@ -649,6 +662,46 @@ impl Session for MockSession {
                 break;
             }
         }
+        Ok(())
+    }
+
+    /// phase-444 — the endpoints on a topic, ONE per side, keyed on the
+    /// `publishers` flag.
+    ///
+    /// The point of the canned answer is that the two sides are
+    /// DISTINGUISHABLE: the defect a forwarder of this shape has is handing
+    /// the slot the wrong boolean, and a fixture that answers the same row
+    /// either way cannot see it. The emitted `is_publisher` echoes the flag,
+    /// and `node_namespace` echoes the topic, so a forwarder that drops or
+    /// swaps an argument fails too.
+    fn get_endpoint_info_by_topic(
+        &mut self,
+        publishers: bool,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), Self::Error> {
+        if !self.graph {
+            return Err(TransportError::Unsupported);
+        }
+        let (node_name, topic_type) = if publishers {
+            (
+                canned::ENDPOINT_PUBLISHER_NODE,
+                canned::ENDPOINT_PUBLISHER_TYPE,
+            )
+        } else {
+            (
+                canned::ENDPOINT_SUBSCRIBER_NODE,
+                canned::ENDPOINT_SUBSCRIBER_TYPE,
+            )
+        };
+        let info = nros_rmw::GraphEndpointInfo {
+            node_name,
+            node_namespace: topic_name,
+            topic_type,
+            is_publisher: publishers,
+            endpoint_gid: [0u8; 24],
+        };
+        let _ = visit(&info);
         Ok(())
     }
 }
