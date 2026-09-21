@@ -213,3 +213,59 @@ while they decide).
 Which results the month of mixed images invalidated. That is unchanged from what
 this issue said when it was filed, and the gate does not answer it — it only
 refuses to let the next one happen quietly.
+
+## The residue needed its own repair (2026-09-21)
+
+This was archived once the DETECTOR landed. The detector was right and the
+defect was not finished: unbinding the manifest project stops NEW mixed images,
+and on a persistent workspace it repairs none of the ones already built.
+
+Measured on the self-hosted runner in run 35553738931, after phase-449 W2's
+manifest repair: `just setup tier2` unbound the workspace and
+`check-zephyr-workspace-checkout.sh` passed as its own step — then
+`check-zephyr-workspace-foreign-checkout` failed `check-fast` inside
+`just build tier2`:
+
+```
+NROS_REPO_DIR=/home/runner/src/nano-ros
+_NROS_MESSAGE_BOUNDS_DIR=/home/runner/src/nano-ros/cmake
+… and 122 more entries
+```
+
+The build dirs under `~/.nros/workspaces/zephyr/3.7/` were still configured
+against the provisioning checkout. A refusal with no repair behind it leaves
+that lane red with no pull request able to turn it green.
+
+### The repair
+
+`check-zephyr-workspace-foreign-checkout.py --retire-foreign-build-dirs`
+removes the build dirs whose cache names another checkout, and
+`just zephyr setup` calls it in the workspace-already-present branch,
+immediately after the unbind — cause first, then residue, so a build started in
+between cannot recreate it.
+
+It lives in the GATE rather than in a new script because the classification is
+`foreign_owner`, the same marker walk the scan already uses. A second spelling
+of "which checkout owns this path" is the defect this file exists to catch, and
+issue 1280's gate refuses a fourth one.
+
+Three guards before anything is deleted — inside the resolved workspace, a real
+directory rather than a symlink, and actually a build dir — and every removal
+prints the cached entry that condemned it. `--dry-run` names them without
+acting; `NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS=1` stops the repair entirely,
+because that hatch means somebody decided to keep them and a repair that
+overrode a stated decision would be worse than the condition.
+
+### Why this is not the `rm -rf` antipattern
+
+CLAUDE.md's rule is about an incremental build producing a WRONG artifact,
+where the wrongness is a missing dependency EDGE and wiping destroys the one
+reproduction you had. Here the directory records a decision taken at configure
+time against a tree that is not this one: there is no edge to find, `cmake
+<build-dir>` provably cannot correct it, and this issue's own text already
+prescribes "a pristine build of the affected dirs". The evidence is not
+destroyed — it is printed, per directory, before the removal.
+
+Four negative controls run on every invocation of the scan: the repair names
+exactly the crossed dir, a dry run removes nothing, the crossed dir goes while
+a clean one stays, and the opt-out hatch stops it acting.

@@ -89,6 +89,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -365,6 +366,93 @@ def scan(here: str, ws: str | None, marker: str, manifest_only: bool) -> tuple[l
 
 
 # --------------------------------------------------------------------------
+# The repair
+# --------------------------------------------------------------------------
+
+
+def foreign_build_dirs(ws: str, here: str, marker: str) -> list[tuple[str, str, str]]:
+    """`(build_dir, condemning NAME, its VALUE)` for each dir built from two trees.
+
+    Reuses `foreign_owner` rather than restating the rule: a second spelling of
+    "which checkout owns this path" is the defect this file exists to catch
+    (issue 1280's gate refuses a fourth one).
+
+    One finding per DIRECTORY, not per entry — the measured case is ~70 caches
+    x ~10 crossed variables, and the unit of repair is the directory.
+    """
+    out: list[tuple[str, str, str]] = []
+    for cache in sorted(Path(ws).glob("build*/CMakeCache.txt")):
+        for name, value in cache_values(cache):
+            owner = foreign_owner(value, here, marker)
+            if owner:
+                out.append((str(cache.parent), name, value))
+                break
+    return out
+
+
+def retire_foreign_build_dirs(ws: str, here: str, marker: str, dry_run: bool) -> int:
+    """Remove the build dirs that were configured against ANOTHER checkout.
+
+    This is the one remedy issue 1387 leaves. The module root is a
+    CONFIGURE-time identity, so `cmake <build-dir>` cannot correct it and no
+    amount of rebuilding inside the directory can either; a pristine build is
+    the fix, and removing the directory is how you get one. The scan's own
+    message says so: "issue 1387's remedy is a pristine build of the affected
+    dirs -- not `cmake <build-dir>`".
+
+    It is NOT the `rm -rf` antipattern CLAUDE.md forbids. That rule is about an
+    incremental build producing a WRONG artifact, where the wrongness is a
+    missing dependency EDGE and wiping destroys the one reproduction you had.
+    Here the directory records a decision taken at configure time against a
+    tree that is not this one. There is no edge to find, and the evidence is
+    not destroyed: it is printed, per directory, before anything is removed.
+
+    Refuses under `NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS=1` -- that hatch means
+    somebody decided to keep them, and a repair that overrode a stated decision
+    would be worse than the condition it fixes.
+    """
+    if os.environ.get("NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS") == "1":
+        print(
+            "retire-foreign-build-dirs: NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS=1 is set, so "
+            "these are kept deliberately; not touching them."
+        )
+        return 0
+
+    found = foreign_build_dirs(ws, here, marker)
+    if not found:
+        print(f"retire-foreign-build-dirs: none — no build dir under {ws} names another checkout")
+        return 0
+
+    ws_real = _real(ws)
+    removed = 0
+    for bdir, name, value in found:
+        # Three guards, because this deletes: inside the workspace we resolved,
+        # a real directory rather than a link, and actually a build dir.
+        if not _real(bdir).startswith(ws_real + os.sep):
+            print(f"retire-foreign-build-dirs: REFUSING {bdir} — outside {ws_real}", file=sys.stderr)
+            return 1
+        if os.path.islink(bdir):
+            print(f"retire-foreign-build-dirs: REFUSING {bdir} — it is a symlink", file=sys.stderr)
+            return 1
+        if not os.path.isfile(os.path.join(bdir, "CMakeCache.txt")):
+            print(f"retire-foreign-build-dirs: REFUSING {bdir} — no CMakeCache.txt", file=sys.stderr)
+            return 1
+        print(f"retire-foreign-build-dirs: {'would remove' if dry_run else 'removing'} {bdir}")
+        print(f"    condemned by {name}={value}")
+        if not dry_run:
+            shutil.rmtree(bdir)
+        removed += 1
+
+    verb = "would be retired" if dry_run else "retired"
+    print(
+        f"retire-foreign-build-dirs: {removed} build dir(s) {verb}. They were configured\n"
+        f"  against another checkout, so nothing measured in them was a fact about this\n"
+        f"  tree; the next build reconfigures them from scratch."
+    )
+    return 0
+
+
+# --------------------------------------------------------------------------
 # Negative controls, on the normal path
 # --------------------------------------------------------------------------
 
@@ -543,13 +631,66 @@ def self_test(verbose: bool = False) -> bool:
             "it found none",
         )
 
+    # The REPAIR, both directions. A repair nobody has seen act is a comment,
+    # and one that cannot be seen to leave a clean directory alone is worse
+    # than the condition — it would delete a tree's own build output.
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        here = _make_checkout(tmp / "here", marker)
+        foreign = _make_checkout(tmp / "other", marker)
+        ws = _make_workspace(tmp / "here")
+
+        crossed = Path(ws) / "build-crossed"
+        crossed.mkdir(parents=True, exist_ok=True)
+        (crossed / "CMakeCache.txt").write_text(
+            f"NROS_REPO_DIR:PATH={foreign}\n_NROS_MESSAGE_BOUNDS_DIR:PATH={foreign}/cmake\n"
+        )
+        clean = Path(ws) / "build-clean"
+        clean.mkdir(parents=True, exist_ok=True)
+        (clean / "CMakeCache.txt").write_text(
+            f"NROS_REPO_DIR:PATH={here}\nCMAKE_MAKE_PROGRAM:FILEPATH=/usr/bin/ninja\n"
+        )
+
+        chk(
+            "the repair names exactly the build dir configured against another checkout",
+            [d for d, _, _ in foreign_build_dirs(ws, here, marker)] == [str(crossed)],
+            f"it named {[d for d, _, _ in foreign_build_dirs(ws, here, marker)]}",
+        )
+
+        rc = retire_foreign_build_dirs(ws, here, marker, dry_run=True)
+        chk(
+            "a dry run removes nothing",
+            rc == 0 and crossed.is_dir() and clean.is_dir(),
+            "it removed something",
+        )
+
+        rc = retire_foreign_build_dirs(ws, here, marker, dry_run=False)
+        chk(
+            "the repair removes the crossed dir and leaves the clean one",
+            rc == 0 and not crossed.exists() and clean.is_dir(),
+            f"crossed={crossed.exists()} clean={clean.is_dir()}",
+        )
+
+        os.environ["NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS"] = "1"
+        again = Path(ws) / "build-crossed2"
+        again.mkdir(parents=True, exist_ok=True)
+        (again / "CMakeCache.txt").write_text(f"NROS_REPO_DIR:PATH={foreign}\n")
+        rc = retire_foreign_build_dirs(ws, here, marker, dry_run=False)
+        chk(
+            "the opt-out hatch stops the repair acting on a stated decision",
+            rc == 0 and again.is_dir(),
+            "it deleted a directory somebody chose to keep",
+        )
+        del os.environ["NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS"]
+
     if ok and not verbose:
         # STDERR: the skip path's stdout is the `nros_check_skip` REASON, and a
         # reason carrying a newline writes a second, bogus ledger row.
         print(
             "  self-test ok: foreign manifest link reported, self-pointing link and "
             "unbound project clean, cache crossing reported beside an out-of-tree "
-            "and an in-tree value, venv shebang reported, bare checkout examines nothing",
+            "and an in-tree value, venv shebang reported, bare checkout examines nothing, "
+            "repair retires the crossed dir and spares the clean one",
             file=sys.stderr,
         )
     return ok
@@ -567,6 +708,16 @@ def main() -> int:
         help="subject 1 only — the shape `check-zephyr-workspace-checkout.sh` front-runs",
     )
     ap.add_argument("--self-test", action="store_true", help="the negative controls, verbosely")
+    ap.add_argument(
+        "--retire-foreign-build-dirs",
+        action="store_true",
+        help="REMOVE the build dirs configured against another checkout (issue 1387's remedy)",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="with --retire-foreign-build-dirs: name them without removing anything",
+    )
     args = ap.parse_args()
 
     marker = checkout_marker()
@@ -582,6 +733,12 @@ def main() -> int:
     ws = args.workspace or resolve_workspace(here)
     if ws and not os.path.isdir(ws):
         ws = None
+
+    if args.retire_foreign_build_dirs:
+        if not ws:
+            print("retire-foreign-build-dirs: no Zephyr workspace resolves here; nothing to do")
+            return 0
+        return retire_foreign_build_dirs(ws, here, marker, args.dry_run)
 
     problems, subjects = scan(here, ws, marker, args.manifest_only)
 

@@ -74,6 +74,25 @@ setup *ARGS:
         # nothing to unbind, so this is gated on itself, exactly as the SDK
         # registration above is.
         bash scripts/zephyr/unbind-manifest-project.sh --from-config "$WORKSPACE"
+        # issue 1387 — unbinding stops NEW mixed images; it does not repair the
+        # ones already built. The module root is a CONFIGURE-time identity, so
+        # `cmake <build-dir>` cannot correct a cached `_NROS_*` entry naming
+        # another checkout and no rebuild inside the directory can either. The
+        # only remedy is a pristine build, and removing the directory is how
+        # you get one.
+        #
+        # This is why the tier-2 lane stayed red after the manifest repair
+        # landed: `check-zephyr-workspace-foreign-checkout` correctly reported
+        # 122+ cached entries under `~/.nros/workspaces/zephyr/3.7/` still
+        # naming the runner's provisioning checkout. A refusal there is a lane
+        # nobody can turn green from a pull request.
+        #
+        # Ordered AFTER the unbind on purpose: repair the cause, then the
+        # residue, so a build started in between cannot recreate it. Honours
+        # `NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS=1`, which is somebody choosing to
+        # keep them.
+        python3 scripts/check-zephyr-workspace-foreign-checkout.py \
+            --retire-foreign-build-dirs --workspace "$WORKSPACE"
     else
         NROS_ZEPHYR_MANIFEST="{{ZEPHYR_MANIFEST}}" NROS_ZEPHYR_WORKSPACE="$WORKSPACE" ./scripts/zephyr/setup.sh $ARGS
     fi
