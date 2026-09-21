@@ -9,6 +9,51 @@ that needs the built-in service surface to become a declared one"), and is the
 board blocker for the Autoware Safety Island on MR-CANHUBK344: the image is
 over RAM by 53,912 B and the zenoh service inbox table is 115,128 B of it.
 
+## Parallel plan
+
+Six waves, one claim id each (`just claim phase-461-Wk`; advisory, TTL in
+hours, an open PR supersedes it). W1 is the only wave that starts alone; W2
+through W5 hang off it in the order the table gives, and W6 is last by the
+text's own rule ("only after W1-W2 are the plan"). W1 and W4 both edit
+`service.rs`, W2 and W4 both edit `parameter_services.rs`, and W1 and W3 both
+edit the zenoh `build.rs`: each pair is too coupled to split further and is
+serialised below rather than merged, because the second wave of each pair has
+its own gate. Every path below exists in the tree today except the ones marked
+new.
+
+| claim id | depends on | owns | gate | starts now? |
+| --- | --- | --- | --- | --- |
+| `phase-461-W1` | none | `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs`, `packages/rmw/zenoh/nros-rmw-zenoh/build.rs` (the two shim tables and their knob pairs; `declared_service_request_bytes` is W3's), `packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs`, `packages/rmw/zenoh/zpico-sys/src/ffi.rs` and `packages/rmw/zenoh/zpico-sys/c/include/zpico.h` if the new header crosses the FFI, `zephyr/Kconfig` (the six inbox symbols, the `NROS_SERVICE_BUFFER_SIZE` help and alias), `zephyr/cmake/nros_cargo_build.cmake` (six ladder resolves beside :1208), `packages/api/nros/src/guide/configuration.rs` (the knob rows) | `just check ffi-struct-mirrors`; the `zenoh_integration` service and action tests; `just mem-report` on `bins/sim-clock-listener` | yes |
+| `phase-461-W2` | `phase-461-W1` (the ring type and `InboxSpec`), `phase-460-W2` (the same function in `nros-params/build.rs`) | `packages/core/nros-rmw/src/` (the service-server seam and `SUPPORTS_CALLER_INBOX`), one const each under `packages/rmw/cyclonedds/nros-rmw-cyclonedds`, `packages/rmw/xrce/nros-rmw-xrce` and `packages/rmw/cffi`, `packages/core/nros-node/src/parameter_services.rs` (`PARAM_INBOX`, the two const asserts), `packages/core/nros-node/src/lifecycle_services.rs`, `packages/core/nros-node/build.rs` (the knob pair's carrier), `packages/core/nros-params/build.rs` only if the capacities need a new export | the const assert's negative control (a `-D` one byte short fails the build); `the_worst_messages_fit_the_derived_bound` with the inbox leg; `just check knob-single-reader` | no |
+| `phase-461-W3` | `phase-461-W1` (the `NROS_RESOLVED_*` twin that `check-knob-delivery` demands for every `NROS_DERIVED_*`) | `packages/cli/rosidl-codegen/src/bounds.rs` (`BoundInventory::record_message` for `_Request` types), `packages/cli/nros-cli-core/src/entity_inventory.rs` (the two `NROS_DERIVED_*_INBOX_BYTES` rows), `cmake/NanoRosEntityInventory.cmake` (their carrier), `packages/rmw/zenoh/nros-rmw-zenoh/build.rs` (`declared_service_request_bytes`, :471-527, the floor removed) | `just check knob-delivery`; the island's `OperateMrm` request priced below 1,024 in `entity_inventory.cmake`; an uncapped unbounded member refuses naming it | yes for the pricing in `bounds.rs`; the carriers land after W1 |
+| `phase-461-W4` | `phase-461-W1`, `phase-461-W2` | `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs` (the two counters, after W1), `packages/core/nros-node/src/parameter_services.rs` (the issue-1271 once-log arm, after W2), `packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs` | the depth-1 double-request test (counter reads 1, one log line) and the 2,408 B overflow test | no |
+| `phase-461-W5` | `phase-461-W1`, `phase-461-W2` (W3 optional: user services stay at 1,024 without it) | nano-ros half: `packages/cli/nros-cli-core/src/cmd/image_facts.rs` (the three inbox families with bytes, depth, origin), `book/src/internals/measuring-static-memory.md` (the three symbols and their formula); the island half is `island-W5` in the island's own phase doc | `just check knob-delivery`; `nros image-facts` on the island image; the image links | no |
+| `phase-461-W6` | `phase-461-W1`, `phase-461-W2`; on `emit_cpp.rs` after `phase-459-W2`, `phase-462-W1` and `phase-463-W2`; on `params_shim.rs` after `phase-463-W1`; on `entity_inventory.rs` after `phase-460-W3` and `phase-461-W3` | `packages/cli/cargo-nano-ros/src/capability_resolver.rs` (the `params` axis), the `param-store` / `param-services` split in `packages/api/nros-cpp/Cargo.toml`, `packages/api/nros/Cargo.toml` and `packages/core/nros-node/Cargo.toml`, `packages/api/nros-cpp/src/params_shim.rs`, `packages/cli/nros-cli-core/src/entity_inventory.rs` (`param_nodes()`, :785-809), `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs` (:1086) and `emit_rust.rs` (`apply_param_store`), `packages/api/nros/src/lib.rs` (:1397, one assert per axis), the book's parameters page | `just check infra-queryable-counts` (`params` counts 0); the island bringup with `features = ["params"]` boots native_sim to VERDICT PASS; `nros image-facts` reports `max_queryables = 2` | no |
+
+Files two waves touch, and the order they serialise in. Within this phase:
+`service.rs` and `zenoh_integration.rs` are W1 then W4; `parameter_services.rs`
+is W2 then W4; the zenoh `build.rs` is W1 then W3 (W1 owns the tables and
+knob pairs, W3 the `declared_service_request_bytes` function); `entity_inventory.rs`
+is W3 then W6. Across phases: `packages/core/nros-params/build.rs` is
+phase-460 W2 first, then W2 here - 460 W2 is a one-day change to the same
+capacity-reading function and W2 here reads what it leaves. `packages/cli/nros-cli-core/src/entity_inventory.rs`
+is 460 W3 (the `NROS_ENTITY_PLAIN_TYPES` carrier), then W3 here (the derived
+inbox carriers), then W6 here (`param_nodes()`); phase-463 W3 and W6 read
+the inventory JSON and own no line of the file. `zephyr/cmake/nros_cargo_build.cmake`
+is 460 W3 (the rx-ceiling block), then 460 W5 (the heap-gate comment), then
+W1 here (six new resolves), then W5 here (pairing fixes only); disjoint
+regions, so the later wave rebases, and two claims on the file are not held
+open at once. `zephyr/Kconfig` is 460 W3, 460 W7 and W1 here on distinct
+symbols in distinct menus: land order, no dependency. `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs`
+is phase-459 W2 (the tier-table tail), then phase-462 W1 (the monitor install
+before entity creation), then phase-463 W2 (at most the native funnel call),
+then W6 here (the registration call at :1086): W6 is behind W1-W2 anyway, and
+it swaps a call the other three leave in place. `packages/api/nros-cpp/src/params_shim.rs`
+is phase-463 W1 (the `on_param_declare` hook call in the
+`nros_cpp_node_declare_param_*` family) then W6 here (the feature split);
+`packages/api/nros/src/lib.rs` is phase-460 W1 (`load_for_build_script`) then
+W6 here (:1397). Phase 457 shares no file with this phase.
+
 ## Why
 
 `nros-rmw-zenoh` gives every queryable the same inbox: a ring of
@@ -240,6 +285,8 @@ action tests green with the table split; `just mem-report` on
 `bins/sim-clock-listener` shows `SERVICE_BUFFERS` replaced by the two symbols
 and the sum unchanged for an image with no builtin family.
 
+Claim: phase-461-W1. Depends on: none. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs, packages/rmw/zenoh/nros-rmw-zenoh/build.rs (tables and knob pairs), packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs, packages/rmw/zenoh/zpico-sys/src/ffi.rs and c/include/zpico.h if the header crosses the FFI, zephyr/Kconfig (inbox symbols), zephyr/cmake/nros_cargo_build.cmake (six resolves beside :1208), packages/api/nros/src/guide/configuration.rs. Gate: just check ffi-struct-mirrors, the zenoh_integration service and action tests, just mem-report on bins/sim-clock-listener. Status: not started.
+
 ### W2 [nros-node, rmw] -- the parameter and lifecycle families bring their own inbox
 
 `RmwServiceServer::create` (the RMW-agnostic seam) takes an `InboxSpec`:
@@ -264,6 +311,8 @@ real zenoh queryable callback into `PARAM_INBOX` and taken, on the native
 lane; a `-D` override one byte short fails the BUILD with the message above
 (negative control). Cyclone and xrce parameter e2e cells unchanged.
 
+Claim: phase-461-W2. Depends on: phase-461-W1, phase-460-W2. Owns: packages/core/nros-rmw/src/, one const each under packages/rmw/cyclonedds/nros-rmw-cyclonedds, packages/rmw/xrce/nros-rmw-xrce and packages/rmw/cffi, packages/core/nros-node/src/parameter_services.rs (PARAM_INBOX and the asserts), packages/core/nros-node/src/lifecycle_services.rs, packages/core/nros-node/build.rs, packages/core/nros-params/build.rs only if a new export is needed. Gate: the const assert's negative control, the_worst_messages_fit_the_derived_bound with the inbox leg, just check knob-single-reader. Status: not started.
+
 ### W3 [cli] -- service and action request types are priced
 
 W6.a's refusal names it: `BoundInventory::record_message` sees `.msg` only, so
@@ -282,6 +331,8 @@ inbox lands below 1,024 in `entity_inventory.cmake`; a service whose request
 carries an uncapped unbounded field refuses the derivation naming the member,
 as the message road already does.
 
+Claim: phase-461-W3. Depends on: phase-461-W1. Owns: packages/cli/rosidl-codegen/src/bounds.rs, packages/cli/nros-cli-core/src/entity_inventory.rs (the NROS_DERIVED_*_INBOX_BYTES rows), cmake/NanoRosEntityInventory.cmake, packages/rmw/zenoh/nros-rmw-zenoh/build.rs (declared_service_request_bytes). Gate: just check knob-delivery, the OperateMrm pricing and the unbounded-member refusal. Status: not started.
+
 ### W4 [rmw-zenoh, nros-node] -- an inbox drop is counted and said once
 
 Two conditions, both silent today: the ring-full drop (`service.rs:268`) and
@@ -297,6 +348,8 @@ read-task batch at depth 1 and asserts the counter reads 1 and the log line
 fires once; a 2,408 B request at a node declaring 8 parameters is counted as
 an overflow and logged with both numbers.
 
+Claim: phase-461-W4. Depends on: phase-461-W1, phase-461-W2. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs (counters), packages/core/nros-node/src/parameter_services.rs (the issue-1271 once-log arm), packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs. Gate: the depth-1 double-request test and the 2,408 B overflow test. Status: not started.
+
 ### W5 [zephyr, downstream] -- the island links, and the map says why
 
 Rebuild the MR-CANHUBK344 image on this phase; record the region report and
@@ -307,6 +360,12 @@ knobs they trace to. The number to beat is 298,552 B needed; anything above
 Acceptance: the image links; `nros image-facts` reports the three inbox
 families with bytes, depth and origin (derived / stated); `check-knob-delivery`
 pairs every new `NROS_DERIVED_*` with its `NROS_RESOLVED_*`.
+
+The island half (the MR-CANHUBK344 rebuild and the section 5 table) is a
+separate unit, `island-W5`, in the island's own phase doc; the nano-ros half
+above is what this claim covers.
+
+Claim: phase-461-W5. Depends on: phase-461-W1, phase-461-W2. Owns: packages/cli/nros-cli-core/src/cmd/image_facts.rs, book/src/internals/measuring-static-memory.md; the island half is island-W5 in the island's own phase doc. Gate: just check knob-delivery and nros image-facts on the island image. Status: not started.
 
 ### W6 [cli, api] -- the workaround: a store without a server
 
@@ -373,6 +432,8 @@ native_sim to VERDICT PASS with all four components past their
 `declare_parameter` calls, and `nros image-facts` reports
 `max_queryables = 2`; `ros2 param list` on that image is empty and the book
 page for parameters says why.
+
+Claim: phase-461-W6. Depends on: phase-461-W1, phase-461-W2, phase-459-W2, phase-462-W1, phase-463-W2, phase-463-W1, phase-460-W3, phase-461-W3. Owns: packages/cli/cargo-nano-ros/src/capability_resolver.rs, packages/api/nros-cpp/Cargo.toml, packages/api/nros/Cargo.toml, packages/core/nros-node/Cargo.toml, packages/api/nros-cpp/src/params_shim.rs, packages/cli/nros-cli-core/src/entity_inventory.rs (param_nodes), packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs (:1086), packages/cli/nros-cli-core/src/codegen/entry/emit_rust.rs, packages/api/nros/src/lib.rs (:1397), the book's parameters page. Gate: just check infra-queryable-counts, the island bringup with features = ["params"] to VERDICT PASS on native_sim, nros image-facts max_queryables = 2. Status: not started.
 
 ## Gates
 
