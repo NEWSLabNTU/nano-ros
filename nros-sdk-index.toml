@@ -553,58 +553,56 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # producer and this row is its pin.
 #
 # THE `ref` IS NOT THE SUBMODULE PIN, and the sentence that used to sit here
-# said it was (issue 1413). Measured 2026-09-21: `source.ref` is `838ce948`,
-# the `packages/cli/third-party/play_launch` gitlink is `07f0461e`, and the
-# first is a STRICT ANCESTOR of the second by ~40 commits. Three documents
-# asserted lockstep, no gate measured it, and it drifted — which is what prose
-# guarding an unchecked invariant is for.
+# said it was (issue 1413). It drifted because three documents asserted lockstep
+# and no gate measured it — which is what prose guarding an unchecked invariant
+# is for. `check-play-launch-parser-ref` measures it now.
 #
-# The lag is DELIBERATE now, and the obvious repair is the trap. Issue 0897
-# W2b/W3 moved pyo3 OUT of the `play_launch_parser` crate inside that window:
-# the Python half became `pyexec` (a cdylib) loaded at run time by `pyload`,
-# and `pyload` is reached through `resolve/`, NOT through the standalone CLI's
-# `main.rs`. Both revisions built here and run against the same two files:
+# WHY THEY STILL DIFFER, measured rather than assumed. Issue 0897 W2b/W3 moved
+# pyo3 OUT of the `play_launch_parser` crate in `f7f6d2cf`: the Python half
+# became `pyexec` (a cdylib) loaded at run time by `pyload`, and `pyload` is
+# reached through `resolve/`, NOT through the standalone CLI's `main.rs`. Three
+# revisions built and run here against the same two launch files:
 #
 #   ref            DT_NEEDED                 .launch.py          $(eval '1+1')
 #   838ce948       libpython3.10.so.1.0      /from_python        /from_eval_2
+#   27b6749b       libpython3.10.so.1.0      /from_python        /from_eval_2
 #   07f0461e       (no libpython at all)     hard error          /from_eval_$(eval '1+1')
 #
 # The `.launch.py` arm is a clean catchable error by 0897's design. The
 # `$(eval …)` arm exits 0 and emits an UNEXPANDED substitution — a wrong node
-# name with no diagnostic. Bumping the ref would trade a stale-but-correct
-# parser for a current one that silently mis-parses, so the ref stays where the
-# binary still works and the gap is declared instead of hidden.
+# name with no diagnostic — so moving to the gitlink would trade a correct
+# parser for one that silently mis-parses.
 #
-# `838ce948` is NOT, however, the newest Python-capable commit, and saying so
-# would be this issue's own mistake one level down. MEASURED: pyo3 left in
-# `f7f6d2cf` ("the Python half is its own crate"), so its parent `27b6749b` is
-# the newest ref whose `cargo install` still yields a Python-capable binary —
-# built and run here: `libpython3.10.so.1.0` in `DT_NEEDED`, `.launch.py` ->
-# `/from_python`, `$(eval '1 + 1')` -> `/from_eval_2`. That is **54 commits
-# NEWER than this pin**, with a further 54 to the gitlink.
+# `27b6749b` is `f7f6d2cf^`: the NEWEST ref whose `cargo install` still yields a
+# Python-capable binary. The pin sat 54 commits behind it and now sits ON it —
+# that half of the gap is CLOSED (`0.1.0-nros2`, this entry). The remaining 54
+# commits to the gitlink are the blocked half, and closing them needs an install
+# target that builds `pyexec` + `pyload` and stages
+# `libplay_launch_parser_pyexec.so` beside the binary — the pair shape
+# `nros-launch-resolve` already ships and `launch_py_resolves_as_shipped`
+# already tests — or upstream restoring a Python-capable CLI binary.
 #
-# So the lag splits in two and only the second half is blocked:
+# Acceptance for this bump, run before it was cut: `nav2_compat`'s
+# `n11_launch_xml_ros2_compat_smoke` with its build-stage fixture REBUILT
+# against the new parser (it drives `nros_build::generate_run_plan` over a
+# nav2-shaped `launch/system.launch.xml` with `play_launch_parser` on PATH and
+# inspects the emitted `run_plan.rs` + `nros-plan.json`), plus the six
+# `record.json` consumers and the four L.6/L.7 tests — 11/11. Note the
+# `phase212_l6_launch_synth::*` acceptance `just/workspace.just` used to name is
+# itself stale: issue 0381 rewrote those tests to synthesise in-process, so they
+# never shell to the parser and cannot gate a bump of it. They were run anyway,
+# with each parser on PATH in turn, and are insensitive — measured, not assumed.
 #
-#   838ce948 -> 27b6749b   54 commits, SAFE, and a real bump — but it re-cuts
-#                          the dist (0.1.0-nros2) and `just/workspace.just`
-#                          names its acceptance: re-run the L.6 gate tests
-#                          `phase212_l6_launch_synth::*`. Not taken here
-#                          because that acceptance was not run, and a bump
-#                          whose acceptance nobody ran is how pins move wrong.
-#   27b6749b -> 07f0461e   54 commits, BLOCKED on upstream: register a `pyload`
-#                          backend in the CLI and ship
-#                          `libplay_launch_parser_pyexec.so` beside it — the
-#                          pair shape `nros-launch-resolve` already ships and
-#                          `launch_py_resolves_as_shipped` already tests.
 # Gate: `check-play-launch-parser-ref`, which asserts ancestry, the two
 # spellings agreeing, and that this declaration exists while they differ.
-# ref-lag: issue 1413 — past 27b6749b the CLI loses its Python backend and `$(eval …)` silently stops expanding; the safe half of the bump (to 27b6749b) needs a dist re-cut plus the L.6 gate tests
+# ref-lag: issue 1413 — the gitlink is 54 commits past `f7f6d2cf`, where the standalone CLI lost its Python backend; closing it needs an install target that stages `libplay_launch_parser_pyexec.so` beside the binary, not a ref bump
 #
-# SEEDED 2026-09-21 (issue 1273 / RFC-0099 D4) — the dist we said we would build
-# ourselves now exists. `nano-ros-sdk`'s `scripts/build-play_launch_parser.sh`
-# (phase-447 C2) landed on that repo's `main`, `build-tool.yml` was dispatched
-# with `tool=play_launch_parser version=0.1.0-nros1 upstream=<the ref below>`,
-# and tag `play_launch_parser-0.1.0-nros1` carries one asset per matrix host.
+# SEEDED 2026-09-21 (issue 1273 / RFC-0099 D4), then RE-CUT the same day at
+# `27b6749b` (issue 1413). `nano-ros-sdk`'s `scripts/build-play_launch_parser.sh`
+# (phase-447 C2) landed on that repo's `main`; `build-tool.yml` was dispatched
+# with `tool=play_launch_parser version=0.1.0-nros2 upstream=<the ref below>`,
+# and tag `play_launch_parser-0.1.0-nros2` carries one asset per matrix host.
+# (`0.1.0-nros1`, cut from `838ce948`, stays published and is simply older.)
 # This entry leaves the dist-or-reason ratchet accordingly.
 #
 # TWO OF THREE HOSTS, and the third is a MEASURED decline, not a gap. Read off
@@ -618,7 +616,8 @@ install = "cmake --build build --parallel $(nproc) --target install"
 #     `system` keeps them and gains `libpython310`: that is the soname-exact
 #     `[prereq.*]` whose `apt.noble = []` is what D1's backward half reads to
 #     refuse this dist on a host that ships 3.12, before downloading it.
-#   macos-arm64 — BUILT and PUBLISHED, and deliberately NOT declared here. Its
+#   macos-arm64 — BUILT and PUBLISHED, and deliberately NOT declared here; the
+#     nros2 artifact was re-measured and is the same shape as nros1's. Its
 #     `LC_LOAD_DYLIB` names `/Library/Frameworks/Python.framework/Versions/3.14/
 #     Python`, an ABSOLUTE path to the python.org framework the macos-14 runner
 #     happens to carry; there is no `@rpath`, so the binary cannot start on a
@@ -630,13 +629,14 @@ install = "cmake --build build --parallel $(nproc) --target install"
 #     that works, so the row stays out until the dist links a relocatable
 #     interpreter. Same shape as `[tool.esp32-qemu]`'s decline: measured, then
 #     declined, with the measurement written down. (macos-arm64 is therefore
-#     still source-built, which is what it was yesterday — nothing regressed.)
+#     still source-built, and a re-cut did not change that.)
 [tool.play_launch_parser]
-version = "0.1.0-nros1"
+version = "0.1.0-nros2"
 # `libpython3` is the SOURCE build's requirement (this host's own CPython);
 # `libpython310` is the DIST's (a hard single-minor `DT_NEEDED`, measured).
 system = ["libexpat1", "libpython3", "libpython310", "libz1"]
-# Measured 2026-09-21 on the published linux-x86_64 dist, with
+# Measured 2026-09-21 on the published linux-x86_64 dist (re-verified against
+# the `0.1.0-nros2` artifact after the ref bump, not carried over), with
 # LD_LIBRARY_PATH/PYTHONPATH/PYTHONHOME stripped the way the smoke path
 # spawns it: exit 0, the line below first on STDOUT, stderr empty. The
 # string is the crate `description`, so it moves only when the tool is
@@ -645,12 +645,12 @@ system = ["libexpat1", "libpython3", "libpython310", "libz1"]
 smoke = [
     { run = "bin/play_launch_parser --help", expect = "High-performance ROS 2 launch file parser" },
 ]
-upstream = "838ce948551f8ba263648fbb7eeb572cec9d5950" # = source.ref (play_launch pin; no upstream tags)
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/play_launch_parser-0.1.0-nros1/play_launch_parser-linux-x86_64.tar.zst", sha256 = "8b4d5848048ee9e12c30f59f9aba6c3931393752ea4f321792394aa5a17e6b39", floor = { glibc = "2.34" } }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/play_launch_parser-0.1.0-nros1/play_launch_parser-linux-arm64.tar.zst", sha256 = "15c76bddedb51468b82b3c61179d22a0c9210efd069d37488d9abb6deeec396c", floor = { glibc = "2.34" } }
+upstream = "27b6749b983391313bc717c7c75da959099a9d52" # = source.ref (play_launch pin; no upstream tags)
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/play_launch_parser-0.1.0-nros2/play_launch_parser-linux-x86_64.tar.zst", sha256 = "a7e77157226ec2798c50bf9aa5fcf5647a1dcd65fdda31d0f93123d1498abb1c", floor = { glibc = "2.34" } }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/play_launch_parser-0.1.0-nros2/play_launch_parser-linux-arm64.tar.zst", sha256 = "9145b5c72bec0f69422855bdb28e36d4075ac84011ffbb0b464567e38c3595f1", floor = { glibc = "2.34" } }
 [tool.play_launch_parser.source]
 git = "https://github.com/NEWSLabNTU/play_launch"
-ref = "838ce948551f8ba263648fbb7eeb572cec9d5950"
+ref = "27b6749b983391313bc717c7c75da959099a9d52"
 install = "cargo install --path src/ros-launch-resolve/parser/crates/play_launch_parser --root {prefix} --locked"
 
 # Corrosion — the CMake ↔ Rust/Cargo bridge that `corrosion_import_crate()`

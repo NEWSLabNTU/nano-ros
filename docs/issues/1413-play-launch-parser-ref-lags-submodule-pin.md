@@ -1,8 +1,8 @@
 ---
 id: 1413
 title: "`[tool.play_launch_parser].source.ref` lags the `play_launch` submodule
-  pin by ~40 commits, three documents assert the two cannot disagree, and no
-  gate measures it — and the obvious bump ships a SILENT mis-parse"
+  pin, three documents asserted the two cannot disagree, and no gate measured
+  it — half the gap is closed; the rest waits on the CLI regaining Python"
 status: open
 type: tech-debt
 area: cli, build
@@ -13,6 +13,9 @@ related: [issue-1273, issue-0897, issue-0609, issue-0507, issue-0500, rfc-0060, 
 ## The drift
 
 Two values name the same component and they do not match:
+
+*(As filed. See "What moved" below for the current state — the pin is
+`27b6749b` now.)*
 
 | where | value |
 | --- | --- |
@@ -128,6 +131,66 @@ In order:
   `$(eval)` path must not exit 0 with an unexpanded substitution).
 
 Either is upstream work in `NEWSLabNTU/play_launch`, not a re-cut here.
+
+## What moved (2026-09-21, same day)
+
+The safe half of the gap is **closed**. `source.ref` and `upstream` both moved
+`838ce948` -> **`27b6749b`** (= `f7f6d2cf^`, the newest Python-capable ref, 54
+commits forward), and the dist was re-cut as
+**`play_launch_parser-0.1.0-nros2`**:
+
+| asset | sha256 | floor |
+| --- | --- | --- |
+| `play_launch_parser-linux-x86_64.tar.zst` | `a7e77157226ec2798c50bf9aa5fcf5647a1dcd65fdda31d0f93123d1498abb1c` | `glibc = "2.34"` |
+| `play_launch_parser-linux-arm64.tar.zst` | `9145b5c72bec0f69422855bdb28e36d4075ac84011ffbb0b464567e38c3595f1` | `glibc = "2.34"` |
+| `play_launch_parser-macos-arm64.tar.zst` | `a02f2cc7ada3c19b696b870c22b880923b4a5621ec557d9195fe3486a84fb28a` | declined, see below |
+
+Everything re-MEASURED off the new artifacts rather than carried:
+
+* `DT_NEEDED` is `libpython3.10.so.1.0` again on both Linux hosts, so `system`
+  keeps `libpython310`. That is what was expected — and it was measured anyway,
+  because the expectation is exactly what went wrong the first time round.
+* Floors re-read with `scripts/sdk/measure-dist-floor.py`: `glibc = "2.34"`.
+* The `smoke` `expect` re-verified against the published nros2 binary with
+  `LD_LIBRARY_PATH`/`PYTHONPATH`/`PYTHONHOME` stripped: exit 0, the string first
+  on stdout, stderr empty.
+* The published nros2 binary itself re-checked for the capability the whole bump
+  is about: `.launch.py` -> `/from_python`, `$(eval '1 + 1')` -> `/from_eval_2`.
+* macos-arm64 re-measured: the same absolute
+  `/Library/Frameworks/Python.framework/Versions/3.14/Python` with no `@rpath`,
+  so the decline stands unchanged.
+
+### The acceptance — and a sixth stale claim
+
+`just/workspace.just` said a bump's acceptance was the L.6 gate tests
+`phase212_l6_launch_synth::*`. **That is stale too**: issue 0381 rewrote those
+tests to synthesise in-process (`plan.rs synthesise_self_model`) and deleted the
+`play_launch_parser_available()` gate, so they never shell to the parser and
+cannot gate a bump of it. Run anyway, with each parser on PATH in turn, and
+identical both ways — insensitive, measured rather than assumed.
+
+The acceptance that actually binds the parser is **`nav2_compat`'s
+`n11_launch_xml_ros2_compat_smoke`**: a build-stage fixture whose `build.rs`
+drives `nros_build::generate_run_plan` over a nav2-shaped
+`launch/system.launch.xml` **with `play_launch_parser` on PATH**, after which
+the test inspects the emitted `run_plan.rs` + `nros-plan.json` (and skips if the
+build fell back to the offline `Placeholder` stub). Its fixture was rebuilt
+against the `27b6749b` parser and it passes. Total: **11/11** — 1 nav2_compat,
+6 `record.json` consumers, 4 L.6/L.7.
+
+## Why this stays OPEN
+
+The remaining 54 commits to the gitlink are the blocked half. Past `f7f6d2cf`
+the standalone CLI has no Python backend, so the measured regression in the
+table above still applies to the gitlink itself. Closing it needs an install
+target that builds `pyexec` + `pyload` and stages
+`libplay_launch_parser_pyexec.so` beside the binary — the pair shape
+`nros-launch-resolve` already ships and `launch_py_resolves_as_shipped` already
+tests — or upstream restoring a Python-capable CLI binary. Either is work in
+`NEWSLabNTU/play_launch`.
+
+The issue is NARROWER now, not different: it is still "two pins on one
+component, and the index lags". Its identity has not been rewritten.
 
 ## Gate
 
