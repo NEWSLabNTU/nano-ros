@@ -1,0 +1,76 @@
+# The book's setup flow, EXECUTED — issue 1107 / phase-452 W3.
+#
+# `just probe` has existed since issue 0204 and no workflow ran it. The
+# `probe=NN` blocks in the book are extracted and run verbatim in pristine
+# containers, which is the difference between a page that has been proofread
+# and a page that has been executed — and the book is the one surface where
+# being wrong is REPLICATED rather than merely observed, because a new user
+# copies it.
+#
+# Both front doors, because they are two different machines:
+#
+#   * the CHECKOUT track — clone + bootstrap, then the first-node chapter.
+#     What everyone does until a release is cut.
+#   * the INSTALLED track — build the asset `release-nros.yml` would publish,
+#     install it into a second pristine container with nothing else mounted,
+#     and run `first-project.md` on a host with NO checkout. That page is the
+#     one carrying the post-RFC-0065 shape ("There is no entry package and no
+#     root CMakeLists.txt: the binary is *generated* from the bringup's
+#     system.toml"), so this is the job that executes the claim W3 is about.
+#     The released `nros` could once build nothing and nothing noticed, because
+#     every host that ran it had a checkout the SDK-root ladder reached first.
+#
+# NOT on pull_request, and not in a merge-gating lane: ~30-60 min per track
+# cold. Schedule plus dispatch, the `check-build` placement, for the same
+# reason — a lane nobody can afford per push gets skipped, which is worse than
+# a smaller one that runs.
+#
+# The two tracks are SEPARATE JOBS rather than one `just probe bootstrap` so a
+# failure names which front door broke; run serially, the second never reports
+# when the first is red.
+name: probe
+
+on:
+  schedule:
+    # 08:00 UTC — clear of gate (02), host-tests (03), live-peer (04),
+    # nightly (05), run-matrix (06) and the monthly roadmap audit (07).
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checkout-track:
+    name: book probe — checkout track
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: just probe checkout
+        env:
+          # `actions/checkout` leaves a DETACHED HEAD, and the probe refuses
+          # one by design ("set PROBE_BRANCH to a branch/tag to clone") rather
+          # than guessing which tree to test. Naming the ref is what makes the
+          # container clone the commit under test.
+          PROBE_BRANCH: ${{ github.ref_name }}
+        run: |
+          source ./activate.sh
+          just probe checkout
+
+  installed-track:
+    name: book probe — installed track
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: just probe installed
+        env:
+          PROBE_BRANCH: ${{ github.ref_name }}
+        run: |
+          source ./activate.sh
+          just probe installed

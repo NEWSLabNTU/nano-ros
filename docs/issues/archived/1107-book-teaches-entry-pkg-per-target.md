@@ -1,7 +1,7 @@
 ---
 id: 1107
 title: "The book teaches one Entry pkg per deploy target — the shape `nros build` retired; an out-of-tree consumer was scaffolded from it last week"
-status: open
+status: resolved
 type: bug
 area: docs
 severity: high
@@ -184,3 +184,50 @@ match.
   it directly with `cargo build -p esp32_entry --target
   riscv32imc-unknown-none-elf`. Deleting it means moving that row onto
   `nros build`, which is a build change, not a docs change.
+
+## Resolution (2026-09-21)
+
+**The prose half was already done, by other work.** Re-measured before acting,
+page by page against the table above:
+
+| page | today |
+| --- | --- |
+| `workspace-entry-pkg.md` | retitled **Images**, opens on `[image.native]` as a `system.toml` row; "And no entry packages, except the Zephyr one" |
+| `workspace-cpp.md` | "the entry is GENERATED into `build/<coord>/native_entry/`"; its one `src/native_entry/` is the documented `nros materialize` escape hatch |
+| `component-and-entry-pkg.md` | quotes RFC-0065 D4, *"A workspace contains no entry packages"* |
+| `workspace-mixed-language.md` | "Note there is no `MODEL` here … a *committed* one is banned outright (gate `check-no-tracked-models`)" |
+| `anatomy.md` | "generates its entry under `build/`" |
+| `first-project.md` | "There is no entry package and no root `CMakeLists.txt`: the binary is *generated* from the bringup's `system.toml`" |
+
+`robot_entry` appears nowhere in `book/src/` any more. phase-445 W7
+("the book teaches one board choice, not four config surfaces") and issue 1304
+did this between the filing and now.
+
+**The half that was NOT done is the one this issue's second acceptance is
+about.** `just probe` has existed since issue 0204 and **no workflow ran it** —
+measured: `grep -rn "just probe" .github/workflows/` returns nothing. So the
+book's claims were proofread, never executed, which is the distinction the
+acceptance draws and the reason a stale page could propagate in the first
+place.
+
+`.github/workflows/probe.yml` runs both tracks nightly at 08:00 UTC (clear of
+the five existing crons) plus `workflow_dispatch`. Two jobs rather than one
+`just probe bootstrap`, because the tracks are two different machines and run
+serially the second never reports when the first is red; `just probe checkout`
+is the new sibling of `just probe installed`.
+
+The INSTALLED track is the one that matters here: it installs a built release
+asset into a pristine container with no checkout mounted and runs
+`first-project.md` — the page carrying the post-RFC-0065 shape. Verified by
+extraction (`PROBE_EXTRACT_ONLY`) that its five steps include that page's
+`probe=50` / `probe=60` blocks (`nros new my_robot --workspace`, `nros sync`,
+`nros build`) and an assertion that the build actually configured.
+
+Not on `pull_request`: ~30-60 min per track cold, the `check-build` placement
+and the same reasoning — a lane nobody can afford per push gets skipped, which
+is worse than a smaller one that runs.
+
+One thing the workflow has to state that a local run does not:
+`actions/checkout` leaves a DETACHED HEAD and the probe refuses one by design
+rather than guessing which tree to test, so `PROBE_BRANCH` is set from
+`github.ref_name`.
