@@ -1,16 +1,24 @@
 # Phase 455 — a saturated zenoh queryable says so, and the rate that follows is measurable
 
-**Status (2026-09-18). W1, W2, W2.b, W3 and W5 LANDED, and the two defects W5's
-run exposed are CLOSED with them (`#1068`): issues 1341 and 1361.
-#1361 was the deeper one — a nano-ros action server never published a TERMINAL status
-on ANY backend — and its fix is what finally satisfied
-#1341's acceptance, live. **W4 is the only remainder**, and it is unblocked; it has
-simply not been run.** Closes phase-444 W2's acceptance by a different
-route than phase-444 assumed: not by re-running the hardware measurement, but by
-giving the failure an observable so it stops needing one. Implements the
-observability half of RFC-0089's rule — a failure a caller cannot see is a
-contract the caller cannot hold us to — and mirrors phase-444 W1, which landed
-the same shape on Cyclone.
+**Status (2026-09-21). COMPLETE — all six work items LANDED.** W1 (the counter),
+W2 (the completion rate), W2.b (the control W2 lacked), W3 (the Zenoh action
+interop cells), W4 (the probe on NSOS, `#1087`) and W5 (serve TRANSIENT_LOCAL,
+`#1040`). Every issue this phase opened or inherited is closed: 1332, 1341, 1361,
+1378, 1387.
+
+Phase-444 W2 stays open and stays the owner of the hardware re-measurement. What
+changed is what that run now MEANS: issue 0902's mechanism is fixed, counted from
+inside the image, and has a negative control, so a board run confirms a counter
+that already answers the question rather than being the only evidence anyone has.
+That was the state which made 0902 unfalsifiable for a month.
+
+Three findings this phase produced that outlived it, each filed where it belongs:
+**#1361** (no backend ever published a terminal status — only findable once W5
+made the retained sample readable), **#1387** (a west workspace inside one
+checkout naming another checkout's nano-ros, so a month of Zephyr images were
+half of each tree), and the measurement that killed this phase's own first
+acceptance — a rate is an inference, and issue 1332 records why the native lane
+cannot move the counter at all.
 
 ## What landed, and the one thing that blocks the rest
 
@@ -21,7 +29,7 @@ the same shape on Cyclone.
 | W2.b — the control W2 lacked | LANDED, `ef8e09bc6c` | a synthetic declined-query source; RED with `1a032a10b` reverted (`held=4 finalised=0`), GREEN with it (`declines=6 held=0`) |
 | W3 — the Zenoh action cells | LANDED, `c2584bda6c` | first Zenoh action interop cells in the tree; n2r PASS live, r2n FAIL citing 1341 |
 | W5 — serve TRANSIENT_LOCAL | LANDED, `#1040` | publisher-side query-on-match at `<topic>/@adv/pub/<zid>/<eid>/_`; a stock `rclcpp` reader reads `Durability: TRANSIENT_LOCAL` off the graph and a late joiner receives the retained sample, where `volatile` at the same moment times out; build-time ceiling refuses a third TL publisher naming `ZPICO_MAX_TL_PUBLISHERS` |
-| W4 — the probe on NSOS | **NOT STARTED**, unblocked | the refusal W5 removed was the blocker; the probe awaits `get_result`, not `/status`, so #1361 does not block it |
+| W4 — the probe on NSOS | LANDED, `#1087` | `completed 3/3`, `refusals=0`, 22.7 s on `native_sim/native/64`; runner `just zephyr test-action-completion`. A bespoke zephyr↔native pair in `tests/zephyr.rs`, not an `interop::CELLS` or `matrix::CELLS` row, so it records no verdict-file entry |
 
 **W2's acceptance as this document first wrote it was NOT met, and W2.b is why
 it exists.** The rate probe measured `completed == sent` and `refusals == 0`,
@@ -41,7 +49,7 @@ idle soak — zero declines, `payload_len=20` throughout, and a 12-way concurren
 service-call flood answered 12/12 with none either. W3's cells will therefore
 NOT be the stronger control 1332 hoped for. The synthetic source is the control.
 
-**W4 was blocked by [issue 1341](../issues/archived/1341-zenoh-action-server-refuses-its-own-status-qos.md);
+**W4 was blocked by [issue 1341](../../issues/archived/1341-zenoh-action-server-refuses-its-own-status-qos.md);
 W5 removed the block.** `b0ea5a04b` (phase-428 W9) made the zenoh shim refuse
 `TRANSIENT_LOCAL`, and the action `/status` publisher passes exactly that, so
 every zenoh action server exited 1 at node declaration — including the one W2's
@@ -87,7 +95,7 @@ inside it:
   member of the tracked root?); W5 worked around it with
   `just native build-fixture-rust`.
 * The concurrent-`idlc` defect was filed here as #1367 and is a **DUPLICATE** of
-  [#1311](../issues/archived/1311-cyclonedds-sumseq-generated-c-fails-to-compile.md),
+  [#1311](../../issues/archived/1311-cyclonedds-sumseq-generated-c-fails-to-compile.md),
   open since 2026-09-11 and fixed at `f62c17359a` the same night — checking for
   an existing report is the step that was skipped. 1311's cause is sharper than
   #1367 guessed: `tests/CMakeLists.txt` listed each generated-source list in the
@@ -97,7 +105,7 @@ inside it:
 
 ## Why this phase exists
 
-[Issue 0902](../issues/0902-action-goal-completion-is-variable.md) measured action
+[Issue 0902](../../issues/0902-action-goal-completion-is-variable.md) measured action
 goals completing between 20 % and 90 % on one build, with no session expiry, no
 crash and no discovery failure. The mechanism was found: zenoh-pico stores a
 cloned query in one of `ZPICO_MAX_PENDING_REPLIES` (4) slots BEFORE the user
