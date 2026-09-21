@@ -10,7 +10,7 @@ use crate::session;
 use super::types::{DEFAULT_TX_BUF, NodeError};
 
 /// Default polling interval (ms) for sync wait loops.
-const DEFAULT_SPIN_INTERVAL_MS: u64 = 10;
+pub(super) const DEFAULT_SPIN_INTERVAL_MS: u64 = 10;
 
 /// Check whether the given budget has been exhausted.
 ///
@@ -34,7 +34,7 @@ const DEFAULT_SPIN_INTERVAL_MS: u64 = 10;
 /// same structural bug but currently passes all tests. Left on
 /// max_spins until a test surfaces it."* The NuttX Rust action
 /// E2E is that test.
-struct WaitBudget {
+pub(super) struct WaitBudget {
     /// The clock this budget is counting against, when the build has one.
     ///
     /// phase-359 W10 — this used to be a `std`/`no_std` PAIR: a
@@ -60,7 +60,7 @@ struct WaitBudget {
 }
 
 impl WaitBudget {
-    fn new(max_iterations: u64, timeout: core::time::Duration) -> Self {
+    pub(super) fn new(max_iterations: u64, timeout: core::time::Duration) -> Self {
         let clock = super::spin::default_clock_us_fn();
         let timeout_us = timeout.as_micros().min(u64::MAX as u128) as u64;
         Self {
@@ -83,7 +83,7 @@ impl WaitBudget {
     /// With no clock the build has no deadline to measure against, so the
     /// caller's interval stands; that is the same honest fallback `tick`
     /// makes.
-    fn next_spin_interval(&self, default: core::time::Duration) -> core::time::Duration {
+    pub(super) fn next_spin_interval(&self, default: core::time::Duration) -> core::time::Duration {
         let Some(clock) = self.clock else {
             // No clock: elapsed is unknowable, but the TOTAL budget is not, and
             // one spin may never exceed it.
@@ -102,7 +102,7 @@ impl WaitBudget {
         }
     }
 
-    fn tick(&mut self) -> bool {
+    pub(super) fn tick(&mut self) -> bool {
         match self.clock {
             Some(clock) => clock() < self.deadline_us,
             None => {

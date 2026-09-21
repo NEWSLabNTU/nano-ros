@@ -12,6 +12,11 @@
     "disposition": "absent",
     "why": "rclc ships a second registration entry point whose callback also receives the `rmw_request_id_t`. Ours has one registration verb: the correlation token is an `int64_t` sequence number that `nros_client_send_request` returns and `nros_service_send_response_raw` takes back (see the service stage's `cpp:Client::create_request_header`), and it belongs to the ENTITY, not to a second `add_*` overload. A registration entry point per callback shape is the `executor-owns-no-entity-storage` rule seen from the executor's side."
   },
+  "c:executor_add_guard_condition": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "rclc's `rclc_executor_add_guard_condition(executor, gc, callback)`. RETIRED on our side by phase-417 W4.e (2026-09-18), with no forwarder, because creation IS registration now: `nros_node_create_guard_condition` reaches the arena through the node's executor and there is no second step to make. Keeping it would have kept the state the retirement removes -- a guard condition that exists and is registered with nothing. rclc needs the verb because its `init` takes a `context` and its executor takes the callback; ours binds the callback to the ENTITY (RFC-0041) at the one call. See `c:guard_condition_set_callback` for the measurement and the blast radius."
+  },
   "c:executor_add_on_shutdown_callback": {
     "verdict": "extension",
     "why": "The post-teardown half of `c:executor_add_pre_shutdown_callback`; rclc has neither. Runs after the session is closed, for what survives the middleware (release a GPIO, stop a peripheral clock). Issue 0790."
@@ -133,6 +138,10 @@
     "verdict": "extension",
     "why": "phase-417 stage 3. Fire when the handle at the index stored in `obj` has data -- ROS 2 has no counterpart, because upstream's four built-in triggers are any / all / always / one-by-entity-pointer. This IS the behaviour `rclc_executor_trigger_one` had here before stage 3, moved to a name that does not claim upstream's contract (the ledger row for that gap said: 'if the index form is wanted as well, give it a DIFFERENT name'). Kept rather than deleted because our own doc comment recommended the index spelling, so an out-of-tree image may be using it; an image that knows its registration order pays no pointer comparison for the trigger. Naming the entity is the portable spelling and what a ported node writes."
   },
+  "c:executor_wait_for_subscribers": {
+    "verdict": "divergence",
+    "why": "phase-444. OUR spelling of upstream's `rcl_wait_for_subscribers` — see `c:wait_for_subscribers` for the decision, the RFC-0021 argument for why the one blocking member of the graph family is allowed to block, and why `Unsupported` returns at once instead of waiting out the budget.\n\nSame verb as ROS 2; the RECEIVER differs, as it does for every other graph verb here. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE transport session for the whole image — a session per node is RAM a 128 KiB target does not have — and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
   "c:get_zero_initialized_guard_condition": {
     "verdict": "declined",
     "disposition": "adopt",
@@ -175,6 +184,11 @@
     "disposition": "absent",
     "why": "rcl's pimpl; our handles carry their state inline. See `c:publisher_impl_t`."
   },
+  "c:guard_condition_init": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "rcl's `rcl_guard_condition_init(gc, context, options)`, and ours is RETIRED as of phase-417 W4.e (2026-09-18) rather than renamed: a guard condition is created on the NODE, in one call, with its callback bound at creation. The reasoning and the measurement are at `c:guard_condition_set_callback`; the short version is that ours initialised nothing an executor could see, so the object between `init` and `nros_executor_add_guard_condition` was inert and said `NROS_RET_OK`. A ported rcl node writes `nros_node_create_guard_condition(&node, &gc, cb, ctx)` -- one call where rcl needs `init` plus a wait-set registration, because we have no wait set (`cpp:WaitSet`). `rcl_get_zero_initialized_guard_condition` is kept, so the zero-init idiom a ported file opens with still compiles."
+  },
   "c:guard_condition_init_from_rmw": {
     "verdict": "declined",
     "disposition": "absent",
@@ -205,6 +219,10 @@
   "c:guard_condition_trigger": {
     "verdict": "extension",
     "why": "the ours-only half of `c:trigger_guard_condition`; recorded so the pair is visible from both sides. Thread-safe and lock-free -- it stores into an atomic flag in the executor's arena and then fires the runtime wake hook, so an ISR or a foreign task can release a `spin_once` already blocked in `drive_io`. CORRECTED 2026-09-18 (phase-417 W4.e): this row, its sibling `c:trigger_guard_condition`, `nros-c`'s own docs and the custom-platform example's README all named `nros_guard_condition_trigger` while NOTHING DEFINED IT -- `grep -c nros_guard_condition_trigger nros_generated.h` was 0, and the only exported firing verb was rcl's `rcl_trigger_guard_condition`. It exists now and is the definition; rcl's spelling forwards to it. The wake claim above is also bounded: a C executor reaches `Executor::from_session_ptr_in`, which installs no backend wake callback (the three Rust `open*` paths do), so from C the trigger is dispatched at the spin boundary rather than pre-empting a parked transport read. W4.e measured that, fixed the half that was fixable without a lifetime hazard -- a wake landing BETWEEN spins used to make the next spin drive its FULL timeout, which is the opposite of what the wake flag is for, 400 ms measured against 0 ms after -- and left the rest named."
+  },
+  "c:node_create_guard_condition": {
+    "verdict": "extension",
+    "why": "phase-417 W4.e -- the C half of the one creation shape, and the C counterpart of `cpp:Node::create_guard_condition`. rcl/rclc have no node-level entity-creation verb for a guard condition at all: rcl builds one from a `context` and rclc registers it with an executor, which is two owners for one object. Ours takes the owner a caller actually has -- `(node, out, callback, context)`, caller-owned storage, callback bound at creation, registered in that node's executor arena with that node's `SchedContext`. A node reaching no executor (the legacy `rclc_node_init_default` path) gets `NROS_RET_NOT_INIT` rather than a half-made object. Behavioural proof: `packages/api/nros-c/tests/run/node_guard_condition.c` on `just check c`."
   },
   "c:sched_class_t": {
     "verdict": "extension",
@@ -486,6 +504,10 @@
     "verdict": "extension",
     "why": "INTERNAL, not user API -- 'Not intended for user code', in the header's own words. The guard-condition twin of `cpp:Timer::attach_closure_block`, and that row carries the reasoning: our runtime callback is a raw C function pointer, so the heap-allocated `std::function<void()>` it points into needs an owner with the right lifetime on this side, and the owning member is unconditional (phase-442 W1, issue 1225) so that `sizeof` cannot follow a capability probe."
   },
+  "cpp:GuardCondition::clear": {
+    "verdict": "extension",
+    "why": "phase-417 W4.e -- the polling half, added so the RFC-0022 polling tier reads the same in all three languages. The reason, the bound and what forced it are at `c:guard_condition_is_triggered`; in one line: the executor consumes the flag on dispatch, so this answers \"set and not yet dispatched\", and rcl/rclcpp/rclrs have no reader because a wait set is their only way to observe a guard condition. This is the clearing half: it takes the flag without dispatching, and Rust's returns what the flag WAS so a poller can take-and-clear without racing another thread's `trigger`."
+  },
   "cpp:GuardCondition::exchange_in_use_by_wait_set_state": {
     "verdict": "declined",
     "disposition": "absent",
@@ -500,6 +522,10 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "our RMW seam is the vtable (RFC-0035), not an entity accessor. See `c:node_get_rmw_handle`."
+  },
+  "cpp:GuardCondition::is_triggered": {
+    "verdict": "extension",
+    "why": "phase-417 W4.e -- the polling half, added so the RFC-0022 polling tier reads the same in all three languages. The reason, the bound and what forced it are at `c:guard_condition_is_triggered`; in one line: the executor consumes the flag on dispatch, so this answers \"set and not yet dispatched\", and rcl/rclcpp/rclrs have no reader because a wait set is their only way to observe a guard condition."
   },
   "cpp:GuardCondition::is_valid": {
     "verdict": "extension",
@@ -782,6 +808,11 @@
     "verdict": "extension",
     "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436 W7. Whether a platform park primitive is installed. Load-bearing rather than informational: a park that waits on its own fresh object is NOT breakable by the backend's listener, and installing one makes latency WORSE — once a port has parked, the transport drain drops to non-blocking, so an unbreakable park sleeps out its full deadline with data already waiting."
   },
+  "rust:Executor::install_wake_signal_on_primary": {
+    "verdict": "extension",
+    "why": "issue 1385. Hands the primary session the runtime wake callback, so an arrival the BACKEND signals — from a worker thread or an ISR, rather than from the recv the executor is parked in — cuts a parked `spin_once` short instead of letting it spend the caller's whole budget. Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `wake_signal` or `set_wake_callback` at all. Upstream has no name for it because upstream has `rcl_wait` — a wait set over fds it owns — where we have one blocking session and a vtable slot a backend fills; see `c:wake_state_t` for the entity-level half of the same shape.\n\n`pub` rather than private, which is the whole of what this row records: the three `Executor::open*` paths call it themselves, and a binding that builds its executor over a session it BORROWS (`from_session_ptr_in`) reaches none of them, so it has to call it. `nros_executor_init` is that binding and until 1385 it did not, leaving `has_async_wake` false for the life of every C executor on every backend. Same reason `rust:Executor::set_node_identity` and `set_primary_identity` are public.\n\nOne-way: the matching clear is the executor's own (`clear_wake_signal`, run from `close()` and from `drop`), so a caller that installs owes nothing further and cannot get the teardown order wrong.",
+    "bucket": "ours-only"
+  },
   "rust:Executor::is_halted": {
     "verdict": "extension",
     "why": "reads the flag `rust:Executor::halt*` sets -- phrased inversely to rclcpp's `is_spinning`, which C++ grew in phase-417 W4.c; C exports `nros_executor_is_spinning` (phase-417 W4.c), so every language can be asked; this stays the INVERSE question -- `is_halted` reads \"a cancel has been REQUESTED\", `is_spinning` reads \"a loop is RUNNING\", and all four combinations are reachable.",
@@ -826,6 +857,11 @@
   "rust:Executor::register_guard_condition": {
     "verdict": "divergence",
     "why": "creates the guard condition ON THE EXECUTOR and returns `(HandleId, GuardCondition)`. rclrs constructs a `GuardCondition` from a `Context` and adds it to a wait set; rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`. so the executor has to own the flag -- it lives in the arena, which is what makes the handle `Send + Sync` with no allocation. SINCE phase-417 W4.e this is the ours-only PRIMITIVE, not the verb a Rust user reaches for: `NodeCtx::create_guard_condition` is the node-level spelling (see `rust:NodeCtx::create_guard_condition`) and it calls `register_guard_condition_on(Some(node_id), ..)`, so a node-created guard inherits that node's `SchedContext` like every other handle the node makes. The executor form stays because an image with no node -- a bare `Executor::open` plus a wake source -- still has to be able to make one. See `c:guard_condition_set_callback` for the three-owner state this ended.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::register_guard_condition_on": {
+    "verdict": "extension",
+    "why": "phase-417 W4.e -- the node-bound form of `rust:Executor::register_guard_condition`, and the one place the binding is done, so `NodeCtx::create_guard_condition` is a forwarder rather than a second implementation. `node_id == None` is exactly the old behaviour, which is why the nodeless spelling survives as a call to this one. rclrs has neither: its guard condition comes from a `Context` and goes into a wait set (`cpp:WaitSet`). The `_on` suffix is this tree's existing spelling for \"the same registrar, bound to a node\" -- `register_timer_on`, `create_publisher_raw_on`, `declare_parameter_on`.",
     "bucket": "ours-only"
   },
   "rust:Executor::register_wake_source": {
@@ -933,6 +969,10 @@
     "verdict": "extension",
     "why": "phase-436 E3. Whether `stack-headroom-runtime` is armed on a port that cannot measure: a minimum is set, but the port's `stack_unused_bytes` answers 0, which the rule reads as \"not instrumented\" and skips every tick. `true` means the rule's silence is not evidence of headroom.\n\nExists because the two cases were indistinguishable. On ASI's default Zephyr FVP build (no `CONFIG_INIT_STACKS`) the rule was armed by the entry and reported zero violations, which read as a healthy stack and was in fact no measurement at all. Recorded when the bound is set, on the thread it describes, with one warning naming the fix.\n\nNo upstream counterpart: rclcpp/rclc/rclrs have no stack-headroom rule, so nothing to be blind about (same basis as `rust:Executor::set_min_stack_headroom_bytes` beside it)."
   },
+  "rust:Executor::wait_for_subscribers": {
+    "verdict": "divergence",
+    "why": "phase-444. OUR spelling of upstream's `rcl_wait_for_subscribers` — see `c:wait_for_subscribers` for the decision, the RFC-0021 argument for why the one blocking member of the graph family is allowed to block, and why `Unsupported` returns at once instead of waiting out the budget.\n\nSame verb as ROS 2; the RECEIVER differs, as it does for every other graph verb here. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE transport session for the whole image — a session per node is RAM a 128 KiB target does not have — and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
+  },
   "rust:Executor::wake*": {
     "verdict": "extension",
     "why": "release a `spin_once` blocked in the backend's `drive_io` before its poll timeout expires, from another task or an ISR, and hand out the handle that does it. This is what a guard condition is FOR in rclcpp, reached there through the wait set; with no wait set (rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`.) the wake is a primitive on the executor. Phase 104.C.6.",
@@ -1007,6 +1047,14 @@
     "disposition": "absent",
     "why": "part of rclrs 0.5's async executor machine: an `ExecutorRuntime` behind the `Executor`, an `ExecutorChannel` carrying work to it, `Worker`s with their own payloads, `ActivityListener`s, and `Waitable`s wrapping each rcl primitive. Three constraints refuse the whole layer at once. RFC-0021: no futures and no async runtime -- rclrs drives `spin_async` on async-std/tokio, and a no_std image has neither. RFC-0002: one executor per RTOS task, dispatching FIFO from a fixed arena, so there is no work to send anywhere and no second thread to send it from. no allocator -- the channels, the `Vec<Waitable>` and the boxed tasks all allocate per item on the dispatch path."
   },
+  "rust:GuardCondition::clear": {
+    "verdict": "extension",
+    "why": "phase-417 W4.e -- the polling half, added so the RFC-0022 polling tier reads the same in all three languages. The reason, the bound and what forced it are at `c:guard_condition_is_triggered`; in one line: the executor consumes the flag on dispatch, so this answers \"set and not yet dispatched\", and rcl/rclcpp/rclrs have no reader because a wait set is their only way to observe a guard condition. This is the clearing half: it takes the flag without dispatching, and Rust's returns what the flag WAS so a poller can take-and-clear without racing another thread's `trigger`."
+  },
+  "rust:GuardCondition::is_triggered": {
+    "verdict": "extension",
+    "why": "phase-417 W4.e -- the polling half, added so the RFC-0022 polling tier reads the same in all three languages. The reason, the bound and what forced it are at `c:guard_condition_is_triggered`; in one line: the executor consumes the flag on dispatch, so this answers \"set and not yet dispatched\", and rcl/rclcpp/rclrs have no reader because a wait set is their only way to observe a guard condition."
+  },
   "rust:HandleId": {
     "verdict": "extension",
     "why": "the opaque slot index registration returns, and what `Trigger::One` and `HandleSet` are written in terms of. See `rust:Trigger`."
@@ -1047,6 +1095,11 @@
   "rust:Node::create_callback_group": {
     "verdict": "extension",
     "why": "RFC-0047 / phase 273. The group decides which `SchedContext` the callback runs under -- which RTOS priority tier, and the deadline policy when it overruns. Same verdict and same reason as `rust:SchedContext`: rclrs 0.7.0 has NO callback groups at all (measured: zero `CallbackGroup` / `callback_group` identifiers in the recorded surface -- its isolation primitive is `Worker`, `rust:Node::create_worker`, which is `declined` here), and rclcpp's callback groups carry CONCURRENCY rules and no priority, so neither library has the concept this takes. This names one: it returns a `CallbackGroup` token to pass to the `_in_group` create variants. The token is a `heapless::String<32>` rather than an `Arc` because there is no allocator -- a name longer than 32 bytes is truncated, which is the constraint made visible in the contract.\n\nOn `NodeCtx`, the executor-borrowing node handle (`exec.node_mut(id)`), which the correlator folds onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
+  },
+  "rust:Node::create_guard_condition": {
+    "verdict": "extension",
+    "why": "phase-417 W4.e -- the Rust half of the one creation shape (`NodeCtx::create_guard_condition`), and the verb a Rust user writes. rclrs has no counterpart: it builds a `GuardCondition` from a `Context` and hands it to a wait set (rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`), so there is nothing for this to correspond to -- which is what makes it an extension rather than a rename. It returns `(HandleId, GuardCondition)`: the id is the arena slot, for `trigger_one` and `bind_handle_to_sched_context`, and the handle is what goes to the other thread. Node-level BECAUSE it binds the node: the guard takes the node's default `SchedContext`, which is the whole content of \"the node owns it\" for a callback sharing one executor with every other tier in the image (RFC-0047). The ours-only primitive underneath is `rust:Executor::register_guard_condition`.",
+    "bucket": "ours-only"
   },
   "rust:PayloadTask": {
     "verdict": "declined",
@@ -1311,50 +1364,5 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "part of rclrs 0.5's async executor machine: an `ExecutorRuntime` behind the `Executor`, an `ExecutorChannel` carrying work to it, `Worker`s with their own payloads, `ActivityListener`s, and `Waitable`s wrapping each rcl primitive. Three constraints refuse the whole layer at once. RFC-0021: no futures and no async runtime -- rclrs drives `spin_async` on async-std/tokio, and a no_std image has neither. RFC-0002: one executor per RTOS task, dispatching FIFO from a fixed arena, so there is no work to send anywhere and no second thread to send it from. no allocator -- the channels, the `Vec<Waitable>` and the boxed tasks all allocate per item on the dispatch path."
-  },
-  "c:guard_condition_init": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "why": "rcl's `rcl_guard_condition_init(gc, context, options)`, and ours is RETIRED as of phase-417 W4.e (2026-09-18) rather than renamed: a guard condition is created on the NODE, in one call, with its callback bound at creation. The reasoning and the measurement are at `c:guard_condition_set_callback`; the short version is that ours initialised nothing an executor could see, so the object between `init` and `nros_executor_add_guard_condition` was inert and said `NROS_RET_OK`. A ported rcl node writes `nros_node_create_guard_condition(&node, &gc, cb, ctx)` -- one call where rcl needs `init` plus a wait-set registration, because we have no wait set (`cpp:WaitSet`). `rcl_get_zero_initialized_guard_condition` is kept, so the zero-init idiom a ported file opens with still compiles."
-  },
-  "c:executor_add_guard_condition": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "why": "rclc's `rclc_executor_add_guard_condition(executor, gc, callback)`. RETIRED on our side by phase-417 W4.e (2026-09-18), with no forwarder, because creation IS registration now: `nros_node_create_guard_condition` reaches the arena through the node's executor and there is no second step to make. Keeping it would have kept the state the retirement removes -- a guard condition that exists and is registered with nothing. rclc needs the verb because its `init` takes a `context` and its executor takes the callback; ours binds the callback to the ENTITY (RFC-0041) at the one call. See `c:guard_condition_set_callback` for the measurement and the blast radius."
-  },
-  "c:node_create_guard_condition": {
-    "verdict": "extension",
-    "why": "phase-417 W4.e -- the C half of the one creation shape, and the C counterpart of `cpp:Node::create_guard_condition`. rcl/rclc have no node-level entity-creation verb for a guard condition at all: rcl builds one from a `context` and rclc registers it with an executor, which is two owners for one object. Ours takes the owner a caller actually has -- `(node, out, callback, context)`, caller-owned storage, callback bound at creation, registered in that node's executor arena with that node's `SchedContext`. A node reaching no executor (the legacy `rclc_node_init_default` path) gets `NROS_RET_NOT_INIT` rather than a half-made object. Behavioural proof: `packages/api/nros-c/tests/run/node_guard_condition.c` on `just check c`."
-  },
-  "cpp:GuardCondition::is_triggered": {
-    "verdict": "extension",
-    "why": "phase-417 W4.e -- the polling half, added so the RFC-0022 polling tier reads the same in all three languages. The reason, the bound and what forced it are at `c:guard_condition_is_triggered`; in one line: the executor consumes the flag on dispatch, so this answers \"set and not yet dispatched\", and rcl/rclcpp/rclrs have no reader because a wait set is their only way to observe a guard condition."
-  },
-  "rust:GuardCondition::is_triggered": {
-    "verdict": "extension",
-    "why": "phase-417 W4.e -- the polling half, added so the RFC-0022 polling tier reads the same in all three languages. The reason, the bound and what forced it are at `c:guard_condition_is_triggered`; in one line: the executor consumes the flag on dispatch, so this answers \"set and not yet dispatched\", and rcl/rclcpp/rclrs have no reader because a wait set is their only way to observe a guard condition."
-  },
-  "cpp:GuardCondition::clear": {
-    "verdict": "extension",
-    "why": "phase-417 W4.e -- the polling half, added so the RFC-0022 polling tier reads the same in all three languages. The reason, the bound and what forced it are at `c:guard_condition_is_triggered`; in one line: the executor consumes the flag on dispatch, so this answers \"set and not yet dispatched\", and rcl/rclcpp/rclrs have no reader because a wait set is their only way to observe a guard condition. This is the clearing half: it takes the flag without dispatching, and Rust's returns what the flag WAS so a poller can take-and-clear without racing another thread's `trigger`."
-  },
-  "rust:GuardCondition::clear": {
-    "verdict": "extension",
-    "why": "phase-417 W4.e -- the polling half, added so the RFC-0022 polling tier reads the same in all three languages. The reason, the bound and what forced it are at `c:guard_condition_is_triggered`; in one line: the executor consumes the flag on dispatch, so this answers \"set and not yet dispatched\", and rcl/rclcpp/rclrs have no reader because a wait set is their only way to observe a guard condition. This is the clearing half: it takes the flag without dispatching, and Rust's returns what the flag WAS so a poller can take-and-clear without racing another thread's `trigger`."
-  },
-  "rust:Node::create_guard_condition": {
-    "verdict": "extension",
-    "why": "phase-417 W4.e -- the Rust half of the one creation shape (`NodeCtx::create_guard_condition`), and the verb a Rust user writes. rclrs has no counterpart: it builds a `GuardCondition` from a `Context` and hands it to a wait set (rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`), so there is nothing for this to correspond to -- which is what makes it an extension rather than a rename. It returns `(HandleId, GuardCondition)`: the id is the arena slot, for `trigger_one` and `bind_handle_to_sched_context`, and the handle is what goes to the other thread. Node-level BECAUSE it binds the node: the guard takes the node's default `SchedContext`, which is the whole content of \"the node owns it\" for a callback sharing one executor with every other tier in the image (RFC-0047). The ours-only primitive underneath is `rust:Executor::register_guard_condition`.",
-    "bucket": "ours-only"
-  },
-  "rust:Executor::register_guard_condition_on": {
-    "verdict": "extension",
-    "why": "phase-417 W4.e -- the node-bound form of `rust:Executor::register_guard_condition`, and the one place the binding is done, so `NodeCtx::create_guard_condition` is a forwarder rather than a second implementation. `node_id == None` is exactly the old behaviour, which is why the nodeless spelling survives as a call to this one. rclrs has neither: its guard condition comes from a `Context` and goes into a wait set (`cpp:WaitSet`). The `_on` suffix is this tree's existing spelling for \"the same registrar, bound to a node\" -- `register_timer_on`, `create_publisher_raw_on`, `declare_parameter_on`.",
-    "bucket": "ours-only"
-  },
-  "rust:Executor::install_wake_signal_on_primary": {
-    "verdict": "extension",
-    "why": "issue 1385. Hands the primary session the runtime wake callback, so an arrival the BACKEND signals — from a worker thread or an ISR, rather than from the recv the executor is parked in — cuts a parked `spin_once` short instead of letting it spend the caller's whole budget. Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `wake_signal` or `set_wake_callback` at all. Upstream has no name for it because upstream has `rcl_wait` — a wait set over fds it owns — where we have one blocking session and a vtable slot a backend fills; see `c:wake_state_t` for the entity-level half of the same shape.\n\n`pub` rather than private, which is the whole of what this row records: the three `Executor::open*` paths call it themselves, and a binding that builds its executor over a session it BORROWS (`from_session_ptr_in`) reaches none of them, so it has to call it. `nros_executor_init` is that binding and until 1385 it did not, leaving `has_async_wake` false for the life of every C executor on every backend. Same reason `rust:Executor::set_node_identity` and `set_primary_identity` are public.\n\nOne-way: the matching clear is the executor's own (`clear_wake_signal`, run from `close()` and from `drop`), so a caller that installs owes nothing further and cannot get the teardown order wrong.",
-    "bucket": "ours-only"
   }
 }

@@ -4701,6 +4701,104 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
+    /// phase-444 — block until at least `count` publishers are visible on
+    /// `topic_name`, or `timeout` elapses. Upstream's `rcl_wait_for_publishers`.
+    ///
+    /// Returns `Ok(true)` when the graph showed at least `count` inside the
+    /// budget, `Ok(false)` on timeout. The startup-ordering primitive one
+    /// entity kind over from [`Client::wait_for_service`](super::handles::Client::wait_for_service),
+    /// and built the same way: a spin on a discovery read, so other
+    /// subscriptions and timers keep making progress while it waits.
+    ///
+    /// **This is the one blocking member of the graph family, and it does not
+    /// weaken the family's contract — it composes it.** The query underneath
+    /// ([`count_publishers`](Self::count_publishers)) still reports only what
+    /// has been DISCOVERED and still never blocks; what waits is this loop,
+    /// and it waits by POLLING that query. RFC-0021 is the rule that governs
+    /// it, and that rule does not forbid blocking: it requires a blocking
+    /// helper to take an executor and drive it, which is what makes the
+    /// timeout reliable on a single-threaded transport and what makes the
+    /// reentrancy visible at the call site.
+    ///
+    /// **`Unsupported` is propagated IMMEDIATELY, not waited out** — and this
+    /// is the one place it deliberately differs from `wait_for_service`, which
+    /// treats a backend that cannot answer as "keep waiting" and reports
+    /// `Ok(false)` at the deadline (issue 1087). That is right for a service
+    /// probe, where not-yet-answerable is a transient. It is wrong here: a
+    /// backend with no graph (XRCE) can never answer, so spending the budget
+    /// to return `Ok(false)` would report "no publishers appeared" for a
+    /// backend that cannot see publishers at all — collapsing "cannot tell
+    /// you" into "not there", which is exactly the distinction RFC-0036 exists
+    /// to keep and which every other method in this family promises to keep.
+    ///
+    /// `count == 0` is satisfied immediately and without asking the backend —
+    /// including on a backend with no graph, because "at least zero" is true
+    /// of every graph and needs no discovery to establish.
+    pub fn wait_for_publishers(
+        &mut self,
+        topic_name: &str,
+        count: usize,
+        timeout: core::time::Duration,
+    ) -> Result<bool, NodeError> {
+        self.wait_for_endpoints(true, topic_name, count, timeout)
+    }
+
+    /// phase-444 — block until at least `count` subscribers are visible on
+    /// `topic_name`. Upstream's `rcl_wait_for_subscribers`. See
+    /// [`wait_for_publishers`](Self::wait_for_publishers) for the contract,
+    /// and for why `Unsupported` returns rather than waits.
+    pub fn wait_for_subscribers(
+        &mut self,
+        topic_name: &str,
+        count: usize,
+        timeout: core::time::Duration,
+    ) -> Result<bool, NodeError> {
+        self.wait_for_endpoints(false, topic_name, count, timeout)
+    }
+
+    /// The one loop both `wait_for_*` verbs run — a shared helper rather than
+    /// a second spelling, because the pair differs only in which counter it
+    /// polls and a copied loop is how the two drift.
+    fn wait_for_endpoints(
+        &mut self,
+        publishers: bool,
+        topic_name: &str,
+        count: usize,
+        timeout: core::time::Duration,
+    ) -> Result<bool, NodeError> {
+        if count == 0 {
+            return Ok(true);
+        }
+        // `?`, not a swallow: a backend that cannot see the graph says so now.
+        if self.count_endpoints(publishers, topic_name)? >= count {
+            return Ok(true);
+        }
+        let spin_interval =
+            core::time::Duration::from_millis(super::handles::DEFAULT_SPIN_INTERVAL_MS);
+        let max_spins =
+            (timeout.as_millis() as u64 / super::handles::DEFAULT_SPIN_INTERVAL_MS).max(1);
+        let mut budget = super::handles::WaitBudget::new(max_spins, timeout);
+        loop {
+            self.spin_once(budget.next_spin_interval(spin_interval));
+            if self.count_endpoints(publishers, topic_name)? >= count {
+                return Ok(true);
+            }
+            if !budget.tick() {
+                return Ok(false);
+            }
+        }
+    }
+
+    /// Which counter a `wait_for_*` polls. Keeps the boolean's meaning in ONE
+    /// place instead of at both call sites.
+    fn count_endpoints(&mut self, publishers: bool, topic_name: &str) -> Result<usize, NodeError> {
+        if publishers {
+            self.count_publishers(topic_name)
+        } else {
+            self.count_subscribers(topic_name)
+        }
+    }
+
     /// Get a mutable reference to an action client core in the arena by entry index.
     ///
     /// # Safety

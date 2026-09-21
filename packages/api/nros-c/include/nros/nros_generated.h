@@ -5049,6 +5049,68 @@ nros_ret_t nros_executor_count_subscribers(struct nros_executor_t *executor,
                                            size_t *out_count);
 
 /**
+ * phase-444 — block until at least `count` publishers are visible on
+ * `topic_name`, or `timeout_ms` elapses. Upstream's `rcl_wait_for_publishers`.
+ *
+ * The startup-ordering primitive one entity kind over from
+ * [`nros_client_wait_for_service`](crate::service::nros_client_wait_for_service),
+ * and built the same way: a spin on the discovery count, so other
+ * subscriptions and timers keep making progress while it waits (RFC-0021 —
+ * a blocking helper takes the executor and drives it, which is what makes
+ * the timeout reliable on a single-threaded transport).
+ *
+ * This is the one BLOCKING member of the graph family, and it does not
+ * weaken the family's contract — it composes it. `nros_executor_count_publishers`
+ * underneath still reports only what has been DISCOVERED and still never
+ * blocks; what waits is this loop, by polling it.
+ *
+ * A backend that cannot see the graph at all (XRCE) returns
+ * `NROS_RET_UNSUPPORTED` IMMEDIATELY rather than waiting out the budget.
+ * That differs deliberately from `nros_client_wait_for_service`, which waits
+ * and reports `NROS_RET_TIMEOUT` (issue 1087): for a service probe,
+ * not-yet-answerable is a transient; for the graph it is permanent, and
+ * spending the budget to say `TIMEOUT` would report "none appeared" for a
+ * backend that cannot see publishers at all — collapsing "cannot tell you"
+ * into "not there", which is the distinction RFC-0036 exists to keep.
+ *
+ * `count == 0` returns `NROS_RET_OK` immediately without asking the backend:
+ * "at least zero" is true of every graph and needs no discovery.
+ *
+ * # Returns
+ * * `NROS_RET_OK` — at least `count` publishers are visible.
+ * * `NROS_RET_TIMEOUT` — `timeout_ms` elapsed with fewer than `count`.
+ * * `NROS_RET_UNSUPPORTED` — the backend cannot read the graph.
+ * * `NROS_RET_REENTRANT` — called from inside a dispatch.
+ * * `NROS_RET_NOT_INIT` — executor not initialised.
+ * * `NROS_RET_INVALID_ARGUMENT` — `executor` or `topic_name` is null.
+ *
+ * # Safety
+ * * `executor` must point to an initialised executor.
+ * * `topic_name` must be a valid NUL-terminated string.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_wait_for_publishers(struct nros_executor_t *executor,
+                                             const char *topic_name,
+                                             size_t count,
+                                             uint32_t timeout_ms);
+
+/**
+ * phase-444 — block until at least `count` subscribers are visible on
+ * `topic_name`. Upstream's `rcl_wait_for_subscribers`. See
+ * `nros_executor_wait_for_publishers` for the contract, the return codes,
+ * and why a backend with no graph answers immediately.
+ *
+ * # Safety
+ * * `executor` must point to an initialised executor.
+ * * `topic_name` must be a valid NUL-terminated string.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_wait_for_subscribers(struct nros_executor_t *executor,
+                                              const char *topic_name,
+                                              size_t count,
+                                              uint32_t timeout_ms);
+
+/**
  * phase-381 W4 — what one named node PUBLISHES, with the types.
  *
  * # Safety
