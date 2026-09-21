@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>zephyr_entry</name>
+  <version>0.1.0</version>
+  <description>phase-459 W0 - Zephyr (native_sim) C++ entry for ws-derived-tiers-cpp: four components, tiers derived, none authored.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>emergency_stop_pkg</exec_depend>
+  <exec_depend>comfortable_stop_pkg</exec_depend>
+  <exec_depend>stop_mode_pkg</exec_depend>
+  <exec_depend>mrm_handler_pkg</exec_depend>
+  <exec_depend>demo_bringup</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

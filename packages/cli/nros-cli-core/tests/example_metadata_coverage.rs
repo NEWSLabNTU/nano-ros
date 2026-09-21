@@ -22,12 +22,16 @@
 //! all of them rather than a chosen few — a platform whose packages stop being
 //! discovered fails here, not in a QEMU lane three phases later.
 
+mod common;
+
 use std::{
     fs,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use nros_cli_core::orchestration::{source_metadata::ComponentLanguage, workspace::Workspace};
+use ros_launch_manifest_model::SystemModel;
 
 /// Package shapes, classified from the manifests alone (no build).
 #[derive(Debug, PartialEq, Eq)]
@@ -238,4 +242,180 @@ fn every_declared_component_language_has_a_producer() {
         unproducible.len(),
         unproducible.join("\n  ")
     );
+}
+
+/// phase-459 W0 - the derived-tiers fixture is what every later wave's gate
+/// runs against, so this pins the two inputs those gates assume it carries.
+///
+/// `examples/workspaces/derived-tiers-cpp` mirrors the Autoware Safety Island:
+/// four `SHAPE rclcpp` C++ components, one wall timer each, two at 30 Hz and
+/// two at 10 Hz, `CALLBACK_GROUPS main` on every registration, and NO
+/// `[tiers.*]` or `group_tiers` in its `system.toml`. Issue 1426 measured that
+/// on such a workspace the rate-monotonic derivation is unreachable from any
+/// authored input; W1 and W2 make it reachable, and their gates run here.
+///
+/// Two facts are checked, one per source:
+///
+/// 1. Discovery yields the four declarations (the precondition for
+///    `nros sync`, as the gate above requires of every node package), and each
+///    `CMakeLists.txt` carries the keyword. The keyword is checked as TEXT
+///    because the static parser deliberately skips `CALLBACK_GROUPS` on
+///    `nros_components_register_node` (`workspace.rs`, `SKIPN`): its one
+///    consumer today reads the configure-time `nros-metadata.json`, which a
+///    test does not produce (this repo does not compile inside tests). The W0
+///    commit records the configure that verified the four
+///    `"callback_groups": ["main"]` rows.
+/// 2. The launch file and its `system.contract.yaml` sidecar resolve through
+///    the pinned resolver into a model with four nodes, four timer-driven
+///    paths (empty `input`), the 30/10 Hz publish rates the ranker orders by,
+///    and no execution tiers - the input shape `derive_tiers_from_contracts`
+///    keys on.
+#[test]
+fn derived_tiers_cpp_fixture_declares_four_groupful_components_and_resolves() {
+    let root = repo_root();
+    let ws = root.join("examples/workspaces/derived-tiers-cpp");
+    // (package, node name, published endpoint, rate in Hz)
+    const EXPECTED: [(&str, &str, &str, f64); 4] = [
+        (
+            "emergency_stop_pkg",
+            "mrm_emergency_stop_operator",
+            "control_cmd",
+            30.0,
+        ),
+        ("stop_mode_pkg", "stop_mode_operator", "control", 30.0),
+        (
+            "comfortable_stop_pkg",
+            "mrm_comfortable_stop_operator",
+            "status",
+            10.0,
+        ),
+        ("mrm_handler_pkg", "mrm_handler", "mrm_state", 10.0),
+    ];
+
+    for (pkg, node, _, _) in EXPECTED {
+        let dir = ws.join("src").join(pkg);
+        let discovered =
+            Workspace::discover(&dir).unwrap_or_else(|e| panic!("{pkg}: discover failed: {e}"));
+        let decls = discovered
+            .component_declarations()
+            .unwrap_or_else(|e| panic!("{pkg}: declarations failed: {e}"));
+        let decl = decls
+            .iter()
+            .find(|d| d.config.package == pkg && d.config.component == node)
+            .unwrap_or_else(|| panic!("{pkg}: no declaration for `{node}` among {decls:?}"));
+        assert_eq!(decl.config.language, ComponentLanguage::Cpp, "{pkg}");
+        assert_eq!(
+            decl.shape.as_deref(),
+            Some("rclcpp"),
+            "{pkg}: the island's shape"
+        );
+
+        // Comment-stripped, as `classify` reads verbs: a keyword in a comment
+        // is not a declaration.
+        let calls: String = fs::read_to_string(dir.join("CMakeLists.txt"))
+            .expect("CMakeLists.txt")
+            .lines()
+            .map(|l| l.split('#').next().unwrap_or(""))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            calls.contains("nros_components_register_node(")
+                && calls.contains("CALLBACK_GROUPS main"),
+            "{pkg}: the registration must declare `CALLBACK_GROUPS main`:\n{calls}"
+        );
+    }
+
+    let system = fs::read_to_string(ws.join("src/demo_bringup/system.toml")).expect("system.toml");
+    let authored: Vec<&str> = system
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or("").trim())
+        .filter(|l| l.starts_with("[tiers.") || l.starts_with("group_tiers"))
+        .collect();
+    assert!(
+        authored.is_empty(),
+        "the fixture authors no tier and no binding; found {authored:?}"
+    );
+
+    let model = resolve_through_pinned_resolver(&root, &ws.join("src/demo_bringup"), "system");
+    assert_eq!(
+        model.structure.nodes.len(),
+        4,
+        "four nodes: {:?}",
+        model.structure.nodes.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        model.execution.tiers.is_empty(),
+        "no execution tier may reach the model from a workspace that authors none: {:?}",
+        model.execution.tiers.keys().collect::<Vec<_>>()
+    );
+    for (_, node, endpoint, rate) in EXPECTED {
+        let fqn = format!("/{node}");
+        assert!(model.structure.nodes.contains_key(&fqn), "{fqn} resolved");
+        let path = model
+            .contracts
+            .node_paths
+            .get(&format!("{fqn}/on_timer"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "{fqn}/on_timer resolved as a node path; have {:?}",
+                    model.contracts.node_paths.keys().collect::<Vec<_>>()
+                )
+            });
+        assert!(
+            path.input.is_empty(),
+            "{fqn}/on_timer is timer-driven, so its input is empty: {:?}",
+            path.input
+        );
+        assert!(
+            path.output.iter().any(|o| o.ends_with(endpoint)),
+            "{fqn}/on_timer publishes {endpoint}: {:?}",
+            path.output
+        );
+        let ep = format!("{fqn}/{endpoint}");
+        let contract = model
+            .contracts
+            .pub_endpoints
+            .get(&ep)
+            .unwrap_or_else(|| panic!("{ep} has a publish contract"));
+        assert_eq!(
+            contract.min_rate_hz,
+            Some(rate),
+            "{ep}: the rate the derivation ranks by (issue 1372: read from \
+             `min_rate_hz`, equal to the trigger rate on purpose)"
+        );
+    }
+}
+
+/// Resolve `<bringup>/launch/<stem>.launch.xml` (with its `<stem>.contract.yaml`
+/// sidecar) through the pinned resolver, by ABSOLUTE path (issue 0285).
+fn resolve_through_pinned_resolver(repo: &Path, bringup: &Path, stem: &str) -> SystemModel {
+    let resolver = common::pinned_launch_resolver();
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    // Repo rule: temp files live in `$project/tmp/`, not the system temp dir.
+    let out = repo.join("tmp").join(format!(
+        "derived-tiers-cpp-{stem}-{}-{stamp}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&out).expect("create model out dir");
+    let model = out.join("system_model.yaml");
+    let output = std::process::Command::new(&resolver)
+        .arg(bringup.join(format!("launch/{stem}.launch.xml")))
+        .arg("--bringup-root")
+        .arg(bringup)
+        .arg("-o")
+        .arg(&model)
+        .output()
+        .expect("spawn nros-launch-resolve");
+    assert!(
+        output.status.success(),
+        "nros-launch-resolve failed for {stem}:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = fs::read_to_string(&model).expect("read the resolved model");
+    let _ = fs::remove_dir_all(&out);
+    SystemModel::from_yaml_str(&text).expect("the resolved model parses")
 }

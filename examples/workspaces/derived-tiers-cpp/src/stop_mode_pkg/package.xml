@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>stop_mode_pkg</name>
+  <version>0.1.0</version>
+  <description>phase-459 W0 - stop_mode_operator: one wall timer at 30 Hz publishing std_msgs/Int32 on /system/stop_mode/control; CALLBACK_GROUPS main, no authored tier.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

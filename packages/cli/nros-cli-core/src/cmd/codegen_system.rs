@@ -191,14 +191,24 @@ fn entry_identity(value: &str, workspace: &Path) -> (PathBuf, String) {
 /// is legal. It degrades to `None` — the documented system-wide default — but
 /// says so on the way past, because that default silently being the HOST is the
 /// whole of 1312.
+///
+/// A `--target` that names no block IS an error (phase-459 W5). That is the
+/// hand-run form of 1312: the value is a key into `[image.*]` / `[deploy.*]`,
+/// and a key no block carries used to fall through every per-target reader to
+/// the system-wide default, so `--target zephyr-cyclonedds` on the island baked
+/// the HOST's tier table into a Zephyr image with nothing said. The refusal
+/// lists the keys the bringup does declare, with each one's board, because the
+/// author's mistake is almost always to have typed the board or the platform
+/// where the block key goes.
 fn resolve_target_block(
     target: Option<&str>,
     for_entry: Option<&str>,
+    system: &SystemToml,
     workspace: &Path,
     bringup_dir: &Path,
 ) -> Result<Option<String>> {
     if let Some(t) = target {
-        return Ok(Some(t.to_string()));
+        return declared_target_block(t, system, bringup_dir).map(Some);
     }
     let Some(entry) = for_entry else {
         return Ok(None);
@@ -228,6 +238,149 @@ fn resolve_target_block(
     }
 }
 
+/// phase-459 W5 - `--target <id>` must name an `[image.<id>]` or `[deploy.<id>]`
+/// block of the bringup being baked; otherwise the bake is refused, naming the
+/// blocks it could have named.
+///
+/// Before this, `tier_resolver::target_board_id` found nothing for such an id
+/// and `derive_target_platform` answered the host's `posix`, so the only trace
+/// of the mistake was a Zephyr image whose `run_tiers` table carried
+/// `[tiers.*.posix]` priorities (issue 1312 measured it; issue 1396 gated the
+/// build shims and could not gate a hand-run). The build shims are unaffected:
+/// the Zephyr, ESP-IDF and PlatformIO ones ask `--for-entry`, and the NuttX
+/// one pins a real block key.
+fn declared_target_block(target: &str, system: &SystemToml, bringup_dir: &Path) -> Result<String> {
+    if system.image.contains_key(target) || system.deploy.contains_key(target) {
+        return Ok(target.to_string());
+    }
+    let mut blocks: Vec<String> = system
+        .image
+        .keys()
+        .map(|id| {
+            let board = system.image_for(id).and_then(|img| img.board);
+            match board {
+                Some(b) => format!("[image.{id}]  board = \"{b}\""),
+                None => format!("[image.{id}]"),
+            }
+        })
+        .collect();
+    blocks.extend(
+        system
+            .deploy
+            .iter()
+            .map(|(id, d)| match (&d.board, &d.kind) {
+                (Some(b), _) => format!("[deploy.{id}]  board = \"{b}\""),
+                (None, Some(k)) => format!("[deploy.{id}]  kind = \"{k}\""),
+                (None, None) => format!("[deploy.{id}]"),
+            }),
+    );
+    let declared = if blocks.is_empty() {
+        "This bringup declares no `[image.*]` or `[deploy.*]` block at all: drop `--target` \
+         for the system-wide defaults, or declare `[image.<id>] board = \"<board>\"` and name \
+         that <id>."
+            .to_string()
+    } else {
+        format!(
+            "The block keys it declares are:\n  {}\nName one of these, or pass `--for-entry \
+             <pkg>` and let the image that claims the entry answer.",
+            blocks.join("\n  ")
+        )
+    };
+    bail!(
+        "codegen-system --target `{target}`: no `[image.{target}]` or `[deploy.{target}]` block \
+         in {}/system.toml. `--target` names a BLOCK KEY, not a board id or a platform-rmw \
+         pair; a key no block carries used to resolve every per-target fact, the tier RTOS \
+         first among them, to the HOST (issue 1312, phase-459 W5). {declared}",
+        bringup_dir.display()
+    );
+}
+
+/// phase-459 W5 - the refusal, beside the function it belongs to.
+#[cfg(test)]
+mod resolve_target_block_tests {
+    use super::*;
+
+    fn sys(body: &str) -> SystemToml {
+        toml::from_str(&format!(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n{body}"
+        ))
+        .expect("fixture parses")
+    }
+
+    /// Neither path is read when `--target` is given; the refusal is decided
+    /// from the parsed bringup alone.
+    fn resolve(target: Option<&str>, s: &SystemToml) -> Result<Option<String>> {
+        let nowhere = Path::new("/nonexistent/derived-tiers-cpp");
+        resolve_target_block(target, None, s, nowhere, &nowhere.join("src/demo_bringup"))
+    }
+
+    #[test]
+    fn resolve_target_block_refuses_a_key_no_block_carries_and_lists_the_blocks() {
+        // The island's hand-run form: a platform-rmw pair where a block key
+        // goes, on a bringup whose real Zephyr image is called something else.
+        let s = sys(
+            "[image.zephyr_native_sim]\nboard=\"native_sim/native/64\"\n\
+             [image.native]\nboard=\"native\"\n\
+             [deploy.robot]\nkind=\"flash\"\nboard=\"qemu-armv7a-nuttx\"\n",
+        );
+        let err = resolve(Some("zephyr-cyclonedds"), &s)
+            .expect_err("a key no block carries must not resolve to the host")
+            .to_string();
+        assert!(err.contains("--target `zephyr-cyclonedds`"), "{err}");
+        assert!(
+            err.contains("[image.zephyr_native_sim]  board = \"native_sim/native/64\""),
+            "the refusal names the block to use, with its board: {err}"
+        );
+        assert!(err.contains("[image.native]  board = \"native\""), "{err}");
+        assert!(
+            err.contains("[deploy.robot]  board = \"qemu-armv7a-nuttx\""),
+            "deploy blocks are keys too: {err}"
+        );
+        assert!(
+            err.contains("--for-entry"),
+            "names the shim's way out: {err}"
+        );
+        assert!(err.contains("1312"), "{err}");
+    }
+
+    #[test]
+    fn resolve_target_block_accepts_an_image_key_and_a_deploy_key() {
+        let s = sys(
+            "[image.zephyr_native_sim]\nboard=\"native_sim/native/64\"\n\
+             [deploy.robot]\nkind=\"flash\"\n",
+        );
+        assert_eq!(
+            resolve(Some("zephyr_native_sim"), &s).expect("an image key resolves"),
+            Some("zephyr_native_sim".to_string())
+        );
+        assert_eq!(
+            resolve(Some("robot"), &s).expect("a deploy key resolves"),
+            Some("robot".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_target_block_on_a_bringup_with_no_blocks_says_to_drop_the_flag() {
+        let s = sys("");
+        let err = resolve(Some("native"), &s)
+            .expect_err("nothing to name")
+            .to_string();
+        assert!(
+            err.contains("declares no `[image.*]` or `[deploy.*]` block"),
+            "{err}"
+        );
+        assert!(err.contains("drop `--target`"), "{err}");
+    }
+
+    #[test]
+    fn resolve_target_block_without_a_target_is_still_the_documented_default() {
+        // No `--target`, no `--for-entry`: the system-wide default, unchanged
+        // by this wave. The refusal is for a key that was GIVEN and is wrong.
+        let s = sys("[image.native]\nboard=\"native\"\n");
+        assert_eq!(resolve(None, &s).expect("no flag, no refusal"), None);
+    }
+}
+
 pub fn run(args: Args) -> Result<()> {
     let workspace = match args.workspace {
         Some(p) => p,
@@ -245,6 +398,7 @@ pub fn run(args: Args) -> Result<()> {
     let target = resolve_target_block(
         args.target.as_deref(),
         args.for_entry.as_deref(),
+        &bringup.system,
         &workspace,
         bringup.manifest_path.parent().unwrap_or(&workspace),
     )?;
@@ -1887,13 +2041,16 @@ execution:
 
     /// Issue 1312 — a Zephyr image baked through the Zephyr module's own
     /// invocation reads `[tiers.*.zephyr]`, and the `--target zephyr-<rmw>` the
-    /// module used to pass reads the HOST's sub-table instead.
+    /// module used to pass read the HOST's sub-table instead.
     ///
     /// Both halves run the same bake over the same workspace, so the only
-    /// difference is how the image was named. The second half is the DEFECT,
+    /// difference is how the image was named. The second half was the DEFECT,
     /// asserted rather than described: `zephyr-zenoh` names no block, so every
-    /// `--target`-driven answer falls back to the system-wide default, and the
-    /// tier resolver's default is `posix`.
+    /// `--target`-driven answer fell back to the system-wide default, and the
+    /// tier resolver's default is `posix`. phase-459 W5 made that form a
+    /// refusal, so the second half now asserts the refusal - through the whole
+    /// verb, not just `resolve_target_block`, so the bake is proven to stop
+    /// before it writes a plan.
     #[test]
     fn a_zephyr_image_named_by_its_entry_bakes_the_zephyr_tier_table() {
         crate::test_support::isolate_model_discovery();
@@ -1916,8 +2073,7 @@ execution:
                 rmw: Some("zenoh".into()),
                 model: None,
             })
-            .expect("codegen runs");
-            fs::read_to_string(out.join("nros-system/nros-plan.json")).unwrap()
+            .map(|()| fs::read_to_string(out.join("nros-system/nros-plan.json")).unwrap())
         };
 
         // As `zephyr/cmake/nros_system_generate.cmake` calls it: no --target,
@@ -1926,7 +2082,7 @@ execution:
         // which is the case `entry =` exists for.
         let out = dir.join("build/for_entry");
         let app = dir.join("zephyr_app").display().to_string();
-        let plan = bake(&out, None, Some(app));
+        let plan = bake(&out, None, Some(app)).expect("codegen runs");
         assert!(
             plan.contains("\"priority\": 7,") && plan.contains("\"priority\": 9,"),
             "the zephyr sub-tables (7/9) must be the baked priorities: {plan}"
@@ -1936,18 +2092,19 @@ execution:
             "no posix priority may reach a zephyr image: {plan}"
         );
 
-        // The defect this test exists for.
+        // The defect this test exists for, now a refusal (phase-459 W5).
         let out_legacy = dir.join("build/legacy_target");
-        let legacy = bake(&out_legacy, Some("zephyr-zenoh"), None);
+        let err = bake(&out_legacy, Some("zephyr-zenoh"), None)
+            .expect_err("`--target zephyr-<rmw>` names no block and must not bake for the host")
+            .to_string();
         assert!(
-            legacy.contains("\"priority\": 80,") && legacy.contains("\"priority\": 10,"),
-            "issue 1312: `--target zephyr-<rmw>` names no block, so this bake \
-             answers for the HOST. If that ever stops being true, the first \
-             half above is no longer evidence of anything: {legacy}"
+            err.contains("--target `zephyr-zenoh`")
+                && err.contains("[image.zephyr_native_sim]  board = \"native_sim/native/64\""),
+            "the refusal names the key given and the key to use: {err}"
         );
         assert!(
-            !legacy.contains("\"priority\": 7,"),
-            "the legacy target must not reach a zephyr sub-table: {legacy}"
+            !out_legacy.join("nros-system/nros-plan.json").exists(),
+            "a refused bake writes no plan"
         );
     }
 
@@ -2525,7 +2682,10 @@ structure:
         run(Args {
             workspace: Some(dir.clone()),
             bringup: None,
-            target: Some("x86_64-unknown-linux-gnu".into()),
+            // phase-459 W5 - this used to pass the host TRIPLE as `--target`,
+            // which names no block and is now refused; the system-wide
+            // default is what that value always resolved to anyway.
+            target: None,
             out: Some(out.clone()),
             ahead_of_vendor: None,
             file: None,
@@ -2567,7 +2727,9 @@ structure:
         let plan = fs::read_to_string(bake.join("nros-plan.json")).unwrap();
         assert!(plan.contains("\"bringup\": \"demo_bringup\""));
         assert!(plan.contains("\"system\": \"demo\""));
-        assert!(plan.contains("\"target\": \"x86_64-unknown-linux-gnu\""));
+        // No block was named, so the plan records no target (the key is
+        // skipped when `None`), rather than a triple that named nothing.
+        assert!(!plan.contains("\"target\""), "{plan}");
         assert!(plan.contains("\"lang\": \"rust\""));
         // Launch file path recorded from the deploy block.
         // R-code.1 — provenance records the committed model, not the launch file.
@@ -2585,7 +2747,8 @@ structure:
         let args = || Args {
             workspace: Some(dir.clone()),
             bringup: None,
-            target: Some("x86_64-unknown-linux-gnu".into()),
+            // phase-459 W5 - a triple names no block; see the sibling above.
+            target: None,
             out: Some(out.clone()),
             ahead_of_vendor: None,
             file: None,
@@ -2662,7 +2825,9 @@ structure:
         run(Args {
             workspace: Some(dir.clone()),
             bringup: None,
-            target: Some("px4".into()),
+            // phase-459 W5 - `px4` names no block of this bringup and the PX4
+            // module emission reads no per-target fact, so no target.
+            target: None,
             out: Some(out.clone()),
             ahead_of_vendor: Some(AheadOfVendor::Px4),
             file: None,
@@ -2989,7 +3154,9 @@ domain_id = 5
             workspace: Some(dir.clone()),
             // Reproduce the shim's call: --bringup <abs-path-to-dir>.
             bringup: Some(ex_dir.to_string_lossy().into_owned()),
-            target: Some("zephyr-cyclonedds".into()),
+            // phase-459 W5 - the shim used to synthesise `zephyr-cyclonedds`,
+            // which names no block (issue 1312); the block key is `zephyr`.
+            target: Some("zephyr".into()),
             out: Some(out.clone()),
             ahead_of_vendor: None,
             file: None,

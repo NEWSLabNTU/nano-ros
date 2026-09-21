@@ -1,0 +1,82 @@
+# Node interface contract for system.launch.xml (phase-459 W0).
+#
+# The provider sidecar: `<stem>.contract.yaml` beside `<stem>.launch.xml`,
+# folded into the SystemModel by the pinned resolver. It states, per node, the
+# one timer path each component runs and the rate of what that tick publishes.
+# The tier derivation reads these rates; nothing else in this workspace states
+# a rate, a priority or a tier.
+#
+# THE TWO NUMBERS ARE EQUAL ON PURPOSE. Each node's `paths.on_timer.trigger`
+# names the timer's rate, and its `pub.<ep>.min_rate_hz` names the same
+# number. Issue 1372: the model schema drops `trigger.timer.rate_hz` on the
+# way through, so the mapper rebuilds a node's rate from its first output's
+# `min_rate_hz`. Until phase-457 W2 lands the trigger rate in the model and
+# phase-459 W7 makes the mapper prefer it, the derivation only sees
+# `min_rate_hz`, and a fixture whose two numbers differed would be testing
+# the wrong one. The island keeps them equal for the same reason. W7 makes
+# them unequal and removes this comment.
+#
+# The timer periods in code are 33 ms and 100 ms (`create_wall_timer_in` takes
+# whole milliseconds); 30 Hz and 10 Hz are the rates the island's components
+# declare as their `update_rate` parameters, and they are what the ranker
+# orders by.
+
+version: 1
+
+nodes:
+  mrm_emergency_stop_operator:
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 30 } }
+        output: [control_cmd]
+    pub:
+      control_cmd: { min_rate_hz: 30 }
+
+  stop_mode_operator:
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 30 } }
+        output: [control]
+    pub:
+      control: { min_rate_hz: 30 }
+
+  mrm_comfortable_stop_operator:
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 10 } }
+        output: [status]
+    pub:
+      status: { min_rate_hz: 10 }
+
+  mrm_handler:
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 10 } }
+        output: [mrm_state]
+    pub:
+      mrm_state: { min_rate_hz: 10 }
+
+# Every topic leaves the image: the consumer is the vehicle or Autoware
+# proper (`external: sub`), as for the island's command outputs. Nothing here
+# subscribes, so the derivation places nodes by their timers alone.
+topics:
+  /system/emergency/control_cmd:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [mrm_emergency_stop_operator/control_cmd]
+    rate_hz: 30
+  /system/stop_mode/control:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [stop_mode_operator/control]
+    rate_hz: 30
+  /system/mrm/comfortable_stop/status:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [mrm_comfortable_stop_operator/status]
+    rate_hz: 10
+  /system/fail_safe/mrm_state:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [mrm_handler/mrm_state]
+    rate_hz: 10
