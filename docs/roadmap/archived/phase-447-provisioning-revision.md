@@ -1,8 +1,10 @@
 # Phase 447 — provisioning revision
 
-**Status (2026-09-11). E1, E2 and E3 landed (below) — E3 was the last E item;
-other items as marked.** Implements
-[RFC-0099](../design/0099-provisioning-is-planned-once-and-prefers-prebuilts.md).
+**Status: COMPLETE (2026-09-21). All fifteen work items landed — A1-A4, B1-B2,
+C1-C2, D1-D3, E1-E3, F1.** A4 was the last of them and closed the phase's
+headline acceptance: `just probe installed` passes end to end (PR #1096).
+Implements
+[RFC-0099](../../design/0099-provisioning-is-planned-once-and-prefers-prebuilts.md).
 Makes the installed path reach a build, makes a repeated `nros setup` cheap, and
 makes "prefer a prebuilt" a rule instead of an intention.
 
@@ -69,8 +71,10 @@ build without a checkout. That is why A1/A2 could ship broken.
 *Acceptance:* `just probe bootstrap` runs scaffold -> build -> run in a clean
 container with no checkout; it fails before A1+A2 and passes after.
 
-*Status (2026-09-11): the gate landed and is RED — on a defect A1+A2 did not
-reach, filed as [issue 1304](../issues/archived/1304-installed-setup-cannot-provision-submodule-sources.md).*
+*Status: LANDED, GREEN.* The gate landed 2026-09-11 RED, on a defect A1+A2 did
+not reach, filed as
+[issue 1304](../../issues/archived/1304-installed-setup-cannot-provision-submodule-sources.md);
+A4 closed that issue and `just probe installed` now passes end to end.
 
 - **What runs.** `just probe bootstrap` runs both front doors; the new
   `installed` track (`just probe installed`) installs a release into a pristine
@@ -99,17 +103,21 @@ reach, filed as [issue 1304](../issues/archived/1304-installed-setup-cannot-prov
   regression of A1+A2 would have been indistinguishable from the open 1304
   red. `extract-book-steps.py --after-step` splices it in where it becomes
   checkable.
-- **Still open:** "passes after" — blocked on 1304 (sources, a Rust toolchain
-  on the installed path, a configure that finds the installed Cyclone dist).
+- **"Passes after" — closed by A4.** The three things that blocked it (sources
+  with no gitlink to read, a Rust toolchain on the installed path, a configure
+  that finds the installed Cyclone dist) turned out to be the first three of
+  six; see A4.
 
-### A4 — the installed path provisions without a checkout
+### A4 — the installed path provisions without a checkout — **LANDED (PR #1096)**
 
-Closes [issue 1304](../issues/archived/1304-installed-setup-cannot-provision-submodule-sources.md).
-**Blocks A3's pass direction and this phase's headline acceptance**: with A1+A2
+Closes [issue 1304](../../issues/archived/1304-installed-setup-cannot-provision-submodule-sources.md).
+**Blocked A3's pass direction and this phase's headline acceptance**: with A1+A2
 in place, the installed journey still dead-ended at `nros setup`, one step
 EARLIER than D1 described, for every RMW.
 
-Three defects, all measured by A3's probe in one container state:
+**Six defects, not one.** The issue as filed is the first. The other five were
+each hidden behind the one before it, and every one of them was found by
+re-running A3's probe on a pristine container — not by reading:
 
 1. **Submodule pins were read from git history.** Every `[source.*]` a board
    pulls in by `submodule = "<path>"` (zenoh-pico, mbedtls, cyclonedds-src) was
@@ -122,24 +130,64 @@ Three defects, all measured by A3's probe in one container state:
    every `build.rs` find the tree unchanged. And an index read from the store
    or the asset no longer names the workspace: its parent (`~/.nros/fetch`,
    `share/nros`) is not a root, so sources go where the SDK-root ladder says.
-2. **Nothing installed a Rust toolchain.** `[rust.rustup]` in the index pins a
-   sha256-verified `rustup-init` per host; `nros setup <board>` runs it when
-   neither rustup nor `rustc`+`cargo` is where Corrosion looks, and gives a
-   rustup with no default toolchain one. A host with Rust is left alone.
-3. **Configure missed the provisioned Cyclone.** For an INSTALLED root only
-   (the pins file marks one), `nros-rmw-provision.cmake` asks
-   `nros sdk-path cyclonedds --require` and puts that prefix on
-   `CMAKE_PREFIX_PATH`. A checkout keeps building the fork submodule it may be
-   editing — D3's ownership argument, one layer down.
+2. **Nothing installed a Rust toolchain.** An installed host has none, and the
+   runtime a project links is compiled by Corrosion, so configure stopped in
+   `FindRust`. `[rust.rustup]` in the index pins a sha256-verified
+   `rustup-init` per host; `nros setup <board>` runs it when neither rustup nor
+   `rustc`+`cargo` is where Corrosion looks, and gives a rustup with no default
+   toolchain one. A host with Rust is left alone.
+3. **The `<depend>` preflight was blind to the BUNDLED msg packages.** The
+   toolchain ships them; the preflight did not know, so `std_msgs` resolved to
+   nothing. On a host with ROS the ambient rung answered instead — which is why
+   it refused only where nobody was looking.
+4. **`nros sync`'s probe path used a checkout-only ladder.** Every C/C++
+   component reported "no producer (no nano-ros path)" and the bake fell back
+   to the SystemModel bound, silently.
+5. **The generated cmake root never received `nano_ros_ROOT`.** So
+   `find_package(nano_ros)` failed one step AFTER `nros build` had resolved
+   that very root.
+6. **The RMW ladder defaulted instead of reading the choice.** A
+   `--rmw cyclonedds` workspace built the ZENOH backend: `nros new` writes the
+   choice to `[system] rmw`, and the builder read `[image.*]` alone and
+   defaulted to zenoh. Invisible on a checkout — zenoh-pico is a submodule
+   sitting right there — and fatal on an installed host.
 
-*Acceptance:* `just probe installed` passes end to end in a pristine
-container — install, `nros setup native --rmw cyclonedds`, scaffold, build,
-run — and still FAILS with #896 reverted. The probe asserts the build linked
-the provisioned Cyclone, because the source fallback would also produce a
-working binary and hide a regression of (3). `check-release-manifest` R6
-holds the pins file's three spellings (writer, reader, cmake) to one name.
+**A fourth fix shipped alongside and is deliberately not on that list:**
+configure missing the provisioned Cyclone. This item was planned around three
+defects and that was the third; it is real and it landed, but it was not on the
+path between the filed issue and green, so counting it among the six would
+misstate what the probe found. For an INSTALLED
+root only (the pins file marks one), `nros-rmw-provision.cmake` asks
+`nros sdk-path cyclonedds --require` and puts that prefix on
+`CMAKE_PREFIX_PATH`. A checkout keeps building the fork submodule it may be
+editing — D3's ownership argument, one layer down.
 
-*Status (2026-09-11): in progress.*
+**The coordinate now carries its RMW.** Fixing (6) means the build coordinate
+names the RMW it resolved, which is the shape `builder/cmake_root`'s own header
+and `workspace-entry-pkg.md` already described ("switching board or RMW selects
+a different coordinate"): `build/posix-native` became `build/posix-<rmw>-native`,
+and `build/posix` became `build/posix-<rmw>` on the cargo road. Every reference
+moved with it — `examples/fixtures.toml` outputs, four tests, six book pages,
+template READMEs, two `system.toml` comments, both probe verifiers, and the
+scaffold's "Next steps", which now COMPUTES the coordinate from the `--rmw` the
+user picked.
+
+*Acceptance, met:* `just probe installed` passes end to end in a pristine
+container — install, `nros setup native --rmw cyclonedds`, `nros new`,
+`nros sync`, `nros build`, run the entry, with no checkout on the host — and
+still FAILS with #896 reverted. The probe asserts the build linked the
+provisioned Cyclone (`CycloneDDS_DIR` under `~/.nros/sdk/cyclonedds/`), because
+the source fallback would also produce a working binary and hide a regression.
+`check-release-manifest` R6 holds the pins file's three spellings (writer,
+reader, cmake) to one name.
+
+*Two things repaired in passing.* The installed track had lost its build step —
+phase-445 W5 rewrote `first-project.md` and dropped A3's `probe=` tags, so the
+track extracted install + provision only and died in its own verifier at "the
+Build step never configured"; the tags are restored and the verifier follows
+`nros build`. And the scaffolds stopped advertising `NROS_REPO_DIR` /
+`-DNANO_ROS_ROOT` to a reader who has neither — four sites, not the one the
+issue reported.
 
 ### B1 — the submodule arm skips what is already there
 
@@ -490,13 +538,15 @@ first build silently used a different workspace's unnarrowed manifest and proved
 nothing — `zephyr_modules.txt` is what caught it. `cp -al` gives real
 directories at no disk cost, and is safe because git never writes in place.
 
-## Checkpoint (2026-09-11)
+## How it ran
 
-Written so the campaign can be resumed on another machine. Everything below is on
-the remote; the one thing that is NOT — a poller on the original host — is named
-where it matters.
+A record, not a plan. The campaign ran as parallel agent branches grouped by the
+FILE they touch (see "Order, and what collides" below), each landing as its own
+pull request through the merge queue. A checkpoint was written on 2026-09-11 so
+the campaign could be resumed on another machine; it was, and A4 finished it on
+2026-09-20.
 
-### Merged
+### Every item, as it landed
 
 | PR | item | result |
 | --- | --- | --- |
@@ -510,29 +560,40 @@ where it matters.
 | #911 | leaf-target gate prunes `target-*` | 27 min -> 0.5 s |
 | #914 | C2 dist-or-reason ratchet | 15 -> 17 of 25 tools carry a dist; closes 1273 |
 | #918 | C1 smoke on the install path | 14 of 25 tools declare a `smoke` probe, the other 11 a reason. Left the queue twice, neither time for a defect in C1 (see findings) |
-| #925 | A3 clean-host probe | red nightly until #1304 lands, and it fails at a different step than a #896 regression would |
+| #925 | A3 clean-host probe | landed RED, on #1304 — and failing at a different step than a #896 regression would, which is what made it readable |
+| #927 | E1+E2 session plan | closes 1274. Rebased onto main, 2 -> 1 commit |
 | #930 | lane-skip needs an interpreter | the L3 fix: `provision-zenohd` rc 78 on the container runner |
 | #931 | D1+D2 floors + OS-version dimension | 49 floors measured, none guessed; no dist needs glibc 2.35 |
 | #932 | `no-find` gate sees `dir/**` | `config-header-single-writer` 37 min -> 1 s |
+| #933 | E3 pipelined executor | closes 1266 and 1267. Rebased 4 -> 1: C1 and its fix, then E1+E2 itself, all dropped by patch-id once they landed on main |
+| #1096 | A4 the installed path provisions with no checkout | closes 1304; turns #925 green. Six defects, not one |
 
-### In the merge queue or armed
+Three mechanics of running it this way are worth carrying forward, and are in
+**Open findings** below: ratchet collisions between two individually-green PRs,
+a force-push that fired no `pull_request` event and so produced no `CI` context
+at all, and a `just queue-triage` window measured in runs rather than minutes.
 
-| PR | item | note |
-| --- | --- | --- |
-| #927 | E1+E2 session plan | closes 1274. Re-armed by the poller once #918 landed; rebased onto main, 2 -> 1 commit |
-| #933 | E3 pipelined executor | closes 1266 and 1267. Rebased 4 -> 1: C1 and its fix, then E1+E2 itself, all dropped by patch-id once they landed on main. Armed |
+## What is left
 
-### In flight at this checkpoint
+**Nothing, inside the phase.** All fifteen work items landed. What outlives it:
 
-| work | branch | state |
-| --- | --- | --- |
-| #1304 (A4) | `a4/1304` | DONE — `just probe installed` passes end to end (install -> setup -> scaffold -> sync -> build -> run, no checkout). Six defects, not one; see the issue's Resolved section |
+- **[issue 1259](../../issues/1259-nros-setup-tool-leaves-zephyr-sdk-without-toolchains.md)**
+  and
+  **[issue 1262](../../issues/1262-nros-setup-lock-skips-present-tools-and-follows-cwd.md)**
+  — both homed here (table below), both still open. C1 and C2 made 1259's shape
+  checkable and E2 landed the "one plan, one lock write" that 1262 names as its
+  fix, but neither item closed the id, so neither issue is closed.
+- **[issue 1282](../../issues/1282-zephyr-espressif-vs-esp-idf-duplicate-toolchain.md)**
+  — whether Zephyr's own espressif support makes our ESP-IDF provisioning a
+  duplicate. F1 held `hal_espressif` back deliberately rather than settle a
+  platform-strategy question by deleting a line; 275 MB of the 2.5 GB is
+  knowingly still paid.
+- **A cross-repo remainder.** `play_launch_parser` still has no dist: C2 decided
+  we publish that one ourselves and it is not seeded, so it sits on
+  `.config/dist-or-reason-baseline.txt` with that reason recorded.
+- **The open findings below**, which belong to no work item here.
 
-### What is left
-
-- **#1304 (A4)** — landing now; see the row above. Acceptance is `just probe installed`.
-
-### Open findings, not fixed here
+## Open findings, not fixed here
 
 - The **arm64 `arm-none-eabi-gcc` dist's bundled Python `_ssl` needs `libssl.so.1.1`**, which jammy does not ship — `import ssl` fails inside that gdb. Needs a re-cut in `nano-ros-sdk`.
 - **`nros-launch-resolve`'s floor is declared but not enforced** until `[tool.nros]` carries dist rows (phase-431 W5).
@@ -541,20 +602,6 @@ where it matters.
 - **Ratchet collisions between two correct PRs.** Three ratchets now guard `[tool.*]` (dist-or-reason, smoke-or-reason, dist-floors). Two PRs each green alone can be ejected together when the queue combines them; carrying the parent does not prevent it. Satisfy all three when adding a tool.
 - **A force-push did not fire `pull_request`.** #918's fixed head received only `arm auto-merge`; `gate.yml` has a bare `pull_request:` trigger, yet no `synchronize` run appeared, so there was no `CI` context and the queue dropped the PR with no failing run anywhere to read. Close/reopen fired `reopened` and ran it. After force-pushing a PR, confirm its required check actually ran on the new head before trusting auto-merge. `workflow_dispatch` is not a substitute — it runs the full lane, including `check-build`, which cannot pass in CI.
 - **Subagents are not woken by a watch or monitor.** Two ended their turns waiting on one. Briefs say to block with `timeout 590 tail --pid=<pid> -f /dev/null`.
-
-### Resuming on another machine
-
-1. Clone `nano-ros` and read this section. Every PR above is on the remote.
-2. **#927 is already re-armed** (the poller fired when #918 landed). Nothing to do unless the queue ejects it; `just queue-triage` or `gh pr view 927` says.
-2a. **#1304 is done** — rebased off that branch and finished; nothing to resume.
-3. `nano-ros-sdk`: branch `work/phase-447-c2-play-launch-parser-dist` (`9babb72`) is pushed. Fast-forward it to `main` and cut a release to seed the `play_launch_parser` dist; until then it stays on the dist-or-reason list.
-4. A3's revert-direction mutant was not pushed — it is derived, not work. #896
-   landed as TWO commits through the rebase-merging queue (no merge commit), so
-   revert both, newest first:
-   `git checkout -b probe-mutant-revert-896 origin/main && git revert --no-edit e4f3d5add04d~1..434b121aeffa`
-   (e4f3d5add04d is A1+A2 itself; 434b121aeffa is its follow-up clippy fix. Reverting only
-   the newer one leaves the feature in place and proves nothing.)
-5. Local-only branches on the original host were NOT pushed; they are scratch from other sessions, not this campaign. The largest is `split/config-surface` (21 commits); others include `integrate/phase-206-w5`, `rb10`, `local-pre-rebase`, `pr48`. If any matter, push them from that host.
 
 ## Order, and what collides
 
@@ -591,6 +638,11 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1259](../issues/1259-nros-setup-tool-leaves-zephyr-sdk-without-toolchains.md) | `nros setup --tool zephyr-sdk-1-0-1` reports success and leaves an SDK that cannot run: the index pins the minimal bundle with no post-install. This is C1's 'installs but cannot run' and C2's dist-or-reason, and neither names the id |
-| [#1262](../issues/1262-nros-setup-lock-skips-present-tools-and-follows-cwd.md) | `--tool` records a tool in `nros-sdk.lock` only when it installs, and follows the cwd. E2's 'one plan, one lock write' is the stated fix |
-| [#1273](../issues/archived/1273-prefer-prebuilt-dist-over-source-build.md) (RESOLVED 2026-09-11, archived upstream while this table was being written) | tools build from source because the index has no `dist` row. C2 IS this issue's fix; the item should name the id so closing one closes the other |
+| [#1259](../../issues/1259-nros-setup-tool-leaves-zephyr-sdk-without-toolchains.md) | `nros setup --tool zephyr-sdk-1-0-1` reports success and leaves an SDK that cannot run: the index pins the minimal bundle with no post-install. This is C1's 'installs but cannot run' and C2's dist-or-reason, and neither names the id |
+| [#1262](../../issues/1262-nros-setup-lock-skips-present-tools-and-follows-cwd.md) | `--tool` records a tool in `nros-sdk.lock` only when it installs, and follows the cwd. E2's 'one plan, one lock write' is the stated fix |
+| [#1273](../../issues/archived/1273-prefer-prebuilt-dist-over-source-build.md) (RESOLVED 2026-09-11, archived upstream while this table was being written) | tools build from source because the index has no `dist` row. C2 IS this issue's fix; the item should name the id so closing one closes the other |
+
+**Outcome (2026-09-21).** Only #1273 closed. #1259 and #1262 are still open: the
+lettered items reshaped the ground both sit on without closing either, which is
+exactly the failure this table was added to prevent — a mention is not an owner,
+and neither is an adjacent work item.

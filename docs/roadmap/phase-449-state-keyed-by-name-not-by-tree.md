@@ -456,7 +456,7 @@ unpacked, unusable SDK that the verb cannot repair.
 * Making SDK trees per-tree *copies*. Sharing a 2.5 GB SDK between checkouts is
   correct; being unable to say which tree a build used is the defect.
 * The provisioning ladder itself — that is
-  [phase-447](phase-447-provisioning-revision.md). W3 states where the SDK must
+  [phase-447](archived/phase-447-provisioning-revision.md). W3 states where the SDK must
   land and lets 447 own how it gets there.
 * Fixing the tier-2 lane's other stages. Issue 1158's "no runtime verdict in six
   scheduled runs" is homed at
