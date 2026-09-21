@@ -146,6 +146,30 @@ overrides. The Zephyr forward therefore always passes `-DZPICO_X=0|1` from
 Kconfig rather than only passing on `y` (today's forward cannot express
 "off over an on-default").
 
+### Domain agreement -- a refusal on disagreement, not a rung (phase-460 W4)
+
+The ROS domain is declared twice on a Zephyr image, and the two declarations
+have two readers. `system.toml`'s `domain_id` (resolved through the
+`[deploy.<target>]` / `[system]` ladder) is baked by `nros codegen-system` as
+`#define NROS_SYSTEM_DOMAIN_ID <n>u` in `system_config.h`, a define app source
+may read; the image's session takes `CONFIG_NROS_DOMAIN_ID`, this RFC's Kconfig
+front-end, through `nros/zephyr/app_config.h`, and Cyclone takes
+`CONFIG_NROS_CYCLONE_DOMAIN_ID`, which defaults to it. Issue 1423 measured the
+two apart on the Autoware Safety Island (`system.toml` said 2, every image
+built on 10), and the check that caught it was a person reading a brief.
+
+`nros_system_generate` (the Zephyr module's bake,
+`zephyr/cmake/nros_system_generate.cmake`) now compares the define it just
+baked against `CONFIG_NROS_DOMAIN_ID`, and against
+`CONFIG_NROS_CYCLONE_DOMAIN_ID` when that symbol is in scope, and REFUSES the
+configure on any disagreement, naming all three. This is deliberately not a
+rung. The ladder above is unchanged: Kconfig remains what the image bakes, and
+`system.toml` gains no authority over a build-time knob (this RFC does not
+touch `system.toml`; see Cross-refs). The check removes the silent case only.
+Whether the domain should have one writer is an open question of this RFC's,
+not something the check decides. Gate: `tests/cmake-domain-agreement-tests.sh`
+(`just check system-domain-agreement`).
+
 ### Porter UX (the design's acceptance lens)
 
 A porter bringing nano-ros to a new RTOS writes **2 crates + 2 tomls**,
@@ -232,6 +256,8 @@ for non-express topics.
 
 ## Changelog
 
+- 2026-09-21 -- phase-460 W4 (issue 1423): the domain agreement check, stated
+  as a refusal on disagreement rather than a rung; precedence unchanged.
 - 2026-07-16 — implemented by phase-290 (schema/loader, relocation +
   central-file retirement, tri-state Kconfig front-end + drift test,
   explain/scaffolders, the zephyr flip incl. the issue-0213

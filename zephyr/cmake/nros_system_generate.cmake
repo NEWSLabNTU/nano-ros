@@ -113,6 +113,92 @@ function(_nros_system_resolve_bringup arg outvar)
     set(${outvar} "BRINGUP-NOTFOUND" PARENT_SCOPE)
 endfunction()
 
+# nros_system_check_domain_agreement(<system_config.h> <bringup-dir>)
+#
+# phase-460 W4 (issue 1423) -- the bake's domain and the image's domain are two
+# declarations with two readers and, until this, no comparison.
+#
+# `nros codegen-system` resolves `system.toml`'s `domain_id` through the
+# `[deploy.<target>]` / `[system]` ladder and bakes it as
+# `#define NROS_SYSTEM_DOMAIN_ID <n>u` -- a define app source may read and no
+# file under `zephyr/`, `cmake/` or `packages/api` does. The image's session
+# takes `CONFIG_NROS_DOMAIN_ID` (Kconfig, the RFC-0049 front-end) through
+# `nros/zephyr/app_config.h`, and Cyclone takes `CONFIG_NROS_CYCLONE_DOMAIN_ID`,
+# which defaults to it. Issue 1423 measured the two apart on the Autoware
+# Safety Island -- `system.toml` said 2, every image built on 10 -- and the
+# check that caught it was a person reading a brief.
+#
+# This REFUSES on disagreement, naming all three. It changes no precedence:
+# Kconfig remains what the image bakes (RFC-0049), and `system.toml` gains no
+# authority over a build-time knob. The silent case is what it removes; whether
+# the domain should have one writer is RFC-0049's question and not decided
+# here. Its own gate is `tests/cmake-domain-agreement-tests.sh`.
+#
+# `CONFIG_NROS_DOMAIN_ID` is an `int` with a default, so after
+# `find_package(Zephyr)` it is always in scope. A caller that reaches this
+# before Kconfig has been read has nothing to compare against; that is the
+# deferred-attach ordering `nros_system_generate` already WARNs about, and it
+# is reported the same way rather than passed in silence.
+function(nros_system_check_domain_agreement _config_h _bringup_dir)
+    file(STRINGS "${_config_h}" _lines REGEX "^#define NROS_SYSTEM_DOMAIN_ID ")
+    list(LENGTH _lines _n)
+    if(NOT _n EQUAL 1)
+        message(FATAL_ERROR
+            "nros_system_generate: ${_config_h} carries ${_n} "
+            "`#define NROS_SYSTEM_DOMAIN_ID` line(s); the bake writes exactly "
+            "one, so this header is not what `nros codegen-system` produced "
+            "and the image's domain cannot be checked against the system's "
+            "(phase-460 W4).")
+    endif()
+    list(GET _lines 0 _line)
+    if(NOT _line MATCHES "^#define NROS_SYSTEM_DOMAIN_ID ([0-9]+)u?[ \t]*$")
+        message(FATAL_ERROR
+            "nros_system_generate: cannot read the baked domain from "
+            "`${_line}` in ${_config_h} (phase-460 W4).")
+    endif()
+    set(_baked "${CMAKE_MATCH_1}")
+
+    if(NOT DEFINED CONFIG_NROS_DOMAIN_ID)
+        message(WARNING
+            "nros_system_generate: CONFIG_NROS_DOMAIN_ID is not in scope, so "
+            "the system's domain (${_baked}, from ${_bringup_dir}/system.toml) "
+            "was compared against nothing. Call nros_system_generate after "
+            "find_package(Zephyr) so Kconfig has been read (phase-460 W4).")
+        return()
+    endif()
+
+    set(_kconfig "${CONFIG_NROS_DOMAIN_ID}")
+    set(_cyclone "unset")
+    set(_agree TRUE)
+    if(NOT _kconfig EQUAL _baked)
+        set(_agree FALSE)
+    endif()
+    if(DEFINED CONFIG_NROS_CYCLONE_DOMAIN_ID)
+        set(_cyclone "${CONFIG_NROS_CYCLONE_DOMAIN_ID}")
+        if(NOT _cyclone EQUAL _baked)
+            set(_agree FALSE)
+        endif()
+    endif()
+    if(NOT _agree)
+        message(FATAL_ERROR
+            "nros_system_generate: the system's domain and the image's domain "
+            "disagree:\n"
+            "  NROS_SYSTEM_DOMAIN_ID      = ${_baked}  "
+            "(${_bringup_dir}/system.toml, baked into ${_config_h})\n"
+            "  CONFIG_NROS_DOMAIN_ID      = ${_kconfig}  (Kconfig, what the image bakes)\n"
+            "  CONFIG_NROS_CYCLONE_DOMAIN_ID = ${_cyclone}  "
+            "(Kconfig, defaults to CONFIG_NROS_DOMAIN_ID)\n"
+            "Every document derived from system.toml would say ${_baked} while "
+            "the image runs on ${_kconfig}. Kconfig is what the image bakes "
+            "(RFC-0049); make them agree, either `CONFIG_NROS_DOMAIN_ID=${_baked}` "
+            "in the image's prj.conf or `domain_id = ${_kconfig}` in system.toml "
+            "(phase-460 W4, issue 1423).")
+    endif()
+    message(STATUS
+        "nros_system_generate: domain ${_baked} agrees "
+        "(system.toml, CONFIG_NROS_DOMAIN_ID, CONFIG_NROS_CYCLONE_DOMAIN_ID=${_cyclone})")
+endfunction()
+
 # Public function: bake the system, wire the generated sources into the
 # Zephyr `app` target. Single positional arg: the bringup pkg name or
 # path (Path A: contains `system.toml`, no `Cargo.toml`).
@@ -244,6 +330,10 @@ function(nros_system_generate bringup_pkg)
             "system_config.cmake in ${_out_dir} (verb may be unimplemented "
             "in this CLI build).")
     endif()
+
+    # phase-460 W4 (issue 1423) -- the bake just wrote the system's domain;
+    # the image's is in Kconfig. They agree, or this configure stops.
+    nros_system_check_domain_agreement("${_config_h}" "${_bringup_dir}")
 
     if(TARGET app)
         target_include_directories(app PRIVATE "${_out_dir}")
