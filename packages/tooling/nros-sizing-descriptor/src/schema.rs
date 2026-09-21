@@ -48,7 +48,10 @@ use serde::Deserialize;
 
 use crate::{
     fact::Fact,
-    vocabulary::{Basis, Durability, EndpointKind, History, RegistrationPath, Reliability, Status},
+    vocabulary::{
+        Basis, CapacityNeed, Durability, EndpointKind, History, RegistrationPath, Reliability,
+        Status,
+    },
 };
 
 /// Resolve one field to its [`Fact`]: refused beats absent, and a value that is
@@ -93,6 +96,18 @@ fn known_refusals(
         }
     }
     Ok(())
+}
+
+/// A TOML basic string, escaped exactly as the writer escapes every other
+/// string it emits.
+///
+/// The vocabulary tags need none of this — they are closed sets of bare words —
+/// but a `service_shape` token and a [`CapacityNeed`]'s node and parameter names
+/// are producer-supplied text, and an unescaped quote in one would not break the
+/// file: it would produce a DIFFERENT file that still parses, which is the
+/// failure mode `escape` exists for.
+fn quoted(s: &str) -> String {
+    format!("\"{}\"", crate::render::escape(s))
 }
 
 /// `[meta]` — what this descriptor is and how far it got.
@@ -721,6 +736,236 @@ impl Types {
     }
 }
 
+/// `[params]` — the parameter store's appetite (issue 1408, RFC-0100 D4).
+///
+/// # Why PER IMAGE and not per node
+///
+/// The store holds EVERY node's parameters, and `ParamDeclarations::from_model`
+/// refuses outright unless every node in the image declares `params:` — sizing
+/// from the nodes that did declare gives the rest no slots, which is the
+/// under-report the entity derivation refuses for the same reason. So there is
+/// no partial per-node state to model: either the whole image answers or
+/// nothing does. A per-node table would be a shape the producer can never
+/// populate half of, and a consumer would have to re-derive the maximum anyway.
+///
+/// [`Self::max_parameters`] and [`Self::max_param_name_len`] are nevertheless
+/// PER NODE, because the store is per node; [`Self::declared`] is the total
+/// across the image. The two are different questions and the field names say
+/// which is which.
+///
+/// # What is deliberately NOT here
+///
+/// The three BOARD capacities — `MAX_STRING_VALUE_LEN`, `MAX_ARRAY_LEN`,
+/// `MAX_BYTE_ARRAY_LEN` — do not appear in this section, and a future reader
+/// will want to add them. They are RFC-0100 D1 **target** facts, owned by the
+/// board descriptor's `[board.knobs.params]`: an MCU and a PC want different
+/// string lengths for the same node, so a contract cannot name the number. The
+/// image states only whether it NEEDS each capacity and who needs it — see
+/// [`CapacityNeed`], whose `Unused` arm is a STATEMENT and not an absence.
+///
+/// # The nine carriers this replaces
+///
+/// Issue 1408's table: eight `NROS_DECLARED_*` variables read by
+/// `nros-params/build.rs` and one (`NROS_DECLARED_PARAM_SERVICE_SHAPE`) read by
+/// `nros-node/build.rs`. Five of those eight are the capacities above, of which
+/// three are the needs stated here and two — the resolved numbers — belong to
+/// the board. Retiring a carrier is the consumer's move, not this crate's; what
+/// this section does is give the fact a descriptor spelling, which it had none
+/// of on ANY road.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Params {
+    declared: Option<usize>,
+    max_parameters: Option<usize>,
+    max_param_name_len: Option<usize>,
+    needs_max_string_value_len: Option<CapacityNeed>,
+    needs_max_array_len: Option<CapacityNeed>,
+    needs_max_byte_array_len: Option<CapacityNeed>,
+    service_shape: Option<String>,
+    #[serde(default)]
+    refused: BTreeMap<String, String>,
+}
+
+impl Params {
+    pub(crate) const FIELDS: &'static [&'static str] = &[
+        "declared",
+        "max_parameters",
+        "max_param_name_len",
+        "needs_max_string_value_len",
+        "needs_max_array_len",
+        "needs_max_byte_array_len",
+        "service_shape",
+    ];
+
+    /// Parameters the contract declares, across EVERY node in the image.
+    ///
+    /// Not a capacity: it is what was declared, and it is the number a human
+    /// reads to see whether declaring more would buy anything. Zero is a
+    /// legitimate demand and survives unfloored (D7).
+    pub fn declared(&self) -> Fact<usize> {
+        fact(&self.declared, "declared", &self.refused)
+    }
+
+    /// `NROS_MAX_PARAMETERS` — PER NODE: the declared names plus the seeded
+    /// `use_sim_time`, counted once even when the contract also names it (the
+    /// seed steps aside for an application's own declaration and the two share
+    /// a slot).
+    ///
+    /// Per node rather than per image because the store is per node, so this is
+    /// the maximum over the image's nodes and not the sum. A consumer that
+    /// summed [`Self::declared`] instead would size every node's store for the
+    /// whole image.
+    pub fn max_parameters(&self) -> Fact<usize> {
+        fact(&self.max_parameters, "max_parameters", &self.refused)
+    }
+
+    /// `NROS_MAX_PARAM_NAME_LEN` — the longest declared name, in BYTES.
+    pub fn max_param_name_len(&self) -> Fact<usize> {
+        fact(
+            &self.max_param_name_len,
+            "max_param_name_len",
+            &self.refused,
+        )
+    }
+
+    /// Does any declared parameter need `MAX_STRING_VALUE_LEN` (`string` and
+    /// `string_array`), and which one?
+    ///
+    /// The CAPACITY is the board's — see [`Params`]'s own doc. This is the
+    /// need, and [`CapacityNeed::Unused`] is a stated answer rather than an
+    /// absent one.
+    pub fn needs_max_string_value_len(&self) -> Fact<CapacityNeed> {
+        fact(
+            &self.needs_max_string_value_len,
+            "needs_max_string_value_len",
+            &self.refused,
+        )
+    }
+
+    /// Does any declared parameter need `MAX_ARRAY_LEN` (every array type
+    /// except `byte_array`), and which one?
+    pub fn needs_max_array_len(&self) -> Fact<CapacityNeed> {
+        fact(
+            &self.needs_max_array_len,
+            "needs_max_array_len",
+            &self.refused,
+        )
+    }
+
+    /// Does any declared parameter need `MAX_BYTE_ARRAY_LEN` (`byte_array`),
+    /// and which one?
+    pub fn needs_max_byte_array_len(&self) -> Fact<CapacityNeed> {
+        fact(
+            &self.needs_max_byte_array_len,
+            "needs_max_byte_array_len",
+            &self.refused,
+        )
+    }
+
+    /// `NROS_DECLARED_PARAM_SERVICE_SHAPE` — one node per `,`, each the nine
+    /// counts of `ParamServiceShape` joined by `:`, in field order.
+    ///
+    /// A STRING and not a table, deliberately. It is the token the producer
+    /// already composes and `nros-node/build.rs` already parses; re-spelling it
+    /// as TOML here would make this crate the second definition of a shape it
+    /// does not own, which is issue 1025's defect — one number, two
+    /// derivations, agreeing until the day they do not. The descriptor's job is
+    /// to CARRY the fact, and the token is what the fact is.
+    ///
+    /// This crate deliberately does not validate the token's inner structure:
+    /// it is a leaf by construction (see the manifest), the grammar belongs to
+    /// the two crates that write and read it, and a half-validation here would
+    /// be a third opinion.
+    pub fn service_shape(&self) -> Fact<String> {
+        fact(&self.service_shape, "service_shape", &self.refused)
+    }
+
+    /// Builder setters. Each takes `Option` so a producer that has one fact and
+    /// not another writes what it actually knows, leaving the rest ABSENT — or
+    /// refuses it with [`Self::refuse`], which is the louder and usually right
+    /// answer.
+    pub fn set_declared(&mut self, v: Option<usize>) -> &mut Self {
+        self.declared = v;
+        self
+    }
+    pub fn set_max_parameters(&mut self, v: Option<usize>) -> &mut Self {
+        self.max_parameters = v;
+        self
+    }
+    pub fn set_max_param_name_len(&mut self, v: Option<usize>) -> &mut Self {
+        self.max_param_name_len = v;
+        self
+    }
+    pub fn set_needs_max_string_value_len(&mut self, v: Option<CapacityNeed>) -> &mut Self {
+        self.needs_max_string_value_len = v;
+        self
+    }
+    pub fn set_needs_max_array_len(&mut self, v: Option<CapacityNeed>) -> &mut Self {
+        self.needs_max_array_len = v;
+        self
+    }
+    pub fn set_needs_max_byte_array_len(&mut self, v: Option<CapacityNeed>) -> &mut Self {
+        self.needs_max_byte_array_len = v;
+        self
+    }
+    pub fn set_service_shape(&mut self, v: Option<String>) -> &mut Self {
+        self.service_shape = v;
+        self
+    }
+
+    /// Record that `field` could not be derived, and why.
+    pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
+        debug_assert!(
+            Self::FIELDS.contains(&field),
+            "unknown [params] field {field}"
+        );
+        self.refused.insert(field.to_string(), reason.into());
+        self
+    }
+
+    pub(crate) fn refusals(&self) -> &BTreeMap<String, String> {
+        &self.refused
+    }
+
+    pub(crate) fn raw_value(&self, field: &str) -> Option<String> {
+        Some(match field {
+            "declared" => self.declared?.to_string(),
+            "max_parameters" => self.max_parameters?.to_string(),
+            "max_param_name_len" => self.max_param_name_len?.to_string(),
+            "needs_max_string_value_len" => {
+                quoted(&self.needs_max_string_value_len.as_ref()?.token())
+            }
+            "needs_max_array_len" => quoted(&self.needs_max_array_len.as_ref()?.token()),
+            "needs_max_byte_array_len" => quoted(&self.needs_max_byte_array_len.as_ref()?.token()),
+            "service_shape" => quoted(self.service_shape.as_ref()?),
+            _ => return None,
+        })
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        known_refusals(
+            "params",
+            &self.refused,
+            Self::FIELDS,
+            &[
+                ("declared", self.declared.is_some()),
+                ("max_parameters", self.max_parameters.is_some()),
+                ("max_param_name_len", self.max_param_name_len.is_some()),
+                (
+                    "needs_max_string_value_len",
+                    self.needs_max_string_value_len.is_some(),
+                ),
+                ("needs_max_array_len", self.needs_max_array_len.is_some()),
+                (
+                    "needs_max_byte_array_len",
+                    self.needs_max_byte_array_len.is_some(),
+                ),
+                ("service_shape", self.service_shape.is_some()),
+            ],
+        )
+    }
+}
+
 /// `[policy]` — the facts nobody can derive (RFC-0100 D1).
 ///
 /// > Policy is its own kind because the tree already argues it correctly and
@@ -828,6 +1073,11 @@ pub struct SizingDescriptor {
     pub image: Image,
     #[serde(default)]
     pub types: Types,
+    /// Issue 1408 — purely ADDITIVE, so [`crate::SCHEMA_VERSION`] stays 1: a
+    /// descriptor written before this section parses unchanged and every
+    /// accessor on it answers [`Fact::Absent`], which is the true answer.
+    #[serde(default)]
+    pub params: Params,
     #[serde(default)]
     pub policy: Policy,
 }
@@ -848,6 +1098,7 @@ impl SizingDescriptor {
             endpoints: Vec::new(),
             image: Image::default(),
             types: Types::default(),
+            params: Params::default(),
             policy: Policy::default(),
         }
     }
@@ -880,6 +1131,7 @@ impl SizingDescriptor {
         }
         self.image.validate()?;
         self.types.validate()?;
+        self.params.validate()?;
         self.policy.validate()?;
         Ok(())
     }
