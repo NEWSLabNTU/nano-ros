@@ -290,3 +290,77 @@ fn a_statically_registered_logger_still_wins_over_creation() {
     );
     assert_eq!(looked_up.level(), Severity::Warn);
 }
+
+// -----------------------------------------------------------------------------
+// phase-417 G6 — `log!`, the severity-taking macro, obeys the SAME gates.
+// -----------------------------------------------------------------------------
+
+/// `log!(logger, severity, …)` and `log_<level>!(logger, …)` are two spellings
+/// of one call, so they must answer the per-logger threshold identically.
+///
+/// This is the whole risk in the row: the severity-taking emitter existed as
+/// `__nros_log_emit!` and was `#[doc(hidden)]`, and the cheap way to publish it
+/// would have been a second macro with its own gate. Then
+/// `log!(logger, Severity::Debug, …)` would obey a different threshold from
+/// `log_debug!` and nothing would say so. The assertion is agreement — filtered
+/// below the threshold, admitted at and above it — in BOTH spellings.
+#[test]
+fn the_severity_taking_macro_obeys_the_same_threshold_as_the_level_macros() {
+    let _guard = DISPATCH.lock().unwrap();
+    install_collector();
+
+    let logger = nros_log::get_or_create_logger("w4d_runtime_sev").expect("arena has room");
+    logger.set_level(Severity::Warn);
+
+    // The expectation is WRITTEN as the contract rather than as a constant, so
+    // this test is still correct — and still discriminating — when the crate
+    // is built with a lower `max-level-*` ceiling, which is the one gate the
+    // two spellings could answer differently.
+    let reaches =
+        |sev: Severity| nros_log::severity_enabled_at_compile_time(sev) && logger.is_enabled(sev);
+
+    // Below the logger's threshold: neither spelling delivers.
+    assert!(!reaches(Severity::Info));
+    nros_log::log!(logger, Severity::Info, "runtime severity, filtered");
+    nros_log::log_info!(logger, "level macro, filtered");
+    assert!(
+        drain_for("w4d_runtime_sev").is_empty(),
+        "a severity below the logger's level must be filtered in both spellings"
+    );
+
+    // At the threshold: both deliver, at the severity they were given.
+    if reaches(Severity::Warn) {
+        nros_log::log!(logger, Severity::Warn, "runtime severity, admitted");
+        nros_log::log_warn!(logger, "level macro, admitted");
+        let lines = drain_for("w4d_runtime_sev");
+        assert_eq!(lines.len(), 2, "expected both spellings, got {lines:?}");
+        assert_eq!(lines[0].0, Severity::Warn);
+        assert_eq!(lines[0].1, "runtime severity, admitted");
+        assert_eq!(lines[1].0, Severity::Warn);
+    }
+
+    // The severity is a VALUE, which is the point: a variable chooses it, and
+    // the record must carry the one it was GIVEN. A macro that ignored its
+    // argument — or pinned it to one level — would still deliver, still be
+    // filtered correctly by the threshold, and log every line at the wrong
+    // severity; this is the assertion that sees that.
+    for (recovered, want) in [(true, Severity::Info), (false, Severity::Error)] {
+        logger.set_level(Severity::Trace);
+        let sev = if recovered {
+            Severity::Info
+        } else {
+            Severity::Error
+        };
+        if !nros_log::severity_enabled_at_compile_time(sev) {
+            continue;
+        }
+        nros_log::log!(logger, sev, "link {}", recovered);
+        let lines = drain_for("w4d_runtime_sev");
+        assert_eq!(lines.len(), 1, "expected one record, got {lines:?}");
+        assert_eq!(
+            lines[0].0, want,
+            "the record must carry the severity it was given"
+        );
+        assert_eq!(lines[0].1, format!("link {recovered}"));
+    }
+}

@@ -15,6 +15,10 @@
 
 #include "nros/result.hpp"
 #include "nros/hosted_block.hpp"
+// phase-417 G6 — `time_until_trigger()` returns `nros::Duration`, so this
+// header NAMES it and must be includable first (the rule `qos.hpp` states for
+// the same dependency). `duration.hpp` includes nothing of ours.
+#include "nros/duration.hpp"
 
 // phase-417 W1.a — `<memory>` for the nested pointer aliases below.
 // `NROS_CPP_HAS_SHARED_PTR` and the other five capability macros have ONE
@@ -92,6 +96,55 @@ class Timer {
     bool is_canceled() const {
         if (!initialized_) return true;
         return nros_cpp_timer_is_canceled(executor_, handle_id_);
+    }
+
+    /// Would this timer fire on the next `spin_once()` pass? — rclcpp's
+    /// `TimerBase::is_ready()`.
+    ///
+    /// phase-417 G6. The answer is the EXECUTOR's, read from the arena entry
+    /// the timer is registered in: a cancelled timer is never ready, a fired
+    /// one-shot is never ready again, and otherwise `elapsed >= period`. That
+    /// is `arena::timer_try_process`'s own guard rather than a second opinion
+    /// about it — a readiness answer that can disagree with the dispatcher is
+    /// worse than no answer.
+    ///
+    /// An uninitialized timer answers `false`: it is registered with no
+    /// executor, so nobody will dispatch it.
+    bool is_ready() const {
+        if (!initialized_) return false;
+        return nros_cpp_timer_is_ready(executor_, handle_id_);
+    }
+
+    /// Time until this timer next fires — NEGATIVE when it is overdue.
+    /// rclcpp's `TimerBase::time_until_trigger()`.
+    ///
+    /// phase-417 G6. Two deliberate differences from rclcpp, both recorded on
+    /// the ledger row:
+    ///
+    ///  * upstream returns `std::chrono::nanoseconds`; this returns
+    ///    [`nros::Duration`], because this header is freestanding and
+    ///    `<chrono>` is not reachable from every target it serves (issue 0112).
+    ///    The UNIT is the same — `d.nanoseconds()` is upstream's count.
+    ///  * the arena's timer accounting is MICROSECOND-based (issue #505), so
+    ///    the nanosecond value is a microsecond quantity scaled by 1000. The
+    ///    unit is rclcpp's; the resolution is ours.
+    ///
+    /// A wall timer answers on the platform steady clock; a timer created with
+    /// `create_timer(clock, …)` answers on its own clock.
+    ///
+    /// `Duration()` (zero) for an uninitialized timer or one the executor does
+    /// not know. That collides with "fires exactly now", which is why
+    /// [`is_valid`] is the question to ask first — the C surface spends a
+    /// return code on the distinction (`rcl_timer_get_time_until_next_call`
+    /// answers `NROS_RET_NOT_INIT`) and a `Duration`-returning accessor has no
+    /// room for one.
+    Duration time_until_trigger() const {
+        if (!initialized_) return Duration();
+        int64_t ns = 0;
+        if (nros_cpp_timer_time_until_next_call_ns(executor_, handle_id_, &ns) != NROS_CPP_RET_OK) {
+            return Duration();
+        }
+        return Duration::from_nanoseconds(ns);
     }
 
     /// Check if the timer is initialized and valid.

@@ -216,12 +216,70 @@ using TransitionVisitFn = bool (*)(void* ctx, const Transition& transition);
 /// The `lifecycle_msgs/msg/State.label` for `state` — `"active"`,
 /// `"unconfigured"`, … — or `nullptr` for `LifecycleState::Unknown`.
 ///
-/// A free function rather than a member of a `State` class: the only thing
-/// upstream's `State` adds to the enum is this string, so a whole type to
-/// carry it would be a wrapper over one accessor.
+/// The free form, which [`State::label`] below calls. phase-417 W4.f wrote
+/// this one and stopped here, on the argument that "the only thing upstream's
+/// `State` adds to the enum is this string, so a whole type to carry it would
+/// be a wrapper over one accessor". G6 disagrees with that argument for the
+/// reason the sibling already demonstrates: [`Transition`] carries `label()`
+/// as a METHOD fifty lines above, so a ported `state.label()` compiled and a
+/// ported `transition.label()` did too — the pair was half applied, not
+/// deliberately asymmetric. Both spellings stay; this is the implementation
+/// and there is no second table.
 inline const char* state_label(LifecycleState state) {
     return nros_lifecycle_state_label(static_cast<uint8_t>(state));
 }
+
+/// One REP-2002 primary state as a value — rclcpp's `rclcpp_lifecycle::State`.
+///
+/// phase-417 G6, and it is a SURFACING job rather than a feature: every byte
+/// it returns already shipped (`nros_lifecycle_state_label`, W4.f), and what
+/// was missing was the RECEIVER. Upstream's `State` is a value type with
+/// `.id()` and `.label()`; ours was a bare enum plus a free function, so a
+/// ported `state.label()` did not compile while the sibling
+/// `transition.label()` did.
+///
+/// **It stores an id and nothing else**, exactly like [`Transition`]. The
+/// accessor calls the pure C function over `nros_core::lifecycle`, so the five
+/// labels have one home — the one `~/get_transition_graph` reads — and a
+/// `constexpr` table of them in this header would be a further copy of
+/// `lifecycle_msgs`, which is what issue 1099 was.
+///
+/// Two deliberate differences from rclcpp, both the ones the header already
+/// records for `Transition`:
+///
+///  * upstream's `State` owns an `rcl_lifecycle_state_t` AND an
+///    `rcl_allocator_t`, because its label is a heap string it must free.
+///    There is no allocator here (RFC-0022), so there is nothing to own: this
+///    is one `uint8_t`.
+///  * [`label`] returns a BORROWED `const char*` with static lifetime rather
+///    than a `std::string`. Nothing is allocated and nothing is freed.
+class State {
+  public:
+    /// The state with this `lifecycle_msgs/msg/State` id.
+    constexpr explicit State(uint8_t state_id) : id_(state_id) {}
+    /// The state named by the enum — the spelling to prefer.
+    constexpr explicit State(LifecycleState state) : id_(static_cast<uint8_t>(state)) {}
+
+    /// The `lifecycle_msgs/msg/State` id — rclcpp's `State::id()`.
+    constexpr uint8_t id() const { return id_; }
+
+    /// The same id as the enum. `ErrorProcessing` is the one to read
+    /// carefully: we carry `5`, upstream sends `15` on the wire, and the
+    /// mapping lives in `nros-node` — see [`LifecycleState`].
+    constexpr LifecycleState state() const { return static_cast<LifecycleState>(id_); }
+
+    /// Whether this id is a state nano-ros implements. `false` for anything
+    /// outside the table, for which [`label`] answers `nullptr` rather than a
+    /// neighbouring row.
+    bool valid() const { return nros_lifecycle_state_label(id_) != nullptr; }
+
+    /// The wire label — `"unconfigured"`, `"active"`, … — or `nullptr` for an
+    /// id we do not implement. Borrowed, static lifetime, never freed.
+    const char* label() const { return nros_lifecycle_state_label(id_); }
+
+  private:
+    uint8_t id_;
+};
 
 /// An entity whose sends follow the node's REP-2002 state — rclcpp's
 /// `rclcpp_lifecycle::node_interfaces::ManagedEntityInterface`.

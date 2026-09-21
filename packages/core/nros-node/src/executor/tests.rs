@@ -4668,6 +4668,102 @@ fn timer_readiness_and_elapsed_agree_with_the_dispatcher() {
     assert_eq!(executor.timer_is_ready(not_a_timer), None);
 }
 
+/// phase-417 G6 — `timer_time_until_next_call_ns` is SIGNED, and the sign is
+/// the answer.
+///
+/// The assertions moved here from `nros-c`'s `remaining_period_ns` when the
+/// subtraction became the executor's: `cpp:Timer::time_until_trigger` reads
+/// it too, and two crates deriving `period - elapsed` is how the sign
+/// convention and the microsecond scaling come to disagree. rcl's header:
+/// "a negative value indicates the timer call is overdue by that amount" —
+/// unsigned made lateness read as `0`, which is also what "fires now" reads as.
+///
+/// Driven through the executor rather than asserted on a free function,
+/// because that is what both wrappers actually call. The bounds are bounds for
+/// the reason the test above gives — `spin_once` credits the real wall-clock
+/// cost of the spin on top of the injected delta — and the LOWER bound is the
+/// assertion, since an upper-bound-only check passes a counter that never
+/// advanced.
+#[test]
+fn time_until_next_call_goes_negative_once_a_timer_is_overdue() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    // A one-shot, so the fire does not rewind `elapsed_us` and the overdue
+    // reading survives to be asserted.
+    let id = executor
+        .register_timer(TimerDuration::from_millis(100), || {})
+        .unwrap();
+
+    // Fresh: the whole period remains, in NANOSECONDS over a microsecond
+    // accounting — 100 ms is 100_000 us is 100_000_000 ns.
+    assert_eq!(
+        executor.timer_time_until_next_call_ns(id),
+        Some(100_000_000)
+    );
+
+    let _ = elapse_then_spin_once(&mut executor, 40);
+    let remaining = executor.timer_time_until_next_call_ns(id).unwrap();
+    assert!(
+        (50_000_000..=60_000_000).contains(&remaining),
+        "40ms of a 100ms period gone, so ~60ms remain: {remaining}ns"
+    );
+
+    // OVERDUE — on a ONE-SHOT that has already fired.
+    //
+    // Two shapes were measured and neither is this: a REPEATING timer cannot
+    // stay overdue, because the arena drains the backlog (`elapsed_us -=
+    // period_us`) until it is inside one period again, so even a 350ms step
+    // on a 100ms period comes back reading ~10ms REMAINING; and a CANCELLED
+    // timer's elapsed count does not advance at all, so its remaining time
+    // stays wherever it was when it was cancelled. Both readings are correct
+    // and neither is the sign this accessor exists to carry.
+    //
+    // A fired one-shot is: it is never dispatched again, so nothing rewinds
+    // it, and the count keeps climbing past the period. That is exactly rcl's
+    // "a negative value indicates the timer call is overdue by that amount",
+    // and it is the case unsigned could not carry — issue 1008 reported it as
+    // `0`, which is also what "fires now" reads as.
+    let oneshot = executor
+        .register_timer_oneshot(TimerDuration::from_millis(100), || {})
+        .unwrap();
+    let result = elapse_then_spin_once(&mut executor, 150);
+    assert!(
+        result.timers_fired >= 1,
+        "the one-shot must have fired (the repeating timer above fires too)"
+    );
+    let _ = elapse_then_spin_once(&mut executor, 200);
+    let overdue = executor.timer_time_until_next_call_ns(oneshot).unwrap();
+    assert!(
+        overdue < 0,
+        "a fired one-shot's elapsed count keeps climbing, so the remaining \
+         time must be NEGATIVE, got {overdue}ns"
+    );
+    // The MAGNITUDE is a lower bound, not an equality: the fire consumed one
+    // period and the accounting stopped there, so what remains is the
+    // overshoot of the step that fired it (measured ~50ms of the 150ms step,
+    // and the later 200ms step adds nothing because nothing dispatches a
+    // fired one-shot). The assertion that matters is the SIGN; the bound is
+    // here so a value that merely rounds below zero cannot pass.
+    assert!(
+        overdue <= -40_000_000,
+        "the overshoot of the firing step must survive as the overdue amount: \
+         {overdue}ns"
+    );
+    assert_eq!(
+        executor.timer_is_ready(oneshot),
+        Some(false),
+        "overdue is not ready — a fired one-shot never fires again"
+    );
+
+    // A handle that is not a timer has no answer — not a remaining time of 0,
+    // which is also what "fires now" reads as.
+    assert_eq!(
+        executor.timer_time_until_next_call_ns(HandleId(oneshot.0 + 1)),
+        None
+    );
+}
+
 /// phase-417 W5.c — `exchange_timer_period_us` must change what the DISPATCHER
 /// does, and must not touch the elapsed count while doing it.
 ///

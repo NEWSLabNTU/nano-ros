@@ -1017,17 +1017,6 @@
     ],
     "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and two of its three complaints are closed: the type IS exported from the `nros` facade now, and it reads AND WRITES (`set_bool` / `set_integer` / `set_double` / `set_string`, through `ParameterServer::set_or_declare` — not `apply`, because `allow_undeclared_parameters` governs what a REMOTE set may create and a caller who reached for this type has opted in by naming it, which is rclrs's split too). What remains is the NAME: rclrs calls it `Parameters`, ours is `UndeclaredParameters`. `rename` and not `divergence` because no platform constraint picks either spelling. The envelope: a ported rclrs file rarely NAMES the type — it binds what `use_undeclared_parameters()` returns — so the drop-in cost is a `use` line. Renaming it inside `nros::`, where `Parameter` is already the store's value type, is a stage-6 decision rather than this item's."
   },
-  "rust:QoSProfile::parameters_default": {
-    "verdict": "rename",
-    "why": "Ours is `QoSProfile::parameters_default()` (`nros-rmw/src/traits.rs:957`); rclrs spells it `parameter_services_default` (`rclrs/src/qos.rs:327`). EXACTLY ONE name differs — rclrs's sibling `parameter_events_default` already matches ours (`traits.rs:962`) — so the rename also makes our own pair self-consistent. Three sites: the definition, `spin.rs:7038`, and the assertion at `traits.rs:3305`.\n\nTHREE CLAIMS IN THE PREVIOUS TEXT WERE WRONG, corrected 2026-09-04 and verified:\n1. \"It is also DEAD\" — false. `Executor::register_parameter_services` builds all six servers with `QoSProfile::parameters_default()` at `spin.rs:7038`; issue 0793 wired it there precisely because the constant had no caller and every parameter server ran on a depth-10 queue. service.json's `rust:QoSProfile::parameter_services_default` already carried this correction; param.json never got it.\n2. \"the transient-local profile this returns\" — false. `QOS_PROFILE_PARAMETERS` is Reliable + **Volatile** + KeepLast(1000) (`traits.rs:886-891`). service.json corrected this on 2026-08-25 against `rmw/qos_profiles.h` and said so; this row held the pre-correction text.\n3. \"The owning type's own `QoSProfile`->`QoSProfile` rename landed\" — a self-identical rename, which is not a statement. The real one was `QosSettings`->`QoSProfile`, spelled correctly three times in timer.json. A rename sweep rewrote the FROM side of a sentence about that rename, destroying the only thing it recorded.\n\nTwo sibling rows still hold errors 1 and 2: `cpp:ParametersQoS::ParametersQoS` here, and `cpp:ParametersQoS` in qos.json. A 2026-08-25 correction landed in one shard and three siblings kept the retracted claim — the ledger's own fix-the-CLASS rule failing inside the ledger.",
-    "rename": {
-      "from": "QoSProfile::parameters_default",
-      "to": "QoSProfile::parameter_services_default",
-      "status": "settled-pending-owner",
-      "category": "A",
-      "resolution": "OPEN, unblocked, ~3 lines. Whether to leave a `#[deprecated]` forwarder is the owner's call: phase-379 W7's \"NOTHING for Rust\" rule is about TRAIT methods and this is an inherent const fn, so the `BoardConfig::zenoh_locator` precedent applies instead."
-    }
-  },
   "rust:RmwParameterConversionError": {
     "verdict": "rename",
     "disposition": "adopt-bounded",

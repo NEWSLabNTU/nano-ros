@@ -187,11 +187,6 @@
     "disposition": "absent",
     "why": "the blanket-impl trait letting rclrs write `log!(node, ...)`, `log!(\"name\", ...)` or `log!(&logger, ...)` and chain `.once()` / `.throttle(d)` / `.only_if(b)` / `.severity(s)` on any of them. Same call as `rust:IntoNodeOptions` in the node stage: an ergonomic overload trait over what is one concrete caller shape here -- our macros and methods take a `&Logger`. What a user loses: the fluent modifier chain, and passing a node or a bare `&str` where a logger is expected. The modifiers themselves survive as method names -- see `rust:Logger::*_once`, `rust:Logger::*_skip_first`, `rust:Logger::*_throttle` -- and `only_if` survives as an `if`."
   },
-  "rust:log": {
-    "verdict": "gap",
-    "disposition": "adopt",
-    "why": "rclrs's severity-taking `log!` macro; see `rust:log_*`. Our nearest equivalent is `nros_log::__nros_log_emit!`, which is `#[doc(hidden)]` and takes a `Severity` -- not a supported spelling.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT. The reason holds: our severity-taking emitter is `nros_log::__nros_log_emit!`, `#[doc(hidden)]` and named as an implementation detail, so a ported `log!(logger, severity, …)` has no supported spelling to land on. Cheap, and the cheapness is the risk: the public macro must take the SAME `Severity` the five level macros take and route through the same throttle and `is_enabled` gate, or the two spellings drift and `log!(…, Severity::Debug, …)` obeys a different threshold from `nros_debug!`."
-  },
   "cpp:Logger::Logger": {
     "verdict": "divergence",
     "why": "phase-417 stage 0 — visible only because the rclcpp adapter (then `rclcpp_compat.hpp`; deleted at stage 6 step A, each declaration moved to the header owning its concept) became a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not."

@@ -344,6 +344,89 @@ pub unsafe extern "C" fn nros_cpp_timer_reset(
     }
 }
 
+/// Would this timer fire on the next `spin_once()` pass?
+///
+/// phase-417 G6, ledger row `cpp:Timer::is_ready`. `rcl_timer_is_ready` had
+/// shipped for C since stage 3 and `nros::Timer` had `cancel`, `reset`,
+/// `is_canceled` and `is_valid` and not this.
+///
+/// Forwards to `Executor::timer_is_ready`, which evaluates
+/// `arena::timer_try_process`'s own guard: cancelled is never ready, a fired
+/// one-shot is never ready again, otherwise `elapsed >= period`. Deliberately
+/// not re-derived — a readiness answer that can disagree with the dispatcher
+/// is worse than no answer.
+///
+/// `false` for an invalid executor handle or a handle that is not a timer,
+/// matching `nros_cpp_timer_is_canceled`'s shape: this pair returns the plain
+/// `bool` the C++ predicate needs, and the C surface is where the
+/// "cannot answer" outcome has a return code of its own
+/// (`rcl_timer_is_ready`'s `NROS_RET_NOT_INIT`).
+///
+/// # Safety
+/// `executor_handle` must be a valid executor handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_timer_is_ready(
+    executor_handle: *mut c_void,
+    handle_id: usize,
+) -> bool {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return false;
+    };
+    let ctx = &*ctx;
+    ctx.executor
+        .timer_is_ready(nros_node::HandleId(handle_id))
+        .unwrap_or(false)
+}
+
+/// Nanoseconds until this timer next fires — NEGATIVE when it is overdue.
+///
+/// phase-417 G6, ledger row `cpp:Timer::time_until_trigger`. rclcpp's
+/// `TimerBase::time_until_trigger()` is the RELATIVE form, so this forwards to
+/// `Executor::timer_time_until_next_call_ns` — the same computation
+/// `rcl_timer_get_time_until_next_call` reads, in one place, because rcl's own
+/// relative and absolute accessors cannot disagree upstream either.
+///
+/// Two envelope facts the C++ doc comment repeats: the arena's timer
+/// accounting is MICROSECOND-based (issue #505), so a nanosecond answer is a
+/// microsecond quantity scaled by 1000; and a wall timer answers on the
+/// platform steady clock while a `create_timer(clock, …)` timer answers on its
+/// own.
+///
+/// Returns `NROS_CPP_RET_INVALID_ARGUMENT` for a NULL out-pointer or an
+/// executor handle that does not validate, and `NROS_CPP_RET_NOT_FOUND` when
+/// the handle is not a registered timer — an unregistered timer is dispatched
+/// by nobody, so it has no time until its next call rather than a time of
+/// zero, which is the defect issue 1008 was.
+///
+/// # Safety
+/// `executor_handle` must be a valid executor handle and `out_ns` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_timer_time_until_next_call_ns(
+    executor_handle: *mut c_void,
+    handle_id: usize,
+    out_ns: *mut i64,
+) -> nros_cpp_ret_t {
+    if out_ns.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let ctx = &*ctx;
+    match ctx
+        .executor
+        .timer_time_until_next_call_ns(nros_node::HandleId(handle_id))
+    {
+        Some(ns) => {
+            unsafe {
+                *out_ns = ns;
+            }
+            NROS_CPP_RET_OK
+        }
+        None => crate::NROS_CPP_RET_NOT_FOUND,
+    }
+}
+
 /// Check if a timer is cancelled.
 ///
 /// # Safety

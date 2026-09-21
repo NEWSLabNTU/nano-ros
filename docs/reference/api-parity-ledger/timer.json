@@ -547,11 +547,6 @@
     "disposition": "absent",
     "why": "our RMW/platform seam is not reachable from an entity; see `c:node_get_rmw_handle`."
   },
-  "cpp:Timer::is_ready": {
-    "verdict": "gap",
-    "disposition": "adopt",
-    "why": "whether the timer is due to fire. Rust has `Timer::is_ready`; C++ and C do not. See `c:timer_is_ready`.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT, and **THE ROW POINTS AT WORK THAT HAS LANDED.** It says \"See `c:timer_is_ready`\"; phase-417 stage 3 closed the C half — `rcl_timer_is_ready(const struct nros_timer_t *, bool *)` ships at `nros_generated.h:8317`, forwarding to the executor arena rather than to the `last_call_time_ns` that no dispatch path updated (issue 1049). `nros::Timer` (`timer.hpp:53`) has `cancel`, `reset`, `is_canceled` and `is_valid` and not this. A thin wrapper over shipped C, on the pattern the four siblings beside it already use."
-  },
   "cpp:Timer::is_steady": {
     "verdict": "declined",
     "disposition": "adopt",
@@ -565,11 +560,6 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "no allocator, so no refcounted factory; see the `no-shared-ptr` rule."
-  },
-  "cpp:Timer::time_until_trigger": {
-    "verdict": "gap",
-    "disposition": "adopt",
-    "why": "Rust has `Timer::time_until_next_call`; C++ does not. See `c:timer_get_next_call_time`.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT, and **THE ROW POINTS AT WORK THAT HAS LANDED.** Both C halves ship: `rcl_timer_get_time_until_next_call` (the relative one, phase-417 stage 3) and `rcl_timer_get_next_call_time` (`nros_generated.h:8464`, the absolute one). rclcpp's `time_until_trigger()` is the RELATIVE form, so the wrapper is over the first. Two envelope facts belong in its doc comment and are already recorded on the C side: the arena's timer accounting is MICROSECOND-based (issue #505), so a nanosecond answer is a microsecond quantity scaled by 1000; and a wall timer answers on the platform steady clock while a `nros_timer_init_on_clock` timer answers on its own."
   },
   "cpp:TimerCallbackType": {
     "verdict": "divergence",
@@ -932,11 +922,6 @@
     "verdict": "divergence",
     "why": "**rclrs 0.7.0 CONVERGED ON OUR SHAPE.** 0.5.1 had one `create_timer`; 0.7.0 has `create_timer_inert` / `create_timer_oneshot` / `create_timer_repeating` -- the same three modes our `TimerMode` carries, arrived at independently. Ours are a mode SET ON an entity in the static table (`set_inert`, `set_oneshot`, `set_repeating`) because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused; rclrs constructs one per mode. Same model, different placement -- so this is no longer the divergence the 0.5.1 comparison recorded, and W5 should consider matching the verb."
   },
-  "rust:Node::get_clock": {
-    "verdict": "gap",
-    "disposition": "adopt",
-    "why": "rclrs and rclcpp both hand a node's clock back; our Rust component reaches the clock through the executor rather than the node, and there is no accessor. See `cpp:Node::get_clock`.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT. The reason holds and the asymmetry is ours alone: `cpp:Node::get_clock` SHIPS (`packages/api/nros-cpp/include/nros/node.hpp:1079`, \"The node's clock — `rclcpp::Node::get_clock()`\", issue 0789), and only the Rust node lacks the accessor. Same receiver-forwarder shape as the graph family: the clock is the executor's and the node borrows it, so this is a delegation and not a second clock. Group it with the Rust forwarders."
-  },
   "rust:Node::install_ros_time_source": {
     "verdict": "divergence",
     "why": "phase-425 W3 -- subscribe `/clock` and install every sample as this image's ROS time, which is what rclcpp's `use_sim_time` parameter switches on. rclrs models ROS time as a `ClockSource` that a `Clock` is built `with_source`, so the override is driven by whoever owns the source and the `/clock` subscription is the application's to write; ours is an explicit verb on the node handle, for the same constraint `rust:Clock::ros_time` records -- with no allocator the source cannot be a separately-owned object shared between clocks, so the override is PROCESS-GLOBAL and an image has exactly one of it. Calling this on a second node adds a second subscriber to the same global, which is redundant rather than wrong. QoS is `QoSProfile::clock_default()` (= rclcpp's `ClockQoS`: best-effort, keep-last 1, volatile) because a late subscriber wants the NEXT sample and not a replay of the simulation's history; cancelling the returned handle stops the source and deliberately does NOT clear the override, so a node that unsubscribes mid-run keeps the last simulated time rather than jumping back to the wall clock. Behind the `sim-time` feature, which is why this row did not exist until 2026-09-12: `sim-time` was not in the parity extractor's `NROS_FEATURES`, so the subject was on no measured surface and the row could not be written at all. phase-430 W7 called these rows \"still owed, deliberately\" for exactly that reason -- issue 1351.\n\nOn `NodeCtx`, the executor-borrowing node handle (`exec.node_mut(id)`), which the correlator folds onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
@@ -1261,5 +1246,14 @@
   "rust:Executor::exchange_timer_period_us": {
     "verdict": "divergence",
     "why": "phase-417 W5.c — the WRITE half of the same family as `rust:Executor::timer_elapsed_us` and `rust:Executor::timer_is_ready`, and it sits on the executor for the same reason: RFC-0002's arena owns timer state, so there is no owning `Timer` object to hang it on where rclrs would. Returns `Option<u64>` (the period it replaced) rather than `()`, because \"not a timer handle\" must be a different answer from \"exchanged a period of 0\" — issue 1008's shape, and the same choice the two read siblings make.\n\nIt exists so `rcl_timer_exchange_period` (C) can forward rather than recompute: the live period is `TimerHeader::period_us`, the number `arena::timer_try_process` compares `elapsed_us` against, and a second writable copy of it is exactly the drift RFC-0019 puts the answer in Rust to avoid. `elapsed_us` is deliberately not rewound, which is rcl's own behaviour; held by `executor::tests::exchanging_a_timers_period_changes_the_cadence_without_rewinding_it`, which fails if it is (measured)."
+  },
+  "rust:Executor::timer_time_until_next_call_ns": {
+    "verdict": "divergence",
+    "why": "phase-417 G6 — `period - elapsed` in nanoseconds, SIGNED and saturating, read off the arena's `TimerHeader`. rclrs puts the equivalent on `Timer` (`Timer::time_until_next_call`); RFC-0002's arena owns timer state here, so there is no owning `Timer` object to hang it on and it sits on the executor beside its five siblings (`timer_is_ready`, `timer_elapsed_us`, `timer_period_us`, `timer_is_canceled`, `exchange_timer_period_us`), each a `divergence` for the same reason.\n\nIt is on the executor for a SECOND reason the siblings did not have: two wrappers read it. `rcl_timer_get_time_until_next_call` computed it in `nros-c` (`remaining_period_ns`), and G6's `cpp:Timer::time_until_trigger` needed the same subtraction from `nros-cpp`. Two crates deriving one quantity is how the sign convention and the microsecond scaling come to disagree — rcl's own relative and absolute accessors are `next_call_time` and `next_call_time - now` precisely so they cannot. The arithmetic moved here and both wrappers forward.\n\n`Option` deliberately: 'not a timer handle' is a different answer from 'due now', and reporting the first as `0` is the defect issue 1008 was."
+  },
+  "cpp:Timer::time_until_trigger": {
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "why": "RE-VERDICTED gap -> divergence, phase-417 G6 — WE HAVE IT NOW, and only the RETURN TYPE differs. `nros::Timer::time_until_trigger()` (`packages/api/nros-cpp/include/nros/timer.hpp`) forwards to `Executor::timer_time_until_next_call_ns`, the same arena read `rcl_timer_get_time_until_next_call` makes.\n\nTHE RETURN TYPE is `nros::Duration`, where rclcpp's is `std::chrono::nanoseconds`. `<chrono>` is not reachable from every target this header serves — Zephyr's minimal libcpp ships three headers and `<chrono>` is not one of them (issue 0112), and this surface's floor is a freestanding build — so a `std::chrono` return would remove the accessor from exactly the images the timer exists for. The UNIT is upstream's: `d.nanoseconds()` is the count `std::chrono::nanoseconds::count()` would have given.\n\nTWO ENVELOPE FACTS, both inherited from the C side and both in the doc comment. The arena's timer accounting is MICROSECOND-based (issue #505), so the nanosecond value is a microsecond quantity scaled by 1000 — the unit is rclcpp's, the resolution is ours. And a wall timer answers on the platform steady clock while a `create_timer(clock, …)` timer answers on its own.\n\nONE THING THE C SURFACE HAS THAT THIS DOES NOT: a way to say 'cannot answer'. `rcl_timer_get_time_until_next_call` spends a return code on it (`NROS_RET_NOT_INIT` for an uninitialised, finalised or unregistered timer); a `Duration`-returning accessor has no room for one, so an unknown timer reads `Duration()` — which collides with 'fires exactly now'. `is_valid()` is the question to ask first. rclcpp has the same collision and does not document it."
   }
 }
