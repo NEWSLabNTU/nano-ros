@@ -37,9 +37,9 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 19 | 12 | 24 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 20 | 12 | 24 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 12 | 12 | 24 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 36 | 35 | 71 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 37 | 35 | 71 % |
 //! | tier 3 | everything | 205 | 49 | 100 % |
 //!
 //! Re-measured 2026-09-10 (phase-441 W1). FOUR of the six gated numbers had
@@ -54,6 +54,23 @@
 //! in fewer picks. Cell count is not monotone in the candidate set and never was
 //! (see `the_ladder_is_monotone_in_fixture_cost`, which asserts on coordinates
 //! for exactly this reason).
+//!
+//! Re-measured 2026-09-21 (issue 1433). Tier 1's cells went 19 -> 20 with
+//! `cell(Linux, C, Zenoh, ExecutorBoundNode, Example, Runtime)` (issue 1384):
+//! `ExecutorBoundNode` is a new value of the `workload` axis, and tier 1 covers
+//! workload 1-wise, so the cover had to grow by one. Its COORDINATE is
+//! `linux,c,zenoh`, which tier 1 already held, so coords stay 12 and the cost
+//! column is unchanged — the case the cells/coords split exists to show.
+//!
+//! **This table and the array in `documented_lane_table_is_live` are two
+//! spellings of one fact, and the table is the one nothing checks.** Nightly's
+//! cells read 36 here while the array read 37 from `76e9d18c0` (2026-09-10)
+//! until 1433 corrected it: that commit fixed the array the test reads and left
+//! the prose it claims to mirror, so the gate was green over a stale table for
+//! eleven days. The gate is therefore narrower than the rule it enforces
+//! (issue 0196's shape) — it asserts the code against a hand-kept array, not
+//! against this table. Edit BOTH, in the same commit, until something reads the
+//! table itself.
 //!
 //! NOT updated, and not gated by anything: the prose in `just/ci.just` and
 //! `justfile` that quotes these covers ("14 of 50 coordinates", "37 of 194
@@ -890,7 +907,7 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 19, 12),
+            (CiLane::Tier1, 20, 12),
             (CiLane::Tier2, 12, 12),
             (CiLane::Tier2Nightly, 37, 35),
         ];
