@@ -2002,7 +2002,39 @@ separately.**
 | `rust:BOOT_SET_NAMESPACE` | thread the namespace the macro already computes at `main_macro.rs:934` into the bake it discards at `:1425`, plus an `EnvRung` field | SMALL |
 | `cpp:Publisher::get_gid` | a wrapper over `get_gid_for_publisher`, which Cyclone fills and nothing reads; `UNSUPPORTED` where the slot is NULL | SMALL |
 | `cpp:Client::prune_pending_requests` + 2 siblings | the three verbs over the BOUNDED request table; `remove_pending_request` is cheapest because the sequence number the take path returns is already the key | SMALL, move together |
-| `rust:Time::to_ros_msg` | blocked on a DECISION, not on a body: does `builtin-interfaces` join the pre-generated core set? `nros-core` sits below codegen, so the conversion cannot be an inherent method | trivial after the decision |
+| `rust:Time::to_ros_msg` | blocked on a DECISION, not on a body — but **not the decision this row named**; see below | trivial after the decision, and the decision is bigger than the row |
+
+**The `Time::to_ros_msg` row's premise was measured and is wrong** (2026-09-21).
+It asked "does `builtin-interfaces` join the pre-generated core set?" — it
+joined three times. `packages/interfaces/*` IS that set, and codegen emitted
+`builtin_interfaces` once per PARENT package, disambiguated by a `--rename`
+suffix: `rcl-interfaces/generated/humble/nros-builtin-interfaces`,
+`rosgraph-msgs/generated/humble/nros-builtin-interfaces-clock`,
+`diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag`. All four Rust
+sources are BYTE-IDENTICAL across the three (one md5 each), all three declare
+`TYPE_NAME = "builtin_interfaces/msg/Time"`, and all three are root workspace
+members. So the question is not "add it" but **"collapse three copies into one
+canonical crate"** — and that is also why the core cannot depend on it today:
+there are three and none is canonical, so there is no name to depend on.
+
+The row's SECOND clause survives and is a separate constraint: `nros-core` deps
+are `nros-serdes` + `log` + `heapless`, and every generated message crate deps
+`nros-core`, so `nros-core` cannot depend on one without a cycle and the
+conversion cannot be an inherent method on `nros_core::Time` whichever crate
+wins. It can live in the message crate (`impl From<nros_core::Time> for Time` is
+legal there) or above both; that choice is open and is not the blocker.
+
+Filed as **issue 1428**, with the constraint that decides the shape of any fix:
+these are `generated/` trees, codegen emits the whole transitive closure into
+one flat dir wiring siblings by `path = "../<dep>"`, and there is no reuse map
+across trees — so **collapsing is a CODEGEN change, not a file move**. A move
+plus three manifest edits is correct only until the next `just generate-*`. The
+issue also records a latent defect the measurement turned up: the `--rename`
+pass does not rewrite `links`, which is derived from the AMENT name, so
+regenerating either of the two older copies in place makes the whole workspace
+unresolvable (measured — `cargo metadata` refuses with
+`more than one crate with links=nros_msgs_builtin_interfaces`). That is why
+`4b80db633` had to copy back only `src/lib.rs` per crate.
 
 **G9 — costed at zero. 10 rows.** The five `can_loan_messages` probes (`absent`
 by the loan family's verdict — a member reached only through a refused family),
