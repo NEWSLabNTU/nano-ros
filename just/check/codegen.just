@@ -273,6 +273,28 @@ sizing-descriptor-reader:
 param-inventory-road-parity:
     @python3 scripts/check/check-param-inventory-road-parity.py
 
+# phase-460 W4 (issue 1423) -- the system's domain and the image's domain agree,
+# or the configure says so.
+#
+# `nros codegen-system` bakes `system.toml`'s `domain_id` as
+# `NROS_SYSTEM_DOMAIN_ID`; the Zephyr image runs on `CONFIG_NROS_DOMAIN_ID`. No
+# layer compared the two, and the island shipped with 2 in one and 10 in the
+# other until a person noticed. `nros_system_generate` now refuses the
+# disagreement naming all three values; this gates that refusal and its negative
+# control (equal values configure). Same shape as its two siblings above: the
+# CLI is STUBBED (the ladder from `system.toml` to the define is unit-tested in
+# `codegen_system.rs`), so this needs cmake and nothing else.
+system-domain-agreement:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip system-domain-agreement "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-domain-agreement-tests.sh
+
 # issue 1396 (class: issue 1312) — a build shim's `--target` must name an
 # `[image.<id>]` / `[deploy.<id>]` block some bringup declares.
 #
