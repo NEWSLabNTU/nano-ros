@@ -108,6 +108,20 @@ and `set_parameters` gets a 2,408-byte slot instead of being dropped.
 Sizing per type at depth 4 would be WORSE than today (37,336 B per node), so
 the depth is the half that makes it pay; doing either alone misses.
 
+## Where the fix is planned
+
+[phase-461](../roadmap/phase-461-service-inbox-per-family.md) owns this issue:
+per-family inboxes (W1), the parameter family sized by phase-446 F3's request
+bound at depth 1 in nros-node (W2), a build-time assert that the slot holds
+the largest declared `set_parameters` (W2), and a counted, once-logged inbox
+drop (W4). One correction from that planning: the 25-parameter figures above
+are the executor's store capacity (`NROS_MAX_PARAMETERS`), not any node's
+declaration -- the island's worst node declares 8 and its largest well-formed
+`set_parameters` is 669 B, which fits 1,024. The 2,408 B request is a client
+naming 25 parameters at a node that declares 8; it is still dropped silently,
+which is the defect, but `ros2 param load` of the node's own file is not the
+trigger. The RAM half is unchanged and is the board blocker.
+
 ## Reproducing
 
 Declare more than ~10 parameters on a node in the contract's `params:`, build
