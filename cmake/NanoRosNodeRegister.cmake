@@ -1263,7 +1263,14 @@ function(nano_ros_node_register)
     # it MOVED: a component the model describes is stated, a component the model
     # does not describe is "did not say" and still makes the image refuse rather
     # than derive a total that is short.
-    set(_entities_field "")
+    #
+    # phase-454 W9 — and the `_entities_field` that used to be interpolated into
+    # the JSON below is gone with it. It had been the empty string on every path
+    # since phase-412, so it emitted nothing; keeping a splice point for a key
+    # that can never be written is a producer this retirement would otherwise
+    # still have to account for. Registered in
+    # `scripts/check/check-knob-single-reader.py`: no cmake file may write an
+    # `entities` key into `nros-metadata.json` again.
     if(DEFINED _NRC_ENTITIES OR "ENTITIES" IN_LIST _NRC_KEYWORDS_MISSING_VALUES)
         message(FATAL_ERROR
             "nano_ros_node_register(${_NRC_NAME}): ENTITIES was retired (phase-412).\n"
@@ -1293,7 +1300,7 @@ function(nano_ros_node_register)
 \"class_header\": \"${_nrc_header}\", \"shape\": \"${_nrc_shape}\", \
 \"sources\": [${_sources_json}], \"deploy\": [${_deploy_json}], \
 \"pkg_dir\": \"${CMAKE_CURRENT_SOURCE_DIR}\", \"lang\": \"${_nrc_lang_lc}\", \
-\"callback_groups\": [${_cbgs_json}]${_entities_field}}")
+\"callback_groups\": [${_cbgs_json}]}")
     set_property(GLOBAL APPEND_STRING PROPERTY NROS_COMPONENTS_JSON "${_entry}")
     _nros_metadata_emit()
 

@@ -1,28 +1,31 @@
 # phase-454 — the contract states the facts, every backend derives its own buffers
 
-**Status (2026-09-20). W1–W8 and W10–W14 are LANDED; W9 remains, and is still
-BLOCKED — see below.** The 2026-09-11 line said "Opened" and outlived that by a
-week: every wave but one is marked LANDED in the body, so the phase read as
-unstarted to anyone who stopped at the header. That is the same defect this
-campaign corrected in phase-403 (`docs/roadmap/phase-403-type-bound-rx-sizing.md`,
-whose header listed W0 as remaining while its body said otherwise) — a header
-claiming LESS than the body is as misleading as one claiming more.
+**Status (2026-09-21). W1–W14 are LANDED.** W9 landed as a **partial
+retirement with a stated reason**, which is the correct outcome rather than a
+shortfall: 2 mechanisms retired, **26 `NROS_DECLARED_*` carriers KEPT**, each
+against a tracked blocker, in a ledger the gate enforces. See "W9 — retirement"
+below for the per-fact table.
 
-**W9 is blocked, and the REASON moved in W14.** It retires the ~35
-`NROS_DECLARED_*` / `NROS_DERIVED_*` carriers. W11 measured that the descriptor
-reached **one road of three**: a single-package cargo leaf was live, while a
-workspace cargo image and the cmake / Zephyr west / NuttX roads had **no
-producer at all**, so retiring the carriers would have removed a working
-mechanism in favour of one that reached a third of the tree —
-`check-knob-single-reader`'s own failure mode inverted.
+**The last sentence of the old header was wrong, and W9 measured it.** It read
+*"The carriers that deliver only COUNTS and QoS are a different matter, and W9
+can take them first"*, on the reasoning that
+[1393](../issues/1393-cmake-road-has-no-bound-inventory.md)'s refusals are
+per-FIELD and the counts are not among them. The field is not the question.
+**Which inventory the descriptor's producer read, and whether it ran at all,
+is** — `nros ws sizing-descriptor --from-model` builds
+`EntityInventory::from_model` alone, where the carrier's verb composes that with
+`nros-metadata.json`, and only the carrier's can refuse on a component that
+declared nothing. That, plus a standalone leaf having no model at all, is
+[issue 1407](../issues/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md);
+the parameter family's separate blocker is
+[issue 1408](../issues/1408-sizing-descriptor-has-no-parameter-store-section.md).
 
-**All three roads now write one** (W14). What blocks W9 today is narrower and
-named: the model-only producer REFUSES `wire_bound_bytes`, `storage_bytes`,
-`[types]`'s three maxima and `registration_path`
-([issue 1393](../issues/1393-cmake-road-has-no-bound-inventory.md)), so a
-carrier that still delivers a payload class on those roads cannot be retired
-until the descriptor can state it. The carriers that deliver only COUNTS and
-QoS are a different matter, and W9 can take them first.
+The header's earlier history, kept because the defect recurs: the 2026-09-11
+line said "Opened" and outlived that by a week, so the phase read as unstarted
+to anyone who stopped at the header — the same defect this campaign corrected in
+phase-403 (`docs/roadmap/phase-403-type-bound-rx-sizing.md`, whose header listed
+W0 as remaining while its body said otherwise). A header claiming LESS than the
+body is as misleading as one claiming more.
 
 **And the savings are not shipped yet.** The live producer fills its descriptor
 rows from the leaf's `metadata/` probe, **not from the contract**: `topic` is the
@@ -34,8 +37,9 @@ writes it, **172,170 B** with `KEEP_LAST(1)` in the descriptor row — **−102,
 open BOTH ways: the road carrying contracts writes no descriptor, and the road
 writing descriptors reads no contract.
 
-So the order is: join the contract to the descriptor, then decide a second
-producer, then W9. Home phase for
+So the order was: join the contract to the descriptor (W12), then decide a
+second producer (W14), then W9 — which ran the retirement test per fact and
+answered it with a ledger rather than a deletion. Home phase for
 [RFC-0100](../design/0100-rmw-agnostic-sizing-model.md). Successor to
 [phase-403](phase-403-type-bound-rx-sizing.md) (the bound inventory and the
 entity inventory, both landed) and [phase-412](phase-412-derived-counts-and-sizes.md)
@@ -222,7 +226,7 @@ Two halves, and the second is the one with a live defect behind it.
 | piece | where |
 | --- | --- |
 | the slot rule, issue 1319's table as code | `Endpoint::claimed_slot_bytes` / `may_claim_closure_buffer` in `nros-sizing-descriptor`, beside the vocabulary that already documented the table |
-| the endpoint facts, on ONE road | `nros-node/build.rs`'s `descriptor_subscriptions` → `subs_arena_from_descriptor`; the `NROS_ENTITY_DECLARED_DEPTHS` / `NROS_SUBSCRIBED_TYPE_BOUNDS` carriers stay BELOW it, and W9 retires them |
+| the endpoint facts, on ONE road | `nros-node/build.rs`'s `descriptor_subscriptions` → `subs_arena_from_descriptor`; the `NROS_ENTITY_DECLARED_DEPTHS` / `NROS_SUBSCRIBED_TYPE_BOUNDS` carriers stay BELOW it. **W9 measured both and retired NEITHER** — the type bounds are payload class (issue 1393), and the depth table gained a second, non-sizing consumer in W10/W13 that is unioned with the descriptor rather than ranked |
 | the default term | `default_sub_slot_bytes`, emitted as `arena_model::PUBSUB_SLOT_BYTES` |
 | the reproduction | `executor::tests::a_schemaless_subscription_outgrows_an_arena_priced_at_its_types_bound` |
 
@@ -580,22 +584,89 @@ Per `check-knob-single-reader.py`'s own rule:
 > mechanism people still use, and a fallback left in place winning silently is
 > how issues 0135 and 0316 happened."*
 
-So each retired path is **registered in that gate**, not merely deleted. The
-surface is smaller than it looks — most of it is already orphaned:
+So each retired path is **registered in that gate**, not merely deleted.
 
-| surface | size | note |
-| --- | --- | --- |
-| `[package.metadata.nros.component] entities` | **2 leaves** (`examples/esp32-c3-baremetal/rust/{talker,listener}`) | neither uses `@depth=`; `reconcile()` compares kind counts only, so a depth there is checked against nothing |
-| the `@depth=` string grammar (`entity_inventory.rs:362`) | already an orphan | its cmake producer fatals; the metadata-JSON reader has no producer left; the contract road never uses the grammar (`depth_of` builds the field directly). Its `depth=0` refusal is already duplicated on the surviving road |
-| `NROS_DECLARED_*` / `NROS_DERIVED_*` carriers | **~35 names, 9 producers** | the big one. Retires `check-declared-fact-carriers.py` and its `ROAD_PAIRS` map by construction — one road has no pairing to drift |
-| `orchestration/schema.rs`'s `QosProfile` | zero producers | nothing constructs one; `planner.rs` never builds a `PlanEntity`; real generated plans have no `entities` key. It is the vestigial version of the type the contract now owns — replace, don't keep a third apparent source |
+**LANDED, and it is a PARTIAL retirement with a stated reason — 2 mechanisms
+retired, 26 carriers KEPT.** The test applied per fact was: *can the sizing
+descriptor state this fact, on ALL THREE roads, today?* Three of the four rows
+this section originally planned were measured and **three of the four premises
+were wrong**, in both directions. The table below is what the measurement said;
+the original is kept beneath it, because a plan that was wrong is evidence about
+how the wrongness happened.
 
-Also stale and worth fixing while here: the hint text at
-`entity_inventory.rs:1410` points users at `nano_ros_node_register(... ENTITIES
-...)`, a verb that now fatals.
+| surface | planned | MEASURED | outcome |
+| --- | --- | --- | --- |
+| `[package.metadata.nros.component] entities` | 2 leaves | **0 leaves, 0 readers.** Both esp32 leaves state theirs in `system.toml` and say so in their manifests; `leaf_system::read` lost its manifest fallback in phase-445 W5, so the field was PARSED AND DROPPED | **RETIRED** |
+| the `"entities"` key of `nros-metadata.json` | (not listed) | `_entities_field` had ONE assignment, `""`, on every path since phase-412 — a splice point for a key that can never be written | **RETIRED**, JSON byte-identical |
+| the `@depth=` string grammar | already an orphan | **no longer true.** W10 landed AFTER this plan and built the declared-QoS compile fixture on the metadata road: `packages/api/nros-cpp/tests/compile/declared-qos-fixture/entities.json` carries `@depth=1` and is the grammar's one live producer | **KEPT** — retiring it means migrating a committed C/C++ compile acceptance whose C++ half is unverifiable here (#1331) |
+| `NROS_DECLARED_*` carriers | "~35 names, retires `check-declared-fact-carriers.py` by construction" | **26 names, and not one can retire.** Four reason classes, below | **KEPT**, ledgered |
+| `orchestration/schema.rs`'s `QosProfile` | zero producers | **LIVE on the real build path.** `planner.rs:1693` `schema_qos` emits a full nine-field object for every publisher and subscriber; `schema_nodes:1326` writes `"entities"` into every node of every generated plan; `PlanNode` is `deny_unknown_fields`, so `nros-build/src/lib.rs:259` — every workspace `build.rs` — would stop parsing existing plans. `bridge_gen.rs:190` resolves a bridge topic's type from `PlanEntity` and has no other source | **KEPT** — deleting it is a breaking on-disk schema change, not a cleanup |
 
-Acceptance: the gate lists each retired knob with its single legitimate reader,
-and a second reader is a hard red.
+### The per-fact ledger — why 26 carriers stayed
+
+Four classes, each with a tracked blocker. All 26 rows live in
+`scripts/check/check-knob-single-reader.py`'s `KEPT` registry, whose
+completeness is DERIVED from `check-declared-fact-carriers.py`'s `produced()` —
+so a new carrier with no row fails, and a row for a carrier nothing produces
+fails.
+
+| class | n | blocker | why |
+| --- | --- | --- | --- |
+| payload | 4 | [1393](../issues/1393-cmake-road-has-no-bound-inventory.md) | the model-only producer REFUSES `wire_bound_bytes` / `storage_bytes`, so on 2 roads of 3 this carrier is the only thing stating a size |
+| entity counts | 9 | [1407](../issues/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md) | the descriptor's producer reads a POORER inventory than the carrier's |
+| queryable raw inputs | 4 | [1407](../issues/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md) | their live road is the STANDALONE LEAF, which has no model and so can never have a model-written descriptor |
+| parameter store | 9 | [1408](../issues/1408-sizing-descriptor-has-no-parameter-store-section.md) | the D4 schema has no parameter section at all, on ANY road — not a refusal, an absent vocabulary |
+
+**The count class is the one the plan misjudged, and the reason is not 1393.**
+Issue 1407 records three independent mechanisms. The sharpest: `nros ws
+entity-inventory` composes `nros-metadata.json` with the model
+(`merged_per_kind_max`), while `nros ws sizing-descriptor --from-model` builds
+`EntityInventory::from_model` **alone**. A component registered by
+`nano_ros_node_register` but absent from the contract is `Declaration::Absent`,
+and `derive()` REFUSES for the whole image on exactly that — a refusal the
+descriptor's producer cannot reach, because it never sees the metadata. Retiring
+the carrier would replace a mechanism that refuses on incomplete data with one
+that cannot tell the data is incomplete.
+
+Three of the nine could not be stated even with 1407 closed, each for a
+different structural reason, which is why they are ledgered separately rather
+than as "the counts": `EXECUTOR_MAX_CBS` sums callback slots over `Timer` and
+`GuardCondition`, which `endpoint_kind` drops (no type, no topic, nothing to key
+on); `EXECUTOR_MAX_SC` comes from `execution.tiers`, the SCHEDULE, which the
+schema does not model; `RUNTIME_MAX_CELL_ENTITIES` is a max over PER-COMPONENT
+per-kind counts and `[[endpoint]]` rows carry no component.
+
+Two carriers outside the `NROS_DECLARED_*` family that W5's table said W9 would
+retire: `NROS_SUBSCRIBED_TYPE_BOUNDS` is payload class (1393), and
+`NROS_ENTITY_DECLARED_DEPTHS` gained a SECOND, non-sizing consumer in W10/W13 —
+the per-endpoint registration check, deliberately UNIONED with the descriptor
+rather than ranked, because the two are disjoint in practice and a `(type,
+topic)` both state with different depths fails the build. Both KEPT.
+
+### What else landed
+
+The four stale hint texts in `entity_inventory.rs` that pointed users at
+`nano_ros_node_register(... ENTITIES ...)` — a verb that now `FATAL_ERROR`s —
+now name the two live surfaces (the contract sidecar, and `system.toml`'s
+`[[component]] entities`). One of them was a user-facing `ReceivedTypes::Refused`
+reason, which is the same defect the file itself records at issue 1033: *"the
+one remedy the refusal named was the one thing the caller could not do."* The
+committed compile fixture's generated header was regenerated; the diff is
+comment-only and no table row moved.
+
+**The negative control found a reach bug in the new gate.** The cmake forbid
+rule was scoped `cmake/**/*.cmake`, and git's default pathspec is wildmatch
+WITHOUT `WM_PATHNAME` — so `**/` means "at least one directory deep" and the
+rule reached 53 of 142 files, missing every module directly under `cmake/`,
+including the one the plant was in. Fixed with `:(glob)` magic, and the gate now
+also fails a forbid rule whose glob matches nothing or whose block no longer
+exists — a rule with no reach cannot fail, and reports the mechanism retired on
+evidence it never gathered. Same shape as the four gates the 2026-07-28 audit
+found with a reach narrower than their rule.
+
+Acceptance: the gate lists each retired path with what resolves the fact now,
+and a second reader is a hard red — demonstrated by planting one in each retired
+path and in the completeness rule, capturing all three reds, and reverting.
 
 ### W10 — the C and Rust halves of the declared-QoS check — **LANDED** (Rust half finished in W13)
 
@@ -1095,11 +1166,15 @@ is how two wirings come to disagree about which backend an image is.
 
 **What it does NOT close**, stated rather than implied: the five refused fields,
 which are [issue 1393](../issues/1393-cmake-road-has-no-bound-inventory.md), and
-W9's retirement of the ~35 `NROS_DECLARED_*` / `NROS_DERIVED_*` carriers. W9 was
-blocked on *"the carriers are still the only working road"* for two of three
-roads; all three now write a descriptor, so the block is the REFUSALS rather
-than the producer — a carrier that delivers a payload class the descriptor
-refuses cannot be retired yet.
+the retirement of the `NROS_DECLARED_*` carriers. W9 then measured that
+retirement per fact and retired NONE of them — and found the block is NOT only
+the refusals. It is also the producer, still: `--from-model` reads a poorer
+inventory than the carrier's verb does, and a standalone leaf has no model to
+read at all ([issue 1407](../issues/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)).
+The sentence above — *"all three now write a descriptor, so the block is the
+REFUSALS rather than the producer"* — is the claim W9 disproved; it is left
+here rather than edited away, because it is the exact step where "a descriptor
+reaches this road" got read as "the descriptor can answer for this road".
 
 ## Acceptance for the phase
 

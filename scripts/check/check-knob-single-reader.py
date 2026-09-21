@@ -20,6 +20,31 @@ The check is deliberately narrow. It looks for the env-reading IDIOMS this tree
 uses -- `env_usize("X"`, `env::var("X")`, `env::var_os("X")` -- and not for the
 bare string, because the whole point is that the NAME stays valid as a front-end
 spelling. Finding the name in a comment is correct and expected.
+
+=============================================================================
+phase-454 W9 -- and this file is also the RETIREMENT LEDGER
+=============================================================================
+
+The sentence above is a rule about migrating a knob; W9 applied it to a WAVE,
+and the wave's output belongs where the rule lives rather than in a phase doc
+that stops being read. Two registries below:
+
+  RETIRED -- a mechanism a wave removed, the one thing that answers the fact
+             now, and the PATTERN that must not come back. A second resolver of
+             a retired path is a hard red, which is the same failure this file
+             already catches one level down.
+
+  KEPT    -- a carrier that was IN the retirement's scope and did not retire,
+             with the issue that tracks closing the gap. Completeness is
+             DERIVED, not asserted: the carrier set is read from
+             `check-declared-fact-carriers.py`, so a new carrier with no ledger
+             row fails and a row for a carrier nothing produces fails.
+
+A ledger with only retirements in it is a ledger that cannot say what was
+considered and rejected, which is how "the surface is smaller than it looks"
+turns into "the surface was never measured". phase-454 W9 retired 2 mechanisms
+and KEPT all 26 `NROS_DECLARED_*` carriers, each for a reason that is checked
+here rather than remembered.
 """
 
 from __future__ import annotations
@@ -172,6 +197,401 @@ def ladder_knobs_from_census() -> set[str]:
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     return mod.ladder_env_keys() - mod.LADDER_MAPPED_NOT_MIGRATED
+
+
+# =============================================================================
+# phase-454 W9 -- THE RETIREMENT LEDGER
+# =============================================================================
+
+
+class Retired:
+    """A mechanism a retirement wave removed, and what answers the fact now.
+
+    `forbid` is a list of `(glob, regex)`. A match anywhere the glob reaches is
+    a hard failure unless the file is named in `cite` -- the wave's own record
+    of what it did has to be allowed to quote the thing it removed, or writing
+    the explanation trips the check (the same concession `strip_comments` makes
+    one rule up).
+
+    `block` narrows the search to ONE named Rust item's body, for a pattern
+    whose bare spelling is common: `entities` is a legitimate field on three
+    other structs in the same file, and a rule that cannot tell them apart is a
+    rule nobody can leave switched on.
+    """
+
+    def __init__(self, what, resolves_now, wave, forbid, cite=(), block=None):
+        self.what = what
+        self.resolves_now = resolves_now
+        self.wave = wave
+        self.forbid = forbid
+        self.cite = set(cite)
+        self.block = block
+
+
+RETIRED = {
+    # Measured at W9: zero readers and zero declaring leaves. The field was
+    # PARSED AND DROPPED -- `leaf_system::read` lost its manifest fallback in
+    # phase-445 W5 -- which is worse than an absent surface, because it accepts
+    # what a user writes and sizes nothing from it.
+    "[package.metadata.nros.component] entities": Retired(
+        what="the cargo-manifest spelling of a component's declared entities",
+        resolves_now=(
+            "`system.toml`'s `[[component]] entities` (RFC-0098 D8), read by "
+            "`nros_orchestration_ir::leaf_system::read`"
+        ),
+        wave="phase-454 W9",
+        # Scoped to the struct that HELD it. `SystemComponentEntry::entities`
+        # in the same file is the surviving surface and must stay.
+        block=(
+            "packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs",
+            "pub struct ComponentMetadata {",
+        ),
+        forbid=[(None, r"^\s*pub entities\s*:")],
+    ),
+    # The metadata JSON key the grammar used to travel on. Its writer had been
+    # the empty string on every path since phase-412, so it emitted nothing; a
+    # splice point for a key that can never be written is a producer a
+    # retirement would otherwise still have to account for.
+    'the `"entities"` key of `nros-metadata.json`': Retired(
+        what="the cmake producer of a component's declared entities",
+        resolves_now=(
+            "the contract sidecar the bringup resolves, through "
+            "`EntityInventory::from_model`; `nano_ros_node_register(... ENTITIES "
+            "...)` is a FATAL_ERROR (phase-412)"
+        ),
+        wave="phase-454 W9",
+        # `:(glob)` MAGIC, and it is load-bearing. Git's default pathspec is
+        # wildmatch WITHOUT `WM_PATHNAME`, so a bare `cmake/**/*.cmake` means
+        # "at least one directory level" and reaches 53 of the 142 files --
+        # every module directly under `cmake/`, including the one that produced
+        # this key, is invisible to it. W9's own negative control caught that:
+        # the planted violation went undetected. Same shape as the four gates
+        # the 2026-07-28 audit found with a reach narrower than their rule,
+        # which is why `check_ledger` now also fails a glob that matches
+        # nothing at all.
+        forbid=[
+            (":(glob)cmake/**/*.cmake", r"_entities_field"),
+            (":(glob)cmake/**/*.cmake", r'\\"entities\\"\s*:'),
+        ],
+        # NO `cite`, deliberately. The first draft exempted
+        # `cmake/NanoRosNodeRegister.cmake` on the reasoning that its
+        # FATAL_ERROR necessarily names the keyword -- which put a blind spot
+        # in the one file the producer actually lived in, so re-adding the
+        # real thing there would have passed. It is not needed: the refusal
+        # names `ENTITIES`, not `_entities_field`, and the prose explaining
+        # the removal is a `#` comment that `strip_comments_hash` drops.
+        # Verified by running the gate with the exemption removed.
+    ),
+}
+
+
+class Kept:
+    """A carrier in a retirement's scope that could NOT retire.
+
+    `blocked_by` is a tracked issue id and is checked to exist and be OPEN. A
+    reason with no issue behind it decays into a reason nobody re-examines,
+    which is the `check-rmw-api-parity` `gap` rule applied to this ledger.
+    """
+
+    def __init__(self, blocked_by, why):
+        self.blocked_by = blocked_by
+        self.why = why
+
+
+# Issue 1393 -- the payload class. `wire_bound_bytes` / `storage_bytes` are
+# REFUSED by the model-only producer, so on two roads of three the descriptor
+# states no size at all and this carrier is the only one that does.
+_PAYLOAD = "the descriptor REFUSES the bound this sizes from on 2 roads of 3"
+
+# Issue 1407 -- the count class. Three independent mechanisms, none of which
+# 1393's remedy touches: the descriptor's producer reads a POORER inventory
+# (model only, where the carrier's is metadata + model, and only the carrier's
+# can refuse on a component that declared nothing); no model means no
+# descriptor, which is every standalone leaf; and a multi-entry configure names
+# no descriptor to cargo at all while the facts still travel by MAX.
+_COUNTS = "the descriptor's producer sees a poorer inventory on this road"
+
+# Issue 1407 -- the queryable raw inputs, whose live road is the STANDALONE
+# LEAF (`facts_from_leaf`). That road has no SystemModel, so it can never have
+# a model-written descriptor; it is also the road issue 1378 measured failing.
+_LEAF_ROAD = "carried for a standalone leaf, which has no model and so no descriptor"
+
+# Issue 1408 -- the parameter store. Not refused by a producer: the D4 schema
+# has no section that could hold it, on ANY road including the leaf.
+_NO_SECTION = "the descriptor schema has no parameter section, on any road"
+
+KEPT = {
+    # ---- payload class (issue 1393) -------------------------------------
+    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(1393, _PAYLOAD),
+    "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": Kept(1393, _PAYLOAD),
+    "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(1393, _PAYLOAD),
+    "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1393, _PAYLOAD),
+    # ---- the entity counts (issue 1407) ---------------------------------
+    # Three of these the schema could not state even with 1407 closed, and
+    # each is a DIFFERENT structural reason -- worth keeping distinct, because
+    # "the counts" is exactly the grouping W9 was told not to assume.
+    "NROS_DECLARED_EXECUTOR_MAX_CBS": Kept(
+        1407,
+        _COUNTS + "; and `max_cbs` sums `callback_slots()` over Timer and "
+        "GuardCondition, which `endpoint_kind` drops (they carry no type and "
+        "no topic, so no endpoint table can key on them)",
+    ),
+    "NROS_DECLARED_EXECUTOR_MAX_SC": Kept(
+        1407,
+        _COUNTS + "; and the scheduling-context count comes from "
+        "`execution.tiers` -- the SCHEDULE, which the schema does not model",
+    ),
+    "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES": Kept(
+        1407,
+        _COUNTS + "; and it is a max over PER-COMPONENT per-kind counts, while "
+        "`[[endpoint]]` rows carry no component attribution",
+    ),
+    "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS": Kept(
+        1407,
+        _COUNTS + "; and `heavy_slots` has no `[image]` field -- counting rows "
+        "and multiplying is the third mirror RFC-0100 D4 refuses",
+    ),
+    "NROS_DECLARED_MAX_PUBLISHERS": Kept(
+        1407,
+        _COUNTS + "; and unlike `subscriber_count` it has no `[image]` field, "
+        "so a consumer would have to restate the action expansion",
+    ),
+    "NROS_DECLARED_EXECUTOR_MAX_NODES": Kept(1407, _COUNTS),
+    "NROS_DECLARED_MAX_SUBSCRIBERS": Kept(1407, _COUNTS),
+    "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS": Kept(1407, _COUNTS),
+    # ---- the queryable raw inputs (issue 1407) --------------------------
+    "NROS_DECLARED_SERVICE_SERVERS": Kept(1407, _LEAF_ROAD),
+    "NROS_DECLARED_TL_PUBLISHERS": Kept(1407, _LEAF_ROAD),
+    "NROS_DECLARED_NODES": Kept(
+        1407,
+        _LEAF_ROAD + "; and it is emitted even for a model that describes NO "
+        "wiring, which is exactly where `write_for_model` writes no file",
+    ),
+    "NROS_DECLARED_INFRA_QUERYABLES": Kept(
+        1407,
+        _LEAF_ROAD + "; and it is a FEATURE token from `execution.features`, "
+        "not a count -- the schema has no field of that kind",
+    ),
+    # ---- the parameter store (issue 1408) -------------------------------
+    "NROS_DECLARED_MAX_PARAMETERS": Kept(1408, _NO_SECTION),
+    "NROS_DECLARED_MAX_PARAM_NAME_LEN": Kept(1408, _NO_SECTION),
+    "NROS_DECLARED_MAX_STRING_VALUE_LEN": Kept(1408, _NO_SECTION),
+    "NROS_DECLARED_MAX_ARRAY_LEN": Kept(1408, _NO_SECTION),
+    "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": Kept(1408, _NO_SECTION),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": Kept(1408, _NO_SECTION),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1408, _NO_SECTION),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1408, _NO_SECTION),
+    "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1408, _NO_SECTION),
+    # ---- QoS depth (issue 1407) -----------------------------------------
+    # The one carrier whose FACT the descriptor states on all three roads. It
+    # stays for the road reason above, and because its sibling
+    # `NROS_ENTITY_DECLARED_DEPTHS` is deliberately UNIONED with the descriptor
+    # rather than ranked (phase-454 W10/W13): the two are disjoint in practice
+    # and a `(type, topic)` both state with different depths fails the build.
+    "NROS_DECLARED_MAX_QOS_DEPTH": Kept(
+        1407,
+        _COUNTS + "; and the reduction it carries (the MAX, guarded on every "
+        "subscription having declared) is a consumer-side restatement nothing "
+        "shares today",
+    ),
+}
+
+
+def declared_carriers() -> set[str]:
+    """The `NROS_DECLARED_*` names cmake actually produces.
+
+    Imported from the gate that owns that harvest rather than re-grepped, for
+    the reason `ladder_knobs_from_census` gives one rule up: two hand-kept
+    lists of one fact is the drift this file exists to refuse.
+    """
+    import importlib.util
+
+    src = REPO / "scripts" / "check-declared-fact-carriers.py"
+    spec = importlib.util.spec_from_file_location("declared_fact_carriers", src)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod.produced()
+
+
+def rust_block(text: str, header: str) -> str | None:
+    """The brace-balanced body following `header`, or None if it is absent."""
+    i = text.find(header)
+    if i < 0:
+        return None
+    i += len(header)
+    depth, out = 1, []
+    for ch in text[i:]:
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        out.append(ch)
+    return "".join(out)
+
+
+def retired_hits(entry: Retired, read):
+    """Every forbidden match for one retired mechanism.
+
+    `read` is `(relpath) -> text | None`, injected so the self-test drives this
+    on synthetic input rather than on the tree -- the control must not depend
+    on the thing it controls.
+    """
+    hits = []
+    if entry.block is not None:
+        rel, header = entry.block
+        text = read(rel)
+        if text is not None:
+            body = rust_block(strip_comments(text), header)
+            if body is not None:
+                for _glob, rx in entry.forbid:
+                    if re.search(rx, body, re.M):
+                        hits.append((rel, rx))
+        return hits
+    for glob, rx in entry.forbid:
+        for rel in tracked(glob):
+            if rel in entry.cite:
+                continue
+            text = read(rel)
+            if text is None:
+                continue
+            if re.search(rx, strip_comments_hash(text), re.M):
+                hits.append((rel, rx))
+    return hits
+
+
+def strip_comments_hash(src: str) -> str:
+    """`#` comments, for the CMake half. Same concession, other language."""
+    return re.sub(r"#[^\n]*", "", src)
+
+
+def tracked(glob: str):
+    listing = subprocess.run(
+        ["git", "ls-files", "-z", "--", glob],
+        cwd=REPO,
+        capture_output=True,
+        check=True,
+    )
+    return [r for r in listing.stdout.decode("utf-8", "ignore").split("\0") if r]
+
+
+def check_ledger() -> list[str]:
+    """The retirement ledger: nothing retired resolves, nothing kept is unaccounted."""
+    failures = []
+
+    def read(rel):
+        try:
+            return (REPO / rel).read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return None
+
+    for name, entry in sorted(RETIRED.items()):
+        # A forbid rule whose glob reaches no file is a rule that can never
+        # fire, and it reports OK forever. W9 shipped one by accident (see the
+        # `:(glob)` note in RETIRED) and only the negative control found it.
+        for glob, rx in entry.forbid:
+            if glob is not None and not tracked(glob):
+                failures.append(
+                    f"  {name}: the forbid rule `{rx}` is scoped to `{glob}`,\n"
+                    "      which matches NO tracked file. A rule with no reach\n"
+                    "      cannot fail, so it reports this mechanism retired on\n"
+                    "      evidence it never gathered. Fix the pathspec -- note\n"
+                    "      git's default wildmatch has no `WM_PATHNAME`, so\n"
+                    "      `a/**/*.x` means \"at least one directory deep\"."
+                )
+        if entry.block is not None:
+            rel, header = entry.block
+            text = read(rel)
+            if text is None or rust_block(strip_comments(text), header) is None:
+                failures.append(
+                    f"  {name}: the block this rule reads -- `{header}` in\n"
+                    f"      {rel} -- is gone. The rule is scoped to an item that\n"
+                    "      no longer exists, so it can never fire. Re-scope it or\n"
+                    "      retire the row."
+                )
+        for rel, rx in retired_hits(entry, read):
+            failures.append(
+                f"  {name} was RETIRED ({entry.wave}) and {rel} matches `{rx}`.\n"
+                f"      What answers this now: {entry.resolves_now}.\n"
+                "      A mechanism that still resolves is a mechanism people still\n"
+                "      use, and two declaration surfaces nobody joins is how one\n"
+                "      of them comes to be silently ignored. Remove the second\n"
+                "      reader, or -- if the retirement is being reversed -- take\n"
+                "      the row out of RETIRED and say so in the wave that does it."
+            )
+
+    produced = declared_carriers()
+    for knob in sorted(produced - set(KEPT)):
+        failures.append(
+            f"  {knob} is a declared-fact carrier with no row in the phase-454 W9\n"
+            "      ledger. Every carrier is either RETIRED (and registered above)\n"
+            "      or KEPT with the issue that tracks closing the gap. A carrier\n"
+            "      with neither is one nobody has asked the retirement question\n"
+            "      about: can the sizing descriptor state this fact, on ALL THREE\n"
+            "      roads, today? Add a `Kept(<issue>, \"<why>\")` row."
+        )
+    for knob in sorted(set(KEPT) - produced):
+        failures.append(
+            f"  {knob} has a KEPT row here and no cmake file produces it. Either\n"
+            "      it retired -- then move it to RETIRED with its forbidden\n"
+            "      pattern -- or the ledger is stale."
+        )
+
+    for knob, kept in sorted(KEPT.items()):
+        issues = list((REPO / "docs" / "issues").glob(f"{kept.blocked_by}-*.md"))
+        if not issues:
+            failures.append(
+                f"  {knob} is KEPT against issue {kept.blocked_by} and no such\n"
+                "      issue file exists. A reason with no tracked issue behind it\n"
+                "      is a reason nobody re-examines."
+            )
+            continue
+        head = issues[0].read_text(encoding="utf-8", errors="ignore")[:800]
+        if not re.search(r"^status:\s*open\s*$", head, re.M):
+            failures.append(
+                f"  {knob} is KEPT against issue {kept.blocked_by}, which is no\n"
+                "      longer `status: open`. If the blocker closed, this carrier\n"
+                "      is due for retirement -- re-run the per-fact test rather\n"
+                "      than re-pointing the row at another issue."
+            )
+    return failures
+
+
+def ledger_self_test() -> None:
+    """Negative control for the ledger, on SYNTHETIC input.
+
+    Three mutations, one per rule. The retired-path case is driven through an
+    injected reader so it proves the DETECTOR rather than the current tree --
+    the tree being clean is what the normal run reports, and a control that
+    only asserts that can never fail.
+    """
+    field = Retired(
+        what="x", resolves_now="y", wave="w",
+        block=("fake.rs", "pub struct Held {"),
+        forbid=[(None, r"^\s*pub entities\s*:")],
+    )
+    clean = "pub struct Held {\n    pub name: String,\n}\npub struct Other {\n    pub entities: Vec<String>,\n}\n"
+    dirty = "pub struct Held {\n    pub entities: Vec<String>,\n}\n"
+    assert not retired_hits(field, lambda _r: clean), (
+        "ledger selftest: a sibling struct's field registered as a retired one"
+    )
+    assert retired_hits(field, lambda _r: dirty), (
+        "ledger selftest: a planted second reader was not detected"
+    )
+    # A mention in a COMMENT is how a retirement gets explained, and must not
+    # register -- the same concession the reader rule makes.
+    commented = "pub struct Held {\n    // pub entities: Vec<String>, retired in W9\n}\n"
+    assert not retired_hits(field, lambda _r: commented), (
+        "ledger selftest: comment stripping ate the explanation allowance"
+    )
+    # And a header that is gone entirely is not a silent pass for the glob
+    # form: `rust_block` returning None means the struct was renamed, which
+    # the tree-level run reports through the carrier completeness check.
+    assert rust_block("struct Q {}", "pub struct Held {") is None
+
+
 # The resolver itself names every knob in its front-end table; that is the map,
 # not a second reader.
 EXEMPT = {
@@ -337,10 +757,35 @@ def main() -> int:
         f"check-knob-single-reader: OK - {len(MIGRATED)} migrated knob(s), "
         "one reader each"
     )
+
+    # phase-454 W9 -- the retirement ledger, reported after the reader rule
+    # because it is the same rule at wave scale and reads as its continuation.
+    ledger = check_ledger()
+    if ledger:
+        print("\ncheck-knob-single-reader: the retirement ledger is violated\n")
+        print("\n".join(ledger))
+        return 1
+    # LISTED on the success path, not just counted. The ledger's job is to say
+    # what was retired and what answers the fact now; a gate that prints only
+    # a number makes the reader open the source to learn either.
+    print(f"\ncheck-knob-single-reader: {len(RETIRED)} retired path(s) resolve nowhere")
+    for name, entry in sorted(RETIRED.items()):
+        print(f"  - {name} ({entry.wave}) -- {entry.what}")
+        print(f"      now: {entry.resolves_now}")
+    by_issue: dict[int, list[str]] = {}
+    for knob, kept in KEPT.items():
+        by_issue.setdefault(kept.blocked_by, []).append(knob)
+    print(
+        f"check-knob-single-reader: {len(KEPT)} carrier(s) KEPT -- the retirement\n"
+        "  question was asked and the answer was no, per issue:"
+    )
+    for issue in sorted(by_issue):
+        print(f"  - issue {issue}: {len(by_issue[issue])} carrier(s)")
     return 0
 
 
 if __name__ == "__main__":
-    # Normal path, every run.
+    # Normal path, every run. A control nobody runs decays into a comment.
     self_test()
+    ledger_self_test()
     sys.exit(main())

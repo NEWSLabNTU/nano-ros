@@ -202,12 +202,16 @@ pub fn declaration_from_probe(doc_json: &str) -> Result<(String, String, Declara
 
 /// Issue 1061 / RFC-0098 D8 — the entities a leaf DECLARES.
 ///
-/// `entities = [...]` on the leaf's `system.toml` `[[component]]` rows (the
-/// retiring `[package.metadata.nros.component] entities` is still read, through
-/// the same reader's fallback), each string in the
-/// `nano_ros_node_register(... ENTITIES ...)` grammar. `Ok(None)` means nothing
-/// is declared, which is different from an empty list: an empty list is a leaf
+/// `entities = [...]` on the leaf's `system.toml` `[[component]]` rows, each
+/// string in the [`EntityDecl::parse`] grammar. `Ok(None)` means nothing is
+/// declared, which is different from an empty list: an empty list is a leaf
 /// asserting it creates nothing.
+///
+/// **ONE surface, since phase-454 W9.** This sentence used to add "(the
+/// retiring `[package.metadata.nros.component] entities` is still read, through
+/// the same reader's fallback)", and that had been false since phase-445 W5
+/// deleted the fallback — `leaf_system::read` is `system.toml`-only. W9 retired
+/// the manifest field to match, so there is no second place to look.
 pub fn declared_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
     let Some(decl) = nros_orchestration_ir::leaf_system::read(leaf).map_err(|e| eyre::eyre!(e))?
     else {
@@ -264,9 +268,8 @@ pub fn reconcile(component: &str, declared: &[EntityDecl], probed: &[EntityDecl]
          Refusing rather than choosing one: a budget from the declaration would be \
          wrong for the image, and silently preferring the probe would let the \
          declaration rot until it reaches a leaf where nothing can check it.\n  \
-         Fix the `entities` list on the leaf's `system.toml` `[[component]]` (or the \
-         retiring `[package.metadata.nros.component] entities`), or drop it and \
-         let the probe answer.",
+         Fix the `entities` list on the leaf's `system.toml` `[[component]]`, or \
+         drop it and let the probe answer.",
         fmt(&d),
         fmt(&p)
     ))
