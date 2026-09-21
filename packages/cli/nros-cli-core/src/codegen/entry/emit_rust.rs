@@ -41,6 +41,15 @@ struct RustEntryView {
     launch: String,
     board: String,
     board_path: &'static str,
+    /// Issue 1409 — does an entry crate for this board link `std`?
+    ///
+    /// The template may name a `std` path only where this is true, exactly as
+    /// `nros::main!` may only inside `hosted_std_scaffold_ts`. It is NOT a
+    /// `#[cfg]` the emitted code could ask for itself: `#![no_std]` is a
+    /// property of the CRATE and is orthogonal to the target OS, so no
+    /// `target_os` predicate distinguishes "this crate has `std`" from "this
+    /// target has an OS". Issue 1381 measured the difference.
+    links_std: bool,
     /// Raw-string literals, already quoted by `quote_str`.
     depfiles: Vec<String>,
     nodes: Vec<RustNodeView>,
@@ -66,9 +75,12 @@ struct RustNodeView {
 ///
 /// Output mirrors the proc-macro's `OwnedSpin` framework branch — RTIC and
 /// Embassy stay proc-macro-only, since they need `proc_macro::Span` for the
-/// `custom_tasks` splice. The body installs both a hosted `fn main()` and an
-/// embedded `#[unsafe(no_mangle)] extern "C" fn main()` so the same TU works
-/// for native + bare-metal targets.
+/// `custom_tasks` splice. The body installs the same three entry arms the
+/// macro does: an `extern "C" fn main` for `target_os = "none"` (a C runtime
+/// calls it), a second one for `target_os = "nuttx"` (the family is `no_std`
+/// since phase-359 W7, so libstd's `lang_start` is not there to wrap a Rust
+/// `main`), and — only for a board whose entry LINKS `std` — a hosted Rust
+/// `fn main()`. The third is issue 1409; see [`RustEntryView::links_std`].
 ///
 /// A board key the Rust pack has no ZST for is an error; see
 /// [`emit_lowered`].
@@ -120,11 +132,19 @@ pub fn emit_lowered(entry: &LoweredEntry) -> Result<String, String> {
             nros_orchestration_ir::board_path_keys_csv()
         )
     })?;
+    // Issue 1409 — the SAME table `board_path_for` just consulted, so the key
+    // is known by construction here and `unwrap_or(true)` is the unreachable
+    // arm rather than a policy. The policy for an UNKNOWN board ("assume
+    // hosted", `nros_orchestration_ir::board_entry_links_std`'s `None`) lives
+    // in the proc-macro, because an out-of-tree board reaches that producer
+    // through `NROS_BOARD_FRAMEWORK` and this one refuses it above.
+    let links_std = nros_orchestration_ir::board_entry_links_std(&entry.board).unwrap_or(true);
     let view = RustEntryView {
         bringup: entry.bringup.clone(),
         launch: entry.launch.clone(),
         board: entry.board.clone(),
         board_path,
+        links_std,
         depfiles: entry.depfiles.iter().map(|d| quote_str(d)).collect(),
         nodes: entry.nodes.iter().map(node_view).collect(),
     };
@@ -382,9 +402,69 @@ mod tests {
         assert!(src.contains("::talker_pkg::register(runtime)?;"));
         assert!(src.contains("::listener_pkg::register(runtime)?;"));
         assert!(src.contains("LinuxBoard"));
-        // Both a hosted main and an embedded main.
-        assert!(src.contains("#[cfg(not(target_os = \"none\"))]"));
+        // `native` links std, so all three entry arms: hosted, NuttX, none.
+        assert!(src.contains("#[cfg(not(any(target_os = \"none\", target_os = \"nuttx\")))]"));
+        assert!(src.contains("#[cfg(target_os = \"nuttx\")]"));
         assert!(src.contains("#[cfg(target_os = \"none\")]"));
+    }
+
+    /// Issue 1409 — the mirror of `nros-macros`'
+    /// `only_a_board_whose_entry_links_std_gets_the_std_scaffold`, one producer
+    /// over.
+    ///
+    /// Asserted per BOARD KEY over the whole table, not on a chosen example:
+    /// the property is "no board whose entry is `#![no_std]` gets a `std` path",
+    /// and a test naming two keys would go quiet the day a third is added. A
+    /// refactor that keeps the flag and renders the block anyway fails this.
+    #[test]
+    fn only_a_board_whose_entry_links_std_gets_the_hosted_main() {
+        let mut checked = 0usize;
+        let mut hosted = 0usize;
+        for key in nros_orchestration_ir::board_path_keys() {
+            let links_std = nros_orchestration_ir::board_entry_links_std(key)
+                .expect("a key from the table is in the table");
+            let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+            plan.board = key.into();
+            let src = emit(&plan).unwrap_or_else(|e| panic!("`{key}`: {e}"));
+            checked += 1;
+
+            assert_eq!(
+                src.contains("::std::"),
+                links_std,
+                "`{key}`: links_std = {links_std}, but the emitted entry {} a \
+                 `std` path. `builder::entry` writes `#![no_std]` on top of a \
+                 board-run / zephyr-staticlib entry TU, and no `target_os` cfg \
+                 saves a `std` path there:\n{src}",
+                if links_std { "omits" } else { "names" }
+            );
+            // The hosted `fn main()` is the ONLY thing that moves. Both
+            // C-ABI arms are unconditional, exactly as the proc-macro emits
+            // them — a board with no main at all is the hole this test also
+            // has to see.
+            assert!(
+                src.contains("#[cfg(target_os = \"nuttx\")]")
+                    && src.contains("#[cfg(target_os = \"none\")]"),
+                "`{key}`: an entry with no embedded `main` arm:\n{src}"
+            );
+            if links_std {
+                hosted += 1;
+                assert!(
+                    src.contains("fn main() {\n    if let ::core::result::Result::Err(e)"),
+                    "`{key}`: links_std, but no hosted `fn main()`:\n{src}"
+                );
+            }
+        }
+        // Both arms must be exercised, or this passes having compared one.
+        assert!(checked > 2, "only {checked} board key(s) rendered");
+        assert!(
+            hosted > 0,
+            "no board key links std — the true arm is untested"
+        );
+        assert!(
+            hosted < checked,
+            "every board key links std — the false arm, which is issue 1409, \
+             is untested"
+        );
     }
 
     #[test]

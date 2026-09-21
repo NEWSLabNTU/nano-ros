@@ -31,17 +31,26 @@ crate source; this one is about ANY `std` path and holds for emitted tokens.
 ## The rule
 
 In a producer of Rust entry code, a `std::` / `::std::` path may appear only
-where the producer has already established that the entry links `std` — which
-in this tree means one function, named in `HOSTED_ONLY_EMITTERS` below, whose
-sole caller passes `nros_orchestration_ir::board_entry_links_std(board)`.
+where the producer has already established that the entry links `std`. There
+are two producers and each states that fact in its own vocabulary, so there are
+two allowances and they are the same rule:
+
+* the proc-macro states it as ONE function, named in `HOSTED_ONLY_EMITTERS`
+  below, whose sole caller passes
+  `nros_orchestration_ir::board_entry_links_std(board)`;
+* a template states it as ONE jinja guard, named in `HOSTED_ONLY_TEMPLATE_GUARDS`,
+  whose value the renderer sets from that same call.
 
 For the proc-macro the scan is EMISSION-SCOPED: only text inside a `quote!` /
 `quote_spanned!` block counts. `main_macro.rs` reads `Cargo.toml`, `system.toml`
 and the environment, so it names `std::fs` / `std::env` dozens of times in its
 own body; that code runs on the host and is not the hazard.
 
-For a template pack every `std::` counts, because a template is nothing but
-emitted text.
+For a template every OTHER `std::` counts, because a template is nothing but
+emitted text — there is no host-side half to exclude. The guard match is
+EXACT (`{% if links_std %}`, not `{% if not links_std %}` and not
+`{% if x or links_std %}`), for the same reason the function match is by name:
+an allowance a reader has to evaluate is not an allowance anyone can check.
 
 ## Exemptions
 
@@ -50,6 +59,11 @@ with a TRACKED ISSUE ID — the discipline CLAUDE.md records for the rmw-parity
 map, and for the same reason: an exemption without an id is indistinguishable
 from a decision nobody made. A `KNOWN_OPEN` row whose file no longer has a
 finding FAILS the gate, so the row cannot outlive the defect it describes.
+
+`KNOWN_OPEN` is EMPTY. It held one row — the CLI's Rust entry template, issue
+1409 — carved out because `codegen/entry/**` was being rewritten by issue 0794
+while 1381 landed. 1409 is fixed and the row went with it, which is the
+mechanism working rather than a gate that never had anything to say.
 """
 
 import argparse
@@ -85,10 +99,24 @@ HOSTED_ONLY_EMITTERS = {
     "hosted_std_scaffold_ts": "issue 1381 — empty token stream unless the board's entry links std",
 }
 
-# Real, open, and owned by other work. Path (repo-relative) → issue id.
-KNOWN_OPEN = {
-    "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/rust/entry.rs.jinja": 1409,
+# The template side of `HOSTED_ONLY_EMITTERS`: jinja variables whose truth IS
+# "this entry links std", so a `{% if <name> %}` block may name a `std` path.
+#
+#   `links_std` is set by `emit_rust::emit_lowered` from
+#   `nros_orchestration_ir::board_entry_links_std(&entry.board)`, the same call
+#   the proc-macro's one caller makes. Issue 1409.
+#
+# Exact names, and the guard must be the WHOLE test — see the module docstring.
+HOSTED_ONLY_TEMPLATE_GUARDS = {
+    "links_std": "issue 1409 — the block is rendered only when the board's entry links std",
 }
+
+# Real, open, and owned by other work. Path (repo-relative) → issue id.
+#
+# EMPTY as of issue 1409, whose row this was. A row whose file has no finding
+# any more FAILS the gate (see `check`), so emptiness here is measured rather
+# than tidied.
+KNOWN_OPEN: dict[str, int] = {}
 
 # What counts as a producer of Rust ENTRY code.
 PRODUCER_ROOTS = [
@@ -222,10 +250,52 @@ def scan_rust_producer(path):
     return hits
 
 
+# A jinja `{% if <test> %}` / `{% elif … %}` / `{% else %}` / `{% endif %}`
+# tag, with either whitespace-control spelling (`{%-` / `-%}`).
+JINJA_IF_RE = re.compile(r"\{%-?\s*if\s+(.*?)\s*-?%\}")
+JINJA_ELSE_RE = re.compile(r"\{%-?\s*(?:elif\b|else\s*)-?%\}|\{%-?\s*elif\s")
+JINJA_ENDIF_RE = re.compile(r"\{%-?\s*endif\s*-?%\}")
+
+
+def hosted_guarded_lines(text):
+    """Line numbers (0-based) inside a `{% if <guard> %}` … `{% endif %}` block
+    whose test is EXACTLY one of `HOSTED_ONLY_TEMPLATE_GUARDS`.
+
+    A stack of booleans, one per open `if`, because an inner `{% if %}` must
+    not close the guard and a nested one must not open it by accident. An
+    `{% else %}` / `{% elif %}` CLEARS the frame: the else-arm of
+    `{% if links_std %}` is the arm where the entry does NOT link `std`, which
+    is precisely where a `std` path would be the bug this gate exists for.
+    """
+    guarded = set()
+    stack = []
+    for i, line in enumerate(text.splitlines()):
+        opened = JINJA_IF_RE.findall(line)
+        # Evaluate membership BEFORE the line is credited: the tag line itself
+        # carries no emitted code worth guarding, and crediting it would let a
+        # `{% if links_std %}::std::x{% endif %}` one-liner pass on a frame it
+        # also closes. One-liners are refused; the tree has none.
+        if any(stack):
+            guarded.add(i)
+        for test in opened:
+            stack.append(test in HOSTED_ONLY_TEMPLATE_GUARDS)
+        if JINJA_ELSE_RE.search(line) and stack:
+            stack[-1] = False
+        for _ in JINJA_ENDIF_RE.findall(line):
+            if stack:
+                stack.pop()
+    return guarded
+
+
 def scan_template(path):
-    """[(lineno, line)] — every `std::` in a template pack file."""
+    """[(lineno, line)] — every `std::` in a template pack file, except inside
+    a hosted-only jinja guard (issue 1409)."""
     hits = []
-    for i, line in enumerate(path.read_text(errors="replace").splitlines()):
+    text = path.read_text(errors="replace")
+    guarded = hosted_guarded_lines(text)
+    for i, line in enumerate(text.splitlines()):
+        if i in guarded:
+            continue
         code = strip_line_comment(line)
         # A jinja comment line is prose about the template, not template output.
         if code.lstrip().startswith(("{#", "#")):
@@ -375,6 +445,77 @@ SELF_TESTS = [
         0,
     ),
     (
+        "the hosted-only jinja guard is allowed to name std",
+        {
+            "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/rust/e.rs.jinja": (
+                "{% if links_std %}\n"
+                "fn main() {\n"
+                "    ::std::process::exit(1);\n"
+                "}\n"
+                "{% endif %}\n"
+            )
+        },
+        0,
+    ),
+    (
+        "the ELSE arm of that guard is exactly where the bug would be",
+        {
+            "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/rust/e.rs.jinja": (
+                "{% if links_std %}\n"
+                "fn main() {}\n"
+                "{% else %}\n"
+                "fn main() { ::std::process::exit(1); }\n"
+                "{% endif %}\n"
+            )
+        },
+        1,
+    ),
+    (
+        "the guard does not reach past its own endif",
+        {
+            "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/rust/e.rs.jinja": (
+                "{% if links_std %}\n"
+                "fn main() { ::std::eprintln!(\"a\"); }\n"
+                "{% endif %}\n"
+                "fn other() { ::std::process::exit(1); }\n"
+            )
+        },
+        1,
+    ),
+    (
+        "a guard the renderer does not set from board_entry_links_std is not one",
+        {
+            "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/rust/e.rs.jinja": (
+                "{% if hosted %}\n    ::std::process::exit(1);\n{% endif %}\n"
+            )
+        },
+        1,
+    ),
+    (
+        "a nested if inside the guard does not close it",
+        {
+            "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/rust/e.rs.jinja": (
+                "{% if links_std %}\n"
+                "{% if spin_forever %}\n"
+                "    ::std::process::exit(1);\n"
+                "{% endif %}\n"
+                "    ::std::eprintln!(\"b\");\n"
+                "{% endif %}\n"
+                "    ::std::process::exit(2);\n"
+            )
+        },
+        1,
+    ),
+    (
+        "the whitespace-control spelling of the guard counts too",
+        {
+            "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/rust/e.rs.jinja": (
+                "{%- if links_std -%}\n    ::std::process::exit(1);\n{%- endif -%}\n"
+            )
+        },
+        0,
+    ),
+    (
         "a multi-line quote! block keeps its scope to the end",
         {
             "packages/core/nros-macros/src/m.rs": (
@@ -479,9 +620,13 @@ def main():
         "      nros_orchestration_ir::board_entry_links_std(<board key>)\n"
         "\n"
         "  and emit the hosted scaffold only when it answers `Some(true)` (`None` —\n"
-        "  an out-of-tree board — means assume hosted). In the proc-macro that is\n"
-        "  `main_macro::hosted_std_scaffold_ts`; put new hosted tokens THERE rather\n"
-        "  than opening a second site.\n"
+        "  an out-of-tree board — means assume hosted). Each producer has ONE place\n"
+        "  for that, and new hosted tokens go THERE rather than opening a second\n"
+        "  site:\n"
+        "\n"
+        "    proc-macro  `main_macro::hosted_std_scaffold_ts(links_std)`\n"
+        "    template    inside `{% if links_std %}` … `{% endif %}`, with\n"
+        "                `links_std` set by `emit_rust::emit_lowered` (issue 1409)\n"
         "\n"
         "  A site that is real but cannot be fixed yet goes in KNOWN_OPEN with a\n"
         "  tracked issue id, never in a comment.\n",

@@ -30,11 +30,23 @@ fn __nros_entry_run() -> ::core::result::Result<
 }
 
 
-#[cfg(not(target_os = "none"))]
+#[cfg(not(any(target_os = "none", target_os = "nuttx")))]
 fn main() {
     if let ::core::result::Result::Err(e) = __nros_entry_run() {
         ::std::eprintln!("{}: {}", ::core::env!("CARGO_PKG_NAME"), e);
         ::std::process::exit(1);
+    }
+}
+
+#[cfg(target_os = "nuttx")]
+#[unsafe(no_mangle)]
+pub extern "C" fn main(
+    _argc: i32,
+    _argv: *const *const ::core::ffi::c_char,
+) -> i32 {
+    match __nros_entry_run() {
+        ::core::result::Result::Ok(()) => 0,
+        ::core::result::Result::Err(_) => 1,
     }
 }
 
