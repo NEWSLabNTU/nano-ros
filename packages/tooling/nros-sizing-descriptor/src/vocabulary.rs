@@ -255,6 +255,124 @@ impl RegistrationPath {
     }
 }
 
+/// Whether any declared parameter needs a BOARD capacity, and which one does.
+///
+/// `[params] needs_max_string_value_len` and its two siblings. The three
+/// capacities themselves — `MAX_STRING_VALUE_LEN`, `MAX_ARRAY_LEN`,
+/// `MAX_BYTE_ARRAY_LEN` — are deliberately NOT in `[params]`, and putting them
+/// there is the change a future reader will want to make. They are RFC-0100 D1
+/// **target** facts, owned by the board descriptor's `[board.knobs.params]`,
+/// because an MCU and a PC want different string lengths for the same node. A
+/// contract can only say whether a capacity is needed AT ALL; the number is the
+/// board's, and the build refuses when the board states none. So the image
+/// states the NEED and names who has it, and nothing more.
+///
+/// # `Unused` is a value, not an absent key
+///
+/// [`Self::Unused`] is a STATEMENT — *"no declared parameter has a type that
+/// uses this knob"* — and is therefore a VALUE, carried by a
+/// [`Stated`](crate::Fact::Stated). An absent key is
+/// [`Absent`](crate::Fact::Absent), *"nobody said"*, which is the different
+/// answer an image with no parameter declarations gives. Conflating the two is
+/// the "absence is not zero" rule this whole schema exists to hold —
+/// `Meta::undeclared_endpoints` carries the same distinction one section over —
+/// and a consumer that read `Unused` as *absent* would keep its builtin
+/// capacity for an image that has just told it the knob buys nothing.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum CapacityNeed {
+    /// No declared parameter has a type that uses this capacity.
+    Unused,
+    /// This declared parameter needs it — the first, in `(node, name)` order,
+    /// which is the order the derivation walks. NAMED rather than counted
+    /// because the number is the BOARD's: a build with no capacity to resolve
+    /// against has to be able to say whose declaration it could not price.
+    NeededBy {
+        /// The node's name, as the contract spells it.
+        node: String,
+        /// The parameter's name, as the contract spells it.
+        name: String,
+    },
+}
+
+impl CapacityNeed {
+    /// The spelling of [`Self::Unused`].
+    pub const UNUSED_TAG: &'static str = "unused";
+    /// What a [`Self::NeededBy`] spelling starts with.
+    pub const NEEDED_BY_PREFIX: &'static str = "needed_by:";
+
+    /// The canonical spelling, as it appears in the descriptor.
+    ///
+    /// A `String` rather than the `&'static str` every other vocabulary in this
+    /// file returns, because this one carries data. That is also why it is not
+    /// built by the `vocabulary!` macro: the macro's rows are fieldless.
+    pub fn token(&self) -> String {
+        match self {
+            CapacityNeed::Unused => Self::UNUSED_TAG.to_string(),
+            CapacityNeed::NeededBy { node, name } => {
+                format!("{}{node}:{name}", Self::NEEDED_BY_PREFIX)
+            }
+        }
+    }
+
+    /// Parse one spelling. An unknown one is an error naming the legal forms —
+    /// never a `None` the caller can drop and never a best effort, for
+    /// [`History`]'s reason: a skipped row is exactly an under-report.
+    pub fn parse(s: &str) -> Result<Self, String> {
+        if s == Self::UNUSED_TAG {
+            return Ok(CapacityNeed::Unused);
+        }
+        if let Some(rest) = s.strip_prefix(Self::NEEDED_BY_PREFIX)
+            && let Some((node, name)) = rest.split_once(':')
+            && !node.is_empty()
+            && !name.is_empty()
+        {
+            return Ok(CapacityNeed::NeededBy {
+                node: node.to_string(),
+                name: name.to_string(),
+            });
+        }
+        Err(format!(
+            "unknown CapacityNeed `{s}` -- expected `{}` or `{}<node>:<name>`, \
+             both parts non-empty",
+            Self::UNUSED_TAG,
+            Self::NEEDED_BY_PREFIX,
+        ))
+    }
+
+    /// Does this capacity buy the image nothing?
+    pub fn is_unused(&self) -> bool {
+        matches!(self, CapacityNeed::Unused)
+    }
+
+    /// `(node, name)` of the declaration that needs this capacity, or `None`
+    /// when nothing does.
+    pub fn needed_by(&self) -> Option<(&str, &str)> {
+        match self {
+            CapacityNeed::Unused => None,
+            CapacityNeed::NeededBy { node, name } => Some((node.as_str(), name.as_str())),
+        }
+    }
+}
+
+impl fmt::Display for CapacityNeed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.token())
+    }
+}
+
+impl serde::Serialize for CapacityNeed {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.token())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for CapacityNeed {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = <std::borrow::Cow<'de, str> as serde::Deserialize>::deserialize(d)?;
+        CapacityNeed::parse(raw.as_ref()).map_err(serde::de::Error::custom)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,6 +401,63 @@ mod tests {
         round_trip!(Reliability);
         round_trip!(Durability);
         round_trip!(RegistrationPath);
+    }
+
+    /// The one vocabulary the macro does not build, held to the same rule.
+    #[test]
+    fn a_capacity_need_round_trips_through_its_spelling() {
+        for v in [
+            CapacityNeed::Unused,
+            CapacityNeed::NeededBy {
+                node: "/a".into(),
+                name: "label".into(),
+            },
+        ] {
+            assert_eq!(CapacityNeed::parse(&v.token()).unwrap(), v, "{v}");
+        }
+        assert_eq!(CapacityNeed::Unused.token(), "unused");
+        assert_eq!(
+            CapacityNeed::NeededBy {
+                node: "/a".into(),
+                name: "label".into(),
+            }
+            .token(),
+            "needed_by:/a:label"
+        );
+    }
+
+    /// `Unused` says something; it is not the absence of an answer. The `Fact`
+    /// that carries it is what spells absence, and these two accessors are how a
+    /// consumer tells "this knob buys nothing" from "nobody looked".
+    #[test]
+    fn unused_and_needed_by_are_different_statements() {
+        assert!(CapacityNeed::Unused.is_unused());
+        assert_eq!(CapacityNeed::Unused.needed_by(), None);
+        let needed = CapacityNeed::NeededBy {
+            node: "/talker".into(),
+            name: "greeting".into(),
+        };
+        assert!(!needed.is_unused());
+        assert_eq!(needed.needed_by(), Some(("/talker", "greeting")));
+    }
+
+    #[test]
+    fn an_unknown_capacity_need_spelling_is_an_error_naming_the_legal_forms() {
+        for bad in [
+            "maybe",
+            "needed_by",
+            "needed_by:",
+            "needed_by:/a",
+            "needed_by::name",
+            "needed_by:/a:",
+            "",
+        ] {
+            let err = CapacityNeed::parse(bad)
+                .map(|v| v.token())
+                .expect_err(&format!("`{bad}` must not parse"));
+            assert!(err.contains("unused"), "{err}");
+            assert!(err.contains("needed_by:"), "{err}");
+        }
     }
 
     #[test]
