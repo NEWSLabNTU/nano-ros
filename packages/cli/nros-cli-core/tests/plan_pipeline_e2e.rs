@@ -27,6 +27,8 @@
 //!
 //! Run with: `cargo test --manifest-path packages/cli/Cargo.toml --test plan_pipeline_e2e`
 
+mod common;
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -220,16 +222,7 @@ fn metadata_build_discovers_missing_sources() {
 /// the resolver was never built, since a missing resolver and a broken plan
 /// look identical from the assertion below.
 fn resolve_demo_pkg_model(demo_pkg: &Path, out: &Path) -> PathBuf {
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("repo root");
-    let resolver = repo.join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
-    assert!(
-        resolver.is_file(),
-        "nros-launch-resolve not built at {} — run `just setup-launch-resolve`",
-        resolver.display()
-    );
+    let resolver = common::pinned_launch_resolver();
     let model = out.join("system_model.yaml");
     fs::create_dir_all(out).expect("create model out dir");
     let output = std::process::Command::new(&resolver)
