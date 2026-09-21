@@ -28,12 +28,26 @@
 //! process. So the pub, sub, and diagsink are three separate processes on one
 //! zenohd router.
 
-use std::{process::Command, time::Duration};
+//!
+//! ## The C++ twin (phase-462 W1)
+//!
+//! `contract-monitor-cpp` is `contract-monitor-pub` written against the C
+//! ABI a generated C++ entry uses: the same row installed through
+//! `nros_cpp_install_monitors`, the stock `Publisher<Header>` whose facade
+//! bumps the row's cell, `nros_cpp_executor_drain_violations` for the drain.
+//! Its two cases are the W1 "done-when": the violating twin reports
+//! `rate-hierarchy-runtime` from the same row the Rust twin declares, and the
+//! `CM_CONTRACT=0` twin installs zero rows and stays silent -- RFC-0052's
+//! claim that an uncontracted image carries no monitor.
+
+use std::{path::PathBuf, process::Command, time::Duration};
 
 use nros_tests::{
+    TestResult,
     fixtures::{
-        ManagedProcess, RequireFixture, ZenohRouter, build_contract_monitor_diagsink,
-        build_contract_monitor_pub, build_contract_monitor_sub, require_zenohd, zenohd_unique,
+        ManagedProcess, RequireFixture, Rmw, ZenohRouter, build_cmake_leaf_rmw,
+        build_contract_monitor_diagsink, build_contract_monitor_pub, build_contract_monitor_sub,
+        require_zenohd, zenohd_unique,
     },
     output::{
         CONTRACT_MONITOR_DIAG_PREFIX, CONTRACT_MONITOR_DIAGSINK_READY_MARKER, RULE_MAX_AGE_RUNTIME,
@@ -208,5 +222,112 @@ fn contract_monitor_compliant_pair_stays_silent(zenohd_unique: ZenohRouter) {
     assert!(
         !diag_out.contains(CONTRACT_MONITOR_DIAG_PREFIX),
         "compliant pair must not report any contract violation on /diagnostics, got:\n{diag_out}"
+    );
+}
+
+/// phase-462 W1 -- the C++ twin, a CMake C++ leaf like any other
+/// (`examples/fixtures.toml` row `contract-monitor-cpp`, prebuilt by the
+/// linux/cpp/zenoh fixture lane).
+fn build_contract_monitor_cpp() -> TestResult<PathBuf> {
+    build_cmake_leaf_rmw(
+        "packages/testing/nros-tests/bins/contract-monitor-cpp",
+        "contract_monitor_cpp",
+        Rmw::Zenoh,
+    )
+}
+
+/// The row the Rust twin declares by hand (`pub.rs`'s `MONITORS`), as the
+/// C++ twin prints the row it installed. Field for field: same topic, same
+/// endpoint ref, same declared minimum, no latency contract.
+const CPP_TWIN_ROW: &str = "cm_pub_cpp: row topic=/cm_header fqn=/cm/pub/cm_header min_rate_hz_milli=10000 max_latency_ms=0";
+
+/// C++ twin, violating: one row installed through the C ABI, a publisher
+/// held at 2 Hz under a 10 Hz contract, `rate-hierarchy-runtime` on the
+/// drain within one check window -- the same rule, from the same row, the
+/// Rust twin reports.
+#[rstest]
+fn contract_monitor_cpp_twin_reports_rate_violation(zenohd_unique: ZenohRouter) {
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+    let bin = build_contract_monitor_cpp().require("contract-monitor-cpp");
+    let locator = zenohd_unique.locator();
+
+    let mut publisher = spawn(
+        &bin,
+        "cm-pub-cpp",
+        &locator,
+        &[
+            ("CM_RUN_MS", "28000"),
+            ("CM_PERIOD_MS", "500"),
+            ("CM_CONTRACT", "1"),
+        ],
+    );
+    // One wait, for the row line: it is printed right after the install
+    // line, from the same install, so seeing it is seeing both. (Two waits
+    // in a row lose the second line when both arrive in one read.)
+    publisher
+        .wait_for_output_pattern(CPP_TWIN_ROW, Duration::from_secs(8))
+        .expect("C++ twin did not install the Rust twin's row");
+
+    // Rate needs two ~5 s windows to measure (open, then roll); same ceiling
+    // as the Rust twin's case. Evidence goes in the panic message, never in
+    // the string the assertion searches (see the Rust case for why).
+    let (out, why) =
+        publisher.collect_until_count(RULE_RATE_HIERARCHY_RUNTIME, 1, Duration::from_secs(18));
+    publisher.kill();
+    assert!(
+        out.contains(RULE_RATE_HIERARCHY_RUNTIME),
+        "expected rate-hierarchy-runtime on the C++ twin's drain (2 Hz < 10 Hz declared), got:\n{out}{}",
+        why.unwrap_or_default()
+    );
+    assert!(
+        out.contains("fqn=/cm/pub/cm_header declared=10000")
+            || out.contains("fqn=/cm/pub/cm_header measured="),
+        "the violation must name the installed row's fqn, got:\n{out}"
+    );
+}
+
+/// C++ twin, uncontracted (`CM_CONTRACT=0`): the same binary, the same slow
+/// publisher, zero rows installed -- and nothing on the drain, because there
+/// is no row to check. This is RFC-0052's zero-cost claim at the row level.
+#[rstest]
+fn contract_monitor_cpp_uncontracted_twin_carries_zero_rows(zenohd_unique: ZenohRouter) {
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+    let bin = build_contract_monitor_cpp().require("contract-monitor-cpp");
+    let locator = zenohd_unique.locator();
+
+    let mut publisher = spawn(
+        &bin,
+        "cm-pub-cpp-uncontracted",
+        &locator,
+        &[
+            ("CM_RUN_MS", "16000"),
+            ("CM_PERIOD_MS", "500"),
+            ("CM_CONTRACT", "0"),
+        ],
+    );
+    publisher
+        .wait_for_output_pattern(
+            "cm_pub_cpp: installed 0 monitor rows",
+            Duration::from_secs(8),
+        )
+        .expect("uncontracted C++ twin did not report its (empty) install");
+    // Confirm it is publishing (so silence means "no row", not "no traffic"),
+    // then drain across two rate windows: no rule may appear.
+    publisher
+        .wait_for_output_pattern("cm_pub_cpp: published 4 headers", Duration::from_secs(6))
+        .expect("uncontracted C++ twin published nothing");
+    let out = publisher.collect_until(CONTRACT_MONITOR_DIAG_PREFIX, Duration::from_secs(12));
+    publisher.kill();
+    assert!(
+        !out.contains(CONTRACT_MONITOR_DIAG_PREFIX),
+        "an uncontracted C++ image must report no contract violation, got:\n{out}"
+    );
+    assert!(
+        !out.contains("cm_pub_cpp: row "),
+        "an uncontracted C++ image must install no row, got:\n{out}"
     );
 }

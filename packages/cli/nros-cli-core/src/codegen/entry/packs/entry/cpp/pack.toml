@@ -15,6 +15,7 @@ c_family = true
 entry_template = "entry_cpp.cpp"
 partials = [
     "node_body_cpp.jinja",
+    "monitor_install_cpp.jinja",
     "boot_wrapper_cpp.jinja",
     "service_trailer_cpp.jinja",
     "boot_config.jinja",

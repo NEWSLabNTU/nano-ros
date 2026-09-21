@@ -350,6 +350,22 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         );
     }
 
+    // phase-462 W1 (RFC-0052) -- the contract monitor rows the C++ entry bakes,
+    // from the SAME `monitor_rows` / `age_rows` the Rust road renders into
+    // `system_monitors.rs`. Read from the model here rather than carried on
+    // the `Plan`: the plan is built in ~40 struct literals across the tree,
+    // and the emitter (not the plan) is what this wave owns.
+    let (monitor_rows, age_rows) = match &args.model {
+        Some(model_path) => {
+            let model = crate::orchestration::model_ingest::load_model(model_path)?;
+            (
+                crate::orchestration::model_ingest::monitor_rows(&model)?,
+                crate::orchestration::model_ingest::age_rows(&model)?,
+            )
+        }
+        None => (Vec::new(), Vec::new()),
+    };
+
     let src = if args.typed {
         // Refused HERE, before the metadata is read — the same point the old
         // `lang != Cpp && lang != C` test refused it, so the error order a
@@ -396,10 +412,12 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                      `nros codegen entry-pack --lang c --board {}` reports the routing.",
                     plan.board, plan.board,
                 );
-                entry_codegen::emit_cpp::emit_typed(&plan).map_err(|e| eyre!("{e}"))?
+                entry_codegen::emit_cpp::emit_typed_monitored(&plan, &monitor_rows, &age_rows)
+                    .map_err(|e| eyre!("{e}"))?
             }
             TypedEntryEmitter::Cpp => {
-                entry_codegen::emit_cpp::emit_typed(&plan).map_err(|e| eyre!("{e}"))?
+                entry_codegen::emit_cpp::emit_typed_monitored(&plan, &monitor_rows, &age_rows)
+                    .map_err(|e| eyre!("{e}"))?
             }
         }
     } else {

@@ -1,0 +1,6 @@
+# RFC-0033 capacity for the `std_msgs/Header` this fixture publishes (issue
+# 0964: a type that states no serialized-size bound may not size a buffer, so
+# the consumer states it here beside package.xml). The frame id is two bytes
+# ("cm"); 64 is generous rather than tight.
+[fields]
+"std_msgs/Header.frame_id" = 64

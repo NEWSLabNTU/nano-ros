@@ -61,6 +61,22 @@
 #define NROS_CPP_DOMAIN_ID_INHERIT UINT32_MAX
 
 /**
+ * Bytes of caller storage ONE publisher row needs: its `PubMonitorCell` plus
+ * its `MonitorSpec`, with the alignment step between the two regions. A
+ * bound rather than the exact sum because the exact sum is target-dependent
+ * (two fat pointers and a reference), and the entry is a C++ TU that cannot
+ * ask. `nros_cpp_install_monitors` checks the real requirement against the
+ * buffer it is handed and refuses a short one.
+ */
+#define NROS_CPP_MONITOR_ROW_STORAGE 64
+
+/**
+ * Bytes of caller storage ONE age row needs (`SubMonitorCell` +
+ * `AgeMonitorSpec`); same rule as [`NROS_CPP_MONITOR_ROW_STORAGE`].
+ */
+#define NROS_CPP_AGE_ROW_STORAGE 64
+
+/**
  * phase-436 A2 — which deadline source bounded a park, as
  * [`nros_cpp_executor_last_park`] reports it. `PLATFORM` also carries the
  * index the platform source was registered at.
@@ -421,6 +437,113 @@ typedef struct nros_cpp_sched_context_t {
    */
   uint32_t tt_window_duration_us;
 } nros_cpp_sched_context_t;
+
+/**
+ * One contracted publisher row as the generated C++ entry bakes it: the C
+ * spelling of `nros_node::executor::monitor::MonitorSpec` minus the cell,
+ * which `nros_cpp_install_monitors` allocates inside the caller's storage.
+ */
+typedef struct nros_cpp_monitor_row_t {
+  /**
+   * Topic EXACTLY as the node passes it to `create_publisher`;
+   * NUL-terminated UTF-8 with static lifetime (a literal in the entry).
+   */
+  const char *topic;
+  /**
+   * Endpoint ref (`<node FQN>/<endpoint>`), the violation report key;
+   * same lifetime rule as `topic`.
+   */
+  const char *fqn;
+  /**
+   * Declared publisher guarantee, milli-Hz. 0 = no rate contract.
+   */
+  uint32_t min_rate_hz_milli;
+  /**
+   * Node-path budget (ms) for paths whose output is this endpoint.
+   * 0 = no latency contract.
+   */
+  uint32_t max_latency_ms;
+} nros_cpp_monitor_row_t;
+
+/**
+ * One contracted subscriber age row (`sub_endpoints.max_age_ms`), the C
+ * spelling of `AgeMonitorSpec` minus the cell.
+ */
+typedef struct nros_cpp_age_row_t {
+  /**
+   * Topic EXACTLY as the node passes it to `create_subscription`.
+   */
+  const char *topic;
+  /**
+   * Endpoint ref, the violation report key.
+   */
+  const char *fqn;
+  /**
+   * Declared max take-age, ms.
+   */
+  uint32_t max_age_ms;
+} nros_cpp_age_row_t;
+
+/**
+ * Both tables of one install, so the call has one argument and a row added
+ * later is a field appended here rather than a tenth parameter.
+ */
+typedef struct nros_cpp_monitor_tables_t {
+  /**
+   * `n_rows` publisher rows, or NULL when `n_rows == 0`.
+   */
+  const struct nros_cpp_monitor_row_t *rows;
+  size_t n_rows;
+  /**
+   * At least `n_rows * NROS_CPP_MONITOR_ROW_STORAGE` bytes, 8-aligned,
+   * static (the executor keeps pointers into it for its whole life).
+   */
+  void *row_storage;
+  size_t row_storage_len;
+  /**
+   * `n_ages` age rows, or NULL when `n_ages == 0`.
+   */
+  const struct nros_cpp_age_row_t *ages;
+  size_t n_ages;
+  /**
+   * At least `n_ages * NROS_CPP_AGE_ROW_STORAGE` bytes, 8-aligned, static.
+   */
+  void *age_storage;
+  size_t age_storage_len;
+} nros_cpp_monitor_tables_t;
+
+/**
+ * One drained contract violation, the C spelling of
+ * `nros_node::executor::monitor::Violation`. `rule` and `fqn` are NOT
+ * NUL-terminated (they are the runtime's own `&'static str`s), hence the
+ * explicit lengths; print them with `%.*s`.
+ */
+typedef struct nros_cpp_violation_t {
+  /**
+   * Rule id in the play_launch vocabulary (`rate-hierarchy-runtime`, ...).
+   */
+  const char *rule;
+  size_t rule_len;
+  /**
+   * Violating endpoint ref, from the installed row's `fqn`.
+   */
+  const char *fqn;
+  size_t fqn_len;
+  /**
+   * Measured value; unit is per rule (milli-Hz for rate, ms for age and
+   * latency, us for deadline misses).
+   */
+  uint32_t measured;
+  /**
+   * Declared bound, same unit as `measured`.
+   */
+  uint32_t declared;
+} nros_cpp_violation_t;
+
+/**
+ * Drain callback: called once per pending violation, in ring order.
+ */
+typedef void (*nros_cpp_violation_cb_t)(void *ctx, const struct nros_cpp_violation_t *v);
 
 /**
  * C callback type for guard conditions: `void callback(void* context)`.
@@ -1508,6 +1631,42 @@ nros_cpp_ret_t nros_cpp_executor_derive_min_stack_headroom(void *handle, size_t 
 nros_cpp_ret_t nros_cpp_executor_set_min_stack_headroom(void *handle, size_t bytes);
 
 /**
+ * Install the baked contract-monitor tables on this executor, the C++ mirror
+ * of the Rust entry's `set_monitor_table` + `set_age_table`. Call from the
+ * entry's setup BEFORE any node is created: `nros_cpp_publisher_create`
+ * attaches each contracted endpoint's cell by exact topic match at create
+ * time, so a table installed later monitors nothing.
+ *
+ * Rows beyond the executor's `MAX_MONITORS` are REFUSED (`NROS_CPP_RET_FULL`)
+ * rather than truncated: the executor checks only the first `MAX_MONITORS`
+ * specs of a table, and an image that boots with six of its fourteen
+ * contracts silently unwatched is the class of failure this table exists to
+ * remove. A short or misaligned storage buffer is refused the same way.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL. `tables`
+ * must point at a valid `nros_cpp_monitor_tables_t` whose row arrays, string
+ * pointers and storage buffers all outlive the executor (statics in the
+ * generated entry). Each `topic` / `fqn` must be NUL-terminated UTF-8.
+ */
+nros_cpp_ret_t nros_cpp_install_monitors(void *handle,
+                                         const struct nros_cpp_monitor_tables_t *tables);
+
+/**
+ * Drain every pending contract violation from this executor's ring, the C++
+ * mirror of `Executor::drain_violations`. The entry glue hands each one to
+ * the reporter it links (the same rule vocabulary play_launch enforces on
+ * the Linux side, RFC-0050). Call between spins, never from a callback.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL. `cb` must
+ * be a valid function pointer; `ctx` is passed through untouched.
+ */
+nros_cpp_ret_t nros_cpp_executor_drain_violations(void *handle,
+                                                  nros_cpp_violation_cb_t cb,
+                                                  void *ctx);
+
+/**
  * Declare one `from -> to` remap for a node, from the C++ side of the ABI.
  *
  * `node_namespace` may be NULL, which means `/`; every other pointer is
@@ -1826,13 +1985,13 @@ int32_t nros_cpp_metadata_dump(const char *package,
  * Create a publisher on a node.
  *
  * The caller provides `storage` — a pointer to a buffer of at least
- * `size_of::<RmwPublisher>()` bytes (exposed via `NROS_PUBLISHER_SIZE` in
- * the generated header), aligned to its alignment requirement. The
- * `RmwPublisher` handle is written directly into this buffer.
+ * `size_of::<CppPublisher>()` bytes (`NROS_PUBLISHER_SIZE` from the
+ * generated header plus one pointer for the monitor cell), 8-aligned. The
+ * handle and the cell pointer are written directly into this buffer.
  *
  * # Safety
  * All pointer parameters must be valid. `storage` must point to an
- * appropriately-aligned buffer of at least `NROS_PUBLISHER_SIZE` bytes.
+ * 8-aligned buffer of at least `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes.
  */
 nros_cpp_ret_t nros_cpp_publisher_create(const struct nros_cpp_node_t *node,
                                          const char *topic,
@@ -1946,16 +2105,17 @@ nros_cpp_ret_t nros_cpp_publisher_discard(void *storage, void *token);
 nros_cpp_ret_t nros_cpp_publisher_destroy(void *storage);
 
 /**
- * Relocate an `RmwPublisher` from `old_storage` to `new_storage`.
+ * Relocate a publisher from `old_storage` to `new_storage`.
  *
- * `RmwPublisher` registers nothing externally that references its storage
- * address, so relocation is a straight `ptr::read` + `ptr::write`. Called
+ * Neither the `RmwPublisher` nor the monitor cell pointer beside it
+ * references the storage address, so relocation is a straight `ptr::read`
+ * + `ptr::write` (the cell itself is a static the executor owns). Called
  * by the C++ `Publisher` move ctor / move assignment.
  *
  * # Safety
- * Both `old_storage` and `new_storage` must be valid, appropriately-aligned
- * buffers of at least `NROS_PUBLISHER_SIZE` bytes. `old_storage` must
- * contain an initialised `RmwPublisher`; `new_storage` must not. After the
+ * Both `old_storage` and `new_storage` must be valid, 8-aligned buffers of
+ * at least `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes. `old_storage` must
+ * contain an initialised publisher; `new_storage` must not. After the
  * call, `old_storage` is logically uninitialised and must not be destroyed
  * — the C++ side sets its `initialized_` flag to `false`.
  */

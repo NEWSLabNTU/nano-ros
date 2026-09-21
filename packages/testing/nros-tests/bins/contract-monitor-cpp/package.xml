@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>contract_monitor_cpp</name>
+  <version>0.1.0</version>
+  <description>phase-462 W1 (RFC-0052) -- the C++ twin of the contract-monitor parity fixture: installs the same min_rate_hz publisher row through the C ABI, publishes std_msgs/Header at a configurable period, and drains the executor's violation ring to stdout in the play_launch rule vocabulary.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

@@ -79,9 +79,13 @@ namespace rclcpp {
 /// Raw CDR publishing is always available via `publish_raw()`.
 ///
 /// Inline storage holds the runtime publisher handle directly
-/// (`NROS_PUBLISHER_SIZE` bytes; size auto-derived from the runtime).
-/// Topic name metadata lives C++-side in `topic_name_`, avoiding a
-/// runtime hop for `get_topic_name()`.
+/// (`NROS_PUBLISHER_SIZE` bytes; size auto-derived from the runtime) plus
+/// one pointer: the contracted endpoint's monitor cell (phase-462 W1,
+/// RFC-0052), which the runtime resolves at create time against the table
+/// the entry installed with `nros_cpp_install_monitors` and bumps on every
+/// publish, exactly as the Rust `EmbeddedPublisher` does. Null on an
+/// uncontracted publisher. Topic name metadata lives C++-side in
+/// `topic_name_`, avoiding a runtime hop for `get_topic_name()`.
 ///
 /// Usage:
 /// ```cpp
@@ -330,7 +334,10 @@ template <typename M> class Publisher {
 
     friend class ::rclcpp::Node;
 
-    alignas(8) uint8_t storage_[NROS_PUBLISHER_SIZE];
+    // `+ sizeof(void*)`: the monitor cell pointer the runtime stores beside
+    // the handle (`CppPublisher` in nros-cpp's publisher.rs, whose
+    // compile-time assert is the other half of this number).
+    alignas(8) uint8_t storage_[NROS_PUBLISHER_SIZE + sizeof(void*)];
     char topic_name_[::nros::PUBLISHER_TOPIC_NAME_MAX];
     bool initialized_;
 };
