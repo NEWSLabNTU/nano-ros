@@ -57,9 +57,9 @@ Phases 457 and 462 share no file with this phase.
 
 Owns these issues, one per wave:
 [1420](../issues/1420-refused-resolve-leaves-the-previous-model-for-every-consumer.md),
-[1421](../issues/1421-partial-params-declaration-falls-to-crate-defaults-silently.md),
+[1421](../issues/archived/1421-partial-params-declaration-falls-to-crate-defaults-silently.md),
 [1422](../issues/1422-plain-blit-eligibility-is-computed-and-read-by-nothing.md),
-[1423](../issues/1423-system-toml-domain-id-and-kconfig-domain-id-are-never-compared.md),
+[1423](../issues/archived/1423-system-toml-domain-id-and-kconfig-domain-id-are-never-compared.md),
 [1424](../issues/1424-zephyr-heap-size-is-a-guess-with-a-peak-reporter-nothing-reads.md),
 [1425](../issues/1425-heap-exhaustion-and-buffer-too-small-reach-no-fault-hook-on-a-consoleless-board.md).
 Takes [issue 1368](../issues/1368-frag-max-size-not-checked-against-derived-bound.md)
