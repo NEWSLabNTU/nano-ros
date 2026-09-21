@@ -112,6 +112,11 @@ def _tracked_files(root: Path):
     try:
         rel = root.relative_to(REPO)
     except ValueError:
+        # walk-ok: reached ONLY when `root` is outside the repo — a
+        # `--self-test` temp tree, so outside any index and tiny by
+        # construction (issue 0721's carve-out for out-of-repo roots).
+        # The marker sits on the line the walk is ON: the gate reads the
+        # CONTIGUOUS comment block above that line.
         return sorted(p for p in root.rglob("*") if p.is_file()) if root.is_dir() else []
     out = subprocess.run(
         ["git", "-C", str(REPO), "ls-files", "-z", "--", str(rel)],
