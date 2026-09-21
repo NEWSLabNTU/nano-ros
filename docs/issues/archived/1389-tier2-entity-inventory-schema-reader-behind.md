@@ -405,3 +405,39 @@ planted violations against the REAL file set: dropping the `_FROM` from
 * It does not make two checkouts in one configure safe — only legible. The
   refusal now names the file that answered; it cannot choose the right copy.
 * Nothing here changes any schema NUMBER, on either side.
+
+### Measured after the fix (2026-09-21) — the first "does NOT close" bullet, biting
+
+Recorded here because the bullet above predicts this and the run confirms it,
+not because anything is reopened.
+
+`run-matrix` run **35553738931** (`workflow_dispatch`, 02:18 UTC, main @
+`783cdfa1`), job **106193206713**. The gate this resolution put ahead of the
+build passes — `The Zephyr workspace belongs to this checkout = success` — and
+the lane is still red, one stage earlier than it used to be and on a different
+subject. `entity-inventory schema version` appears **0 times** in the job log;
+it stops inside `check fast`:
+
+```
+===== FAIL (zephyr-workspace-foreign-checkout, rc=1, 37427ms) =====
+  - 130 cached value(s) across 26 of 26 build dir(s) name ANOTHER checkout
+      first: .../build-c-action-client-xrce/CMakeCache.txt
+      NROS_REPO_DIR=/home/runner/src/nano-ros
+check-fast (parallel): 1 of 333 gate(s) FAILED
+```
+
+`/home/runner/src/nano-ros` is the foreign checkout this issue's step-1 answer
+already named. So the two gates measure **one crossing through two subjects**,
+and the unbind could only reach one of them: the manifest LINK (repaired), not
+the cached values those builds WROTE. `check-zephyr-workspace-foreign-checkout`
+(#1387/#1127, landed 2026-09-20 16:45) states why — the module root is a
+configure-time identity, so the remedy is a pristine build of the affected dirs,
+not a reconfigure, and unbinding cannot reach backwards into artifacts already
+on disk.
+
+Consequence worth writing down: tier 2's failure text no longer mentions this
+issue's message, so anyone searching a red tier 2 for the schema refusal will
+not find it. The two remedies are the gate's own and they differ in owner — a
+pristine rebuild of those 26 dirs on the self-hosted machine, which nothing in
+the repo can do, or `NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS=1` for that lane with a
+reason, which restores the lane's reach without undoing anything above.
