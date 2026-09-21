@@ -20,6 +20,15 @@ bootstrap:
     ./scripts/probe/run-bootstrap-probe.sh
     PROBE_TRACK=installed ./scripts/probe/run-bootstrap-probe.sh
 
+# The CHECKOUT track alone: clone + bootstrap in a pristine container, then the
+# first-node chapter. Named so a lane can run the two tracks as separate jobs —
+# they are two different machines (see `bootstrap`), so a failure should say
+# WHICH front door broke, and a serial `bootstrap` hides the second track
+# behind the first.
+[group("main")]
+checkout:
+    ./scripts/probe/run-bootstrap-probe.sh
+
 # The installed track alone: build the asset `release-nros.yml` would publish
 # (its own steps, extracted, on its own `runs-on` image), install it into a
 # second pristine container with nothing else mounted, and run first-project.md.

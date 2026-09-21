@@ -11,7 +11,7 @@ copy, the scaffold `nros new` emits, the rustdoc they browse — is authored by 
 and built by no lane. Five open issues say so, and none had a phase.
 
 The pattern that makes them one phase rather than five chores is in
-[#1107](../issues/1107-book-teaches-entry-pkg-per-target.md)'s own headline: **a
+[#1107](../issues/archived/1107-book-teaches-entry-pkg-per-target.md)'s own headline: **a
 book page is what a new user copies, so a stale one propagates.** These surfaces
 are the only part of the tree where being wrong is *replicated* rather than
 merely observed, and they are precisely the part with no compile step:
@@ -20,7 +20,7 @@ merely observed, and they are precisely the part with no compile step:
 | --- | --- | --- |
 | [#1058](../issues/1058-scaffold-output-is-grepped-never-built.md) | `nros new` scaffold output | ~30 substring assertions; nothing compiles the result |
 | [#1108](../issues/archived/1108-templates-materialize-dead-entry-pkgs.md) | four copy-out templates | nothing — two declare no `[image.*]`, so `nros build` refuses them outright |
-| [#1107](../issues/1107-book-teaches-entry-pkg-per-target.md) | book pages | nothing — an out-of-tree consumer was scaffolded from the retired shape |
+| [#1107](../issues/archived/1107-book-teaches-entry-pkg-per-target.md) | book pages | nothing — an out-of-tree consumer was scaffolded from the retired shape |
 | [#1116](../issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md) | rustdoc outside the six published crates | nothing — ~70 diagnostics, five crates fail to document at all |
 | [#1141](../issues/1141-book-visual-identity-favicon-logo-accent-css.md) | the book's front door | nothing — no favicon, logo or accent CSS |
 
@@ -117,15 +117,38 @@ template can name three undeclared types and every test passes.
 
 ### W3 — the book teaches the shape the tree builds
 
-[Issue 1107](../issues/1107-book-teaches-entry-pkg-per-target.md). The evidence
+[Issue 1107](../issues/archived/1107-book-teaches-entry-pkg-per-target.md). The evidence
 that the tree moved is already in the workspaces: none of
 `examples/workspaces/{c,cpp,rust,mixed}/` tracks a root build file.
 
-- [ ] The pages teaching one Entry package per deploy target are rewritten to
+- [x] The pages teaching one Entry package per deploy target are rewritten to
       the row shape.
-- [ ] The `probe=NN` bootstrap mechanism (`just probe bootstrap`) covers at
+      **Closed by other work — phase-445 W7 and issue 1304 — and re-measured
+      page by page against issue 1107's own table before anything was
+      written.** Every page it names now teaches the row shape, and
+      `robot_entry` appears nowhere in `book/src/`. Two hits that look like the
+      retired shape are not: `workspace-cpp.md`'s `src/native_entry/` is the
+      documented `nros materialize` escape hatch, and
+      `component-and-entry-pkg.md`'s mention quotes RFC-0065 D4 saying a
+      workspace contains none. Recorded as done rather than dropped — the third
+      box this phase where the complaint was closed elsewhere while the lane
+      that would have caught it was the real gap.
+- [x] The `probe=NN` bootstrap mechanism (`just probe bootstrap`) covers at
       least one page that carries the new shape, so the book's own claim is
       executed rather than proofread.
+      Coverage already existed — `first-project.md` carries both the new shape
+      and `probe=50`/`probe=60`. **What did not exist was execution: `just
+      probe` has been there since issue 0204 and NO workflow ran it**
+      (`grep -rn "just probe" .github/workflows/` returned nothing). A probe
+      nobody runs IS proofreading, so the box was not satisfied by coverage
+      alone.
+      `.github/workflows/probe.yml` runs both tracks nightly at 08:00 UTC plus
+      dispatch, as two jobs rather than one serial `bootstrap` so a failure
+      names which front door broke. Verified by extraction that the installed
+      track's steps include that page's blocks and assert the build
+      configured. `PROBE_BRANCH` comes from `github.ref_name` because
+      `actions/checkout` leaves a detached HEAD, which the probe refuses by
+      design rather than guessing which tree to test.
 
 W1 and W3 land together or the book and the templates disagree, which is the
 state they are in now.
