@@ -14,12 +14,27 @@ NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-tool
 # stamp check reinstalls on every invocation.
 CORROSION_VERSION := "v0.6.1"
 
-# play_launch_parser. Used by the Phase 212.L.6 launch-graph resolver in
-# `nros plan` / `nros codegen-system` (synth-from-Component + multi-launch
-# precedence); bumping it is the signal to re-run the L.6 gate tests
-# `phase212_l6_launch_synth::*`. `jerry73204/play_launch_parser` is ARCHIVED
-# and superseded by `NEWSLabNTU/play_launch`, which vendors the same crate at
+# play_launch_parser. `jerry73204/play_launch_parser` is ARCHIVED and
+# superseded by `NEWSLabNTU/play_launch`, which vendors the same crate at
 # `src/ros-launch-resolve/parser/crates/play_launch_parser`.
+#
+# WHAT TO RE-RUN WHEN THE PIN MOVES. This used to say "the L.6 gate tests
+# `phase212_l6_launch_synth::*`", and that acceptance is STALE (issue 1413):
+# issue 0381 rewrote those tests to synthesise in-process
+# (`plan.rs synthesise_self_model`) and deleted the
+# `play_launch_parser_available()` gate, so they never shell to the parser and
+# cannot gate a bump of it — measured, by running them with each parser on PATH
+# in turn and getting the same result.
+#
+# The acceptance that actually binds the binary is `nav2_compat`'s
+# `n11_launch_xml_ros2_compat_smoke`: a BUILD-STAGE fixture whose `build.rs`
+# drives `nros_build::generate_run_plan` over a nav2-shaped
+# `launch/system.launch.xml` with `play_launch_parser` on PATH, after which the
+# test inspects the emitted `run_plan.rs` + `nros-plan.json`. So the fixture
+# must be REBUILT against the new parser first
+# (`NROS_FIXTURE_ID=nav2_compat_smoke scripts/build/compile-check-fixtures.sh`),
+# or the test inspects a museum artifact and passes on the old one. The six
+# `record.json` consumers are worth running beside it.
 #
 # NO CONSTANT LIVES HERE, and two sentences that used to claim one did (issue
 # 1413). `install-play-launch-parser` has been a one-line forwarder to
