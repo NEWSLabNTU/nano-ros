@@ -15,10 +15,38 @@
 #include <type_traits> // Phase 189.M3.3.e — SFINAE on the callback-style create_service
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdlib> // getenv — Phase 123.B.3 env-aware init
-#include <map>     // phase-417 W4.a — rclcpp::Node::declare_parameters<T>'s argument
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdio> // fopen — Phase 212.L.5 init_with_launch path-exists check
 #endif
+#endif
+
+// `<map>` is `NROS_CPP_STD` ONLY, and the `|| __STDC_HOSTED__` arm above is
+// exactly what it must not have (issue 1431).
+//
+// phase-417 W4.a put it in that block beside `<cstdlib>`/`<cstdio>`, which is
+// safe for THOSE: Zephyr's minimal libcpp ships `cstdlib` and `cstdio`, so the
+// hosted arm can be satisfied. It ships no `map`. And `__STDC_HOSTED__` is 1 on
+// Zephyr — the compiler is hosted, the include path is not — so the arm fired
+// and the header failed to open. MEASURED, `g++ -nostdinc++ -I zephyr/cxx-compat`:
+//
+//     node.hpp:18:10: fatal error: map: No such file or directory
+//
+// That is issue 0112's half of the both-probes rule, which CLAUDE.md records:
+// `__STDC_HOSTED__` alone is a claim about the COMPILER and the question is
+// about the INCLUDE PATH.
+//
+// The fix is not `__has_include(<map>)`. It is to guard the include with the
+// same condition as the only code that needs it. Both consumers —
+// `Node::declare_parameters` below and `lifecycle.hpp`'s twin, which includes
+// no `<map>` of its own and relies on this one — sit inside
+// `NROS_CPP_NODE_HOSTED`, and that implies `NROS_CPP_STD` because each of its
+// four capability probes is `#if defined(NROS_CPP_STD)`. So this is the
+// narrowest guard that still covers every use, and it restores the property
+// the block below states as the rule: a hosted STL include lives inside an
+// `NROS_CPP_STD` region, never one an `||` arm can reach from a freestanding
+// board (issue 0332).
+#if defined(NROS_CPP_STD)
+#include <map> // phase-417 W4.a — rclcpp::Node::declare_parameters<T>'s argument
 #endif
 
 // Phase 118.D: ffi.h MUST come before qos.hpp so qos.hpp's
