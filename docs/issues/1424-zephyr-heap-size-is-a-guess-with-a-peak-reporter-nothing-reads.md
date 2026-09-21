@@ -1,5 +1,5 @@
 ---
-id: 1415
+id: 1424
 title: "CONFIG_NROS_ZEPHYR_HEAP_SIZE is set by hand; the high-water reporter
   is compiled on every Zephyr image and nothing reads it off a board or gates
   the knob against it"

@@ -1,5 +1,5 @@
 ---
-id: 1412
+id: 1421
 title: "Removing one node's params: block flips the whole store to refused, and
   the crate defaults 32/64/256 replace the derived 25/35/0 with no build-time
   line"

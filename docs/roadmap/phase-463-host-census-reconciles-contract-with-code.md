@@ -4,7 +4,7 @@
 profiling half) is deliberately last and is a separate decision from W1-W6.**
 Opened from the safety-island experiments of 2026-09-20 (E3a/E3b/E3c in the
 island's experiment brief) and from the layer map they produced. Home phase for
-[issue 1404](../issues/1404-no-layer-reconciles-contract-endpoints-with-the-code.md).
+[issue 1419](../issues/1419-no-layer-reconciles-contract-endpoints-with-the-code.md).
 Successor to [phase-308](archived/phase-308-cpp-metadata-producer.md) and
 [phase-313](archived/phase-313-workspace-scoped-metadata-probe.md) (the C/C++
 recorder and its probe, both landed and both, it turns out, not wired to
