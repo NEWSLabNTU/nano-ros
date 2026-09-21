@@ -296,7 +296,23 @@ pub enum TransportError {
     BadAlloc,
     /// Publisher and subscriber QoS profiles do not match in a way
     /// the backend cannot reconcile. Phase 102.1.
-    IncompatibleQos,
+    ///
+    /// **It NAMES the policy** — phase-417 G7. The payload is the single
+    /// [`QoSPolicyMask`] bit that was refused, so
+    /// `err.qos_policy_name()` (or `mask.policy_name()`) turns the refusal
+    /// into `"RELIABILITY"` without an allocator. Until this carried a
+    /// payload, [`QoSProfile::validate_against`] computed the offending bit
+    /// and threw it away, while `rmw_vtable.h`'s `supported_qos_policies`
+    /// block told the reader those creates fail "naming a policy". They did
+    /// not. Issue 1329's NONE-over-union choice rests on that sentence, so the
+    /// choice was right and its evidence was not yet true.
+    ///
+    /// [`QoSPolicyMask::NONE`] is the honest answer where the refusal crossed
+    /// a boundary that cannot carry one — a C backend returns
+    /// `NROS_RMW_RET_INCOMPATIBLE_QOS`, an `rmw_ret_t` with no room for a
+    /// mask — and `policy_name()` then answers `None` rather than naming a
+    /// policy nobody identified.
+    IncompatibleQos(QoSPolicyMask),
     /// Topic, service, or action name failed validation. Phase 102.1.
     TopicNameInvalid,
     /// A request referenced a node that does not exist in this
@@ -326,6 +342,24 @@ pub enum TransportError {
     /// plus a socket address).
     #[cfg(feature = "alloc")]
     BackendDynamic(alloc::string::String),
+}
+
+impl TransportError {
+    /// The QoS policy this error names, or `None`.
+    ///
+    /// phase-417 G7 — the one accessor the three surfaces share. `Some` only
+    /// for [`Self::IncompatibleQos`] carrying exactly one
+    /// [`QoSPolicyMask`] bit; `None` for every other error, and for a
+    /// refusal that crossed a boundary with no room for the mask.
+    ///
+    /// The string is borrowed from [`QoSPolicyMask::NAMED`], so this costs no
+    /// allocator and no formatter and is available on a bare-metal target.
+    pub fn qos_policy_name(&self) -> Option<&'static str> {
+        match self {
+            Self::IncompatibleQos(policy) => policy.policy_name(),
+            _ => None,
+        }
+    }
 }
 
 /// QoS history policy
@@ -1169,8 +1203,26 @@ impl QoSProfile {
         Self::QOS_PROFILE_SERVICES_DEFAULT
     }
 
-    /// Get the default QoS profile for parameter services
-    pub const fn parameters_default() -> Self {
+    /// The parameter services' profile — rclrs's
+    /// `QoSProfile::parameter_services_default()`.
+    ///
+    /// `rmw_qos_profile_parameters`: KEEP_LAST(**1000**), RELIABLE, VOLATILE.
+    /// The depth is the point — 1000 against the generic services profile's
+    /// 10 — and it is what a tool setting many parameters at once depends on.
+    ///
+    /// **RENAMED in phase-417 G6, and the old spelling is GONE.** It was
+    /// `parameters_default`, an ours-only word for a name rclrs has; the
+    /// ledger carried the pair as `rust:QoSProfile::parameters_default`
+    /// (`rename` — ours is the one that should change) and
+    /// `rust:QoSProfile::parameter_services_default` (`gap`). Adding the
+    /// upstream name beside ours would have been a FOURTH spelling of one
+    /// preset (`QOS_PROFILE_PARAMETERS` and `QosPresets::PARAMETERS` are the
+    /// other two) and would have left the `rename` row open for good. No
+    /// deprecated forwarder: a stale call should fail on the IDENTIFIER rather
+    /// than on a deprecation, which is stage 6 step B's rule and what the
+    /// sibling `parameter_events_default` — already at rclrs's spelling —
+    /// makes the pair consistent with.
+    pub const fn parameter_services_default() -> Self {
         Self::QOS_PROFILE_PARAMETERS
     }
 
@@ -1981,6 +2033,108 @@ impl QoSPolicyMask {
     pub const CORE: Self =
         Self(Self::RELIABILITY.0 | Self::DURABILITY_VOLATILE.0 | Self::HISTORY.0 | Self::DEPTH.0);
 
+    /// Every policy bit paired with the name it PRINTS — the vocabulary the
+    /// three languages name a refused policy in (phase-417 G7, ledger row
+    /// `cpp:qos_policy_kind_to_cstr`).
+    ///
+    /// The name of a bit is the CONSTANT'S OWN IDENTIFIER, never an
+    /// independently chosen word. That is what keeps this from becoming the
+    /// parallel table this campaign has paid for twice — the RMW parity map's
+    /// 28 stale slots and the layout gate's three authored type names — and it
+    /// is what `check-qos-mask-derivation`'s R8 measures: the entries here must
+    /// be exactly the `pub const … = Self(1 << n)` bits above, each paired with
+    /// its own spelling. A bit added above and not here is a gate failure, not
+    /// a policy that silently prints as nothing.
+    ///
+    /// Uppercase because that is upstream's convention for the same strings:
+    /// `rclcpp::qos_policy_kind_to_cstr` returns `"DURABILITY"`, `"DEADLINE"`,
+    /// `"LIVELINESS"` and the rest.
+    ///
+    /// `NONE` and `CORE` are deliberately absent: they are not policies, they
+    /// are the empty mask and a named union, and neither can be the answer to
+    /// "which policy was refused".
+    ///
+    /// The name is stored as a [`core::ffi::CStr`] and not as a `&str`,
+    /// because the C entry point (`nros_qos_policy_kind_to_cstr`) needs the
+    /// trailing NUL and a `&str` does not carry one. Storing the `&str` form
+    /// and NUL-terminating it in `nros-c` was the first shape here, and it put
+    /// the twelve identifiers in a second file — which is the drift this row
+    /// exists to avoid. One table, two readings: `policy_name` slices the NUL
+    /// off for Rust, the C entry point hands the pointer straight over.
+    pub const NAMED: &'static [(Self, &'static core::ffi::CStr)] = &[
+        (Self::RELIABILITY, c"RELIABILITY"),
+        (Self::DURABILITY_VOLATILE, c"DURABILITY_VOLATILE"),
+        (
+            Self::DURABILITY_TRANSIENT_LOCAL,
+            c"DURABILITY_TRANSIENT_LOCAL",
+        ),
+        (Self::HISTORY, c"HISTORY"),
+        (Self::DEPTH, c"DEPTH"),
+        (Self::DEADLINE, c"DEADLINE"),
+        (Self::LIFESPAN, c"LIFESPAN"),
+        (Self::LIVELINESS_AUTOMATIC, c"LIVELINESS_AUTOMATIC"),
+        (
+            Self::LIVELINESS_MANUAL_BY_TOPIC,
+            c"LIVELINESS_MANUAL_BY_TOPIC",
+        ),
+        (
+            Self::LIVELINESS_MANUAL_BY_NODE,
+            c"LIVELINESS_MANUAL_BY_NODE",
+        ),
+        (Self::LIVELINESS_LEASE, c"LIVELINESS_LEASE"),
+        (
+            Self::AVOID_ROS_NAMESPACE_CONVENTIONS,
+            c"AVOID_ROS_NAMESPACE_CONVENTIONS",
+        ),
+    ];
+
+    /// The name of the ONE policy this mask is, as a C string.
+    ///
+    /// `None` for the empty mask and for a mask carrying more than one bit:
+    /// both are real answers a diagnostic must be able to give. "The backend
+    /// did not say which" is not a policy name, and printing a neighbouring
+    /// one would be the plausible wrong answer this whole family exists to
+    /// refuse.
+    ///
+    /// Borrowed from a table in flash: no allocator, no formatting, reaches a
+    /// bare-metal target, and these are the exact bytes the C and C++ entry
+    /// points hand back.
+    pub const fn policy_name_cstr(self) -> Option<&'static core::ffi::CStr> {
+        let mut i = 0;
+        while i < Self::NAMED.len() {
+            if Self::NAMED[i].0.0 == self.0 {
+                return Some(Self::NAMED[i].1);
+            }
+            i += 1;
+        }
+        None
+    }
+
+    /// [`Self::policy_name_cstr`] as a Rust string — the same bytes without
+    /// the terminator.
+    pub fn policy_name(self) -> Option<&'static str> {
+        // Every entry is an ASCII literal, so this cannot fail; `ok()` rather
+        // than `expect()` because a panic in a diagnostic path is worse than
+        // the diagnostic being absent.
+        self.policy_name_cstr().and_then(|c| c.to_str().ok())
+    }
+
+    /// The policies in `self` that `supported` does not carry.
+    pub const fn missing_from(self, supported: Self) -> Self {
+        Self(self.0 & !supported.0)
+    }
+
+    /// The lowest-numbered policy bit set here, or [`Self::NONE`].
+    ///
+    /// Which single policy a multi-policy refusal REPORTS. Lowest bit rather
+    /// than "any": a stable choice means the same profile against the same
+    /// backend names the same policy on every run and in every language, so a
+    /// test can assert it and two surfaces cannot disagree about which one to
+    /// mention first.
+    pub const fn lowest_policy(self) -> Self {
+        Self(self.0 & self.0.wrapping_neg())
+    }
+
     /// `true` if `self` contains every policy in `other`.
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
@@ -2081,15 +2235,24 @@ impl QoSProfile {
         mask
     }
 
-    /// Returns `Err(TransportError::IncompatibleQos)` if any policy this
-    /// profile requires is missing from the backend's `supported` mask.
+    /// Returns `Err(TransportError::IncompatibleQos(policy))` if any policy
+    /// this profile requires is missing from the backend's `supported` mask.
     /// Used at entity-create time to enforce the **no silent
     /// degradation** contract.
+    ///
+    /// **The error NAMES the policy** (phase-417 G7). This computed the
+    /// offending bit and discarded it until then, returning a bare
+    /// `IncompatibleQos` — so every one of the six `create_*` paths in
+    /// `nros-node` refused with the one fact the caller needed missing, while
+    /// `rmw_vtable.h` told the reader the opposite. Which bit is reported when
+    /// several are missing is [`QoSPolicyMask::lowest_policy`]'s choice, and it
+    /// is stable so a test can assert it.
     pub fn validate_against(&self, supported: QoSPolicyMask) -> Result<(), TransportError> {
-        if supported.contains(self.required_policies()) {
+        let missing = self.required_policies().missing_from(supported);
+        if missing.0 == 0 {
             Ok(())
         } else {
-            Err(TransportError::IncompatibleQos)
+            Err(TransportError::IncompatibleQos(missing.lowest_policy()))
         }
     }
 
@@ -3491,6 +3654,110 @@ mod tests {
         );
     }
 
+    // ------------------------------------------------------------------
+    // phase-417 G7 — the refusal NAMES the policy, and the vocabulary it
+    // names it in is `QoSPolicyMask`'s own constants.
+    // ------------------------------------------------------------------
+
+    /// The table is the twelve bits and nothing else, and a name is never a
+    /// second authoring of the constant it belongs to.
+    ///
+    /// The buildless half of this lives in `check-qos-mask-derivation` (R8),
+    /// which reads the `pub const` block and compares it against `NAMED`
+    /// entry for entry. This is the half a `no_std` unit run can assert: every
+    /// entry is one bit, the bits are distinct, and every name is distinct.
+    /// A bit added above with no entry here would leave a policy that refuses
+    /// a create and prints nothing.
+    #[test]
+    fn every_named_policy_is_one_distinct_bit_with_one_distinct_name() {
+        assert_eq!(QoSPolicyMask::NAMED.len(), 12);
+        let mut seen_bits = 0u32;
+        for (bit, cstr) in QoSPolicyMask::NAMED {
+            let name = cstr.to_str().expect("every entry is an ASCII literal");
+            assert_eq!(
+                bit.0.count_ones(),
+                1,
+                "{name} is not a single policy bit ({:#x})",
+                bit.0
+            );
+            assert_eq!(seen_bits & bit.0, 0, "{name} repeats a bit already named");
+            seen_bits |= bit.0;
+            assert_eq!(
+                bit.policy_name(),
+                Some(name),
+                "{name} does not name itself back"
+            );
+            // The C entry points hand this pointer straight over, so the NUL
+            // is load-bearing and the byte before it must be the last of the
+            // name — a `&str` view that silently dropped a byte would be a
+            // truncated C string.
+            assert_eq!(cstr.to_bytes().len(), name.len());
+        }
+        // The twelve bits are contiguous from 0, which is what
+        // `rmw_entity.h`'s `NROS_RMW_QOS_POLICY_*` mirrors.
+        assert_eq!(seen_bits, (1 << 12) - 1);
+    }
+
+    /// `None` is a real answer in both directions — neither the empty mask nor
+    /// a union is a policy, so neither may borrow a neighbour's name.
+    #[test]
+    fn neither_the_empty_mask_nor_a_union_names_a_policy() {
+        assert_eq!(QoSPolicyMask::NONE.policy_name(), None);
+        assert_eq!(QoSPolicyMask::CORE.policy_name(), None);
+        assert_eq!(
+            (QoSPolicyMask::DEADLINE | QoSPolicyMask::LIFESPAN).policy_name(),
+            None
+        );
+        // And an error that is not a QoS refusal names no policy either.
+        assert_eq!(TransportError::Timeout.qos_policy_name(), None);
+        assert_eq!(
+            TransportError::IncompatibleQos(QoSPolicyMask::NONE).qos_policy_name(),
+            None,
+            "a refusal relayed across `rmw_ret_t` identified no policy"
+        );
+    }
+
+    /// Several missing policies still produce ONE name, the same one every
+    /// time — otherwise two surfaces could report different policies for the
+    /// same refusal and a test could not assert either.
+    #[test]
+    fn a_refusal_missing_several_policies_names_the_lowest_one() {
+        // DEFAULT states reliability, durability(volatile), history and depth.
+        let qos = QoSProfile::QOS_PROFILE_DEFAULT;
+        assert_eq!(
+            qos.validate_against(QoSPolicyMask::NONE),
+            Err(TransportError::IncompatibleQos(QoSPolicyMask::RELIABILITY)),
+            "RELIABILITY is bit 0, so it is the reported one"
+        );
+        // Grant reliability and the next-lowest missing policy is reported.
+        assert_eq!(
+            qos.validate_against(QoSPolicyMask::RELIABILITY)
+                .unwrap_err()
+                .qos_policy_name(),
+            Some("DURABILITY_VOLATILE")
+        );
+        // Grant everything the profile states and it is admitted.
+        assert!(qos.validate_against(qos.required_policies()).is_ok());
+    }
+
+    /// The policy a caller stated is the policy the refusal names — not a
+    /// policy the profile never asked for. `DEADLINE` is the interesting one
+    /// because it is stated by a VALUE rather than by a variant.
+    #[test]
+    fn the_refusal_names_the_policy_the_caller_actually_stated() {
+        let qos = QoSProfile {
+            deadline_ms: 250,
+            ..QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT
+        };
+        assert_eq!(qos.required_policies(), QoSPolicyMask::DEADLINE);
+        assert_eq!(
+            qos.validate_against(QoSPolicyMask::NONE)
+                .unwrap_err()
+                .qos_policy_name(),
+            Some("DEADLINE")
+        );
+    }
+
     /// The relaxation is per FIELD, not all-or-nothing: a profile that states
     /// SOME policies still demands exactly those.
     #[test]
@@ -3518,9 +3785,11 @@ mod tests {
         assert!(required.contains(QoSPolicyMask::DEPTH));
         // And a backend missing one still rejects it.
         let missing = QoSPolicyMask(required.0 & !QoSPolicyMask::DEPTH.0);
+        // phase-417 G7 — and it says WHICH policy. `DEPTH` is the only bit
+        // dropped, so there is exactly one right answer here.
         assert_eq!(
             QoSProfile::QOS_PROFILE_DEFAULT.validate_against(missing),
-            Err(TransportError::IncompatibleQos)
+            Err(TransportError::IncompatibleQos(QoSPolicyMask::DEPTH))
         );
     }
 
@@ -3578,9 +3847,15 @@ mod tests {
         assert!(qos.validate_against(required).is_ok());
         assert!(qos.validate_against(QoSPolicyMask(u32::MAX)).is_ok());
         let missing = QoSPolicyMask(required.0 & !QoSPolicyMask::RELIABILITY.0);
+        // phase-417 G7 — RELIABILITY is the bit dropped and RELIABILITY is
+        // what the refusal has to name.
         assert_eq!(
             qos.validate_against(missing),
-            Err(TransportError::IncompatibleQos)
+            Err(TransportError::IncompatibleQos(QoSPolicyMask::RELIABILITY))
+        );
+        assert_eq!(
+            qos.validate_against(missing).unwrap_err().qos_policy_name(),
+            Some("RELIABILITY")
         );
     }
 
@@ -3694,7 +3969,7 @@ mod tests {
             QoSProfile::QOS_PROFILE_SERVICES_DEFAULT
         );
         assert_eq!(
-            QoSProfile::parameters_default(),
+            QoSProfile::parameter_services_default(),
             QoSProfile::QOS_PROFILE_PARAMETERS
         );
         assert_eq!(

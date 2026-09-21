@@ -190,6 +190,44 @@ pub static NROS_QOS_SERVICES: nros_qos_t = nros_qos_t {
     tx_express: 0,
 };
 
+/// The name of ONE QoS policy — phase-417 G7, the C half of
+/// `rclcpp::qos_policy_kind_to_cstr`.
+///
+/// @param policy One `NROS_RMW_QOS_POLICY_*` bit from
+///        `<nros/rmw_entity.h>` — the same twelve bits a backend advertises
+///        through the vtable's `supported_qos_policies` slot, and the same
+///        twelve `QoSPolicyMask` carries in Rust. `check-qos-mask-derivation`
+///        holds those two vocabularies equal name for name and bit for bit, so
+///        this function has exactly one table behind it however you reach it.
+///
+/// @return A borrowed, NUL-terminated, `'static` string — `"RELIABILITY"`,
+///         `"DEADLINE"`, … — or `NULL` when @p policy is not exactly one
+///         policy bit. Never freed, never allocated: the bytes are in flash,
+///         which is what makes this usable from a freestanding image.
+///
+/// NULL rather than `"UNKNOWN"` for zero and for a union: both are real
+/// answers, and a caller that prints a name it was handed must be able to tell
+/// "no policy was identified" from a policy that was. `rclcpp`'s own version
+/// returns `"Invalid"` for its invalid enumerator; we have no invalid
+/// enumerator to return a word for, because our vocabulary is a bitmask and
+/// the empty mask is a legitimate value.
+///
+/// This is why the name exists at all (ledger `cpp:qos_policy_kind_to_cstr`):
+/// an `INCOMPATIBLE_QOS` return names no policy by itself, and naming the
+/// policy IS the diagnostic.
+/// No table of its own — the pointer is `QoSPolicyMask::NAMED`'s own bytes,
+/// which is the whole point of the row. `nros-c` restating the twelve
+/// identifiers here would be the parallel table this campaign has paid for
+/// twice (the RMW parity map's 28 stale slots, the layout gate's three
+/// authored type names).
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_qos_policy_kind_to_cstr(policy: u32) -> *const core::ffi::c_char {
+    match nros_rmw::QoSPolicyMask(policy).policy_name_cstr() {
+        Some(name) => name.as_ptr(),
+        None => core::ptr::null(),
+    }
+}
+
 impl nros_qos_t {
     /// Convert to nros QoSProfile
     pub(crate) fn to_qos_settings(self) -> nros_node::QoSProfile {

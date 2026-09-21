@@ -64,8 +64,8 @@
 //! depth are both the served ones.
 
 use nros_rmw::{
-    DURATION_INFINITE_MS, QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSProfile,
-    QoSReliabilityPolicy, TransportError,
+    DURATION_INFINITE_MS, QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy,
+    QoSPolicyMask, QoSProfile, QoSReliabilityPolicy, TransportError,
 };
 
 use portable_atomic::Ordering;
@@ -177,26 +177,24 @@ pub(super) fn admit(
     match requested.history {
         QoSHistoryPolicy::KeepLast => {}
         QoSHistoryPolicy::KeepAll => {
-            refuse(
+            return Err(refuse(
                 kind,
                 name,
-                "history",
+                QoSPolicyMask::HISTORY,
                 "KEEP_ALL — the receive ring is KEEP_LAST only",
-            );
-            return Err(TransportError::IncompatibleQos);
+            ));
         }
         // A sentinel HERE means the caller skipped `resolve_system_default`,
         // which is a caller bug and not a policy this backend declines. Saying
         // "KEEP_ALL" would aim the reader at their profile instead of at the
         // missing resolve.
         QoSHistoryPolicy::SystemDefault => {
-            refuse(
+            return Err(refuse(
                 kind,
                 name,
-                "history",
-                "SYSTEM_DEFAULT reached the backend unresolved",
-            );
-            return Err(TransportError::IncompatibleQos);
+                QoSPolicyMask::NONE,
+                "history SYSTEM_DEFAULT reached the backend unresolved",
+            ));
         }
     }
 
@@ -225,24 +223,22 @@ pub(super) fn admit(
         QoSDurabilityPolicy::Volatile => {}
         QoSDurabilityPolicy::TransientLocal if matches!(kind, EntityKind::Publisher) => {}
         QoSDurabilityPolicy::TransientLocal => {
-            refuse(
+            return Err(refuse(
                 kind,
                 name,
-                "durability",
-                "TRANSIENT_LOCAL — the shim serves publisher-side retention only; \
+                QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL,
+                "— the shim serves publisher-side retention only; \
                  a subscription cannot query a peer's cache on match yet",
-            );
-            return Err(TransportError::IncompatibleQos);
+            ));
         }
         // See the history arm: an unresolved sentinel is the caller's bug.
         QoSDurabilityPolicy::SystemDefault => {
-            refuse(
+            return Err(refuse(
                 kind,
                 name,
-                "durability",
-                "SYSTEM_DEFAULT reached the backend unresolved",
-            );
-            return Err(TransportError::IncompatibleQos);
+                QoSPolicyMask::NONE,
+                "durability SYSTEM_DEFAULT reached the backend unresolved",
+            ));
         }
     }
 
@@ -343,13 +339,12 @@ pub(super) fn admit(
         | QoSLivelinessPolicy::Automatic
         | QoSLivelinessPolicy::ManualByTopic => {}
         QoSLivelinessPolicy::ManualByNode => {
-            refuse(
+            return Err(refuse(
                 kind,
                 name,
-                "liveliness",
-                "MANUAL_BY_NODE — the shim asserts per publisher, not per node",
-            );
-            return Err(TransportError::IncompatibleQos);
+                QoSPolicyMask::LIVELINESS_MANUAL_BY_NODE,
+                "— the shim asserts per publisher, not per node",
+            ));
         }
     }
 
@@ -380,15 +375,32 @@ pub(super) fn admit(
     Ok(granted)
 }
 
-fn refuse(kind: EntityKind, name: &str, policy: &str, why: &str) {
+/// Log a refusal and BUILD the error that carries it — phase-417 G7.
+///
+/// Two things moved here together, and they are the same fact seen twice. The
+/// `policy` parameter was a hand-written lowercase FIELD word (`"history"`,
+/// `"durability"`, `"liveliness"`) — a second QoS vocabulary sitting beside
+/// `QoSPolicyMask`'s, with nothing binding them; it is the mask now, and the
+/// printed token comes from `QoSPolicyMask::NAMED`, the same table
+/// `nros::qos_policy_kind_to_cstr` reads. And the function RETURNS the error
+/// rather than leaving each site to write `Err(TransportError::IncompatibleQos)`
+/// after it, so the policy that was logged and the policy the caller receives
+/// cannot differ.
+///
+/// `QoSPolicyMask::NONE` is a legitimate argument: the two SYSTEM_DEFAULT arms
+/// refuse a caller that skipped `resolve_system_default`, which is a caller bug
+/// and not a policy this backend declines. Naming a policy there would aim the
+/// reader at their profile instead of at the missing resolve.
+fn refuse(kind: EntityKind, name: &str, policy: QoSPolicyMask, why: &str) -> TransportError {
     nros_log::log_error!(
         nros_log::get_logger("nros_rmw_zenoh"),
         "qos: {} '{}' refused — {} {}",
         kind.label(),
         name,
-        policy,
+        policy.policy_name().unwrap_or("QoS"),
         why
     );
+    TransportError::IncompatibleQos(policy)
 }
 
 #[cfg(test)]
@@ -430,10 +442,11 @@ mod tests {
     fn keep_all_is_refused_not_served_as_keep_last() {
         let mut qos = base();
         qos.history = QoSHistoryPolicy::KeepAll;
-        assert!(matches!(
+        assert_eq!(
             admit(EntityKind::Subscription, "/t", &qos),
-            Err(TransportError::IncompatibleQos)
-        ));
+            Err(TransportError::IncompatibleQos(QoSPolicyMask::HISTORY)),
+            "the refusal must name HISTORY — phase-417 G7"
+        );
     }
 
     /// phase-455 W5 / issue 1341 — the split is by ENTITY KIND, because the
@@ -449,12 +462,12 @@ mod tests {
             EntityKind::Service,
             EntityKind::Client,
         ] {
-            assert!(
-                matches!(
-                    admit(kind, "/t", &qos),
-                    Err(TransportError::IncompatibleQos)
-                ),
-                "{} must refuse TRANSIENT_LOCAL until the subscriber half exists",
+            assert_eq!(
+                admit(kind, "/t", &qos),
+                Err(TransportError::IncompatibleQos(
+                    QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL
+                )),
+                "{} must refuse TRANSIENT_LOCAL, naming it",
                 kind.label()
             );
         }
@@ -503,10 +516,13 @@ mod tests {
     fn manual_by_node_is_refused_and_manual_by_topic_is_not() {
         let mut qos = base();
         qos.liveliness_kind = QoSLivelinessPolicy::ManualByNode;
-        assert!(matches!(
+        assert_eq!(
             admit(EntityKind::Publisher, "/t", &qos),
-            Err(TransportError::IncompatibleQos)
-        ));
+            Err(TransportError::IncompatibleQos(
+                QoSPolicyMask::LIVELINESS_MANUAL_BY_NODE
+            )),
+            "the refusal must name LIVELINESS_MANUAL_BY_NODE — phase-417 G7"
+        );
         qos.liveliness_kind = QoSLivelinessPolicy::ManualByTopic;
         assert!(admit(EntityKind::Publisher, "/t", &qos).is_ok());
     }

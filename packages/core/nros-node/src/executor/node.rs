@@ -18,6 +18,52 @@ use super::{
     types::NodeError,
 };
 
+/// Validate a profile against what the backend honours, and SAY WHICH POLICY
+/// when it does not — phase-417 G7.
+///
+/// Six `create_*` paths ran `qos.validate_against(…).map_err(NodeError::Transport)`
+/// and that was the whole diagnostic: the C caller saw `NROS_RET_REJECTED`, the
+/// C++ caller `NROS_CPP_RET_NOT_ALLOWED`, and neither could learn WHICH policy
+/// the backend declined — while `rmw_vtable.h`'s `supported_qos_policies` block
+/// told the reader those creates fail "naming a policy". This is the one place
+/// that sentence becomes true for a caller who only gets a return code.
+///
+/// ONE helper rather than a log line per site, for the reason CLAUDE.md's "fix
+/// the CLASS" rule gives: six copies of a diagnostic are six places for the
+/// wording, the logger name and the fallback to drift, and this family has
+/// already paid that twice (the sizes-header mirror, the Zephyr unset-variable
+/// guard).
+///
+/// The policy NAME comes from [`nros_rmw::QoSPolicyMask::NAMED`] by way of
+/// `TransportError::qos_policy_name`, so this crate states no policy vocabulary
+/// of its own, and the token a C++ caller reads out of
+/// `nros::qos_policy_kind_to_cstr` is the same byte string that appears here.
+pub(crate) fn validate_qos_or_report(
+    qos: &QoSProfile,
+    supported: nros_rmw::QoSPolicyMask,
+    kind: &str,
+    name: &str,
+) -> Result<(), NodeError> {
+    match qos.validate_against(supported) {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            nros_log::log_error!(
+                nros_log::get_logger("nros_node"),
+                "qos: {} '{}' refused — the backend does not honour {}",
+                kind,
+                name,
+                // `None` is a real answer, not a missing one: a refusal
+                // relayed from a C backend crosses `rmw_ret_t`, which has no
+                // room for a mask, so no policy was identified. Naming a
+                // neighbouring one would be the plausible wrong answer.
+                err.qos_policy_name()
+                    .unwrap_or("a QoS policy it did not name")
+            );
+            Err(NodeError::Transport(err))
+        }
+    }
+}
+
 // ============================================================================
 // Node
 // ============================================================================
@@ -262,8 +308,12 @@ impl<'a> NodeHandle<'a> {
         );
         // Phase 108.B — synchronous QoS validation against backend's
         // `supported_qos_policies()` mask. No silent downgrade.
-        qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
-            .map_err(NodeError::Transport)?;
+        validate_qos_or_report(
+            &qos,
+            nros_rmw::Session::supported_qos_policies(self.session),
+            "publisher",
+            topic_name,
+        )?;
         let topic = Self::topic_info(
             self.domain_id,
             &self.name,
@@ -320,8 +370,12 @@ impl<'a> NodeHandle<'a> {
             nros_rmw::QoSOverrideRole::Publisher,
             self.qos_overrides,
         );
-        qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
-            .map_err(NodeError::Transport)?;
+        validate_qos_or_report(
+            &qos,
+            nros_rmw::Session::supported_qos_policies(self.session),
+            "publisher",
+            topic_name,
+        )?;
         let topic = Self::topic_info(
             self.domain_id,
             &self.name,
@@ -390,8 +444,12 @@ impl<'a> NodeHandle<'a> {
             nros_rmw::QoSOverrideRole::Subscription,
             self.qos_overrides,
         );
-        qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
-            .map_err(NodeError::Transport)?;
+        validate_qos_or_report(
+            &qos,
+            nros_rmw::Session::supported_qos_policies(self.session),
+            "subscription",
+            topic_name,
+        )?;
         let topic = Self::topic_info(
             self.domain_id,
             &self.name,
@@ -453,8 +511,12 @@ impl<'a> NodeHandle<'a> {
             nros_rmw::QoSOverrideRole::Subscription,
             self.qos_overrides,
         );
-        qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
-            .map_err(NodeError::Transport)?;
+        validate_qos_or_report(
+            &qos,
+            nros_rmw::Session::supported_qos_policies(self.session),
+            "subscription",
+            topic_name,
+        )?;
         let topic = Self::topic_info(
             self.domain_id,
             &self.name,
@@ -525,8 +587,12 @@ impl<'a> NodeHandle<'a> {
         // supported policies (mirrors pub/sub); no silent downgrade. RELIABLE is
         // effectively required for request/reply, so a backend that only honours
         // a fixed profile rejects an incompatible request here.
-        qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
-            .map_err(NodeError::Transport)?;
+        validate_qos_or_report(
+            &qos,
+            nros_rmw::Session::supported_qos_policies(self.session),
+            "service",
+            service_name,
+        )?;
         let info = Self::service_info(
             self.domain_id,
             &self.name,
@@ -587,8 +653,12 @@ impl<'a> NodeHandle<'a> {
         register_type::<Svc::Reply>()?;
         // Phase 193.5 — validate against the backend's supported policies (no
         // silent downgrade); request/reply effectively requires RELIABLE.
-        qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
-            .map_err(NodeError::Transport)?;
+        validate_qos_or_report(
+            &qos,
+            nros_rmw::Session::supported_qos_policies(self.session),
+            "client",
+            service_name,
+        )?;
         let info = Self::service_info(
             self.domain_id,
             &self.name,
@@ -1420,6 +1490,34 @@ impl<'e, 's> NodeCtx<'e, 's> {
         node_id: super::node_record::NodeId,
     ) -> Self {
         Self { executor, node_id }
+    }
+
+    /// The node's clock — rclrs's `Node::get_clock()`, and rclcpp's.
+    ///
+    /// phase-417 G6. `cpp:Node::get_clock` has shipped since issue 0789 and
+    /// only the Rust node lacked the accessor: a component reached the clock
+    /// through the executor, or constructed one, and the ported line
+    /// `node.get_clock().now()` had nothing to bind.
+    ///
+    /// **A delegation, not a second clock.** [`nros_core::clock::Clock`] is a
+    /// one-field value naming a time SOURCE — it holds no state of its own, and
+    /// `now()` on a ROS-time clock reads the process-global override that
+    /// [`install_ros_time_source`](Self::install_ros_time_source) installs. So
+    /// this returns the same answer as the executor's clock by construction
+    /// rather than by agreement, which is the property the graph forwarders in
+    /// this family are shaped for.
+    ///
+    /// ROS TIME, as rclcpp's and rclrs's node clocks are: with a `/clock`
+    /// source installed it follows the simulator, and with none it reads the
+    /// same wall clock `Clock::system()` does (issue 1334 put those two on one
+    /// expression). A component that specifically wants the monotonic source
+    /// asks for `Clock::steady()`.
+    ///
+    /// By VALUE, where rclcpp hands back a `Clock::SharedPtr`: there is no
+    /// allocator here (RFC-0022) and the type is `Copy`, so a handle would be
+    /// a pointer to one `u8`.
+    pub fn get_clock(&self) -> nros_core::clock::Clock {
+        nros_core::clock::Clock::ros_time()
     }
 
     /// Subscription builder (the `clone` tier). Pick a mode with `.typed::<M>()`

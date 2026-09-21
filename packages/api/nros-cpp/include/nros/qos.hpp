@@ -18,6 +18,11 @@
 // the umbrella's ordering: a header that names a type must be able to be
 // included first.
 #include "nros/duration.hpp"
+// phase-417 G7 — `NROS_PUBLIC`, for the one C entry point this header
+// declares (`qos_policy_kind_to_cstr`, below). Macros only; the file includes
+// nothing and compiles freestanding, so it costs this header's
+// self-containment nothing.
+#include "nros/visibility.h"
 // phase-417 stage 6 step A — `rclcpp::detail::refuse` and the
 // `NROS_RCLCPP_REFUSE_*` diagnostics, used by `SystemDefaultsQoS` below.
 // `log.hpp` includes nothing of ours, so this adds no cycle.
@@ -440,6 +445,103 @@ class QoS {
     uint8_t avoid_ros_namespace_conventions_;
     uint8_t tx_express_;
 };
+
+// ============================================================================
+// phase-417 G6 — profile comparison. `rclcpp::operator==(const QoS&, const QoS&)`
+// ============================================================================
+//
+// FREE functions, as upstream's are, and written from the PUBLIC accessors —
+// every one of the ten members has one, so no `friend` is needed and the
+// comparison stays a thing a reader can check against the accessor list.
+//
+// TEN hand-written comparisons rather than `= default`. `operator==() =
+// default` is C++20 and this surface's floor is `cxx_std_17`
+// (`packages/api/nros-cpp/CMakeLists.txt` — `target_compile_features(
+// nros-cpp-headers INTERFACE cxx_std_17)`), so the defaulted form would not
+// compile for the targets this header exists to serve. Still `constexpr`,
+// still no allocator, still no exceptions.
+//
+// Rust's `QoSProfile` derives `PartialEq, Eq` and has had this for nothing
+// since it existed; the ledger row `cpp:operator==` recorded the asymmetry as
+// having no platform reason, and it did not.
+//
+// The three time windows are compared through `Duration::nanoseconds()` rather
+// than the deprecated `_ms()` accessors: the storage is milliseconds, the
+// conversion is exact in both directions (`detail::qos_window_duration`), and
+// naming a deprecated member here would make every comparison warn.
+
+/// `true` when both profiles state the same value for every policy.
+///
+/// A WHOLE-PROFILE comparison, which is upstream's: two profiles that would be
+/// granted the same thing by a backend still compare unequal if they were
+/// written differently, because this compares what was REQUESTED.
+constexpr bool operator==(const QoS& left, const QoS& right) {
+    return left.reliability() == right.reliability() && left.durability() == right.durability() &&
+           left.history() == right.history() && left.liveliness() == right.liveliness() &&
+           left.depth() == right.depth() &&
+           left.deadline().nanoseconds() == right.deadline().nanoseconds() &&
+           left.lifespan().nanoseconds() == right.lifespan().nanoseconds() &&
+           left.liveliness_lease_duration().nanoseconds() ==
+               right.liveliness_lease_duration().nanoseconds() &&
+           left.avoid_ros_namespace_conventions() == right.avoid_ros_namespace_conventions() &&
+           left.tx_express() == right.tx_express();
+}
+
+/// The negation of `operator==`, and written as its negation so the two cannot
+/// disagree.
+constexpr bool operator!=(const QoS& left, const QoS& right) {
+    return !(left == right);
+}
+
+// ============================================================================
+// phase-417 G7 — naming a QoS policy
+// ============================================================================
+
+/// One QoS policy's name — `rclcpp::qos_policy_kind_to_cstr`.
+///
+/// @param policy ONE `NROS_RMW_QOS_POLICY_*` bit, as declared in
+///        `<nros/rmw_entity.h>` and as a backend advertises through the
+///        vtable's `supported_qos_policies` slot.
+/// @return `"RELIABILITY"`, `"DEADLINE"`, … — borrowed, static lifetime, never
+///         freed — or `nullptr` when @p policy is not exactly one policy bit.
+///
+/// **What this is FOR.** An `NROS_CPP_RET_NOT_ALLOWED` from a `create_*` means
+/// the backend declined a policy, and the return code alone does not say which
+/// — while `rmw_vtable.h`'s own `supported_qos_policies` block told the reader
+/// those creates fail "naming a policy". The refusal is logged with this name
+/// now (`nros_node`'s `validate_qos_or_report`), and this is how a C++ caller
+/// spells the same policy in its own message.
+///
+/// **Two deliberate differences from rclcpp**, both from the same constraint:
+/// upstream takes a `rclcpp::QosPolicyKind` enum and returns a `const char*`
+/// over `std::string`-free storage; ours takes the MASK BIT, because the
+/// bitmask is the vocabulary this tree has — one set of twelve values shared by
+/// `QoSPolicyMask` in Rust and `NROS_RMW_QOS_POLICY_*` in C, held equal by
+/// `check-qos-mask-derivation`. And upstream returns `"Invalid"` for its
+/// invalid enumerator where we return `nullptr`: we have no invalid
+/// enumerator, and "no policy was identified" is a real answer a caller must
+/// be able to tell apart from a policy that was.
+///
+/// The bytes are `nros_qos_policy_kind_to_cstr`'s, which are
+/// `nros_rmw::QoSPolicyMask::NAMED`'s. This header declares the C entry point
+/// rather than including `<nros/nros_generated.h>` — `qos.hpp` is deliberately
+/// self-contained (see issue 0112 at the top of this file) — and a signature
+/// drift cannot hide: `nros.hpp` pulls both this header and `nros/lifecycle.h`,
+/// which reaches the generated declarations, so every C++ example is a
+/// translation unit holding both spellings and the compiler compares them.
+/// The declaration is spelled EXACTLY as `nros_generated.h` spells it,
+/// `NROS_PUBLIC` included. A C-linkage function declared in two scopes is one
+/// entity, so the two must agree — and a visibility attribute that appears on
+/// only one of them is "ignored because it conflicts with previous
+/// declaration", a warning that becomes an error on this tree's `-Werror`
+/// lanes and whose text points at neither file's real problem.
+extern "C" NROS_PUBLIC const char* nros_qos_policy_kind_to_cstr(uint32_t policy);
+
+/// `nros::qos_policy_kind_to_cstr` — see the entry point above, which it
+/// forwards to unchanged.
+inline const char* qos_policy_kind_to_cstr(uint32_t policy) {
+    return nros_qos_policy_kind_to_cstr(policy);
+}
 
 namespace detail {
 

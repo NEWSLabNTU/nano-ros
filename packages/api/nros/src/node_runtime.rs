@@ -2765,7 +2765,20 @@ fn capability_transport_reason(t: &nros_rmw::TransportError) -> &'static str {
         T::Disconnected => "Transport::Disconnected",
         T::TopicNameInvalid => "Transport::TopicNameInvalid",
         T::NodeNameNonExistent => "Transport::NodeNameNonExistent",
-        T::IncompatibleQos => "Transport::IncompatibleQos",
+        // phase-417 G7 — the variant carries the refused `QoSPolicyMask` bit
+        // now, and this function's return type has no room for it: a
+        // `&'static str` cannot be composed, and a second table of twelve
+        // pre-written sentences is exactly the parallel vocabulary the bit's
+        // own name exists to avoid. The policy is already on the line ABOVE
+        // this one — `nros_node`'s `validate_qos_or_report` logs it at ERROR
+        // at the refusing create — so this string is the CLASS and points at
+        // the line that has the name, the same shape `DeclaredDepthMismatch`
+        // uses two arms up. A Rust caller holding the error reads
+        // `err.qos_policy_name()` and needs neither.
+        T::IncompatibleQos(_) => {
+            "Transport::IncompatibleQos (the backend does not honour a policy this \
+             profile states — the log line above names which)"
+        }
         T::IncompatibleAbi => "Transport::IncompatibleAbi",
         T::InvalidConfig => "Transport::InvalidConfig",
         T::InvalidArgument => "Transport::InvalidArgument",

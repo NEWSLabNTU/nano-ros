@@ -3630,8 +3630,12 @@ impl<'s> Executor<'s> {
         let session = self
             .session_at_mut(session_idx)
             .ok_or(NodeError::BackendMismatch)?;
-        qos.validate_against(Session::supported_qos_policies(session))
-            .map_err(NodeError::Transport)?;
+        super::node::validate_qos_or_report(
+            &qos,
+            Session::supported_qos_policies(session),
+            "publisher",
+            topic_name,
+        )?;
         session
             .create_publisher(&topic, qos)
             .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))
@@ -5807,8 +5811,12 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             // Phase 193.5 — validate against the backend's supported policies
             // (no silent downgrade); request/reply effectively requires RELIABLE.
-            qos.validate_against(session.supported_qos_policies())
-                .map_err(NodeError::Transport)?;
+            super::node::validate_qos_or_report(
+                &qos,
+                session.supported_qos_policies(),
+                "service",
+                service_name,
+            )?;
             session
                 .create_service(&info, qos)
                 .map_err(NodeError::Transport)?
@@ -6640,8 +6648,12 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             // Phase 193.5 — validate against the backend's supported policies
             // (no silent downgrade); request/reply effectively requires RELIABLE.
-            qos.validate_against(session.supported_qos_policies())
-                .map_err(NodeError::Transport)?;
+            super::node::validate_qos_or_report(
+                &qos,
+                session.supported_qos_policies(),
+                "service",
+                service_name,
+            )?;
             session
                 .create_service(&info, qos)
                 .map_err(NodeError::Transport)?
@@ -6792,8 +6804,12 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             // Phase 193.5 — validate against the backend's supported policies
             // (no silent downgrade); request/reply effectively requires RELIABLE.
-            qos.validate_against(session.supported_qos_policies())
-                .map_err(NodeError::Transport)?;
+            super::node::validate_qos_or_report(
+                &qos,
+                session.supported_qos_policies(),
+                "client",
+                service_name,
+            )?;
             session
                 .create_client(&info, qos)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
@@ -6870,8 +6886,12 @@ impl<'s> Executor<'s> {
             let session = self
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
-            qos.validate_against(session.supported_qos_policies())
-                .map_err(NodeError::Transport)?;
+            super::node::validate_qos_or_report(
+                &qos,
+                session.supported_qos_policies(),
+                "client",
+                service_name,
+            )?;
             session
                 .create_client(&info, qos)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
@@ -7206,6 +7226,40 @@ impl<'s> Executor<'s> {
             return Some(false);
         }
         Some(header.elapsed_us >= header.period_us)
+    }
+
+    /// Nanoseconds until this timer next fires — NEGATIVE when it is overdue.
+    /// `None` if the handle is not a valid timer.
+    ///
+    /// phase-417 G6. THE computation, and it has to be: rcl's own pair are
+    /// `next_call_time` and `next_call_time - now`, so upstream cannot have
+    /// them disagree either. Before this it lived in `nros-c`
+    /// (`remaining_period_ns` + `time_until_next_call_ns_of`), and the C++
+    /// half of `cpp:Timer::time_until_trigger` would have been a second
+    /// derivation of the same subtraction in a second crate — the shape
+    /// CLAUDE.md's "fix the CLASS, add ONE shared helper rather than a second
+    /// spelling" rule names. `nros-c` forwards here now; so does `nros-cpp`.
+    ///
+    /// **The unit is nanoseconds and the RESOLUTION is microseconds.** The
+    /// arena's timer accounting is microsecond-based (issue #505), so this is a
+    /// microsecond quantity scaled by 1000. The unit is rcl's; the resolution
+    /// is ours.
+    ///
+    /// Saturating rather than wrapping: `period_us` and `elapsed_us` are both
+    /// `u64`, so their difference in nanoseconds can leave `i64` in either
+    /// direction, and a wrap would turn "overdue by a lot" into "due in a
+    /// long time" — the sign is the whole answer here.
+    pub fn timer_time_until_next_call_ns(&self, id: HandleId) -> Option<i64> {
+        let period_us = self.timer_period_us(id)?;
+        let elapsed_us = self.timer_elapsed_us(id)?;
+        let delta_ns = (period_us as i128 - elapsed_us as i128).saturating_mul(1_000);
+        Some(if delta_ns > i64::MAX as i128 {
+            i64::MAX
+        } else if delta_ns < i64::MIN as i128 {
+            i64::MIN
+        } else {
+            delta_ns as i64
+        })
     }
 
     // ========================================================================
@@ -8988,7 +9042,7 @@ impl<'s> Executor<'s> {
             // matters exactly when a tool sets many parameters at once, the case
             // the deep queue is for.
             session
-                .create_service(&info, QoSProfile::parameters_default())
+                .create_service(&info, QoSProfile::parameter_services_default())
                 .map_err(|e| (NodeError::Transport(e), suffix))
         }
 
