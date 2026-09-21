@@ -184,16 +184,18 @@ impl Esp32QemuEntry {
         // domain come from `Config` (NOT env — embedded libc `getenv` has no
         // host trampoline on QEMU). `clock_us` feeds the timer wheel.
         let baked = boot_config.map(BootConfig::from_baked).unwrap_or_default();
-        let exec_config = ExecutorConfig::resolve(BootConfig {
-            node_name: baked.node_name.or(Some("nros_app")),
-            locator: Some(config.zenoh_locator),
-            domain_id: Some(config.domain_id),
-            namespace: None,
-            // Issue 1050 defect (3) — the baked rung reaches the resolver.
-            // This board has no environment to read, so before it existed an
-            // image here could not name its backend at all.
-            rmw: baked.rmw,
-        })
+        // Issue 1434 — ONE spelling of the board rung
+        // (`BootConfig::over_board_defaults`). This was a hand-written struct
+        // literal, six of them across four board crates, and every one wrote
+        // `namespace: None` — so a launch-declared namespace reached the blob,
+        // `from_baked` read it, and the board dropped it here. Identity (name,
+        // namespace) comes from the bake; the locator and domain stay the
+        // board's, unchanged, and issue 1050's `rmw` rides the bake as before.
+        let exec_config = ExecutorConfig::resolve(baked.over_board_defaults(
+            config.zenoh_locator,
+            config.domain_id,
+            "nros_app",
+        ))
         .clock_us(nros_platform_esp32_qemu::clock::clock_us);
         let executor = match nros::Executor::open(&exec_config) {
             Ok(executor) => executor,

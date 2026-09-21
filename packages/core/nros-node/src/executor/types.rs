@@ -1538,6 +1538,53 @@ impl<'a> BootConfig<'a> {
             rmw,
         }
     }
+
+    /// Issue 1434 — the rung an EMBEDDED board hands the resolver: this bake's
+    /// IDENTITY over the board's own connect facts.
+    ///
+    /// Six boards (`nros-board-freertos` ×2, `nros-board-threadx` ×2,
+    /// `nros-board-mps2-an385`, `nros-board-esp32-qemu`) wrote this struct
+    /// literal out by hand, character for character, and every one of them
+    /// wrote `namespace: None` — so a launch-declared namespace reached the
+    /// blob, `from_baked` read it correctly, and then the board dropped it on
+    /// the floor. It is ONE function now, for the reason issue 0196 gives: six
+    /// copies are six places for the next field to be forgotten, and the
+    /// forgetting is silent (a `None` is a legal value, not a compile error).
+    ///
+    /// What comes from where, and why the split is not symmetric:
+    ///
+    /// * **Identity** (`node_name`, `namespace`) — the BAKE wins, falling back
+    ///   to `default_node_name` and to the resolver's `""`. A launch file that
+    ///   names a node is stating what the graph should call it; the board has
+    ///   no opinion worth overriding that with.
+    /// * **Connect** (`locator`, `domain_id`) — the BOARD wins, unconditionally
+    ///   and exactly as before this function existed. An embedded board has no
+    ///   environment rung, so its `Config` (per-board TOML / Kconfig) IS the
+    ///   deployment statement for where to dial and on which domain. Changing
+    ///   that is a separate decision from this one and is deliberately NOT made
+    ///   here.
+    /// * **`rmw`** — the bake (issue 1050 defect (3)), unchanged.
+    ///
+    /// The NEGATIVE direction is the half that matters: a blob with
+    /// `BOOT_SET_NAMESPACE` clear arrives as `namespace: None` from
+    /// [`from_baked`], travels through here as `None`, and lands on the
+    /// resolver's compiled default. It never becomes `Some("")`, which would
+    /// read as "configured to the empty namespace" to every rung above it.
+    #[must_use]
+    pub fn over_board_defaults(
+        self,
+        locator: &'a str,
+        domain_id: u32,
+        default_node_name: &'a str,
+    ) -> BootConfig<'a> {
+        BootConfig {
+            node_name: self.node_name.or(Some(default_node_name)),
+            locator: Some(locator),
+            domain_id: Some(domain_id),
+            namespace: self.namespace,
+            rmw: self.rmw,
+        }
+    }
 }
 
 // ============================================================================
@@ -1752,6 +1799,85 @@ mod boot_config_tests {
             ExecutorConfig::resolve_with(BootConfig::default(), Some(env)).namespace,
             "/robot1"
         );
+    }
+
+    // ── issue 1434: the embedded board rung ──────────────────────────────────
+
+    /// The positive direction: a baked namespace survives the board rung and
+    /// reaches the resolved `ExecutorConfig`. This is the whole of issue 1434
+    /// on the Rust road — before `over_board_defaults` existed, six boards
+    /// wrote `namespace: None` here and the value stopped.
+    fn baked_with_namespace(ns: &str) -> BootConfig<'_> {
+        BootConfig {
+            node_name: Some("remap_talker"),
+            namespace: Some(ns),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_baked_namespace_reaches_the_board_rung() {
+        let rung = baked_with_namespace("/island").over_board_defaults("tcp/x:7447", 7, "nros_app");
+        assert_eq!(rung.namespace, Some("/island"));
+        // Identity from the bake, connect facts from the board — the split the
+        // doc comment states, asserted rather than described.
+        assert_eq!(rung.node_name, Some("remap_talker"));
+        assert_eq!(rung.locator, Some("tcp/x:7447"));
+        assert_eq!(rung.domain_id, Some(7));
+        assert_eq!(
+            ExecutorConfig::resolve(rung).namespace,
+            "/island",
+            "an embedded board has no env rung, so the bake IS the answer"
+        );
+    }
+
+    /// The NEGATIVE direction, and the one worth a test of its own: an image
+    /// whose blob leaves `BOOT_SET_NAMESPACE` clear must arrive at the next
+    /// rung as ABSENT, never as `Some("")`.
+    ///
+    /// `Some("")` and `None` resolve to the same string today (`""` either
+    /// way), so this cannot be caught downstream — it is only visible HERE, on
+    /// the `Option`. It matters because the rung above reads
+    /// `env.namespace.or(baked.namespace)`: a `Some("")` would SHADOW an
+    /// environment namespace on any board that grows a rung, and would tell a
+    /// post-link patcher the field was configured when it was not.
+    #[test]
+    fn an_unbaked_namespace_stays_absent_through_the_board_rung() {
+        // no namespace baked → BOOT_SET_NAMESPACE clear
+        let blob = BakedBootConfig::new(Some("nros_app"), None, None, None);
+        let baked = BootConfig::from_baked(&blob);
+        assert_eq!(baked.namespace, None, "from_baked must not invent one");
+
+        let rung = baked.over_board_defaults("tcp/x:7447", 0, "nros_app");
+        assert_eq!(
+            rung.namespace, None,
+            "the board rung must pass ABSENCE through, not `Some(\"\")`"
+        );
+
+        // …and the rung above it therefore still gets to speak.
+        let env = EnvRung {
+            namespace: Some("/from_env"),
+            ..Default::default()
+        };
+        assert_eq!(
+            ExecutorConfig::resolve_with(rung, Some(env)).namespace,
+            "/from_env"
+        );
+        // With nothing anywhere, the compiled default stands.
+        assert_eq!(ExecutorConfig::resolve(rung).namespace, "");
+    }
+
+    /// The board rung does not invent identity it was not given, and does not
+    /// let the board override identity it WAS given — both directions of the
+    /// `node_name` fallback, since the namespace rides the same function.
+    #[test]
+    fn the_board_rung_only_defaults_an_absent_node_name() {
+        let unnamed = BootConfig::default().over_board_defaults("loc", 1, "nros_app");
+        assert_eq!(unnamed.node_name, Some("nros_app"));
+        assert_eq!(unnamed.namespace, None);
+
+        let named = baked_with_namespace("/ns").over_board_defaults("loc", 1, "nros_app");
+        assert_eq!(named.node_name, Some("remap_talker"));
     }
 
     // ── T4: env rung overrides baked ─────────────────────────────────────────

@@ -603,27 +603,40 @@ where
     // `run` (boot_config = None) or when the baked config carries no name.
     // Hoisted out of the BAKED_LOCATOR match so the no-baked-locator path
     // (`from_env`) also applies the launch-declared node name (W4d fix).
-    let node_name: &'static str = boot_config
+    // Issue 1434 — ONE spelling of the board rung, the same
+    // `BootConfig::over_board_defaults` the other five embedded boards reach.
+    //
+    // This site did NOT say `namespace: None` — it built an `ExecutorConfig`
+    // with the BUILDER and pulled exactly one field, `node_name`, out of the
+    // bake. So it is the same defect wearing a different spelling, which is
+    // why the issue's grep for `namespace: None` found six sites and not
+    // eight, and why folding it into the shared function matters more than
+    // adding a `.namespace(...)` call here would.
+    //
+    // Two things follow from the fold, both deliberate:
+    //   * `rmw` now reaches the resolver from the bake, as it already did on
+    //     every other board (issue 1050 defect (3) missed this spelling for
+    //     the same reason 1434 did).
+    //   * an out-of-range baked `NROS_DOMAIN_ID` is now a loud resolver error
+    //     instead of a domain the DDS layer rejects later — `resolve` applies
+    //     `DOMAIN_ID_MAX` for every caller, and this one was outside it.
+    //
+    // phase-359 W7 — the no-baked-locator arm is `""`, not `from_env()`:
+    // `from_env` is std-only, this guest has NO populated environment (which
+    // is why the locator is baked at all), and issue 0330 defines an unset
+    // locator as EMPTY, which the backend then defaults.
+    let baked = boot_config
         .map(::nros::BootConfig::from_baked)
-        .and_then(|b| b.node_name)
-        .unwrap_or("nros_app");
-    let exec_cfg = match BAKED_LOCATOR {
-        Some(loc) => {
-            let mut cfg = ::nros::ExecutorConfig::new(loc).node_name(node_name);
-            if let Some(d) = BAKED_DOMAIN.and_then(|s| s.parse::<u32>().ok()) {
-                cfg = cfg.domain_id(d);
-            }
-            cfg
-        }
-        // phase-359 W7 — was `ExecutorConfig::from_env()`, which is std-only
-        // (it reads `std::env`). Nothing is lost: this guest has NO populated
-        // environment, which is exactly why the locator is baked above, and
-        // issue 0330 defines an unset env as an EMPTY locator that the backend
-        // then defaults. `new("")` is that same state, spelled without a
-        // lookup that could only ever miss. (The one other field `from_env`
-        // set, a std wall-clock epoch, is `None` in any no_std build anyway.)
-        None => ::nros::ExecutorConfig::new("").node_name(node_name),
-    };
+        .unwrap_or_default();
+    let exec_cfg = ::nros::ExecutorConfig::resolve(
+        baked.over_board_defaults(
+            BAKED_LOCATOR.unwrap_or(""),
+            BAKED_DOMAIN
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(0),
+            "nros_app",
+        ),
+    );
 
     // Explicitly register the zenoh RMW backend before opening the executor.
     // The unified-RMW `nros_rmw_register_backend!` macro is a no-op on NuttX
@@ -876,27 +889,40 @@ where
     // back to loopback and never leave the guest). See `run_entry` for detail.
     const BAKED_LOCATOR: Option<&str> = option_env!("NROS_LOCATOR");
     const BAKED_DOMAIN: Option<&str> = option_env!("NROS_DOMAIN_ID");
-    let node_name: &'static str = boot_config
+    // Issue 1434 — ONE spelling of the board rung, the same
+    // `BootConfig::over_board_defaults` the other five embedded boards reach.
+    //
+    // This site did NOT say `namespace: None` — it built an `ExecutorConfig`
+    // with the BUILDER and pulled exactly one field, `node_name`, out of the
+    // bake. So it is the same defect wearing a different spelling, which is
+    // why the issue's grep for `namespace: None` found six sites and not
+    // eight, and why folding it into the shared function matters more than
+    // adding a `.namespace(...)` call here would.
+    //
+    // Two things follow from the fold, both deliberate:
+    //   * `rmw` now reaches the resolver from the bake, as it already did on
+    //     every other board (issue 1050 defect (3) missed this spelling for
+    //     the same reason 1434 did).
+    //   * an out-of-range baked `NROS_DOMAIN_ID` is now a loud resolver error
+    //     instead of a domain the DDS layer rejects later — `resolve` applies
+    //     `DOMAIN_ID_MAX` for every caller, and this one was outside it.
+    //
+    // phase-359 W7 — the no-baked-locator arm is `""`, not `from_env()`:
+    // `from_env` is std-only, this guest has NO populated environment (which
+    // is why the locator is baked at all), and issue 0330 defines an unset
+    // locator as EMPTY, which the backend then defaults.
+    let baked = boot_config
         .map(::nros::BootConfig::from_baked)
-        .and_then(|b| b.node_name)
-        .unwrap_or("nros_app");
-    let exec_cfg = match BAKED_LOCATOR {
-        Some(loc) => {
-            let mut cfg = ::nros::ExecutorConfig::new(loc).node_name(node_name);
-            if let Some(d) = BAKED_DOMAIN.and_then(|s| s.parse::<u32>().ok()) {
-                cfg = cfg.domain_id(d);
-            }
-            cfg
-        }
-        // phase-359 W7 — was `ExecutorConfig::from_env()`, which is std-only
-        // (it reads `std::env`). Nothing is lost: this guest has NO populated
-        // environment, which is exactly why the locator is baked above, and
-        // issue 0330 defines an unset env as an EMPTY locator that the backend
-        // then defaults. `new("")` is that same state, spelled without a
-        // lookup that could only ever miss. (The one other field `from_env`
-        // set, a std wall-clock epoch, is `None` in any no_std build anyway.)
-        None => ::nros::ExecutorConfig::new("").node_name(node_name),
-    };
+        .unwrap_or_default();
+    let exec_cfg = ::nros::ExecutorConfig::resolve(
+        baked.over_board_defaults(
+            BAKED_LOCATOR.unwrap_or(""),
+            BAKED_DOMAIN
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(0),
+            "nros_app",
+        ),
+    );
 
     // NuttX has no linkme / `.init_array` auto-register, so the backend register
     // is explicit (mirrors `run_entry`).

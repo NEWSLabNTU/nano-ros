@@ -310,13 +310,38 @@ impl LinuxBoard {
         // fall-back errors loud on any `register_dispatch_slot_dyn` call.
         // Issue #98 — route the single-node launch overlay through the W1
         // resolver (RFC-0045 precedence model A): env > baked > compiled default.
-        // Only `node_name` is mapped from the overlay; locator/domain/namespace
-        // stay `None` so env keeps authority over them (issue #48 preserved).
+        // `locator` and `domain` stay `None` so env keeps authority over them
+        // (issue #48 preserved).
         // issue 0687 — the ONE `hosted_env = true` in the tree, now spelled as
         // what it is: this board runs on a host, so it resolves through the
         // edge that reads the environment. Every other board passed `false`.
+        //
+        // Issue 1434 — the NAMESPACE is mapped too, and it is NOT the same
+        // carve-out the locator and the domain get. "Leave it `None` so env
+        // keeps authority" was true of the other two and false of this one:
+        // `try_resolve_with` reads `env.namespace.or(baked.namespace)`, so a
+        // baked namespace is already BELOW `$NROS_NODE_NAMESPACE` and passing
+        // it costs the environment nothing (`namespace_resolves_over_all_
+        // three_rungs` in nros-node pins that ladder). With it left `None` the
+        // hosted road had no bottom rung at all: `nros::main!` bakes the
+        // launch-declared namespace into `.nros_boot_config` on hosted exactly
+        // as it does on bare metal (`deploy_overlay_tokens` always sets
+        // `boot_config`), and this board read only `node_name` out of it.
+        //
+        // The blob is reached through `deploy.boot_config` rather than through
+        // a new `DeployOverlay` field, because the blob is what a post-link
+        // patcher rewrites — a second overlay field would be a second answer
+        // to "what namespace is this image deployed under", and the two would
+        // disagree the first time anyone patched one.
+        let blob = deploy
+            .boot_config
+            .map(::nros::BootConfig::from_baked)
+            .unwrap_or_default();
         let exec_cfg = ::nros::env::resolve_hosted(::nros::BootConfig {
             node_name: deploy.node_name,
+            // ABSENT, never `Some("")`: an unbaked namespace must fall through
+            // to the compiled default, not shadow the env rung above it.
+            namespace: blob.namespace,
             ..Default::default()
         });
         // phase-271 — open at the entry's declared sizing when supplied.
@@ -396,7 +421,7 @@ impl LinuxBoard {
     /// task priorities (RFC-0016). Blocks forever (server semantics);
     /// returns only if a tier `setup` fails before the spin loop.
     pub fn run_tiers<F, E>(
-        _deploy: &nros_platform::DeployOverlay,
+        deploy: &nros_platform::DeployOverlay,
         tiers: &[TierSpec<'_>],
         setup: F,
     ) -> Result<(), E>
@@ -404,9 +429,10 @@ impl LinuxBoard {
         F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E> + Sync,
         E: core::fmt::Debug,
     {
-        // Issue #48 — hosted boards take their locator from `from_env()`, so the
-        // deploy overlay is ignored here (kept for signature parity with the
-        // firmware boards' `run_tiers`).
+        // Issue #48 — hosted boards take their locator from the environment, so
+        // the overlay's connect fields are ignored here (the firmware boards'
+        // `run_tiers` consumes them). Issue 1434 reads ONE thing out of it: the
+        // baked namespace, at the session open below.
         // phase-337 W8.a — the second boot funnel, so it registers too.
         register_linked_rmw();
         <Self as BoardInit>::init_hardware();
@@ -491,10 +517,28 @@ impl LinuxBoard {
 
         // Open the one session on the boot task; it owns the session for
         // the program's life (the boot tier's spin loop never returns).
-        // issue 0687 — `from_env` is an extension trait now (the environment is
-        // read at `nros`'s edge, not in the core), so it needs to be in scope.
-        use ::nros::ExecutorConfigEnvExt as _;
-        let exec_cfg = ::nros::ExecutorConfig::from_env();
+        //
+        // Issue 1434 — this was `ExecutorConfig::from_env()`, which issue
+        // 0687's own test pins as `resolve_hosted(BootConfig::default())`: the
+        // env rung over NOTHING. So the tiered hosted entry had no baked rung
+        // at all, and a launch-declared namespace stopped here exactly as it
+        // did on the single-executor path above. Spelling it as
+        // `resolve_hosted` with the blob's namespace is the SAME call with the
+        // one rung filled in; `$NROS_NODE_NAMESPACE` still outranks it.
+        //
+        // `node_name` is deliberately NOT threaded here and the omission is
+        // not this issue's: `run_tiers` has ignored `deploy` since issue #48
+        // ("kept for signature parity"), so naming the session from the
+        // overlay would change what `ros2 node list` prints for every tiered
+        // native image, which is a decision on its own. Filed separately.
+        let blob = deploy
+            .boot_config
+            .map(::nros::BootConfig::from_baked)
+            .unwrap_or_default();
+        let exec_cfg = ::nros::env::resolve_hosted(::nros::BootConfig {
+            namespace: blob.namespace,
+            ..Default::default()
+        });
         let boot_exec = match ::nros::Executor::open(&exec_cfg) {
             Ok(e) => e,
             Err(err) => {
