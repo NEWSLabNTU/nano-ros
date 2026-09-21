@@ -1,6 +1,12 @@
 [package]
 name = "nros-builtin-interfaces"
-version.workspace = true
+# A generated message crate's version is the CONSTANT `0.0.0`, never the
+# workspace version (issue 0394, issue 1428). These three were hand-adapted as
+# workspace members before that rule existed, so they carried the release
+# version and five consumer dep rows pinned it as `version = "0.5.0"` — rows
+# that stop resolving the moment the workspace version bumps, which takes every
+# cargo command in the tree rather than one consumer.
+version = "0.0.0"
 publish = false
 edition.workspace = true
 license.workspace = true
