@@ -148,6 +148,62 @@ fn watch_declared_facts() {
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_SUBSCRIBERS");
 }
 
+/// Issue 1429 — the ONE reader every `NROS_DECLARED_*` carrier is read through.
+///
+/// A carrier here is three-valued on purpose: ABSENT (this road states
+/// nothing), `refused` (this road looked and cannot bound it), or a count.
+/// Issues 1015 and 1033 are what a silent default over a derived count costs,
+/// so a value that is none of the three is LOUD rather than guessed.
+///
+/// **An empty string is a fourth thing, and it is `absent`.** A variable
+/// exported with no value carries no claim — there is nothing to distinguish
+/// from "nobody said", because an empty string IS nobody saying anything, and
+/// `0` (a legitimate answer here) has its own spelling. Reading it as malformed
+/// is what panicked every C/C++ workspace whose model describes no wiring:
+///
+/// ```text
+/// NROS_DECLARED_TL_PUBLISHERS="" is neither a count nor `refused`.
+/// ```
+///
+/// THE EMITTER'S BUG IS FIXED SEPARATELY, in `cmake/NanoRosEntityFacts.cmake`
+/// (`_nros_entity_fact`), and that is where the defect lived. This side is
+/// total anyway, because **a build script does not own its environment**: a
+/// carrier can arrive empty from a CI `env:` block, a `cmake -E env VAR=`, or a
+/// wrapper that exports every name it knows — none of which the emitter can
+/// reach. A library build script that aborts the build on someone else's blank
+/// variable is hostile, and it aborts at the one place with no context to
+/// explain itself.
+///
+/// Total is NOT silent. The empty case is announced, so a producer that
+/// regresses is still audible — it simply costs a warning instead of the build.
+/// `check-declared-fact-carriers` is the other half: it refuses an emitter that
+/// can compose a valueless carrier at all, so the two sides cannot each assume
+/// the other is handling it.
+fn declared_fact(name: &str) -> Option<String> {
+    let raw = std::env::var(name).ok();
+    if raw.is_some() && stated(raw.as_deref()).is_none() {
+        println!(
+            "cargo:warning={name} is set to an EMPTY value, which states nothing, so it \
+             is being read as UNDECLARED. A declared fact is absent, the word `refused`, \
+             or a count. If this image meant to declare something, its producer composed \
+             a carrier with no value (issue 1429)."
+        );
+        return None;
+    }
+    raw
+}
+
+/// Issue 1429 — the ONE predicate for "did this carrier state anything".
+///
+/// Separate from [`declared_fact`] and pure, so the RULES below can be total on
+/// their own terms rather than relying on having been called through the env
+/// reader. A rule is the tested surface here (see `queryable_default_from`'s
+/// note on why these take a string), and a rule that panics on `Some("")` while
+/// its only caller filters it out is a trap set for the next caller.
+fn stated(v: Option<&str>) -> Option<&str> {
+    v.filter(|s| !s.trim().is_empty())
+}
+
 fn resolve_queryable_default() -> QueryableSizing {
     // WATCH what we READ. Both were consumed here and neither was declared, so
     // cargo had no reason to re-run this script when a declaration changed: an
@@ -171,9 +227,14 @@ fn resolve_queryable_default() -> QueryableSizing {
     // action server changes this number, and a fact nothing watches reads as
     // applied while being stale.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_TL_PUBLISHERS");
-    let declared = std::env::var("NROS_DECLARED_SERVICE_SERVERS").ok();
-    let infra = std::env::var("NROS_DECLARED_INFRA_QUERYABLES").ok();
-    let nodes = std::env::var("NROS_DECLARED_NODES").ok();
+    // Issue 1429 — every one of these goes through `declared_fact`, not
+    // `env::var(..).ok()`. Three of the four were tolerant of an empty value by
+    // accident (they parse and fall back) and two PANIC on one; routing them
+    // together is what stops the next carrier inheriting whichever half its
+    // author copied.
+    let declared = declared_fact("NROS_DECLARED_SERVICE_SERVERS");
+    let infra = declared_fact("NROS_DECLARED_INFRA_QUERYABLES");
+    let nodes = declared_fact("NROS_DECLARED_NODES");
     let tl = transient_local_publishers();
     QueryableSizing {
         default: queryable_default_from(
@@ -277,16 +338,19 @@ fn transient_local_publishers() -> usize {
 ///
 /// A malformed value PANICS rather than falling back, for the reason
 /// [`declared_nodes`] gives: a value that reads as applied and is not is worse
-/// than no value.
+/// than no value. An EMPTY value is not malformed — it is absent, and
+/// [`stated`] says why (issue 1429).
 fn declared_transient_local_publishers() -> usize {
     // The RULE takes a string, for the reason `queryable_default_from` gives:
     // a build script reading env directly is untestable in-process, which is
     // how a sizing rule ends up verified by reading.
-    declared_transient_local_publishers_from(std::env::var("NROS_DECLARED_TL_PUBLISHERS").ok())
+    declared_transient_local_publishers_from(declared_fact("NROS_DECLARED_TL_PUBLISHERS"))
 }
 
 fn declared_transient_local_publishers_from(v: Option<String>) -> usize {
-    match v {
+    // Issue 1429 — `stated` first: unset and set-but-empty are ONE answer here,
+    // and only a value that says something reaches the three arms below.
+    match stated(v.as_deref()) {
         None => 0,
         Some(v) if v.trim() == "refused" => {
             println!(
@@ -357,6 +421,10 @@ fn queryable_floor_from(
     nodes: Option<&str>,
     transient_local_publishers: usize,
 ) -> usize {
+    // Issue 1429 — `stated` FIRST, because the test below is `is_none()`: an
+    // empty carrier is not a declaration, and reading it as one makes this
+    // return an infrastructure floor for an image that declared nothing.
+    let (declared, infra) = (stated(declared), stated(infra));
     if declared.is_none() && infra.is_none() {
         return 0;
     }
@@ -377,7 +445,11 @@ fn queryable_floor_from(
 /// [`queryable_default_from`] gives about `.max(1)`: a value that reads as
 /// applied and is not is worse than no value.
 fn declared_nodes(nodes: Option<&str>) -> usize {
-    match nodes {
+    // Issue 1429 — same `stated` guard as its sibling, and the same reason. The
+    // emitter that composed a valueless `NROS_DECLARED_TL_PUBLISHERS` reads
+    // `NROS_ENTITY_NODES_MAX` through the identical broken idiom, so this arm
+    // was one abstaining road away from the same panic.
+    match stated(nodes) {
         Some(v) => match v.trim().parse::<usize>() {
             Ok(n) => n.max(1),
             Err(_) => panic!(
@@ -461,7 +533,10 @@ fn infra_queryables(infra: Option<&str>, nodes: Option<&str>) -> usize {
     // Multiplying both would over-reserve, multiplying neither is issue 0460
     // again one node over.
     let params = PARAM_SERVICE_QUERYABLES * declared_nodes(nodes);
-    match infra {
+    // Issue 1429 — `stated` at the rule's boundary, like every sibling here. An
+    // empty carrier would otherwise reach `Some(other)` and be reported as a
+    // word that is not one of the four, which is a panic with no word in it.
+    match stated(infra) {
         Some("none") => 0,
         Some("param") => params,
         Some("lifecycle") => LIFECYCLE_SERVICE_QUERYABLES,
@@ -487,6 +562,11 @@ fn queryable_default_from(
     transient_local_publishers: usize,
     hosted: bool,
 ) -> usize {
+    // Issue 1429 — `stated` at the boundary. An empty carrier reaching the
+    // `Some` arm below panics `NROS_DECLARED_SERVICE_SERVERS="" is not a
+    // count`, which is the sibling of the panic that took the C/C++ templates
+    // down and differs only in which road happened to abstain.
+    let (declared, infra) = (stated(declared), stated(infra));
     let app = match declared {
         Some(v) => match v.trim().parse::<usize>() {
             Ok(n) => n,
@@ -651,6 +731,61 @@ mod queryable_default_tests {
     #[should_panic(expected = "NROS_DECLARED_TL_PUBLISHERS")]
     fn a_malformed_transient_local_count_is_a_build_failure() {
         declared_transient_local_publishers_from(Some("yes".into()));
+    }
+
+    /// Issue 1429 — an EMPTY carrier is ABSENT, on every declared-fact reader.
+    ///
+    /// The carrier is three-valued and an empty string is none of the three, so
+    /// it used to reach the arm that demands a count and panic the build:
+    ///
+    /// ```text
+    /// NROS_DECLARED_TL_PUBLISHERS="" is neither a count nor `refused`.
+    /// ```
+    ///
+    /// That killed `check-template-copy-out` on `main` — the three C/C++
+    /// workspace templates, which is every template a user copies out that
+    /// builds a workspace. It is ABSENT rather than malformed because a blank
+    /// variable carries no claim: there is nothing to tell apart from "nobody
+    /// said", and `0` — the legitimate answer this could be confused with — has
+    /// its own spelling, asserted right below.
+    ///
+    /// Whitespace counts as empty for the same reason a count is `trim`ed: a
+    /// carrier composed by a shell or a cmake list can pick one up, and the
+    /// value is still nothing.
+    #[test]
+    fn an_empty_declared_carrier_states_nothing_and_is_not_a_build_failure() {
+        assert_eq!(
+            declared_transient_local_publishers_from(Some(String::new())),
+            declared_transient_local_publishers_from(None),
+            "an empty transient-local carrier must read exactly as an absent one"
+        );
+        assert_eq!(
+            declared_transient_local_publishers_from(Some("   ".into())),
+            0,
+            "whitespace states nothing either"
+        );
+        // ... and `0` still means zero, which is the distinction that makes
+        // reading empty as absent safe rather than a silent default.
+        assert_eq!(
+            declared_transient_local_publishers_from(Some("0".into())),
+            0
+        );
+        // The node carrier is the SIBLING with the same panic on the same road:
+        // `NROS_ENTITY_NODES_MAX` is emitted through the identical cmake idiom.
+        assert_eq!(
+            declared_nodes(Some("")),
+            declared_nodes(None),
+            "an empty node carrier must read exactly as an absent one"
+        );
+        assert_eq!(declared_nodes(Some("\t")), declared_nodes(None));
+        // And the whole sizing rule stays computable with every carrier blank,
+        // which is the state the failing configure actually delivered.
+        assert_eq!(
+            queryable_default_from(Some(""), Some(""), Some(""), 0, true),
+            queryable_default_from(None, None, None, 0, true),
+            "a configure that emits four valueless carriers sizes as an \
+             undeclared image, not as a build failure"
+        );
     }
 
     /// The refusal has to reach the reader through this term as well, or

@@ -13,7 +13,7 @@ consumed only under `zephyr/`, so a FreeRTOS image carried 131,072 B of
 `LARGE_PAYLOADS` while its own build dir held
 `set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS 0)`.
 
-Three rules, and each is a defect this tree has already had:
+Four rules, and each is a defect this tree has already had:
 
 1. PRODUCED — the name appears in a `corrosion_set_env_vars` payload under
    `cmake/`. A fact nothing writes is a default that silently never applies.
@@ -29,6 +29,18 @@ Three rules, and each is a defect this tree has already had:
    that gained or lost a service server kept its previously-sized tables until
    something else forced a rebuild -- the sizing read as applied while being
    stale, and setting the variable by hand produced a byte-identical image.
+
+4. VALUED — an emitter must not be able to compose a carrier with NO VALUE
+   (issue 1429). A carrier is three-valued (absent / `refused` / a count) and an
+   empty string is none of the three, so a consumer written to be loud about an
+   unreadable value -- which is what 1015 and 1033 ask for -- aborts the build.
+   It is checked as the IDIOM rather than as the string, because the idiom is
+   what went wrong: `get_property()` leaves its output variable UNDEFINED when
+   the property was never set, and `if(NOT _v STREQUAL "")` then compares the
+   LITERAL NAME `_v` against `""`, which is never equal -- so the guard that
+   exists to skip an absent fact takes its branch and emits `NAME=`. Three sites
+   carried that idiom; two were masked by an accident of which properties happen
+   to be set, and the third took `check-template-copy-out` down on `main`.
 
 Deliberately NOT checked: that the VALUE is right. That is a build's job, and
 `check-knob-delivery` already owns the Zephyr half. This gate answers the
@@ -522,6 +534,65 @@ def consumed():
     return seen
 
 
+# Rule 4's two halves (issue 1429).
+#
+# `get_property(<v> ...)` — the reader that leaves <v> UNDEFINED when the
+# property was never set. `set(... PARENT_SCOPE)` and `execute_process(...
+# OUTPUT_VARIABLE)` always define theirs, so neither is in scope here.
+_GET_PROPERTY_RE = re.compile(r"^\s*get_property\(\s*([A-Za-z_][A-Za-z0-9_]*)\b")
+# An UNQUOTED emptiness test. `"${v}" STREQUAL ""` is fine — the dereference
+# happens before `if()` sees it — and so is `DEFINED v`, so both are excluded by
+# requiring a bare word with no `$`, `{` or quote against it.
+_BARE_EMPTY_RE = re.compile(r'(?<![$"{])\b([A-Za-z_][A-Za-z0-9_]*)\s+STREQUAL\s+""')
+_BARE_EMPTY_REV_RE = re.compile(r'""\s+STREQUAL\s+(?![$"{])([A-Za-z_][A-Za-z0-9_]*)\b')
+
+
+def valueless_carrier_guards(sources=None):
+    """Rule 4 — a `get_property` variable tested with an UNQUOTED `STREQUAL ""`.
+
+    The sweep that found the class:
+
+        git grep -n 'get_property' -A3 -- 'cmake/**' | grep 'STREQUAL ""'
+
+    Reported as the IDIOM, not as a name, because the emit line is one variable
+    away from the guard and any of them can be the next carrier.
+
+    `sources` is `(label, text)` pairs, for the self-test; the default is every
+    tracked cmake file.
+    """
+    if sources is None:
+        sources = [
+            (f.relative_to(ROOT), f.read_text(errors="replace"))
+            for f in tracked("cmake/*.cmake", "cmake/**/*.cmake")
+        ]
+    findings = []
+    for label, text in sources:
+        owner = {}
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            m = _GET_PROPERTY_RE.match(line)
+            if m:
+                owner[m.group(1)] = lineno
+            for rx in (_BARE_EMPTY_RE, _BARE_EMPTY_REV_RE):
+                for hit in rx.finditer(line):
+                    var = hit.group(1)
+                    if var not in owner:
+                        continue
+                    findings.append(
+                        "%s:%d compares `%s` (filled by get_property at :%d)\n"
+                        "       against \"\" WITHOUT dereferencing it. An unset property\n"
+                        "       leaves `%s` UNDEFINED, so `if()` compares the literal\n"
+                        "       name and the guard NEVER fires — the branch that was\n"
+                        "       meant to skip an absent fact emits `NAME=` instead, and\n"
+                        "       a valueless carrier is a fourth answer no consumer has\n"
+                        "       an arm for (issue 1429).\n"
+                        "       Read it through a helper that always defines its output\n"
+                        "       (`_nros_entity_fact` in NanoRosEntityFacts.cmake), or\n"
+                        "       quote the dereference: if(NOT \"${%s}\" STREQUAL \"\")."
+                        % (label, lineno, var, owner[var], var, var)
+                    )
+    return findings
+
+
 def published_facts():
     """Every `NROS_DERIVED_*` an inventory publishes into the caller's scope."""
     names = set()
@@ -699,6 +770,7 @@ def check():
                     "       sizing reads as applied while being STALE (issue 1122)."
                     % (name, rel, name)
                 )
+    findings += valueless_carrier_guards()
     findings += check_roads(prod)
     disposition_findings, gaps = check_dispositions(prod)
     findings += disposition_findings
@@ -712,17 +784,22 @@ def self_test():
     def case(label, prod_set, cons_map, want):
         nonlocal failures
         global produced, consumed, check_roads, check_dispositions
+        global valueless_carrier_guards
         p_orig, c_orig, r_orig = produced, consumed, check_roads
-        d_orig = check_dispositions
+        d_orig, v_orig = check_dispositions, valueless_carrier_guards
         check_roads = lambda _p: []                      # noqa: E731
         check_dispositions = lambda _p: ([], [])         # noqa: E731
+        # Rule 4 reads the REAL tree, and these cases are about rules 1-3.
+        # Stubbed for the same reason the two above are: a case must fail for
+        # the shape it names.
+        valueless_carrier_guards = lambda: []            # noqa: E731
         produced = lambda: prod_set                      # noqa: E731
         consumed = lambda: cons_map                      # noqa: E731
         try:
             got = len(check()[0])
         finally:
             produced, consumed, check_roads = p_orig, c_orig, r_orig
-            check_dispositions = d_orig
+            check_dispositions, valueless_carrier_guards = d_orig, v_orig
         ok = (got > 0) == want
         if not ok:
             failures += 1
@@ -811,6 +888,35 @@ def self_test():
                   "declared": OpenGap("1233", "y"),
               },
           })
+
+    def gcase(label, text, want):
+        """Rule 4 (issue 1429), on synthetic cmake text.
+
+        The BROKEN and the CORRECT spelling of one guard differ by two
+        characters, so the negative control is the only thing that says which
+        one this gate is actually matching."""
+        nonlocal failures
+        got = valueless_carrier_guards([("synthetic.cmake", text)])
+        ok = (len(got) > 0) == want
+        if not ok:
+            failures += 1
+            print("       %s" % "\n       ".join(got))
+        print("  %-46s %s" % (label, "ok" if ok else "FAILED"))
+
+    gcase("get_property + bare `v STREQUAL \"\"` -> finding",
+          'get_property(_v GLOBAL PROPERTY P)\nif(NOT _v STREQUAL "")\n', True)
+    gcase("...with the operands reversed -> finding",
+          'get_property(_v GLOBAL PROPERTY P)\nif(NOT "" STREQUAL _v)\n', True)
+    gcase("get_property + quoted dereference -> clean",
+          'get_property(_v GLOBAL PROPERTY P)\nif(NOT "${_v}" STREQUAL "")\n',
+          False)
+    gcase("get_property read through a defining helper -> clean",
+          '_nros_entity_fact(_v P)\nif(NOT _v STREQUAL "")\n', False)
+    # A variable `set()` locally is always DEFINED, so the bare form is correct
+    # there and must not be reported -- the rule is about the READER, and a gate
+    # that fires on every emptiness test in the tree gets switched off.
+    gcase("a `set()` variable tested bare -> clean",
+          'set(_v "x")\nif(NOT _v STREQUAL "")\n', False)
 
     print("check-declared-fact-carriers --self-test: %d check(s) failed" % failures)
     return 1 if failures else 0
