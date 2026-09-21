@@ -123,7 +123,18 @@ pub fn is_known_framework(name: &str) -> bool {
 pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
     Some(match key {
         "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => "rtic",
-        "zephyr" => "zephyr",
+        // BOTH names of the zephyr board descriptor
+        // (`packages/boards/zephyr/nros-board.toml`: `names = ["zephyr",
+        // "native_sim/native/64"]`). Issue 1435 — `native_sim/native/64`
+        // became a `BOARD_PATHS` key in phase-445 W5 and was not added here,
+        // so it resolved to `None`, which every caller reads as `owned-spin`,
+        // which emits `<ZephyrBoard as BoardEntry>::run` — and that crate has
+        // ZERO `BoardEntry` impls, so the entry cannot compile. Latent only
+        // because no board crate declares a framework (making this table the
+        // one in-tree route) and every live Rust Zephyr leaf writes the short
+        // name. A key is a name of a BOARD; both names of one board want the
+        // same entry shape, always.
+        "zephyr" | "native_sim/native/64" => "zephyr",
         "esp32-qemu" | "esp32-c3-baremetal" => "esp32",
         // NuttX, FreeRTOS, ThreadX and native ride `owned-spin`: the RTOS (or
         // the board crate's own entry symbol) calls `main`, and the macro emits
@@ -948,6 +959,55 @@ pub fn tier_from_model(t: &ros_launch_manifest_sched::TierDef, target_rtos: &str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1435 — two keys that name the SAME board ZST must want the same
+    /// entry shape.
+    ///
+    /// A board's framework is a property of the BOARD, so a board reached by
+    /// two names cannot want `zephyr` under one and `owned-spin` under the
+    /// other. That is exactly what `native_sim/native/64` did: phase-445 W5
+    /// added it to [`BOARD_PATHS`] as the zephyr board's second name and did
+    /// not add it to [`framework_for_board_key`], so it read `None` —
+    /// `owned-spin` to every caller — and both Rust producers would have
+    /// emitted `<ZephyrBoard as BoardEntry>::run`, a trait `ZephyrBoard` does
+    /// not implement.
+    ///
+    /// Keyed on the ZST PATH rather than on a list of keys, because a list is
+    /// what `nros-macros`' `in_tree_board_keys_resolve_to_an_emit_shape`
+    /// already is — it names ten of the twenty-one keys, and the one that was
+    /// wrong is not among them.
+    #[test]
+    fn every_key_of_one_board_zst_wants_one_framework() {
+        use std::collections::BTreeMap;
+        let mut by_zst: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+        for key in board_path_keys() {
+            let zst = board_path_for(key).expect("a key from the table is in the table");
+            let fw = framework_for_board_key(key).unwrap_or("owned-spin");
+            by_zst.entry(zst).or_default().push((key, fw));
+        }
+        // The table is a many-to-one map, so this only means something if some
+        // ZST really is reached by two names.
+        let shared = by_zst.values().filter(|ks| ks.len() > 1).count();
+        assert!(
+            shared >= 3,
+            "only {shared} board ZST(s) are named twice — this test compares \
+             almost nothing"
+        );
+        for (zst, keys) in &by_zst {
+            let (first_key, first_fw) = keys[0];
+            for &(key, fw) in &keys[1..] {
+                assert_eq!(
+                    fw, first_fw,
+                    "`{zst}` is named by `{first_key}` (framework `{first_fw}`) \
+                     and by `{key}` (framework `{fw}`). A framework is a \
+                     property of the BOARD, so add `{key}` to \
+                     `framework_for_board_key`'s arm for `{first_fw}` — a \
+                     missing arm reads as `owned-spin` and emits a \
+                     `BoardEntry::run` the ZST may not implement (issue 1435)."
+                );
+            }
+        }
+    }
 
     /// Mirror-drift guard: every field of the shared-schema tier must survive
     /// `tier_from_model`. If either schema grows a field, this test is the

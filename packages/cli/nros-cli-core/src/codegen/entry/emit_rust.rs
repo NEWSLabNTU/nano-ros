@@ -73,14 +73,21 @@ struct RustNodeView {
 
 /// Emit a Rust `main.rs` body for the given plan.
 ///
-/// Output mirrors the proc-macro's `OwnedSpin` framework branch — RTIC and
-/// Embassy stay proc-macro-only, since they need `proc_macro::Span` for the
-/// `custom_tasks` splice. The body installs the same three entry arms the
-/// macro does: an `extern "C" fn main` for `target_os = "none"` (a C runtime
-/// calls it), a second one for `target_os = "nuttx"` (the family is `no_std`
-/// since phase-359 W7, so libstd's `lang_start` is not there to wrap a Rust
-/// `main`), and — only for a board whose entry LINKS `std` — a hosted Rust
-/// `fn main()`. The third is issue 1409; see [`RustEntryView::links_std`].
+/// Output mirrors the proc-macro's `OwnedSpin` framework branch, and that is
+/// now ENFORCED rather than merely stated: a board wanting any other shape is
+/// refused, naming the shape and pointing at `nros::main!` (issue 1435, see
+/// [`refuse_non_owned_spin`]). The four non-owned-spin frameworks stay
+/// proc-macro-only for reasons that differ per framework — RTIC and Embassy
+/// need `proc_macro::Span` for the `custom_tasks` splice, Zephyr needs the
+/// backend register and spin-or-tiers tail that `LoweredEntry` does not carry,
+/// ESP32 needs esp-hal's own entry attribute.
+///
+/// The body installs the same three entry arms the macro does: an
+/// `extern "C" fn main` for `target_os = "none"` (a C runtime calls it), a
+/// second one for `target_os = "nuttx"` (the family is `no_std` since
+/// phase-359 W7, so libstd's `lang_start` is not there to wrap a Rust `main`),
+/// and — only for a board whose entry LINKS `std` — a hosted Rust `fn main()`.
+/// The third is issue 1409; see [`RustEntryView::links_std`].
 ///
 /// A board key the Rust pack has no ZST for is an error; see
 /// [`emit_lowered`].
@@ -124,6 +131,9 @@ pub fn lower(plan: &Plan) -> LoweredEntry {
 /// (issue 1285 follow-up), which rendered a host `BoardEntry::run` for any key
 /// it did not know. The parity corpus had one such case: `freertos-posix`, a
 /// C-only board, rendered as `LinuxBoard`.
+///
+/// A board key whose FRAMEWORK is not `owned-spin` is the second refusal, and
+/// it is issue 1435. See [`refuse_non_owned_spin`].
 pub fn emit_lowered(entry: &LoweredEntry) -> Result<String, String> {
     let board_path = board_path_for(&entry.board).ok_or_else(|| {
         format!(
@@ -132,6 +142,7 @@ pub fn emit_lowered(entry: &LoweredEntry) -> Result<String, String> {
             nros_orchestration_ir::board_path_keys_csv()
         )
     })?;
+    refuse_non_owned_spin(&entry.board)?;
     // Issue 1409 — the SAME table `board_path_for` just consulted, so the key
     // is known by construction here and `unwrap_or(true)` is the unreachable
     // arm rather than a policy. The policy for an UNKNOWN board ("assume
@@ -252,6 +263,58 @@ fn node_view(n: &LoweredNode) -> RustNodeView {
 /// the IR crate is automatically available here with no extra edit.
 fn board_path_for(board: &str) -> Option<&'static str> {
     nros_orchestration_ir::board_path_for(board)
+}
+
+/// The framework this template renders, and the only one it can.
+///
+/// The template's body is `<Board as BoardEntry>::run(closure)` — the
+/// proc-macro's `Framework::OwnedSpin` branch and nothing else.
+const RENDERED_FRAMEWORK: &str = "owned-spin";
+
+/// Issue 1435 — refuse a board whose entry shape this template does not render.
+///
+/// [`emit`]'s doc comment has said "RTIC and Embassy stay proc-macro-only"
+/// since phase 219.A, and it was prose the code contradicted: every key in
+/// `BOARD_PATHS` rendered the same `BoardEntry::run` call, whatever framework
+/// the board wants. MEASURED, by compiling the rendering of each key against
+/// stub crates carrying the board ZSTs' real impl sets:
+///
+/// - `zephyr` / `native_sim/native/64` → `ZephyrBoard`, which implements
+///   `BoardInit` / `BoardPrint` / `BoardExit` and **no** `BoardEntry`
+///   (Zephyr owns `main`; the macro's `Framework::Zephyr` arm emits a
+///   `rust_main` staticlib export instead) —
+///   `error[E0277]: the trait bound `ZephyrBoard: BoardEntry` is not satisfied`.
+/// - `rtic-mps2-an385` / `qemu-rtic-mps2-an385` → `RticMps2An385`, which
+///   implements `RticBoardEntry` — a SEPARATE trait, not a subtrait — so the
+///   same `E0277`.
+/// - `esp32-qemu` / `esp32-c3-baremetal` → `Esp32QemuEntry`, which DOES
+///   implement `BoardEntry`, so this one compiles. It still cannot boot:
+///   esp-riscv-rt's `_start` jumps to the esp-hal entry registration, so the
+///   boot symbol must be `#[::esp_hal::main] fn main() -> !` and the bare
+///   `extern "C" fn main` this template emits is never called. Refused with
+///   the others because the rule is "this emitter renders ONE framework", not
+///   "this emitter renders whatever happens to type-check" — the quieter
+///   failure is the worse one to ship.
+///
+/// The predicate is the SSoT both producers already consult,
+/// `nros_orchestration_ir::framework_for_board_key`, so a new non-owned-spin
+/// board is refused here the day its framework row is written, with no edit to
+/// this file. `None` means "no in-tree opinion", which every caller reads as
+/// `owned-spin`; the key is known by construction here (`board_path_for`
+/// resolved it one line up), and issue 1435 also closed the one key that was
+/// in `BOARD_PATHS` and not in the framework table.
+fn refuse_non_owned_spin(board: &str) -> Result<(), String> {
+    let framework =
+        nros_orchestration_ir::framework_for_board_key(board).unwrap_or(RENDERED_FRAMEWORK);
+    if framework == RENDERED_FRAMEWORK {
+        return Ok(());
+    }
+    Err(format!(
+        "the Rust entry pack renders the `{RENDERED_FRAMEWORK}` entry shape \
+         (`<Board as BoardEntry>::run`), and board `{board}` wants the \
+         `{framework}` shape. Use the `nros::main!()` proc-macro, which is the \
+         canonical Rust entry emitter and has a branch for it."
+    ))
 }
 
 /// Quote a string into a valid Rust string literal (raw form when
@@ -500,6 +563,105 @@ mod tests {
                     "`{board}`: message omits `{known}`: {err}"
                 );
             }
+        }
+    }
+
+    /// Issue 1435 — every board key either renders the `owned-spin` shape, or
+    /// is refused.
+    ///
+    /// Asserted per KEY over the whole table, not on a chosen example, and
+    /// keyed on the framework SSoT rather than on a list of board names: a
+    /// list is what `nros-macros`'
+    /// `in_tree_board_keys_resolve_to_an_emit_shape` already is, it names ten
+    /// of twenty-one keys, and the key that was wrong
+    /// (`native_sim/native/64`) is not among them.
+    ///
+    /// The rendering side is checked too, not just the boolean: a refactor
+    /// that keeps the refusal and renders something other than
+    /// `BoardEntry::run` for an accepted key fails here.
+    #[test]
+    fn a_board_wanting_another_framework_is_refused_not_rendered_as_owned_spin() {
+        let mut rendered = 0usize;
+        let mut refused: Vec<&str> = Vec::new();
+        for key in nros_orchestration_ir::board_path_keys() {
+            let framework =
+                nros_orchestration_ir::framework_for_board_key(key).unwrap_or("owned-spin");
+            let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+            plan.board = key.into();
+            match emit(&plan) {
+                Ok(src) => {
+                    assert_eq!(
+                        framework, "owned-spin",
+                        "`{key}` wants the `{framework}` entry shape and was \
+                         RENDERED anyway. This template emits \
+                         `<Board as BoardEntry>::run`, which is `owned-spin`; \
+                         for any other framework the board ZST either does not \
+                         implement `BoardEntry` (a compile error minutes later) \
+                         or does and is never called (issue 1435):\n{src}"
+                    );
+                    // …and it really is that shape.
+                    let zst = nros_orchestration_ir::board_path_for(key).expect("a known key");
+                    assert!(
+                        src.contains(&format!("<{zst} as ")) && src.contains("BoardEntry>::run("),
+                        "`{key}`: accepted, but did not render the \
+                         `BoardEntry::run` shape the refusal is defined \
+                         against:\n{src}"
+                    );
+                    rendered += 1;
+                }
+                Err(e) => {
+                    assert_ne!(
+                        framework, "owned-spin",
+                        "`{key}` wants the shape this template renders and was \
+                         refused: {e}"
+                    );
+                    assert!(
+                        e.contains(&format!("`{key}`")) && e.contains(&format!("`{framework}`")),
+                        "`{key}`: the refusal must name the board AND the shape \
+                         it wanted, or the reader cannot tell it from the \
+                         unknown-board refusal: {e}"
+                    );
+                    assert!(
+                        e.contains("nros::main!"),
+                        "`{key}`: the refusal must point at the producer that \
+                         CAN emit this board: {e}"
+                    );
+                    refused.push(key);
+                }
+            }
+        }
+        // Both arms must be exercised, or this passes having compared one.
+        assert!(rendered >= 10, "only {rendered} board key(s) rendered");
+        // In `BOARD_PATHS` order. Pinned rather than counted: this set is the
+        // whole behaviour change of issue 1435, and a key leaving it silently
+        // is how a rendering nobody can compile comes back.
+        assert_eq!(
+            refused,
+            vec![
+                "esp32-qemu",
+                "esp32-c3-baremetal",
+                "zephyr",
+                "native_sim/native/64",
+                "rtic-mps2-an385",
+                "qemu-rtic-mps2-an385",
+            ],
+            "the refused set moved — read issue 1435 before editing this list"
+        );
+    }
+
+    /// The ESP32 half of the same refusal, spelled out because it is the one
+    /// the reader will want to argue with: `Esp32QemuEntry` DOES implement
+    /// `BoardEntry`, so this rendering compiled. It could not boot —
+    /// esp-riscv-rt's `_start` reaches the esp-hal entry registration, not a
+    /// bare `extern "C" fn main` — and a rendering that compiles and does not
+    /// run is the worse of the two failures to ship.
+    #[test]
+    fn esp32_is_refused_although_its_zst_does_implement_board_entry() {
+        for key in ["esp32-qemu", "esp32-c3-baremetal"] {
+            let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+            plan.board = key.into();
+            let err = emit(&plan).expect_err(key);
+            assert!(err.contains("`esp32`"), "{err}");
         }
     }
 
