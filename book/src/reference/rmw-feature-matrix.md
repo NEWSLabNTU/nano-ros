@@ -37,7 +37,7 @@ backends land implementations.
 | Connectivity ping | wired | wired | — |
 | Identity / feature probe | — | — | — |
 | Publisher GID / matched counts | — | — | wired |
-| Actual-QoS read-back | — | — | wired |
+| Actual-QoS read-back | wired | — | wired |
 | Wait-for-acked | — | — | — |
 | Take-with-info | wired | — | — |
 | Graph introspection (names/types/counts) | wired | — | wired |

@@ -196,6 +196,19 @@ pub(super) fn admit(
                 "history SYSTEM_DEFAULT reached the backend unresolved",
             ));
         }
+        // issue 1437 — `UNKNOWN` is what a `*_get_actual_qos` read-back writes
+        // for a policy it could not report. As a REQUEST it means a caller fed
+        // a read-back profile back into `create_*`, which is refused here for
+        // the same reason the sentinel is: there is nothing to grant.
+        QoSHistoryPolicy::Unknown => {
+            return Err(refuse(
+                kind,
+                name,
+                QoSPolicyMask::NONE,
+                "history UNKNOWN is a read-back sentinel, not a request — a \
+                 `*_get_actual_qos` answer was fed back into `create_*`",
+            ));
+        }
     }
 
     // nros-qos-honours: DURABILITY_VOLATILE — VOLATILE is served by every
@@ -232,6 +245,16 @@ pub(super) fn admit(
             ));
         }
         // See the history arm: an unresolved sentinel is the caller's bug.
+        // See the history arm.
+        QoSDurabilityPolicy::Unknown => {
+            return Err(refuse(
+                kind,
+                name,
+                QoSPolicyMask::NONE,
+                "durability UNKNOWN is a read-back sentinel, not a request — a \
+                 `*_get_actual_qos` answer was fed back into `create_*`",
+            ));
+        }
         QoSDurabilityPolicy::SystemDefault => {
             return Err(refuse(
                 kind,
@@ -344,6 +367,16 @@ pub(super) fn admit(
                 name,
                 QoSPolicyMask::LIVELINESS_MANUAL_BY_NODE,
                 "— the shim asserts per publisher, not per node",
+            ));
+        }
+        // See the history arm.
+        QoSLivelinessPolicy::Unknown => {
+            return Err(refuse(
+                kind,
+                name,
+                QoSPolicyMask::NONE,
+                "liveliness UNKNOWN is a read-back sentinel, not a request — a \
+                 `*_get_actual_qos` answer was fed back into `create_*`",
             ));
         }
     }

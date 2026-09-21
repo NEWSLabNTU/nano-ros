@@ -106,22 +106,26 @@ RUST_TO_CANONICAL = {
         "SystemDefault": "SYSTEM_DEFAULT",
         "KeepLast": "KEEP_LAST",
         "KeepAll": "KEEP_ALL",
+        "Unknown": "UNKNOWN",
     },
     "reliability": {
         "SystemDefault": "SYSTEM_DEFAULT",
         "Reliable": "RELIABLE",
         "BestEffort": "BEST_EFFORT",
+        "Unknown": "UNKNOWN",
     },
     "durability": {
         "SystemDefault": "SYSTEM_DEFAULT",
         "Volatile": "VOLATILE",
         "TransientLocal": "TRANSIENT_LOCAL",
+        "Unknown": "UNKNOWN",
     },
     "liveliness_kind": {
         "None": "SYSTEM_DEFAULT",
         "Automatic": "AUTOMATIC",
         "ManualByNode": "MANUAL_BY_NODE",
         "ManualByTopic": "MANUAL_BY_TOPIC",
+        "Unknown": "UNKNOWN",
     },
 }
 
@@ -370,11 +374,12 @@ MIRROR_DEVIATION = re.compile(r"nros-qos-mirror-deviation:\s*(.+?)\s*(?:\*/)?\s*
 # because "the table has no row for it" is also what a missing preset looks
 # like.
 MIRROR_UNMODELLED = {
-    ("rmw_entity.h", "UNKNOWN"): (
-        "`rmw_qos_profile_unknown` is declared absent from the SSoT "
-        "(nros-qos-absent in traits.rs): three of our four policy enums have no "
-        "`Unknown` variant to build it from."
-    ),
+    # ("rmw_entity.h", "UNKNOWN") lived here until issue 1437. Its reason was
+    # that three of our four policy enums had no `Unknown` variant to build
+    # `rmw_qos_profile_unknown` from — true when written, and the thing 1437
+    # changed. The row is a modelled preset now (see `presets` below), so the
+    # C macro and `QOS_PROFILE_UNKNOWN` are compared field by field instead of
+    # excused.
     ("qos.hpp", "rosout"): (
         "`rcl_qos_profile_rosout_default` is an rcl profile with no nano-ros "
         "preset and no row in the upstream record — phase-428 W10 carried it "
@@ -741,6 +746,7 @@ MIRRORS = [
             "PARAMETERS": "QOS_PROFILE_PARAMETERS",
             "PARAMETER_EVENTS": "QOS_PROFILE_PARAMETER_EVENTS",
             "SYSTEM_DEFAULT": "QOS_PROFILE_SYSTEM_DEFAULT",
+            "UNKNOWN": "QOS_PROFILE_UNKNOWN",
         },
     ),
     Mirror(

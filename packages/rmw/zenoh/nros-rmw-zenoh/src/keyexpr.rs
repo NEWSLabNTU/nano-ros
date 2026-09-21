@@ -206,18 +206,27 @@ impl QosKeyExpr for QoSProfile {
             QoSReliabilityPolicy::SystemDefault => 0,
             QoSReliabilityPolicy::Reliable => 1,
             QoSReliabilityPolicy::BestEffort => 2,
+            // issue 1437 — a read-back sentinel, which cannot reach a token: a
+            // token is derived from `admit`'s GRANT, and `admit` never grants
+            // one. Upstream's `rmw_zenoh_cpp` has no digit for it either, so 0
+            // ("unstated") is the least wrong thing to emit if it ever did.
+            QoSReliabilityPolicy::Unknown => 0,
         };
 
         let durability = match self.durability {
             QoSDurabilityPolicy::SystemDefault => 0,
             QoSDurabilityPolicy::TransientLocal => 1,
             QoSDurabilityPolicy::Volatile => 2,
+            // See the reliability arm.
+            QoSDurabilityPolicy::Unknown => 0,
         };
 
         let history = match self.history {
             QoSHistoryPolicy::SystemDefault => 0,
             QoSHistoryPolicy::KeepLast => 1,
             QoSHistoryPolicy::KeepAll => 2,
+            // See the reliability arm.
+            QoSHistoryPolicy::Unknown => 0,
         };
 
         let _ = core::fmt::write(

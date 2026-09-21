@@ -22,9 +22,10 @@ namespace nros_rmw_uorb {
  *  what each of the four CORE policies means on a shared-memory ring. */
 rmw_ret_t qos_admit(const rmw_qos_profile_t* qos);
 
-/** Overwrite `in_out` — which arrives carrying the REQUEST — with what this
- *  backend actually gave, leaving every unreportable field as it came in.
- *  The `*_get_actual_qos` slots below are one-liners over this. */
+/** Overwrite `in_out` — which arrives carrying `NROS_RMW_QOS_PROFILE_UNKNOWN`
+ *  (issue 1437) — with what this backend actually gave, leaving every policy it
+ *  cannot determine at its `*_UNKNOWN` sentinel. The `*_get_actual_qos` slots
+ *  below are one-liners over this. */
 rmw_ret_t qos_granted(const struct orb_metadata* meta, rmw_qos_profile_t* in_out);
 
 /** The `NROS_RMW_QOS_POLICY_*` bits this backend honours. */

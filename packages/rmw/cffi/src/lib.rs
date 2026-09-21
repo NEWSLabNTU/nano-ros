@@ -42,8 +42,8 @@ pub use generated::*;
 
 use nros_rmw::{
     ClientTrait, GraphEndpointInfo, GraphEntityKind, MessageInfo, Publisher, QoSDurabilityPolicy,
-    QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy, ServiceInfo, ServiceRequest, ServiceTrait,
-    Session, TopicInfo, TransportError,
+    QoSHistoryPolicy, QoSLivelinessPolicy, QoSProfile, QoSReliabilityPolicy, ServiceInfo,
+    ServiceRequest, ServiceTrait, Session, TopicInfo, TransportError,
 };
 
 // Phase 115.L.0 — generic Rust→C-vtable adapter. Lives behind the
@@ -467,6 +467,11 @@ impl TryFrom<QoSProfile> for NrosRmwQos {
                     generated::NROS_RMW_RELIABILITY_BEST_EFFORT as u8
                 }
                 QoSReliabilityPolicy::Reliable => generated::NROS_RMW_RELIABILITY_RELIABLE as u8,
+                // A read-back sentinel crossing back DOWN. `validate_against`
+                // refuses it as a request, so the only profile that reaches
+                // here carrying it is one the runtime built for a read-back
+                // OUT-parameter — which is exactly where it has to be legal.
+                QoSReliabilityPolicy::Unknown => generated::NROS_RMW_RELIABILITY_UNKNOWN as u8,
             },
             durability: match qos.durability {
                 QoSDurabilityPolicy::SystemDefault => {
@@ -476,11 +481,13 @@ impl TryFrom<QoSProfile> for NrosRmwQos {
                 QoSDurabilityPolicy::TransientLocal => {
                     generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL as u8
                 }
+                QoSDurabilityPolicy::Unknown => generated::NROS_RMW_DURABILITY_UNKNOWN as u8,
             },
             history: match qos.history {
                 QoSHistoryPolicy::SystemDefault => generated::NROS_RMW_HISTORY_SYSTEM_DEFAULT as u8,
                 QoSHistoryPolicy::KeepLast => generated::NROS_RMW_HISTORY_KEEP_LAST as u8,
                 QoSHistoryPolicy::KeepAll => generated::NROS_RMW_HISTORY_KEEP_ALL as u8,
+                QoSHistoryPolicy::Unknown => generated::NROS_RMW_HISTORY_UNKNOWN as u8,
             },
             liveliness_kind: qos.liveliness_kind as u8,
             depth: qos.depth as u16,
@@ -491,6 +498,63 @@ impl TryFrom<QoSProfile> for NrosRmwQos {
             avoid_ros_namespace_conventions: qos.avoid_ros_namespace_conventions as u8,
             _reserved1: [0; 3],
         })
+    }
+}
+
+/// The inverse of [`TryFrom<QoSProfile> for NrosRmwQos`] — what a C backend
+/// ANSWERED, back in the vocabulary a Rust caller reasons in.
+///
+/// Infallible on purpose, and the reason is the `_ =>` arms: this reads a
+/// value a BACKEND wrote, and a backend that writes a discriminant this ABI
+/// does not define has told us nothing about that policy. `Unknown` is exactly
+/// that statement, so an unrecognised value degrades to "I cannot say" rather
+/// than to a confident wrong policy or to an error that would discard the four
+/// fields that WERE readable. `depth` widens (`u16` -> `u32`) and cannot lose.
+pub fn qos_from_c(q: &NrosRmwQos) -> QoSProfile {
+    QoSProfile {
+        reliability: match q.reliability as i32 {
+            NROS_RMW_RELIABILITY_SYSTEM_DEFAULT => QoSReliabilityPolicy::SystemDefault,
+            NROS_RMW_RELIABILITY_RELIABLE => QoSReliabilityPolicy::Reliable,
+            NROS_RMW_RELIABILITY_BEST_EFFORT => QoSReliabilityPolicy::BestEffort,
+            _ => QoSReliabilityPolicy::Unknown,
+        },
+        durability: match q.durability as i32 {
+            generated::NROS_RMW_DURABILITY_SYSTEM_DEFAULT => QoSDurabilityPolicy::SystemDefault,
+            generated::NROS_RMW_DURABILITY_VOLATILE => QoSDurabilityPolicy::Volatile,
+            generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL => QoSDurabilityPolicy::TransientLocal,
+            _ => QoSDurabilityPolicy::Unknown,
+        },
+        history: match q.history as i32 {
+            generated::NROS_RMW_HISTORY_SYSTEM_DEFAULT => QoSHistoryPolicy::SystemDefault,
+            generated::NROS_RMW_HISTORY_KEEP_LAST => QoSHistoryPolicy::KeepLast,
+            generated::NROS_RMW_HISTORY_KEEP_ALL => QoSHistoryPolicy::KeepAll,
+            _ => QoSHistoryPolicy::Unknown,
+        },
+        liveliness_kind: match u32::from(q.liveliness_kind) {
+            generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_SYSTEM_DEFAULT => {
+                QoSLivelinessPolicy::None
+            }
+            generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_AUTOMATIC => {
+                QoSLivelinessPolicy::Automatic
+            }
+            generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_MANUAL_BY_NODE => {
+                QoSLivelinessPolicy::ManualByNode
+            }
+            generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC => {
+                QoSLivelinessPolicy::ManualByTopic
+            }
+            _ => QoSLivelinessPolicy::Unknown,
+        },
+        depth: u32::from(q.depth),
+        deadline_ms: q.deadline_ms,
+        lifespan_ms: q.lifespan_ms,
+        liveliness_lease_ms: q.liveliness_lease_ms,
+        avoid_ros_namespace_conventions: q.avoid_ros_namespace_conventions != 0,
+        // Not a DDS policy and not on the C QoS struct — a publisher-side
+        // transport hint (issue 0145). Nothing negotiates it, so a read-back
+        // has nothing to say about it and `false` is the struct's own default,
+        // not an answer.
+        tx_express: false,
     }
 }
 
@@ -2373,7 +2437,13 @@ fn report_qos_downgrade(kind: &str, name: &str, requested: &NrosRmwQos, granted:
             _ => "?",
         }
     }
-    if requested.reliability != granted.reliability {
+    // An `UNKNOWN` field is the backend saying it could not determine the
+    // policy. Comparing it against the request would report every unreportable
+    // policy as a downgrade, which is the inverse of the old bug and just as
+    // wrong: silence is not a grant, and neither is it a change.
+    if requested.reliability != granted.reliability
+        && !is_unknown(granted.reliability, NROS_RMW_RELIABILITY_UNKNOWN)
+    {
         nros_log::log_warn!(
             nros_log::get_logger("nros_rmw_cffi"),
             "{kind} `{name}`: asked for reliability {} and the backend granted {}. A RELIABLE \
@@ -2383,7 +2453,9 @@ fn report_qos_downgrade(kind: &str, name: &str, requested: &NrosRmwQos, granted:
             reliability(granted.reliability)
         );
     }
-    if requested.durability != granted.durability {
+    if requested.durability != granted.durability
+        && !is_unknown(granted.durability, NROS_RMW_DURABILITY_UNKNOWN)
+    {
         nros_log::log_warn!(
             nros_log::get_logger("nros_rmw_cffi"),
             "{kind} `{name}`: asked for durability {} and the backend granted {}.",
@@ -2401,44 +2473,95 @@ fn report_qos_downgrade(kind: &str, name: &str, requested: &NrosRmwQos, granted:
     }
 }
 
-/// Read a granted QoS back off one entity and report what changed.
+/// The C-ABI spelling of [`QoSProfile::QOS_PROFILE_UNKNOWN`] — every policy an
+/// ABSENCE.
+///
+/// This is what a `*_get_actual_qos` out-struct is pre-loaded with, so a field
+/// the backend does not overwrite reads as "I cannot report this" rather than
+/// as a confident grant. Built from the Rust preset rather than restated, so
+/// the two cannot drift.
+fn qos_unknown_c() -> NrosRmwQos {
+    // The conversion's only failure is `depth > u16::MAX`, and the preset's
+    // depth is 0.
+    NrosRmwQos::try_from(QoSProfile::QOS_PROFILE_UNKNOWN)
+        .expect("QOS_PROFILE_UNKNOWN has depth 0 and therefore lowers")
+}
+
+/// Is this policy value the C ABI's `*_UNKNOWN` sentinel?
+///
+/// Only `report_qos_downgrade` asks, and that is `alloc`-only (it logs), so
+/// this carries the same gate rather than sitting dead in a `no_std` build.
+#[cfg(feature = "alloc")]
+fn is_unknown(field: u8, unknown: i32) -> bool {
+    field as i32 == unknown
+}
+
+/// Read the GRANTED QoS back off one entity.
 ///
 /// The read-back is SIX slots — publisher, subscription, and the four
 /// service/client directions — and every one of them is the same three steps:
-/// pre-load the out-struct with the REQUEST (the slot's own contract: a field
-/// the backend does not report must read back as asked, not as zero), call the
-/// slot, compare. `create_publisher` carried those three steps inline, and
-/// issue 1327 needed four more copies of them — which is how the sizes-header
-/// mirror reached six sites. One helper instead, generic over the entity type,
-/// since the slots differ only in which handle they take.
+/// pre-load the out-struct, call the slot, keep the answer.
+/// `create_publisher` carried those three steps inline, and issue 1327 needed
+/// four more copies of them — which is how the sizes-header mirror reached six
+/// sites. One helper instead, generic over the entity type, since the slots
+/// differ only in which handle they take.
 ///
-/// Returns the GRANTED profile, so a caller — and a test — can see what the
-/// backend answered rather than only that a line was logged. `None` means the
-/// backend has no read-back for this entity (NULL slot) or declined this one
-/// (a non-OK return), which is a declared absence and not a downgrade.
+/// **The pre-load is `UNKNOWN`, not the request.** It was the request until
+/// this phase, and that inverted the slot's own contract: `rmw_vtable.h` says a
+/// backend writes `*_UNKNOWN` for a policy it cannot determine, so a field
+/// nobody overwrote read back as GRANTED — a caller comparing request against
+/// answer saw agreement precisely where the backend had said nothing. Cyclone's
+/// `qos_from_dds` overwrites exactly the fields whose `dds_qget_*` succeeds, so
+/// the pre-load is the whole of the difference.
+///
+/// `None` means the backend has no read-back for this entity (NULL slot) or
+/// declined this one (a non-OK return), which is a declared absence and not a
+/// downgrade. Callers store [`qos_unknown_c`] for it — the same absence, spelled
+/// per policy.
 ///
 /// # Safety
 /// `entity` must point at a live view of an entity this session created, and
 /// `slot` must be a slot the registered vtable installed for that entity type.
-#[cfg(feature = "alloc")]
-unsafe fn report_granted_qos<E>(
+unsafe fn read_granted_qos<E>(
+    entity: *const E,
+    slot: Option<unsafe extern "C" fn(*const E, *mut NrosRmwQos) -> NrosRmwRet>,
+) -> Option<NrosRmwQos> {
+    let read = slot?;
+    let mut granted = qos_unknown_c();
+    // SAFETY: the caller's contract, above.
+    if unsafe { read(entity, &mut granted) } != NROS_RMW_RET_OK {
+        return None;
+    }
+    Some(granted)
+}
+
+/// [`read_granted_qos`] plus the diagnostic line, and the granted profile for
+/// the caller to RETAIN.
+///
+/// Returns what the entity will actually run: the backend's answer where it
+/// has one, and [`qos_unknown_c`] where it does not — never the request, which
+/// is the value this accessor exists to be different from.
+///
+/// # Safety
+/// As [`read_granted_qos`].
+unsafe fn granted_qos_of<E>(
     kind: &str,
     name: &str,
     requested: &NrosRmwQos,
     entity: *const E,
     slot: Option<unsafe extern "C" fn(*const E, *mut NrosRmwQos) -> NrosRmwRet>,
-) -> Option<NrosRmwQos> {
-    let read = slot?;
-    // The out-struct arrives carrying the request — see the slot's header
-    // block. A zeroed one would make an unreported field indistinguishable
-    // from a real grant of zero.
-    let mut granted = *requested;
-    // SAFETY: the caller's contract, above.
-    if unsafe { read(entity, &mut granted) } != NROS_RMW_RET_OK {
-        return None;
-    }
+) -> NrosRmwQos {
+    // SAFETY: the caller's contract.
+    let Some(granted) = (unsafe { read_granted_qos(entity, slot) }) else {
+        return qos_unknown_c();
+    };
+    #[cfg(feature = "alloc")]
     report_qos_downgrade(kind, name, requested, &granted);
-    Some(granted)
+    #[cfg(not(feature = "alloc"))]
+    {
+        let _ = (kind, name, requested);
+    }
+    granted
 }
 
 impl Session for CffiSession {
@@ -2477,6 +2600,9 @@ impl Session for CffiSession {
             topic_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],
             qos: qos_struct,
+            // Overwritten with the backend's answer below, once the entity
+            // exists. An absence until then, never the request.
+            actual_qos: qos_unknown_c(),
             can_loan_messages: false,
             backend_data: core::ptr::null_mut(),
             polled_events: [const { Cell::new(None) }; PUB_EVENT_KINDS.len()],
@@ -2559,13 +2685,16 @@ impl Session for CffiSession {
         // error. The per-entity answer belongs on the call, which is
         // consulted; not on a flag, which is not.
         pub_state.can_loan_messages = pub_state.vtable.borrow_loaned_message.is_some();
-        // phase-393 W1 — say so when the backend granted something else.
-        #[cfg(feature = "alloc")]
+        // phase-393 W1 — say so when the backend granted something else, and
+        // RETAIN the answer: `actual_qos()` is the accessor upstream's
+        // `rmw_publisher_get_actual_qos` is, and the read-back used to be
+        // logged and dropped, so nobody could ask.
         {
             let mut v = pub_state.make_view();
             let slot = pub_state.vtable.publisher_get_actual_qos;
             // SAFETY: the entity was created above and `v` describes it.
-            unsafe { report_granted_qos("publisher", topic.name, &qos_struct, &v, slot) };
+            pub_state.actual_qos =
+                unsafe { granted_qos_of("publisher", topic.name, &qos_struct, &v, slot) };
             let _ = &mut v;
         }
         Ok(pub_state)
@@ -2593,6 +2722,7 @@ impl Session for CffiSession {
             topic_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],
             qos: qos_struct,
+            actual_qos: qos_unknown_c(),
             can_loan_messages: false,
             backend_data: core::ptr::null_mut(),
             supports_in_place: false,
@@ -2650,6 +2780,20 @@ impl Session for CffiSession {
         // — but now it is false BECAUSE no backend fills the slot, which is
         // checkable, rather than because nobody remembered to write it.
         sub_state.can_loan_messages = sub_state.vtable.take_loaned_message.is_some();
+        // The SIXTH read-back, and the one that was never dispatched. Issue
+        // 1327 wired the publisher and the four service/client directions;
+        // `subscription_get_actual_qos` was filled by cyclonedds and uORB and
+        // called by nobody, so a subscription — the entity whose reliability
+        // downgrade is the classic "why is nothing arriving" — was the one
+        // that could not answer.
+        {
+            let mut v = sub_state.make_view();
+            let slot = sub_state.vtable.subscription_get_actual_qos;
+            // SAFETY: the entity was created above and `v` describes it.
+            sub_state.actual_qos =
+                unsafe { granted_qos_of("subscription", topic.name, &qos_struct, &v, slot) };
+            let _ = &mut v;
+        }
         // Phase 231 (RFC-0038) — cache the in-place capability once.
         // The capability is the CONJUNCTION of the probe and the slot that
         // would serve it (issue 0781). The probe alone was the whole answer,
@@ -2689,6 +2833,10 @@ impl Session for CffiSession {
             service_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],
             backend_data: core::ptr::null_mut(),
+            // Both overwritten with the backend's answers below, once the
+            // entity exists. An absence until then, never the request.
+            request_qos: qos_unknown_c(),
+            response_qos: qos_unknown_c(),
         };
         let svc_ptr = to_c_str(service.name, &mut srv_state.service_name_buf);
         let type_ptr = to_c_str(service.type_name, &mut srv_state.type_name_buf);
@@ -2737,21 +2885,20 @@ impl Session for CffiSession {
         // profile is observable through these slots and nowhere else. Both are
         // read: the request endpoint and the response endpoint negotiate
         // against different peers and may be granted different things.
-        #[cfg(feature = "alloc")]
         {
             let mut v = srv_state.make_view();
             let req = srv_state.vtable.service_request_subscription_get_actual_qos;
             let resp = srv_state.vtable.service_response_publisher_get_actual_qos;
             // SAFETY: the entity was created above and `v` describes it.
             unsafe {
-                report_granted_qos(
+                srv_state.request_qos = granted_qos_of(
                     "service request subscription",
                     service.name,
                     &qos_struct,
                     &v,
                     req,
                 );
-                report_granted_qos(
+                srv_state.response_qos = granted_qos_of(
                     "service response publisher",
                     service.name,
                     &qos_struct,
@@ -2778,6 +2925,10 @@ impl Session for CffiSession {
             service_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],
             backend_data: core::ptr::null_mut(),
+            // Both overwritten with the backend's answers below, once the
+            // entity exists. An absence until then, never the request.
+            request_qos: qos_unknown_c(),
+            response_qos: qos_unknown_c(),
         };
         let svc_ptr = to_c_str(service.name, &mut cli_state.service_name_buf);
         let type_ptr = to_c_str(service.type_name, &mut cli_state.type_name_buf);
@@ -2821,21 +2972,20 @@ impl Session for CffiSession {
         cli_state.backend_data = view.backend_data;
         // issue 1327 — the client half; see `create_service` for why both
         // directions are read.
-        #[cfg(feature = "alloc")]
         {
             let mut v = cli_state.make_view();
             let req = cli_state.vtable.client_request_publisher_get_actual_qos;
             let resp = cli_state.vtable.client_response_subscription_get_actual_qos;
             // SAFETY: the entity was created above and `v` describes it.
             unsafe {
-                report_granted_qos(
+                cli_state.request_qos = granted_qos_of(
                     "client request publisher",
                     service.name,
                     &qos_struct,
                     &v,
                     req,
                 );
-                report_granted_qos(
+                cli_state.response_qos = granted_qos_of(
                     "client response subscription",
                     service.name,
                     &qos_struct,
@@ -3264,6 +3414,18 @@ pub struct CffiPublisher {
     topic_name_buf: [u8; NAME_BUF_LEN],
     type_name_buf: [u8; NAME_BUF_LEN],
     qos: NrosRmwQos,
+    /// The profile the backend GRANTED, read back at create time.
+    ///
+    /// Not the request: `qos` above is what was asked for, this is what the
+    /// entity runs, and every policy the backend could not report carries its
+    /// `*_UNKNOWN` sentinel. `qos_unknown_c()` for a backend with no read-back
+    /// slot at all — every policy an absence, which is the honest answer and
+    /// is what [`nros_rmw::Publisher::actual_qos`] returns there.
+    ///
+    /// Read once at create rather than on every call: upstream's
+    /// `rmw_*_get_actual_qos` is a property of the entity, and a slot that
+    /// re-enters the backend would make an accessor a transport operation.
+    actual_qos: NrosRmwQos,
     can_loan_messages: bool,
     backend_data: *mut c_void,
     /// Issue 1164 — callbacks the runtime serves by polling
@@ -3974,6 +4136,16 @@ impl Publisher for CffiPublisher {
         self.poll_status_events();
         Ok(())
     }
+
+    /// The profile the backend GRANTED, read back at create time.
+    ///
+    /// Answers off the retained value rather than re-entering the backend:
+    /// upstream's `rmw_publisher_get_actual_qos` is a property of the entity,
+    /// and a backend call here would make an accessor a transport operation on
+    /// a `&self` that any callback may hold.
+    fn actual_qos(&self) -> QoSProfile {
+        qos_from_c(&self.actual_qos)
+    }
 }
 
 impl Drop for CffiPublisher {
@@ -4012,6 +4184,18 @@ pub struct CffiSubscription {
     topic_name_buf: [u8; NAME_BUF_LEN],
     type_name_buf: [u8; NAME_BUF_LEN],
     qos: NrosRmwQos,
+    /// The profile the backend GRANTED, read back at create time.
+    ///
+    /// Not the request: `qos` above is what was asked for, this is what the
+    /// entity runs, and every policy the backend could not report carries its
+    /// `*_UNKNOWN` sentinel. `qos_unknown_c()` for a backend with no read-back
+    /// slot at all — every policy an absence, which is the honest answer and
+    /// is what [`nros_rmw::Publisher::actual_qos`] returns there.
+    ///
+    /// Read once at create rather than on every call: upstream's
+    /// `rmw_*_get_actual_qos` is a property of the entity, and a slot that
+    /// re-enters the backend would make an accessor a transport operation.
+    actual_qos: NrosRmwQos,
     can_loan_messages: bool,
     backend_data: *mut c_void,
     /// Phase 231 (RFC-0038) — cached `subscription_supports_in_place` capability,
@@ -4534,6 +4718,12 @@ impl nros_rmw::Subscription for CffiSubscription {
             && (self.vtable.subscription_event_init.is_some()
                 || self.vtable.subscription_take_event.is_some())
     }
+
+    /// The profile the backend GRANTED. See
+    /// [`CffiPublisher::actual_qos`](Publisher::actual_qos).
+    fn actual_qos(&self) -> QoSProfile {
+        qos_from_c(&self.actual_qos)
+    }
 }
 
 impl Drop for CffiSubscription {
@@ -4573,6 +4763,17 @@ pub struct CffiService {
     service_name_buf: [u8; NAME_BUF_LEN],
     type_name_buf: [u8; NAME_BUF_LEN],
     backend_data: *mut c_void,
+    /// The profiles the backend GRANTED for this entity's TWO endpoints.
+    ///
+    /// `create_*` takes ONE profile and builds a request endpoint and a
+    /// response endpoint from it; they negotiate against different peers and
+    /// may be granted different things, and neither `rmw_service_t` nor
+    /// `rmw_client_t` has a `qos` field, so this is the only place the
+    /// per-direction answer exists. `qos_unknown_c()` where the backend has no
+    /// read-back slot.
+    request_qos: NrosRmwQos,
+    /// See [`Self::request_qos`].
+    response_qos: NrosRmwQos,
 }
 
 impl CffiService {
@@ -4666,6 +4867,19 @@ impl ServiceTrait for CffiService {
         }
         Ok(())
     }
+
+    /// What the REQUEST endpoint — the subscription this service takes
+    /// requests on — was granted.
+    fn request_subscription_actual_qos(&self) -> QoSProfile {
+        qos_from_c(&self.request_qos)
+    }
+
+    /// What the RESPONSE endpoint — the publisher this service answers on —
+    /// was granted. Not necessarily the same profile: one request built both
+    /// endpoints, and they negotiate against different peers.
+    fn response_publisher_actual_qos(&self) -> QoSProfile {
+        qos_from_c(&self.response_qos)
+    }
 }
 
 impl Drop for CffiService {
@@ -4704,6 +4918,17 @@ pub struct CffiClient {
     service_name_buf: [u8; NAME_BUF_LEN],
     type_name_buf: [u8; NAME_BUF_LEN],
     backend_data: *mut c_void,
+    /// The profiles the backend GRANTED for this entity's TWO endpoints.
+    ///
+    /// `create_*` takes ONE profile and builds a request endpoint and a
+    /// response endpoint from it; they negotiate against different peers and
+    /// may be granted different things, and neither `rmw_service_t` nor
+    /// `rmw_client_t` has a `qos` field, so this is the only place the
+    /// per-direction answer exists. `qos_unknown_c()` where the backend has no
+    /// read-back slot.
+    request_qos: NrosRmwQos,
+    /// See [`Self::request_qos`].
+    response_qos: NrosRmwQos,
 }
 
 impl CffiClient {
@@ -4815,6 +5040,18 @@ impl ClientTrait for CffiClient {
             return Err(error_from_ret(rc));
         }
         Ok(available)
+    }
+
+    /// What the REQUEST endpoint — the publisher this client sends requests on
+    /// — was granted.
+    fn request_publisher_actual_qos(&self) -> QoSProfile {
+        qos_from_c(&self.request_qos)
+    }
+
+    /// What the RESPONSE endpoint — the subscription this client takes replies
+    /// on — was granted. See [`Self::request_publisher_actual_qos`].
+    fn response_subscription_actual_qos(&self) -> QoSProfile {
+        qos_from_c(&self.response_qos)
     }
 }
 
@@ -5589,6 +5826,8 @@ mod tests {
             service_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],
             backend_data: core::ptr::dangling_mut::<c_void>(),
+            request_qos: qos_unknown_c(),
+            response_qos: qos_unknown_c(),
         };
         let mut buf = [0u8; 16];
 
@@ -5756,8 +5995,15 @@ mod tests {
     // Cyclonedds filled all four and NOTHING dispatched them, so the fix for
     // the bug issue 0823 describes sat unreached in the tree. These tests are
     // about the CONSUMER: that a `create_service` / `create_client` reaches
-    // each direction's slot, and that it hands the slot the REQUEST rather
-    // than a zeroed struct.
+    // each direction's slot, that it hands the slot `UNKNOWN` rather than the
+    // request or a zeroed struct, and — issue 1437 — that it KEEPS the answer,
+    // because a read-back that is logged and dropped cannot be asked.
+    //
+    // The pre-load was the REQUEST until issue 1437, which inverted the slot's
+    // own contract: `rmw_vtable.h` says a backend writes `*_UNKNOWN` for a
+    // policy it cannot determine, so a field nobody overwrote read back as
+    // GRANTED and the one consumer saw agreement exactly where the backend had
+    // said nothing.
     //
     // They refuse to pass vacuously the same way 0823's ctest does: the
     // scripted backend writes values the requested profile cannot have, so an
@@ -5877,21 +6123,54 @@ mod tests {
             "every service/client direction's read-back must be dispatched once"
         );
 
-        // …and each was handed the REQUEST, not a zeroed struct. A backend
-        // that cannot report a field leaves it as it arrived, so a zeroed
-        // out-struct would turn "unreported" into a confident grant of 0.
+        // …and each was handed UNKNOWN, not the request and not a zeroed
+        // struct. Both of the wrong pre-loads are a claim the backend did not
+        // make: the request says "granted what you asked" for a policy nobody
+        // read, and zero says "granted BEST_EFFORT / KEEP_LAST(0)".
+        let unknown = qos_unknown_c();
         for (i, saw) in unsafe { QOS_READBACK_SAW }.iter().enumerate() {
             let saw = saw.expect("slot recorded nothing");
             assert_eq!(
-                saw.depth, lowered.depth,
-                "slot {i} was handed depth {} rather than the requested {}",
-                saw.depth, lowered.depth
+                saw.reliability, unknown.reliability,
+                "slot {i} was handed reliability {} rather than UNKNOWN {}",
+                saw.reliability, unknown.reliability
             );
-            assert_eq!(saw.reliability, lowered.reliability, "slot {i} reliability");
+            assert_eq!(saw.durability, unknown.durability, "slot {i} durability");
+            assert_eq!(saw.history, unknown.history, "slot {i} history");
+            assert_ne!(
+                saw.reliability, lowered.reliability,
+                "slot {i} must not be handed the REQUEST — that is the inverted \
+                 contract issue 1437 fixed"
+            );
         }
+
+        // issue 1437 — the answer is RETAINED, per direction. This is what an
+        // accessor can be built on; before it, every one of these four reads
+        // went into a log line and was dropped.
+        use nros_rmw::{ClientTrait, ServiceTrait};
+        assert_eq!(
+            ServiceTrait::request_subscription_actual_qos(&_srv).depth,
+            u32::from(GRANTED_DEPTH),
+            "the service's request direction must report the GRANT"
+        );
+        assert_eq!(
+            ServiceTrait::response_publisher_actual_qos(&_srv).reliability,
+            nros_rmw::QoSReliabilityPolicy::BestEffort,
+            "the service's response direction must report the GRANT"
+        );
+        assert_eq!(
+            ClientTrait::request_publisher_actual_qos(&_cli).depth,
+            u32::from(GRANTED_DEPTH),
+            "the client's request direction must report the GRANT"
+        );
+        assert_ne!(
+            ClientTrait::response_subscription_actual_qos(&_cli).depth,
+            requested.depth,
+            "reporting the request back is the bug, not the feature"
+        );
     }
 
-    /// The helper the four sites share: it returns what the BACKEND answered.
+    /// The helper the six sites share: it returns what the BACKEND answered.
     /// An implementation that echoed its input would return the request, and a
     /// zeroing one would return zeros; only a real read returns the grant.
     #[cfg(feature = "alloc")]
@@ -5912,21 +6191,59 @@ mod tests {
         };
         // SAFETY: the scripted slot reads and writes only `qos`.
         let granted = unsafe {
-            report_granted_qos(
+            granted_qos_of(
                 "client request publisher",
                 "/add_two_ints",
                 &requested,
                 &entity,
                 Some(stub_client_request_qos),
             )
-        }
-        .expect("a filled slot returning OK must yield a grant");
+        };
         assert_eq!(granted.depth, GRANTED_DEPTH);
         assert_eq!(
             granted.reliability, NROS_RMW_RELIABILITY_BEST_EFFORT as u8,
             "the grant, not the request"
         );
         assert_ne!(granted.depth, requested.depth);
+    }
+
+    /// A backend with NO read-back slot answers an ABSENCE, never the request.
+    ///
+    /// This is the arm that decides what XRCE and zenoh-pico report, and the
+    /// one where returning the request would be most tempting and most wrong:
+    /// there is no negotiation to read, so "you got what you asked for" is a
+    /// claim nobody made.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn a_null_read_back_slot_answers_unknown_not_the_request() {
+        let requested =
+            NrosRmwQos::try_from(nros_rmw::QoSProfile::default().reliable().keep_last(10))
+                .expect("profile lowers");
+        let entity = NrosRmwClient {
+            service_name: core::ptr::null(),
+            type_name: core::ptr::null(),
+            _reserved: [0u8; 8],
+            backend_data: core::ptr::null_mut(),
+        };
+        // SAFETY: the slot is NULL, so nothing dereferences `entity`.
+        let granted = unsafe {
+            granted_qos_of::<NrosRmwClient>(
+                "client request publisher",
+                "/add_two_ints",
+                &requested,
+                &entity,
+                None,
+            )
+        };
+        assert_eq!(granted.reliability, qos_unknown_c().reliability);
+        assert_ne!(
+            granted.reliability, requested.reliability,
+            "a missing read-back must not be reported as a grant of the request"
+        );
+        assert!(
+            qos_from_c(&granted).has_unknown(),
+            "and it must read back as an absence in the Rust vocabulary too"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -5993,11 +6310,12 @@ mod tests {
         );
     }
 
-    /// A NULL slot is a declared absence — no read, no report, no error.
+    /// A NULL slot is a declared absence — no read, no report, no error. The
+    /// caller turns that `None` into UNKNOWN; see
+    /// `a_null_read_back_slot_answers_unknown_not_the_request`.
     #[cfg(feature = "alloc")]
     #[test]
     fn a_null_read_back_slot_reports_nothing() {
-        let requested = NrosRmwQos::try_from(nros_rmw::QoSProfile::default()).expect("lowers");
         let entity = NrosRmwClient {
             service_name: core::ptr::null(),
             type_name: core::ptr::null(),
@@ -6006,10 +6324,7 @@ mod tests {
         };
         // SAFETY: no slot is called.
         let granted = unsafe {
-            report_granted_qos(
-                "client",
-                "/x",
-                &requested,
+            read_granted_qos(
                 &entity,
                 None::<unsafe extern "C" fn(*const NrosRmwClient, *mut NrosRmwQos) -> NrosRmwRet>,
             )

@@ -148,9 +148,14 @@ dds_qos_t *make_dds_qos(const rmw_qos_profile_t *src) {
  * mismatch is indistinguishable from a name typo, a domain split (issue 0801)
  * or a discovery failure (issue 0803) — all three cost hours this month.
  *
- * The inverse of `make_dds_qos`. Fields Cyclone does not report keep the value
- * the caller passed in, so an unreported field reads as "unchanged" rather than
- * as zero — a zeroed `depth` would look like a legitimate answer.
+ * The inverse of `make_dds_qos`. Fields Cyclone does not report are LEFT AS
+ * THEY ARRIVED, and issue 1437 changed what that means: the caller now pre-loads
+ * `NROS_RMW_QOS_PROFILE_UNKNOWN` instead of the request, so an unreported field
+ * reads back as `*_UNKNOWN` — "we looked and cannot say", which is what
+ * `rmw_vtable.h` has always said this slot owes its caller. It used to read
+ * back as the REQUEST, i.e. as a confident grant of whatever was asked, which
+ * is the inverse of the meaning and the one thing the diagnostic above cannot
+ * afford to get wrong. No code here changed; the contract it honours did.
  */
 void qos_from_dds(const dds_qos_t *q, rmw_qos_profile_t *out) {
     if (q == nullptr || out == nullptr) {
@@ -177,8 +182,11 @@ void qos_from_dds(const dds_qos_t *q, rmw_qos_profile_t *out) {
     if (dds_qget_history(q, &hist, &depth)) {
         out->history = (hist == DDS_HISTORY_KEEP_ALL) ? NROS_RMW_HISTORY_KEEP_ALL
                                                       : NROS_RMW_HISTORY_KEEP_LAST;
-        /* KEEP_ALL reports no meaningful depth; leave the requested value
-         * rather than writing a 0 that reads as an answer. */
+        /* KEEP_ALL reports no meaningful depth; leave the pre-load rather than
+         * writing a 0 that reads as an answer. Under issue 1437's pre-load that
+         * leaves depth 0, which is upstream's own spelling for both
+         * "unstated" and "no unknown-depth value exists" — there is no third
+         * thing to write. */
         if (hist != DDS_HISTORY_KEEP_ALL && depth > 0) {
             out->depth = (depth > 0xFFFF) ? 0xFFFFu : (uint16_t)depth;
         }

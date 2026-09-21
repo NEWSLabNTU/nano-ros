@@ -365,6 +365,22 @@ pub(super) mod transient_local {
 /// Includes RMW attachment support for rmw_zenoh compatibility.
 pub struct ZenohPublisher {
     publisher: crate::zpico::Publisher<'static>,
+    /// issue 1437 — the profile `qos::admit` GRANTED for this entity, which is
+    /// what [`nros_rmw::Publisher::actual_qos`] answers.
+    ///
+    /// The shim grants rather than echoes: the depth is clamped to the ring it
+    /// actually enforces, reliability is granted RELIABLE whatever was asked
+    /// (zenoh-pico blocks on congestion unconditionally), and a transient-local
+    /// publisher advertises the retention depth it really serves. The same
+    /// profile goes into the liveliness token a `rmw_zenoh_cpp` peer parses,
+    /// so what a caller reads back here and what the graph carries are one
+    /// value and cannot disagree.
+    ///
+    /// No `Unknown` policy appears in it: `admit` either grants a concrete
+    /// value or refuses the create, so this backend has an answer for every
+    /// field.
+    granted_qos: nros_rmw::QoSProfile,
+
     /// RMW GID (generated once per publisher)
     rmw_gid: [u8; RMW_GID_SIZE],
     /// Sequence number counter (atomic for interior mutability)
@@ -539,6 +555,7 @@ impl ZenohPublisher {
             liveliness_lost_total: core::cell::Cell::new(0),
             retention,
             name: heapless::String::try_from(topic.name).unwrap_or_default(),
+            granted_qos: *qos,
         })
     }
 
@@ -1042,6 +1059,14 @@ impl Publisher for ZenohPublisher {
             }
             _ => Err(TransportError::Unsupported),
         }
+    }
+
+    /// What this backend GRANTED, which for a zenoh publisher is not always
+    /// what was asked: RELIABLE whatever the request said, and a
+    /// transient-local publisher's depth clamped to the retention it serves.
+    /// Same value the liveliness token advertises to the graph.
+    fn actual_qos(&self) -> nros_rmw::QoSProfile {
+        self.granted_qos
     }
 }
 

@@ -707,12 +707,22 @@ fn set_storage_bytes(ep: &mut Endpoint, bound: Option<usize>, target: &Target, k
 /// `KeepAll` would refuse an endpoint's depth over a policy nobody wrote, and
 /// folding it into `KeepLast` would claim a statement that was never made.
 /// `None` puts it where it belongs: `Fact::Absent`, nobody said.
+///
+/// issue 1437 — `Unknown` reaches `None` by the SAME rule and not by accident:
+/// it is what a `*_get_actual_qos` read-back writes for a policy the backend
+/// could not report, so it is an absence too. It cannot arrive here today (a
+/// descriptor is built from an AUTHORED profile, and `validate_against`
+/// refuses a read-back profile as a request), which is exactly why it is
+/// written out rather than swept into a `_ =>`: if a path ever does deliver
+/// one, it must land on "nobody said" and not on a depth somebody derived a
+/// buffer from.
 fn map_history(h: nros_orchestration_ir::qos_override::QoSHistoryPolicy) -> Option<History> {
     use nros_orchestration_ir::qos_override::QoSHistoryPolicy as H;
     match h {
         H::SystemDefault => None,
         H::KeepLast => Some(History::KeepLast),
         H::KeepAll => Some(History::KeepAll),
+        H::Unknown => None,
     }
 }
 
@@ -724,6 +734,7 @@ fn map_reliability(
         R::SystemDefault => None,
         R::Reliable => Some(Reliability::Reliable),
         R::BestEffort => Some(Reliability::BestEffort),
+        R::Unknown => None,
     }
 }
 
@@ -735,6 +746,7 @@ fn map_durability(
         D::SystemDefault => None,
         D::Volatile => Some(Durability::Volatile),
         D::TransientLocal => Some(Durability::TransientLocal),
+        D::Unknown => None,
     }
 }
 

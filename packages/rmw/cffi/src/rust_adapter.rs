@@ -544,6 +544,22 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         // slot carries, so installing it for a backend that declares nothing
         // changes nothing.
         supported_qos_policies: Some(supported_qos_policies_trampoline::<R>),
+        // The granted-QoS read-back. See the trampolines for why these are
+        // unconditional.
+        publisher_get_actual_qos: Some(publisher_get_actual_qos_trampoline::<R>),
+        subscription_get_actual_qos: Some(subscription_get_actual_qos_trampoline::<R>),
+        client_request_publisher_get_actual_qos: Some(
+            client_request_publisher_get_actual_qos_trampoline::<R>,
+        ),
+        client_response_subscription_get_actual_qos: Some(
+            client_response_subscription_get_actual_qos_trampoline::<R>,
+        ),
+        service_request_subscription_get_actual_qos: Some(
+            service_request_subscription_get_actual_qos_trampoline::<R>,
+        ),
+        service_response_publisher_get_actual_qos: Some(
+            service_response_publisher_get_actual_qos_trampoline::<R>,
+        ),
         ..EMPTY_VTABLE
     };
 
@@ -1408,6 +1424,119 @@ unsafe extern "C" fn publisher_event_init_trampoline<R: RustBackend>(
         Ok(()) => NROS_RMW_RET_OK,
         Err(_) => NROS_RMW_RET_UNSUPPORTED,
     }
+}
+
+// --------------------------------------------------------------------------
+// Granted-QoS read-back — the six slots
+// --------------------------------------------------------------------------
+//
+// A Rust backend answers these from its `actual_qos` family, whose trait
+// default is `QOS_PROFILE_UNKNOWN`. Installed UNCONDITIONALLY for every `R`,
+// on the same reasoning as `supported_qos_policies`: the default answer is
+// every policy an absence, which is exactly what a NULL slot already means to
+// the caller (`read_granted_qos` stores `qos_unknown_c()` for one), so
+// installing them for a backend that determines nothing changes nothing.
+//
+// The lowering is `NrosRmwQos::try_from`, whose one failure is a depth past
+// `u16::MAX`. A backend cannot GRANT a depth it could not have been asked for
+// — the request came through the same conversion — so this is a real
+// `NROS_RMW_RET_ERROR` rather than a case to paper over.
+
+/// Write one Rust-side profile into a C read-back out-parameter.
+///
+/// # Safety
+/// `out` must be non-null and point at writable `rmw_qos_profile_t` storage.
+unsafe fn write_actual_qos(out: *mut NrosRmwQos, qos: QoSProfile) -> NrosRmwRet {
+    let Ok(lowered) = NrosRmwQos::try_from(qos) else {
+        return crate::NROS_RMW_RET_ERROR;
+    };
+    // SAFETY: the caller's contract.
+    unsafe { *out = lowered };
+    NROS_RMW_RET_OK
+}
+
+unsafe extern "C" fn publisher_get_actual_qos_trampoline<R: RustBackend>(
+    publisher: *const NrosRmwPublisher,
+    out: *mut NrosRmwQos,
+) -> NrosRmwRet {
+    if out.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let Some(p) = (unsafe { publisher_ref::<R::Publisher>(publisher) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: checked non-null above.
+    unsafe { write_actual_qos(out, Publisher::actual_qos(p)) }
+}
+
+unsafe extern "C" fn subscription_get_actual_qos_trampoline<R: RustBackend>(
+    subscription: *const NrosRmwSubscription,
+    out: *mut NrosRmwQos,
+) -> NrosRmwRet {
+    if out.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let Some(sub) = (unsafe { subscription_ref::<R::Subscription>(subscription) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: checked non-null above.
+    unsafe { write_actual_qos(out, Subscription::actual_qos(sub)) }
+}
+
+unsafe extern "C" fn client_request_publisher_get_actual_qos_trampoline<R: RustBackend>(
+    client: *const NrosRmwClient,
+    out: *mut NrosRmwQos,
+) -> NrosRmwRet {
+    if out.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let Some(c) = (unsafe { client_mut::<R::Client>(client) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: checked non-null above.
+    unsafe { write_actual_qos(out, ClientTrait::request_publisher_actual_qos(c)) }
+}
+
+unsafe extern "C" fn client_response_subscription_get_actual_qos_trampoline<R: RustBackend>(
+    client: *const NrosRmwClient,
+    out: *mut NrosRmwQos,
+) -> NrosRmwRet {
+    if out.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let Some(c) = (unsafe { client_mut::<R::Client>(client) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: checked non-null above.
+    unsafe { write_actual_qos(out, ClientTrait::response_subscription_actual_qos(c)) }
+}
+
+unsafe extern "C" fn service_request_subscription_get_actual_qos_trampoline<R: RustBackend>(
+    service: *const NrosRmwService,
+    out: *mut NrosRmwQos,
+) -> NrosRmwRet {
+    if out.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let Some(sv) = (unsafe { service_ref::<R::Service>(service) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: checked non-null above.
+    unsafe { write_actual_qos(out, ServiceTrait::request_subscription_actual_qos(sv)) }
+}
+
+unsafe extern "C" fn service_response_publisher_get_actual_qos_trampoline<R: RustBackend>(
+    service: *const NrosRmwService,
+    out: *mut NrosRmwQos,
+) -> NrosRmwRet {
+    if out.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let Some(sv) = (unsafe { service_ref::<R::Service>(service) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: checked non-null above.
+    unsafe { write_actual_qos(out, ServiceTrait::response_publisher_actual_qos(sv)) }
 }
 
 unsafe extern "C" fn publisher_assert_liveliness_trampoline<R: RustBackend>(
