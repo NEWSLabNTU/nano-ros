@@ -98,6 +98,12 @@ pub const EXEMPT: &[(&str, &str)] = &[
         "native_example_reqresp_e2e.rs",
         "the same, for the request/response cells",
     ),
+    (
+        "native_example_executor_bound_node_e2e.rs",
+        "the same, for the ExecutorBoundNode cell: `is_executor_bound_node_cell` \
+         requires `PlatformId::Linux`, and both the test and its tripwire read \
+         cells only through that predicate, so no non-host fixture is reachable",
+    ),
 ];
 
 /// The one-line reason a cell was dropped, for the summary a consumer prints.
