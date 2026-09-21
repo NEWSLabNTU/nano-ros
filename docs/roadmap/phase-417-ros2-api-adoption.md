@@ -1604,8 +1604,11 @@ CDR stage at all); ours is zero-copy of the WIRE MESSAGE (it takes a length and
 returns bytes). They cannot be unified, upstream's typed form is `absent`
 because no backend we ship delivers a struct in layout, and ours is an
 `extension`. The runtime query is `absent` with it. Read the RFC section, do
-not re-derive the argument per row — and see **issue 1400** for the separate
-question of whether our byte loan earns its documentation.
+not re-derive the argument per row — and see **issue 0814**, section "Folded
+in: the VALUE claim", for the separate question of whether our byte loan earns
+its documentation. (That measurement was filed as issue 1400 on 2026-09-21 and
+folded into 0814 the same day, because both are about this one surface; 1400 is
+archived as a stub.)
 
 The prune three are the same shape one entity over: each pending request holds a
 promise until it is answered, which is a heap-backed map keyed by sequence
