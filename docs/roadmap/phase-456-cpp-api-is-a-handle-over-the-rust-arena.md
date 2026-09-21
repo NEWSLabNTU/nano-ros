@@ -486,23 +486,63 @@ Four things follow, and each is a simplification rather than a trade:
   between. This is why phase-442's "W9 is deliberately last" does not survive:
   measured blast radius outside `nros-cpp/include` —
 
-  | | count |
-  | --- | --- |
-  | files | 15 |
-  | `::SharedPtr` uses (these KEEP working — the alias changes meaning) | 64 |
-  | explicit `std::shared_ptr<rclcpp::X>` / `make_shared` spellings to change | ~30 |
+  | | doc, as written | RE-MEASURED after W2b/W3/W4 |
+  | --- | --- | --- |
+  | files outside `nros-cpp/include` | 15 | **22** |
+  | `::SharedPtr` uses (these KEEP working — the alias changes meaning) | 64 | **87** |
+  | explicit `std::shared_ptr<rclcpp::X>` / `make_shared` spellings to change | ~30 | **23**, in 10 files |
 
-  plus 524 lines of gated blocks in `nros.hpp` and 211 in `node.hpp`.
+  All three numbers had drifted; the ones on the right are the tree as it stands
+  after this phase's four waves. Gated blocks: **519 lines in `nros.hpp`** (39 %
+  of the file) and **292 in `node.hpp`**, in 19 blocks, dominated by
+  `NROS_CPP_HAS_SHARED_PTR` (17 uses) — which is what this item removes.
 
-  Two probes INVERT and must be rewritten in the same commit:
-  `ported_create_publisher_freestanding_probe.cpp`, which exists to assert a
-  ported `create_publisher` FAILS freestanding, and
-  `ros2_api_adoption.cpp:149`, which `static_assert`s that
-  `Publisher<M>::SharedPtr` IS `std::shared_ptr<Publisher<M>>`.
+  **Probes that INVERT — four, not two.** The doc listed
+  `ported_create_publisher_freestanding_probe.cpp` (asserts a ported
+  `create_publisher` FAILS freestanding) and `ros2_api_adoption.cpp:149`
+  (`static_assert`s `Publisher<M>::SharedPtr` IS
+  `std::shared_ptr<Publisher<M>>`). W4 found two more: `ros2_api_adoption.cpp:267`
+  (`= std::make_shared<Publisher<StringMsg>>()`) and
+  `one_node_type_ours_only_names.cpp:88,95`, both asserting the `shared_ptr`
+  return type of the hosted factory.
 
   *The binding constraint is unchanged and satisfiable:* `local-msg-package`
   compiles under real ROS 2 Humble via `just colcon-parity`, and `::SharedPtr`
-  is valid under both, so those members move TO the alias rather than away.
+  is valid under both, so those members move TO the alias rather than away. Five
+  of the 23 breaking spellings are in that leaf; three more are in
+  `cmake/compat/diagnostic-updater/`, which the doc did not mention.
+
+  ### Three decisions W5 inherits, settled here
+
+  **1. `Publisher<M>::SharedPtr` becomes `nros::Owned<Publisher<M>>`**, not a
+  handle. W4 measured the case and refused the arena slot: the arena is a bump
+  allocator with no removal path, so an arena publisher would make `reset()` and
+  scope exit no-ops holding a live RMW publisher for the executor's lifetime —
+  a regression against upstream rclcpp AND against our own Rust API, where
+  `EmbeddedPublisher<M>` has a `Drop`. `Owned<T>` mirrors that Rust lifetime;
+  an arena slot would diverge from it.
+
+  **2. `Publisher<M>::UniquePtr` collapses into `SharedPtr`.** `Owned<T>` IS
+  unique ownership — move-only, one owner, destroys on scope exit — so a
+  separate unique alias would be a second spelling of one type. Measured: the
+  alias has **zero uses in the tree** outside its own definition and the one
+  probe that asserts its current shape (`ros2_api_adoption.cpp:155`), so nothing
+  is ported away from. `ConstSharedPtr` is already the same type by W4's
+  reasoning, which made `Owned<const T>` a hard compile error naming the
+  resolution.
+
+  **3. `Service<S>::SharedPtr` follows W2b's precedent, not W2's.** W3 found the
+  blocker: `Node::create_service<S>(name, qos)` with no callback returns the
+  same alias and exists to be `->take_request()`'d, so one alias cannot be both
+  a handle and a pointer to a poll object — a collision `Subscription<M>` never
+  had, because upstream requires a callback there and nros has no returning poll
+  factory for it. W2b already solved this shape for subscriptions by moving the
+  poll half out to `PollSubscription<M>`. The same move — a `PollService<S>`
+  holding the taking API, with `Service<S>` meaning the dispatch entity — is
+  what unblocks it, and it is the consistent answer rather than a new one. It is
+  a poll-path change, which this phase said it would not make; that sentence in
+  "What this phase does not do" is now narrower than the phase, and W2b is where
+  it stopped being true.
 
 * **W6 [ci] — the gates become structural.** phase-442 W10, inherited:
   `check-cpp-freestanding-includes` loses its baseline;
@@ -738,8 +778,18 @@ Two smaller ones, noted so a reader does not rediscover them:
 
 ## What this phase does not do
 
-* It does not change the poll-style path. Caller storage is correct there —
-  nothing dispatches, so nothing holds the address.
+* It does not change how the poll-style path WORKS. Caller storage is correct
+  there — nothing dispatches, so nothing holds the address, and no poll
+  operation changed behaviour in this phase.
+
+  **It did move where that path LIVES, and this sentence used to deny it.** W2b
+  took the taking API out of `Subscription<M>` into `nros::PollSubscription<M>`,
+  because one class cannot be both the thing the arena owns and the thing the
+  caller owns. W5 does the same for services, for the reason W3 measured: the
+  returning poll `create_service` shares an alias with the dispatch one, so the
+  alias cannot become a handle while the class serves both. The distinction
+  worth keeping is between changing a path's SEMANTICS, which this phase does
+  not do, and separating two owners that shared a name, which is the phase.
 * It does not touch `nros-c`. That API puts both its publisher and its timer in
   caller-declared structs, which is a third shape for one concept and is
   issue 1335's remaining half.
