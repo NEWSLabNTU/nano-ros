@@ -52,6 +52,26 @@ it. A node under `/island` in a launch file therefore appears at `/talker` in a
 C or C++ image and at `/island/talker` in the Rust image built from the SAME
 launch file, which is a cross-language divergence no RFC records.
 
+## Measured, not inferred
+
+2026-09-21, on the wire: a C image shaped exactly like the generated typed entry
+(`.nros_boot_config` with `NROS_BOOT_SET_NAMESPACE` and `namespace_ = "/island"`,
+then `nros_board_native_run_components_named_ns(name, ns, setup)`, then
+`nros_cpp_node_create(executor, "cprobe", NULL, &node)` and a publisher on
+`chatter`) linked against `libnros_cpp.a` and run against `rmw_zenohd` reports:
+
+```
+$ ros2 node list --no-daemon      /cprobe
+$ ros2 topic list --no-daemon     /chatter
+```
+
+`/cprobe`, not `/island/cprobe`. NULL is not "inherit" at this edge either:
+`nros_cpp_node_create` substitutes `"/"` for a NULL namespace, and
+`nros_cpp_publisher_create` reads the namespace off the NODE HANDLE, never off
+the executor. So on the C and C++ roads `ExecutorConfig::namespace` reaches no
+wire-visible consumer at all: the per-node one is this issue, and the session's
+own liveliness token is issue 1444.
+
 ## Acceptance
 
 A C and a C++ image whose launch declares `<node name="talker" namespace="/island">`
