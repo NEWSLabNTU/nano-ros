@@ -29,7 +29,7 @@ and it has its own home:
 [phase-431](archived/phase-431-ship-the-nros-binary.md).
 
 **Implements:** [RFC-0090](../design/0090-codegen-version-is-the-compatibility-token.md).
-**Closes:** the residue of [#1018](../issues/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md).
+**Closes:** the residue of [#1018](../issues/archived/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md).
 **Unblocks:** shipping a prebuilt `nros` binary — [#0171](../issues/archived/0171-no-external-distribution-path.md)'s
 "single highest-leverage unlock", which has been blocked since phase-287/288 on
 exactly this question.

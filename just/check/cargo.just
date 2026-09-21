@@ -275,9 +275,12 @@ cli-source-dirs:
 # So the stamp is folded per input and baked per input, and three places must
 # agree: the component seeds, `STAMP_INPUTS`, and the `// ATTRIBUTES:` arms in
 # `stale_guard.rs`. Checked in BOTH directions — a list that names a phantom is
-# how an authored map drifts toward OK. Buildless; the behavioural half is
-# `stale_guard::attribution_tests`, whose match over the labels has no
-# catch-all, so a new input with no perturbation case does not compile.
+# how an authored map drifts toward OK. This is the BUILDLESS half; the
+# behavioural one is `stale_guard::attribution_tests`, whose match over the
+# labels has no catch-all, so a new input with no perturbation case does not
+# even compile.
+#
+# Every CLI source-stamp input must have an attribution arm in the refusal.
 [group("ci")]
 stale-cli-attribution:
     @python3 scripts/check-stale-cli-attribution.py

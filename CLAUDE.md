@@ -1204,6 +1204,14 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   skipping the rebuild while reporting success) and blind to `optional = true` (so 17 crates the
   CLI never compiles — every platform port, `nros-node`, `nros-log` — re-staled it). A MISSING
   list makes `source_stamp` return `None` (⇒ rebuild), never a stamp over a smaller closure.
+  **And the stamp is folded PER INPUT, because one number cannot say what moved** (issue 1018).
+  The refusal used to infer it — "no uncommitted CLI edits, therefore the checkout moved, e.g. a
+  branch switch" — which is what a contributor who had moved the `play_launch` pin and touched
+  nothing else was told. The refusal was RIGHT (phase-429: the pin IS a build input, 0561) and
+  its explanation was about a different tree; inference cannot be repaired, since two inputs can
+  move at once. `STAMP_INPUTS` + `NROS_CLI_SOURCE_STAMP_COMPONENTS` + one `// ATTRIBUTES:` arm
+  each, gated BOTH ways by `check-stale-cli-attribution`. Tracked and untracked sources are ONE
+  input — splitting them makes every `git add` re-stale a binary built seconds earlier.
 - **Parallel agent sessions push to `main`** — **reserve issue ids with `just issue-new <slug>`,
   never by reading the highest number.** Reading-then-writing is a race that has collided seven
   times (0367→0372→0377 collided TWICE, the second time while renumbering the first). The tool
