@@ -8,6 +8,73 @@ phase being designed in parallel, referred to here by that name and not by a
 number) and the tier-derivation fix (the `derive.rs:93-100` gate that lets a
 groupless node fall to the default tier with only a note).
 
+## Parallel plan
+
+One claim per wave (`just claim <id>`; claims are advisory, expire after the
+TTL, and an open PR supersedes them). `owns` is the set of files a wave edits;
+two waves with disjoint `owns` cannot conflict. Every path below exists in the
+tree today unless marked `(new)`. The two external dependencies the status
+paragraph names by description now have numbers: the shared MapperInput
+derivation phase is [phase-457](phase-457-consume-the-shared-derivation.md)
+(its W2 is the call), and the tier-derivation fix is
+[phase-459](phase-459-cmake-image-reaches-tier-derivation.md) (its W2 is the
+wave after which a grouped node has a SchedContext on target).
+
+| claim id | depends on | owns | gate | starts now? |
+| --- | --- | --- | --- | --- |
+| `phase-462-W1` | none | a new monitor-table region in `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs` (installed before entity creation); `packages/api/nros-cpp/src/lib.rs` (the new `nros_cpp_install_monitors` export only); `packages/api/nros-cpp/src/publisher.rs` and `packages/api/nros-cpp/include/nros/publisher.hpp` (the bump and the stamp); `scripts/rmw-abi-shape.py` (the mirror); `packages/testing/nros-tests/bins/contract-monitor-cpp/` (new); one C++ case in `packages/testing/nros-tests/tests/contract_monitor_parity.rs` | `cargo test -p nros-tests --test contract_monitor_parity`; `just mem-report` on the island image (0 B uncontracted, 14 cells priced) | yes |
+| `phase-462-W2` | `phase-462-W1`; `phase-459-W2` (the deadline half needs a derived tier's SchedContext) | `DeadlineAction` in `packages/core/nros-node/src/executor/sched_context.rs` (:140-:166); `silence-runtime` in `packages/core/nros-node/src/executor/monitor.rs`; a `RULE_SILENCE` const in `packages/core/nros-diagnostics/src/lib.rs`; `on_violation` rows beside `monitor_rows` in `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs` (:1336); the `deadline_policy` source in `packages/cli/nros-cli-core/src/codegen/entry/mod.rs` (:437-:582); `packages/core/nros-orchestration-ir/src/violation_agreement.rs` (new, the contract-vs-tier-string refusal in `qos_agreement.rs`'s shape) and its `mod` line; `packages/testing/nros-tests/tests/on_violation_lowering.rs` (new) | `cargo test -p nros-tests --test on_violation_lowering`; `cargo test -p nros-orchestration-ir violation_agreement` | no |
+| `phase-462-W3` | `phase-462-W1`, `phase-462-W2`, `phase-459-W2` (the period term), `phase-457-W2` (the reaction chain) | hazard rule consts in `packages/core/nros-diagnostics/src/lib.rs`; a hazard-row fn beside the monitor rows in `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs`; the hazard table region in `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs` and `emit_rust.rs`; the `Fault` hook target in `packages/core/nros-node/src/executor/sched_context.rs`; `packages/core/nros-orchestration-ir/src/ftti_budget.rs` (new) and its `mod` line; `packages/testing/nros-tests/tests/hazard_rows_and_ftti.rs` (new) | `cargo test -p nros-tests --test hazard_rows_and_ftti`; `cargo test -p nros-orchestration-ir ftti_budget` | no |
+| `phase-462-W4` | `phase-462-W1`, `phase-462-W2`, `phase-457-W2` | `packages/core/nros-orchestration-ir/src/mode_variants.rs` (new) and its `mod` line; the `Plan` variant tables in `packages/cli/nros-cli-core/src/codegen/entry/mod.rs`; the variant emission in `emit_cpp.rs` and `emit_rust.rs`; `packages/testing/nros-tests/tests/mode_variants.rs` (new) | `cargo test -p nros-tests --test mode_variants`; `just mem-report` prices the second table at the delta of its overrides | no |
+| `phase-462-W5` | `phase-462-W2`; an rlm release carrying `deadline` and `liveliness` on endpoints (after R4; no rlm wave id exists for it yet) | `packages/core/nros-orchestration-ir/src/qos_override.rs` (:108-:135) and `qos_agreement.rs` (`MODELLED_POLICIES` widened); `packages/rmw/cyclonedds/nros-rmw-cyclonedds/` (the DDS deadline policy); `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs` and `packages/rmw/xrce/nros-rmw-xrce/` (the `deadline: not served` const); a `deadline` case in `packages/cli/nros-cli-core/tests/contract_qos_override_agreement.rs` | `cargo test -p nros-orchestration-ir qos_agreement`; `cargo test -p nros-cli-core --test contract_qos_override_agreement` | no |
+| `phase-462-W6a` | none | `zephyr/Kconfig` (`NROS_RX_TASK_BUDGET_FRAMES` and its burst twin); the zenoh read task in `zephyr/nros_zenoh_zephyr_system.c`; the knob's ladder entries as `scripts/check-knob-delivery.py` and `scripts/check-kconfig-knob-forwarding.sh` require them; `docs/design/0074-ingress-budget-rate-and-burst.md` (`implements-tracked-by`) | the RFC-0074 flood cell rerun with the budget stated records 0 stalls; a budget of 0 refuses | yes |
+| `phase-462-W6b` | `phase-462-W6a`; rlm issue 0760 (the `{ rate_hz, burst }` schema) | the knob derivation in `packages/cli/nros-cli-core/src/cmd/entity_inventory.rs` (the two numbers from the largest declared `rate_hz x burst`) and a test beside it | `cargo test -p nros-cli-core entity_inventory` (the derived pair equals the hand-stated pair on the flood cell's contract) | no |
+
+Two claims can start today: W1 and W6a. W6 is split because its two halves
+have different dependencies - the stated knob needs nothing, the derived knob
+needs a schema rlm does not have - and the doc already said "W6-stated can
+start today". W3 stays one claim: its observer, its reaction and its FTTI check
+are three readers of one hazard table, and splitting them would give two
+sessions the same table to write.
+
+**Files two waves touch, and the order they serialise in.** Across this phase,
+phase-457, phase-459, the other session's phases 460/461/463 and play_launch
+phase 78:
+
+- `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs`:
+  `phase-459-W2` (the `run_tiers` table), `phase-462-W1` (the monitor
+  table), `phase-462-W3` (the hazard table), `phase-462-W4` (variants), then
+  the other session's `phase-461-W6` (:1086) and `phase-463-W2` (the census
+  entry), whose mutual order it states. Order among ours: `phase-459-W2`,
+  `phase-462-W1`, `phase-462-W3`, `phase-462-W4`; W1 lands before 461 W6 and
+  463 W2, and W3/W4 rebase over whichever of those has landed.
+- `packages/api/nros-cpp/src/lib.rs`: `phase-462-W1` adds one export; the
+  other session's `phase-463-W2` edits the hosted boot funnel
+  (`nros_board_native_run_components_named`). Disjoint functions; order
+  `phase-462-W1` first, because it starts today.
+- `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs`:
+  `phase-459-W1`, `phase-457-W1`, `phase-459-W3`, `phase-462-W2`,
+  `phase-462-W3`, in that order; each of this phase's waves adds a row fn
+  beside `monitor_rows` (:1336) and edits nothing above it.
+- `packages/cli/nros-cli-core/src/codegen/entry/mod.rs`: `phase-459-W2`
+  (`plan_from_model`), then `phase-462-W2` (`deadline_policy` :437-:582),
+  then `phase-462-W4` (variant tables).
+- `packages/core/nros-node/src/executor/sched_context.rs` and `monitor.rs`:
+  `phase-462-W2`, then `phase-462-W3`. phase-461 W2 (the parameter family's
+  inbox) is in `nros-node` too but not in the executor; if it reaches these
+  files the other session says so.
+- `packages/core/nros-diagnostics/src/lib.rs`: `phase-462-W2` (one const),
+  then `phase-462-W3` (three consts). Append-only, so a rebase is trivial.
+- `packages/core/nros-orchestration-ir/src/qos_agreement.rs` and
+  `qos_override.rs`: `phase-462-W5` only, in these three phases.
+- `zephyr/Kconfig`: `phase-462-W6a` only, in these three phases; phase-460
+  W4 (domain agreement between `system.toml` and Kconfig) reads it, and
+  phase-461 W1/W2 add inbox knobs to it - the other session names its slots;
+  W6a's block is new and self-contained.
+- `packages/core/nros-orchestration-ir/src/mapper_input.rs` and `derive.rs`:
+  this phase edits neither; W3 and W4 READ the chain and the periods through
+  phase-457 W2 and phase-459 W2 and depend on them.
+
 ## Why
 
 The launch contract carries a safety vocabulary, and it stops at Linux.
@@ -76,6 +143,8 @@ dead-code-eliminates, measured by `mem-report` on the island's image (target:
 Depends on: nothing external. This is the wave to start with because the
 island is C++ and everything after it reports through the drain it installs.
 
+Claim: phase-462-W1. Depends on: none. Owns: a new monitor-table region in packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs; the nros_cpp_install_monitors export in packages/api/nros-cpp/src/lib.rs; packages/api/nros-cpp/src/publisher.rs; packages/api/nros-cpp/include/nros/publisher.hpp; scripts/rmw-abi-shape.py; packages/testing/nros-tests/bins/contract-monitor-cpp/ (new); one case in packages/testing/nros-tests/tests/contract_monitor_parity.rs. Gate: cargo test -p nros-tests --test contract_monitor_parity; just mem-report on the island image. Status: not started.
+
 ### W2 [cli, nros-node] -- `on_violation` lowers to the executor
 
 Consumes: `on_violation` per contract (node, path or endpoint) from the
@@ -107,6 +176,8 @@ Depends on: the tier-derivation fix, because a groupless node has no
 SchedContext for the deadline half to land on (`derive.rs:93-100` today notes
 it and moves on). Until it lands, W2's deadline half applies only to declared
 tiers, and this doc must say so at that point rather than count it done.
+
+Claim: phase-462-W2. Depends on: phase-462-W1, phase-459-W2. Owns: DeadlineAction in packages/core/nros-node/src/executor/sched_context.rs; silence-runtime in packages/core/nros-node/src/executor/monitor.rs; one const in packages/core/nros-diagnostics/src/lib.rs; on_violation rows beside monitor_rows in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; deadline_policy in packages/cli/nros-cli-core/src/codegen/entry/mod.rs; packages/core/nros-orchestration-ir/src/violation_agreement.rs (new); packages/testing/nros-tests/tests/on_violation_lowering.rs (new). Gate: cargo test -p nros-tests --test on_violation_lowering. Status: not started.
 
 ### W3 [nros-node, cli] -- `safe_state`, `hazards`, and the FTTI budget
 
@@ -152,6 +223,8 @@ shared MapperInput derivation phase for the chain that `fault-reaction-budget`
 walks, so that nano-ros and rlm agree on which callbacks form the reaction
 chain rather than each walking the graph its own way.
 
+Claim: phase-462-W3. Depends on: phase-462-W1, phase-462-W2, phase-459-W2, phase-457-W2. Owns: hazard consts in packages/core/nros-diagnostics/src/lib.rs; a hazard-row fn in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the hazard table region in packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs and emit_rust.rs; the Fault hook target in packages/core/nros-node/src/executor/sched_context.rs; packages/core/nros-orchestration-ir/src/ftti_budget.rs (new); packages/testing/nros-tests/tests/hazard_rows_and_ftti.rs (new). Gate: cargo test -p nros-tests --test hazard_rows_and_ftti. Status: not started.
+
 ### W4 [cli] -- `modes` as tier-table variants
 
 Consumes: `modes[]` and per-mode overrides (rates, deadlines, `on_violation`)
@@ -171,6 +244,8 @@ mode override on an entity the base mode does not have refuses at resolve.
 
 Depends on: W1, W2; the shared MapperInput derivation phase for what a mode
 override means to the mapper (which is where play_launch phase 75 put it).
+
+Claim: phase-462-W4. Depends on: phase-462-W1, phase-462-W2, phase-457-W2. Owns: packages/core/nros-orchestration-ir/src/mode_variants.rs (new); the Plan variant tables in packages/cli/nros-cli-core/src/codegen/entry/mod.rs; the variant emission in emit_cpp.rs and emit_rust.rs; packages/testing/nros-tests/tests/mode_variants.rs (new). Gate: cargo test -p nros-tests --test mode_variants; just mem-report. Status: not started.
 
 ### W5 [cli, rmw] -- deadline and liveliness QoS from the contract
 
@@ -192,6 +267,8 @@ the graph token says `deadline: not served`, never a silent downgrade.
 
 Depends on: rlm carrying the two policies; W2's silence monitor.
 
+Claim: phase-462-W5. Depends on: phase-462-W2; an rlm release carrying deadline and liveliness on endpoints (after R4, no wave id yet). Owns: packages/core/nros-orchestration-ir/src/qos_override.rs; packages/core/nros-orchestration-ir/src/qos_agreement.rs; packages/rmw/cyclonedds/nros-rmw-cyclonedds/; packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs; packages/rmw/xrce/nros-rmw-xrce/; a case in packages/cli/nros-cli-core/tests/contract_qos_override_agreement.rs. Gate: cargo test -p nros-orchestration-ir qos_agreement. Status: not started.
+
 ### W6 [rmw-zenoh, zephyr] -- the ingress budget knob
 
 Consumes: RFC-0074's `{ rate_hz, burst }` on a subscription, once rlm issue
@@ -212,6 +289,13 @@ records 0 stalls; a budget of 0 is a refusal, not "unlimited".
 
 Depends on: rlm issue 0760 for derivation; nothing for the stated knob.
 
+Two claims, because the two halves wait on different things (see the
+Parallel plan): W6a is the stated knob, W6b its derivation.
+
+Claim: phase-462-W6a. Depends on: none. Owns: zephyr/Kconfig; zephyr/nros_zenoh_zephyr_system.c; the knob's ladder entries as scripts/check-knob-delivery.py and scripts/check-kconfig-knob-forwarding.sh require them; docs/design/0074-ingress-budget-rate-and-burst.md. Gate: the RFC-0074 flood cell rerun with the budget stated records 0 stalls. Status: not started.
+
+Claim: phase-462-W6b. Depends on: phase-462-W6a; rlm issue 0760. Owns: the knob derivation in packages/cli/nros-cli-core/src/cmd/entity_inventory.rs and a test beside it. Gate: cargo test -p nros-cli-core entity_inventory. Status: not started.
+
 ## Order and dependencies, in one place
 
 ```
@@ -228,6 +312,9 @@ W6  ingress budget knob           <- nothing (stated); rlm 0760 (derived)
 W1 and W6-stated can start today. Everything else waits on a fact another
 phase produces, and this document should not be opened for work before the
 two external dependencies have a phase number to cite.
+ As of 2026-09-21 they do:
+phase-457 (the shared derivation) and phase-459 (the tier derivation); the
+Parallel plan above cites them by claim id.
 
 ## Gates for the phase
 

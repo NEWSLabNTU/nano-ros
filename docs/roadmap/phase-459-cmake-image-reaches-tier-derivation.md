@@ -5,6 +5,71 @@ phases 456-458 were being opened concurrently by other sessions; this is
 highest-existing (455) + 4. Its sibling, phase-460, covers the formal checks the
 same investigation found missing on the contract chain.
 
+## Parallel plan
+
+One claim per wave (`just claim <id>`; claims are advisory, expire after the
+TTL, and an open PR supersedes them). `owns` is the set of files a wave edits;
+two waves with disjoint `owns` cannot conflict. Every path below exists in the
+tree today unless marked `(new)`.
+
+| claim id | depends on | owns | gate | starts now? |
+| --- | --- | --- | --- | --- |
+| `phase-459-W0` | none | `examples/workspaces/derived-tiers-cpp/` (new, the whole tree); one coverage case in `packages/cli/nros-cli-core/tests/example_metadata_coverage.rs` | `cargo test -p nros-cli-core --test example_metadata_coverage` (the fixture resolves through the pinned resolver and its four `nros-metadata.json` rows carry `callback_groups: ["main"]`) | yes |
+| `phase-459-W1` | `phase-459-W0` | `packages/cli/nros-cli-core/src/orchestration/tier_resolver.rs` (`collect_callback_groups` :35); `load_workspace_metadata` in `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs` (:344) only if its signature must change; `packages/cli/nros-cli-core/tests/derived_tiers_bake.rs` (new) | `cargo test -p nros-cli-core --test derived_tiers_bake` (`derived 2 scheduling tier(s)`, four members, keyword removed: four groupless notes) | no |
+| `phase-459-W2` | `phase-459-W0` | `plan_from_model` in `packages/cli/nros-cli-core/src/codegen/entry/mod.rs` (:751-:969); the `run_tiers` table emission in `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs` (:388-:510) only if the derived plan needs a different table shape; `packages/cli/nros-cli-core/tests/derived_tiers_entry.rs` (new) | `cargo test -p nros-cli-core --test derived_tiers_entry` (`codegen entry --lang cpp --board zephyr` on the W0 fixture ends in `run_tiers(..., 2u)`) | no |
+| `phase-459-W3` | `phase-457-W1` (the pin moves once, to v0.1.37, before this wave moves it again to the first tag carrying `derived`); the rlm half is a PR against `ros-launch-manifest` (`model/src/system_config.rs`) that must be in that tag | `TierDef` in `packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs`; the binding refusals in `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs` (:108, :197-:212); the `tiers.is_empty()` test in `packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (:433); derived-tier naming in the body of `packages/core/nros-orchestration-ir/src/derive.rs`; the four `Cargo.toml` pin lines and `Cargo.lock` (second bump); `packages/cli/nros-cli-core/tests/derived_tier_marker.rs` (new) | `cargo test -p nros-cli-core --test derived_tier_marker` (same two tiers as W1; sub-table beside the marker refused naming both lines; `ctrll` still refused) | no |
+| `phase-459-W4` | `phase-459-W0` for the fixture half of its gate only | `packages/core/nros-orchestration-ir/src/rtos_realizer.rs` (`sched_caps_for` :140, `rank_to_priority` :336, `realize_rtos` :349); `packages/core/nros-orchestration-ir/src/priority_plan.rs` (new) and its `mod` line in `lib.rs`; the one `realize_rtos` call in `packages/core/nros-orchestration-ir/src/derive.rs` (:86); `scripts/lib/priority_plan.py` and `scripts/check-tier-priority-plan-image.py` (the checker of the Rust result); `docs/design/0079-priority-is-allocated-not-authored.md` section 4.1; the module doc of `packages/platform/nros-platform/src/board/tier.rs` | `cargo test -p nros-orchestration-ir priority_plan`; `python3 scripts/check-tier-priority-plan-image.py` on the fixture's `.config` reports zero violations, and the `READ_PRIORITY=16` negative control reports the stale band | yes |
+| `phase-459-W5` | none | `resolve_target_block` in `packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (:194-:250) and a unit test beside it | `cargo test -p nros-cli-core resolve_target_block` | yes |
+| `phase-459-W6` | none | `packages/api/nros-cpp/include/nros/node.hpp` (a code beside `DECLARED_DEPTH_MISMATCH` :261 and the check at construction); `packages/api/nros-cpp/include/nros/callback_group.hpp`; the declared-list plumbing in `cmake/NanoRosNodeRegister.cmake` (:1252) and `packages/cli/nros-cli-core/src/codegen/entry/registered_node.rs` if the list is emitted there; a negative test under `packages/api/nros-cpp/tests/compile/` (new file) | the negative test (`CALLBACK_GROUPS ctrl telem`, only `ctrl` created, refused naming both); `examples/workspaces/realtime-cpp` unchanged | yes |
+| `phase-459-W7` | `phase-457-W2` (the shared function reads `trigger`; this repository's `mapper_input.rs` becomes the call) | the contract under `examples/workspaces/derived-tiers-cpp/` (the two numbers made unequal, the comment removed); one case in `packages/cli/nros-cli-core/tests/derived_tiers_bake.rs` | `cargo test -p nros-cli-core --test derived_tiers_bake` (order follows `trigger.timer.rate_hz`, not `min_rate_hz`) | no |
+
+Four claims can start today: W0, W4, W5 and W6. W1 and W2 start the moment W0
+lands and are independent of each other. W3 is one claim although it spans two
+repositories: the rlm reader and the nano-ros half are useless apart, and the
+same session must land the rlm PR, see it tagged, and bump the pin. W7 is a
+fixture edit and a test, not a rewrite: issue 1372 item 2 is phase-457 W2's
+work, and W7 consumes it.
+
+**Files two waves touch, and the order they serialise in.** Across this phase,
+phase-457, phase-462, the other session's phases 460/461/463 and play_launch
+phase 78:
+
+- `packages/core/nros-orchestration-ir/src/derive.rs`: the body above
+  `#[cfg(test)]` (:179) is this phase's (`phase-459-W1` and `-W2` call into
+  it, `phase-459-W4` changes the `realize_rtos` call at :86, `phase-459-W3`
+  names derived tiers); the test module is `phase-457-W1`'s. Order:
+  `phase-459-W1`, `phase-459-W2`, `phase-459-W4`, `phase-457-W1`,
+  `phase-459-W3`.
+- `packages/core/nros-orchestration-ir/src/mapper_input.rs`: `phase-457-W2`
+  rewrites it; `phase-459-W7` reads through it and does not edit it. Order:
+  `phase-457-W2`, then `phase-459-W7`.
+- `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs`:
+  `phase-459-W1` (:344 reader), `phase-457-W1` (test fixture :1144),
+  `phase-459-W3` (:108, :197-:212), `phase-462-W2` (rows beside :1336).
+  Order: `phase-459-W1`, `phase-457-W1`, `phase-459-W3`, `phase-462-W2`.
+- `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs`:
+  `phase-459-W2` (the `run_tiers` table, :388-:510), `phase-462-W1` (a new
+  monitor-table region installed before entity creation), then the other
+  session's `phase-461-W6` (the `nros_cpp_register_parameter_services` emit
+  at :1086) and `phase-463-W2` (the census entry). Order among ours:
+  `phase-459-W2`, then `phase-462-W1`; both land before 461 W6 and 463 W2,
+  whose mutual order the other session states. Neither of ours edits :1086
+  or the hosted boot funnel.
+- `packages/cli/nros-cli-core/src/cmd/codegen_system.rs`: `phase-459-W5`
+  (:194), `phase-459-W3` (:433), `phase-457-W2` (the degradation print).
+  Order: `phase-459-W5`, `phase-459-W3`, `phase-457-W2`. phase-460 W4's
+  region (:856-:858) is disjoint; the other session places it.
+- `packages/core/nros-orchestration-ir/src/rtos_realizer.rs`: `phase-459-W4`
+  before `phase-457-W4` (`node_facts` only).
+- The four `ros-launch-manifest` pin lines and `Cargo.lock`: `phase-457-W1`
+  first (v0.1.37), `phase-459-W3` second (the tag with `derived`); never one
+  commit.
+- `packages/api/nros-cpp/include/nros/node.hpp`: `phase-459-W6` only, in
+  these three phases; phase-461 W2 (the parameter family's inbox) is on the
+  Rust side and does not touch it.
+- `docs/design/0079-priority-is-allocated-not-authored.md`:
+  `phase-459-W4` only.
+
 Owns [issue 1426](../issues/1426-cmake-callback-groups-never-reach-codegen-system-and-the-entry-never-derives.md)
 and [issue 1427](../issues/1427-realizer-allocates-rank-zero-above-the-transport-band.md).
 Closes the reachability half of
@@ -145,6 +210,8 @@ projection: `mrm_emergency_stop_operator` and `stop_mode_operator` on the most
 urgent derived tier, `mrm_comfortable_stop_operator` and `mrm_handler` one
 below. The fixture is what every later wave's gate runs against.
 
+Claim: phase-459-W0. Depends on: none. Owns: examples/workspaces/derived-tiers-cpp/ (new); one case in packages/cli/nros-cli-core/tests/example_metadata_coverage.rs. Gate: cargo test -p nros-cli-core --test example_metadata_coverage. Status: not started.
+
 **W1 - `codegen-system` reads the cmake metadata for groups.**
 `collect_callback_groups` gains a third source after `group_tiers` and the cargo
 manifest: the workspace's `nros-metadata.json` files, through the
@@ -157,6 +224,8 @@ scheduling tier(s)` and `nros-plan.json` carries the two tiers with the four
 members; the negative control is the same fixture with the keyword removed,
 which must produce the groupless note for all four (issue 1371's persisted
 form).
+
+Claim: phase-459-W1. Depends on: phase-459-W0. Owns: packages/cli/nros-cli-core/src/orchestration/tier_resolver.rs; load_workspace_metadata in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs (signature only); packages/cli/nros-cli-core/tests/derived_tiers_bake.rs (new). Gate: cargo test -p nros-cli-core --test derived_tiers_bake. Status: not started.
 
 **W2 - the entry derives, or reads what the bake derived.** `plan_from_model`
 runs the same `derive_tiers_from_contracts` when `model.execution.tiers` is
@@ -172,6 +241,8 @@ the W0 fixture ends in `ZephyrBoard::run_tiers(..., __nros_tiers, 2u)`, with
 the two 10 Hz nodes. `derive.rs` already refuses a `sched_class` the target
 cannot honour; this wave adds no dimension.
 
+Claim: phase-459-W2. Depends on: phase-459-W0. Owns: plan_from_model in packages/cli/nros-cli-core/src/codegen/entry/mod.rs; the run_tiers table emission in packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs; packages/cli/nros-cli-core/tests/derived_tiers_entry.rs (new). Gate: cargo test -p nros-cli-core --test derived_tiers_entry. Status: not started.
+
 **W3 - `derived = true`.** The marker in both parsers (item 2 above), the
 exclusivity rule, and the spin-period override warning. The rlm half is a
 pinned-dependency change and lands first, as its own PR against
@@ -182,6 +253,8 @@ rank, or `derived-*` with a `ctrl` alias; the test asserts membership and
 order, not the name); `[tiers.ctrl] derived = true` plus
 `[tiers.ctrl.zephyr] priority = 5` is refused naming both lines; a binding to
 `ctrll` is still refused as undeclared.
+
+Claim: phase-459-W3. Depends on: phase-457-W1; an rlm PR adding the derived key to model/src/system_config.rs, tagged. Owns: TierDef in packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs; the binding refusals in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the tiers.is_empty() test in packages/cli/nros-cli-core/src/cmd/codegen_system.rs; derived-tier naming in packages/core/nros-orchestration-ir/src/derive.rs; the four Cargo.toml pin lines and Cargo.lock (second bump); packages/cli/nros-cli-core/tests/derived_tier_marker.rs (new). Gate: cargo test -p nros-cli-core --test derived_tier_marker. Status: not started.
 
 **W4 - the allocation honours the board's plan.** `realize_rtos` takes a
 `PriorityPlan` beside `SchedCaps`. For a STATIC plan (FreeRTOS, NuttX, ThreadX
@@ -204,11 +277,15 @@ run on the fixture's `.config` reports zero violations; the negative control
 pins `CONFIG_NROS_ZENOH_READ_PRIORITY=16` (the pre-0852 band) and the resolver
 must report the stale band, as the script's own selftest already does.
 
+Claim: phase-459-W4. Depends on: phase-459-W0 (fixture gate only). Owns: packages/core/nros-orchestration-ir/src/rtos_realizer.rs; packages/core/nros-orchestration-ir/src/priority_plan.rs (new) and its mod line in lib.rs; the realize_rtos call in packages/core/nros-orchestration-ir/src/derive.rs; scripts/lib/priority_plan.py; scripts/check-tier-priority-plan-image.py; docs/design/0079-priority-is-allocated-not-authored.md; packages/platform/nros-platform/src/board/tier.rs. Gate: cargo test -p nros-orchestration-ir priority_plan; python3 scripts/check-tier-priority-plan-image.py on the fixture .config. Status: not started.
+
 **W5 - the hand-run form is refused.** `codegen-system --target <id>` where
 `<id>` names no `[image.*]` / `[deploy.*]` block in the bringup refuses with
 the list of blocks it could have named, instead of resolving the tier RTOS to
 the host. The Zephyr module already passes `--for-entry` and is unaffected.
 Gate: a unit test beside `resolve_target_block`.
+
+Claim: phase-459-W5. Depends on: none. Owns: resolve_target_block in packages/cli/nros-cli-core/src/cmd/codegen_system.rs and a unit test beside it. Gate: cargo test -p nros-cli-core resolve_target_block. Status: not started.
 
 **W6 - code and keyword agree.** A group created in code that the registration
 did not declare, or declared and never created when the node has more than one
@@ -218,11 +295,15 @@ declared group, is refused at node construction with a code naming both
 island's case. Gate: the existing `realtime-cpp` fixture is unchanged; a new
 negative test declares `CALLBACK_GROUPS ctrl telem` and creates only `ctrl`.
 
+Claim: phase-459-W6. Depends on: none. Owns: packages/api/nros-cpp/include/nros/node.hpp; packages/api/nros-cpp/include/nros/callback_group.hpp; cmake/NanoRosNodeRegister.cmake; packages/cli/nros-cli-core/src/codegen/entry/registered_node.rs; a negative test under packages/api/nros-cpp/tests/compile/ (new). Gate: the negative test; examples/workspaces/realtime-cpp unchanged. Status: not started.
+
 **W7 - the trigger rate, once issue 1372 item 2 lands.** The mapper reads
 `trigger.timer.rate_hz` in preference to the first output's `min_rate_hz`.
 This phase depends on it and does not implement it; until it lands the W0
 fixture keeps the two numbers equal, as the island does, and a comment in the
 fixture's contract says why.
+
+Claim: phase-459-W7. Depends on: phase-457-W2. Owns: the contract under examples/workspaces/derived-tiers-cpp/; one case in packages/cli/nros-cli-core/tests/derived_tiers_bake.rs. Gate: cargo test -p nros-cli-core --test derived_tiers_bake. Status: not started.
 
 ### What the island then writes
 
