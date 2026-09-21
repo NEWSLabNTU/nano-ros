@@ -234,7 +234,7 @@ Acceptance: on the island, `NROS_CENSUS_OUT=/tmp/c.json NROS_RMW=metadata
 ./build/src/native_entry/native_entry` writes a census listing 11
 subscriptions, 14 publishers, 2 service servers, 2 service clients, 4 timers
 and 21 parameters across four nodes, in under a second, with no router
-running. Same binary as `just run` boots; `nm` of it is unchanged by the mode.
+running. Same binary as a normal boot runs; `nm` of it is unchanged by the mode.
 
 ### W3 - the comparison, as verdicts with severities
 

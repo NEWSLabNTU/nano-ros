@@ -53,7 +53,7 @@ agree by coincidence.
 play_launch gitlink `07f0461e` (v0.9.0-158) -> the 0.12.0 tag, so that
 `nros-launch-resolve` emits the fields the shared function reads. The
 `system_model.yaml` under `build/nros/models/` goes stale with the resolver
-pin (`model_provenance_stale`, ws.rs) and `just sync` re-resolves it; that is
+pin (`model_provenance_stale`, ws.rs) and `nros sync` re-resolves it; that is
 the designed path, not a special step.
 
 **The model.** rlm v0.1.37 carries, per path, `trigger` (a
@@ -112,14 +112,14 @@ plan is untouched.
 ## Gates
 
 - `cargo test -p nros-orchestration-ir` - W1 fixtures, W3 parity, W4 fold.
-- `just check-no-tracked-models` still green: the re-resolved island model is
+- `just check no-tracked-models` still green: the re-resolved island model is
   a build artifact, and W3's fixture model is a test input under
   `nros-tests`, hashed into the test, not a model under `build/`.
 - `git grep -n min_rate_hz packages/core/nros-orchestration-ir` returns
   nothing. The runtime readers of `min_rate_hz` - `nros-node`'s
   `PubMonitorCell`, `queue_depth.rs`, `entity_inventory.rs` - are promises
   checked at run time and stay.
-- `just sync` on the island prints `derived-schedule note` for zero paths
+- `nros sync` on the island prints `derived-schedule note` for zero paths
   without a trigger, and the four `derived-*` tiers (when callback groups are
   declared) carry the same order `play_launch check --explain` prints for the
   same contract.

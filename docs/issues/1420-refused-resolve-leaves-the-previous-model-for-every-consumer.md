@@ -24,7 +24,7 @@ stayed on disk, and `nros ws entity-inventory`, `nros codegen-system` and
 contract no longer said that.
 
 Inside a cmake configure the failing sync stops the build. A hand-run
-configure, a CI step that runs the verbs separately, or a `just sync` whose
+configure, a CI step that runs the verbs separately, or an `nros sync` whose
 error scrolled past does not notice.
 
 ## Where the check is, and where it is not (verified at 783cdfa14)
