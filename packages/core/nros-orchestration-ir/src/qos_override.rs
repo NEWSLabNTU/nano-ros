@@ -212,6 +212,10 @@ pub fn reliability_spelling(p: QoSReliabilityPolicy) -> &'static str {
         QoSReliabilityPolicy::SystemDefault => "system_default",
         QoSReliabilityPolicy::Reliable => "reliable",
         QoSReliabilityPolicy::BestEffort => "best_effort",
+        // A read-back sentinel, not a policy a launch file can state. It has
+        // no `qos_overrides.*` spelling upstream either — there is nothing to
+        // render it INTO — so it renders as what it is.
+        QoSReliabilityPolicy::Unknown => "unknown",
     }
 }
 
@@ -221,6 +225,8 @@ pub fn durability_spelling(p: QoSDurabilityPolicy) -> &'static str {
         QoSDurabilityPolicy::SystemDefault => "system_default",
         QoSDurabilityPolicy::Volatile => "volatile",
         QoSDurabilityPolicy::TransientLocal => "transient_local",
+        // See `reliability_spelling`.
+        QoSDurabilityPolicy::Unknown => "unknown",
     }
 }
 
@@ -230,6 +236,8 @@ pub fn history_spelling(p: QoSHistoryPolicy) -> &'static str {
         QoSHistoryPolicy::SystemDefault => "system_default",
         QoSHistoryPolicy::KeepLast => "keep_last",
         QoSHistoryPolicy::KeepAll => "keep_all",
+        // See `reliability_spelling`.
+        QoSHistoryPolicy::Unknown => "unknown",
     }
 }
 
@@ -326,7 +334,8 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
                 Some(QoSReliabilityPolicy::Reliable) => 1,
                 // Unreachable while `parse_reliability` refuses the spelling;
                 // written out rather than `_` so adding one is a decision here.
-                Some(QoSReliabilityPolicy::SystemDefault) | None => {
+                Some(QoSReliabilityPolicy::SystemDefault | QoSReliabilityPolicy::Unknown)
+                | None => {
                     return Err(bad(RELIABILITY_VALUES));
                 }
             },
@@ -336,7 +345,7 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
             match parse_durability(v) {
                 Some(QoSDurabilityPolicy::Volatile) => 0,
                 Some(QoSDurabilityPolicy::TransientLocal) => 1,
-                Some(QoSDurabilityPolicy::SystemDefault) | None => {
+                Some(QoSDurabilityPolicy::SystemDefault | QoSDurabilityPolicy::Unknown) | None => {
                     return Err(bad(DURABILITY_VALUES));
                 }
             },
@@ -346,7 +355,7 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
             match parse_history(v) {
                 Some(QoSHistoryPolicy::KeepLast) => 0,
                 Some(QoSHistoryPolicy::KeepAll) => 1,
-                Some(QoSHistoryPolicy::SystemDefault) | None => {
+                Some(QoSHistoryPolicy::SystemDefault | QoSHistoryPolicy::Unknown) | None => {
                     return Err(bad(HISTORY_VALUES));
                 }
             },

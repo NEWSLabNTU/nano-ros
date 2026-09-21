@@ -633,6 +633,10 @@
     "verdict": "extension",
     "why": "see `rust:QoSProfile::depth`."
   },
+  "rust:QoSProfile::has_unknown": {
+    "verdict": "extension",
+    "why": "does any policy in this profile carry its `Unknown` sentinel? Upstream has no counterpart because upstream has no single place that asks: `rmw_qos_profile_check_compatible` inspects the policies one at a time to decide between `RMW_QOS_COMPATIBILITY_WARNING` and `ERROR`. Ours exists because issue 1437 needed the question answered ONCE, in `validate_against`, to refuse a read-back profile being fed back into a `create_*` call — the round trip that would otherwise turn `I cannot say` into a silently chosen policy. Four `matches!` in a `const fn`; no allocation, no `std`."
+  },
   "rust:QoSProfile::history": {
     "verdict": "extension",
     "why": "see `rust:QoSProfile::depth`."

@@ -99,22 +99,42 @@ rmw_ret_t qos_granted(const struct orb_metadata* meta, rmw_qos_profile_t* in_out
     if (meta == nullptr || in_out == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    // `in_out` arrives carrying the REQUEST and every field this backend
-    // cannot report is left exactly as it came in — the slot's contract. A
-    // zeroed struct would turn "unreported" into a confident grant of zero.
+    // issue 1437 — `in_out` arrives carrying `NROS_RMW_QOS_PROFILE_UNKNOWN`,
+    // NOT the request. It carried the request until then, which inverted the
+    // slot's own contract (`rmw_vtable.h`): a policy this backend cannot
+    // report read back as GRANTED, so the one consumer saw agreement exactly
+    // where nothing had been determined. Every field below is either WRITTEN
+    // here — this backend determined it — or deliberately left as the
+    // `*_UNKNOWN` it arrived as.
     //
     // nros-qos-honours: DEPTH
     //
     // `o_queue` is the ring the topic declares; a request for more than that
     // is granted down to it, and THIS is what makes the grant visible: the
     // runtime compares the answer against the request at create and reports
-    // the difference (`report_qos_downgrade`).
+    // the difference (`report_qos_downgrade`). The `depth == 0` arm now covers
+    // the UNKNOWN pre-load too, which carries depth 0 — upstream has no
+    // "unknown depth" spelling, so the ring size is the answer either way.
     if (in_out->depth == 0 || in_out->depth > meta->o_queue) {
         in_out->depth = meta->o_queue;
     }
     // The ring is KEEP_LAST whatever was asked; `qos_admit` has already
-    // refused KEEP_ALL, so this only resolves the SYSTEM_DEFAULT sentinel.
+    // refused KEEP_ALL.
     in_out->history = NROS_RMW_HISTORY_KEEP_LAST;
+    // VOLATILE is the only durability `qos_admit` lets through, so an entity
+    // that exists is running VOLATILE. Determinable without the request,
+    // which is what lets it be reported.
+    in_out->durability = NROS_RMW_DURABILITY_VOLATILE;
+    // RELIABILITY is NOT written, and that is the honest answer rather than a
+    // gap: both real values are served, so the grant IS the request — and the
+    // entity state does not retain the request, so this backend genuinely
+    // cannot say from here. `UNKNOWN` is what "cannot say" spells. It echoed
+    // the request before issue 1437, which reported a confident grant on a
+    // policy nothing had looked at.
+    //
+    // DEADLINE, LIFESPAN and LIVELINESS are not written for the same reason
+    // one layer along: `qos_admit` refuses a stated value for each of them, so
+    // there is no window in which this backend has an answer to report.
     return NROS_RMW_RET_OK;
 }
 

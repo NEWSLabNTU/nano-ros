@@ -923,6 +923,12 @@ pub fn overflow_drops_total() -> u32 {
 pub struct ZenohSubscriber {
     /// The subscriber handle (kept alive to maintain subscription)
     _subscriber: crate::zpico::Subscriber<'static>,
+    /// issue 1437 — the profile `qos::admit` GRANTED for this entity, which is
+    /// what [`nros_rmw::Subscription::actual_qos`] answers. See
+    /// `ZenohPublisher::granted_qos`: the depth here is the SUBSCRIBER RING,
+    /// which is the queue a depth actually meets on this backend.
+    granted_qos: nros_rmw::QoSProfile,
+
     /// Safe accessor for the static subscriber buffer
     buf: SubscriberBufferRef,
     /// Liveliness token for ROS 2 graph discovery (kept alive for subscriber lifetime)
@@ -1197,6 +1203,7 @@ impl ZenohSubscriber {
             #[cfg(not(feature = "platform-bare-metal"))]
             context: context as *const Context,
             _phantom: PhantomData,
+            granted_qos: *qos,
         })
     }
 
@@ -1874,6 +1881,13 @@ impl Subscription for ZenohSubscriber {
 
     fn deserialization_error(&self) -> Self::Error {
         TransportError::DeserializationError
+    }
+
+    /// What this backend GRANTED — see `ZenohPublisher::actual_qos`. The depth
+    /// here is the subscriber ring, which is the clamp a caller is most likely
+    /// to be surprised by.
+    fn actual_qos(&self) -> nros_rmw::QoSProfile {
+        self.granted_qos
     }
 }
 

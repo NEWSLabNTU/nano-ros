@@ -1452,6 +1452,11 @@ fn reliability_json(value: QoSReliabilityPolicy) -> &'static str {
         QoSReliabilityPolicy::SystemDefault => "system_default",
         QoSReliabilityPolicy::Reliable => "reliable",
         QoSReliabilityPolicy::BestEffort => "best_effort",
+        // issue 1437 — a read-back sentinel, which this function's INPUT can
+        // never be: the metadata reports what a node REQUESTED and
+        // `validate_against` refuses `UNKNOWN` as a request. Spelled out
+        // rather than `_` so a new policy value is a decision here.
+        QoSReliabilityPolicy::Unknown => "unknown",
     }
 }
 
@@ -1461,6 +1466,8 @@ fn durability_json(value: QoSDurabilityPolicy) -> &'static str {
         QoSDurabilityPolicy::SystemDefault => "system_default",
         QoSDurabilityPolicy::Volatile => "volatile",
         QoSDurabilityPolicy::TransientLocal => "transient_local",
+        // See `reliability_json`.
+        QoSDurabilityPolicy::Unknown => "unknown",
     }
 }
 
@@ -1470,6 +1477,8 @@ fn history_json(value: QoSHistoryPolicy) -> &'static str {
         QoSHistoryPolicy::SystemDefault => "system_default",
         QoSHistoryPolicy::KeepLast => "keep_last",
         QoSHistoryPolicy::KeepAll => "keep_all",
+        // See `reliability_json`.
+        QoSHistoryPolicy::Unknown => "unknown",
     }
 }
 
@@ -1480,6 +1489,8 @@ fn liveliness_json(value: QoSLivelinessPolicy) -> &'static str {
         QoSLivelinessPolicy::Automatic => "automatic",
         QoSLivelinessPolicy::ManualByTopic => "manual_by_topic",
         QoSLivelinessPolicy::ManualByNode => "manual_by_node",
+        // See `reliability_json`.
+        QoSLivelinessPolicy::Unknown => "unknown",
     }
 }
 

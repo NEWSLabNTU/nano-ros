@@ -327,6 +327,19 @@ pub struct ZenohServiceServer {
     reply_keyexpr_len: usize,
     /// Reference to context for replying
     context: *const Context,
+    /// issue 1437 — the profile `qos::admit` GRANTED for this entity.
+    ///
+    /// ONE profile for BOTH directions, and that is the honest answer here
+    /// rather than a shortcut: zenoh-pico has no per-endpoint QoS slot on a
+    /// queryable, so nothing about this entity is negotiated per direction —
+    /// the refusals, the request ring and the graph declaration are all
+    /// whole-entity. A DDS backend answers the two directions separately
+    /// because DDS really does negotiate them separately; this one would be
+    /// inventing a distinction to report two values.
+    ///
+    /// `QOS_PROFILE_UNKNOWN` until `set_granted_qos`, which `create_*` calls
+    /// with `admit`'s output.
+    granted_qos: nros_rmw::QoSProfile,
     /// Phantom to indicate ownership
     _phantom: PhantomData<()>,
 }
@@ -475,11 +488,17 @@ impl ZenohServiceServer {
             reply_keyexpr_len: 0,
             context: context as *const Context,
             _phantom: PhantomData,
+            granted_qos: nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN,
         })
     }
 
     pub(super) fn set_liveliness(&mut self, liveliness: Option<super::LivelinessToken>) {
         self._liveliness = liveliness;
+    }
+
+    /// Record what `qos::admit` granted, for `*_actual_qos` to answer with.
+    pub(super) fn set_granted_qos(&mut self, qos: nros_rmw::QoSProfile) {
+        self.granted_qos = qos;
     }
 
     /// issue 1332 / phase-455 W2.b — this server's zenoh queryable handle, the
@@ -639,6 +658,17 @@ impl ServiceTrait for ZenohServiceServer {
 
         Ok(())
     }
+
+    /// See [`ZenohServiceServer::granted_qos`] — one granted profile serves
+    /// both directions on this backend.
+    fn request_subscription_actual_qos(&self) -> nros_rmw::QoSProfile {
+        self.granted_qos
+    }
+
+    /// See [`Self::request_subscription_actual_qos`].
+    fn response_publisher_actual_qos(&self) -> nros_rmw::QoSProfile {
+        self.granted_qos
+    }
 }
 
 // ============================================================================
@@ -760,6 +790,10 @@ pub struct ZenohServiceClient {
     rmw_gid: [u8; RMW_GID_SIZE],
     /// Issue 0153 — per-client request sequence counter for the attachment.
     request_seq: AtomicSeqCounter,
+    /// issue 1437 — the profile `qos::admit` GRANTED. One profile for both
+    /// directions; see `ZenohServiceServer::granted_qos` for why that is the
+    /// honest answer on this backend and not a shortcut.
+    granted_qos: nros_rmw::QoSProfile,
     /// Phantom to indicate ownership
     _phantom: PhantomData<()>,
 }
@@ -835,8 +869,14 @@ impl ZenohServiceClient {
             pending_handles: heapless::Vec::new(),
             rmw_gid: RmwAttachment::generate_gid(),
             request_seq: AtomicSeqCounter::new(0),
+            granted_qos: nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN,
             _phantom: PhantomData,
         })
+    }
+
+    /// Record what `qos::admit` granted, for `*_actual_qos` to answer with.
+    pub(super) fn set_granted_qos(&mut self, qos: nros_rmw::QoSProfile) {
+        self.granted_qos = qos;
     }
 
     /// Set the timeout for service calls
@@ -1128,6 +1168,17 @@ impl ClientTrait for ZenohServiceClient {
             // "Cannot say" is the honest answer, and the caller waits on it.
             Err(TransportError::Unsupported)
         }
+    }
+
+    /// See [`ZenohServiceServer::granted_qos`] — one granted profile serves
+    /// both directions on this backend.
+    fn request_publisher_actual_qos(&self) -> nros_rmw::QoSProfile {
+        self.granted_qos
+    }
+
+    /// See [`Self::request_publisher_actual_qos`].
+    fn response_subscription_actual_qos(&self) -> nros_rmw::QoSProfile {
+        self.granted_qos
     }
 }
 

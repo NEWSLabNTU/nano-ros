@@ -1364,6 +1364,27 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
             }
         }
     }
+    /// The QoS profile this subscription is ACTUALLY running.
+    ///
+    /// rclrs's `SubscriptionState::qos`, and the answer is a step better than
+    /// its own: rclrs returns the profile the subscription was CREATED with,
+    /// because it never reads one back. This returns what the backend
+    /// GRANTED — `rmw_subscription_get_actual_qos`, in other words, which is
+    /// the same question with the answer measured instead of assumed. The two
+    /// differ whenever a backend serves something other than it was asked
+    /// (zenoh clamps depth to its receive ring; DDS negotiates), and that
+    /// difference is what answers "why is nothing arriving".
+    ///
+    /// **A policy the backend could not report reads back as its `Unknown`
+    /// variant**, never as the request — upstream's contract for this call.
+    /// A backend with no read-back at all (XRCE) answers
+    /// [`QoSProfile::QOS_PROFILE_UNKNOWN`], every field an absence.
+    ///
+    /// Free: read once at create and retained on the handle, so this never
+    /// re-enters the transport.
+    pub fn qos(&self) -> nros_rmw::QoSProfile {
+        nros_rmw::Subscription::actual_qos(&self.handle)
+    }
 }
 
 // ============================================================================
@@ -1673,6 +1694,27 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
                 return Ok(None);
             }
         }
+    }
+    /// The QoS profile this subscription is ACTUALLY running.
+    ///
+    /// rclrs's `SubscriptionState::qos`, and the answer is a step better than
+    /// its own: rclrs returns the profile the subscription was CREATED with,
+    /// because it never reads one back. This returns what the backend
+    /// GRANTED — `rmw_subscription_get_actual_qos`, in other words, which is
+    /// the same question with the answer measured instead of assumed. The two
+    /// differ whenever a backend serves something other than it was asked
+    /// (zenoh clamps depth to its receive ring; DDS negotiates), and that
+    /// difference is what answers "why is nothing arriving".
+    ///
+    /// **A policy the backend could not report reads back as its `Unknown`
+    /// variant**, never as the request — upstream's contract for this call.
+    /// A backend with no read-back at all (XRCE) answers
+    /// [`QoSProfile::QOS_PROFILE_UNKNOWN`], every field an absence.
+    ///
+    /// Free: read once at create and retained on the handle, so this never
+    /// re-enters the transport.
+    pub fn qos(&self) -> nros_rmw::QoSProfile {
+        nros_rmw::Subscription::actual_qos(&self.handle)
     }
 }
 

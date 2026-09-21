@@ -1228,6 +1228,7 @@ impl Session for ZenohSession {
                 })
             });
         server.set_liveliness(liveliness_token);
+        server.set_granted_qos(qos);
         Ok(server)
     }
 
@@ -1273,7 +1274,9 @@ impl Session for ZenohSession {
             #[cfg(feature = "std")]
             log::warn!("graph cache unavailable; service_is_ready will report Unsupported: {_e:?}");
         }
-        ZenohServiceClient::new(&self.context, service, liveliness_token)
+        let mut client = ZenohServiceClient::new(&self.context, service, liveliness_token)?;
+        client.set_granted_qos(qos);
+        Ok(client)
     }
 
     fn close(&mut self) -> Result<(), Self::Error> {

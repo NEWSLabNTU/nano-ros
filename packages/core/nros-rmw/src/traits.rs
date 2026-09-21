@@ -377,6 +377,16 @@ pub enum QoSHistoryPolicy {
     KeepLast,
     /// Keep all messages (up to resource limits)
     KeepAll,
+    /// **The backend could not determine this policy.** Upstream's
+    /// `RMW_QOS_POLICY_HISTORY_UNKNOWN`; lowers to `NROS_RMW_HISTORY_UNKNOWN`
+    /// (3) across the C ABI.
+    ///
+    /// An ABSENCE, not a value: it is what a `*_get_actual_qos` read-back
+    /// writes for a policy it looked at and cannot report, and it is never a
+    /// request an application makes. Distinct from `SystemDefault`, which is
+    /// "nobody asked, so the middleware chooses" — see
+    /// [`QoSProfile::QOS_PROFILE_UNKNOWN`].
+    Unknown,
 }
 
 /// QoS reliability policy
@@ -396,6 +406,16 @@ pub enum QoSReliabilityPolicy {
     Reliable,
     /// Best-effort delivery (no retransmits)
     BestEffort,
+    /// **The backend could not determine this policy.** Upstream's
+    /// `RMW_QOS_POLICY_RELIABILITY_UNKNOWN`; lowers to `NROS_RMW_RELIABILITY_UNKNOWN`
+    /// (3) across the C ABI.
+    ///
+    /// An ABSENCE, not a value: it is what a `*_get_actual_qos` read-back
+    /// writes for a policy it looked at and cannot report, and it is never a
+    /// request an application makes. Distinct from `SystemDefault`, which is
+    /// "nobody asked, so the middleware chooses" — see
+    /// [`QoSProfile::QOS_PROFILE_UNKNOWN`].
+    Unknown,
 }
 
 /// QoS durability policy
@@ -412,6 +432,16 @@ pub enum QoSDurabilityPolicy {
     Volatile,
     /// Messages are persisted for late-joining subscribers
     TransientLocal,
+    /// **The backend could not determine this policy.** Upstream's
+    /// `RMW_QOS_POLICY_DURABILITY_UNKNOWN`; lowers to `NROS_RMW_DURABILITY_UNKNOWN`
+    /// (3) across the C ABI.
+    ///
+    /// An ABSENCE, not a value: it is what a `*_get_actual_qos` read-back
+    /// writes for a policy it looked at and cannot report, and it is never a
+    /// request an application makes. Distinct from `SystemDefault`, which is
+    /// "nobody asked, so the middleware chooses" — see
+    /// [`QoSProfile::QOS_PROFILE_UNKNOWN`].
+    Unknown,
 }
 
 /// QoS liveliness policy. Matches DDS `LIVELINESS` semantics.
@@ -445,6 +475,13 @@ pub enum QoSLivelinessPolicy {
     ManualByNode = 2,
     /// Application calls `assert_liveliness()` per topic explicitly.
     ManualByTopic = 3,
+    /// **The backend could not determine this policy.** Discriminant 4, the
+    /// value the C ABI spells `NROS_RMW_LIVELINESS_UNKNOWN`.
+    ///
+    /// An ABSENCE, not a value — see [`QoSProfile::QOS_PROFILE_UNKNOWN`]. A
+    /// `*_get_actual_qos` read-back writes it for a policy it cannot report;
+    /// an application never requests it.
+    Unknown = 4,
 }
 
 /// Phase 211.H — which side of a topic a [`QoSOverride`] targets.
@@ -954,6 +991,37 @@ qos_profiles! {
         tx_express: false,
     };
 
+    /// `rmw_qos_profile_unknown` — **"the backend could not determine this"**,
+    /// and distinct from [`QOS_PROFILE_SYSTEM_DEFAULT`](Self::QOS_PROFILE_SYSTEM_DEFAULT).
+    ///
+    /// `SYSTEM_DEFAULT` means "nobody asked, so the middleware chooses";
+    /// this means "we looked and cannot say", which is what a
+    /// `*_get_actual_qos` read-back owes its caller for a policy it cannot
+    /// report. It is the starting value the read-back helper pre-loads, so a
+    /// field the backend does not overwrite reads as an ABSENCE rather than as
+    /// a confident grant of whatever was asked.
+    ///
+    /// **Never a request.** No `create_*` accepts it — a backend's
+    /// `qos_admit` refuses `UNKNOWN` on every policy, because an application
+    /// asking for "I cannot say" is a bug, not a preference.
+    ///
+    /// The C ABI twin is `NROS_RMW_QOS_PROFILE_UNKNOWN` (`rmw_entity.h`),
+    /// which existed from phase-428 W10 with no Rust counterpart: three of the
+    /// four policy enums had no `Unknown` variant to build it from. They do
+    /// now.
+    QOS_PROFILE_UNKNOWN: "rmw_qos_profile_unknown" = {
+        history: Unknown,
+        depth: 0,
+        reliability: Unknown,
+        durability: Unknown,
+        deadline_ms: 0,
+        lifespan_ms: 0,
+        liveliness_kind: Unknown,
+        liveliness_lease_ms: 0,
+        avoid_ros_namespace_conventions: false,
+        tx_express: false,
+    };
+
     /// Default QoS profile — reliable, volatile, keep-last(10).
     QOS_PROFILE_DEFAULT: "rmw_qos_profile_default" = {
         history: KeepLast,
@@ -1157,20 +1225,12 @@ qos_profiles! {
 //   so they are choices rather than deviations, and a caller picking one is
 //   asking for automatic liveliness on purpose.
 //
-// nros-qos-absent: upstream=rmw_qos_profile_unknown ref="phase-428 W10"
-//   No nano-ros counterpart, deliberately. `rmw_qos_profile_unknown` is what an
-//   RMW returns from `*_get_actual_qos` when it cannot report a policy; it is
-//   not a profile an application constructs. Our enums have no `Unknown`
-//   variant to build it from on three of the four policies.
-//
-//   CORRECTED 2026-09-05 (phase-428 W1): an earlier draft of this note said
-//   `NROS_RMW_RELIABILITY_UNKNOWN` "and nothing reads it". False — it is
-//   written at `rmw/cffi/src/rust_adapter.rs:1797` on every Rust backend and
-//   read by `qos_has_unknown` (`cffi/src/lib.rs:4307`) to produce upstream's
-//   `RMW_QOS_COMPATIBILITY_WARNING`. The true, narrower statement is that no
-//   `*_get_actual_qos` IMPLEMENTATION anywhere writes any `*_UNKNOWN` value —
-//   the slots whose documentation defines the contract are the ones that do
-//   not honour it.
+// `rmw_qos_profile_unknown` HAS a counterpart now — `QOS_PROFILE_UNKNOWN` in the
+// table below, added by this phase. The note that used to stand here declared it
+// absent because three of our four policy enums had no `Unknown` variant to
+// build it from; they have one now, which is what made the read-back able to
+// say "I cannot report this policy" instead of echoing the request back as a
+// grant.
 
 impl QoSProfile {
     /// Create new QoS settings with defaults (matches `QOS_PROFILE_DEFAULT`:
@@ -2160,6 +2220,20 @@ impl core::ops::BitOrAssign for QoSPolicyMask {
 }
 
 impl QoSProfile {
+    /// Does any policy in this profile carry its `Unknown` sentinel?
+    ///
+    /// True only for a profile that came out of a `*_get_actual_qos`
+    /// read-back on a backend that could not report every policy — never for
+    /// one an application built. [`validate_against`](Self::validate_against)
+    /// refuses such a profile at create time, so "I cannot say" cannot be
+    /// laundered into a request.
+    pub const fn has_unknown(&self) -> bool {
+        matches!(self.reliability, QoSReliabilityPolicy::Unknown)
+            || matches!(self.durability, QoSDurabilityPolicy::Unknown)
+            || matches!(self.history, QoSHistoryPolicy::Unknown)
+            || matches!(self.liveliness_kind, QoSLivelinessPolicy::Unknown)
+    }
+
     /// Compute the set of QoS policies actually requested by this profile.
     ///
     /// Zero-valued time fields and `LivelinessKind::None` count as "not
@@ -2211,6 +2285,12 @@ impl QoSProfile {
             QoSDurabilityPolicy::TransientLocal => {
                 mask |= QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL
             }
+            // `Unknown` is a READ-BACK sentinel, never a request, so there is
+            // no capability bit to demand for it — there is nothing a backend
+            // could support. Refusing it belongs one level up, in
+            // `validate_against`, where it is refused for every policy at once
+            // rather than smuggled in as an unsatisfiable mask bit.
+            QoSDurabilityPolicy::Unknown => {}
         }
         // Phase-301 (issue 0241): DURATION_INFINITE_MS reads the same as 0
         // (infinite = no check) at every duration check site.
@@ -2225,6 +2305,8 @@ impl QoSProfile {
             QoSLivelinessPolicy::Automatic => mask |= QoSPolicyMask::LIVELINESS_AUTOMATIC,
             QoSLivelinessPolicy::ManualByTopic => mask |= QoSPolicyMask::LIVELINESS_MANUAL_BY_TOPIC,
             QoSLivelinessPolicy::ManualByNode => mask |= QoSPolicyMask::LIVELINESS_MANUAL_BY_NODE,
+            // See the durability arm.
+            QoSLivelinessPolicy::Unknown => {}
         }
         if self.liveliness_lease_ms != 0 && self.liveliness_lease_ms != DURATION_INFINITE_MS {
             mask |= QoSPolicyMask::LIVELINESS_LEASE;
@@ -2248,6 +2330,23 @@ impl QoSProfile {
     /// several are missing is [`QoSPolicyMask::lowest_policy`]'s choice, and it
     /// is stable so a test can assert it.
     pub fn validate_against(&self, supported: QoSPolicyMask) -> Result<(), TransportError> {
+        // issue 1437 — `UNKNOWN` is what a `*_get_actual_qos` read-back writes
+        // for a policy it cannot report. It is an ABSENCE, so it is meaningless
+        // as a REQUEST, and the way it reaches a create call is a caller
+        // feeding a read-back profile straight back in — the exact round trip
+        // that would otherwise turn "I cannot say" into a silently different
+        // entity. Refused here, once, for all four policies.
+        //
+        // The refusal names NO policy, and that is not laziness: the mask's
+        // bits are CAPABILITIES a backend declares, and no backend could ever
+        // declare one that makes "I cannot say" servable — `required_policies`
+        // has no bit to set, so there is none to report. `policy_name` already
+        // answers `None` for the empty mask, which the diagnostic renders as
+        // the honest "the profile is not a request", rather than naming
+        // `DURABILITY_VOLATILE` for a durability that is not volatile.
+        if self.has_unknown() {
+            return Err(TransportError::IncompatibleQos(QoSPolicyMask::NONE));
+        }
         let missing = self.required_policies().missing_from(supported);
         if missing.0 == 0 {
             Ok(())
@@ -2512,6 +2611,28 @@ pub trait Publisher {
     /// backends override when they implement manual liveliness.
     fn assert_liveliness(&self) -> Result<(), Self::Error> {
         Ok(())
+    }
+    /// The profile this entity is ACTUALLY running — what the backend GRANTED,
+    /// not what the call site requested.
+    ///
+    /// Upstream's `rmw_publisher_get_actual_qos`. The two differ whenever a
+    /// backend serves something other than what it was asked for, and the
+    /// difference is exactly what answers "why is nothing arriving": a
+    /// RELIABLE reader does not match a BEST_EFFORT writer, and a clamped
+    /// history depth drops samples the caller believed were kept.
+    ///
+    /// **Per-field, and an unreportable field is an ABSENCE.** A backend that
+    /// determines four policies and not the fifth returns the four and leaves
+    /// the fifth at its `Unknown` variant. Never echo the request into a field
+    /// you did not read back — that is the inverse of this method's meaning,
+    /// and it is what the six C-ABI slots did until this phase.
+    ///
+    /// The default is [`QoSProfile::QOS_PROFILE_UNKNOWN`] — every field an
+    /// absence — which is the honest answer for a backend with no read-back at
+    /// all (XRCE has none; zenoh-pico's QoS is per-message flags). It is NOT
+    /// the request, and it is NOT `QOS_PROFILE_DEFAULT`.
+    fn actual_qos(&self) -> QoSProfile {
+        QoSProfile::QOS_PROFILE_UNKNOWN
     }
 }
 
@@ -2823,6 +2944,28 @@ pub trait Subscription {
     fn unsupported_event_error(&self) -> Self::Error {
         self.deserialization_error()
     }
+    /// The profile this entity is ACTUALLY running — what the backend GRANTED,
+    /// not what the call site requested.
+    ///
+    /// Upstream's `rmw_subscription_get_actual_qos`. The two differ whenever a
+    /// backend serves something other than what it was asked for, and the
+    /// difference is exactly what answers "why is nothing arriving": a
+    /// RELIABLE reader does not match a BEST_EFFORT writer, and a clamped
+    /// history depth drops samples the caller believed were kept.
+    ///
+    /// **Per-field, and an unreportable field is an ABSENCE.** A backend that
+    /// determines four policies and not the fifth returns the four and leaves
+    /// the fifth at its `Unknown` variant. Never echo the request into a field
+    /// you did not read back — that is the inverse of this method's meaning,
+    /// and it is what the six C-ABI slots did until this phase.
+    ///
+    /// The default is [`QoSProfile::QOS_PROFILE_UNKNOWN`] — every field an
+    /// absence — which is the honest answer for a backend with no read-back at
+    /// all (XRCE has none; zenoh-pico's QoS is per-message flags). It is NOT
+    /// the request, and it is NOT `QOS_PROFILE_DEFAULT`.
+    fn actual_qos(&self) -> QoSProfile {
+        QoSProfile::QOS_PROFILE_UNKNOWN
+    }
 }
 
 /// Service request from a client
@@ -3119,6 +3262,51 @@ pub trait ServiceTrait {
         self.send_response(sequence_number, &reply_buf[..len])?;
         Ok(true)
     }
+    /// The profile this entity is ACTUALLY running — what the backend GRANTED,
+    /// not what the call site requested.
+    ///
+    /// Upstream's `rmw_service_request_subscription_get_actual_qos`. The two differ whenever a
+    /// backend serves something other than what it was asked for, and the
+    /// difference is exactly what answers "why is nothing arriving": a
+    /// RELIABLE reader does not match a BEST_EFFORT writer, and a clamped
+    /// history depth drops samples the caller believed were kept.
+    ///
+    /// **Per-field, and an unreportable field is an ABSENCE.** A backend that
+    /// determines four policies and not the fifth returns the four and leaves
+    /// the fifth at its `Unknown` variant. Never echo the request into a field
+    /// you did not read back — that is the inverse of this method's meaning,
+    /// and it is what the six C-ABI slots did until this phase.
+    ///
+    /// The default is [`QoSProfile::QOS_PROFILE_UNKNOWN`] — every field an
+    /// absence — which is the honest answer for a backend with no read-back at
+    /// all (XRCE has none; zenoh-pico's QoS is per-message flags). It is NOT
+    /// the request, and it is NOT `QOS_PROFILE_DEFAULT`.
+    fn request_subscription_actual_qos(&self) -> QoSProfile {
+        QoSProfile::QOS_PROFILE_UNKNOWN
+    }
+
+    /// The profile this entity is ACTUALLY running — what the backend GRANTED,
+    /// not what the call site requested.
+    ///
+    /// Upstream's `rmw_service_response_publisher_get_actual_qos`. The two differ whenever a
+    /// backend serves something other than what it was asked for, and the
+    /// difference is exactly what answers "why is nothing arriving": a
+    /// RELIABLE reader does not match a BEST_EFFORT writer, and a clamped
+    /// history depth drops samples the caller believed were kept.
+    ///
+    /// **Per-field, and an unreportable field is an ABSENCE.** A backend that
+    /// determines four policies and not the fifth returns the four and leaves
+    /// the fifth at its `Unknown` variant. Never echo the request into a field
+    /// you did not read back — that is the inverse of this method's meaning,
+    /// and it is what the six C-ABI slots did until this phase.
+    ///
+    /// The default is [`QoSProfile::QOS_PROFILE_UNKNOWN`] — every field an
+    /// absence — which is the honest answer for a backend with no read-back at
+    /// all (XRCE has none; zenoh-pico's QoS is per-message flags). It is NOT
+    /// the request, and it is NOT `QOS_PROFILE_DEFAULT`.
+    fn response_publisher_actual_qos(&self) -> QoSProfile {
+        QoSProfile::QOS_PROFILE_UNKNOWN
+    }
 }
 
 /// Service client trait for sending requests.
@@ -3290,6 +3478,51 @@ pub trait ClientTrait {
         Self::Error: From<TransportError>,
     {
         Err(TransportError::Unsupported.into())
+    }
+    /// The profile this entity is ACTUALLY running — what the backend GRANTED,
+    /// not what the call site requested.
+    ///
+    /// Upstream's `rmw_client_request_publisher_get_actual_qos`. The two differ whenever a
+    /// backend serves something other than what it was asked for, and the
+    /// difference is exactly what answers "why is nothing arriving": a
+    /// RELIABLE reader does not match a BEST_EFFORT writer, and a clamped
+    /// history depth drops samples the caller believed were kept.
+    ///
+    /// **Per-field, and an unreportable field is an ABSENCE.** A backend that
+    /// determines four policies and not the fifth returns the four and leaves
+    /// the fifth at its `Unknown` variant. Never echo the request into a field
+    /// you did not read back — that is the inverse of this method's meaning,
+    /// and it is what the six C-ABI slots did until this phase.
+    ///
+    /// The default is [`QoSProfile::QOS_PROFILE_UNKNOWN`] — every field an
+    /// absence — which is the honest answer for a backend with no read-back at
+    /// all (XRCE has none; zenoh-pico's QoS is per-message flags). It is NOT
+    /// the request, and it is NOT `QOS_PROFILE_DEFAULT`.
+    fn request_publisher_actual_qos(&self) -> QoSProfile {
+        QoSProfile::QOS_PROFILE_UNKNOWN
+    }
+
+    /// The profile this entity is ACTUALLY running — what the backend GRANTED,
+    /// not what the call site requested.
+    ///
+    /// Upstream's `rmw_client_response_subscription_get_actual_qos`. The two differ whenever a
+    /// backend serves something other than what it was asked for, and the
+    /// difference is exactly what answers "why is nothing arriving": a
+    /// RELIABLE reader does not match a BEST_EFFORT writer, and a clamped
+    /// history depth drops samples the caller believed were kept.
+    ///
+    /// **Per-field, and an unreportable field is an ABSENCE.** A backend that
+    /// determines four policies and not the fifth returns the four and leaves
+    /// the fifth at its `Unknown` variant. Never echo the request into a field
+    /// you did not read back — that is the inverse of this method's meaning,
+    /// and it is what the six C-ABI slots did until this phase.
+    ///
+    /// The default is [`QoSProfile::QOS_PROFILE_UNKNOWN`] — every field an
+    /// absence — which is the honest answer for a backend with no read-back at
+    /// all (XRCE has none; zenoh-pico's QoS is per-message flags). It is NOT
+    /// the request, and it is NOT `QOS_PROFILE_DEFAULT`.
+    fn response_subscription_actual_qos(&self) -> QoSProfile {
+        QoSProfile::QOS_PROFILE_UNKNOWN
     }
 }
 
@@ -4210,5 +4443,98 @@ mod rx_buffer_hint_tests {
         assert_eq!(hinted.domain_id, base.domain_id);
         assert_eq!(hinted.namespace, base.namespace);
         assert_eq!(hinted.rx_buffer_hint, 1234);
+    }
+}
+
+#[cfg(test)]
+mod granted_qos_tests {
+    use super::*;
+
+    /// A backend with no read-back answers an ABSENCE, and the trait default
+    /// is where that is decided for every backend that does not override it.
+    ///
+    /// The tempting defaults are both wrong and both silent: the REQUEST
+    /// ("you got what you asked for", which is the claim this accessor exists
+    /// to stop being made for free) and `QOS_PROFILE_DEFAULT` ("RELIABLE
+    /// KEEP_LAST(10)", a profile nobody chose).
+    struct Mute;
+
+    impl Publisher for Mute {
+        type Error = TransportError;
+        fn publish_raw(&self, _data: &[u8]) -> Result<(), TransportError> {
+            Ok(())
+        }
+        fn buffer_error(&self) -> TransportError {
+            TransportError::BufferTooSmall
+        }
+        fn serialization_error(&self) -> TransportError {
+            TransportError::SerializationError
+        }
+    }
+
+    #[test]
+    fn the_default_read_back_is_an_absence_not_the_request() {
+        let answered = Publisher::actual_qos(&Mute);
+        assert_eq!(answered, QoSProfile::QOS_PROFILE_UNKNOWN);
+        assert!(answered.has_unknown());
+        assert_ne!(
+            answered,
+            QoSProfile::QOS_PROFILE_DEFAULT,
+            "a backend that cannot say must not answer a profile nobody chose"
+        );
+    }
+
+    /// `UNKNOWN` and `SYSTEM_DEFAULT` are DIFFERENT absences and the ABI keeps
+    /// them apart: "nobody asked" is resolvable by the backend, "I cannot say"
+    /// is not. A profile that confused them would let a read-back round-trip
+    /// into a create call and silently pick policies.
+    #[test]
+    fn unknown_is_not_the_system_default_sentinel() {
+        assert_ne!(
+            QoSProfile::QOS_PROFILE_UNKNOWN,
+            QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT
+        );
+        assert!(QoSProfile::QOS_PROFILE_UNKNOWN.has_unknown());
+        assert!(!QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT.has_unknown());
+    }
+
+    /// The round trip is REFUSED. Feeding a read-back straight back into a
+    /// create is the one way `UNKNOWN` reaches a request, and it must fail
+    /// loudly rather than resolve to whatever the backend picks.
+    #[test]
+    fn a_read_back_profile_cannot_be_used_as_a_request() {
+        // A mask that supports everything, so the refusal cannot be an
+        // accident of a narrow backend.
+        let everything = QoSPolicyMask(u32::MAX);
+        assert_eq!(
+            QoSProfile::QOS_PROFILE_UNKNOWN.validate_against(everything),
+            Err(TransportError::IncompatibleQos(QoSPolicyMask::NONE)),
+            "UNKNOWN is an absence; nothing can grant it, so no policy is named"
+        );
+        // And exactly one unknown policy is enough — a partial read-back is
+        // the common case, not the exotic one.
+        let mut partial = QoSProfile::QOS_PROFILE_DEFAULT;
+        partial.durability = QoSDurabilityPolicy::Unknown;
+        assert_eq!(
+            partial.validate_against(everything),
+            Err(TransportError::IncompatibleQos(QoSPolicyMask::NONE))
+        );
+        // The same profile without the sentinel is admitted, so the refusal
+        // above is about `UNKNOWN` and not about the mask.
+        assert_eq!(
+            QoSProfile::QOS_PROFILE_DEFAULT.validate_against(everything),
+            Ok(())
+        );
+    }
+
+    /// `required_policies` cannot express `UNKNOWN`, which is why the refusal
+    /// lives one level up. Asserted so that a future attempt to smuggle it in
+    /// as an unsatisfiable mask bit has to change a test that says why not.
+    #[test]
+    fn unknown_demands_no_capability_bit() {
+        let mut p = QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT;
+        p.durability = QoSDurabilityPolicy::Unknown;
+        p.liveliness_kind = QoSLivelinessPolicy::Unknown;
+        assert_eq!(p.required_policies().0, QoSPolicyMask(0).0);
     }
 }
