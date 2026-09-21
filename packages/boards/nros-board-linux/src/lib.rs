@@ -530,7 +530,7 @@ impl LinuxBoard {
         // not this issue's: `run_tiers` has ignored `deploy` since issue #48
         // ("kept for signature parity"), so naming the session from the
         // overlay would change what `ros2 node list` prints for every tiered
-        // native image, which is a decision on its own. Filed separately.
+        // native image, which is a decision on its own — issue 1442.
         let blob = deploy
             .boot_config
             .map(::nros::BootConfig::from_baked)
