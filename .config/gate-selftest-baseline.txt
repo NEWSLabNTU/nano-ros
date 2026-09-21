@@ -47,7 +47,6 @@ scripts/check-interface-glob-configure-depends.py
 scripts/check-issue-index.sh
 scripts/check-kconfig-knob-forwarding.sh
 scripts/check-lane-scope-consumers.py
-scripts/check-leaf-lockfiles.sh
 scripts/check-manifests-parse.py
 scripts/check-msg-dep-is-path.sh
 scripts/check-nested-workspace-excludes.sh

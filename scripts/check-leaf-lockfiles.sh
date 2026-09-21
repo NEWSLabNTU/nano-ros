@@ -146,6 +146,101 @@ SKIP_RE='^(tests/simple-workspace)$'
 # path fails to load the source. Neither silently falls through to crates.io.
 UNSYNCED_RE='failed to load config include|failed to read configuration file .*nros-patch\.toml|unable to update .*/generated/|failed to load source for dependency'
 
+# Issue 1398 — a SUBMODULE that is not checked out, told apart from both.
+#
+# The branch below reads the central `nros-patch.toml` as proof that the tree is
+# provisioned, and it is not: `nros sync` writes patch tables and `generated/`
+# trees, and it does not fetch submodules. A tree can be fully synced with no
+# submodule checked out at all.
+#
+# Two leaves prove it. `nros-nuttx-ffi` and `nros-nuttx-riscv-ffi` carry, in the
+# TRACKED half of their `.cargo/config.toml` (authored, not sync-managed, so
+# present in a fresh clone):
+#
+#     [patch.crates-io]
+#     libc = { path = "../../../../third-party/nuttx/libc" }
+#
+# With `third-party/nuttx/libc` absent, cargo says `failed to load source for
+# dependency libc` — which `UNSYNCED_RE` matches — and the patch-table branch
+# then reported "their patch tables or `generated/` trees are wrong" and sent
+# the reader to `nros sync`, which cannot fetch a submodule and, run at the repo
+# root, refuses outright.
+#
+# We check the PATH DEP TARGETS rather than the wording of cargo's error, for
+# the same reason `DRIFT_RE` is specific rather than "any non-zero exit": a
+# message is a thing upstream can change, a missing `Cargo.toml` is not. And we
+# require the target to be a DECLARED SUBMODULE (`.gitmodules`), because that —
+# not "it is under `third-party/`" — is what makes it provisioning rather than a
+# defect: a path dep pointing at a directory nobody can check out is a broken
+# tree and must stay a hard failure.
+#
+# `_nros_submodule_roots_abs` is a newline-separated list of absolute submodule
+# roots. It is a variable, not a call, so the selftest can substitute a set it
+# controls without touching the repo.
+_nros_submodule_roots_abs=""
+load_submodule_roots() {
+    local rel roots=""
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        roots+="$(realpath -m "$rel")"$'\n'
+    done < <(git config -f .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null \
+        | awk '{print $2}')
+    _nros_submodule_roots_abs="$roots"
+}
+
+# Every `path = "…"` a leaf declares, in the two files that can carry one: its
+# manifest and its cargo config. Both resolve relative to the LEAF DIRECTORY
+# (verified against cargo's own error, which named the fully resolved path).
+leaf_path_deps() {
+    local dir="$1"
+    sed -n \
+        -e 's/^[[:space:]]*path[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+        -e 's/.*[{,][[:space:]]*path[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+        "$dir/.cargo/config.toml" "$dir/Cargo.toml" 2>/dev/null | sort -u
+}
+
+# `<abs>` is at or under a declared submodule root that is NOT CHECKED OUT ->
+# print that root.
+#
+# The emptiness test is what keeps the widening honest. Containment alone would
+# also swallow a dep pointing INSIDE a checked-out submodule at a directory that
+# is missing — a broken tree wearing a provisioning gap's clothes, and a silent
+# skip where the hard failure belongs. `git submodule deinit` leaves the
+# directory present and empty, so "empty or absent" is exactly git's own
+# not-checked-out.
+submodule_root_for() {
+    local abs="$1" root
+    while IFS= read -r root; do
+        [ -n "$root" ] || continue
+        [ "$abs" = "$root" ] || [ "${abs#"$root"/}" != "$abs" ] || continue
+        [ -z "$(ls -A "$root" 2>/dev/null)" ] || continue
+        printf '%s\n' "$root"
+        return 0
+    done <<<"$_nros_submodule_roots_abs"
+    return 1
+}
+
+# Prints `<spec>|<repo-relative submodule root>` per unprovisioned path dep;
+# returns 0 if there was at least one. A target that EXISTS as a crate is never
+# reported, so a leaf that still fails on a provisioned tree falls through to
+# the ordinary classification and its hard failure.
+unprovisioned_submodule_deps() {
+    local dir="$1" found=1 spec abs root
+    while IFS= read -r spec; do
+        [ -n "$spec" ] || continue
+        case "$spec" in
+            /*) abs="$spec" ;;
+            *)  abs="$dir/$spec" ;;
+        esac
+        abs="$(realpath -m "$abs")"
+        [ -f "$abs/Cargo.toml" ] && continue
+        root="$(submodule_root_for "$abs")" || continue
+        printf '%s|%s\n' "$spec" "$(realpath -m --relative-to=. "$root")"
+        found=0
+    done < <(leaf_path_deps "$dir")
+    return "$found"
+}
+
 # Issue 0378 — drift that is ENVIRONMENT, not a dependency change.
 #
 # Generated message crates take their version from the consumer's ament install
@@ -179,9 +274,92 @@ msg_version_drift_only() {
     return "$found"
 }
 
+# Negative control for the issue-1398 classifier, run on the NORMAL path.
+#
+# The two directions have to be demonstrated together, because each alone is
+# satisfied by a broken predicate: a probe that always says "unprovisioned"
+# turns the gate into a no-op, and one that never does restores 1398. So:
+#
+#   A. an absent submodule reads as a provisioning gap (the bug), and
+#   B. the same leaf with the target checked out does NOT (so a genuinely
+#      broken leaf on a provisioned tree still reaches the hard failure), and
+#   C. a path dep at an absent directory that is NOT a declared submodule does
+#      NOT either — that is a broken tree, not a missing checkout, and
+#   D. neither does one pointing INSIDE a submodule that IS checked out, at a
+#      directory that is missing. Same reason as C, and the arm containment
+#      alone would get wrong.
+#
+# Pure: it builds directories and files, never a repository, so it cannot hit
+# issue 0986 (a `git init` under an inherited `GIT_DIR` writes into the CALLER's
+# repo — from a `pre-push` hook, which this gate's lane runs in).
+self_test() {
+    local tmp saved root rc=0 out
+    saved="$_nros_submodule_roots_abs"
+    # Same scratch rule as the drift temporaries below: `$repo/tmp/`, which the
+    # repo already ignores, never the shared system `/tmp`.
+    root="$(git rev-parse --show-toplevel)/tmp"
+    mkdir -p "$root"
+    tmp="$(mktemp -d "$root/leaf-selftest.XXXXXX")"
+
+    mkdir -p "$tmp/leaf/.cargo"
+    printf '[package]\nname = "leaf"\nversion = "0.0.0"\n' > "$tmp/leaf/Cargo.toml"
+    printf '%s\n' '[patch.crates-io]' \
+        'libc = { path = "../sub/libc" }' \
+        'other = { path = "../plain/dir" }' \
+        'inner = { path = "../sub/libc/gone" }' \
+        > "$tmp/leaf/.cargo/config.toml"
+    # `../sub/libc` is a declared submodule; `../plain/dir` is not. The dir
+    # exists and is EMPTY — `git submodule deinit` leaves exactly that.
+    mkdir -p "$tmp/sub/libc"
+    _nros_submodule_roots_abs="$tmp/sub/libc"$'\n'
+
+    # A — the submodule is not checked out.
+    if out="$(unprovisioned_submodule_deps "$tmp/leaf")"; then
+        case "$out" in
+            *"sub/libc"*) ;;
+            *) echo "[FAIL] selftest A: an absent submodule was detected, but the" >&2
+               echo "       report does not name it: $out" >&2
+               rc=1 ;;
+        esac
+        case "$out" in
+            *"plain/dir"*)
+                echo "[FAIL] selftest C: an absent path dep that is NOT a declared" >&2
+                echo "       submodule was reported as a provisioning gap. That is a" >&2
+                echo "       broken tree and must stay a hard failure." >&2
+                rc=1 ;;
+        esac
+    else
+        echo "[FAIL] selftest A: a leaf path-depending on a submodule that is NOT" >&2
+        echo "       checked out was not classified as a provisioning gap — issue" >&2
+        echo "       1398 would be back, and it reports as two broken leaves." >&2
+        rc=1
+    fi
+
+    # B and D — the same leaf, submodule checked out. Neither `../sub/libc`
+    # (which now resolves) nor `../sub/libc/gone` (which does not, but is inside
+    # a provisioned submodule) may be reported.
+    printf '[package]\nname = "libc"\nversion = "0.0.0"\n' > "$tmp/sub/libc/Cargo.toml"
+    if out="$(unprovisioned_submodule_deps "$tmp/leaf")"; then
+        echo "[FAIL] selftest B/D: a leaf whose submodule IS checked out was still" >&2
+        echo "       called a provisioning gap ($out). A leaf that fails on a" >&2
+        echo "       provisioned tree must reach the hard failure, or this gate" >&2
+        echo "       stops asserting anything." >&2
+        rc=1
+    fi
+
+    rm -rf "$tmp"
+    _nros_submodule_roots_abs="$saved"
+    return "$rc"
+}
+
+load_submodule_roots
+self_test || exit 1
+
 drifted=()
 broken=()
 unsynced=()
+unprovisioned=()
+unprovisioned_detail=()
 msg_drift=()
 while read -r lock; do
     dir="$(dirname "$lock")"
@@ -189,6 +367,17 @@ while read -r lock; do
         continue
     fi
     if out="$( cd "$dir" && cargo metadata --locked --format-version 1 2>&1 >/dev/null )"; then
+        continue
+    fi
+    # Issue 1398 — FIRST, because it is the only arm that is about the
+    # environment rather than the tree, and cargo reports an unloadable source
+    # before it reports anything else. Its answer does not depend on the error
+    # text, so it is stable under a cargo that rewords one.
+    if detail="$(unprovisioned_submodule_deps "$dir")"; then
+        unprovisioned+=("$dir")
+        while IFS= read -r line; do
+            [ -n "$line" ] && unprovisioned_detail+=("$dir|$line")
+        done <<<"$detail"
         continue
     fi
     if nros_grep_q -E "$DRIFT_RE" <<<"$out"; then
@@ -206,6 +395,37 @@ while read -r lock; do
         printf '%s\n' "$out" | head -3 | sed 's/^/      /' >&2
     fi
 done < <(git ls-files '*/Cargo.lock' | grep -v '^third-party/' | grep -v '^packages/cli/')
+
+if [ ${#unprovisioned[@]} -gt 0 ]; then
+    # Issue 1398 — the THIRD outcome (issue 1043's vocabulary): not OK, not
+    # FAIL, but NOT VERIFIED. These leaves path-depend on a submodule that is
+    # not checked out, so `--locked` cannot say anything about their locks, and
+    # no amount of correctness in the tree would change that.
+    #
+    # RECORDED, not merely printed (issue 1184): a line on stderr is not
+    # countable, and the lane summary would go on claiming these were checked.
+    # And exit 0, for issue 0466's reason — this gate is on `check-fast`, which
+    # `pre-push` runs, and a hook must not refuse a push over a checkout the
+    # lane is not specified to provide.
+    mapfile -t _missing_roots < <(printf '%s\n' "${unprovisioned_detail[@]}" \
+        | cut -d'|' -f3 | sort -u)
+    nros_check_skip leaf-lockfiles \
+        "submodule(s) not checked out — ${#unprovisioned[@]} leaf crate(s) NOT checked: ${unprovisioned[*]}"
+    for _d in "${unprovisioned_detail[@]}"; do
+        IFS='|' read -r _leaf _spec _root <<<"$_d"
+        printf '       %s\n           path dep %s -> submodule %s (not checked out)\n' \
+            "$_leaf" "$_spec" "$_root" >&2
+    done
+    echo "" >&2
+    echo "       Those rows are in the TRACKED half of the leaf's cargo config, so" >&2
+    echo "       they are there in a fresh clone — but the submodule they point at" >&2
+    echo "       is not. \`nros sync\` does NOT fetch submodules, so a synced tree" >&2
+    echo "       reaches this state too (issue 1398). Fetch them:" >&2
+    echo "" >&2
+    printf '           git submodule update --init --depth 1 %s\n' "${_missing_roots[*]}" >&2
+    echo "" >&2
+    echo "       Every OTHER leaf lock was still checked." >&2
+fi
 
 if [ ${#unsynced[@]} -gt 0 ]; then
     # Is the TREE unsynced, or is this leaf broken on a synced tree? The central
@@ -225,13 +445,20 @@ if [ ${#unsynced[@]} -gt 0 ]; then
     # do. So: warn and keep going, still gating every leaf that DID resolve.
     # With the central patch present the tree IS synced, an unresolvable leaf is
     # then a real defect, and the old hard failure stands unchanged.
+    #
+    # Issue 1398 — "the central patch table exists" now means only what it can
+    # mean: `nros sync` ran. It says nothing about SUBMODULES, which sync does
+    # not fetch, so those leaves are classified above and never reach here. What
+    # is left is the sync-shaped gap this branch was written for, and the hard
+    # failure is sound for it.
     if [ -f "nros-patch.toml" ]; then
         echo "ERROR: ${#unsynced[@]} leaf crate(s) cannot resolve on a SYNCED tree." >&2
         printf '       %s\n' "${unsynced[@]}" >&2
         echo "" >&2
-        echo "       \`nros-patch.toml\` exists, so this is not the setup gap below —" >&2
-        echo "       these leaves are genuinely unresolvable. Re-run \`nros sync\`; if" >&2
-        echo "       they persist, their patch tables or \`generated/\` trees are wrong." >&2
+        echo "       \`nros-patch.toml\` exists, so \`nros sync\` has run here, and no" >&2
+        echo "       unprovisioned submodule explains these (that is checked first," >&2
+        echo "       issue 1398). Re-run \`nros sync\`; if they persist, their patch" >&2
+        echo "       tables or \`generated/\` trees are wrong." >&2
         exit 1
     fi
     # issue 1184 — RECORD it, not just print it. Every CI checkout is unsynced
