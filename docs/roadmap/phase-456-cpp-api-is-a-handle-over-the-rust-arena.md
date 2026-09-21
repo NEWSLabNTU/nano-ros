@@ -622,12 +622,62 @@ Four things follow, and each is a simplification rather than a trade:
   `check-cpp-{freestanding-includes,capability-layout,freestanding-mechanisms,
   subscription-bound-supplied,ffi-error-mapping,no-std-stdio}` all OK.
 
-* **W6 [ci] — the gates become structural.** phase-442 W10, inherited:
+* **W6 [ci] — the gates become structural. HALF LANDED, and the other half is
+  not reachable yet — measured, not estimated.** phase-442 W10, inherited:
   `check-cpp-freestanding-includes` loses its baseline;
   `check-cpp-capability-layout` asserts a constant rather than ratcheting.
-  *Acceptance:* zero `NROS_CPP_HAS_*`, zero `NROS_CPP_STD`, zero
+  *Acceptance as written:* zero `NROS_CPP_HAS_*`, zero `NROS_CPP_STD`, zero
   `NROS_CPP_NODE_HOSTED`; both gates fail on a mutation that reintroduces a
   `std` type in a public signature, and the mutation is in the selftest.
+
+  **What landed.** Both baseline files stop being ratchets. A row of any kind is
+  now a hard failure, and the three kinds survive only as the vocabulary of the
+  refusal message. The argument for making it a constant rather than leaving an
+  empty ratchet is in the baseline file itself and is worth repeating: an empty
+  slot is not tolerance for something measured, it is a place to put the NEXT
+  violation — and this rule has no legitimate exception, because two TUs of one
+  image may disagree about a capability macro (px4 sets `-DNROS_CPP_STD` on a
+  single module of a larger image), link anyway, and write an object through one
+  layout while reading it through the other. Issue 0135 is that bug, shipped.
+  Both gates carry the required mutation in their selftests — 7 cases and 13
+  cases respectively, including "a row in the baseline file is refused".
+
+  **What did not, and why the count is not being forced to zero.** Measured
+  after W5:
+
+  | macro | uses | what still needs it |
+  | --- | --- | --- |
+  | `NROS_CPP_HAS_SHARED_PTR` | 12 | `Client<S>::SharedPtr` is still `std::shared_ptr<Client<S>>` |
+  | `NROS_CPP_HAS_STD_STRING` | 9 | the `std::string` overloads of the parameter API |
+  | `NROS_CPP_HAS_STD_CHRONO` | 8 | the `std::chrono` timer/rate overloads |
+  | `NROS_CPP_HAS_STD_FUNCTION` | 6 | `NROS_CPP_NODE_HOSTED`'s conjunction |
+  | `NROS_CPP_HAS_STD_VECTOR` | 4 | `std::vector` parameter overloads |
+  | `NROS_CPP_HAS_STD_SSTREAM` | 4 | the stream-formatting logging arm |
+  | `NROS_CPP_STD` | 57 | the consumer-facing opt-in, which nothing that ships defines |
+  | `NROS_CPP_NODE_HOSTED` | 17 | derived from four of the above |
+
+  W5 took `X::SharedPtr` off `std::shared_ptr` for **publishers and services**.
+  It did not touch **clients**, which were never in W5's three decisions and
+  which W3 measured separately: a dispatch client has one live verb
+  (`async_send_request`), so it wants a handle WITH a method, not the bare
+  keep-alive a service gets. That is a real design step, not a rename, and it
+  has no work item yet.
+
+  The `std::string` / `std::vector` / `std::chrono` overloads are a different
+  surface again — they are the ported-source ergonomics RFC-0089 adopts on
+  purpose, and removing the gate means giving each one a freestanding spelling
+  (`nros::FixedString`, a duration type), which is its own phase.
+
+  So W6's zero is blocked on two items that do not exist yet, and asserting a
+  constant of zero today would mean either deleting surface that ported code
+  uses or moving it somewhere the gate does not look. **A gate that reaches zero
+  by not looking is worse than a ratchet**, which is the whole reason this item
+  exists. The structural half is what W6 delivers; the count stays measured and
+  stated here until the two items land.
+
+  *Follow-ups this creates:* `Client<S>` as a handle with one verb (W3's
+  measurement is the input); a freestanding spelling for the three STL-typed
+  overload families.
 
 Two further work items, **W7** and **W8**, are stated in the next section
 rather than here, because each is derived from a finding that arrived with a

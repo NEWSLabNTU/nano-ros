@@ -48,12 +48,37 @@ cd "$(dirname "$0")/.."
 # `packages/` and `cmake/`; the only other hits are prose.
 SCAN_DIRS="packages/api/nros-cpp/include/nros packages/rmw/cyclonedds/nros-rmw-cyclonedds/src"
 
-# Known debt this walker could not see before issue 1223, as `<file> <header>`
-# pairs. A RATCHET: an unlisted violation fails, and a listed pair that no
-# longer offends ALSO fails, so the file can only shrink and only on purpose.
-# EMPTY since issue 1240, which paid all fourteen at once. Keyed on file+header
-# rather than line so an edit above a site does not silently move the debt.
+# THE BASELINE IS A CONSTANT NOW, NOT A RATCHET (phase-456 W6).
+#
+# It held `<file> <header>` pairs of debt this walker could not see before
+# issue 1223, as a ratchet: an unlisted violation failed, and a listed pair
+# that no longer offended failed too, so it could only shrink. It has been
+# EMPTY since issue 1240 paid all fourteen at once.
+#
+# It may now hold nothing at all: a pair in it is a hard failure. A ratchet is
+# the right instrument for debt you intend to pay, and the debt is paid. What
+# a slot holds after that is not tolerance for something measured, it is a
+# place to put the NEXT violation -- and this rule has no legitimate exception,
+# because the gated form is always available. An ungated hosted STL include in
+# these two trees does not fail on the host; it fails on a board, at a build
+# nobody runs per PR, which is why the source-level check exists at all.
+#
+# NOTHING IS FORECLOSED. A hosted include behind
+# `#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ &&
+# __has_include(<hdr>))` is still legal and still used -- `bridge.hpp` does it,
+# `std_detect.hpp` does it six times. The constant refuses the UNGATED form
+# only. If a genuine exception ever appears, change this gate with the reason
+# in the commit rather than appending a line nobody reviews.
+#
+# The file stays as the record of what the ratchet measured and why, which is
+# the one thing deleting it would throw away.
 BASELINE=".config/cpp-freestanding-includes-baseline.txt"
+
+# Factored out so the selftest can drive it (phase-456 W6). Prints the offending
+# rows and returns 1; silent and 0 for a file of comments and blanks.
+baseline_rows() {
+  grep -v '^[[:space:]]*#' "$1" | grep -v '^[[:space:]]*$' || true
+}
 
 
 # Hosted-only STL headers absent from a minimal freestanding libcpp. The
@@ -234,6 +259,60 @@ selftest() {
 #endif
 '
 
+  # 10. phase-456 W6 — THE MUTATION, on a REAL header. Cases 1-9 drive the
+  #     walker with hand-written snippets, which proves what the walker
+  #     believes and not that it is pointed at the tree. This copies a tracked
+  #     header, reintroduces a `std` TYPE in a public signature together with
+  #     the ungated include that type needs, and asserts the walker flags it.
+  #     The UNMUTATED copy runs first, for the reason the capability-layout
+  #     gate's case 3 gives: if the gate already fires on a faithful copy, the
+  #     mutated run proves nothing.
+  local real mutated
+  real="packages/api/nros-cpp/include/nros/publisher.hpp"
+  if [ ! -f "$real" ]; then
+    echo "check-cpp-freestanding-includes SELFTEST FAIL: $real is missing, so the real-header control could not run" >&2
+    rc=1
+  else
+    cp "$real" "$d/real.hpp"
+    cases=$((cases + 1))
+    if [ -n "$(walk_file "$d/real.hpp" 1)" ]; then
+      echo "check-cpp-freestanding-includes SELFTEST FAIL: an UNMUTATED copy of $real was flagged, so a mutation of it would prove nothing" >&2
+      rc=1
+    else
+      mutated="$d/mutated.hpp"
+      {
+        printf '#include <string>\n'
+        printf 'namespace rclcpp { struct Mutant { std::string topic_name(); }; }\n'
+        cat "$d/real.hpp"
+      } > "$mutated"
+      cases=$((cases + 1))
+      if [ -z "$(walk_file "$mutated" 1)" ]; then
+        echo "check-cpp-freestanding-includes SELFTEST FAIL: a std type reintroduced into a public signature, with its ungated <string>, was NOT flagged" >&2
+        rc=1
+      fi
+    fi
+  fi
+
+  # 11. phase-456 W6 — the CONSTANT itself. A row in the baseline file must be
+  #     refused. Without this, turning the ratchet into a constant would be a
+  #     claim in a comment: an appended pair would sail through and the gate
+  #     would still print OK. The negative control is the second half — a file
+  #     of comments and blanks must read as empty, which is the state the
+  #     tracked file is in, so a reader that rejected everything would be red
+  #     on a clean tree.
+  printf '# a comment\n\npublisher.hpp <memory>\n' > "$d/baseline-dirty.txt"
+  cases=$((cases + 1))
+  if [ -z "$(baseline_rows "$d/baseline-dirty.txt")" ]; then
+    echo "check-cpp-freestanding-includes SELFTEST FAIL: a row in the baseline file read as EMPTY, so the constant is decorative" >&2
+    rc=1
+  fi
+  printf '# only comments\n\n   \n' > "$d/baseline-clean.txt"
+  cases=$((cases + 1))
+  if [ -n "$(baseline_rows "$d/baseline-clean.txt")" ]; then
+    echo "check-cpp-freestanding-includes SELFTEST FAIL: a file of comments and blanks read as non-empty, so the gate would be red on a clean tree" >&2
+    rc=1
+  fi
+
   if [ "$rc" -ne 0 ]; then
     echo "check-cpp-freestanding-includes: the walker does not behave as documented; not scanning the tree." >&2
     exit 1
@@ -242,17 +321,35 @@ selftest() {
 }
 selftest
 
-# --- baseline ----------------------------------------------------------------
+# --- the baseline must hold NO rows (phase-456 W6) ---------------------------
 if [ ! -f "$BASELINE" ]; then
     echo "check-cpp-freestanding-includes: missing $BASELINE" >&2
+    echo "  It is tracked, so its absence is a PATH bug. The file must EXIST and be" >&2
+    echo "  empty of rows; an absent file and an empty one are different states and" >&2
+    echo "  only one of them is checked." >&2
     exit 1
 fi
-# `<file> <header>` pairs, comments and blanks dropped.
-baseline_pairs="$(grep -v '^[[:space:]]*#' "$BASELINE" | grep -v '^[[:space:]]*$' || true)"
+baseline_pairs="$(baseline_rows "$BASELINE")"
+if [ -n "$baseline_pairs" ]; then
+    echo "check-cpp-freestanding-includes: $BASELINE holds row(s), and it must hold none:" >&2
+    printf '%s\n' "$baseline_pairs" | sed 's/^/  /' >&2
+    echo >&2
+    echo "phase-456 W6 turned this ratchet into a CONSTANT. The debt it tracked was" >&2
+    echo "paid by issue 1240; what the slot holds now is a place to put the NEXT" >&2
+    echo "violation, and this rule has no legitimate exception because the GATED" >&2
+    echo "form is always available:" >&2
+    echo >&2
+    echo "  #if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ \\" >&2
+    echo "      && __has_include(<hdr>))" >&2
+    echo >&2
+    echo "Wrap the include in that, or do without the header on that board. If you" >&2
+    echo "believe this is the exception, change the gate with the reason in the" >&2
+    echo "commit rather than appending here." >&2
+    exit 1
+fi
 
 violations=0
 unlisted=""
-observed=""
 
 for entry in "packages/api/nros-cpp/include/nros:1" \
              "packages/rmw/cyclonedds/nros-rmw-cyclonedds/src:0"; do
@@ -267,14 +364,8 @@ for entry in "packages/api/nros-cpp/include/nros:1" \
     [ -n "$hits" ] || continue
 
     while IFS= read -r line; do
-        # `123: #include <string>` -> `<string>`
-        stl="$(printf '%s' "$line" | sed -n 's/.*\(<[a-z_]*>\).*/\1/p')"
-        pair="$base $stl"
-        observed="$observed$pair
-"
-        if nros_grep_q -xF "$pair" <<<"$baseline_pairs"; then
-            continue
-        fi
+        # Every hit is a violation. The "unless it is in the baseline" branch
+        # that used to sit here is gone with the slot (phase-456 W6).
         unlisted="$unlisted  $base:$line
 "
         violations=1
@@ -296,25 +387,11 @@ if [ "$violations" -ne 0 ]; then
     exit 1
 fi
 
-# The ratchet's other direction: a baseline line that no longer offends is
-# debt-paid that nobody removed, and leaving it means the next real violation at
-# that site is silently excused.
-stale=""
-while IFS= read -r pair; do
-    [ -n "$pair" ] || continue
-    nros_grep_q -xF "$pair" <<<"$observed" || stale="$stale  $pair
-"
-done <<<"$baseline_pairs"
+# The ratchet's other direction -- a listed pair that no longer offends -- is
+# gone with the ratchet. It cannot arise: the file holds no rows, asserted
+# above before any scanning happens.
 
-if [ -n "$stale" ]; then
-    echo "check-cpp-freestanding-includes: $BASELINE lists site(s) that no longer offend." >&2
-    printf '%s' "$stale" >&2
-    echo >&2
-    echo "Delete them. A baseline entry outlives its violation only by excusing the next one." >&2
-    exit 1
-fi
-
-n_baseline="$(grep -c . <<<"$baseline_pairs" || true)"
 count="$(for d in $SCAN_DIRS; do ls "$d"/*.hpp "$d"/*.cpp 2>/dev/null; done | wc -l)"
 echo "check-cpp-freestanding-includes: OK ($count file(s) across nros-cpp headers and the Cyclone backend;" \
-     "no unlisted ungated hosted STL includes; $n_baseline known site(s) in $BASELINE, all still present)"
+     "zero ungated hosted STL includes, and $BASELINE holds no rows — phase-456 W6" \
+     "made that a CONSTANT rather than a ratchet)"

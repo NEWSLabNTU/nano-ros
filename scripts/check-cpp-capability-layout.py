@@ -115,28 +115,42 @@ committed one is strictly better -- and the subject derivation refuses to run at
 all on a parse error, so the "149 errors and a number anyway" state can no
 longer exist.
 
---- THE BASELINE ------------------------------------------------------------
+--- THE BASELINE IS GONE; THIS GATE ASSERTS A CONSTANT (phase-456 W6) --------
 
-`.config/cpp-capability-layout-baseline.txt` is a RATCHET, not an allowlist, in
-the shape `.config/cpp-freestanding-includes-baseline.txt` already uses one
-directory over. It records two things the gate must tolerate today:
+`.config/cpp-capability-layout-baseline.txt` WAS a ratchet, in the shape
+`.config/cpp-freestanding-includes-baseline.txt` used one directory over. It
+could hold three kinds of row:
 
-  diverges <subject>     a known size violator. Issue 1225; owned by PR #755's
-                         wave, which removes the line in the commit that fixes
-                         the member.
-  hosted-only <subject>  the type does not EXIST in the freestanding arm. Its
-                         absence is not a layout divergence -- no freestanding
-                         TU can name it, so no object of it crosses the
-                         boundary -- but it is declared rather than inferred,
-                         because "the type was supposed to exist there" is a
-                         real defect wearing the same clothes (issue 1204).
-  std-only <subject>     the type does not EXIST hosted with `-DNROS_CPP_STD`
-                         withheld. The same argument on a different axis, and a
-                         separate kind so one line cannot excuse two arms.
+  diverges <subject>     a known size violator (issue 1225).
+  hosted-only <subject>  the type does not EXIST in the freestanding arm.
+  std-only <subject>     the type does not EXIST hosted without -DNROS_CPP_STD.
 
-Both directions fail: an unlisted violation cannot land, and a listed one that
-is FIXED must lose its line. A ratchet that tolerates stale entries has stopped
-ratcheting.
+It now holds NONE, and may hold none: a row of any kind is a hard failure
+naming this paragraph. The file stays as the record of what the ratchet
+measured and why, which is the one thing deleting it would throw away.
+
+WHY A CONSTANT RATHER THAN A RATCHET, and it is not tidiness. A ratchet is the
+right instrument for debt you intend to pay: it stops the number growing while
+you pay it. Every row is paid -- W1 removed the `diverges` rows in the commits
+that fixed the members, and phase-442/456 removed the `hosted-only` and
+`std-only` rows with the gates that recorded them -- so what the slot holds now
+is not tolerance for measured debt but a place to put the NEXT violation. The
+rule this gate enforces has no legitimate exception: a public type's LAYOUT may
+not depend on a capability macro, because two TUs of one image may legitimately
+disagree about one (px4 sets `-DNROS_CPP_STD` on a single module) and would
+then link, write the object through one layout and read it through the other.
+Issue 0135 is that bug, shipped. A rule with no exception should not offer a
+slot for one.
+
+WHAT IS STILL PERMITTED, so the constant is not read as more than it says: a
+capability macro may gate a METHOD, and does -- `Rate`'s `std::chrono`
+constructor, the whole `NROS_CPP_NODE_HOSTED` block on `rclcpp::Node`. Adding
+a method changes no layout, selftest case 2 proves the gate lets it through,
+and nothing here asks for those to go away. What is refused is a capability
+macro reaching a MEMBER, a base class, or the existence of a public type.
+
+If a genuine exception ever appears, the fix is to change this gate with the
+reason in the commit, not to append a line nobody reviews.
 
 Usage::
 
@@ -278,33 +292,43 @@ def measure_one(subject, flags, include_args, workdir):
 
 
 def parse_baseline(text):
-    """({(kind, subject)}, [problems]). Sorted, no duplicates, known kinds."""
-    entries = []
+    """[problems] -- the file must contain no rows at all (phase-456 W6).
+
+    Kept as a parser rather than a `grep -c`, because the two failures read
+    very differently and the reader needs to be told which one happened: a row
+    that is not even in the old `<kind> <subject>` shape is a typo, and a
+    well-formed row is someone reaching for an escape hatch that is closed.
+    """
     problems = []
     for lineno, raw in enumerate(text.split("\n"), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         parts = line.split()
-        if len(parts) != 2 or parts[0] not in KINDS:
-            problems.append(
-                f"  baseline:{lineno}: `{line}` is not `<{'|'.join(KINDS)}> <subject>`"
-            )
-            continue
-        entries.append((parts[0], parts[1]))
-    if entries != sorted(entries):
-        problems.append("  baseline: not sorted; sort it so two additions cannot collide")
-    dupes = sorted({e for e in entries if entries.count(e) > 1})
-    if dupes:
-        problems.append(f"  baseline: listed twice: {dupes}")
-    return set(entries), problems
+        shape = (
+            f"a `{parts[0]}` row"
+            if len(parts) == 2 and parts[0] in KINDS
+            else "a row that is not even in the retired `<kind> <subject>` shape"
+        )
+        problems.append(
+            f"  baseline:{lineno}: {shape} -- `{line}`\n"
+            "      This file holds no rows. phase-456 W6 turned the ratchet into a\n"
+            "      CONSTANT: a public type's layout may not depend on a capability\n"
+            "      macro, and that rule has no legitimate exception, so there is no\n"
+            "      slot to put one in. Gating a METHOD is still fine and needs no\n"
+            "      row. If you believe this is the exception, change the gate with\n"
+            "      the reason in the commit rather than appending here."
+        )
+    return problems
 
 
 def load_baseline():
     if not os.path.exists(BASELINE):
         raise SystemExit(
             f"check-cpp-capability-layout: baseline missing at {BASELINE}.\n"
-            "  It is tracked, so its absence is a PATH bug, not an empty ratchet."
+            "  It is tracked, so its absence is a PATH bug. The file must EXIST and\n"
+            "  be empty of rows; an absent file and an empty one are different\n"
+            "  states and only one of them is checked."
         )
     with open(BASELINE, encoding="utf8") as fh:
         return parse_baseline(fh.read())
@@ -320,19 +344,20 @@ def load_baseline():
 # --------------------------------------------------------------------------
 
 
-def compare(subjects, base, forced, nostd, freestanding, baseline, check_orphans=True):
-    """(errors, seen) -- `seen` is the baseline entries the readings justify.
+def compare(subjects, base, forced, nostd, freestanding):
+    """[errors] -- every arm, with no excuses available (phase-456 W6).
 
     `base` is {subject: size}; `forced` is {cap: {subject: size}}; `nostd` and
     `freestanding` are {subject: size or None}, None meaning confirmed absent.
 
-    `check_orphans` is off only when the caller deliberately narrowed the
-    subject list (the selftest does, to keep its two extra measurement passes
-    cheap): every baseline entry would then look orphaned, which would turn a
-    real ratchet arm into noise the control has to ignore.
+    This used to take a `baseline` set and skip a finding that appeared in it,
+    returning the entries the readings justified so the caller could catch
+    stale ones. Both arms are gone with the slot they served: every divergence
+    and every absence is a failure now, so there is nothing to excuse and
+    nothing to go stale. Still a function rather than an inline loop, because
+    the selftest drives it with synthetic readings to prove each arm says yes.
     """
     errors = []
-    seen = set()
 
     for ty in subjects:
         if ty not in base:
@@ -351,13 +376,9 @@ def compare(subjects, base, forced, nostd, freestanding, baseline, check_orphans
         # it is the only arm that models the `-DNROS_CPP_STD=1` consumer, and
         # because a macro that BREAKS the compile when forced on is itself a
         # finding.
-        diverged = False
         for cap in CAPS:
             got = forced[cap].get(ty)
             if got is None:
-                if ("hosted-only", ty) in baseline:
-                    seen.add(("hosted-only", ty))
-                    continue
                 errors.append(
                     f"{ty} does not compile with -D{cap}=1.\n"
                     f"      px4 sets a capability macro on one module of a real image,\n"
@@ -366,10 +387,6 @@ def compare(subjects, base, forced, nostd, freestanding, baseline, check_orphans
                 )
                 continue
             if got != base[ty]:
-                diverged = True
-                if ("diverges", ty) in baseline:
-                    seen.add(("diverges", ty))
-                    continue
                 errors.append(
                     f"sizeof({ty}) changes with -D{cap}=1 -- {base[ty]} vs {got}."
                 )
@@ -384,44 +401,24 @@ def compare(subjects, base, forced, nostd, freestanding, baseline, check_orphans
         # not opted in now compiles in, which before W2 did not exist at all:
         # the macros were discovered from the include path, so a hosted TU
         # always had them.
-        #
-        # A type that does not compile here is NOT excusable by a `hosted-only`
-        # baseline entry. That kind is about types absent on FREESTANDING
-        # targets; a type that vanishes on a hosted compiler merely because the
-        # consumer did not ask for the porting surface is the shape phase-438
-        # W4 exists to remove.
         without = nostd.get(ty)
         if without is None:
-            if ("std-only", ty) in baseline:
-                seen.add(("std-only", ty))
-            else:
-                errors.append(
-                    f"{ty} does not compile hosted WITHOUT -DNROS_CPP_STD.\n"
-                    f"      Since phase-438 W2 the std surface is a REQUEST, so this is\n"
-                    f"      the default configuration of every hosted consumer that has\n"
-                    f"      not opted in. A derived subject is expected to exist there;\n"
-                    f"      if this one is legitimately part of the porting surface and\n"
-                    f"      nothing else, add `std-only {ty}` to the baseline with the\n"
-                    f"      reason in its header. A `hosted-only` line does NOT cover\n"
-                    f"      this -- that kind is about FREESTANDING absence."
-                )
-        elif ("std-only", ty) in baseline:
-            # The stale-exemption ratchet, same shape as `hosted-only`'s below.
             errors.append(
-                f"{ty} is declared std-only but DOES measure without -DNROS_CPP_STD\n"
-                f"      ({without}). Remove its baseline line; the exemption is stale."
+                f"{ty} does not compile hosted WITHOUT -DNROS_CPP_STD.\n"
+                f"      Since phase-438 W2 the std surface is a REQUEST, so this is\n"
+                f"      the default configuration of every hosted consumer that has\n"
+                f"      not opted in. A derived public type is expected to exist\n"
+                f"      there, and since phase-456 W6 there is no `std-only` row to\n"
+                f"      declare otherwise: a type whose EXISTENCE depends on the\n"
+                f"      opt-in is the shape phase-438 W4 exists to remove."
             )
         elif without != base[ty]:
-            diverged = True
-            if ("diverges", ty) in baseline:
-                seen.add(("diverges", ty))
-            else:
-                errors.append(
-                    f"sizeof({ty}) changes with -DNROS_CPP_STD -- {without} without, "
-                    f"{base[ty]} with.\n"
-                    f"      The porting surface must be ADDITIVE METHODS over a fixed\n"
-                    f"      layout (phase-438 W4), not a second shape of the same class."
-                )
+            errors.append(
+                f"sizeof({ty}) changes with -DNROS_CPP_STD -- {without} without, "
+                f"{base[ty]} with.\n"
+                f"      The porting surface must be ADDITIVE METHODS over a fixed\n"
+                f"      layout (phase-438 W4), not a second shape of the same class."
+            )
 
         # ARM 3 -- the freestanding configuration, where the macros are
         # genuinely off because the ThreadX shim has no `<memory>` and no
@@ -430,53 +427,20 @@ def compare(subjects, base, forced, nostd, freestanding, baseline, check_orphans
         # two sizes disagree.
         fs = freestanding.get(ty)
         if fs is None:
-            if ("hosted-only", ty) in baseline:
-                seen.add(("hosted-only", ty))
-            else:
-                errors.append(
-                    f"{ty} cannot be measured against the ThreadX shim and is not\n"
-                    f"      declared hosted-only. A public type is expected to exist on\n"
-                    f"      freestanding targets; if this one legitimately does not, add\n"
-                    f"      `hosted-only {ty}` to the baseline with the reason in its\n"
-                    f"      header. If it is not, the ABSENCE is the defect."
-                )
-        elif ("hosted-only", ty) in baseline:
-            # The stale-exemption ratchet. A reason stops being true, nobody
-            # re-reads the list, and the type keeps its skip forever.
             errors.append(
-                f"{ty} is declared hosted-only but DOES measure freestanding ({fs}).\n"
-                f"      Remove its baseline line; the exemption is stale."
+                f"{ty} cannot be measured against the ThreadX shim.\n"
+                f"      A public type is expected to exist on freestanding targets,\n"
+                f"      and since phase-456 W6 there is no `hosted-only` row to\n"
+                f"      declare otherwise -- RFC-0096 D1 is one API on every\n"
+                f"      platform, so the ABSENCE is the defect."
             )
         elif fs != base[ty]:
-            diverged = True
-            if ("diverges", ty) in baseline:
-                seen.add(("diverges", ty))
-            else:
-                errors.append(
-                    f"sizeof({ty}) differs hosted vs -nostdinc++ freestanding -- "
-                    f"{base[ty]} vs {fs}."
-                )
-
-        if ("diverges", ty) in baseline and not diverged:
-            # The other ratchet direction, and the one a fix produces. A
-            # baseline that tolerates entries for subjects that no longer
-            # violate has stopped ratcheting -- the next real divergence in that
-            # subject would be absorbed by the stale line.
             errors.append(
-                f"{ty} is baselined as `diverges` but its layout is now INVARIANT.\n"
-                f"      Delete its line in the commit that fixed it."
+                f"sizeof({ty}) differs hosted vs -nostdinc++ freestanding -- "
+                f"{base[ty]} vs {fs}."
             )
 
-    if check_orphans:
-        known = set(subjects)
-        for kind, ty in sorted(baseline):
-            if ty not in known:
-                errors.append(
-                    f"{ty} is in the baseline as `{kind}` but is no longer a derived\n"
-                    f"      subject. Delete the line -- a stale entry is inert while\n"
-                    f"      reading as tracked debt (the issue-0743 class)."
-                )
-    return errors, seen
+    return errors
 
 
 # --------------------------------------------------------------------------
@@ -543,19 +507,15 @@ def read_all(subjects, include_args, workdir):
     return base, forced, nostd, freestanding
 
 
-def run(include_args, workdir, baseline, subjects=None):
+def run(include_args, workdir, subjects=None):
     """(errors, subjects, base) for one include configuration.
 
-    `baseline` is passed in already parsed, so a FORMAT problem in the file is
-    reported once by `main` rather than surfacing inside the selftest's case 3
-    as "the unmutated copy failed" -- which is a true statement about a
-    completely different cause.
-
-    Passing `subjects` narrows the run to a chosen few; the baseline's orphan
-    arm is then off, since every other entry would read as orphaned.
+    Passing `subjects` narrows the run to a chosen few; the selftest does, to
+    keep its two extra measurement passes to 2 compiles per arm instead of
+    2 x 90, which is the difference between a gate that runs on the fast lane
+    and one that doubles its wall clock.
     """
-    narrowed = subjects is not None
-    if not narrowed:
+    if subjects is None:
         subjects, _templates, problems = subjects_mod.derive(include_args)
         if problems:
             return (
@@ -564,10 +524,7 @@ def run(include_args, workdir, baseline, subjects=None):
                 {},
             )
     base, forced, nostd, freestanding = read_all(subjects, include_args, workdir)
-    errors, _seen = compare(
-        subjects, base, forced, nostd, freestanding, baseline,
-        check_orphans=not narrowed,
-    )
+    errors = compare(subjects, base, forced, nostd, freestanding)
     return errors, subjects, base
 
 
@@ -587,11 +544,12 @@ def run(include_args, workdir, baseline, subjects=None):
 # `rclcpp::Node`, and runs the SAME `run()` the gate runs. No tracked header is
 # touched.
 #
-# Cases 4 and 5 are issue 1225's: a RATCHET that tolerates a stale entry has
-# stopped ratcheting, and neither direction can be demonstrated by measuring
-# today's tree -- one needs a violator that has been fixed, the other a subject
-# that no longer exists. Both drive `compare()` with synthetic readings, which
-# is why the comparison is a function rather than inlined in the loop.
+# Cases 4-7 were issue 1225's ratchet arms -- a stale entry, an orphaned one,
+# a `hosted-only` row excusing a hosted failure. phase-456 W6 deleted the rows
+# those arms policed, so the controls that replaced them assert the STRONGER
+# statement: each finding fires with no excuse available, and a row in the file
+# is itself refused. They drive `compare()` and `parse_baseline()` with
+# synthetic input, which is why both are functions rather than inline.
 # --------------------------------------------------------------------------
 
 SYNTHETIC = """\
@@ -616,10 +574,21 @@ nros_size_0<static_cast<int>(sizeof(Conditional))> probe;
 """
 
 ANCHOR = "    nros_cpp_node_t handle_;"
+
+# A `std` TYPE in a public signature, which is phase-456 W6's acceptance
+# wording, not a `double` standing in for one. The member is guarded on
+# `NROS_CPP_STD` rather than on `NROS_CPP_HAS_SHARED_PTR` for a measured
+# reason: forcing `-DNROS_CPP_HAS_SHARED_PTR=1` does not make `<memory>`
+# appear, since `std_detect.hpp` includes it only under the opt-in -- so
+# `std::shared_ptr` would be an undeclared name and the arm would report "does
+# not compile" instead of the size divergence this control is about. Under
+# `NROS_CPP_STD` the header IS included, so the mutation is exactly the defect:
+# a public type whose layout grows when a consumer asks for the porting
+# surface, which is what px4 does to one module of an image.
 INJECTION = (
     ANCHOR
-    + "\n#ifdef NROS_CPP_HAS_SHARED_PTR\n"
-    + "    double nros_selftest_mutation_member_;\n#endif"
+    + "\n#ifdef NROS_CPP_STD\n"
+    + "    ::std::shared_ptr<int> nros_selftest_mutation_member_;\n#endif"
 )
 
 
@@ -636,7 +605,7 @@ def _synthetic_size(workdir, *flags):
     return int(found[0][1]) if found else None
 
 
-def selftest(baseline):
+def selftest():
     fail = []
     with tempfile.TemporaryDirectory() as workdir:
         a = _synthetic_size(workdir)
@@ -660,25 +629,19 @@ def selftest(baseline):
                 )
 
         # Case 3 -- mutate a real header in a throwaway copy of the include
-        # tree. The UNMUTATED copy runs FIRST, because it is what tells the
-        # mutated run apart from a broken copy: if the gate already fails on a
-        # faithful copy, whatever the mutated run reports afterwards proves
-        # nothing.
+        # tree, with a real `std` TYPE in a public signature (phase-456 W6's
+        # acceptance wording). The UNMUTATED copy runs FIRST, because it is
+        # what tells the mutated run apart from a broken copy: if the gate
+        # already fails on a faithful copy, whatever the mutated run reports
+        # afterwards proves nothing.
         mut = os.path.join(workdir, "selftest-include")
         shutil.copytree(os.path.join(ROOT, "packages/api/nros-cpp/include"), mut)
         args = ["-I" + mut] + subjects_mod.include_args()
-        # Narrowed to the one subject the mutation reaches. The measurement
-        # code path is identical; what it costs is 2 compiles per arm instead
-        # of 2 x 90, which is the difference between a gate that runs on the
-        # fast lane and one that doubles its wall clock.
-        #
         # The subject is `::rclcpp::Node`, which is where the CLASS is
         # (phase-427 W7 flipped the direction; `::nros::Node` is the alias now).
         # The two are one layout either way, so this narrows the mutation to the
         # DEFINITION rather than to a name that resolves to it.
-        before, subjects, _base = run(
-            args, workdir, baseline, subjects=["::rclcpp::Node"]
-        )
+        before, subjects, _base = run(args, workdir, subjects=["::rclcpp::Node"])
         if before:
             fail.append(
                 "case 3: an UNMUTATED copy of the include tree failed the gate while\n"
@@ -697,13 +660,13 @@ def selftest(baseline):
             else:
                 with open(node, "w", encoding="utf8") as fh:
                     fh.write(text.replace(ANCHOR, INJECTION, 1))
-                after, _s, _b = run(args, workdir, baseline, subjects=subjects)
+                after, _s, _b = run(args, workdir, subjects=subjects)
                 if not after:
                     fail.append(
-                        "case 3: a capability-gated MEMBER injected into ::rclcpp::Node\n"
-                        "    did\n"
-                        "    not fail the gate. This is issue 1204 exactly -- the\n"
-                        "    measurement is comparing a configuration against itself."
+                        "case 3: a `std::shared_ptr<int>` MEMBER injected into\n"
+                        "    ::rclcpp::Node behind NROS_CPP_STD did not fail the gate.\n"
+                        "    This is issue 1204 exactly -- the measurement is comparing\n"
+                        "    a configuration against itself."
                     )
                 elif not any("::rclcpp::Node" in e for e in after):
                     fail.append(
@@ -711,98 +674,89 @@ def selftest(baseline):
                         f"    does not name the type. Reported: {after[0]}"
                     )
 
-    # Case 4 -- a baselined violator that has been FIXED must lose its line.
-    # This is the direction PR #755's wave will hit, and no measurement of
-    # today's tree can produce it.
-    errs, _ = compare(
-        ["::nros::Fixed"],
-        {"::nros::Fixed": 8},
-        {cap: {"::nros::Fixed": 8} for cap in CAPS},
-        {"::nros::Fixed": 8},
-        {"::nros::Fixed": 8},
-        {("diverges", "::nros::Fixed")},
-    )
-    if not any("INVARIANT" in e for e in errs):
-        fail.append(
-            "case 4: a `diverges` entry whose subject no longer diverges did not fail.\n"
-            "    A ratchet that tolerates stale entries has stopped ratcheting -- the\n"
-            "    next real divergence there would be absorbed by the dead line."
-        )
-
-    # Case 5 -- an entry naming a subject the derivation no longer produces.
-    errs, _ = compare(
-        ["::nros::Real"],
-        {"::nros::Real": 8},
-        {cap: {"::nros::Real": 8} for cap in CAPS},
-        {"::nros::Real": 8},
-        {"::nros::Real": 8},
-        {("hosted-only", "::nros::Gone")},
-    )
-    if not any("::nros::Gone" in e for e in errs):
-        fail.append(
-            "case 5: a baseline entry for a subject that no longer exists did not fail."
-        )
-
-    # Case 6 -- and the gate must still FIND a divergence with an empty
-    # baseline. Cases 4 and 5 only prove the ratchet arms; this proves the
-    # comparison they wrap still says yes.
-    errs, _ = compare(
+    # Case 4 -- a size divergence under a forced capability macro fails, with
+    # NOTHING available to excuse it. This used to need a companion case
+    # proving a `diverges` row COULD excuse it and a third proving a stale row
+    # failed; phase-456 W6 removed the row, so one statement is the whole rule.
+    errs = compare(
         ["::nros::Moves"],
         {"::nros::Moves": 24},
         {cap: {"::nros::Moves": 32 if cap == "NROS_CPP_STD" else 24} for cap in CAPS},
         {"::nros::Moves": 24},
         {"::nros::Moves": 24},
-        set(),
     )
     if not any("24 vs 32" in e for e in errs):
-        fail.append("case 6: an unbaselined size divergence did not fail the comparison")
+        fail.append("case 4: a size divergence under a forced macro did not fail")
 
-    # Case 7 -- the phase-438 W4 arm on its own. Cases 4-6 drive it with a
-    # reading equal to the baseline, which is what a passing tree looks like;
-    # this drives it with one that is NOT, and with the hosted-only kind set,
-    # because that kind must NOT excuse a hosted failure. The real-header
-    # mutation of case 3 exercises the arm on the normal path, but only where
-    # the mutation happens to diverge in every arm at once.
-    errs, _ = compare(
+    # Case 5 -- phase-438 W4's arm on its own: a layout that MOVES when the
+    # porting surface is requested. Case 3 exercises this on the normal path,
+    # but only where the mutation happens to diverge in every arm at once.
+    errs = compare(
         ["::nros::Asks"],
         {"::nros::Asks": 32},
         {cap: {"::nros::Asks": 32} for cap in CAPS},
         {"::nros::Asks": 24},
         {"::nros::Asks": 32},
-        set(),
     )
     if not any("-DNROS_CPP_STD" in e and "24 without" in e for e in errs):
         fail.append(
-            "case 7: a layout that MOVES when the porting surface is requested did\n"
+            "case 5: a layout that MOVES when the porting surface is requested did\n"
             "    not fail. That is phase-438 W4's whole acceptance -- the std surface\n"
             "    is additive methods over a fixed layout, not a second shape."
         )
-    errs, _ = compare(
-        ["::nros::Vanishes"],
-        {"::nros::Vanishes": 32},
-        {cap: {"::nros::Vanishes": 32} for cap in CAPS},
-        {"::nros::Vanishes": None},
-        {"::nros::Vanishes": 32},
-        {("hosted-only", "::nros::Vanishes")},
+
+    # Case 6 -- ABSENCE fails in both arms, and this is the one phase-456 W6
+    # strengthened rather than kept. A type that vanishes hosted without the
+    # opt-in, and a type that vanishes freestanding, each used to be excusable
+    # by a row (`std-only`, `hosted-only`). RFC-0096 D1 is one API on every
+    # platform, so neither is excusable now.
+    errs = compare(
+        ["::nros::VanishesHosted"],
+        {"::nros::VanishesHosted": 32},
+        {cap: {"::nros::VanishesHosted": 32} for cap in CAPS},
+        {"::nros::VanishesHosted": None},
+        {"::nros::VanishesHosted": 32},
     )
     if not any("WITHOUT -DNROS_CPP_STD" in e for e in errs):
         fail.append(
-            "case 7: a subject that does not compile hosted without the opt-in was\n"
-            "    excused by a `hosted-only` entry. That kind is about FREESTANDING\n"
-            "    absence; it must not cover a hosted consumer who did not opt in."
+            "case 6: a subject that does not compile hosted without the opt-in did\n"
+            "    not fail. There is no `std-only` row to declare that any more."
         )
-    errs, _ = compare(
-        ["::nros::StdOnly"],
-        {"::nros::StdOnly": 32},
-        {cap: {"::nros::StdOnly": 32} for cap in CAPS},
-        {"::nros::StdOnly": 32},
-        {"::nros::StdOnly": 32},
-        {("std-only", "::nros::StdOnly")},
+    errs = compare(
+        ["::nros::VanishesFree"],
+        {"::nros::VanishesFree": 32},
+        {cap: {"::nros::VanishesFree": 32} for cap in CAPS},
+        {"::nros::VanishesFree": 32},
+        {"::nros::VanishesFree": None},
     )
-    if not any("stale" in e for e in errs):
+    if not any("ThreadX shim" in e for e in errs):
         fail.append(
-            "case 7: a `std-only` entry whose subject DOES measure without the flag\n"
-            "    did not fail. Both ratchet directions or it is an allowlist."
+            "case 6: a subject absent from the freestanding arm did not fail. There\n"
+            "    is no `hosted-only` row to declare that any more."
+        )
+
+    # Case 7 -- THE CONSTANT ITSELF. A row in the baseline file is refused,
+    # whatever shape it is in. Without this, turning the ratchet into a
+    # constant would be a claim in a docstring: an appended row would sail
+    # through, the gate would still print OK, and the only thing that had moved
+    # is the prose. Both spellings, because they get different messages and a
+    # reader needs to be told which one happened -- plus the negative control,
+    # since a parser that rejected everything would pass the first two and be
+    # red on the tracked file.
+    for probe, label in (
+        ("diverges ::nros::Whatever", "a well-formed retired row"),
+        ("this is not even a row", "a malformed row"),
+    ):
+        if not parse_baseline("# a comment\n\n" + probe + "\n"):
+            fail.append(
+                f"case 7: {label} in the baseline file was ACCEPTED. The gate is\n"
+                "    still a ratchet with a docstring that says otherwise -- the next\n"
+                "    capability-dependent layout can be waved through by one line."
+            )
+    if parse_baseline("# only comments\n\n   \n"):
+        fail.append(
+            "case 7: a file of comments and blanks was REJECTED. That is the state\n"
+            "    the tracked file is in, so the gate would be red on a clean tree."
         )
 
     if fail:
@@ -812,10 +766,10 @@ def selftest(baseline):
         raise SystemExit(1)
     print(
         "check-cpp-capability-layout --selftest: 7 case(s) OK (gated member diverges, "
-        "gated method does not, real ::rclcpp::Node caught when mutated, a fixed "
-        "baseline entry fails, a stale one fails, an unbaselined divergence fails, "
-        "a layout that moves with -DNROS_CPP_STD fails, hosted-only does not excuse "
-        "it, and a stale std-only entry fails)"
+        "gated method does not, a std::shared_ptr member injected into the real "
+        "::rclcpp::Node is caught, a forced-macro divergence fails, a layout that "
+        "moves with -DNROS_CPP_STD fails, absence fails in both the no-std and the "
+        "freestanding arm, and a row in the baseline file is refused)"
     )
 
 
@@ -834,17 +788,17 @@ def main():
         )
         return 1
 
-    baseline, problems = load_baseline()
+    problems = load_baseline()
     if problems:
         print(
-            "check-cpp-capability-layout: the baseline file is malformed:",
+            "check-cpp-capability-layout: the baseline file must hold NO rows:",
             file=sys.stderr,
         )
         for p in problems:
             print(p, file=sys.stderr)
         return 1
 
-    selftest(baseline)
+    selftest()
 
     include_args = subjects_mod.include_args()
     with tempfile.TemporaryDirectory() as workdir:
@@ -868,7 +822,7 @@ def main():
             print(f"\n{len(subjects)} subject(s), {len(templates)} of them templates")
             return 0
 
-        errors, subjects, _base = run(include_args, workdir, baseline)
+        errors, subjects, _base = run(include_args, workdir)
 
     if errors:
         print(f"check-cpp-capability-layout: {len(errors)} problem(s):\n", file=sys.stderr)
@@ -887,8 +841,9 @@ def main():
   itself exactly a pointer wide is taken unconditionally in both
   configurations, which costs the same 8 bytes and buys one stable layout.
 
-  Known violations live in .config/cpp-capability-layout-baseline.txt, which
-  may only shrink.""",
+  There is NO baseline slot for this (phase-456 W6). The rule has no legitimate
+  exception, so .config/cpp-capability-layout-baseline.txt holds no rows and a
+  row in it is itself a failure. Gating a METHOD is still fine and needs none.""",
             file=sys.stderr,
         )
         return 1
