@@ -1074,6 +1074,30 @@ int32_t nros_board_native_run_components_named(const char *session_name,
                                                int32_t (*setup)(void *executor));
 
 /**
+ * Issue 1434 — [`nros_board_native_run_components_named`] with the primary
+ * session's NAMESPACE.
+ *
+ * `node_namespace` is the launch-declared namespace the generated entry reads
+ * out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or
+ * empty means the image declares none, which resolves to the root — NOT to the
+ * empty namespace. It is the BAKED rung of RFC-0045's precedence model A, and
+ * this is the HOSTED runner, so `$NROS_NODE_NAMESPACE` still outranks it
+ * (`nros_cpp_init` → `try_resolve_hosted` reads
+ * `env.namespace.or(baked.namespace)`).
+ *
+ * Additive rather than a third parameter on the symbol above, for the reason
+ * `nros_cpp_init_rmw` is additive over `nros_cpp_init` (issue 1050): the older
+ * spelling is what every already-generated entry TU calls.
+ *
+ * # Safety
+ * As [`nros_board_native_run_components_named`], plus: `node_namespace` must
+ * be NULL or a valid null-terminated string.
+ */
+int32_t nros_board_native_run_components_named_ns(const char *session_name,
+                                                  const char *node_namespace,
+                                                  int32_t (*setup)(void *executor));
+
+/**
  * Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle (unnamed variant).
  *
  * Delegates to [`nros_board_native_run_components_named`] with a NULL session

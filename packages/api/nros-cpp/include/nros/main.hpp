@@ -194,18 +194,29 @@ struct NativeTierSpec {
 /// surface, not a promise about which OS we test.
 class LinuxBoard {
   public:
-    /// Phase 266 (W6) — named variant: `session_name` sets the primary session /
-    /// node name visible via `ros2 node list` (the #98 fix for C++ entries). NULL
-    /// or empty → falls back to `"node"` (the unified default). The generated
-    /// typed C++ entry (emitted by `nros codegen entry --lang cpp --typed`) calls
-    /// this overload, passing `nros_boot_config_node_name(&NROS_BOOT_CONFIG)`.
+    /// Issue 1434 — named-and-namespaced variant: `session_name` sets the
+    /// primary session / node name visible via `ros2 node list` (the #98 fix
+    /// for C++ entries) and `node_namespace` sets the namespace it appears
+    /// under. Either NULL or empty → the compiled default (`"node"`, and the
+    /// root). The generated typed C++ entry (emitted by `nros codegen entry
+    /// --lang cpp --typed`) calls THIS overload, passing
+    /// `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` and
+    /// `nros_boot_config_namespace(&NROS_BOOT_CONFIG)`.
+    ///
+    /// Both are the BAKED rung of RFC-0045's precedence model A, and this is
+    /// the HOSTED board, so `$NROS_NODE_NAME` and `$NROS_NODE_NAMESPACE` still
+    /// outrank them — `nros_cpp_init` resolves through `try_resolve_hosted`,
+    /// which reads `env.namespace.or(baked.namespace)`. Passing a baked
+    /// namespace costs the environment nothing; before issue 1434 there was
+    /// simply nothing for it to outrank.
     template <typename Setup>
-    static int32_t run_components(const char* session_name, Setup&& setup) {
+    static int32_t run_components(const char* session_name, const char* node_namespace,
+                                  Setup&& setup) {
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
-        // Phase 266: env overlay (NROS_LOCATOR / ROS_DOMAIN_ID) applies via the
-        // 3-arg init — null locator and 0 domain_id both trigger the env fallback.
-        nros::Result r = nros::init(nullptr, 0, sn);
+        // Phase 266: env overlay (NROS_LOCATOR / ROS_DOMAIN_ID) applies via
+        // init — null locator and 0 domain_id both trigger the env fallback.
+        nros::Result r = nros::init(nullptr, 0, sn, node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
@@ -217,13 +228,21 @@ class LinuxBoard {
         return sc;
     }
 
+    /// Phase 266 (W6) — named variant, no namespace. Delegates to the
+    /// namespaced overload with `nullptr` (issue 1434), which is the root —
+    /// what this overload has always resolved to.
+    template <typename Setup>
+    static int32_t run_components(const char* session_name, Setup&& setup) {
+        return run_components(session_name, nullptr, static_cast<Setup&&>(setup));
+    }
+
     /// Phase 240.2 (RFC-0043) — real-executor entry. `setup` (invoked once after
     /// init, before the spin loop) constructs + `configure`s the user's
     /// component objects, which bind their real callbacks on the executor.
     /// `setup` returns 0 on success. No `EntryNodeRuntime` / synthesis.
     /// Phase 266: delegates to the named overload with "node" (the unified default).
     template <typename Setup> static int32_t run_components(Setup&& setup) {
-        return run_components("node", static_cast<Setup&&>(setup));
+        return run_components("node", nullptr, static_cast<Setup&&>(setup));
     }
 
     /// Phase 274.W2 (RFC-0015 Model 1) — multi-tier native entry.
@@ -294,12 +313,26 @@ class ZephyrBoard {
     /// Derived in `<nros/entry_config.h>`, included above; override by
     /// defining `NROS_ENTRY_DOMAIN_ID` before this header.
 
-    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name.
-    /// `session_name` sets the primary session / node name (`ros2 node list`).
-    /// NULL or empty → `"node"`. The generated C++ entry calls this with
-    /// `NROS_ENTRY_LOCATOR` and `nros_boot_config_node_name(&NROS_BOOT_CONFIG)`.
+    /// Issue 1434 — 4-arg overload: the primary session's NAMESPACE too.
+    ///
+    /// `node_namespace` is the launch-declared namespace the generated entry
+    /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`.
+    /// `nullptr` or empty means the image declares none, which resolves to the
+    /// root — NOT to the empty namespace. It is the BAKED rung of RFC-0045's
+    /// precedence model A, so a hosted `$NROS_NODE_NAMESPACE` still outranks
+    /// it; on this board there is no environment, so it is the answer.
+    ///
+    /// Before this overload existed, every board here called the 3-arg
+    /// `nros::init` and the namespace reached nothing at all (issue 1434): the
+    /// blob carried it, `nros_boot_config_namespace` could read it, and no
+    /// call site did.
+    ///
+    /// The generated C++ entry calls THIS overload, with `NROS_ENTRY_LOCATOR`,
+    /// `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` and
+    /// `nros_boot_config_namespace(&NROS_BOOT_CONFIG)`.
     template <typename Setup>
-    static int32_t run_components(const char* locator, const char* session_name, Setup&& setup) {
+    static int32_t run_components(const char* locator, const char* session_name,
+                                  const char* node_namespace, Setup&& setup) {
         nros_board_network_wait();
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
@@ -311,7 +344,8 @@ class ZephyrBoard {
         const char* override_loc = nros_runtime_locator_override();
         const char* effective_loc =
             (override_loc != nullptr && override_loc[0] != '\0') ? override_loc : locator;
-        nros::Result r = nros::init(effective_loc, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn);
+        nros::Result r = nros::init(effective_loc, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn,
+                                    node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
@@ -321,6 +355,14 @@ class ZephyrBoard {
         int32_t sc = detail::component_spin_loop();
         (void)nros::shutdown();
         return sc;
+    }
+
+    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name,
+    /// no namespace. Delegates to the 4-arg overload with `nullptr` (issue
+    /// 1434), which is the root — what this overload has always resolved to.
+    template <typename Setup>
+    static int32_t run_components(const char* locator, const char* session_name, Setup&& setup) {
+        return run_components(locator, session_name, nullptr, static_cast<Setup&&>(setup));
     }
 
     /// Phase 240.2 (RFC-0043) — real-executor entry (Zephyr lifecycle), explicit
@@ -394,16 +436,31 @@ class ZephyrBoard {
 
 class NuttxBoard {
   public:
-    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name.
-    /// `session_name` sets the primary session / node name (`ros2 node list`).
-    /// NULL or empty → `"node"`. The generated C++ entry calls this with
-    /// `NROS_ENTRY_LOCATOR` and `nros_boot_config_node_name(&NROS_BOOT_CONFIG)`.
+    /// Issue 1434 — 4-arg overload: the primary session's NAMESPACE too.
+    ///
+    /// `node_namespace` is the launch-declared namespace the generated entry
+    /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`.
+    /// `nullptr` or empty means the image declares none, which resolves to the
+    /// root — NOT to the empty namespace. It is the BAKED rung of RFC-0045's
+    /// precedence model A, so a hosted `$NROS_NODE_NAMESPACE` still outranks
+    /// it; on this board there is no environment, so it is the answer.
+    ///
+    /// Before this overload existed, every board here called the 3-arg
+    /// `nros::init` and the namespace reached nothing at all (issue 1434): the
+    /// blob carried it, `nros_boot_config_namespace` could read it, and no
+    /// call site did.
+    ///
+    /// The generated C++ entry calls THIS overload, with `NROS_ENTRY_LOCATOR`,
+    /// `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` and
+    /// `nros_boot_config_namespace(&NROS_BOOT_CONFIG)`.
     template <typename Setup>
-    static int32_t run_components(const char* locator, const char* session_name, Setup&& setup) {
+    static int32_t run_components(const char* locator, const char* session_name,
+                                  const char* node_namespace, Setup&& setup) {
         nros_board_network_wait();
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
-        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn);
+        nros::Result r =
+            nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn, node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
@@ -413,6 +470,14 @@ class NuttxBoard {
         int32_t sc = detail::component_spin_loop();
         (void)nros::shutdown();
         return sc;
+    }
+
+    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name,
+    /// no namespace. Delegates to the 4-arg overload with `nullptr` (issue
+    /// 1434), which is the root — what this overload has always resolved to.
+    template <typename Setup>
+    static int32_t run_components(const char* locator, const char* session_name, Setup&& setup) {
+        return run_components(locator, session_name, nullptr, static_cast<Setup&&>(setup));
     }
 
     /// Run the Entry-pkg lifecycle on a NuttX board with an explicit
@@ -482,16 +547,31 @@ class NuttxBoard {
 /// was dropped in phase-246 — RFC-0043 §Retirement.)
 class ThreadxBoard {
   public:
-    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name.
-    /// `session_name` sets the primary session / node name (`ros2 node list`).
-    /// NULL or empty → `"node"`. The generated C++ entry calls this with
-    /// `NROS_ENTRY_LOCATOR` and `nros_boot_config_node_name(&NROS_BOOT_CONFIG)`.
+    /// Issue 1434 — 4-arg overload: the primary session's NAMESPACE too.
+    ///
+    /// `node_namespace` is the launch-declared namespace the generated entry
+    /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`.
+    /// `nullptr` or empty means the image declares none, which resolves to the
+    /// root — NOT to the empty namespace. It is the BAKED rung of RFC-0045's
+    /// precedence model A, so a hosted `$NROS_NODE_NAMESPACE` still outranks
+    /// it; on this board there is no environment, so it is the answer.
+    ///
+    /// Before this overload existed, every board here called the 3-arg
+    /// `nros::init` and the namespace reached nothing at all (issue 1434): the
+    /// blob carried it, `nros_boot_config_namespace` could read it, and no
+    /// call site did.
+    ///
+    /// The generated C++ entry calls THIS overload, with `NROS_ENTRY_LOCATOR`,
+    /// `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` and
+    /// `nros_boot_config_namespace(&NROS_BOOT_CONFIG)`.
     template <typename Setup>
-    static int32_t run_components(const char* locator, const char* session_name, Setup&& setup) {
+    static int32_t run_components(const char* locator, const char* session_name,
+                                  const char* node_namespace, Setup&& setup) {
         nros_board_network_wait();
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
-        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn);
+        nros::Result r =
+            nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn, node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
@@ -501,6 +581,14 @@ class ThreadxBoard {
         int32_t sc = detail::component_spin_loop();
         (void)nros::shutdown();
         return sc;
+    }
+
+    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name,
+    /// no namespace. Delegates to the 4-arg overload with `nullptr` (issue
+    /// 1434), which is the root — what this overload has always resolved to.
+    template <typename Setup>
+    static int32_t run_components(const char* locator, const char* session_name, Setup&& setup) {
+        return run_components(locator, session_name, nullptr, static_cast<Setup&&>(setup));
     }
 
     /// RFC-0043 real-executor entry (ThreadX lifecycle, explicit locator).
@@ -539,16 +627,31 @@ class ThreadxBoard {
 /// is not provided (RFC-0043 §Retirement), matching [`ThreadxBoard`].
 class FreertosBoard {
   public:
-    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name.
-    /// `session_name` sets the primary session / node name (`ros2 node list`).
-    /// NULL or empty → `"node"`. The generated C++ entry calls this with
-    /// `NROS_ENTRY_LOCATOR` and `nros_boot_config_node_name(&NROS_BOOT_CONFIG)`.
+    /// Issue 1434 — 4-arg overload: the primary session's NAMESPACE too.
+    ///
+    /// `node_namespace` is the launch-declared namespace the generated entry
+    /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`.
+    /// `nullptr` or empty means the image declares none, which resolves to the
+    /// root — NOT to the empty namespace. It is the BAKED rung of RFC-0045's
+    /// precedence model A, so a hosted `$NROS_NODE_NAMESPACE` still outranks
+    /// it; on this board there is no environment, so it is the answer.
+    ///
+    /// Before this overload existed, every board here called the 3-arg
+    /// `nros::init` and the namespace reached nothing at all (issue 1434): the
+    /// blob carried it, `nros_boot_config_namespace` could read it, and no
+    /// call site did.
+    ///
+    /// The generated C++ entry calls THIS overload, with `NROS_ENTRY_LOCATOR`,
+    /// `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` and
+    /// `nros_boot_config_namespace(&NROS_BOOT_CONFIG)`.
     template <typename Setup>
-    static int32_t run_components(const char* locator, const char* session_name, Setup&& setup) {
+    static int32_t run_components(const char* locator, const char* session_name,
+                                  const char* node_namespace, Setup&& setup) {
         nros_board_network_wait();
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
-        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn);
+        nros::Result r =
+            nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn, node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
@@ -558,6 +661,14 @@ class FreertosBoard {
         int32_t sc = detail::component_spin_loop();
         (void)nros::shutdown();
         return sc;
+    }
+
+    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name,
+    /// no namespace. Delegates to the 4-arg overload with `nullptr` (issue
+    /// 1434), which is the root — what this overload has always resolved to.
+    template <typename Setup>
+    static int32_t run_components(const char* locator, const char* session_name, Setup&& setup) {
+        return run_components(locator, session_name, nullptr, static_cast<Setup&&>(setup));
     }
 
     /// RFC-0043 real-executor entry (FreeRTOS lifecycle, explicit locator).

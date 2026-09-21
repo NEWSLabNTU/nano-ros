@@ -422,6 +422,27 @@ inline Result init(const char* locator = nullptr, uint8_t domain_id = 0);
 /// @return Result indicating success or failure.
 inline Result init(const char* locator, uint8_t domain_id, const char* session_name);
 
+/// Issue 1434 — [`init`] with the primary session's NAMESPACE.
+///
+/// `nros_cpp_init` has always taken a namespace; no `nros::init` overload had
+/// one, so every C++ entry passed `nullptr` and a launch-declared namespace
+/// reached the blob and stopped there. This is the overload the generated
+/// entry's `run_components` call reaches, with
+/// `nros_boot_config_namespace(&NROS_BOOT_CONFIG)`.
+///
+/// `node_namespace` is the BAKED rung of RFC-0045's precedence model A, exactly
+/// like `session_name` beside it: on a hosted target `$NROS_NODE_NAMESPACE`
+/// still wins. `nullptr` means the image declares none — NOT the empty
+/// namespace — and resolves to the root the same way the 3-arg overload does
+/// today. Passing `""` is the same statement, because an empty C string cannot
+/// be told apart from "unset" at this edge.
+///
+/// Additive rather than a fourth parameter on the 3-arg overload: that one is
+/// called by user code and by every board adapter in `<nros/main.hpp>`, and a
+/// defaulted parameter would make the two declarations ambiguous.
+inline Result init(const char* locator, uint8_t domain_id, const char* session_name,
+                   const char* node_namespace);
+
 /// Issue 1050 defect (3) — `init` with an explicit RMW backend name.
 ///
 /// `rmw` is the BAKED rung of RFC-0045's precedence model A: a hosted
@@ -2104,6 +2125,12 @@ class Node {
     friend class ::nros::NodeBuilder;
     friend Result(::nros::init)(const char* locator, uint8_t domain_id);
     friend Result(::nros::init)(const char* locator, uint8_t domain_id, const char* session_name);
+    // Issue 1434 — the namespaced overload. A friend declaration names ONE
+    // signature, so an overload that reaches `global_storage()` needs its own
+    // line; without it the new body compiles everywhere the class is not
+    // instantiated and fails only where a TU actually calls it.
+    friend Result(::nros::init)(const char* locator, uint8_t domain_id, const char* session_name,
+                                const char* node_namespace);
     friend Result(::nros::init_with_rmw)(const char* rmw, const char* locator, uint8_t domain_id,
                                          const char* session_name);
     friend Result(::nros::shutdown)();
@@ -2365,6 +2392,15 @@ inline Result init(const char* locator, uint8_t domain_id) {
 }
 
 inline Result init(const char* locator, uint8_t domain_id, const char* session_name) {
+    // Issue 1434 — forward RAW to the 4-arg overload, exactly as the 2-arg
+    // forwards here (issue 0329): one ladder, one body. `nullptr` is "this
+    // image declares no namespace", which is what every caller of this
+    // overload has always meant.
+    return init(locator, domain_id, session_name, nullptr);
+}
+
+inline Result init(const char* locator, uint8_t domain_id, const char* session_name,
+                   const char* node_namespace) {
     // NROS_CPP_RET_INVALID_ARGUMENT = -3 (defined in nros_cpp_ffi.h
     // which isn't included from this header — duplicate the value
     // inline; generated header is the source of truth).
@@ -2436,7 +2472,17 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
 #else
     const char* rmw = nullptr;
 #endif
-    nros_cpp_ret_t ret = nros_cpp_init_rmw(rmw, locator, domain_id, session_name, nullptr,
+    // Issue 1434 — the namespace travels as the BAKED rung, like `rmw` above
+    // and `session_name` beside it. `nullptr` reaches `nros_cpp_init_rmw`'s
+    // own "unset" arm, which is the root; an EMPTY string is normalised here
+    // rather than there, because a bake macro that did not resolve expands to
+    // `""` and treating that as "the empty namespace" would be a configured
+    // value where the image stated nothing (the same reasoning 1050 applied to
+    // an empty `rmw` selector).
+    if (node_namespace != nullptr && node_namespace[0] == '\0') {
+        node_namespace = nullptr;
+    }
+    nros_cpp_ret_t ret = nros_cpp_init_rmw(rmw, locator, domain_id, session_name, node_namespace,
                                            ::rclcpp::Node::global_storage());
     // No flag to set: `nros_cpp_init_rmw` stamps the context tag, and
     // `global_initialized()` reads it.

@@ -179,6 +179,21 @@ static void nros_rtos_entry_tick_yield(void) {
 #endif
 }
 
+/* Prototypes for the two exported entry points.
+ *
+ * Declared here rather than by including `<nros/main.h>`, for the same reason
+ * the CFFI externs above are: this file is compiled by `build.rs` before cmake
+ * runs, so the generated headers are not on the include path. The RTOS builds
+ * turn on `-Wmissing-prototypes`, so a definition with no visible prototype is
+ * a warning-as-error — and the `_ns` twin is CALLED from the older spelling
+ * below it, which in C also needs the declaration to come first. */
+int32_t nros_board_rtos_run_components(const char* locator, uint8_t domain_id,
+                                       const char* session_name,
+                                       nros_c_component_setup_fn setup);
+int32_t nros_board_rtos_run_components_ns(const char* locator, uint8_t domain_id,
+                                          const char* session_name, const char* node_namespace,
+                                          nros_c_component_setup_fn setup);
+
 /*
  * The C-ABI single-executor RTOS entry.
  *
@@ -198,6 +213,30 @@ static void nros_rtos_entry_tick_yield(void) {
 int32_t nros_board_rtos_run_components(const char* locator, uint8_t domain_id,
                                        const char* session_name,
                                        nros_c_component_setup_fn setup) {
+    /* Issue 1434 — delegates with a NULL namespace, which is "this image
+     * declares none" and resolves to the root. Kept as its own symbol because
+     * it is the one a pre-1434 generated entry TU calls, and an entry TU
+     * outlives the library it was generated against. */
+    return nros_board_rtos_run_components_ns(locator, domain_id, session_name, NULL, setup);
+}
+
+/*
+ * Issue 1434 - the same runner, with the primary session's NAMESPACE.
+ *
+ * `node_namespace` is the launch-declared namespace the generated entry reads
+ * out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or empty
+ * means the image declares none, which resolves to the ROOT - never to the
+ * empty namespace, which would read as "configured to nothing" to every rung
+ * above. `nros_boot_config_namespace()` already returns NULL when
+ * `NROS_BOOT_SET_NAMESPACE` is clear, so the empty case only arises from a bake
+ * that did not resolve.
+ *
+ * Additive rather than a fifth parameter on the symbol above, for the reason
+ * `nros_cpp_init_rmw` is additive over `nros_cpp_init` (issue 1050).
+ */
+int32_t nros_board_rtos_run_components_ns(const char* locator, uint8_t domain_id,
+                                          const char* session_name, const char* node_namespace,
+                                          nros_c_component_setup_fn setup) {
     /* A NULL setup registers nothing, so the image would boot into a spin loop
      * over an empty executor and look like a working node that publishes
      * nothing. The C++ sibling cannot express this — a callable is required by
@@ -210,6 +249,7 @@ int32_t nros_board_rtos_run_components(const char* locator, uint8_t domain_id,
     nros_board_network_wait();
 
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";
+    const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;
 
     void* storage = nros_platform_alloc(NROS_RTOS_COMPONENT_STORAGE_BYTES);
     if (storage == NULL) {
@@ -217,7 +257,7 @@ int32_t nros_board_rtos_run_components(const char* locator, uint8_t domain_id,
     }
     memset(storage, 0, NROS_RTOS_COMPONENT_STORAGE_BYTES);
 
-    int rc = nros_cpp_init(locator, domain_id, sn, NULL, storage);
+    int rc = nros_cpp_init(locator, domain_id, sn, ns, storage);
     if (rc != 0) {
         nros_platform_dealloc(storage);
         return (int32_t)rc;

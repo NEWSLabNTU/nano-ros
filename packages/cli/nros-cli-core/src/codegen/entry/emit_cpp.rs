@@ -926,7 +926,7 @@ mod tests {
         assert!(src.contains("__nros_comp_1.configure(__nros_node_1)"));
         // routes to the real executor via the named overload (phase 266)
         assert!(src.contains(
-            "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+            "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
         ));
         assert!(!src.contains("__nros_component_"));
         assert!(!src.contains("NodeContext"));
@@ -1077,7 +1077,7 @@ mod tests {
         assert!(!src.contains("create_node(__nros_node_0"));
         // still routes to the real executor via the named overload (phase 266)
         assert!(src.contains(
-            "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+            "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
         ));
     }
 
@@ -1168,7 +1168,7 @@ mod tests {
         assert!(!src.contains("__nros_comp_0.configure"));
         // Still routes to the real executor via the named overload (phase 266).
         assert!(src.contains(
-            "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+            "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
         ));
     }
 
@@ -1208,7 +1208,7 @@ mod tests {
         plan.board = "nuttx".into();
         let src = emit_typed(&plan).expect("typed emit ok");
         assert!(src.contains(
-            "::nros::board::NuttxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+            "::nros::board::NuttxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
         ));
     }
 
@@ -1228,7 +1228,7 @@ mod tests {
             let src = emit_typed(&plan).expect("typed emit ok");
             assert!(
                 src.contains(
-                    "::nros::board::ThreadxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+                    "::nros::board::ThreadxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
                 ),
                 "board key {key} must map to ThreadxBoard::run_components with named overload"
             );
@@ -1250,7 +1250,7 @@ mod tests {
         assert!(src.contains("NROS_BOOT_SET_NODE_NAME"));
         assert!(src.contains(".node_name  = \"talker\""));
         assert!(src.contains(
-            "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+            "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
         ));
     }
 
