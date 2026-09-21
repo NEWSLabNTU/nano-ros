@@ -119,9 +119,43 @@ pub struct SourceTimer {
     /// `unknown field 'period_us'` until this line existed (issue 0518).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub period_us: Option<u64>,
+    /// phase-463 W1 (sidecar schema v2) -- which timer entry the row came
+    /// through, or `guard_condition` for a guard condition, which shares this
+    /// array because it occupies one callback slot like a timer. `None` on a
+    /// v1 sidecar, where every row was a timer as far as anyone could tell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<SourceTimerKind>,
     pub callback: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub callback_slot: Option<u32>,
+}
+
+/// phase-463 W1 -- the `kind` of a `timers[]` row (schema v2). The spellings
+/// are `nros::node_metadata`'s, which is the one emitter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceTimerKind {
+    Wall,
+    Clock,
+    Oneshot,
+    InGroup,
+    GuardCondition,
+}
+
+/// phase-463 W1 -- the declared `type` of a `parameters[]` row (schema v2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceParameterType {
+    NotSet,
+    Bool,
+    Integer,
+    Double,
+    String,
+    ByteArray,
+    BoolArray,
+    IntegerArray,
+    DoubleArray,
+    StringArray,
 }
 
 impl SourceTimer {
@@ -164,6 +198,10 @@ pub struct SourceService {
     pub declaration_slot: Option<u32>,
     pub unresolved_name: SourceName,
     pub interface: InterfaceRef,
+    /// phase-463 W1 (schema v2) -- every endpoint kind carries its QoS;
+    /// `None` on a v1 sidecar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qos: Option<QosProfile>,
     pub callback: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub callback_slot: Option<u32>,
@@ -182,6 +220,9 @@ pub struct SourceClient {
     pub declaration_slot: Option<u32>,
     pub unresolved_name: SourceName,
     pub interface: InterfaceRef,
+    /// phase-463 W1 (schema v2); `None` on a v1 sidecar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qos: Option<QosProfile>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -192,6 +233,9 @@ pub struct SourceAction {
     pub declaration_slot: Option<u32>,
     pub unresolved_name: SourceName,
     pub interface: InterfaceRef,
+    /// phase-463 W1 (schema v2); `None` on a v1 sidecar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qos: Option<QosProfile>,
     pub goal_callback: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub goal_callback_slot: Option<u32>,
@@ -224,6 +268,9 @@ pub enum CallbackKind {
     ActionGoal,
     ActionCancel,
     ActionAccepted,
+    /// phase-463 W1 (schema v2) -- a guard condition's callback. A v1
+    /// recorder spelled it `timer`.
+    GuardCondition,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -256,6 +303,10 @@ pub struct SourceParameter {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub declaration_slot: Option<u32>,
     pub name: String,
+    /// phase-463 W1 (schema v2) -- the type the code declared. `None` on a
+    /// v1 sidecar, where only the default's JSON shape hinted at it.
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub parameter_type: Option<SourceParameterType>,
     pub default: ParameterValue,
     pub read_only: bool,
     pub source: SourceLocation,
@@ -267,4 +318,43 @@ pub struct SourceMetadataTrace {
     pub generator: String,
     pub package_manifest: String,
     pub source_artifacts: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// phase-463 W1 -- a schema v2 row parses with its new fields, and a v1
+    /// row (none of them) still parses. Every struct here is
+    /// `deny_unknown_fields`, so without the additions a v2 sidecar would fail
+    /// every `nros sync` outright (issue 0518's shape).
+    #[test]
+    fn schema_v2_fields_are_additive() {
+        let v2: SourceTimer = serde_json::from_str(
+            r#"{"id":"guard0#3","kind":"guard_condition","period_ms":0,"period_us":0,"callback":"guard0"}"#,
+        )
+        .expect("v2 timer row");
+        assert_eq!(v2.kind, Some(SourceTimerKind::GuardCondition));
+        let v1: SourceTimer =
+            serde_json::from_str(r#"{"id":"timer0#5","period_ms":100,"callback":"timer0"}"#)
+                .expect("v1 timer row");
+        assert_eq!(v1.kind, None);
+
+        let param: SourceParameter = serde_json::from_str(
+            r#"{"node":"n","name":"rate","type":"double","default":30.0,"read_only":false,
+                "source":{"artifact":"","line":null,"column":null}}"#,
+        )
+        .expect("v2 parameter row");
+        assert_eq!(param.parameter_type, Some(SourceParameterType::Double));
+
+        let client: SourceClient = serde_json::from_str(
+            r#"{"id":"c","unresolved_name":{"value":"/add","kind":"absolute"},
+                "interface":{"package":"p","name":"srv/Add","kind":"service"},
+                "qos":{"reliability":"reliable","durability":"volatile","history":"keep_last",
+                       "depth":1,"deadline_ms":null,"lifespan_ms":null,"liveliness":"system_default",
+                       "liveliness_lease_duration_ms":null,"extensions":{}}}"#,
+        )
+        .expect("v2 client row");
+        assert_eq!(client.qos.map(|q| q.depth), Some(1));
+    }
 }

@@ -252,6 +252,7 @@ build:
 build-serial: \
     borrowed-e2e \
     c \
+    census-hooks-complete \
     cli-tests \
     cpp \
     embedded-feature-unification \

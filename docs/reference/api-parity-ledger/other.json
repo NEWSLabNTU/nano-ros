@@ -3,6 +3,10 @@
     "Schema: see docs/reference/api-parity-ledger/SCHEMA.md — the one home for what",
     "a row means. Do NOT copy it back here; issue 1095 is what that cost."
   ],
+  "rust:SOURCE_METADATA_SCHEMA_VERSION": {
+    "verdict": "extension",
+    "why": "the sidecar schema version the one emitter writes (2 since phase-463 W1: `qos` on every endpoint kind, `kind` on every `timers[]` row, `type` on every `parameters[]` row). A constant rather than a literal in the writer so a reader that pins the version names the same number. See `rust:SourceMetadataExport`."
+  },
   "c:clear_custom_transport": {
     "verdict": "extension",
     "why": "see `c:set_custom_transport`; this is `nros_set_custom_transport(NULL)` spelled as a verb."

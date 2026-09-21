@@ -1,7 +1,7 @@
 //! Node source metadata recorded without opening middleware.
 
 use crate::{
-    ParameterType, QoSProfile,
+    ParameterType, ParameterValue, QoSProfile,
     heapless::{String, Vec},
 };
 // phase-430 W4 — the ONE clock-source enum, from `nros_node::timer` (ungated:
@@ -19,6 +19,24 @@ use crate::{QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSRelia
 // Gating them as `std` did not just mislabel them, it WITHHELD the source
 // metadata JSON API from `no_std + alloc` targets that can run it.
 use alloc::{format, string::String as StdString, vec::Vec as StdVec};
+
+/// The source-metadata sidecar schema version this module emits.
+///
+/// phase-463 W1 -- `1 -> 2`. Version 2 is ADDITIVE over version 1 and every
+/// reader in the tree defaults the new fields, so a v1 sidecar still parses:
+///
+/// * every endpoint kind carries `qos` (v1: publishers and subscribers only);
+///   the value is the profile the runtime was handed AFTER overrides, which is
+///   what the executor sizes for;
+/// * a `timers[]` row carries `kind` -- `wall` / `clock` / `oneshot` /
+///   `in_group` -- and a guard condition is a row of that array with
+///   `kind: "guard_condition"`, so slot consumers that count the array keep
+///   counting one slot each while a census can tell the two apart;
+/// * a `parameters[]` row carries `type`.
+///
+/// Serialised in exactly one place (this module), as phase-308's layer rule
+/// requires: the adapters that feed the recorder contain no JSON.
+pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 2;
 
 /// Maximum nodes recorded by the built-in metadata recorder.
 pub const DEFAULT_MAX_METADATA_NODES: usize = 8;
@@ -154,6 +172,32 @@ impl ParameterDefault {
         }
     }
 
+    /// phase-463 W1 -- the default a C/C++ node passed to
+    /// `declare_parameter`, as the recorder stores it.
+    ///
+    /// The ONE conversion from a runtime [`ParameterValue`] to the recorded
+    /// shape, so the parameter hook in `nros-cpp` carries a value across and
+    /// formats nothing. Array defaults record their KIND and not their
+    /// elements, which is what the sidecar has always emitted for them.
+    pub fn from_value(value: &ParameterValue) -> Result<Self, NodeMetadataError> {
+        use core::fmt::Write as _;
+        Ok(match value {
+            ParameterValue::Bool(v) => Self::Bool(*v),
+            ParameterValue::Integer(v) => Self::Integer(*v),
+            ParameterValue::Double(v) => {
+                let mut text = MetadataString::new();
+                write!(text, "{v:?}").map_err(|_| NodeMetadataError::NameTooLong)?;
+                Self::Double(text)
+            }
+            ParameterValue::String(v) => Self::String(copy_str(v.as_str())?),
+            ParameterValue::BoolArray(_) => Self::BoolArray,
+            ParameterValue::IntegerArray(_) => Self::IntegerArray,
+            ParameterValue::DoubleArray(_) => Self::DoubleArray,
+            ParameterValue::StringArray(_) => Self::StringArray,
+            ParameterValue::ByteArray(_) | ParameterValue::NotSet => Self::Integer(0),
+        })
+    }
+
     /// Default JSON-compatible value for a parameter type.
     pub fn for_type(param_type: ParameterType) -> Result<Self, NodeMetadataError> {
         Ok(match param_type {
@@ -268,6 +312,38 @@ pub enum EntityKind {
     Parameter,
 }
 
+/// phase-463 W1 -- which executor-side entry a recorded slot row came through.
+///
+/// `nros_cpp_timer_create` / `_on_clock` / `_oneshot` / `_in_group` are four
+/// entry points with four semantics (a oneshot fires once; a clock timer follows
+/// `/clock`), and a contract that says `rate_hz` means a repeating wall timer.
+/// The recorder used to fold all four into one `period_ms`, so a census could
+/// not see that a "timer" was a one-shot delay -- or that it was a guard
+/// condition at all, which the C++ hooks recorded as a timer of period 0.
+///
+/// A guard condition is [`GuardCondition`](Self::GuardCondition) here rather
+/// than a variant of [`EntityKind`], on purpose: it occupies one callback slot
+/// exactly like a timer, every sizing consumer counts the `timers[]` array,
+/// and the runtime's declarative path matches on `EntityKind` exhaustively.
+/// The KIND is what a census reads; the slot is what sizing reads; neither
+/// changes for the other. Meaningful only for [`EntityKind::Timer`]; `Wall`
+/// for every timer declared through the Rust producer, which has no oneshot,
+/// group or guard entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TimerKind {
+    /// A repeating timer on the platform steady clock.
+    #[default]
+    Wall,
+    /// A repeating timer driven by a caller-supplied clock (`create_timer(node, clock, ...)`).
+    Clock,
+    /// A timer that fires once after its delay.
+    Oneshot,
+    /// A repeating wall timer registered into a named callback group.
+    InGroup,
+    /// A guard condition: one callback slot, no period.
+    GuardCondition,
+}
+
 /// Optional callback effect relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallbackEffectKind {
@@ -343,6 +419,9 @@ pub struct EntityMetadata {
     /// component's `declare()`, so the sidecar schema does not have to move for
     /// the capability to work.
     pub timer_clock: TimerClockSource,
+    /// phase-463 W1 -- the ABI entry the timer came through (see [`TimerKind`]).
+    /// Emitted as `kind` on the timer row; `Wall` for every other entity kind.
+    pub timer_kind: TimerKind,
     pub parameter_type: Option<ParameterType>,
     pub parameter_default: Option<ParameterDefault>,
     pub parameter_read_only: bool,
@@ -525,7 +604,8 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         &self.callback_effects
     }
 
-    /// Emit schema-version-1 source metadata JSON without opening transport.
+    /// Emit source metadata JSON ([`SOURCE_METADATA_SCHEMA_VERSION`]) without
+    /// opening transport.
     #[cfg(feature = "alloc")]
     pub fn to_source_metadata_json(
         &self,
@@ -536,7 +616,8 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         Ok(out)
     }
 
-    /// Write schema-version-1 source metadata JSON without opening transport.
+    /// Write source metadata JSON ([`SOURCE_METADATA_SCHEMA_VERSION`]) without
+    /// opening transport.
     #[cfg(feature = "alloc")]
     pub fn write_source_metadata_json(
         &self,
@@ -544,7 +625,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         out: &mut impl core::fmt::Write,
     ) -> core::fmt::Result {
         write!(out, "{{")?;
-        write!(out, "\"version\":1,")?;
+        write!(out, "\"version\":{},", SOURCE_METADATA_SCHEMA_VERSION)?;
         write_json_field(out, "package", export.package)?;
         out.write_char(',')?;
         write_json_field(out, "component", export.component)?;
@@ -796,6 +877,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         out.write_char(',')?;
         self.write_entity_array(out, "subscribers", node_id, EntityKind::Subscription)?;
         out.write_char(',')?;
+        // phase-463 W1 -- guard conditions ride in `timers[]` with their own
+        // `kind` (see `TimerKind::GuardCondition`), so `sidecar_slots` and the
+        // leaf entity env keep counting one slot each.
         self.write_entity_array(out, "timers", node_id, EntityKind::Timer)?;
         out.write_char(',')?;
         self.write_entity_array(out, "services", node_id, EntityKind::ServiceServer)?;
@@ -917,6 +1001,19 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             }
             write_json_field(out, "name", entity.source_name.as_str())?;
             out.write_char(',')?;
+            // phase-463 W1 (schema v2) -- the declared type, so a census can
+            // compare it with the contract's without inferring it from the
+            // default's JSON shape (an integer default and a double default of
+            // `0` are indistinguishable there).
+            let parameter_type = entity.parameter_type.unwrap_or_else(|| {
+                entity
+                    .parameter_default
+                    .as_ref()
+                    .map(ParameterDefault::parameter_type)
+                    .unwrap_or(ParameterType::NotSet)
+            });
+            write_json_field(out, "type", parameter_type_json(parameter_type))?;
+            out.write_char(',')?;
             write!(out, "\"default\":")?;
             write_parameter_default(out, entity.parameter_default.as_ref())?;
             out.write_char(',')?;
@@ -957,6 +1054,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             };
             let kind = match entity.kind {
                 EntityKind::Subscription => "subscription",
+                EntityKind::Timer if entity.timer_kind == TimerKind::GuardCondition => {
+                    "guard_condition"
+                }
                 EntityKind::Timer => "timer",
                 EntityKind::ServiceServer => "service",
                 EntityKind::ActionServer => "action_goal",
@@ -1086,6 +1186,7 @@ pub fn entity_metadata(spec: EntityMetadataSpec<'_>) -> Result<EntityMetadata, N
         period_ms: None,
         period_us: None,
         timer_clock: TimerClockSource::Steady,
+        timer_kind: TimerKind::Wall,
         parameter_type: None,
         parameter_default: None,
         parameter_read_only: false,
@@ -1155,6 +1256,11 @@ fn write_timer_json(out: &mut impl core::fmt::Write, entity: &EntityMetadata) ->
     if let Some(slot) = entity.slot {
         write!(out, "\"declaration_slot\":{},", slot.index())?;
     }
+    // phase-463 W1 (schema v2) -- the row's kind. A guard condition is a row
+    // of this array (one callback slot, like a timer) whose period is
+    // meaningless; the kind is what tells a reader so.
+    write_json_field(out, "kind", timer_kind_json(entity.timer_kind))?;
+    out.write_char(',')?;
     write!(out, "\"period_ms\":{},", entity.period_ms.unwrap_or(0))?;
     write!(out, "\"period_us\":{},", entity.period_us.unwrap_or(0))?;
     write_json_field(
@@ -1187,6 +1293,9 @@ fn write_service_json(
     write_source_name(out, entity.source_name.as_str(), entity.source_name_kind)?;
     out.write_char(',')?;
     write_interface(out, entity.type_name, "service")?;
+    out.write_char(',')?;
+    // phase-463 W1 (schema v2) -- every endpoint kind carries its QoS.
+    write_qos(out, entity.qos)?;
     out.write_char(',')?;
     write_json_field(
         out,
@@ -1229,6 +1338,9 @@ fn write_client_json(
     write_source_name(out, entity.source_name.as_str(), entity.source_name_kind)?;
     out.write_char(',')?;
     write_interface(out, entity.type_name, interface_kind)?;
+    out.write_char(',')?;
+    // phase-463 W1 (schema v2) -- every endpoint kind carries its QoS.
+    write_qos(out, entity.qos)?;
     write!(out, "}}")
 }
 
@@ -1262,6 +1374,9 @@ fn write_action_json(
     write_source_name(out, entity.source_name.as_str(), entity.source_name_kind)?;
     out.write_char(',')?;
     write_interface(out, entity.type_name, "action")?;
+    out.write_char(',')?;
+    // phase-463 W1 (schema v2) -- every endpoint kind carries its QoS.
+    write_qos(out, entity.qos)?;
     out.write_char(',')?;
     write_json_field(out, "goal_callback", goal_callback)?;
     if let Some(callback_slot) = entity.callback_slot {
@@ -1428,6 +1543,36 @@ fn source_name_kind_json(kind: SourceNameKind) -> &'static str {
         SourceNameKind::Absolute => "absolute",
         SourceNameKind::Relative => "relative",
         SourceNameKind::Private => "private",
+    }
+}
+
+#[cfg(feature = "alloc")]
+fn timer_kind_json(kind: TimerKind) -> &'static str {
+    match kind {
+        TimerKind::Wall => "wall",
+        TimerKind::Clock => "clock",
+        TimerKind::Oneshot => "oneshot",
+        TimerKind::InGroup => "in_group",
+        TimerKind::GuardCondition => "guard_condition",
+    }
+}
+
+/// phase-463 W1 -- the `type` word on a parameter row. The spellings are the
+/// orchestration IR's (`nros-cli-core/src/orchestration/source_metadata.rs`,
+/// `SourceParameterType`), snake_case.
+#[cfg(feature = "alloc")]
+fn parameter_type_json(value: ParameterType) -> &'static str {
+    match value {
+        ParameterType::NotSet => "not_set",
+        ParameterType::Bool => "bool",
+        ParameterType::Integer => "integer",
+        ParameterType::Double => "double",
+        ParameterType::String => "string",
+        ParameterType::ByteArray => "byte_array",
+        ParameterType::BoolArray => "bool_array",
+        ParameterType::IntegerArray => "integer_array",
+        ParameterType::DoubleArray => "double_array",
+        ParameterType::StringArray => "string_array",
     }
 }
 
@@ -1942,7 +2087,10 @@ mod tests {
             )
             .unwrap();
 
-        assert!(json.contains("\"version\":1"));
+        assert!(
+            json.contains("\"version\":2"),
+            "phase-463 W1: schema v2, got {json}"
+        );
         assert!(json.contains("\"language\":\"rust\""));
         assert!(json.contains("\"unresolved_name\":{\"value\":\"talker\",\"kind\":\"relative\"}"));
         assert!(json.contains(
@@ -1952,7 +2100,13 @@ mod tests {
         assert!(
             json.contains("\"source\":{\"artifact\":\"src/talker.rs\",\"line\":42,\"column\":5}")
         );
-        assert!(json.contains("\"name\":\"rate_hz\",\"default\":10,\"read_only\":false"));
+        // v2: the declared type sits between the name and the default.
+        assert!(
+            json.contains(
+                "\"name\":\"rate_hz\",\"type\":\"integer\",\"default\":10,\"read_only\":false"
+            ),
+            "got {json}"
+        );
         assert!(json.contains("\"goal_callback\":\"cb_count_goal\""));
         assert!(json.contains("\"cancel_callback\":\"cb_count_cancel\""));
         assert!(json.contains("\"accepted_callback\":\"cb_count_accepted\""));

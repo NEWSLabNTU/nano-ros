@@ -37,8 +37,14 @@
 #         inputs are blocked on 1407, not on 1393, and survive 1393's remedy
 #         untouched. Deleting the citation would delete the reason W0 is first.
 #         REMOVE THIS ROW when #1123 merges.
+#   1419  IN FLIGHT. `docs/issues/1419-no-layer-reconciles-contract-endpoints-
+#         with-the-code.md` is in the phase-463 docs PR (nano-ros #1146, in the
+#         merge queue); the two citations are the W1 gate that implements its
+#         fix. Delete both rows when that PR lands.
 #
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
+just/check/codegen.just:1419
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
+scripts/check-census-hooks-complete.py:1419

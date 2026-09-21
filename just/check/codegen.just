@@ -217,6 +217,38 @@ derived-descriptor-fields:
 emitter-just-spelling:
     @bash scripts/check-emitter-just-spelling.sh
 
+# phase-463 W1 (issue 1419) -- the census hooks are complete, and they tell the
+# whole truth.
+#
+# A C++ node cannot create an entity without crossing one `nros_cpp_*_create`
+# or `nros_cpp_node_declare_param_*` entry point, so the phase-308 recorder
+# sees everything BY CONSTRUCTION -- for as long as every entry point calls
+# its hook and every hook records what it was handed. Measured on the safety
+# island, neither held: the recording backend dropped `_qos` (two sidecars
+# said `depth: 10` for a `QoS(1)` subscription), nothing observed
+# `declare_parameter` (`parameters: []` stood for 21 declared), and a guard
+# condition was a timer with period 0. The under-count is `ExecutorFull` on a
+# board with no console.
+#
+# Two halves. The script reads the sources: every entry point calls its hook,
+# every RMW seam records the QoS it receives, every hook reaches the recorder,
+# and neither adapter spells JSON or a slot (the phase-308 layer rule) -- with
+# seven in-memory mutations as its negative control, on the normal path. The
+# cargo half is the fixture: a component that creates one of everything through
+# the real ABI (one subscription at `QoS(1)`, one publisher at the default, one
+# wall timer, one guard condition, two parameters) and the sidecar that must
+# carry exactly those facts, plus the recorder's and the backend's own tests.
+# `build-serial`, not the fast line: the fixture links `nros-cpp` with
+# `metadata-mode` on.
+census-hooks-complete:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 scripts/check-census-hooks-complete.py
+    cargo test -p nros --lib --features std,metadata-mode --quiet -- metadata_mode
+    cargo test -p nros-rmw-metadata --quiet
+    cargo test -p nros-cpp --lib --no-default-features \
+        --features std,rmw-cffi,metadata-mode,param-services --quiet -- census_fixture
+
 # phase-403 W9 (issue 0965) -- the READER for the ENTITY inventory, the second
 # source `NanoRosMessageBounds.cmake` says by name that it needs.
 #

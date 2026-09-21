@@ -61,6 +61,9 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_create(
             }
             // phase-308 — guard conditions never reach the RMW either; one
             // callback slot, same as a timer. No-op unless `metadata-mode`.
+            // phase-463 W1 -- recorded under its own KIND (a `timers[]` row with
+            // `kind: "guard_condition"`), so the slot count is unchanged and a
+            // census no longer reads it as a timer with period 0.
             crate::metadata_hooks::on_guard_condition_create();
             NROS_CPP_RET_OK
         }
