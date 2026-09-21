@@ -2200,10 +2200,9 @@ mod accessor_tests {
         // shape no image produces, and leaving it so would make these tests
         // measure 1386's refusal instead of 1384's predicate. Leaked: a test
         // fixture that must outlive the executor pointing at it.
-        let support = std::boxed::Box::leak(std::boxed::Box::new({
-            let mut s = crate::support::nros_support_t::default();
-            s.state = crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
-            s
+        let support = std::boxed::Box::leak(std::boxed::Box::new(crate::support::nros_support_t {
+            state: crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED,
+            ..Default::default()
         }));
         executor.support = support as *mut crate::support::nros_support_t;
         executor
