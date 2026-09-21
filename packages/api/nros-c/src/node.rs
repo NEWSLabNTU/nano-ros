@@ -2192,6 +2192,20 @@ mod accessor_tests {
         }
         executor.max_handles = 8;
         executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+        // A real executor always carries a support object, and since issue 1386
+        // `rcl_node_is_valid` / `nros_node_resolve_name` ask it whether the
+        // node's CONTEXT is alive (rcl: "rcl_shutdown has been called since the
+        // node was initialized"). The session pointer stays NULL — that is what
+        // this harness is for — but an executor with no support at all is a
+        // shape no image produces, and leaving it so would make these tests
+        // measure 1386's refusal instead of 1384's predicate. Leaked: a test
+        // fixture that must outlive the executor pointing at it.
+        let support = std::boxed::Box::leak(std::boxed::Box::new({
+            let mut s = crate::support::nros_support_t::default();
+            s.state = crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
+            s
+        }));
+        executor.support = support as *mut crate::support::nros_support_t;
         executor
     }
 
