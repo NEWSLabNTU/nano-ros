@@ -552,12 +552,25 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   `build.ninja` in place. This is the escape hatch for the one state ninja cannot recover
   from on its own: `multiple rules generate <x>` is raised at LOAD, before any rule runs,
   so ninja can never re-run cmake to fix itself (issue 0882 hit exactly this after a
-  half-applied fix). `just reconfigure-stale` does it across the tree — it probes every
-  `build.ninja` with a load-only `ninja -t targets`, re-runs `cmake` on the ones that
-  fail, and REPORTS rather than deletes anything it cannot repair (a wedged dir is the
-  only reproduction of whatever wedged it). `just reconfigure-stale check` reports
-  without repairing; gate `check-reconfigure-stale` is its negative control, since
+  half-applied fix). `just reconfigure-stale` does it across the tree, re-runs `cmake` on
+  the ones that fail, and REPORTS rather than deletes anything it cannot repair (a wedged
+  dir is the only reproduction of whatever wedged it). `just reconfigure-stale check`
+  reports without repairing; gate `check-reconfigure-stale` is its negative control, since
   "N build dir(s) load" is also what a probe that can never fail would print.
+  **"Does it LOAD" and "will it BUILD" are different questions, and for two weeks it
+  asked only the first** (issue 1406). Ninja does not stat an edge's inputs until it runs
+  the edge, so a manifest naming a source retired on 2026-09-04 loads fine — 38 did, in
+  the OK column, until one killed the native fixture build as a `cc1plus: fatal error …
+  No such file or directory` 400 lines into a log. Second sighting of one blind spot: the
+  first was 130 caches holding a deleted `CMAKE_MAKE_PROGRAM`, invisible for the same
+  reason (the probe asked ninja; ninja never looks). `scripts/lib/ninja_stale_refs.py`
+  now answers BOTH — edge inputs minus declared outputs, plus `CMakeCache.txt`
+  `:FILEPATH=` values **outside** the build dir (inside it they are this build's own
+  byproducts, so the exclusion is structural, never a list of variable names). 75 of 350
+  dirs stale on first run; +2 s over 352 dirs, and the fast line is untouched because the
+  gate runs the SELFTEST, not the scan. That selftest's four original cases all wedge the
+  manifest so it cannot PARSE, and all four passed the day this was filed — a manifest
+  that LOADS and names a missing input is now case 6.
 - **Build-side stale probes must watch the same inputs as test-side gates** — a probe that misses
   `generated/**` lets a museum binary pass every sweep while tests fail STALE (issue 0196).
 - **Sweep contract:** every `just <plat>` invocation needs `source ./activate.sh` first (PATH wires
