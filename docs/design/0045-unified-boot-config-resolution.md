@@ -121,6 +121,26 @@ impl<'a> ExecutorConfig<'a> {
 > hosted edge that fills one from the environment. The precedence model below is
 > unchanged; only who reads the variables moved.
 
+> **Amended by issue 0794 (2026-09-21) — the ladder is EVEN, and this RFC now
+> says so.** The text above implied one precedence rule over all the fields,
+> and the implementation did not deliver one: `EnvRung` carried locator, domain,
+> mode, node name and rmw and had **no namespace field**, so the namespace
+> resolved over two rungs (explicit, baked) where every other identity field had
+> three. Nothing decided that — a namespace is no more or less "identity" than a
+> node name, and ROS 2 itself lets the environment place a node
+> (`$ROS_NAMESPACE`). It was an unwired rung, the same shape as the unwired
+> producer one level down. The rung exists now and reads **`$NROS_NODE_NAMESPACE`**
+> (the nano-ros vocabulary, matching `$NROS_NODE_NAME`; `$ROS_NAMESPACE` is
+> deliberately not folded in, for the reason `rmw_selector` does not fold in
+> `$RMW_IMPLEMENTATION` — a variable this tree does not own would start deciding
+> identity for every nano-ros process in a sourced ROS shell).
+>
+> **The full set of env-rung variables is therefore:** `$NROS_LOCATOR` (legacy
+> `$ZENOH_LOCATOR`), `$ROS_DOMAIN_ID`, `$NROS_SESSION_MODE` (legacy
+> `$ZENOH_MODE`), `$NROS_NODE_NAME`, `$NROS_NODE_NAMESPACE`, `$NROS_RMW`. An
+> EMPTY value is "unset" for each of the string fields, never a configured
+> empty value.
+
 Three thin call-sites map their source into `BootConfig`, then call `resolve`:
 
 - **Rust boards:** unpack `DeployOverlay { node_name, locator, domain_id }` → `BootConfig` →
@@ -186,6 +206,35 @@ struct), so a single tool can later operate on the binary regardless of source l
 
 Within the scope of this RFC the blob is just a baked const (rebuild to change). Making it a
 patchable static costs nothing extra now and unlocks the follow-on tracks below.
+
+> **Amended by issue 0794 (2026-09-21) — where the C/C++ producer gets each
+> field.** The blob defines five fields (`rmw` was appended by issue 1050,
+> layout version 2) and for a long time the C/C++ emitter set one bit. The rule
+> now, and the reason for it:
+>
+> | field | per | source for a C/C++ image |
+> | --- | --- | --- |
+> | `node_name` | node | the launch node's name — single-node plans only |
+> | `namespace` | node | the launch node's namespace — single-node plans only |
+> | `domain_id` | session | `execution.deploy.<fqn>.domain`, when every deployed node agrees |
+> | `locator` | session | `execution.deploy.<fqn>.locator`, same |
+> | `rmw` | session | `execution.deploy.<fqn>.rmw`, same |
+>
+> An image running several nodes has no single node identity, so both identity
+> bits stay clear and the runner falls back to the `"node"` default. It does
+> have a single session, so the session fields survive a multi-node plan — but
+> only unanimously: a partial or contradictory declaration leaves the bit clear
+> and is NAMED in a comment in the generated TU, because the blob has one slot
+> and picking a winner would put a fact in the image no node asked for.
+>
+> **A set bit is still not a consumed value.** The generated C/C++ entry reads
+> only `nros_boot_config_node_name()`; its locator and domain reach the runner
+> through the `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID` compile definitions
+> the entry gate bakes, and its namespace reaches nothing at all. So the blob is
+> now TRUE — which is what a post-link patch tool and the `nros_boot_config_*`
+> accessors need — while remaining, on that path, documentation rather than the
+> delivery mechanism. Closing that gap means giving the C-ABI board runners a
+> namespace parameter, which is a separate change across every board crate.
 
 ## Why this shape (decisions recorded)
 
