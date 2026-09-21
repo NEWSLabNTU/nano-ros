@@ -14,6 +14,53 @@ supplies and the running image verifies". On the island the running image is
 the S32K344, and its verification is `ExecutorFull` at boot with no console.
 This phase moves the verifying half to the host, where it can refuse a build.
 
+## Parallel plan
+
+Eight units, one claim id each (`just claim phase-463-Wk`; advisory, TTL in
+hours, an open PR supersedes it). W0, W1 and the funnel half of W2 start
+now on disjoint files; W3 through W6 form a chain because each compares or
+gates what the one before produces; W7 is behind its own go/no-go decision
+as the status line says. W1 and W5 both touch `metadata_hooks.rs`, W2 and W7
+both touch the hosted funnel in `nros-cpp/src/lib.rs`, and W3 and W4 both
+extend the `system.toml` schema: each pair is serialised below, not merged,
+because the later wave has a gate of its own. Every path below exists in the
+tree today except the ones marked new.
+
+| claim id | depends on | owns | gate | starts now? |
+| --- | --- | --- | --- | --- |
+| `phase-463-W0` | none | this document (the measurement table); it reads the island and edits no code | the table, one measured row per island component; `python3 scripts/check-roadmap-claims.py` stays green | yes (one day) |
+| `phase-463-W1` | none | `packages/rmw/metadata/src/lib.rs`, `packages/api/nros-cpp/src/metadata_hooks.rs`, `packages/api/nros/src/node_metadata.rs` (schema v2), the hook call sites in `packages/api/nros-cpp/src/params_shim.rs` (the `nros_cpp_node_declare_param_*` family), `packages/api/nros-cpp/src/timer.rs` and `packages/api/nros-cpp/src/guard_condition.rs`, a new recipe `census-hooks-complete` in `just/check/codegen.just` | `just check census-hooks-complete` (new; the fixture component, and the remove-one-hook negative control) plus the phase-308 layer grep | yes |
+| `phase-463-W2` | `phase-463-W1` for its acceptance (21 parameters need the param hook); on `emit_cpp.rs` after `phase-459-W2` and `phase-462-W1` | `packages/api/nros-cpp/src/lib.rs` (`nros_board_native_run_components_named`, :1381), `packages/boards/nros-board-linux/src/lib.rs` (`boot_hosted`, :273), `cmake/NanoRosFeatureSet.cmake` (the native umbrella adds `metadata-mode`), `packages/cli/nros-cli-core/src/cmd/entity_census.rs` (new) plus its two dispatch lines in `packages/cli/nros-cli-core/src/cmd/ws.rs` (:158, :499), `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs` (at most the native funnel call) | `nros ws entity-census run --entry <name>` on the island: 11/14/2/2/4/21 across four nodes in under a second, no router; `nm` equal to the boot binary | yes on the funnel; acceptance after W1 |
+| `phase-463-W3` | `phase-463-W2` (the census to compare), `phase-460-W1` (the check opens a model, so it calls the `model_gate` 460 W1 introduces) | `packages/cli/nros-cli-core/src/entity_census.rs` (new: the join, the verdict table, the waivers), the `check` subcommand in `cmd/entity_census.rs`, `[census.waive]` on `SystemToml` in `packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs`; it reads `build/nros/entity_inventory.json` and owns no line of `entity_inventory.rs` | the island experiment table re-run as unit tests in `packages/cli/nros-cli-core`: E3a/E3b/E3c/E4/E2a each refuse with the named verdict, the pristine contract passes with 33 + 21 confirmed rows | no |
+| `phase-463-W4` | `phase-463-W3`; on `ws.rs` after `phase-460-W1` | a new recipe `entity-census` in `just/check/codegen.just`, `packages/cli/nros-cli-core/src/cmd/ws.rs` (the `sync: source metadata` block, :3245-3253), `packages/cli/nros-cli-core/src/orchestration/metadata_refresh.rs` (the digest walk, reused), `cmake/NanoRosEntry.cmake` (the `--require-fresh` call after `nros_record_entity_facts`, :381), `[census] on_missing` / `on_stale` in `cargo_metadata_schema.rs` | `just check entity-census` (new); the stale-source, re-run, add-row, touch-only sequence | no |
+| `phase-463-W5` | `phase-463-W2` for I1 and I3(b, c); I2 and I3(a) need nothing landed | new recipes `census-no-conditional-api` in `just/check/abi.just` and `rtos-feature-set-excludes-analysis` in `just/check/platform.just`, `packages/api/nros-cpp/src/metadata_hooks.rs` (the `#[inline]` empty bodies, after W1), the two I3(c) numbers recorded in this document | the two new recipes, `just check api-parity`, the image-facts lane unchanged to the byte | yes for I2 and I3(a) |
+| `phase-463-W6` | `phase-463-W3`, `phase-463-W4` | `packages/core/nros-orchestration-ir/src/executor_sizing.rs` (`count_callbacks_with_recorded`) and its caller `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs` (:406); `packages/core/nros-macros/src/main_macro.rs` (:988) keeps the sidecar reader and is not edited; the island half is `island-W6` in the island's own phase doc | `cargo test -p nros-orchestration-ir`; `just check entity-census` green on the island after the flip | no |
+| `phase-463-W7` | `phase-463-W2`, `phase-463-W5`, and the separate decision the status line names | `packages/core/nros-node/src/executor/spin.rs` (the dispatch hook behind `profile-mode`), `profile-mode` in `packages/core/nros-node/Cargo.toml`, `packages/api/nros/Cargo.toml` and `packages/api/nros-cpp/Cargo.toml`, the `NROS_PROFILE_OUT` switch in `packages/api/nros-cpp/src/lib.rs` (after W2), `docs/design/0078-wcet-is-declared-per-profile.md` (the host-profile amendment) | the 60 s replay on the island's native image: rows match the census one-to-one, the observed `paths` outputs equal the contract's, the Zephyr bake refuses the host profile | no |
+
+Files two waves touch, and the order they serialise in. Within this phase:
+`metadata_hooks.rs` is W1 then W5; `packages/api/nros-cpp/src/lib.rs` is W2
+then W7; `cargo_metadata_schema.rs` is W3 then W4; this document's status
+lines are one-line edits by every wave, land order, no dependency. Across
+phases: `packages/cli/nros-cli-core/src/cmd/ws.rs` is phase-460 W1 first
+(it moves `model_provenance_stale` out of the file into `model_gate.rs`),
+then W2 here (two dispatch lines), then W4 here (the freshness line, which
+belongs beside the gate module 460 W1 creates); `cmd/model_path.rs` has one
+writer, 460 W1, and the census staleness refusal here lives in
+`cmake/NanoRosEntry.cmake`, which 460 W1 does not edit. `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs`
+is phase-459 W2 (the `run_tiers` tail), then phase-462 W1 (the monitor table
+installed before entity creation), then W2 here, then phase-461 W6 (the
+registration call at :1086). W2 here goes after 459 W2 and 462 W1 because
+both change what the generated entry does before spin and W5's I1 gate says
+the census binary IS the boot binary, so the census must be written against
+the entry's final pre-spin sequence rather than re-proved after each; and
+because W2's own edit to the emitter is at most one line at the native
+funnel call, the cheapest of the three to rebase. `packages/api/nros-cpp/src/params_shim.rs`
+is W1 here (the `on_param_declare` call) then phase-461 W6 (the feature
+split). `packages/cli/nros-cli-core/src/entity_inventory.rs` is owned by
+phase-460 W3, phase-461 W3 and phase-461 W6 in that order; W3 and W6 here
+read the inventory JSON and own no line of it, and if W3 needs a field added
+to the JSON it goes after 461 W3. Phase 457 shares no file with this phase.
+
 Relates to [RFC-0100](../design/0100-rmw-agnostic-sizing-model.md) (the
 contract states the facts), [RFC-0078](../design/0078-wcet-is-declared-per-profile.md)
 (a WCET belongs to a profile, not to code), [RFC-0063](../design/0063-system-model-is-a-build-artifact.md)
@@ -164,6 +211,8 @@ Acceptance: a table in this document with one row per island component, each
 cell measured rather than inferred. This is the baseline W3's acceptance is
 measured against.
 
+Claim: phase-463-W0. Depends on: none. Owns: this document (the measurement table). Gate: the table, one measured row per island component. Status: not started.
+
 ### W1 - the recorder tells the whole truth
 
 Hooks are the census. Three changes to the phase-308 adapter, all behind the
@@ -194,6 +243,8 @@ publisher at the default, one wall timer, one guard condition and two
 parameters produces a sidecar with exactly those facts, and the negative
 control holds: remove any one hook call and the fixture's census fails to
 match, so a hook that quietly stops being called is caught.
+
+Claim: phase-463-W1. Depends on: none. Owns: packages/rmw/metadata/src/lib.rs, packages/api/nros-cpp/src/metadata_hooks.rs, packages/api/nros/src/node_metadata.rs, the hook call sites in packages/api/nros-cpp/src/params_shim.rs, packages/api/nros-cpp/src/timer.rs and packages/api/nros-cpp/src/guard_condition.rs, a new census-hooks-complete recipe in just/check/codegen.just. Gate: just check census-hooks-complete (new) plus the phase-308 layer grep. Status: not started.
 
 ### W2 - the native entry is the census producer
 
@@ -235,6 +286,8 @@ Acceptance: on the island, `NROS_CENSUS_OUT=/tmp/c.json NROS_RMW=metadata
 subscriptions, 14 publishers, 2 service servers, 2 service clients, 4 timers
 and 21 parameters across four nodes, in under a second, with no router
 running. Same binary as `just run` boots; `nm` of it is unchanged by the mode.
+
+Claim: phase-463-W2. Depends on: phase-463-W1 (acceptance), phase-459-W2, phase-462-W1. Owns: packages/api/nros-cpp/src/lib.rs (the hosted funnel), packages/boards/nros-board-linux/src/lib.rs (boot_hosted), cmake/NanoRosFeatureSet.cmake, packages/cli/nros-cli-core/src/cmd/entity_census.rs (new) and its dispatch lines in packages/cli/nros-cli-core/src/cmd/ws.rs, packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs (at most the native funnel call). Gate: nros ws entity-census run on the island, 11/14/2/2/4/21 in under a second, nm equal to the boot binary. Status: not started.
 
 ### W3 - the comparison, as verdicts with severities
 
@@ -280,6 +333,8 @@ the pristine contract passes with 33 `confirmed` entity rows and 21
 `confirmed` parameter rows and zero warnings. Each refusal names the node,
 the entity, the file that should change, and the line to add or remove.
 
+Claim: phase-463-W3. Depends on: phase-463-W2, phase-460-W1. Owns: packages/cli/nros-cli-core/src/entity_census.rs (new), the check subcommand in packages/cli/nros-cli-core/src/cmd/entity_census.rs, the [census.waive] table in packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs. Gate: the island experiment table as unit tests in packages/cli/nros-cli-core (E3a/E3b/E3c/E4/E2a refuse, pristine passes 33 + 21). Status: not started.
+
 ### W4 - where it runs, and how it goes stale
 
 Three places, one artifact:
@@ -319,6 +374,8 @@ configure refuses with "census stale: autoware_mrm_handler changed since
 the contract row and it configures. Touch a file without changing it and
 nothing is stale.
 
+Claim: phase-463-W4. Depends on: phase-463-W3, phase-460-W1. Owns: the entity-census recipe in just/check/codegen.just (new), packages/cli/nros-cli-core/src/cmd/ws.rs (the sync: source metadata block), packages/cli/nros-cli-core/src/orchestration/metadata_refresh.rs, cmake/NanoRosEntry.cmake (the --require-fresh call), the [census] policy keys in cargo_metadata_schema.rs. Gate: just check entity-census (new). Status: not started.
+
 ### W5 - the compatibility invariants, as gates
 
 The constraint is that the C++ API stays identical between native and RTOS
@@ -334,6 +391,8 @@ Four invariants, each with a gate and a negative control:
 
 I3(c) is the one that matters and the one that cannot be argued from
 structure: it is measured, and this document records the two numbers.
+
+Claim: phase-463-W5. Depends on: phase-463-W2 (I1, I3b, I3c); none for I2 and I3a. Owns: census-no-conditional-api in just/check/abi.just (new), rtos-feature-set-excludes-analysis in just/check/platform.just (new), packages/api/nros-cpp/src/metadata_hooks.rs (inline empty bodies), the I3(c) numbers in this document. Gate: the two new recipes, just check api-parity, the image-facts lane. Status: not started.
 
 ### W6 - retire the max, flip the island
 
@@ -353,6 +412,12 @@ build could not check) is gone. The runtime refusals `DECLARED_DEPTH_MISMATCH`
 defence for a call site the census could not key (a runtime-built topic
 name), they cost what they cost today, and a check that runs one build
 earlier does not make the later one wrong.
+
+The island half (the `[census]` flip to `refuse` and the deleted
+`NROS_EXECUTOR_MAX_CBS=32` export) is a separate unit, `island-W6`, in the
+island's own phase doc; the nano-ros half above is what this claim covers.
+
+Claim: phase-463-W6. Depends on: phase-463-W3, phase-463-W4. Owns: packages/core/nros-orchestration-ir/src/executor_sizing.rs, packages/cli/nros-cli-core/src/orchestration/model_ingest.rs (:406); the island half is island-W6 in the island's own phase doc. Gate: cargo test -p nros-orchestration-ir and just check entity-census on the island. Status: not started.
 
 ### W7 - the profiling half (later, and a separate decision)
 
@@ -406,6 +471,8 @@ seconds, produces a measurements file whose callback rows match the census
 one-to-one, whose observed `paths` outputs equal the contract's `output:`
 lists for all four timers, and whose numbers are refused by the Zephyr bake
 if anyone tries to select the host profile for it.
+
+Claim: phase-463-W7. Depends on: phase-463-W2, phase-463-W5, and the separate go/no-go decision. Owns: packages/core/nros-node/src/executor/spin.rs (the dispatch hook), profile-mode in packages/core/nros-node/Cargo.toml, packages/api/nros/Cargo.toml and packages/api/nros-cpp/Cargo.toml, the NROS_PROFILE_OUT switch in packages/api/nros-cpp/src/lib.rs, docs/design/0078-wcet-is-declared-per-profile.md. Gate: the 60 s replay on the island's native image. Status: not started.
 
 ## Gates added by this phase
 
