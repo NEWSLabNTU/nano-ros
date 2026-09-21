@@ -285,30 +285,44 @@ is fixed.
 `gap` rows are the queue", which derives it from the ledger.** Do not plan from
 the number below; re-derive.
 
-**132 `gap` rows on 2026-09-13:** C 39, C++ 58, Rust 35. Sixteen carry a
-disposition; the other 116 record a missing name and nothing else.
+**80 `gap` rows on 2026-09-21:** C 24, C++ 28, Rust 28. Dispositions: 54
+`adopt`, 13 `adopt-bounded`, 11 `absent`, 2 `refuse-loud`.
 
-| shard | gaps, 2026-09-11 | gaps, 2026-09-13 |
-| --- | ---: | ---: |
-| pubsub | 32 | 29 |
-| param | 27 | 27 |
-| service | 19 | 14 |
-| graph | 18 | 18 |
-| lifecycle | 15 | 15 |
-| log | 8 | 8 |
-| timer | 8 | 6 |
-| exec | 6 | 1 |
-| action | 5 | 5 |
-| other, qos | 3 each | 2, 3 |
-| init, node | 2 each | 2, 1 |
-| boot | 1 | 1 |
-| **total** | **149** | **132** |
+| shard | 2026-09-11 | 2026-09-13 | 2026-09-21 |
+| --- | ---: | ---: | ---: |
+| pubsub | 32 | 29 | 29 |
+| graph | 18 | 18 | 18 |
+| service | 19 | 14 | 14 |
+| param | 27 | 27 | 0 |
+| lifecycle | 15 | 15 | 1 |
+| log | 8 | 8 | 4 |
+| timer | 8 | 6 | 4 |
+| qos | 3 | 3 | 3 |
+| exec | 6 | 1 | 1 |
+| action | 5 | 5 | 0 |
+| other | 3 | 2 | 2 |
+| init, node | 2 each | 2, 1 | 2, 1 |
+| boot | 1 | 1 | 1 |
+| **total** | **149** | **132** | **80** |
 
-**The second column is the point, not a correction.** 17 rows left in two days,
-and every one of them left because phase-417 stage 3 fixed the defect and
-DELETED the row — `exec` 6 → 1 is the C executor group below. A count in a
-document is a measurement with a timestamp; this one had none for two days and
-was quoted as current by two other phases.
+**What the third column says, and it is not just "progress".** 52 rows left in
+eight days, and the ones that went are the ones a FIX deletes: `param` 27 → 0
+and `action` 5 → 0, `lifecycle` 15 → 1. What did NOT move is the tell —
+**pubsub 29, graph 18 and service 14 are 61 of the remaining 80**, and all three
+have been flat since 2026-09-11.
+
+They are flat because they are one family wearing three shard names, and it is
+the family that needs the BACKEND to answer rather than the wrapper: granted QoS
+read back (`get_actual_qos` and its client/service spellings, 10 rows), matched
+counts (`get_subscription_count` / `get_publisher_count`, 6), `*_info_by_topic`
+(4), name accessors (6), and the per-node graph queries (18, every one `adopt`).
+The behaviour defects got fixed first because a wrapper could fix them; these
+need a value the RMW seam has to carry.
+
+**A count in a document is a measurement with a timestamp.** This one had none
+for two days and was quoted as current by two other phases; it then sat at 132
+for eight days while the real number halved. Re-derive before planning — the
+one-line script is in the truth-pass section above.
 
 ### Fix-up work, grouped by home
 
