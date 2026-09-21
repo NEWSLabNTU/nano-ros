@@ -3,12 +3,13 @@ id: 1390
 title: "The sizes probe inherits a board's executor-backing CLAIM but not the
   image's knob narrowing, so it judges the claim against a default belonging to
   no image — which forces every board claim up to the unnarrowed maximum"
-status: open
+status: wontfix
+closed: 2026-09-21
 type: bug
 area: [build, core]
 severity: medium
 found: 2026-09-20
-related: [1388, 1145, 1171, 1284, 0460]
+related: [1388, 1145, 1171, 1284, 1402, 0460]
 ---
 
 ## What happens
@@ -89,3 +90,81 @@ a board can state a number BELOW the unnarrowed default and still build:
 Step 2 is the real question and may be the larger half: a per-cargo-root crate
 has no single image's knobs by construction, so either it must not carry the
 static, or the claim must be per-image rather than per-board.
+
+
+## WONTFIX 2026-09-21 — the pin is necessary but not sufficient, and buys nothing today
+
+Decided by the maintainer, who closed PR #1108 (the fix described below, written
+and measured to work) unmerged. Recorded here with the reasoning so this reads
+as a decision rather than as work nobody got to.
+
+### It changes no behaviour today
+
+`nros-board-threadx-linux` states **11069**, which IS the unnarrowed
+`ExecutorSizing::DEFAULT` — the number the probe judges against. So the probe's
+verdict currently agrees with the image's requirement and nothing fails. Issue
+1388, the breakage this mechanism caused, is FIXED and merged; the claim was
+raised there for an independent reason.
+
+What the pin buys is an OPTION, not a repair: the ability for a board to state a
+number below the unnarrowed default.
+
+### And the option is not actually available, because the pin is only half
+
+Measured while resolving this issue (one serial `just threadx_linux
+build-examples`, 18 `nros-node` compilations instrumented):
+
+| units | knobs | board rung | what they are |
+| --- | --- | --- | --- |
+| 5 | narrowed | `Some(11069)` | the standalone `examples/threadx-linux/rust/*` leaves; derived defaults 2917 / 3626 / 4494 |
+| 11 | UNNARROWED | `None` | `nros_c-static`/`nros_cpp-static` in three cmake roots, two cargo-built entries, four size probes |
+| 2 | UNNARROWED | `Some(11069)` | the `nros_ws_runtime` umbrella of `workspaces/mixed`, and the probe spawned beneath it |
+
+Only those last two can fail `stated >= default`. The probe is ONE of them. The
+other is the **umbrella**, which is written per cmake configure and compiled per
+CARGO ROOT — one serves every entry in the workspace, so it can carry no single
+image's narrowing **by construction**. Pinning the probe therefore does not let
+a board lower its claim: the umbrella still demands the maximum.
+
+Making the umbrella decline the static was considered and rejected on its own
+merits: the same cargo root compiles the board crate, whose
+`forward_executor_backing_words` subtracts `8 *` the same rung from the ThreadX
+byte pool. Declining on one side without suppressing the subtraction on the
+other loses the bytes from BOTH — a worse outcome than the over-statement.
+
+So a real fix is not the one-line pin. It is either "the umbrella does not carry
+this static, and the pool subtraction follows it", or "the claim becomes
+per-image rather than per-board". Both are design changes, and neither is
+justified by what the over-statement currently costs.
+
+### What it costs to leave
+
+A threadx-linux talker reserves 11,069 words for an executor that needs 2,917.
+
+That is **not memory**. This rung MOVES bytes between `.bss` and the byte pool,
+which gives back the same count, so the image's total is unchanged. What it
+costs is ACCURACY: `mem-report` reads symbols, and the `.bss` figure on this
+board describes a reservation about 3.8x larger than anything uses. Making that
+figure honest is the reason phase-392 W6 moved the backing off the heap, so this
+is a real cost to the campaign's own instrument — just not one that breaks a
+build or a byte budget.
+
+### What would make this worth reopening
+
+* A board that needs to state a number below the unnarrowed default for a reason
+  the maximum cannot satisfy — a pool too small to carry it, which is the
+  constraint the per-role measurement in issue 1388 was originally reaching for.
+* `mem-report`'s `.bss` figure being used to make a sizing decision on an RTOS
+  board, where a 3.8x over-statement would mislead rather than merely inflate.
+* The umbrella question being settled for another reason (issue 1402 touches the
+  same seam — the knobs the umbrella does and does not receive).
+
+### What survives this decision
+
+The measurement above, and the correction it forced: `nros_c-static` /
+`nros_cpp-static` receive NO board facts (`nros_board_facts_env` is called only
+for the umbrella and rv-virt-threadx), so the C/C++ lanes never judged the claim
+at all. This issue's original text implied they did.
+
+The pin itself is written and measured — closed PR #1108 — if a future reason
+makes it worth taking.
