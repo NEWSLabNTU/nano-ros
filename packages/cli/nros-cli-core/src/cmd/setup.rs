@@ -22,9 +22,7 @@ use crate::{
     cmd::board::find_workspace_root,
     orchestration::{
         sdk_index::{SdkIndex, ToolPackage, ZephyrModule, host_key},
-        sdk_store::{
-            InstallAction, LOCK_FILE, SourceDisposition, execute, provision_source, store_root,
-        },
+        sdk_store::{InstallAction, SourceDisposition, execute, provision_source, store_root},
     },
 };
 
@@ -389,7 +387,7 @@ pub fn run(args: Args) -> Result<()> {
 
     let root = store_root();
     let workspace = index_workspace(&index_path);
-    let lock_path = PathBuf::from(LOCK_FILE);
+    let lock_path = project_lock_path();
     let ledger = SessionLedger::from_env();
     let prereqs = index.prereqs();
     let repo_root = index_path.parent().map(Path::to_path_buf);
@@ -928,11 +926,19 @@ fn install_tools(
          system = [..]; re-run with --sudo to install them first):",
     );
 
-    let report = run_pipelined(&plan, Path::new("."), None, dry_run, jobs)
-        .finish(Some(Path::new(LOCK_FILE)))?;
+    let lock_path = project_lock_path();
+    let report =
+        run_pipelined(&plan, Path::new("."), None, dry_run, jobs).finish(Some(&lock_path))?;
     if dry_run {
         eprintln!("(--dry-run: nothing installed)");
         return Ok(());
+    }
+    // Issue 1262 — SAY which file. The board path has printed "locked in <path>"
+    // all along; `--tool` printed nothing, so the lock landing in the wrong
+    // directory (or not at all, for a tool already in the store) was invisible
+    // to the one person who could have noticed.
+    if report.lock_written {
+        eprintln!("nros setup --tool: locked in {}", lock_path.display());
     }
     report.conclude(index)
 }
@@ -1155,7 +1161,7 @@ pub fn ensure_tools(board: &str, workspace: Option<&Path>) -> Result<Vec<PathBuf
         &Default::default(),
     )?;
     let mut report = run_pipelined(&plan, &ws, None, false, Jobs::from_env(None)?)
-        .finish(Some(Path::new(LOCK_FILE)))?;
+        .finish(Some(&project_lock_path()))?;
     let bin_dirs = std::mem::take(&mut report.bin_dirs);
     report.conclude(&index)?;
     Ok(bin_dirs.into_iter().filter(|b| b.is_dir()).collect())
@@ -1466,6 +1472,27 @@ fn index_workspace(index: &Path) -> PathBuf {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         crate::orchestration::nano_ros_root::resolve(None, &cwd)
     })
+}
+
+/// The `nros-sdk.lock` this invocation belongs to (issue 1262).
+///
+/// The ONE place `nros setup` turns a working directory into a lock path: the
+/// three install paths (a board, `--tool`, and the lazy `ensure_tools` under
+/// `nros build`) each spelled it `PathBuf::from(LOCK_FILE)` and so each wrote
+/// wherever the user was standing. The derivation itself belongs to
+/// [`crate::orchestration::store::lock_path_for`], beside the
+/// `discover_pin_files` walk that READS
+/// these files — a writer with its own idea of where a project is is a writer
+/// whose output nobody consults.
+///
+/// An unreadable working directory falls back to the bare relative name, which
+/// is the pre-1262 behaviour and the only thing left to do when the process
+/// cannot say where it is.
+fn project_lock_path() -> PathBuf {
+    match std::env::current_dir() {
+        Ok(cwd) => crate::orchestration::store::lock_path_for(&cwd),
+        Err(_) => PathBuf::from(crate::orchestration::sdk_store::LOCK_FILE),
+    }
 }
 
 /// [`index_workspace`] with its inputs as parameters — the store/shipped copies
@@ -3161,6 +3188,53 @@ fn compose_packages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1262, the CALL SITES — every lock path this command writes comes
+    /// from [`project_lock_path`], never from the bare constant.
+    ///
+    /// The derivation itself is unit-tested in `orchestration::store`, but that
+    /// test could not have caught 1262: the bug was three install paths — a
+    /// board, `--tool`, and the lazy `ensure_tools` — each spelling
+    /// `PathBuf::from(LOCK_FILE)` inline, a RELATIVE path resolved against
+    /// wherever the user stood. Fixing one and leaving two is exactly the class
+    /// CLAUDE.md warns about, and a behavioural test cannot reach it without
+    /// `set_current_dir` (a process-global that leaks between parallel tests,
+    /// issue 1101). So the invariant is asserted on the SOURCE: the constant is
+    /// mentioned exactly once outside prose, inside the one resolver.
+    #[test]
+    fn no_install_path_spells_the_lock_file_name_for_itself() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cmd");
+        for rel in ["setup.rs", "setup/session.rs"] {
+            let path = root.join(rel);
+            let src = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+            // The `#[cfg(test)]` modules below are excluded: this very test
+            // names the constant, and a self-referential scan is no scan.
+            let code = src.split("\n#[cfg(test)]").next().unwrap_or_default();
+            let uses: Vec<(usize, &str)> = code
+                .lines()
+                .enumerate()
+                .map(|(i, l)| (i + 1, l.trim()))
+                .filter(|(_, l)| l.contains("LOCK_FILE") && !l.starts_with("//"))
+                .collect();
+            // The one resolver's own fallback, and nothing else.
+            let expected: &[&str] = match rel {
+                "setup.rs" => {
+                    &["Err(_) => PathBuf::from(crate::orchestration::sdk_store::LOCK_FILE),"]
+                }
+                _ => &[],
+            };
+            let found: Vec<&str> = uses.iter().map(|(_, l)| *l).collect();
+            assert_eq!(
+                found,
+                expected,
+                "{}: a lock path must come from `project_lock_path()`, which \
+                 anchors it to the project (issue 1262); found {:?}",
+                path.display(),
+                uses
+            );
+        }
+    }
 
     /// phase-447 D1 — the plan line says WHY a prebuilt was refused, so
     /// `--dry-run` shows the fallback and its reason before anything runs; an
