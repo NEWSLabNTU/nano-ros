@@ -45,6 +45,14 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN");
 
+    // phase-460 W2 (issue 1421) -- and the inventory's VERDICT, when a road
+    // carries it. Before any number is read: a refused declaration has no
+    // numbers, and reading on would size the store from the defaults below
+    // as if nothing had been declared.
+    println!("cargo:rerun-if-env-changed=NROS_PARAM_DECLARATION_STATUS");
+    println!("cargo:rerun-if-env-changed=NROS_PARAM_DECLARATION_REASON");
+    refuse_partial_declaration();
+
     let max_parameters = knob(
         "NROS_MAX_PARAMETERS",
         rungs.max_parameters,
@@ -317,6 +325,34 @@ fn capacity(
         (None, Some(who)) => refuse(name, board_key, &who, "is stated nowhere"),
         (None, None) => declared.unwrap_or(default),
     }
+}
+
+/// phase-460 W2 (issue 1421) -- a road that hands this script the entity
+/// inventory's `NROS_PARAM_DECLARATION_STATUS` hands it the refusal too.
+///
+/// The inventory refuses the contract's `params:` when some nodes declare and
+/// the rest do not (phase-446's every-node-or-none rule), and writes the reason
+/// naming the silent nodes. The CMake road stops the configure on that status
+/// (`NanoRosEntityFacts.cmake`, `_nros_param_store_env`), so it never reaches
+/// here; a road that forwards the inventory to cargo by environment rather than
+/// composing it in cmake gets the same rule at the same place every rung meets.
+/// `absent`, `declared`, and an unset status all pass: only the producer's own
+/// `refused` is a refusal, and a road that carries no status changes nothing.
+fn refuse_partial_declaration() {
+    let status = env::var("NROS_PARAM_DECLARATION_STATUS").unwrap_or_default();
+    if status.trim() != "refused" {
+        return;
+    }
+    let reason = env::var("NROS_PARAM_DECLARATION_REASON")
+        .ok()
+        .filter(|r| !r.trim().is_empty())
+        .unwrap_or_else(|| "(the road carried no NROS_PARAM_DECLARATION_REASON)".into());
+    panic!(
+        "\n\nnros-params: the parameter store cannot be sized: the entity inventory REFUSED \
+         the contract's `params:` declaration:\n  {reason}\n\
+         Declare `params:` on every node in the image, or on none. The build stops here \
+         rather than size the store from the crate defaults (phase-460 W2, issue 1421).\n"
+    );
 }
 
 fn refuse(name: &str, board_key: &str, who: &Need, what: &str) -> ! {

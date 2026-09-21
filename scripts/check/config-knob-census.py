@@ -262,6 +262,11 @@ KNOB_CLASS = {
     # node, counts the contract decides. nros-node bounds its service buffer
     # from it and the store's resolved capacities.
     "NROS_DECLARED_PARAM_SERVICE_SHAPE": ("infra", "a SHAPE the resolver passes down, not a knob"),
+    # phase-460 W2 (issue 1421) -- the inventory's VERDICT on the declaration,
+    # not a number: `refused` stops nros-params' build script on a road that
+    # forwards the status by environment (the CMake road stops in cmake).
+    "NROS_PARAM_DECLARATION_STATUS": ("infra", "a STATUS the inventory passes down, not a knob"),
+    "NROS_PARAM_DECLARATION_REASON": ("infra", "the refusal's reason, quoted back, not a knob"),
     "NROS_PICOLIBC_SYSROOT": ("infra", "path"),
     "NROS_RISCV64_PREFIX": ("infra", "toolchain prefix"),
     "NROS_SDK_STORE": ("infra", "path"),
