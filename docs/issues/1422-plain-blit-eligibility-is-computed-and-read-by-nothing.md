@@ -1,5 +1,5 @@
 ---
-id: 1413
+id: 1422
 title: "The plain (POD-blit, zero-copy eligible) flag is computed on every size
   bound and read by a test and a const - no dispatch path and no gate consumes
   it"

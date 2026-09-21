@@ -8,12 +8,12 @@ Safety Island chain (briefs B and D, 2026-09-18, re-verified against
 `783cdfa14` on 2026-09-21).
 
 Owns these issues, one per wave:
-[1411](../issues/1411-refused-resolve-leaves-the-previous-model-for-every-consumer.md),
-[1412](../issues/1412-partial-params-declaration-falls-to-crate-defaults-silently.md),
-[1413](../issues/1413-plain-blit-eligibility-is-computed-and-read-by-nothing.md),
-[1414](../issues/1414-system-toml-domain-id-and-kconfig-domain-id-are-never-compared.md),
-[1415](../issues/1415-zephyr-heap-size-is-a-guess-with-a-peak-reporter-nothing-reads.md),
-[1416](../issues/1416-heap-exhaustion-and-buffer-too-small-reach-no-fault-hook-on-a-consoleless-board.md).
+[1420](../issues/1420-refused-resolve-leaves-the-previous-model-for-every-consumer.md),
+[1421](../issues/1421-partial-params-declaration-falls-to-crate-defaults-silently.md),
+[1422](../issues/1422-plain-blit-eligibility-is-computed-and-read-by-nothing.md),
+[1423](../issues/1423-system-toml-domain-id-and-kconfig-domain-id-are-never-compared.md),
+[1424](../issues/1424-zephyr-heap-size-is-a-guess-with-a-peak-reporter-nothing-reads.md),
+[1425](../issues/1425-heap-exhaustion-and-buffer-too-small-reach-no-fault-hook-on-a-consoleless-board.md).
 Takes [issue 1368](../issues/1368-frag-max-size-not-checked-against-derived-bound.md)
 as W3's first half. Cites [issue 1036](../issues/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md)
 (the sink problem) and [issue 1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md)
@@ -32,13 +32,13 @@ The rows are independent; the phase exists so they are fixed as one class
 
 | # | trusted today | measured on the island | issue |
 | --- | --- | --- | --- |
-| 1 | the `system_model.yaml` on disk is the current one | E7b: resolve refused, the E6b model stayed, and `entity-inventory` / `codegen-system` / `codegen entry` derived from it (`NROS_DERIVED_MAX_PARAMETERS 26`) | 1411 |
-| 2 | a partial `params:` declaration is loud | E6a: one node's block removed flips the store to `refused` and the crate defaults 32/64/256/32/256 replace 25/35/0/0/0 with no build-time line | 1412 |
-| 3 | `NROS_FRAG_MAX_SIZE` and the `plain` flag mean something | 2048 hand-set, derived receive bound 1496, no comparison; `plain` computed on every bound, read by a test and a const | 1368, 1413 |
-| 4 | the image's domain is the system's domain | `system.toml` writes `NROS_SYSTEM_DOMAIN_ID` into `system_config.h`; no file outside the CLI reads it; the image bakes `CONFIG_NROS_DOMAIN_ID` | 1414 |
-| 5 | `CONFIG_NROS_ZEPHYR_HEAP_SIZE=94208` fits | chosen, not measured; the high-water reporter exists, is always compiled on Zephyr, and nothing reads it off the board or gates the knob against it | 1415 |
+| 1 | the `system_model.yaml` on disk is the current one | E7b: resolve refused, the E6b model stayed, and `entity-inventory` / `codegen-system` / `codegen entry` derived from it (`NROS_DERIVED_MAX_PARAMETERS 26`) | 1420 |
+| 2 | a partial `params:` declaration is loud | E6a: one node's block removed flips the store to `refused` and the crate defaults 32/64/256/32/256 replace 25/35/0/0/0 with no build-time line | 1421 |
+| 3 | `NROS_FRAG_MAX_SIZE` and the `plain` flag mean something | 2048 hand-set, derived receive bound 1496, no comparison; `plain` computed on every bound, read by a test and a const | 1368, 1422 |
+| 4 | the image's domain is the system's domain | `system.toml` writes `NROS_SYSTEM_DOMAIN_ID` into `system_config.h`; no file outside the CLI reads it; the image bakes `CONFIG_NROS_DOMAIN_ID` | 1423 |
+| 5 | `CONFIG_NROS_ZEPHYR_HEAP_SIZE=94208` fits | chosen, not measured; the high-water reporter exists, is always compiled on Zephyr, and nothing reads it off the board or gates the knob against it | 1424 |
 | 6 | task slots are released | RESOLVED: `zephyr/nros_platform_zephyr_shims.c:421-480` claims and releases on join (issue 0839). No issue; W6 is a gate only |
-| 7 | a fault is seen | `HEAP EXHAUSTED` is a `printk` on a board with no console; a `BufferTooSmall` on the C++ take path returns `NROS_CPP_RET_FULL` with `out_len = 0` and the dispatch continues | 1416, 1036 |
+| 7 | a fault is seen | `HEAP EXHAUSTED` is a `printk` on a board with no console; a `BufferTooSmall` on the C++ take path returns `NROS_CPP_RET_FULL` with `out_len = 0` and the dispatch continues | 1425, 1036 |
 
 ## What it does
 
@@ -46,7 +46,7 @@ Each wave adds one verification at the consumer, one gate that fails without
 it, and one negative control. Nothing here changes a derived number; the
 phase changes who checks it.
 
-### W1 - a refused resolve leaves no model to trust (issue 1411)
+### W1 - a refused resolve leaves no model to trust (issue 1420)
 
 `nros sync` stages, stamps and renames a resolved model
 (`packages/cli/nros-cli-core/src/cmd/ws.rs:2338-2348`), which is right for
@@ -87,7 +87,7 @@ and `codegen entry` all exit non-zero naming the marker; the negative control
 reverts the edit, syncs, and all four pass. Runs in the fast tier
 (`just ci-l1`).
 
-### W2 - a partial `params:` declaration is a refusal, not a default (issue 1412)
+### W2 - a partial `params:` declaration is a refusal, not a default (issue 1421)
 
 `ws entity-inventory` writes `NROS_PARAM_DECLARATION_STATUS "refused"` with a
 reason (`packages/cli/nros-cli-core/src/entity_inventory.rs:3993`);
@@ -106,7 +106,7 @@ no contract is sized by its board. `refused` becomes a configure-time
 inventory with `refused` fails the configure naming the node; `absent` and
 `declared` pass unchanged.
 
-### W3 - a stated ceiling is compared to the derived bound; a computed flag has a reader (issues 1368, 1413)
+### W3 - a stated ceiling is compared to the derived bound; a computed flag has a reader (issues 1368, 1422)
 
 First half is issue 1368 as filed: a configure-time comparison of
 `NROS_FRAG_MAX_SIZE` (`zephyr/Kconfig:867-872`, default 2048, no sentinel)
@@ -124,7 +124,7 @@ flag is deleted, and this wave records the measurement either way. Gate:
 1368's acceptance, plus a unit test that a type with a nested unbounded
 member is not listed.
 
-### W4 - `system.toml` domain and Kconfig domain agree, or the configure says which wins (issue 1414)
+### W4 - `system.toml` domain and Kconfig domain agree, or the configure says which wins (issue 1423)
 
 `codegen-system` writes `#define NROS_SYSTEM_DOMAIN_ID <n>u`
 (`packages/cli/nros-cli-core/src/cmd/codegen_system.rs:856-858`) from
@@ -146,7 +146,7 @@ Kconfig remains what the image bakes (RFC-0049 ladder), the check only refuses
 a silent disagreement. Gate: a fixture `.config` with `CONFIG_NROS_DOMAIN_ID=2`
 against a bringup declaring 10 fails the configure; equal values pass.
 
-### W5 - the heap size is measured, and the knob is gated against the measurement (issue 1415)
+### W5 - the heap size is measured, and the knob is gated against the measurement (issue 1424)
 
 What exists: `nros_zephyr_heap_peak()`
 (`packages/platform/nros-platform/src/zephyr_heap.rs:103`) returns a true
@@ -186,7 +186,7 @@ succeeds; the negative control forces `pthread_detach` on one and asserts the
 next create past the pool reports `OUT OF THREAD SLOTS`, which is the
 documented behaviour for a detached teardown.
 
-### W7 - a fault reaches a hook a console-less board can read (issue 1416)
+### W7 - a fault reaches a hook a console-less board can read (issue 1425)
 
 The hook exists: `nros_platform_panic` (`platform.c:1265`, RFC-0077,
 `printk` then `k_panic()` so an image's `k_sys_fatal_error_handler` runs),
