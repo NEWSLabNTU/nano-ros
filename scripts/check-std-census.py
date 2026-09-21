@@ -407,7 +407,12 @@ BASELINE = {
     # a board uses — which is what the 96 mock-session tests now do.
     # The 3 that remain are `extern crate std`, a `dead_code` allow, and the
     # `drive_io` timeout policy for the mock configuration.
-    "nros-node": {"cfg": 3, "path": 0},
+    # 2026-09-21: 3 -> 1 cfg. Not a code change — the per-file test exemption
+    # became declaration-driven (`test_gated_module_files`), so every module
+    # the parent declares under a `#[cfg(…test…)] mod x;` is excluded, not
+    # just the one named `tests.rs`. Two cfg sites that were only ever host
+    # test code stopped being counted as production std use.
+    "nros-node": {"cfg": 1, "path": 0},
     #
     # phase-359 W10: 7 -> 5. Both were gates expressing a preference rather than
     # a constraint: the `heapless::String` parameter impl was excluded on `std`
@@ -437,6 +442,35 @@ def is_test_gate(stripped: str) -> bool:
     return stripped.startswith("#[cfg(") and re.search(r"\btest\b", stripped) is not None
 
 
+def test_gated_module_files(src):
+    """Files whose PARENT declares them under a `#[cfg(…test…)] mod x;`.
+
+    The per-file scan cannot see a gate that lives one module up, so a whole
+    file of host-test code reads as production `std::` use. `tests.rs` was
+    carved out by NAME for exactly this, which made the exemption narrower than
+    the rule it stands for: `executor/graph_wait_tests.rs` is declared
+    `#[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))] mod
+    graph_wait_tests;` and is just as much test code. Read the DECLARATION
+    instead, so a new test module needs no edit here (issue 0196's shape).
+    """
+    gated = set()
+    for rs in tracked(src, suffix=".rs"):
+        pending = False
+        for line in rs.read_text(errors="replace").splitlines():
+            stripped = line.strip()
+            if is_test_gate(stripped):
+                pending = True
+                continue
+            if not pending:
+                continue
+            m = re.match(r"(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;", stripped)
+            if m:
+                gated.add(m.group(1))
+            if stripped and not stripped.startswith("#["):
+                pending = False
+    return gated
+
+
 def strip_comments(line: str) -> str:
     """Drop comment text so a doc comment naming `std::` is not a std USE."""
     s = line.strip()
@@ -458,14 +492,18 @@ def census():
             if not src.is_dir():
                 continue
             cfg = path = 0
+            gated_mods = test_gated_module_files(src)
             for rs in tracked(src, suffix=".rs"):
                 # Generated bindings are not hand-written std use.
                 if rs.name == "generated.rs":
                     continue
-                # `executor/tests.rs` is declared `#[cfg(all(test, …))] mod tests;`
-                # — the whole FILE is host-test code, and the gate lives in the
-                # parent module where this per-file scan cannot see it.
-                if rs.name == "tests.rs":
+                # A file the parent declares under a test gate is host-test
+                # code in full, and the gate lives where this per-file scan
+                # cannot see it. Read the declaration rather than the name:
+                # `tests.rs` used to be carved out by name, which left every
+                # other test module (`graph_wait_tests.rs`) counted as
+                # production std use.
+                if rs.stem in gated_mods:
                     continue
                 # Skip `#[cfg(test)] mod … { … }` bodies by brace depth, and
                 # skip whole files that are themselves test modules.
