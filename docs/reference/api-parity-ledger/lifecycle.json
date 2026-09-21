@@ -467,7 +467,7 @@
   },
   "cpp:LifecycleState": {
     "verdict": "extension",
-    "why": "the ours-only half of `rclcpp_lifecycle::State`: a `uint8_t`-backed `enum class` over the five REP-2002 primary states plus an `Unknown = 0` sentinel for a null executor handle. See `cpp:LifecycleNode::on_activate` for why it is an enum and not a class."
+    "why": "the ours-only half of `rclcpp_lifecycle::State`'s STORAGE: a `uint8_t`-backed `enum class` over the five REP-2002 primary states plus an `Unknown = 0` sentinel for a null executor handle. Upstream's ids are `lifecycle_msgs` integer constants, so there is no enum upstream to rename toward.\n\nCORRECTED phase-417 G6: this said 'see `cpp:LifecycleNode::on_activate` for why it is an enum and not a class', which now reads as a refusal of the class. It is not one — `nros::State` wraps this enum (`cpp:State`, `adopt-bounded`), exactly as `Transition` wraps a transition id. What the enum is, and what that cross-reference is actually about, is the STORAGE: one byte, no allocator, no owned label."
   },
   "cpp:LifecycleTransition": {
     "verdict": "extension",
@@ -520,7 +520,7 @@
   },
   "cpp:state_label": {
     "verdict": "extension",
-    "why": "the `lifecycle_msgs/msg/State.label` for a `LifecycleState`. Upstream carries it as a field of `rclcpp_lifecycle::State`, an object owning an `rcl_state_t` and an allocator; the only thing that object adds to the enum is this string, so a whole type to carry it would be a wrapper over one accessor. A free function rather than a member for the same reason. Reads the one table in `nros_core` (see `c:lifecycle_state_label`), so it cannot drift from the wire."
+    "why": "the `lifecycle_msgs/msg/State.label` for a `LifecycleState`. Reads the one table in `nros_core` (see `c:lifecycle_state_label`), so it cannot drift from the wire.\n\nCORRECTED phase-417 G6. This row argued 'the only thing that object adds to the enum is this string, so a whole type to carry it would be a wrapper over one accessor. A free function rather than a member for the same reason.' The argument did not survive its own sibling: `Transition` carries `label()` as a METHOD, so a ported `transition.label()` compiled and a ported `state.label()` did not — the pattern was half applied, not deliberately asymmetric. `nros::State` exists now (`cpp:State`) and calls this function; the free form stays as its body and as the spelling a caller holding a bare enum uses, and there is still exactly one table."
   },
   "rust:Executor::lifecycle_state_machine": {
     "verdict": "divergence",
@@ -613,5 +613,13 @@
   "rust:on_shutdown": {
     "verdict": "extension",
     "why": "`lifecycle::trampolines::on_shutdown::<T>` -- the monomorphized `extern \"C\"` shim that recovers `&mut T` from the FFI context pointer and calls `LifecycleCallbacks::on_shutdown`. One per `T`, emitted by rustc, so a safe trait can be registered through a C function-pointer slot with no allocation. Public because `Executor::register_lifecycle_node` names them, not because a user calls them. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "cpp:State::state": {
+    "verdict": "extension",
+    "why": "phase-417 G6 — the id as `enum class LifecycleState`, for a caller who wants to `switch` on it. Upstream has no enum to convert to: its state ids are `lifecycle_msgs` integer constants, so there is no counterpart to rename toward. The exact shape and the exact justification `cpp:Transition::transition` already carries one type over — `State` and `Transition` are the same pattern applied to both halves of the pair, which is what G6 was."
+  },
+  "cpp:State::valid": {
+    "verdict": "extension",
+    "why": "phase-417 G6 — whether an id is a state nano-ros implements. Upstream needs no such question: its `State` is built from an `rcl_lifecycle` map entry, so an invalid one cannot be constructed. Ours is constructible from any `uint8_t` (the wire carries one), so the predicate is what stands between a bad id and a `nullptr` `label()`. Same shape and same reason as `cpp:Transition::valid`."
   }
 }

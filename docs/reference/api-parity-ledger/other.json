@@ -155,20 +155,18 @@
   },
   "cpp:State": {
     "verdict": "divergence",
-    "why": "`rclcpp_lifecycle::State` is a CLASS wrapping `rcl_lifecycle_state_t` -- an id, a heap-allocated `label` string, and the `rcl_allocator_t` that owns it. Ours is `cpp:LifecycleState`, a `uint8_t`-backed `enum class` over the five REP-2002 primary states plus an `Unknown = 0` sentinel: with no allocator there is nothing to own the label, and the id is the whole of what the state machine actually compares. See `cpp:LifecycleState` in the lifecycle stage for the ours-only half."
+    "why": "RE-VERDICTED phase-417 G6 — the TYPE now exists. It said 'ours is `cpp:LifecycleState`, a `uint8_t`-backed `enum class`', and that was true of the tree that had no receiver for `State::label`. `nros::State` (`packages/api/nros-cpp/include/nros/lifecycle.hpp`) is a value type over the same id, mirroring the `Transition` fifty lines above it, so `state.id()` and `state.label()` compile as written. The enum stays and keeps its own row (`cpp:LifecycleState`); `State` wraps it.\n\n`adopt-bounded`, and the bound is what the object OWNS. `rclcpp_lifecycle::State` wraps an `rcl_lifecycle_state_t` — an id, a HEAP-ALLOCATED `label` string, and the `rcl_allocator_t` that owns it — and is copy-constructible, assignable and destructible accordingly. Ours is one `uint8_t` with no allocator (RFC-0022), so there is nothing to own: `label()` borrows a `'static` pointer into the one table in `nros_core` and returns `nullptr` for an id we do not implement, where upstream returns a `std::string`. A ported file compiles and gets a borrowed pointer instead of an owned string, which is exactly the class RFC-0089 asks a disposition to record.",
+    "disposition": "adopt-bounded"
   },
   "cpp:State::State": {
     "verdict": "divergence",
-    "why": "no constructor, because ours is an enum rather than a class. See `cpp:State`."
+    "why": "RE-VERDICTED phase-417 G6 — it said 'no constructor, because ours is an enum rather than a class', and there is a class now. Two constructors: `State(uint8_t)` and `State(LifecycleState)`, both `constexpr` and both `explicit`. Upstream's take `(uint8_t id, const std::string& label, rcutils_allocator_t)` and `(const rcl_lifecycle_state_t*, rcutils_allocator_t)` — the arity differs because the LABEL and the ALLOCATOR are not ours to be given: the label is looked up from the id against `nros_core`'s one table, so a caller cannot supply a second spelling of it, and there is no allocator (RFC-0022). See `cpp:State`.",
+    "disposition": "adopt-bounded"
   },
   "cpp:State::id": {
     "verdict": "divergence",
-    "why": "the value IS the enum in ours (`cpp:LifecycleState`), so there is nothing for an accessor to unwrap. See `cpp:State`."
-  },
-  "cpp:State::label": {
-    "verdict": "gap",
-    "disposition": "adopt",
-    "why": "the human-readable state name (`\"unconfigured\"`, `\"active\"`). Not a divergence: a `const char* to_string(LifecycleState)` over five static literals costs an image almost nothing and needs no allocator -- nobody has written one. A C++ caller that wants to print a lifecycle state today has to switch on the enum itself. Same shape as `cpp:Transition` in the lifecycle stage. Phase 379 W3.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT, and **THE REASON IS FALSE.** It says \"a `const char* to_string(LifecycleState)` over five static literals … nobody has written one. A C++ caller that wants to print a lifecycle state today has to switch on the enum itself.\" phase-417 W4.f wrote it: `nros::state_label(LifecycleState)` (`packages/api/nros-cpp/include/nros/lifecycle.hpp:222`) returns `\"active\"`, `\"unconfigured\"` and the rest over `nros_lifecycle_state_label` (`nros_generated.h:6100`), and the sibling this row calls the same shape — `Transition` — already carries `label()` as a METHOD (`:189`) over `nros_lifecycle_transition_label`.\n\nWHAT IS MISSING IS THE RECEIVER, which is why the row is worth keeping. Upstream's `State` is a value type with `.label()`; ours is a bare enum plus a free function, and the header itself records the two deliberate differences at `:151-155` (no allocator, borrowed `const char*` with static lifetime). ADOPT: a `State` value type wrapping the enum with `.label()` and `.id()`, mirroring the `Transition` that sits fifty lines above it — the pattern exists, it just was not applied to both halves of the pair."
+    "why": "RE-VERDICTED phase-417 G6 — it said 'the value IS the enum in ours, so there is nothing for an accessor to unwrap', which stopped being true when `nros::State` gained the id it stores. `constexpr uint8_t id() const`, upstream's shape exactly, so a ported call compiles and returns the same number. The row survives its own closure only to carry the pointer to `cpp:State`, where the difference that remains is recorded.",
+    "disposition": "adopt"
   },
   "cpp:Stream": {
     "verdict": "divergence",

@@ -1081,11 +1081,6 @@
     "verdict": "divergence",
     "why": "rclrs's conversion traits normalise a plain, async or worker closure. Ours binds a NAMED callback at declaration (RFC-0043) -- one shape, nothing to convert. See the pubsub stage's identical rows."
   },
-  "rust:QoSProfile::parameter_services_default": {
-    "verdict": "gap",
-    "disposition": "adopt",
-    "why": "ROS 2 gives the parameter services their own profile — `rmw_qos_profile_parameters`: KEEP_LAST(1000), RELIABLE, VOLATILE. CORRECTION (2026-08-25): an earlier version of this row said transient-local, 'so a late-joining tool still sees declared parameters'. That was wrong -- upstream is VOLATILE, verified against `/opt/ros/humble/include/rmw/rmw/qos_profiles.h`. The real difference is the DEPTH: 1000 against the generic services profile's 10, which matters when a tool sets many parameters at once. Our services registered on `services_default()` until issue 0793 wired `parameters_default()`; the preset itself is still not exposed by name in every language.\n\nVERDICT (phase-417 gap-verdict pass, 2026-09-21) — ADOPT, and **THE CLOSING CLAIM IS FALSE FOR RUST**, which is the language this row is keyed on. It says \"the preset itself is still not exposed by name in every language\". In Rust it is, three ways: `QoSProfile::parameters_default()` (`packages/core/nros-rmw/src/traits.rs:1173`), the free const `QOS_PROFILE_PARAMETERS` and `QosPresets::PARAMETERS` (`packages/api/nros/src/lib.rs:1069`, `:1123`). The VALUE is right too — `QOS_PROFILE_PARAMETERS` is KEEP_LAST(1000), RELIABLE, VOLATILE, and issue 0793 moved the parameter services onto it.\n\nWHAT IS MISSING IS RCLRS'S NAME, and under RFC-0089's alias rule that is not ours to decline: upstream HAS `parameter_services_default` and we do not, so the alias is load-bearing for any text held to both libraries, and it must NOT be deprecated. One `const fn` returning `Self::QOS_PROFILE_PARAMETERS`. The cheapest row in this pass."
-  },
   "rust:RawServiceCallback": {
     "verdict": "divergence",
     "why": "the raw-bytes callback type; see the pubsub stage's `rust:RawSubscriptionCallback`."

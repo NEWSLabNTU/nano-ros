@@ -421,24 +421,6 @@ pub unsafe extern "C" fn nros_timer_get_period(timer: *const nros_timer_t) -> u6
     timer.period_ns
 }
 
-/// `period - elapsed`, in nanoseconds, SIGNED and saturating.
-///
-/// Split out because the signedness claim is the whole point of the accessor
-/// below and is testable on its own: a timer that is late by `d` must report
-/// `-d`, which is the range unsigned could not carry. Computed in `i128` so a
-/// nonsense pair of microsecond counts clamps at the ends instead of wrapping
-/// into the opposite sign.
-const fn remaining_period_ns(period_us: u64, elapsed_us: u64) -> i64 {
-    let delta_ns = (period_us as i128 - elapsed_us as i128).saturating_mul(1_000);
-    if delta_ns > i64::MAX as i128 {
-        i64::MAX
-    } else if delta_ns < i64::MIN as i128 {
-        i64::MIN
-    } else {
-        delta_ns as i64
-    }
-}
-
 /// Nanoseconds until this timer next fires — NEGATIVE if it is overdue.
 ///
 /// rcl's `rcl_timer_get_time_until_next_call(timer, int64_t *)`, marked
@@ -519,10 +501,15 @@ unsafe fn time_until_next_call_ns_of(timer: &nros_timer_t) -> Result<i64, nros_r
     let Some((exec, id)) = registered_handle(timer) else {
         return Err(NROS_RET_NOT_INIT);
     };
-    match (exec.timer_period_us(id), exec.timer_elapsed_us(id)) {
-        (Some(period_us), Some(elapsed_us)) => Ok(remaining_period_ns(period_us, elapsed_us)),
-        _ => Err(NROS_RET_NOT_INIT),
-    }
+    // phase-417 G6 — `period - elapsed`, SIGNED and saturating, is
+    // `Executor::timer_time_until_next_call_ns` now. It was a `const fn` here
+    // until `cpp:Timer::time_until_trigger` needed the same subtraction from
+    // `nros-cpp`: a second crate deriving it would have been a second place
+    // for the sign convention and the microsecond scaling to drift, which is
+    // the class CLAUDE.md's "ONE shared helper, never a second spelling" rule
+    // names. The signedness assertions moved with it.
+    exec.timer_time_until_next_call_ns(id)
+        .ok_or(NROS_RET_NOT_INIT)
 }
 
 // ============================================================================
@@ -1018,22 +1005,6 @@ mod tests {
             unsafe { rcl_timer_get_time_until_next_call(&uninitialised, &mut out) },
             NROS_RET_NOT_INIT
         );
-    }
-
-    /// The value is SIGNED on purpose — rcl's header: "a negative value
-    /// indicates the timer call is overdue by that amount". Unsigned made
-    /// lateness read as `0`, which is also what "fires now" reads as.
-    #[test]
-    fn overdue_is_expressible_as_a_negative_value() {
-        // Not yet due: half a 1 ms period gone.
-        assert_eq!(remaining_period_ns(1_000, 500), 500_000);
-        // Exactly due.
-        assert_eq!(remaining_period_ns(1_000, 1_000), 0);
-        // Overdue by 250 us — the case unsigned could not carry.
-        assert_eq!(remaining_period_ns(1_000, 1_250), -250_000);
-        // And it clamps rather than wrapping at either end.
-        assert_eq!(remaining_period_ns(u64::MAX, 0), i64::MAX);
-        assert_eq!(remaining_period_ns(0, u64::MAX), i64::MIN);
     }
 
     /// phase-417 stage 3, ledger row `c:timer_fini`.

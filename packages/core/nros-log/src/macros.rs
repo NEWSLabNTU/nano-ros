@@ -76,6 +76,57 @@ macro_rules! __nros_log_emit {
     }};
 }
 
+/// Emit one record at a severity chosen at RUNTIME — rclrs's `log!`.
+///
+/// phase-417 G6, ledger row `rust:log`. The severity-taking emitter existed as
+/// [`__nros_log_emit!`], `#[doc(hidden)]` and named as an implementation
+/// detail, so a ported `log!(logger, severity, …)` had no supported spelling
+/// to land on. This is that spelling.
+///
+/// ```ignore
+/// let severity = if recovered { Severity::Info } else { Severity::Error };
+/// nros_log::log!(logger, severity, "link {}", state);
+/// ```
+///
+/// **It routes through exactly what the five level macros route through**, and
+/// that is the whole risk in a macro this cheap: the compile-time ceiling, the
+/// runtime `is_enabled` threshold and the one `FormatBuffer`. If it grew its
+/// own gate, `log!(logger, Severity::Debug, …)` would obey a different
+/// threshold from [`log_debug!`] and the two spellings of one call would
+/// disagree — which is what a second implementation of a gate always ends up
+/// meaning.
+///
+/// MEASURED, and worth knowing before trusting the `is_enabled` half of that
+/// sentence: [`crate::Logger::dispatch`] re-checks the threshold itself, so
+/// removing the check inside [`__nros_log_emit!`] changes nothing observable.
+/// The runtime gate is belt-and-braces; what a second implementation could
+/// actually get wrong here is the COMPILE-TIME ceiling and the severity the
+/// record carries, and those are what the test asserts.
+///
+/// **One difference from the five, forced by the runtime severity.** Those
+/// consult [`crate::severity_enabled_at_compile_time`] with a CONSTANT, so a
+/// call below the ceiling compiles to `()` and the formatting is
+/// dead-code-eliminated. Here the severity is a value, so the same check
+/// happens — at run time, on a `Severity` the compiler does not know. A call
+/// site that wants the record and its arguments gone from the image entirely
+/// names the level macro; this one keeps the `write!` in the binary and
+/// decides per call.
+///
+/// A THROTTLED severity-taking form is deliberately absent: our throttling is
+/// a macro per severity (`nros_*_throttle!`), a DECOMPOSITION already ledgered
+/// as `divergence` against rclrs's `logger.throttle(…)` modifier, and adding a
+/// severity-taking member to that family would commit to the modifier shape in
+/// one place only.
+#[macro_export]
+macro_rules! log {
+    ($logger:expr, $severity:expr, $($arg:tt)+) => {{
+        let __sev = $severity;
+        if $crate::severity_enabled_at_compile_time(__sev) {
+            $crate::__nros_log_emit!($logger, __sev, $($arg)+);
+        }
+    }};
+}
+
 /// Emit at [`crate::Severity::Trace`].
 ///
 /// Disabled at compile time unless the `max-level-trace` feature is
