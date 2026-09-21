@@ -183,3 +183,41 @@ was five days of a real build break going unreported.
 Closing condition 1 is met. **Condition 2 is not** — nothing yet makes "queued
 and unclaimed" visible, so the next time that machine goes away the lane will
 again look the same as a lane that is merely slow. Left open on that half.
+
+## Measured 2026-09-21: the same symptom with the runner REGISTERED and BUSY
+
+Condition 1 has been met since 2026-09-17 — `nano-ros-runner` is registered
+with all three labels and reads `online busy=true` — and the symptom came back
+anyway, which sharpens what condition 2 has to distinguish.
+
+At 09:24 UTC:
+
+| run | job | job id | created | state |
+| --- | --- | --- | --- | --- |
+| nightly 35572654294 | `tier 2 nightly (pairwise cover)` | 106247412117 | 07:22:29 | started 08:52:37 — **waited 1h30m** |
+| run-matrix 35572649833 (dispatch) | `tier 2 (1-wise matrix)` | 106247735430 | 07:23:50 | **still queued, 2h00m** |
+
+The runner was never idle: between 08:00 and 09:20 it served **11 `queue`
+runs** from the merge group, five batches deep at times. One runner cannot hold
+the merge queue's L3 lane and both tier-2 lanes at once, so the tier-2 jobs
+starve behind merge traffic — and on a busy merge morning that traffic does not
+stop.
+
+**Why this belongs here rather than in a new issue.** The symptom is identical
+to the original measurement (a tier-2 job queued and unclaimed for hours, the
+lane reporting nothing), and the CAUSE is the opposite: not "no runner" but
+"the runner is busy with higher-frequency work". Anything that satisfies
+condition 2 by reporting *"queued and unclaimed"* alone would say the same
+thing in both cases, and an operator reading it would go check the registration
+that is already fine. The report has to name which of the two it is —
+registered-and-contended is a capacity decision, unregistered is an outage.
+
+**A second thing this run shows.** The nightly's own hosted jobs finished long
+ago — 6 failures, 6 successes, 3 skipped, all recorded by 07:45 — and the RUN
+still reads `in_progress` at 09:24 because of the one starved job. So the
+run-level status hides a verdict that is already mostly in, which is the
+opposite of the original case (where the run had nothing to report). A consumer
+polling run status, rather than job status, sees "still running" for two hours
+over results it could already have.
+
+Nothing here changes what would close the issue; it widens the second clause.
