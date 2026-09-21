@@ -74,9 +74,12 @@ rm -rf "$ws_rs"
 cd "$ws_rs"
 NROS_REPO_DIR="$repo_root" nros sync
 NROS_REPO_DIR="$repo_root" nros build
-# Expected RED until issue 1295: on CycloneDDS the generated Rust entry
-# fails `PublisherCreationFailed` at startup. The assertion stays — a probe
-# that is green over a real bug is the thing issue 0204 exists to prevent.
+# Expected RED until issue 1439: the entry opens its session and reports
+# `nros: application complete` without ever publishing. Issue 1295's
+# `PublisherCreationFailed` is RESOLVED and its signature is gone from this
+# log — a quieter failure is behind it, measured 2026-09-21. The assertion
+# stays — a probe that is green over a real bug is the thing issue 0204
+# exists to prevent.
 timeout 60 ./build/posix-cyclonedds/native_entry/target/debug/native_entry >/tmp/quickstart_rs.log 2>&1 &
 rs_pid=$!
 deadline=$((SECONDS + 45))
