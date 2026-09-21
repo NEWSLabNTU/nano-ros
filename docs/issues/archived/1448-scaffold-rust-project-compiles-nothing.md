@@ -3,13 +3,36 @@ id: 1448
 title: "`check-scaffold-builds` is RED on main for the `rust_project` variant —
   the build exits 0 and compiles none of the emitted source, so `just ci gate`
   cannot reach `test-unit` on any branch"
-status: open
+status: resolved
 type: bug
 area: tooling, ci
 severity: high
 found: 2026-09-22
-related: [1439, 1435, 1409, 1058, 1310]
+related: [1446, 1439, 1435, 1409, 1058, 1310]
 ---
+
+> **DUPLICATE of issue 1446 — archived 2026-09-22, not fixed.**
+>
+> 1446 and this issue were filed hours apart by two sessions against the same
+> gate, the same variant and the same failure text. **1446 is the survivor**: it
+> carries the root cause, which this issue did not reach — `own_artifacts()` in
+> `scripts/check-scaffold-builds.sh` searches `$dir/target` (absent for this
+> variant) and `$dir/build` at `-maxdepth 2`, and RFC-0098 D1 put the binary at
+> `<leaf>/build/native/target/debug/`, four levels down. The build is fine; the
+> locator cannot see it.
+>
+> Everything below that 1446 lacked has been MOVED INTO 1446 rather than lost:
+> the blast radius (this red withdraws `check::api-parity`, `test-unit` and
+> `test-lane-contracts` from `just ci gate` on every branch), the
+> two-checkout / two-branch measurement table, the `severity: high`, and the
+> "What this is NOT" list. The one thing deliberately NOT carried over is the
+> "Where to start" section below, which points at the `nros new` Rust PROJECT
+> template: that lead is wrong, and 1446 now records it as superseded so the
+> next reader does not re-derive it.
+>
+> `status: resolved` because the archive gate is one-directional — an archived
+> issue may not say `open` — and not because the gate is green. **The defect is
+> still live; track it at 1446.**
 
 ## What happens
 
