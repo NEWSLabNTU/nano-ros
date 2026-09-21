@@ -4,7 +4,7 @@ title: "`reconfigure-stale` asks whether a `build.ninja` LOADS, not whether its
   inputs exist — it reported OK over 352 build dirs while 38 of them named a
   source file deleted 17 days earlier, and one of those killed the native
   fixture build"
-status: open
+status: resolved
 type: bug
 area: build, cmake, ci
 severity: medium
@@ -108,3 +108,75 @@ lives and where the 38 hits all pointed.
 * The 18 orphaned workspace build dirs are either repairable or removed, and if
   removed, the reason is recorded — they cannot be re-configured because their
   source dir legitimately has no tracked `CMakeLists.txt`.
+
+## Fix
+
+The probe now asks both questions. `scripts/lib/ninja_stale_refs.py` answers the
+second one:
+
+* **manifest inputs** — every explicit and implicit input of every `build` edge,
+  minus everything the manifest (and anything it `include`s) declares as an
+  OUTPUT, canonicalised against the build dir before comparing. The
+  canonicalisation is not cosmetic: cmake writes an output relative and the same
+  file absolute one line later, and comparing spellings rather than files
+  reported 363 paths on this tree where comparing files reports 147.
+* **cache tool paths** — absolute `:FILEPATH=` entries in `CMakeCache.txt` whose
+  value is not under the build dir. That is the first sighting of this same
+  blind spot, a deleted `CMAKE_MAKE_PROGRAM`, and it is answered by the same
+  probe rather than left where it was.
+
+`nros-reconfigure-stale.sh` merges the two verdicts: a dir is STALE if it fails
+to load **or** names something that is gone, both are repaired the same way
+(`cmake <build-dir>`, in place, never a wipe), and `--check` prints the reason
+and the missing paths — the point being that the old failure mode surfaced as a
+compiler error four hundred lines into a fixture-build log.
+
+Why the cache arm excludes what it excludes, structurally rather than by a list
+of variable names: values **under** the build dir are that build's own
+byproducts (`BYPRODUCT_KERNEL_BIN_NAME` names a `zephyr.bin` that has simply not
+been linked yet, and is absent on every clean tree), values **outside** it are
+tools cmake resolved once and will re-invoke without re-checking. A name list
+would have been shorter and would have gone stale the first time a toolchain
+file cached a new variable.
+
+Measured on the 352 build dirs of a full working tree: the load probe alone was
+**5.91 s**, both probes are **7.94 s** — the reference walk is one python
+process for the whole sweep (1.95 s standalone over 155 MB of manifests), not
+350 spawns. The fast line is unaffected either way: `check-reconfigure-stale`
+runs the selftest, not the tree scan, and the selftest is 0.6 s.
+
+First run over this tree after the change: **75 of 350 dirs stale**, 147 missing
+inputs and 29 missing cache paths, against `OK (352 build dir(s) load)` from the
+probe it replaces.
+
+### Selftest
+
+`tests/cmake-reconfigure-stale-tests.sh` grows cases 5–8. Cases 1–4 all wedge
+the manifest so it cannot be PARSED, and all four passed on the day this issue
+was filed — a selftest made only of unparseable manifests would have left the
+gate exactly where it was. The new cases are a real cmake project whose sources
+come from a `file(GLOB)`:
+
+5. a configured dir with every input present is clean — the negative control for
+   the false-positive direction, since a cmake manifest is mostly generated
+   files that do not exist yet;
+6. delete a globbed source: the manifest still LOADS (asserted, so the case
+   cannot silently degrade into case 2), and `--check` names both the dir and
+   the file;
+7. `cmake <build-dir>` re-globs and the finding goes; the cache is still there;
+8. a `CMakeCache.txt` entry pointing at a deleted tool is reported, with the
+   variable named.
+
+Verified against the pre-fix script: cases 1–5 pass, case 6 fails with
+`--check reported a dir naming a deleted source as healthy`, and case 8 in
+isolation reports HEALTHY on the old script and STALE on the new one.
+
+## Acceptance 3 — the orphaned workspace build dirs
+
+Not deleted, and deliberately. `cmake` cannot re-configure them because a
+workspace root legitimately has no `CMakeLists.txt` (RFC-0098 D9), so the tool
+reports them with that reason on every run and leaves them as the evidence they
+are — which is the no-wipe rule this script exists to honour, not an oversight.
+Removing a `build-740x`-style scratch dir is an operator decision about their own
+disk, not something a gate should take. What changed is that they are now
+VISIBLE: before this, they were in the OK column.
