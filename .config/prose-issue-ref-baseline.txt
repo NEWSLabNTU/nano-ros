@@ -40,6 +40,5 @@
 #
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
-docs/roadmap/phase-457-payload-class-sizing-on-every-road.md:1407
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
