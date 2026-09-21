@@ -120,6 +120,24 @@ pub fn source_dir_of(
 }
 
 pub fn tool_dir(index: &super::sdk_index::SdkIndex, tool: &str) -> Option<PathBuf> {
+    let entry = index.tool.get(tool)?;
+    // issue 1259 — the ROOT, not the bare prefix. For every dist repackaged into
+    // the mirror shape these are the same directory. Where they differ, a
+    // consumer that got the prefix had to know the tarball's own top-level
+    // directory to use the answer, and `scripts/lib/zephyr-sdk.sh` hand-appended
+    // `zephyr-sdk-<version>` for exactly that reason — a second spelling of the
+    // pin, in a shell script, one bump away from being wrong.
+    Some(entry.root_of(&tool_prefix(&store_root(), tool, &entry.version)))
+}
+
+/// Where the installer WRITES — the bare prefix, before any `subdir`.
+///
+/// [`tool_dir`] answers the consumer's question ("where is the tool") and this
+/// one the store's ("what does `nros setup` create, and what does `store gc`
+/// reclaim"). They coincide for every tool that declares no `subdir`; keeping
+/// them separate is what lets the gc entry stay the whole versioned directory
+/// while `sdk-path` narrows to the usable root.
+pub fn tool_install_prefix(index: &super::sdk_index::SdkIndex, tool: &str) -> Option<PathBuf> {
     let version = &index.tool.get(tool)?.version;
     Some(tool_prefix(&store_root(), tool, version))
 }
@@ -262,8 +280,13 @@ pub fn newest_installed(root: &Path, tool: &str) -> Option<String> {
 ///
 /// A symlink, not a copy: the store is the single artifact and `readlink -f`
 /// then answers "which version am I running" without a provenance lookup.
-pub fn front_newest(root: &Path, tool: &str, front: &[String]) -> Result<Vec<PathBuf>> {
-    front_newest_into(root, &front_dir(), tool, front)
+pub fn front_newest(
+    root: &Path,
+    tool: &str,
+    front: &[String],
+    subdir: Option<&str>,
+) -> Result<Vec<PathBuf>> {
+    front_newest_into(root, &front_dir(), tool, front, subdir)
 }
 
 /// [`front_newest`] with the destination passed in.
@@ -277,6 +300,7 @@ pub fn front_newest_into(
     dir: &Path,
     tool: &str,
     front: &[String],
+    subdir: Option<&str>,
 ) -> Result<Vec<PathBuf>> {
     if front.is_empty() {
         return Ok(Vec::new());
@@ -284,7 +308,12 @@ pub fn front_newest_into(
     let Some(version) = newest_installed(root, tool) else {
         return Ok(Vec::new());
     };
-    let prefix = tool_prefix(root, tool, &version);
+    // issue 1259 — a `front` entry is prefix-relative in the same sense a
+    // `smoke` argv is, so it resolves against the tool ROOT. The version here is
+    // the NEWEST INSTALLED one, not the pinned one, which is why this cannot go
+    // through `ToolPackage::root_of`: substituting the pin into a path under a
+    // different version's prefix would name a directory that is never there.
+    let prefix = super::sdk_index::tool_root(&tool_prefix(root, tool, &version), subdir, &version);
     std::fs::create_dir_all(dir).wrap_err_with(|| format!("create {}", dir.display()))?;
     let mut linked = Vec::new();
     for rel in front {
@@ -334,6 +363,19 @@ pub struct Provenance {
     pub version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+    /// issue 1259 — the `[tool.*.post_install]` command that COMPLETED here.
+    ///
+    /// The marker's job is "this prefix is done"; for a bundle that needs its
+    /// own installer, unpacking is not done. Recording the command rather than
+    /// a bool is what makes a re-run a no-op AND makes an index that changes
+    /// the command re-run it: `plan_install` compares this against what the
+    /// index says today.
+    ///
+    /// `None` on a tool that declares no `post_install`, and on a prefix
+    /// unpacked before this existed — which is why the comparison is against
+    /// the DECLARED command and not against presence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub post_install: Option<String>,
 }
 
 impl Provenance {
@@ -452,6 +494,16 @@ pub enum InstallAction {
     /// A prebuilt exists, this host is below its floor, and there is no source
     /// recipe to fall back to (phase-447 D1). Nothing was downloaded.
     Refused { reason: String },
+    /// Unpacked here, but the `[tool.*.post_install]` step has not completed —
+    /// issue 1259. Only the missing half runs; nothing is re-downloaded.
+    ///
+    /// A separate variant rather than "just run it again from the top" because
+    /// the two halves cost different orders of magnitude: the Zephyr SDK's own
+    /// installer fetching toolchains is resumable and its `if [ -d ]` skip is
+    /// cheap, while re-downloading the bundle to reach it is not. A prefix
+    /// unpacked before this key existed lands here too, which is how an already
+    /// provisioned host gets COMPLETED rather than left in the broken state.
+    Complete { run: String, why: String },
     /// No prebuilt for this host and no source recipe.
     Unavailable,
 }
@@ -474,7 +526,20 @@ pub fn plan_install_on(
     prefix: &Path,
     facts: &super::host_floor::HostFacts,
 ) -> InstallAction {
-    if Provenance::read(prefix).is_some() {
+    if let Some(prov) = Provenance::read(prefix) {
+        // issue 1259 — "unpacked" and "installed" are not the same state for a
+        // bundle whose own installer completes it, so `Present` is not what a
+        // provenance marker alone proves. Compare against the command the index
+        // states TODAY: that covers the prefix whose post-install failed, and
+        // the prefix unpacked before the key existed (whose marker has `None`).
+        if let Some(post) = &tool.post_install
+            && prov.post_install.as_deref() != Some(post.run.as_str())
+        {
+            return InstallAction::Complete {
+                run: post.run.clone(),
+                why: post.why.clone(),
+            };
+        }
         return InstallAction::Present;
     }
     let mut refused = None;
@@ -534,16 +599,72 @@ pub fn plan_install_on(
 /// tools that declare nothing, which is all of them but `nros`.
 pub fn execute(
     action: &InstallAction,
-    tool: &str,
-    version: &str,
+    name: &str,
+    tool: &ToolPackage,
     prefix: &Path,
-    front: &[String],
 ) -> Result<Provenance> {
-    let provenance = execute_install(action, tool, version, prefix)?;
-    for link in front_newest(&store_root(), tool, front)? {
+    let mut provenance = execute_install(action, name, &tool.version, prefix)?;
+    // issue 1259 — unpacking is not installing. This is the ONE place the two
+    // are paired, for the same reason `execute_and_probe` is the one place the
+    // install and its smoke probe are: three call sites reach this function,
+    // and a fourth spelling of "and then finish it" is how one of them ends up
+    // reporting success over a prefix nothing can build with.
+    run_post_install(action, name, tool, prefix, &mut provenance)?;
+    for link in front_newest(&store_root(), name, &tool.front, tool.subdir.as_deref())? {
         super::step_log::say(format!("    → {} (newest installed)", link.display()));
     }
     Ok(provenance)
+}
+
+/// The `[tool.*.post_install]` half of an install — issue 1259.
+///
+/// Runs in the tool ROOT (`prefix` + `subdir`), and records the command in
+/// `.nros-provenance` ONLY after it exits 0. So a failure leaves a marker that
+/// still says "incomplete", and the next `nros setup` resumes at exactly this
+/// step instead of re-downloading or — the bug — reporting success.
+///
+/// `InstallAction::Present` is the one action that skips it: the plan already
+/// compared the recorded command against the index's, so reaching here as
+/// `Present` means it is done.
+fn run_post_install(
+    action: &InstallAction,
+    name: &str,
+    tool: &ToolPackage,
+    prefix: &Path,
+    provenance: &mut Provenance,
+) -> Result<()> {
+    if matches!(action, InstallAction::Present) {
+        return Ok(());
+    }
+    let Some(post) = &tool.post_install else {
+        return Ok(());
+    };
+    let root = tool.root_of(prefix);
+    if !root.is_dir() {
+        eyre::bail!(
+            "{name}: [tool.{name}.post_install] must run in {}, which does not exist.\n\
+             The archive unpacked to {} — check `subdir` in the index against what it \
+             actually contains.",
+            root.display(),
+            prefix.display()
+        );
+    }
+    super::step_log::say(format!("    … {name}: {}", post.why));
+    let cmd = post
+        .run
+        .replace("{root}", &root.to_string_lossy())
+        .replace("{prefix}", &prefix.to_string_lossy());
+    sh(&["sh", "-c", &cmd], Some(&root)).wrap_err_with(|| {
+        format!(
+            "{name}: the post-install step failed, so the prefix at {} is UNPACKED but not \
+             usable.\n  It is left in place: re-run `nros setup --tool {name}` to resume at \
+             this step (nothing is re-downloaded).",
+            prefix.display()
+        )
+    })?;
+    provenance.post_install = Some(post.run.clone());
+    provenance.write(prefix)?;
+    Ok(())
 }
 
 fn execute_install(
@@ -553,6 +674,11 @@ fn execute_install(
     prefix: &Path,
 ) -> Result<Provenance> {
     match action {
+        // The unpack already happened; only the post-install is outstanding, and
+        // `execute` runs that. Read the marker back rather than synthesising
+        // one, so the recorded kind/sha256 survive completing an older prefix.
+        InstallAction::Complete { .. } => Provenance::read(prefix)
+            .ok_or_else(|| eyre!("{tool}: present but no provenance marker")),
         InstallAction::Present => Provenance::read(prefix)
             .ok_or_else(|| eyre!("{tool}: present but no provenance marker")),
         InstallAction::Prebuilt {
@@ -612,6 +738,7 @@ fn execute_install(
                 kind: ProvenanceKind::Prebuilt,
                 version: version.to_string(),
                 sha256: Some(sha256.clone()),
+                post_install: None,
             };
             p.write(prefix)?;
             Ok(p)
@@ -726,6 +853,7 @@ fn execute_install(
                 kind: ProvenanceKind::Source,
                 version: version.to_string(),
                 sha256: None,
+                post_install: None,
             };
             p.write(prefix)?;
             Ok(p)
@@ -1572,6 +1700,14 @@ mod phase365_tool_dir_tests {
     /// derives anything else, consumers look where nothing was installed — the
     /// two-spellings failure this phase exists to remove, reintroduced at its
     /// own root.
+    ///
+    /// issue 1259 splits the two questions rather than weakening this one:
+    /// `tool_install_prefix` is what setup writes, `tool_dir` is what a consumer
+    /// reads, and where a `subdir` is declared they differ by exactly it. Both
+    /// halves are asserted, so a `subdir` that names a directory the installer
+    /// does not create still fails here — and the version substitution is
+    /// checked, since a literal `{version}` reaching a path is the drift the key
+    /// exists to prevent.
     #[test]
     fn tool_dir_matches_where_setup_installs_for_every_pinned_tool() {
         let index = repo_index();
@@ -1579,13 +1715,28 @@ mod phase365_tool_dir_tests {
         assert!(!index.tool.is_empty(), "index declares no tools");
         for (name, tool) in &index.tool {
             let installed = tool_prefix(&root, name, &tool.version);
+            assert_eq!(
+                installed,
+                tool_install_prefix(&index, name).unwrap(),
+                "`{name}`: the installer's destination must be one derivation"
+            );
             let resolved = tool_dir(&index, name)
                 .unwrap_or_else(|| panic!("tool_dir returned None for pinned tool `{name}`"));
             assert_eq!(
-                installed,
+                tool.root_of(&installed),
                 resolved,
                 "`{name}`: setup installs to {} but tool_dir resolves {}",
                 installed.display(),
+                resolved.display()
+            );
+            assert!(
+                resolved.starts_with(&installed),
+                "`{name}`: subdir {:?} escaped the install prefix",
+                tool.subdir
+            );
+            assert!(
+                !resolved.to_string_lossy().contains('{'),
+                "`{name}`: {} still holds an unsubstituted placeholder",
                 resolved.display()
             );
         }
@@ -1710,6 +1861,7 @@ mod tests {
             kind: ProvenanceKind::Prebuilt,
             version: version.to_string(),
             sha256: None,
+            post_install: None,
         }
         .write(&prefix)
         .unwrap();
@@ -1771,7 +1923,7 @@ mod tests {
         let front = vec!["bin/nros".to_string()];
 
         install_fake(&root, "nros", "0.6.0-nros1", "bin/nros");
-        let linked = front_newest_into(&root, &bin, "nros", &front).unwrap();
+        let linked = front_newest_into(&root, &bin, "nros", &front, None).unwrap();
         assert_eq!(linked, vec![bin.join("nros")]);
         assert_eq!(
             std::fs::read_link(bin.join("nros")).unwrap(),
@@ -1780,7 +1932,7 @@ mod tests {
 
         // Installing an OLDER version afterwards must not downgrade the command.
         install_fake(&root, "nros", "0.5.0-nros1", "bin/nros");
-        front_newest_into(&root, &bin, "nros", &front).unwrap();
+        front_newest_into(&root, &bin, "nros", &front, None).unwrap();
         assert_eq!(
             std::fs::read_link(bin.join("nros")).unwrap(),
             tool_prefix(&root, "nros", "0.6.0-nros1").join("bin/nros")
@@ -1789,7 +1941,7 @@ mod tests {
         // A NEWER one does move it, and replaces the existing link rather than
         // failing on it — this runs on every install.
         install_fake(&root, "nros", "0.7.0-nros1", "bin/nros");
-        front_newest_into(&root, &bin, "nros", &front).unwrap();
+        front_newest_into(&root, &bin, "nros", &front, None).unwrap();
         assert_eq!(
             std::fs::read_link(bin.join("nros")).unwrap(),
             tool_prefix(&root, "nros", "0.7.0-nros1").join("bin/nros")
@@ -1808,7 +1960,7 @@ mod tests {
         std::fs::remove_dir_all(&bin).ok();
         install_fake(&root, "qemu", "11.0.0-nros6", "bin/qemu-system-arm");
         assert!(
-            front_newest_into(&root, &bin, "qemu", &[])
+            front_newest_into(&root, &bin, "qemu", &[], None)
                 .unwrap()
                 .is_empty()
         );
@@ -1817,7 +1969,7 @@ mod tests {
         // An UNINSTALLED tool that declares one is also silent -- there is
         // nothing to point at yet, and that is not an error.
         assert!(
-            front_newest_into(&root, &bin, "nros", &["bin/nros".to_string()])
+            front_newest_into(&root, &bin, "nros", &["bin/nros".to_string()], None)
                 .unwrap()
                 .is_empty()
         );
@@ -1834,7 +1986,7 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
         std::fs::remove_dir_all(&bin).ok();
         install_fake(&root, "nros", "0.5.0-nros1", "bin/nros");
-        let err = front_newest_into(&root, &bin, "nros", &["bin/nrs".to_string()])
+        let err = front_newest_into(&root, &bin, "nros", &["bin/nrs".to_string()], None)
             .unwrap_err()
             .to_string();
         assert!(err.contains("bin/nrs"), "{err}");
@@ -1918,6 +2070,141 @@ mod tests {
         assert_eq!(p, Path::new("/store/qemu/11.0-nros1"));
     }
 
+    /// issue 1259 — an UNPACKED prefix is not an INSTALLED one.
+    ///
+    /// The defect: `nros setup --tool zephyr-sdk-1-0-1` wrote a provenance
+    /// marker after `tar -xf` and exited 0, over a bundle whose toolchains its
+    /// own installer had not yet fetched. `plan_install` must read a marker that
+    /// does not record the declared `post_install` as INCOMPLETE — for the
+    /// prefix whose completion failed, and for one unpacked before the key
+    /// existed (those markers carry no field at all, which is why the comparison
+    /// is against the DECLARED command rather than against presence).
+    #[test]
+    fn a_prefix_missing_its_post_install_is_not_present() {
+        let idx: SdkIndex = SdkIndex::parse(
+            r#"
+            [tool.bundle]
+            version = "1.0.1"
+            subdir = "thing-{version}"
+            post_install.run = "./setup.sh -t arm"
+            post_install.why = "fetches the toolchains the minimal bundle omits"
+            smoke = [{ run = "gnu/arm/bin/gcc --version", expect = "gcc" }]
+            dist.linux-x86_64 = { url = "https://example.invalid/b.tar.xz", sha256 = "aa" }
+
+            [tool.plain]
+            version = "2"
+            dist.linux-x86_64 = { url = "https://example.invalid/p.tar.xz", sha256 = "bb" }
+            "#,
+        )
+        .unwrap();
+        let bundle = &idx.tool["bundle"];
+        let prefix = tmp("post-install");
+        let _ = std::fs::remove_dir_all(&prefix);
+
+        // Nothing there at all: the ordinary download.
+        assert!(matches!(
+            plan_install(bundle, "linux-x86_64", &prefix),
+            InstallAction::Prebuilt { .. }
+        ));
+
+        // Unpacked, no post-install recorded — the exact state the bug shipped.
+        let mut prov = Provenance {
+            kind: ProvenanceKind::Prebuilt,
+            version: "1.0.1".into(),
+            sha256: Some("aa".into()),
+            post_install: None,
+        };
+        prov.write(&prefix).unwrap();
+        match plan_install(bundle, "linux-x86_64", &prefix) {
+            InstallAction::Complete { run, .. } => assert_eq!(run, "./setup.sh -t arm"),
+            other => panic!("an unpacked-only prefix must be completed, got {other:?}"),
+        }
+
+        // Completed: a second `nros setup` does nothing.
+        prov.post_install = Some("./setup.sh -t arm".into());
+        prov.write(&prefix).unwrap();
+        assert_eq!(
+            plan_install(bundle, "linux-x86_64", &prefix),
+            InstallAction::Present,
+            "a recorded completion must make the re-run a no-op"
+        );
+
+        // A tool declaring no `post_install` is untouched by any of this — the
+        // mutation to guard against is "every present prefix now re-runs".
+        let plain_prefix = tmp("post-install-plain");
+        let _ = std::fs::remove_dir_all(&plain_prefix);
+        Provenance {
+            kind: ProvenanceKind::Prebuilt,
+            version: "2".into(),
+            sha256: None,
+            post_install: None,
+        }
+        .write(&plain_prefix)
+        .unwrap();
+        assert_eq!(
+            plan_install(&idx.tool["plain"], "linux-x86_64", &plain_prefix),
+            InstallAction::Present
+        );
+
+        // And the completion runs in the tool ROOT, not the prefix.
+        assert_eq!(
+            bundle.root_of(&prefix),
+            prefix.join("thing-1.0.1"),
+            "`{{version}}` must be substituted from the pin"
+        );
+        let _ = std::fs::remove_dir_all(&prefix);
+        let _ = std::fs::remove_dir_all(&plain_prefix);
+    }
+
+    /// The post-install must not be RECORDED unless it worked — issue 1259.
+    ///
+    /// Recording it eagerly would turn "the installer failed" into "already
+    /// done" on the very next run, which is the reported defect wearing a
+    /// different hat: a command that reports success over an unusable prefix.
+    #[test]
+    fn a_failed_post_install_leaves_the_prefix_incomplete() {
+        let idx: SdkIndex = SdkIndex::parse(
+            r#"
+            [tool.bundle]
+            version = "9"
+            post_install.run = "exit 3"
+            post_install.why = "a completion step that fails"
+            smoke = [{ run = "bin/x --version", expect = "x" }]
+            dist.linux-x86_64 = { url = "https://example.invalid/b.tar.xz", sha256 = "aa" }
+            "#,
+        )
+        .unwrap();
+        let bundle = &idx.tool["bundle"];
+        let prefix = tmp("post-install-fails");
+        let _ = std::fs::remove_dir_all(&prefix);
+        let mut prov = Provenance {
+            kind: ProvenanceKind::Prebuilt,
+            version: "9".into(),
+            sha256: Some("aa".into()),
+            post_install: None,
+        };
+        prov.write(&prefix).unwrap();
+
+        let action = plan_install(bundle, "linux-x86_64", &prefix);
+        let err = run_post_install(&action, "bundle", bundle, &prefix, &mut prov)
+            .expect_err("a post-install that exits 3 must fail the install");
+        let text = format!("{err:#}");
+        assert!(
+            text.contains("UNPACKED but not usable") && text.contains("nros setup --tool bundle"),
+            "the failure must name the state and how to resume: {text}"
+        );
+        assert_eq!(
+            Provenance::read(&prefix).unwrap().post_install,
+            None,
+            "a failed completion must not be recorded"
+        );
+        assert!(matches!(
+            plan_install(bundle, "linux-x86_64", &prefix),
+            InstallAction::Complete { .. }
+        ));
+        let _ = std::fs::remove_dir_all(&prefix);
+    }
+
     #[test]
     fn provenance_roundtrips_and_marks_present() {
         let prefix = tmp("prov");
@@ -1926,6 +2213,7 @@ mod tests {
             kind: ProvenanceKind::Prebuilt,
             version: "11.0".into(),
             sha256: Some("abc".into()),
+            post_install: None,
         };
         p.write(&prefix).unwrap();
         assert_eq!(Provenance::read(&prefix).as_ref(), Some(&p));
@@ -1944,6 +2232,7 @@ mod tests {
                 kind: ProvenanceKind::Source,
                 version: "11.0".into(),
                 sha256: None,
+                post_install: None,
             },
         );
         lock.save(&path).unwrap();
@@ -1987,6 +2276,7 @@ mod tests {
             kind: ProvenanceKind::Prebuilt,
             version: "11.0".into(),
             sha256: None,
+            post_install: None,
         }
         .write(&present)
         .unwrap();

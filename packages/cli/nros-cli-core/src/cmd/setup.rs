@@ -1700,6 +1700,12 @@ fn describe(action: &InstallAction, version: &str, host: &str) -> String {
     match action {
         InstallAction::Present => format!("present {version} (skip)"),
         InstallAction::Prebuilt { .. } => format!("prebuilt {version} (dist {host})"),
+        // issue 1259 — unpacked here, post-install outstanding. Says which of
+        // the two it is doing, because "already present" and "present but not
+        // usable" print the same line otherwise, and that was the bug.
+        InstallAction::Complete { why, .. } => {
+            format!("completing {version} (unpacked; {why})")
+        }
         // phase-447 D1 — a prebuilt refused by its floor says WHY, here in the
         // plan, so `--dry-run` shows the fallback before anything runs.
         InstallAction::Source {
@@ -2650,10 +2656,17 @@ fn failing_smoke_at(
     prefix: &Path,
     tool: &crate::orchestration::sdk_index::ToolPackage,
 ) -> Option<(String, String)> {
+    // issue 1259 — a probe's argv is relative to the tool's ROOT, which is the
+    // prefix for every dist repackaged into the mirror shape and one level down
+    // for an upstream tarball that carries its own top-level directory. Before
+    // `subdir` there was no way to write a probe for the second kind that did
+    // not restate the pinned version in the argv, and the smoke-or-reason
+    // baseline recorded exactly that as the reason the Zephyr SDK had none.
+    let root = tool.root_of(prefix);
     for probe in &tool.smoke {
         let mut argv = probe.run.split_whitespace();
         let Some(exe) = argv.next() else { continue };
-        let mut cmd = std::process::Command::new(prefix.join(exe));
+        let mut cmd = std::process::Command::new(root.join(exe));
         cmd.args(argv);
         for var in SMOKE_STRIPPED_ENV {
             cmd.env_remove(var);
@@ -2819,7 +2832,7 @@ impl SmokeFailures {
         tool: &ToolPackage,
         prefix: &Path,
     ) -> Result<crate::orchestration::sdk_store::Provenance> {
-        let prov = execute(action, name, &tool.version, prefix, &tool.front)?;
+        let prov = execute(action, name, tool, prefix)?;
         self.observe(name, prefix, tool);
         Ok(prov)
     }

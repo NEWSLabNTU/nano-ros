@@ -99,6 +99,27 @@ def audit(index, baseline_rows):
     for name, tool in sorted(tools.items()):
         if tool.get("smoke"):
             continue
+        # issue 1259 — a `post_install` may NOT be argued away.
+        #
+        # The whole point of that key is that unpacking did not finish the job,
+        # so the tool's usable state is produced by a command whose only witness
+        # is its own exit status. `setup.sh` here exits 0 having skipped a
+        # toolchain whose directory already exists, which is correct and is also
+        # what a skip that fetched nothing looks like. A reason is the right
+        # answer for a tool nobody has measured; it is the wrong answer for one
+        # that declares a completion step, because then the reason would be
+        # arguing that the completion needs no evidence.
+        if tool.get("post_install"):
+            problems.append(
+                (
+                    "unmeasured-completion",
+                    name,
+                    "declares `post_install` and no `smoke` — the completion step's "
+                    "only witness is its exit status, so what it produced must be "
+                    "probed; a baseline reason cannot stand in for one",
+                )
+            )
+            continue
         if name not in baseline_rows:
             problems.append(
                 (
@@ -177,6 +198,19 @@ def self_test():
     # A reason must be a reason.
     got, _ = kinds(index, "argued: todo\n")
     checks.append(("a placeholder reason fails", got == ["no-reason"]))
+
+    # issue 1259 — a completion step may not be argued away, only probed. Both
+    # directions, because "a reason is refused" is worth nothing if the probed
+    # form is refused too.
+    post = {"run": "./setup.sh -t x", "why": "fetches the toolchains"}
+    index4 = {"tool": {"completed": {"post_install": post}}}
+    got, _ = kinds(index4, "completed: %s\n" % good_reason)
+    checks.append(
+        ("a post_install with a reason instead of a probe fails", got == ["unmeasured-completion"])
+    )
+    index5 = {"tool": {"completed": {"post_install": post, "smoke": probe}}}
+    got, _ = kinds(index5, "# nothing\n")
+    checks.append(("a post_install WITH a probe is clean", got == []))
 
     # Malformed lines are reported, not silently skipped into "argued".
     _, bad = kinds(index, "argued %s\n" % good_reason)

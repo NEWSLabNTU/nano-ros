@@ -84,26 +84,37 @@ nros_zephyr_sdk_store_root() {
 # The trailing component is not decoration: the tarball carries a top-level
 # directory and is unpacked WITHOUT `--strip-components`, so the store holds
 # `<version>/zephyr-sdk-<version>/`. `ZEPHYR_SDK_INSTALL_DIR` must name that
-# inner directory, and it is the one thing a consumer cannot get from
-# `nros sdk-path` alone (issue 1254).
+# inner directory.
+#
+# issue 1259 — `nros sdk-path` NOW ANSWERS THAT DIRECTORY. The index states the
+# tarball's own top-level directory as `[tool.*] subdir`, so the layout is one
+# fact in the file that already owns the URL and the checksum. This function
+# therefore stops appending: "the one thing a consumer cannot get from
+# `nros sdk-path` alone" (issue 1254) was a gap in the CLI, and appending here
+# was a second copy of the pin living in a shell script — one bump away from
+# naming a directory nothing installed.
 nros_zephyr_sdk_store_dir() {
     local version="${1:-}" tool="${2:-}" base=""
     [ -n "$version" ] || version="$(nros_zephyr_sdk_version)"
     [ -n "$tool" ] || tool="$(nros_zephyr_sdk_tool)"
 
-    # ASK the CLI where the store puts a tool rather than restating its layout.
-    # `nros sdk-path` is the producer of that answer, and a second copy of
-    # `sdk/<tool>/<version>` here would be exactly the drift this file exists to
-    # end. It answers without touching the disk, so an absent SDK still resolves.
+    # ASK the CLI rather than restating its layout. `nros sdk-path` is the
+    # producer of that answer, and it answers without touching the disk, so an
+    # absent SDK still resolves.
     if command -v nros >/dev/null 2>&1; then
         base="$(nros sdk-path "$tool" 2>/dev/null || true)"
     fi
+    if [ -n "$base" ]; then
+        printf '%s\n' "$base"
+        return 0
+    fi
+
     # The fallback is for the one context that has no CLI yet: early
     # provisioning, and `runner-doctor` on a host where `nros` is not on PATH.
-    # It is the same layout, and it is NOT the primary answer.
-    [ -n "$base" ] || base="$(nros_zephyr_sdk_store_root)/sdk/$tool/$version"
-
-    printf '%s\n' "$base/zephyr-sdk-$version"
+    # It is the same layout — INCLUDING the subdir, which the CLI's answer
+    # already carries — and it is NOT the primary answer.
+    printf '%s\n' \
+        "$(nros_zephyr_sdk_store_root)/sdk/$tool/$version/zephyr-sdk-$version"
 }
 
 # The legacy in-checkout location. Kept as an ARM, not as a default: a host

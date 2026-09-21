@@ -44,6 +44,11 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    // issue 1259 — `front` entries resolve against the tool ROOT. Read from the
+    // index when there is one; `--front` is the bootstrap arm (an `nros` being
+    // installed outside a checkout has no index yet), and that arm names paths
+    // in the mirror shape, which has no `subdir` by construction.
+    let mut subdir: Option<String> = None;
     let front = if args.front.is_empty() {
         let index = SdkIndex::load(&crate::cmd::setup::resolve_index(&args.index)?)?;
         let Some(tool) = index.tool.get(&args.tool) else {
@@ -55,6 +60,7 @@ pub fn run(args: Args) -> Result<()> {
                 known.join(", ")
             );
         };
+        subdir = tool.subdir.clone();
         tool.front.clone()
     } else {
         args.front.clone()
@@ -73,7 +79,7 @@ pub fn run(args: Args) -> Result<()> {
     }
 
     let root = sdk_store::store_root();
-    let linked = sdk_store::front_newest(&root, &args.tool, &front)?;
+    let linked = sdk_store::front_newest(&root, &args.tool, &front, subdir.as_deref())?;
     if linked.is_empty() {
         // Not an error at the library layer (an install may simply not have
         // happened yet), but here the user ASKED, so say what is missing.

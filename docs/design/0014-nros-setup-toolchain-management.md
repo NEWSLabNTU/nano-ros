@@ -224,6 +224,54 @@ $NROS_HOME/sdk/<tool>/<version>/    # = {prefix}
   print the installer instruction + expected env var (`NV_SPE_FSP_DIR`);
   `nros doctor` checks presence (Phase 172 deploy pin-check).
 
+#### 3a. Two ways an UPSTREAM artifact departs from that contract (issue 1259)
+
+The layout above holds for every dist we repackage ourselves, because we choose
+its shape. The Zephyr SDK is deliberately **not** repackaged (1.3 GiB, and we
+apply nothing to it), so it arrives in upstream's shape, and that shape breaks
+the contract twice. Both are stated in the index row that names the artifact,
+because they are facts **about the artifact**, and everything that resolves a
+path against an install then asks one function instead of knowing them:
+
+- **`subdir`** — the archive carries its own top-level directory and is unpacked
+  without `--strip-components`, so the usable root is `{prefix}/<subdir>`, not
+  `{prefix}`. `{version}` is substituted from the row's own `version`, so the
+  layout cannot drift from the pin. `nros sdk-path` answers the ROOT;
+  `sdk_store::tool_install_prefix` is the separate question "what did setup
+  write, and what does `store gc` reclaim". Before this, `nros sdk-path` answered
+  the prefix and every consumer appended `zephyr-sdk-<version>` by hand — a
+  second copy of the pin, in shell.
+- **`post_install`** — some bundles are *designed* to be completed by their own
+  installer. `zephyr-sdk-1-0-1` pins upstream's `_minimal` archive, whose
+  toolchains are separate downloads its `setup.sh -t <target>` fetches. Download
+  → verify → unpack answers "did the bytes arrive", and for such a bundle that
+  is not "is the tool here": `nros setup --tool zephyr-sdk-1-0-1` exited 0 over
+  68 MB with no toolchain in it, and the first `west build` failed inside
+  `FindZephyr-sdk.cmake` naming neither the missing toolchain nor the step that
+  should have fetched it.
+
+  The command runs in the tool root and is **recorded in `.nros-provenance`**,
+  so a repeat `nros setup` is a no-op and a prefix whose completion failed is
+  resumed at that step rather than re-downloaded. It is recorded only on
+  success — an eagerly recorded failure would turn "the installer died" into
+  "already done", which is the reported defect wearing a different hat.
+
+  What a `post_install` may **not** do is write outside the prefix. The Zephyr
+  installer's `-c` (the `~/.cmake/packages/Zephyr-sdk/` registry entry) is
+  therefore excluded: it is per-USER state that `nros store gc` cannot reclaim,
+  it accumulates an entry per clone, and `find_package(Zephyr-sdk)` then picks
+  whichever it likes — the silent version substitution `nros sdk-path` exists to
+  prevent (issue 0625). Consumers export `ZEPHYR_SDK_INSTALL_DIR` from
+  `nros sdk-path`; a caller that wants the registry runs
+  `scripts/zephyr/ensure-sdk-registered.sh` (issue 1279), which is its decision.
+
+Neither key weakens the contract for anything else: a row that declares neither
+behaves exactly as §3 describes. And a row that declares `post_install` **must**
+declare a `smoke` probe (`check-smoke-or-reason`), because the completion step's
+only other witness is its own exit status — upstream's installer exits 0 having
+skipped a toolchain whose directory already exists, which is correct and is also
+indistinguishable from a skip that fetched nothing.
+
 ### 4. Version management — files map to GitHub assets
 
 - **The index is the version SSOT.** `nros-sdk-index.toml` (committed) pins each

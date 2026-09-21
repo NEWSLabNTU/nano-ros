@@ -41,6 +41,7 @@ fn install(root: &Path, rel: &str, version: &str, payload: &[u8]) -> PathBuf {
         kind: ProvenanceKind::Prebuilt,
         version: version.to_string(),
         sha256: None,
+        post_install: None,
     }
     .write(&dir)
     .unwrap();

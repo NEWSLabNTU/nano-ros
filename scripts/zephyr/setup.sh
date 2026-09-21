@@ -369,6 +369,20 @@ provision_sdk_via_nros() {
 install_sdk() {
     provision_sdk_via_nros
 
+    # issue 1259 — `provision_sdk_via_nros` now COMPLETES the SDK: the index's
+    # `[tool.zephyr-sdk*].post_install` runs the SDK's own `setup.sh` for the
+    # DEFAULT toolchains and the host tools, and `nros setup` fails if the
+    # result does not run. So this call is no longer what makes the SDK usable;
+    # it is here for the two things the index cannot know:
+    #
+    #   * `--target <name>` extras a caller asked for on the command line, and
+    #   * `-c`, the cmake package registry entry — per-USER state outside the
+    #     prefix, which is why it is not in the index (see the `post_install`
+    #     comment there) and why `ensure-sdk-registered.sh` owns it below.
+    #
+    # Repeating the defaults costs nothing measurable: upstream's `-t` loop
+    # skips a toolchain whose directory exists, and `-h` extracts a bundled
+    # payload rather than downloading one.
     log_info "Running SDK setup..."
     cd "$SDK_PATH"
     # Build the `-t <target>` list dynamically so callers can add

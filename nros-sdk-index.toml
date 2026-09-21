@@ -231,12 +231,47 @@ dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/
 # `<prefix>/bin` layout the repacked dists share, which is exactly the path
 # `scripts/zephyr/setup.sh` and `ZEPHYR_SDK_INSTALL_DIR` already expect.
 #
-# Checksums are upstream's, from the release's own `sha256.sum`. Fetching the
-# archive is all this entry does: registering the toolchains is the SDK's own
-# `setup.sh -t <target>`, which has no expression in this schema and stays in
-# the shell script that already runs it.
+# Checksums are upstream's, from the release's own `sha256.sum`.
+#
+# issue 1259 — fetching the archive is NOT all this entry does any more. The
+# SDK's own `setup.sh` had "no expression in this schema" and lived in the shell
+# script; `post_install` is that expression, so `nros setup --tool zephyr-sdk`
+# alone now runs the installer, and the `smoke` probes below make the difference
+# between "the bytes arrived" and "a compiler in here runs" a MEASURED one.
 version = "0.16.8"
 upstream = "v0.16.8" # sdk-ng release tag (SSOT for the URLs below)
+# The tarball's own top-level directory. `{version}` keeps it tied to the pin —
+# the alternative is a literal that has to be edited in lockstep with the line
+# above, which is the drift `scripts/lib/zephyr-sdk.sh` was carrying by hand.
+subdir = "zephyr-sdk-{version}"
+smoke = [
+    { run = "arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc --version", expect = "arm-zephyr-eabi-gcc" },
+    { run = "x86_64-zephyr-elf/bin/x86_64-zephyr-elf-gcc --version", expect = "x86_64-zephyr-elf-gcc" },
+]
+# MEASURED, and the `-t` and the `-h` do very different amounts of work here.
+# 0.16.x ships every toolchain INSIDE the 1.3 GiB bundle, and its `setup.sh -t`
+# loop is a `[ -d "${toolchain}" ] && continue` over directories the unpack
+# already created — so the two `-t` arguments are a NO-OP on this entry and are
+# kept only so both SDK rows state one command. `-h` is the live half: it runs
+# the bundled `zephyr-sdk-x86_64-hosttools-standalone-0.9.sh`, which is what
+# puts `sysroots/` and `environment-setup-*` in the SDK, and which nothing on
+# the `nros setup --tool zephyr-sdk` road ran before this. Measured on
+# linux-x86_64: 1,445 MB fetched, 7.8 GB after the step.
+#
+# The `smoke` probes are therefore the important half of this row rather than
+# `post_install`: a 0.16.8 prefix could always report success and never be asked
+# whether one compiler in it runs.
+#
+# NO `-c`. That writes `~/.cmake/packages/Zephyr-sdk/<hash>`, which is per-USER
+# state OUTSIDE the prefix: `nros store gc` cannot reclaim it, a second clone's
+# SDK ends up in the same registry, and `find_package(Zephyr-sdk)` then picks
+# whichever of five it likes — a silent version substitution of exactly the kind
+# `nros sdk-path` exists to prevent (issue 0625). Consumers export
+# `ZEPHYR_SDK_INSTALL_DIR` from `nros sdk-path zephyr-sdk` instead;
+# `scripts/zephyr/ensure-sdk-registered.sh` still registers for the callers that
+# want the registry (issue 1279), and that is its decision to make, not ours.
+post_install.run = "./setup.sh -t arm-zephyr-eabi -t x86_64-zephyr-elf -h"
+post_install.why = "running the SDK's own setup.sh: install the host tools (the toolchains are already in this bundle)"
 dist.linux-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-x86_64.tar.xz", sha256 = "cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7dbc6a", floor = { glibc = "2.27", glibcxx = "3.4.21" } }
 dist.linux-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-aarch64.tar.xz", sha256 = "83782b4cf595bb3da8a6c7c1ade01eed00ad03f8ba0c72da6680693192b3668d", floor = { glibc = "2.27", glibcxx = "3.4.21" } }
 dist.macos-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_macos-aarch64.tar.xz", sha256 = "e06138c1e50cc5b4508646640bd08c50f05f0eb3f2949e756d84d3367f581593", floor = { macos = "11.0" } }
@@ -264,6 +299,14 @@ dist.macos-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releas
 #    fetches on demand — the same command this repo already invokes to register
 #    them. So the split costs nothing here and saves the bandwidth of every
 #    toolchain we do not use.
+#
+#    "Costs nothing HERE" was true only of the `just zephyr setup` road, and
+#    issue 1259 is what it cost everywhere else: `nros setup --tool
+#    zephyr-sdk-1-0-1` exited 0 over 68 MB holding `{cmake, hosttools,
+#    sdk_gnu_toolchains, sdk_version, setup.sh}` and no `gnu/` at all, and the
+#    first `west build` for any Cortex-M board failed inside
+#    `FindZephyr-sdk.cmake` naming neither the missing toolchain nor the step
+#    that should have fetched it. `post_install` below is that step.
 #  * There is NO macos-x86_64: upstream ships only aarch64 for macOS at 1.0.x.
 #    An Intel Mac on the 4.4 line has no dist and `nros setup` will say so,
 #    which is the honest outcome rather than a silent wrong-host fetch (the
@@ -273,6 +316,24 @@ dist.macos-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releas
 # linux-x86_64 one was additionally verified against a local download.
 version = "1.0.1"
 upstream = "v1.0.1" # sdk-ng release tag (SSOT for the URLs below)
+subdir = "zephyr-sdk-{version}"
+# 1.0.x moved the toolchains under `gnu/` — the 0.16.8 entry's probes are at the
+# bundle root. Two layouts, two sets of probes, and `subdir` is why neither has
+# to restate the version.
+smoke = [
+    { run = "gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc --version", expect = "arm-zephyr-eabi-gcc" },
+    { run = "gnu/x86_64-zephyr-elf/bin/x86_64-zephyr-elf-gcc --version", expect = "x86_64-zephyr-elf-gcc" },
+]
+# THE fix for issue 1259: the `_minimal` bundle is designed to be completed by
+# this command, which DOWNLOADS each named toolchain (~1 GiB per pair here). It
+# is idempotent — upstream's loop skips a toolchain whose `gnu/<name>` directory
+# already exists — and the completion is recorded in `.nros-provenance`, so a
+# second `nros setup` runs nothing and a run interrupted mid-fetch resumes here
+# rather than re-downloading the bundle.
+#
+# Same target list and same `-h`/no-`-c` reasoning as [tool.zephyr-sdk] above.
+post_install.run = "./setup.sh -t arm-zephyr-eabi -t x86_64-zephyr-elf -h"
+post_install.why = "running the SDK's own setup.sh: fetch the arm-zephyr-eabi + x86_64-zephyr-elf toolchains the _minimal bundle omits, and install host tools (~1 GiB, several minutes)"
 dist.linux-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/zephyr-sdk-1.0.1_linux-x86_64_minimal.tar.xz", sha256 = "ca9bc0ff66fafca1dac9d592a36d953cf16d096a9d09b1c0357f021cf9f6a7eb", floor = { none = "its only binaries are the hosttools installer's Yocto sysroot, and all 109 ELF run on that sysroot's own ld.so + glibc (measured from the .sh payload); the toolchains setup.sh fetches later are not this artifact" } }
 dist.linux-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/zephyr-sdk-1.0.1_linux-aarch64_minimal.tar.xz", sha256 = "d79c5bfc68e679488659bea289a4026e52a64f03338875c8c9c850fff13cee30", floor = { none = "its only binaries are the hosttools installer's Yocto sysroot, and all 108 ELF run on that sysroot's own ld.so + glibc (measured from the .sh payload); the toolchains setup.sh fetches later are not this artifact" } }
 dist.macos-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/zephyr-sdk-1.0.1_macos-aarch64_minimal.tar.xz", sha256 = "867063901f39528a6175a80ebc20367bd6cb440593e7e2650eda30392f1f6b65", floor = { macos = "14.0" } }

@@ -577,16 +577,20 @@ at all, and a `just queue-triage` window measured in runs rather than minutes.
 
 **Nothing, inside the phase.** All fifteen work items landed. What outlives it:
 
-- **[issue 1259](../../issues/1259-nros-setup-tool-leaves-zephyr-sdk-without-toolchains.md)**
+- **[issue 1259](../../issues/archived/1259-nros-setup-tool-leaves-zephyr-sdk-without-toolchains.md)**
   and
   **[issue 1262](../../issues/archived/1262-nros-setup-lock-skips-present-tools-and-follows-cwd.md)**
   — both homed here (table below), and neither was closed by this phase. C1 and
   C2 made 1259's shape checkable and E2 landed the "one plan, one lock write"
-  that 1262 names as its fix, but neither item closed the id. 1259 is still
-  open; 1262 was closed separately on 2026-09-21, after this phase was archived,
-  and needed BOTH halves E2 had not written — the `Present` arm recording a tool
-  the store already holds, and a lock path anchored to the project rather than
-  to the working directory.
+  that 1262 names as its fix, but neither item closed the id. Both were then
+  resolved separately on 2026-09-21, after this phase was archived and each
+  against its own id. 1262 needed BOTH halves E2 had not written — the `Present`
+  arm recording a tool the store already holds, and a lock path anchored to the
+  project rather than to the working directory. 1259 needed `[tool.*]
+  post_install` to complete an install that unpacking leaves unusable, `[tool.*]
+  subdir` to state an upstream tarball's own top-level directory, `smoke` probes
+  on both SDK rows, and `check-smoke-or-reason` to refuse a `post_install` with
+  no probe.
 - **[issue 1282](../../issues/1282-zephyr-espressif-vs-esp-idf-duplicate-toolchain.md)**
   — whether Zephyr's own espressif support makes our ESP-IDF provisioning a
   duplicate. F1 held `hal_espressif` back deliberately rather than settle a
@@ -642,12 +646,15 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1259](../../issues/1259-nros-setup-tool-leaves-zephyr-sdk-without-toolchains.md) | `nros setup --tool zephyr-sdk-1-0-1` reports success and leaves an SDK that cannot run: the index pins the minimal bundle with no post-install. This is C1's 'installs but cannot run' and C2's dist-or-reason, and neither names the id |
-| [#1262](../../issues/archived/1262-nros-setup-lock-skips-present-tools-and-follows-cwd.md) (RESOLVED 2026-09-21, archived) | `--tool` records a tool in `nros-sdk.lock` only when it installs, and follows the cwd. E2's 'one plan, one lock write' is the stated fix |
-| [#1273](../../issues/archived/1273-prefer-prebuilt-dist-over-source-build.md) (RESOLVED 2026-09-11, archived upstream while this table was being written) | tools build from source because the index has no `dist` row. C2 IS this issue's fix; the item should name the id so closing one closes the other |
-
-**Outcome (2026-09-21).** #1273 closed with the lettered items; #1262 closed
-separately, the same day, after this phase was archived. #1259 is still open:
-the lettered items reshaped the ground it sits on without closing it, which is
-exactly the failure this table was added to prevent — a mention is not an owner,
-and neither is an adjacent work item.
+  **[issue 1262](../../issues/archived/1262-nros-setup-lock-skips-present-tools-and-follows-cwd.md)**
+  — both homed here (table below), and neither was closed by this phase. C1 and
+  C2 made 1259's shape checkable and E2 landed the "one plan, one lock write"
+  that 1262 names as its fix, but neither item closed the id. Both were then
+  resolved separately on 2026-09-21, after this phase was archived and each
+  against its own id. 1262 needed BOTH halves E2 had not written — the `Present`
+  arm recording a tool the store already holds, and a lock path anchored to the
+  project rather than to the working directory. 1259 needed `[tool.*]
+  post_install` to complete an install that unpacking leaves unusable, `[tool.*]
+  subdir` to state an upstream tarball's own top-level directory, `smoke` probes
+  on both SDK rows, and `check-smoke-or-reason` to refuse a `post_install` with
+  no probe.
