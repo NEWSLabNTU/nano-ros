@@ -77,21 +77,44 @@ exactly two binaries — `play_launch_parser` (no Python) and
 `ros-launch-resolve/cli` (a different tool) — and `pyload` is reached only
 through `resolve/`.
 
-## So the two are LEGITIMATELY unequal today
+## So the two are LEGITIMATELY unequal today — but only for HALF the gap
 
-`838ce948` is the newest commit at which
-`cargo install --path …/crates/play_launch_parser` yields a Python-capable
-binary. That is a real reason, and it is now written into the index beside the
-entry instead of the false lockstep claim.
+The first draft of this issue said `838ce948` was "the newest commit at which
+`cargo install` yields a Python-capable binary". **That was unmeasured and
+false** — the same sin this issue is about, one level down, caught by going and
+looking. Measured: pyo3 left in `f7f6d2cf` ("the Python half is its own
+crate"), so the newest Python-capable ref is its parent **`27b6749b`**, built
+and run here:
 
-It is still debt, not a resting state: the index lags a submodule that keeps
-moving, and every commit widens the gap.
+    DT_NEEDED           libpython3.10.so.1.0, libgcc_s, libc, ld
+    .launch.py          /from_python
+    $(eval '1 + 1')     /from_eval_2
+
+`27b6749b` is **54 commits NEWER than the pin**, with a further 54 to the
+gitlink. So the gap splits, and only the second half is actually blocked:
+
+| segment | commits | status |
+| --- | --- | --- |
+| `838ce948` -> `27b6749b` | 54 | **SAFE** — a real bump, still Python-capable |
+| `27b6749b` -> `07f0461e` | 54 | **BLOCKED** — the CLI loses its Python backend |
+
+The safe half is not taken in the PR that filed this, and the reason is an
+acceptance rather than a doubt: it re-cuts the dist (`0.1.0-nros2`, new sha256
+per asset, re-measured floors and `system`) and `just/workspace.just` names
+what must pass with it — the L.6 gate tests `phase212_l6_launch_synth::*`,
+which are fixture-backed and were not run. A bump whose acceptance nobody ran
+is how a pin moves wrong; that is the whole subject here.
 
 ## What would close it
 
-One of:
+In order:
 
-* **Upstream**: give `play_launch_parser`'s `main.rs` a `pyload`-registered
+* **Now, and measured**: bump `source.ref`/`upstream` to `27b6749b`, re-cut
+  `play_launch_parser-0.1.0-nros2` from it, re-measure each asset's sha256,
+  floor and `DT_NEEDED`-derived `system`, re-verify the `smoke` `expect`
+  against the new binary, and run `phase212_l6_launch_synth::*`. Halves the
+  gap and needs nothing from upstream.
+* **Then, upstream**: give `play_launch_parser`'s `main.rs` a `pyload`-registered
   backend (it already exists, one crate over), and make the dist stage
   `libplay_launch_parser_pyexec.so` beside the binary — the pair shape
   `nros-launch-resolve` already ships and `launch_py_resolves_as_shipped`
