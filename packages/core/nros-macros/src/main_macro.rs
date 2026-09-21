@@ -1428,32 +1428,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // gets a plain `#[unsafe(no_mangle)] #[used]` static that is still referenceable).
     // The static is emitted once, before `body_ts`, so `&NROS_BOOT_CONFIG`
     // resolves in every framework arm's `deploy_overlay_ts` use site.
-    let boot_config_static_ts = {
-        let node_name_opt = match &deploy_overlay_lit.node_name {
-            Some(s) => quote! { ::core::option::Option::Some(#s) },
-            None => quote! { ::core::option::Option::None },
-        };
-        let locator_opt = match &deploy_overlay_lit.locator {
-            Some(s) => quote! { ::core::option::Option::Some(#s) },
-            None => quote! { ::core::option::Option::None },
-        };
-        let domain_opt = match deploy_overlay_lit.domain_id {
-            Some(d) => quote! { ::core::option::Option::Some(#d) },
-            None => quote! { ::core::option::Option::None },
-        };
-        quote! {
-            #[used]
-            #[cfg_attr(target_os = "none", unsafe(link_section = ".nros_boot_config"))]
-            #[unsafe(no_mangle)]
-            static NROS_BOOT_CONFIG: ::nros::BakedBootConfig =
-                ::nros::BakedBootConfig::new(
-                    #node_name_opt,
-                    #locator_opt,
-                    #domain_opt,
-                    ::core::option::Option::None,
-                );
-        }
-    };
+    let boot_config_static_ts = boot_config_static_tokens(
+        &deploy_overlay_lit,
+        baked_namespace(&node_instances, &node_namespaces).as_deref(),
+    );
 
     // Phase 244.D1 — `target_os = "none"` entry shape for the OwnedSpin
     // framework. FreeRTOS / threadx-linux have a C runtime that calls `main`,
@@ -3029,6 +3007,209 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
             node_name: #node_name,
             boot_config: ::core::option::Option::Some(&NROS_BOOT_CONFIG),
         }
+    }
+}
+
+/// issue 1410 — the namespace that goes into the baked blob's ONE identity slot.
+///
+/// Same rule as the C/C++ emitter's `boot_config_view`
+/// (`nros-cli-core/src/codegen/entry/mod.rs`, issue 0794): identity is a
+/// property of a NODE and the blob holds one node's worth of it, so a
+/// single-node image bakes that node's namespace and a multi-node image bakes
+/// NONE — there is no such thing as "the" namespace of an image running three
+/// nodes, and the C side leaves `node_name` and `namespace` together for
+/// exactly that reason. The namespace is the one the macro already computed
+/// from the node's FQN for the tier filter's node key (issue 1172), so the
+/// blob names the node exactly as the entry creates it.
+///
+/// An absent namespace yields `None`, which leaves `BOOT_SET_NAMESPACE` CLEAR
+/// and lets the resolver fall through to the next RFC-0045 rung. An EMPTY
+/// string normalises to `None` here rather than reaching `BakedBootConfig::new`
+/// (which would set the bit over `""`, i.e. assert "configured to root" where
+/// nothing was configured) — the same normalise-before-the-fold 0794 applies to
+/// the session facts.
+fn baked_namespace(
+    node_instances: &[String],
+    node_namespaces: &BTreeMap<String, String>,
+) -> Option<String> {
+    let [only] = node_instances else {
+        return None;
+    };
+    node_namespaces
+        .get(only)
+        .filter(|ns| !ns.is_empty())
+        .cloned()
+}
+
+/// Emit the `NROS_BOOT_CONFIG` static (RFC-0045 W4b).
+///
+/// A function rather than an inline block so the emitted TOKENS are testable:
+/// issue 1410 was a value that existed, was correct, and was never threaded
+/// into this call — which a test on the rule alone cannot see.
+fn boot_config_static_tokens(
+    lit: &DeployOverlayLit,
+    namespace: Option<&str>,
+) -> proc_macro2::TokenStream {
+    let node_name_opt = match &lit.node_name {
+        Some(s) => quote! { ::core::option::Option::Some(#s) },
+        None => quote! { ::core::option::Option::None },
+    };
+    let locator_opt = match &lit.locator {
+        Some(s) => quote! { ::core::option::Option::Some(#s) },
+        None => quote! { ::core::option::Option::None },
+    };
+    let domain_opt = match lit.domain_id {
+        Some(d) => quote! { ::core::option::Option::Some(#d) },
+        None => quote! { ::core::option::Option::None },
+    };
+    let namespace_opt = match namespace {
+        Some(s) => quote! { ::core::option::Option::Some(#s) },
+        None => quote! { ::core::option::Option::None },
+    };
+    quote! {
+        #[used]
+        #[cfg_attr(target_os = "none", unsafe(link_section = ".nros_boot_config"))]
+        #[unsafe(no_mangle)]
+        static NROS_BOOT_CONFIG: ::nros::BakedBootConfig =
+            ::nros::BakedBootConfig::new(
+                #node_name_opt,
+                #locator_opt,
+                #domain_opt,
+                #namespace_opt,
+            );
+    }
+}
+
+/// issue 1410 — the namespace half of the baked boot config, asserted on the
+/// TOKENS the macro emits.
+///
+/// The token stream is the honest level here: the namespace was computed
+/// correctly all along (issue 1172's node key reads it), and the defect was
+/// that the bake site passed a literal `None` for the fourth argument. Only a
+/// test that reads the emitted `BakedBootConfig::new` call can tell those two
+/// apart.
+#[cfg(test)]
+mod baked_boot_config_namespace_tests {
+    use super::{BTreeMap, DeployOverlayLit, baked_namespace, boot_config_static_tokens};
+
+    /// The arguments of the emitted `BakedBootConfig::new(...)` call, split at
+    /// top-level commas. Position matters — `new` takes `(node_name, locator,
+    /// domain_id, namespace)` — so a namespace baked into the wrong slot reads
+    /// differently from one baked into the right one.
+    fn baked_args(instances: &[&str], namespaces: &[(&str, &str)]) -> Vec<String> {
+        let instances: Vec<String> = instances.iter().map(|s| (*s).to_string()).collect();
+        let table: BTreeMap<String, String> = namespaces
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect();
+        let mut lit = DeployOverlayLit::default();
+        // Issue #98's rule, mirrored so the fixture emits the identity pair the
+        // macro really emits: a single-node image names the primary session.
+        if let [only] = instances.as_slice() {
+            lit.node_name = Some(only.clone());
+        }
+        let ts = boot_config_static_tokens(&lit, baked_namespace(&instances, &table).as_deref())
+            .to_string();
+
+        let open = ts
+            .find("BakedBootConfig :: new (")
+            .map(|i| i + "BakedBootConfig :: new (".len())
+            .unwrap_or_else(|| {
+                panic!("no `BakedBootConfig::new` call in the emitted static:\n{ts}")
+            });
+        let mut depth = 0usize;
+        let mut args: Vec<String> = Vec::new();
+        let mut cur = String::new();
+        for ch in ts[open..].chars() {
+            match ch {
+                '(' => {
+                    depth += 1;
+                    cur.push(ch);
+                }
+                ')' if depth == 0 => break,
+                ')' => {
+                    depth -= 1;
+                    cur.push(ch);
+                }
+                ',' if depth == 0 => {
+                    args.push(cur.trim().to_string());
+                    cur.clear();
+                }
+                _ => cur.push(ch),
+            }
+        }
+        if !cur.trim().is_empty() {
+            args.push(cur.trim().to_string());
+        }
+        assert_eq!(
+            args.len(),
+            4,
+            "`BakedBootConfig::new` takes four arguments; got {args:?}"
+        );
+        args
+    }
+
+    const NONE: &str = ":: core :: option :: Option :: None";
+
+    /// A single-node image bakes that node's namespace, into the namespace
+    /// slot, beside the node name it already baked.
+    #[test]
+    fn a_single_node_image_bakes_its_declared_namespace() {
+        let args = baked_args(&["remap_talker"], &[("remap_talker", "/island")]);
+        assert_eq!(
+            args[3], ":: core :: option :: Option :: Some (\"/island\")",
+            "the namespace the macro computed must reach the bake; got {args:?}"
+        );
+        assert_eq!(
+            args[0], ":: core :: option :: Option :: Some (\"remap_talker\")",
+            "identity is a pair — the name half must be unchanged; got {args:?}"
+        );
+    }
+
+    /// The root namespace is a VALUE, not an absence: the C/C++ emitter's
+    /// `plan_from_model` derives `/` from an unnamespaced FQN and
+    /// `boot_config_view` bakes it with the bit set, so a Rust image built from
+    /// the same launch file must produce the same blob. Measured on the C side
+    /// (`native_c_params`, whose `c_params.launch.xml` declares no namespace):
+    /// `.set_flags = NROS_BOOT_SET_NODE_NAME | NROS_BOOT_SET_NAMESPACE`,
+    /// `.namespace_ = "/"`. (`/` and `""` are the same namespace at runtime —
+    /// `names.rs` collapses the root and `node_identity_hash` normalises `""`
+    /// to `/` — so this costs nothing but two producers agreeing.)
+    #[test]
+    fn a_root_node_bakes_the_root_namespace_like_the_c_emitter() {
+        let args = baked_args(&["talker"], &[("talker", "/")]);
+        assert_eq!(
+            args[3], ":: core :: option :: Option :: Some (\"/\")",
+            "{args:?}"
+        );
+    }
+
+    /// The negative direction, which is half the point: nothing declared means
+    /// the bit stays CLEAR, so `BootConfig::from_baked` yields `None` and the
+    /// resolver falls through to the next RFC-0045 rung instead of reading an
+    /// empty string as "configured to root".
+    #[test]
+    fn an_undeclared_namespace_bakes_none() {
+        // Form 2 / no launch: no node instances at all.
+        assert_eq!(baked_args(&[], &[])[3], NONE);
+        // A node the namespace table has no row for.
+        assert_eq!(baked_args(&["talker"], &[])[3], NONE);
+        // An EMPTY namespace normalises to `None` before the bake rather than
+        // reaching `BakedBootConfig::new` as `Some("")`, which would set the
+        // bit over a value nothing asked for.
+        assert_eq!(baked_args(&["talker"], &[("talker", "")])[3], NONE);
+    }
+
+    /// A multi-node image bakes no namespace: the blob has ONE identity slot
+    /// and there is no such thing as "the" namespace of an image running two
+    /// nodes. Same arm as the C/C++ emitter's `if plan.nodes.len() != 1`.
+    #[test]
+    fn a_multi_node_image_bakes_no_namespace() {
+        let args = baked_args(
+            &["talker", "listener"],
+            &[("talker", "/island"), ("listener", "/island")],
+        );
+        assert_eq!(args[3], NONE, "{args:?}");
     }
 }
 
