@@ -417,6 +417,22 @@ sdk-index:
 dist-or-reason:
     @python3 scripts/sdk/check-dist-or-reason.py
 
+# issue 1413 — ONE component, TWO pins: `nros setup` installs the BINARY from
+# `[tool.play_launch_parser].source.ref`, and `nros-launch-resolve` path-deps
+# the LIBRARY out of the `packages/cli/third-party/play_launch` gitlink. Three
+# documents asserted the two "cannot disagree" and nothing measured any of
+# them, so they drifted ~40 commits apart.
+#
+# NOT an equality gate, deliberately: the two are legitimately unequal today
+# (issue 0897 moved pyo3 out of the CLI crate, so at the gitlink `$(eval …)`
+# exits 0 with the substitution UNEXPANDED). An equality gate would be red on
+# the day it landed and would have to be disabled by the first bump. This
+# asserts ancestry (the index may LAG, never LEAD), that `upstream` and
+# `source.ref` agree, and that a lag is DECLARED while it lasts — and that the
+# declaration is deleted when it ends.
+play-launch-parser-ref:
+    @python3 scripts/check-play-launch-parser-ref.py
+
 # phase-365 W4 / issue 0625 — the SDK store is CONSTRUCTED from the project's
 # pin, never enumerated. A wildcard where the version belongs means a consumer
 # is picking a version by searching a store SHARED between projects, to answer a

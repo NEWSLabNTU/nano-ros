@@ -548,10 +548,41 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # half was cloned from the standalone repo — with nothing keeping them in step.
 # That is the drift class of issues 0609 (zenoh router) and 0507 (cyclonedds).
 #
-# `just workspace install-play-launch-parser` now builds from the SUBMODULE and
-# fetches nothing; this row remains so `nros setup --tool play_launch_parser`
-# and `nros sdk-path` keep working for an out-of-tree consumer, and its `ref` is
-# the submodule pin so the two cannot disagree.
+# `just workspace install-play-launch-parser` is a one-line forwarder to
+# `nros setup --tool play_launch_parser` (phase-422 W1), so there is ONE
+# producer and this row is its pin.
+#
+# THE `ref` IS NOT THE SUBMODULE PIN, and the sentence that used to sit here
+# said it was (issue 1413). Measured 2026-09-21: `source.ref` is `838ce948`,
+# the `packages/cli/third-party/play_launch` gitlink is `07f0461e`, and the
+# first is a STRICT ANCESTOR of the second by ~40 commits. Three documents
+# asserted lockstep, no gate measured it, and it drifted — which is what prose
+# guarding an unchecked invariant is for.
+#
+# The lag is DELIBERATE now, and the obvious repair is the trap. Issue 0897
+# W2b/W3 moved pyo3 OUT of the `play_launch_parser` crate inside that window:
+# the Python half became `pyexec` (a cdylib) loaded at run time by `pyload`,
+# and `pyload` is reached through `resolve/`, NOT through the standalone CLI's
+# `main.rs`. Both revisions built here and run against the same two files:
+#
+#   ref            DT_NEEDED                 .launch.py          $(eval '1+1')
+#   838ce948       libpython3.10.so.1.0      /from_python        /from_eval_2
+#   07f0461e       (no libpython at all)     hard error          /from_eval_$(eval '1+1')
+#
+# The `.launch.py` arm is a clean catchable error by 0897's design. The
+# `$(eval …)` arm exits 0 and emits an UNEXPANDED substitution — a wrong node
+# name with no diagnostic. Bumping the ref would trade a stale-but-correct
+# parser for a current one that silently mis-parses, so the ref stays where the
+# binary still works and the gap is declared instead of hidden.
+#
+# `838ce948` is the newest commit at which
+# `cargo install --path …/crates/play_launch_parser` yields a Python-capable
+# binary. Closing it is upstream work in `NEWSLabNTU/play_launch` (register a
+# `pyload` backend in the CLI and ship `libplay_launch_parser_pyexec.so` beside
+# it — the pair shape `nros-launch-resolve` already ships), not a re-cut here.
+# Gate: `check-play-launch-parser-ref`, which asserts ancestry, the two
+# spellings agreeing, and that this declaration exists while they differ.
+# ref-lag: issue 1413 — 07f0461e drops the CLI's Python backend, so `$(eval …)` would silently stop expanding
 #
 # SEEDED 2026-09-21 (issue 1273 / RFC-0099 D4) — the dist we said we would build
 # ourselves now exists. `nano-ros-sdk`'s `scripts/build-play_launch_parser.sh`

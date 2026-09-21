@@ -14,25 +14,25 @@ NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-tool
 # stamp check reinstalls on every invocation.
 CORROSION_VERSION := "v0.6.1"
 
-# Pinned play_launch_parser SHA. Used by the Phase 212.L.6 launch-graph
-# resolver in `nros plan` / `nros codegen-system` (synth-from-Component
-# + multi-launch precedence). No upstream release tags exist on
-# `jerry73204/play_launch_parser` — pinned to a SHA on `main` (same
-# convention `[tool.cyclonedds]` uses); bumping is the signal to re-run
-# the L.6 gate tests `phase212_l6_launch_synth::*`. Kept in lockstep
-# with `nros-sdk-index.toml::[tool.play_launch_parser]` so a
-# `just workspace install-play-launch-parser` and a
-# `nros setup --tool play_launch_parser` land the same revision.
-# The parser now comes from the `play_launch` SUBMODULE, not from the archived
-# standalone repo. `jerry73204/play_launch_parser` is ARCHIVED and superseded by
-# `NEWSLabNTU/play_launch`, which vendors the same crate at
-# `src/ros-launch-resolve/parser/crates/play_launch_parser` and is already a
-# submodule here — so the binary and the LIBRARY `nros-launch-resolve` path-deps
-# now come from ONE pin instead of two that could drift silently (the class of
-# issues 0609 and 0507).
+# play_launch_parser. Used by the Phase 212.L.6 launch-graph resolver in
+# `nros plan` / `nros codegen-system` (synth-from-Component + multi-launch
+# precedence); bumping it is the signal to re-run the L.6 gate tests
+# `phase212_l6_launch_synth::*`. `jerry73204/play_launch_parser` is ARCHIVED
+# and superseded by `NEWSLabNTU/play_launch`, which vendors the same crate at
+# `src/ros-launch-resolve/parser/crates/play_launch_parser`.
 #
-# The version is the SUBMODULE COMMIT, so the stamp invalidates exactly when the
-# pin moves.
+# NO CONSTANT LIVES HERE, and two sentences that used to claim one did (issue
+# 1413). `install-play-launch-parser` has been a one-line forwarder to
+# `nros setup --tool play_launch_parser` since phase-422 W1, so the pin is
+# `nros-sdk-index.toml`'s `[tool.play_launch_parser]` and the version is its
+# `0.1.0-nrosN` label — NOT "the SUBMODULE COMMIT", which is what the old text
+# said and what stopped being true when the forwarder landed.
+#
+# The index's `source.ref` and the `packages/cli/third-party/play_launch`
+# gitlink are NOT the same commit today, deliberately and with the reason
+# recorded beside the index entry — see issue 1413 and
+# `check-play-launch-parser-ref`, which measures the relationship the prose
+# here used to assert.
 
 # Workspace module — host-agnostic dev environment setup.
 #
