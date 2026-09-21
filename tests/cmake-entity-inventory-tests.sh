@@ -708,6 +708,121 @@ _want "a silent publisher does not suppress the subscription maximum" \
     "$(NROS_DEPTH_ENV_EXTRA=$'set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER 4)\nset(NROS_ENTITY_UNDECLARED_DEPTH_COUNT 4)' depth_env resolved 0 'a|/t1=1')"
 
 # ---------------------------------------------------------------------------
+log_header "a PARTIAL params: declaration is a refusal, not a default (phase-460 W2)"
+
+# The inventory writes `NROS_PARAM_DECLARATION_STATUS` in three states, and
+# `_nros_param_store_env` (NanoRosEntityFacts.cmake) is the crossing that hands
+# the store's numbers to nros-params' build script as `NROS_DECLARED_*`
+# defaults. Until phase-460 W2 the crossing `return()`ed on anything but
+# `declared`, so a REFUSED declaration -- some nodes declare `params:`, the
+# rest do not, and the inventory says which -- reached the crate as no
+# declaration at all and the store took the crate defaults (issue 1421,
+# measured on the island: 25/35/0/0/0 became 32/64/256/32/256 with no
+# build-time line). Each state gets a case:
+#
+#   declared  crosses, every number, unchanged.
+#   absent    crosses nothing and configures -- no node declares, and an image
+#             with no contract is sized by its board. NEGATIVE CONTROL.
+#   refused   is FATAL, and the fatal names the node the reason names.
+#   (none)    a fragment that predates the field, or the seed placeholder a
+#             refusal leaves for CMAKE_CONFIGURE_DEPENDS, crosses nothing and
+#             configures: only the producer's own verdict is fatal.
+param_env() {
+    # param_env <fragment body> -> cmake's whole output; the return code is
+    # cmake's, so a FATAL_ERROR is visible as rc and not only as text.
+    local dir="$TEST_TMPDIR/param"
+    rm -rf "$dir"; mkdir -p "$dir/nros"
+    printf '%s\n' "$1" > "$dir/nros/entity_inventory.cmake"
+    cat > "$dir/run.cmake" <<EOF
+include("$MODULE")
+include("$FACTS")
+_nros_param_store_env(_out)
+message(STATUS "PARAM=[\${_out}]")
+EOF
+    (cd "$dir" && cmake -P run.cmake 2>&1)
+}
+
+DECLARED_PARAMS='set(NROS_PARAM_DECLARATION_STATUS "declared")
+set(NROS_PARAM_DECLARED_COUNT 21)
+set(NROS_DERIVED_MAX_PARAMETERS 25)
+set(NROS_DERIVED_MAX_PARAM_NAME_LEN 35)
+set(NROS_DERIVED_MAX_STRING_VALUE_LEN 0)
+set(NROS_DERIVED_MAX_ARRAY_LEN 0)
+set(NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN "/system/diag_aggregator:blob:byte_array")
+set(NROS_PARAM_SERVICE_SHAPE "8:170:1:17:0:0:0:0:0")'
+# The reason is the producer's own sentence (`ParamDeclarations::from_model`),
+# with the island's node in it.
+REFUSED_PARAMS='set(NROS_PARAM_DECLARATION_STATUS "refused")
+set(NROS_PARAM_DECLARATION_REASON "1 of 4 nodes in this image declare no `params:` in their contract: /system/stop_mode_operator. The parameter store holds every node'"'"'s parameters, and sizing it from the nodes that did declare would give the rest no slots. Declare `params:` on every node, or on none; until then the store knobs keep their configured values.")'
+
+OUT="$(param_env "$DECLARED_PARAMS")"
+RC=$?
+check
+if [ "$RC" -ne 0 ]; then
+    fail "param: a DECLARED store did not configure -- $OUT"
+fi
+check
+if ! nros_grep_q "PARAM=\[NROS_DECLARED_MAX_PARAMETERS=25;NROS_DECLARED_MAX_PARAM_NAME_LEN=35;NROS_DECLARED_MAX_STRING_VALUE_LEN=0;NROS_DECLARED_MAX_ARRAY_LEN=0;NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN=/system/diag_aggregator:blob:byte_array;NROS_DECLARED_PARAM_SERVICE_SHAPE=8:170:1:17:0:0:0:0:0\]" <<<"$OUT"; then
+    fail "param: a DECLARED store did not cross with every number -- $OUT"
+fi
+
+OUT="$(param_env 'set(NROS_PARAM_DECLARATION_STATUS "absent")')"
+RC=$?
+check
+if [ "$RC" -ne 0 ]; then
+    fail "param: an ABSENT declaration did not configure -- an image with no \
+contract is sized by its board, and that must stay a configure -- $OUT"
+fi
+check
+if ! nros_grep_q "PARAM=\[\]" <<<"$OUT"; then
+    fail "param: an ABSENT declaration carried something -- $OUT"
+fi
+check
+if nros_grep_q -i "CMake Error" <<<"$OUT"; then
+    fail "param: an ABSENT declaration raised an error -- $OUT"
+fi
+
+OUT="$(param_env "$REFUSED_PARAMS" | flat)"
+RC=$?
+check
+if [ "$RC" -eq 0 ]; then
+    fail "param: a REFUSED declaration configured -- the store would be sized from \
+the crate defaults with no build-time line, which is issue 1421 -- $OUT"
+fi
+check
+if ! nros_grep_q -i "CMake Error" <<<"$OUT"; then
+    fail "param: a REFUSED declaration did not raise a FATAL_ERROR -- $OUT"
+fi
+check
+if ! nros_grep_q "stop_mode_operator" <<<"$OUT"; then
+    fail "param: the fatal does not name the node the inventory named -- $OUT"
+fi
+check
+if ! nros_grep_q "REFUSED the contract" <<<"$OUT"; then
+    fail "param: the fatal does not say the inventory refused -- $OUT"
+fi
+check
+if ! nros_grep_q "on every node" <<<"$OUT"; then
+    fail "param: the fatal does not name the remedy -- $OUT"
+fi
+check
+if nros_grep_q "PARAM=\[" <<<"$OUT"; then
+    fail "param: a REFUSED declaration reached the crossing's output -- $OUT"
+fi
+
+OUT="$(param_env 'set(NROS_ENTITY_INVENTORY_STATUS "refused")')"
+RC=$?
+check
+if [ "$RC" -ne 0 ]; then
+    fail "param: a fragment with NO declaration status did not configure -- the \
+seed placeholder and every pre-phase-446 fragment look like this -- $OUT"
+fi
+check
+if ! nros_grep_q "PARAM=\[\]" <<<"$OUT"; then
+    fail "param: a fragment with no declaration status carried something -- $OUT"
+fi
+
+# ---------------------------------------------------------------------------
 if [ "$FAILURES" -eq 0 ]; then
     log_success "cmake-entity-inventory: $CHECKS assertion(s) held"
     exit 0

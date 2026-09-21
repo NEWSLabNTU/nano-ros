@@ -655,6 +655,32 @@ function(_nros_param_store_env _out_var)
         return()
     endif()
     include("${_inv}")
+    # phase-460 W2 (issue 1421) -- a PARTIAL declaration is heard, not sized
+    # around. The inventory refuses when some nodes declare `params:` and the
+    # rest do not (phase-446's every-node-or-none rule, which is right: a store
+    # sized from the nodes that declared gives the others no slots), and it
+    # writes WHICH nodes. This function used to `return()` on anything but
+    # `declared`, so that refusal reached nros-params' build script as no
+    # declaration at all and the store took the crate defaults. Measured on the
+    # island (brief D, E6a): one node's block deleted, 25/35/0/0/0 became
+    # 32/64/256/32/256 with no build-time line, the `set_parameters` request
+    # shape grew with the capacities (issue 1352's class), and that one node
+    # lost its DECLARED_PARAM_MISMATCH check. The producer said no and the next
+    # layer read it as "nothing to say"; the configure stops here instead.
+    #
+    # `absent` keeps its meaning -- no node declares, and an image with no
+    # contract is sized by its board -- and so does a fragment that predates
+    # the field. Only the inventory's own `refused` is fatal.
+    if(NROS_PARAM_DECLARATION_STATUS STREQUAL "refused")
+        message(FATAL_ERROR
+            "nros: the parameter store cannot be sized: the entity inventory "
+            "REFUSED the contract's `params:` declaration "
+            "(NROS_PARAM_DECLARATION_STATUS \"refused\" in ${_inv}):\n"
+            "  ${NROS_PARAM_DECLARATION_REASON}\n"
+            "Declare `params:` on every node in the image, or on none. The "
+            "configure stops here rather than build the image on nros-params' "
+            "crate defaults (phase-460 W2, issue 1421).")
+    endif()
     if(NOT NROS_PARAM_DECLARATION_STATUS STREQUAL "declared")
         return()
     endif()
