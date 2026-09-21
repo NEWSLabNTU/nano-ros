@@ -132,7 +132,8 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
     })
 }
 
-/// Every board key the Rust pack resolves, and the board ZST it names.
+/// Every board key the Rust pack resolves, the board ZST it names, and whether
+/// an entry built for it links `std`.
 ///
 /// Issue 1285 — a TABLE rather than a `match`, so the key set is data: the
 /// proc-macro's "Known boards" message is derived from it rather than
@@ -140,6 +141,21 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
 /// every key here against `nros_entry_lower::BOARD_KEYS` (the key → family
 /// table) so the two cannot disagree about which RTOS a key names. The ZST
 /// PATH stays here: it is Rust-pack spelling, not a neutral fact.
+///
+/// Issue 1381 — the third column is `links_std`, a COLUMN and not a second
+/// table so that a new key cannot be added without answering the question.
+/// It restates, for the two Rust producers, what the board descriptor already
+/// says as `entry_kind`: `hosted-main` ⟺ the entry crate is an ordinary hosted
+/// binary that links libstd, while `board-run` / `zephyr-staticlib` ⟺
+/// `builder::entry` writes `#![no_std]` at the top of the entry TU. A `false`
+/// row therefore means "an emitter may not name a `std::` path in this entry",
+/// which is a stronger statement than any `target_os` predicate can make:
+/// `no_std` is orthogonal to the target OS, so a bare `cargo build` of such a leaf
+/// for the HOST still has no `std` in its crate root. That is issue 1381 —
+/// `nros::main!` emitted the hosted spin helpers into a bare-metal leaf and the
+/// leaf could not be compiled by hand at all.
+/// `nros-cli-core/tests/board_key_table.rs` checks the column against the
+/// descriptors' `entry_kind`, so the two cannot drift.
 ///
 /// Rows, grouped:
 /// - FreeRTOS — MPS2-AN385 Cortex-M3 (the only FreeRTOS board today). The RTOS
@@ -168,51 +184,95 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
 /// entry naming one must fail to resolve rather than silently pick another
 /// board. Out-of-tree replacements supply their own `board_crate` — see
 /// `book/src/porting/stm32f4-out-of-tree.md`.
-pub const BOARD_PATHS: &[(&str, &str)] = &[
-    ("native", "::nros_board_linux::LinuxBoard"),
-    ("posix", "::nros_board_linux::LinuxBoard"),
-    ("freertos", "::nros_board_mps2_an385_freertos::Mps2An385"),
+pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
+    ("native", "::nros_board_linux::LinuxBoard", true),
+    ("posix", "::nros_board_linux::LinuxBoard", true),
+    (
+        "freertos",
+        "::nros_board_mps2_an385_freertos::Mps2An385",
+        false,
+    ),
     (
         "freertos-qemu-mps2-an385",
         "::nros_board_mps2_an385_freertos::Mps2An385",
+        false,
     ),
     (
         "mps2-an385-freertos",
         "::nros_board_mps2_an385_freertos::Mps2An385",
+        false,
     ),
-    ("threadx-linux", "::nros_board_threadx_linux::ThreadxLinux"),
+    (
+        "threadx-linux",
+        "::nros_board_threadx_linux::ThreadxLinux",
+        true,
+    ),
     (
         "threadx-qemu-riscv64",
         "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64",
+        false,
     ),
     (
         "rv-virt-threadx",
         "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64",
+        false,
     ),
-    ("nuttx", "::nros_board_nuttx_qemu::NuttxQemu"),
-    ("qemu-armv7a-nuttx", "::nros_board_nuttx_qemu::NuttxQemu"),
-    ("nuttx-riscv", "::nros_board_nuttx_qemu::NuttxQemu"),
-    ("rv-virt-nuttx", "::nros_board_nuttx_qemu::NuttxQemu"),
-    ("esp32-qemu", "::nros_board_esp32_qemu::Esp32QemuEntry"),
+    // NuttX is `target_os = "nuttx"` and the family is `no_std` since
+    // phase-359 W7 — the entry leaves carry `#![no_std]` + `#![no_main]` and
+    // the macro emits the C-ABI `main` directly, because libstd's `lang_start`
+    // is no longer there to wrap a Rust one.
+    ("nuttx", "::nros_board_nuttx_qemu::NuttxQemu", false),
+    (
+        "qemu-armv7a-nuttx",
+        "::nros_board_nuttx_qemu::NuttxQemu",
+        false,
+    ),
+    ("nuttx-riscv", "::nros_board_nuttx_qemu::NuttxQemu", false),
+    ("rv-virt-nuttx", "::nros_board_nuttx_qemu::NuttxQemu", false),
+    (
+        "esp32-qemu",
+        "::nros_board_esp32_qemu::Esp32QemuEntry",
+        false,
+    ),
     (
         "esp32-c3-baremetal",
         "::nros_board_esp32_qemu::Esp32QemuEntry",
+        false,
     ),
-    ("zephyr", "::nros_board_zephyr::ZephyrBoard"),
+    ("zephyr", "::nros_board_zephyr::ZephyrBoard", false),
     // The SAME board under the zephyr descriptor's second name
     // (`names = ["zephyr", "native_sim/native/64"]`). It became a key in
     // phase-445 W5, when a Zephyr entry's board stopped being a hand-written
     // `deploy = "zephyr"` token and started being read from the image that
     // builds it — and `examples/workspaces/rust` spells that image's board
     // this way.
-    ("native_sim/native/64", "::nros_board_zephyr::ZephyrBoard"),
-    ("rtic-mps2-an385", "::nros_board_mps2_an385::RticMps2An385"),
+    //
+    // `links_std` is FALSE even though native_sim compiles for the host
+    // triple: the entry is a `#![no_std]` staticlib (Zephyr owns `main`), and
+    // `zephyr/CMakeLists.txt` appending `,std` to the feature list makes `std`
+    // REACHABLE, never present in the crate root. Issue 0589 is the other half
+    // of the same fact.
+    (
+        "native_sim/native/64",
+        "::nros_board_zephyr::ZephyrBoard",
+        false,
+    ),
+    (
+        "rtic-mps2-an385",
+        "::nros_board_mps2_an385::RticMps2An385",
+        false,
+    ),
     (
         "qemu-rtic-mps2-an385",
         "::nros_board_mps2_an385::RticMps2An385",
+        false,
     ),
-    ("qemu-mps2-an385", "::nros_board_mps2_an385::Mps2An385"),
-    ("mps2-an385", "::nros_board_mps2_an385::Mps2An385"),
+    (
+        "qemu-mps2-an385",
+        "::nros_board_mps2_an385::Mps2An385",
+        false,
+    ),
+    ("mps2-an385", "::nros_board_mps2_an385::Mps2An385", false),
 ];
 
 /// The board ZST the Rust pack names for `key`, or `None` for a key it does
@@ -220,8 +280,31 @@ pub const BOARD_PATHS: &[(&str, &str)] = &[
 pub fn board_path_for(key: &str) -> Option<&'static str> {
     BOARD_PATHS
         .iter()
-        .find(|(k, _)| *k == key)
-        .map(|(_, path)| *path)
+        .find(|(k, _, _)| *k == key)
+        .map(|(_, path, _)| *path)
+}
+
+/// Does an entry built for board `key` link `std`? `None` for a key this table
+/// does not know.
+///
+/// Issue 1381. A caller that EMITS entry code asks this before writing any
+/// `std::` path: `false` means the entry crate is `#![no_std]` (the board
+/// descriptor's `entry_kind` is `board-run` or `zephyr-staticlib`), so `std`
+/// is not in its crate root on ANY target. No `target_os` guard saves it: a
+/// `#![no_std]` leaf still compiles for the HOST when nobody passed `--target`,
+/// and the hosted arm of such a guard is then live with no `std` behind it.
+///
+/// `None` is deliberately NOT `false`: an out-of-tree board reaches the
+/// proc-macro through `NROS_BOARD_FRAMEWORK` with no key in this table, and
+/// silently dropping its `fn main()` would be a link error minutes later
+/// instead of the compile error a real mismatch deserves. Callers read `None`
+/// as "assume hosted", which is what they did before this column existed.
+#[must_use]
+pub fn board_entry_links_std(key: &str) -> Option<bool> {
+    BOARD_PATHS
+        .iter()
+        .find(|(k, _, _)| *k == key)
+        .map(|(_, _, links_std)| *links_std)
 }
 
 /// The keys of [`BOARD_PATHS`], comma-separated: the "known boards" list both
@@ -233,7 +316,7 @@ pub fn board_path_keys_csv() -> String {
 
 /// The keys of [`BOARD_PATHS`], in table order.
 pub fn board_path_keys() -> impl Iterator<Item = &'static str> {
-    BOARD_PATHS.iter().map(|(key, _)| *key)
+    BOARD_PATHS.iter().map(|(key, _, _)| *key)
 }
 
 // =============================================================================

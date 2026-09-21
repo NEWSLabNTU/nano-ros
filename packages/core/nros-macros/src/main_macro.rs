@@ -578,6 +578,20 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         Some(d) => framework_for(d),
         None => Framework::OwnedSpin,
     };
+    // Issue 1381 — does an entry for this board link `std`? A `#![no_std]`
+    // entry has no `std` in its crate root on ANY target, so the OwnedSpin
+    // hosted scaffold (which needs `std::env` / `std::time` / `std::process`)
+    // cannot merely be `#[cfg]`-gated away from `target_os = "none"`: a bare
+    // `cargo build` in a bare-metal leaf that names no `--target` compiles the
+    // hosted arm for the host and fails with two `cannot find std in the crate
+    // root`s pointing at the macro call. Unknown board (an out-of-tree board
+    // reaching us through `NROS_BOARD_FRAMEWORK`, or an explicit `board =`
+    // override with no deploy key) ⇒ assume hosted, which is what this emitted
+    // before the column existed.
+    let entry_links_std: bool = deploy_for_framework
+        .as_deref()
+        .and_then(nros_orchestration_ir::board_entry_links_std)
+        .unwrap_or(true);
 
     // Phase 216.B.4 — `custom_tasks = [...]` only applies to the
     // RTIC emit. OwnedSpin / Embassy have no `mod __nros_app { ... }`
@@ -1298,10 +1312,24 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // here and all declared on the executor's primary node.
     // issue 0274 — `spin = "forever"` swaps the env-gated bounded spin for an
     // unbounded loop (production hosted entries opt in at source).
-    let hosted_spin_call: proc_macro2::TokenStream = if args.spin_forever {
-        quote! { __nros_hosted_spin_forever(runtime)?; }
+    //
+    // issue 1381 — the `#[cfg]` moved INSIDE this token stream, because the
+    // call and the function it names appear or vanish together. Left outside,
+    // an empty `hosted_spin_call` would hand the attribute to the
+    // `::core::result::Result::Ok(())` that follows it in the closure, which is
+    // a silently different program rather than a compile error.
+    let hosted_spin_call: proc_macro2::TokenStream = if !entry_links_std {
+        quote! {}
+    } else if args.spin_forever {
+        quote! {
+            #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
+            __nros_hosted_spin_forever(runtime)?;
+        }
     } else {
-        quote! { __nros_hosted_spin_if_requested(runtime)?; }
+        quote! {
+            #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
+            __nros_hosted_spin_if_requested(runtime)?;
+        }
     };
 
     let param_services_call: proc_macro2::TokenStream = if param_services_enabled {
@@ -1432,6 +1460,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // so they keep the `extern "C" fn main`. A pure bare-metal Cortex-M image
     // has no C runtime; its reset vector needs a `#[cortex_m_rt::entry]`. Both
     // funnel through the shared `__nros_entry_run`.
+    // issue 1381 — every `std`-naming token the OwnedSpin entry emits, in one
+    // place and behind one predicate. See [`hosted_std_scaffold_ts`].
+    let hosted_std_scaffold_ts = hosted_std_scaffold_ts(entry_links_std);
+
     let none_entry_ts: proc_macro2::TokenStream =
         if is_baremetal_cortexm_deploy(deploy_for_framework.as_deref()) {
             quote! {
@@ -1611,7 +1643,6 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     #declared_params_call #param_services_call
                     #( #register_calls )*
                     #lifecycle_call
-                    #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
                     #hosted_spin_call
                     ::core::result::Result::Ok(())
                 }
@@ -1855,88 +1886,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 #entry_call
             }
 
-            // `#[allow(dead_code)]` — the multi-tier `run_tiers` entry path
-            // (Phase 228.G) owns its own spin and never calls these, so they
-            // are unused in that emit; harmless in the single-tier path.
-            #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
-            #[allow(dead_code)]
-            fn __nros_env_usize(name: &str, default: usize) -> usize {
-                ::std::env::var(name)
-                    .ok()
-                    .and_then(|v| v.parse::<usize>().ok())
-                    .unwrap_or(default)
-            }
-
-            // issue 0274 — unbounded hosted spin (`spin = "forever"` macro
-            // arg / `NROS_ENTRY_SPIN_MS=forever` env). Runs until a spin
-            // error; the process lifetime is the supervisor's problem.
-            #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
-            #[allow(dead_code)]
-            fn __nros_hosted_spin_forever(
-                runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
-            ) -> ::core::result::Result<
-                (),
-                ::nros::__macro_support::nros_platform::RuntimeError,
-            > {
-                loop {
-                    runtime
-                        .runtime
-                        .spin_once(10)
-                        .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::Spin)?;
-                }
-            }
-
-            #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
-            #[allow(dead_code)]
-            fn __nros_hosted_spin_if_requested(
-                runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
-            ) -> ::core::result::Result<
-                (),
-                ::nros::__macro_support::nros_platform::RuntimeError,
-            > {
-                // issue 0274 — `NROS_ENTRY_SPIN_MS=forever` joins the numeric
-                // values as an env-side unbounded opt-in.
-                if ::std::env::var("NROS_ENTRY_SPIN_MS").as_deref() == Ok("forever") {
-                    return __nros_hosted_spin_forever(runtime);
-                }
-                let total_ms = __nros_env_usize("NROS_ENTRY_SPIN_MS", 0);
-                if total_ms == 0 {
-                    return ::core::result::Result::Ok(());
-                }
-
-                let step_ms = __nros_env_usize("NROS_ENTRY_SPIN_STEP_MS", 10)
-                    .clamp(1, total_ms.max(1));
-                let expect_messages = __nros_env_usize("NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS", 0);
-                let deadline = ::std::time::Instant::now()
-                    + ::std::time::Duration::from_millis(total_ms as u64);
-
-                loop {
-                    runtime
-                        .runtime
-                        .spin_once(step_ms as u32)
-                        .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::Spin)?;
-
-                    let (callbacks, messages) = runtime.runtime.observed_callback_counts();
-                    if expect_messages > 0 && messages >= expect_messages {
-                        ::std::println!(
-                            "nros: hosted spin complete callbacks={callbacks} message_callbacks={messages}"
-                        );
-                        return ::core::result::Result::Ok(());
-                    }
-
-                    if ::std::time::Instant::now() >= deadline {
-                        ::std::println!(
-                            "nros: hosted spin complete callbacks={callbacks} message_callbacks={messages}"
-                        );
-                        if expect_messages > 0 {
-                            return ::core::result::Result::Err(
-                                ::nros::__macro_support::nros_platform::RuntimeError::Spin,
-                            );
-                        }
-                        return ::core::result::Result::Ok(());
-                    }
-                }
-            }
+            // issue 1381 — the hosted spin helpers and the hosted `fn main()`,
+            // emitted ONLY for a board whose entry links `std`. Everything in
+            // this token stream names `std::`, and a `#![no_std]` entry has no
+            // `std` in its crate root whatever it is compiled FOR.
+            #hosted_std_scaffold_ts
 
             // phase-359 W7 — NuttX takes the C-ABI `main`, not libstd's.
             //
@@ -1969,14 +1923,6 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 match __nros_entry_run() {
                     ::core::result::Result::Ok(()) => 0,
                     ::core::result::Result::Err(_) => 1,
-                }
-            }
-
-            #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
-            fn main() {
-                if let ::core::result::Result::Err(e) = __nros_entry_run() {
-                    ::std::eprintln!("{}: {}", ::core::env!("CARGO_PKG_NAME"), e);
-                    ::std::process::exit(1);
                 }
             }
 
@@ -3350,6 +3296,130 @@ fn is_baremetal_cortexm_deploy(deploy: Option<&str>) -> bool {
     matches!(deploy, Some("qemu-mps2-an385" | "mps2-an385"))
 }
 
+/// Issue 1381 — THE ONE place `nros::main!` writes a `std` path.
+///
+/// Everything the OwnedSpin entry emits that names `std` lives here: the
+/// env-driven bounded spin (`std::env`, `std::time`), its unbounded sibling,
+/// and the hosted `fn main()` that reports a boot failure (`std::eprintln!`,
+/// `std::process::exit`). `links_std == false` returns an EMPTY token stream,
+/// so a `#![no_std]` entry never sees any of it.
+///
+/// Why not a `#[cfg]`, which is what this was: `#[cfg(not(any(target_os =
+/// "none", target_os = "nuttx")))]` answers "is the TARGET hosted", and the
+/// question is "does this CRATE have `std`". They differ exactly where issue
+/// 1381 was measured — a `#![no_std]` bare-metal leaf built by a bare `cargo
+/// build` that names no `--target` compiles for the host, takes the hosted arm,
+/// and fails with `cannot find std in the crate root` pointing at the macro
+/// call. The cfg stays on what IS emitted, because a hosted-main board (native,
+/// `freertos-posix`, `threadx-linux`) is still built for more than one OS.
+///
+/// Keeping it in one function is also what makes the rule checkable without a
+/// build: `scripts/check-no-std-entry-emission.py` allows a `std::` path inside
+/// a `quote!` only here, so a second emission site is a gate failure rather
+/// than a leaf nobody can compile.
+///
+/// There is no `core`/`alloc` replacement for these: a wall clock, the process
+/// environment and an exit status are libstd surfaces. The fix for a `no_std`
+/// entry is not to spell them differently but not to emit them — an entry that
+/// cannot link libstd has no hosted spin to configure and no process to exit.
+fn hosted_std_scaffold_ts(links_std: bool) -> proc_macro2::TokenStream {
+    if !links_std {
+        return quote! {};
+    }
+    quote! {
+        // `#[allow(dead_code)]` — the multi-tier `run_tiers` entry path
+        // (Phase 228.G) owns its own spin and never calls these, so they
+        // are unused in that emit; harmless in the single-tier path.
+        #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
+        #[allow(dead_code)]
+        fn __nros_env_usize(name: &str, default: usize) -> usize {
+            ::std::env::var(name)
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(default)
+        }
+
+        // issue 0274 — unbounded hosted spin (`spin = "forever"` macro
+        // arg / `NROS_ENTRY_SPIN_MS=forever` env). Runs until a spin
+        // error; the process lifetime is the supervisor's problem.
+        #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
+        #[allow(dead_code)]
+        fn __nros_hosted_spin_forever(
+            runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
+        ) -> ::core::result::Result<
+            (),
+            ::nros::__macro_support::nros_platform::RuntimeError,
+        > {
+            loop {
+                runtime
+                    .runtime
+                    .spin_once(10)
+                    .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::Spin)?;
+            }
+        }
+
+        #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
+        #[allow(dead_code)]
+        fn __nros_hosted_spin_if_requested(
+            runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
+        ) -> ::core::result::Result<
+            (),
+            ::nros::__macro_support::nros_platform::RuntimeError,
+        > {
+            // issue 0274 — `NROS_ENTRY_SPIN_MS=forever` joins the numeric
+            // values as an env-side unbounded opt-in.
+            if ::std::env::var("NROS_ENTRY_SPIN_MS").as_deref() == Ok("forever") {
+                return __nros_hosted_spin_forever(runtime);
+            }
+            let total_ms = __nros_env_usize("NROS_ENTRY_SPIN_MS", 0);
+            if total_ms == 0 {
+                return ::core::result::Result::Ok(());
+            }
+
+            let step_ms = __nros_env_usize("NROS_ENTRY_SPIN_STEP_MS", 10)
+                .clamp(1, total_ms.max(1));
+            let expect_messages = __nros_env_usize("NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS", 0);
+            let deadline = ::std::time::Instant::now()
+                + ::std::time::Duration::from_millis(total_ms as u64);
+
+            loop {
+                runtime
+                    .runtime
+                    .spin_once(step_ms as u32)
+                    .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::Spin)?;
+
+                let (callbacks, messages) = runtime.runtime.observed_callback_counts();
+                if expect_messages > 0 && messages >= expect_messages {
+                    ::std::println!(
+                        "nros: hosted spin complete callbacks={callbacks} message_callbacks={messages}"
+                    );
+                    return ::core::result::Result::Ok(());
+                }
+
+                if ::std::time::Instant::now() >= deadline {
+                    ::std::println!(
+                        "nros: hosted spin complete callbacks={callbacks} message_callbacks={messages}"
+                    );
+                    if expect_messages > 0 {
+                        return ::core::result::Result::Err(
+                            ::nros::__macro_support::nros_platform::RuntimeError::Spin,
+                        );
+                    }
+                    return ::core::result::Result::Ok(());
+                }
+            }
+        }
+
+        #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
+        fn main() {
+            if let ::core::result::Result::Err(e) = __nros_entry_run() {
+                ::std::eprintln!("{}: {}", ::core::env!("CARGO_PKG_NAME"), e);
+                ::std::process::exit(1);
+            }
+        }
+    }
+}
+
 struct RticBoardSpec {
     device_path: SynPath,
     dispatchers: Vec<Ident>,
@@ -4085,5 +4155,62 @@ mod framework_ssot_tests {
         unsafe { std::env::set_var("NROS_BOARD_FRAMEWORK", "embassy") };
         assert_eq!(try_framework_for("native").unwrap(), Framework::Embassy);
         unsafe { std::env::remove_var("NROS_BOARD_FRAMEWORK") };
+    }
+
+    /// Issue 1381 — the `std`-naming scaffold is emitted for a hosted board and
+    /// for NO other, and the composition the entry point uses is the one tested.
+    ///
+    /// Asserting on the TOKEN STREAM rather than on the boolean: the boolean is
+    /// what the emitter reads, but the property that matters to a `#![no_std]`
+    /// leaf is that no `std` token reaches it. A refactor that keeps the flag
+    /// and emits the tokens anyway passes a flag test and fails this one.
+    #[test]
+    fn only_a_board_whose_entry_links_std_gets_the_std_scaffold() {
+        let mut hosted = 0;
+        let mut freestanding = 0;
+        for key in nros_orchestration_ir::board_path_keys() {
+            // The exact composition `main_impl` performs.
+            let links_std = nros_orchestration_ir::board_entry_links_std(key).unwrap_or(true);
+            let rendered = hosted_std_scaffold_ts(links_std).to_string();
+            let names_std = rendered.contains("std");
+            assert_eq!(
+                names_std,
+                links_std,
+                "`{key}`: links_std = {links_std}, but the emitted scaffold {} a `std` path",
+                if names_std { "names" } else { "does not name" }
+            );
+            if links_std {
+                hosted += 1;
+            } else {
+                freestanding += 1;
+            }
+        }
+        // Both arms must be exercised, or the assertion above is one-sided.
+        assert!(hosted >= 2, "only {hosted} hosted board key(s)");
+        assert!(
+            freestanding >= 10,
+            "only {freestanding} freestanding board key(s)"
+        );
+    }
+
+    /// An UNKNOWN board key keeps the pre-1381 behaviour: assume hosted.
+    ///
+    /// An out-of-tree board reaches this macro through `NROS_BOARD_FRAMEWORK`
+    /// with no row in `BOARD_PATHS`, and dropping its `fn main()` would be an
+    /// undefined-`main` link error minutes later instead of a compile error
+    /// where the mismatch is.
+    #[test]
+    fn an_unknown_board_key_is_assumed_hosted() {
+        assert_eq!(
+            nros_orchestration_ir::board_entry_links_std("some-out-of-tree-board"),
+            None
+        );
+        let links_std =
+            nros_orchestration_ir::board_entry_links_std("some-out-of-tree-board").unwrap_or(true);
+        assert!(
+            hosted_std_scaffold_ts(links_std)
+                .to_string()
+                .contains("std")
+        );
     }
 }
