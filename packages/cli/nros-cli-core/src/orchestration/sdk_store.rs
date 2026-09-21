@@ -392,9 +392,20 @@ impl SdkLock {
         );
     }
 
+    /// Write the lock — but only when its CONTENT changed.
+    ///
+    /// Issue 1262 made this reachable on every run rather than only on an
+    /// install (a present tool is recorded now), and the lazy `ensure_tools`
+    /// path reaches it on every `nros build`. An unconditional write would then
+    /// bump the file's mtime for saying nothing, which is the same "emitter
+    /// that cascades a rebuild" shape codegen's write-if-changed already avoids
+    /// one layer up.
     pub fn save(&self, path: &Path) -> Result<()> {
-        std::fs::write(path, toml::to_string_pretty(self)?)
-            .wrap_err_with(|| format!("write {}", path.display()))
+        let text = toml::to_string_pretty(self)?;
+        if std::fs::read_to_string(path).is_ok_and(|cur| cur == text) {
+            return Ok(());
+        }
+        std::fs::write(path, text).wrap_err_with(|| format!("write {}", path.display()))
     }
 }
 

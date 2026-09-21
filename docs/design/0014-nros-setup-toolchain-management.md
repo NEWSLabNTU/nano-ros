@@ -236,6 +236,16 @@ $NROS_HOME/sdk/<tool>/<version>/    # = {prefix}
   workspace) captures the resolved `(tool, version, sha256, provenance)` actually
   in the store — index = *desired*, lock = *installed*, like Cargo.lock. A clone
   with the lock reproduces the exact toolchain set.
+  - *Installed in the store, not installed by this command* (issue 1262). Since
+    RFC-0095 the store is shared by every project on the host, so the first
+    project to ask installs and everyone after that gets `present (skip)` — and
+    each of them still records it. Asking for a tool is what puts it in the lock.
+  - *Anchored to the project, never to the working directory* (issue 1262). The
+    lock is written beside the nearest pin file up the path
+    (`nros-sdk.lock`, `nros-sdk-index.toml`, `nros-toolchain.toml`), falling back
+    to the directory the command ran in when a project carries none yet. That is
+    the same walk `nros store gc` reads these files back with, so a lock is
+    always written where its readers look.
 - **Bumping a tool:** edit `version` in the index → CI builds the new per-host
   assets under the new tag → users get it on the next `nros setup` (or stay on
   the locked version until they update). The source `ref` bumps in lockstep, so

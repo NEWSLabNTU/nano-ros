@@ -1187,7 +1187,24 @@ fn run_step(
                 return out;
             }
             match action {
-                InstallAction::Present => {}
+                // Issue 1262 — a tool ALREADY in the store is recorded too.
+                // The lock answers "what does this project's toolchain set
+                // consist of", not "what did this command do": RFC-0014 §4
+                // calls it *installed* against the index's *desired*, and since
+                // RFC-0095 made the store shared by every project on the host,
+                // "installed by me" and "installed in the store" stopped being
+                // the same set. Recording only the first meant the project that
+                // asked SECOND for a tool committed a lock naming one SDK when
+                // it needs two — and, worse, left the store's own gc guard
+                // (`store::pins_naming`, fed from `nros-sdk.lock`) believing
+                // nobody pinned that entry.
+                //
+                // The provenance is not re-derived: `plan_install` returns
+                // `Present` precisely BECAUSE `<prefix>/.nros-provenance` was
+                // readable, so this reads back the marker that decision was
+                // made on. `installed` stays false — nothing was installed, and
+                // the "ready" / smoke lines key on that, not on the lock.
+                InstallAction::Present => out.provenance = Provenance::read(prefix),
                 InstallAction::Unavailable if mode == Mode::Lazy => {
                     ctx.say(format!(
                         "nros: {} {} unavailable for {host} (no prebuilt, no source) — \
@@ -1648,6 +1665,80 @@ mod tests {
         assert!(
             format!("{err:#}").contains("failed their smoke check"),
             "{err:#}"
+        );
+    }
+
+    /// Issue 1262 — the SECOND project to ask for a tool gets it in its lock.
+    ///
+    /// The store is shared (RFC-0095), so whoever asks first installs and
+    /// everyone after that plans `Present`. Recording only the installer left
+    /// every later project with a lock that under-reports its own toolchain —
+    /// the reported case committed a lock naming one Zephyr SDK while needing
+    /// two, and left the store's gc guard believing nobody pinned the other.
+    ///
+    /// Both halves are asserted, because "it is in the lock" is only the
+    /// interesting answer if nothing was installed to put it there.
+    #[cfg(unix)]
+    #[test]
+    fn a_tool_already_in_the_shared_store_reaches_the_next_project_s_lock() {
+        let dir = crate::test_support::scratch_dir("e2_present_is_locked");
+        let (url, sha) = pack(&dir, "good", "widget 1.0");
+        let idx = index(&widget_entry("shared", &url, &sha));
+        let root = dir.join("store");
+        let host = host_key();
+        let plan = |m: Mode| {
+            SessionPlan::resolve(
+                &idx,
+                &["shared"],
+                &inputs(&root, &host, m),
+                &mut |_| PrereqState::Present,
+                &no_asks(),
+            )
+            .unwrap()
+        };
+
+        // Project A provisions it — the ordinary install path.
+        let a_lock = dir.join("a.lock");
+        let a = run_pipelined(&plan(Mode::Tools), &dir, None, false, three_at_once())
+            .finish(Some(&a_lock))
+            .unwrap();
+        assert!(a.installed, "the first ask must actually install");
+        let a_entry = SdkLock::load(&a_lock).unwrap().tool.remove("shared");
+        let a_entry = a_entry.expect("the installer's own lock names it");
+
+        // Project B asks for the same tool against the same store.
+        let second = plan(Mode::Tools);
+        assert!(
+            matches!(
+                &second.steps[0].kind,
+                StepKind::Tool {
+                    action: InstallAction::Present,
+                    ..
+                }
+            ),
+            "precondition: the second ask must plan as Present, or this test \
+             is measuring an install"
+        );
+        let b_lock = dir.join("b.lock");
+        let b = run_pipelined(&second, &dir, None, false, three_at_once())
+            .finish(Some(&b_lock))
+            .unwrap();
+        assert!(!b.installed, "nothing is installed the second time");
+        assert!(b.errors.is_empty(), "{:?}", b.errors);
+        assert!(b.lock_written, "…and the lock is written anyway");
+
+        let locked = SdkLock::load(&b_lock).unwrap();
+        assert_eq!(
+            locked.tool.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["shared"],
+            "the project that asked SECOND must have it too"
+        );
+        assert_eq!(locked.tool["shared"].version, "1.0");
+        assert_eq!(locked.tool["shared"].sha256.as_deref(), Some(sha.as_str()));
+        assert_eq!(
+            locked.tool["shared"], a_entry,
+            "read back from the store's own .nros-provenance, so the two \
+             projects record the same thing"
         );
     }
 

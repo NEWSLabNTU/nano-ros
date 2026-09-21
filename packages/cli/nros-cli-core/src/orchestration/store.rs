@@ -609,6 +609,50 @@ pub fn discover_pin_files(start: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// Where the `nros-sdk.lock` that `start` belongs to lives — the WRITER's
+/// answer, derived from the READER's walk so the two cannot disagree.
+///
+/// Issue 1262: every writer spelled this `PathBuf::from(LOCK_FILE)`, a RELATIVE
+/// path, so the directory a user happened to stand in decided which file got
+/// written. Two runs against the same store and the same project then disagreed
+/// about that project — the reported case left a 328-byte lock in the nano-ros
+/// checkout and none in the project the tools were for. A lock nobody reads is
+/// worse than no lock: `nros store gc` consults the pin files reachable from
+/// where it runs ([`discover_pin_files`]), so an entry recorded in the wrong
+/// directory is an entry the store believes nobody pinned.
+///
+/// One rule: **the nearest ancestor of `start` carrying any pin file is the
+/// project**, and the lock belongs beside them. RFC-0014 §4 pairs them — index
+/// = *desired*, lock = *installed* — so the directory that declares what a
+/// project wants is the directory that records what it got, and a run from a
+/// subdirectory updates that lock rather than starting a second one.
+///
+/// It must be the nearest DIRECTORY, not the nearest lock: a checkout nested
+/// inside another project sees the outer lock up the path, and writing through
+/// to it would record the inner project's toolchain in the outer one's file.
+/// That is also why this cannot simply pick a `LOCK_FILE` out of
+/// [`discover_pin_files`] — that function answers a different question (which
+/// pin files to CONSULT, one per name, however far up they are).
+///
+/// Falls back to `start` — a project carrying no pin file yet, where nothing on
+/// the path says where the project is. That is the one surviving use of the
+/// working directory, and it is self-correcting: the lock it creates is a pin
+/// file, so every later run finds it by the rule above.
+///
+/// `start` is a PARAMETER, never a `current_dir()` read inside: the choice has
+/// to be a pure function of its inputs for a test to drive it without
+/// `set_current_dir`, a process-global that leaks between parallel tests
+/// (issue 1101) — and in-tree every ancestor of a test's cwd is this checkout,
+/// which HAS an `nros-sdk-index.toml`, so a cwd-keyed derivation could never
+/// observe the fallback here.
+pub fn lock_path_for(start: &Path) -> PathBuf {
+    start
+        .ancestors()
+        .find(|dir| PIN_FILE_NAMES.iter().any(|n| dir.join(n).is_file()))
+        .unwrap_or(start)
+        .join(LOCK_FILE)
+}
+
 /// The pin sources a reclaim verb should consult: the files named explicitly,
 /// then whatever [`discover_pin_files`] finds from `search_from`.
 ///
@@ -837,5 +881,89 @@ mod tests {
         let src = load_pin_file(&path).unwrap();
         assert!(src.rules.contains(&PinRule::AnyVersion("0.6.2".into())));
         assert!(src.rules.contains(&PinRule::AnyVersion("stable".into())));
+    }
+
+    // ---- where a lock belongs (issue 1262) ---------------------------------
+
+    /// A scratch project: `<root>/<name>/sub/deeper`, with whatever pin files
+    /// the caller names created at the project root. Returns the project root.
+    fn project(dir: &Path, name: &str, pins: &[&str]) -> PathBuf {
+        let root = dir.join(name);
+        std::fs::create_dir_all(root.join("sub").join("deeper")).unwrap();
+        for pin in pins {
+            std::fs::write(root.join(pin), "").unwrap();
+        }
+        root
+    }
+
+    /// The acceptance case the issue names: run `nros setup --tool`
+    /// from a subdirectory and the PROJECT's lock is updated, not a second one
+    /// beside you. Before the fix every writer spelled this
+    /// `PathBuf::from(LOCK_FILE)`, so a run from `sub/deeper` left a lock in
+    /// `sub/deeper`.
+    #[test]
+    fn a_run_from_a_subdirectory_lands_on_the_project_s_existing_lock() {
+        let dir = crate::test_support::scratch_dir("lock_path_subdir");
+        let root = project(&dir, "proj", &[LOCK_FILE, "nros-sdk-index.toml"]);
+        for from in [
+            root.clone(),
+            root.join("sub"),
+            root.join("sub").join("deeper"),
+        ] {
+            assert_eq!(
+                lock_path_for(&from),
+                root.join(LOCK_FILE),
+                "a run from {} must update the project's lock",
+                from.display()
+            );
+        }
+    }
+
+    /// No lock yet, so the directory that declares what the project
+    /// WANTS is the directory that records what it GOT (RFC-0014 §4). The
+    /// first `--tool` in a project therefore creates the lock beside its index
+    /// rather than wherever the provisioning recipe happened to `cd`.
+    #[test]
+    fn with_no_lock_yet_the_project_is_where_its_index_is() {
+        let dir = crate::test_support::scratch_dir("lock_path_index");
+        let root = project(&dir, "proj", &["nros-sdk-index.toml"]);
+        assert_eq!(
+            lock_path_for(&root.join("sub").join("deeper")),
+            root.join(LOCK_FILE)
+        );
+
+        // A `nros-toolchain.toml` says the same thing.
+        let pinned = project(&dir, "pinned", &[super::super::pin::FILE_NAME]);
+        assert_eq!(lock_path_for(&pinned.join("sub")), pinned.join(LOCK_FILE));
+    }
+
+    /// The NEAREST project wins — a checkout nested inside another one keeps
+    /// its own lock instead of writing through to the outer tree.
+    #[test]
+    fn the_nearest_project_wins_over_an_outer_one() {
+        let dir = crate::test_support::scratch_dir("lock_path_nested");
+        let outer = project(&dir, "outer", &[LOCK_FILE, "nros-sdk-index.toml"]);
+        let inner = project(&outer, "inner", &["nros-sdk-index.toml"]);
+        assert_eq!(lock_path_for(&inner.join("sub")), inner.join(LOCK_FILE));
+        assert_eq!(lock_path_for(&outer.join("sub")), outer.join(LOCK_FILE));
+    }
+
+    /// The fallback — nothing on the path says where the project is, so the lock is
+    /// created where the command ran. This is the ONLY surviving use of the
+    /// working directory, and rung 1 makes every later run agree with it.
+    #[test]
+    fn with_no_pin_file_anywhere_the_lock_is_created_where_the_command_ran() {
+        let dir = crate::test_support::scratch_dir("lock_path_bare");
+        let here = dir.join("nothing").join("here");
+        std::fs::create_dir_all(&here).unwrap();
+        // Precondition: this host must really have no pin file above the
+        // scratch tree, or the assertion below is testing rung 2 by accident.
+        assert_eq!(
+            discover_pin_files(&here),
+            Vec::<PathBuf>::new(),
+            "a pin file above {} makes this case untestable here",
+            here.display()
+        );
+        assert_eq!(lock_path_for(&here), here.join(LOCK_FILE));
     }
 }
