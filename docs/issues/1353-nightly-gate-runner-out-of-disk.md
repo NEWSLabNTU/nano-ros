@@ -198,3 +198,36 @@ tier is broken", and read `just check fast` in that same job separately: it
 passed in run 34666582331 (step 13), because the scheduled job provisions the
 submodule sources that make `capability-conditionals` and
 `xrce-vendored-versions` fail everywhere else.
+
+## Step 1 is implemented (2026-09-22) — the report, not the remedy
+
+`scripts/ci/disk-report.sh` prints `df -h` for the workspace, `/` and `/tmp`
+(deduped to one row per filesystem), `du -sh` for the workspace `target/`, the
+CLI's `packages/cli/target/`, `build/`, `third-party/`, `examples/`, the sccache
+dir, `~/.nros` and `~/.cargo`, and the ten biggest children of `target/` —
+which is where both quoted measurements above landed
+(`target/debug/deps/…rmeta`). It is wired into:
+
+* `gate.yml`, bracketing `just check build` on the schedule/dispatch events —
+  the placement this section asks for;
+* `host-tests.yml`, bracketing `just ci tier1` — the extension the 2026-09-17/18
+  section argues for, since this lane fills the same disk without entering the
+  compile tier.
+
+Both "after" reports run under `always()`, not `!cancelled()`: the run that
+FAILED is the one whose numbers matter, and the default `success()` would skip
+exactly it. The script never fails a job — every probe tolerates its own
+failure, because a report that can break the lane it reports on is worse than
+no report.
+
+**This changes nothing about the disk.** It exists so that step 2 — deciding
+between "the tier needs more than a hosted runner has" and "something is
+accumulating within the job" — is made from numbers instead of inference. The
+acceptance in "What would close it" is unchanged: a scheduled run that reaches
+a verdict on `check build` and `check no-std`, three nights running.
+
+Rate, re-measured for this cycle: 2026-09-22 saw this cause on FIVE lanes —
+scheduled `gate` (02:02, runner lost communication, 2-line log), `live-peer`
+(04:16, `_diag/Worker_*.log` write), `host-tests` schedule (03:19) and
+`host-tests` push twice (05:19 and 09:55, the latter quoting
+`rustc-LLVM ERROR: IO failure on output stream: No space left on device`).
