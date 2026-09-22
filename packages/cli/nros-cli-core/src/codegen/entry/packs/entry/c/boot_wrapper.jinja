@@ -31,18 +31,25 @@
   Before that the namespace was baked and read by nothing: the blob stated it,
   `nros_boot_config_namespace()` could return it, and no call site asked.
 
-  The `run_tiers` calls above deliberately do NOT, yet — issue 1442. Giving
-  them one means a `_ns` twin of four more C-ABI symbols (native plus the three
-  per-RTOS tier runners), which is a wider ABI move than the single-executor
-  path needed, and the blob only ever carries identity for a ONE-NODE plan
-  (`boot_config_view`), which a tiered plan rarely is.
+  Issue 1442 — and so does the `run_tiers` call. That took the `_ns` twin of
+  four more C-ABI symbols (native plus the three per-RTOS tier runners), which
+  is why 1434 carved it out; the runner names come from
+  `BoardFamily::c_abi_runners`, so this template does not name either spelling.
+  The population it reaches is narrow — the blob only ever carries identity for
+  a ONE-NODE plan (`boot_config_view`) and a tiered plan rarely is one — but
+  narrow is not none, and a runner that drops the value is what a post-link
+  patcher of `.nros_boot_config` silently patches into nothing.
+
+  What travels is the SESSION's namespace. Each tier's own nodes carry their
+  own `(node name, node namespace, group)` triples in the tier-spec array
+  (issue 1172) and are unaffected either way.
 -#}
 {%- set call -%}
 {%- if boot.tiers -%}
 {%- if boot.shape == "host" -%}
-{{ boot.run_tiers_fn }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u)
+{{ boot.run_tiers_fn }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u)
 {%- else -%}
-{{ boot.run_tiers_fn }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u)
+{{ boot.run_tiers_fn }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u)
 {%- endif -%}
 {%- elif boot.shape == "host" -%}
 {{ boot.run_components_fn }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)

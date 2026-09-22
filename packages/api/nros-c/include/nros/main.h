@@ -169,6 +169,29 @@ NROS_PUBLIC int32_t nros_board_native_run_tiers(const char* session_name,
                                                 const nros_native_tier_spec_t* tiers,
                                                 size_t n_tiers);
 
+/* Issue 1442 — the same runner, plus the primary session's NAMESPACE.
+ *
+ * Issue 1434 threaded the launch-declared namespace to the single-executor
+ * runners and carved the tiered ones out; this is that carve-out closed. The
+ * parameter means exactly what it means one runner over
+ * (`nros_board_native_run_components_named_ns`): NULL or empty is "this image
+ * declares none", which resolves to the ROOT, never to the empty namespace.
+ * It is the BAKED rung of RFC-0045's precedence model A, and this runner is
+ * HOSTED, so `$NROS_NODE_NAME` and `$NROS_NODE_NAMESPACE` still outrank it.
+ *
+ * The SESSION is what this names. A tier's own nodes carry their own
+ * `(name, namespace, group)` triples in `nros_native_tier_spec_t::groups`
+ * (issue 1172) and are unaffected.
+ *
+ * Additive rather than a fourth parameter above, for the reason
+ * `nros_cpp_init_rmw` is additive over `nros_cpp_init` (issue 1050): an entry
+ * TU generated before this existed still calls the three-parameter spelling.
+ * Defined in nros-cpp. */
+NROS_PUBLIC int32_t nros_board_native_run_tiers_ns(const char* session_name,
+                                                   const char* node_namespace,
+                                                   const nros_native_tier_spec_t* tiers,
+                                                   size_t n_tiers);
+
 /* Phase 235.B — weak network-readiness hook for embedded board runners.
  *
  * Default: no-op. The canonical in-tree Zephyr path auto-brings-up networking
@@ -216,6 +239,24 @@ NROS_PUBLIC int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t d
                                                   const char* session_name,
                                                   const nros_native_tier_spec_t* tiers,
                                                   size_t n_tiers);
+
+/* Issue 1442 — the same runner, plus the primary session's NAMESPACE.
+ *
+ * `node_namespace` is the launch-declared namespace the generated entry reads
+ * out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or
+ * empty means the image declares none, which resolves to the ROOT — never to
+ * the empty namespace. There is no environment rung on an RTOS, so on these
+ * boards the bake IS the answer; the locator and the domain stay the board's,
+ * baked by cmake through `<nros/entry_config.h>`.
+ *
+ * Additive rather than a fifth parameter above: an entry TU generated before
+ * this existed still calls the four-parameter spelling (issue 1050's rule).
+ * Same file, same lane. */
+NROS_PUBLIC int32_t nros_board_freertos_run_tiers_ns(const char* locator, uint8_t domain_id,
+                                                     const char* session_name,
+                                                     const char* node_namespace,
+                                                     const nros_native_tier_spec_t* tiers,
+                                                     size_t n_tiers);
 
 /* phase-432 W3.1 — run a SINGLE-executor embedded C entry on ANY RTOS board:
  * the C-ABI twin of `nros::board::<Rtos>Board::run_components`, so a C-only
@@ -280,6 +321,16 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t dom
                                                 const nros_native_tier_spec_t* tiers,
                                                 size_t n_tiers);
 
+/* Issue 1442 — the same runner, plus the primary session's NAMESPACE. Same
+ * contract as `nros_board_freertos_run_tiers_ns` above: NULL or empty resolves
+ * to the ROOT, the bake is the only rung on an RTOS, locator and domain stay
+ * the board's. Additive for issue 1050's reason. */
+NROS_PUBLIC int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
+                                                   const char* session_name,
+                                                   const char* node_namespace,
+                                                   const nros_native_tier_spec_t* tiers,
+                                                   size_t n_tiers);
+
 /* phase-281 W3 (nuttx) (RFC-0015 Model 1) — run a multi-tier embedded C/C++
  * entry on NuttX: open ONE RMW session on the caller's thread (the NuttX
  * `app_main` thread), spawn one `pthread` per non-boot tier (NuttX is POSIX —
@@ -294,6 +345,16 @@ NROS_PUBLIC int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t doma
                                                const char* session_name,
                                                const nros_native_tier_spec_t* tiers,
                                                size_t n_tiers);
+
+/* Issue 1442 — the same runner, plus the primary session's NAMESPACE. Same
+ * contract as `nros_board_freertos_run_tiers_ns` above: NULL or empty resolves
+ * to the ROOT, the bake is the only rung on an RTOS, locator and domain stay
+ * the board's. Additive for issue 1050's reason. */
+NROS_PUBLIC int32_t nros_board_nuttx_run_tiers_ns(const char* locator, uint8_t domain_id,
+                                                  const char* session_name,
+                                                  const char* node_namespace,
+                                                  const nros_native_tier_spec_t* tiers,
+                                                  size_t n_tiers);
 
 #ifdef __cplusplus
 } /* extern "C" */

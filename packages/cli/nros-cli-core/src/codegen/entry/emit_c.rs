@@ -898,8 +898,8 @@ mod tests {
         assert!(src.contains("10LL"), "low priority 10LL; src:\n{src}");
         // main calls run_tiers, not run_components.
         assert!(
-            src.contains("nros_board_native_run_tiers("),
-            "main must call nros_board_native_run_tiers; src:\n{src}"
+            src.contains("nros_board_native_run_tiers_ns("),
+            "main must call nros_board_native_run_tiers_ns; src:\n{src}"
         );
         assert!(
             !src.contains("return nros_board_native_run_components"),

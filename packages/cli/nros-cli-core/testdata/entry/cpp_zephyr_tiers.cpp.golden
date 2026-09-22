@@ -107,5 +107,5 @@ __attribute__((section(".nros_boot_config"), used))
 };
 
 int main(void) {
-    return static_cast<int>(::nros::board::ZephyrBoard::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, 2u));
+    return static_cast<int>(::nros::board::ZephyrBoard::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u));
 }

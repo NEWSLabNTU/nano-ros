@@ -699,31 +699,48 @@ emitters did"
     );
 }
 
-/// Which executor branch a rendered entry took, read from what it CALLS —
-/// not from the predicate, so a pack that re-derives the branch (or renders
-/// half of one) is caught by its output.
-fn branch_of(src: &str) -> super::ExecutorShape {
-    use super::ExecutorShape;
-    let tiers = src.contains("run_tiers(");
-    let sched = src.contains("nros_cpp_create_sched_context_from_policy(")
-        && src.contains("nros_cpp_bind_node_name_sched(")
-        && src.contains("nros_cpp_bind_group_sched(");
-    let any_sched = src.contains("nros_cpp_create_sched_context_from_policy(");
-    // The runner is spelled four ways across the packs and boards, and every
-    // one of them is `run_components` plus a suffix: native C carries `_named`
-    // from its two-overload history, and issue 1434 added `_ns` to both C-ABI
-    // runners when the launch-declared namespace became an argument. Read the
-    // PREFIX and let the suffix be anything identifier-shaped, rather than
-    // listing the spellings — the list was two long and it reported "no
-    // recognisable branch" for all four of 1434's, a failure about this test's
-    // vocabulary rather than about the branch it exists to check.
-    let components = src.split("run_components").skip(1).any(|rest| {
+/// Does `src` CALL a runner whose name starts with `bare` — in any of the
+/// suffixed spellings the C ABI and the C++ headers use?
+///
+/// A suffix is identifier-shaped (`_named`, `_ns`, `_named_ns`) or empty, and
+/// what must follow it is the open paren, so a bare mention in a comment or a
+/// banner line is not a call.
+///
+/// Issue 1442 — ONE predicate for both branches below. Enumerating the
+/// spellings is what broke this test on issue 1434 and would have broken it
+/// again here, so the second branch gets the first's fix rather than a second
+/// copy of the same idea (CLAUDE.md's "one shared helper" rule).
+fn calls_runner(src: &str, bare: &str) -> bool {
+    src.split(bare).skip(1).any(|rest| {
         let suffix: &str = rest.split('(').next().unwrap_or("");
         rest.len() > suffix.len()
             && suffix
                 .chars()
                 .all(|c| c == '_' || c.is_ascii_lowercase() || c.is_ascii_digit())
-    });
+    })
+}
+
+/// Which executor branch a rendered entry took, read from what it CALLS —
+/// not from the predicate, so a pack that re-derives the branch (or renders
+/// half of one) is caught by its output.
+fn branch_of(src: &str) -> super::ExecutorShape {
+    use super::ExecutorShape;
+    let sched = src.contains("nros_cpp_create_sched_context_from_policy(")
+        && src.contains("nros_cpp_bind_node_name_sched(")
+        && src.contains("nros_cpp_bind_group_sched(");
+    let any_sched = src.contains("nros_cpp_create_sched_context_from_policy(");
+    // Each runner is spelled several ways across the packs and boards, and
+    // every one is the bare name plus an identifier-shaped suffix: native C's
+    // `run_components` carries `_named` from its two-overload history, issue
+    // 1434 added `_ns` to both C-ABI `run_components`, and issue 1442 added it
+    // to all four `run_tiers`. Neither branch may enumerate — the
+    // `run_components` half already learned that (the list was two long and
+    // reported "no recognisable branch" for all four of 1434's spellings, a
+    // failure about this test's vocabulary rather than about the branch it
+    // exists to check) and the `run_tiers` half was still an exact
+    // `contains("run_tiers(")` that 1442 would have broken the same way.
+    let tiers = calls_runner(src, "run_tiers");
+    let components = calls_runner(src, "run_components");
     match (tiers, sched, any_sched, components) {
         (true, false, false, false) => ExecutorShape::Tiers,
         (false, true, true, true) => ExecutorShape::SchedContexts,

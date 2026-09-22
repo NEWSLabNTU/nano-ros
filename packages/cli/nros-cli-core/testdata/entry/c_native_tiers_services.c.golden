@@ -5,7 +5,7 @@
 *
 * DO NOT EDIT — regenerated at configure time. Routes each launch node
 * to the real executor via its `NROS_C_COMPONENT` factory/configure seam
-* (no synthesizing interpreter); `nros_board_native_run_tiers`
+* (no synthesizing interpreter); `nros_board_native_run_tiers_ns`
 * owns init/spin/shutdown.
 */
 
@@ -126,6 +126,6 @@ __attribute__((section(".nros_boot_config"), used))
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
-    return nros_board_native_run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, 2u);
+    return nros_board_native_run_tiers_ns(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u);
 }
 
