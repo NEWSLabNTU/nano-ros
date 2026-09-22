@@ -231,3 +231,66 @@ scheduled `gate` (02:02, runner lost communication, 2-line log), `live-peer`
 (04:16, `_diag/Worker_*.log` write), `host-tests` schedule (03:19) and
 `host-tests` push twice (05:19 and 09:55, the latter quoting
 `rustc-LLVM ERROR: IO failure on output stream: No space left on device`).
+
+## The first measurement (2026-09-22) — it is BOTH shapes, and the split is 42 G / 22 G
+
+Run **35726999134** (`host-tests`, push, `7c0791416`), job **106742973318** — the
+first to carry the report added above. Both brackets fired, and the step
+between them failed the same way as every other instance of this issue
+(`FAIL (cpp, rc=101)`, `recipe tier1 failed`), so these are the numbers of a
+real occurrence rather than a dry run.
+
+**Before `just ci tier1`:**
+
+```
+/dev/root       146G  124G   22G  86% /__w
+404M  packages/cli/target
+ 10G  build
+ 31M  third-party
+ 42G  examples
+ 50M  /github/home/.nros
+1.2G  /usr/local/cargo
+```
+
+**After it:**
+
+```
+/dev/root       146G  146G  244K 100% /__w
+4.1G  target            (debug 2.9G, nros-relwithdebinfo 938M, nros-c-param-services 329M)
+ 13G  packages/cli/target
+ 13G  build
+ 31M  third-party
+ 42G  examples
+```
+
+### What this settles
+
+Step 2 above asks to decide between "the tier needs more than a hosted runner
+has" and "something accumulates within the job". **It is both, and they are not
+equal partners:**
+
+* **The job arrives at the tier with 86 % of the disk already gone** — `examples/`
+  alone is **42 G**, built by `Build rust core fixtures` and `Build workspace
+  fixtures` in this same job, plus 10 G in `build/`. That is the accumulation
+  half, and it is the larger number.
+* **`just ci tier1` then wants more than the 22 G that is left.** It spent all
+  of it: `packages/cli/target` **404 M → 13 G** (+12.6 G), a fresh workspace
+  `target/` at **4.1 G**, `build/` +3 G. The warning
+  `Free space left: 70 MB` lands seconds after the step starts, and the step
+  runs another 24 minutes before `cpp` fails on the write.
+
+So raising the runner size alone would buy roughly one more run's headroom,
+and pruning the tier's own build alone would not reach the 42 G that is already
+spent when it starts. The two candidate remedies in step 3 — prune what the
+tier builds, free space explicitly at the start, or a bigger runner — can now be
+priced against these numbers instead of guessed.
+
+### One number the report does not yet give
+
+`examples/` is a single 42 G total; which fixture families dominate it is not
+broken down, because the report's per-child expansion only covers `target/`.
+Whoever takes step 3 should add `du -sh examples/*` (or the top N) before
+deciding what to prune — the same one-line change to `scripts/ci/disk-report.sh`.
+
+Acceptance is unchanged: a scheduled run that reaches a VERDICT on `check build`
+and `check no-std`, three nights running.
