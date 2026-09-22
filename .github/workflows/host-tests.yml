@@ -387,6 +387,15 @@ jobs:
       #
       # The fixture builds above stay: the tier ASSERTS its preconditions, it
       # does not provision them.
+      # Issue 1353 — this lane fills the SAME disk without ever entering the
+      # compile tier (measured 2026-09-12 and again 2026-09-17: the write that
+      # fails is into the host workspace's `target/debug` during
+      # `check test-targets`), so the report the issue asks for belongs here
+      # too, not only around gate.yml's compile-tier steps.
+      - name: Disk report (before ci tier1) — issue 1353
+        if: ${{ !cancelled() }}
+        run: scripts/ci/disk-report.sh "before just ci tier1"
+
       - name: just ci tier1
         env:
           CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
@@ -411,6 +420,11 @@ jobs:
           set -e
           echo "::group::ci tier1 output (tail)"; tail -200 build/ci-logs/ci-tier1.log; echo "::endgroup::"
           exit $rc
+
+      # `always()`: the failing run is the one whose numbers matter.
+      - name: Disk report (after ci tier1) — issue 1353
+        if: ${{ always() }}
+        run: scripts/ci/disk-report.sh "after just ci tier1"
 
       - name: Report skipped fixtures (post-run)
         if: always()

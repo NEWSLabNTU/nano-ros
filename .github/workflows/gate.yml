@@ -999,11 +999,27 @@ jobs:
       #
       # `!cancelled()` on each is what makes the split work: GitHub skips later
       # steps after a failure only under the default `success()` condition.
+      # Issue 1353 step 1 — the compile tier dies of `No space left on device`
+      # and leaves an artifact that cannot say what filled the disk (often the
+      # log is truncated mid-compile, because when the disk is gone the log has
+      # nowhere to land either). These two reports bracket the step the issue
+      # names. They never fail the job: a report that can break the lane it
+      # reports on is worse than no report.
+      - name: Disk report (before check build) — issue 1353
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: scripts/ci/disk-report.sh "before just check build"
+
       - name: just check build (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source ./activate.sh
           just check build
+
+      # `always()`, not `!cancelled()`: the run that FAILED is the one whose
+      # numbers matter, and the default `success()` would skip exactly it.
+      - name: Disk report (after check build) — issue 1353
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && always() }}
+        run: scripts/ci/disk-report.sh "after just check build"
 
       - name: just check no-std (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
