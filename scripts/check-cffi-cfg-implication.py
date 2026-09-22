@@ -51,6 +51,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
+
 CALLER_FILE = ROOT / "packages/api/nros-cpp/src/lib.rs"
 CALLEE_DIR = ROOT / "packages/core/nros-node/src/executor"
 BASELINE = ROOT / ".config/cffi-cfg-undecidable-baseline.txt"
@@ -95,7 +98,7 @@ def preceding_cfg(lines: list[str], idx: int) -> str | None:
 
 def callee_cfgs() -> dict[str, str | None]:
     out: dict[str, str | None] = {}
-    for f in sorted(CALLEE_DIR.rglob("*.rs")):
+    for f in tracked(CALLEE_DIR, suffix=".rs"):
         lines = f.read_text(errors="replace").splitlines()
         for i, line in enumerate(lines):
             m = METHOD_RE.search(line)
