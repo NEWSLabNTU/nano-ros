@@ -23,10 +23,13 @@
 //! 2. VERIFY AT EVERY DOOR. [`verify`] is what every consumer that opens a
 //!    model calls: `model-path` (so cmake fails at configure, not at boot),
 //!    `ws entity-inventory`, `codegen-system`, `codegen entry`, and `run_sync`
-//!    itself. It refuses on the marker, then on a resolver pin that is not
-//!    ours, then on a recorded input whose hash changed, then on a launch-tree
-//!    input the model never recorded. One function, so a further consumer
-//!    cannot be written without the omission showing in review.
+//!    itself. It refuses on the marker, then on a resolver pin that
+//!    DISAGREES with ours, then on a recorded input whose hash changed, then
+//!    on a launch-tree input the model never recorded. One function, so a
+//!    further consumer cannot be written without the omission showing in
+//!    review. A model recording NO pin is refused by `run_sync`, which can
+//!    fix it by re-resolving, and not by a consumer door, which cannot --
+//!    see [`PinPolicy`].
 //!
 //! What this module deliberately does NOT do: re-resolve. A consumer that
 //! finds a stale or refused model refuses; resolving at the consumer would put
@@ -187,7 +190,8 @@ impl std::error::Error for Refusal {}
 /// package the model was resolved from when the caller knows it; when it does
 /// not (`--model <path>` on its own), [`infer_bringup_dir`] recovers it from
 /// the two layouts `nros sync` writes, and the input hashes are checked only
-/// when that succeeds. The marker and the resolver pin are checked either way.
+/// when that succeeds. The marker and the resolver pin are checked either way,
+/// the pin under [`PinPolicy::UnpinnedIsUnverifiable`].
 ///
 /// A model that does not exist and has no marker passes: there is nothing to
 /// trust or distrust, and the consumer's own missing-file handling (an error,
@@ -208,7 +212,9 @@ pub fn verify(model: &Path, bringup_dir: Option<&Path>) -> Result<(), Refusal> {
     let bringup = bringup_dir
         .map(Path::to_path_buf)
         .or_else(|| infer_bringup_dir(model));
-    if let Some(reason) = provenance_stale(model, bringup.as_deref()) {
+    if let Some(reason) =
+        provenance_stale_with(model, bringup.as_deref(), PinPolicy::UnpinnedIsUnverifiable)
+    {
         return Err(Refusal::Stale {
             model: model.to_path_buf(),
             reason,
@@ -274,7 +280,43 @@ pub fn verify_search(bringup_dir: &Path, model_rel: &str) -> Result<Option<PathB
 /// Input checks need `bringup_dir` (recorded paths resolve against the
 /// package root, matching how the resolver strips the launch file's
 /// grandparent and how `main_macro` re-joins them); the pin check does not.
+///
+/// This spelling asks `run_sync`'s question; a consumer door asks
+/// [`PinPolicy::UnpinnedIsUnverifiable`] instead, via [`provenance_stale_with`].
 pub fn provenance_stale(model_path: &Path, bringup_dir: Option<&Path>) -> Option<String> {
+    provenance_stale_with(model_path, bringup_dir, PinPolicy::Required)
+}
+
+/// What an ABSENT `meta.resolver` means. A pin that DISAGREES with ours is
+/// stale under both policies; this decides only the missing case.
+///
+/// The two callers ask different questions of the same model.
+///
+/// * `run_sync` asks "should I re-resolve?". A pinless model is worth one
+///   cheap resolve — that is issue 0427's rule, and it is how a model written
+///   before the pin existed acquires one.
+/// * A CONSUMER door (phase-460 W1) asks "may I trust what is here?". There,
+///   absence of a pin is absence of evidence rather than evidence of
+///   staleness, and the check is already asymmetric if it says otherwise: it
+///   skips itself ENTIRELY when OUR OWN pin is `unknown` (an uninitialised
+///   `play_launch`, which is every worktree that has not run
+///   `git submodule update --init`). Refusing the model for the mirror-image
+///   gap would make `nros model-path` reject a hand-authored or committed
+///   model on the machines where the same binary cannot check the pin at all.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PinPolicy {
+    /// No `meta.resolver` is staleness — `nros sync` re-resolves and stamps one.
+    Required,
+    /// No `meta.resolver` is unverifiable, exactly like our own `unknown` pin.
+    UnpinnedIsUnverifiable,
+}
+
+/// [`provenance_stale`] with the pin policy named. See [`PinPolicy`].
+pub fn provenance_stale_with(
+    model_path: &Path,
+    bringup_dir: Option<&Path>,
+    pin_policy: PinPolicy,
+) -> Option<String> {
     let raw = std::fs::read_to_string(model_path).ok()?;
     let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw).ok()?;
     if let Some(bringup_dir) = bringup_dir {
@@ -304,7 +346,10 @@ pub fn provenance_stale(model_path: &Path, bringup_dir: Option<&Path>) -> Option
                     &ours[..ours.len().min(12)]
                 ));
             }
-            None => return Some("no resolver pin recorded".into()),
+            None => match pin_policy {
+                PinPolicy::Required => return Some("no resolver pin recorded".into()),
+                PinPolicy::UnpinnedIsUnverifiable => {}
+            },
         }
     }
     if let Some(bringup_dir) = bringup_dir
@@ -332,6 +377,19 @@ fn launch_tree_unrecorded(
     if !launch.is_file() {
         // A cargo leaf's launch file is SYNTHESISED under `build/`; its
         // inputs are the recorded ones and nothing else names them.
+        return None;
+    }
+    if model.meta.inputs.is_empty() {
+        // An EMPTY recorded set is not an incomplete one. This rule compares
+        // what the launch tree names today against what the resolve recorded,
+        // and a model that recorded nothing -- a hand-authored or committed
+        // one, which R-code.1 asks a toml-declaring bringup to carry -- offers
+        // nothing to compare: every file the tree names is "not recorded", so
+        // the reason would be the first name in an arbitrary order rather than
+        // a fact about the tree. Issue 1121's case (a sidecar added since a
+        // real resolve) always has a non-empty recorded set. Same reading as
+        // `PinPolicy::UnpinnedIsUnverifiable`: absence of evidence is not
+        // evidence of staleness.
         return None;
     }
     let recorded: Vec<PathBuf> = model
@@ -623,6 +681,79 @@ mod tests {
                 .contains("no resolver pin"),
             "a model with no resolver pin must be stale"
         );
+    }
+
+    /// phase-460 W1 -- the launch-tree rule says nothing about a model that
+    /// recorded NO inputs: every file the tree names is then "not recorded",
+    /// so the reason would name whichever came first rather than a fact about
+    /// the tree. The sidecar case above is the rule doing its job, and it
+    /// keeps a non-empty recorded set.
+    #[test]
+    fn an_empty_recorded_input_set_is_not_an_incomplete_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path();
+        std::fs::create_dir_all(bringup.join("launch")).unwrap();
+        std::fs::write(bringup.join("system.toml"), b"[system]\n").unwrap();
+        std::fs::write(bringup.join("launch/system.launch.xml"), b"<launch/>\n").unwrap();
+        std::fs::write(bringup.join("launch/system.contract.yaml"), b"version: 1\n").unwrap();
+        let model = write_model_with_pin(bringup, vec![], env!("NROS_PLAY_LAUNCH_SHA"));
+        assert_eq!(provenance_stale(&model, Some(bringup)), None);
+    }
+
+    /// phase-460 W1 -- the same pinless model a CONSUMER door meets passes,
+    /// because that door cannot fix what it refuses. `nros sync` re-resolves
+    /// and stamps the pin (the test above); `nros model-path` would only leave
+    /// cmake with no model at all. The asymmetry this removes is the check's
+    /// own: it skips entirely when OUR pin is `unknown`, so the model-side gap
+    /// cannot be the fatal one.
+    #[test]
+    fn a_consumer_door_accepts_a_model_with_no_resolver_pin() {
+        if env!("NROS_PLAY_LAUNCH_SHA") == "unknown" {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path();
+        let content = b"[system]\n";
+        std::fs::write(bringup.join("system.toml"), content).unwrap();
+        let mut m = ros_launch_manifest_model::SystemModel::default();
+        m.meta.version = ros_launch_manifest_model::SCHEMA_VERSION;
+        m.meta.inputs = vec![ros_launch_manifest_model::InputHash {
+            path: "system.toml".into(),
+            sha256: sha(content),
+        }];
+        let model = bringup.join("system_model.yaml");
+        std::fs::write(&model, serde_yaml_ng::to_string(&m).unwrap()).unwrap();
+        assert!(
+            provenance_stale(&model, Some(bringup)).is_some(),
+            "run_sync must still re-resolve a pinless model"
+        );
+        assert!(
+            verify(&model, Some(bringup)).is_ok(),
+            "a consumer door must accept a pinless model: {:?}",
+            verify(&model, Some(bringup))
+        );
+    }
+
+    /// ...and a pin that DISAGREES is still refused at the consumer door --
+    /// the policy decides the missing case only.
+    #[test]
+    fn a_consumer_door_still_refuses_a_foreign_resolver_pin() {
+        if env!("NROS_PLAY_LAUNCH_SHA") == "unknown" {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path();
+        let content = b"[system]\n";
+        std::fs::write(bringup.join("system.toml"), content).unwrap();
+        let model = write_model_with_pin(
+            bringup,
+            vec![("system.toml".into(), sha(content))],
+            "deadbeefdeadbeef",
+        );
+        assert!(matches!(
+            verify(&model, Some(bringup)),
+            Err(Refusal::Stale { .. })
+        ));
     }
 
     // phase-460 W1 -- the marker and the quarantine.
