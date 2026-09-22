@@ -11,7 +11,7 @@ related: [1218, phase-451]
 
 # The rule was written down and never enforced
 
-[phase-451](../roadmap/phase-451-dead-build-declarations.md)'s acceptance reads:
+[phase-451](../../roadmap/phase-451-dead-build-declarations.md)'s acceptance reads:
 
 > `grep`-reachable: no cmake module defining a public `nano_ros_*` verb is
 > unreachable from any `include()`.
