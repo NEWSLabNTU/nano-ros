@@ -633,7 +633,18 @@ unsafe extern "C" fn create_session_trampoline<R: RustBackend>(
         },
         domain_id,
         node_name: unsafe { cstr_to_str(node_name) },
-        namespace: "",
+        // Issue 1444 — the INBOUND half. `node_name` arrives as its own
+        // argument; the namespace arrives on the session view, which
+        // `rmw_vtable.h` says the runtime hands over "with `node_name` /
+        // `namespace_` already filled". This read `""` unconditionally, so
+        // even once the runtime filled the buffer a Rust backend behind this
+        // adapter — which is every in-tree zenoh build — would still have seen
+        // nothing. Both halves move together or neither is observable.
+        //
+        // SAFETY: `out` is non-null (checked above) and its `namespace_` is
+        // either the runtime's NUL-terminated buffer or NULL; `cstr_to_str`
+        // answers `""` for NULL, which is the root.
+        namespace: unsafe { cstr_to_str((*out).namespace_) },
         properties: &prop_buf[..prop_count],
     };
     let factory = R::factory();

@@ -250,7 +250,7 @@ fn create_node_fires_once_per_distinct_node() {
     let rc = unsafe { nros_rmw_cffi_register_named(c"node-slot".as_ptr(), &VT) };
     assert_eq!(rc, NROS_RMW_RET_OK);
     let mut session =
-        CffiSession::open_named("node-slot", "", 0, 0, "fallback").expect("open_named");
+        CffiSession::open_named("node-slot", "", 0, 0, "fallback", "").expect("open_named");
 
     // Two entities on ONE node: the slot fires once.
     let _p1 = session
@@ -299,7 +299,7 @@ fn closing_a_session_destroys_the_nodes_it_created() {
     let before = DESTROY_NODE_CALLS.load(Ordering::SeqCst);
     {
         let mut session =
-            CffiSession::open_named("node-destroy", "", 0, 0, "fallback").expect("open_named");
+            CffiSession::open_named("node-destroy", "", 0, 0, "fallback", "").expect("open_named");
         let _p = session
             .create_publisher(&topic_on("gamma", "/g"), QoSProfile::default())
             .expect("publisher");

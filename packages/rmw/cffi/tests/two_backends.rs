@@ -373,7 +373,7 @@ fn unnamed_open_refuses_an_ambiguous_registry() {
         NROS_RMW_RET_OK
     );
 
-    let err = nros_rmw_cffi::CffiSession::open("tcp/127.0.0.1:7447", 0, 0, "amb_node")
+    let err = nros_rmw_cffi::CffiSession::open("tcp/127.0.0.1:7447", 0, 0, "amb_node", "")
         .err()
         .expect("two backends registered and no selector: the open must be REFUSED");
     assert_eq!(
@@ -385,7 +385,8 @@ fn unnamed_open_refuses_an_ambiguous_registry() {
 
     // Positive control: naming one still opens, so the refusal above is about
     // ambiguity and not about the stubs being unopenable.
-    let named = nros_rmw_cffi::CffiSession::open_named("tb_a", "tcp/127.0.0.1:7447", 0, 0, "amb_a")
-        .expect("naming a registered backend still opens");
+    let named =
+        nros_rmw_cffi::CffiSession::open_named("tb_a", "tcp/127.0.0.1:7447", 0, 0, "amb_a", "")
+            .expect("naming a registered backend still opens");
     drop(named);
 }

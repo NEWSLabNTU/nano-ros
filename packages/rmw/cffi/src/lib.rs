@@ -1737,9 +1737,22 @@ pub struct CffiSession {
     vtable: &'static NrosRmwVtable,
     /// Borrowed-pointer storage for `node_name`. Outlives the session.
     node_name_buf: [u8; NAME_BUF_LEN],
-    /// Borrowed-pointer storage for `namespace_`. Empty for now —
-    /// `RmwConfig` does not yet carry a namespace through the cffi
-    /// path; reserved for future use.
+    /// Borrowed-pointer storage for `namespace_`, filled at open from
+    /// `RmwConfig::namespace` — issue 1444.
+    ///
+    /// It read "empty for now … reserved for future use" for as long as the
+    /// field existed, and that comment WAS the bug: `rmw_vtable.h` promises a
+    /// backend an `rmw_session_t` "with `node_name` / `namespace_` already
+    /// filled", `Executor::open` had been filling `RmwConfig { namespace, .. }`
+    /// all along, and only this seam dropped it — so every namespaced image
+    /// advertised its SESSION node at the root while its per-node entities went
+    /// where they belonged, and `ros2 node list` printed both without either
+    /// looking wrong.
+    ///
+    /// EMPTY is passed through, not defaulted: the backend already reads an
+    /// empty namespace as the root (`shim/session.rs`, "Treat empty namespace
+    /// as root"), and a second default here would be a second place for the two
+    /// to disagree.
     namespace_buf: [u8; NAME_BUF_LEN],
     /// Backend-private state, written by `vtable.create_session`.
     backend_data: *mut c_void,
@@ -2058,6 +2071,19 @@ impl CffiSession {
         cstr_buf_to_str(&self.node_name_buf)
     }
 
+    /// Node namespace passed at session-open time — issue 1444.
+    ///
+    /// The sibling of [`node_name`](Self::node_name), and its absence was part
+    /// of why the buffer stayed empty unnoticed: `node_name_buf` had a reader
+    /// and `namespace_buf` had only the borrowed pointer a backend follows, so
+    /// nothing in Rust could ask what the session's namespace was.
+    ///
+    /// `""` means the image declares none, which every backend reads as the
+    /// root. It is NOT normalised here — see `namespace_buf`.
+    pub fn namespace(&self) -> &str {
+        cstr_buf_to_str(&self.namespace_buf)
+    }
+
     /// Open a new session via the **default** registered vtable
     /// (first entry in the registry — the RMW_IMPLEMENTATION-style
     /// fast path for single-backend builds).
@@ -2069,6 +2095,7 @@ impl CffiSession {
         mode: u8,
         domain_id: u32,
         node_name: &str,
+        namespace: &str,
     ) -> Result<Self, TransportError> {
         let vtable = get_vtable()?;
         Self::open_with_vtable(
@@ -2077,6 +2104,7 @@ impl CffiSession {
             mode,
             domain_id,
             node_name,
+            namespace,
             core::ptr::null(),
         )
     }
@@ -2102,6 +2130,7 @@ impl CffiSession {
         mode: u8,
         domain_id: u32,
         node_name: &str,
+        namespace: &str,
         properties: &[(&str, &str)],
     ) -> Result<Self, TransportError> {
         let vtable = get_vtable()?;
@@ -2112,10 +2141,13 @@ impl CffiSession {
                 mode,
                 domain_id,
                 node_name,
+                namespace,
                 core::ptr::null(),
             );
         }
-        Self::open_marshalling_properties(vtable, locator, mode, domain_id, node_name, properties)
+        Self::open_marshalling_properties(
+            vtable, locator, mode, domain_id, node_name, namespace, properties,
+        )
     }
 
     /// The property-carrying half of [`open_with_properties`], kept in its own
@@ -2130,6 +2162,7 @@ impl CffiSession {
         mode: u8,
         domain_id: u32,
         node_name: &str,
+        namespace: &str,
         properties: &[(&str, &str)],
     ) -> Result<Self, TransportError> {
         if properties.len() > MAX_SESSION_PROPERTIES {
@@ -2166,7 +2199,9 @@ impl CffiSession {
             properties: entries.as_ptr(),
             property_count: properties.len(),
         };
-        Self::open_with_vtable(vtable, locator, mode, domain_id, node_name, &options)
+        Self::open_with_vtable(
+            vtable, locator, mode, domain_id, node_name, namespace, &options,
+        )
     }
 
     /// Phase 104.C.1 — open a new session against a named backend.
@@ -2179,6 +2214,7 @@ impl CffiSession {
         mode: u8,
         domain_id: u32,
         node_name: &str,
+        namespace: &str,
     ) -> Result<Self, TransportError> {
         // C-string-marshal `rmw_name` on the stack — registry lookup
         // expects NUL-terminated UTF-8.
@@ -2200,6 +2236,7 @@ impl CffiSession {
             mode,
             domain_id,
             node_name,
+            namespace,
             core::ptr::null(),
         )
     }
@@ -2212,6 +2249,7 @@ impl CffiSession {
         mode: u8,
         domain_id: u32,
         node_name: &str,
+        namespace: &str,
         properties: &[(&str, &str)],
     ) -> Result<Self, TransportError> {
         let mut name_buf = [0u8; BACKEND_NAME_MAX];
@@ -2232,10 +2270,13 @@ impl CffiSession {
                 mode,
                 domain_id,
                 node_name,
+                namespace,
                 core::ptr::null(),
             );
         }
-        Self::open_marshalling_properties(vtable, locator, mode, domain_id, node_name, properties)
+        Self::open_marshalling_properties(
+            vtable, locator, mode, domain_id, node_name, namespace, properties,
+        )
     }
 
     fn open_with_vtable(
@@ -2244,6 +2285,7 @@ impl CffiSession {
         mode: u8,
         domain_id: u32,
         node_name: &str,
+        namespace: &str,
         options: *const NrosRmwSessionOptions,
     ) -> Result<Self, TransportError> {
         let mut loc_buf = [0u8; NAME_BUF_LEN];
@@ -2258,6 +2300,11 @@ impl CffiSession {
             qos_policies: nros_rmw::QoSPolicyMask::NONE,
         };
         let _ = to_c_str(node_name, &mut session.node_name_buf);
+        // Issue 1444 — the other half of what `rmw_vtable.h` promises
+        // `create_session`. Written BEFORE `view` borrows the buffer, and
+        // passed through as given: an empty namespace is the root at the
+        // backend, so normalising it here would be a second default.
+        let _ = to_c_str(namespace, &mut session.namespace_buf);
 
         let mut view = NrosRmwSession {
             node_name: session.node_name_buf.as_ptr().cast(),
@@ -5109,11 +5156,17 @@ impl nros_rmw::Rmw for CffiRmw {
         // This was the outbound half of the same silence the cffi adapter had
         // on the inbound side: the trait handed us properties, and the seam
         // threw them away without a word.
+        // Issue 1444 — `config.namespace` used to stop here. `Executor::open`
+        // fills `RmwConfig { namespace: config.namespace, .. }`, and this seam
+        // read every other field and not that one, so the session's own
+        // liveliness token sat at the ROOT on every namespaced image — visible
+        // as an EXTRA `ros2 node list` line rather than as a wrong one.
         CffiSession::open_with_properties(
             config.locator,
             mode,
             config.domain_id,
             config.node_name,
+            config.namespace,
             config.properties,
         )
     }
@@ -5137,6 +5190,7 @@ impl CffiRmw {
             mode,
             config.domain_id,
             config.node_name,
+            config.namespace,
             config.properties,
         )
     }
@@ -6283,7 +6337,7 @@ mod tests {
         use nros_rmw::{QoSPolicyMask, Session};
 
         let session =
-            CffiSession::open_with_vtable(&QOS_ROUTE_VTABLE, "", 0, 0, "n", core::ptr::null())
+            CffiSession::open_with_vtable(&QOS_ROUTE_VTABLE, "", 0, 0, "n", "", core::ptr::null())
                 .expect("session open");
         assert_eq!(
             Session::supported_qos_policies(&session),
@@ -6300,9 +6354,16 @@ mod tests {
     fn a_backend_that_fills_no_mask_slot_honours_nothing() {
         use nros_rmw::{QoSPolicyMask, Session};
 
-        let session =
-            CffiSession::open_with_vtable(&QOS_NO_SLOT_VTABLE, "", 0, 0, "n", core::ptr::null())
-                .expect("session open");
+        let session = CffiSession::open_with_vtable(
+            &QOS_NO_SLOT_VTABLE,
+            "",
+            0,
+            0,
+            "n",
+            "",
+            core::ptr::null(),
+        )
+        .expect("session open");
         assert_eq!(
             Session::supported_qos_policies(&session),
             QoSPolicyMask::NONE,

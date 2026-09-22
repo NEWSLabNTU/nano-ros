@@ -18,9 +18,9 @@ use nros_rmw::{
     ServiceInfo, ServiceRequest, ServiceTrait, Session, Subscription, TopicInfo, TransportError,
 };
 use nros_rmw_cffi::{
-    NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
-    NrosRmwEventKind, NrosRmwEventPayload, NrosRmwLivelinessChangedStatus, NrosRmwNode, NrosRmwQos,
-    NrosRmwService, NrosRmwSession, RustBackendAdapter,
+    CffiRmw, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
+    NrosRmwClient, NrosRmwEventKind, NrosRmwEventPayload, NrosRmwLivelinessChangedStatus,
+    NrosRmwNode, NrosRmwQos, NrosRmwService, NrosRmwSession, RustBackendAdapter,
 };
 
 // ----------------------------------------------------------------------------
@@ -1178,4 +1178,115 @@ fn the_adapters_format_string_is_static() {
     let vt = &RustBackendAdapter::<UorbLikeRmw>::VTABLE;
     let f = vt.get_serialization_format.expect("vtable slot");
     assert_eq!(unsafe { f() }, unsafe { f() });
+}
+
+// ----------------------------------------------------------------------------
+// Issue 1444 — `RmwConfig::namespace` must survive the C seam, both ways
+// ----------------------------------------------------------------------------
+//
+// The ABI never had a gap: `rmw_vtable.h` promises `create_session` an
+// `rmw_session_t` "with `node_name` / `namespace_` already filled", and
+// `Executor::open` has always built `RmwConfig { namespace, .. }`. The runtime
+// filled one of the two. `CffiRmw::open` read every other field of the config
+// and not that one, so `CffiSession::namespace_buf` stayed zeroed — its own
+// doc-comment said "reserved for future use" — and `create_session_trampoline`
+// then hardcoded `namespace: ""` when rebuilding the config on the far side.
+//
+// Two halves, and EITHER alone leaves the value unobservable, which is why the
+// test below drives the whole chain rather than one seam:
+//
+//   RmwConfig -> CffiRmw::open_with_rmw -> open_named_with_properties
+//             -> open_with_vtable -> namespace_buf -> NrosRmwSession view
+//             -> create_session_trampoline -> RmwConfig -> backend
+//
+// What the defect cost was invisible rather than loud: the session declares its
+// own liveliness token before any node exists, so a namespaced image advertised
+// THAT token at `/` while its per-node entities went where they belonged, and
+// `ros2 node list` printed both lines with neither looking wrong.
+
+/// A backend whose only job is to record the namespace its `open` was handed.
+///
+/// Its own type, not `NoopRmw`: that one bumps `OPEN_HITS`, which three tests
+/// above assert exact values of.
+#[derive(Default)]
+struct NsRecordingRmw;
+
+static SEEN_OPEN_NAMESPACE: Mutex<String> = Mutex::new(String::new());
+
+/// `SEEN_OPEN_NAMESPACE` is ONE slot and `cargo test` runs this file's tests as
+/// threads of one process, so the open and the readback must be atomic against
+/// each other. Without this the negative case reads whichever open finished
+/// last and fails with a namespace it never passed — a flake shaped exactly
+/// like the bug under test, and it did fail that way before the lock went in.
+/// (`cargo nextest` gives each test its own process and would have hidden it.)
+static NS_SEAM_LOCK: Mutex<()> = Mutex::new(());
+
+impl Rmw for NsRecordingRmw {
+    type Session = NoopSession;
+    type Error = TransportError;
+    fn open(self, config: &RmwConfig) -> Result<Self::Session, Self::Error> {
+        *SEEN_OPEN_NAMESPACE.lock().unwrap() = config.namespace.to_owned();
+        Ok(NoopSession)
+    }
+}
+
+/// Open through the production chain and report (what the backend saw, what the
+/// session stored).
+fn open_through_the_seam(namespace: &str) -> (String, String) {
+    let _guard = NS_SEAM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // SAFETY: NUL-terminated literal; registration is idempotent.
+    let rc = unsafe { RustBackendAdapter::<NsRecordingRmw>::register_named(c"ns-seam".as_ptr()) };
+    assert_eq!(rc, NROS_RMW_RET_OK, "register_named");
+    *SEEN_OPEN_NAMESPACE.lock().unwrap() = "<never opened>".to_owned();
+
+    let config = RmwConfig {
+        locator: "tcp/127.0.0.1:7447",
+        mode: nros_rmw::SessionMode::Client,
+        domain_id: 0,
+        node_name: "probe",
+        namespace,
+        properties: &[],
+    };
+    let mut session = CffiRmw::open_with_rmw("ns-seam", &config).expect("open_with_rmw");
+    let seen = SEEN_OPEN_NAMESPACE.lock().unwrap().clone();
+    let stored = session.namespace().to_owned();
+    let _ = Session::close(&mut session);
+    (seen, stored)
+}
+
+/// The positive direction: a declared namespace reaches the backend intact, and
+/// the session's own storage agrees.
+#[test]
+fn a_declared_namespace_survives_the_session_seam() {
+    assert_eq!(
+        open_through_the_seam("/island"),
+        ("/island".to_owned(), "/island".to_owned())
+    );
+}
+
+/// A nested namespace crosses verbatim — nothing at this seam parses or rejoins
+/// it.
+#[test]
+fn a_nested_namespace_crosses_the_seam_verbatim() {
+    assert_eq!(
+        open_through_the_seam("/island/west"),
+        ("/island/west".to_owned(), "/island/west".to_owned())
+    );
+}
+
+/// The negative direction, which matters as much: an image that declares none
+/// arrives EMPTY and is never given an invented default.
+///
+/// Empty is what the backends already read as the root (`shim/session.rs`,
+/// "Treat empty namespace as root"), so normalising it here would put a second
+/// default in the tree for the first one to disagree with.
+#[test]
+fn an_undeclared_namespace_arrives_empty_and_is_not_defaulted() {
+    let (seen, stored) = open_through_the_seam("");
+    assert_eq!(
+        seen, "",
+        "an undeclared namespace must cross as \"\" — the backend owns the empty-is-root rule"
+    );
+    assert_eq!(stored, "");
+    assert_ne!(seen, "/", "the seam must not invent a root");
 }
