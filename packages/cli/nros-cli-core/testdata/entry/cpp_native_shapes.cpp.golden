@@ -43,26 +43,26 @@ static ::rclcpp_pkg::RCL_ONE* __nros_comp_6 = nullptr;
 
 static int32_t __nros_entry_setup() {
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_0, "talker");
+        ::nros::Result r = ::nros::create_node(__nros_node_0, "talker", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_0.configure(__nros_node_0);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
     }
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_1, "talker2");
+        ::nros::Result r = ::nros::create_node(__nros_node_1, "talker2", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_1.configure(__nros_node_1);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
     }
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_2, "c_one");
+        ::nros::Result r = ::nros::create_node(__nros_node_2, "c_one", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         void* self = __nros_c_component_c_pkg_create();
         int32_t crc = __nros_c_component_c_pkg_configure(__nros_node_2.ffi_handle(), __nros_node_2.executor_handle(), self);
         if (crc != 0) return crc;
     }
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_3, "c_two");
+        ::nros::Result r = ::nros::create_node(__nros_node_3, "c_two", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         void* self = __nros_c_component_c_pkg_create();
         int32_t crc = __nros_c_component_c_pkg_configure(__nros_node_3.ffi_handle(), __nros_node_3.executor_handle(), self);

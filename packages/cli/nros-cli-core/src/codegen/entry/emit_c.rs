@@ -115,6 +115,14 @@ struct CNodeView {
     /// RAW node name. The pack quotes it with the `c_str` filter; pre-escaping
     /// here would spell C into a stage that has no language (RFC-0091 §8b).
     name: String,
+    /// RAW node namespace, from `super::node_namespace` — issue 1443. The pack
+    /// used to render the literal `"/"` here, so a launch node under `/island`
+    /// was created at the root while the `nros_cpp_bind_node_name_sched` call
+    /// three lines away already spent this same value.
+    ///
+    /// Never empty: the ONE derivation normalises "the model names none" to
+    /// `"/"`, so the C edge is handed a root and not `""`.
+    namespace: String,
     /// The remap + param calls, rendered by the SHARED
     /// `declare_calls.c.jinja` — the same partial the C++ pack includes,
     /// because the statements are byte-identical C in both.
@@ -132,6 +140,7 @@ fn node_view(n: &super::PlanNode, i: usize, on_executor: usize) -> CNodeView {
         index: i,
         pkg: sanitize_pkg(&n.pkg),
         name: n.name.as_deref().unwrap_or(&n.exec).to_string(),
+        namespace: super::node_namespace(n).to_string(),
         // The C entry creates every node on the executor handle it is passed,
         // on both paths, so there is one expression rather than a parameter.
         decls: decls_view(n, "executor", on_executor),
@@ -397,6 +406,38 @@ mod tests {
             set_at < cfg_at,
             "overrides must be installed before configure"
         );
+    }
+
+    /// Issue 1443 — the node is created at the namespace the PLAN gives it, and
+    /// the `nros_cpp_bind_node_name_sched` sibling spends the same value.
+    ///
+    /// The three inputs and their one answer: a real namespace renders itself;
+    /// `None` and `Some("")` both render `"/"`, never `""`. The last is the case
+    /// RFC-0045 cares about — the C edge is a `const char*` and cannot carry the
+    /// difference between "unset" and "configured to nothing", so it is
+    /// normalised before it gets here.
+    #[test]
+    fn typed_emit_creates_each_node_at_its_plan_namespace() {
+        for (declared, rendered) in [
+            (Some("/island"), "/island"),
+            (Some("/a/b"), "/a/b"),
+            (None, "/"),
+            (Some(""), "/"),
+        ] {
+            let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+            plan.nodes[0].namespace = declared.map(str::to_string);
+            let src = emit_typed(&plan).expect("typed C emit ok");
+            assert!(
+                src.contains(&format!(
+                    "nros_cpp_node_create(executor, \"talker\", \"{rendered}\", &__nros_node_0)"
+                )),
+                "namespace {declared:?} must render as {rendered:?}; src:\n{src}"
+            );
+            assert!(
+                !src.contains("nros_cpp_node_create(executor, \"talker\", \"\","),
+                "an empty namespace must never reach the C edge; src:\n{src}"
+            );
+        }
     }
 
     /// A C node with no overrides emits no table and no call.

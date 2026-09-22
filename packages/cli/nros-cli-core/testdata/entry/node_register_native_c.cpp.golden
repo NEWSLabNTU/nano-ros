@@ -27,7 +27,7 @@ static ::rclcpp::Node __nros_node_0;
 
 static int32_t __nros_entry_setup() {
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_0, "listener");
+        ::nros::Result r = ::nros::create_node(__nros_node_0, "listener", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         void* self = __nros_c_component_listener_pkg_create();
         int32_t crc = __nros_c_component_listener_pkg_configure(__nros_node_0.ffi_handle(), __nros_node_0.executor_handle(), self);

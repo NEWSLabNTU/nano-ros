@@ -65,13 +65,13 @@ static int32_t __nros_entry_setup() {
         }
     }
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_0, "ctrl");
+        ::nros::Result r = ::nros::create_node(__nros_node_0, "ctrl", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_0.configure(__nros_node_0);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
     }
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_1, "telem");
+        ::nros::Result r = ::nros::create_node(__nros_node_1, "telem", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_1.configure(__nros_node_1);
         if (!r.ok()) return static_cast<int32_t>(r.raw());

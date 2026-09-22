@@ -360,6 +360,30 @@ pub(crate) struct QosRowView {
     pub value: u32,
 }
 
+/// The namespace a plan node's entities register under — the ONE derivation.
+///
+/// Issue 1443 — this had three authored copies (`tier_group_keys`'s `ns_of`,
+/// `sched_view`'s `node_ns`, and `node_binds` inline) and a FOURTH answer
+/// spelled as the literal `"/"` in both entry packs' `node_create` call. So a
+/// launch node under `/island` was BOUND to its scheduling context by
+/// `(name, "/island")` and CREATED at `(name, "/")` three lines away — which
+/// meant the bind matched nothing and, on the wire, the node appeared at
+/// `/talker` in a C or C++ image and `/island/talker` in the Rust image built
+/// from the same launch file.
+///
+/// `None` and `Some("")` are the SAME answer here: "the model gives this node
+/// no namespace", which is the ROOT and never `""`. That is RFC-0045's "unset"
+/// versus "configured to nothing", a distinction a `const char*` edge cannot
+/// carry, so it is normalised at this end — the same choice
+/// `nros_board_native_run_components_named_ns` makes for the session rung and
+/// `emit_cpp::plan_node_fqn` already made for the contract-row key.
+pub(crate) fn node_namespace(n: &PlanNode) -> &str {
+    match n.namespace.as_deref() {
+        None | Some("") => "/",
+        Some(ns) => ns,
+    }
+}
+
 /// The declarations for one node, with the pack's executor expression and the
 /// node's index on that executor (see [`DeclsView::node`]).
 pub(crate) fn decls_view(n: &PlanNode, exec: &'static str, node: usize) -> DeclsView {
@@ -469,7 +493,7 @@ pub(crate) fn tier_group_keys(
         plan.nodes
             .iter()
             .find(|n| n.name.as_deref().unwrap_or(&n.exec) == node_name)
-            .and_then(|n| n.namespace.as_deref())
+            .map(node_namespace)
             .unwrap_or("/")
             .to_string()
     };
@@ -593,7 +617,7 @@ pub(crate) fn sched_view(tiers: &ResolvedTierTable, plan: &Plan) -> SchedView {
         plan.nodes
             .iter()
             .find(|n| n.name.as_deref().unwrap_or(&n.exec) == name)
-            .and_then(|n| n.namespace.as_deref())
+            .map(node_namespace)
             .unwrap_or("/")
             .to_string()
     };
@@ -604,7 +628,7 @@ pub(crate) fn sched_view(tiers: &ResolvedTierTable, plan: &Plan) -> SchedView {
         .filter_map(|n| {
             n.sched_context.map(|sc| NodeBindView {
                 name: n.name.as_deref().unwrap_or(&n.exec).to_string(),
-                namespace: n.namespace.as_deref().unwrap_or("/").to_string(),
+                namespace: node_namespace(n).to_string(),
                 sched_context: sc,
             })
         })
