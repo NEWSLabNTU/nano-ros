@@ -358,6 +358,18 @@ runner-doctor-sdk-resolution:
 runner-sweep-eviction-order:
     @bash tests/runner-sweep-eviction-order-tests.sh
 
+# A build recipe that redirects `cmake --build` to `/dev/null` discards the one
+# stream ninja reports failures on, so the lane keeps a verdict and loses its
+# diagnosis: the 2026-09-22 ThreadX-RV64 nightly said `0/12 ok, 12 failed` over
+# a 43,652-line log with no `FAILED:`, `CMake Error` or `ninja: build stopped`
+# line in it. `nros_run_quiet` is the one spelling that keeps the quiet and
+# prints the captured output when the command fails; this asserts what reaches
+# the STREAMS, since an exit-status-only test passes against the redirect it
+# replaces. ~1 s, tmpdir, no cmake.
+[private]
+quiet-run-diagnostics:
+    @bash tests/quiet-run-tests.sh
+
 # Issue 0833 — every Rust cross target DECLARED in-tree (board nros-board.toml,
 # cmake/toolchain Rust_CARGO_TARGET, leaf .cargo/config.toml [build] target) has
 # a row in config/rust-targets.txt, the list both `just workspace rust-targets`

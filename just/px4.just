@@ -168,9 +168,15 @@ build-sitl-example:
         --features std,rmw-cffi,platform-posix --release
     # nros-cmake-prefix-exempt: the POSIX platform's C archive -- no Rust target
     # in that project, so no Corrosion to resolve.
-    cmake -S "$(pwd)/packages/platform/nros-platform-posix" \
-        -B "$(pwd)/build/nros-platform-posix" >/dev/null
-    cmake --build "$(pwd)/build/nros-platform-posix" >/dev/null
+    # Same rule as the ThreadX-RV64 leaves: quiet on success, and on failure
+    # the captured stdout (where ninja writes `FAILED:` and the compiler
+    # diagnostics) is printed rather than discarded.
+    source scripts/build/quiet-run.sh
+    nros_run_quiet "configure nros-platform-posix" \
+        cmake -S "$(pwd)/packages/platform/nros-platform-posix" \
+        -B "$(pwd)/build/nros-platform-posix"
+    nros_run_quiet "build nros-platform-posix" \
+        cmake --build "$(pwd)/build/nros-platform-posix"
 
     echo "Building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
     make -C "$PX4_DIR" px4_sitl_default EXTERNAL_MODULES_LOCATION="$EXT_DIR"
@@ -281,8 +287,11 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     # exact command when it is missing).
     # nros-cmake-prefix-exempt: the POSIX platform's C archive — no Rust target
     # in that project, so no Corrosion to resolve.
-    cmake -S "$ROOT/packages/platform/nros-platform-posix" -B "$ROOT/build/nros-platform-posix" >/dev/null
-    cmake --build "$ROOT/build/nros-platform-posix" >/dev/null
+    source scripts/build/quiet-run.sh
+    nros_run_quiet "configure nros-platform-posix" \
+        cmake -S "$ROOT/packages/platform/nros-platform-posix" -B "$ROOT/build/nros-platform-posix"
+    nros_run_quiet "build nros-platform-posix" \
+        cmake --build "$ROOT/build/nros-platform-posix"
 
     echo "[4/4] building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
     # profile-literal-ok: symbol fixture: pairs with the --release build above.
