@@ -415,6 +415,7 @@ fn open_subscriber(name: &str, vtable: &'static NrosRmwVtable) -> nros_rmw_cffi:
         SessionMode::Client as u8,
         0,
         "stub_node",
+        "",
     )
     .expect("open_named");
     let _ = &session as &dyn core::any::Any; // silence unused if `Session` unused

@@ -104,7 +104,7 @@ fn cffi_pubsub_round_trip() {
         router_locator().expect("zenohd unavailable — run `nros setup <board> --rmw zenoh`");
     nros_rmw_zenoh::register().expect("register");
 
-    let mut session = CffiSession::open(&locator, /* client */ 0, 0, "l2_pubsub").expect("open");
+    let mut session = CffiSession::open(&locator, /* client */ 0, 0, "l2_pubsub", /* root ns */ "").expect("open");
     // Match the existing nros-rmw-zenoh integration test shape: simple
     // short topic, `BEST_EFFORT` QoS (zenoh-pico's `RELIABLE` path
     // wants a full ROS-2-flavoured key prefix that the cffi shim

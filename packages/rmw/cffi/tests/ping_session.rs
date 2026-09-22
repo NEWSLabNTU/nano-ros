@@ -222,6 +222,7 @@ fn open_session(name: &str, vt: &'static NrosRmwVtable) -> nros_rmw_cffi::CffiSe
         SessionMode::Client as u8,
         0,
         "stub_node",
+        "",
     )
     .expect("open_named")
 }

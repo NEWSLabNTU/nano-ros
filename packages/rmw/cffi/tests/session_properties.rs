@@ -234,6 +234,7 @@ fn open_with(
         0,
         0,
         "props",
+        "",
         props,
     );
     let seen = SEEN.lock().unwrap().clone();
