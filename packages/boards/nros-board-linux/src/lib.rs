@@ -263,6 +263,48 @@ impl BoardEntry for LinuxBoard {
     }
 }
 
+/// The BAKED rung this board hands `resolve_hosted` — the launch-declared
+/// IDENTITY of the primary session, and nothing else.
+///
+/// Issue 1442. This board has TWO boot funnels (`boot_hosted` for the
+/// single-executor path, `run_tiers` for the tiered one) and they built this
+/// value separately: issue 1434 gave both the namespace, and `node_name`
+/// reached only the first, so a tiered image's session was called `node`
+/// however its launch named it. One function is the fix, because the drift was
+/// never in the resolution — it was in there being two places to remember.
+///
+/// What is here and what is NOT is the whole content:
+///
+/// * `node_name` — from `DeployOverlay::node_name`, whose own doc says it "IS
+///   honored on hosted boards" (issue #98). NOT from the blob: on hosted, the
+///   macro writes the launch-declared name into the overlay field, and reading
+///   both would be two answers to one question.
+/// * `namespace` — from the `.nros_boot_config` BLOB, because the blob is what
+///   a post-link patcher rewrites (RFC-0045); a second `DeployOverlay` field
+///   for it would disagree the first time anyone patched one. ABSENT, never
+///   `Some("")`: an unbaked namespace must fall through to the compiled
+///   default, not shadow the env rung above it.
+/// * `locator` / `domain_id` — deliberately absent. Issue #48: a HOST resolves
+///   its connect facts from the environment, so leaving them `None` is what
+///   keeps `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` authoritative. Identity is not a
+///   connect fact, which is the distinction issue 1434 drew and this keeps.
+///
+/// Both identity fields sit BELOW the environment either way —
+/// `try_resolve_with` reads `env.node_name.or(baked.node_name)` and
+/// `env.namespace.or(baked.namespace)` — so filling them costs
+/// `$NROS_NODE_NAME` / `$NROS_NODE_NAMESPACE` nothing.
+fn hosted_baked_rung(deploy: &nros_platform::DeployOverlay) -> ::nros::BootConfig<'static> {
+    let blob = deploy
+        .boot_config
+        .map(::nros::BootConfig::from_baked)
+        .unwrap_or_default();
+    ::nros::BootConfig {
+        node_name: deploy.node_name,
+        namespace: blob.namespace,
+        ..Default::default()
+    }
+}
+
 impl LinuxBoard {
     /// phase-271 (issue #98 + #110) — the single hosted boot body shared by
     /// [`BoardEntry::run_with_deploy`] (default sizing, `sizing = None`) and
@@ -333,17 +375,7 @@ impl LinuxBoard {
         // patcher rewrites — a second overlay field would be a second answer
         // to "what namespace is this image deployed under", and the two would
         // disagree the first time anyone patched one.
-        let blob = deploy
-            .boot_config
-            .map(::nros::BootConfig::from_baked)
-            .unwrap_or_default();
-        let exec_cfg = ::nros::env::resolve_hosted(::nros::BootConfig {
-            node_name: deploy.node_name,
-            // ABSENT, never `Some("")`: an unbaked namespace must fall through
-            // to the compiled default, not shadow the env rung above it.
-            namespace: blob.namespace,
-            ..Default::default()
-        });
+        let exec_cfg = ::nros::env::resolve_hosted(hosted_baked_rung(deploy));
         // phase-271 — open at the entry's declared sizing when supplied.
         let opened = match sizing {
             None => ::nros::Executor::open(&exec_cfg),
@@ -430,9 +462,12 @@ impl LinuxBoard {
         E: core::fmt::Debug,
     {
         // Issue #48 — hosted boards take their locator from the environment, so
-        // the overlay's connect fields are ignored here (the firmware boards'
-        // `run_tiers` consumes them). Issue 1434 reads ONE thing out of it: the
-        // baked namespace, at the session open below.
+        // the overlay's CONNECT fields are ignored here (the firmware boards'
+        // `run_tiers` consumes them). Its IDENTITY fields are not connect
+        // facts and are no longer ignored: issue 1434 read the baked namespace
+        // out of `deploy.boot_config`, and issue 1442 added `deploy.node_name`
+        // beside it, both at the session open below. That is the same line
+        // `boot_hosted` draws.
         // phase-337 W8.a — the second boot funnel, so it registers too.
         register_linked_rmw();
         <Self as BoardInit>::init_hardware();
@@ -526,19 +561,31 @@ impl LinuxBoard {
         // `resolve_hosted` with the blob's namespace is the SAME call with the
         // one rung filled in; `$NROS_NODE_NAMESPACE` still outranks it.
         //
-        // `node_name` is deliberately NOT threaded here and the omission is
-        // not this issue's: `run_tiers` has ignored `deploy` since issue #48
-        // ("kept for signature parity"), so naming the session from the
-        // overlay would change what `ros2 node list` prints for every tiered
-        // native image, which is a decision on its own — issue 1442.
-        let blob = deploy
-            .boot_config
-            .map(::nros::BootConfig::from_baked)
-            .unwrap_or_default();
-        let exec_cfg = ::nros::env::resolve_hosted(::nros::BootConfig {
-            namespace: blob.namespace,
-            ..Default::default()
-        });
+        // Issue 1442, the OLDER half — `node_name` travels too, and it is a
+        // separate defect from the namespace above with its own history.
+        // `run_tiers` has ignored `deploy` since issue #48 ("kept for
+        // signature parity"), so this was the one boot funnel on which
+        // `DeployOverlay::node_name` did nothing — while the field's own
+        // doc-comment on `nros_platform::DeployOverlay` says it is "applied to
+        // the boot `ExecutorConfig` by the board, so unlike `locator` this IS
+        // honored on hosted boards". That was true of `boot_hosted` and false
+        // here, which is the shape 1442 exists to close: half an identity
+        // threaded reads exactly like a whole one.
+        //
+        // It DOES change what `ros2 node list` prints for a tiered native
+        // image whose launch names one node — from `/node` to that name — and
+        // that is the point rather than a side effect: the single-executor
+        // hosted path has printed the launch-declared name since issue #98,
+        // and two boot funnels of one board disagreeing about a node's name is
+        // not a contract anyone chose. `$NROS_NODE_NAME` still outranks it
+        // (`env.node_name.or(baked.node_name)`), so nothing that overrode the
+        // name before overrides it less now.
+        //
+        // The source is `deploy.node_name`, the same rung `boot_hosted` reads,
+        // NOT `blob.node_name`: on hosted the macro puts the launch-declared
+        // name in the overlay field, and reading the blob instead would be a
+        // second answer to one question.
+        let exec_cfg = ::nros::env::resolve_hosted(hosted_baked_rung(deploy));
         let boot_exec = match ::nros::Executor::open(&exec_cfg) {
             Ok(e) => e,
             Err(err) => {
@@ -942,4 +989,99 @@ mod tests {
     // `-> Result` shape on the *callback* path so production boards
     // can still wrap the trait in a non-diverging test harness; that
     // harness lives outside this crate.
+    //
+    // What IS unit-testable is the value both funnels hand the resolver, which
+    // is where issue 1442's hosted half lived. `hosted_baked_rung` is that
+    // value, and it is now the only place either funnel computes it — so these
+    // tests bind BOTH `boot_hosted` and `run_tiers` by construction rather
+    // than by two copies of one assertion.
+
+    static BAKED_BOTH: ::nros::BakedBootConfig =
+        ::nros::BakedBootConfig::new(Some("frombake"), None, None, Some("/island"));
+    static BAKED_NO_NS: ::nros::BakedBootConfig =
+        ::nros::BakedBootConfig::new(Some("frombake"), None, None, None);
+
+    fn overlay(
+        node_name: Option<&'static str>,
+        boot_config: Option<&'static ::nros::BakedBootConfig>,
+    ) -> nros_platform::DeployOverlay {
+        nros_platform::DeployOverlay {
+            node_name,
+            boot_config,
+            ..Default::default()
+        }
+    }
+
+    /// Issue 1442, the NAMESPACE half (1434's carve-out): the baked rung
+    /// carries the launch-declared namespace, read from the BLOB — the field a
+    /// post-link patcher of `.nros_boot_config` rewrites.
+    #[test]
+    fn the_baked_rung_carries_the_blobs_namespace() {
+        let d = overlay(None, Some(&BAKED_BOTH));
+        assert_eq!(
+            hosted_baked_rung(&d).namespace,
+            Some("/island"),
+            "the namespace must reach the resolver as the baked rung"
+        );
+    }
+
+    /// The negative direction, which matters as much: a blob with
+    /// `BOOT_SET_NAMESPACE` clear leaves the next rung speaking. ABSENT, never
+    /// `Some("")` — the two resolve to the same string, so nothing downstream
+    /// could tell them apart and only the `Option` can be asserted on.
+    #[test]
+    fn an_unbaked_namespace_stays_absent_in_the_baked_rung() {
+        for (what, d) in [
+            ("no namespace bit", overlay(None, Some(&BAKED_NO_NS))),
+            ("no blob at all", overlay(None, None)),
+        ] {
+            assert_eq!(
+                hosted_baked_rung(&d).namespace,
+                None,
+                "{what}: an unbaked namespace must fall through, not deliver \"\""
+            );
+        }
+    }
+
+    /// Issue 1442, the `node_name` half — a SEPARATE defect with its own
+    /// history (issue #48, "kept for signature parity"). The name comes from
+    /// `DeployOverlay::node_name`, the rung whose own doc-comment says it "IS
+    /// honored on hosted boards"; `run_tiers` was the one funnel where that
+    /// was false.
+    #[test]
+    fn the_baked_rung_carries_the_overlays_node_name() {
+        let d = overlay(Some("talker"), Some(&BAKED_BOTH));
+        assert_eq!(
+            hosted_baked_rung(&d).node_name,
+            Some("talker"),
+            "the overlay's node name must reach the resolver as the baked rung"
+        );
+        // And NOT the blob's copy: on hosted the macro writes the
+        // launch-declared name into the overlay field, so reading the blob
+        // instead would be a second answer to one question. `BAKED_BOTH` bakes
+        // `frombake` precisely so the two can be told apart.
+        assert_eq!(
+            hosted_baked_rung(&overlay(None, Some(&BAKED_BOTH))).node_name,
+            None
+        );
+    }
+
+    /// Issue #48 is PRESERVED: the connect facts stay absent, so a HOST keeps
+    /// resolving them from the environment. Identity is not a connect fact,
+    /// which is the whole distinction issues 1434 and 1442 rest on — if this
+    /// ever starts returning a locator, `$NROS_LOCATOR` stops being
+    /// authoritative for every hosted image.
+    #[test]
+    fn the_baked_rung_names_no_connect_facts() {
+        let d = overlay(Some("talker"), Some(&BAKED_BOTH));
+        let rung = hosted_baked_rung(&d);
+        assert_eq!(
+            rung.locator, None,
+            "locator must stay env-driven (issue #48)"
+        );
+        assert_eq!(
+            rung.domain_id, None,
+            "domain must stay env-driven (issue #48)"
+        );
+    }
 }
