@@ -6,9 +6,11 @@ Hand-off doc: the implementation is phase-333; this RFC is the WHY.
 
 # RFC-0067 — Env-invariant Rust message-dependency identity
 
-**Status:** Draft (2026-08-02)
+**Status:** Draft (2026-08-02; D4/D5 added 2026-09-22 from the issue-1428 study)
 **Motivated by:** issue 0378 (leaf message deps resolve against the PUBLIC
-crates.io) + the `--locked` reproducibility tension it exposed.
+crates.io) + the `--locked` reproducibility tension it exposed; extended by
+issue 1428 (`builtin_interfaces` generated three times, none canonical) and
+issue 1455 (a generated crate's `links` collides with a consumer's own copy).
 **Amends / refines:** RFC-0026 §Cargo.lock policy (adds the third leaf class —
 in-tree testing/bench leaves that COMMIT their locks), RFC-0048 W9 (the
 `nros sync`-managed leaf `[patch.crates-io]`), RFC-0023 (codegen emits the
@@ -98,6 +100,131 @@ could not be reproducible. With D1+D2 the message identity is env-invariant, so 
 `generated/` tree CAN commit a reproducible lock. Leaves that do NOT commit
 `generated/` keep a path dep pointing at an absent dir → they fail closed until
 `nros sync` and therefore cannot commit a lock (nor should they).
+
+### D4 — `links` is the THIRD identity axis, and a rename must move it
+
+D1 and D2 cover the two axes a `path` dep resolves on: the **name** and the
+**version**. A generated message crate has a third, and it is also global to the
+dependency graph: `links`.
+
+Codegen emits `links = "nros_msgs_<ament_package>"`
+(`rosidl-codegen/src/bounds.rs::links_key`) purely as cargo's metadata channel —
+no native library is linked; it is what makes the crate's `build.rs` size bounds
+reach a dependent as `DEP_NROS_MSGS_<PKG>_BOUNDS_*`. The emitter states the
+assumption that makes it safe, at `rosidl-bindgen/src/generator.rs`: *"Cargo
+requires `links` to be unique across a dependency graph; a generated crate is
+named after its ament package, which already is."*
+
+**That assumption does not survive the `nros-` prefix**, and the consequence
+reaches out-of-tree consumers, not just this repo. Three measurements,
+2026-09-22:
+
+1. **The prefix does not reach `links`.** `apply_package_renames`
+   (`cargo-nano-ros/src/lib.rs`) rewrites `[package] name`, dependency keys,
+   `"../<dep>"` sibling paths and `<pkg>/std`. It does not touch `links`. So
+   `packages/interfaces/.../nros-builtin-interfaces-clock` ships
+   `name = "nros-builtin-interfaces-clock"` with
+   `links = "nros_msgs_builtin_interfaces"` — the *ament* value.
+2. **A consumer's own copy therefore collides.** A user's `nros sync` emits an
+   unrenamed `builtin_interfaces` crate carrying the same `links`. Put both in
+   one graph — which `nros/sim-time` → `nros-node/sim-time` →
+   `nros-rosgraph-msgs` → `nros-builtin-interfaces-clock` does for any leaf that
+   also generates a closure containing `builtin_interfaces` — and cargo refuses
+   at resolve time:
+
+   > package `nros-builtin-interfaces-clock` links to the native library
+   > `nros_msgs_builtin_interfaces`, but it conflicts with a previous package
+   > which links to `nros_msgs_builtin_interfaces` as well
+
+   Resolve-time, so it takes every cargo command in that leaf. Reachable today
+   and not yet reached: `sim-time` is off by default and its two in-tree
+   consumers deliberately use the committed bindings rather than generating.
+   Two shipped crates carry `links` today (`-clock` and `nros-rosgraph-msgs`);
+   every further regeneration of the pre-generated set adds one, because a
+   current `nros` emits it. Filed as issue 1455.
+3. **Dropping the prefix is not the alternative.** Two `path` packages with the
+   same `name` + `version` are a hard error even when renamed at the dep site and
+   given distinct `links` values:
+
+   > package collision in the lockfile: packages `builtin_interfaces v0.0.0
+   > (…/a)` and `builtin_interfaces v0.0.0 (…/b)` are different, but only one can
+   > be written to lockfile unambiguously
+
+   So the `nros-` prefix on the committed core set is load-bearing and permanent:
+   it is what stops a shipped pre-generated crate colliding by NAME with a
+   consumer's own copy of the same ament package.
+
+**Decision:** a crate rename is a rename of the whole identity. `links` follows
+the crate name (`nros_msgs_` + the renamed crate's ident), so a renamed crate and
+an unrenamed copy of the same ament package coexist. Refusing the rename is not
+an option (the prefix is required by (3)) and neither is leaving `links` behind
+(it breaks (2)). This is decidable **independently of D5** — (3) is what makes it
+so, and it is why issue 1428 was wrong to hold it back pending the collapse.
+
+### D5 — Canonicality is a property of the output TREE, not of a shared crate
+
+One wire type should be one Rust crate per **(ros-edition, capacity profile)**.
+Two copies are legitimate only when they differ — a different edition's field
+set, or a different RFC-0033 capacity config, both of which make genuinely
+different Rust types over the same wire type. Byte-identical copies are not.
+
+The core pre-generated set violated this: `builtin_interfaces` existed three
+times with byte-identical sources, one per output tree
+(`packages/interfaces/{rcl-interfaces,diagnostic-msgs,rosgraph-msgs}/generated/humble/`),
+distinguished only by `--rename` suffixes (`-diag`, `-clock`) whose whole job was
+to stop three copies colliding in one workspace.
+
+**The fix is not a shared canonical crate — it is one output tree.** Codegen
+emits the whole transitive closure of a driver `package.xml` into one directory
+and wires siblings by `path = "../<dep>"`; `resolve_transitive_dependencies`
+returns a `HashSet` and `filter_interface_packages` iterates it, so **one
+invocation emits each ament package exactly once**. Measured 2026-09-22 with one
+driver package.xml depending on all four core packages
+(`rcl_interfaces`, `diagnostic_msgs`, `rosgraph_msgs`, `lifecycle_msgs`):
+
+```
+Generating bindings for 7 interface packages...
+  ✓ builtin_interfaces (2 messages, …)   ← once
+  ✓ std_msgs (30 messages, …)            ← once
+  …
+nros-rosgraph-msgs:   nros-builtin-interfaces = { path = "../nros-builtin-interfaces" }
+nros-diagnostic-msgs: nros-std-msgs           = { path = "../nros-std-msgs" }
+```
+
+Six crates where the four-tree layout has eight, every dep a sibling, every crate
+`nros-`prefixed, `links` unique because there is one copy. Sources match the
+committed ones modulo `cargo fmt` (import ordering and a trailing newline — the
+committed set is formatted after generation).
+
+So the two objections recorded against collapsing both dissolve, because both are
+objections to a *shared crate across trees*:
+
+- *"a file move cannot do it; the parents' sibling `path` rows are emitted and the
+  next regeneration writes them back"* (issue 1428 §"Is collapsing a file move or
+  a codegen change? — CODEGEN"). True given four trees. With one tree the emitted
+  rows are already correct, so **no codegen change is required at all**.
+- *"a canonical crate makes generated trees non-relocatable — a generated manifest
+  would name a path outside its own tree"* (issue 1428 Resolution). The property
+  worth keeping is precisely stated as **no generated tree references another
+  generated tree**, and one tree preserves it trivially. (The looser reading —
+  "no reference outside itself" — was never true: every generated crate already
+  reaches `nros-core` / `nros-serdes` in the checkout by relative path, which is
+  §Evidence's deliberate design.)
+
+Out-of-tree consumers are unaffected either way: a user's `nros sync` already
+emits one copy per ament package for the whole workspace closure (the same
+`emitted` dedupe, `nros-cli-core/src/cmd/ws.rs`), so a user whose closure
+contains `builtin_interfaces` has exactly one copy before and after. What D5
+changes is only how many copies **nano-ros ships**.
+
+Capacity profiles merge cleanly under one tree because RFC-0033 keys are
+package-qualified (`"diagnostic_msgs/DiagnosticArray.status"`), and one
+invocation builds one `CapacityResolver` for the whole closure. A future package
+that needs the *same* ament package at a *different* capacity is the legitimate
+duplicate D5 allows — and then the suffix names the profile, not the neighbouring
+tree.
+
+Implementation: phase-465. Not a prerequisite for D4.
 
 ## Consequences / migration shape
 

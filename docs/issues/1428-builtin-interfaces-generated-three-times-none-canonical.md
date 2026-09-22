@@ -7,7 +7,7 @@ type: tech-debt
 area: [codegen, interfaces]
 severity: medium
 found: 2026-09-21
-related: [phase-417, phase-425, rfc-0023, rfc-0067, issue-0394]
+related: [phase-417, phase-425, phase-465, rfc-0023, rfc-0067, issue-0394, issue-1455]
 ---
 
 ## What is there
@@ -305,3 +305,99 @@ So: the bleeding this issue names is not stopped — a regeneration still wedges
 but the tree is no longer one version bump from an unresolvable workspace, and a
 fourth copy can no longer arrive unnoticed. Status stays **open** for the
 collapse and the `links` decision.
+
+## Decision — 2026-09-22: collapse, but not to a canonical crate
+
+State re-verified first, and nothing had moved: three crates present; the four
+sources byte-identical across all three (md5 `924b3f2d…`, `c6c0bcb8…`,
+`f386bd08…`, `15a1c8e1…`, one value each); `links` + `build.rs` +
+`nros_message_bounds.json` on `-clock` alone; all eight version sites the
+constant `0.0.0` with no dep row pinning one; `check-message-crate-identity`
+green over 8 generated crates / 328 manifests / 6 baselined claims; `nros-tests`
+still path-depping two copies.
+
+**The collapse should happen. The shape everyone assumed is the wrong one, and
+the shape that is right needs no codegen change and costs no property.**
+
+Both this issue's §"Is collapsing a file move or a codegen change? — CODEGEN"
+and the Resolution above reason about **a shared canonical crate reached from
+four trees**. Given four trees they are correct: the parents' sibling `path` rows
+are emitted, so a file move is undone by the next `just generate-*`; and a
+manifest naming a path outside its own tree is a real loss, which for an
+out-of-tree consumer leads into the nano-ros checkout.
+
+The alternative is to make the **tree** canonical rather than the crate. Codegen
+already deduplicates inside one invocation — `resolve_transitive_dependencies`
+returns a `HashSet`, `filter_interface_packages` iterates it — so one driver
+`package.xml` depending on all four core packages emits each ament package
+exactly once. MEASURED 2026-09-22 (parent checkout's release `nros`, this
+worktree having none):
+
+```
+Generating bindings for 7 interface packages...
+  ✓ builtin_interfaces (2 messages, …)   ← once, not three times
+  ✓ std_msgs (30 messages, …)            ← once
+nros-rosgraph-msgs:   nros-builtin-interfaces = { path = "../nros-builtin-interfaces" }
+nros-diagnostic-msgs: nros-std-msgs           = { path = "../nros-std-msgs" }
+```
+
+Six crates where four trees need eight; every dep still a flat sibling; every
+crate `nros-`prefixed; `links` unique because there is one copy; sources matching
+the committed ones modulo `cargo fmt`. So:
+
+* **"it is a codegen change"** — no. The emitted rows are already right. It is a
+  driver-package, recipe and layout change.
+* **"it costs relocatability"** — no. State the property precisely as *no
+  generated tree references another generated tree*, and one tree preserves it
+  trivially. (The looser reading, *no reference outside itself*, was never true:
+  every generated crate already reaches `nros-core` / `nros-serdes` in the
+  checkout by relative path, by RFC-0067's own design.)
+* **an out-of-tree consumer whose own closure contains `builtin_interfaces`** is
+  unaffected either way — `nros sync` already emits one copy per ament package
+  for the whole workspace closure, before and after. What changes is only how
+  many copies nano-ros ships.
+
+Recorded as **RFC-0067 §D5** (the rule: one wire type, one crate per
+*(ros-edition, capacity profile)*; two copies are legitimate only when they
+differ). Planned as **phase-465**. Reader-facing summary where someone who finds
+three identical crates will look: **`packages/interfaces/README.md`**.
+
+**Affordable now?** No, and it is filed rather than started. The migration is a
+~25-file rename — root member list, ~19 consumer dep rows whose KEYS change with
+the `-diag`/`-clock` names, four recipes into one, three hand-adapted manifests
+reshaped, the tracked lockfiles, the gate baseline emptied, and a
+`schema_serializer_round_trip` corpus that asserts its row count against what
+`packages/interfaces` defines — and its only honest acceptance is a build. A
+half-applied version of exactly this rename is the issue-0394 class that broke a
+fresh clone twice.
+
+### The `links` decision is NOT blocked by the collapse
+
+The Resolution above left it to "be decided WITH the collapse", because the third
+option — *stop renaming `builtin_interfaces` entirely* — only makes sense if the
+collapse lands. **That option is dead**, measured: two `path` packages with the
+same `name` + `version` are a hard error even when renamed at the dep site and
+given distinct `links` —
+
+> package collision in the lockfile: packages `builtin_interfaces v0.0.0 (…/a)`
+> and `builtin_interfaces v0.0.0 (…/b)` are different, but only one can be
+> written to lockfile unambiguously
+
+— so the `nros-` prefix on the shipped set is permanent and `links` must follow
+the crate name whichever way phase-465 goes. Which also makes the hazard worse
+than this issue recorded: it is not only an in-tree regeneration wedge but a
+**consumer-facing resolve failure**, reachable today via `nros/sim-time` →
+`nros-node/sim-time` → `nros-rosgraph-msgs` → `nros-builtin-interfaces-clock` in
+any leaf that also generates a closure containing `builtin_interfaces`:
+
+> package `nros-builtin-interfaces-clock` links to the native library
+> `nros_msgs_builtin_interfaces`, but it conflicts with a previous package which
+> links to `nros_msgs_builtin_interfaces` as well
+
+Split out as **issue 1455** (severity high, independent of phase-465), rule as
+**RFC-0067 §D4**.
+
+### Status
+
+Stays **open**: the three crates are still in the tree. Closed by phase-465;
+nothing further is open on this issue's own analysis.
