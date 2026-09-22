@@ -374,9 +374,16 @@ leaf-lockfiles:
 # diagnostic-msgs and rosgraph-msgs carries its own flat transitive closure),
 # the three Rust sources are byte-identical, and all three declare
 # `TYPE_NAME = "builtin_interfaces/msg/Time"` — one type on the wire, three in
-# Rust, no conversion between them. Collapsing that is a codegen change and is
-# still open on the issue; what the gate forbids is a FOURTH arriving unnoticed,
-# which is how the third arrived.
+# Rust, no conversion between them. What the gate forbids is a FOURTH arriving
+# unnoticed, which is how the third arrived.
+#
+# Collapsing it is NOT a codegen change, contrary to what this comment and the
+# issue both said until 2026-09-22: one invocation already emits each ament
+# package exactly once, so one output tree instead of four gets six crates with
+# every dep still a flat sibling. Decided as RFC-0067 §D5, planned as phase-465,
+# reader-facing summary in `packages/interfaces/README.md`. Rule 3's baseline is
+# a shrink-only ratchet, so that collapse must empty
+# `.config/duplicate-wire-type-baseline.txt` in the same commit.
 #
 # The version rules are the live half. Three of the eight tracked generated
 # crates predate issue 0394 and carried `version.workspace = true` — the release
