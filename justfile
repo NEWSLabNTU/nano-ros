@@ -2633,6 +2633,8 @@ rust-rtos-link-check: _codegen
     # keeps ONE workspace root per target dir — which is the constraint issue
     # 0616 is about, and the reason these must not simply share a directory.
     source scripts/build/codegen-stamp.sh
+    # shellcheck source=scripts/lib/grep-q.sh
+    source scripts/lib/grep-q.sh
     echo "== Phase 146.3 — embedded-RTOS Rust link check =="
     # phase-445 W6 (`9af7e5230`) DELETED every example leaf's `.cargo/`, so the
     # `[patch.crates-io]` table that resolves `nros`, `nros-platform` and the
@@ -2669,15 +2671,53 @@ rust-rtos-link-check: _codegen
     # `nros-cargo.toml` under `<leaf>/build/`, so nothing here restates an image
     # id that `system.toml` owns. Missing it is FATAL — silently building for the
     # host is the defect this exists to stop.
-    leaf_cargo_config() {
-        local leaf="$1" found
+    #
+    # issue 1445 — the settings file is ASSERTED here and NOT passed as
+    # `--config`. `nros sync` wires it into the leaf's own (gitignored)
+    # `.cargo/config.toml` as an `include` (issue 1381, later than the comment
+    # above), so a `--config` of the same file makes cargo read it TWICE and
+    # JOIN the `rustflags` arrays: `-Tmps2_an385.ld` lands on the link line
+    # twice and rust-lld refuses with `region 'FLASH' already defined`. The
+    # generated file says exactly this in its own header ("Do NOT combine the
+    # two"). Measured both ways on `9722fca32`, same leaf and profile: with
+    # `--config` the freertos talker fails to link; without it, it links a
+    # 541,724-byte `thumbv7m-none-eabi` ELF. That is why the merge queue's L3
+    # lane had been red on main's own defect while the required context stayed
+    # green.
+    #
+    # The precondition the `--config` was carrying is still checked, one level
+    # up and more strictly: the settings file must EXIST and the leaf's config
+    # must INCLUDE it. Either missing and cargo silently builds for the host,
+    # which is the defect this assertion exists to stop.
+    assert_leaf_settings_included() {
+        local leaf="$1" found rel
         found="$(find "$leaf/build" -mindepth 2 -maxdepth 2 -name nros-cargo.toml 2>/dev/null | head -1)"
         if [ -z "$found" ]; then
             echo "rust-rtos-link-check: no build/<image>/nros-cargo.toml under $leaf" >&2
             echo "  \`nros sync $leaf\` writes it; without it cargo builds for the host." >&2
             exit 1
         fi
-        printf '%s\n' "${found#"$leaf"/}"
+        rel="${found#"$leaf"/}"
+        local cfg="$leaf/.cargo/config.toml"
+        local absent=0
+        if [ ! -f "$cfg" ]; then
+            absent=1
+        else
+            # issue 0726 — `nros_grep_q`, so a grep that fails to START cannot
+            # be read as "the include is missing" and send this lane off to
+            # build for the host.
+            nros_grep_q -F "$(basename "$(dirname "$rel")")/nros-cargo.toml" "$cfg"
+            case $? in
+                0) ;;
+                *) absent=1 ;;
+            esac
+        fi
+        if [ "$absent" -ne 0 ]; then
+            echo "rust-rtos-link-check: $cfg does not include $rel" >&2
+            echo "  \`nros sync $leaf\` writes that include (issue 1381); without it cargo" >&2
+            echo "  reads neither the board's triple nor its link flags and builds for the host." >&2
+            exit 1
+        fi
     }
     if command -v arm-none-eabi-gcc >/dev/null; then
         echo "  freertos talker ($(nros_cargo_platform_profile freertos)):"
@@ -2685,8 +2725,8 @@ rust-rtos-link-check: _codegen
         # the `rmw-zenoh` parity feature was removed (RMW flows from the board
         # crate). Build with default features, mirroring the nuttx talker below.
         mapfile -t freertos_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile freertos)")
-        freertos_settings="$(leaf_cargo_config examples/mps2-an385-freertos/rust/talker)"
-        ( cd examples/mps2-an385-freertos/rust/talker && cargo build "${freertos_profile[@]}" --config "$freertos_settings" --target-dir target-link-check ) >/dev/null
+        assert_leaf_settings_included examples/mps2-an385-freertos/rust/talker
+        ( cd examples/mps2-an385-freertos/rust/talker && cargo build "${freertos_profile[@]}" --target-dir target-link-check ) >/dev/null
         # issue 0551's error, from the one lane that never provisioned what it
         # consumes. `just/nuttx.just` states the rule this violated:
         #
@@ -2715,8 +2755,8 @@ rust-rtos-link-check: _codegen
         scripts/nuttx/build-nuttx.sh >/dev/null
         echo "  nuttx talker ($(nros_cargo_platform_profile nuttx)):"
         mapfile -t nuttx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile nuttx)")
-        nuttx_settings="$(leaf_cargo_config examples/qemu-armv7a-nuttx/rust/talker)"
-        ( cd examples/qemu-armv7a-nuttx/rust/talker && cargo build "${nuttx_profile[@]}" --config "$nuttx_settings" --target-dir target-link-check ) >/dev/null
+        assert_leaf_settings_included examples/qemu-armv7a-nuttx/rust/talker
+        ( cd examples/qemu-armv7a-nuttx/rust/talker && cargo build "${nuttx_profile[@]}" --target-dir target-link-check ) >/dev/null
     else
         echo "  [SKIPPED] freertos + nuttx: arm-none-eabi-gcc not installed"
     fi
@@ -2726,9 +2766,9 @@ rust-rtos-link-check: _codegen
     # future carve-out reaches this one without an edit here.
     echo "  threadx-linux talker ($(nros_cargo_platform_profile threadx-linux)):"
     mapfile -t threadx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile threadx-linux)")
-    threadx_settings="$(leaf_cargo_config examples/threadx-linux/rust/talker)"
+    assert_leaf_settings_included examples/threadx-linux/rust/talker
     ( cd examples/threadx-linux/rust/talker && \
-        cargo build "${threadx_profile[@]}" --config "$threadx_settings" --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
+        cargo build "${threadx_profile[@]}" --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
     echo "Rust-RTOS link check OK."
 
 # Run CI: format check + clippy + every test tier (never modifies code).

@@ -88,3 +88,48 @@ filed rather than patched.
 `thumbv7m-none-eabi` with exactly one `-Tmps2_an385.ld` on the line, and the
 merge queue's `queue` job green on a batch. A gate asserting the emitted link
 line names each `-T` script once would keep it closed.
+
+## 2026-09-22 — measured, and it is candidate 2
+
+The measurement this filing asked for, taken on `9722fca32` against
+`examples/mps2-an385-freertos/rust/talker` at its platform profile
+(`nros-minsizerel`), the same leaf and profile the lane builds:
+
+| form | result |
+| --- | --- |
+| `cd <leaf> && cargo build … --config build/<image>/nros-cargo.toml` (what the recipe did) | `rust-lld: error: …/mps2_an385.ld:15: region 'FLASH' already defined` |
+| `cd <leaf> && cargo build …` (no `--config`) | links — a 541,724-byte `thumbv7m-none-eabi` ELF |
+
+**The road supplied the second carrier, not the board.** `nros sync` wires the
+settings file into the leaf's own (gitignored) `.cargo/config.toml` as an
+`include` — issue 1381, which landed AFTER the `--config` was added to
+`rust-rtos-link-check` for a different reason (the leaf's `[build] target`
+moving out of `.cargo/nros-board.toml` in phase-445 W6). So the recipe named a
+file cargo was already reading, cargo JOINED the two `rustflags` arrays, and
+`-Tmps2_an385.ld`, `--nmagic` and `--gc-sections` each landed twice — exactly
+the whole-group duplication this issue read off the link line.
+
+The generated file had already written the rule down in its own header:
+
+```
+#   because `nros sync` wires this file into the leaf's own (gitignored)
+#   `.cargo/config.toml` as an `include` — issue 1381. Do NOT combine the
+#   two: cargo JOINS `rustflags` arrays across config files, so reading
+#   this file twice links `link.x` twice (`region 'FLASH' already
+#   defined`).
+```
+
+So candidate 1 (dedupe in the generator) is not the fix: both carriers are the
+same file reached twice, not two independent renderings, and no board changes.
+
+`leaf_cargo_config` becomes `assert_leaf_settings_included`, which keeps the
+precondition the `--config` was carrying and strengthens it — the settings file
+must exist AND the leaf's config must include it, since either missing means
+cargo builds for the host, which is what the original flag was defending
+against.
+
+**Acceptance is still the lane.** The `queue` job has to come back green on a
+batch; until it does this stays open. The remaining item this does not do is
+the gate the section below asks for — one that reads the emitted link line and
+asserts each `-T` script appears once. `assert_leaf_settings_included` is a
+structural guard on one road, not that gate.
