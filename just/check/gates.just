@@ -176,6 +176,36 @@ no-vacuous-tests:
 test-precondition-guards:
     @python3 scripts/check-test-precondition-guards.py
 
+# Issue 1430 — the third member of that family, keyed on the PATH a guard probes.
+# `no-vacuous-tests` reads a test BODY, `test-precondition-guards` reads a
+# helper's SIGNATURE; this reads what the condition is ABOUT.
+#
+# Issue 1411: `if !entry.is_dir()` stood in for "the entry package was
+# generated", and was a fair stand-in until RFC-0098 D1 (phase-445 W4/W5) gave
+# `build/<coord>/<entry>/` a SECOND producer — `cmd::build` writes the image's
+# `nros-cargo.toml` there unconditionally, on the model-resolution FAILURE path
+# too. From that commit the directory existed either way, the guard could not be
+# false, its documented fallback became unreachable, and the `unwrap()` five
+# lines down panicked on a file that was never generated. A directory is a
+# CONTAINER: its existence is a claim about everyone who creates containers
+# there, and that set grows.
+#
+# Narrow on purpose, and each narrowing MEASURED over the 336 test targets
+# rather than chosen: only a condition whose false branch REPLACES the test (the
+# probe is negated, or the `if` has an `else`) — a positive `if d.is_dir() {
+# asserts }` is defensible and the one live site of it would have been flagged
+# for nothing; `exists()`/`try_exists()` are in (zero of them are conditions on
+# such a path anywhere, so including them flags nothing and closes a one-token
+# bypass); and the path must be EVIDENCED as a directory by an `is_dir()` probe
+# or a `join`/`read_dir` receiver, which keeps six extensionless BINARY paths
+# under a build root out. NOT a case inside `no-vacuous-tests`: that gate's unit
+# is a `#[test]` body, and 20 of the 79 generated-output path bindings in this
+# corpus live in plain helper fns. Buildless, self-testing on the normal path,
+# every test target. `--sweep` re-runs the measurement.
+[private]
+test-generated-dir-guards:
+    @python3 scripts/check-test-generated-dir-guards.py
+
 # Issue 0975 — a REQUIRED check that cannot report on a pull request freezes the
 # repo, and it freezes it SILENTLY: no red check, no message, just PRs that never
 # merge. Requiring `L3` (a merge_group-only job) did exactly that to seven PRs.
