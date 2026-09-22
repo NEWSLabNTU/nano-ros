@@ -183,12 +183,20 @@ mod tests {
     use ros_launch_manifest_model::{
         Contracts, NodeInstance, PathContract, PubContract, Structure, SystemModel, TopicWiring,
     };
+    use ros_launch_manifest_sched::EffectiveTrigger;
 
     use super::*;
     use crate::{CallbackGroupDecl, resolve_tiers};
 
     /// A contract-only model: control is a tight 5 ms / 100 Hz loop, telem a
     /// slack 100 ms / 10 Hz loop, NO `execution.tiers`.
+    ///
+    /// phase-457 W1 - each timer path carries its `trigger` (rlm v0.1.37,
+    /// design issue #52): the timer's rate lives on the path, and an empty
+    /// `input` says nothing about what fires it. The `min_rate_hz` promise
+    /// on each output stays and EQUALS the timer, as the island's do; W2
+    /// stops reading it for the schedule, and W3 asserts a model with no
+    /// promise at all still ranks by the timers.
     fn contract_model() -> SystemModel {
         let node = |scope: &str| NodeInstance {
             scope: scope.into(),
@@ -220,6 +228,7 @@ mod tests {
             PathContract {
                 input: vec![],
                 output: vec!["/control_node/cmd".into()],
+                trigger: Some(EffectiveTrigger::Timer { rate_hz: 100.0 }),
                 max_latency_ms: Some(5.0),
                 ..Default::default()
             },
@@ -229,6 +238,7 @@ mod tests {
             PathContract {
                 input: vec![],
                 output: vec!["/telem_node/status".into()],
+                trigger: Some(EffectiveTrigger::Timer { rate_hz: 10.0 }),
                 max_latency_ms: Some(100.0),
                 ..Default::default()
             },

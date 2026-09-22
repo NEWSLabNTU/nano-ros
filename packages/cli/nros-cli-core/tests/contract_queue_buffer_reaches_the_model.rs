@@ -14,22 +14,29 @@
 //! | --- | --- | --- |
 //! | publish rate | `topics.<t>.rate_hz` | yes |
 //! | publish rate | `<node>.pub.<ep>.min_rate_hz` | yes |
-//! | drain rate | `<node>.paths.<p>.trigger.timer.rate_hz` | **no** |
-//! | discipline | `<node>.sub.<ep>.buffer` | **no** |
+//! | drain rate | `<node>.paths.<p>.trigger.timer.rate_hz` | yes, since rlm v0.1.37 |
+//! | discipline | `<node>.sub.<ep>.buffer` | yes, since rlm v0.1.37 |
 //!
-//! Both missing halves are dropped by the MODEL SCHEMA, not by nano-ros. The
-//! resolver PARSES them, VALIDATES them (`buffer` outside `state: true` is a
-//! parse-time error) and REASONS about them — it emits a `[queue-drain-rate]`
-//! warning that divides exactly the two rates this wave's default divides — and
-//! then writes a `sub_endpoints` entry with no discipline and a `node_paths`
-//! entry with nothing but `output`. That is issue 1256's shape one layer
-//! upstream of where W3 found it: a declaration legal to write, legal to
-//! resolve, and dropped before any consumer can read it. Issue 1339.
+//! When this file was written (rlm v0.1.35, play_launch 07f0461e) the two
+//! lower rows were **no**: both halves were dropped by the MODEL SCHEMA, not
+//! by nano-ros. The resolver PARSED them, VALIDATED them (`buffer` outside
+//! `state: true` is a parse-time error) and REASONED about them - it emits a
+//! `[queue-drain-rate]` warning that divides exactly the two rates this
+//! wave's default divides - and then wrote a `sub_endpoints` entry with no
+//! discipline and a `node_paths` entry with nothing but `output`. That was
+//! issue 1256's shape one layer upstream of where W3 found it: a declaration
+//! legal to write, legal to resolve, and dropped before any consumer can
+//! read it. Issue 1339.
 //!
-//! These are therefore TRIPWIRES, in the deliberate sense: two of them go RED
-//! the day the model carries the field, and the red is the instruction to wire
-//! `from_model` up. A test that only asserted the half that works would leave
-//! the gap to be rediscovered.
+//! Two of the tests below were TRIPWIRES for that gap, written to go RED the
+//! day the model carries the field. phase-457 W1 moved the pins to rlm
+//! v0.1.37 and play_launch 0.12.0 (design issue #52), and both went red as
+//! designed: `SubContract.buffer` and `PathContract.trigger` now reach the
+//! model. The two tests now assert the ARRIVAL, so the model side of issue
+//! 1339 stays measured; the consumer side - `EntityInventory::from_model`
+//! reading the drain rate from the trigger and the discipline from `buffer`
+//! instead of `buffer: None` and the output promise - is issue 1339's
+//! remaining half and lands with it, not with a pin bump.
 //!
 //! Run with:
 //! `cargo test --manifest-path packages/cli/Cargo.toml --test contract_queue_buffer_reaches_the_model`
@@ -98,17 +105,17 @@ fn the_resolver_already_computes_the_division_this_wave_derives_from() {
     assert!(drain.contains("buffer: queue"), "{drain}");
 }
 
-/// TRIPWIRE 1 — `SubContract` carries no `buffer`, so nano-ros cannot see the
-/// discipline.
+/// Former TRIPWIRE 1 - `SubContract` now carries `buffer`, so nano-ros CAN
+/// see the discipline.
 ///
-/// Asserted against the model's own YAML rather than against the typed struct,
-/// because the typed struct HAS NO SUCH FIELD: there is nothing to call. When
-/// `ros-launch-manifest` grows one and the resolver emits it, this key appears
-/// and this test goes red — which is the moment `from_model`'s `buffer: None`
-/// must become a read. Issue 1339.
+/// Asserted against the model's own YAML as well as the typed struct: the
+/// YAML is what the pinned resolver wrote, the struct is what rlm v0.1.37
+/// reads back, and the two agreeing is the fact `from_model` will rely on
+/// when issue 1339's consumer half replaces its `buffer: None`.
 #[test]
-fn the_model_does_not_carry_the_buffer_discipline_yet() {
-    let (text, _model) = resolve("queue");
+fn the_model_carries_the_buffer_discipline() {
+    use ros_launch_manifest_model::BufferContract;
+    let (text, model) = resolve("queue");
     let raw: serde_yaml_ng::Value =
         serde_yaml_ng::from_str(&text).expect("the resolved model parses as YAML");
     let sub = raw
@@ -116,31 +123,42 @@ fn the_model_does_not_carry_the_buffer_discipline_yet() {
         .and_then(|c| c.get("sub_endpoints"))
         .and_then(|s| s.get("/listener/chatter"))
         .expect("the subscriber endpoint has a contract entry");
-    // The control: the entry is REAL and carries what the schema does model, so
-    // an absent `buffer` is a missing FIELD rather than a missing entry.
+    // The control: the entry is REAL and carries what the schema modelled
+    // before v0.1.37, so `buffer` below is a field on a real entry.
     assert_eq!(
         sub.get("state").and_then(serde_yaml_ng::Value::as_bool),
         Some(true),
         "the same endpoint's `state: true` DID travel: {sub:?}"
     );
-    assert!(
-        sub.get("buffer").is_none(),
-        "issue 1339 has closed -- `buffer` now reaches the SystemModel. Wire it into \
-         `EntityInventory::from_model` (the `buffer: None` with this issue number beside \
-         it) and delete this tripwire: {sub:?}"
+    assert_eq!(
+        sub.get("buffer").and_then(serde_yaml_ng::Value::as_str),
+        Some("queue"),
+        "rlm v0.1.37 / play_launch 0.12.0: `buffer: queue` reaches the SystemModel: {sub:?}"
+    );
+    assert_eq!(
+        model
+            .contracts
+            .sub_endpoints
+            .get("/listener/chatter")
+            .and_then(|c| c.buffer),
+        Some(BufferContract::Queue),
+        "the typed model reads the same discipline back"
     );
 }
 
-/// TRIPWIRE 2 — `PathContract` carries no trigger, so the DRAIN RATE is not in
-/// the model either.
+/// Former TRIPWIRE 2 - `PathContract` now carries its trigger, so the DRAIN
+/// RATE is in the model.
 ///
-/// The fixture's drain path states `trigger: { timer: { rate_hz: 10 } }`. What
-/// survives is a `node_paths` entry with `output` alone — which is why
-/// `from_model` recovers the rate from what the timer PUBLISHES instead, the
-/// same convention `mapper_input::pub_rate_hz` uses.
+/// The fixture's drain path states `trigger: { timer: { rate_hz: 10 } }`, and
+/// what survives is a `node_paths` entry with `output` AND the trigger in the
+/// `sched` crate's adjacent `kind`/`value` shape. `from_model` still recovers
+/// the rate from what the timer PUBLISHES (the convention
+/// `mapper_input::pub_rate_hz` used); reading it from here is issue 1339's
+/// consumer half, and phase-457 W2 retires the convention on the mapper side.
 #[test]
-fn the_model_does_not_carry_a_paths_trigger_rate_yet() {
-    let (text, _model) = resolve("queue");
+fn the_model_carries_a_paths_trigger_rate() {
+    use ros_launch_manifest_sched::EffectiveTrigger;
+    let (text, model) = resolve("queue");
     let raw: serde_yaml_ng::Value =
         serde_yaml_ng::from_str(&text).expect("the resolved model parses as YAML");
     let path = raw
@@ -152,11 +170,30 @@ fn the_model_does_not_carry_a_paths_trigger_rate_yet() {
         path.get("output").is_some(),
         "the control: the path entry is real and carries its output: {path:?}"
     );
-    assert!(
-        path.get("trigger").is_none() && path.get("rate_hz").is_none(),
-        "issue 1339 has closed -- a path's trigger now reaches the SystemModel. Read the \
-         drain rate from it in `EntityInventory::from_model` instead of from the timer's \
-         output promise, and delete this tripwire: {path:?}"
+    let trigger = path
+        .get("trigger")
+        .unwrap_or_else(|| panic!("rlm v0.1.37: the path carries its trigger: {path:?}"));
+    assert_eq!(
+        trigger.get("kind").and_then(serde_yaml_ng::Value::as_str),
+        Some("timer"),
+        "adjacently tagged, `kind: timer`: {trigger:?}"
+    );
+    assert_eq!(
+        trigger
+            .get("value")
+            .and_then(|v| v.get("rate_hz"))
+            .and_then(serde_yaml_ng::Value::as_f64),
+        Some(10.0),
+        "`value: {{ rate_hz: 10 }}`: {trigger:?}"
+    );
+    assert_eq!(
+        model
+            .contracts
+            .node_paths
+            .get("/listener/drain")
+            .and_then(|p| p.trigger.clone()),
+        Some(EffectiveTrigger::Timer { rate_hz: 10.0 }),
+        "the typed model reads the same trigger back"
     );
 }
 

@@ -1155,12 +1155,17 @@ mod tests {
             },
         );
         let mut node_paths = BTreeMap::new();
-        // Periodic 100 Hz control path with a 5 ms deadline.
+        // Periodic 100 Hz control path with a 5 ms deadline. phase-457 W1:
+        // the rate is the path's `trigger` (rlm v0.1.37); the `min_rate_hz`
+        // promise below equals it and stays until W2 stops reading it.
         node_paths.insert(
             "/ctrl/loop".to_string(),
             PathContract {
                 input: vec![],
                 output: vec!["/ctrl/cmd".to_string()],
+                trigger: Some(ros_launch_manifest_sched::EffectiveTrigger::Timer {
+                    rate_hz: 100.0,
+                }),
                 max_latency_ms: Some(5.0),
                 ..Default::default()
             },
