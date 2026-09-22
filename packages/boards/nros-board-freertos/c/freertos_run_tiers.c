@@ -551,8 +551,7 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
      * declares none" and resolves to the root. Kept as its own symbol because
      * it is the one a pre-1442 generated entry TU calls, and an entry TU
      * outlives the library it was generated against (issue 1050's rule). */
-    return nros_board_freertos_run_tiers_ns(locator, domain_id, session_name, NULL, tiers,
-                                            n_tiers);
+    return nros_board_freertos_run_tiers_ns(locator, domain_id, session_name, NULL, tiers, n_tiers);
 }
 
 /*
