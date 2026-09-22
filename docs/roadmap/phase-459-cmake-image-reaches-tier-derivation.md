@@ -210,7 +210,7 @@ projection: `mrm_emergency_stop_operator` and `stop_mode_operator` on the most
 urgent derived tier, `mrm_comfortable_stop_operator` and `mrm_handler` one
 below. The fixture is what every later wave's gate runs against.
 
-Claim: phase-459-W0. Depends on: none. Owns: examples/workspaces/derived-tiers-cpp/ (new); one case in packages/cli/nros-cli-core/tests/example_metadata_coverage.rs. Gate: cargo test -p nros-cli-core --test example_metadata_coverage. Status: not started.
+Claim: phase-459-W0. Depends on: none. Owns: examples/workspaces/derived-tiers-cpp/ (new); one case in packages/cli/nros-cli-core/tests/example_metadata_coverage.rs. Gate: cargo test -p nros-cli-core --test example_metadata_coverage. Status: PR #1195 (d4c4dae3b), in the queue; examples/workspaces/derived-tiers-cpp, four components with CALLBACK_GROUPS main.
 
 **W1 - `codegen-system` reads the cmake metadata for groups.**
 `collect_callback_groups` gains a third source after `group_tiers` and the cargo
@@ -285,7 +285,7 @@ the list of blocks it could have named, instead of resolving the tier RTOS to
 the host. The Zephyr module already passes `--for-entry` and is unaffected.
 Gate: a unit test beside `resolve_target_block`.
 
-Claim: phase-459-W5. Depends on: none. Owns: resolve_target_block in packages/cli/nros-cli-core/src/cmd/codegen_system.rs and a unit test beside it. Gate: cargo test -p nros-cli-core resolve_target_block. Status: not started.
+Claim: phase-459-W5. Depends on: none. Owns: resolve_target_block in packages/cli/nros-cli-core/src/cmd/codegen_system.rs and a unit test beside it. Gate: cargo test -p nros-cli-core resolve_target_block. Status: PR #1195 (d4c4dae3b), in the queue; --target naming no board block is refused.
 
 **W6 - code and keyword agree.** A group created in code that the registration
 did not declare, or declared and never created when the node has more than one

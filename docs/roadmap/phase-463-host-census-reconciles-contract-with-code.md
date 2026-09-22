@@ -200,7 +200,10 @@ funnel, gated on a cargo feature that only the native umbrella enables.
 ### W0 - measure the reference consumer before changing anything
 
 Run the existing probe on the island and record, per component, what it
-produces today: which of the four fail (all four, E0428), what the two stale
+produces today: which of the four fail (all four; W0 measured the cause as the
+unbounded-field static assert on VelocityReport/Odometry header.frame_id, since
+the batch probe has no system.toml or capacities, not the E0428 collision this
+document first assumed), what the two stale
 sidecars claim (depth 10 where the code passes 1; `parameters: []` for nodes
 that declare 2 to 8), and what `count_callbacks_with_recorded` computed for
 the last bake. Also record that the island's own `just build` exports
@@ -211,7 +214,7 @@ Acceptance: a table in this document with one row per island component, each
 cell measured rather than inferred. This is the baseline W3's acceptance is
 measured against.
 
-Claim: phase-463-W0. Depends on: none. Owns: this document (the measurement table). Gate: the table, one measured row per island component. Status: not started.
+Claim: phase-463-W0. Depends on: none. Owns: this document (the measurement table). Gate: the table, one measured row per island component. Status: measured 2026-09-21, table in PR #1194; the island probe fails on the unbounded-field static assert, not E0428, at f0d191c98.
 
 ### W1 - the recorder tells the whole truth
 
@@ -244,7 +247,7 @@ parameters produces a sidecar with exactly those facts, and the negative
 control holds: remove any one hook call and the fixture's census fails to
 match, so a hook that quietly stops being called is caught.
 
-Claim: phase-463-W1. Depends on: none. Owns: packages/rmw/metadata/src/lib.rs, packages/api/nros-cpp/src/metadata_hooks.rs, packages/api/nros/src/node_metadata.rs, the hook call sites in packages/api/nros-cpp/src/params_shim.rs, packages/api/nros-cpp/src/timer.rs and packages/api/nros-cpp/src/guard_condition.rs, a new census-hooks-complete recipe in just/check/codegen.just. Gate: just check census-hooks-complete (new) plus the phase-308 layer grep. Status: not started.
+Claim: phase-463-W1. Depends on: none. Owns: packages/rmw/metadata/src/lib.rs, packages/api/nros-cpp/src/metadata_hooks.rs, packages/api/nros/src/node_metadata.rs, the hook call sites in packages/api/nros-cpp/src/params_shim.rs, packages/api/nros-cpp/src/timer.rs and packages/api/nros-cpp/src/guard_condition.rs, a new census-hooks-complete recipe in just/check/codegen.just. Gate: just check census-hooks-complete (new) plus the phase-308 layer grep. Status: PR #1194 (adb684711), in the queue; check-census-hooks-complete OK (14 entry points, 4 RMW seams, 7 mutations red).
 
 ### W2 - the native entry is the census producer
 
