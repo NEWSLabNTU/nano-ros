@@ -9,6 +9,9 @@
 # shellcheck source=scripts/build/cmake-prefix.sh
 . "$(dirname "${BASH_SOURCE[0]}")/cmake-prefix.sh"
 nros_cmake_export_prefix_path
+# `nros_run_quiet` — a quiet build that still says why it failed.
+# shellcheck source=scripts/build/quiet-run.sh
+. "$(dirname "${BASH_SOURCE[0]}")/quiet-run.sh"
 # Shared fixture matrix primitives. Keep this file shell-only so every
 # platform just recipe can source it without pulling in Python or Rust.
 

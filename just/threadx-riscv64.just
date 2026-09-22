@@ -316,8 +316,15 @@ build-fixture-extras:
         # the leaf's capabilities are not knowable here, and keying on
         # "platform + rmw" alone would let two leaves with different
         # capabilities overwrite each other's unhashed `libnros_c.a`.
+        # `nros_run_quiet`, NOT `> /dev/null`: this build's stdout carries
+        # ninja's `FAILED:` and every compiler diagnostic, so the redirect that
+        # kept the log readable also discarded the reason on the day it broke.
+        # The 2026-09-22 nightly reported `0/12 ok, 12 failed` over a log with
+        # no `FAILED:` line in it at all. Success stays silent; failure prints
+        # the tail of what was captured.
         THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
         THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+          nros_run_quiet "$dir (-DNROS_RMW=$rmw, $build_dir/)" \
           nros_cmake_fixture_build "$dir" "$dir/$build_dir" "$sig" \
             -DNROS_SHARED_CARGO_ROOT="$shared_cargo_root" \
             -DNANO_ROS_PLATFORM=threadx_riscv64 \
@@ -330,7 +337,7 @@ build-fixture-extras:
             -DNETX_CONFIG_DIR="$config_dir" \
             -DCMAKE_BUILD_TYPE=Release \
             -D_NANO_ROS_CODEGEN_TOOL="$codegen" \
-            -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$root/scripts/cyclonedds/msg_to_cyclone_idl.py" > /dev/null
+            -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
     }
 
     # Phase 181.5.e — collapsed-shape ThreadX-RV64 C / C++ from the SSOT
