@@ -2,10 +2,11 @@
 id: 1443
 title: "A generated C or C++ entry creates every node at the ROOT — `\"/\"` is a
   literal in the template, while the Plan carries each node's namespace"
-status: open
+status: resolved
 type: bug
 area: codegen, boot
 related: [rfc-0045, 1172, 1434]
+resolved_in: 2026-09-22
 ---
 
 ## Problem
@@ -80,3 +81,84 @@ against the Rust image from the same bringup. Include the empty case: a node the
 model gives no namespace must still reach the root, not `""` — RFC-0045's
 distinction between "unset" and "configured to nothing", which the C edge cannot
 express in a `const char*` and so has to normalise at one end.
+
+## Resolution
+
+Resolved 2026-09-22.
+
+### The fix
+
+One derivation, `codegen::entry::node_namespace`, and both entry packs pass
+its answer to `nros_cpp_node_create` / `create_node` / `create_node_on`.
+
+The literal `"/"` was not the whole class. The same question —
+"what namespace does this plan node have?" — already had three authored
+copies in `entry/mod.rs` (`tier_group_keys`'s `ns_of`, `sched_view`'s
+`node_ns`, the `node_binds` inline) plus `emit_cpp::plan_node_fqn`'s own
+four-arm match, and the two template literals made six answers to one
+question. They agreed by luck; the literals were the pair that did not.
+All of them read `node_namespace` now, so a bind can no longer name a
+namespace its node was not created with, and C and C++ cannot grow separate
+rules.
+
+`None` and `Some("")` collapse to `"/"` there. That is the RFC-0045 half
+this issue's acceptance asked for: a `const char*` edge cannot express the
+difference between "unset" and "configured to nothing", so it is normalised
+at the producing end — the same choice `nros_board_native_run_components_named_ns`
+makes for the session rung and `plan_node_fqn` already made for contract-row
+keys.
+
+### Goldens
+
+37 files moved. 36 only gain an explicit `"/"` where the C++ default
+argument used to supply it — the same bytes reaching the compiler, now
+written down. TWO change behaviour, the only rows whose plan namespaces a
+node (`c_native_rich`, `cpp_native_rich`, both `/demo`):
+
+```
+-  nros_cpp_node_create(executor, "renamed_talker", "/",     &__nros_node_0);
++  nros_cpp_node_create(executor, "renamed_talker", "/demo", &__nros_node_0);
+-  ::nros::create_node(__nros_node_0, "renamed_talker");
++  ::nros::create_node(__nros_node_0, "renamed_talker", "/demo");
+```
+
+### Measured on the wire
+
+`rmw_zenohd`, a C image shaped exactly like the generated typed entry —
+`.nros_boot_config` with `NROS_BOOT_SET_NAMESPACE` and
+`namespace_ = "/island"`, `nros_board_native_run_components_named_ns`, then
+the pack's own `nros_cpp_node_create` line — linked against
+`libnros_cpp.a`. One binary per row, the node-create argument being the
+only thing that differs:
+
+| `nros_cpp_node_create` ns | `ros2 node list --no-daemon` | `ros2 topic list` |
+| --- | --- | --- |
+| `"/"` (before) | `/cprobe` | `/chatter` |
+| `"/island"` (now) | `/island/cprobe` + `/cprobe` | `/island/chatter` |
+| `"/"`, nothing baked | `/cprobe` | `/chatter` |
+
+Row 3 is the negative direction, and it is the shape the emitter still
+renders for an un-namespaced node: the root, never `""`.
+
+The residual `/cprobe` in row 2 is the SESSION's own liveliness token, not
+this node — issue 1444, fixed in the next commit so the two symptoms stayed
+separable. With both fixes the same image reports `/island/cprobe` alone.
+
+### The boundary of what was measured
+
+The emitter's output is asserted at the BYTE level
+(`typed_emit_creates_each_node_at_its_plan_namespace` in both packs, plus
+the two `rich` goldens); the wire behaviour of that output is measured with
+a hand-built image whose node-create call is that same line. A generated
+entry was not put on a bus end to end, because that needs a resolved
+SystemModel and no committed one exists. The two halves meet at the exact
+call, which is the seam this issue is about.
+
+### Follow-up
+
+Nothing blocking. Noted rather than fixed: a namespace longer than
+`NROS_CPP_NAMESPACE_LEN` makes `nros_cpp_node_create` return
+`INVALID_ARGUMENT`, which aborts setup and therefore boot — loud, not
+silent. `boot_config_view` already refuses one over 63 bytes with a named
+error on the session rung; the per-node rung has no such producer-side
+check.
