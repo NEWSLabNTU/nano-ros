@@ -61,6 +61,23 @@ pub enum Exemption {
     /// edited tracked source, and those ARE in the dep graph. Without this,
     /// `just ci` re-staled the very fixtures its own check phase probed fresh.
     CargoOutDir,
+    /// A generated config header's `.stamp`, WITH the header it stamps sitting
+    /// beside it — issue 1461.
+    ///
+    /// The emitter writes the `.h` only when its content changes and touches
+    /// the `.stamp` on every build, which is exactly the shape the cbindgen
+    /// exemption above exists for, one directory down and per-build rather than
+    /// in-tree. Measured: after a rebuild that changed only C++ headers, the
+    /// C talker's `nros_config_generated.h` still carried its original mtime
+    /// while the `.stamp` beside it had moved five hours — and three C fixtures
+    /// refused to launch as STALE with nothing about their inputs changed.
+    ///
+    /// **The `.h` must EXIST for this to apply, and that is not a formality.**
+    /// A `.stamp` with no `.h` beside it is issue 0834's absorbing state: cargo
+    /// is up to date, so the build script never re-emits the byproduct, the
+    /// POST_BUILD copy has nothing to copy, and ninja records success forever.
+    /// Exempting that would hide the one signal a developer gets.
+    ConfigHeaderStamp,
 }
 
 impl Exemption {
@@ -68,6 +85,7 @@ impl Exemption {
         match self {
             Exemption::RegeneratedInPlace => "regenerated-in-place header",
             Exemption::CargoOutDir => "cargo OUT_DIR product",
+            Exemption::ConfigHeaderStamp => "config-header stamp beside its header",
         }
     }
 }
@@ -86,7 +104,30 @@ pub fn exempt_probe_input(path: &Path) -> Option<Exemption> {
     if is_cargo_out_dir_product(path) {
         return Some(Exemption::CargoOutDir);
     }
+    if is_config_header_stamp_with_header(path) {
+        return Some(Exemption::ConfigHeaderStamp);
+    }
     None
+}
+
+/// A `<name>.h.stamp` whose `<name>.h` exists beside it — issue 1461.
+///
+/// The existence check is the whole safety of this exemption. See
+/// [`Exemption::ConfigHeaderStamp`]: without the header, the same path is issue
+/// 0834's unrecoverable state rather than a moved timestamp, and it must keep
+/// reading as stale.
+fn is_config_header_stamp_with_header(path: &Path) -> bool {
+    let name = match path.file_name().and_then(|n| n.to_str()) {
+        Some(n) => n,
+        None => return false,
+    };
+    let header = match name.strip_suffix(".stamp") {
+        Some(h) if h.ends_with(".h") => h,
+        _ => return false,
+    };
+    path.parent()
+        .map(|d| d.join(header).exists())
+        .unwrap_or(false)
 }
 
 fn is_cargo_out_dir_product(path: &Path) -> bool {
@@ -115,6 +156,7 @@ thread_local! {
     static EXAMINED: Cell<usize> = const { Cell::new(0) };
     static EXEMPT_INPLACE: Cell<usize> = const { Cell::new(0) };
     static EXEMPT_OUTDIR: Cell<usize> = const { Cell::new(0) };
+    static EXEMPT_STAMP: Cell<usize> = const { Cell::new(0) };
     /// phase-363 — set when an arm could not obtain the MEASURED input set and
     /// fell back to a hand-authored one.
     static UNMEASURED: Cell<bool> = const { Cell::new(false) };
@@ -127,6 +169,7 @@ pub fn begin_probe() {
     EXAMINED.with(|c| c.set(0));
     EXEMPT_INPLACE.with(|c| c.set(0));
     EXEMPT_OUTDIR.with(|c| c.set(0));
+    EXEMPT_STAMP.with(|c| c.set(0));
     UNMEASURED.with(|c| c.set(false));
 }
 
@@ -143,6 +186,10 @@ pub fn note_candidate(path: &Path) -> bool {
         }
         Some(Exemption::CargoOutDir) => {
             EXEMPT_OUTDIR.with(|c| c.set(c.get() + 1));
+            true
+        }
+        Some(Exemption::ConfigHeaderStamp) => {
+            EXEMPT_STAMP.with(|c| c.set(c.get() + 1));
             true
         }
         None => false,
@@ -166,10 +213,12 @@ pub fn probe_accounting() -> String {
     let examined = EXAMINED.with(Cell::get);
     let inplace = EXEMPT_INPLACE.with(Cell::get);
     let outdir = EXEMPT_OUTDIR.with(Cell::get);
+    let stamp = EXEMPT_STAMP.with(Cell::get);
     let mut line = format!(
-        "examined {examined} input(s); exempted {inplace} {} + {outdir} {}",
+        "examined {examined} input(s); exempted {inplace} {} + {outdir} {} + {stamp} {}",
         Exemption::RegeneratedInPlace.label(),
         Exemption::CargoOutDir.label(),
+        Exemption::ConfigHeaderStamp.label(),
     );
     if UNMEASURED.with(Cell::get) {
         line.push_str(
@@ -887,6 +936,48 @@ mod tests {
         assert_eq!(exempt_probe_input(&outdir), Some(Exemption::CargoOutDir));
         let real = project_root().join("packages/core/nros-core/src/lib.rs");
         assert_eq!(exempt_probe_input(&real), None);
+    }
+
+    /// Issue 1461, both directions. The exemption and its guard are one rule:
+    /// a stamp beside its header is a moved timestamp, a stamp WITHOUT its
+    /// header is issue 0834's unrecoverable state and must stay stale.
+    #[test]
+    fn a_config_header_stamp_is_exempt_only_while_its_header_exists() {
+        let dir = std::env::temp_dir().join(format!(
+            "nros-1461-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).expect("temp dir");
+        let header = dir.join("nros_config_generated.h");
+        let stamp = dir.join("nros_config_generated.h.stamp");
+        fs::write(&stamp, b"").expect("stamp");
+
+        // No header beside it: 0834's shape, NOT exempt.
+        assert_eq!(
+            exempt_probe_input(&stamp),
+            None,
+            "a stamp with no header beside it is issue 0834 and must read as an \
+             edit event; exempting it would hide the one signal a developer gets"
+        );
+
+        // Header present: the stamp's mtime moves on every build while the
+        // header is written only when its content changes.
+        fs::write(&header, b"#define X 1\n").expect("header");
+        assert_eq!(
+            exempt_probe_input(&stamp),
+            Some(Exemption::ConfigHeaderStamp),
+            "a stamp beside its header is a moved timestamp, not an input change"
+        );
+
+        // The header itself is NOT exempted by this rule — a per-build config
+        // header really can change, and when it does the fixture IS stale.
+        assert_eq!(exempt_probe_input(&header), None);
+
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
