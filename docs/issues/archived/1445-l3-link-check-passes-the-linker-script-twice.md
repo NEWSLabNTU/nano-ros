@@ -3,11 +3,12 @@ id: 1445
 title: "`rust-rtos-link-check` fails on `region 'FLASH' already defined` — the
   FreeRTOS leaf's link line carries `-Tmps2_an385.ld` TWICE, so the merge queue's
   L3 lane has been red on main's own defect while the required context stayed green"
-status: open
+status: resolved
 type: bug
 area: [boards, tooling, ci]
 severity: high
 found: 2026-09-21
+resolved_in: 2026-09-22
 related: [1280, 0475]
 ---
 
@@ -133,3 +134,41 @@ batch; until it does this stays open. The remaining item this does not do is
 the gate the section below asks for — one that reads the emitted link line and
 asserts each `-T` script appears once. `assert_leaf_settings_included` is a
 structural guard on one road, not that gate.
+
+## Resolved — 2026-09-22, measured on the lane itself
+
+`1a14479ec` (PR #1193) stopped the road passing the settings file a second
+time. The first merge-queue batch to carry it, `pr-1193-8f0204c0`, is the
+acceptance this issue asked for:
+
+| job | run | result |
+| --- | --- | --- |
+| `queue` (L3, `just ci matrix build`) | 35714684742 | **success** |
+| `gate` | 35714684793 | success |
+
+and the L3 log shows the lane finishing for the first time:
+
+```
+== Phase 146.3 — embedded-RTOS Rust link check ==
+  freertos talker (nros-minsizerel):
+  nuttx talker (nros-minsizerel):
+  threadx-linux talker (nros-relwithdebinfo):
+Rust-RTOS link check OK.
+```
+
+The nuttx and threadx-linux leaves had never been REACHED in CI — freertos
+failed first on every batch — so this is also the first CI evidence that those
+two link at all. The batch immediately before it (`pr-1196-e15c2f1d`, run
+35713216759, which predates the fix) failed on the same
+`region 'FLASH' already defined`, which is what makes the change the cause and
+not the weather. The batch after it (`pr-1194-1a14479e`, run 35716867158) is
+green too.
+
+**What is guarded, and what is not.** `assert_leaf_settings_included` refuses
+the shape that produced this — a leaf whose settings file is missing from its
+own config, and, by no longer passing `--config`, a road that reads the same
+file twice. There is still **no gate that reads the emitted link line** and
+asserts each `-T` script appears once, so a NEW way of duplicating a rustflags
+group would once again surface only here. The other half of why that was
+expensive — that the `queue` lane cannot block a merge — is issue **1447**, and
+this issue's closure does not answer it.
