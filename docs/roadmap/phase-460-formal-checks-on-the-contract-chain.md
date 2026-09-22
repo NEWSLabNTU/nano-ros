@@ -135,7 +135,7 @@ and `codegen entry` all exit non-zero naming the marker; the negative control
 reverts the edit, syncs, and all four pass. Runs in the fast tier
 (`just ci-l1`).
 
-Claim: phase-460-W1. Depends on: none. Owns: packages/cli/nros-cli-core/src/cmd/ws.rs, packages/cli/nros-cli-core/src/cmd/model_path.rs, packages/cli/nros-cli-core/src/model_gate.rs (new), one gate call each in packages/cli/nros-cli-core/src/cmd/entity_inventory.rs, cmd/codegen_system.rs, cmd/codegen.rs, packages/api/nros/src/lib.rs, docs/design/0063-system-model-is-a-build-artifact.md. Gate: the refused-resolve fixture test in just ci-l1. Status: not started.
+Claim: phase-460-W1. Depends on: none. Owns: packages/cli/nros-cli-core/src/cmd/ws.rs, packages/cli/nros-cli-core/src/cmd/model_path.rs, packages/cli/nros-cli-core/src/model_gate.rs (new), one gate call each in packages/cli/nros-cli-core/src/cmd/entity_inventory.rs, cmd/codegen_system.rs, cmd/codegen.rs, packages/api/nros/src/lib.rs, docs/design/0063-system-model-is-a-build-artifact.md. Gate: the refused-resolve fixture test in just ci-l1. Status: PR #1165 (b446632ac), in the queue; four consumers gated; issue 1420 archived there. Follow-up: `nros::main!` ensure_model and `nros build` plan_from_model still open a model ungated.
 
 ### W2 - a partial `params:` declaration is a refusal, not a default (issue 1421)
 
@@ -156,7 +156,7 @@ no contract is sized by its board. `refused` becomes a configure-time
 inventory with `refused` fails the configure naming the node; `absent` and
 `declared` pass unchanged.
 
-Claim: phase-460-W2. Depends on: none. Owns: cmake/NanoRosEntityFacts.cmake, packages/core/nros-params/build.rs, tests/cmake-entity-inventory-tests.sh. Gate: tests/cmake-entity-inventory-tests.sh. Status: not started.
+Claim: phase-460-W2. Depends on: none. Owns: cmake/NanoRosEntityFacts.cmake, packages/core/nros-params/build.rs, tests/cmake-entity-inventory-tests.sh. Gate: tests/cmake-entity-inventory-tests.sh. Status: landed in PR #1166 (9677557d7); cmake-entity-inventory 77 assertions held; issue 1421 archived. Follow-up: the Zephyr road forwards the five numbers, not the status, so a refusal still falls to crate defaults there until nros_cargo_build.cmake resolves NROS_PARAM_DECLARATION_STATUS beside :1208 (after 461 W1).
 
 ### W3 - a stated ceiling is compared to the derived bound; a computed flag has a reader (issues 1368, 1422)
 
@@ -200,7 +200,7 @@ Kconfig remains what the image bakes (RFC-0049 ladder), the check only refuses
 a silent disagreement. Gate: a fixture `.config` with `CONFIG_NROS_DOMAIN_ID=2`
 against a bringup declaring 10 fails the configure; equal values pass.
 
-Claim: phase-460-W4. Depends on: none. Owns: zephyr/cmake/nros_system_generate.cmake, docs/design/0049-hierarchical-platform-board-config.md. Gate: tests/cmake-domain-agreement-tests.sh (new). Status: not started.
+Claim: phase-460-W4. Depends on: none. Owns: zephyr/cmake/nros_system_generate.cmake, docs/design/0049-hierarchical-platform-board-config.md. Gate: tests/cmake-domain-agreement-tests.sh (new). Status: landed in PR #1166 (39bc342eb); cmake-domain-agreement 21 assertions held; issue 1423 archived.
 
 ### W5 - the heap size is measured, and the knob is gated against the measurement (issue 1424)
 
