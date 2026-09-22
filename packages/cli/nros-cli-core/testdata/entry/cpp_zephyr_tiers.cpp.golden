@@ -26,7 +26,7 @@ static ::telem_pkg::TELEM __nros_comp_1;
 static int32_t __nros_entry_setup_tier_0(void* executor) {
     if (executor == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
     {
-        ::nros::Result r = ::nros::create_node_on(__nros_node_0, executor, "ctrl");
+        ::nros::Result r = ::nros::create_node_on(__nros_node_0, executor, "ctrl", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_0.configure(__nros_node_0);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
@@ -38,7 +38,7 @@ static int32_t __nros_entry_setup_tier_0(void* executor) {
 static int32_t __nros_entry_setup_tier_1(void* executor) {
     if (executor == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
     {
-        ::nros::Result r = ::nros::create_node_on(__nros_node_1, executor, "telem");
+        ::nros::Result r = ::nros::create_node_on(__nros_node_1, executor, "telem", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_1.configure(__nros_node_1);
         if (!r.ok()) return static_cast<int32_t>(r.raw());

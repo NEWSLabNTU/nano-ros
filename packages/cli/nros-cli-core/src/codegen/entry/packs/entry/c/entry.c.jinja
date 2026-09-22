@@ -16,7 +16,13 @@
 
   What arrives, and in what form (RFC-0091 §8b):
 
-    * VALUES, spelled here — `name` and `tiers` are raw data. The template
+    * VALUES, spelled here — `name`, `namespace` and `tiers` are raw data. The
+      node's `namespace` is the PLAN's, never the literal `"/"` this template
+      used to write (issue 1443): the ONE derivation is
+      `entry::node_namespace`, so a node is CREATED at the same
+      `(name, namespace)` the `nros_cpp_bind_node_name_sched` call below binds
+      it by, and a `/island` launch node stops appearing at `/talker`. It is
+      never empty — "the model names none" arrives as `"/"`. The template
       quotes strings with the `c_str` FILTER and writes the `LL`/`u`/`ull`
       suffixes itself, because those spellings are C's, not the IR's. A Zig or
       Rust pack renders the same rows differently with no lowering change.
@@ -85,7 +91,7 @@ static int32_t __nros_entry_setup_tier_{{ t.index }}(void* executor) {
 {%- with decls = n.decls %}
 {%- include "declare_calls.jinja" %}
 {%- endwith %}
-        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "{{ n.name|c_str }}", "/", &__nros_node_{{ n.index }});
+        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "{{ n.name|c_str }}", "{{ n.namespace|c_str }}", &__nros_node_{{ n.index }});
         if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
 {%- if n.qos %}
         static const nros_cpp_qos_override_t __nros_qos_{{ n.index }}[] = {
@@ -187,7 +193,7 @@ static int32_t __nros_entry_setup(void* executor) {
 {%- with decls = n.decls %}
 {%- include "declare_calls.jinja" %}
 {%- endwith %}
-        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "{{ n.name|c_str }}", "/", &__nros_node_{{ n.index }});
+        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "{{ n.name|c_str }}", "{{ n.namespace|c_str }}", &__nros_node_{{ n.index }});
         if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
 {%- if n.qos %}
         static const nros_cpp_qos_override_t __nros_qos_{{ n.index }}[] = {

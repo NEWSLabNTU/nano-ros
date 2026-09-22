@@ -11,6 +11,13 @@
   `n.tiered` is what selects the expression. It is a fact about WHERE this
   body is being rendered, not about the node, which is why it rides on the
   node view the caller builds rather than being derived here.
+
+  Issue 1443 — both `create_node` arities are passed `n.namespace` EXPLICITLY.
+  Their third parameter defaults to `nullptr`, and `nros_cpp_node_create`
+  substitutes `"/"` for a null, so omitting it created every launch node at the
+  root however the Plan namespaced it. `n.namespace` is
+  `entry::node_namespace`, the same derivation the C pack and the sched binds
+  read, and it is never empty.
 -#}
 {%- if n.shape == "rust" %}
 {%- if n.tiered %}
@@ -32,9 +39,9 @@
         }
 {%- else %}
 {%- if n.tiered %}
-        ::nros::Result r = ::nros::create_node_on(__nros_node_{{ n.index }}, executor, "{{ n.name | c_str }}");
+        ::nros::Result r = ::nros::create_node_on(__nros_node_{{ n.index }}, executor, "{{ n.name | c_str }}", "{{ n.namespace | c_str }}");
 {%- else %}
-        ::nros::Result r = ::nros::create_node(__nros_node_{{ n.index }}, "{{ n.name | c_str }}");
+        ::nros::Result r = ::nros::create_node(__nros_node_{{ n.index }}, "{{ n.name | c_str }}", "{{ n.namespace | c_str }}");
 {%- endif %}
         if (!r.ok()) return static_cast<int32_t>(r.raw());
 {%- if n.qos %}

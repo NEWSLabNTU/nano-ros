@@ -213,9 +213,12 @@ impl CppMonitorTableView {
 /// a contract row's `fqn` starts with.
 fn plan_node_fqn(n: &super::PlanNode) -> String {
     let name = n.name.as_deref().unwrap_or(&n.exec);
-    match n.namespace.as_deref() {
-        None | Some("/") | Some("") => format!("/{name}"),
-        Some(ns) => format!("{}/{name}", ns.trim_end_matches('/')),
+    // Issue 1443 — the namespace half is `super::node_namespace`, the one
+    // derivation, so a contract row's key and the `create_node` call the entry
+    // renders cannot disagree about what "no namespace" means.
+    match super::node_namespace(n) {
+        "/" => format!("/{name}"),
+        ns => format!("{}/{name}", ns.trim_end_matches('/')),
     }
 }
 
@@ -403,6 +406,12 @@ struct CppNodeView {
     index: usize,
     /// RAW. The pack quotes it with `c_str`.
     name: String,
+    /// RAW node namespace, from `super::node_namespace` — issue 1443. The
+    /// `create_node` / `create_node_on` calls used to pass NAME ONLY, and the
+    /// default argument on both is `nullptr`, which `nros_cpp_node_create`
+    /// substitutes `"/"` for. Never empty (the derivation normalises "none" to
+    /// `"/"`), so the same value is safe in every arity.
+    namespace: String,
     /// `"c"` | `"rust"` | `"rclcpp"` | `"configure"`.
     shape: &'static str,
     pkg: String,
@@ -470,6 +479,7 @@ fn node_view(n: &super::PlanNode, i: usize, on_executor: usize, tiered: bool) ->
     CppNodeView {
         index: i,
         name: n.name.as_deref().unwrap_or(&n.exec).to_string(),
+        namespace: super::node_namespace(n).to_string(),
         shape: node_shape(n),
         pkg: sanitize_pkg(&n.pkg),
         class: n.class_name.clone(),
@@ -921,7 +931,7 @@ mod tests {
         assert!(src.contains("static ::talker_pkg::Talker __nros_comp_0;"));
         assert!(src.contains("static ::listener_pkg::Listener __nros_comp_1;"));
         // setup constructs the node + configures the component
-        assert!(src.contains("::nros::create_node(__nros_node_0, \"talker\")"));
+        assert!(src.contains("::nros::create_node(__nros_node_0, \"talker\", \"/\")"));
         assert!(src.contains("__nros_comp_0.configure(__nros_node_0)"));
         assert!(src.contains("__nros_comp_1.configure(__nros_node_1)"));
         // routes to the real executor via the named overload (phase 266)
@@ -1135,8 +1145,8 @@ mod tests {
         assert_eq!(src.matches("#include \"twin_pkg/Twin.hpp\"").count(), 1);
         assert!(src.contains("static ::twin_pkg::Twin __nros_comp_0;"));
         assert!(src.contains("static ::twin_pkg::Twin __nros_comp_1;"));
-        assert!(src.contains("::nros::create_node(__nros_node_0, \"a\")"));
-        assert!(src.contains("::nros::create_node(__nros_node_1, \"b\")"));
+        assert!(src.contains("::nros::create_node(__nros_node_0, \"a\", \"/\")"));
+        assert!(src.contains("::nros::create_node(__nros_node_1, \"b\", \"/\")"));
     }
 
     #[test]
@@ -1492,8 +1502,8 @@ mod tests {
 
         let seed_a = "nros_cpp_declare_param(::nros::global_handle(), 0, \"rate\", \"10\")";
         let seed_b = "nros_cpp_declare_param(::nros::global_handle(), 1, \"rate\", \"20\")";
-        let create_a = "::nros::create_node(__nros_node_0, \"alpha\")";
-        let create_b = "::nros::create_node(__nros_node_1, \"beta\")";
+        let create_a = "::nros::create_node(__nros_node_0, \"alpha\", \"/\")";
+        let create_b = "::nros::create_node(__nros_node_1, \"beta\", \"/\")";
         let at = |s: &str| {
             src.find(s)
                 .unwrap_or_else(|| panic!("missing `{s}`; got:\n{src}"))
@@ -1618,11 +1628,11 @@ mod tests {
         );
         // Each setup fn creates only its tier's nodes via create_node_on.
         assert!(
-            src.contains("::nros::create_node_on(__nros_node_0, executor, \"ctrl\")"),
+            src.contains("::nros::create_node_on(__nros_node_0, executor, \"ctrl\", \"/\")"),
             "ctrl node must use create_node_on in tier-0 setup; src:\n{src}"
         );
         assert!(
-            src.contains("::nros::create_node_on(__nros_node_1, executor, \"telem\")"),
+            src.contains("::nros::create_node_on(__nros_node_1, executor, \"telem\", \"/\")"),
             "telem node must use create_node_on in tier-1 setup; src:\n{src}"
         );
         // NativeTierSpec array emitted.
@@ -2069,12 +2079,67 @@ mod tests {
             "no-tier plan must not emit bind_node_name_sched"
         );
         assert!(
-            src.contains("::nros::create_node(__nros_node_0, \"talker\")"),
+            src.contains("::nros::create_node(__nros_node_0, \"talker\", \"/\")"),
             "no-tier plan must use plain create_node"
         );
         assert!(
             !src.contains(".sched("),
             "no-tier plan must not use NodeBuilder sched"
+        );
+    }
+
+    /// Issue 1443 — the C++ pack passes the PLAN's namespace to `create_node`
+    /// (single executor) and `create_node_on` (a tier's own), instead of
+    /// relying on either function's `nullptr` default.
+    ///
+    /// Same three inputs and one answer as the C pack's twin: a real namespace
+    /// renders itself, `None` and `Some("")` render `"/"`, never `""`. Both
+    /// packs read `super::node_namespace`, so they cannot answer differently —
+    /// which is the cross-language divergence the issue reported.
+    #[test]
+    fn typed_emit_creates_each_node_at_its_plan_namespace() {
+        for (declared, rendered) in [
+            (Some("/island"), "/island"),
+            (Some("/a/b"), "/a/b"),
+            (None, "/"),
+            (Some(""), "/"),
+        ] {
+            let mut plan = fixture_plan_typed(&[(
+                "talker_pkg",
+                "talker",
+                "talker",
+                "talker_pkg::Talker",
+                "talker_pkg/Talker.hpp",
+            )]);
+            plan.nodes[0].namespace = declared.map(str::to_string);
+            let src = emit_typed(&plan).expect("typed cpp emit ok");
+            assert!(
+                src.contains(&format!(
+                    "::nros::create_node(__nros_node_0, \"talker\", \"{rendered}\")"
+                )),
+                "namespace {declared:?} must render as {rendered:?}; src:\n{src}"
+            );
+            assert!(
+                !src.contains("::nros::create_node(__nros_node_0, \"talker\", \"\")"),
+                "an empty namespace must never reach the C++ edge; src:\n{src}"
+            );
+        }
+    }
+
+    /// The tiered arm of the same rule — `create_node_on`, one tier each.
+    #[test]
+    fn typed_emit_tiered_creates_each_node_at_its_plan_namespace() {
+        let mut plan = fixture_plan_with_tiers();
+        plan.nodes[0].namespace = Some("/island".into());
+        // nodes[1] keeps `None`, so both arms appear in one render.
+        let src = emit_typed(&plan).expect("typed cpp tiered emit ok");
+        assert!(
+            src.contains("::nros::create_node_on(__nros_node_0, executor, \"ctrl\", \"/island\")"),
+            "tier-0 node must be created under its plan namespace; src:\n{src}"
+        );
+        assert!(
+            src.contains("::nros::create_node_on(__nros_node_1, executor, \"telem\", \"/\")"),
+            "a node the plan gives no namespace stays at the root; src:\n{src}"
         );
     }
 
