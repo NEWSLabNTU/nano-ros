@@ -259,11 +259,31 @@ class LinuxBoard {
     /// (NROS_ENTRY_SPIN_MS elapsed) or the first non-zero setup / spin code.
     static int32_t run_tiers(const char* session_name, const NativeTierSpec* tiers,
                              size_t n_tiers) {
+        // Issue 1442 — delegates to the namespaced overload with `nullptr`,
+        // which is the root: what this arity has always resolved to.
+        return run_tiers(session_name, nullptr, tiers, n_tiers);
+    }
+
+    /// Issue 1442 — [`run_tiers`] with the primary session's NAMESPACE.
+    ///
+    /// Issue 1434 gave `run_components` this argument and carved the tiered
+    /// path out; this closes it. `node_namespace` is what the generated entry
+    /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`;
+    /// NULL or empty means the image declares none, which resolves to the ROOT.
+    /// It is the BAKED rung of RFC-0045's precedence model A, and this board is
+    /// HOSTED, so `$NROS_NODE_NAMESPACE` still outranks it.
+    ///
+    /// What it names is the SESSION. Each tier's own nodes carry their own
+    /// `(name, namespace, group)` triples in `NativeTierSpec::groups` (issue
+    /// 1172) and are untouched.
+    static int32_t run_tiers(const char* session_name, const char* node_namespace,
+                             const NativeTierSpec* tiers, size_t n_tiers) {
         // NativeTierSpec and nros_native_tier_spec_t have identical layout by
         // construction (same field order, same types, same ABI). The cast is
         // safe; both structs are plain C-compatible aggregates.
-        return ::nros_board_native_run_tiers(
-            session_name, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers);
+        return ::nros_board_native_run_tiers_ns(
+            session_name, node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers),
+            n_tiers);
     }
 };
 
@@ -395,11 +415,31 @@ class ZephyrBoard {
     /// success (the boot-tier spin loop runs forever on embedded firmware).
     static int32_t run_tiers(const char* session_name, const NativeTierSpec* tiers,
                              size_t n_tiers) {
+        // Issue 1442 — delegates to the namespaced overload with `nullptr`,
+        // which is the root: what this arity has always resolved to.
+        return run_tiers(session_name, nullptr, tiers, n_tiers);
+    }
+
+    /// Issue 1442 — [`run_tiers`] with the primary session's NAMESPACE.
+    ///
+    /// Issue 1434 gave `run_components` this argument and carved the tiered
+    /// path out; this closes it. `node_namespace` is what the generated entry
+    /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`;
+    /// NULL or empty means the image declares none, which resolves to the ROOT.
+    /// There is no environment rung on an RTOS, so the bake IS the answer; the
+    /// locator and the domain stay `NROS_ENTRY_LOCATOR` /
+    /// `NROS_ENTRY_DOMAIN_ID`, baked by cmake.
+    ///
+    /// What it names is the SESSION. Each tier's own nodes carry their own
+    /// `(name, namespace, group)` triples in `NativeTierSpec::groups` (issue
+    /// 1172) and are untouched.
+    static int32_t run_tiers(const char* session_name, const char* node_namespace,
+                             const NativeTierSpec* tiers, size_t n_tiers) {
         // NativeTierSpec and nros_native_tier_spec_t have identical layout by
         // construction (same field order, same types, same ABI). The cast is safe.
-        return ::nros_board_zephyr_run_tiers(
+        return ::nros_board_zephyr_run_tiers_ns(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers);
+            node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers);
     }
 };
 
@@ -521,11 +561,31 @@ class NuttxBoard {
     /// success (the boot-tier spin loop runs forever on embedded firmware).
     static int32_t run_tiers(const char* session_name, const NativeTierSpec* tiers,
                              size_t n_tiers) {
+        // Issue 1442 — delegates to the namespaced overload with `nullptr`,
+        // which is the root: what this arity has always resolved to.
+        return run_tiers(session_name, nullptr, tiers, n_tiers);
+    }
+
+    /// Issue 1442 — [`run_tiers`] with the primary session's NAMESPACE.
+    ///
+    /// Issue 1434 gave `run_components` this argument and carved the tiered
+    /// path out; this closes it. `node_namespace` is what the generated entry
+    /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`;
+    /// NULL or empty means the image declares none, which resolves to the ROOT.
+    /// There is no environment rung on an RTOS, so the bake IS the answer; the
+    /// locator and the domain stay `NROS_ENTRY_LOCATOR` /
+    /// `NROS_ENTRY_DOMAIN_ID`, baked by cmake.
+    ///
+    /// What it names is the SESSION. Each tier's own nodes carry their own
+    /// `(name, namespace, group)` triples in `NativeTierSpec::groups` (issue
+    /// 1172) and are untouched.
+    static int32_t run_tiers(const char* session_name, const char* node_namespace,
+                             const NativeTierSpec* tiers, size_t n_tiers) {
         // NativeTierSpec and nros_native_tier_spec_t have identical layout by
         // construction (same field order, same types, same ABI). The cast is safe.
-        return ::nros_board_nuttx_run_tiers(
+        return ::nros_board_nuttx_run_tiers_ns(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers);
+            node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers);
     }
 };
 
@@ -698,11 +758,31 @@ class FreertosBoard {
     /// success (the boot-tier spin loop runs forever on embedded firmware).
     static int32_t run_tiers(const char* session_name, const NativeTierSpec* tiers,
                              size_t n_tiers) {
+        // Issue 1442 — delegates to the namespaced overload with `nullptr`,
+        // which is the root: what this arity has always resolved to.
+        return run_tiers(session_name, nullptr, tiers, n_tiers);
+    }
+
+    /// Issue 1442 — [`run_tiers`] with the primary session's NAMESPACE.
+    ///
+    /// Issue 1434 gave `run_components` this argument and carved the tiered
+    /// path out; this closes it. `node_namespace` is what the generated entry
+    /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`;
+    /// NULL or empty means the image declares none, which resolves to the ROOT.
+    /// There is no environment rung on an RTOS, so the bake IS the answer; the
+    /// locator and the domain stay `NROS_ENTRY_LOCATOR` /
+    /// `NROS_ENTRY_DOMAIN_ID`, baked by cmake.
+    ///
+    /// What it names is the SESSION. Each tier's own nodes carry their own
+    /// `(name, namespace, group)` triples in `NativeTierSpec::groups` (issue
+    /// 1172) and are untouched.
+    static int32_t run_tiers(const char* session_name, const char* node_namespace,
+                             const NativeTierSpec* tiers, size_t n_tiers) {
         // NativeTierSpec and nros_native_tier_spec_t have identical layout by
         // construction (same field order, same types, same ABI). The cast is safe.
-        return ::nros_board_freertos_run_tiers(
+        return ::nros_board_freertos_run_tiers_ns(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers);
+            node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers);
     }
 };
 

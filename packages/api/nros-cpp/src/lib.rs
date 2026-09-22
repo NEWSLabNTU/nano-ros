@@ -1522,6 +1522,34 @@ pub unsafe extern "C" fn nros_board_native_run_components_named(
     unsafe { nros_board_native_run_components_named_ns(session_name, core::ptr::null(), setup) }
 }
 
+/// An OPTIONAL namespace argument, normalised: NULL and empty both mean "this
+/// image declares none", which is `NULL` to `nros_cpp_init` and resolves to the
+/// ROOT — never to the empty namespace, which would read as "configured to
+/// nothing" to every rung above.
+///
+/// Issue 1442 — ONE spelling, shared by the two hosted C-ABI runners that take
+/// the argument ([`nros_board_native_run_components_named_ns`] and
+/// [`nros_board_native_run_tiers_ns`]). Issue 1434 wrote this inline in the
+/// first of them; a second copy in the second is exactly the drift CLAUDE.md's
+/// "one shared helper rather than a second spelling" rule is about, and the
+/// empty-vs-absent distinction is the part that would rot quietly.
+///
+/// An empty string only arises from a bake macro that did not resolve —
+/// `nros_boot_config_namespace()` returns NULL when `NROS_BOOT_SET_NAMESPACE`
+/// is clear — so this is the same treatment an empty `session_name` gets one
+/// line up: not a node called `""`.
+///
+/// # Safety
+/// `p` must be NULL or a valid null-terminated string.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+unsafe fn optional_cstr_arg(p: *const c_char) -> *const c_char {
+    if !p.is_null() && !unsafe { core::ffi::CStr::from_ptr(p) }.is_empty() {
+        p
+    } else {
+        core::ptr::null()
+    }
+}
+
 /// Issue 1434 — [`nros_board_native_run_components_named`] with the primary
 /// session's NAMESPACE.
 ///
@@ -1571,15 +1599,9 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_ns(
     // hands the whole question to the one resolver.
     // Issue 1434 — an EMPTY namespace is "unset", not the empty namespace, for
     // the same reason an empty `session_name` above is not a node called "".
-    // `nros_boot_config_namespace` returns NULL when the bit is clear, so the
-    // empty case only arises from a bake macro that did not resolve.
-    let ns_resolved: *const c_char = if !node_namespace.is_null()
-        && !unsafe { core::ffi::CStr::from_ptr(node_namespace) }.is_empty()
-    {
-        node_namespace
-    } else {
-        core::ptr::null()
-    };
+    // Issue 1442 moved the test into `optional_cstr_arg` when the tiered runner
+    // needed the same one.
+    let ns_resolved: *const c_char = unsafe { optional_cstr_arg(node_namespace) };
 
     let mut storage = core::mem::MaybeUninit::<CppContext>::uninit();
     let sptr = storage.as_mut_ptr() as *mut c_void;
@@ -4569,6 +4591,45 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
     tiers: *const NativeTierSpecC,
     n_tiers: usize,
 ) -> i32 {
+    // Issue 1442 — delegates with a NULL namespace, which is "this image
+    // declares none" and resolves to the root. Kept as its own symbol because
+    // it is the one a pre-1442 generated entry calls, and an entry TU outlives
+    // the library it was generated against (issue 1050's rule).
+    unsafe { nros_board_native_run_tiers_ns(session_name, core::ptr::null(), tiers, n_tiers) }
+}
+
+/// Issue 1442 — [`nros_board_native_run_tiers`] with the primary session's
+/// NAMESPACE.
+///
+/// Issue 1434 threaded the launch-declared namespace to the single-executor
+/// runners and carved the tiered ones out; this closes that carve-out on the
+/// hosted C-ABI road. `node_namespace` is what the generated entry reads out of
+/// `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or empty means
+/// the image declares none, which resolves to the root — NOT to the empty
+/// namespace. It is the BAKED rung of RFC-0045's precedence model A, and this is
+/// the HOSTED runner, so `$NROS_NODE_NAMESPACE` still outranks it
+/// (`nros_cpp_init` → `try_resolve_hosted` reads
+/// `env.namespace.or(baked.namespace)`).
+///
+/// What it names is the SESSION. A tier's own nodes carry their own
+/// `(name, namespace, group)` triples in [`NativeTierSpecC::groups`] (issue
+/// 1172) and are untouched by this.
+///
+/// Additive rather than a fourth parameter on the symbol above, for the reason
+/// `nros_cpp_init_rmw` is additive over `nros_cpp_init` (issue 1050): the older
+/// spelling is what every already-generated entry TU calls.
+///
+/// # Safety
+/// As [`nros_board_native_run_tiers`], plus: `node_namespace` must be NULL or a
+/// valid null-terminated string.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_board_native_run_tiers_ns(
+    session_name: *const c_char,
+    node_namespace: *const c_char,
+    tiers: *const NativeTierSpecC,
+    n_tiers: usize,
+) -> i32 {
     // phase-359 W10 — `alloc`/`core`, not `std`: every one of these has a home
     // outside the standard library, and naming them through `std` made this
     // function look like it needed the flavour when what it needs is the
@@ -4594,6 +4655,16 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
     // `nros_board_native_run_components_named`. `nros_cpp_init` resolves the
     // locator and domain through the one hosted resolver, so NULL/0 (the unset
     // sentinels) is how this entry says "whatever the environment asked for".
+    //
+    // Issue 1442 — the NAMESPACE is not one of those: it is the launch-declared
+    // identity, so it travels as the BAKED rung rather than being left to the
+    // environment. That is the same split `boot_hosted` and
+    // `nros_board_native_run_components_named_ns` draw (issue 1434) — connect
+    // facts stay env-driven, identity is threaded — and it costs
+    // `$NROS_NODE_NAMESPACE` nothing, because the resolver reads
+    // `env.namespace.or(baked.namespace)`.
+    let ns_resolved: *const c_char = unsafe { optional_cstr_arg(node_namespace) };
+
     let mut boot_storage = core::mem::MaybeUninit::<CppContext>::uninit();
     let sptr = boot_storage.as_mut_ptr() as *mut c_void;
     let rc = unsafe {
@@ -4601,7 +4672,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
             core::ptr::null(),
             0,
             name_resolved.as_ptr(),
-            core::ptr::null(),
+            ns_resolved,
             sptr,
         )
     };

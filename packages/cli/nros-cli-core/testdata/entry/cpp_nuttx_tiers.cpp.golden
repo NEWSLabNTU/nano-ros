@@ -108,7 +108,7 @@ __attribute__((section(".nros_boot_config"), used))
 };
 
 extern "C" int nros_app_main(int /*argc*/, char** /*argv*/) {
-    return ::nros::board::NuttxBoard::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, 2u);
+    return ::nros::board::NuttxBoard::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u);
 }
 
 NROS_APP_MAIN_REGISTER_VOID();

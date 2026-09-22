@@ -556,7 +556,44 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
  * non-zero error code only if the primary session open or a spawn fails. */
 int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
                                     const char* session_name, const nros_tier_spec_t* tiers,
+                                    size_t n_tiers);
+int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
+                                       const char* session_name, const char* node_namespace,
+                                       const nros_tier_spec_t* tiers, size_t n_tiers);
+
+int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
+                                    const char* session_name, const nros_tier_spec_t* tiers,
                                     size_t n_tiers) {
+    /* Issue 1442 - delegates with a NULL namespace, which is "this image
+     * declares none" and resolves to the root. Kept as its own symbol because
+     * it is the one a pre-1442 generated entry TU calls, and an entry TU
+     * outlives the library it was generated against (issue 1050's rule). */
+    return nros_board_zephyr_run_tiers_ns(locator, domain_id, session_name, NULL, tiers, n_tiers);
+}
+
+/*
+ * Issue 1442 - the same runner, with the primary session's NAMESPACE.
+ *
+ * `node_namespace` is the launch-declared namespace the generated entry reads
+ * out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or empty
+ * means the image declares none, which resolves to the ROOT - never to the
+ * empty namespace, which would read as "configured to nothing" to every rung
+ * above. `nros_boot_config_namespace()` already returns NULL when
+ * `NROS_BOOT_SET_NAMESPACE` is clear, so the empty case only arises from a bake
+ * that did not resolve.
+ *
+ * There is no environment rung on Zephyr, so the bake IS the answer here; the
+ * locator and the domain stay the board's, baked by cmake. Issue 1434 drew the
+ * same line one runner over (`nros_board_rtos_run_components_ns`); this is that
+ * change on the tiered path.
+ *
+ * What it names is the SESSION. Each tier's own nodes carry their own
+ * `(name, namespace, group)` triples in the spec array (issue 1172) and are
+ * untouched.
+ */
+int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
+                                       const char* session_name, const char* node_namespace,
+                                       const nros_tier_spec_t* tiers, size_t n_tiers) {
     if (tiers == NULL || n_tiers == 0) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
@@ -587,6 +624,10 @@ int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
 
     /* --- Open the primary (owning) executor on the boot thread --- */
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";
+    /* Issue 1442 - NULL and empty are one case: the image declares no
+     * namespace, so the next rung down answers (the root). Same test the
+     * session name gets one line up. */
+    const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;
 
     /* Allocate executor storage from the Zephyr heap (8-byte aligned). */
     void* boot_storage = nros_platform_alloc(NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
@@ -595,7 +636,7 @@ int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
     }
     memset(boot_storage, 0, NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
 
-    int rc = nros_cpp_init(locator, domain_id, sn, NULL, boot_storage);
+    int rc = nros_cpp_init(locator, domain_id, sn, ns, boot_storage);
     if (rc != 0) {
         nros_platform_dealloc(boot_storage);
         return (int32_t)rc;

@@ -66,11 +66,19 @@ exclude = [
     "nros_cpp_subscription_register_validated",
     # Phase 274.W2 — `NativeTierSpecC` has a fn-ptr field typed
     # `Option<unsafe extern "C" fn(*mut c_void) -> i32>` which cbindgen
-    # renders as an opaque wrapper struct. Both the struct and the
-    # `nros_board_native_run_tiers` function are declared manually in
-    # nros_cpp_ffi.h as `nros_native_tier_spec_t` + the function.
+    # renders as an opaque wrapper struct. The struct and EVERY runner that
+    # takes it are declared by hand instead, in `<nros/main.h>`, against the
+    # canonical `nros_native_tier_spec_t`.
+    #
+    # Issue 1442 — that is why the `_ns` twin is here too, and it is not
+    # cosmetic: cbindgen happily emitted
+    # `nros_board_native_run_tiers_ns(..., const NativeTierSpecC *tiers, ...)`
+    # naming a type this very list removes, so the generated header stopped
+    # being self-contained. A runner added to `c_abi_runners` that takes a tier
+    # array belongs on this list.
     "NativeTierSpecC",
     "nros_board_native_run_tiers",
+    "nros_board_native_run_tiers_ns",
 ]
 
 [fn]

@@ -14,12 +14,13 @@
 
   Issue 1434 — the `run_components` call passes the launch-declared NAMESPACE
   beside the node name, both read out of the blob this entry already carries.
-  Before that the namespace was baked and read by nothing. `run_tiers` does
-  not, yet — issue 1442; the C pack's wrapper says why.
+  Before that the namespace was baked and read by nothing. Issue 1442 — and so
+  does `run_tiers`; the C pack's wrapper says what that cost. Here it is one
+  more header overload per board class, so the call NAME does not move.
 -#}
 {%- set call -%}
 {%- if boot.tiers -%}
-{{ boot.board_path }}::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u)
+{{ boot.board_path }}::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u)
 {%- elif boot.shape == "host" -%}
 {{ boot.board_path }}::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)
 {%- else -%}

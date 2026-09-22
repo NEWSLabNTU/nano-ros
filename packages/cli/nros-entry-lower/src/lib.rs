@@ -111,20 +111,22 @@ impl BoardFamily {
     /// Issue 1285. This is the ONE record of which symbol a C entry calls.
     /// The runner names used to live in `emit_c`'s own table, while this
     /// predicate lived here, and nothing tied the two. The table's ThreadX arm
-    /// named `nros_board_threadx_run_tiers`, a symbol that exists nowhere. Now
+    /// named `nros_board_threadx_run_tiers`, a symbol that exists nowhere (in
+    /// neither the pre- nor the post-1442 spelling). Now
     /// the predicate is derived from the names, so the two cannot disagree.
     ///
     /// The names are carried, not assembled from a prefix. The C ABI does not
     /// name them uniformly: `native` keeps the `_named` suffix its
     /// two-overload history left behind, and the RTOS runners have no such
-    /// pair. Both now carry the `_ns` suffix issue 1434 added when the
-    /// launch-declared NAMESPACE became a runner argument — additive symbols,
-    /// because an entry TU generated before 1434 still calls the older
-    /// spelling and those are what it must keep resolving to. Where each is
-    /// DEFINED:
+    /// pair. EVERY name here carries the `_ns` suffix that the
+    /// launch-declared NAMESPACE added when it became a runner argument —
+    /// issue 1434 for the `run_components` half, issue 1442 for the
+    /// `run_tiers` half — and all six are additive symbols, because an entry
+    /// TU generated before either change still calls the older spelling and
+    /// those are what it must keep resolving to. Where each is DEFINED:
     ///
     /// - `Native` — `nros_board_native_run_components_named_ns` and
-    ///   `nros_board_native_run_tiers`, both `extern "C"` in Rust
+    ///   `nros_board_native_run_tiers_ns`, both `extern "C"` in Rust
     ///   (`packages/api/nros-cpp/src/lib.rs`).
     /// - `Freertos`, `Zephyr`, `Nuttx` — ONE `run_components`,
     ///   `nros_board_rtos_run_components_ns`
@@ -132,8 +134,8 @@ impl BoardFamily {
     ///   because the single-executor path differs only in a per-tick yield.
     ///   `run_tiers` is per-board: a FreeRTOS task, a Zephyr `k_thread` and a
     ///   NuttX pthread are three different things. The three are
-    ///   `nros_board_{freertos,zephyr,nuttx}_run_tiers`, in each board crate's
-    ///   `c/<rtos>_run_tiers.c`.
+    ///   `nros_board_{freertos,zephyr,nuttx}_run_tiers_ns`, in each board
+    ///   crate's `c/<rtos>_run_tiers.c`.
     /// - `Threadx` — the same shared `nros_board_rtos_run_components_ns`, and NO
     ///   `run_tiers` (issue 1286). ThreadX's C++ `run_components` is the
     ///   FreeRTOS one line for line, and the shared runner already has no
@@ -156,19 +158,19 @@ impl BoardFamily {
         match self {
             BoardFamily::Native => Some(CAbiRunners {
                 run_components: Some("nros_board_native_run_components_named_ns"),
-                run_tiers: Some("nros_board_native_run_tiers"),
+                run_tiers: Some("nros_board_native_run_tiers_ns"),
             }),
             BoardFamily::Freertos => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_ns"),
-                run_tiers: Some("nros_board_freertos_run_tiers"),
+                run_tiers: Some("nros_board_freertos_run_tiers_ns"),
             }),
             BoardFamily::Zephyr => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_ns"),
-                run_tiers: Some("nros_board_zephyr_run_tiers"),
+                run_tiers: Some("nros_board_zephyr_run_tiers_ns"),
             }),
             BoardFamily::Nuttx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_ns"),
-                run_tiers: Some("nros_board_nuttx_run_tiers"),
+                run_tiers: Some("nros_board_nuttx_run_tiers_ns"),
             }),
             BoardFamily::Threadx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_ns"),
