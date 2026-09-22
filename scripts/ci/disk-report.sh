@@ -68,4 +68,15 @@ if [ -d "$tgt" ]; then
     du -sh "$tgt"/* 2>/dev/null | sort -rh | head -10 || true
 fi
 
+# ...and of `examples/`, because the first real measurement made that the
+# LARGER half: run 35726999134 reported 42 G there BEFORE `just ci tier1`
+# started, against 22 G of free disk for the tier to work in. A single total
+# cannot say which fixture families own it, which is the question step 3 of
+# issue 1353 has to answer before pruning anything.
+ex="${GITHUB_WORKSPACE:-$PWD}/examples"
+if [ -d "$ex" ]; then
+    echo "--- biggest children of examples/ ---"
+    du -sh "$ex"/* 2>/dev/null | sort -rh | head -12 || true
+fi
+
 echo "::endgroup::"
