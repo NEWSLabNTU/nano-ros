@@ -299,15 +299,34 @@ check-scaffold-builds: compiling 6 scaffold variant(s) outside the checkout
 check-scaffold-builds: OK
 ```
 
-**Which greens depended on provisioning rather than on this fix.** ALL SIX need
-`packages/rmw/zenoh/zpico-sys/zenoh-pico`: every scaffold defaults to the zenoh
-RMW, so without the submodule the build itself fails in `zpico-sys`'s build
-script. That is a different verdict and it says so — `FAIL — the emitted project
-does not build`, naming `zpico-sys`, versus this issue's `FAIL — the build
-exited 0 but compiled none of the emitted source`. Only `rust_project` changed
-state because of the locator; the other five were already green once the
-submodule was there, and the fix neither helped nor hurt them (identical
-artifact counts before and after).
+**Which greens depended on provisioning rather than on this fix — MEASURED, not
+inferred.** NONE of them. Re-run with the submodule deliberately removed
+(`git submodule deinit -f packages/rmw/zenoh/zpico-sys/zenoh-pico`):
+
+```
+  rust_component: OK — 1 own artifact(s), e.g. target/debug/librust_component.rlib
+  rust_project:   FAIL — the emitted project does not build
+      125:error: failed to run custom build command for `zpico-sys v0.5.0 (...)`
+  c_component:    OK — 5 own artifact(s), e.g. build/c_component
+  c_project:      OK — 4 own artifact(s)
+  cpp_component:  OK — 2 own artifact(s)
+  cpp_project:    OK — 4 own artifact(s)
+```
+
+So five of the six are green with NO provisioning at all: `rust_component` is a
+library and the four cmake variants do not compile `zpico-sys`. Exactly ONE
+variant, `rust_project`, needs `zenoh-pico` — and it is the same one this issue
+is about, so its green needs BOTH the submodule and this fix. The two failures
+are textually distinct and never confusable: `FAIL — the emitted project does
+not build`, naming `zpico-sys`, versus this issue's `FAIL — the build exited 0
+but compiled none of the emitted source`.
+
+(An earlier draft of this section asserted that all six needed the submodule.
+That was inferred from "every scaffold defaults to the zenoh RMW" and it is
+wrong; the deinit above is why it is not still written here.)
+
+The fix neither helped nor hurt the other five — identical artifact counts
+before and after (5 / 4 / 2 / 4 and 1).
 
 ### Verdict text
 
