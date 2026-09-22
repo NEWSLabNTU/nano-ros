@@ -253,10 +253,29 @@ The remaining work is one mechanism, not six crates: make the host lane's
 exclusion derived the way the embedded lane's already is, so "excluded" stops
 meaning "unbuilt".
 
+**That half is DONE and this paragraph is stale (re-measured 2026-09-22).**
+`HOST_UNCHECKABLE` is `` `bash scripts/build/embedded-only-members.sh` `` —
+derived from `[package.metadata.nros] embedded-only = true`, seven crates. What
+remains of the box is the other half: `nros-platform-stm32f4` is in that
+derived set, so its three `detect_phy_type` tests still run nowhere, and
+reaching them needs a per-crate test lane rather than workspace membership —
+which the box already says, because `critical-section` refuses more than one
+restore-state width.
+
 ## Acceptance for the phase
 
 * `grep`-reachable: no cmake module defining a public `nano_ros_*` verb is
   unreachable from any `include()`.
+  **Gated 2026-09-22** — `check-cmake-verb-reachable` (fast line, issue 1451).
+  It was written here as a criterion and nothing enforced it, which is the
+  condition W1's own note predicts recurring: the same dead module was found
+  and deleted twice in one day because nothing asks the question. Measured on
+  the live tree: 10 modules define a public verb, every one reachable.
+  Asked BY HAND first, it reported a second dead module —
+  `cmake/NanoRosProviders.cmake` — which is included by its own test; the hand
+  check had piped its output through `head -6` and the first six matches were
+  the module's own lines. So the gate searches every tracked file and counts a
+  test include, and the deletion that was already underway was reverted.
 * The root `exclude` list is machine-checked, and the check fails on a
   deliberately added stale entry.
 
