@@ -1,0 +1,4 @@
+# Caller/callee pairs whose cfg is not a pure conjunction of
+# `feature = "..."`, so check-cffi-cfg-implication does not decide
+# them. A RATCHET: it may only shrink. Regenerate with --write-baseline
+# and say why in the commit.

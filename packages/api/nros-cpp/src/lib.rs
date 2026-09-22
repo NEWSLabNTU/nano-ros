@@ -4337,9 +4337,38 @@ pub unsafe extern "C" fn nros_cpp_executor_register_wake_source(
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_executor_wake_handle(handle: *mut c_void) -> *mut c_void {
-    match unsafe { cpp_ctx_checked(handle) } {
-        Some(cpp) => cpp.executor.wake_raw_ptr(),
-        None => core::ptr::null_mut(),
+    // The EXPORT is `rmw-cffi`; the BODY needs `alloc` too, and the two were
+    // not the same predicate. `Executor::wake_raw_ptr` is
+    // `cfg(all(alloc, rmw-cffi))` because the `node_wake` it reads is an
+    // `Arc<NodeWake>`, so on an `rmw-cffi` build WITHOUT `alloc` this function
+    // compiled and the method it calls did not:
+    //
+    //   error[E0599]: no method named `wake_raw_ptr` found for struct `Executor<'s>`
+    //   error: could not compile `nros-cpp` (lib) due to 1 previous error
+    //
+    // Narrowing the export to match is the wrong direction and measurably
+    // worse: `nros_cpp_ffi.h` declares this symbol unconditionally and
+    // `nros-board-zephyr`'s `zephyr_run_tiers.c` declares AND calls it
+    // unguarded, so a no-alloc Zephyr board would stop LINKING instead of
+    // stop compiling — a symbol name where there used to be a cause.
+    //
+    // NULL is already the answer for "this executor has no wake object":
+    // `wake_raw_ptr` returns it when `node_wake` is `None`, and the caller is
+    // written for it ("Silent no-op when no wake object exists; that build
+    // keeps the millisecond `wake_wait_ms` path it already had"). A build with
+    // no `alloc` is a third way to reach that same state, so it gets the same
+    // answer rather than a new one. (issue 1449)
+    #[cfg(feature = "alloc")]
+    {
+        match unsafe { cpp_ctx_checked(handle) } {
+            Some(cpp) => cpp.executor.wake_raw_ptr(),
+            None => core::ptr::null_mut(),
+        }
+    }
+    #[cfg(not(feature = "alloc"))]
+    {
+        let _ = handle;
+        core::ptr::null_mut()
     }
 }
 

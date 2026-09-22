@@ -296,3 +296,19 @@ weak-symbols-image:
 [private]
 c-array-guard-probe:
     @python3 scripts/check-c-array-guard-probe.py
+
+# issue 1449 — an exported `extern "C"` fn must not be reachable in a build
+# where what it calls is not. `nros_cpp_executor_wake_handle` was
+# `cfg(feature = "rmw-cffi")` and called `Executor::wake_raw_ptr`, which is
+# `cfg(all(feature = "alloc", feature = "rmw-cffi"))`, so every no-alloc board
+# failed with `no method named wake_raw_ptr` and no merge-gating lane noticed:
+# both `compile-smoke` arms include `std`, which implies `alloc`.
+#
+# STATIC, deliberately. The obvious widening — a third `compile-smoke` arm for
+# the no-alloc shape — was measured and does not work: a host `cargo check`
+# without `std` hits `#[panic_handler] function required` and then `no global
+# memory allocator found`, because on a real board the platform crate supplies
+# both. The RELATION needs no build.
+[private]
+cffi-cfg-implication:
+    @python3 scripts/check-cffi-cfg-implication.py
