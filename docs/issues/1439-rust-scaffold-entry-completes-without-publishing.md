@@ -79,3 +79,26 @@ worth measuring before assuming a site:
 
 Acceptance is the `bootstrap-probe` job reaching `PROBE OK` for the Rust arm,
 and the script's comment naming whatever the then-current expectation is.
+
+## 2026-09-22 — reproduces, unchanged
+
+Nightly run **35698520560** (schedule, 07:13), job **106650741362**
+(`bootstrap-probe`), same section, byte-identical symptom:
+
+```
+[INFO] nros: session open
+nros: application complete
+PROBE FAIL: rust entry exited before publishing
+```
+
+`nros new --workspace` scaffolded 15 files (`lang=rust, rmw=cyclonedds`), sync
+resolved, and the entry linked and ran. So this is a standing defect in the
+book's front-door flow rather than the one-night observation the filing rests
+on, and 1357's `std_msgs` refusal remains absent — the generated crates compile
+from `/tmp/probe_quickstart_rs/generated/` again.
+
+One line worth keeping from this run, not present in the original: the build
+reports `resolved → …/resolved.toml (no count derived; see
+[provenance].refused)`. Whether a refused provenance and a talker that never
+publishes are the same fact is not established here — it is the first thing to
+check, not a conclusion.

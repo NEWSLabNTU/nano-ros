@@ -96,3 +96,36 @@ uniformly-red-lane trade this issue objects to: the riscv64 axis still does not
 build its port, and a real regression on that coordinate is still invisible
 behind a skip. The remaining work is to find why the board's forced
 `THREADX_PORT` does not reach that lane's environment.
+
+## 2026-09-22 — the lane stopped saying even that, and why
+
+Nightly run **35698520560** (schedule, 07:13), job **106651319044**
+(`threadx_riscv64`), step `build-fixture-extras`. The tally is the same:
+
+```
+  ThreadX-RV64 rust leaves: 0/12 ok, 12 failed
+error: recipe `build-fixture-extras` failed with exit code 1
+```
+
+The `THREADX_PORT=linux/gnu targets x86_64 … but TARGET=riscv64…` line quoted
+above is **absent from the job log**, and so is every other diagnostic: the
+43,652-line artifact contains **zero** occurrences of `FAILED:`, `CMake Error`
+or `ninja: build stopped`. Twelve leaves failed and the log says only how many.
+
+That is not a change in the failure; it is a property of the caller.
+`build_threadx_cmake_rmw` (`just/threadx-riscv64.just`) ended its
+`nros_cmake_fixture_build` invocation with `> /dev/null`, and ninja writes
+`FAILED:` and every compiler diagnostic to **stdout** — so the redirect that
+kept the log readable discarded exactly the lines this issue is about. What
+survived in the log is `cargo`'s stderr, which is why each leaf appears to
+`Finished release profile` and then be counted as a failure.
+
+So the attribution above **cannot be confirmed from this run**, in either
+direction: the port mismatch may still be the cause, or something else may have
+joined it since. `nros_run_quiet` (`scripts/build/quiet-run.sh`) replaces the
+redirect — quiet on success, the captured output printed on failure — so the
+next nightly answers this. Re-read the job then, before doing anything else
+here.
+
+This does not change what closes the issue: the riscv64 axis building its own
+ThreadX port, not a lane that explains itself better.
