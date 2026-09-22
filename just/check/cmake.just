@@ -364,3 +364,22 @@ cargo-dir-knob-key:
 [group("ci")]
 deferred-call-args:
     @python3 scripts/check-deferred-call-args.py
+
+# phase-451's first acceptance criterion, which had no check until issue 1451.
+#
+# Issue 1218 was a cmake module defining the public verb `nano_ros_link_rmw`
+# that nothing included: it MISLED TWO OF FOUR independent readers in one
+# session, and could not have worked — the `find_package` targets it named were
+# deleted years apart. phase-451 W1 deleted it and wrote the rule down as an
+# acceptance criterion; nothing enforced it, and the phase's own note says the
+# same file was found and deleted twice in one day by two sessions because
+# "nothing in this tree asks whether a declaration is REACHABLE".
+#
+# It searches EVERY tracked file, not just `*.cmake` and `CMakeLists.txt`, and
+# counts a test's include as reachability — asked by hand this reported a
+# second dead module that is included by its own test, because the hand check's
+# output went through `head -6` and the first six matches were the module's own
+# lines.
+[private]
+cmake-verb-reachable:
+    @python3 scripts/check-cmake-verb-reachable.py
