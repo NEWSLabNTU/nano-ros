@@ -51,6 +51,27 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      # `just` is not on a bare `ubuntu-latest` runner, and this is the one
+      # workflow that does not run inside `ghcr.io/newslabntu/nano-ros-ci`,
+      # which is where every other lane gets it from. It cannot run there: the
+      # probe drives `docker run` itself (`scripts/probe/run-bootstrap-probe.sh`
+      # asserts a host `docker`), so it needs the runner rather than a
+      # container. Without this step both jobs died with `just: command not
+      # found` and exit 127 on this workflow's first scheduled run, before
+      # either probe container started.
+      #
+      # Same installer and same `~/.local/bin` destination as
+      # `.github/actions/setup-qemu-patched`, so PATH reads the way a
+      # contributor's checkout does.
+      - name: Install just (if absent)
+        run: |
+          set -euo pipefail
+          if ! command -v just >/dev/null 2>&1; then
+            mkdir -p "$HOME/.local/bin"
+            curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
+              | bash -s -- --to "$HOME/.local/bin"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
       - name: just probe checkout
         env:
           # `actions/checkout` leaves a DETACHED HEAD, and the probe refuses
@@ -68,6 +89,16 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      # See the checkout track above for why this lane installs `just` itself.
+      - name: Install just (if absent)
+        run: |
+          set -euo pipefail
+          if ! command -v just >/dev/null 2>&1; then
+            mkdir -p "$HOME/.local/bin"
+            curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
+              | bash -s -- --to "$HOME/.local/bin"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
       - name: just probe installed
         env:
           PROBE_BRANCH: ${{ github.ref_name }}
