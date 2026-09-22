@@ -163,3 +163,43 @@ This does not change what a fix has to decide; it widens the sweep. Routing both
 gates through the skip ledger fixes the worktree case and this one at once,
 whereas provisioning the submodules on the push lane would fix only this one and
 leave the agent worktrees where they are.
+
+## Before copying the idiom: one of the two ledger mechanisms does nothing (2026-09-22)
+
+The fix above says to route both gates "through the existing skip ledger", and
+the table names `check-cxx-compat-shim-facilities.py` as a consumer. Measured
+before reusing it: **there are two different mechanisms, and the Python one is
+inert.**
+
+* The SHELL ledger works. `scripts/build/check-skip.sh`'s `nros_check_skip`
+  appends to `$(nros_build_dir "$NROS_KIND_CHECK_SKIPS")/checks.skipped`, and
+  `just/check.just:201` ends the fast lane with
+  `nros_check_skip_report "Fast checks passed!"`, which is where the
+  `[SKIPPED] …` lines in a local `check fast` summary come from.
+* The PYTHON spelling reads an environment variable **nothing sets**:
+
+  ```
+  $ grep -rn NROS_CHECK_SKIP_LEDGER .            # excluding .git
+  scripts/check-cpp-freestanding-mechanisms.py:133:  ledger = os.environ.get("NROS_CHECK_SKIP_LEDGER")
+  scripts/check-cxx-compat-shim-facilities.py:280:  skip_ledger = os.environ.get("NROS_CHECK_SKIP_LEDGER")
+  ```
+
+  Two readers, zero writers, in the whole tree. Both guard the write with
+  `if skip_ledger:`, so with the variable unset the branch is skipped silently
+  and the skip is never recorded — it prints a `notes` line inside the gate's
+  own output and reaches no summary.
+
+So `check-cxx-compat-shim-facilities.py`'s docstring — "reported as a SKIP
+through the `nros_check_skip` ledger rather than passing quietly, because a skip
+that reads like a pass is how the gap being fixed here survived" — describes a
+behaviour the code does not have. That is this issue's own shape one level in:
+a claim about reporting that nothing checks.
+
+Consequence for the fix: routing `check-capability-conditionals.py` and
+`check-xrce-vendored-versions.py` through the Python idiom as it stands would
+make them non-fatal AND unreported, which is strictly worse than today's hard
+fail. Whatever lands has to either set `NROS_CHECK_SKIP_LEDGER` from the recipe
+(one producer, gated), or give the Python gates an exit code the recipe
+translates into a `nros_check_skip` call — the shell ledger being the one that
+demonstrably reaches the summary. The two existing readers should move to the
+same spelling in that sweep; they are part of it, not a precedent for it.
