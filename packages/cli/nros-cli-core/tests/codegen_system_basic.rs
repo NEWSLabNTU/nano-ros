@@ -179,7 +179,12 @@ fn codegen_system_emits_baked_headers_for_freertos_qemu() {
 
     let out = dir.join("build/demo_bringup");
     let mut a = args(&dir, &out);
-    a.target = Some("thumbv7m-none-eabi".into());
+    // phase-459 W5 — `--target` names a BLOCK KEY. The triple this test used
+    // to pass names no block, and the refusal that lands with this work is the
+    // point: a key no block carries used to resolve every per-target fact to
+    // the host (issue 1312). The fixture's block is `[deploy.qemu_freertos]`,
+    // and it is what carries `target = "thumbv7m-none-eabi"`.
+    a.target = Some("qemu_freertos".into());
     codegen_system::run(a).expect("codegen runs for freertos target");
 
     let bake = out.join("nros-system");
@@ -194,8 +199,16 @@ fn codegen_system_emits_baked_headers_for_freertos_qemu() {
     // longer emitted.
     assert!(!bake.join("system_main.c").exists());
 
+    // The plan records the string `--target` NAMED, which since phase-459 W5
+    // is the block key rather than a triple. This is provenance only: nothing
+    // deserialises this key (`NrosPlan` has no `target` field), and the
+    // consumers that need a triple read `plan["build"]["target"]`, which a
+    // different emitter fills from the block's own `target = …`.
     let plan = fs::read_to_string(bake.join("nros-plan.json")).unwrap();
-    assert!(plan.contains("\"target\": \"thumbv7m-none-eabi\""));
+    assert!(
+        plan.contains("\"target\": \"qemu_freertos\""),
+        "plan should record the block key it was given; got {plan}"
+    );
 }
 
 /// 212.E spec test — bake always emits `nros-plan.json` with the
