@@ -58,14 +58,14 @@
 //! same rule issue 0900's arena knob and phase-403's `rx_buffer_from_type()`
 //! both keep.
 //!
-//! Enabled, it costs [`BootReport::struct_size`] bytes of `.bss` -- 88, the
+//! Enabled, it costs [`BootReport::struct_size`] bytes of `.bss` -- 92, the
 //! same on every target because every field is a `u32` -- and a handful of
 //! relaxed atomic stores on paths that run once per entity at registration.
 //!
-//! The 88 is not a detail: it is the LENGTH an operator types into `savemem`,
+//! The 92 is not a detail: it is the LENGTH an operator types into `savemem`,
 //! and this sentence said 60 for as long as the record had fifteen fields. A
-//! short dump decodes -- `read-boot-report.py` needs `22 * 4` bytes and a
-//! 60-byte one is refused, but a reader who trusts the prose over the tool
+//! short dump decodes -- `read-boot-report.py` needs `23 * 4` bytes and an
+//! 88-byte one is refused, but a reader who trusts the prose over the tool
 //! spends the refusal looking at the wrong thing. Ask the tool instead:
 //! `read-boot-report.py --addr-only <elf>` prints the address AND the length,
 //! from the ELF's own symbol size.
@@ -83,7 +83,7 @@
 //!    reading the new word as one it knows;
 //! 3. `FIELDS` in `scripts/read-boot-report.py`, same name, same position, and
 //!    `KNOWN_VERSION` to match;
-//! 4. the field count in `the_record_is_twenty_two_packed_u32s` below.
+//! 4. the field count in `the_record_is_twenty_three_packed_u32s` below.
 //!
 //! `check-boot-report-layout` fails on 1 without 3, and the Rust test fails if
 //! the compiler laid the record out with padding. Appending is what keeps a
@@ -99,8 +99,9 @@ pub const MAGIC: u32 = 0x4e52_5352;
 /// Layout version. Bump on any field change; a reader refuses what it does not
 /// know rather than decoding a record it would misread.
 ///
-/// 4 since phase-460 W5 appended `heap_peak_bytes` and `heap_capacity_bytes`.
-pub const VERSION: u32 = 4;
+/// 4 since phase-460 W5 appended `heap_peak_bytes` and `heap_capacity_bytes`;
+/// 5 since phase-460 W7 appended `samples_dropped_too_small`.
+pub const VERSION: u32 = 5;
 
 /// How far boot got. Monotonic, and the single most useful field: an arena
 /// failure halts during entity creation, so the stage that was NOT reached
@@ -286,6 +287,27 @@ mod enabled {
         /// much was needed and says nothing about how close to the edge the
         /// image ran. `capacity - peak` is the headroom the gate refuses on.
         heap_capacity_bytes: AtomicU32,
+
+        /// Samples received, ACKed and then THROWN AWAY because the
+        /// subscription's buffer was smaller than the sample. Appended by
+        /// phase-460 W7; see "Adding a field" above for why it is at the END.
+        ///
+        /// Issue 1425. A drop is a QoS fact, not a fault -- nothing halts --
+        /// which is exactly why it needs a record: the image keeps running,
+        /// every outside probe reports the subscription matched and healthy
+        /// (the transport completed and ACKed the sample before the buffer was
+        /// consulted), and the application simply never sees the message. On a
+        /// board with a console the drop announces itself in a log line. On the
+        /// island's target there is no console, so before this field the only
+        /// evidence of a dropped 13.4 KiB trajectory was that nothing arrived.
+        ///
+        /// A TOTAL, not a per-entity figure, for the reason
+        /// `executor::arena`'s `DROPPED_TAKES` is one: a per-entity counter is
+        /// a field on the arena's entry structs, which are sized by knob at
+        /// build time, so it would move every image's executor footprint to buy
+        /// a diagnostic. Non-zero here means "read the log lines, or raise
+        /// `NROS_SUBSCRIPTION_BUFFER_SIZE` and see whether it goes to zero".
+        samples_dropped_too_small: AtomicU32,
     }
 
     impl BootReport {
@@ -313,6 +335,7 @@ mod enabled {
                 err_backend_len: AtomicU32::new(0),
                 heap_peak_bytes: AtomicU32::new(0),
                 heap_capacity_bytes: AtomicU32::new(0),
+                samples_dropped_too_small: AtomicU32::new(0),
             }
         }
 
@@ -361,6 +384,7 @@ mod enabled {
         pub err_backend_len: u32,
         pub heap_peak_bytes: u32,
         pub heap_capacity_bytes: u32,
+        pub samples_dropped_too_small: u32,
     }
 
     /// Read the record.
@@ -391,6 +415,7 @@ mod enabled {
             err_backend_len: g(&r.err_backend_len),
             heap_peak_bytes: g(&r.heap_peak_bytes),
             heap_capacity_bytes: g(&r.heap_capacity_bytes),
+            samples_dropped_too_small: g(&r.samples_dropped_too_small),
         }
     }
 
@@ -496,6 +521,49 @@ mod enabled {
         }
     }
 
+    /// Record the PLATFORM HEAP allocation that did not fit.
+    ///
+    /// phase-460 W7 / issue 1425. `nros-platform-zephyr`'s `platform.c` calls
+    /// this through the C entry below from `nros_platform_alloc`'s exhaustion
+    /// path, BEFORE the printk and before the fatal hook, so a board halted by
+    /// an exhausted heap names the request that killed it in the same two words
+    /// an exhausted executor ARENA does.
+    ///
+    /// ONE PAIR OF FIELDS FOR TWO ARENAS. They cannot both fail in a boot that
+    /// continues -- the first one to fail stops it -- and first-writer-wins is
+    /// what makes the record name the cause rather than a consequence.
+    ///
+    /// NO STAGE STAMP, which is the whole reason this is not
+    /// [`note_alloc_failed`]. That one stamps [`Stage::RegisteringEntities`]
+    /// because the executor arena is claimed by entity registration and by
+    /// nothing else. The platform heap is claimed by anything at any time --
+    /// zenoh-pico's read task, a reply buffer, a reconnect -- so stamping would
+    /// make the record claim registration was in flight on a boot that had long
+    /// since reached its first spin. `checkpoint` is monotonic, so it would be
+    /// an unfalsifiable claim: the stage would read 4 and nothing later could
+    /// correct it.
+    pub fn note_heap_alloc_failed(size: usize) {
+        let r = &NROS_BOOT_REPORT;
+        if r.failed_alloc_size
+            .compare_exchange(0, saturate(size), Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+        {
+            // The shortfall is the REQUEST, not `size - free`: the heap is
+            // fragmented by the time it refuses, so the bytes that would have
+            // made this request fit are not the deficit against the largest
+            // free block. A number that looks like a precise deficit and is not
+            // would be sized from.
+            r.failed_alloc_shortfall
+                .store(saturate(size), Ordering::Relaxed);
+        }
+    }
+
+    /// [`note_heap_alloc_failed`] across the C ABI, for a platform in C.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn nros_boot_report_note_heap_alloc_failed(size: usize) {
+        note_heap_alloc_failed(size);
+    }
+
     /// Record `nros_cpp_init`'s return code.
     ///
     /// LAST writer wins, unlike [`note_alloc_failed`]: an image may call
@@ -563,6 +631,52 @@ mod enabled {
         note_heap(peak, capacity);
     }
 
+    /// Count one sample dropped because the subscription buffer was too small.
+    ///
+    /// Returns the total AFTER this drop, so a caller can throttle its log on
+    /// the same number the record carries rather than keeping a second one.
+    ///
+    /// SATURATES at `u32::MAX` instead of wrapping. A wrapping counter can
+    /// read 0 on an image that dropped four billion samples, and 0 is the one
+    /// answer here that means "nothing is wrong" -- the same rule
+    /// [`saturate`] applies to every size in the record, applied to a tally.
+    /// `fetch_update` rather than `fetch_add` is what makes that true under
+    /// the concurrent callers `take_serialized` has.
+    pub fn note_sample_dropped_too_small() -> u32 {
+        let r = &NROS_BOOT_REPORT;
+        let prev = r
+            .samples_dropped_too_small
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                Some(n.saturating_add(1))
+            })
+            .unwrap_or(u32::MAX);
+        prev.saturating_add(1)
+    }
+
+    /// [`note_sample_dropped_too_small`] across the C ABI.
+    ///
+    /// Present for the same reason [`nros_boot_report_note_heap`] is: the
+    /// counting side may be a C translation unit, and a symbol that exists in
+    /// only one of the two builds is a link error naming nothing in
+    /// particular.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn nros_boot_report_note_sample_dropped_too_small() -> u32 {
+        note_sample_dropped_too_small()
+    }
+
+    /// Preload the drop tally. TEST ONLY.
+    ///
+    /// The record's fields are private and `mod tests` is a sibling of this
+    /// module, not a child, so it cannot reach one. The saturation rule is
+    /// worth a test and `u32::MAX` is not reachable by calling the writer, so
+    /// the seam is this, compiled only under `cfg(test)`.
+    #[cfg(test)]
+    pub fn set_samples_dropped_too_small_for_test(v: u32) {
+        NROS_BOOT_REPORT
+            .samples_dropped_too_small
+            .store(v, Ordering::Relaxed);
+    }
+
     /// `usize` -> `u32`, saturating.
     ///
     /// Every field is a `u32` so the record's layout does not change between a
@@ -600,6 +714,13 @@ mod disabled {
     pub fn note_alloc_failed(_size: usize, _shortfall: usize) {}
 
     #[inline(always)]
+    pub fn note_heap_alloc_failed(_size: usize) {}
+
+    /// The C entry point exists in BOTH builds, for the reason below.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn nros_boot_report_note_heap_alloc_failed(_size: usize) {}
+
+    #[inline(always)]
     pub fn note_cpp_init_ret(_ret: i32) {}
 
     #[inline(always)]
@@ -607,6 +728,17 @@ mod disabled {
 
     #[inline(always)]
     pub fn note_heap(_peak: usize, _capacity: usize) {}
+
+    /// Always 0 without the record, and the CALLER must not care.
+    ///
+    /// `nros-cpp`'s take path throttles its log on its OWN counter, never on
+    /// this return value, precisely so that an image built without the report
+    /// keeps the log behaviour an image built with it has. A stub that decided
+    /// the throttle would make the diagnostic depend on the diagnostic.
+    #[inline(always)]
+    pub fn note_sample_dropped_too_small() -> u32 {
+        0
+    }
 
     /// The C entry point exists in BOTH builds, unlike every other stub here.
     ///
@@ -617,24 +749,30 @@ mod disabled {
     /// particular, so the disabled build keeps an empty body instead.
     #[unsafe(no_mangle)]
     pub extern "C" fn nros_boot_report_note_heap(_peak: usize, _capacity: usize) {}
+
+    /// The C entry point exists in BOTH builds, for the reason above.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn nros_boot_report_note_sample_dropped_too_small() -> u32 {
+        0
+    }
 }
 
 #[cfg(all(test, nros_boot_report))]
 mod tests {
     use super::*;
 
-    /// The reader decodes twenty-two u32s positionally, so the record must be
-    /// exactly that and nothing else -- no padding, no reordering.
+    /// The reader decodes twenty-three u32s positionally, so the record must
+    /// be exactly that and nothing else -- no padding, no reordering.
     ///
     /// `size_of` on the TARGET, which is the half `check-boot-report-layout.py`
     /// cannot see: that gate compares two source files, and this compares the
     /// source against what the compiler actually laid out.
     #[test]
-    fn the_record_is_twenty_two_packed_u32s() {
-        assert_eq!(BootReport::struct_size(), 22 * 4);
+    fn the_record_is_twenty_three_packed_u32s() {
+        assert_eq!(BootReport::struct_size(), 23 * 4);
         assert_eq!(
             core::mem::size_of::<BootReport>(),
-            22 * core::mem::size_of::<u32>(),
+            23 * core::mem::size_of::<u32>(),
             "the record grew padding; the reader decodes positionally"
         );
         assert_eq!(core::mem::align_of::<BootReport>(), 4);
@@ -712,5 +850,53 @@ mod tests {
         let s = snapshot();
         assert_eq!(s.heap_peak_bytes, 18352, "a later sample lowered the peak");
         assert_eq!(s.heap_capacity_bytes, 94208);
+    }
+
+    /// Issue 1425 -- a sample dropped for being too big for its buffer is
+    /// COUNTED, and the count is in the one record a console-less board can be
+    /// asked for.
+    ///
+    /// Through the C entry point, which is the one `nros-cpp`'s take path
+    /// reaches, and asserting the RETURNED total as well as the record: the
+    /// caller throttles its log on that return, so a writer that stored
+    /// correctly and returned garbage would log on the wrong samples while
+    /// this test read the field and passed.
+    #[test]
+    fn a_sample_dropped_for_being_too_small_is_counted_in_the_record() {
+        init();
+        let before = snapshot().samples_dropped_too_small;
+        assert_eq!(
+            nros_boot_report_note_sample_dropped_too_small(),
+            before + 1,
+            "the writer must return the total AFTER its own drop"
+        );
+        assert_eq!(snapshot().samples_dropped_too_small, before + 1);
+        assert_eq!(nros_boot_report_note_sample_dropped_too_small(), before + 2);
+        assert_eq!(
+            snapshot().samples_dropped_too_small,
+            before + 2,
+            "the second drop did not reach the record"
+        );
+    }
+
+    /// A tally that WRAPS reads 0 on an image that dropped four billion
+    /// samples, and 0 is the one answer here that means nothing is wrong.
+    ///
+    /// The same rule as [`an_unrepresentable_size_saturates_rather_than_truncating`],
+    /// applied to a counter rather than a size. Written through the record
+    /// directly because reaching `u32::MAX` by calling the writer is not a test
+    /// anyone can run.
+    #[test]
+    fn the_drop_tally_saturates_rather_than_wrapping_to_zero() {
+        init();
+        set_samples_dropped_too_small_for_test(u32::MAX);
+        assert_eq!(note_sample_dropped_too_small(), u32::MAX);
+        assert_eq!(
+            snapshot().samples_dropped_too_small,
+            u32::MAX,
+            "the tally wrapped; a dropping image would read as a healthy one"
+        );
+        // Leave the record where the other tests in this binary expect it.
+        set_samples_dropped_too_small_for_test(0);
     }
 }

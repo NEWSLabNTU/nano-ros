@@ -202,6 +202,19 @@ extern void nros_zephyr_heap_free(void *ptr);
  * disabled Rust build, which covers the halves being built apart. */
 #ifdef CONFIG_NROS_BOOT_REPORT
 extern void nros_boot_report_note_heap(size_t peak, size_t capacity);
+/* phase-460 W7 / issue 1425 -- the failed request, into the same record.
+ *
+ * `failed_alloc_size` and `failed_alloc_shortfall` were written for the
+ * EXECUTOR ARENA (issue 0900) and the platform heap had no equivalent, so a
+ * dump taken off a halted board could say how far the heap had peaked and not
+ * what the allocation that killed it asked for. Same two words, and
+ * first-writer-wins: the first failure is the one that explains the halt.
+ *
+ * A DIFFERENT writer from the arena's, and deliberately: the arena's stamps
+ * `RegisteringEntities`, because the executor arena is claimed by entity
+ * registration and by nothing else, while the platform heap is claimed by
+ * anything at any time. See `boot_report::note_heap_alloc_failed`. */
+extern void nros_boot_report_note_heap_alloc_failed(size_t size);
 #endif
 
 /* Sample the heap into the boot report. size_t in, saturated to the record's
@@ -214,6 +227,41 @@ static inline void nros_zephyr_note_heap_to_boot_report(void) {
     nros_boot_report_note_heap(nros_zephyr_heap_peak(),
                                nros_zephyr_heap_capacity());
 #endif
+}
+
+/* phase-460 W7 / issue 1425 -- what happens AFTER the printk.
+ *
+ * `nros_platform_panic` is the hook a console-less board can be read through:
+ * it printk()s and then enters `k_panic()`, so the image's own
+ * `k_sys_fatal_error_handler` runs (RFC-0077) and the board stops somewhere a
+ * debugger can be attached to, with the boot report -- already written above --
+ * still in RAM.
+ *
+ * WHY THE DEFAULT IS TO HALT rather than to return NULL. A NULL return is only
+ * ever handled by code that was WRITTEN to handle it. On the island nothing
+ * was, so an exhausted heap produced an image that kept running and quietly did
+ * less: zenoh-pico's read task dropped a session, the executor spun on
+ * subscriptions that never fired, and the only evidence was a UART nobody
+ * wired. A halt is louder AND more informative, because the record survives it.
+ *
+ * `IS_ENABLED`, not `#ifdef`, so BOTH arms compile on every image and a typo in
+ * the knob name is a compile error rather than a silently dead branch. The
+ * message is a fixed string: `nros_platform_panic` takes a pointer and a
+ * length, this path has just failed to allocate, and formatting into a stack
+ * buffer here would be the one allocation-adjacent act left to get wrong. The
+ * NUMBERS are already in the printk above and in the boot report.
+ *
+ * Not `_Noreturn`: with the knob off it returns, and the caller goes on to
+ * return NULL exactly as it always did. */
+static void nros_zephyr_heap_exhaustion_is_fatal(size_t size, size_t capacity) {
+    (void) size;
+    (void) capacity;
+    if (IS_ENABLED(CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL)) {
+        static const char msg[] =
+            "platform heap exhausted (see the HEAP EXHAUSTED line above, and "
+            "the boot report's failed_alloc_size)";
+        nros_platform_panic(msg, sizeof(msg) - 1);
+    }
 }
 
 static struct k_spinlock nros_heap_lock;
@@ -252,13 +300,28 @@ void *nros_platform_alloc(size_t size) {
          * path is the allocator shim rather than the code that wanted the
          * memory. That is still one frame closer than nothing, and it names
          * the SHIM so the reader knows which allocator to look behind. */
+        const size_t capacity = nros_zephyr_heap_capacity();
+#ifdef CONFIG_NROS_BOOT_REPORT
+        /* BEFORE the printk, for the reason the heap sample above is: this is
+         * the path where the board is about to stop, and on the board class
+         * this record exists for the printk reaches nobody.
+         *
+         * The shortfall is `size` itself, not `size - free`. The rlsf heap is
+         * fragmented by the time it refuses, so the bytes that would have made
+         * this request fit are not the bytes it is short of the largest free
+         * block -- and a number that looks like a precise deficit and is not
+         * would be sized from. `size` is the honest floor: adding at least this
+         * much is necessary, and possibly not sufficient. */
+        nros_boot_report_note_heap_alloc_failed(size);
+#endif
         printk("nros: HEAP EXHAUSTED: request %zu bytes, arena %zu bytes, "
                "caller %p\n"
                "      (addr2line -f -e zephyr.elf %p to name it; raise "
                "CONFIG_NROS_ZEPHYR_HEAP_SIZE / NROS_ZEPHYR_HEAP_SIZE only once "
                "you know what asked)\n",
-               size, nros_zephyr_heap_capacity(),
+               size, capacity,
                __builtin_return_address(0), __builtin_return_address(0));
+        nros_zephyr_heap_exhaustion_is_fatal(size, capacity);
     }
     return out;
 }

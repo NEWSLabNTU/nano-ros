@@ -45,7 +45,7 @@ SYMBOL = "NROS_BOOT_REPORT"
 # "NRSR". Must match boot_report.rs MAGIC.
 MAGIC = 0x4E525352
 # Layout this script knows how to decode. Must match boot_report.rs VERSION.
-KNOWN_VERSION = 4
+KNOWN_VERSION = 5
 
 # The headroom `CONFIG_NROS_ZEPHYR_HEAP_SIZE` must keep above the measured
 # peak, in bytes.
@@ -88,6 +88,9 @@ FIELDS = (
     # `version` alone says which words exist.
     "heap_peak_bytes",
     "heap_capacity_bytes",
+    # phase-460 W7, appended on the same rule. Issue 1425: a sample received,
+    # ACKed and then discarded for being bigger than its subscription buffer.
+    "samples_dropped_too_small",
 )
 
 STAGES = {
@@ -383,6 +386,7 @@ def report(rec: dict[str, int]) -> int:
     else:
         print()
     print(f"  platform heap capacity        {hcap} bytes   (NROS_ZEPHYR_HEAP_SIZE)")
+    print(f"  samples dropped (too small)   {rec['samples_dropped_too_small']}")
     # PRINTED here, SCORED only under `--heap-headroom`. This function's exit
     # code means "the boot failed", and a thin heap on a board that booted is
     # not that -- it is a sizing verdict, and folding it in would turn every
@@ -419,6 +423,25 @@ def report(rec: dict[str, int]) -> int:
             "later allocations may also have failed as a consequence."
         )
         return 1
+
+    dropped = rec["samples_dropped_too_small"]
+    if dropped:
+        print()
+        print(
+            f"SAMPLES DROPPED (TOO SMALL): {dropped}.\n"
+            "\n"
+            "  Received, ACKed, and then thrown away because the subscription\n"
+            "  buffer is smaller than the sample. NOT a boot failure and not\n"
+            "  scored as one -- the image is running; it is a QoS fact, and the\n"
+            "  application simply never saw those messages.\n"
+            "\n"
+            f"  raise NROS_SUBSCRIPTION_BUFFER_SIZE (compiled in here as\n"
+            f"  {rec['default_rx_buf_size']}), or on Zephyr\n"
+            "  CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE, to the type's\n"
+            "  SERIALIZED_SIZE_MAX. The console lines name the buffer size; the\n"
+            "  SAMPLE size is not in this record because the RMW ABI does not\n"
+            "  report it (issue 0757)."
+        )
 
     cls = rec["err_class"]
     if cls:
