@@ -505,3 +505,61 @@ expectation; a run that merely gets further is progress, not a verdict.
 
 Acceptance is unchanged: a scheduled run reaching a VERDICT on `check build`
 and `check no-std`, three nights running.
+## Three lanes in six hours, and the failure has moved into the runner itself (2026-09-23)
+
+The section above reads `gate` and `host-tests`. There was a **third** lane in
+the same window: between 02:02 and 04:17 UTC the same self-hosted runner lost
+three scheduled jobs on three different lanes to this issue, and **two of the
+three produced no failing step at all**:
+
+| run | job | lane | what the API reports |
+| --- | --- | --- | --- |
+| 35808783184 | 107015560275 | `gate` (schedule) | step `just check build`; log is **2 lines** |
+| 35813854577 | 107031060491 | `host-tests` (schedule) | step `just ci tier1`; `Free space left: 91 MB` |
+| 35817736997 | 107042793783 | `live-peer` (schedule) | **no failing step** — step 9 is still `in_progress`, steps 10-13 `pending` |
+
+For the first and third, the only diagnosis is
+`gh api repos/NEWSLabNTU/nano-ros/check-runs/<jid>/annotations`, and both say
+the same thing:
+
+```
+System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20260923-041733-utc.log'
+   at System.IO.StreamWriter.Flush(Boolean flushStream, Boolean flushEncoder)
+   at System.Diagnostics.TextWriterTraceListener.Flush()
+```
+
+That is the runner process failing to write **its own diagnostic log**, not a
+build failing to write an object file. It explains the shape the live-peer job
+has: its log holds 48,534 lines and stops mid-compile at 05:24:42, while the job
+is marked failed at 05:40:11 — sixteen minutes during which nothing more could
+be recorded. A job that dies this way has no failing step to name, so the
+`nightly-triage`/`queue-triage` idiom of keying on the failing step name returns
+nothing for it, and it reads as an unexplained infrastructure loss rather than
+as this issue.
+
+**Consequence for step 1's report.** The section above records that the
+`disk-report.sh` "after" step does not survive on the scheduled `gate` lane.
+This is why, and it is stronger than "the step was skipped": once the runner
+cannot write to disk, no step output survives at all, including a step guarded
+by `always()`. **Annotations are the only surviving evidence, because GitHub
+writes them server-side.** Any future reporting this issue adds has to assume
+the job's own output is gone.
+
+**The trajectory, from the one job that did keep its log.** `host-tests` 03:19
+prints `df -h /` around its build steps:
+
+```
+before:            overlay  146G   70G   76G  48% /
+after rust-core:   overlay  146G   75G   72G  52% /
+before ci tier1:   overlay  146G  124G   22G  86% /
+end:               overlay  146G  146G  256K 100% /
+```
+
+70 G is already used when the job starts — that is the accumulation this issue
+measured on 2026-09-22 — and `just ci tier1` alone takes it from 22 G free to
+256 K. Nothing in the window reclaimed anything: the numbers at the start of
+this job are where the previous job left them.
+
+Unchanged: acceptance is a scheduled run reaching a verdict on `check build`
+and `check no-std` three nights running.
