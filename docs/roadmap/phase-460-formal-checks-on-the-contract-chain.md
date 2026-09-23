@@ -244,7 +244,7 @@ succeeds; the negative control forces `pthread_detach` on one and asserts the
 next create past the pool reports `OUT OF THREAD SLOTS`, which is the
 documented behaviour for a detached teardown.
 
-Claim: phase-460-W6. Depends on: none. Owns: a new host test under tests/zephyr/ for zephyr/nros_platform_zephyr_shims.c. Gate: the N+2 create/join test in just ci-l1. Status: PR #1228, in the queue; the N+2 create/join test plus a detach negative control at N in 1, 4 and 8, and a defused-release mutant that fails as it must, so the gate's teeth are measured rather than claimed. Wired as `just check zephyr-thread-slots`. The shims needed NO seam: capacity is already an overridable `-D` and the release is already an exported symbol.
+Claim: phase-460-W6. Depends on: none. Owns: a new host test under tests/zephyr/ for zephyr/nros_platform_zephyr_shims.c. Gate: the N+2 create/join test in just ci-l1. Status: PR #1228, in the queue; the N+2 create/join test plus a detach negative control at N in 1, 4 and 8, and a defused-release mutant that fails as it must, so the gate's teeth are measured rather than claimed. Wired as a `zephyr-thread-slots` recipe under the check module, which arrives with that PR and so cannot be named in the `just check <name>` form here yet. The shims needed NO seam: capacity is already an overridable `-D` and the release is already an exported symbol.
 
 ### W7 - a fault reaches a hook a console-less board can read (issue 1425)
 

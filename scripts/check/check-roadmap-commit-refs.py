@@ -28,9 +28,19 @@ still holds deleted branch objects than in a fresh CI clone that does
 not, and a gate whose verdict depends on the reader's reflog is not a
 gate.
 
-Under this rule an unresolvable sha is a FAILURE, not a skip: a commit
-of ours that this repository cannot even name is the worst case of the
-defect, not an exemption from it.
+Under this rule an unresolvable sha is a FAILURE in a FULL clone: a
+commit of ours that the repository cannot even name is the worst case of
+the defect, not an exemption from it.
+
+In a SHALLOW clone it is not. CI checks out a truncated history, so every
+commit older than the depth is absent there whether or not it is on main.
+The first CI run of this gate proved the point by reporting 12 of 12
+citations as "not a commit in this repository at all" when all twelve were
+on main: the gate said the exact opposite of the truth. A shallow checkout
+now reports those citations as UNCHECKED and says so in its output rather
+than failing, so the gate keeps its teeth where the history exists, which
+is the pre-push run on a developer's machine, and stays honest about what
+it cannot see anywhere else.
 
 The convention that keeps a footer green while its work is in flight:
 write `PR #1234, in the queue` with NO commit id, and add the id once it
@@ -79,10 +89,43 @@ def repo_root() -> Path:
     return Path(out.stdout.strip())
 
 
-def classify(root: Path, sha: str) -> str:
-    """One of: ok, unreachable, unknown."""
+def tracked_docs(root: Path) -> list[Path]:
+    """The roadmap docs git tracks, by index lookup rather than a walk.
+
+    `check-no-tracked-file-find` requires this: a recursive walk stats every
+    directory it considers, which measured 7m36s against 0.8s for the same
+    paths, and it would also read a stray untracked file someone left in the
+    tree.
+    """
+    out = git(root, "ls-files", "--", *(f"{d}/*.md" for d in ROOT_DIRS))
+    if out.returncode != 0:
+        return []
+    return [root / line for line in out.stdout.splitlines() if line.strip()]
+
+
+def is_shallow(root: Path) -> bool:
+    """A shallow clone cannot answer the question this gate asks.
+
+    CI checks out with a truncated history, so the commits the footers cite
+    are simply absent there: the first CI run of this gate reported 12 of 12
+    citations as "not a commit in this repository at all", every one of which
+    is on main in a full clone. Treating that as a failure made the gate say
+    the opposite of the truth, which is worse than saying nothing.
+    """
+    return git(root, "rev-parse", "--is-shallow-repository").stdout.strip() == "true"
+
+
+def classify(root: Path, sha: str, shallow: bool = False) -> str:
+    """One of: ok, unreachable, unknown, unknowable.
+
+    `unknown` and `unknowable` are the same observation with different
+    force. In a FULL clone a citation this repository cannot resolve is the
+    worst form of the defect the gate exists for, so it fails. In a SHALLOW
+    clone it is the expected state for any commit older than the checkout
+    depth, and says nothing at all, so it is not counted.
+    """
     if git(root, "cat-file", "-e", f"{sha}^{{commit}}").returncode != 0:
-        return "unknown"
+        return "unknowable" if shallow else "unknown"
     if git(root, "merge-base", "--is-ancestor", sha, "HEAD").returncode == 0:
         return "ok"
     return "unreachable"
@@ -127,8 +170,19 @@ def selftest(root: Path) -> None:
     assert classify(root, "HEAD") == "ok", "selftest: HEAD did not classify ok"
 
     # A well-formed id that cannot exist: all f's is not a commit here.
+    # In a FULL clone that is the defect and fails; in a SHALLOW one it is
+    # the expected state and must be reported as unknowable instead, or the
+    # gate says the opposite of the truth in CI, which is what the first CI
+    # run of this gate actually did.
     assert classify(root, "f" * 40) == "unknown", (
         "selftest: an impossible sha did not classify unknown"
+    )
+    assert classify(root, "f" * 40, shallow=True) == "unknowable", (
+        "selftest: an unresolvable sha in a shallow clone must be unknowable"
+    )
+    # HEAD stays reachable either way: shallowness never weakens a positive.
+    assert classify(root, "HEAD", shallow=True) == "ok", (
+        "selftest: HEAD must classify ok even when the clone is shallow"
     )
 
     # The unreachable case needs a commit outside HEAD's history, which this
@@ -144,7 +198,7 @@ def selftest(root: Path) -> None:
     print(
         "check-roadmap-commit-refs selftest: OK "
         f"({len(cases_match) + len(cases_no_match)} pattern case(s), "
-        f"{3 if stray else 2} classify case(s))"
+        f"{5 if stray else 4} classify case(s))"
     )
 
 
@@ -152,13 +206,11 @@ def main() -> int:
     root = repo_root()
     selftest(root)
 
-    files: list[Path] = []
-    for d in ROOT_DIRS:
-        p = root / d
-        if p.is_dir():
-            files.extend(sorted(p.rglob("*.md")))
+    files = tracked_docs(root)
+    shallow = is_shallow(root)
 
     checked = 0
+    unknowable = 0
     bad: list[tuple[str, int, int, str, str]] = []
     verdicts: dict[str, str] = {}
 
@@ -171,7 +223,10 @@ def main() -> int:
         for lineno, line in enumerate(text.splitlines(), 1):
             for pr, sha in CITATION.findall(line):
                 if sha not in verdicts:
-                    verdicts[sha] = classify(root, sha)
+                    verdicts[sha] = classify(root, sha, shallow)
+                if verdicts[sha] == "unknowable":
+                    unknowable += 1
+                    continue
                 checked += 1
                 if verdicts[sha] != "ok":
                     bad.append((rel, lineno, int(pr), sha, verdicts[sha]))
@@ -194,10 +249,22 @@ def main() -> int:
         print(HINT)
         return 1
 
+    note = ""
+    if unknowable:
+        note = (
+            f"; {unknowable} not checkable in this SHALLOW clone "
+            "(their commits are older than the checkout depth)"
+        )
     print(
         f"check-roadmap-commit-refs: {checked} pull-request citation(s) "
-        f"reachable from HEAD across {len(files)} roadmap doc(s)."
+        f"reachable from HEAD across {len(files)} roadmap doc(s){note}."
     )
+    if shallow and not checked:
+        print(
+            "  Nothing was verified here. This gate is meaningful only in a "
+            "full clone; the pre-push run on a developer's machine is where "
+            "it has teeth."
+        )
     return 0
 
 
