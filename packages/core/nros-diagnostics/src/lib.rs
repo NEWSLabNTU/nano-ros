@@ -21,6 +21,16 @@ pub const RULE_RATE_HIERARCHY: &str = "rate-hierarchy-runtime";
 pub const RULE_MAX_AGE: &str = "max-age-runtime";
 /// Path latency above the declared `max_latency_ms` (path guarantee).
 pub const RULE_MAX_LATENCY: &str = "max-latency-runtime";
+/// phase-462 W2 -- a contracted subscription that took NOTHING for a whole
+/// `max_age_ms` window (sub-endpoint assumption, the on-target form of a
+/// liveliness lease).
+///
+/// Distinct from [`RULE_MAX_AGE`], and it has to be: that rule judges a
+/// message that ARRIVED and was too old, so an input that stops entirely
+/// leaves it silent forever -- the very failure a `max_age_ms` promise is
+/// made against. A declared bound on how old data may be is also a bound on
+/// how long there may be none.
+pub const RULE_SILENCE: &str = "silence-runtime";
 
 /// Which side of the contract the violated field belongs to — drives the
 /// 4-quadrant diagnosis (RFC-0050 §contracts): a violated GUARANTEE with

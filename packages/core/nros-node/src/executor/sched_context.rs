@@ -156,12 +156,37 @@ impl DeadlineAction {
     /// Lower the tier-table string (`[tiers.<t>].deadline_policy`).
     /// Unknown strings map to `Ignore` — the bake already validated the
     /// vocabulary; runtime tolerance here avoids a boot-time panic path.
+    ///
+    /// phase-462 W2 -- that string is no longer authored per tier and nothing
+    /// else. The launch contract's `on_violation` is now its SOURCE
+    /// (`nros-orchestration-ir::violation_agreement`, applied in
+    /// `plan_from_model`), and a tier table that states a different word is a
+    /// resolve-time refusal naming both. So these four variants are what the
+    /// contract's safety vocabulary reaches the target AS: the word in the
+    /// YAML file becomes something the executor does.
     pub fn from_tier_str(s: &str) -> Self {
         match s {
             "warn" => Self::Warn,
             "skip" => Self::Skip,
             "fault" => Self::Fault,
             _ => Self::Ignore,
+        }
+    }
+
+    /// The tier-table spelling of this action -- the inverse of
+    /// [`from_tier_str`](Self::from_tier_str).
+    ///
+    /// The bake and the runtime share no type (this crate is `no_std` and
+    /// knows nothing of the model), so the STRING is the interface between
+    /// `ViolationAction::as_tier_str` on the bake side and this. Spelling it
+    /// here rather than only on the bake side is what lets both sides pin the
+    /// same four words in a test.
+    pub const fn as_tier_str(self) -> &'static str {
+        match self {
+            Self::Ignore => "ignore",
+            Self::Warn => "warn",
+            Self::Skip => "skip",
+            Self::Fault => "fault",
         }
     }
 }
@@ -812,6 +837,29 @@ mod tests {
         // No class, no deadline → None → caller keeps the default Fifo SC.
         assert!(SchedContext::from_tier_policy(None, Some(1_000), None, None, None).is_none());
         assert!(SchedContext::from_tier_policy(Some("default"), None, None, None, None).is_none());
+    }
+
+    /// phase-462 W2 -- the four words are the interface between the bake and
+    /// this crate. `nros-orchestration-ir`'s `violation_agreement` pins the
+    /// same three non-default ones in `the_tier_spelling_round_trips`; if
+    /// either side renames one, the contract's `on_violation` silently lowers
+    /// to `Ignore` and the image stops reacting.
+    #[test]
+    fn the_contract_vocabulary_is_the_tier_vocabulary() {
+        for a in [
+            DeadlineAction::Ignore,
+            DeadlineAction::Warn,
+            DeadlineAction::Skip,
+            DeadlineAction::Fault,
+        ] {
+            assert_eq!(DeadlineAction::from_tier_str(a.as_tier_str()), a);
+        }
+        assert_eq!(DeadlineAction::Fault.as_tier_str(), "fault");
+        // An unreadable word is the default, not a boot panic.
+        assert_eq!(
+            DeadlineAction::from_tier_str("abort"),
+            DeadlineAction::Ignore
+        );
     }
 }
 

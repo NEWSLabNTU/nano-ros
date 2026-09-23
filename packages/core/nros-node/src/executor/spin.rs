@@ -3035,13 +3035,19 @@ impl<'s> Executor<'s> {
             }
         }
         if !self.age_table.is_empty() {
+            // phase-462 W2 -- the age loop needs the clock now: `silence-runtime`
+            // judges how long an endpoint has taken NOTHING, and `None` (a
+            // build with no clock) makes that rule abstain rather than guess.
+            // Read before the loop because the borrow of `age_states` below
+            // outlives the `&mut self` the reader wants.
+            let now_us = self.now_us();
             for (i, spec) in self
                 .age_table
                 .iter()
                 .take(super::monitor::MAX_MONITORS)
                 .enumerate()
             {
-                if let Some(v) = super::monitor::check_age(spec, &mut self.age_states[i]) {
+                if let Some(v) = super::monitor::check_age(spec, &mut self.age_states[i], now_us) {
                     if self.report_violations {
                         super::monitor::log_violation(&v);
                     }
