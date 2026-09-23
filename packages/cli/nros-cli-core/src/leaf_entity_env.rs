@@ -379,6 +379,21 @@ fn leaf_name(leaf: &Path) -> String {
 /// Names are the ones the BUILD SCRIPTS read, checked against them rather than
 /// guessed: `ZPICO_*` are `zpico-sys`/`nros-zpico-build`, `NROS_RMW_*` is
 /// `nros-rmw-cffi`, `NROS_EXECUTOR_*` is `nros-node`.
+///
+/// # What is deliberately NOT here: the two service-inbox slot sizes
+///
+/// phase-461 W3 derives `NROS_DERIVED_SERVICE_INBOX_BYTES` and
+/// `NROS_DERIVED_ACTION_INBOX_BYTES` from the request types an image's declared
+/// service and action endpoints carry. Neither travels this road, and the
+/// reason is that A LEAF ANSWERS THIS QUESTION FROM ITS SIZING DESCRIPTOR --
+/// `nros-rmw-zenoh/build.rs`'s `declared_service_request_bytes` reads
+/// `[[endpoint]] wire_bound_bytes` directly, and a cargo leaf is the one road
+/// that HAS a descriptor (phase-455 W5). Carrying the same number a second way
+/// here would give one image two derivations of one fact, which is issue 1025.
+///
+/// The declared road is different and does carry them: a cmake / Zephyr west
+/// entry has no descriptor at all (issue 1393, and phase-454 W11 measured it),
+/// which is exactly the gap `NROS_DECLARED_*_INBOX_BYTES` fills.
 pub const DERIVED_ENV_KEYS: &[&str] = &[
     "NROS_EXECUTOR_ACTION_CLIENTS",
     "NROS_EXECUTOR_MAX_CBS",

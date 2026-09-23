@@ -413,6 +413,28 @@ KEPT = {
     "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1408, _BOTH_ROADS),
     "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1408, _BOTH_ROADS),
     "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1408, _BOTH_ROADS),
+    # ---- the two inbox families (issue 1352, phase-461 W3) --------------
+    # These are the newest carriers and the retirement question has a clear
+    # answer for them: the descriptor DOES state the fact -- W3 makes
+    # `[[endpoint]] wire_bound_bytes` resolve for a service and an action row
+    # by joining on the REQUEST type, and `declared_service_request_bytes`
+    # reads exactly that, ranked FIRST in `nros-rmw-zenoh/build.rs`. What keeps
+    # the carrier is the road: phase-454 W11 measured that no cmake / Zephyr
+    # west entry produces a descriptor at all, and that is the road the safety
+    # island (the image this phase exists for) is on. Retire it with the other
+    # 1393 carriers, when the descriptor reaches that road.
+    "NROS_DECLARED_SERVICE_INBOX_BYTES": Kept(
+        1393,
+        "the descriptor states this fact and is read FIRST; the carrier is the "
+        "only road for a cmake / Zephyr west entry, which produces no "
+        "descriptor (phase-454 W11) and is the safety island's road",
+    ),
+    "NROS_DECLARED_ACTION_INBOX_BYTES": Kept(
+        1393,
+        "the action half of the row above, same descriptor field and same "
+        "road gap; priced apart because the two families have separate rings "
+        "and separate depths since phase-461 W1",
+    ),
     # ---- QoS depth (issue 1407) -----------------------------------------
     # The one carrier whose FACT the descriptor states on all three roads. It
     # stays for the road reason above, and because its sibling

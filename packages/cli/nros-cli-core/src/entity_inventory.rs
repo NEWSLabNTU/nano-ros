@@ -2561,6 +2561,62 @@ impl EntityInventory {
     ///    `MAX_CBS` derives happily without one, but a SIZE does: an untyped
     ///    receiving entity is a payload of unknown size, and pricing the rest
     ///    would publish a maximum a real sample can exceed.
+    /// phase-461 W3 -- the REQUEST types this image's user service endpoints
+    /// carry, under the spelling codegen prices them with.
+    ///
+    /// A service row's declared type is the INTERFACE (`pkg/srv/Name`), and no
+    /// such type ever crosses a wire. What a server's inbox slot has to hold is
+    /// `pkg/srv/Name_Request`, which is the name
+    /// `rosidl_codegen::service_request_type` gives it and the name the bound
+    /// inventory has carried since W3 priced services at all. Published as its
+    /// own view rather than filtered out of [`Self::received_types`] because
+    /// that set is keyed on the interface and the join needs the wire type --
+    /// and because the two FAMILIES are priced apart (the action family has its
+    /// own view below, and its own inbox since W1).
+    pub fn service_request_types(&self) -> ReceivedTypes {
+        self.wire_request_types(
+            |k| matches!(k, EntityKind::ServiceServer | EntityKind::ServiceClient),
+            rosidl_codegen::service_request_type,
+            "service request",
+        )
+    }
+
+    /// phase-461 W3 -- [`Self::service_request_types`] for the ACTION family.
+    ///
+    /// An action server is three queryables. They receive the SendGoal
+    /// envelope, `action_msgs/srv/CancelGoal`'s request (32 fixed bytes, owned
+    /// by that package) and `GetResult_Request` (a bare UUID); only SendGoal
+    /// carries the user's own goal, so it is the one that can exceed the other
+    /// two and the one `rosidl_codegen::action_request_type` names.
+    pub fn action_request_types(&self) -> ReceivedTypes {
+        self.wire_request_types(
+            |k| matches!(k, EntityKind::ActionServer | EntityKind::ActionClient),
+            rosidl_codegen::action_request_type,
+            "action request",
+        )
+    }
+
+    /// The one implementation behind the two views above: the same composition
+    /// rule and the same two refusals as [`Self::types_received_by`], with the
+    /// declared interface name mapped to the wire type before it is counted.
+    fn wire_request_types(
+        &self,
+        matches: fn(EntityKind) -> bool,
+        wire: fn(&str) -> String,
+        what: &str,
+    ) -> ReceivedTypes {
+        match self.types_received_by(matches, what) {
+            ReceivedTypes::Refused { reason } => ReceivedTypes::Refused { reason },
+            ReceivedTypes::Resolved(v) => {
+                let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+                for (t, n) in v {
+                    *counts.entry(wire(&t)).or_insert(0) += n;
+                }
+                ReceivedTypes::Resolved(counts.into_iter().collect())
+            }
+        }
+    }
+
     fn types_received_by(&self, matches: fn(EntityKind) -> bool, what: &str) -> ReceivedTypes {
         if let Derivation::Refused { reason } = self.derive() {
             return ReceivedTypes::Refused {
@@ -3653,6 +3709,39 @@ impl EntityInventory {
              # subscribed set above; it is what the executor arena needs, not the payload\n\
              # classes.",
             &self.received_types(),
+        ));
+        // phase-461 W3 (issue 1352) -- the two INBOX families' join keys, on
+        // exactly the terms the two views above are published on. The carrier
+        // (`cmake/NanoRosEntityInventory.cmake`) joins each against the
+        // registered message-bound fragments and publishes
+        // NROS_DERIVED_SERVICE_INBOX_BYTES / NROS_DERIVED_ACTION_INBOX_BYTES.
+        //
+        // The join is NOT done here, and that is a property of the data model
+        // rather than a preference: this inventory counts entities and holds no
+        // type bound at all -- the module header's first paragraph says so, and
+        // `nros_derive_message_bound_knobs` is the one place the two inventories
+        // meet. What belongs here is which types each family receives, which is
+        // the half only this inventory can answer.
+        //
+        // A REFUSAL travels, exactly as it does above: an absent list would read
+        // as "this image has no service", and an inbox derived over an empty set
+        // is a slot sized for nothing.
+        s.push_str(&render_received(
+            "SERVICE_REQUEST",
+            "the REQUEST types this image's user service servers and clients carry,
+             # under the `pkg/srv/Name_Request` spelling codegen prices (phase-461 W3).
+             # The interface type in NROS_ENTITY_RECEIVED_TYPES never crosses a wire; this
+             # one does, and it is what one inbox slot must hold. The parameter and
+             # lifecycle families are NOT here -- they bring their own ring (W2).",
+            &self.service_request_types(),
+        ));
+        s.push_str(&render_received(
+            "ACTION_REQUEST",
+            "the same, for the ACTION family: `pkg/action/Name_SendGoal_Request`, the
+             # largest of the three requests an action server's queryables receive.
+             # A separate family because it keeps depth 4 where a service keeps its own,
+             # so one maximum over both would give each the other's worst case.",
+            &self.action_request_types(),
         ));
         // phase-403 step 2 -- the QoS DEPTHS. The arena's per-subscription cost
         // is `(depth + 1) * bound + (depth + 1) * 8`, so depth is a MULTIPLIER
@@ -4964,6 +5053,66 @@ mod tests {
             ],
             "two subscriptions on Int32, one on Odometry, and the PUBLISHED \
              Image is not in the set"
+        );
+    }
+
+    /// phase-461 W3 (issue 1352) -- the two INBOX families' join keys carry the
+    /// WIRE type, which is what the bound inventory prices and what one inbox
+    /// slot has to hold. The interface spelling in the RECEIVED view crosses no
+    /// wire, so a join on it refuses -- which is what it did on every in-tree
+    /// image until W3.
+    #[test]
+    fn the_inbox_families_join_on_the_wire_type_and_are_priced_apart() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated(
+            "a",
+            "one",
+            &[
+                "sub:std_msgs/msg/Int32:/t",
+                "service_server:tier4_system_msgs/srv/OperateMrm:/operate_mrm",
+                "action_server:example_interfaces/action/Fibonacci:/fib",
+            ],
+        ));
+        let names = |r: ReceivedTypes| -> Vec<String> {
+            r.types()
+                .expect("resolved")
+                .iter()
+                .map(|(t, _)| t.clone())
+                .collect()
+        };
+        assert_eq!(
+            names(inv.service_request_types()),
+            vec!["tier4_system_msgs/srv/OperateMrm_Request".to_string()],
+        );
+        assert_eq!(
+            names(inv.action_request_types()),
+            vec!["example_interfaces/action/Fibonacci_SendGoal_Request".to_string()],
+        );
+        // Priced APART: a service is in neither of the action family's rows and
+        // the reverse, so one family never inherits the other's worst case.
+        assert!(
+            names(inv.service_request_types())
+                .iter()
+                .all(|t| !t.contains("/action/"))
+        );
+        // And the subscription is in neither: it allocates from the payload
+        // classes, not from a service inbox.
+        for view in [inv.service_request_types(), inv.action_request_types()] {
+            assert!(names(view).iter().all(|t| !t.contains("std_msgs")));
+        }
+        // Both reach the CMake projection, which is what the carrier joins.
+        let c = inv.to_cmake();
+        assert!(
+            c.contains(
+                "set(NROS_ENTITY_SERVICE_REQUEST_TYPES \"tier4_system_msgs/srv/OperateMrm_Request\")"
+            ),
+            "{c}"
+        );
+        assert!(
+            c.contains(
+                "set(NROS_ENTITY_ACTION_REQUEST_TYPES \"example_interfaces/action/Fibonacci_SendGoal_Request\")"
+            ),
+            "{c}"
         );
     }
 

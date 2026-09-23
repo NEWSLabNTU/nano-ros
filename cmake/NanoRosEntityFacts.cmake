@@ -476,7 +476,21 @@ function(_nros_entity_budget_env _out_var)
             # knob. That precondition is a property of the FAILURE, not of the
             # road, so it holds here too; nothing in the tree ever said why the
             # other two roads were left out.
-            "NROS_DECLARED_EXECUTOR_MAX_NODES;NROS_DERIVED_EXECUTOR_MAX_NODES")
+            "NROS_DECLARED_EXECUTOR_MAX_NODES;NROS_DERIVED_EXECUTOR_MAX_NODES"
+            # phase-461 W3 (issue 1352) -- the two service-inbox families' slot
+            # sizes, joined in `NanoRosEntityInventory.cmake` from this image's
+            # declared service and action REQUEST types. Absent unless every
+            # request type in the family is priced, so a reader either takes a
+            # derived number or keeps its own default; the zenoh build script
+            # reads both as a rung BELOW any stated NROS_*_INBOX_BYTES.
+            #
+            # This road and not the resolver's: `NROS_SERVICE_INBOX_BYTES` has a
+            # Kconfig row whose default is the one-release alias
+            # `NROS_SERVICE_BUFFER_SIZE`, so it states a number on every Zephyr
+            # image and a DERIVE sentinel there would break the alias. A
+            # declared fact sits below both rungs and needs no sentinel.
+            "NROS_DECLARED_SERVICE_INBOX_BYTES;NROS_DERIVED_SERVICE_INBOX_BYTES"
+            "NROS_DECLARED_ACTION_INBOX_BYTES;NROS_DERIVED_ACTION_INBOX_BYTES")
         list(GET _pair 0 _name)
         list(GET _pair 1 _src)
         if(DEFINED ${_src})

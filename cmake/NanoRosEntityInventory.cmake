@@ -281,6 +281,76 @@ set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED_FROM "${CMAKE_CURRENT_LIST_FILE}"
 #
 # `CMAKE_BINARY_DIR` and not a per-package dir: the answer is a property of the
 # IMAGE. It sits beside `message_bound_knobs.cmake`, its sibling.
+# _nros_entity_inbox_bytes(<types-list> <family> <out-bytes> <out-why>)
+#
+# phase-461 W3 (issue 1352) -- the slot size one INBOX FAMILY's declared
+# requests ask for: the largest derived `_RX` over `<types-list>`, which the
+# entity fragment publishes as NROS_ENTITY_SERVICE_REQUEST_TYPES /
+# NROS_ENTITY_ACTION_REQUEST_TYPES.
+#
+# THE JOIN LIVES HERE, and that is a property of the two data models rather
+# than a preference. The entity inventory counts entities and holds no type
+# bound; the bound inventory prices a type and cannot say whether this image
+# creates it. This function is where the two meet, exactly as
+# `_nros_bounds_join_subscribed` is for the payload classes -- and the fragments
+# are read through the GLOBAL PROPERTY rather than through
+# `nros_message_bounds_fragments()` because that module includes THIS one from
+# inside its own join, and a top-level include back would be a cycle.
+#
+# `<out-bytes>` is left EMPTY, with a reason in `<out-why>`, whenever the answer
+# would be short: no declared endpoint of this family (absence is not zero --
+# RFC-0100 D6), a list the producer refused, a type no fragment prices, or a
+# type whose own bound is `unbounded`/`unresolved`. ONE unpriced row refuses the
+# whole family, because the slot is shared by every queryable in it and a
+# maximum over the rows that answered is not a bound on the rows that did not.
+function(_nros_entity_inbox_bytes _types _family _o_bytes _o_why)
+    set(${_o_bytes} "" PARENT_SCOPE)
+    set(${_o_why} "" PARENT_SCOPE)
+    if(NOT _types)
+        set(${_o_why}
+            "this image declares no ${_family} endpoint, so there is no request to price"
+            PARENT_SCOPE)
+        return()
+    endif()
+    get_property(_frags GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_FRAGMENTS)
+    if(NOT _frags)
+        set(${_o_why}
+            "no message-bound fragment is registered in this configure, so no ${_family} request type is priced"
+            PARENT_SCOPE)
+        return()
+    endif()
+    foreach(_f IN LISTS _frags)
+        if(EXISTS "${_f}")
+            include("${_f}")
+        endif()
+    endforeach()
+    set(_max 0)
+    set(_open "")
+    foreach(_t IN LISTS _types)
+        string(REGEX REPLACE "[^A-Za-z0-9]" "_" _key "${_t}")
+        if(NOT DEFINED NROS_MESSAGE_BOUND_${_key}_STATE)
+            list(APPEND _open "${_t} (not in the bound inventory)")
+            continue()
+        endif()
+        if(NOT NROS_MESSAGE_BOUND_${_key}_STATE STREQUAL "bounded")
+            list(APPEND _open
+                 "${_t} (${NROS_MESSAGE_BOUND_${_key}_STATE}: ${NROS_MESSAGE_BOUND_${_key}_REASON})")
+            continue()
+        endif()
+        if(NROS_MESSAGE_BOUND_${_key}_RX GREATER _max)
+            set(_max "${NROS_MESSAGE_BOUND_${_key}_RX}")
+        endif()
+    endforeach()
+    if(_open)
+        string(REPLACE ";" "\n    " _block "${_open}")
+        set(${_o_why}
+            "${_family} request type(s) carry no derived bound, so the family's inbox slot cannot be sized:\n    ${_block}\n  Bound the member in its `.srv`/`.action` (`string<=64`) or cap it `inline` in the package's `nros-codegen.toml` (RFC-0033)."
+            PARENT_SCOPE)
+        return()
+    endif()
+    set(${_o_bytes} "${_max}" PARENT_SCOPE)
+endfunction()
+
 function(nros_entity_inventory_knobs_file _out_var)
     set(${_out_var} "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake" PARENT_SCOPE)
 endfunction()
@@ -403,7 +473,9 @@ function(nros_derive_entity_inventory_knobs)
                NROS_DERIVED_MAX_BYTE_ARRAY_LEN
                NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN NROS_PARAM_NEEDS_MAX_ARRAY_LEN
                NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN
-               NROS_PARAM_SERVICE_SHAPE)
+               NROS_PARAM_SERVICE_SHAPE
+               # phase-461 W3 -- the two inbox families' slot sizes.
+               NROS_DERIVED_SERVICE_INBOX_BYTES NROS_DERIVED_ACTION_INBOX_BYTES)
         unset(${_v})
         unset(${_v} PARENT_SCOPE)
     endforeach()
@@ -488,6 +560,62 @@ function(nros_derive_entity_inventory_knobs)
             "${NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED}.\n"
             "  Refusing rather than reading fields that may have moved.\n"
             "${_diag}")
+    endif()
+
+    # phase-461 W3 (issue 1352) -- the two inbox families' slot sizes, joined
+    # from the fragment's per-family request-type lists and the registered
+    # message-bound fragments. APPENDED to the fragment rather than only
+    # published into this frame, because the declared road
+    # (`_nros_entity_budget_env` in `cmake/NanoRosEntityFacts.cmake`) reads this
+    # FILE and not this function's scope -- a value that crosses the function
+    # boundary and never reaches the file is the fourth delivery failure
+    # `check-knob-delivery` was written for.
+    #
+    # The REASON is written beside an absent value, never instead of a number:
+    # absence is the answer here (RFC-0100 D6) and a reader that finds no
+    # variable must fall back to its own default, which is what the zenoh build
+    # script's `SERVICE_BUFFER_SIZE_DEFAULT` is.
+    set(_inbox_appendix "")
+    # Both names are written IN FULL and neither is built by interpolation --
+    # the rule this file already states one block down, and the reason
+    # `check-declared-fact-carriers` can see a published fact at all: it greps
+    # for the token.
+    set(_svc_types "")
+    if(DEFINED NROS_ENTITY_SERVICE_REQUEST_TYPES_STATUS AND
+       NROS_ENTITY_SERVICE_REQUEST_TYPES_STATUS STREQUAL "resolved")
+        set(_svc_types "${NROS_ENTITY_SERVICE_REQUEST_TYPES}")
+    endif()
+    _nros_entity_inbox_bytes("${_svc_types}" "service" _svc_bytes _svc_why)
+    if(_svc_bytes STREQUAL "")
+        string(APPEND _inbox_appendix
+            "# NROS_DERIVED_SERVICE_INBOX_BYTES is ABSENT: ${_svc_why}\n")
+    else()
+        string(APPEND _inbox_appendix
+            "set(NROS_DERIVED_SERVICE_INBOX_BYTES ${_svc_bytes})\n")
+        _nros_entity_publish(NROS_DERIVED_SERVICE_INBOX_BYTES "${_svc_bytes}")
+    endif()
+    set(_act_types "")
+    if(DEFINED NROS_ENTITY_ACTION_REQUEST_TYPES_STATUS AND
+       NROS_ENTITY_ACTION_REQUEST_TYPES_STATUS STREQUAL "resolved")
+        set(_act_types "${NROS_ENTITY_ACTION_REQUEST_TYPES}")
+    endif()
+    _nros_entity_inbox_bytes("${_act_types}" "action" _act_bytes _act_why)
+    if(_act_bytes STREQUAL "")
+        string(APPEND _inbox_appendix
+            "# NROS_DERIVED_ACTION_INBOX_BYTES is ABSENT: ${_act_why}\n")
+    else()
+        string(APPEND _inbox_appendix
+            "set(NROS_DERIVED_ACTION_INBOX_BYTES ${_act_bytes})\n")
+        _nros_entity_publish(NROS_DERIVED_ACTION_INBOX_BYTES "${_act_bytes}")
+    endif()
+    file(READ "${_output}" _inv_text)
+    string(FIND "${_inv_text}" "# phase-461 W3 -- the per-family inbox join" _joined)
+    if(_joined EQUAL -1)
+        file(APPEND "${_output}"
+            "# phase-461 W3 -- the per-family inbox join, appended by\n"
+            "# cmake/NanoRosEntityInventory.cmake. The CLI writes which types each\n"
+            "# family receives; the largest derived `_RX` over them is the slot size.\n"
+            "${_inbox_appendix}")
     endif()
 
     # Republish everything the fragment set. `include()` inside a function keeps
@@ -730,7 +858,12 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN
         NROS_PARAM_NEEDS_MAX_ARRAY_LEN
         NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN
-        NROS_PARAM_SERVICE_SHAPE)
+        NROS_PARAM_SERVICE_SHAPE
+        # phase-461 W3 -- printed for the reason the block above gives: a
+        # value that crosses the function boundary and is not printed here is
+        # untestable and invisible.
+        NROS_DERIVED_SERVICE_INBOX_BYTES
+        NROS_DERIVED_ACTION_INBOX_BYTES)
         if(DEFINED ${_v})
             message(STATUS "${_v}=${${_v}}")
         endif()

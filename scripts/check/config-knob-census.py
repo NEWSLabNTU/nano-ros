@@ -278,6 +278,14 @@ KNOB_CLASS = {
     # node, counts the contract decides. nros-node bounds its service buffer
     # from it and the store's resolved capacities.
     "NROS_DECLARED_PARAM_SERVICE_SHAPE": ("infra", "a SHAPE the resolver passes down, not a knob"),
+    # phase-461 W3 (issue 1352) -- the two service-inbox families' slot sizes,
+    # derived from the request types this image's declared service and action
+    # endpoints carry. Same category as every DECLARED fact beside it: nobody
+    # tunes these, they are what the image DECLARED, and the real knobs
+    # (NROS_SERVICE_INBOX_BYTES / NROS_ACTION_INBOX_BYTES, phase-461 W1) outrank
+    # them on every rung.
+    "NROS_DECLARED_SERVICE_INBOX_BYTES": ("infra", "a SIZE the resolver passes down, not a knob"),
+    "NROS_DECLARED_ACTION_INBOX_BYTES": ("infra", "a SIZE the resolver passes down, not a knob"),
     # phase-460 W2 (issue 1421) -- the inventory's VERDICT on the declaration,
     # not a number: `refused` stops nros-params' build script on a road that
     # forwards the status by environment (the CMake road stops in cmake).
