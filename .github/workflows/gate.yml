@@ -1009,6 +1009,21 @@ jobs:
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: scripts/ci/disk-report.sh "before just check build"
 
+      # Issue 1353 step 3, phase-466 W4. Same script and same reasoning as
+      # host-tests.yml, and it runs on the same events as the step it protects:
+      # `check build` is the only thing in this job that has ever exhausted the
+      # disk, and it is `schedule`/`workflow_dispatch` only.
+      #
+      # This lane's numbers are NOT known — the failure destroys its own job
+      # log (run 35808783184: the before-report reported success and its output
+      # was never uploaded), which is what the `::notice::`/step-summary channel
+      # added to `disk-report.sh` is there to fix. So this step is headroom
+      # bought against a measured cause on a sibling lane, not against a
+      # measurement of this one, and the next scheduled run is what prices it.
+      - name: Reclaim disk before the compile tier — issue 1353
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: scripts/ci/reclaim-disk.sh "before just check build"
+
       - name: just check build (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |

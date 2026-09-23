@@ -383,14 +383,20 @@ jobs:
       # Issue 0078 — container host-disk headroom before the west update + pip.
       # Mirrors nightly's zephyr line, which measured cells tipping over at 78 MB
       # free. The baked SDK stays; the build needs it.
+      # Issue 1353, phase-466 W4 — this block used to be written out here. It is
+      # now the shared `scripts/ci/reclaim-disk.sh`, which does the same three
+      # removals plus the two this lane never knew about (the mounted hosted
+      # tool cache, and the metadata-probe cargo scratch). One reclaim with one
+      # set of reasons, rather than a second idiom per lane: `live-peer` is one
+      # of the lanes issue 1353 measured running out of disk, so what the other
+      # two learn about it should reach here without a transcription.
+      #
+      # The step NAME and `id` are unchanged on purpose — `lane-stage.py`'s
+      # report names this step, and `check-lane-stage-reporting` checks that it
+      # still classifies as provisioning.
       - name: Reclaim disk before the SDK setup
         id: disk
-        run: |
-          echo "before:"; df -h / | tail -1
-          apt-get clean 2>/dev/null || true
-          rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale 2>/dev/null || true
-          rm -rf "$HOME/.cache/pip" 2>/dev/null || true
-          echo "after:";  df -h / | tail -1
+        run: scripts/ci/reclaim-disk.sh "before the SDK setup"
 
       # The image bakes bin/cargo-clippy from a non-rustup-owner layer, so
       # `rustup target add` (which `just setup` reaches) trips on the
