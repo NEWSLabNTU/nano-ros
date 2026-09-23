@@ -396,6 +396,23 @@ jobs:
         if: ${{ !cancelled() }}
         run: scripts/ci/disk-report.sh "before just ci tier1"
 
+      # Issue 1353 step 3, phase-466 W4 — the tier arrives with 22 G free and
+      # wants more than that (measured: `packages/cli/target` 404 M -> 13 G, a
+      # fresh `target/` at 4.1 G, `build/` +3 G), so it dies on a write. This
+      # frees the two things on this disk that nothing downstream reads: the
+      # mounted hosted tool cache, which a `container:` job never opens, and the
+      # metadata-probe cargo scratch, whose product is a JSON sidecar written
+      # elsewhere. It runs BETWEEN the two brackets on purpose, so the
+      # "before" report above still shows what the fixture build spent and the
+      # reclaim's own notice says what it gave back.
+      #
+      # It never fails the job, so it is `!cancelled()` rather than guarded on
+      # the fixture builds having succeeded — a lane that is already failing is
+      # the one most likely to be out of room.
+      - name: Reclaim disk before the tier — issue 1353
+        if: ${{ !cancelled() }}
+        run: scripts/ci/reclaim-disk.sh "before just ci tier1"
+
       - name: just ci tier1
         env:
           CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
