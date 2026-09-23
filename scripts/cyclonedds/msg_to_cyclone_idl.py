@@ -91,16 +91,24 @@ _VENDORED_ROSIDL = next(
 )
 
 
-def _adapter_importable(env: "dict") -> bool:
-    """Can a subprocess actually `import rosidl_adapter` under `env`?
+def _adapter_importable(env: "dict", module: str = "rosidl_adapter.cli") -> bool:
+    """Can a subprocess actually `import rosidl_adapter.cli` under `env`?
 
     Asked with the env the adapter will really run under, in a subprocess, so
     the answer is about the BUILD's interpreter rather than this process's.
+
+    `rosidl_adapter.cli`, not `rosidl_adapter` — issue 1457. `msg2idl.py`'s
+    first statement is `from rosidl_adapter.cli import convert_files_to_idl`,
+    and `cli` is where the third-party imports live (`catkin_pkg.package`,
+    `yaml`). The package alone imports with none of them present, so the
+    narrower probe answered YES for an interpreter that could not run the
+    script — "EXISTS is not RUNS" (issue 0601) one import deeper. Ask what the
+    script asks.
     """
     try:
         return (
             subprocess.run(
-                [sys.executable, "-c", "import rosidl_adapter"],
+                [sys.executable, "-c", f"import {module}"],
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -110,6 +118,29 @@ def _adapter_importable(env: "dict") -> bool:
         )
     except (OSError, subprocess.SubprocessError):
         return False
+
+
+# What the vendored source tree needs from the interpreter, and the pip name
+# that supplies it. The SAME three the `cyclone-idl` group in
+# `scripts/check-python-deps.py` lists and `[python.*]` in `nros-sdk-index.toml`
+# declares — named here so the refusal can say WHICH one is missing instead of
+# reprinting the whole line and leaving the reader to bisect it.
+_VENDORED_PY_DEPS = (
+    ("catkin_pkg", "catkin_pkg"),
+    ("em", "empy==3.3.4"),
+    ("lark", "lark"),
+    ("yaml", "PyYAML"),
+)
+
+
+def _missing_vendored_deps(env: "dict") -> "list[str]":
+    missing = [
+        pip for mod, pip in _VENDORED_PY_DEPS if not _adapter_importable(env, mod)
+    ]
+    # `rosidl_adapter.cli` failed, so something is missing; if every dep above
+    # imports, the fault is in the clone itself and saying "none" would be a
+    # lie shaped like an answer.
+    return missing or ["(none of the known deps — the clone itself is broken)"]
 
 
 def _adapter_bin_and_env() -> "tuple[Path, dict]":
@@ -134,6 +165,7 @@ def _adapter_bin_and_env() -> "tuple[Path, dict]":
     # PYTHONPATH injection that would have worked. Falling through to it costs
     # nothing when ROS is properly sourced, because the check passes then.
     vendored = _VENDORED_ROSIDL / "rosidl_adapter/scripts"
+    vendored_env = None
     if vendored.is_dir():
         # Source-tree scripts import rosidl_adapter/_parser/_cli from their
         # package dirs; python deps (catkin_pkg, empy 3.x, lark) come from
@@ -145,7 +177,23 @@ def _adapter_bin_and_env() -> "tuple[Path, dict]":
         if existing := env.get("PYTHONPATH"):
             pythonpath = f"{pythonpath}{os.pathsep}{existing}"
         env["PYTHONPATH"] = pythonpath
-        return vendored, env
+        vendored_env = env
+        # THE SAME QUESTION THE ROS RUNG IS ASKED — issue 1457.
+        #
+        # This rung returned as soon as the DIRECTORY existed, which is the
+        # proxy the comment three lines above rejects for the other rung. The
+        # `[python.*]` deps are report-only (`nros setup --check`), so a host
+        # that provisioned the source and not the deps lands here and the build
+        # dies eleven minutes later, inside ninja, as
+        #
+        #   ModuleNotFoundError: No module named 'catkin_pkg'
+        #
+        # a traceback naming a module nobody asked for and no remedy — which is
+        # what tier-2 nightly reported every night from 2026-09-06. The refusal
+        # below already knows the pip line; it was simply unreachable whenever
+        # the clone was present, i.e. in exactly the case that needs it.
+        if _adapter_importable(vendored_env):
+            return vendored, vendored_env
     # Neither rung is usable. The comment above already says "the directory
     # existing is a PROXY; being importable is the property" — but returning
     # `ros` here hands back a path whose SCRIPTS EXIST, so `find_adapter`'s
@@ -171,8 +219,18 @@ def _adapter_bin_and_env() -> "tuple[Path, dict]":
             if ros_exists
             else "  ROS's copy is absent.\n"
         )
-        + f"  The vendored fallback is also absent ({_VENDORED_ROSIDL}).\n"
-        "\n"
+        + (
+            # issue 1457 — the vendored rung now has THREE states, not two, and
+            # "absent" was the only one this text could say. A clone that is
+            # present and whose python deps are not is the state a self-hosted
+            # runner reaches, and the one a reader most needs named.
+            f"  The vendored copy is present ({_VENDORED_ROSIDL}) but\n"
+            "  `import rosidl_adapter.cli` fails under it — its python deps\n"
+            f"  are missing: {', '.join(_missing_vendored_deps(vendored_env))}.\n"
+            if vendored_env is not None
+            else f"  The vendored fallback is also absent ({_VENDORED_ROSIDL}).\n"
+        )
+        + "\n"
         "  Fix either one:\n"
         "    nros setup --source rosidl      # vendored copy, no ROS needed\n"
         "      (+ deps: pip3 install --user catkin_pkg 'empy==3.3.4' lark)\n"
