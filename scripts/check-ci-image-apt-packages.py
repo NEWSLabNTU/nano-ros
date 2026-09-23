@@ -62,7 +62,11 @@ Usage::
 
 import os
 import re
+import subprocess
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -222,22 +226,32 @@ def index_apt_packages_for_tool(index_text, tool):
 
 
 def toml_sites(root):
-    """Repo scripts that open with the `tomllib` -> `tomli` import chain."""
+    """Tracked scripts that open with the `tomllib` -> `tomli` import chain.
+
+    `git ls-files`, never a filesystem walk: `check-no-tracked-file-find`
+    measured 7m36s -> 0.8s for the same 232 paths, and a walk would also count
+    vendored trees and build output the images never run. It raises rather than
+    returning [] on a git failure -- an empty answer would make rule 4 pass by
+    knowing nothing, which is the shape this whole gate is about.
+    """
+    out = subprocess.run(
+        ["git", "-C", root, "ls-files", "-z", "--", "*.py"],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=nros_clear_inherited_git_env(dict(os.environ)),
+    ).stdout
     hits = []
-    skip = {".git", "third-party", "target", "build", "node_modules"}
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in skip]
-        for fn in filenames:
-            if not fn.endswith(".py"):
-                continue
-            path = os.path.join(dirpath, fn)
-            try:
-                with open(path, "r", encoding="utf-8", errors="replace") as fh:
-                    text = fh.read()
-            except OSError:
-                continue
-            if re.search(r"^\s*import\s+tomli\b", text, re.M):
-                hits.append(os.path.relpath(path, root))
+    for rel in (p for p in out.split("\0") if p):
+        if rel.startswith("third-party/"):
+            continue
+        try:
+            with open(os.path.join(root, rel), "r", encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        if re.search(r"^\s*import\s+tomli\b", text, re.M):
+            hits.append(rel)
     return sorted(hits)
 
 
@@ -459,6 +473,20 @@ def _fake_tree(tmp):
     _write(tmp, IMAGES_YML, _FAKE_IMAGES_YML)
     _write(tmp, os.path.join(WORKFLOWS, "consumer.yml"), _FAKE_CONSUMER_YML)
     _write(tmp, "uses_toml.py", "import tomllib\nimport tomli as tomllib\n")
+    # A REAL repository, because `toml_sites` asks `git ls-files` and a fake
+    # tree that is not one would answer "no sites" -- so every case about the
+    # TOML rule would pass for the wrong reason. `git add` alone populates the
+    # index; no commit and no identity are needed.
+    #
+    # The environment is cleared first (issue 0986): `GIT_DIR` & co. override
+    # both `-C` and a path argument, so under an inherited one -- which is what
+    # a git hook and every agent worktree provide -- these commands would land
+    # in the CALLER's repository instead of this tmpdir.
+    env = nros_clear_inherited_git_env(dict(os.environ))
+    subprocess.run(["git", "-C", tmp, "init", "-q"], check=True, env=env)
+    subprocess.run(
+        ["git", "-C", tmp, "add", "--", "uses_toml.py"], check=True, env=env
+    )
 
 
 def self_test(quiet=False):
@@ -504,7 +532,14 @@ def self_test(quiet=False):
     # the chain, the package is not owed.
     def _no_toml_sites(t):
         _write(t, SHARED, "unzip\ncmake\n")
-        os.remove(os.path.join(t, "uses_toml.py"))
+        env = nros_clear_inherited_git_env(dict(os.environ))
+        subprocess.run(
+            # `-f` because the fixture is staged and never committed; this is a
+            # throwaway tmpdir, not the caller's tree (the env is cleared).
+            ["git", "-C", t, "rm", "-q", "-f", "--", "uses_toml.py"],
+            check=True,
+            env=env,
+        )
 
     case("no script imports tomli", _no_toml_sites, False)
 
