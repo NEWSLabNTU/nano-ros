@@ -274,10 +274,14 @@ roadmap-claims:
 # "PR #1195 (...), in the queue" for a day after #1195 merged, the waves looked
 # unstarted from the doc alone, and a session rebuilt work already on main.
 #
-# Scoped to that one citation spelling on purpose, so the gate is
-# host-independent: a wider "any hex token must resolve" rule reads differently
-# in a long-lived clone that still holds deleted branch objects than in a fresh
-# CI clone that does not. Buildless -- git and a file read, nothing else.
+# Scoped to that one citation spelling on purpose: a wider "any hex token must
+# resolve" rule reads differently in a long-lived clone that still holds
+# deleted branch objects than in a fresh clone that does not. The same concern
+# applies to this gate itself, so a SHALLOW checkout reports its citations as
+# unchecked instead of failing them -- CI truncates history, and the first run
+# here called 12 of 12 citations missing when all twelve were on main. It has
+# teeth where the history exists, which is the pre-push run. Buildless -- git
+# and a file read, nothing else.
 [private]
 roadmap-commit-refs:
     @python3 scripts/check/check-roadmap-commit-refs.py
