@@ -1221,6 +1221,12 @@ function(nros_resolve_knobs)
     _nros_resolve_knob(NROS_SERVICE_INBOX_DEPTH "${CONFIG_NROS_SERVICE_INBOX_DEPTH}")
     _nros_resolve_knob(NROS_ACTION_INBOX_BYTES "${CONFIG_NROS_ACTION_INBOX_BYTES}")
     _nros_resolve_knob(NROS_ACTION_INBOX_DEPTH "${CONFIG_NROS_ACTION_INBOX_DEPTH}")
+    # phase-461 W2 -- the parameter and lifecycle families' own inbox. W1 left
+    # this pair unforwarded on purpose: `check-kconfig-knob-forwarding` refuses
+    # a knob the cmake side exports and no Rust build script reads, and the
+    # reader is nros-node's build script, which landed with W2.
+    _nros_resolve_knob(NROS_PARAM_SERVICE_INBOX_BYTES "${CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES}")
+    _nros_resolve_knob(NROS_PARAM_SERVICE_INBOX_DEPTH "${CONFIG_NROS_PARAM_SERVICE_INBOX_DEPTH}")
 endfunction()
 
 # =============================================================================

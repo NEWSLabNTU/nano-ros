@@ -2620,6 +2620,24 @@ impl Session for CffiSession {
         CffiSession::serialization_format(self).unwrap_or(Self::SERIALIZATION_FORMAT)
     }
 
+    /// phase-461 W2 / issue 1352 -- this session FORWARDS over a C vtable,
+    /// and the vtable has no slot that carries a ring.
+    ///
+    /// `create_service` reaches the backend through
+    /// `rmw_vtable.create_service` (`packages/core/nros-rmw-abi/include/nros/`),
+    /// whose arguments are the node, the type support, the name, the domain
+    /// and the QoS. A caller-owned inbox is four more words, so accepting one
+    /// here means a second ABI slot and its bindgen regeneration -- not a
+    /// default this session can answer `true` to on the backend's behalf. It
+    /// stays `false` until that slot exists, which is the one thing standing
+    /// between `nros-node`'s `PARAM_INBOX` and the zenoh ring that would hold
+    /// it (the zenoh side has been caller-visible since W1).
+    ///
+    /// Deliberately NOT a runtime question of the vtable: the const is what
+    /// lets the caller refuse at COMPILE time, and a session that answered
+    /// from a vtable installed later could only refuse at boot.
+    const SUPPORTS_CALLER_INBOX: bool = false;
+
     type Error = TransportError;
     type PublisherHandle = CffiPublisher;
     type SubscriptionHandle = CffiSubscription;

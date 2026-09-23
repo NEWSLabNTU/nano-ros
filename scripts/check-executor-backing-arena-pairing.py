@@ -278,6 +278,11 @@ NOT_SIZING = {
         "the declared rung of that same buffer (phase-446 F3): it sizes a "
         "runtime `ParamServiceBuffers`, never a term of the arena sum",
     "NROS_EXECUTOR_MAX_SHUTDOWN_CBS": "sizes the Executor HEADER, not the backing",
+    "NROS_PARAM_SERVICE_INBOX_BYTES":
+        "phase-461 W2: the parameter family's INBOX ring, a `static` beside the "
+        "parameter services (`PARAM_INBOX`), not a term of the arena sum -- the "
+        "arena holds callback slots and RX buffers and no service inbox",
+    "NROS_PARAM_SERVICE_INBOX_DEPTH": "the same ring's depth; see the pair above",
 }
 # Not knobs, but inputs that move a knob's resolution in build.rs: the Kconfig
 # reader and the board/platform descriptor rung (`BuildRungs::from_build_env`).

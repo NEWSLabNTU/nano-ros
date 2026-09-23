@@ -55,7 +55,7 @@ nros-platform-esp32-qemu            17   0     2      16      0
 nros-platform-mps2-an385            19   6     3       7      0
 nros-platform-stm32f4               13   6     3       2      0
 nros-port-metric-bench               3   0     0       3      0
-nros-rmw                            11   6     8      12      0
+nros-rmw                            11   6    11      12      0
 nros-rmw-cffi                      351  38     5     190      0
 nros-rmw-cyclonedds                  8   0     7       1      0
 nros-rmw-cyclonedds-sys              2   0     0       1      0

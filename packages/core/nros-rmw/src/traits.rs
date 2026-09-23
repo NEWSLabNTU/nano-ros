@@ -8,6 +8,7 @@
 //! - [`ServiceTrait`] / [`ClientTrait`] — request/reply
 //! - [`Rmw`] — top-level factory that creates sessions
 
+use crate::service_inbox::ServiceInboxSpec;
 use nros_core::{Deserialize, RosMessage, RosService, Serialize};
 
 /// Topic information for pub/sub
@@ -1678,11 +1679,67 @@ pub trait Session {
     /// service is two DDS topics; rmw uses one profile for both). The
     /// default is [`QoSProfile::services_default`]
     /// (RELIABLE+VOLATILE+KEEP_LAST(10)).
+    ///
+    /// The server receives through the backend's own inbox. A builtin family
+    /// that sizes its own ring calls [`create_service_with_inbox`] instead.
+    ///
+    /// [`create_service_with_inbox`]: Session::create_service_with_inbox
     fn create_service(
         &mut self,
         service: &ServiceInfo,
         qos: QoSProfile,
     ) -> Result<Self::ServiceHandle, Self::Error>;
+
+    /// phase-461 W2 -- does this backend accept a caller-owned request ring
+    /// ([`ServiceInboxSpec::Caller`])?
+    ///
+    /// A `const`, so the family that would bring one picks at COMPILE time
+    /// and a `Caller` spec never degrades silently into the backend's own
+    /// geometry (RFC-0052: a knob that is dropped is a knob that lies). The
+    /// caller reads this and passes [`ServiceInboxSpec::Backend`] where it is
+    /// `false`, which is how a family refuses at BUILD time rather than
+    /// discovering at boot that its ring went nowhere -- `nros-node`'s
+    /// `PARAM_INBOX` is the worked example.
+    ///
+    /// `false` is the right default and every backend in tree states it
+    /// explicitly with its own reason, because "this backend has no caller
+    /// ring" and "nobody thought about it" are different facts.
+    ///
+    /// [`create_service_with_inbox`]: Session::create_service_with_inbox
+    const SUPPORTS_CALLER_INBOX: bool = false;
+
+    /// Create a service server that receives through `inbox`.
+    ///
+    /// phase-461 W2 / issue 1352 -- the ROS parameter services are six
+    /// queryables per node and the REP-2002 lifecycle services five, and on a
+    /// board they are most of the image's queryables. Their requests are
+    /// bounded by the contract's declared parameters and their clients are
+    /// sequential, so they want one small slot where a user service wants four
+    /// large ones. The family that knows that bound brings the ring; the
+    /// backend keeps the per-queryable header.
+    ///
+    /// The default body is [`Self::SUPPORTS_CALLER_INBOX`] `= false` spelled
+    /// out: it serves [`ServiceInboxSpec::Backend`] and nothing else. It can
+    /// only be reached with a `Caller` spec by a caller that ignored the
+    /// const, so the `debug_assert` names that -- the REFUSAL itself is the
+    /// caller's, at compile time, because a runtime error here would be a
+    /// boot failure where a build failure was available (`nros-node`'s
+    /// `PARAM_INBOX` is the worked example).
+    ///
+    /// A backend that overrides this must also state the const `true`.
+    fn create_service_with_inbox(
+        &mut self,
+        service: &ServiceInfo,
+        qos: QoSProfile,
+        inbox: ServiceInboxSpec,
+    ) -> Result<Self::ServiceHandle, Self::Error> {
+        debug_assert!(
+            inbox.caller().is_none(),
+            "a caller-owned service inbox reached a backend whose \
+             SUPPORTS_CALLER_INBOX is false; the caller must read the const"
+        );
+        self.create_service(service, qos)
+    }
 
     /// Create a service client bound to this session.
     ///
