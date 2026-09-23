@@ -136,3 +136,40 @@ above: the sweep is not "the scripts the fixture build happens to reach", it is
 every one of the 39 sites, because the job walks through them one recipe at a
 time and each dies on its own import. It also means the job would not reach its
 cells even if the fixture build were fixed on its own.
+
+## What landed (phase-466, 2026-09-23)
+
+**Option 1, and it is now one decision with [[issue-1359]] rather than two.** The
+issue offered "the image provides a parser" or "the scripts stop needing one" and
+asked for the choice to be made and bound by a gate. The choice is option 1, for a
+reason the issue could not see on its own: `unzip` was missing from the same image,
+in the same way, for the same reason — two hand-written apt lists that had to agree
+with nothing making them agree. Fixing a TOML parser into one list would have left
+the mechanism intact and the next drift waiting.
+
+- **`ci/docker/apt-packages.txt`** is the one apt closure every CI image installs;
+  `python3-tomli` is in it, beside `unzip`. Both Dockerfiles `COPY` it and pipe it
+  through `xargs apt-get install`, so an image cannot have one and not the other.
+- The requirement is **DERIVED, not asserted**: `check-ci-image-apt-packages`
+  greps the tree for the `import tomllib` -> `import tomli` chain and demands a
+  parser package in the shared list for as long as any script uses it. Measured on
+  the real tree: 40 sites today (the issue counted 39). Remove the last one and the
+  gate stops asking, which is what makes it a rule about the tree rather than a
+  constant.
+- The gate itself parses `nros-sdk-index.toml` with regex on purpose, and says so:
+  it has to run on a host with no TOML parser, because that is the state it exists
+  to describe. `scripts/dev/clang-format.sh` reads the same file the same way.
+
+**The 39-site sweep (option 2) is deliberately NOT done, and this records why.** It
+would only have helped if SOME parser were present, and the issue itself notes the
+image has no `toml` either — so a widest-first chain would have added a third arm
+that also fails. With the image providing `tomli`, all 40 sites work unchanged and
+the chain they already carry is correct. If a shared `scripts/lib/` loader is still
+wanted, it is now a readability change and not a fix.
+
+## What is NOT done, and why this stays open
+
+The image is published only by `images.yml` on a push to `main`, and the consumers
+moved to `humble-sdk0.17.4-r5`, which does not exist in the registry until that
+workflow has run. Acceptance is unchanged: the `rows whose board is NOT this
+runner` job reaching its cells.
