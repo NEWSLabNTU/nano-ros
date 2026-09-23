@@ -184,3 +184,55 @@ expression uses `needs`, which is an available context for `jobs.<job_id>.name`.
   about whether that runner is trusted for merge-gating, not a fix to make here.
 * Issue 1127 (17 declared interop cells, no sweep runs any) is the same class one
   lane over and is filed separately.
+
+## 2026-09-23 — seventeen days, and the two stops behind the count
+
+`just matrix-triage` over the last eight `run-matrix` runs, 09-19 to 09-23:
+
+```
+  0 of 8 run(s) reached the cells and produced a VERDICT.
+  8 of 8 run(s) produced NO VERDICT — the lane stopped before its cells.
+```
+
+every one `NO VERDICT: stopped in the build / at: just build tier2`. Item 3's
+stage reporting works and is what made this readable: the answer arrives from
+the run list without opening a log. **What it does not answer is the next
+question** — which MODULE of the build, and what the first error was. The build
+step fans out per module and the fixture runner already prints `== <module> ==
+FAILED (rc=N)` plus a quoted first error, so the triage tool could carry one
+more line. Recorded here rather than built; it is the difference between eight
+identical rows and eight rows you can act on.
+
+Behind those rows were two DIFFERENT stops, one per tier-2 variant, and neither
+had anything to do with the cells:
+
+* **1-wise (`run-matrix`)** — issue 1458, now RESOLVED. Four of five west
+  fixtures aborted at Kconfig on `CONFIG_NROS` being undefined, because
+  `scripts/build/west-fixtures.sh` never passed `-DZEPHYR_EXTRA_MODULES`
+  after phase-449 W1 unbound the workspace's manifest project.
+* **pairwise (`nightly`)** — issue 1457, host provisioning. The vendored
+  rosidl clone's python deps are not installed on the self-hosted runner, so
+  every cyclonedds leaf dies in `msg2idl.py` on `No module named 'catkin_pkg'`.
+
+Both are upstream of a cell, so this issue's framing holds: seventeen days of
+`failure` carrying no information about the code.
+
+### A second fault behind the first, confirmed
+
+Fixing 1458 does not by itself deliver a verdict. The 1-wise lane's west module
+now gets past Kconfig; the pairwise lane still stops at 1457, which is not
+fixable in this repository. Expect the next `run-matrix` to reach FURTHER into
+`just build tier2` and quite possibly stop again somewhere new — that is what
+seventeen dark days buys, and it is the 1025/1070 pattern this issue already
+names. Read `matrix-triage` plus the module's first error each time; do not
+read "still `NO VERDICT`" as "the fix did not work".
+
+### The reporting half, still open
+
+Both 1457 and 1458 were filed saying the cause was not in the job log. In both
+cases it WAS — in the module's `log tail` block, not in the quoted "first error
+line(s)", which matches `error:` and never the lines above it. The tail carries
+the LAST leaf's output, so which of five failures you learn about is luck. A
+runner that reports "there was an error" and not the error turns every instance
+of this class into a manual reproduction; quoting the lines ABOVE the first
+`error:` is worth doing regardless of cause.

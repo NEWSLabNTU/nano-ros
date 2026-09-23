@@ -79,3 +79,90 @@ fix, one measurement: run `msg2idl.py` on that staged `Duration.msg` by hand and
 capture its **stderr** — the wrapper's `exit 1` is not a diagnosis, and the next
 person should not have to re-derive that. If the wrapper is ours, propagating
 the child's stderr is worth doing whatever the root cause turns out to be.
+
+## MEASURED — 2026-09-23, phase-466 W3
+
+### The error
+
+Nightly **35821404524** (2026-09-23T05:11), same job, same stop. The reason is
+in the job log, in the module's `log tail` block rather than its quoted "first
+error line(s)":
+
+```
+[2/551] msg_to_cyclone_idl unique_identifier_msgs/msg/UUID.msg
+FAILED: [code=1] cyclonedds-ts/_idlroot/unique_identifier_msgs/msg/UUID.idl
+Traceback (most recent call last):
+  File "/home/runner/.nros/sources/rosidl/humble-5621b26/rosidl_adapter/scripts/msg2idl.py", line 17, in <module>
+    from rosidl_adapter.cli import convert_files_to_idl
+  File "/home/runner/.nros/sources/rosidl/humble-5621b26/rosidl_adapter/rosidl_adapter/cli.py", line 19, in <module>
+    from catkin_pkg.package import package_exists_at
+ModuleNotFoundError: No module named 'catkin_pkg'
+```
+
+### Two things this issue got wrong
+
+**"The wrapper reports the child's exit code and drops its stderr."** It does
+not. `run_adapter` in `scripts/cyclonedds/msg_to_cyclone_idl.py` writes
+`result.stderr` before it exits, and the traceback above is that write. What
+drops it is the FIXTURE RUNNER's report, which quotes lines matching `error:`
+and nothing above them. Same reporting defect as issue 1458, and the reason
+both issues were filed saying "the cause is not in the log" when it was.
+
+**"the failure may be about the staged file's surroundings."** No. Nothing
+about the `.msg`, the staging tree or `builtin_interfaces` is involved; the
+adapter never gets as far as reading its argument. It is the same failure for
+every message on that host.
+
+### The cause
+
+`/opt/ros/humble` does not exist on the self-hosted tier-2 runner — the job's
+own log says `activate.sh: /opt/ros/humble/setup.bash not found` — so
+`_adapter_bin_and_env` correctly falls through to the vendored rosidl clone
+that `[rmw.cyclonedds]`'s `packages` provisions. That clone's python deps
+(`catkin_pkg`, `empy==3.3.4`, `lark`, `PyYAML`) ride `[python.*]`, which is
+REPORT-ONLY: `nros setup --check` names them and nothing installs them. They
+are not installed on that runner.
+
+So it is a HOST PROVISIONING GAP, not a code defect, and it does not belong to
+the CI image work — that lane runs on `[self-hosted, linux, nros-qemu,
+nros-sdk-zephyr, nros-big]`, not in `ci/docker/zephyr-ros`.
+
+### What was fixed anyway, and what was not
+
+`fix(#1457, phase-466)` makes the failure name its own remedy instead of
+arriving as a traceback eleven minutes into a zephyr build:
+
+* `_adapter_importable` probed `rosidl_adapter`, the PACKAGE; `msg2idl.py`
+  imports `rosidl_adapter.cli`, and `cli` is where catkin_pkg and yaml are.
+  The package imports with neither present, so the probe answered YES for an
+  interpreter that could not run the script. It asks what the script asks now.
+* The VENDORED rung returned as soon as the directory existed — the exact
+  proxy the ROS rung's comment rejects three lines above it. It is probed now,
+  and the refusal gained the third state it could not express: present-but-
+  unusable, naming which deps are missing.
+
+**This does not make the lane green.** Until the runner has those three
+packages, tier-2 nightly will stop in the same place, with a refusal instead of
+a traceback. Left OPEN for that reason; the remaining work is on the host, or
+a decision that `nros setup --source rosidl` should provision its `[python.*]`
+deps rather than report them.
+
+### Negative control
+
+Vendored clone present, interpreter a bare venv (the runner's shape).
+Pre-fix tree:
+
+```
+adapter bin: /tmp/tmp.JtkRVPxGVo/rosidl/rosidl_adapter/scripts
+```
+
+accepted silently. Post-fix, same inputs:
+
+```
+REFUSED:
+error: rosidl_adapter is not importable by this build's interpreter.
+  ...
+  The vendored copy is present (/tmp/tmp.Bl982sn2Mb/rosidl) but
+  `import rosidl_adapter.cli` fails under it — its python deps
+  are missing: catkin_pkg, empy==3.3.4, lark, PyYAML.
+```
