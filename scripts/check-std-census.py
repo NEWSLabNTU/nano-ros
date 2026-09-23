@@ -48,6 +48,27 @@ were `thread::sleep` in tests.
 Excluding them LOWERS the counts without anything being fixed. The drop is
 recorded as a metric correction in the phase doc, not as progress.
 
+That exclusion was a FILENAME (`rs.name == "tests.rs"`) for as long as it
+existed, while this section stated it as a rule about `#[cfg(test)]` — issue
+1440, the issue-0196 shape. A module declared exactly the same way in a file
+named anything else was counted, which is what `executor/graph_wait_tests.rs`
+(phase-444) hit. It reads the module DECLARATIONS now. Three things that
+measurement corrected and reading would not have:
+
+* the `"test" in feats` arm in `--check-guards` had NEVER fired — `test` is a
+  bare cfg predicate, not a `feature = "…"`, so `FEATURE_RE` could not see it.
+  The filename was therefore load-bearing, not merely narrow.
+* the first declaration-driven predicate overshot in the other direction: a
+  bare `\btest\b` search over the attribute reads `#[cfg(any(has_rmw, test))]`
+  — production code that is ALSO compiled under test — as a test gate, and
+  exempted 23 of `nros-node`'s 26 declared modules. Widening a too-narrow reach
+  past the rule is the same defect facing the other way.
+* with the predicate right, NO BASELINE MOVES. `nros-node` is cfg 3 both
+  before and after; `graph_wait_tests.rs`'s two paths never enter. It is a
+  PREVENTED INFLATION, not a removal — nothing was fixed and no number came
+  down, which is the same distinction the paragraph above draws. The `3 -> 1`
+  recorded on 2026-09-21 was the over-exemption, not a correction.
+
 ## Comments are excluded, and that is not fussiness
 
 This file's own sibling commits added doc comments that NAME `std::sync::Condvar`
@@ -407,12 +428,18 @@ BASELINE = {
     # a board uses — which is what the 96 mock-session tests now do.
     # The 3 that remain are `extern crate std`, a `dead_code` allow, and the
     # `drive_io` timeout policy for the mock configuration.
-    # 2026-09-21: 3 -> 1 cfg. Not a code change — the per-file test exemption
-    # became declaration-driven (`test_gated_module_files`), so every module
-    # the parent declares under a `#[cfg(…test…)] mod x;` is excluded, not
-    # just the one named `tests.rs`. Two cfg sites that were only ever host
-    # test code stopped being counted as production std use.
-    "nros-node": {"cfg": 1, "path": 0},
+    # 2026-09-21: 3 -> 1 cfg, and 2026-09-23: BACK TO 3 (issue 1440). The first
+    # move was recorded as a metric correction — "two cfg sites that were only
+    # ever host test code stopped being counted" — and it was not one. The
+    # declaration-driven exemption that replaced the `tests.rs` filename read
+    # `#[cfg(any(has_rmw, test))]` as a test gate, so it exempted 23 of this
+    # crate's 26 declared modules, `handles` / `node` / `session` / `spin` /
+    # `storage` among them. The two sites are in PRODUCTION modules. With the
+    # predicate fixed to require `test` as a conjunct the count is 3 again,
+    # which is what the exemption's correct form was always going to give:
+    # a PREVENTED INFLATION (`graph_wait_tests.rs`'s two paths never enter),
+    # not a removal.
+    "nros-node": {"cfg": 3, "path": 0},
     #
     # phase-359 W10: 7 -> 5. Both were gates expressing a preference rather than
     # a constraint: the `heapless::String` parameter impl was excluded on `std`
@@ -438,8 +465,25 @@ BASELINE = {
 
 
 def is_test_gate(stripped: str) -> bool:
-    """A `#[cfg(test)]` / `#[cfg(all(test, ...))]` attribute."""
-    return stripped.startswith("#[cfg(") and re.search(r"\btest\b", stripped) is not None
+    """A `#[cfg(test)]` / `#[cfg(all(test, ...))]` attribute — `test` as a CONJUNCT.
+
+    Issue 1440's second half. The first version was a bare `\\btest\\b` search
+    over the whole attribute, which reads `#[cfg(any(has_rmw, test))]` — "this
+    module is in the PRODUCTION build, and also under test" — as a test gate.
+    Measured: that exempted 23 of `nros-node`'s 26 declared modules (`handles`,
+    `node`, `session`, `spin`, `storage`, `dispatcher`, `action`, ...), i.e.
+    nearly the whole crate, and it is what actually produced the `nros-node:
+    cfg 3 -> 1` the exemption's own commit recorded as a correction. Fixing the
+    reach of an exemption by widening it past the rule is issue 0196 again, one
+    turn later.
+
+    So the predicate is `required_features`, which already encodes this file's
+    conservatism: `any(...)` contributes nothing (a site reachable through
+    either of two cfgs does not let us say which), `not(...)` is stripped, and
+    a feature merely NAMED `test-util` is not the bare `test` predicate.
+    """
+    m = CFG_ATTR_RE.match(stripped)
+    return m is not None and "test" in required_features(m.group(1))
 
 
 def test_gated_module_files(src):
@@ -607,11 +651,26 @@ def required_features(expr: str) -> set:
     """Features that must be ON for a `cfg(expr)` site to compile.
 
     `any(...)` contributes nothing (see the conservatism note above).
+
+    `test` is returned alongside the features although it is a bare cfg
+    PREDICATE rather than a `feature = "…"`. Both callers already wanted it and
+    neither could get it (issue 1440): `is_test_gate` needs it to recognise a
+    whole FILE that is host-test code, and the `--check-guards` walk has asked
+    `if feats & FLAVOURS or "test" in feats` since issue 0701 — a condition
+    `FEATURE_RE` alone can never satisfy, so that arm had NEVER ONCE FIRED. A
+    gate whose reach is narrower than the rule it enforces, issue-0196's shape;
+    see the `#[cfg(test)]` section of the module docstring.
     """
     expr = strip_not(expr)
     if "any(" in expr:
         return set()
-    return set(FEATURE_RE.findall(expr))
+    feats = set(FEATURE_RE.findall(expr))
+    # Look for the predicate only OUTSIDE the `feature = "…"` strings, so a
+    # feature that merely starts with the word — `feature = "test-util"`, which
+    # `\btest\b` matches because `-` is a word boundary — is not mistaken for it.
+    if re.search(r"\btest\b", FEATURE_RE.sub("", expr)):
+        feats.add("test")
+    return feats
 
 
 def module_cfgs(src: Path) -> dict:
@@ -760,8 +819,14 @@ def guard_check(crate_dirs=None):
             mod_cfgs = module_cfgs(src)
             guards = guarded_features(src)
             for rs in tracked(src, suffix=".rs"):
-                if rs.name in ("generated.rs", "tests.rs"):
+                if rs.name == "generated.rs":
                     continue
+                # No `tests.rs` NAME test here either (issue 1440): with
+                # `required_features` returning the bare `test` predicate, a
+                # test-gated file arrives with `test` in its module cfgs and the
+                # `"test" in feats` arm below excludes it BY THE RULE. That arm
+                # has been here since issue 0701 and could never fire while
+                # `FEATURE_RE` was the only source of `feats`.
                 for n, feats in site_features(rs, mod_cfgs.get(rs, set())):
                     if feats & FLAVOURS or "test" in feats:
                         continue  # gated on the flavour itself, or test-only
@@ -838,9 +903,58 @@ def self_test():
         if bad:
             print(f"[self-test FAIL] a `std`-gated site is not a violation: {bad}", file=sys.stderr)
             return 1
+        # issue 1440 — the test-exemption predicate itself, which had no test
+        # and was therefore wrong twice: a FILENAME first, then a bare
+        # `\btest\b` search that swallowed `any(has_rmw, test)`. All four
+        # halves matter, so all four are cases.
+        cases = [
+            ('all(test, feature = "alloc", not(feature = "rmw-cffi"))', {"alloc", "test"}),
+            ("test", {"test"}),
+            ('feature = "test-util"', {"test-util"}),
+            ("not(test)", set()),
+            ('feature = "std"', {"std"}),
+            # The over-exemption: `any(...)` is conservative, so a module that
+            # is in the production build OR under test yields nothing at all.
+            ("any(has_rmw, test)", set()),
+            ('all(any(has_rmw, test), feature = "alloc")', set()),
+        ]
+        for expr, want in cases:
+            got = required_features(expr)
+            if got != want:
+                print(
+                    f"[self-test FAIL] required_features({expr!r}) = {sorted(got)}, "
+                    f"want {sorted(want)}",
+                    file=sys.stderr,
+                )
+                return 1
+
+        # …and that the exemption reaches a file through its `mod` declaration,
+        # under a name the old filename test could never have matched, while
+        # NOT reaching the production module beside it.
+        src2 = tmp / "fake-tests" / "src"
+        (src2 / "executor").mkdir(parents=True)
+        (src2 / "lib.rs").write_text("#![no_std]\nmod executor;\n")
+        (src2 / "executor" / "mod.rs").write_text(
+            "#[cfg(any(has_rmw, test))]\n"
+            "mod handles;\n"
+            '#[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]\n'
+            "mod graph_wait_tests;\n"
+        )
+        (src2 / "executor" / "handles.rs").write_text("pub fn t() {}\n")
+        (src2 / "executor" / "graph_wait_tests.rs").write_text(
+            "fn t() { let _ = std::time::Instant::now(); }\n"
+        )
+        gated = test_gated_module_files(src2)
+        if gated != {"graph_wait_tests"}:
+            print(
+                "[self-test FAIL] the test-gated module must be exempt and the "
+                f"`any(has_rmw, test)` production module must not; got {sorted(gated)}",
+                file=sys.stderr,
+            )
+            return 1
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    print("check-std-census --check-guards: self-test OK (3 cases)")
+    print("check-std-census --check-guards: self-test OK (11 cases)")
     return 0
 
 
