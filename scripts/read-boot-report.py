@@ -18,6 +18,17 @@ be read at a stale address and silently decode as garbage.
 steps can be scripted without anyone copying a hex number by hand:
 
     read $(python3 scripts/read-boot-report.py --addr-only build/zephyr/zephyr.elf)
+
+`--heap-headroom <dump>` is the GATE half (phase-460 W5, issue 1424): it needs
+no ELF, reads the two heap words out of the dump, and exits non-zero when the
+image had less headroom than `CONFIG_NROS_ZEPHYR_HEAP_SIZE` was supposed to
+buy -- or when the peak is 0, which means nothing measured it. `just check
+heap-headroom` runs it, and `NROS_HEAP_HEADROOM_DUMP=<dump>` points that recipe
+at a real board dump.
+
+Everything this script prints ABOUT ITSELF goes to stderr, because stdout is
+consumed: `--addr-only`'s line is read into a shell variable, and the record
+decode is asserted on by `executor::tests`.
 """
 
 from __future__ import annotations
@@ -26,6 +37,7 @@ import argparse
 import struct
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 SYMBOL = "NROS_BOOT_REPORT"
@@ -33,7 +45,20 @@ SYMBOL = "NROS_BOOT_REPORT"
 # "NRSR". Must match boot_report.rs MAGIC.
 MAGIC = 0x4E525352
 # Layout this script knows how to decode. Must match boot_report.rs VERSION.
-KNOWN_VERSION = 3
+KNOWN_VERSION = 4
+
+# The headroom `CONFIG_NROS_ZEPHYR_HEAP_SIZE` must keep above the measured
+# peak, in bytes.
+#
+# The SAME 24576 as the configure-time gate in
+# `zephyr/cmake/nros_cargo_build.cmake` (arena + 24576 <= heap size), which
+# issue 1424 describes as "18352 measured, rounded up to 24 KiB" -- one
+# measurement, on one image, that nothing has re-checked since. Duplicating the
+# constant is deliberate and is the point of this gate: the cmake check applies
+# it to a DECLARED arena at configure time, this applies it to a MEASURED peak
+# from a board, and the two agreeing is what would retire the guess. If the
+# number moves, it moves in both files and the island re-measures.
+HEAP_HEADROOM_FLOOR = 24576
 
 # Field order, matching `BootReport` and `Snapshot` in boot_report.rs. Every
 # field is a u32; the record is all `AtomicU32`, which is repr(transparent).
@@ -58,6 +83,11 @@ FIELDS = (
     "err_transport",
     "err_backend_ptr",
     "err_backend_len",
+    # phase-460 W5. APPENDED, never inserted: every word before these is still
+    # where it was, so a dump from an older image reads the same by eye and
+    # `version` alone says which words exist.
+    "heap_peak_bytes",
+    "heap_capacity_bytes",
 )
 
 STAGES = {
@@ -209,6 +239,85 @@ def decode(blob: bytes, fields: tuple[str, ...] = FIELDS) -> dict[str, int]:
     return dict(zip(fields, values, strict=True))
 
 
+def heap_headroom(rec: dict[str, int]) -> tuple[bool, list[str]]:
+    """Verdict on `CONFIG_NROS_ZEPHYR_HEAP_SIZE` against the measured peak.
+
+    Returns (passed, lines). Issue 1424: the knob is the largest RAM item the
+    map attributes to anything tunable, it was chosen rather than measured, and
+    the high-water reporter that could have sized it has been compiled into
+    every Zephyr image since phase-412 with no reader.
+
+    A peak of 0 REFUSES. That is the case the whole gate turns on: an
+    unmeasured image and a measured-and-fine image must not produce the same
+    verdict, or the gate passes by default on exactly the board nobody could
+    read. 0 means "no sample", never "used nothing" -- an image that opened a
+    node allocated.
+    """
+    peak, cap = rec["heap_peak_bytes"], rec["heap_capacity_bytes"]
+
+    if peak == 0:
+        return False, [
+            "HEAP HEADROOM: REFUSED -- the peak is 0, so nothing measured it.",
+            "",
+            "  The record carries no sample of the platform heap. Either the",
+            "  image is older than phase-460 W5 (check `version` above), or its",
+            "  Rust half was built without the report while its C half had",
+            "  CONFIG_NROS_BOOT_REPORT=y, or it genuinely never allocated --",
+            "  which an image that opened a node did not.",
+            "",
+            "  A zero cannot be read as `used nothing`: that verdict and `never",
+            "  sampled` are the same bytes, and only one of them says the knob",
+            "  is safe.",
+        ]
+
+    if cap == 0:
+        return False, [
+            "HEAP HEADROOM: REFUSED -- a peak of "
+            f"{peak} with a capacity of 0.",
+            "",
+            "  The two words are written together by `nros_boot_report_note_heap`,",
+            "  so a capacity of 0 means the heap reported none. There is nothing",
+            "  to size against.",
+        ]
+
+    if peak > cap:
+        return False, [
+            f"HEAP HEADROOM: REFUSED -- the peak ({peak}) is above the capacity ({cap}).",
+            "",
+            "  Impossible for a live high-water figure, so the counter is not",
+            "  one. DO NOT size a knob from this dump: find out which of the two",
+            "  is wrong first.",
+        ]
+
+    headroom = cap - peak
+    if headroom < HEAP_HEADROOM_FLOOR:
+        return False, [
+            f"HEAP HEADROOM: REFUSED -- {headroom} bytes, floor is "
+            f"{HEAP_HEADROOM_FLOOR}.",
+            "",
+            f"  peak {peak} of {cap} bytes. The image booted; what it did not",
+            "  keep is the margin for the allocations this run did not make --",
+            "  a larger sample, a reconnect, a service reply.",
+            "",
+            f"  set CONFIG_NROS_ZEPHYR_HEAP_SIZE >= {peak + HEAP_HEADROOM_FLOOR}",
+            "",
+            "  and record THIS DUMP beside it in the board `.conf`, as a",
+            "  comment naming the image and the date. A knob whose comment says",
+            "  `a guess` is the state issue 1424 exists to end.",
+        ]
+
+    return True, [
+        f"HEAP HEADROOM: ok -- {headroom} bytes spare "
+        f"(peak {peak} of {cap}, floor {HEAP_HEADROOM_FLOOR}).",
+        "",
+        f"  CONFIG_NROS_ZEPHYR_HEAP_SIZE could go as low as "
+        f"{peak + HEAP_HEADROOM_FLOOR} on this",
+        "  evidence. Lowering it is a measurement on one run of one image:",
+        "  record the dump beside the knob so the next reader can see what it",
+        "  was sized from.",
+    ]
+
+
 def report(rec: dict[str, int]) -> int:
     """Print the record. Returns the process exit code."""
     if rec["magic"] != MAGIC:
@@ -262,6 +371,25 @@ def report(rec: dict[str, int]) -> int:
         print()
     print(f"  arena allocations             {rec['alloc_count']}")
     print(f"  last allocation               {rec['last_alloc_size']} bytes")
+
+    # The platform heap, which is a DIFFERENT arena from the executor's above:
+    # the rlsf heap `nros_platform_alloc` hands out of, sized by
+    # CONFIG_NROS_ZEPHYR_HEAP_SIZE. Issue 1424 -- this is the figure that knob
+    # was never set from.
+    peak, hcap = rec["heap_peak_bytes"], rec["heap_capacity_bytes"]
+    print(f"  platform heap PEAK            {peak} bytes", end="")
+    if hcap and peak:
+        print(f"   ({100.0 * peak / hcap:.1f}% of the heap)")
+    else:
+        print()
+    print(f"  platform heap capacity        {hcap} bytes   (NROS_ZEPHYR_HEAP_SIZE)")
+    # PRINTED here, SCORED only under `--heap-headroom`. This function's exit
+    # code means "the boot failed", and a thin heap on a board that booted is
+    # not that -- it is a sizing verdict, and folding it in would turn every
+    # existing caller of the decoder into a heap gate it did not ask for.
+    print()
+    for line in heap_headroom(rec)[1]:
+        print(line)
 
     if cap and cap != rec["arena_size"]:
         print()
@@ -417,7 +545,13 @@ def report_alloc(rec: dict[str, int]) -> int:
                 "     the application's own later allocations need."
             )
     else:
-        print("  platform heap                   not instrumented (nros-platform/heap-stats off)")
+        # NOT `nros-platform/heap-stats`, which this line said for three
+        # phases and which has never existed. The features are `alloc-stats`
+        # (the Rust allocator's counter) and `zpico-alloc/stats` (the arena's),
+        # and the second is unconditional on Zephyr since phase-412 -- so a
+        # zero here is an arena that was never asked, not a feature that was
+        # left off. Issue 1424 found the same stale name in platform.c.
+        print("  platform heap                   not instrumented (zpico-alloc/stats off)")
     print()
     kl, kc = rec["keyexpr_len"], rec["keyexpr_cap"]
     print(f"  last keyexpr length             {kl} of {kc}")
@@ -491,11 +625,144 @@ def report_alloc(rec: dict[str, int]) -> int:
     return 1
 
 
+def make_dump(**fields: int) -> bytes:
+    """A synthetic record, for the gate's own negative controls.
+
+    Built from `FIELDS` rather than from a literal byte string, so a field
+    appended to the record cannot leave the fixtures decoding one word short --
+    the failure this file's whole positional decode is exposed to.
+    """
+    rec = dict.fromkeys(FIELDS, 0)
+    rec["magic"] = MAGIC
+    rec["version"] = KNOWN_VERSION
+    rec["struct_size"] = len(FIELDS) * 4
+    unknown = set(fields) - set(rec)
+    if unknown:
+        raise SystemExit(f"make_dump: no such field(s): {sorted(unknown)}")
+    rec.update(fields)
+    return struct.pack(f"<{len(FIELDS)}I", *(rec[f] for f in FIELDS))
+
+
+def check_heap_headroom(dump: Path, quiet: bool = False) -> int:
+    """`just check heap-headroom` on one dump. Returns the process exit code.
+
+    No ELF: this reads a dump alone on purpose. The gate has to be runnable by
+    whoever holds the `savemem` output, on a machine that may not have the
+    image -- and the ELF's only job in the decoder is to resolve the address,
+    which has already happened by the time a dump exists.
+
+    `quiet` is for the selftest's own fixtures, which would otherwise print six
+    verdicts in front of every real run. It suppresses the OUTPUT, never the
+    formatting: the lines are still built, so a broken message is still a
+    failing selftest rather than a surprise on the day someone needs it.
+    """
+    rec = decode(dump.read_bytes())
+
+    def say(lines: list[str], ok: bool) -> None:
+        text = "\n".join([f"heap-headroom: {dump}", *lines])
+        if not quiet:
+            print(text, file=sys.stdout if ok else sys.stderr)
+
+    if rec["magic"] != MAGIC:
+        say(
+            [
+                f"REFUSED -- magic is 0x{rec['magic']:08x}, expected 0x{MAGIC:08x}.",
+                "  Not a boot report, or an image that never reached",
+                "  boot_report::init(). Either way there is no measurement here.",
+            ],
+            False,
+        )
+        return 2
+    if rec["version"] != KNOWN_VERSION:
+        say(
+            [
+                f"REFUSED -- record version {rec['version']}, this script decodes "
+                f"{KNOWN_VERSION}.",
+                "  Refusing rather than reading a word that may not be the one",
+                "  it names.",
+            ],
+            False,
+        )
+        return 2
+
+    ok, lines = heap_headroom(rec)
+    say(lines, ok)
+    return 0 if ok else 1
+
+
+def self_test() -> int:
+    """The three cases from phase-460 W5's gate, on fixtures built here.
+
+    Runs on EVERY invocation, not behind a flag: a negative control nobody runs
+    decays into a comment, and this one guards a verdict about a number nobody
+    can re-derive without a board. On stderr, because stdout belongs to
+    `--addr-only`'s caller and to `executor::tests`.
+
+    The board run is the island's (issue 1036 records why no nano-ros lane can
+    perform one), so these fixtures are the only place the REFUSALS are ever
+    exercised in this repo.
+    """
+    cases = [
+        # (name, fields, expected pass?)
+        ("never sampled", {"heap_peak_bytes": 0, "heap_capacity_bytes": 94208}, False),
+        ("both zero", {}, False),
+        (
+            "headroom below the floor",
+            {"heap_peak_bytes": 94208 - 24575, "heap_capacity_bytes": 94208},
+            False,
+        ),
+        (
+            "headroom exactly at the floor",
+            {"heap_peak_bytes": 94208 - HEAP_HEADROOM_FLOOR, "heap_capacity_bytes": 94208},
+            True,
+        ),
+        (
+            "real headroom",
+            {"heap_peak_bytes": 18352, "heap_capacity_bytes": 94208},
+            True,
+        ),
+        # A peak above capacity is not a thin heap, it is a broken counter.
+        ("peak above capacity", {"heap_peak_bytes": 99999, "heap_capacity_bytes": 94208}, False),
+    ]
+    ok = True
+    with tempfile.TemporaryDirectory() as d:
+        for name, fields, want in cases:
+            path = Path(d) / (name.replace(" ", "-") + ".bin")
+            path.write_bytes(make_dump(**fields))
+            got = check_heap_headroom(path, quiet=True) == 0
+            if got != want:
+                ok = False
+                print(
+                    f"  self-test FAIL {name}: "
+                    f"{'passed' if got else 'refused'}, expected "
+                    f"{'pass' if want else 'refusal'}",
+                    file=sys.stderr,
+                )
+        # A dump that is not a record at all must refuse rather than decode.
+        junk = Path(d) / "junk.bin"
+        junk.write_bytes(b"\x00" * (len(FIELDS) * 4))
+        if check_heap_headroom(junk, quiet=True) != 2:
+            ok = False
+            print("  self-test FAIL junk: a record-less dump did not refuse", file=sys.stderr)
+    print(
+        "read-boot-report --self-test: " + ("OK" if ok else "FAILED"),
+        file=sys.stderr,
+    )
+    return 0 if ok else 1
+
+
 def main() -> int:
+    # The selftest runs on the NORMAL path, before anything is parsed -- a
+    # negative control nobody runs decays into a comment, which is what
+    # `check-gate-selftests` enforces of every script a gate invokes.
+    rc = self_test()
+    if rc != 0:
+        return rc
+
     ap = argparse.ArgumentParser(
         description="Decode the nano-ros boot self-report out of a target memory dump."
     )
-    ap.add_argument("elf", type=Path, help="the image the board is running")
+    ap.add_argument("elf", type=Path, nargs="?", help="the image the board is running")
     ap.add_argument("dump", type=Path, nargs="?", help="memory dumped from the target")
     ap.add_argument(
         "--alloc",
@@ -507,8 +774,35 @@ def main() -> int:
         action="store_true",
         help="print '<addr> <len>' for a pyocd savemem line, and exit",
     )
+    ap.add_argument(
+        "--self-test",
+        action="store_true",
+        help="run the negative controls and stop there (they run on every "
+        "invocation either way -- this only says not to decode anything after)",
+    )
+    ap.add_argument(
+        "--heap-headroom",
+        type=Path,
+        metavar="DUMP",
+        help="gate the heap knob against the dump's measured peak, and exit "
+        "non-zero when the headroom is thin or the peak was never sampled "
+        "(no ELF needed)",
+    )
     args = ap.parse_args()
 
+    # `self_test()` has already run, at the top of this function. The flag only
+    # says to stop here -- it is what `just check heap-headroom` invokes when
+    # no board dump is available, which is every run inside this repo.
+    if args.self_test:
+        return 0
+
+    if args.heap_headroom is not None:
+        if not args.heap_headroom.is_file():
+            raise SystemExit(f"{args.heap_headroom}: not a file")
+        return check_heap_headroom(args.heap_headroom)
+
+    if args.elf is None:
+        ap.error("an ELF is required unless --heap-headroom is given")
     if not args.elf.is_file():
         raise SystemExit(f"{args.elf}: not a file")
 

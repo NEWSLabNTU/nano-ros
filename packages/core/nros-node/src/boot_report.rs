@@ -58,17 +58,37 @@
 //! same rule issue 0900's arena knob and phase-403's `rx_buffer_from_type()`
 //! both keep.
 //!
-//! Enabled, it costs [`BootReport::struct_size`] bytes of `.bss` -- 80, the
+//! Enabled, it costs [`BootReport::struct_size`] bytes of `.bss` -- 88, the
 //! same on every target because every field is a `u32` -- and a handful of
 //! relaxed atomic stores on paths that run once per entity at registration.
 //!
-//! The 80 is not a detail: it is the LENGTH an operator types into `savemem`,
+//! The 88 is not a detail: it is the LENGTH an operator types into `savemem`,
 //! and this sentence said 60 for as long as the record had fifteen fields. A
-//! short dump decodes -- `read-boot-report.py` needs `20 * 4` bytes and a
+//! short dump decodes -- `read-boot-report.py` needs `22 * 4` bytes and a
 //! 60-byte one is refused, but a reader who trusts the prose over the tool
 //! spends the refusal looking at the wrong thing. Ask the tool instead:
 //! `read-boot-report.py --addr-only <elf>` prints the address AND the length,
 //! from the ELF's own symbol size.
+//!
+//! # Adding a field (phase-460 W5, for W7 and after)
+//!
+//! The record is meant to grow, and the order it grows in is the whole
+//! contract: `read-boot-report.py` decodes POSITIONALLY. So a new field is
+//! APPENDED -- after the last field, never inserted between two -- and the
+//! four edits are one commit:
+//!
+//! 1. the field on [`BootReport`], its zero in `BootReport::new`, the same
+//!    name in the same position on [`Snapshot`], and its load in [`snapshot`];
+//! 2. [`VERSION`] bumped, so an older decoder REFUSES the record instead of
+//!    reading the new word as one it knows;
+//! 3. `FIELDS` in `scripts/read-boot-report.py`, same name, same position, and
+//!    `KNOWN_VERSION` to match;
+//! 4. the field count in `the_record_is_twenty_two_packed_u32s` below.
+//!
+//! `check-boot-report-layout` fails on 1 without 3, and the Rust test fails if
+//! the compiler laid the record out with padding. Appending is what keeps a
+//! dump taken from an older image decodable by eye: every word before the new
+//! one is still where it was, and the version says which words exist.
 
 #![allow(clippy::module_name_repetitions)]
 
@@ -78,7 +98,9 @@ pub const MAGIC: u32 = 0x4e52_5352;
 
 /// Layout version. Bump on any field change; a reader refuses what it does not
 /// know rather than decoding a record it would misread.
-pub const VERSION: u32 = 3;
+///
+/// 4 since phase-460 W5 appended `heap_peak_bytes` and `heap_capacity_bytes`.
+pub const VERSION: u32 = 4;
 
 /// How far boot got. Monotonic, and the single most useful field: an arena
 /// failure halts during entity creation, so the stage that was NOT reached
@@ -237,6 +259,33 @@ mod enabled {
         err_backend_ptr: AtomicU32,
         /// Length of the message at [`Self::err_backend_ptr`], or 0.
         err_backend_len: AtomicU32,
+
+        // The platform heap -- the arena `nros_platform_alloc` hands out of,
+        // which on Zephyr is CONFIG_NROS_ZEPHYR_HEAP_SIZE. Appended by
+        // phase-460 W5; see "Adding a field" above for why the two words are
+        // at the END.
+        /// High-water mark of the platform heap, in bytes, or 0 if this image
+        /// never sampled it.
+        ///
+        /// `peak`, not `used`: `used` read at an arbitrary instant reports
+        /// whatever happened to be live at the moment of the read, which is
+        /// not what a size knob bounds. Issue 1424 -- the reporter behind this
+        /// (`nros_zephyr_heap_peak`) has existed and been compiled into every
+        /// Zephyr image since phase-412, and nothing read it off a board with
+        /// no console, so the one knob it could have sized
+        /// (`CONFIG_NROS_ZEPHYR_HEAP_SIZE`) was set by hand and annotated as a
+        /// guess.
+        ///
+        /// MONOTONIC here as well as at the source, so a later sample of a
+        /// heap that has since freed memory cannot lower the figure the knob
+        /// is sized from.
+        heap_peak_bytes: AtomicU32,
+        /// Bytes the platform heap was given, or 0 if never sampled.
+        ///
+        /// The pair is what makes the peak actionable: a peak alone says how
+        /// much was needed and says nothing about how close to the edge the
+        /// image ran. `capacity - peak` is the headroom the gate refuses on.
+        heap_capacity_bytes: AtomicU32,
     }
 
     impl BootReport {
@@ -262,6 +311,8 @@ mod enabled {
                 err_transport: AtomicU32::new(0),
                 err_backend_ptr: AtomicU32::new(0),
                 err_backend_len: AtomicU32::new(0),
+                heap_peak_bytes: AtomicU32::new(0),
+                heap_capacity_bytes: AtomicU32::new(0),
             }
         }
 
@@ -308,6 +359,8 @@ mod enabled {
         pub err_transport: u32,
         pub err_backend_ptr: u32,
         pub err_backend_len: u32,
+        pub heap_peak_bytes: u32,
+        pub heap_capacity_bytes: u32,
     }
 
     /// Read the record.
@@ -336,6 +389,8 @@ mod enabled {
             err_transport: g(&r.err_transport),
             err_backend_ptr: g(&r.err_backend_ptr),
             err_backend_len: g(&r.err_backend_len),
+            heap_peak_bytes: g(&r.heap_peak_bytes),
+            heap_capacity_bytes: g(&r.heap_capacity_bytes),
         }
     }
 
@@ -471,6 +526,43 @@ mod enabled {
         r.err_backend_len.store(backend_len, Ordering::Relaxed);
     }
 
+    /// Record the platform heap's high-water mark and its capacity.
+    ///
+    /// `peak` keeps the MAXIMUM, `capacity` the last value: the peak is the
+    /// figure a knob is sized from and must not be lowered by a later sample,
+    /// while the capacity is a constant of the image that a second sample can
+    /// only restate.
+    ///
+    /// Called from the port that owns the heap, because only that port can
+    /// read it: `nros_zephyr_heap_peak()` is deliberately NOT in
+    /// `nros/platform.h` (the cross-port ABI would need a stub per port for a
+    /// figure one port can produce), so the core cannot pull the number and
+    /// the platform pushes it instead. See
+    /// [`nros_boot_report_note_heap`] for the C entry point.
+    pub fn note_heap(peak: usize, capacity: usize) {
+        let r = &NROS_BOOT_REPORT;
+        r.heap_peak_bytes
+            .fetch_max(saturate(peak), Ordering::Relaxed);
+        r.heap_capacity_bytes
+            .store(saturate(capacity), Ordering::Relaxed);
+    }
+
+    /// [`note_heap`] across the C ABI, for a platform written in C.
+    ///
+    /// `nros-platform-zephyr`'s `platform.c` calls this from
+    /// `nros_platform_alloc` and `nros_platform_realloc` -- the only two
+    /// places the heap's peak can change -- so the record is current at every
+    /// stage transition without the stage transitions having to sample
+    /// anything, and it is written on the exhaustion path BEFORE the printk
+    /// that path emits, which is the case where the board is about to stop.
+    ///
+    /// Takes `usize`, not `u32`: the saturation rule belongs on this side
+    /// (see [`saturate`]), and a C caster would truncate instead.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn nros_boot_report_note_heap(peak: usize, capacity: usize) {
+        note_heap(peak, capacity);
+    }
+
     /// `usize` -> `u32`, saturating.
     ///
     /// Every field is a `u32` so the record's layout does not change between a
@@ -512,24 +604,37 @@ mod disabled {
 
     #[inline(always)]
     pub fn note_error(_class: u32, _transport: u32, _ptr: u32, _len: u32) {}
+
+    #[inline(always)]
+    pub fn note_heap(_peak: usize, _capacity: usize) {}
+
+    /// The C entry point exists in BOTH builds, unlike every other stub here.
+    ///
+    /// The Rust half of an image takes the record from a cfg and the C half
+    /// takes it from `CONFIG_NROS_BOOT_REPORT`; the two are set from the same
+    /// knob and can still be built apart (a stale `cargo` artifact, a C smoke
+    /// test). An absent symbol makes that a LINK failure naming nothing in
+    /// particular, so the disabled build keeps an empty body instead.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn nros_boot_report_note_heap(_peak: usize, _capacity: usize) {}
 }
 
 #[cfg(all(test, nros_boot_report))]
 mod tests {
     use super::*;
 
-    /// The reader decodes twenty u32s positionally, so the record must be
+    /// The reader decodes twenty-two u32s positionally, so the record must be
     /// exactly that and nothing else -- no padding, no reordering.
     ///
     /// `size_of` on the TARGET, which is the half `check-boot-report-layout.py`
     /// cannot see: that gate compares two source files, and this compares the
     /// source against what the compiler actually laid out.
     #[test]
-    fn the_record_is_twenty_packed_u32s() {
-        assert_eq!(BootReport::struct_size(), 20 * 4);
+    fn the_record_is_twenty_two_packed_u32s() {
+        assert_eq!(BootReport::struct_size(), 22 * 4);
         assert_eq!(
             core::mem::size_of::<BootReport>(),
-            20 * core::mem::size_of::<u32>(),
+            22 * core::mem::size_of::<u32>(),
             "the record grew padding; the reader decodes positionally"
         );
         assert_eq!(core::mem::align_of::<BootReport>(), 4);
@@ -589,5 +694,23 @@ mod tests {
         init();
         note_arena_capacity(usize::MAX);
         assert_eq!(snapshot().arena_capacity, u32::MAX);
+    }
+
+    /// The heap PEAK is what sizes the knob, so a later sample taken after the
+    /// image freed memory must not lower it. Issue 1424: the figure only has
+    /// to be believed about a boot nobody watched.
+    ///
+    /// Through the C entry point, which is how the only producer in the tree
+    /// (`nros-platform-zephyr/src/platform.c`) reaches it -- a test that wrote
+    /// through `note_heap` would leave that symbol exercised by nothing.
+    #[test]
+    fn the_heap_peak_keeps_the_maximum_and_the_capacity_the_last_word() {
+        init();
+        nros_boot_report_note_heap(4096, 94208);
+        nros_boot_report_note_heap(18352, 94208);
+        nros_boot_report_note_heap(1024, 94208);
+        let s = snapshot();
+        assert_eq!(s.heap_peak_bytes, 18352, "a later sample lowered the peak");
+        assert_eq!(s.heap_capacity_bytes, 94208);
     }
 }
