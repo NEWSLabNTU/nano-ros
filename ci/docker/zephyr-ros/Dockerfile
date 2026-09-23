@@ -12,15 +12,26 @@
 #   ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk<ver>-r<N>
 # Tag encodes the inputs (ROS distro + SDK version) + a `-rN` content revision;
 # bump `-rN` when the Dockerfile content changes without an SDK/distro bump.
+#
+# Its build CONTEXT is the repository root, not this directory — the Dockerfile
+# COPYs `ci/docker/apt-packages.txt`, a path relative to the tree. `ci-base` has
+# been built that way since issue 1201, which is also the record of what
+# happens when a COPY is added and the context is not moved with it: every build
+# fails in under a minute at "failed to calculate checksum of ref: not found",
+# and the floating tag goes on serving months-old content while the tree says
+# otherwise. `Dockerfile.dockerignore` beside this file keeps that root context
+# to the files named here; add a line to it when this gains a COPY.
 FROM ros:humble-ros-base
 
 # ---- ROS 2 environment, baked (issue 0866) --------------------------------
 #
 # The SAME gap ci-base has, and it does NOT inherit the fix: this image is
-# `FROM ros:humble-ros-base` directly, not `FROM` ci-base — despite ci-base's
-# own header saying "the Zephyr CI image is FROM this + the Zephyr SDK layer".
-# That comment is stale, so a reader who fixes one image and trusts it has
-# fixed neither.
+# `FROM ros:humble-ros-base` directly, not `FROM` ci-base. ci-base's header
+# used to claim the opposite ("the Zephyr CI image is FROM this + the Zephyr
+# SDK layer"), so a reader who fixed one image and trusted it had fixed
+# neither; that sentence is corrected there now. The inheritance still does not
+# exist — what is now genuinely shared is the apt closure, as a file both
+# images read, not as a layer one inherits.
 #
 # GitHub Actions runs a job's steps directly and does NOT use the image's
 # ENTRYPOINT, so `/ros_entrypoint.sh` never sources `setup.bash` and every
@@ -32,14 +43,30 @@ FROM ros:humble-ros-base
 # ci/docker/ci-base/Dockerfile — kept in ONE place rather than copied, but the
 # ENV must be repeated here because Docker has no include.
 #
-# The `-rN` tag revision is deliberately NOT bumped for this change. The
-# convention says to bump when content moves, but the image is only BUILT by a
-# push to `main`, so a new tag does not exist until after the merge — and the
-# lanes referencing it fail to pull in the meantime, which is exactly what
-# happened when this was first written as `-r3` ("Initialize containers"
-# failure on every zephyr job of the very PR carrying the fix). Overwriting the
-# existing tag in place is what ci-base already does with `humble`, and it is
-# the only option that keeps the lanes runnable across the merge.
+# TAG POLICY, because the two halves of this file disagreed about it and the
+# disagreement is load-bearing (phase-466).
+#
+# This paragraph used to say the `-rN` revision is deliberately NOT bumped: a
+# new tag does not exist until `images.yml` has run on `main`, so a PR that
+# bumps it and moves the consumers together makes every zephyr job fail at
+# "Initialize containers" between the merge and the image build. True, and it
+# is what happened at `-r3`. But `images.yml`'s own header settled the other
+# way at `-r4`, and that is the rule now: bump, move the consumers in the same
+# commit, and rely on the slack — the workflow triggers on the merge push and
+# the scheduled lanes are daily.
+#
+# The reason the second rule wins is not tidiness. Overwriting a tag in place
+# means a lane cannot tell WHICH content it ran, so a lane that is still red
+# after a fix looks identical whether the fix did not work or the image was
+# never republished. That is the same indistinguishability issue 1201 records
+# for `humble`, and phase-466 exists because every scheduled lane had been red
+# for eleven days with nobody able to say which. A failed pull says "the image
+# has not been published" in as many words; a stale pull says nothing at all.
+#
+# So: a content change here is a THREE-file change — this Dockerfile,
+# `images.yml`'s `TAG`, and every `container:` that names the image.
+# `check-ci-image-apt-packages` asserts the third against the second, because
+# four hand-copied tag literals is the same defect shape one level up.
 ENV AMENT_PREFIX_PATH=/opt/ros/humble \
     LD_LIBRARY_PATH=/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib \
     PYTHONPATH=/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages \
@@ -75,21 +102,41 @@ ARG SDK_TARGETS="x86_64-zephyr-elf arm-zephyr-eabi aarch64-zephyr-elf"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Zephyr + nano-ros host build deps (the apt set scripts/zephyr/setup.sh expects
-# + curl/zstd/git for the per-run install.sh + nros source provisioning).
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        cmake ninja-build device-tree-compiler gperf aria2 \
-        git curl ca-certificates zstd xz-utils file wget \
-        python3 python3-pip python3-venv build-essential \
-        ros-humble-example-interfaces \
+# The apt closure EVERY image installs, from the one list (phase-466).
+#
+# This block used to be a hand-written mirror of ci-base's, and it had drifted:
+# no `unzip` (so `_setup-common`'s `setup-clang-format` could not unpack its
+# prebuilt, and all 22 nightly `zephyr *` jobs died in the step named
+# `Set up Zephyr <line> workspace` — issue 1359) and no `python3-tomli` (so on
+# this jammy / Python 3.10 base no repo script could read its own TOML manifests
+# — issue 1364). Each symptom was one absent package; the defect was that two
+# lists had to agree and nothing made them. `ci/docker/apt-packages.txt` is now
+# that one list, and its header carries the reasoning.
+#
+# This is why `images.yml` builds this image with the REPOSITORY ROOT as its
+# context (the way it already builds ci-base since issue 1201) and why
+# `Dockerfile.dockerignore` sits beside this file.
+COPY ci/docker/apt-packages.txt /opt/nros-ssot/ci/docker/apt-packages.txt
+RUN apt-get update \
+    && sed -e 's/#.*//' /opt/nros-ssot/ci/docker/apt-packages.txt \
+       | xargs -r apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
-# `ros-humble-example-interfaces` (issue #59): NOT in `ros:humble-ros-base`
-# (only common_interfaces/action_msgs/unique_identifier_msgs are), but the
-# rust service/action examples (AddTwoInts srv, Fibonacci action) depend on it.
-# `nros sync` reads its .srv/.action defs from /opt/ros/humble/share to
-# codegen `generated/example_interfaces`; without the pkg it silently skips
-# codegen and cargo then fails `no matching package named example_interfaces`.
-# Mirrors ci/docker/ci-base/Dockerfile (which is also FROM ros:humble-ros-base).
+
+# This image's OWN packages — the ones ci-base has no use for. A name here that
+# is ALSO in the shared list is refused by `check-ci-image-apt-packages`.
+#
+# `aria2` is here because `[prereq.aria2]` declares it for the Zephyr SDK fetch
+# (issue 0368 F7) and it has always been in this image and never in ci-base.
+# STATED PRECISELY rather than inherited: `scripts/zephyr/setup.sh` no longer
+# shells `aria2c` — that block was replaced by a download through `nros` — so
+# the only caller left would be `west sdk install`, which these jobs do not run
+# (`just setup zephyr --skip-sdk`, the SDKs being baked above). It is kept
+# because dropping a package is a separate decision from un-drifting two lists,
+# and phase-466 is the second; if nothing turns up a caller, the honest next
+# move is to drop it here and from the index together.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        aria2 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Zephyr SDK — pinned, with the CMake package registered (`-c`) IN the image so
 # `find_package(Zephyr-sdk)` resolves without a per-run setup step. (A file-only

@@ -1,0 +1,85 @@
+# The apt closure EVERY nano-ros CI image installs — one list, read by every
+# Dockerfile under `ci/docker/`.
+#
+# WHY THIS FILE EXISTS
+#
+# `ci-base` and `zephyr-ros` are SIBLINGS: both are `FROM ros:humble-ros-base`
+# and neither inherits from the other (ci-base's header used to claim otherwise
+# — issue 0866). Each therefore carried its OWN hand-written apt list, and the
+# two drifted, exactly the way `config/rust-targets.txt` records for the rustup
+# target list (issue 0833) and `scripts/check-ci-image-python-deps.py` records
+# for the pip list (issue 0878). Two hand-maintained copies of one fact is the
+# repo's most-repeated defect shape, and here it cost every scheduled lane:
+#
+#   * `unzip` was in ci-base and not here. `_setup-common` runs
+#     `just setup-clang-format`, whose dist `install` step is
+#     `unzip -q -o {archive}` ([tool.clang-format] in nros-sdk-index.toml), so
+#     ALL 22 nightly `zephyr *` jobs died in the step named `Set up Zephyr <line>
+#     workspace` before touching Zephyr — issue 1359.
+#   * A TOML parser was in ci-base (`python3-tomli`) and not here. The base
+#     image is Ubuntu jammy, system Python 3.10, which has no `tomllib`, and 39
+#     repo scripts open with `import tomllib` / `import tomli`. `live-peer
+#     regression` had been red on that since 2026-09-11 — issue 1364.
+#
+# Both symptoms were one absence each; the DEFECT was that nothing made the two
+# lists agree. Now there is one list, so for everything named here drift is not
+# detected — it is unrepresentable.
+#
+# WHAT BELONGS HERE
+#
+# A package every image needs because the REPO needs it: the host closure
+# `_setup-common` and the repo's own scripts assume on any machine. A package
+# only one image needs (a cross-compiler, the Zephyr download accelerator) stays
+# in that image's Dockerfile, and `check-ci-image-apt-packages` refuses a name
+# that appears in both places — restating a shared package privately is how the
+# two-list shape comes back.
+#
+# FORMAT: one package per line; `#` starts a comment; blank lines ignored.
+# Consumed as `xargs apt-get install -y --no-install-recommends`, so the order
+# here is the order apt is asked for them.
+
+# --- build + configure -------------------------------------------------------
+cmake
+ninja-build
+build-essential
+device-tree-compiler
+gperf
+
+# --- source + artifact fetching ---------------------------------------------
+# curl/git for the per-run `install.sh` and the sources `nros setup` provisions;
+# the decompressors for the dist artifacts `nros setup --tool` unpacks.
+git
+curl
+ca-certificates
+wget
+file
+zstd
+xz-utils
+# `unzip`, NOT optional and NOT a formatter-only concern: it is what
+# `[prereq.unzip]` declares ("tar cannot read a zip") and what the
+# clang-format / ninja / verus dist install steps shell out to. Its absence is
+# issue 1359. `check-ci-image-apt-packages` re-derives this name from
+# `[tool.clang-format] system = [..]` through `[prereq.*].apt`, so the index
+# stays the SSoT and this line cannot be the thing that is wrong.
+unzip
+
+# --- python ------------------------------------------------------------------
+python3
+python3-pip
+python3-venv
+# The TOML parser. `ros:humble-ros-base` is jammy / Python 3.10, and `tomllib`
+# arrived in 3.11 — so without this the repo's own scripts cannot read their own
+# manifests inside the image (issue 1364). Every one of them opens
+# `import tomllib` with an `import tomli` fallback, which is the name Debian
+# ships as `python3-tomli`; the gate re-derives the requirement from that import
+# chain in the tree rather than from this comment.
+python3-tomli
+
+# --- ROS ---------------------------------------------------------------------
+# NOT in `ros:humble-ros-base` (only common_interfaces / action_msgs /
+# unique_identifier_msgs are), but the rust service/action examples depend on it
+# (AddTwoInts srv, Fibonacci action). `nros sync` reads its .srv/.action defs
+# from /opt/ros/humble/share to codegen `generated/example_interfaces`; without
+# the package it silently skips codegen and cargo then fails `no matching
+# package named example_interfaces`. Issue #59.
+ros-humble-example-interfaces

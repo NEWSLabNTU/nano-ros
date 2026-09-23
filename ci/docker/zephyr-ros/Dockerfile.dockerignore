@@ -1,0 +1,15 @@
+# phase-466 — the build context is the REPO ROOT (images.yml passes
+# `context: .` + `file: ci/docker/zephyr-ros/Dockerfile`) because the Dockerfile
+# COPYs `ci/docker/apt-packages.txt`, the shared apt closure. buildx reads THIS
+# file, `<Dockerfile>.dockerignore`, in preference to a root `.dockerignore`, so
+# the context stays the files the Dockerfile names and nothing else -- not the
+# third-party trees, not a build dir, not an initialised submodule.
+#
+# The sibling of ci/docker/ci-base/Dockerfile.dockerignore, and written for the
+# same reason it was (issue 1201): a hosted checkout happens to carry no build
+# output, but the rule should not depend on that.
+#
+# Add a line here when the Dockerfile gains a COPY.
+*
+!ci/docker/zephyr-ros/
+!ci/docker/apt-packages.txt

@@ -23,6 +23,12 @@ on:
       # below for the same reason.
       - "scripts/lib/rust-targets.sh"
       - "config/rust-targets.txt"
+      # phase-466 — the shared apt closure BOTH images COPY. Same rule: an
+      # image input that is not in this filter is a content change that
+      # publishes nothing, which is how the two lists drifted in the first
+      # place. It is in both `changes` filters below and in ci-base's content
+      # tag.
+      - "ci/docker/apt-packages.txt"
   workflow_dispatch:
     inputs:
       image:
@@ -45,10 +51,12 @@ jobs:
           filters: |
             ci_base:
               - 'ci/docker/ci-base/**'
+              - 'ci/docker/apt-packages.txt'
               - 'scripts/lib/rust-targets.sh'
               - 'config/rust-targets.txt'
             zephyr:
               - 'ci/docker/zephyr-ros/**'
+              - 'ci/docker/apt-packages.txt'
 
   ci-base:
     name: build + push ci-base image
@@ -95,7 +103,7 @@ jobs:
         # Dockerfile byte-identical, and a tag that does not move for it is
         # the "same tag, different toolchain" defect this tag exists to end.
         run: |
-          sha="$(cat ci/docker/ci-base/Dockerfile \
+          sha="$(cat ci/docker/ci-base/Dockerfile ci/docker/apt-packages.txt \
                      scripts/lib/rust-targets.sh config/rust-targets.txt \
                  | sha256sum | cut -c1-12)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -174,10 +182,32 @@ jobs:
       # `ci/docker/zephyr-ros/**`) and nightly runs on a daily schedule — hours of
       # slack. If the image build fails, fix it before the next nightly rather
       # than reverting the consumers.
+      # r5 (phase-466; issues 1359 + 1364): the apt closure is no longer a
+      # hand-written mirror of ci-base's. It had drifted by `unzip` and
+      # `python3-tomli`, and both absences were fatal to whole lanes — all 22
+      # nightly `zephyr *` jobs died in `_setup-common`'s `setup-clang-format`
+      # (no unzip to unpack the prebuilt), and `live-peer regression` died on
+      # every repo script that reads TOML (jammy Python 3.10 has no `tomllib`
+      # and the image had no `tomli`). Both now come from
+      # `ci/docker/apt-packages.txt`, the ONE list both images COPY.
       IMAGE: ghcr.io/newslabntu/nano-ros-zephyr-ci
-      TAG: humble-sdk0.17.4-r4
+      TAG: humble-sdk0.17.4-r5
     steps:
       - uses: actions/checkout@v4
+      # The same CONTENT tag ci-base carries, for the same reason and now for a
+      # sharper one (phase-466). `-rN` is hand-bumped, so it moves only when
+      # somebody remembers; and because it is also overwritable, a lane that is
+      # still red after a fix cannot tell whether the fix failed or the image
+      # was never republished. That ambiguity is precisely what let every
+      # scheduled lane sit red for eleven days. Consumers keep pinning `-rN`
+      # (the alias); this second tag is the evidence of what was in it.
+      - name: Derive the content tag
+        id: ctag
+        run: |
+          sha="$(cat ci/docker/zephyr-ros/Dockerfile ci/docker/apt-packages.txt \
+                 | sha256sum | cut -c1-12)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "content tag: ${{ env.IMAGE }}:${{ env.TAG }}-$sha"
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -186,11 +216,22 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
+      # phase-466 — the context is the REPO ROOT, not the Dockerfile's dir,
+      # because the Dockerfile now COPYs `ci/docker/apt-packages.txt`. This is
+      # the change issue 1201 records ci-base needing and NOT getting: a COPY of
+      # a repository path against a context that does not contain it fails in
+      # under a minute at "failed to calculate checksum of ref: not found",
+      # every time, while the published tag goes on serving old content.
+      # `ci/docker/zephyr-ros/Dockerfile.dockerignore` keeps the root context to
+      # the files this Dockerfile names.
       - name: Build + push
         uses: docker/build-push-action@v6
         with:
-          context: ci/docker/zephyr-ros
+          context: .
+          file: ci/docker/zephyr-ros/Dockerfile
           push: true
-          tags: ${{ env.IMAGE }}:${{ env.TAG }}
+          tags: |
+            ${{ env.IMAGE }}:${{ env.TAG }}
+            ${{ env.IMAGE }}:${{ env.TAG }}-${{ steps.ctag.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
