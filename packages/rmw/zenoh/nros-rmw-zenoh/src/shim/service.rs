@@ -1949,10 +1949,16 @@ pub(super) mod tests {
 
     #[test]
     fn a_caller_ring_receives_at_its_own_depth_and_slot_size() {
-        assert!(
-            CALLER_SLOT >= 8,
-            "the caller slot ({CALLER_SLOT}) collides with the slots the older tests use"
-        );
+        // A const block, because the condition is a constant: clippy's
+        // `assertions_on_constants` refuses the runtime form, and the compile-time
+        // one is what this check wanted anyway. The interpolated value goes with
+        // it -- a const panic message cannot carry format arguments.
+        const {
+            assert!(
+                CALLER_SLOT >= 8,
+                "CALLER_SLOT (SERVICE_BUFFER_COUNT - 1) collides with the slots the older tests use"
+            )
+        };
         bind_caller_ring_for_test(CALLER_SLOT, &CALLER_RING);
         reset_service_buffer(CALLER_SLOT);
         assert!(
