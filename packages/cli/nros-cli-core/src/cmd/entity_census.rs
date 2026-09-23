@@ -47,7 +47,7 @@ use sha2::{Digest, Sha256};
 /// Where a census lands, under the build directory. One file per ENTRY: two
 /// entries sharing a component see it twice, which is correct -- they may
 /// launch it with different parameters.
-const CENSUS_DIR: &str = "nros/census";
+pub(crate) const CENSUS_DIR: &str = "nros/census";
 
 /// This wrapper's own schema. The recorder's version travels beside it under
 /// `census.version`, unchanged; they move independently and a reader that
@@ -137,8 +137,14 @@ pub struct CheckArgs {
     pub census: PathBuf,
 
     /// The authored contract, `<bringup>/launch/<stem>.contract.yaml`.
+    ///
+    /// phase-463 W4 made it OPTIONAL for one caller: a cross configure knows
+    /// the model and not the launch stem, and re-deriving the sidecar's name
+    /// in cmake would be a second spelling of a rule the model already
+    /// records. When it is omitted, the contract is the `*.contract.yaml` the
+    /// model's own `meta.inputs` names.
     #[arg(long, value_name = "PATH")]
-    pub contract: PathBuf,
+    pub contract: Option<PathBuf>,
 
     /// `nros_entity_inventory.json`, the DERIVED third view. Optional: its
     /// absence costs the note that says what the pools were sized from, not
@@ -161,6 +167,33 @@ pub struct CheckArgs {
     /// gate.
     #[arg(long)]
     pub strict: bool,
+
+    /// phase-463 W4 -- refuse to compare against a census that is absent, or
+    /// that no longer describes the code.
+    ///
+    /// This is what an RTOS image's configure passes. Without it a check is
+    /// still honest about the two documents it was handed; with it, the check
+    /// first asks whether the census is still a statement about THIS source,
+    /// and `[census] on_missing` / `on_stale` in `system.toml` decide whether
+    /// the answer stops the build.
+    ///
+    /// Freshness is content-addressed, never mtime-based (the rule
+    /// `metadata_refresh` states and the reason it states it): touching a
+    /// source file leaves a census fresh, and adding an entity does not.
+    #[arg(long)]
+    pub require_fresh: bool,
+
+    /// The workspace root the census's recorded input paths resolve against.
+    /// Defaults to the current directory, which is what a person typing this
+    /// verb in their workspace means.
+    #[arg(long, value_name = "DIR")]
+    pub workspace: Option<PathBuf>,
+
+    /// The entry this census is of. Used in the remedy line of a freshness
+    /// refusal, so the message names the command that fixes it rather than
+    /// the shape of the command.
+    #[arg(long, value_name = "NAME")]
+    pub entry: Option<String>,
 }
 
 pub fn run(args: EntityCensusArgs) -> Result<()> {
@@ -179,14 +212,58 @@ fn check_census(args: CheckArgs) -> Result<()> {
             .wrap_err("the model this census was taken against")?;
     }
 
+    // `system.toml` is read ONCE, here: it carries both halves of how this
+    // system answers the census -- W3's per-row waivers and W4's two policy
+    // keys -- and reading it twice is how the two halves would come to
+    // disagree about which file they read.
+    let system = read_system_toml(args.system_toml.as_deref())?;
+    let policy = system
+        .as_ref()
+        .and_then(|s| s.census.clone())
+        .unwrap_or_default();
+
+    // phase-463 W4 -- the freshness question, BEFORE the comparison. A check
+    // that compares against a museum census and then passes has said
+    // something true about two documents and nothing at all about the code.
+    if args.require_fresh {
+        let ws = match args.workspace.clone() {
+            Some(w) => w,
+            None => std::env::current_dir().wrap_err("no current directory")?,
+        };
+        match census_freshness(&args.census, &ws) {
+            Freshness::Fresh => {}
+            Freshness::Missing(why) => {
+                return freshness_verdict(
+                    policy.on_missing,
+                    "missing",
+                    &why,
+                    args.entry.as_deref(),
+                );
+            }
+            Freshness::Stale(why) => {
+                return freshness_verdict(policy.on_stale, "stale", &why, args.entry.as_deref());
+            }
+        }
+    }
+
     let census_raw = std::fs::read_to_string(&args.census)
         .wrap_err_with(|| format!("cannot read census `{}`", args.census.display()))?;
     let census: serde_json::Value = serde_json::from_str(&census_raw)
         .wrap_err_with(|| format!("`{}` is not JSON", args.census.display()))?;
 
-    let contract = ros_launch_manifest_types::parse_manifest(&args.contract)
+    let contract_path = match args.contract.clone() {
+        Some(p) => p,
+        None => discover_contract(args.model.as_deref()).ok_or_else(|| {
+            eyre::eyre!(
+                "no --contract, and the model names no `*.contract.yaml` to fall back on. The \
+                 contract is `<bringup>/launch/<stem>.contract.yaml`, beside the launch file \
+                 this entry was resolved from."
+            )
+        })?,
+    };
+    let contract = ros_launch_manifest_types::parse_manifest(&contract_path)
         .map_err(|e| eyre::eyre!("{e}"))
-        .wrap_err_with(|| format!("cannot read contract `{}`", args.contract.display()))?;
+        .wrap_err_with(|| format!("cannot read contract `{}`", contract_path.display()))?;
 
     let inventory = match args.inventory.as_deref() {
         Some(path) => {
@@ -200,26 +277,12 @@ fn check_census(args: CheckArgs) -> Result<()> {
         None => None,
     };
 
-    let waivers = match args.system_toml.as_deref() {
-        Some(path) => {
-            let raw = std::fs::read_to_string(path)
-                .wrap_err_with(|| format!("cannot read `{}`", path.display()))?;
-            let system: crate::orchestration::cargo_metadata_schema::SystemToml =
-                toml::from_str(&raw)
-                    .wrap_err_with(|| format!("cannot parse `{}`", path.display()))?;
-            system
-                .census
-                .as_ref()
-                .map(|c| c.waivers())
-                .unwrap_or_default()
-        }
-        None => Default::default(),
-    };
+    let waivers = policy.waivers();
 
     let report = crate::entity_census::check(crate::entity_census::Inputs {
         census: &census,
         contract: &contract,
-        contract_path: args.contract.display().to_string(),
+        contract_path: contract_path.display().to_string(),
         inventory: inventory.as_ref(),
         waivers: &waivers,
         strict: args.strict,
@@ -235,6 +298,202 @@ fn check_census(args: CheckArgs) -> Result<()> {
         );
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// phase-463 W4 -- freshness, and what a configure does about it
+// ---------------------------------------------------------------------------
+
+/// What `--require-fresh` found. Three answers, because two of them have
+/// separate policies: a workspace that has never run the producer is not the
+/// same statement as a census that would be BELIEVED and should not be.
+pub(crate) enum Freshness {
+    Fresh,
+    Missing(String),
+    Stale(String),
+}
+
+/// `system.toml`, read once, for both the waivers and the policy keys.
+fn read_system_toml(
+    path: Option<&Path>,
+) -> Result<Option<crate::orchestration::cargo_metadata_schema::SystemToml>> {
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    if !path.is_file() {
+        // A bringup with no `system.toml` waives nothing and sets no policy,
+        // which is the landing default. Absence is not an error here; a
+        // MALFORMED file below still is.
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(path)
+        .wrap_err_with(|| format!("cannot read `{}`", path.display()))?;
+    let system =
+        toml::from_str(&raw).wrap_err_with(|| format!("cannot parse `{}`", path.display()))?;
+    Ok(Some(system))
+}
+
+/// Is the census at `path` still a statement about the code in `ws`?
+///
+/// Content-addressed throughout: every recorded input is re-hashed by the
+/// algorithm its own digest names (`metadata_refresh::recompute_digest`), so
+/// `touch` on a source file changes nothing and ADDING an entity changes the
+/// tree digest. That asymmetry is the whole property this wave is for, and it
+/// is the reason mtimes are not consulted anywhere on this path.
+///
+/// A census this tree cannot READ is stale rather than an error: the question
+/// asked is "may I believe this document", and "I cannot parse it" is a no.
+pub(crate) fn census_freshness(path: &Path, ws: &Path) -> Freshness {
+    if !path.is_file() {
+        return Freshness::Missing(format!("no census at `{}`", path.display()));
+    }
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return Freshness::Stale(format!("`{}` cannot be read", path.display()));
+    };
+    let Ok(census) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Freshness::Stale(format!("`{}` is not JSON", path.display()));
+    };
+
+    // The RECORDER's schema, not this wrapper's. A recorder that moved makes
+    // every census written under the old one stale by definition -- issue
+    // 0427's rule for the resolver pin, applied to the producer.
+    let recorded_schema = census
+        .get("census")
+        .unwrap_or(&census)
+        .get("version")
+        .and_then(serde_json::Value::as_u64);
+    let expected = u64::from(crate::orchestration::metadata_refresh::RECORDER_SCHEMA_VERSION);
+    match recorded_schema {
+        Some(v) if v == expected => {}
+        Some(v) => {
+            return Freshness::Stale(format!("recorder schema {v}; this tree reads {expected}"));
+        }
+        None => {
+            return Freshness::Stale(format!(
+                "`{}` records no recorder schema version",
+                path.display()
+            ));
+        }
+    }
+
+    let inputs: Vec<crate::orchestration::metadata_refresh::RecordedInput> = census
+        .get("provenance")
+        .and_then(|p| p.get("inputs"))
+        .and_then(serde_json::Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|row| {
+                    let role = row.get("role")?.as_str()?;
+                    if !is_freshness_input(role) {
+                        return None;
+                    }
+                    Some(crate::orchestration::metadata_refresh::RecordedInput {
+                        role: role.to_string(),
+                        path: row.get("path")?.as_str()?.to_string(),
+                        digest: row.get("digest")?.as_str()?.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if inputs.is_empty() {
+        return Freshness::Stale(format!(
+            "`{}` records no input describing the code (no binary, no source tree), so \
+             nothing about it can be verified",
+            path.display()
+        ));
+    }
+
+    let stale = crate::orchestration::metadata_refresh::stale_recorded_inputs(ws, &inputs);
+    if stale.is_empty() {
+        return Freshness::Fresh;
+    }
+    Freshness::Stale(
+        stale
+            .iter()
+            .map(|s| s.line())
+            .collect::<Vec<_>>()
+            .join("\n  "),
+    )
+}
+
+/// Which recorded inputs decide FRESHNESS, as opposed to being provenance.
+///
+/// A census is a statement about THE CODE, so the inputs that can falsify it
+/// are the ones that determine what the code creates: the binary that was run
+/// and the component source trees it was built from. `nros ws entity-census
+/// run` records more than that -- the model and, through it, the model's own
+/// `meta.inputs`, which include the contract sidecar -- and recording them is
+/// right: RFC-0063 says a derived artifact carries its inputs' digests, and a
+/// reader wants to know which model this census was taken against.
+///
+/// They are NOT freshness inputs, and the phase doc's own acceptance is why.
+/// It asks that editing a component source make the census stale, and that
+/// then "add the contract row and it configures" -- with no second census run.
+/// The contract reaches this provenance through the model, so treating every
+/// recorded digest as a freshness input would make the contract invalidate the
+/// very evidence it is being compared against: every fix to a
+/// `missing-in-contract` refusal would demand a new census of code that did
+/// not change. The model is verified on its own terms at every door by the
+/// phase-460 W1 gate, which `check` calls first; that is the right place for
+/// it, and it is not this one.
+fn is_freshness_input(role: &str) -> bool {
+    matches!(role, "binary" | "source_tree" | "entry_tu")
+}
+
+/// Apply `[census] on_missing` / `on_stale` to what freshness found.
+///
+/// Both arms say the SAME thing about the census and differ only in whether
+/// the build continues, because a policy that changed the diagnosis would make
+/// `warn` a different check rather than a softer one.
+fn freshness_verdict(
+    policy: crate::orchestration::cargo_metadata_schema::CensusPolicy,
+    what: &str,
+    why: &str,
+    entry: Option<&str>,
+) -> Result<()> {
+    let remedy = format!(
+        "Take a census of the code as it is now:\n    nros ws entity-census run --entry {}\n\
+         This configure does not run it for you: building the native image from inside a cross \
+         configure is the cross-cutting compile issue 0641 refuses.",
+        entry.unwrap_or("<entry>")
+    );
+    if policy.refuses() {
+        bail!("census {what}: {why}\n{remedy}");
+    }
+    // Not silent. `warn` is the landing default so that no consumer breaks on
+    // the day this merges, and a default that said nothing would be the state
+    // issue 1419 is about.
+    println!("census {what} (WARNING, [census] on_{what} = \"warn\"): {why}");
+    for line in remedy.lines() {
+        println!("  {line}");
+    }
+    Ok(())
+}
+
+/// The contract a model was resolved from, for a caller that knows the model
+/// and not the launch stem.
+///
+/// Read out of the model's own `meta.inputs` rather than re-derived from a
+/// stem: the resolver recorded every input it folded in, the sidecar is one of
+/// them, and a second spelling of `<stem>.contract.yaml` in cmake would be one
+/// more place for the rule to drift.
+fn discover_contract(model: Option<&Path>) -> Option<PathBuf> {
+    let model = model?;
+    let raw = std::fs::read_to_string(model).ok()?;
+    let system = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw).ok()?;
+    let bringup = crate::model_gate::infer_bringup_dir(model)?;
+    system
+        .meta
+        .inputs
+        .iter()
+        .map(|i| bringup.join(&i.path))
+        .find(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.ends_with(".contract.yaml"))
+                && p.is_file()
+        })
 }
 
 /// One recorded input, with the digest that makes the census reproducible.

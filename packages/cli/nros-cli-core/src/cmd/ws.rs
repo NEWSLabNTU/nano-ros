@@ -3216,6 +3216,12 @@ fn refresh_source_metadata(
         nano_ros_path.as_deref(),
         verbose,
     )?;
+    // phase-463 W4 (issue 1419) -- and the ENTITY CENSUS, in the same block,
+    // BEFORE the early return: a workspace whose components all have current
+    // sidecars is exactly the one whose census is worth a line, and returning
+    // above it would make the report visible only when something else was
+    // stale.
+    report_census_freshness(ws_root);
     if report.total() == 0 && report.unsupported.is_empty() {
         return Ok(());
     }
@@ -3231,6 +3237,66 @@ fn refresh_source_metadata(
         println!("sync: source metadata — no producer for {what}");
     }
     Ok(())
+}
+
+/// phase-463 W4 (issue 1419) -- report each entry's census, and RUN NONE.
+///
+/// Sync resolves models and refreshes sidecars; it does not build binaries,
+/// and the census producer is the entry's own native image. Making sync build
+/// one would put a cross-cutting compile behind a command `regenerate-
+/// bindings.sh` runs 22 times per fixture build -- issue 0641, which this
+/// tree has already paid for once on the C/C++ probe. So sync does one thing
+/// here: it says whether what is on disk still describes the code.
+///
+/// Content-addressed, through the SAME reader a configure's `--require-fresh`
+/// calls (`cmd::entity_census::census_freshness`) rather than a second walk.
+/// Two answers to "is this census fresh" is how a sync would come to say
+/// `current` about a document a configure then refuses.
+///
+/// Silent when there is no census directory, because a workspace that has
+/// never taken one is most of the tree and a line per sync saying so would be
+/// noise. Never silent when there IS one: that is the state where a person
+/// has a census and may believe it.
+fn report_census_freshness(ws_root: &Path) {
+    let dir = ws_root
+        .join("build")
+        .join(crate::cmd::entity_census::CENSUS_DIR);
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    let mut rows: Vec<(String, String)> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        // `<entry>.recorded.json` is the RAW recorder document a run leaves
+        // beside its census for a human to read, not a census.
+        let Some(name) = path.file_stem().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if name.ends_with(".recorded") {
+            continue;
+        }
+        let verdict = match crate::cmd::entity_census::census_freshness(&path, ws_root) {
+            crate::cmd::entity_census::Freshness::Fresh => "current".to_string(),
+            crate::cmd::entity_census::Freshness::Missing(why)
+            | crate::cmd::entity_census::Freshness::Stale(why) => {
+                format!("STALE -- {}", why.replace('\n', "; "))
+            }
+        };
+        rows.push((name.to_string(), verdict));
+    }
+    rows.sort();
+    for (name, verdict) in rows {
+        println!("sync: source metadata -- entity census for `{name}` is {verdict}");
+        if verdict.starts_with("STALE") {
+            println!(
+                "sync: source metadata -- take a new one with `nros ws entity-census run \
+                 --entry {name}`; sync does not build the native image it needs (issue 0641)"
+            );
+        }
+    }
 }
 
 fn parse_edition(s: &str) -> Result<RosEdition> {

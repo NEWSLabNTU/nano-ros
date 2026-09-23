@@ -164,6 +164,11 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
         // phase-454 W4 added `SizingDescriptor`: `nros_sizing_descriptor_read()`
         // asks it for the RFC-0100 D4 artifact at configure time, from whatever
         // build directory the consumer configured in.
+        // phase-463 W4 added `EntityCensus`: an RTOS image's configure asks it
+        // whether the census still describes the code
+        // (`_nros_entry_require_fresh_census` in `cmake/NanoRosEntry.cmake`),
+        // and a cross build directory is exactly the case that sits under
+        // another checkout.
         cmd::ws::Sub::Providers(_)
         | cmd::ws::Sub::Order(_)
         | cmd::ws::Sub::BoardFacts(_)
@@ -171,7 +176,8 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
         | cmd::ws::Sub::EntityInventory(_)
         | cmd::ws::Sub::LeafSystem(_)
         | cmd::ws::Sub::SizingDescriptor(_)
-        | cmd::ws::Sub::RmwDispatch(_) => "ws-build",
+        | cmd::ws::Sub::RmwDispatch(_)
+        | cmd::ws::Sub::EntityCensus(_) => "ws-build",
         _ => "ws",
     }
 }

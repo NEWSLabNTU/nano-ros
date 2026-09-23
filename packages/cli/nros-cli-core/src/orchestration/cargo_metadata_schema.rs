@@ -721,9 +721,8 @@ pub struct SystemToml {
 
 /// `[census]` -- phase-463 W3, how this system answers the census check.
 ///
-/// One table today ([`Self::waive`]); phase-463 W4 adds `on_missing` and
-/// `on_stale` beside it, which is why this is a table rather than a bare
-/// `[census.waive]` map.
+/// Two halves: the per-row waivers W3 introduced, and the two POLICY keys
+/// phase-463 W4 added beside them for the configure-time gate.
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SystemCensus {
@@ -741,6 +740,61 @@ pub struct SystemCensus {
     /// appearing to honour it.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub waive: BTreeMap<String, CensusWaiver>,
+
+    /// phase-463 W4 -- `[census] on_missing`: what a configure that requires a
+    /// fresh census does when there is NO census for this entry.
+    ///
+    /// The phase lands with `warn` so that no consumer is broken on the day it
+    /// merges; the island flips to `refuse` in W6, and the default follows
+    /// once two consumers have run under it.
+    #[serde(default, skip_serializing_if = "CensusPolicy::is_default")]
+    pub on_missing: CensusPolicy,
+
+    /// phase-463 W4 -- `[census] on_stale`: the same decision for a census
+    /// that EXISTS and no longer describes the code.
+    ///
+    /// Separate from [`Self::on_missing`] because they are different
+    /// statements. "No census yet" is a workspace that has not run the
+    /// producer; "stale" is a census that would be BELIEVED, and a system may
+    /// reasonably refuse the second while tolerating the first.
+    #[serde(default, skip_serializing_if = "CensusPolicy::is_default")]
+    pub on_stale: CensusPolicy,
+}
+
+/// What a configure does about a census it cannot believe (phase-463 W4).
+///
+/// Two values and no third. There is no `ignore`: a census that is absent or
+/// stale is a fact about this build, and the cheapest honest answer is to say
+/// so. `warn` says it and proceeds; `refuse` says it and stops.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CensusPolicy {
+    /// Print the reason and let the configure proceed. The landing default.
+    #[default]
+    Warn,
+    /// Fail the configure, naming the command that produces a fresh census.
+    Refuse,
+}
+
+impl CensusPolicy {
+    /// `true` for the landing default, so a `system.toml` that never mentions
+    /// the key round-trips without gaining one.
+    pub fn is_default(&self) -> bool {
+        *self == CensusPolicy::Warn
+    }
+
+    /// `refuse` spelled the way a message says it.
+    pub fn refuses(self) -> bool {
+        self == CensusPolicy::Refuse
+    }
+
+    /// The word this policy is written as in `system.toml`.
+    pub fn tag(self) -> &'static str {
+        match self {
+            CensusPolicy::Warn => "warn",
+            CensusPolicy::Refuse => "refuse",
+        }
+    }
 }
 
 /// One `[census.waive."<row>"]` entry.
@@ -1510,6 +1564,43 @@ fn is_false(b: &bool) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// phase-463 W4 -- `[census] on_missing` / `on_stale`, the two policy keys
+    /// a configure reads, and the landing default when neither is written.
+    #[test]
+    fn the_census_policy_keys_default_to_warn_and_reject_a_third_word() {
+        use super::{CensusPolicy, SystemToml};
+
+        let silent: SystemToml =
+            toml::from_str("[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n[census]\n")
+                .expect("an empty [census] parses");
+        let census = silent.census.expect("[census] is present");
+        assert_eq!(
+            census.on_missing,
+            CensusPolicy::Warn,
+            "the phase lands with warn so no consumer breaks on the day it merges"
+        );
+        assert_eq!(census.on_stale, CensusPolicy::Warn);
+
+        let strict: SystemToml = toml::from_str(
+            "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n[census]\non_missing = \"warn\"\non_stale = \"refuse\"\n",
+        )
+        .expect("both keys parse");
+        let census = strict.census.expect("[census] is present");
+        assert!(!census.on_missing.refuses());
+        assert!(
+            census.on_stale.refuses(),
+            "a system may refuse a census that would be BELIEVED while tolerating none at all"
+        );
+        assert_eq!(census.on_stale.tag(), "refuse");
+
+        // No third value. `ignore` would be a way to keep a stale census and
+        // say nothing, which is the state issue 1419 is about.
+        let err = toml::from_str::<SystemToml>("[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n[census]\non_stale = \"ignore\"\n")
+            .expect_err("`ignore` is not a policy")
+            .to_string();
+        assert!(err.contains("on_stale") || err.contains("ignore"), "{err}");
+    }
+
     /// issue 0358 — the two spellings must answer identically.
     ///
     /// They mean the same thing, so a consumer that reaches for either one in
