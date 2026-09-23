@@ -51,50 +51,25 @@ Run: python3 scripts/check-workflow-repo-env.py [--self-test]
 """
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-WORKFLOWS = REPO / ".github" / "workflows"
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 
-TOOLS = ("just", "nros", "west")
-
-# `just` at a command position, optionally behind `KEY=value` prefixes.
-INVOKE = re.compile(
-    r"(?:^|&&\s*|\|\|\s*|;\s*|\bthen\s+)\s*"
-    r"(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*"
-    rf"(?:{'|'.join(TOOLS)})\s",
+# ONE spelling of "is this line a command, or a sentence about one". Phase-466
+# W2 moved it into `scripts/lib/` when `check-workflow-just-provisioning` needed
+# the same answer: two copies of a detector drift in the direction that reads
+# green, because a detector that misses an invocation reports OK.
+from workflow_commands import (  # noqa: E402
+    INVOKE,
+    REPO,
+    TOOLS,
+    WORKFLOWS,
+    command_lines,
+    load_workflows,
 )
 
-# `<<EOF`, `<<-EOF`, `<<'EOF'`, `<<"EOF"` — the body is text, not commands.
-HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
-
 ACTIVATIONS = ("activate.sh", "./setup.bash")
-
-
-def command_lines(run: str):
-    """The lines of a `run:` body that are actually commands.
-
-    Skips comments and heredoc bodies. Deliberately line-based rather than a
-    shell parse: the rule has to be explainable in the failure message, and a
-    half-correct parser would produce verdicts nobody can check by eye.
-    """
-    out = []
-    terminator = None
-    for line in (run or "").split("\n"):
-        if terminator is not None:
-            if line.strip() == terminator:
-                terminator = None
-            continue
-        stripped = line.strip()
-        if stripped.startswith("#"):
-            continue
-        out.append(line)
-        m = HEREDOC.search(line)
-        if m:
-            terminator = m.group(2)
-    return out
 
 
 def offenders(docs):
@@ -113,15 +88,6 @@ def offenders(docs):
                         (path, job_name, step.get("name") or "(unnamed)", hits[0].strip())
                     )
     return bad
-
-
-def load_workflows():
-    import yaml
-
-    docs = []
-    for p in sorted(WORKFLOWS.glob("*.yml")):
-        docs.append((p.relative_to(REPO), yaml.safe_load(p.read_text())))
-    return docs
 
 
 def self_test():
