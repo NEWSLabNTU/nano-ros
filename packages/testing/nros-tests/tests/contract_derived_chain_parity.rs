@@ -75,7 +75,7 @@ fn assert_matches_snapshot(actual: &str, expected: &str) {
         .lines()
         .zip(expected.lines())
         .position(|(a, e)| a != e)
-        .map_or(actual.lines().count().min(expected.lines().count()), |i| i)
+        .unwrap_or(actual.lines().count().min(expected.lines().count()))
         + 1;
     panic!(
         "the ranking of rlm's contract_derived_chain fixture differs from the \
