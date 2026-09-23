@@ -96,6 +96,28 @@ pub fn render_probe_cmakelists(comps: &[CmakeProbeOptions]) -> String {
         "# never reachable from a firmware one. NOTE: this must be the variable\n",
         "# NanoRosRuntimeCrate reads; a plain cache var is inert.\n",
         "set(NROS_EXTRA_CPP_FEATURES \"metadata-mode\")\n\n",
+        "# issue 1469 - ONE generation site per message type for the whole probe.\n",
+        "#\n",
+        "# Without this each package emits the interface closure its own\n",
+        "# package.xml resolves into its OWN binary dir, so a type two node\n",
+        "# packages share exists under whichever of them the configure reached\n",
+        "# first. That site is not stable: this project is re-configured with a\n",
+        "# DIFFERENT set of packages by the drop-and-retry loop below and by a\n",
+        "# sync whose unprobeable markers cleared, while\n",
+        "# `_NROS_PKG_<pkg>_GENERATED_RS_FILES` is a CACHE entry that outlives the\n",
+        "# configure. The aggregating FFI crate then `include!`s one dep's closure\n",
+        "# from this pass and another's from the last, naming two different copies\n",
+        "# of the same type -- and `include!` is textual, so rustc refuses with\n",
+        "# E0428 and every component in the workspace goes unprobeable.\n",
+        "#\n",
+        "# The real board build has no such ambiguity: a shared type is generated\n",
+        "# ONCE, under an interface package every node depends on. This is that\n",
+        "# same shape, expressed with the mechanism the tree already has for it\n",
+        "# (Phase 123.A.7): all packages emit into one dir keyed by (language,\n",
+        "# package), so a type has exactly one path no matter which package\n",
+        "# reaches it, and a stale cache entry names the same file a fresh one\n",
+        "# does. Inside the probe's own build dir, so it is removed with it.\n",
+        "set(NANO_ROS_GEN_CACHE_DIR \"${CMAKE_BINARY_DIR}/nros-codegen\")\n\n",
         "# issue 0543 — the bringup's DECLARED capabilities, lowered by the same\n",
         "# `nros config show --format cmake` a real build includes (see\n",
         "# NanoRosWorkspace.cmake). The probe compiles the USER'S sources, so it\n",
@@ -698,6 +720,32 @@ mod tests {
         );
         // Linking the component lib is what brings its own header's include dir.
         assert!(txt.contains("PRIVATE talker_lib"), "{txt}");
+    }
+
+    /// issue 1469 - every package in the probe emits into ONE codegen dir, so a
+    /// message type two node packages share has exactly one generation site and
+    /// the aggregating FFI crate cannot `include!` two copies of it (E0428).
+    ///
+    /// The ORDER is load-bearing: the generators read `NANO_ROS_GEN_CACHE_DIR`
+    /// while `find_package(nano_ros)` is being resolved, so a `set` after it
+    /// would be inert.
+    #[test]
+    fn the_probe_generates_each_message_type_at_one_site() {
+        let txt = render_probe_cmakelists(std::slice::from_ref(&opts()));
+        let set = txt
+            .find("set(NANO_ROS_GEN_CACHE_DIR")
+            .unwrap_or_else(|| panic!("probe must pin one codegen dir:\n{txt}"));
+        let find = txt
+            .find("find_package(nano_ros REQUIRED)")
+            .expect("find_package(nano_ros)");
+        assert!(
+            set < find,
+            "the codegen dir must be set BEFORE find_package(nano_ros):\n{txt}"
+        );
+        assert!(
+            txt.contains("set(NANO_ROS_GEN_CACHE_DIR \"${CMAKE_BINARY_DIR}/nros-codegen\")"),
+            "inside the probe's own build dir, so it is removed with it:\n{txt}"
+        );
     }
 
     /// The probe TU comes from the entry emitter, so the construction and

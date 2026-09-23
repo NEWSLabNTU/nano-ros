@@ -66,6 +66,65 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosReconfigure.cmake")
 # `nros_cpp_*` definitions. OWN files keep both halves.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 
+# _nros_rs_type_key(<file> <out_var>) -- issue 1469.
+#
+# The IDENTITY of a generated FFI `.rs` file: `<package>/<kind>/<stem>.rs`, the
+# tail of `<output-dir>/<package>/<msg|srv|action>/<file>.rs`. It is what the
+# file DEFINES, which is what rustc refuses a second copy of; the absolute path
+# is only where one copy happens to sit. A package's umbrella `<pkg>/mod.rs` has
+# no `<kind>` level and keys as `<umbrella>/<pkg>/mod.rs` -- still one key per
+# package, which is all this is asked for.
+function(_nros_rs_type_key _file _out_var)
+    get_filename_component(_name "${_file}" NAME)
+    get_filename_component(_dir1 "${_file}" DIRECTORY)
+    get_filename_component(_kind "${_dir1}" NAME)
+    get_filename_component(_dir2 "${_dir1}" DIRECTORY)
+    get_filename_component(_pkg "${_dir2}" NAME)
+    set(${_out_var} "${_pkg}/${_kind}/${_name}" PARENT_SCOPE)
+endfunction()
+
+# _nros_dedup_rs_by_type(<out_var> <files...>) -- issue 1469.
+#
+# Keep ONE file per `_nros_rs_type_key`, preferring the LAST occurrence.
+#
+# WHY A SECOND DE-DUP, when the caller already runs `list(REMOVE_DUPLICATES)`.
+# That one de-dups by PATH, and the same message type can be generated at TWO
+# paths: the generation site of a shared type is whichever consuming package
+# reaches it first, and `_NROS_PKG_<pkg>_GENERATED_RS_FILES` is a `CACHE
+# INTERNAL` entry, so it PERSISTS ACROSS CONFIGURES. A build directory that is
+# re-configured with a different set of packages (the metadata probe's
+# drop-and-retry loop, and a sync where a component's marker cleared) therefore
+# mixes one dep's closure from this pass with another dep's from the last, each
+# naming a different site for the same transitive type. Two different paths, no
+# path duplicate, and `include!()` is textual -- so rustc gets two definitions
+# of every item in the file and refuses with E0428 (issue 1469: eight of them on
+# the Autoware Safety Island, from `builtin_interfaces/msg/{Time,Duration}`).
+#
+# LAST wins because the caller appends OWN after every dep contribution, so a
+# package's own freshly-emitted file always beats a dep's stale copy of it. That
+# is the one ordering under which the kept path is always a file THIS configure
+# emits a rule for.
+function(_nros_dedup_rs_by_type _out_var)
+    set(_files ${ARGN})
+    if(NOT _files)
+        set(${_out_var} "" PARENT_SCOPE)
+        return()
+    endif()
+    list(REVERSE _files)
+    set(_keys "")
+    set(_kept "")
+    foreach(_f ${_files})
+        _nros_rs_type_key("${_f}" _key)
+        if("${_key}" IN_LIST _keys)
+            continue()
+        endif()
+        list(APPEND _keys "${_key}")
+        list(APPEND _kept "${_f}")
+    endforeach()
+    list(REVERSE _kept)
+    set(${_out_var} "${_kept}" PARENT_SCOPE)
+endfunction()
+
 function(_nros_collect_rs_closure _out_var)
     cmake_parse_arguments(_C "" "" "DEPS;OWN" ${ARGN})
     set(_all "")
@@ -87,6 +146,10 @@ function(_nros_collect_rs_closure _out_var)
     if(_all)
         list(REMOVE_DUPLICATES _all)
     endif()
+    # ... and then by TYPE, which is what `include!()` actually collides on
+    # (issue 1469). The path de-dup above cannot see two generation sites for
+    # one type; this can.
+    _nros_dedup_rs_by_type(_all ${_all})
     set(${_out_var} "${_all}" PARENT_SCOPE)
 endfunction()
 
