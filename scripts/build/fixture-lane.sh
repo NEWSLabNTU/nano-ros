@@ -340,6 +340,23 @@ nros_fixtures_stamp_clear() {
     # Written HERE because this function already owns "a build is starting",
     # and it survives the shell boundary between the clearing recipe and the
     # writing one, which a variable would not.
+    #
+    # `mkdir -p` FIRST — on a runner whose `target/nextest/` does not exist yet
+    # (a fresh checkout, or one swept by `runner-sweep.sh`) the redirect has
+    # nowhere to land and bash prints
+    #
+    #   fixture-lane.sh: line NNN: target/nextest/.fixtures-built.started: \
+    #       No such file or directory
+    #
+    # into the job log. `2>/dev/null` does not suppress it — redirections are
+    # applied left to right, so the `>` fails before the `2>` is in place — and
+    # `|| true` then swallows the status, so the lower bound is silently absent
+    # for the whole build. `stamp_write` has always had this `mkdir`, which is
+    # why the UPPER bound survived and only the 0499 lower bound went missing:
+    # every consumer that asks "which artifacts did THIS build produce?" falls
+    # back to "cannot filter", and that is the permanent skip 0499 exists to
+    # prevent. Seen in run-matrix 35826999550 and every scheduled run before it.
+    mkdir -p "$(dirname "$NROS_FIXTURE_STAMP")" 2>/dev/null || true
     printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${NROS_FIXTURE_STAMP}.started" 2>/dev/null || true
 }
 
