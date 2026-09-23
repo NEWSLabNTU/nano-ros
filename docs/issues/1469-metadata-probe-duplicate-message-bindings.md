@@ -68,9 +68,25 @@ crate gets two definitions of every item in those two files. Eight of them
 here: the struct, and the serialize/deserialize/teardown functions for each
 of the two messages.
 
-The scaling rule is the tell. One C++ node package compiles. Two that share
-a message dependency do not, and the failure is proportional to the number
-of shared types rather than to anything the author wrote.
+The scaling rule is the tell: the failure is proportional to the number of
+SHARED types rather than to anything the author wrote.
+
+**Correction (2026-09-24), from the fix in PR #1237.** The sentence that
+stood here said "one C++ node package compiles, two that share a message
+dependency do not", which reads as a property of a single configure. It is
+not, and anyone reproducing it from that sentence alone will fail to. The
+generators ARE idempotent within one pass. The duplicate ACCUMULATES ACROSS
+configures, because `_NROS_PKG_<pkg>_GENERATED_RS_FILES` is a cmake CACHE
+entry that outlives the pass that wrote it, so a build dir re-configured
+with a different live package set keeps the earlier package's entry and adds
+the new one. The island's own tree shows it: its two copies of
+`builtin_interfaces_msg_time_types.rs` carry timestamps from two different
+configure passes, not one.
+
+A second correction from the same source: the list IS de-duplicated already
+-- by PATH. The paths differ, one per consuming package, which is exactly
+why the de-duplication misses. The invariant `include!` needs is
+de-duplication by TYPE.
 
 ## Not the same as the board build
 
@@ -102,6 +118,14 @@ historical defect motivated them. Two of the four nodes still carry a
 one callback each, which is both stale and far short of what those nodes
 declare. A stale sidecar that nothing refreshes is worse than none: it reads
 as an observation.
+
+## Filed separately: the probe ignores the workspace's field caps
+
+Issue **1470**. With this issue's fix applied the probe gets further and
+then stops on a static assertion, because a message the real build bounds
+through `nros-codegen.toml` reads as unbounded in the probe. That one is a
+design question about where a workspace's caps live rather than a mechanical
+duplicate, so it is not folded in here.
 
 ## A second, smaller defect: the marker records no reason
 
