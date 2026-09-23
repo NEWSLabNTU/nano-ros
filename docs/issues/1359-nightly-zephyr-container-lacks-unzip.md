@@ -79,3 +79,53 @@ belongs, and that is a decision rather than a guess:
 
 Acceptance is the `zephyr 3.7 / rust/talker` nightly job reaching a Zephyr build —
 green or red on its own cell — and the RTOS jobs downstream of it running at all.
+
+## What landed (phase-466, 2026-09-23)
+
+**Option 1, widened into option 1+2 of the class.** Adding `unzip` to the zephyr
+image alone would have been the fix-at-the-reported-site the repo has paid for six
+times, and issue 1364 is the proof: the SAME two Dockerfiles had drifted by a
+SECOND package, in the same direction, and nobody had connected them.
+
+So the defect treated is "two hand-written apt lists must agree and nothing makes
+them agree", not "this image lacks unzip":
+
+- **`ci/docker/apt-packages.txt`** is now the one apt closure every CI image
+  installs. Both Dockerfiles `COPY` it and pipe it through
+  `xargs apt-get install`; `unzip` and `python3-tomli` are in it. For everything
+  named there, drift is not detected — it is unrepresentable.
+- `images.yml` builds the zephyr image with the repository root as its context
+  (`context: .` + `file:`), the way it has built ci-base since [[issue-1201]],
+  with a matching `Dockerfile.dockerignore`, because a `COPY` of a repository
+  path against a Dockerfile-dir context fails at "failed to calculate checksum of
+  ref: not found" every time.
+- **`check-ci-image-apt-packages`** (fast lane, 0.14 s) refuses: an image that
+  stops consuming the shared list, an image that restates a shared package in its
+  own list, a shared list that does not cover what `[tool.clang-format] system` +
+  `[prereq.*].apt` demand (this issue, derived from the index rather than
+  asserted), a shared list with no TOML parser while the tree still uses the
+  `import tomllib` -> `import tomli` chain ([[issue-1364]]), and a published image
+  TAG that its `container:` consumers do not spell. It enumerates
+  `ci/docker/*/Dockerfile` by GLOB, so a third image is covered without editing
+  the gate.
+
+**And the COUPLING, which is what turned one package into 22 dead jobs.**
+`_setup-common` ran `just setup-clang-format` under `set -e`. That recipe is the
+prelude EVERY `just setup <scope>` takes, so a code formatter held a veto over a
+cross-compile: none of the 22 jobs formats anything. Provisioning there is
+best-effort now (the spelling the TIER arm of `setup` already used — there were
+two call sites of one step, one fatal and one not, and the fatal one was the one
+CI took), and the ASSERTION moved to the consumers that need the binary:
+`check-tier-preconditions` reports it in the batch at the head of `just ci`,
+beside the other unmet preconditions, and `c-fmt`/`cpp-fmt` fail on it inside
+`check fast`. A lane that needs clang-format still hears in the first minute; a
+lane that does not is no longer answerable for it.
+
+## What is NOT done, and why this stays open
+
+**A Dockerfile edit publishes nothing.** The image is built only by `images.yml`
+on a push to `main` touching these paths, and the tag consumers pin moved to
+`humble-sdk0.17.4-r5` — which does not exist in the registry until that workflow
+has run. Acceptance is unchanged and still remote: the `zephyr 3.7 / rust/talker`
+nightly job reaching a Zephyr build, and the RTOS jobs downstream of it running at
+all. Close this when a scheduled run shows that, not when the merge lands.
