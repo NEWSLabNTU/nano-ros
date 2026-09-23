@@ -26,7 +26,10 @@
 //! | `ZPICO_BATCH_UNICAST_SIZE` | Max unicast batch before fragmentation | 65536 | 1024 |
 //! | `ZPICO_BATCH_MULTICAST_SIZE` | Max multicast batch size | 8192 | 1024 |
 //! | `NROS_SUBSCRIBER_BUFFER_SIZE` | Per-subscriber buffer in zenoh shim | 1024 | 1024 |
-//! | `ZPICO_SERVICE_BUFFER_SIZE` | Per-service-server buffer in zenoh shim | 1024 | 1024 |
+//! | `NROS_SERVICE_INBOX_BYTES` | Request slot of a user service server's inbox ring (zenoh); `ZPICO_SERVICE_BUFFER_SIZE` is its one-release alias | 1024 | 1024 |
+//! | `NROS_SERVICE_INBOX_DEPTH` | Requests a user service server holds before dropping the newest | 4 | 4 |
+//! | `NROS_ACTION_INBOX_BYTES` | Request slot of an action server queryable's inbox ring | `NROS_SERVICE_INBOX_BYTES` | ditto |
+//! | `NROS_ACTION_INBOX_DEPTH` | Requests an action server queryable holds (the twin of `ZPICO_MAX_PENDING_REPLIES`) | 4 | 4 |
 //!
 //! **XRCE-DDS backend (`XRCE_*`):**
 //!
@@ -38,6 +41,12 @@
 //! | `XRCE_SERVICE_REQUEST_BUFFER_SIZE` | Service-server request entry | `XRCE_BUFFER_SIZE` | ditto |
 //! | `XRCE_SERVICE_REPLY_BUFFER_SIZE` | Service-client reply slot | `XRCE_BUFFER_SIZE` | ditto |
 //! | `XRCE_STREAM_HISTORY` | Reliable stream history depth (>= 2) | 4 | 4 |
+//!
+//! The zenoh service inbox is per FAMILY since phase-461 W1 (issue 1352): a
+//! user service and an action server queryable each take a slot size and a
+//! ring depth of their own, and the parameter and lifecycle services bring
+//! their own ring, sized by `nros-node` from the contract's declared
+//! parameters. An image that states nothing gets the one table it had.
 //!
 //! The three families were one number until phase-454 W6.b, so a subscriber
 //! ring entry paid for the largest type a SERVICE carried, 32 x 8 times over.

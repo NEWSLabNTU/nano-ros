@@ -13,6 +13,13 @@ fn main() {
     println!("cargo:rerun-if-env-changed=ZPICO_MULTICAST_TRANSPORT");
     println!("cargo:rerun-if-env-changed=NROS_SUBSCRIBER_BUFFER_SIZE");
     println!("cargo:rerun-if-env-changed=ZPICO_SERVICE_BUFFER_SIZE");
+    // phase-461 W1 - the per-family service inboxes (the four `KCONFIG_KNOBS`
+    // rows also print this line; stating it here keeps the watch list in one
+    // place with its siblings).
+    println!("cargo:rerun-if-env-changed=NROS_SERVICE_INBOX_BYTES");
+    println!("cargo:rerun-if-env-changed=NROS_SERVICE_INBOX_DEPTH");
+    println!("cargo:rerun-if-env-changed=NROS_ACTION_INBOX_BYTES");
+    println!("cargo:rerun-if-env-changed=NROS_ACTION_INBOX_DEPTH");
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_TIMEOUT_MS");
     println!("cargo:rerun-if-env-changed=NROS_KEYEXPR_STRING_SIZE");
     println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_RING_DEPTH");
@@ -49,15 +56,32 @@ fn main() {
         declared_usize("NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE"),
         1024,
     );
-    // phase-454 W6.a — the `SLOT_BYTES` factor of `SERVICE_BUFFERS`
+    // phase-454 W6.a - the `SLOT_BYTES` factor of the service inbox
     // (RFC-0100 D2's `pool = Σ COUNT × SLOTS × SLOT_BYTES + fixed`, where COUNT
-    // is `ZPICO_MAX_SESSIONS × ZPICO_MAX_QUERYABLES` and SLOTS is
-    // `SERVICE_REQUEST_RING_DEPTH`). The declared service surface supplies the
-    // DEFAULT; a stated knob, and the Kconfig rung on Zephyr, still win.
-    let svc_size: usize = env_usize(
-        "ZPICO_SERVICE_BUFFER_SIZE",
-        declared_service_request_bytes(sizing.as_ref()).unwrap_or(SERVICE_BUFFER_SIZE_DEFAULT),
-    );
+    // is `ZPICO_MAX_SESSIONS x ZPICO_MAX_QUERYABLES` and SLOTS is the ring
+    // depth). The declared service surface supplies the DEFAULT; a stated
+    // knob, and the Kconfig rung on Zephyr, still win.
+    //
+    // phase-461 W1 - `ZPICO_SERVICE_BUFFER_SIZE` / `CONFIG_NROS_SERVICE_BUFFER_SIZE`
+    // is the one-release ALIAS of `NROS_SERVICE_INBOX_BYTES`: it resolves
+    // exactly as before, and the new name outranks it when both are stated.
+    let declared_request_bytes =
+        declared_service_request_bytes(sizing.as_ref()).unwrap_or(SERVICE_BUFFER_SIZE_DEFAULT);
+    let svc_size: usize = env_usize("ZPICO_SERVICE_BUFFER_SIZE", declared_request_bytes);
+    // phase-461 W1 - one inbox per FAMILY (issue 1352). The user-service and
+    // action families each get a slot size and a ring depth; both default to
+    // what the single table was (the derived-or-1024 slot at depth 4), so an
+    // image that states nothing is byte-identical to the one table it had.
+    // W3 prices the two families apart (`_Request` bounds per family); the
+    // parameter and lifecycle families do not appear here at all -- they bring
+    // their own ring (W2), sized by the crate that can price their requests.
+    let service_inbox_bytes: usize = env_usize("NROS_SERVICE_INBOX_BYTES", svc_size);
+    let service_inbox_depth: usize =
+        env_usize_min("NROS_SERVICE_INBOX_DEPTH", SERVICE_INBOX_DEPTH_DEFAULT, 1);
+    let action_inbox_bytes: usize = env_usize("NROS_ACTION_INBOX_BYTES", svc_size);
+    let action_inbox_depth: usize =
+        env_usize_min("NROS_ACTION_INBOX_DEPTH", SERVICE_INBOX_DEPTH_DEFAULT, 1);
+    let action_inbox_queryables: usize = declared_action_queryables(sizing.as_ref());
     // Phase 160.C.2 — bumped 10_000 → 30_000. The original 10 s default
     // was too short for slow zenoh-pico flushes on Zephyr/NSOS where
     // each publish/query can take ~2.5 s under Z_FEATURE_INTEREST=1. An
@@ -197,9 +221,26 @@ fn main() {
         format!(
             "/// Subscriber buffer size (set via NROS_SUBSCRIBER_BUFFER_SIZE, default 1024).\n\
              pub const SUBSCRIBER_BUFFER_SIZE: usize = {sub_size};\n\
-             /// Service request buffer size (set via ZPICO_SERVICE_BUFFER_SIZE; default is\n\
-             /// the largest declared service/action bound, floored at 1024 — phase-454 W6.a).\n\
-             pub const SERVICE_BUFFER_SIZE: usize = {svc_size};\n\
+             /// phase-461 W1 - the one-release alias of `SERVICE_INBOX_BYTES` (set via\n\
+             /// ZPICO_SERVICE_BUFFER_SIZE; default is the largest declared service/action\n\
+             /// bound, floored at 1024 - phase-454 W6.a). `NROS_SERVICE_INBOX_BYTES` wins.\n\
+             pub const SERVICE_BUFFER_SIZE: usize = {service_inbox_bytes};\n\
+             /// phase-461 W1 - the user-service family's slot size (set via\n\
+             /// NROS_SERVICE_INBOX_BYTES; default is what ZPICO_SERVICE_BUFFER_SIZE resolved).\n\
+             pub const SERVICE_INBOX_BYTES: usize = {service_inbox_bytes};\n\
+             /// phase-461 W1 - the user-service family's ring depth (set via\n\
+             /// NROS_SERVICE_INBOX_DEPTH, default {SERVICE_INBOX_DEPTH_DEFAULT}).\n\
+             pub const SERVICE_INBOX_DEPTH: usize = {service_inbox_depth};\n\
+             /// phase-461 W1 - the action family's slot size (set via NROS_ACTION_INBOX_BYTES;\n\
+             /// default is the user-service family's, until W3 prices them apart).\n\
+             pub const ACTION_INBOX_BYTES: usize = {action_inbox_bytes};\n\
+             /// phase-461 W1 - the action family's ring depth (set via NROS_ACTION_INBOX_DEPTH,\n\
+             /// default {SERVICE_INBOX_DEPTH_DEFAULT}: the twin of ZPICO_MAX_PENDING_REPLIES).\n\
+             pub const ACTION_INBOX_DEPTH: usize = {action_inbox_depth};\n\
+             /// phase-461 W1 - queryables the action family declares per session: three per\n\
+             /// declared action server, 0 when this image declares none (its action\n\
+             /// queryables then draw user-service rings, which is the single-table behaviour).\n\
+             pub const ACTION_INBOX_QUERYABLES: usize = {action_inbox_queryables};\n\
              /// Default service client RPC timeout in milliseconds\n\
              /// (set via NROS_SERVICE_TIMEOUT_MS, default 30000).\n\
              pub const SERVICE_DEFAULT_TIMEOUT_MS: u32 = {service_timeout_ms};\n\
@@ -264,6 +305,33 @@ const SUBSCRIBER_RING_DEPTH_DEFAULT: usize = 4;
 /// [`declared_service_request_bytes`] for why the app's own declarations may
 /// raise this number and may not lower it.
 const SERVICE_BUFFER_SIZE_DEFAULT: usize = 1024;
+
+/// The per-queryable request ring depth when nothing states one -- for both
+/// shim families. Phase 237 follow-up's 4, chosen for the action path ("a
+/// burst of queries delivered in one read-task batch") and equal to the C
+/// shim's `ZPICO_MAX_PENDING_REPLIES` on purpose; phase-461 W1 makes it a knob
+/// per family so the parameter family can stop paying it (issue 1352).
+const SERVICE_INBOX_DEPTH_DEFAULT: usize = 4;
+
+/// phase-461 W1 -- how many queryables this image's declared action servers
+/// will register per session: three each (`send_goal`, `cancel_goal`,
+/// `get_result`; the `/status` cache queryable is a transient-local publisher's
+/// and takes no inbox). ZERO with no descriptor or no `action_server` row,
+/// and zero is the single-table answer: the action table is then empty and an
+/// action queryable draws a user-service ring in `shim/service.rs`.
+///
+/// Counted from the same descriptor `declared_service_request_bytes` reads,
+/// so the count is exact on a leaf that states its endpoints and absent on
+/// one that does not -- never a guess.
+fn declared_action_queryables(desc: Option<&SizingDescriptor>) -> usize {
+    desc.map_or(0, |d| {
+        d.endpoints
+            .iter()
+            .filter(|e| matches!(e.kind, EndpointKind::ActionServer))
+            .count()
+            * 3
+    })
+}
 
 /// The descriptor this build was pointed at, or `None`.
 ///
@@ -541,6 +609,20 @@ const KCONFIG_KNOBS: &[(&str, &str)] = &[
         "ZPICO_SERVICE_BUFFER_SIZE",
         "CONFIG_NROS_SERVICE_BUFFER_SIZE",
     ),
+    // phase-461 W1 -- the per-family inbox pairs, RMW-agnostic names on the
+    // Kconfig side (phase-403's rule) and resolved under those names by
+    // `nros_resolve_knobs()`, so W3's `NROS_DERIVED_*` twin has its
+    // `NROS_RESOLVED_NROS_*` counterpart waiting.
+    (
+        "NROS_SERVICE_INBOX_BYTES",
+        "CONFIG_NROS_SERVICE_INBOX_BYTES",
+    ),
+    (
+        "NROS_SERVICE_INBOX_DEPTH",
+        "CONFIG_NROS_SERVICE_INBOX_DEPTH",
+    ),
+    ("NROS_ACTION_INBOX_BYTES", "CONFIG_NROS_ACTION_INBOX_BYTES"),
+    ("NROS_ACTION_INBOX_DEPTH", "CONFIG_NROS_ACTION_INBOX_DEPTH"),
 ];
 
 /// issue 0827 — a floored knob must REFUSE a value below its floor, never

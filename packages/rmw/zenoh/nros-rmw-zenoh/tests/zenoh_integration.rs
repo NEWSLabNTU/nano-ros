@@ -969,3 +969,210 @@ fn a_declined_query_hands_its_reply_slot_back() {
 
     session.close().expect("Failed to close session");
 }
+
+// ============================================================================
+// phase-461 W1 - the service inbox ring is a header over caller-visible storage
+// ============================================================================
+
+use nros_rmw::ServiceTrait;
+use nros_rmw_zenoh::{
+    ZenohSession,
+    shim::{InboxRing, InboxSpec, InboxStorage},
+};
+
+/// A builtin family's ring, as `nros-node` will declare one (phase-461 W2):
+/// storage this crate owns, at a geometry only it can price. 96-byte slots,
+/// one deep -- neither number is a shim default, so a request that lands here
+/// used the caller's geometry and not the crate's.
+static CALLER_INBOX: InboxStorage<96, 1> = InboxStorage::new();
+static CALLER_RING: InboxRing = InboxRing::over(&CALLER_INBOX);
+
+/// The service the caller-ring probe declares; its own key, so nothing else
+/// answers on it.
+const CALLER_SERVICE: ServiceInfo<'static> = ServiceInfo::new(
+    "/nros_caller_inbox_probe",
+    "example_interfaces/srv/AddTwoInts",
+    "TypeHashNotSupported",
+);
+
+/// No router, no session: the storage and its header are plain statics of
+/// THIS crate, which is what "caller-visible" means. The header is `const`-
+/// built over the storage, so a `static` ring can be handed to
+/// `InboxSpec::Caller` from anywhere.
+#[test]
+fn a_caller_ring_is_a_static_of_the_callers_crate() {
+    assert!(CALLER_RING.is_bound());
+    assert!(CALLER_RING.is_over(&CALLER_INBOX));
+    assert_eq!((CALLER_RING.slot_bytes(), CALLER_RING.depth()), (96, 1));
+    assert_eq!((CALLER_INBOX.slot_bytes(), CALLER_INBOX.depth()), (96, 1));
+    assert_eq!(CALLER_RING.storage_bytes(), InboxStorage::<96, 1>::BYTES);
+    // And the shim's own default is the single table this phase split.
+    assert_eq!(nros_rmw_zenoh::SERVICE_BUFFER_SIZE, 1024);
+}
+
+/// Spin the session until the server holds a request, or `budget` elapses.
+fn spin_until_request(
+    session: &mut ZenohSession,
+    server: &ZenohServiceServer,
+    budget: Duration,
+) -> bool {
+    let deadline = std::time::Instant::now() + budget;
+    while std::time::Instant::now() < deadline {
+        let _ = session.spin_once(5);
+        if server.has_request() {
+            return true;
+        }
+    }
+    false
+}
+
+/// The REAL callback, through the REAL C shim, into a ring the caller
+/// supplied: the geometry the request meets is 96 x 1, not the crate's
+/// 1024 x 4. Three arms, each of which the single table cannot produce:
+///
+/// 1. 96 bytes land, and `take_request` hands them back;
+/// 2. 97 bytes overflow the caller's slot: `MessageTooLarge`, from a payload
+///    the shim's 1024-byte slot would have accepted;
+/// 3. a second request at depth 1 is the ring-full drop, which the C shim
+///    counts as a DECLINE (the callback returned before taking a reply seq).
+#[test]
+fn a_service_server_receives_through_the_ring_the_caller_supplied() {
+    if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
+        nros_tests::skip_class!(capability, "{why}");
+    }
+    let _router = ZenohRouter::start_unique().expect("failed to start zenohd");
+    let router_locator = _router.locator();
+
+    let config = TransportConfig {
+        locator: Some(router_locator.as_str()),
+        mode: SessionMode::Client,
+        properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
+    };
+    let mut session = ZenohTransport::open(&config)
+        .unwrap_or_else(|e| panic!("could not open a client session on {router_locator}: {e:?}"));
+
+    let mut server = ZenohServiceServer::new_with_inbox(
+        session.inner(),
+        &CALLER_SERVICE,
+        None,
+        InboxSpec::Caller(&CALLER_RING),
+    )
+    .expect("failed to declare the caller-ring service server");
+    let queryable = server.queryable_handle();
+
+    let key: heapless::String<256> = CALLER_SERVICE.to_key();
+    let mut keyexpr = [0u8; 257];
+    assert!(key.len() < keyexpr.len(), "probe keyexpr does not fit");
+    keyexpr[..key.len()].copy_from_slice(key.as_bytes());
+
+    let budget = Duration::from_secs(5);
+    let mut recv = [0u8; 256];
+
+    // 1 - the slot size is the caller's: 96 bytes land.
+    let fits = [0x42u8; 96];
+    session
+        .inner()
+        .get_start(&keyexpr, &fits, PROBE_QUERY_TIMEOUT_MS)
+        .expect("query start");
+    assert!(
+        spin_until_request(&mut session, &server, budget),
+        "the 96-byte request never reached the caller ring on {key}"
+    );
+    let seq = {
+        let req = server
+            .take_request(&mut recv)
+            .expect("a 96-byte request fits a 96-byte caller slot")
+            .expect("the ring reported a request");
+        assert_eq!(req.data, &fits[..], "the bytes taken are the bytes sent");
+        req.sequence_number
+    };
+    // Answer it, so the reply slot the C shim cloned is released.
+    server
+        .send_response(seq, b"ok")
+        .expect("the reply to a taken request goes out");
+
+    // 2 - one byte past the caller's slot: overflow, where the shim's own
+    // 1024-byte slot would have taken it.
+    let too_big = [0x43u8; 97];
+    session
+        .inner()
+        .get_start(&keyexpr, &too_big, PROBE_QUERY_TIMEOUT_MS)
+        .expect("query start");
+    assert!(
+        spin_until_request(&mut session, &server, budget),
+        "the 97-byte request never reached the caller ring on {key}"
+    );
+    assert!(
+        matches!(
+            server.take_request(&mut recv),
+            Err(nros_rmw::TransportError::MessageTooLarge)
+        ),
+        "97 bytes into a 96-byte caller slot must be MessageTooLarge"
+    );
+
+    // 3 - depth is the caller's: with one request held, the next is the
+    // ring-full drop, which the callback declines before taking a reply seq.
+    let declines_before = session
+        .inner()
+        .reply_slot_declines(queryable)
+        .expect("the queryable handle addresses a decline count");
+    let first = [0x44u8; 8];
+    let second = [0x45u8; 8];
+    session
+        .inner()
+        .get_start(&keyexpr, &first, PROBE_QUERY_TIMEOUT_MS)
+        .expect("query start");
+    session
+        .inner()
+        .get_start(&keyexpr, &second, PROBE_QUERY_TIMEOUT_MS)
+        .expect("query start");
+    let deadline = std::time::Instant::now() + budget;
+    let mut declines = declines_before;
+    while std::time::Instant::now() < deadline {
+        let _ = session.spin_once(5);
+        declines = session
+            .inner()
+            .reply_slot_declines(queryable)
+            .expect("the queryable handle addresses a decline count");
+        if declines > declines_before {
+            break;
+        }
+    }
+    assert_eq!(
+        declines,
+        declines_before + 1,
+        "a second request at depth 1 is exactly one ring-full decline"
+    );
+    let seq = {
+        let req = server
+            .take_request(&mut recv)
+            .expect("the first of the two requests is held")
+            .expect("the ring reported a request");
+        assert_eq!(
+            req.data,
+            &first[..],
+            "the held request is the FIRST (drop-newest)"
+        );
+        req.sequence_number
+    };
+    server
+        .send_response(seq, b"ok")
+        .expect("the reply to a taken request goes out");
+    assert!(
+        !server.has_request(),
+        "the second request was dropped, not queued behind the first"
+    );
+
+    println!(
+        "phase-461 W1: caller ring {}x{} served 96 B, refused 97 B, declined 1 of 2 at depth 1 \
+         (declines {declines_before} -> {declines})",
+        CALLER_RING.slot_bytes(),
+        CALLER_RING.depth()
+    );
+
+    drop(server);
+    session.close().expect("Failed to close session");
+}
