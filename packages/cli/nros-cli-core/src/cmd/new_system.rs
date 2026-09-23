@@ -399,6 +399,9 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         safety: None,
         param_services: None,
         lifecycle: None,
+        // phase-463 W3 -- a scaffold waives nothing; a waiver is a person
+        // taking responsibility for one row of a census check.
+        census: None,
         // RFC-0078 — no declared bounds; absent is the default.
         wcet: None,
     };
