@@ -194,6 +194,24 @@ pub fn register_linked_rmw() {
     }
 }
 
+/// phase-463 W2 -- `$NROS_CENSUS_OUT`, the census switch, as this funnel sees
+/// it.
+///
+/// The switch belongs to the HOSTED funnels and to nothing else: they are the
+/// two places in the tree that resolve through the `env` capability (issue
+/// 0687), and no RTOS board has it, so census mode does not exist on the RTOS
+/// road rather than being compiled out of it. `nros-cpp`'s
+/// `nros_board_native_run_components_named` is the one that PRODUCES a census
+/// (the C++ ABI is where the recorder's hooks are); this one, the Rust entry's
+/// funnel, reads the same variable so that a census asked of a Rust entry gets
+/// an answer instead of a successful run with no file.
+///
+/// Empty is unset -- the same reading the C++ funnel gives it.
+fn census_requested() -> Option<std::ffi::OsString> {
+    let raw = std::env::var_os("NROS_CENSUS_OUT")?;
+    if raw.is_empty() { None } else { Some(raw) }
+}
+
 impl BoardEntry for LinuxBoard {
     /// Drive the boot → setup → exit flow. POSIX has no transport
     /// bringup or network-wait step:
@@ -422,6 +440,32 @@ impl LinuxBoard {
         };
         match result {
             Ok(()) => {
+                // phase-463 W2 -- census mode reaches its answer where the
+                // spin ends, which on this funnel is here: the generated Rust
+                // entry registers and then spins INSIDE `setup`
+                // (`__nros_hosted_spin_if_requested`), so there is no earlier
+                // point at which the declarations are complete.
+                //
+                // What it answers with today is a REFUSAL, and the refusal is
+                // the honest result rather than a placeholder. A census is the
+                // recorder's document, the recorder is filled by the C++ ABI's
+                // hooks and by the recording backend, and a Rust entry links
+                // neither: `register_linked_rmw` above registers the shipping
+                // backend, and `nros/metadata-mode` has no node cursor on this
+                // road (phase-463 W1 put the four hooks on `nros-cpp`). Left
+                // to fall through, this run would exit 0, write nothing, and
+                // leave `nros ws entity-census run` reporting a missing file
+                // with no cause. Naming the cause is what this costs.
+                if let Some(path) = census_requested() {
+                    <Self as BoardPrint>::println(format_args!(
+                        "nros census: $NROS_CENSUS_OUT=`{}` -- a RUST entry has no recorder \
+                         to dump (phase-463 W1's hooks are on the C++ ABI). The census \
+                         producer is the C++ entry funnel; a Rust component's declarations \
+                         come from phase-307's own producer.",
+                        path.to_string_lossy()
+                    ));
+                    <Self as BoardExit>::exit_failure();
+                }
                 <Self as BoardPrint>::println(format_args!("nros: application complete"));
                 <Self as BoardExit>::exit_success();
             }
