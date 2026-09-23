@@ -117,10 +117,20 @@ ENV DEBIAN_FRONTEND=noninteractive
 # context (the way it already builds ci-base since issue 1201) and why
 # `Dockerfile.dockerignore` sits beside this file.
 COPY ci/docker/apt-packages.txt /opt/nros-ssot/ci/docker/apt-packages.txt
-RUN apt-get update \
-    && sed -e 's/#.*//' /opt/nros-ssot/ci/docker/apt-packages.txt \
-       | xargs -r apt-get install -y --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+# NOT a pipe into `xargs -r`: Docker's default shell is `sh -c` with no
+# `pipefail`, so a `sed` that failed would leave `xargs -r` a silent no-op and
+# the image would build clean with NOTHING installed -- which is the exact
+# shape of the defect this file exists to remove, one layer down. `set -e`
+# aborts on the failed assignment instead, and the word count refuses a list
+# that has gone empty or garbled: a step that cannot fail is not a step.
+RUN set -eu; \
+    pkgs="$(sed -e 's/#.*//' /opt/nros-ssot/ci/docker/apt-packages.txt)"; \
+    n="$(echo $pkgs | wc -w)"; \
+    if [ "$n" -lt 10 ]; then echo "apt-packages.txt yielded only $n package(s)" >&2; exit 1; fi; \
+    echo "shared apt closure ($n): $(echo $pkgs)"; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends $pkgs; \
+    rm -rf /var/lib/apt/lists/*
 
 # This image's OWN packages — the ones ci-base has no use for. A name here that
 # is ALSO in the shared list is refused by `check-ci-image-apt-packages`.
