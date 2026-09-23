@@ -62,6 +62,11 @@ pub mod qos_agreement;
 // shared by the CLI's entry emitters and the nros::main! proc-macro, and
 // fail-loud on anything it cannot lower.
 pub mod qos_override;
+// phase-459 W4 (issue 1427, RFC-0079) - the board's priority ADDRESS PLAN,
+// which the realizer allocates a derived tier out of. Without it `realize_rtos`
+// mapped dense rank 0 onto the kernel's most urgent number, which on Zephyr
+// sits above the transport threads that feed the application.
+pub mod priority_plan;
 pub mod rtos_realizer;
 pub mod sidecar_slots;
 /// RFC-0078 — declared WCETs, keyed per named measurement profile.

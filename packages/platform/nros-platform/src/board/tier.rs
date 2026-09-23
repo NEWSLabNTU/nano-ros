@@ -29,11 +29,25 @@
 //! So the owner is chosen, not inherited from an ordering: it is the tier that
 //! outranks nothing.
 //!
-//! Priorities are declared on a normalized **0–31** scale (RFC-0016):
-//! 0 = idle, 12 = normal (default app), 31 = critical. The per-RTOS
-//! mappers below lower that to each kernel's native range. Keeping the
-//! scale RTOS-agnostic lets the same `system.toml [tiers.*]` deploy
-//! across families without rewriting priorities.
+//! phase-459 W4 - [`TierSpec::priority`] is a RAW kernel priority, not a
+//! normalized one. This module doc used to say priorities are declared on a
+//! normalized 0-31 scale (RFC-0016): 0 = idle, 12 = normal, 31 = critical,
+//! lowered per RTOS by the mappers below. That has not been true of the
+//! codegen path for a long time - `[tiers.<name>.<rtos>] priority` is written
+//! in the target kernel's own numbering, `resolve_tiers` copies it through
+//! without inverting, and the boards pass it straight to `k_thread_create` /
+//! `xTaskCreate`. The note above about `tiers[0]` depending on the kernel's
+//! direction is that same fact, seen from the other side.
+//!
+//! Where the number COMES FROM is RFC-0079: it is allocated out of the board's
+//! priority address plan (`[board.priority_plan]` /
+//! `[priority_plan]` in the descriptors, resolved per image for Zephyr), whose
+//! `pool.app` band a derived tier is placed in by
+//! `nros-orchestration-ir::rtos_realizer`. An authored tier is judged against
+//! the same plan by `scripts/check-tier-priority-plan*.py`.
+//!
+//! The normalized 0-255 band that DOES exist is the platform ABI's
+//! (`NROS_PLATFORM_PRIORITY_MAX`), and it is the transport's, not a tier's.
 
 /// One scheduling tier: an RTOS task running an `Executor` over the
 /// shared session, admitting only the listed callback groups.

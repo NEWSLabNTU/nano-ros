@@ -22,6 +22,8 @@ use ros_launch_manifest_sched::{
 };
 use std::collections::BTreeMap;
 
+use crate::priority_plan::PriorityPlan;
+
 /// A board's scheduling capabilities — what the realizer may target natively.
 /// The `PlatformSched`/board seam (W5.3) supplies this per board; here it is a
 /// plain descriptor the realizer reads.
@@ -331,31 +333,78 @@ fn dense_node_ranks(ranked: &RankedPlan) -> (BTreeMap<&str, usize>, usize) {
     (node_rank, next.max(1))
 }
 
-/// Map a dense rank (0 = most urgent) to a board priority, honoring the count
-/// and direction. Clamps into the band when ranks exceed `n_priorities`.
-fn rank_to_priority(rank: usize, rank_count: usize, caps: &SchedCaps) -> i64 {
-    let n = caps.n_priorities.max(1) as usize;
-    // Compress dense ranks into [0, n): if there is room, 1:1; else clamp.
-    let hi = rank_count.min(n).saturating_sub(1);
-    let pos = rank.min(hi); // position from the top, 0 = most urgent
-    if caps.low_number_is_high {
-        pos as i64
-    } else {
-        (hi - pos) as i64
+/// phase-459 W4 (issue 1427) - map a dense rank (0 = most urgent) to a board
+/// priority ALLOCATED OUT OF THE PLAN's application pool (RFC-0079).
+///
+/// Rank 0 takes the most urgent priority `pool.app` holds, rank 1 the next,
+/// and so on in the plan's direction. A rank past the pool's width is CLAMPED
+/// to its least urgent priority and the caller records a `Degradation` naming
+/// the pool - the two nodes then share a priority, which is a weakening of the
+/// derived order and never silent.
+///
+/// This used to be `rank_to_priority(rank, rank_count, caps)`, which allocated
+/// from the kernel's whole range: on Zephyr dense rank 0 became priority 0,
+/// above the transport threads that feed the application. `caps` no longer
+/// decides a number; it still describes which DIMENSIONS the kernel realizes
+/// natively, which is a different question.
+fn rank_to_priority(rank: usize, plan: &PriorityPlan) -> (i64, bool) {
+    match plan.nth_app_priority(rank) {
+        Some(p) => (p, false),
+        None => (plan.least_urgent_app_priority(), true),
     }
 }
 
 /// Realize the agnostic ranking into an RTOS plan for a board.
-pub fn realize_rtos(ranked: &RankedPlan, input: &MapperInput, caps: &SchedCaps) -> RtosPlan {
+///
+/// phase-459 W4 - `plan` is the board's priority address plan (RFC-0079):
+/// where the application's priorities live, and what they must stay below.
+/// [`crate::priority_plan::PriorityPlan::for_target`] answers it from a tier
+/// key; an image resolves its own with `from_zephyr_dotconfig`.
+pub fn realize_rtos(
+    ranked: &RankedPlan,
+    input: &MapperInput,
+    caps: &SchedCaps,
+    plan: &PriorityPlan,
+) -> RtosPlan {
     let facts = node_facts(input);
-    let (node_rank, rank_count) = dense_node_ranks(ranked);
+    let (node_rank, _rank_count) = dense_node_ranks(ranked);
 
     let mut nodes: Vec<RealizedNode> = Vec::new();
     let mut degradations: Vec<Degradation> = Vec::new();
 
     for (name, rank) in &node_rank {
         let f = facts.get(name);
-        let priority = rank_to_priority(*rank, rank_count, caps);
+        let (priority, clamped) = rank_to_priority(*rank, plan);
+        if clamped {
+            let pool = format!(
+                "[{}, {}] ({} priorities, from {})",
+                plan.app.lo,
+                plan.app.hi,
+                plan.app.width(),
+                plan.source
+            );
+            let reason = if plan.app.width() == 0 {
+                format!(
+                    "the board's application pool {pool} is EMPTY - the reserved \
+                     bands {:?} leave the application nothing to be allocated from, \
+                     so priority {priority} is not a pool address and this image \
+                     cannot honour a derived tier (RFC-0079, issue 1427).",
+                    plan.reserved
+                )
+            } else {
+                format!(
+                    "rank {rank} is past the board's application pool {pool}, so this \
+                     node shares the pool's least urgent priority {priority} with the \
+                     rank above it. The derived ORDER is weaker than the ranking \
+                     asked for (RFC-0079)."
+                )
+            };
+            degradations.push(Degradation {
+                node: (*name).to_string(),
+                dim: "priority",
+                reason,
+            });
+        }
         let period_us = f
             .and_then(|f| f.period_ms)
             .map(|ms| (ms * 1000.0).round().max(0.0) as u64);
@@ -717,6 +766,15 @@ mod tests {
         }
     }
 
+    /// phase-459 W4 - the plan these synthetic boards allocate from. They
+    /// describe a KERNEL (how many priorities, which way they run) and not an
+    /// image, so the honest plan is the whole range with nothing reserved:
+    /// what the realizer did for every board before this wave. The cases that
+    /// are about a real plan build one themselves.
+    fn plan_for(caps: &SchedCaps) -> PriorityPlan {
+        PriorityPlan::whole_range(caps.n_priorities, caps.low_number_is_high)
+    }
+
     fn timer_path(name: &str, rate: f64, deadline: Option<f64>, exec: Option<f64>) -> MapperPath {
         MapperPath {
             name: name.to_string(),
@@ -760,7 +818,12 @@ mod tests {
     fn deadline_native_on_edf_board() {
         let input = input_two();
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps(true, false, false));
+        let plan = realize_rtos(
+            &ranked,
+            &input,
+            &caps(true, false, false),
+            &plan_for(&caps(true, false, false)),
+        );
 
         let hi = plan.nodes.iter().find(|n| n.name == "/hi").unwrap();
         assert_eq!(hi.sched_class, "edf");
@@ -778,7 +841,12 @@ mod tests {
     fn deadline_degrades_recorded_without_edf() {
         let input = input_two();
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps(false, false, false));
+        let plan = realize_rtos(
+            &ranked,
+            &input,
+            &caps(false, false, false),
+            &plan_for(&caps(false, false, false)),
+        );
 
         let hi = plan.nodes.iter().find(|n| n.name == "/hi").unwrap();
         assert_eq!(hi.sched_class, "fifo");
@@ -798,13 +866,23 @@ mod tests {
 
         let ranked = chain_aware_rank(&input);
         // Reservation board → native.
-        let native = realize_rtos(&ranked, &input, &caps(true, true, false));
+        let native = realize_rtos(
+            &ranked,
+            &input,
+            &caps(true, true, false),
+            &plan_for(&caps(true, true, false)),
+        );
         let hi_n = native.nodes.iter().find(|n| n.name == "/hi").unwrap();
         assert_eq!(hi_n.sched_class, "sporadic");
         assert_eq!(hi_n.budget_us, Some(3_000));
         assert_eq!(hi_n.budget_real, DimRealization::Native);
         // No reservation → executor backfill (still sporadic, not dropped).
-        let bf = realize_rtos(&ranked, &input, &caps(true, false, false));
+        let bf = realize_rtos(
+            &ranked,
+            &input,
+            &caps(true, false, false),
+            &plan_for(&caps(true, false, false)),
+        );
         let hi_b = bf.nodes.iter().find(|n| n.name == "/hi").unwrap();
         assert_eq!(hi_b.budget_real, DimRealization::Backfill);
     }
@@ -861,13 +939,23 @@ mod tests {
         let input = input_two();
         let ranked = chain_aware_rank(&input);
 
-        let zephyr = realize_rtos(&ranked, &input, &sched_caps_for("zephyr"));
+        let zephyr = realize_rtos(
+            &ranked,
+            &input,
+            &sched_caps_for("zephyr"),
+            &plan_for(&sched_caps_for("zephyr")),
+        );
         let hi_z = zephyr.nodes.iter().find(|n| n.name == "/hi").unwrap();
         assert_eq!(hi_z.sched_class, "edf");
         assert_eq!(hi_z.deadline_real, DimRealization::Native);
         assert!(zephyr.degradations.is_empty());
 
-        let freertos = realize_rtos(&ranked, &input, &sched_caps_for("freertos"));
+        let freertos = realize_rtos(
+            &ranked,
+            &input,
+            &sched_caps_for("freertos"),
+            &plan_for(&sched_caps_for("freertos")),
+        );
         let hi_f = freertos.nodes.iter().find(|n| n.name == "/hi").unwrap();
         assert_eq!(hi_f.sched_class, "fifo");
         assert!(matches!(hi_f.deadline_real, DimRealization::Degrade { .. }));
@@ -881,7 +969,7 @@ mod tests {
         let input = input_two();
         let ranked = chain_aware_rank(&input);
         let caps = sched_caps_for("zephyr"); // edf, low_number_is_high
-        let plan = realize_rtos(&ranked, &input, &caps);
+        let plan = realize_rtos(&ranked, &input, &caps, &plan_for(&caps));
         let table = rtos_plan_to_tier_table(&plan, caps.low_number_is_high);
 
         assert_eq!(table.tiers.len(), 2, "one tier per node");
@@ -901,15 +989,97 @@ mod tests {
         let ranked = chain_aware_rank(&input);
         // High-number-is-high (POSIX/FreeRTOS): the more urgent /hi gets the
         // larger number.
-        let hn = realize_rtos(&ranked, &input, &caps(false, false, false));
+        let hn = realize_rtos(
+            &ranked,
+            &input,
+            &caps(false, false, false),
+            &plan_for(&caps(false, false, false)),
+        );
         let hi = hn.nodes.iter().find(|n| n.name == "/hi").unwrap();
         let lo = hn.nodes.iter().find(|n| n.name == "/lo").unwrap();
         assert!(hi.priority > lo.priority, "urgent node higher number");
         // Low-number-is-high (Zephyr/ThreadX): /hi gets the smaller number.
-        let ln = realize_rtos(&ranked, &input, &caps(false, false, true));
+        let ln = realize_rtos(
+            &ranked,
+            &input,
+            &caps(false, false, true),
+            &plan_for(&caps(false, false, true)),
+        );
         let hi2 = ln.nodes.iter().find(|n| n.name == "/hi").unwrap();
         let lo2 = ln.nodes.iter().find(|n| n.name == "/lo").unwrap();
         assert!(hi2.priority < lo2.priority, "urgent node lower number");
+    }
+
+    /// phase-459 W4 (issue 1427) - the allocation happens INSIDE the board's
+    /// application pool, not from rank position.
+    ///
+    /// The plan is the island's, resolved from its Kconfig: 15 preemptive
+    /// priorities with the transport at k_thread 4, so `pool.app` is [5, 14].
+    /// Dense rank 0 must therefore be 5 and rank 1 must be 6 - the numbers
+    /// phase-459 records - and NOT 0 and 1, which would put the derived
+    /// control tier above the transport threads that feed it.
+    #[test]
+    fn priority_plan_allocates_inside_the_application_pool() {
+        let input = input_two();
+        let ranked = chain_aware_rank(&input);
+        let caps = sched_caps_for("zephyr");
+        let plan = PriorityPlan::from_zephyr_dotconfig(
+            "CONFIG_NUM_PREEMPT_PRIORITIES=15\n\
+             CONFIG_NUM_COOP_PRIORITIES=16\n\
+             CONFIG_POSIX_PRIORITY_SCHEDULING=y\n\
+             CONFIG_PREEMPT_ENABLED=y\n\
+             CONFIG_NROS_ZENOH_READ_PRIORITY=200\n\
+             CONFIG_NROS_ZENOH_LEASE_PRIORITY=255\n",
+        )
+        .expect("the island's .config resolves");
+        let realized = realize_rtos(&ranked, &input, &caps, &plan);
+
+        let hi = realized.nodes.iter().find(|n| n.name == "/hi").unwrap();
+        let lo = realized.nodes.iter().find(|n| n.name == "/lo").unwrap();
+        assert_eq!(hi.priority, 5, "rank 0 takes the pool's most urgent end");
+        assert_eq!(lo.priority, 6, "rank 1 the next one down");
+        for n in &realized.nodes {
+            assert!(
+                plan.reserved_band_of(n.priority).is_none(),
+                "{} at {} lands on a reserved band: {:?}",
+                n.name,
+                n.priority,
+                plan.reserved
+            );
+        }
+        assert!(
+            !realized.degradations.iter().any(|d| d.dim == "priority"),
+            "two ranks fit a ten-wide pool: {:?}",
+            realized.degradations
+        );
+    }
+
+    /// A rank past the pool's width is CLAMPED, and says so. A one-wide pool
+    /// cannot express two ranks; the second shares the first's priority and
+    /// the realizer records the weakening rather than inventing a number
+    /// outside the pool.
+    #[test]
+    fn priority_plan_clamps_a_rank_past_the_pool_and_records_it() {
+        let input = input_two();
+        let ranked = chain_aware_rank(&input);
+        let caps = sched_caps_for("zephyr");
+        let narrow = PriorityPlan {
+            app: crate::priority_plan::Band::new(9, 9),
+            ..PriorityPlan::for_target("zephyr")
+        };
+        let realized = realize_rtos(&ranked, &input, &caps, &narrow);
+        assert!(realized.nodes.iter().all(|n| n.priority == 9));
+        let clamped: Vec<&Degradation> = realized
+            .degradations
+            .iter()
+            .filter(|d| d.dim == "priority")
+            .collect();
+        assert_eq!(clamped.len(), 1, "only the rank past the pool: {clamped:?}");
+        assert!(
+            clamped[0].reason.contains("[9, 9]"),
+            "the degradation names the pool: {}",
+            clamped[0].reason
+        );
     }
 
     #[test]
@@ -924,7 +1094,7 @@ mod tests {
             edf: false,
             ..sched_caps_for("zephyr")
         };
-        let plan = realize_rtos(&ranked, &input, &caps);
+        let plan = realize_rtos(&ranked, &input, &caps, &plan_for(&caps));
         let hi = plan.nodes.iter().find(|n| n.name == "/hi").unwrap();
         assert!(matches!(hi.deadline_real, DimRealization::Degrade { .. }));
         assert!(
@@ -957,7 +1127,12 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps(false, false, false));
+        let plan = realize_rtos(
+            &ranked,
+            &input,
+            &caps(false, false, false),
+            &plan_for(&caps(false, false, false)),
+        );
         plan.nodes.into_iter().next().expect("one node realized")
     }
 
@@ -1025,7 +1200,12 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        realize_rtos(&ranked, &input, &caps(false, false, false))
+        realize_rtos(
+            &ranked,
+            &input,
+            &caps(false, false, false),
+            &plan_for(&caps(false, false, false)),
+        )
     }
 
     fn node_with(name: &str, deadline_ms: f64, execs: &[f64]) -> MapperNode {
@@ -1142,7 +1322,12 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps_cores(Some(1)));
+        let plan = realize_rtos(
+            &ranked,
+            &input,
+            &caps_cores(Some(1)),
+            &plan_for(&caps_cores(Some(1))),
+        );
         let u = plan
             .degradations
             .iter()
@@ -1167,7 +1352,12 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps_cores(Some(2)));
+        let plan = realize_rtos(
+            &ranked,
+            &input,
+            &caps_cores(Some(2)),
+            &plan_for(&caps_cores(Some(2))),
+        );
         assert!(!plan.degradations.iter().any(|d| d.dim == "utilization"));
     }
 
@@ -1184,7 +1374,12 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps_cores(None));
+        let plan = realize_rtos(
+            &ranked,
+            &input,
+            &caps_cores(None),
+            &plan_for(&caps_cores(None)),
+        );
         assert!(
             !plan.degradations.iter().any(|d| d.dim == "utilization"),
             "unknown cores must be silent, not assumed to be 1"
@@ -1207,7 +1402,12 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps_cores(Some(1)));
+        let plan = realize_rtos(
+            &ranked,
+            &input,
+            &caps_cores(Some(1)),
+            &plan_for(&caps_cores(Some(1))),
+        );
         let u = plan
             .degradations
             .iter()
@@ -1245,7 +1445,12 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps_smp(Some(2)));
+        let plan = realize_rtos(
+            &ranked,
+            &input,
+            &caps_smp(Some(2)),
+            &plan_for(&caps_smp(Some(2))),
+        );
         let mut cores: Vec<u32> = plan.nodes.iter().filter_map(|n| n.core).collect();
         cores.sort_unstable();
         assert_eq!(cores, vec![0, 1], "both pinned, one per core");
@@ -1272,7 +1477,12 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps_smp(Some(2)));
+        let plan = realize_rtos(
+            &ranked,
+            &input,
+            &caps_smp(Some(2)),
+            &plan_for(&caps_smp(Some(2))),
+        );
         assert!(
             !plan.degradations.iter().any(|d| d.dim == "utilization"),
             "1.80 of 2.00 fits in aggregate, so that check must stay silent — \
@@ -1303,7 +1513,12 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps_smp(Some(2)));
+        let plan = realize_rtos(
+            &ranked,
+            &input,
+            &caps_smp(Some(2)),
+            &plan_for(&caps_smp(Some(2))),
+        );
         assert!(
             plan.nodes.iter().all(|n| n.core.is_none()),
             "one unmeasured node must silence placement for all of them"
@@ -1321,7 +1536,12 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps_smp(Some(1)));
+        let plan = realize_rtos(
+            &ranked,
+            &input,
+            &caps_smp(Some(1)),
+            &plan_for(&caps_smp(Some(1))),
+        );
         assert!(plan.nodes.iter().all(|n| n.core.is_none()));
         assert!(
             plan.nodes
@@ -1342,7 +1562,12 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps_cores(Some(4)));
+        let plan = realize_rtos(
+            &ranked,
+            &input,
+            &caps_cores(Some(4)),
+            &plan_for(&caps_cores(Some(4))),
+        );
         assert!(plan.nodes.iter().all(|n| n.core.is_none()));
     }
 
