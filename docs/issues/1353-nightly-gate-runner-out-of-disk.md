@@ -338,3 +338,46 @@ scheduled `gate` fail, and see whether it appears in
 `check-runs/<jid>/annotations`. If it does, the df summary belongs there; if it
 does not, the numbers have to leave the runner another way (an artifact uploaded
 before the compile tier, or a step that writes them where a later job can read).
+
+## The 42 G is two directories, and one of them is 36 G (2026-09-23)
+
+The breakdown `88e9f940a` added arrived on the first scheduled `host-tests`
+after it — run **35813854577** (03:19), job **107031060491**, which failed the
+usual way (`Free space left: 91 MB`, `FAIL (cpp, rc=101)`, `recipe tier1
+failed`). Both brackets fired and the log survived, so these are a real
+occurrence's numbers.
+
+**`examples/`, before `just ci tier1` (identical after — the tier does not add
+to it):**
+
+```
+ 36G  examples/workspaces
+5.2G  examples/templates
+ 20M  examples/native
+8.3M  examples/rv-virt-threadx
+8.1M  examples/threadx-linux
+8.1M  examples/qemu-armv7a-nuttx
+8.1M  examples/mps2-an385-freertos
+8.0M  examples/zephyr
+4.7M  examples/mps2-an385-baremetal
+660K  examples/esp32-c3-baremetal
+492K  examples/px4
+336K  examples/rv-virt-nuttx
+```
+
+So the 42 G that is gone before the tier starts is **`workspaces` (36 G) plus
+`templates` (5.2 G)** — 98 % of it — and every per-board example leaf together
+is under 70 M. The rest of the run is unchanged from the 2026-09-22
+measurement: 22 G free at the start, 256 K at the end, `packages/cli/target`
+404 M → 13 G, a fresh `target/` at 4.1 G (2.9 G of it `target/debug`),
+`build/` 10 G → 13 G.
+
+**What step 3 can now price.** "Prune what the tier builds" means, concretely,
+the four large workspace fixtures under `examples/workspaces` — they are the
+disk, and the per-board leaves are rounding error. Whether they can be pruned
+is a question about `fixtures.toml` coverage (`lane=native` builds them via
+`Build workspace fixtures`), not about disk, and this issue does not answer it.
+
+Still unchanged: acceptance is a scheduled run reaching a VERDICT on `check
+build` and `check no-std` three nights running, and on the scheduled `gate`
+lane the report itself is still unreadable (section above).
