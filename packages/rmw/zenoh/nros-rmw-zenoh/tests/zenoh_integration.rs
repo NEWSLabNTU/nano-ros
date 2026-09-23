@@ -1010,6 +1010,94 @@ fn a_caller_ring_is_a_static_of_the_callers_crate() {
     assert_eq!(nros_rmw_zenoh::SERVICE_BUFFER_SIZE, 1024);
 }
 
+// ============================================================================
+// phase-461 W2b - the builtin families are selected by name
+// ============================================================================
+
+/// A parameter service exactly as `rclcpp` names one: the endpoint is the last
+/// segment under a node's fully-qualified name.
+const BUILTIN_SERVICE: ServiceInfo<'static> = ServiceInfo::new(
+    "/nros_w2b_probe/planner/set_parameters",
+    "rcl_interfaces/srv/SetParameters",
+    "TypeHashNotSupported",
+);
+
+/// The look-alike: a USER service whose name merely ENDS with one of the
+/// eleven endpoint words. A `contains` would give it the builtin table.
+const LOOKALIKE_SERVICE: ServiceInfo<'static> = ServiceInfo::new(
+    "/nros_w2b_probe/planner/my_set_parameters",
+    "example_interfaces/srv/AddTwoInts",
+    "TypeHashNotSupported",
+);
+
+/// Both servers register through the ORDINARY `new` -- the path
+/// `RmwServiceServer::create` takes -- and both receive, through the real C
+/// shim, on a build whose builtin table is EMPTY because nothing declared an
+/// application service surface.
+///
+/// That empty table is half the guard and the reason this test is worth
+/// running: the look-alike and the real one draw the SAME ring here, so the
+/// name match cannot change anyone's geometry on an undeclared image. Which
+/// TABLE each name selects is `shim::service`'s
+/// `the_builtin_endpoints_are_matched_whole_and_under_a_node`; what this adds
+/// is that the new branch in `new` still registers and still delivers.
+#[test]
+fn a_parameter_named_queryable_and_its_look_alike_both_register_and_receive() {
+    if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
+        nros_tests::skip_class!(capability, "{why}");
+    }
+    let _router = ZenohRouter::start_unique().expect("failed to start zenohd");
+    let router_locator = _router.locator();
+
+    let config = TransportConfig {
+        locator: Some(router_locator.as_str()),
+        mode: SessionMode::Client,
+        properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
+    };
+    let mut session = ZenohTransport::open(&config)
+        .unwrap_or_else(|e| panic!("could not open a client session on {router_locator}: {e:?}"));
+
+    let budget = Duration::from_secs(5);
+    let mut recv = [0u8; 256];
+
+    for (what, info, payload) in [
+        ("the parameter service", &BUILTIN_SERVICE, 0x61u8),
+        ("its look-alike", &LOOKALIKE_SERVICE, 0x62u8),
+    ] {
+        let mut server = ZenohServiceServer::new(session.inner(), info, None)
+            .unwrap_or_else(|e| panic!("{what} could not be declared: {e:?}"));
+        let key: heapless::String<256> = info.to_key();
+        let mut keyexpr = [0u8; 257];
+        assert!(key.len() < keyexpr.len(), "probe keyexpr does not fit");
+        keyexpr[..key.len()].copy_from_slice(key.as_bytes());
+
+        let sent = [payload; 32];
+        session
+            .inner()
+            .get_start(&keyexpr, &sent, PROBE_QUERY_TIMEOUT_MS)
+            .expect("query start");
+        assert!(
+            spin_until_request(&mut session, &server, budget),
+            "{what} never received its request on {key}"
+        );
+        let req = server
+            .take_request(&mut recv)
+            .unwrap_or_else(|e| panic!("{what} could not take its request: {e:?}"))
+            .expect("the ring reported a request");
+        assert_eq!(req.data, &sent[..], "{what} took the bytes that were sent");
+        // No reply: this test is about which ring the REQUEST lands in, and
+        // the reply path is the caller-ring test's subject one function down.
+        // Each server gets its own key and its own queryable, so the query
+        // simply times out on the client side.
+        assert!(!server.has_request(), "{what} held exactly one request");
+    }
+
+    session.close().expect("Failed to close session");
+}
+
 /// Spin the session until the server holds a request, or `budget` elapses.
 fn spin_until_request(
     session: &mut ZenohSession,

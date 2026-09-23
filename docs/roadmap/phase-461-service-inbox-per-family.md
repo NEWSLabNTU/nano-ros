@@ -315,6 +315,25 @@ Claim: phase-461-W2. Depends on: phase-461-W1, phase-460-W2. Owns: packages/core
 
 ### W2b - the builtin families get their own ring, inside the zenoh shim
 
+**The W2 seam is built and UNUSED, and that is measured, not feared.** W2's
+own report records `PARAM_INBOX_COUNT` as 0 and the image as byte-for-byte
+identical, because `nros-node` reaches its backend only through
+`nros-rmw-cffi`'s C vtable and `rmw_vtable.create_service` has no argument
+that carries a ring. W2 is therefore geometry plus a gate, waiting on an ABI
+hop through four files: `packages/core/nros-rmw-abi/include/nros/` (the
+slot), `packages/rmw/cffi/src/rust_adapter.rs` (the trampoline),
+`packages/rmw/zenoh/nros-rmw-zenoh/src/shim/session.rs`
+(`create_service_with_inbox`) and
+`packages/core/nros-node/src/executor/spin.rs` (the registration call site).
+
+W2 and W2b are SIBLINGS, not alternatives. W2's `request_max` and W2b's
+`param_request_max_from` derive the same 672 B from the same
+`NROS_DECLARED_PARAM_SERVICE_SHAPE` token, and that agreement is the check
+that keeps them honest. The ABI hop stays the right answer for a family
+whose bound needs the parameter STORE's capacities; W2b is the cheaper path
+that needs none of those four files, which is why the island's bytes come
+back now.
+
 W2 was written on the assumption that `nros-node` could hand its
 `PARAM_INBOX` down to the zenoh backend. It cannot: `nros-node` reaches its
 backend only through `nros-rmw-cffi`'s C vtable, whose `create_service`
@@ -329,6 +348,74 @@ one geometry is stated once and derived to the same number by two build
 scripts on purpose.
 
 Claim: phase-461-W2b. Depends on: phase-461-W1, phase-461-W2. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs (the family selection and BUILTIN_INBOX), packages/rmw/zenoh/nros-rmw-zenoh/build.rs (the third table's sizing), packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs, scripts/check/config-knob-census.py (the knob's description), book/src/reference/environment-variables.md. Gate: the zenoh_integration builtin-family test and just check knob-single-reader. Status: PR #1224, in the queue; frees 83,040 B at the island's 32-bit entry size against a 53,912 B overflow, which is 29,128 B of headroom if the projection holds. The projection is island-W3's to confirm or refute on a real link.
+
+### W2b [rmw-zenoh] -- the builtin families get a table, selected by name
+
+W2 saves zero bytes and says why. This is the other road to the same bytes, and
+it needs no ABI change at all: `shim/service.rs` ALREADY reads the family off
+the service name -- `if service.name.contains("/_action/")` draws from the
+action table -- so the six ROS parameter services and the five REP-2002
+lifecycle services draw from a third one, `BUILTIN_INBOX`, sized
+`NROS_PARAM_SERVICE_INBOX_BYTES` x `NROS_PARAM_SERVICE_INBOX_DEPTH`.
+
+ONE table for both families, not two, because their geometry is equal: both
+carry `rcl_interfaces`-shaped requests bounded by the contract's declared
+parameters, and every lifecycle request is smaller than every parameter one.
+Two tables would always hold the same number.
+
+**The slot is derived, and this crate abstains where it is not entitled to
+answer.** The default is the largest of the three REQUEST bounds
+`nros-node`'s `node_bound` computes -- `names_request`, `list_request`,
+`set_request` -- read off the same `NROS_DECLARED_PARAM_SERVICE_SHAPE` token
+W2 reads, over both roads, descriptor first. The other five fields are
+REPLIES, which leave through the executor-side buffer pair and never touch an
+inbox; that asymmetry is the saving. Three of `node_bound`'s terms need the
+parameter STORE's capacities, which are board facts `nros-params`' build script
+resolves and which this crate has no business reading (issue 1025 is what two
+resolutions of one number cost) -- so a shape declaring a string, byte-array,
+bool-array, word-array or string-array parameter makes this ABSTAIN and the
+user-service slot stands. With those five counts zero the three request bounds
+are the shape alone. The island's shapes are exactly that case, which is why
+its 672 B falls out here and matches W2's to the byte.
+
+**The depth is 1**, for the reason W2 gives: a parameter client sends one
+request and waits, and a node's services are polled serially in one spin.
+
+**The mis-detection guard has two independent halves, and both are tested.**
+A `contains` is what the action family can afford, because `/_action/` is an
+infix ROS reserves; a bare endpoint name is not. So (a) the match is the whole
+final `/`-segment with a non-empty node FQN in front of it, which rejects
+`.../set_parameters_v2`, `.../my_set_parameters`, `.../set_parameters/extra`
+and a bare `set_parameters`; and (b) the name only selects a TABLE, and the
+table is EMPTY unless this image's own declaration left slots to the runtime.
+`BUILTIN_INBOX_PER_SESSION` is `ZPICO_MAX_QUERYABLES` minus what the
+declaration attributed to the application -- `NROS_DECLARED_SERVICE_SERVERS`
+plus the transient-local publishers, read exactly as `nros-zpico-build` reads
+them when it sizes that same table, because a subtraction is only sound
+against the number it subtracts from. A SUBTRACTION, never a restatement of
+"six per node and five", which is what
+issue 0827 forbids and `check-infra-queryable-counts` refuses of an RMW
+backend. An image that declares nothing, and an image that declares every one
+of its queryables as its own, both get an empty builtin table and today's
+behaviour byte for byte. Note the direction is the OPPOSITE of the table's own
+sizing rule: an absent declaration makes `nros-zpico-build` assume the
+infrastructure is present, because over-reserving a table costs RAM while
+under-reserving fails at boot; here an absent declaration must not SHRINK
+anyone's ring, so it abstains.
+
+Acceptance: `cargo test -p nros-rmw-zenoh --features platform-posix --lib`
+with the whole-segment match and the empty-table fallback; the router-backed
+`zenoh_integration` tests unchanged; `just mem-report` on
+`bins/sim-clock-listener` byte-identical at the defaults, and the island's
+declaration reproduced natively on the same fixture to price the saving.
+
+Limit, stated rather than left to be re-discovered: this wave prices the
+families whose requests the SHAPE alone bounds. A contract declaring a
+string-valued or array-valued parameter still pays the user-service slot here,
+and closing that is W2's ABI hop or a carrier for the derived size -- not a
+second resolution of the board's capacities in this crate.
+
+Claim: phase-461-W2b. Depends on: phase-461-W1. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs (the third table and the name match; W1 then W2b then W4), packages/rmw/zenoh/nros-rmw-zenoh/build.rs (BUILTIN_INBOX_BYTES/_DEPTH, declared_app_queryables, param_request_max_from; W1 then W2b then W3), scripts/check/config-knob-census.py (the two knob rows, shared with W2). Gate: cargo test -p nros-rmw-zenoh --features platform-posix --lib, the router-backed zenoh_integration tests, just mem-report on bins/sim-clock-listener before and after, just check fast. Status: not started.
 
 ### W3 [cli] -- service and action request types are priced
 

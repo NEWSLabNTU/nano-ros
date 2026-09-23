@@ -27,6 +27,18 @@ fn main() {
     // previously-sized tables until something else forced a rebuild.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_SERVICE_INBOX_BYTES");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_ACTION_INBOX_BYTES");
+    // phase-461 W2b - the BUILTIN family (the ROS parameter services and the
+    // REP-2002 lifecycle services). The pair is spelled as phase-461 W2
+    // forwards it, so one Kconfig symbol feeds both readers rather than the
+    // two families acquiring two names for one geometry.
+    println!("cargo:rerun-if-env-changed=NROS_PARAM_SERVICE_INBOX_BYTES");
+    println!("cargo:rerun-if-env-changed=NROS_PARAM_SERVICE_INBOX_DEPTH");
+    // WATCH what we READ -- the two carriers the builtin partition is drawn
+    // from. An entry that gains a service server changes how many of its
+    // queryables are the runtime's, and a fact nothing watches reads as
+    // applied while being stale (issue 1122).
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_SERVICE_SERVERS");
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_SERVICE_SHAPE");
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_TIMEOUT_MS");
     println!("cargo:rerun-if-env-changed=NROS_KEYEXPR_STRING_SIZE");
     println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_RING_DEPTH");
@@ -115,6 +127,29 @@ fn main() {
     let action_inbox_depth: usize =
         env_usize_min("NROS_ACTION_INBOX_DEPTH", SERVICE_INBOX_DEPTH_DEFAULT, 1);
     let action_inbox_queryables: usize = declared_action_queryables(sizing.as_ref());
+    // phase-461 W2b / issue 1352 - the BUILTIN family: the six ROS parameter
+    // services of every node and the five REP-2002 lifecycle services. ONE
+    // family and not two because their geometry is equal -- both carry
+    // `rcl_interfaces` requests bounded by the contract's declared
+    // parameters, and every lifecycle request is smaller than every parameter
+    // one -- so splitting them would be two tables always holding the same
+    // number.
+    //
+    // The SLOT is the ladder its siblings use: a stated
+    // `NROS_PARAM_SERVICE_INBOX_BYTES` wins, otherwise the contract's declared
+    // parameters bound it (`declared_param_request_max`), otherwise the
+    // user-service slot stands, which is today's behaviour.
+    //
+    // The DEPTH is 1 and not the transport's 4: one parameter client sends one
+    // request and waits for its reply (`ros2 param`, rclcpp's
+    // `SyncParametersClient`), and a node's services are polled serially in
+    // one spin, so a slot is drained within one spin period. A default on a
+    // knob, not a ceiling -- an image serving a parameter dashboard states 2.
+    let builtin_inbox_bytes: usize = env_usize(
+        "NROS_PARAM_SERVICE_INBOX_BYTES",
+        declared_param_request_max(sizing.as_ref()).unwrap_or(svc_size),
+    );
+    let builtin_inbox_depth: usize = env_usize_min("NROS_PARAM_SERVICE_INBOX_DEPTH", 1, 1);
     // Phase 160.C.2 — bumped 10_000 → 30_000. The original 10 s default
     // was too short for slow zenoh-pico flushes on Zephyr/NSOS where
     // each publish/query can take ~2.5 s under Z_FEATURE_INTEREST=1. An
@@ -246,6 +281,23 @@ fn main() {
     let tl_retain_bytes: usize = env_usize("ZPICO_TL_RETAIN_BYTES", TL_RETAIN_BYTES_DEFAULT);
     let tl_demand = transient_local_publisher_demand(sizing.as_ref());
     let max_tl_publishers: usize = resolve_max_tl_publishers(tl_demand);
+    // phase-461 W2b - resolved HERE and not beside its two siblings above,
+    // because a transient-local publisher IS a queryable and this partition
+    // has to subtract it: the transient-local demand is the one input that
+    // does not arrive as an env string, and asking for it twice would warn
+    // twice on a refusal.
+    // Emitted as a TOKEN, not a number, when it is the sentinel. `usize::MAX`
+    // is the build HOST's, and this file is compiled for the TARGET: printing
+    // it as a decimal put 18446744073709551615 into a thumbv7em build, where
+    // `usize` is 32 bits and the literal does not fit ("literal out of range
+    // for `usize`", denied by default). The token means the same thing on
+    // every word size, which is also what the constant is trying to say.
+    let declared_app_queryables: usize = declared_app_queryables(tl_demand);
+    let declared_app_queryables = if declared_app_queryables == usize::MAX {
+        "usize::MAX".to_string()
+    } else {
+        declared_app_queryables.to_string()
+    };
 
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let path = std::path::Path::new(&out_dir).join("buffer_config.rs");
@@ -274,6 +326,19 @@ fn main() {
              /// declared action server, 0 when this image declares none (its action\n\
              /// queryables then draw user-service rings, which is the single-table behaviour).\n\
              pub const ACTION_INBOX_QUERYABLES: usize = {action_inbox_queryables};\n\
+             /// phase-461 W2b - the builtin family's slot size: the ROS parameter services\n\
+             /// and the REP-2002 lifecycle services (set via NROS_PARAM_SERVICE_INBOX_BYTES;\n\
+             /// default is the largest request the contract's declared parameters can\n\
+             /// produce, else the user-service slot).\n\
+             pub const BUILTIN_INBOX_BYTES: usize = {builtin_inbox_bytes};\n\
+             /// phase-461 W2b - the builtin family's ring depth (set via\n\
+             /// NROS_PARAM_SERVICE_INBOX_DEPTH, default 1: these clients are sequential).\n\
+             pub const BUILTIN_INBOX_DEPTH: usize = {builtin_inbox_depth};\n\
+             /// phase-461 W2b - queryables this image's own DECLARATION attributes to the\n\
+             /// application, per session. `usize::MAX` when nothing declared them, which\n\
+             /// leaves the builtin table empty and every queryable on the user-service\n\
+             /// geometry it has today.\n\
+             pub const DECLARED_APP_QUERYABLES: usize = {declared_app_queryables};\n\
              /// Default service client RPC timeout in milliseconds\n\
              /// (set via NROS_SERVICE_TIMEOUT_MS, default 30000).\n\
              pub const SERVICE_DEFAULT_TIMEOUT_MS: u32 = {service_timeout_ms};\n\
@@ -366,6 +431,150 @@ fn declared_action_queryables(desc: Option<&SizingDescriptor>) -> usize {
             .count()
             * 3
     })
+}
+
+/// phase-461 W2b - queryables this image's own DECLARATION attributes to the
+/// APPLICATION, per session, or `usize::MAX` for "nobody said".
+///
+/// The builtin families have no count here, and deliberately so. A service
+/// server IS a queryable, so `ZPICO_MAX_QUERYABLES` is already
+/// `app + infra + transient-local` on a declared image
+/// (`nros-zpico-build::queryable_default_from`), and the arithmetic this crate
+/// can do is the SUBTRACTION: the slots the declaration did not attribute to
+/// the application are the runtime's. Restating the infrastructure counts here
+/// is what issue 0827 forbids and `check-infra-queryable-counts` refuses --
+/// this crate does not depend on `nros-node` and can see neither the constants
+/// nor whether their features are compiled in, so a number stated here is a
+/// number that drifts.
+///
+/// `usize::MAX` rather than 0 for the undeclared case, because the two
+/// directions are opposite. For the TABLE's size an absent declaration means
+/// "assume the infrastructure is present" -- over-reserving costs RAM and
+/// under-reserving fails at boot. For the ring GEOMETRY it must mean the other
+/// thing: an absent declaration must not shrink anybody's ring, so it leaves
+/// the builtin table EMPTY and every queryable on the geometry it has today,
+/// byte for byte.
+///
+/// **The same two inputs the TABLE was sized from, and no others.** Both terms
+/// are read exactly as `nros-zpico-build` reads them --
+/// `NROS_DECLARED_SERVICE_SERVERS` for the application (an action server's
+/// three channels are three service servers on that road, which is why
+/// neither side adds an action term of its own), and the transient-local
+/// publishers descriptor-first with their carrier behind it. A subtraction is
+/// only sound against the number it subtracts from: counting the DESCRIPTOR's
+/// `service_server` rows here while the table had been sized from the env
+/// carrier would let the two disagree, and the leftover would not be the
+/// runtime's share.
+fn declared_app_queryables(tl: Option<usize>) -> usize {
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_TL_PUBLISHERS");
+    match declared_usize("NROS_DECLARED_SERVICE_SERVERS") {
+        Some(app) => {
+            app + tl
+                .or_else(|| declared_usize("NROS_DECLARED_TL_PUBLISHERS"))
+                .unwrap_or(0)
+        }
+        None => usize::MAX,
+    }
+}
+
+/// phase-461 W2b - the largest REQUEST the contract's declared parameters can
+/// produce, in bytes, rounded up to a multiple of 4 so the ring's slots stay
+/// word-aligned on every target the tree builds for.
+///
+/// `None` when this crate cannot answer, which is both an absent declaration
+/// and a declaration it is not entitled to price -- see below. The caller then
+/// keeps the user-service slot, which is today's size.
+///
+/// # The authority is `nros-node`, and this is the half that needs no board
+///
+/// `nros_node::parameter_services::node_bound` is where the parameter family's
+/// worst messages are priced, beside the serializers it bounds and held by the
+/// test that serializes them (`the_worst_messages_fit_the_derived_bound`).
+/// phase-461 W2 adds `ParamServiceBound::request_max()` over it: the largest of
+/// the THREE request fields, because the other five are replies that travel the
+/// other way through the executor-side buffer pair and never touch an inbox.
+///
+/// Three of that function's terms need the parameter STORE's capacities --
+/// how long a string, an array or a byte array may be -- and those are board
+/// facts `nros-params`' build script resolves. This crate has no business
+/// reading them: a second resolution of one number is issue 1025 exactly.
+///
+/// So this ABSTAINS on any declaration whose worst request depends on them,
+/// which is precisely a shape declaring a string, byte-array, bool-array,
+/// word-array or string-array parameter (fields 4..9 of the nine-count token).
+/// With those five zero the three request bounds are the shape alone, and the
+/// arithmetic below is `node_bound`'s, term for term:
+///
+/// ```text
+/// head          = CDR_HEADER + CDR_SEQ                      (4 + 7)
+/// names         = name_bytes + params * CDR_STR             (CDR_STR = 3 + 4 + 1)
+/// prefixes      = prefix_bytes + prefixes * CDR_STR
+/// values        = params * CDR_VALUE_BASE                   (53, no data to add)
+/// names_request = head + names
+/// list_request  = head + prefixes + CDR_WORD                (CDR_WORD = 7 + 8)
+/// set_request   = head + names + values
+/// ```
+///
+/// Each request addresses ONE node's services, so the worst node decides it and
+/// the maximum is taken over the rows rather than summed. On the Autoware
+/// Safety Island's worst node (`8:170:1:17:0:0:0:0:0`) that is a 669 B
+/// `set_parameters`, 672 B rounded -- the same number W2 derives in `nros-node`
+/// from the same token, which is the check that keeps the two halves honest.
+///
+/// A MALFORMED token is not this crate's to refuse: `nros-node`'s build script
+/// owns the grammar and panics naming it. Here it reads as "cannot answer".
+fn declared_param_request_max(desc: Option<&SizingDescriptor>) -> Option<usize> {
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_SERVICE_SHAPE");
+    let raw = desc
+        .and_then(|d| d.params.service_shape().into_stated())
+        .or_else(|| declared_fact("NROS_DECLARED_PARAM_SERVICE_SHAPE"))?;
+    param_request_max_from(raw.trim())
+}
+
+/// The rule, with the environment lifted out of it: the caller reads the two
+/// roads, this takes the token. A build script cannot carry a `#[cfg(test)]`
+/// module that anything runs -- cargo compiles build.rs as a host binary and
+/// `cargo test` never touches it -- so the evidence for this one is the
+/// negative control in the commit message, run over the emitted constant.
+fn param_request_max_from(raw: &str) -> Option<usize> {
+    /// The 4-byte encapsulation header both halves begin with.
+    const CDR_HEADER: usize = 4;
+    /// A sequence length: up to 3 bytes of padding to 4, then a `u32`.
+    const CDR_SEQ: usize = 3 + 4;
+    /// A string beyond its bytes: padding, the `u32` length (which counts the
+    /// NUL), and the NUL.
+    const CDR_STR: usize = 3 + 4 + 1;
+    /// An 8-byte field after anything: up to 7 bytes of padding, then 8.
+    const CDR_WORD: usize = 7 + 8;
+    /// One `ParameterValue` with no data in it. The worst over all eight start
+    /// alignments; `nros-node` states why it is 53 and not the 68 the per-field
+    /// worsts sum to.
+    const CDR_VALUE_BASE: usize = 53;
+
+    if raw.is_empty() {
+        return None;
+    }
+    let mut worst = 0usize;
+    for node in raw.split(',') {
+        let f: Option<Vec<usize>> = node.split(':').map(|v| v.trim().parse().ok()).collect();
+        let f = f.filter(|f| f.len() == 9)?;
+        // Fields 4..9 are the counts whose bound needs the store's
+        // capacities. One of them and this crate abstains, for the whole
+        // image: a bound that is right for three nodes and guessed for the
+        // fourth is not a bound.
+        if f[4..9].iter().any(|&n| n != 0) {
+            return None;
+        }
+        let head = CDR_HEADER + CDR_SEQ;
+        let names = f[1] + f[0] * CDR_STR;
+        let prefixes = f[3] + f[2] * CDR_STR;
+        let values = f[0] * CDR_VALUE_BASE;
+        worst = worst
+            .max(head + names)
+            .max(head + prefixes + CDR_WORD)
+            .max(head + names + values);
+    }
+    Some(worst.next_multiple_of(4))
 }
 
 /// The descriptor this build was pointed at, or `None`.
@@ -750,4 +959,21 @@ fn env_usize_rung(name: &str, rung: Option<usize>, default: usize) -> usize {
 /// share a spelling with "nobody told me".
 fn declared_usize(name: &str) -> Option<usize> {
     std::env::var(name).ok().and_then(|v| v.trim().parse().ok())
+}
+
+/// issue 1122 / 0460 - the string twin of [`declared_usize`], for a carrier
+/// that is a TOKEN rather than a count. Named as the readers of the same
+/// road in `nros-node` and `nros-zpico-build` are named, and for the same
+/// reason: one idiom for the DECLARED carriers, which is what keeps them in
+/// the config census (issue 1199).
+///
+/// The name is an ARGUMENT and not a literal at the `env::var` call, which is
+/// what `check-kconfig-knob-forwarding` requires of every forwarded knob: a
+/// literal `env::var("<forwarded knob>")` in a build script yields the crate
+/// default on a Zephyr Rust image whatever Kconfig says, which is issue 0460's
+/// shape. This fact has no `CONFIG_` symbol to miss -- cmake forwards it
+/// through the environment and nowhere else -- so the environment is the right
+/// and only rung, exactly as `nros-node/build.rs` reads the same carrier.
+fn declared_fact(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|v| !v.trim().is_empty())
 }
