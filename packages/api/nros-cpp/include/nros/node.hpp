@@ -15,10 +15,18 @@
 #include <type_traits> // Phase 189.M3.3.e — SFINAE on the callback-style create_service
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdlib> // getenv — Phase 123.B.3 env-aware init
-#include <map>     // phase-417 W4.a — rclcpp::Node::declare_parameters<T>'s argument
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
-#include <cstdio> // fopen — Phase 212.L.5 init_with_launch path-exists check
+#include <cstdio>  // fopen — Phase 212.L.5 init_with_launch path-exists check
 #endif
+// `<map>` needs BOTH probes, and `__STDC_HOSTED__` alone is the half that was
+// measurably wrong here (issues 0112 + 1240). Zephyr's arm-none-eabi C++ build
+// reports `__STDC_HOSTED__` and has no `<map>` — its libcpp is minimal — so the
+// guard above admitted the include and every Zephyr C++ image failed with
+// `fatal error: map: No such file or directory`. `__has_include` alone is the
+// other half and is equally wrong: under `-ffreestanding` a full libstdc++ HAS
+// the header and opens it with `#error "This header is not available in
+// freestanding mode."`. Only the conjunction separates the two.
+#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<map>))
+#include <map> // phase-417 W4.a — rclcpp::Node::declare_parameters<T>'s argument
 #endif
 
 // Phase 118.D: ffi.h MUST come before qos.hpp so qos.hpp's

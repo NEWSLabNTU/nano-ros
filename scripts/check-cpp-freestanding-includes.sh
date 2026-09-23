@@ -115,9 +115,29 @@ walk_file() {
         # This is the 0196 rule applied to this gate: its reach must be the
         # rule it enforces, not the spelling the rule happened to have when it
         # was written.
+        # BOTH directions, since issue 1461. The rule is a CONJUNCTION, and
+        # each probe alone is measurably wrong:
+        #
+        #   __has_include alone   -- under -ffreestanding a full libstdc++ HAS
+        #                            the header and opens it with #error "This
+        #                            header is not available in freestanding
+        #                            mode." (GCC 16 made `just check cpp`
+        #                            unrunnable this way).
+        #   __STDC_HOSTED__ alone -- Zephyr.s arm-none-eabi C++ build reports
+        #                            hosted and has a MINIMAL libcpp, so the
+        #                            header is simply absent. node.hpp guarded
+        #                            <map> this way and every Zephyr C++ image
+        #                            failed with `fatal error: map: No such
+        #                            file or directory`.
+        #
+        # This gate rejected the first shape from the day issue 1240 landed and
+        # accepted the second for as long, which is the 0196 rule applied to
+        # this gate turning out to be half-applied. A frame naming EITHER probe
+        # must name both.
         function std_frame(line) {
             if (line !~ /NROS_CPP_STD/) { return 0 }
             if (line ~ /__has_include/ && line !~ /__STDC_HOSTED__/) { return 0 }
+            if (line ~ /__STDC_HOSTED__/ && line !~ /__has_include/) { return 0 }
             return 1
         }
         # Enter an NROS_CPP_STD region: `#ifdef NROS_CPP_STD`,
@@ -256,6 +276,24 @@ selftest() {
   _case 'elif __has_include without __STDC_HOSTED__' 1 hit '#if defined(SOMETHING)
 #elif defined(NROS_CPP_STD) || __has_include(<memory>)
 #include <memory>
+#endif
+'
+  # 9b. Issue 1461 — THE MIRROR OF CASE 8, and the one this gate accepted for as
+  #     long as it rejected case 8. `__STDC_HOSTED__` alone is not enough
+  #     either: Zephyr's arm-none-eabi C++ build reports hosted and ships a
+  #     MINIMAL libcpp, so the header is simply absent. `node.hpp` guarded
+  #     `<map>` exactly like this, this gate said OK on 76 files, and every
+  #     Zephyr C++ image failed with `fatal error: map: No such file or
+  #     directory`. The rule is a conjunction; half of it is not a weaker
+  #     version of it.
+  _case 'NROS_CPP_STD || __STDC_HOSTED__ without __has_include' 1 hit '#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#include <map>
+#endif
+'
+  # 9c. The same omission spelled the long way, so the case is about the missing
+  #     probe rather than about the `+ 0` idiom.
+  _case 'defined(__STDC_HOSTED__) without __has_include' 1 hit '#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__)
+#include <vector>
 #endif
 '
 
