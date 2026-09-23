@@ -247,6 +247,43 @@ cpp-capability-layout:
 format-macro-scope:
     @python3 scripts/check-format-macro-scope.py
 
+# issue 1469 -- the metadata probe's include list, on the shape that broke it.
+#
+# THE SCALING RULE is the subject: one C++ node package probed, two that share a
+# message dependency did not, because the aggregating FFI crate `include!`d the
+# shared type once per generation SITE and rustc refused with E0428. The whole
+# workspace then has no source metadata, which is what phase-463's census
+# reconciles a contract against.
+#
+# On the FAST line, which is the placement `check-gate-visibility` argues for:
+# the build tier is invisible to a pull request, and this gate does not need it.
+# Measured at 5.1 s on a warm host -- it configures a three-package workspace
+# three times, and the cost is cmake's, not a compiler's. In a PRISTINE
+# worktree it SKIPS rather than failing, for want of the in-tree CLI, which is
+# the same shape `cli-fresh` already has on this line; "the CLI is not built" is
+# a different claim from "it passed", so it goes through the skip ledger.
+# Everything past the preconditions is a hard failure inside the script.
+probe-shared-types:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    for _t in cmake; do
+        command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
+    done
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip probe-shared-types "missing host tool(s):$_missing"
+        exit 0
+    fi
+    if [ ! -x packages/cli/target/release/nros ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip probe-shared-types "no in-tree CLI -- run \`just setup-cli\`"
+        exit 0
+    fi
+    ./tests/cmake-probe-shared-types-tests.sh
+
 reconfigure-on-change:
     #!/usr/bin/env bash
     set -euo pipefail
