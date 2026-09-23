@@ -563,3 +563,47 @@ this job are where the previous job left them.
 
 Unchanged: acceptance is a scheduled run reaching a verdict on `check build`
 and `check no-std` three nights running.
+
+## The reclaim ran, freed 7.8 G, and the tier still ran out (2026-09-23)
+
+`ad1ac08b3` put `scripts/ci/reclaim-disk.sh` in front of the tier on `gate`,
+`host-tests` and `live-peer`, and asked the next run to answer whether freeing
+what is already spent is enough. **It is not**, and the run says so precisely.
+
+`host-tests` push run **35843238815**, job **107123101951**:
+
+```
+::notice:: 86% used, 22G free — 42G examples; 10G build; 404M target
+disk reclaim — before just ci tier1
+  reclaiming    5.6G   /__t
+  reclaiming    2.2G   /__w/nano-ros/nano-ros/build/metadata-probe
+  freed 7933 MB; 30494628 KB free
+…
+##[warning] You are running out of disk space … Free space left: 16 MB
+===== FAIL (cpp, rc=101, 8636ms) =====
+error: recipe `build` failed on line 233 with exit code 1
+```
+
+So the tier entered with **29.1 G free** — 7.8 G more than the 22 G its
+predecessors had — and consumed all of it, failing at the same gate, in the
+same recipe, four lines after the same warning. The reclaim is not wasted (it
+is 7.8 G nobody was using), it is simply smaller than the deficit.
+
+**What this settles.** The third road in `ad1ac08b3`'s reasoning — free what is
+already spent on things nothing downstream reads — has now been measured and
+does not close this issue on its own. Of the roads that remain:
+
+- **Prune what the tier builds.** The 42 G is `examples`, which the 2026-09-23
+  measurement broke down as `workspaces` 36 G plus `templates` 5.2 G. This is a
+  question about `fixtures.toml` coverage, not about disk, and it is the only
+  road whose size is bigger than the deficit.
+- **Move these lanes off a hosted runner.** Both are `container:` jobs, so a
+  container cannot delete the host's preinstalled tooling, and the runner's
+  146 G is the ceiling.
+
+A fourth possibility this run does not exclude: the tier's own consumption may
+itself be reducible — it wants more than 29 G to run `check build`, and nothing
+here says that number is necessary rather than incidental.
+
+Acceptance is unchanged: a scheduled run reaching a VERDICT on `check build`
+and `check no-std`, three nights running.
