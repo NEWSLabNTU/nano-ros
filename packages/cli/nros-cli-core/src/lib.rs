@@ -33,6 +33,10 @@ pub mod cmd;
 pub mod contract_join;
 /// phase-446 W6 -- the C++ table of each node's declared parameters.
 pub mod declared_params_header;
+/// phase-463 W3 -- the census CHECK: the join of the contract, the census and
+/// the derived inventory, one verdict per (node, kind, name). The producer is
+/// `cmd::entity_census`; this is the comparison it feeds.
+pub mod entity_census;
 // phase-403 W9 (issue 0965) — the ENTITY inventory: WHICH entities an image
 // creates, the half the BOUND inventory (which prices a TYPE) cannot answer.
 // Shaped like `rosidl_codegen::bounds` — one data model, three transports —

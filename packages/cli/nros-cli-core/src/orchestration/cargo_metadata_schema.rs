@@ -702,11 +702,64 @@ pub struct SystemToml {
     /// block (node stays a plain node).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lifecycle: Option<SystemLifecycle>,
+    /// phase-463 W3 -- `[census]`: how this system answers the census check.
+    ///
+    /// It is HERE and not in the contract because the contract is a statement
+    /// about the code, and a waiver is a statement about a statement. rlm owns
+    /// the contract's schema and its parser rejects a key it does not know, so
+    /// `[census.waive]` in a `*.contract.yaml` is a parse error rather than a
+    /// silently ignored block -- which is the property that makes this the one
+    /// home rather than the preferred one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub census: Option<SystemCensus>,
     // `[param_persistence]` has no typed field, so `deny_unknown_fields` REJECTS
     // such a block. Not "until the backends land" — issue 0080 ruled on-device
     // parameter persistence a NON-GOAL (2026-07-10; launch-baked defaults are
     // the model), and phase-359 W10 deleted the dormant seam it was waiting on.
     // The rejection is now permanent rather than provisional.
+}
+
+/// `[census]` -- phase-463 W3, how this system answers the census check.
+///
+/// One table today ([`Self::waive`]); phase-463 W4 adds `on_missing` and
+/// `on_stale` beside it, which is why this is a table rather than a bare
+/// `[census.waive]` map.
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SystemCensus {
+    /// `[census.waive."<node>:<kind>:<name>"]` -- one entry per waived ROW.
+    ///
+    /// The key is the row key the check prints with every waivable refusal, so
+    /// an entry is copied rather than reconstructed. A waiver that names no
+    /// row waives nothing: there is no wildcard and no per-node form, because
+    /// the whole value of a waiver is that a person looked at one row.
+    ///
+    /// Only the OVER direction is waivable (`phantom`, `param-phantom`): the
+    /// contract claims something the code does not have. The UNDER direction
+    /// ships an image that dies at boot and has no waiver at all, so a key
+    /// naming one of those rows is inert and the check says so rather than
+    /// appearing to honour it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub waive: BTreeMap<String, CensusWaiver>,
+}
+
+/// One `[census.waive."<row>"]` entry.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CensusWaiver {
+    /// Why this row is acceptable. Required: a waiver with no reason is a
+    /// silenced check, and the reason is what a later reader has to judge.
+    pub reason: String,
+}
+
+impl SystemCensus {
+    /// The waivers as the check wants them: row key to reason.
+    pub fn waivers(&self) -> BTreeMap<String, String> {
+        self.waive
+            .iter()
+            .map(|(row, w)| (row.clone(), w.reason.clone()))
+            .collect()
+    }
 }
 
 /// `[wcet]` — RFC-0078 declared execution-time bounds.

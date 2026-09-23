@@ -79,6 +79,8 @@ pub struct EntityCensusArgs {
 pub enum Sub {
     /// Run the entry's native binary in census mode and write the census.
     Run(RunArgs),
+    /// Compare a census with the contract that declared it (phase-463 W3).
+    Check(CheckArgs),
 }
 
 #[derive(Debug, ClapArgs)]
@@ -120,10 +122,119 @@ pub struct RunArgs {
     pub timeout_secs: u64,
 }
 
+/// phase-463 W3 -- `nros ws entity-census check`.
+///
+/// The three documents are named rather than discovered, for the same reason
+/// `run` takes `--binary`: this verb is what a recipe and a person both call,
+/// and a check whose inputs are inferred cannot be reproduced by hand from the
+/// line a build log printed. phase-463 W4 is the wave that wires it into
+/// `nros sync` with the freshness rules.
+#[derive(Debug, ClapArgs)]
+pub struct CheckArgs {
+    /// The census a `run` wrote. Both the wrapped form and the recorder's own
+    /// document are accepted.
+    #[arg(long, value_name = "PATH")]
+    pub census: PathBuf,
+
+    /// The authored contract, `<bringup>/launch/<stem>.contract.yaml`.
+    #[arg(long, value_name = "PATH")]
+    pub contract: PathBuf,
+
+    /// `nros_entity_inventory.json`, the DERIVED third view. Optional: its
+    /// absence costs the note that says what the pools were sized from, not
+    /// the comparison.
+    #[arg(long, value_name = "PATH")]
+    pub inventory: Option<PathBuf>,
+
+    /// The bringup's `system.toml`, which is where `[census.waive]` lives.
+    #[arg(long, value_name = "PATH")]
+    pub system_toml: Option<PathBuf>,
+
+    /// The resolved SystemModel. Read only through the one model gate
+    /// (phase-460 W1), so a refused or stale model refuses the check rather
+    /// than quietly making it pass.
+    #[arg(long, value_name = "PATH")]
+    pub model: Option<PathBuf>,
+
+    /// Turn warnings into errors. The merge queue's setting: an `unobserved`
+    /// row is honest in a workspace a person is editing and is a hole in a
+    /// gate.
+    #[arg(long)]
+    pub strict: bool,
+}
+
 pub fn run(args: EntityCensusArgs) -> Result<()> {
     match args.command {
         Sub::Run(a) => run_census(a),
+        Sub::Check(a) => check_census(a),
     }
+}
+
+fn check_census(args: CheckArgs) -> Result<()> {
+    // The model gate FIRST, before anything is read: a check that opens a
+    // refused model and then passes has laundered the refusal (phase-460 W1).
+    if let Some(model) = args.model.as_deref() {
+        crate::model_gate::verify(model, None)
+            .map_err(|r| eyre::eyre!("{r}"))
+            .wrap_err("the model this census was taken against")?;
+    }
+
+    let census_raw = std::fs::read_to_string(&args.census)
+        .wrap_err_with(|| format!("cannot read census `{}`", args.census.display()))?;
+    let census: serde_json::Value = serde_json::from_str(&census_raw)
+        .wrap_err_with(|| format!("`{}` is not JSON", args.census.display()))?;
+
+    let contract = ros_launch_manifest_types::parse_manifest(&args.contract)
+        .map_err(|e| eyre::eyre!("{e}"))
+        .wrap_err_with(|| format!("cannot read contract `{}`", args.contract.display()))?;
+
+    let inventory = match args.inventory.as_deref() {
+        Some(path) => {
+            let raw = std::fs::read_to_string(path)
+                .wrap_err_with(|| format!("cannot read inventory `{}`", path.display()))?;
+            Some(
+                serde_json::from_str::<serde_json::Value>(&raw)
+                    .wrap_err_with(|| format!("`{}` is not JSON", path.display()))?,
+            )
+        }
+        None => None,
+    };
+
+    let waivers = match args.system_toml.as_deref() {
+        Some(path) => {
+            let raw = std::fs::read_to_string(path)
+                .wrap_err_with(|| format!("cannot read `{}`", path.display()))?;
+            let system: crate::orchestration::cargo_metadata_schema::SystemToml =
+                toml::from_str(&raw)
+                    .wrap_err_with(|| format!("cannot parse `{}`", path.display()))?;
+            system
+                .census
+                .as_ref()
+                .map(|c| c.waivers())
+                .unwrap_or_default()
+        }
+        None => Default::default(),
+    };
+
+    let report = crate::entity_census::check(crate::entity_census::Inputs {
+        census: &census,
+        contract: &contract,
+        contract_path: args.contract.display().to_string(),
+        inventory: inventory.as_ref(),
+        waivers: &waivers,
+        strict: args.strict,
+    });
+    print!("{}", report.render());
+
+    if report.refuses() {
+        bail!(
+            "the contract and the code disagree in {} place(s). Every row above names the node, \
+             the entity, the file that should change and the line to add or remove; the \
+             contract is a statement about the code, so one of the two is wrong.",
+            report.errors()
+        );
+    }
+    Ok(())
 }
 
 /// One recorded input, with the digest that makes the census reproducible.
