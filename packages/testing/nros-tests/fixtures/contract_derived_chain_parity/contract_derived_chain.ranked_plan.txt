@@ -1,0 +1,42 @@
+RankedPlan {
+    items: [
+        RankItem {
+            node: "/control/control_node",
+            path: "control",
+            fine_group: 0,
+            coarse_group: Some(
+                "points_to_cmd",
+            ),
+            tie_group: None,
+            provenance: "derived(chain_aware: points_to_cmd segment drain 1/2)",
+        },
+        RankItem {
+            node: "/perception/filter_component",
+            path: "filter",
+            fine_group: 0,
+            coarse_group: Some(
+                "points_to_cmd",
+            ),
+            tie_group: None,
+            provenance: "derived(chain_aware: points_to_cmd segment drain 2/2)",
+        },
+        RankItem {
+            node: "/perception/sensor_node",
+            path: "tick",
+            fine_group: 1,
+            coarse_group: Some(
+                "points_to_cmd",
+            ),
+            tie_group: None,
+            provenance: "derived(chain_aware: points_to_cmd boundary RM period=10ms)",
+        },
+    ],
+    warnings: [
+        ChainFeasibleWithoutWcet {
+            chain: "points_to_cmd",
+            boundaries_without_wcet: [
+                "/perception/sensor_node/tick",
+            ],
+        },
+    ],
+}

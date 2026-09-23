@@ -1,0 +1,161 @@
+# play_launch's `tests/fixtures/contract_derived_chain`, resolved (design
+# issue #52, R3). The parity fixture both consumers rank and compare against
+# `../snapshots/contract_derived_chain.ranked_plan.txt`.
+#
+# Provenance: `play_launch resolve launch/bringup.launch.xml --sched
+# launch/bringup.system.posix.yaml --bringup-root .` with the 0.10.0 binary
+# (play_launch 155ed78b). Between v0.10.0 and v0.11.0 the model builder
+# changed only for `<timer>` start delays, which this launch has none of, so
+# this is the 0.11.0 resolution under a 0.10.0 version stamp. The resolver of
+# that era lowers none of R1's fields; four edits were made by hand, from the
+# contract, and phase-78 W1 (the play_launch that lowers them) re-emits this
+# file while phase-78 W2's `from_dump == from_model` gate proves the hand
+# copy right:
+#
+# 1. `trigger:` on the three node paths (`PathContract::trigger`): `tick`
+#    is the contract's `{ timer: { rate_hz: 100 } }`, `filter` and
+#    `control` its `{ input: [..] }`.
+# 2. `node_criticality:` (`Contracts::node_criticality`): the contract
+#    declares no hazards, so the effective value is the label, `high` on
+#    `control_node` and nothing elsewhere. `severity_levels` stays empty
+#    (the ISO 26262 default); no path declares `sync`, `min_latency`, and
+#    no subscription is `state: true`, so `buffer` has nowhere to go.
+# 3. The scope-path key is `bringup.launch.xml/points_to_cmd`, the
+#    `"<scope id>/<path name>"` shape the model documents. The resolver
+#    writes `/bringup.launch.xml/points_to_cmd`: `model_builder::fqn`
+#    prepends a slash the scope id does not carry, and a reader splitting at
+#    the last `/` then looks for a scope `/bringup.launch.xml` that does not
+#    exist. Left as emitted, the derivation resolves no chain.
+# 4. `meta.diagnostics` (the posix realizer's and the checker's prose, not
+#    derivation facts) is dropped, and `structure.scopes.*.manifest` is
+#    relative to the bringup root instead of an absolute path on the
+#    resolving machine. Nothing in the derivation reads either.
+#
+# `execution` is the posix realization the resolver applied on the same
+# run: the chain ranks control > filter > sensor, and the platform file's
+# override pins control_node to 20. It is what play_launch keeps; the
+# derivation does not read it.
+meta:
+  version: 1
+  inputs:
+  - path: launch/bringup.contract.yaml
+    sha256: 48498781ca8f63d140d110252f03be88bcf8cf8993c51b9f5448887b9793af44
+  - path: launch/bringup.launch.xml
+    sha256: a3d091c634164b297abd83f585dd14618e98c83dd70f43d20dd1142f4b6eb5ae
+  - path: launch/bringup.system.posix.yaml
+    sha256: 8c597dd60e83ab357d42f6b7c4fe4977a4b164dfcc02f5874aa3b35e7f92b0bb
+  resolver:
+    tool: play_launch
+    version: 0.10.0
+structure:
+  scopes:
+    bringup.launch.xml:
+      manifest: launch/bringup.contract.yaml
+      file: bringup.launch.xml
+  nodes:
+    /perception/sensor_node:
+      scope: bringup.launch.xml
+      pkg: rt_demo
+      exec: sensor_node
+      node_name: sensor_node
+    /control/control_node:
+      scope: bringup.launch.xml
+      pkg: rt_demo
+      exec: control_node
+      criticality: high
+      node_name: control_node
+    /perception/perception_container:
+      scope: bringup.launch.xml
+      pkg: rclcpp_components
+      exec: component_container
+      node_name: perception_container
+      is_container: true
+    /perception/filter_component:
+      scope: bringup.launch.xml
+      pkg: rt_demo
+      plugin: rt_demo::FilterComponent
+      container: /perception/perception_container
+      node_name: filter_component
+  topics:
+    /control/cmd:
+      type: std_msgs/msg/String
+      pub:
+      - /control/control_node/cmd
+    /perception/points_filtered:
+      type: std_msgs/msg/String
+      pub:
+      - /perception/filter_component/points_filtered
+      sub:
+      - /control/control_node/points_filtered
+    /perception/points_raw:
+      type: std_msgs/msg/String
+      pub:
+      - /perception/sensor_node/points_raw
+      sub:
+      - /perception/filter_component/points_raw
+contracts:
+  sub_endpoints:
+    /control/control_node/points_filtered:
+      min_rate_hz: 100.0
+      max_age_ms: 50.0
+    /perception/filter_component/points_raw:
+      min_rate_hz: 100.0
+  node_paths:
+    /control/control_node/control:
+      input:
+      - /control/control_node/points_filtered
+      output:
+      - /control/control_node/cmd
+      trigger:
+        kind: input
+        value:
+        - /control/control_node/points_filtered
+      max_latency_ms: 10.0
+    /perception/filter_component/filter:
+      input:
+      - /perception/filter_component/points_raw
+      output:
+      - /perception/filter_component/points_filtered
+      trigger:
+        kind: input
+        value:
+        - /perception/filter_component/points_raw
+      max_latency_ms: 5.0
+    /perception/sensor_node/tick:
+      output:
+      - /perception/sensor_node/points_raw
+      trigger:
+        kind: timer
+        value:
+          rate_hz: 100.0
+  scope_paths:
+    bringup.launch.xml/points_to_cmd:
+      input:
+      - /perception/points_raw
+      output:
+      - /control/cmd
+      max_latency_ms: 30.0
+  node_criticality:
+    /control/control_node: high
+execution:
+  tiers:
+    /control/control_node:
+      class: real_time
+      posix:
+        priority: 20
+        core: 0
+        sched_class: SCHED_FIFO
+    /perception/filter_component:
+      class: real_time
+      posix:
+        priority: 39
+        sched_class: SCHED_FIFO
+    /perception/sensor_node:
+      class: real_time
+      posix:
+        priority: 38
+        sched_class: SCHED_FIFO
+  bindings:
+    /control/control_node: /control/control_node
+    /perception/filter_component: /perception/filter_component
+    /perception/sensor_node: /perception/sensor_node
