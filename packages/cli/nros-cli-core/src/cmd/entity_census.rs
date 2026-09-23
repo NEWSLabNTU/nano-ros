@@ -427,16 +427,27 @@ pub(crate) fn census_freshness(path: &Path, ws: &Path) -> Freshness {
 /// right: RFC-0063 says a derived artifact carries its inputs' digests, and a
 /// reader wants to know which model this census was taken against.
 ///
-/// They are NOT freshness inputs, and the phase doc's own acceptance is why.
-/// It asks that editing a component source make the census stale, and that
-/// then "add the contract row and it configures" -- with no second census run.
-/// The contract reaches this provenance through the model, so treating every
-/// recorded digest as a freshness input would make the contract invalidate the
-/// very evidence it is being compared against: every fix to a
-/// `missing-in-contract` refusal would demand a new census of code that did
-/// not change. The model is verified on its own terms at every door by the
-/// phase-460 W1 gate, which `check` calls first; that is the right place for
-/// it, and it is not this one.
+/// They are NOT freshness inputs. DO NOT "simplify" this to "every recorded
+/// digest": that reading is the obvious one, the phase doc's prose invites it,
+/// and it destroys the signal this whole wave exists to produce.
+///
+/// The contract reaches this provenance through the model. So if every
+/// recorded digest were a freshness input, the contract would invalidate the
+/// very evidence it is being compared against, and FIXING a
+/// `missing-in-contract` verdict -- adding the row the code already creates --
+/// would demand a fresh census of code nobody touched. That trains people to
+/// regenerate the census reflexively, as a step you perform to make the build
+/// go, and a census taken that way stops being an observation of the code and
+/// becomes a rubber stamp. A stale-census refusal then means nothing, because
+/// it means nothing more than "run the command again".
+///
+/// The phase doc's own acceptance says the same thing in one line: edit a
+/// component source and the census goes stale, then "add the contract row and
+/// it configures" -- with no second census run.
+///
+/// The model is not going unchecked. It is verified on its own terms at every
+/// door by the phase-460 W1 gate, which `check` calls FIRST, before anything
+/// here is read. That is the right place for it, and it is not this one.
 fn is_freshness_input(role: &str) -> bool {
     matches!(role, "binary" | "source_tree" | "entry_tu")
 }

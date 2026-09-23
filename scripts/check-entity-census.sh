@@ -39,6 +39,17 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$repo_root" || exit 2
 
+# issue 0726 / issue 1077. Every assertion below is a `grep`, and a gate is the
+# one place where "the tool did not run" must never be read as "the thing is
+# not there": `grep` exits 1 for a non-match and >=2 for an error, and under a
+# 32-way gate fan-out on a loaded host a grep that fails to fork would make
+# this script report a confident, specific, false claim about the fixture.
+# `nros_grep_q` exits 2 instead of returning a finding, and takes a
+# HERE-STRING rather than a pipe so an early-exiting matcher cannot kill the
+# writer and have SIGPIPE read as a miss.
+# shellcheck source=scripts/lib/grep-q.sh
+. "$repo_root/scripts/lib/grep-q.sh"
+
 fail() { echo "check-entity-census: FAIL -- $*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
@@ -47,8 +58,15 @@ fail() { echo "check-entity-census: FAIL -- $*" >&2; exit 1; }
 # Resolution order, then a VERIFICATION. An `nros` on PATH may predate this
 # wave, and a gate that runs a museum binary reports on a tree nobody has.
 # `--require-fresh` is the flag this wave adds, so its presence IS the test.
-nros_bin() {
-    local c
+# Sets `$nros`, rather than echoing it. An `exit` inside a command
+# substitution ends only the SUBSHELL, so `nros="$(nros_bin)"` would swallow
+# `nros_grep_q`'s fatal path and leave the caller with an empty string -- the
+# gate would then SKIP on a tool failure, reporting nothing where it meant to
+# report a refusal. The helper's own header says this; it is repeated here
+# because the wrong spelling is the natural one.
+nros=""
+resolve_nros() {
+    local c help
     for c in \
         "${NROS_CLI:-}" \
         "${CARGO_TARGET_DIR:-}/release/nros" \
@@ -58,8 +76,11 @@ nros_bin() {
         "$(command -v nros 2>/dev/null || true)"
     do
         [ -n "$c" ] && [ -x "$c" ] || continue
-        if "$c" ws entity-census check --help 2>&1 | grep -q -- '--require-fresh'; then
-            printf '%s' "$c"
+        # A CLI that predates this wave has no such subcommand and exits
+        # non-zero; that is a candidate rejected, not a tool failure.
+        help="$("$c" ws entity-census check --help 2>&1)" || continue
+        if nros_grep_q -- '--require-fresh' <<<"$help"; then
+            nros="$c"
             return 0
         fi
     done
@@ -72,7 +93,7 @@ nros_bin() {
 # per-push line. Same contract `check-cli-tests` and `check-cli-fresh` keep,
 # through the same ledger, so `just check` says what did not run instead of
 # printing a success line that covers it.
-if ! nros="$(nros_bin)"; then
+if ! resolve_nros; then
     # shellcheck source=scripts/build/check-skip.sh
     source "$repo_root/scripts/build/check-skip.sh"
     nros_check_skip entity-census \
@@ -248,8 +269,28 @@ check() {
         "$@" ) > "$ws/check.log" 2>&1
 }
 
-want() { grep -q -- "$1" "$ws/check.log" || fail "$2 -- expected \"$1\" in:
-$(cat "$ws/check.log")"; }
+# The positive assertion. Branching on the STATUS rather than on truthiness,
+# because a grep that did not run must stop the gate instead of manufacturing
+# a finding -- `nros_grep_q` exits 2 before either arm is reached.
+want() {
+    nros_grep_q -- "$1" "$ws/check.log"
+    case $? in
+        0) ;;
+        *) fail "$2 -- expected \"$1\" in:
+$(cat "$ws/check.log")" ;;
+    esac
+}
+
+# The negative assertion, and the reason it is a function rather than
+# `grep -q ... && fail`: the same status split, read the other way round.
+want_not() {
+    nros_grep_q -- "$1" "$ws/check.log"
+    case $? in
+        1) ;;
+        *) fail "$2 -- did not expect \"$1\" in:
+$(cat "$ws/check.log")" ;;
+    esac
+}
 
 # ---------------------------------------------------------------------------
 # Move 0 -- no census at all. `[census] on_missing = "refuse"`.
@@ -284,8 +325,7 @@ want "fnv1a64:" "move 1 names the digest it expected"
 # The CONTRACT is not consulted while the census cannot be believed: a
 # comparison against a museum census says something true about two documents
 # and nothing about the code.
-grep -q "missing-in-contract" "$ws/check.log" \
-    && fail "move 1: a stale census must not be compared"
+want_not "missing-in-contract" "move 1: a stale census must not be compared"
 echo "check-entity-census: move 1 ok -- an edited source makes the census stale"
 
 # ---------------------------------------------------------------------------
@@ -296,9 +336,7 @@ $(cat "$ws/run.log")"
 if check --require-fresh; then
     fail "move 2: the code creates an endpoint the contract does not declare"
 fi
-grep -q "census stale" "$ws/check.log" \
-    && fail "move 2: a census just taken is not stale:
-$(cat "$ws/check.log")"
+want_not "census stale" "move 2: a census just taken is not stale"
 want "missing-in-contract" "move 2"
 want "/system/operation_mode" "move 2 names the endpoint"
 want "not waivable" "move 2: the UNDER direction has no waiver"
@@ -423,9 +461,8 @@ $(cat "$ws/run.log")"
     if check; then
         fail "self-test: the code still creates an endpoint the contract does not declare"
     fi
-    if grep -q "census stale" "$ws/check.log"; then
-        fail "self-test: freshness refused without --require-fresh, so the flag gates nothing"
-    fi
+    want_not "census stale" \
+        "self-test: freshness refused without --require-fresh, so the flag gates nothing"
     want "missing-in-contract" "self-test: the comparison still runs"
     echo "check-entity-census: self-test ok -- the assertions can fail, and the flag is what gates freshness"
 }
