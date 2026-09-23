@@ -551,6 +551,27 @@ workflow-doctor-after-setup:
 workflow-indexed-apt:
     @python3 scripts/check-workflow-indexed-apt.py
 
+# phase-466 W2 — a job that runs a `just` recipe must OBTAIN `just`. `probe.yml`
+# is the one lane that cannot run inside `nano-ros-ci` (it drives `docker run`
+# itself), so it is on a bare `ubuntu-latest`, and its first scheduled run died
+# in both jobs in under a second on `just: command not found`, exit 127.
+#
+# This is the one prerequisite the repo cannot assert at RUN time, which is why
+# it is static: every precondition we own is written as a `just` recipe, so
+# `just doctor` needs `just`. `activate.sh` does warn, one line before the fatal
+# error, and calls itself harmless — correctly, since a sourced file cannot know
+# whether a recipe follows.
+#
+# Sibling of `workflow-repo-env` and NOT implied by it: probe.yml DID source the
+# environment. The two share one detector (`scripts/lib/workflow_commands.py`),
+# so neither can drift toward green on a heredoc or a comment.
+#
+# Reach includes `.github/actions/*` — `setup-nros-cli` runs `just` and installs
+# nothing. Pure YAML + Dockerfile text, no network, no build.
+[private]
+workflow-just-provisioning:
+    @python3 scripts/check-workflow-just-provisioning.py
+
 # issue 1158 — `run-matrix.yml`'s stage report must still describe the steps that
 # exist. The step->stage map is AUTHORED (the workflow hands `lane-stage.py` a
 # copy of its own `- name:` lines), and an authored map drifts the moment a step
