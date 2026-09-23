@@ -20,7 +20,10 @@ use super::{
     cargo_metadata_schema::{CallbackGroupDecl, SystemComponentEntry, SystemToml},
     nros_config::NrosConfig,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
+};
 
 /// Phase 228 / 256 W4.2 / 273 W2 — collect each system component's declared
 /// callback-group → tier bindings, keyed by the system `[[component]].name`
@@ -32,10 +35,16 @@ use std::collections::{BTreeMap, BTreeSet};
 /// package manifest's `callback_groups` tier field. When absent the manifest is
 /// honoured for one release (deprecated path — emit a warning so workspaces can
 /// migrate to `system.toml group_tiers`).
+///
+/// phase-459 W1 (issue 1426): a THIRD source below those two - the cmake
+/// keyword `CALLBACK_GROUPS`, read from the `nros-metadata.json` a configure
+/// wrote. See [`metadata_callback_groups`] for why a cmake workspace reached
+/// neither of the first two, and what that cost.
 pub fn collect_callback_groups(
     cfg: &NrosConfig,
     components: &[SystemComponentEntry],
 ) -> BTreeMap<String, Vec<CallbackGroupDecl>> {
+    let from_metadata = metadata_callback_groups(&cfg.workspace_root);
     let mut map = BTreeMap::new();
     for c in components {
         // Phase 273 (W2): prefer system.toml [[component]].group_tiers (RFC-0047).
@@ -55,24 +64,31 @@ pub fn collect_callback_groups(
 
         // Fallback: package-manifest `callback_groups` tier (deprecated — move to
         // [[component]].group_tiers in system.toml).
-        let Some(pkg) = cfg.component_packages.get(&c.pkg) else {
-            continue;
-        };
-        // Single-node pkg → node_or_component; multi-node pkg → match by name/class.
-        let groups = pkg
-            .nros
-            .node_or_component()
-            .filter(|m| !m.callback_groups.is_empty())
-            .map(|m| m.callback_groups.clone())
-            .or_else(|| {
+        //
+        // A cmake workspace has no root `Cargo.toml`, so `NrosConfig` gives it
+        // `component_packages: BTreeMap::new()` and this rung answers for
+        // nothing. That is why the third source below is reached by an `else`
+        // and not by an `if`: it is the ONLY rung a C/C++ component has.
+        let groups = cfg
+            .component_packages
+            .get(&c.pkg)
+            .map(|pkg| {
+                // Single-node pkg -> node_or_component; multi-node pkg -> match by name/class.
                 pkg.nros
-                    .nodes_or_components()
-                    .values()
-                    .find(|m| {
-                        m.name.as_deref() == Some(c.name.as_str())
-                            || m.class.as_deref() == Some(c.class.as_str())
-                    })
+                    .node_or_component()
+                    .filter(|m| !m.callback_groups.is_empty())
                     .map(|m| m.callback_groups.clone())
+                    .or_else(|| {
+                        pkg.nros
+                            .nodes_or_components()
+                            .values()
+                            .find(|m| {
+                                m.name.as_deref() == Some(c.name.as_str())
+                                    || m.class.as_deref() == Some(c.class.as_str())
+                            })
+                            .map(|m| m.callback_groups.clone())
+                    })
+                    .unwrap_or_default()
             })
             .unwrap_or_default();
         let has_pkg_tiers = groups.iter().any(|g| g.tier != DEFAULT_TIER);
@@ -86,9 +102,194 @@ pub fn collect_callback_groups(
         }
         if !groups.is_empty() {
             map.insert(c.name.clone(), groups);
+            continue;
+        }
+
+        // phase-459 W1 (issue 1426) - the cmake keyword, the third and last
+        // source. Every group binds to `DEFAULT_TIER`: the keyword states WHICH
+        // groups the code has, never where they run. That is exactly the input
+        // shape `derive_tiers_from_contracts` keys on - a node with groups and
+        // no authored binding is the one route on which the rate-monotonic
+        // derivation runs (RFC-0052), and a bound group would instead have to
+        // name a `[tiers.*]` that this workspace deliberately does not author.
+        if let Some(ids) = from_metadata.get(&c.name) {
+            map.insert(
+                c.name.clone(),
+                ids.iter()
+                    .map(|id| CallbackGroupDecl {
+                        id: id.clone(),
+                        r#type: "MutuallyExclusive".to_string(),
+                        tier: DEFAULT_TIER.to_string(),
+                    })
+                    .collect(),
+            );
         }
     }
     map
+}
+
+/// phase-459 W1 (issue 1426) - `CALLBACK_GROUPS` as a `codegen-system` input.
+///
+/// `nros_components_register_node(... CALLBACK_GROUPS main)` and
+/// `nano_ros_add_node(... CALLBACK_GROUPS ...)` write the group ids into
+/// `${CMAKE_BINARY_DIR}/nros-metadata.json` (`NanoRosNodeRegister.cmake`,
+/// `_nros_metadata_emit`). Until this wave that file had exactly one consumer,
+/// `codegen entry`'s `metadata::enrich_plan`, and `codegen-system` knew only the
+/// two sources above - `[[component]].group_tiers`, which a workspace deriving
+/// its schedule deliberately does not write, and `cfg.component_packages`, which
+/// is empty for every workspace without a root `Cargo.toml`. So a C++ image
+/// authored the keyword and every one of its nodes still arrived at
+/// `derive_tiers_from_contracts` groupless, went onto the default tier, and the
+/// derived schedule was empty. Issue 1426 measured that on the Autoware Safety
+/// Island; this is the reader that closes it.
+///
+/// Returns `component name -> group ids`, where the name is the register call's
+/// `EXECUTABLE` / `NAME` - the same string `[[component]].name` carries, which
+/// is why the caller can key on it directly.
+///
+/// # Where it looks, and why not everywhere
+///
+/// The file is a CONFIGURE output, so it lives in a build tree, not beside the
+/// sources: `${CMAKE_BINARY_DIR}/nros-metadata.json`. The search is therefore
+/// bounded on purpose rather than a walk of the workspace - a tree that has
+/// accumulated build directories will make a recursive scan open hundreds of
+/// thousands of them, which is a measured failure mode here and not a
+/// hypothetical one. Per root: the root itself, each immediate `build*` child,
+/// and each child of those (colcon's `build/<pkg>/`). Three `read_dir` levels,
+/// no deeper.
+///
+/// The roots are the workspace and - when it still looks like a workspace - its
+/// parent. The second is not a guess: `nros_system_generate()` passes
+/// `--workspace` the PARENT of the bringup package, so a Zephyr image whose
+/// bringup is `<ws>/src/<bringup>` bakes with `--workspace <ws>/src` while its
+/// `CMAKE_BINARY_DIR` is `<ws>/build-board`. One level up finds it; the walk
+/// stops as soon as a candidate carries no workspace marker, so it never
+/// wanders into a home directory.
+///
+/// # Merging several files, and the empty list
+///
+/// A workspace commonly holds several build trees (the island has four). Group
+/// ids are UNIONED across the files that name a component, because an empty
+/// `callback_groups` array is "this configure said nothing", not "this
+/// component has no groups" - the island's own `build-board/nros-metadata.json`
+/// carries `[]` for all four components simply because it never wrote the
+/// keyword. Union is also the only monotone choice: a stale tree can add a
+/// group that no longer exists (and W6 makes code/keyword disagreement a
+/// refusal), but it can never silently delete one and shrink a schedule.
+///
+/// Unreadable or unparseable files are SKIPPED, silently. This is a
+/// best-effort enrichment of a bake that must keep working for every workspace
+/// that has no such file at all, and it is the same policy
+/// [`load_workspace_metadata`](super::model_ingest::load_workspace_metadata)
+/// applies to the source-metadata sidecars.
+pub fn metadata_callback_groups(ws_root: &Path) -> BTreeMap<String, Vec<String>> {
+    let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for path in metadata_doc_paths(ws_root) {
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(doc) = serde_json::from_str::<CmakeMetadataDoc>(&raw) else {
+            continue;
+        };
+        for c in doc.components {
+            if c.callback_groups.is_empty() {
+                continue;
+            }
+            out.entry(c.name).or_default().extend(c.callback_groups);
+        }
+    }
+    out.into_iter()
+        .map(|(name, ids)| (name, ids.into_iter().collect()))
+        .collect()
+}
+
+/// The `nros-metadata.json` docs reachable from `ws_root` - see
+/// [`metadata_callback_groups`] for the bound and the reason for it.
+fn metadata_doc_paths(ws_root: &Path) -> Vec<PathBuf> {
+    /// One level above the workspace, and no further: that is the whole of the
+    /// `--workspace <ws>/src` + `CMAKE_BINARY_DIR <ws>/build-board` gap.
+    const ANCESTORS: usize = 1;
+    /// What makes a directory a plausible workspace root rather than whatever
+    /// happens to contain one. The generated `Cargo.toml` / `CMakeLists.txt` of
+    /// an RFC-0065 workspace are gitignored, so `.colcon_workspace` is the
+    /// tracked marker and has to be in the list.
+    const MARKERS: [&str; 4] = [
+        ".colcon_workspace",
+        "Cargo.toml",
+        "CMakeLists.txt",
+        "package.xml",
+    ];
+
+    let mut roots = vec![ws_root.to_path_buf()];
+    let mut cur = ws_root.to_path_buf();
+    for _ in 0..ANCESTORS {
+        let Some(parent) = cur.parent().map(Path::to_path_buf) else {
+            break;
+        };
+        if !MARKERS.iter().any(|m| parent.join(m).exists()) {
+            break;
+        }
+        roots.push(parent.clone());
+        cur = parent;
+    }
+
+    let mut out = Vec::new();
+    let mut push_if_file = |p: PathBuf| {
+        if p.is_file() && !out.contains(&p) {
+            out.push(p);
+        }
+    };
+    for root in roots {
+        push_if_file(root.join("nros-metadata.json"));
+        let Ok(entries) = std::fs::read_dir(&root) else {
+            continue;
+        };
+        for build_dir in entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| is_build_dir(p))
+        {
+            push_if_file(build_dir.join("nros-metadata.json"));
+            let Ok(inner) = std::fs::read_dir(&build_dir) else {
+                continue;
+            };
+            for pkg_dir in inner.flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
+                push_if_file(pkg_dir.join("nros-metadata.json"));
+            }
+        }
+    }
+    out
+}
+
+/// A `build` / `build-board` / `build_native` style directory. Name-based
+/// because that is the only thing that distinguishes a build tree before it is
+/// opened, and opening every directory is the cost this bound exists to avoid.
+fn is_build_dir(p: &Path) -> bool {
+    p.is_dir()
+        && p.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n == "build" || n.starts_with("build-") || n.starts_with("build_"))
+}
+
+/// The two fields of `nros-metadata.json` this reader needs.
+///
+/// Not [`crate::codegen::entry::metadata::ComponentIndex`], which parses the
+/// same file for the typed entry: that index is keyed by `(pkg, exec)` for
+/// CLASS enrichment and REFUSES a row from which no pkg can be derived. A
+/// scheduling input must not make a bake fail because a stale build tree holds
+/// a row with an unqualified class, so this reads the two fields it needs and
+/// ignores the rest - `serde` skips unknown keys here by design.
+#[derive(serde::Deserialize)]
+struct CmakeMetadataDoc {
+    #[serde(default)]
+    components: Vec<CmakeComponentMeta>,
+}
+
+#[derive(serde::Deserialize)]
+struct CmakeComponentMeta {
+    name: String,
+    #[serde(default)]
+    callback_groups: Vec<String>,
 }
 
 /// Adapt a full [`SystemToml`] + its components' `callback_groups` to the
@@ -527,5 +728,216 @@ priority = 10
                 .contains(&("sub_node".to_string(), "telem".to_string())),
             "sub_node/telem must be in low tier"
         );
+    }
+
+    /// phase-459 W1 (issue 1426) - the cmake keyword as the third source.
+    mod cmake_metadata {
+        use super::*;
+
+        /// One `nros-metadata.json`, in the shape `_nros_metadata_emit()`
+        /// writes it. The island's own file is byte-compatible with this; only
+        /// its `callback_groups` arrays were empty, because it never wrote the
+        /// keyword.
+        fn doc(rows: &[(&str, &[&str])]) -> String {
+            let comps: Vec<String> = rows
+                .iter()
+                .map(|(name, groups)| {
+                    let gs: Vec<String> = groups.iter().map(|g| format!("\"{g}\"")).collect();
+                    format!(
+                        "    {{\"name\": \"{name}\", \"pkg\": \"{name}_pkg\", \
+                         \"class\": \"{name}_pkg::C\", \"class_header\": \"h.hpp\", \
+                         \"shape\": \"rclcpp\", \"sources\": [], \"deploy\": [], \
+                         \"pkg_dir\": \"/nowhere\", \"lang\": \"cpp\", \
+                         \"callback_groups\": [{}]}}",
+                        gs.join(", ")
+                    )
+                })
+                .collect();
+            format!(
+                "{{\n  \"components\": [\n{}\n  ],\n  \"applications\": [\n  ]\n}}\n",
+                comps.join(",\n")
+            )
+        }
+
+        fn write(path: &Path, body: &str) {
+            std::fs::create_dir_all(path.parent().expect("has a parent")).expect("mkdir");
+            std::fs::write(path, body).expect("write");
+        }
+
+        fn component(pkg: &str, name: &str) -> SystemComponentEntry {
+            SystemComponentEntry {
+                pkg: pkg.to_string(),
+                class: format!("{pkg}::C"),
+                name: name.to_string(),
+                group_tiers: BTreeMap::new(),
+                params: Default::default(),
+                params_files: Vec::new(),
+                entities: None,
+                dispatch: None,
+            }
+        }
+
+        fn cfg_at(root: &Path) -> NrosConfig {
+            NrosConfig {
+                workspace_root: root.to_path_buf(),
+                ..NrosConfig::default()
+            }
+        }
+
+        /// `cmake -S . -B build` at the workspace root: the file is one level
+        /// down and the bake's `--workspace` is the root itself.
+        #[test]
+        fn a_build_tree_at_the_workspace_root_is_read() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            write(
+                &tmp.path().join("build/nros-metadata.json"),
+                &doc(&[("ctrl_node", &["main"])]),
+            );
+            let groups = metadata_callback_groups(tmp.path());
+            assert_eq!(
+                groups.get("ctrl_node").map(Vec::as_slice),
+                Some(&["main".to_string()][..])
+            );
+        }
+
+        /// colcon's per-package build tree, `build/<pkg>/`.
+        #[test]
+        fn a_per_package_build_tree_is_read() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            write(
+                &tmp.path().join("build/ctrl_pkg/nros-metadata.json"),
+                &doc(&[("ctrl_node", &["main"])]),
+            );
+            assert!(metadata_callback_groups(tmp.path()).contains_key("ctrl_node"));
+        }
+
+        /// The Zephyr road: `nros_system_generate()` passes `--workspace` the
+        /// PARENT of the bringup package, so the bake's workspace is `<ws>/src`
+        /// while `CMAKE_BINARY_DIR` is `<ws>/build-board`. This is the island's
+        /// exact layout, and without the one-level walk-up the keyword it
+        /// authors would still reach nothing.
+        #[test]
+        fn the_parent_build_tree_is_read_when_the_parent_is_a_workspace() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            std::fs::write(tmp.path().join(".colcon_workspace"), "").expect("marker");
+            std::fs::create_dir_all(tmp.path().join("src")).expect("mkdir src");
+            write(
+                &tmp.path().join("build-board/nros-metadata.json"),
+                &doc(&[("mrm_handler", &["main"])]),
+            );
+            assert!(
+                metadata_callback_groups(&tmp.path().join("src")).contains_key("mrm_handler"),
+                "the bake's workspace is <ws>/src; its build tree is one level up"
+            );
+        }
+
+        /// The walk-up stops at a directory that carries no workspace marker,
+        /// so a workspace in a home directory never reads its neighbours' build
+        /// trees.
+        #[test]
+        fn the_walk_up_stops_at_a_directory_that_is_not_a_workspace() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            std::fs::create_dir_all(tmp.path().join("ws")).expect("mkdir ws");
+            write(
+                &tmp.path().join("build/nros-metadata.json"),
+                &doc(&[("ctrl_node", &["main"])]),
+            );
+            assert!(
+                metadata_callback_groups(&tmp.path().join("ws")).is_empty(),
+                "the parent carries no workspace marker, so it is not a root"
+            );
+        }
+
+        /// An empty array is "this configure said nothing", not "no groups" -
+        /// the island's four rows read exactly like this before it wrote the
+        /// keyword. A second tree that DOES name the group must still win.
+        #[test]
+        fn an_empty_array_is_not_a_statement_and_several_trees_union() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            write(
+                &tmp.path().join("build-stale/nros-metadata.json"),
+                &doc(&[("ctrl_node", &[])]),
+            );
+            write(
+                &tmp.path().join("build-board/nros-metadata.json"),
+                &doc(&[("ctrl_node", &["main"])]),
+            );
+            assert_eq!(
+                metadata_callback_groups(tmp.path()).get("ctrl_node"),
+                Some(&vec!["main".to_string()])
+            );
+        }
+
+        /// An unreadable or schema-drifted file is skipped, not fatal: this is
+        /// an enrichment of a bake that must keep working for every workspace
+        /// that has no such file at all.
+        #[test]
+        fn a_garbage_file_is_skipped() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            write(&tmp.path().join("build/nros-metadata.json"), "{not json");
+            write(
+                &tmp.path().join("build-2/nros-metadata.json"),
+                &doc(&[("ctrl_node", &["main"])]),
+            );
+            assert!(metadata_callback_groups(tmp.path()).contains_key("ctrl_node"));
+        }
+
+        /// The whole point: a C/C++ component, no `group_tiers`, no cargo
+        /// package entry - the two sources that existed - and the keyword still
+        /// reaches `collect_callback_groups`, bound to `DEFAULT_TIER`, which is
+        /// the input shape `derive_tiers_from_contracts` keys on.
+        #[test]
+        fn a_cmake_component_with_no_binding_gets_its_keyword_on_the_default_tier() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            write(
+                &tmp.path().join("build/nros-metadata.json"),
+                &doc(&[("ctrl_node", &["main"])]),
+            );
+            let map =
+                collect_callback_groups(&cfg_at(tmp.path()), &[component("ctrl_pkg", "ctrl_node")]);
+            let decls = map
+                .get("ctrl_node")
+                .expect("the keyword must reach the bake");
+            assert_eq!(decls.len(), 1);
+            assert_eq!(decls[0].id, "main");
+            assert_eq!(
+                decls[0].tier, DEFAULT_TIER,
+                "the keyword says WHICH groups exist, never where they run"
+            );
+        }
+
+        /// The new rung is the LAST one: an authored `group_tiers` still
+        /// decides, and the metadata does not add a second entry beside it.
+        #[test]
+        fn an_authored_binding_still_outranks_the_keyword() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            write(
+                &tmp.path().join("build/nros-metadata.json"),
+                &doc(&[("ctrl_node", &["main", "telem"])]),
+            );
+            let mut c = component("ctrl_pkg", "ctrl_node");
+            c.group_tiers.insert("main".to_string(), "high".to_string());
+            let map = collect_callback_groups(&cfg_at(tmp.path()), &[c]);
+            let decls = map.get("ctrl_node").expect("bound");
+            assert_eq!(decls.len(), 1, "only the authored binding: {decls:?}");
+            assert_eq!(decls[0].tier, "high");
+        }
+
+        /// A component the metadata does not name is untouched - it stays
+        /// groupless and `derive_tiers_from_contracts` keeps it on the default
+        /// tier with the note issue 1371 persists.
+        #[test]
+        fn a_component_the_metadata_does_not_name_stays_groupless() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            write(
+                &tmp.path().join("build/nros-metadata.json"),
+                &doc(&[("ctrl_node", &["main"])]),
+            );
+            let map = collect_callback_groups(
+                &cfg_at(tmp.path()),
+                &[component("telem_pkg", "telem_node")],
+            );
+            assert!(map.is_empty(), "{map:?}");
+        }
     }
 }
