@@ -119,6 +119,21 @@ CLASSIFICATION = {
         "setup",
         "`just workspace install-corrosion`, run by `_setup-common`.",
     ),
+    # phase-466. `_setup-common` runs `just setup-clang-format` on every setup
+    # path, so this is `setup` -- but it runs it NON-FATALLY, and the pairing is
+    # the point rather than a caveat. Fatal there, one missing `unzip` in the
+    # Zephyr CI container reported as all 22 nightly `zephyr *` jobs failing to
+    # "Set up Zephyr <line> workspace" (issue 1359), none of which formats
+    # anything. So provisioning is best-effort where every scope passes through,
+    # and the demand is asserted HERE, where the caller has said it is about to
+    # run a tier and `check fast` is minutes away.
+    "clang-format is not available": (
+        "setup",
+        "`just setup-clang-format`, run by `_setup-common` on every setup path "
+        "-- best-effort there (issue 1359: a formatter must not veto a "
+        "cross-compile), asserted here because every tier runs `check fast`, "
+        "which runs `c-fmt`/`cpp-fmt`.",
+    ),
 }
 
 # `just setup-*` recipes a gate tells the user to run. Same rule: reachable from
