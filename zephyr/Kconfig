@@ -1420,9 +1420,11 @@ config NROS_BOOT_REPORT
     bool "Write a boot self-report into RAM"
     default n
     help
-      The image keeps a fixed 60-byte record in RAM describing itself: the
-      knobs it was COMPILED with, how far boot got, and the arena allocation
-      that did not fit. Read it back with a debugger after halting the core:
+      The image keeps one fixed-size record in RAM describing itself: the
+      knobs it was COMPILED with, how far boot got, the arena allocation that
+      did not fit, the platform heap's high-water mark, and how many samples
+      were dropped for being bigger than their subscription buffer. Read it
+      back with a debugger after halting the core:
 
         python3 scripts/read-boot-report.py build/zephyr/zephyr.elf dump.bin
 
@@ -1438,6 +1440,38 @@ config NROS_BOOT_REPORT
 
       OFF by default: an image that does not enable it is byte-identical to one
       built before the feature existed.
+
+      The record's LENGTH is not stated here on purpose. It has been 60, 88 and
+      92 bytes as fields were appended, and this text said 60 through two of
+      those. Ask the tool, which reads it from the ELF's own symbol size:
+
+        python3 scripts/read-boot-report.py --addr-only build/zephyr/zephyr.elf
+
+config NROS_HEAP_EXHAUSTION_IS_FATAL
+    bool "Halt through the fatal hook when the platform heap is exhausted"
+    default y if NROS_BOOT_REPORT
+    default n
+    help
+      phase-460 W7 / issue 1425. When nros_platform_alloc cannot satisfy a
+      request it writes the failure into the boot report and then calls
+      nros_platform_panic, which printk()s and enters k_panic() -- so the
+      image's own k_sys_fatal_error_handler runs and the board stops in a
+      state a debugger can be pointed at.
+
+      WHAT THIS REPLACES. Without it the call prints a HEAP EXHAUSTED line and
+      returns NULL. A returned NULL is only ever handled by code that was
+      WRITTEN to handle it, and on a board whose console UART is not wired the
+      line goes nowhere -- so the observable outcome of an exhausted heap is an
+      image that keeps running and quietly does less, which is the worst shape
+      a safety image can fail in. The printk still happens; this decides
+      whether anything happens after it.
+
+      DEFAULT Y ONLY WITH NROS_BOOT_REPORT. An image that asked for the record
+      is an image that expects to be read after it stops, so halting is what it
+      wants; one that did not is a development image, where NULL-and-log is the
+      behaviour it has always had and a new halt would be a surprise. Turn this
+      off explicitly on an image that genuinely recovers from a failed
+      allocation -- and then make sure something checks the return.
 
 config NROS_EXECUTOR_MAX_SC
     int "Maximum scheduling-context slots per executor (-1 = derive)"

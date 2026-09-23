@@ -2659,6 +2659,21 @@ required-features-tests:
     cargo nextest run "${cargo_nextest_args[@]}" \
         -p nvidia-ivc --features std,unix-mock \
         --test loopback
+    # phase-460 W7 / issue 1425 -- `nros-cpp`'s LIB tests, which are behind
+    # `rmw-cffi` for exactly the reason the `nros-c` line above is: the entity
+    # modules live inside a `#[cfg(feature = "rmw-cffi")]`, and `just test-unit`
+    # runs `cargo nextest --workspace`, which activates NO features. So
+    # `subscription.rs` -- the C++ take path every island subscription goes
+    # through -- was compiled by no lane that RUNS anything. Issue 0972 is the
+    # same finding one crate over, and `check::workspace-features` compiles this
+    # crate only to clippy it, which is lint and never execution.
+    #
+    # `--no-default-features` drops `panic-platform`: a lib test is a final
+    # artifact and the dev-dep `nros-platform-cffi/posix-c-port` is what supplies
+    # the platform ABI (issue 0619). Same shape as `census-hooks-complete`'s
+    # invocation, which is the only other lane that runs a test in this crate.
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-cpp --no-default-features --features std,rmw-cffi --lib
     echo "required-features test targets passed!"
 
 # The Cyclone RMW's own CMake/ctest suite (descriptor builder + registry).

@@ -228,6 +228,41 @@ zephyr-thread-slots:
     fi
     ./tests/zephyr/run-thread-slots.sh
 
+# phase-460 W7 -- an exhausted platform heap reaches a hook, not only a printk.
+#
+# `nros_platform_alloc` printed "HEAP EXHAUSTED" and returned NULL. A returned
+# NULL is only ever handled by code WRITTEN to handle it, and on the board class
+# this port exists for (the MR-CANHUBK344: console UART not wired, second UART
+# carrying the zenoh serial transport) the line goes nowhere. So an exhausted
+# heap produced an image that kept running and quietly did less -- the worst
+# shape a safety image can fail in, and the one issue 1425 names.
+#
+# This compiles the REAL `platform.c` against the stub Zephyr tree in
+# `tests/zephyr/host-platform/` and drives the allocation path with a fake arena
+# that refuses. It asserts the ORDER as well as the events: the record is
+# written BEFORE the halt, because the record is what a halted board is read
+# through and a write afterwards never happens. The negative control is the
+# knob-OFF build, which must keep NULL-and-log; a fourth run puts the gate's own
+# assertions against that build and requires them to FAIL, so the teeth are
+# measured rather than claimed.
+#
+# Fast lane, not the build tier, and NOT native_sim: `cc` and pthreads are the
+# whole prerequisite. The phase doc writes this half as a native_sim test, which
+# would need a provisioned Zephyr workspace and `west` -- and the phase's own
+# gate table already says W7's native_sim half does not run in the fast tier.
+# The same trade `zephyr-thread-slots` above made, for the same reason.
+[group("checks")]
+zephyr-heap-exhaustion:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cc >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zephyr-heap-exhaustion "missing host tool(s): cc"
+        exit 0
+    fi
+    ./tests/zephyr/run-heap-exhaustion.sh
+
 # issue 1143 — a `when.capability` row must DECIDE something, and decide it the
 # right way. Six rules over the platform manifests plus the two Rust wires:
 #

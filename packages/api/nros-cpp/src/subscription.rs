@@ -14,6 +14,75 @@ use crate::{
     NROS_CPP_RET_OK, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
+/// Issue 1425 -- how many takes THIS path has thrown away for being too big.
+///
+/// A second counter beside the record's `samples_dropped_too_small`, and not a
+/// duplicate of it: this one decides the log THROTTLE, and the record's is
+/// compiled out unless the image asked for the report. Reading the throttle off
+/// the record would make the diagnostic depend on the diagnostic -- an image
+/// without `NROS_BOOT_REPORT` would see every drop logged, which is the log
+/// flood the throttle exists to prevent (issue 0371's shape).
+///
+/// A COUNTER rather than a per-entity field, for the reason
+/// `nros_node::executor::arena`'s `DROPPED_TAKES` is one: the C++ storage is a
+/// bare `RmwSubscriber` and the topic lives on the C++ `Subscription<M>` class,
+/// so there is no per-entity place here to put one without changing the ABI.
+static SAMPLES_DROPPED_TOO_SMALL: core::sync::atomic::AtomicU32 =
+    core::sync::atomic::AtomicU32::new(0);
+
+/// Say that a C++ take was thrown away, and put it in the boot report.
+///
+/// ISSUE 1425, AND THE HALF OF 0757 THAT NEVER LANDED. `arena.rs` counts and
+/// logs the drop for the RUST arena dispatch; this path -- the one every C++
+/// `Subscription<M>::take` goes through -- counted nothing and said nothing.
+/// It returned `NROS_CPP_RET_FULL` with `out_len = 0`, which the generated C++
+/// wrapper reads as "no message waiting", so an undersized buffer is
+/// indistinguishable from an idle topic. The transport has already completed
+/// and ACKed the sample by then, so every outside probe reports the
+/// subscription matched and healthy.
+///
+/// **What this can and cannot say.** The BUFFER capacity is known here and is
+/// the actionable half: it names the knob to raise
+/// (`NROS_SUBSCRIPTION_BUFFER_SIZE`). The SAMPLE size is NOT -- the RMW C ABI
+/// is "non-negative = bytes produced, negative = error code" with no
+/// required-length out-param (`rmw_vtable.h`), so `TransportError` carries no
+/// size and the backend cannot report how big the sample was. The topic is not
+/// either: it lives on the C++ class, not in the storage this function is
+/// reached from. Both are ABI changes worth doing on their own merits, and
+/// `arena.rs` says the same about the same two facts.
+///
+/// First drop, then every 64th: `arena.rs`'s throttle, on the same reasoning.
+/// A forty-participant graph must not turn one misconfigured subscription into
+/// a log flood.
+///
+/// `cpp_diag!` (which is `nros_log`), never stdio: this runs on `no_std`
+/// targets and inside Zephyr `native_sim`, where a Rust `std` stdio call is
+/// fatal (issue 0589).
+///
+/// THE LINE IS SHORT ON PURPOSE. `nros_log` formats into a fixed 256-byte
+/// stack buffer and its `push_str` is all-or-nothing, so a literal that does
+/// not fit in what is LEFT is dropped whole and the record ends in an
+/// ellipsis. A paragraph of advice therefore does not become a truncated
+/// paragraph, it becomes a line that stops before the knob name -- measured,
+/// at 72 characters. Everything a reader needs that is not a number lives in
+/// this comment; the line carries the two numbers and the one knob.
+#[cold]
+fn note_sample_dropped_too_small(err: &TransportError, buf_len: usize) {
+    let n = SAMPLES_DROPPED_TOO_SMALL.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    // The RECORD, always -- a board with no console is exactly the case this
+    // exists for, and it is the throttled LOG that would tell it nothing.
+    nros_node::boot_report::note_sample_dropped_too_small();
+    if n != 0 && !n.is_multiple_of(64) {
+        return;
+    }
+    let total = n.saturating_add(1);
+    crate::cpp_diag!(
+        "C++ take DROPPED ({err:?}): sample too big for the {buf_len}-byte \
+         buffer; ACKed then discarded. Raise NROS_SUBSCRIPTION_BUFFER_SIZE to \
+         SERIALIZED_SIZE_MAX. {total} dropped so far (issue 1425)."
+    );
+}
+
 /// Create a subscription on a node.
 ///
 /// The caller provides `storage` — a pointer to a buffer of at least
@@ -603,9 +672,13 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_serialized(
             }
             NROS_CPP_RET_OK
         }
-        Err(TransportError::BufferTooSmall | TransportError::MessageTooLarge) => {
+        Err(e @ (TransportError::BufferTooSmall | TransportError::MessageTooLarge)) => {
             // The backend drops the oversized message; `out_len` stays 0
-            // because the backend doesn't report the actual length.
+            // because the backend doesn't report the actual length. Issue 1425
+            // -- COUNTED before the return, because `out_len = 0` with
+            // `NROS_CPP_RET_FULL` is what the C++ wrapper reads as "nothing
+            // waiting".
+            note_sample_dropped_too_small(&e, out_capacity);
             unsafe {
                 *out_len = 0;
             }
@@ -679,7 +752,12 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_validated(
             }
             NROS_CPP_RET_OK
         }
-        Err(TransportError::BufferTooSmall | TransportError::MessageTooLarge) => {
+        Err(e @ (TransportError::BufferTooSmall | TransportError::MessageTooLarge)) => {
+            // Issue 1425, as on the plain take above: the safety-e2e flavour of
+            // this path drops on exactly the same condition, so leaving it
+            // uncounted would make the tally depend on which feature the image
+            // was built with.
+            note_sample_dropped_too_small(&e, out_capacity);
             unsafe {
                 *out_len = 0;
             }
@@ -738,7 +816,14 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_serialized_with_attachment(
             }
             NROS_CPP_RET_OK
         }
-        Err(TransportError::BufferTooSmall | TransportError::MessageTooLarge) => {
+        Err(e @ (TransportError::BufferTooSmall | TransportError::MessageTooLarge)) => {
+            // Issue 1425 -- the third of the three C++ take flavours, counted
+            // for the same reason as the two above. `out_capacity` is the
+            // PAYLOAD buffer: the attachment has its own, but a sample that
+            // overran the attachment buffer is a different fault with a
+            // different knob, and naming one size for both would send the
+            // reader to the wrong one.
+            note_sample_dropped_too_small(&e, out_capacity);
             unsafe {
                 *out_len = 0;
                 *out_att_len = 0;
@@ -1025,4 +1110,180 @@ pub unsafe extern "C" fn nros_cpp_subscription_get_actual_qos(
         *out_qos = nros_cpp_qos_t::from_qos_settings(granted);
     }
     NROS_CPP_RET_OK
+}
+
+#[cfg(all(test, feature = "std"))]
+mod tests {
+    //! phase-460 W7 / issue 1425 -- the C++ take counts and NAMES a sample it
+    //! threw away for being too big.
+    //!
+    //! WHAT THIS TEST IS, AND WHAT THE PHASE DOC ASKED FOR. The wave's gate is
+    //! written as "register a C++ subscription with a 16-byte buffer, publish a
+    //! 64-byte sample". That cannot be run here, and the reason is structural
+    //! rather than effort: `nros_cpp_subscription_create` needs a REGISTERED
+    //! RMW backend, and a `cargo test -p nros-cpp` binary has none -- a backend
+    //! self-registers from `.init_array` in an image that links one, and this
+    //! lane links none. So the drop is raised at the seam the take path reaches
+    //! once the backend has already discarded the sample, with the same buffer
+    //! size, and the ASSERTIONS are the ones the gate names: the counter moved
+    //! by exactly one, and the line a reader sees carries the number they have
+    //! to act on.
+    //!
+    //! The half of the gate that cannot be asserted ANYWHERE is the sample
+    //! size, and that is a property of the ABI rather than of this test: the
+    //! RMW C contract is "non-negative = bytes produced, negative = error
+    //! code", so `TransportError` carries no length and no layer below can
+    //! report one. `nros_node::executor::arena` records the same limitation
+    //! about the same fact for the Rust half of the same drop.
+
+    use super::*;
+    use core::sync::atomic::Ordering;
+
+    /// A sink that keeps what was logged, so the test reads what a human
+    /// would see rather than what the format string says. `&'static` because
+    /// `add_sink` takes one and the dispatcher holds it for the process.
+    struct CapturingSink {
+        lines: std::sync::Mutex<std::vec::Vec<std::string::String>>,
+    }
+
+    impl nros_log::LogSink for CapturingSink {
+        fn log(&self, record: &nros_log::Record<'_>) {
+            self.lines
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(record.message.into());
+        }
+    }
+
+    static CAPTURE: std::sync::OnceLock<&'static CapturingSink> = std::sync::OnceLock::new();
+
+    /// The counter, the sink and the throttle are all PROCESS-global, so the
+    /// cells below must not interleave.
+    ///
+    /// `cargo test` runs them as threads in one process; nextest gives each its
+    /// own. Only one of those two needs this lock, and which lane runs the
+    /// tests is not something a test should have to know. Poisoning is ignored
+    /// deliberately: a panic in one cell must fail that cell, not turn the
+    /// other two into a second, more confusing failure.
+    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Serialise, then put the process-global state back to zero.
+    ///
+    /// The THROTTLE is why this resets rather than measuring a delta: "the
+    /// first drop is always reported" is a statement about drop number zero,
+    /// and a cell that inherited another cell's count would be asserting
+    /// something else entirely -- which is exactly how this test first failed.
+    fn fresh() -> std::sync::MutexGuard<'static, ()> {
+        let guard = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let sink = CAPTURE.get_or_init(|| {
+            let sink: &'static CapturingSink =
+                std::boxed::Box::leak(std::boxed::Box::new(CapturingSink {
+                    lines: std::sync::Mutex::new(std::vec::Vec::new()),
+                }));
+            assert!(
+                nros_log::add_sink(sink),
+                "no sink slot left; this test cannot see what a reader would"
+            );
+            sink
+        });
+        SAMPLES_DROPPED_TOO_SMALL.store(0, Ordering::Relaxed);
+        sink.lines
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
+        guard
+    }
+
+    fn logged() -> std::vec::Vec<std::string::String> {
+        let sink = CAPTURE.get().expect("`fresh()` installs the sink");
+        let mut guard = sink
+            .lines
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        core::mem::take(&mut *guard)
+    }
+
+    /// THE GATE. A 16-byte buffer, a sample that did not fit: counted once, and
+    /// the line names the buffer, the knob and which drop it was.
+    #[test]
+    fn a_too_small_take_is_counted_once_and_named_in_the_log() {
+        let _serial = fresh();
+
+        note_sample_dropped_too_small(&TransportError::BufferTooSmall, 16);
+
+        assert_eq!(
+            SAMPLES_DROPPED_TOO_SMALL.load(Ordering::Relaxed),
+            1,
+            "the drop was not counted; NROS_CPP_RET_FULL with out_len 0 is all \
+             the caller would have seen, and that is what an idle topic looks \
+             like"
+        );
+
+        let lines = logged();
+        assert_eq!(
+            lines.len(),
+            1,
+            "the FIRST drop must always be reported; got {lines:?}"
+        );
+        let line = &lines[0];
+        assert!(
+            line.contains("16"),
+            "the line does not name the buffer size, which is the number to \
+             act on: {line}"
+        );
+        assert!(
+            line.contains("NROS_SUBSCRIPTION_BUFFER_SIZE"),
+            "the line does not name the knob to raise: {line}"
+        );
+        assert!(
+            line.contains("BufferTooSmall"),
+            "the line does not say WHICH drop this was: {line}"
+        );
+    }
+
+    /// The throttle: the first, then every 64th. A forty-participant graph must
+    /// not turn one misconfigured subscription into a log flood (issue 0371's
+    /// shape), and a throttle nobody measured is a claim.
+    #[test]
+    fn the_drop_log_is_throttled_but_never_silent() {
+        let _serial = fresh();
+        for _ in 0..65 {
+            note_sample_dropped_too_small(&TransportError::MessageTooLarge, 32);
+        }
+        let lines = logged();
+        assert_eq!(
+            lines.len(),
+            2,
+            "65 drops must log the 1st and the 65th and nothing between; got \
+             {lines:?}"
+        );
+        assert!(
+            lines[1].contains("65"),
+            "the throttled line does not carry the RUNNING TOTAL, which is the \
+             only thing that says how much was lost between lines: {}",
+            lines[1]
+        );
+    }
+
+    /// Every drop reaches the RECORD, throttled or not.
+    ///
+    /// This is the half that matters on the island. The log line is the thing
+    /// that board cannot deliver, so a tally that followed the throttle would
+    /// leave a console-less image reading 64 times short -- and the record is
+    /// the only channel left.
+    #[test]
+    fn the_tally_counts_every_drop_not_only_the_logged_ones() {
+        let _serial = fresh();
+        for _ in 0..10 {
+            note_sample_dropped_too_small(&TransportError::BufferTooSmall, 8);
+        }
+        assert_eq!(
+            SAMPLES_DROPPED_TOO_SMALL.load(Ordering::Relaxed),
+            10,
+            "the tally followed the throttle"
+        );
+        assert_eq!(logged().len(), 1, "and the log did not");
+    }
 }
