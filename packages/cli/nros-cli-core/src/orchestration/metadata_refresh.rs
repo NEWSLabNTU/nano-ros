@@ -28,6 +28,7 @@ use std::{
 };
 
 use eyre::{Result, WrapErr};
+use sha2::Digest as _;
 
 use super::{
     metadata_build::{MetadataBuildOptions, build_metadata, host_triple, probe_blocker},
@@ -500,6 +501,107 @@ pub fn newest_source_mtime(package_root: &Path) -> Option<SystemTime> {
         .max()
 }
 
+/// phase-463 W4 -- the recorder schema an entity census in THIS tree is read
+/// against.
+///
+/// The SSoT is `nros::node_metadata::SOURCE_METADATA_SCHEMA_VERSION` in
+/// `packages/api/nros/src/node_metadata.rs`; the two workspaces do not share a
+/// crate, so the number is restated here and pinned by
+/// `the_recorder_schema_version_matches_the_recorder` below rather than left
+/// to drift. A census whose recorder schema is not this one is STALE by
+/// definition and not "a document with a field I skipped" -- issue 0427's rule
+/// for the resolver pin, applied to the recorder: the producer changed, so the
+/// output would too, for byte-identical inputs.
+pub const RECORDER_SCHEMA_VERSION: u32 = 2;
+
+/// One input a derived artifact recorded, as it was recorded.
+///
+/// The digest carries its own algorithm (`sha256:` / `fnv1a64:`) because the
+/// two kinds of input are hashed by different means for different reasons: a
+/// FILE by content, a SOURCE TREE by [`source_digest`], the walk that already
+/// decides when a sidecar is stale. [`recompute_digest`] dispatches on the
+/// prefix rather than on the role, so a producer that adds a role does not
+/// have to teach this reader anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordedInput {
+    pub role: String,
+    /// Relative to the root the artifact was produced from.
+    pub path: String,
+    pub digest: String,
+}
+
+/// One recorded input that no longer describes what is on disk.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaleInput {
+    pub role: String,
+    pub path: String,
+    pub recorded: String,
+    /// What the input hashes to now, or why it could not be hashed.
+    pub current: String,
+}
+
+impl StaleInput {
+    /// The one line a refusal prints per stale input.
+    pub fn line(&self) -> String {
+        format!(
+            "{} `{}` changed since the census was taken (recorded {}, now {})",
+            self.role, self.path, self.recorded, self.current
+        )
+    }
+}
+
+/// Recompute ONE recorded digest against the path it names.
+///
+/// Content-addressed, never mtime-based -- the rule this module's header
+/// states and the reason it states it. `touch` on a source file leaves both
+/// answers here unchanged, which is the property phase-463 W4's gate exists to
+/// hold: only a CHANGE to what the code says makes a census stale.
+pub fn recompute_digest(path: &Path, recorded: &str) -> Result<String, String> {
+    if recorded.starts_with("fnv1a64:") {
+        // A SOURCE TREE. `source_digest` walks it, skipping build output and
+        // the sidecar dir, and mixes this crate's version -- so a CLI that
+        // hashes differently also reads as stale, which is correct.
+        if !path.is_dir() {
+            return Err(format!("`{}` is not a directory any more", path.display()));
+        }
+        return source_digest(path).map_err(|e| format!("{e}"));
+    }
+    if recorded.starts_with("sha256:") {
+        let bytes =
+            std::fs::read(path).map_err(|e| format!("cannot read `{}`: {e}", path.display()))?;
+        return Ok(format!("sha256:{:x}", sha2::Sha256::digest(&bytes)));
+    }
+    Err(format!(
+        "unknown digest algorithm in `{recorded}` -- the census was written by a producer this          tree cannot verify"
+    ))
+}
+
+/// Every recorded input that is no longer current, in the order recorded.
+///
+/// An input that cannot be hashed at all (gone, or a tree that is now a file)
+/// is STALE and not skipped: "I could not check" and "it still matches" are
+/// the two answers a freshness gate may never confuse, which is the whole
+/// defect issue 1419 is about one layer up.
+pub fn stale_recorded_inputs(root: &Path, inputs: &[RecordedInput]) -> Vec<StaleInput> {
+    let mut out = Vec::new();
+    for input in inputs {
+        let path = root.join(&input.path);
+        let current = match recompute_digest(&path, &input.digest) {
+            Ok(d) => d,
+            Err(why) => why,
+        };
+        if current != input.digest {
+            out.push(StaleInput {
+                role: input.role.clone(),
+                path: input.path.clone(),
+                recorded: input.digest.clone(),
+                current,
+            });
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -573,6 +675,109 @@ mod tests {
         std::fs::create_dir_all(dir.join("metadata")).unwrap();
         std::fs::write(dir.join("metadata/talker.json"), "{}").unwrap();
         assert_eq!(before, source_digest(&dir).unwrap());
+    }
+
+    /// phase-463 W4 -- the number restated at the top of this file is the
+    /// recorder's own. Read from the recorder's source rather than trusted,
+    /// because the two live in workspaces that share no crate.
+    #[test]
+    fn the_recorder_schema_version_matches_the_recorder() {
+        let recorder =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../api/nros/src/node_metadata.rs");
+        let Ok(text) = std::fs::read_to_string(&recorder) else {
+            // A packaged crate has no sibling checkout; the pin is a
+            // developer-tree property and its absence is not a failure.
+            return;
+        };
+        let declared = text
+            .lines()
+            .find_map(|l| {
+                l.trim()
+                    .strip_prefix("pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = ")?
+                    .strip_suffix(';')?
+                    .trim()
+                    .parse::<u32>()
+                    .ok()
+            })
+            .expect("the recorder declares its schema version");
+        assert_eq!(
+            declared, RECORDER_SCHEMA_VERSION,
+            "the recorder moved to schema {declared}; every census written under \
+             {RECORDER_SCHEMA_VERSION} is stale by definition and this constant has to say so"
+        );
+    }
+
+    /// phase-463 W4 -- the four answers `recompute_digest` can give, and the
+    /// one that matters: TOUCHING a source file is not a change.
+    #[test]
+    fn a_recorded_source_tree_is_stale_by_content_and_not_by_mtime() {
+        let dir = tmp("census-fresh");
+        let pkg = dir.join("src/comp");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(pkg.join("node.cpp"), "// SUB: /a\n").unwrap();
+        let recorded = source_digest(&pkg).unwrap();
+        let inputs = vec![RecordedInput {
+            role: "source_tree".into(),
+            path: "src/comp".into(),
+            digest: recorded.clone(),
+        }];
+
+        assert!(
+            stale_recorded_inputs(&dir, &inputs).is_empty(),
+            "nothing changed"
+        );
+
+        // TOUCH: same bytes, new mtime. This is the step the gate's fourth
+        // move exercises, and the whole reason staleness is content-addressed.
+        std::fs::write(pkg.join("node.cpp"), "// SUB: /a\n").unwrap();
+        assert!(
+            stale_recorded_inputs(&dir, &inputs).is_empty(),
+            "a touch is not a change"
+        );
+
+        // A real edit -- one more entity the code creates.
+        std::fs::write(pkg.join("node.cpp"), "// SUB: /a\n// SUB: /b\n").unwrap();
+        let stale = stale_recorded_inputs(&dir, &inputs);
+        assert_eq!(stale.len(), 1, "{stale:?}");
+        assert_eq!(stale[0].role, "source_tree");
+        assert!(stale[0].line().contains("src/comp"), "{}", stale[0].line());
+        assert!(
+            stale[0].line().contains(&recorded),
+            "the refusal names the digest it expected: {}",
+            stale[0].line()
+        );
+    }
+
+    /// A recorded input that is GONE is stale, never skipped: "I could not
+    /// check" must not read as "it still matches".
+    #[test]
+    fn an_input_that_cannot_be_hashed_is_stale_rather_than_skipped() {
+        let dir = tmp("census-gone");
+        let inputs = vec![
+            RecordedInput {
+                role: "binary".into(),
+                path: "build/entry".into(),
+                digest: "sha256:0".into(),
+            },
+            RecordedInput {
+                role: "source_tree".into(),
+                path: "src/vanished".into(),
+                digest: "fnv1a64:0".into(),
+            },
+            RecordedInput {
+                role: "mystery".into(),
+                path: "x".into(),
+                digest: "crc32:0".into(),
+            },
+        ];
+        let stale = stale_recorded_inputs(&dir, &inputs);
+        assert_eq!(stale.len(), 3, "{stale:?}");
+        assert!(stale[0].current.contains("cannot read"), "{stale:?}");
+        assert!(stale[1].current.contains("not a directory"), "{stale:?}");
+        assert!(
+            stale[2].current.contains("unknown digest algorithm"),
+            "{stale:?}"
+        );
     }
 
     #[test]

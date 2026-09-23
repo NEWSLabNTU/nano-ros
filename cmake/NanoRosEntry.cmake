@@ -142,6 +142,117 @@ function(_nros_entry_resolve_rmw _out_var)
     set(${_out_var} "${_rmw}" PARENT_SCOPE)
 endfunction()
 
+# phase-463 W4 (issue 1419) -- the RTOS image's configure requires a census
+# that still describes the code.
+#
+# WHY HERE. The census is what the CODE creates, observed by running the entry's
+# own native binary (W2); the contract is what the image is DECLARED to create;
+# and until W3 nothing compared them. The comparison has to happen where it can
+# still refuse -- before a cross build turns a one-short subscriber pool into
+# `ExecutorFull` at boot on a board with no wired console, which is the failure
+# the safety island paid for on 2026-09-04.
+#
+# WHY ONLY FOR A NON-`native` DEPLOY. The census PRODUCER is the native image.
+# Asking a native configure for a fresh census would ask an artifact to precede
+# the build that makes it. A cross configure has no such circularity: the native
+# image is a separate build that already happened, or has not, and that is
+# exactly what this reports.
+#
+# WHY IT NEVER BUILDS ANYTHING. A refusal names the command that produces a
+# fresh census and stops. Shelling a host build from inside a cross configure is
+# the cross-cutting compile issue 0641 refuses, and it would run on every
+# configure of every fixture.
+#
+# SOFT BY DEFAULT. `[census] on_missing` / `on_stale` in the bringup's
+# `system.toml` decide, and both land as `warn` so that no consumer is broken on
+# the day this merges. phase-463 W6 flips the island to `refuse`; the default
+# follows once two consumers have run under it.
+function(_nros_entry_require_fresh_census)
+    cmake_parse_arguments(_RFC "" "NAME;MODEL;BRINGUP" "DEPLOY" ${ARGN})
+
+    # `native` alone is the producer's own configure -- see above.
+    set(_cross FALSE)
+    foreach(_t IN LISTS _RFC_DEPLOY)
+        if(NOT _t STREQUAL "native")
+            set(_cross TRUE)
+        endif()
+    endforeach()
+    if(NOT _cross)
+        return()
+    endif()
+    if(_RFC_MODEL STREQUAL "" OR NOT EXISTS "${_RFC_MODEL}")
+        return()
+    endif()
+    if(_RFC_BRINGUP STREQUAL "" OR NOT IS_DIRECTORY "${_RFC_BRINGUP}")
+        return()
+    endif()
+    nros_resolve_cli(_rfc_cli OPTIONAL CONTEXT "nano_ros_entry census freshness")
+    if(NOT _rfc_cli OR _rfc_cli STREQUAL "NOTFOUND")
+        return()
+    endif()
+
+    # The workspace the census's recorded input paths are relative to. A
+    # bringup lives at `<ws>/src/<pkg>` -- the same layout
+    # `nros_cli_core::orchestration::workspace::Workspace::discover` walks --
+    # so its grandparent is the root. A bringup somewhere else is not a
+    # workspace this rule can name, and the census is left unchecked rather
+    # than checked against the wrong root.
+    get_filename_component(_rfc_parent "${_RFC_BRINGUP}" DIRECTORY)
+    get_filename_component(_rfc_parent_name "${_rfc_parent}" NAME)
+    if(NOT _rfc_parent_name STREQUAL "src")
+        return()
+    endif()
+    get_filename_component(_rfc_ws "${_rfc_parent}" DIRECTORY)
+
+    set(_rfc_census "${CMAKE_BINARY_DIR}/nros/census/${_RFC_NAME}.json")
+    set(_rfc_args ws entity-census check --require-fresh
+        --census    "${_rfc_census}"
+        --model     "${_RFC_MODEL}"
+        --workspace "${_rfc_ws}"
+        --entry     "${_RFC_NAME}")
+    # NOT `--strict`. That is the merge queue's setting, and it turns an
+    # `unobserved` row -- a node the census never ran -- into a refusal. On
+    # this road the census may legitimately cover fewer nodes than the
+    # contract while a workspace is being edited; the explicit
+    # `just check entity-census` gate is where strict belongs.
+    if(EXISTS "${_RFC_BRINGUP}/system.toml")
+        list(APPEND _rfc_args --system-toml "${_RFC_BRINGUP}/system.toml")
+    endif()
+    set(_rfc_inventory "${CMAKE_BINARY_DIR}/nros/entity_inventory.json")
+    if(EXISTS "${_rfc_inventory}")
+        list(APPEND _rfc_args --inventory "${_rfc_inventory}")
+    endif()
+    # The contract is NOT spelled here. The model's own `meta.inputs` names the
+    # `*.contract.yaml` the resolver folded in, and the CLI reads it from
+    # there; re-deriving `<stem>.contract.yaml` in cmake would be a second
+    # spelling of a rule that already has one.
+
+    # issue 1018 -- a configure that READS an artifact registers it, even when
+    # no file exists yet, so taking a census re-configures rather than leaving
+    # the previous verdict standing.
+    get_property(_rfc_deps DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
+    if(NOT "${_rfc_census}" IN_LIST _rfc_deps)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_rfc_census}")
+    endif()
+
+    execute_process(
+        COMMAND "${_rfc_cli}" ${_rfc_args}
+        WORKING_DIRECTORY "${_rfc_ws}"
+        RESULT_VARIABLE _rfc_rc
+        OUTPUT_VARIABLE  _rfc_out
+        ERROR_VARIABLE   _rfc_err)
+    if(NOT _rfc_rc EQUAL 0)
+        message(FATAL_ERROR
+            "nano_ros_entry(${_RFC_NAME}): the census and the contract disagree, "
+            "or the census no longer describes the code.\n"
+            "${_rfc_out}${_rfc_err}")
+    endif()
+    string(STRIP "${_rfc_out}" _rfc_out)
+    if(NOT _rfc_out STREQUAL "")
+        message(STATUS "nano-ros: ${_rfc_out}")
+    endif()
+endfunction()
+
 function(nano_ros_entry)
     # Phase 219.D — LAUNCH + ARGS + LANG keyword args.
     # R1 / W4.2 — MODEL <system_model.yaml>: the canonical resolved-model
@@ -417,6 +528,14 @@ function(nano_ros_entry)
         # `nros_synth_runtime_umbrella`, which runs after the SUBDIRS loop.
         include("${_NROS_ENTRY_DIR}/NanoRosEntityFacts.cmake")
         nros_record_entity_facts("${_NRA_MODEL}")
+
+        # phase-463 W4 -- and, for a cross image, whether the CODE agrees with
+        # the contract those figures came from. See the function's header.
+        _nros_entry_require_fresh_census(
+            NAME    "${_NRA_NAME}"
+            MODEL   "${_NRA_MODEL}"
+            BRINGUP "${_NRA_BRINGUP}"
+            DEPLOY  ${_NRA_DEPLOY})
 
         _nros_entry_invoke_codegen(
             NAME      "${_NRA_NAME}"

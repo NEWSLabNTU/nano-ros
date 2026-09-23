@@ -249,6 +249,33 @@ census-hooks-complete:
     cargo test -p nros-cpp --lib --no-default-features \
         --features std,rmw-cffi,metadata-mode,param-services --quiet -- census_fixture
 
+# phase-463 W4 (issue 1419) -- the census RUNS where it can still refuse, and
+# it goes stale BY CONTENT.
+#
+# phase-463 W3 made the comparison; this gates the two properties that decide
+# whether the comparison is ever reached with a document worth comparing. An
+# RTOS image's configure asks `nros ws entity-census check --require-fresh`
+# before it builds anything, and `[census] on_missing` / `on_stale` in the
+# bringup's `system.toml` decide whether the answer stops the build.
+#
+# The sequence is the phase doc's, in order: no census at all, a census of the
+# code as it is, one component source EDITED (stale), re-run (fresh, and now
+# `missing-in-contract`), the contract row added (it configures), and then the
+# move the wave exists for -- a source file REWRITTEN WITH IDENTICAL BYTES and
+# touched into the future, which must change nothing. Content-addressed and
+# never mtime-keyed, for the reason `metadata_refresh` states: a rebase or a
+# `git stash pop` rewrites tracked files without changing them, and a gate that
+# reads STALE for the whole tree afterwards is a gate people turn off.
+#
+# FAST, not `build-serial`: 0.11 s measured, because it drives the real verbs
+# over a fixture workspace and builds no image. The census producer is the
+# entry's own native binary and W2's tests cover it through the real ABI; what
+# is under test here is the freshness rule and the policy. With no in-tree CLI
+# the gate SKIPS through the shared ledger, which is how the fast tier keeps
+# its pristine-worktree property.
+entity-census:
+    @bash scripts/check-entity-census.sh
+
 # phase-403 W9 (issue 0965) -- the READER for the ENTITY inventory, the second
 # source `NanoRosMessageBounds.cmake` says by name that it needs.
 #
