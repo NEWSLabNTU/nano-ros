@@ -520,6 +520,7 @@ version = "0.5.0"
 dependencies = [
  "indexmap",
  "nros-rmw",
+ "ros-launch-manifest-derive",
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
  "ros-launch-manifest-types",
@@ -806,6 +807,15 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "ros-launch-manifest-derive"
+version = "0.1.4"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.37#bfbe075b6123d2c3bc42f4ce720390f9883541a6"
+dependencies = [
+ "ros-launch-manifest-model",
+ "ros-launch-manifest-sched",
+]
 
 [[package]]
 name = "ros-launch-manifest-model"

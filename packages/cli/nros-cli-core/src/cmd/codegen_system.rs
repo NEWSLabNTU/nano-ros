@@ -595,6 +595,21 @@ pub fn run(args: Args) -> Result<()> {
         // always win; an uncontracted model derives nothing and bakes
         // tier-less exactly as before).
         if model.execution.tiers.is_empty() {
+            // phase-457 W2 (rlm design issue #52) - a node path the model
+            // carries no `trigger` for is Unclassified in the shared
+            // derivation: it is never guessed to be a timer, so it ranks
+            // nothing and silently leaves the schedule. Say it once, by name,
+            // beside the degradations the realizer records. The usual cause is
+            // a `build/nros/models/` tree resolved by a play_launch older than
+            // the pinned one, where the field did not exist yet; on such a
+            // model this names every path.
+            for path in nros_orchestration_ir::mapper_input::paths_without_trigger(&model) {
+                eprintln!(
+                    "codegen-system: derived-schedule note - path '{path}' carries no \
+                     trigger in the model; it is unclassified and ranks nothing \
+                     (re-run `nros sync` if the model predates the pinned resolver)"
+                );
+            }
             let (derived, warnings) =
                 crate::orchestration::model_ingest::derive_execution_from_contracts(
                     &mut owned.system,
@@ -2319,7 +2334,12 @@ launch = "system.launch.xml"
         )
         .unwrap();
         // Contracts, no tiers: control is a tight 5 ms / 100 Hz loop, telem a
-        // slack 100 ms / 10 Hz loop — the DAG ranking must place control above.
+        // slack 100 ms / 10 Hz loop - the DAG ranking must place control above.
+        //
+        // phase-457 W2 - each loop carries its `trigger` and NO publisher rate
+        // promise. The shared derivation reads the rate off the trigger and
+        // refuses to guess one from an empty `input`, so a fixture written the
+        // old way now derives no tier at all; that refusal is the wave.
         fs::write(
             dir.join("demo_bringup/config/system_model.yaml"),
             r#"
@@ -2350,15 +2370,15 @@ contracts:
   node_paths:
     /control_node/loop:
       output: [/control_node/cmd]
+      trigger: {kind: timer, value: {rate_hz: 100.0}}
       max_latency_ms: 5.0
     /telem_node/loop:
       output: [/telem_node/status]
+      trigger: {kind: timer, value: {rate_hz: 10.0}}
       max_latency_ms: 100.0
   pub_endpoints:
-    /control_node/cmd:
-      min_rate_hz: 100.0
-    /telem_node/status:
-      min_rate_hz: 10.0
+    /control_node/cmd: {}
+    /telem_node/status: {}
 "#,
         )
         .unwrap();
