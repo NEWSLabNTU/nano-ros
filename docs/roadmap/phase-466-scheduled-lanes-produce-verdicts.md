@@ -22,13 +22,22 @@ Scheduled runs, window 2026-09-11 to 2026-09-23, read from `gh run list
 | `run-matrix` (tier 2) | 13 | 9 | none |
 | `gate` | 12 | 12 | none |
 | `host-tests` | 12 | 12 | none |
-| `probe` | 1 | 1 | none |
+| `probe` | 1 | 1 | n/a -- see below |
 | `pr-verdicts` | 24 | 0 | 2026-09-22 |
 
 The only green scheduled lane is the one that reports on pull requests. That
 is why this went unnoticed for eleven days: PRs kept merging, the required
 `CI` context kept passing, and every lane that would have said otherwise was
 already red.
+
+**`probe` is the one row that is not an eleven-day blackout, and the first
+version of this document got it wrong.** The workflow landed 2026-09-21
+(`a625ef279`, phase-452 W3) and its cron is daily at 08:00 UTC, so it has had
+exactly ONE opportunity to run and spent it on the 127. Its cadence is
+correct and its single-run count is the workflow's age, not a symptom. The
+narrow fix had also already landed before this phase opened -- `9722fca32`,
+2026-09-22 08:50 UTC, 34 minutes after the failure -- so W2 changed
+`probe.yml` not at all. Five lanes are dark; the sixth is new.
 
 Six issues describe pieces of this and none of them describes the whole:
 [1158](../issues/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) (tier 2, filed
@@ -42,7 +51,7 @@ rather than the code**:
 | lane | failing step | measured cause |
 | --- | --- | --- |
 | `nightly` zephyr jobs (22) | `Set up Zephyr 3.7/4.4 workspace` | `unzip` absent -> `setup-clang-format` fails -> `_setup-common` fails |
-| `probe`, both tracks | `just probe checkout` / `installed` | `just: command not found`, exit 127 |
+| `probe`, both tracks | `just probe checkout` / `installed` | `just: command not found`, exit 127 -- narrow fix already landed in `9722fca32` before this phase opened |
 | `live-peer` | `Build the fixtures those rows resolve` | `ModuleNotFoundError: No module named 'tomllib'` / `'tomli'` |
 | `run-matrix`, `nightly` tier 2 | `just build tier2` / `tier2-nightly` | `msg2idl.py failed on builtin_interfaces/msg/Duration.msg (exit 1)`; separately `fixture-lane.sh: line 343: target/nextest/.fixtures-built.started: No such file or directory` |
 | `gate` | `just check build (nightly / manual only)` | not yet established; the only readable error in the run was `invalid instruction mnemonic 'bkpt'` from a sibling job's metadata-mode harness |
@@ -69,7 +78,7 @@ are diagnosis waves, and what a wave ends up editing depends on what it finds.
 | claim id | owns | starts now? |
 | --- | --- | --- |
 | `phase-466-W1` | `ci/docker/ci-base/Dockerfile`, `ci/docker/zephyr-ros/Dockerfile`, whatever gate stops the two lists drifting, the `_setup-common` -> `setup-clang-format` coupling | yes |
-| `phase-466-W2` | `.github/workflows/probe.yml` and the sweep of every workflow that invokes `just` on a runner that may not provide it | yes |
+| `phase-466-W2` | LANDED (#1209). Not `probe.yml` -- the narrow fix was already on main. The class gate `check-workflow-just-provisioning` plus the sweep of every workflow and composite action that invokes `just` | done |
 | `phase-466-W3` | the tier-2 fixture build: `msg2idl.py`, `scripts/build/fixture-lane.sh`, issues 1457/1458/1158 | yes |
 | `phase-466-W4` | the two `ci-base` lanes, `gate` (schedule-only portion) and `host-tests` | yes |
 
