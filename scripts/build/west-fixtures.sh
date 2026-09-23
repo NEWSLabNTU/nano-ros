@@ -21,6 +21,9 @@ NROS_REPO_ROOT="$repo_root"
 source "$repo_root/scripts/build/build-root.sh"
 # shellcheck source=scripts/build/zephyr-toolchain.sh
 source "$repo_root/scripts/build/zephyr-toolchain.sh"
+# issue 1379 — the ONE spelling of `-DZEPHYR_EXTRA_MODULES`.
+# shellcheck source=scripts/lib/zephyr-module.sh
+source "$repo_root/scripts/lib/zephyr-module.sh"
 
 out_root="$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
 mkdir -p "$out_root"
@@ -227,7 +230,34 @@ while IFS= read -r record; do
     [ "$builder" = "west-configure" ] && args+=(--cmake-only)
     [ -n "$board" ] && args+=(-b "$board")
     args+=("$repo_root/$src/$subdir")
-    [ -n "$extra" ] && args+=(-- "$extra")
+    # issue 1458 / issue 1379 — NAME THIS CHECKOUT'S MODULE.
+    #
+    # A Zephyr image gets the `nros` module from west's project list. Since
+    # phase-449 W1 (issue 1258) the manifest project of a provisioned workspace
+    # is UNBOUND — a plain directory holding the manifest file and no
+    # `zephyr/module.yml` — precisely so one shared store workspace does not
+    # bind every checkout on the host to whichever one provisioned it. The
+    # other side of that bargain is that every configuring build must name its
+    # own module, and this lane never did.
+    #
+    # On a workspace still bound to a checkout (the developer shape) the module
+    # resolves anyway, so the omission is INVISIBLE locally and total on CI:
+    # measured in an unbound workspace, all five rows die before the module is
+    # reached, on the app's own first line —
+    #
+    #   prj.conf:1: warning: attempt to assign the value 'y' to the undefined
+    #                        symbol NROS
+    #   error: Aborting due to Kconfig warnings
+    #
+    # which names Kconfig, not the module, and is what kept tier 2 out of its
+    # cells. Bound-workspace builds are not harmed: the flag names the same
+    # tree the manifest would have.
+    #
+    # `--` always, even for a row with no `west_extra`: the module flag is not
+    # optional and `west_board_import` carries no extra of its own.
+    args+=(--)
+    [ -n "$extra" ] && args+=("$extra")
+    args+=("$(nros_zephyr_module_cmake_arg "$repo_root")")
     # issues #87 + 0698 — native_sim builds with host gcc (no Zephyr SDK); every
     # other board, the FVP board_import entry (empty board → board.cmake)
     # included, names `zephyr` rather than leaving the variant unset, which is
