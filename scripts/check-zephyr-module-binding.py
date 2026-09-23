@@ -86,6 +86,26 @@ SEARCH_SUFFIXES = (".just", ".sh", ".bash")
 # `"${west_cmd[@]}" build`, `… -m west build`.
 WEST_BUILD = re.compile(r"(?:\bwest\b|west_cmd\[@\]\}\"?)\s+build\b")
 
+# ...and the spelling this gate could not see until issue 1458: west invoked
+# with its WHOLE argv in an array — `env "${tc_env[@]}" west "${args[@]}"`,
+# which is `scripts/build/west-fixtures.sh`, the builder of all five west
+# fixtures and therefore of tier 2's entire west cover.
+#
+# `build` is not on the line at all, so `WEST_BUILD` never matched and the file
+# was never harvested: the gate printed OK over a builder that named no module,
+# for as long as the rule has existed. Reach NARROWER than the rule — the third
+# instance of issue 0196's shape in this one gate, and the docstring above
+# predicted it in as many words.
+#
+# An argv-array invocation cannot be read from the line, so it is treated as a
+# configuring build and must earn the assembled-flags exemption like any other:
+# the FILE has to name the flag and call the helper on one line. That is
+# strictly what `zephyr-fixture-run-one.sh` already demonstrates.
+WEST_ARGV = re.compile(r"(?:\bwest\b|west_cmd\[@\]\}\"?)\s+\"?\$\{(\w+)\[@\]\}")
+WEST_INVOCATION = re.compile(
+    f"(?:{WEST_BUILD.pattern})|(?:{WEST_ARGV.pattern})"
+)
+
 # A west invocation only counts in COMMAND POSITION. The tree mentions
 # `west build` ~30 times in comments, `echo`-ed remedies and help text, and a
 # gate that cannot tell prose from a command is a gate about prose: it would
@@ -97,9 +117,14 @@ WEST_BUILD = re.compile(r"(?:\bwest\b|west_cmd\[@\]\}\"?)\s+build\b")
 # including inside the block comment at the head of
 # `scripts/build/zephyr-fixture-run-one.sh`, which is neither `#`-prefixed nor
 # printed and so is invisible to the other two filters.
+# `env VAR=… [VAR=…] west …` is command position too. The prefix ends in a
+# QUOTE there (`env "${tc_env[@]}" `), so none of the boundaries below reached
+# it and `scripts/build/west-fixtures.sh` fell out of the harvest on this test
+# as well as on `WEST_ARGV` — two independent reasons the busiest west builder
+# in the tree was invisible, either of which alone kept it so.
 COMMAND_POSITION = re.compile(
     r"(?:^\s*|[;&|(){}]\s*|\b(?:then|do|else|if|elif|while|until|time)\s+|"
-    r"\$\(\s*|!\s*|-m\s+)$"
+    r"\$\(\s*|!\s*|-m\s+|\benv\s+(?:\S+\s+)*)$"
 )
 # `echo`/`printf`/`log_*` before the match means the invocation is TEXT being
 # printed — a remedy the script is telling a human to run, in another tree.
@@ -182,7 +207,7 @@ def logical_commands(text: str):
     """
     lines = text.splitlines()
     for i, line in enumerate(lines):
-        m = WEST_BUILD.search(line)
+        m = WEST_INVOCATION.search(line)
         if not m:
             continue
         if line.lstrip().startswith("#"):
@@ -243,11 +268,41 @@ def file_assembles_module_flag(file_text: str) -> bool:
     )
 
 
+def argv_array_carries_module(array: str, file_text: str) -> bool:
+    """Does the argv array this west call expands get the module flag PUT IN IT?
+
+    The evidence the `-- "$flag"` shape gives on one line has to come from two
+    here, so it is keyed on the ARRAY NAME the invocation actually expands: a
+    line that assigns or appends to that name AND calls the helper.
+
+    Not `file_assembles_module_flag` (FLAG_NAME + helper on one line), which is
+    the right evidence when the caller spells the `-D` itself. A caller that
+    goes through `nros_zephyr_module_cmake_arg` never writes the flag's NAME —
+    that is the whole point of the helper — so demanding the literal here would
+    demand exactly the second spelling this gate exists to prevent.
+
+    Keyed on the name rather than on "some array somewhere" for issue 1379's
+    reason: the helper called on a line whose value the command never uses is
+    what let the first version of this gate pass the recipe it was written for.
+    """
+    assigns = re.compile(rf"\b{re.escape(array)}\+?=\(")
+    return any(
+        assigns.search(line) and any(t in line for t in SANCTIONED)
+        for line in file_text.splitlines()
+    )
+
+
 def is_offence(cmd: str, path: str, file_text: str) -> bool:
     if TARGET_RUN.search(cmd):
         return False
     if any(token in cmd for token in SANCTIONED):
         return False
+    argv = WEST_ARGV.search(cmd)
+    if argv:
+        # `west "${args[@]}"` — nothing about this call is readable from the
+        # line, so the only safe reading is "it configures", and the file must
+        # show the module flag entering that very array.
+        return not argv_array_carries_module(argv.group(1), file_text)
     if carries_assembled_flags(cmd) and file_assembles_module_flag(file_text):
         return False
     exempt = EXEMPT.get(path)
@@ -380,6 +435,48 @@ def selftest(root: str, quiet: bool = False) -> int:
         "just/x.just",
         False,
     )
+    # THE MUTANT THIS GATE MISSED FOR ITS WHOLE LIFE — issue 1458. Not an
+    # imagined shape: it is `scripts/build/west-fixtures.sh` verbatim, the
+    # builder of all five west fixtures, and the gate reported OK over it while
+    # tier 2 failed every run for seventeen days on the module it never named.
+    expect(
+        "west invoked with its WHOLE argv in an array is still a build",
+        '    args=(build -d "$bld" -b "$board" "$src")\n'
+        '    args+=(-- "$extra")\n'
+        '    env "${tc_env[@]}" west "${args[@]}" || true\n',
+        "scripts/x.sh",
+        True,
+    )
+    expect(
+        "...and passes once the helper's output enters THAT array",
+        '    args=(build -d "$bld" -b "$board" "$src")\n'
+        '    args+=(-- "$extra")\n'
+        '    args+=("$(nros_zephyr_module_cmake_arg "$repo_root")")\n'
+        '    env "${tc_env[@]}" west "${args[@]}" || true\n',
+        "scripts/x.sh",
+        False,
+    )
+    expect(
+        "...and fails when the helper feeds a DIFFERENT array",
+        '    args=(build -d "$bld" -b "$board" "$src")\n'
+        '    unused+=("$(nros_zephyr_module_cmake_arg "$repo_root")")\n'
+        '    env "${tc_env[@]}" west "${args[@]}" || true\n',
+        "scripts/x.sh",
+        True,
+    )
+    expect(
+        "an `env`-wrapped `west build` is in command position",
+        '    env FOO=1 west build -b native_sim "$src" -- -DCONF_FILE=x\n',
+        "scripts/x.sh",
+        True,
+    )
+    expect(
+        "an argv-array west call inside an echo is still prose",
+        '    echo "  env \\"${tc_env[@]}\\" west \\"${args[@]}\\""\n',
+        "scripts/x.sh",
+        False,
+    )
+
     expect(
         "a backticked mention in prose is not a command",
         "  application and the image's overlays and execs the same `west build` "
