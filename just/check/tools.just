@@ -29,6 +29,41 @@ flake-quarantine:
 mem-report:
     @python3 scripts/nros-mem-report.py --selftest
 
+# phase-460 W5 / issue 1424 -- CONFIG_NROS_ZEPHYR_HEAP_SIZE must be gated
+# against a MEASUREMENT, not against a guess.
+#
+# The island carries 94208 bytes, annotated in its own `.conf` as a guess, and
+# the only argument for it is a 24576-byte constant measured once on one image.
+# The high-water reporter that could have sized it has been compiled into every
+# Zephyr image since phase-412 and read by nothing, because the board it matters
+# on has no wired console. The boot report now carries the peak and the
+# capacity, and this refuses a dump whose headroom is thinner than the constant
+# claims -- and refuses a peak of 0, which is the case that matters: an
+# unmeasured image and a measured-and-fine image must not read the same, or the
+# gate passes by default on exactly the board nobody could ask.
+#
+# SELFTEST-ONLY BY DEFAULT, the same shape as `mem-report` above and for the
+# same reason: the board run is the island's (issue 1036 records why no nano-ros
+# lane can perform one), so what this tier can hold is that the three verdicts
+# are still distinguishable. `read-boot-report.py` builds its fixtures from
+# `FIELDS`, so a field appended to the record cannot leave them a word short.
+#
+# On a real dump -- the island, after a `savemem`:
+#
+#     NROS_HEAP_HEADROOM_DUMP=report.bin just check heap-headroom
+#
+# An env var and not a recipe parameter: a recipe that takes parameters is
+# excluded from the derived fast lane (`run-gates-parallel.sh`), and the
+# negative controls belong on every push.
+[private]
+heap-headroom:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 scripts/read-boot-report.py --self-test
+    if [ -n "${NROS_HEAP_HEADROOM_DUMP:-}" ]; then
+        python3 scripts/read-boot-report.py --heap-headroom "$NROS_HEAP_HEADROOM_DUMP"
+    fi
+
 # Check Python code: formatting + linting with ruff
 [private]
 python:

@@ -177,6 +177,45 @@ extern void *nros_zephyr_heap_alloc(size_t size);
 extern void *nros_zephyr_heap_realloc(void *ptr, size_t size);
 extern void nros_zephyr_heap_free(void *ptr);
 
+/* phase-460 W5 / issue 1424 -- the heap's high-water mark, into the one record
+ * a console-less board can be asked for after the fact.
+ *
+ * WHY THE PLATFORM PUSHES AND THE CORE DOES NOT PULL. `nros_zephyr_heap_peak()`
+ * is deliberately absent from `nros/platform.h` (see the comment on
+ * `nros_zephyr_platform_heap_peak_bytes` below): the cross-port ABI would need
+ * a stub in every port for a figure only this one can produce. So the record
+ * cannot sample the heap from `boot_report::checkpoint`, and the side that owns
+ * the number writes it instead.
+ *
+ * WHERE. The two functions below are the only places the peak can move, so
+ * writing here keeps the record current at every stage transition without the
+ * stage transitions having to know the heap exists -- and on the exhaustion path
+ * it is written BEFORE the printk, because that is the path where the board is
+ * about to stop and the printk goes to a UART this board class does not wire.
+ *
+ * WHY `#ifdef` AND NOT `IS_ENABLED`. This file's habit is the second, so that
+ * both arms keep compiling everywhere. Not here: the symbol lives in the RUST
+ * half of the image, and `tests/zephyr-c-smoke` builds this file with no Rust
+ * half at all. A reference the optimiser may or may not delete is a link error
+ * that depends on -O, so the reference must not exist unless the knob that
+ * produces the symbol is set. `nros-node` defines an empty body for the
+ * disabled Rust build, which covers the halves being built apart. */
+#ifdef CONFIG_NROS_BOOT_REPORT
+extern void nros_boot_report_note_heap(size_t peak, size_t capacity);
+#endif
+
+/* Sample the heap into the boot report. size_t in, saturated to the record's
+ * u32 on the Rust side -- a cast here would truncate, and a truncated 4 GiB
+ * reads as 0, which is the one wrong answer that looks like a normal one. */
+static inline void nros_zephyr_note_heap_to_boot_report(void) {
+#ifdef CONFIG_NROS_BOOT_REPORT
+    extern size_t nros_zephyr_heap_capacity(void);
+    extern size_t nros_zephyr_heap_peak(void);
+    nros_boot_report_note_heap(nros_zephyr_heap_peak(),
+                               nros_zephyr_heap_capacity());
+#endif
+}
+
 static struct k_spinlock nros_heap_lock;
 
 void *nros_platform_alloc(size_t size) {
@@ -184,6 +223,10 @@ void *nros_platform_alloc(size_t size) {
     k_spinlock_key_t key = k_spin_lock(&nros_heap_lock);
     void *out = nros_zephyr_heap_alloc(size);
     k_spin_unlock(&nros_heap_lock, key);
+    /* Both outcomes, and before the printk below: an allocation that succeeded
+     * may have set a new peak, and one that failed is the reading that explains
+     * the halt. Two relaxed atomic stores, outside the funnel's lock. */
+    nros_zephyr_note_heap_to_boot_report();
     if (out == NULL) {
         /* phase-8 diagnosis — arena exhaustion was completely silent. The
          * caller gets NULL and whatever it does next (retry, block, ignore)
@@ -224,6 +267,11 @@ void *nros_platform_realloc(void *ptr, size_t size) {
     k_spinlock_key_t key = k_spin_lock(&nros_heap_lock);
     void *out = nros_zephyr_heap_realloc(ptr, size);
     k_spin_unlock(&nros_heap_lock, key);
+    /* A grow-in-place or a copy-to-larger raises the outstanding bytes exactly
+     * as an alloc does, so this is the second of the two places the peak can
+     * move. `dealloc` is not: freeing can only lower `used`, and the record
+     * keeps the maximum. */
+    nros_zephyr_note_heap_to_boot_report();
     return out;
 }
 
@@ -253,8 +301,16 @@ void nros_platform_dealloc(void *ptr) {
  *
  * `peak`, not `used`, is what the knob wants -- `used` sampled at an arbitrary
  * instant reports whatever happened to be live at the moment of the read.
- * Requires nros-platform's `heap-stats` feature; returns 0 ("unknown")
- * otherwise, which is the convention this file already used. */
+ *
+ * NO FEATURE GUARDS THESE, and this comment said one did. It named
+ * nros-platform's `heap-stats`, which has never existed: the two real features
+ * are `alloc-stats` (the Rust allocator's counter) and `zpico-alloc/stats`
+ * (the arena's), and `platform-zephyr` has turned the second one on
+ * unconditionally since phase-412
+ * (`packages/platform/nros-platform/Cargo.toml`). So a 0 from any of the three
+ * below means the arena was never asked, not that the image was built without
+ * the counter -- which is the opposite conclusion, and the one a brief drew
+ * from this comment before issue 1424 checked it against the source. */
 extern size_t nros_zephyr_heap_capacity(void);
 extern size_t nros_zephyr_heap_used(void);
 extern size_t nros_zephyr_heap_peak(void);

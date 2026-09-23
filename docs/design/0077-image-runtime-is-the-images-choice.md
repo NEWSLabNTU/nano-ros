@@ -879,3 +879,71 @@ carries the choice, because "the image" is not always a Rust crate.
 - An image that says `own` and supplies nothing FAILS with a missing provider,
   from the coordinate-level gate rather than from the linker.
 - `grep -rn "panic-spin" packages/ cmake/` is empty.
+
+## Amendment 2026-09-23 (phase-460 W5) -- the heap the image chose is MEASURED, and the record carries the measurement
+
+This RFC's subject is the two link-time singletons an image chooses: the panic
+handler and the allocator. The allocator half has always been the settled one
+("expressible as a platform fact"), and that hid a gap: an image chooses the
+allocator, and it also chooses HOW MUCH MEMORY that allocator gets, and the
+second choice had no evidence behind it. On Zephyr it is
+`CONFIG_NROS_ZEPHYR_HEAP_SIZE`; the island's board `.conf` sets 94208 and says
+in the file that the number is a guess (issue 1424).
+
+The instrument existed and nothing read it. `nros_zephyr_heap_peak()` returns a
+true high-water mark of the rlsf arena `nros_platform_alloc` hands out of, it
+has been compiled into every Zephyr image since phase-412, and the board it
+matters on has no wired console -- so the figure was produced on every boot and
+seen on none.
+
+**The record carries it.** The boot report (`boot_report.rs`, the fixed RAM
+record read by halting the core) gains two words at the END of its layout:
+
+    heap_peak_bytes       the high-water mark, 0 if never sampled
+    heap_capacity_bytes   what the heap was given
+
+written by `nros-platform-zephyr`'s `platform.c` from `nros_platform_alloc` and
+`nros_platform_realloc`, which are the only two places the peak can move. The
+platform PUSHES rather than the record pulling, because
+`nros_zephyr_heap_peak()` is deliberately not in `<nros/platform.h>`: a
+cross-port ABI entry would need a stub in every port for a figure one port can
+produce. The consequence is the property the record needs -- it is current at
+every stage transition and on the exhaustion path, without the core knowing a
+heap exists.
+
+**The gate.** `just check heap-headroom` (`scripts/read-boot-report.py
+--heap-headroom <dump>`) refuses a dump when `capacity - peak < 24576`, the same
+headroom constant the configure-time check in `nros_cargo_build.cmake` applies
+to the declared arena, and refuses a peak of 0. The second refusal is the one
+that matters: an unmeasured image and a measured-and-fine image must not produce
+the same verdict, or the gate passes by default on exactly the board nobody
+could ask. Its negative controls run on fixtures on every push; the board run is
+the island's, because no nano-ros lane has silicon (issue 1036).
+
+**The rule this puts on a board `.conf`.** A line setting
+`CONFIG_NROS_ZEPHYR_HEAP_SIZE` carries, as a comment beside it, the dump it was
+sized from -- the image, the date, and the peak the dump showed. A knob whose
+comment says "a guess" is what this amendment exists to end, and a knob whose
+comment names a dump can be re-checked by anyone who can run the gate.
+
+### How a field is added to the record
+
+The record is meant to grow -- phase-460 W7 adds `samples_dropped_too_small`
+next -- and `read-boot-report.py` decodes it POSITIONALLY, so the growth rule is
+part of the design rather than a detail of the file:
+
+1. **Append. Never insert.** A new field goes after the last one, so every word
+   before it stays where it was and a dump from an older image is still
+   readable by eye.
+2. **Bump `VERSION`.** An older decoder then REFUSES the record instead of
+   reading a new word as one it knows. This is what makes appending safe rather
+   than merely tidy.
+3. **Three places in one commit**: the field on `BootReport` and on `Snapshot`
+   (same name, same position), and `FIELDS` plus `KNOWN_VERSION` in
+   `read-boot-report.py`. `check-boot-report-layout` fails on any subset of
+   those; the Rust `size_of` test fails if the compiler inserted padding.
+4. **Say what a ZERO means** in the field's doc comment. Every word starts at 0
+   and the record is read after a boot that may not have finished, so "never
+   written" and a legitimate 0 are the same bytes -- and a reader who cannot
+   tell them apart has a number, not a measurement. `heap_peak_bytes` resolves
+   it by refusing: 0 is "no sample", and the gate says so rather than passing.
