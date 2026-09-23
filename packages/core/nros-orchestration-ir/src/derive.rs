@@ -193,10 +193,10 @@ mod tests {
     ///
     /// phase-457 W1 - each timer path carries its `trigger` (rlm v0.1.37,
     /// design issue #52): the timer's rate lives on the path, and an empty
-    /// `input` says nothing about what fires it. The `min_rate_hz` promise
-    /// on each output stays and EQUALS the timer, as the island's do; W2
-    /// stops reading it for the schedule, and W3 asserts a model with no
-    /// promise at all still ranks by the timers.
+    /// `input` says nothing about what fires it. phase-457 W2 - the
+    /// publishers' rate PROMISES that W1 kept beside the timers are gone,
+    /// because nothing derives a period from them any more: the schedule
+    /// below is read off the triggers alone.
     fn contract_model() -> SystemModel {
         let node = |scope: &str| NodeInstance {
             scope: scope.into(),
@@ -244,20 +244,8 @@ mod tests {
             },
         );
         let mut pub_endpoints = std::collections::BTreeMap::new();
-        pub_endpoints.insert(
-            "/control_node/cmd".to_string(),
-            PubContract {
-                min_rate_hz: Some(100.0),
-                ..Default::default()
-            },
-        );
-        pub_endpoints.insert(
-            "/telem_node/status".to_string(),
-            PubContract {
-                min_rate_hz: Some(10.0),
-                ..Default::default()
-            },
-        );
+        pub_endpoints.insert("/control_node/cmd".to_string(), PubContract::default());
+        pub_endpoints.insert("/telem_node/status".to_string(), PubContract::default());
         SystemModel {
             structure: Structure {
                 nodes,

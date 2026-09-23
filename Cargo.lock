@@ -1949,6 +1949,7 @@ version = "0.5.0"
 dependencies = [
  "indexmap",
  "nros-rmw",
+ "ros-launch-manifest-derive",
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
  "ros-launch-manifest-types",
@@ -2805,6 +2806,15 @@ dependencies = [
  "const-default",
  "libc",
  "rustversion",
+]
+
+[[package]]
+name = "ros-launch-manifest-derive"
+version = "0.1.4"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.37#bfbe075b6123d2c3bc42f4ce720390f9883541a6"
+dependencies = [
+ "ros-launch-manifest-model",
+ "ros-launch-manifest-sched",
 ]
 
 [[package]]
