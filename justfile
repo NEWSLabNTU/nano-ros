@@ -4649,13 +4649,41 @@ _setup-common *roles:
     # `rustup target add` is a no-op when the target is present.
     just workspace rust-targets
     just workspace install-corrosion
-    # `check fast` runs `c-fmt`/`cpp-fmt`, and EVERY tier runs `check fast`, so
-    # clang-format is a host fact every tier asserts — the same argument as the
-    # two above. Without it host-tests' `just ci tier1` reached the gate and
-    # died on "clang-format not found" after ~40 minutes of fixture builds.
-    # Idempotent: the recipe version-checks `build/clang-format/bin/clang-format`
-    # and exits early. Project-local, no install.
-    just setup-clang-format
+    # clang-format, PROVISIONED HERE AND NOT FATAL HERE (phase-466).
+    #
+    # The reason it is provisioned is unchanged and still right: `check fast`
+    # runs `c-fmt`/`cpp-fmt`, EVERY tier runs `check fast`, so clang-format is a
+    # host fact every tier asserts. Without it host-tests' `just ci tier1`
+    # reached the gate and died on "clang-format not found".
+    #
+    # The reason it must not be FATAL here is what issue 1359 measured. This
+    # recipe is the prelude EVERY `just setup <scope>` runs — a platform, a
+    # preset, a tier. `just setup zephyr --skip-sdk` therefore ran it, the
+    # container it ran in had no `unzip` to unpack the clang-format prebuilt,
+    # and `set -e` turned one absent system package into ALL 22 nightly
+    # `zephyr *` jobs reporting `failure` in a step named `Set up Zephyr <line>
+    # workspace`. Not one of those jobs formats anything: they build a Zephyr
+    # image and exit. A code formatter had a veto over a cross-compile.
+    #
+    # So the coupling is cut where it was wrong and kept where it was right.
+    # Provisioning stays best-effort (this line), and the ASSERTION moves to the
+    # consumers that actually need the binary: `check-tier-preconditions` reports
+    # it in the batch at the head of `just ci`, and `c-fmt`/`cpp-fmt` fail on it
+    # in `check fast`. That keeps the fail-fast property the old comment was
+    # defending — a lane needing clang-format still hears about it in the first
+    # minute — without letting a formatter empty a build lane of its verdict.
+    #
+    # This is ALSO the spelling the TIER arm of `setup` already used a hundred
+    # lines up. Two call sites of one provisioning step, one fatal and one not,
+    # and the fatal one was the one every CI job took.
+    #
+    # Idempotent: the recipe version-checks the SDK store and exits early.
+    just setup-clang-format || {
+        echo "  (clang-format provisioning skipped — see the error above." >&2
+        echo "   Provisioning continues: nothing here formats code. A lane that" >&2
+        echo "   NEEDS it says so at the head of \`just ci\`; retry with" >&2
+        echo "   \`just setup-clang-format\`.)" >&2
+    }
     # phase-422 W6 — TELL the user about the system closure. Measured: 24 of the
     # 46 `[prereq.*]` keys had no consumer at all, nothing in the repo installs
     # via `--system`, and `just setup <scope>` never even printed it — so a

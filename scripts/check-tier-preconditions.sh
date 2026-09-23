@@ -327,6 +327,28 @@ if [ -z "$_pre_make" ] || [ ! -x "$_pre_make" ] ||
 fi
 unset _pre_make
 
+# 8b. clang-format, and this one DOES fail (phase-466).
+#
+#     `check fast` runs `c-fmt` and `cpp-fmt`, every tier runs `check fast`, so
+#     a tier without clang-format cannot pass — that is settled, and the only
+#     question is when you find out. It used to be `_setup-common`, which made
+#     it fatal for every `just setup <scope>` including the ones that format
+#     nothing: one missing `unzip` in the Zephyr CI container then reported as
+#     22 nightly jobs failing to "Set up Zephyr <line> workspace" (issue 1359).
+#     Provisioning there is best-effort now, and the assertion is here, where
+#     the caller has actually said it is about to run a tier.
+#
+#     This can create no red that `check fast` would not have produced minutes
+#     later; what it buys is the batch — reported beside the other unmet
+#     preconditions rather than after `_require-fixtures-ready` has spent ~40
+#     minutes self-healing stale cells.
+#
+#     The resolver is the one the format recipes use, so this cannot check a
+#     different binary than they will (the phase-422 W2 lesson).
+probe "clang-format is not available, and every tier runs check-fast -> c-fmt/cpp-fmt" \
+    "just setup-clang-format   (needs the unzip that [prereq.unzip] declares)" \
+    bash -c '. scripts/dev/clang-format.sh && nros_clang_format >/dev/null'
+
 # 9. A lane that silently DEGRADES is worse than one that fails: without GNU
 #    parallel the example check walks ~99 leaves serially and reads as a hung
 #    tier, not a missing package. Warn — do not fail — since the lane is correct,
