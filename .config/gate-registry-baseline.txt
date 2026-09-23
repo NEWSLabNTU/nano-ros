@@ -259,6 +259,7 @@ rmw-vtable-order
 rmw-xrce
 roadmap-boxes
 roadmap-claims
+roadmap-commit-refs
 roadmap-status
 ros-env-spelling
 rosdep-snapshot

@@ -135,7 +135,7 @@ and `codegen entry` all exit non-zero naming the marker; the negative control
 reverts the edit, syncs, and all four pass. Runs in the fast tier
 (`just ci-l1`).
 
-Claim: phase-460-W1. Depends on: none. Owns: packages/cli/nros-cli-core/src/cmd/ws.rs, packages/cli/nros-cli-core/src/cmd/model_path.rs, packages/cli/nros-cli-core/src/model_gate.rs (new), one gate call each in packages/cli/nros-cli-core/src/cmd/entity_inventory.rs, cmd/codegen_system.rs, cmd/codegen.rs, packages/api/nros/src/lib.rs, docs/design/0063-system-model-is-a-build-artifact.md. Gate: the refused-resolve fixture test in just ci-l1. Status: PR #1165 (b446632ac), in the queue; four consumers gated; issue 1420 archived there. Follow-up: `nros::main!` ensure_model and `nros build` plan_from_model still open a model ungated.
+Claim: phase-460-W1. Depends on: none. Owns: packages/cli/nros-cli-core/src/cmd/ws.rs, packages/cli/nros-cli-core/src/cmd/model_path.rs, packages/cli/nros-cli-core/src/model_gate.rs (new), one gate call each in packages/cli/nros-cli-core/src/cmd/entity_inventory.rs, cmd/codegen_system.rs, cmd/codegen.rs, packages/api/nros/src/lib.rs, docs/design/0063-system-model-is-a-build-artifact.md. Gate: the refused-resolve fixture test in just ci-l1. Status: landed in PR #1165 (21a39e69c, merged 2026-09-22); four consumers gated; issue 1420 archived there. Follow-up: `nros::main!` ensure_model and `nros build` plan_from_model still open a model ungated.
 
 ### W2 - a partial `params:` declaration is a refusal, not a default (issue 1421)
 
@@ -156,7 +156,7 @@ no contract is sized by its board. `refused` becomes a configure-time
 inventory with `refused` fails the configure naming the node; `absent` and
 `declared` pass unchanged.
 
-Claim: phase-460-W2. Depends on: none. Owns: cmake/NanoRosEntityFacts.cmake, packages/core/nros-params/build.rs, tests/cmake-entity-inventory-tests.sh. Gate: tests/cmake-entity-inventory-tests.sh. Status: landed in PR #1166 (9677557d7); cmake-entity-inventory 77 assertions held; issue 1421 archived. Follow-up: the Zephyr road forwards the five numbers, not the status, so a refusal still falls to crate defaults there until nros_cargo_build.cmake resolves NROS_PARAM_DECLARATION_STATUS beside :1208 (after 461 W1).
+Claim: phase-460-W2. Depends on: none. Owns: cmake/NanoRosEntityFacts.cmake, packages/core/nros-params/build.rs, tests/cmake-entity-inventory-tests.sh. Gate: tests/cmake-entity-inventory-tests.sh. Status: landed in PR #1166 (a9c3f6636); cmake-entity-inventory 77 assertions held; issue 1421 archived. Follow-up: the Zephyr road forwards the five numbers, not the status, so a refusal still falls to crate defaults there until nros_cargo_build.cmake resolves NROS_PARAM_DECLARATION_STATUS beside :1208 (after 461 W1).
 
 ### W3 - a stated ceiling is compared to the derived bound; a computed flag has a reader (issues 1368, 1422)
 
@@ -200,7 +200,7 @@ Kconfig remains what the image bakes (RFC-0049 ladder), the check only refuses
 a silent disagreement. Gate: a fixture `.config` with `CONFIG_NROS_DOMAIN_ID=2`
 against a bringup declaring 10 fails the configure; equal values pass.
 
-Claim: phase-460-W4. Depends on: none. Owns: zephyr/cmake/nros_system_generate.cmake, docs/design/0049-hierarchical-platform-board-config.md. Gate: tests/cmake-domain-agreement-tests.sh (new). Status: landed in PR #1166 (39bc342eb); cmake-domain-agreement 21 assertions held; issue 1423 archived.
+Claim: phase-460-W4. Depends on: none. Owns: zephyr/cmake/nros_system_generate.cmake, docs/design/0049-hierarchical-platform-board-config.md. Gate: tests/cmake-domain-agreement-tests.sh (new). Status: landed in PR #1166 (7ef585b6b); cmake-domain-agreement 21 assertions held; issue 1423 archived.
 
 ### W5 - the heap size is measured, and the knob is gated against the measurement (issue 1424)
 
@@ -233,7 +233,7 @@ already carries `CONFIG_NROS_BOOT_REPORT=y`. This wave does not run on
 silicon inside nano-ros (issue 1036 records why no lane can); it ships the
 fields, the reader and the recipe, and the island runs it.
 
-Claim: phase-460-W5. Depends on: none. Owns: packages/core/nros-node/src/boot_report.rs, scripts/check-boot-report-layout.py, scripts/read-boot-report.py, packages/platform/nros-platform-zephyr/src/platform.c, just/check/tools.just, docs/design/0077-image-runtime-is-the-images-choice.md. Gate: just check boot-report-layout plus the new heap-headroom recipe on a fixture dump. Status: not started.
+Claim: phase-460-W5. Depends on: none. Owns: packages/core/nros-node/src/boot_report.rs, scripts/check-boot-report-layout.py, scripts/read-boot-report.py, packages/platform/nros-platform-zephyr/src/platform.c, just/check/tools.just, docs/design/0077-image-runtime-is-the-images-choice.md. Gate: just check boot-report-layout plus the new heap-headroom recipe on a fixture dump. Status: PR #1229, in the queue; the record is 22 fields / 88 bytes at VERSION 4, `heap_peak_bytes` and `heap_capacity_bytes` appended, written from `nros_platform_alloc` and `nros_platform_realloc` so the record is current at every stage transition and on the exhaustion path before the printk. Gates: `check-boot-report-layout` OK, `read-boot-report --self-test` OK (peak 0 refused, headroom 4096 refused, headroom exactly 24576 passes, peak above capacity refused). Issue 1424 stays OPEN: the board half of its acceptance, a non-zero peak from a real dump, is the island's (island-W4). Doc correction: this wave was written as "the stage transitions in platform.c" and platform.c has none, so the numbers are PUSHED from the allocator instead, which is strictly finer and needs no callback the cross-port ABI does not carry.
 
 ### W6 - the slot release survives a reconnect (gate only)
 
@@ -244,7 +244,7 @@ succeeds; the negative control forces `pthread_detach` on one and asserts the
 next create past the pool reports `OUT OF THREAD SLOTS`, which is the
 documented behaviour for a detached teardown.
 
-Claim: phase-460-W6. Depends on: none. Owns: a new host test under tests/zephyr/ for zephyr/nros_platform_zephyr_shims.c. Gate: the N+2 create/join test in just ci-l1. Status: not started.
+Claim: phase-460-W6. Depends on: none. Owns: a new host test under tests/zephyr/ for zephyr/nros_platform_zephyr_shims.c. Gate: the N+2 create/join test in just ci-l1. Status: PR #1228, in the queue; the N+2 create/join test plus a detach negative control at N in 1, 4 and 8, and a defused-release mutant that fails as it must, so the gate's teeth are measured rather than claimed. Wired as `just check zephyr-thread-slots`. The shims needed NO seam: capacity is already an overridable `-D` and the release is already an exported symbol.
 
 ### W7 - a fault reaches a hook a console-less board can read (issue 1425)
 

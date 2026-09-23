@@ -247,7 +247,7 @@ parameters produces a sidecar with exactly those facts, and the negative
 control holds: remove any one hook call and the fixture's census fails to
 match, so a hook that quietly stops being called is caught.
 
-Claim: phase-463-W1. Depends on: none. Owns: packages/rmw/metadata/src/lib.rs, packages/api/nros-cpp/src/metadata_hooks.rs, packages/api/nros/src/node_metadata.rs, the hook call sites in packages/api/nros-cpp/src/params_shim.rs, packages/api/nros-cpp/src/timer.rs and packages/api/nros-cpp/src/guard_condition.rs, a new census-hooks-complete recipe in just/check/codegen.just. Gate: just check census-hooks-complete (new) plus the phase-308 layer grep. Status: PR #1194 (adb684711), in the queue; check-census-hooks-complete OK (14 entry points, 4 RMW seams, 7 mutations red).
+Claim: phase-463-W1. Depends on: none. Owns: packages/rmw/metadata/src/lib.rs, packages/api/nros-cpp/src/metadata_hooks.rs, packages/api/nros/src/node_metadata.rs, the hook call sites in packages/api/nros-cpp/src/params_shim.rs, packages/api/nros-cpp/src/timer.rs and packages/api/nros-cpp/src/guard_condition.rs, a new census-hooks-complete recipe in just/check/codegen.just. Gate: just check census-hooks-complete (new) plus the phase-308 layer grep. Status: landed in PR #1194 (d9bcddbc6, merged 2026-09-22); check-census-hooks-complete OK (14 entry points, 4 RMW seams, 7 mutations red).
 
 ### W2 - the native entry is the census producer
 
@@ -336,7 +336,7 @@ the pristine contract passes with 33 `confirmed` entity rows and 21
 `confirmed` parameter rows and zero warnings. Each refusal names the node,
 the entity, the file that should change, and the line to add or remove.
 
-Claim: phase-463-W3. Depends on: phase-463-W2, phase-460-W1. Owns: packages/cli/nros-cli-core/src/entity_census.rs (new), the check subcommand in packages/cli/nros-cli-core/src/cmd/entity_census.rs, the [census.waive] table in packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs. Gate: the island experiment table as unit tests in packages/cli/nros-cli-core (E3a/E3b/E3c/E4/E2a refuse, pristine passes 33 + 21). Status: not started.
+Claim: phase-463-W3. Depends on: phase-463-W2, phase-460-W1. Owns: packages/cli/nros-cli-core/src/entity_census.rs (new), the check subcommand in packages/cli/nros-cli-core/src/cmd/entity_census.rs, the [census.waive] table in packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs. Gate: the island experiment table as unit tests in packages/cli/nros-cli-core (E3a/E3b/E3c/E4/E2a refuse, pristine passes 33 + 21). Status: PR #1226, in the queue; every delta between contract and code is a named verdict with a severity. On the island fixture: 53 confirmed, 1 error, 0 warnings, 0 waived, and the error is the island's own historical defect, a contract declaring six subscriptions where the code creates seven. The verdict names the missing one, writes the `sub:` row that would fix it, and refuses a waiver, because every pool derives one short and the first catch would be `ExecutorFull` on a board with no console. Waivers live in `system.toml [census.waive."<node>:<kind>:<name>"]` and a test holds that rlm's contract parser rejects a `census:` key. Two doc corrections: `unwired` is NOT waivable, there being no true statement a waiver could stand behind, and the row is keyed by resolved topic because the endpoint alias is not derivable.
 
 ### W4 - where it runs, and how it goes stale
 
