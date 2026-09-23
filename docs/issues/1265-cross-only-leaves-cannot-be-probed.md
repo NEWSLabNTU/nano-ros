@@ -54,3 +54,39 @@ rather than from a host rebuild of it. Candidates, none measured yet:
 Acceptance: an esp32 and an mps2 leaf with NO declared entities get the same
 derived pool sizes as today, and adding a subscription to either changes them
 without touching a declaration.
+
+## A third shape, and it is UNCLASSIFIED rather than refused (2026-09-23)
+
+The two shapes above are caught by `probe_blocker`, which names the reason and
+degrades cleanly. A scaffolded project reaches neither. Seen in every scheduled
+`gate` run — job `nros new -> sync -> resolve`, which PASSES, e.g. run
+35808783184 job 107015560271:
+
+```
+sync: source metadata — no producer for uj_demo::uj_demo (deploy-bound probe
+  failed: metadata-mode harness failed (exit 101) for component 'uj_demo':
+  error: invalid instruction mnemonic 'bkpt')
+sync: 1 component(s) are un-probeable, so pool budgets stay at the crate
+  defaults (issue 1061): uj_demo.json.unprobeable
+```
+
+`nros new` scaffolds a **baremetal** project. `probe_blocker` does not recognise
+it, so instead of a refusal that says "this leaf cannot be host-built" the
+harness is compiled for the host and dies on ARM inline assembly — `bkpt` fed to
+an x86 assembler. The outcome is the same degradation (`.unprobeable`, crate
+defaults) and the same silent under-sizing risk this issue is about, reached by
+falling over rather than by a decision.
+
+Two things that makes worse than the classified shapes:
+
+* the message names an assembler mnemonic, so it reads as a toolchain bug. It
+  cost one investigation in phase-466 W4, where it was the only legible error in
+  a scheduled `gate` run whose actual failure (issue 1353, disk) had destroyed
+  its own log;
+* it is on the **scaffolding** path, which is the first thing a new user runs.
+  `probe_blocker` returning a reason here would make the front door say what it
+  is doing; today it says `bkpt`.
+
+Not the fix this issue is waiting for — the fix is still "read the entities from
+the artifact that IS built" — but classifying this shape is independently worth
+doing, and cheap.

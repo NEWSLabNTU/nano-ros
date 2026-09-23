@@ -381,3 +381,127 @@ is a question about `fixtures.toml` coverage (`lane=native` builds them via
 Still unchanged: acceptance is a scheduled run reaching a VERDICT on `check
 build` and `check no-std` three nights running, and on the scheduled `gate`
 lane the report itself is still unreadable (section above).
+
+## Both `ci-base` lanes fail at the SAME gate, and three named suspects are not it (2026-09-23, phase-466 W4)
+
+Read from fresh runs, because a lane red for eleven days cannot be attributed
+from an old one.
+
+| lane | run | job | failing step |
+| --- | --- | --- | --- |
+| `gate` (schedule) | 35808783184 | 107015560275 | 23 `just check build (nightly / manual only)` |
+| `host-tests` (schedule) | 35813854577 | 107031060491 | `just ci tier1` |
+
+Those look like two steps and are one. `just ci tier1` runs `just check`, which
+runs the `build` tier, and the tier-1 log names the line:
+
+```
+===== FAIL (cpp, rc=101, 6880ms) =====
+Checking C++ headers (build + syntax + clippy)...
+  - freestanding syntax (c++14)
+error: failed to run custom build command for `nros-cpp v0.5.0`
+  process didn't exit successfully: … build-script-build (exit status: 101)
+error: recipe `build` failed on line 233 with exit code 1
+error: recipe `tier1` failed with exit code 1
+```
+
+`just/check.just` line 233 is the body of `build:`. So **`just check build` is
+the single failing step on both lanes**, and `cpp` is not special — it is
+wherever the `-P4` fan-out happened to be when the disk ran out, four lines
+after the runner's own
+
+```
+##[warning]You are running out of disk space. … Free space left: 91 MB
+```
+
+The same `cargo build -p nros-c -p nros-cpp --no-default-features --features
+std,rmw-cffi,platform-posix,ros-humble` finishes in 30.8 s on a developer host
+with disk to spare, which is the control for "is this a `cpp` defect".
+
+### Three suspects that are not the cause
+
+* **`invalid instruction mnemonic 'bkpt'`.** Real, and in the same run — but in
+  the `nros new -> sync -> resolve` job (107015560271), which **passed**
+  (`scaffold-journey: PASS (baremetal)`). It is a non-fatal `sync:` line: the
+  scaffolded baremetal project cannot be host-probed, so `nros sync` degrades to
+  `1 component(s) are un-probeable, so pool budgets stay at the crate defaults
+  (issue 1061)`. That is issue **1265**'s class — a cross-only leaf the metadata
+  probe cannot build — with a third shape worth recording there: this one is not
+  classified by `probe_blocker` at all, so instead of a named refusal it reaches
+  the host assembler and fails on ARM inline asm. Nothing to do with these two
+  lanes; it does not fail the job it appears in.
+* **`recipe 'zenohd' failed`.** The only text recoverable from a `host-tests`
+  run old enough (2026-08-27) to predate this issue's window. Unreachable today:
+  the lane dies in `just check`, and `zenohd` is downstream of that in
+  `test-all`. Issue 0774 is the right entry if it ever surfaces again, but it is
+  not what is happening now.
+* **The CI image.** Both lanes pull `ghcr.io/newslabntu/nano-ros-ci:humble`,
+  last rebuilt 2026-09-12 (`humble-726a93d1ff05`), and every provisioning step
+  in both jobs reports success — clang-format, compile-tier sources, submodule
+  fetches, the message bindings, the compile-check fixtures. The W1 package
+  drift (`unzip`, `python3-tomli`) is in the **Zephyr** image, which neither
+  lane uses. The image's own size does sit on the same filesystem and is
+  therefore part of the 124 G that is gone before `just ci tier1` starts, but
+  nothing about it changed when these lanes went dark: the gate failures in the
+  table at the top of this issue run from 09-03, before that image build.
+
+### `check-lane-contracts` is not the gap either
+
+The obvious 0196-shaped suspicion — that the affordability rule only looks at
+merge-gating lanes, so a schedule-only `check build` could resolve artifacts its
+job never builds — is **already closed**. `SCANNED_EVENTS` was widened from
+`GATING_EVENTS` to include `push`/`schedule`/`workflow_dispatch` on 2026-09-05
+(issue 1030), keeping the severity distinction in the output (`[gating]` vs
+`[report]`) instead of in the scope. Run here: `18 test target(s) across 3
+affordability tier(s) and 21 CI lane invocation(s) (3 merge-gating, 18
+report-only); none resolves an artifact its job does not build.` The scheduled
+`gate` job does build the bindings and the `.compile-ok` fixtures that
+`check build` needs, in steps 20 and 21, and both succeed.
+
+### What this commit does about it
+
+Two changes, neither of which is the remedy this issue is still waiting for.
+
+1. **The measurement now leaves the runner.** `disk-report.sh` writes its
+   one-line summary to `$GITHUB_STEP_SUMMARY` (uploaded when the STEP completes,
+   so the BEFORE report's numbers are server-side before the compile tier
+   starts) and emits a `::notice::` (the experiment the section above asks for —
+   if the next scheduled `gate` failure shows it under
+   `check-runs/<jid>/annotations` while the log is still `BlobNotFound`, the
+   annotation channel is confirmed; if it does not, the step summary is what
+   carried the numbers).
+2. **A reclaim, priced against the numbers this issue already has.**
+   `scripts/ci/reclaim-disk.sh`, run between the two brackets on `host-tests`
+   and before `check build` on `gate`, frees three things nothing downstream
+   reads: the mounted hosted tool cache (`$RUNNER_TOOL_CACHE`, i.e. `/__t` — on
+   the same filesystem, and never opened by a `container:` job whose toolchains
+   come from the image and whose JavaScript actions run on the runner's bundled
+   node), `<repo>/build/metadata-probe` (the shared sizing-probe cargo scratch
+   from issue 0522 — 11 G in a developer checkout; its product is a JSON sidecar
+   written elsewhere), and the apt/pip caches `live-peer.yml` was removing
+   inline. `live-peer.yml` now calls the same script, so the three lanes this
+   issue measured share one reclaim rather than three spellings.
+
+**Why this is not the `rm -rf` antipattern.** That rule is about build OUTPUT,
+where a wipe destroys the reproduction of a missing dependency edge. None of the
+three is an artifact anything reads again, so removing them cannot change what
+gets built — only how much room the next step has.
+
+**What is NOT established.** How much it frees. `/__t` is ~9 G on an
+`ubuntu-22.04` image by reputation rather than by a measurement taken here, and
+`build/metadata-probe` in CI is an unmeasured fraction of the 10 G `build/`
+recorded above. The reclaim prints its own delta through the same two channels,
+so the next run answers it. If the answer is "not enough", the remaining roads
+are unchanged and now cost-comparable: prune the four large `examples/workspaces`
+fixtures (36 G, a coverage question), or move these lanes off a hosted runner.
+
+**And expect a second fault behind this one.** These lanes have produced no
+verdict for eleven days, so nothing here distinguishes "the disk was the only
+problem" from "the disk was the first problem". `check build` was independently
+red on this lane on `workspace-all`/`workspace-features` since 2026-09-01
+according to `gate.yml`'s own comment, and issue 0981 records `codegen_golden`
+red on it for a day. A green run is the only thing that would retire that
+expectation; a run that merely gets further is progress, not a verdict.
+
+Acceptance is unchanged: a scheduled run reaching a VERDICT on `check build`
+and `check no-std`, three nights running.
