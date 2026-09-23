@@ -294,3 +294,47 @@ deciding what to prune — the same one-line change to `scripts/ci/disk-report.s
 
 Acceptance is unchanged: a scheduled run that reaches a VERDICT on `check build`
 and `check no-std`, three nights running.
+
+## The report does NOT survive this failure on the scheduled `gate` lane (2026-09-23)
+
+First scheduled `gate` after the report landed: run **35808783184** (02:02),
+job **107015560275**. It failed the usual way for this lane — annotation:
+
+```
+System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20260923-020342-utc.log'
+```
+
+and the job log is the 2-line `BlobNotFound`. The step list is the finding:
+
+| step | state |
+| --- | --- |
+| 22 `Disk report (before check build)` | **success** |
+| 23 `just check build` | **failure** |
+| 24 `Disk report (after check build)` | **pending** — never ran |
+
+So on this lane the measurement added above **produces numbers nobody can
+read**, twice over:
+
+* the BEFORE report ran and its output went into the job log, which the runner
+  never uploaded — the same "when the disk is gone the log has nowhere to land"
+  symptom this issue already describes, now applied to the diagnosis itself;
+* the AFTER report is guarded by `always()`, and `always()` only binds while the
+  runner is alive to honour it. This runner died inside `check build`, so the
+  step stayed `pending` and the job was abandoned.
+
+**What this does NOT change:** the `host-tests` numbers recorded above are
+unaffected — that lane's job completes and uploads its log, which is why the
+42 G / 22 G split is known at all. This is specifically about the scheduled
+`gate`, where the failure destroys its own evidence.
+
+**What a fix has to find:** a channel that survives a runner death. One is known
+to work, because this issue is reading it right now — the ANNOTATION channel
+carried the `IOException` out of a job whose log was lost. Whether a workflow
+`::notice::` rides that same channel or the lost log stream is **not
+established**, and guessing is how this issue got a report that cannot be read.
+The cheap experiment: emit one `::notice::` from the before-report, let the next
+scheduled `gate` fail, and see whether it appears in
+`check-runs/<jid>/annotations`. If it does, the df summary belongs there; if it
+does not, the numbers have to leave the runner another way (an artifact uploaded
+before the compile tier, or a step that writes them where a later job can read).
