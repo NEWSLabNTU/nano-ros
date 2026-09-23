@@ -79,9 +79,15 @@ cause was the environment the code ran in.**
   upstream of `test-all` entirely.
 * **The CI image is not implicated in `gate` or `host-tests` at all.** Both
   pull `nano-ros-ci:humble`, every provisioning step in both succeeds, and
-  their failures begin **2026-09-03**, before the 2026-09-12 image build. The
-  timing correlation that opened this phase is a coincidence for these two
-  lanes. It still holds for the Zephyr ones.
+  their failures begin **2026-09-03**, before the 2026-09-12 image build.
+* **The image timing does not explain the Zephyr lanes either, and this
+  document claimed twice that it did.** `images.yml` last ran 2026-09-12, but
+  that was the **ci-base job only**; the **zephyr job last actually ran
+  2026-09-03** and has been `skipped` on every run since, because nothing
+  under `ci/docker/zephyr-ros/**` moved. So the image did not change when the
+  blackout began -- the REQUIREMENT did, and what started demanding `unzip`
+  around 2026-09-11 is an open question this phase did not answer. The
+  correlation that opened the phase is a coincidence in every row.
 * `check-lane-contracts` has no reach gap. That was closed 2026-09-05 by
   issue 1030; it now reports 21 lane invocations, 3 merge-gating, none
   resolving an artifact its job does not build.
@@ -106,7 +112,7 @@ are diagnosis waves, and what a wave ends up editing depends on what it finds.
 
 | claim id | owns | starts now? |
 | --- | --- | --- |
-| `phase-466-W1` | `ci/docker/ci-base/Dockerfile`, `ci/docker/zephyr-ros/Dockerfile`, whatever gate stops the two lists drifting, the `_setup-common` -> `setup-clang-format` coupling | yes |
+| `phase-466-W1` | LANDED (#1211). One shared `ci/docker/apt-packages.txt` both Dockerfiles COPY, so drift is UNREPRESENTABLE rather than detected; `check-ci-image-apt-packages`; the `setup-clang-format` fatality moved out of `_setup-common` into `check-tier-preconditions` | done |
 | `phase-466-W2` | LANDED (#1209). Not `probe.yml` -- the narrow fix was already on main. The class gate `check-workflow-just-provisioning` plus the sweep of every workflow and composite action that invokes `just` | done |
 | `phase-466-W3` | LANDED (#1210). THREE independent bugs: the missing `-DZEPHYR_EXTRA_MODULES`, the runner's absent rosidl python deps (1457, kept open -- not fixable in this repository), and a missing `mkdir -p` at `fixture-lane.sh:343` that silently lost issue 0499's lower bound | done |
 | `phase-466-W4` | LANDED (#1212). Both lanes die in ONE step on a full disk (issue 1353). A survivable disk-report channel plus `scripts/ci/reclaim-disk.sh`, with `live-peer.yml`'s inline copy folded into it | done |
@@ -115,18 +121,33 @@ W1 and W3 may collide on the Zephyr image: if W3's `msg2idl.py` failure turns
 out to be another missing package in that image, the Dockerfile edit belongs
 to W1 and W3 reports rather than edits.
 
-## What still needs someone with access
+## Where the four waves left it (2026-09-23)
 
-Two of the six causes cannot be closed from inside this repository:
+All four landed: #1209 (W2), #1210 (W3), #1211 (W1), #1212 (W4), plus this
+document and its two corrections.
 
-1. **The tier-2 runner needs `catkin_pkg`, `empy==3.3.4` and `lark`.** It has
-   no `/opt/ros/humble`, so the vendored rosidl clone is used correctly and
-   its `[python.*]` deps are report-only there. Alternatively `nros setup
-   --source rosidl` starts provisioning them rather than reporting them.
-   Until then the pairwise lane stops in the same place -- now with a refusal
-   naming the remedy instead of a traceback eleven minutes into ninja.
-2. **`images.yml` must republish** before any Dockerfile change reaches a
-   lane. Issue 1201 is the precedent.
+**The images republished themselves.** `images.yml` fired on the merge push
+two seconds after #1211 landed (run 35843238854) and both jobs succeeded; the
+published zephyr image's own build log echoes its shared apt closure with
+`unzip` and `python3-tomli` in it. The "a maintainer must dispatch it" item
+this document carried is RETRACTED -- the paths filter did its job.
+
+**One cause remains outside this repository.** The tier-2 self-hosted runner
+needs `catkin_pkg`, `empy==3.3.4` and `lark`. It has no `/opt/ros/humble`, so
+the vendored rosidl clone is used correctly and its `[python.*]` deps are
+report-only there; alternatively `nros setup --source rosidl` starts
+provisioning them rather than reporting them. Until then the pairwise lane
+stops in the same place -- now with a refusal naming the remedy instead of a
+traceback eleven minutes into ninja.
+
+**Nothing is verified yet, and will not be for hours.** No scheduled lane has
+run since the merge. The first that will pull the new images are `live-peer`
+(~04:15 UTC) and `nightly` (~05:10 UTC) on 2026-09-24. Both 1359 and 1364
+stay `status: open` for exactly that reason: their acceptance is a scheduled
+job reaching its cells, and that evidence does not exist.
+
+**Still unattributed:** the tier-2 nightly job fails `provision-zenohd` with
+exit 78 before reaching anything else. Nobody has claimed it.
 
 ## Two things this phase must not do
 
