@@ -1,6 +1,6 @@
 //! ZenohServiceServer and ZenohServiceClient implementations
 
-use core::marker::PhantomData;
+use core::{cell::UnsafeCell, marker::PhantomData};
 
 use atomic_waker::AtomicWaker;
 use portable_atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -9,9 +9,13 @@ use nros_rmw::{ClientTrait, ServiceInfo, ServiceRequest, ServiceTrait, Transport
 
 use super::{
     AtomicSeqCounter, Context, KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, RMW_ATTACHMENT_SIZE,
-    RMW_GID_SIZE, RmwAttachment, SERVICE_BUFFER_SIZE, SeqScalar,
+    RMW_GID_SIZE, RmwAttachment, SeqScalar,
 };
 use crate::{
+    config::{
+        ACTION_INBOX_BYTES, ACTION_INBOX_DEPTH, ACTION_INBOX_QUERYABLES, SERVICE_INBOX_BYTES,
+        SERVICE_INBOX_DEPTH,
+    },
     keyexpr::ServiceKeyExpr,
     zpico::{
         self, Queryable, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SESSIONS, ZPICO_QUERYABLE_TABLE_DECLARED,
@@ -25,29 +29,31 @@ use super::signal_executor_wake;
 // ServiceBuffer
 // ============================================================================
 
-/// Phase 237 follow-up — depth of the per-server request ring. The single
-/// request buffer dropped a request that arrived before the previous one was
-/// drained (a burst of queries delivered in one read-task batch — concurrent
-/// goals under load). A ring buffers the burst so each request is read in order.
-/// Mirrors the subscriber SPSC ring (Phase 124.D.3.c).
-pub(super) const SERVICE_REQUEST_RING_DEPTH: usize = 4;
+/// The user-service family's ring depth -- the number `shim/qos.rs` grants a
+/// service's KEEP_LAST depth against.
+///
+/// Phase 237 follow-up chose 4 for "a burst of queries delivered in one
+/// read-task batch -- concurrent goals under load", and every family paid it
+/// (issue 1352). phase-461 W1 makes it a knob, `NROS_SERVICE_INBOX_DEPTH`
+/// (default 4), beside a separate one for the action family, and a builtin
+/// family brings its own through [`InboxSpec::Caller`].
+pub(super) const SERVICE_REQUEST_RING_DEPTH: usize = SERVICE_INBOX_DEPTH;
 
-/// One buffered request in the service-server inbox ring.
-pub(super) struct ServiceRequestSlot {
-    /// Buffer for received request data.
-    pub(super) data: [u8; SERVICE_BUFFER_SIZE],
-    /// Length of valid data.
+/// One ring entry's bookkeeping: the request's length in its slot, the
+/// reply-correlation token, and the overflow flag. 12 bytes on a 32-bit
+/// target, and it stays PER ENTRY whatever storage the ring is over.
+pub struct InboxEntry {
+    /// Length of valid data in the slot.
     pub(super) len: AtomicUsize,
     /// Reply-correlation token (the C shim's reply-slot index).
     pub(super) seq: AtomicSeqCounter,
-    /// Set when the incoming request exceeded `data.len()`.
+    /// Set when the incoming request exceeded the slot.
     pub(super) overflow: AtomicBool,
 }
 
-impl ServiceRequestSlot {
-    pub(super) const fn new() -> Self {
+impl InboxEntry {
+    pub const fn new() -> Self {
         Self {
-            data: [0u8; SERVICE_BUFFER_SIZE],
             len: AtomicUsize::new(0),
             seq: AtomicSeqCounter::new(0),
             overflow: AtomicBool::new(false),
@@ -55,28 +61,197 @@ impl ServiceRequestSlot {
     }
 }
 
-/// Shared buffer for service server callbacks — a single-producer (the queryable
+impl Default for InboxEntry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Backing storage for one queryable's request ring: `DEPTH` entries of
+/// `SLOT_BYTES` bytes each, plus the per-entry bookkeeping.
+///
+/// phase-461 W1 -- the ring is a HEADER ([`InboxRing`]) over storage the owner
+/// supplies, so a family that knows its own bound brings its own. The zenoh
+/// shim's two tables below (`USER_SERVICE_INBOX`, `ACTION_INBOX`) are
+/// instances of this type, and so is what a builtin family registers through
+/// [`InboxSpec::Caller`] (phase-461 W2, the parameter and lifecycle services
+/// sized by `nros-node`, the one crate that can price their requests).
+///
+/// `Sync` because the ring over it is SPSC: the zenoh read task writes a slot
+/// the executor is not reading, and the `head` / `tail` cursors in the
+/// per-queryable header carry the Release / Acquire pair -- the contract the
+/// inline `[ServiceRequestSlot; 4]` array had, unchanged.
+#[repr(C)]
+pub struct InboxStorage<const SLOT_BYTES: usize, const DEPTH: usize> {
+    entries: [InboxEntry; DEPTH],
+    data: UnsafeCell<[[u8; SLOT_BYTES]; DEPTH]>,
+}
+
+// SAFETY: see the type's doc -- one producer, one consumer, on different
+// slots, ordered by the header's cursors.
+unsafe impl<const S: usize, const D: usize> Sync for InboxStorage<S, D> {}
+
+impl<const S: usize, const D: usize> InboxStorage<S, D> {
+    /// What one queryable's ring costs at this geometry, in bytes: the slots
+    /// plus their entries. The per-queryable header (`ServiceBuffer`) is not
+    /// in it; that is paid once per queryable whatever the ring is.
+    pub const BYTES: usize = D * (S + core::mem::size_of::<InboxEntry>());
+
+    pub const fn new() -> Self {
+        Self {
+            entries: [const { InboxEntry::new() }; D],
+            data: UnsafeCell::new([[0u8; S]; D]),
+        }
+    }
+
+    pub const fn slot_bytes(&self) -> usize {
+        S
+    }
+
+    pub const fn depth(&self) -> usize {
+        D
+    }
+}
+
+impl<const S: usize, const D: usize> Default for InboxStorage<S, D> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The ring header: its geometry and where its bytes are.
+///
+/// `queryable_callback` and `take_request` index by `slot_bytes` and `depth`
+/// rather than by two crate-wide consts, which is what lets one queryable's
+/// ring differ from the next. A header is `Copy`: the per-queryable
+/// `ServiceBuffer` holds one by value, bound at registration and never
+/// rebound, and a caller's `static` ring is copied into it.
+#[derive(Clone, Copy)]
+pub struct InboxRing {
+    slot_bytes: usize,
+    depth: usize,
+    entries: *const InboxEntry,
+    data: *mut u8,
+}
+
+// SAFETY: the pointers address a `'static` `InboxStorage`, whose own `Sync`
+// argument covers every access made through them.
+unsafe impl Sync for InboxRing {}
+unsafe impl Send for InboxRing {}
+
+impl InboxRing {
+    /// A ring over storage the caller owns for the life of the program.
+    ///
+    /// `const`, so a builtin family can write
+    /// `static RING: InboxRing = InboxRing::over(&STORAGE);` and hand the
+    /// reference to [`InboxSpec::Caller`].
+    pub const fn over<const S: usize, const D: usize>(
+        storage: &'static InboxStorage<S, D>,
+    ) -> Self {
+        Self {
+            slot_bytes: S,
+            depth: D,
+            entries: storage.entries.as_ptr(),
+            data: storage.data.get().cast::<u8>(),
+        }
+    }
+
+    /// A header with no storage: what a `ServiceBuffer` holds before
+    /// registration binds one. The callback refuses to write through it.
+    pub(super) const fn unbound() -> Self {
+        Self {
+            slot_bytes: 0,
+            depth: 0,
+            entries: core::ptr::null(),
+            data: core::ptr::null_mut(),
+        }
+    }
+
+    pub const fn slot_bytes(&self) -> usize {
+        self.slot_bytes
+    }
+
+    pub const fn depth(&self) -> usize {
+        self.depth
+    }
+
+    pub const fn is_bound(&self) -> bool {
+        self.depth != 0
+    }
+
+    /// Bytes this ring's storage occupies (entries and slots).
+    pub const fn storage_bytes(&self) -> usize {
+        self.depth * (self.slot_bytes + core::mem::size_of::<InboxEntry>())
+    }
+
+    /// Does this header sit over `storage`? For tests, which need to say
+    /// "the bytes landed in the caller's static" rather than infer it.
+    pub fn is_over<const S: usize, const D: usize>(
+        &self,
+        storage: &'static InboxStorage<S, D>,
+    ) -> bool {
+        core::ptr::eq(self.entries, storage.entries.as_ptr())
+    }
+
+    /// Entry `i` of the ring; `i < depth()` and the ring is bound.
+    pub(super) fn entry(&self, i: usize) -> &InboxEntry {
+        debug_assert!(i < self.depth, "inbox ring entry {i} out of {}", self.depth);
+        // SAFETY: a bound ring points at `depth` entries of a `'static`
+        // storage, and the index is in range by the caller's contract.
+        unsafe { &*self.entries.add(i) }
+    }
+
+    /// The first byte of slot `i`; `i < depth()` and the ring is bound.
+    pub(super) fn slot_ptr(&self, i: usize) -> *mut u8 {
+        debug_assert!(i < self.depth, "inbox ring slot {i} out of {}", self.depth);
+        // SAFETY: a bound ring's `data` is `depth * slot_bytes` bytes of a
+        // `'static` storage; the offset stays inside it.
+        unsafe { self.data.add(i * self.slot_bytes) }
+    }
+}
+
+/// Which inbox a service server receives through (phase-461 W1).
+#[derive(Clone, Copy)]
+pub enum InboxSpec {
+    /// The shim's user-service table, `NROS_SERVICE_INBOX_BYTES` x
+    /// `NROS_SERVICE_INBOX_DEPTH` per queryable.
+    UserService,
+    /// The shim's action table (`send_goal`, `cancel_goal`, `get_result`),
+    /// `NROS_ACTION_INBOX_BYTES` x `NROS_ACTION_INBOX_DEPTH` per queryable.
+    Action,
+    /// The caller's own ring, over storage it sized for its family.
+    Caller(&'static InboxRing),
+}
+
+/// Shared buffer for service server callbacks -- a single-producer (the queryable
 /// callback on the zenoh read task) single-consumer (`take_request` on the
 /// executor) ring. `head`/`tail` are monotonic wrapping counters; the slot index
-/// is `counter % depth`. `tail - head` is the queued count; full → the callback
+/// is `counter % depth`. `tail - head` is the queued count; full -> the callback
 /// drops the newest (preserving in-order delivery).
+///
+/// phase-461 W1 -- this is the per-queryable HEADER: the ring's bytes are no
+/// longer inline. What stays here is paid once per queryable whatever the ring
+/// is: the reply keyexpr, the cursors, the waker, the session, and now the
+/// ring header itself.
 pub(super) struct ServiceBuffer {
-    pub(super) ring: [ServiceRequestSlot; SERVICE_REQUEST_RING_DEPTH],
+    /// The ring this queryable receives through, bound at registration by an
+    /// [`InboxSpec`] and read by the callback. Unbound until then.
+    pub(super) ring: InboxRing,
     /// Consumer cursor (written only by `take_request`).
     pub(super) head: AtomicUsize,
     /// Producer cursor (written only by the callback).
     pub(super) tail: AtomicUsize,
-    /// Reply keyexpr — constant per server (same rr/ topic for every request),
+    /// Reply keyexpr -- constant per server (same rr/ topic for every request),
     /// so a single copy suffices.
     pub(super) keyexpr: [u8; 256],
     /// Length of keyexpr.
     pub(super) keyexpr_len: AtomicUsize,
-    /// Phase 122.3.c.6.e — waker registered by event-driven service
+    /// Phase 122.3.c.6.e -- waker registered by event-driven service
     /// servers. Woken by `queryable_callback` after a request lands.
     pub(super) waker: AtomicWaker,
-    /// phase-328 (issue 0348) — the owning zpico session pool slot, recorded
+    /// phase-328 (issue 0348) -- the owning zpico session pool slot, recorded
     /// at server-registration time. `queryable_callback` reads it back so
-    /// `zpico_queryable_take_reply_seq(session, …)` addresses the correct
+    /// `zpico_queryable_take_reply_seq(session, ...)` addresses the correct
     /// session's reply-slot table (this buffer array is process-global, so the
     /// handle cannot be recovered from the buffer index alone).
     pub(super) session: core::sync::atomic::AtomicPtr<zpico_sys::zpico_session_t>,
@@ -85,7 +260,7 @@ pub(super) struct ServiceBuffer {
 impl ServiceBuffer {
     pub(super) const fn new() -> Self {
         Self {
-            ring: [const { ServiceRequestSlot::new() }; SERVICE_REQUEST_RING_DEPTH],
+            ring: InboxRing::unbound(),
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
             keyexpr: [0u8; 256],
@@ -96,48 +271,55 @@ impl ServiceBuffer {
     }
 }
 
-/// Static buffers for service servers.
+/// Static headers for service servers, one per queryable.
 ///
-/// phase-328 / issue 0376 — sized `ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES`
+/// phase-328 / issue 0376 -- sized `ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES`
 /// and indexed by `session_index * ZPICO_MAX_QUERYABLES + local`, so two zenoh
 /// sessions in one process get disjoint buffer ranges (the C shim's queryable
 /// tables are already per-session). At the default `ZPICO_MAX_SESSIONS == 1`
-/// this is `[ServiceBuffer; ZPICO_MAX_QUERYABLES]` with `session_index == 0`,
-/// identical to the pre-0376 layout.
+/// this is `[ServiceBuffer; ZPICO_MAX_QUERYABLES]` with `session_index == 0`.
+///
+/// The index handed to the C shim as the callback context is the index into
+/// THIS table, and `queryable_callback` also passes it to
+/// `zpico_queryable_take_reply_seq` as the queryable handle. So the header
+/// index space is one per session, allocated in the order the C shim allocates
+/// its queryable slots; phase-461 W1 partitions the RING storage by family
+/// (below) and leaves this space alone.
 ///
 /// # Why there is no `// nros-pool:` annotation
 ///
-/// phase-454 W6.a. This pool is the largest single consumer of static RAM in a
-/// native zenoh image — **144,128 bytes on a native talker**, a node with no
-/// service server at all — so its absence from
-/// `book/src/reference/static-pool-inventory.md` is exactly the enumeration
-/// failure issue 0271 cost ~145 KB to. It is absent on purpose, and this is the
-/// purpose, stated rather than left to be re-discovered:
+/// phase-454 W6.a. Before phase-461 W1 this table held the rings inline and
+/// was the largest single consumer of static RAM in a native zenoh image --
+/// **144,128 bytes on a native talker**, a node with no service server at all
+/// -- so its absence from `book/src/reference/static-pool-inventory.md` is
+/// exactly the enumeration failure issue 0271 cost ~145 KB to. It is absent on
+/// purpose, and this is the purpose, stated rather than left to be
+/// re-discovered:
 ///
 /// `scripts/gen-pool-inventory.py` evaluates a pool as a PRODUCT of knobs at
 /// their literal defaults. Two independent things make that impossible here,
 /// and `scripts/nros-mem-report.py`'s own header already names the first:
 ///
-/// * the element is a STRUCT, not a byte. `sizeof(ServiceBuffer)` is
-///   `SERVICE_REQUEST_RING_DEPTH × (SERVICE_BUFFER_SIZE + a length, a sequence
-///   and a flag)` **plus** a `[u8; 256]` reply keyexpr, two cursors, an
-///   `AtomicWaker` and a session pointer — a SUM with target-dependent terms,
-///   where the grammar has only products. The measured 4,504 bytes a slot is
-///   right for one build and wrong for the next appended field, which is the
-///   drift class `check-ffi-struct-mirrors` exists for one layer down;
+/// * the element is a STRUCT, not a byte. `sizeof(ServiceBuffer)` is a
+///   `[u8; 256]` reply keyexpr, two cursors, an `AtomicWaker`, a session
+///   pointer and a ring header -- a SUM with target-dependent terms, where the
+///   grammar has only products. A measured figure is right for one build and
+///   wrong for the next appended field, which is the drift class
+///   `check-ffi-struct-mirrors` exists for one layer down;
 /// * `ZPICO_MAX_QUERYABLES` has a COMPUTED default, so there is no integer to
 ///   put in the comment even for the count.
 ///
-/// So this follows the three documented deliberate non-annotations —
-/// `shim/publisher.rs`'s `LendArena`, `nros_rmw_cffi`'s `MESSAGE_INFO_TABLE`,
-/// and `nros_node::executor::backing` — and their shared principle: **the size
-/// is known to the compiler, so read it from the compiler's output.**
-/// `just mem-report <elf>` prices this symbol from the ELF, exactly, with no
-/// formula to drift; `book/src/internals/measuring-static-memory.md` shows it at
-/// 40.4 % of a native talker's RAM. Both knobs that size it are still
+/// The same holds of the two ring tables below, whose element is an
+/// `InboxStorage` whose size is `DEPTH x (SLOT_BYTES + an entry)`: a product
+/// with a struct-sized term. So all three follow the documented deliberate
+/// non-annotations -- `shim/publisher.rs`'s `LendArena`, `nros_rmw_cffi`'s
+/// `MESSAGE_INFO_TABLE`, and `nros_node::executor::backing` -- and their
+/// shared principle: **the size is known to the compiler, so read it from the
+/// compiler's output.** `just mem-report <elf>` prices each symbol from the
+/// ELF, exactly, with no formula to drift. The knobs that size them are still
 /// enumerated in the inventory with their defaults, which is what issue 0739
-/// asked for — the table says "no byte figure", which is true, rather than
-/// implying it is free.
+/// asked for -- the table says "no byte figure", which is true, rather than
+/// implying they are free.
 const SERVICE_BUFFER_COUNT: usize = ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES;
 static mut SERVICE_BUFFERS: [ServiceBuffer; SERVICE_BUFFER_COUNT] =
     [const { ServiceBuffer::new() }; SERVICE_BUFFER_COUNT];
@@ -146,6 +328,107 @@ static mut SERVICE_BUFFERS: [ServiceBuffer; SERVICE_BUFFER_COUNT] =
 /// index handed to the callback is `session_index * ZPICO_MAX_QUERYABLES + local`.
 static NEXT_SERVICE_BUFFER_INDEX: [AtomicUsize; ZPICO_MAX_SESSIONS] =
     [const { AtomicUsize::new(0) }; ZPICO_MAX_SESSIONS];
+
+const fn const_min(a: usize, b: usize) -> usize {
+    if a < b { a } else { b }
+}
+
+/// The action family's share of one session's queryables: three per declared
+/// action server (`send_goal`, `cancel_goal`, `get_result`; the `/status`
+/// cache queryable is a transient-local publisher's and takes no inbox),
+/// which `build.rs` reads from the sizing descriptor. ZERO on an image that
+/// declares nothing -- the action table is then empty and an action queryable
+/// draws a user ring, which is the single-table behaviour this phase splits,
+/// byte for byte, until W3 prices the two families apart.
+const ACTION_INBOX_PER_SESSION: usize = const_min(ACTION_INBOX_QUERYABLES, ZPICO_MAX_QUERYABLES);
+const USER_SERVICE_INBOX_PER_SESSION: usize = ZPICO_MAX_QUERYABLES - ACTION_INBOX_PER_SESSION;
+const USER_SERVICE_INBOX_COUNT: usize = ZPICO_MAX_SESSIONS * USER_SERVICE_INBOX_PER_SESSION;
+const ACTION_INBOX_COUNT: usize = ZPICO_MAX_SESSIONS * ACTION_INBOX_PER_SESSION;
+
+/// The user-service family's rings, `NROS_SERVICE_INBOX_BYTES` x
+/// `NROS_SERVICE_INBOX_DEPTH` each. Together with `ACTION_INBOX` this is the
+/// storage the inline `[ServiceRequestSlot; 4]` arrays used to be: the two
+/// tables hold `ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES` rings between them.
+static USER_SERVICE_INBOX: [InboxStorage<SERVICE_INBOX_BYTES, SERVICE_INBOX_DEPTH>;
+    USER_SERVICE_INBOX_COUNT] = [const { InboxStorage::new() }; USER_SERVICE_INBOX_COUNT];
+
+/// The action family's rings, `NROS_ACTION_INBOX_BYTES` x
+/// `NROS_ACTION_INBOX_DEPTH` each. The depth stays the twin of
+/// `ZPICO_MAX_PENDING_REPLIES`, the C shim's reply-slot table, because that is
+/// the family depth 4 was designed for.
+static ACTION_INBOX: [InboxStorage<ACTION_INBOX_BYTES, ACTION_INBOX_DEPTH>; ACTION_INBOX_COUNT] =
+    [const { InboxStorage::new() }; ACTION_INBOX_COUNT];
+
+/// Next free ring in each family's table, per session pool slot.
+static NEXT_USER_SERVICE_INBOX: [AtomicUsize; ZPICO_MAX_SESSIONS] =
+    [const { AtomicUsize::new(0) }; ZPICO_MAX_SESSIONS];
+static NEXT_ACTION_INBOX: [AtomicUsize; ZPICO_MAX_SESSIONS] =
+    [const { AtomicUsize::new(0) }; ZPICO_MAX_SESSIONS];
+
+/// The shim's own two families.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ShimFamily {
+    UserService,
+    Action,
+}
+
+/// Take the next ring of `family`'s table for `session_index`, or `None` when
+/// that table is spent.
+fn draw_from(session_index: usize, family: ShimFamily) -> Option<InboxRing> {
+    let (cursor, per_session) = match family {
+        ShimFamily::UserService => (
+            &NEXT_USER_SERVICE_INBOX[session_index],
+            USER_SERVICE_INBOX_PER_SESSION,
+        ),
+        ShimFamily::Action => (&NEXT_ACTION_INBOX[session_index], ACTION_INBOX_PER_SESSION),
+    };
+    let local = cursor.fetch_add(1, Ordering::SeqCst);
+    if local >= per_session {
+        cursor.fetch_sub(1, Ordering::SeqCst);
+        return None;
+    }
+    let index = session_index * per_session + local;
+    Some(match family {
+        ShimFamily::UserService => InboxRing::over(&USER_SERVICE_INBOX[index]),
+        ShimFamily::Action => InboxRing::over(&ACTION_INBOX[index]),
+    })
+}
+
+/// The ring a shim-family registration receives through, and which table it
+/// came from (so a failed declaration can hand it back).
+///
+/// Own family first, then the other's spare. The two tables hold exactly one
+/// ring per header between them, so a header that is free always finds a
+/// ring; which family's geometry it gets is exact on an image whose
+/// declaration priced the action share and today's single geometry on one
+/// that did not.
+fn draw_shim_ring(session_index: usize, family: ShimFamily) -> Option<(InboxRing, ShimFamily)> {
+    let order = match family {
+        ShimFamily::UserService => [ShimFamily::UserService, ShimFamily::Action],
+        ShimFamily::Action => [ShimFamily::Action, ShimFamily::UserService],
+    };
+    order
+        .into_iter()
+        .find_map(|f| draw_from(session_index, f).map(|ring| (ring, f)))
+}
+
+fn release_shim_ring(session_index: usize, family: ShimFamily) {
+    match family {
+        ShimFamily::UserService => &NEXT_USER_SERVICE_INBOX[session_index],
+        ShimFamily::Action => &NEXT_ACTION_INBOX[session_index],
+    }
+    .fetch_sub(1, Ordering::SeqCst);
+}
+
+/// Bind `ring` to header `buffer_index` and reset its cursors. Called once
+/// per header, before the queryable that fills it is declared.
+fn bind_ring(buffer_index: usize, ring: InboxRing) {
+    let mut buf_ref = ServiceBufferRef::new(buffer_index);
+    let buffer = buf_ref.get_mut();
+    buffer.ring = ring;
+    buffer.head.store(0, Ordering::Release);
+    buffer.tail.store(0, Ordering::Release);
+}
 
 // ============================================================================
 // ServiceBufferRef — safe accessor wrapper
@@ -260,15 +543,25 @@ extern "C" fn queryable_callback(
         return;
     }
 
+    // phase-461 W1 - the ring is whatever this header was bound to at
+    // registration; an unbound header has nowhere to put the bytes. Cannot
+    // happen for a declared queryable (the bind precedes the declaration), so
+    // this is a guard, not a path.
+    let ring = buffer.ring;
+    if !ring.is_bound() {
+        return;
+    }
+
     // Phase 237 follow-up — enqueue into the request ring. Drop the newest when
     // full (preserves in-order delivery of buffered requests), so a burst of
     // concurrent arrivals doesn't clobber an unread request.
     let head = buffer.head.load(Ordering::Acquire);
     let tail = buffer.tail.load(Ordering::Relaxed);
-    if tail.wrapping_sub(head) >= SERVICE_REQUEST_RING_DEPTH {
+    if tail.wrapping_sub(head) >= ring.depth() {
         return;
     }
-    let slot = &mut buffer.ring[tail % SERVICE_REQUEST_RING_DEPTH];
+    let index = tail % ring.depth();
+    let slot = ring.entry(index);
 
     // Phase 237 — the reply correlation token is the C shim's reply-slot index
     // (the cloned query held for a possibly-deferred reply), not a free-running
@@ -280,15 +573,16 @@ extern "C" fn queryable_callback(
     let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(session, buffer_index as i32) };
     slot.seq.store(seq as SeqScalar, Ordering::Relaxed);
 
-    if payload_len > slot.data.len() {
-        // Request exceeds static slot capacity — flag overflow, skip payload.
+    if payload_len > ring.slot_bytes() {
+        // Request exceeds the slot - flag overflow, skip payload.
         slot.overflow.store(true, Ordering::Relaxed);
         slot.len.store(0, Ordering::Relaxed);
     } else {
         slot.overflow.store(false, Ordering::Relaxed);
-        // Safety: payload pointer is valid for payload_len bytes (from C shim).
+        // Safety: payload pointer is valid for payload_len bytes (from C shim);
+        // the slot is `slot_bytes` long and no reader holds it (SPSC).
         unsafe {
-            core::ptr::copy_nonoverlapping(payload, slot.data.as_mut_ptr(), payload_len);
+            core::ptr::copy_nonoverlapping(payload, ring.slot_ptr(index), payload_len);
         }
         slot.len.store(payload_len, Ordering::Relaxed);
     }
@@ -345,11 +639,32 @@ pub struct ZenohServiceServer {
 }
 
 impl ZenohServiceServer {
-    /// Create a new service server for the given service
+    /// Create a new service server for the given service.
+    ///
+    /// phase-461 W1 -- the inbox family is read off the name: the three
+    /// queryables of an action server are `<action>/_action/{send_goal,
+    /// cancel_goal,get_result}` (`nros_rmw::ActionInfo`); everything else is a
+    /// user service. A builtin family that sizes its own ring registers
+    /// through [`Self::new_with_inbox`] instead.
     pub fn new(
         context: &Context,
         service: &ServiceInfo,
         liveliness: Option<super::LivelinessToken>,
+    ) -> Result<Self, TransportError> {
+        let inbox = if service.name.contains("/_action/") {
+            InboxSpec::Action
+        } else {
+            InboxSpec::UserService
+        };
+        Self::new_with_inbox(context, service, liveliness, inbox)
+    }
+
+    /// Create a service server that receives through `inbox`.
+    pub fn new_with_inbox(
+        context: &Context,
+        service: &ServiceInfo,
+        liveliness: Option<super::LivelinessToken>,
+        inbox: InboxSpec,
     ) -> Result<Self, TransportError> {
         // phase-328/#376 — allocate a per-session LOCAL buffer index and map it
         // to a global `SERVICE_BUFFERS` slot, so two sessions' servers never
@@ -448,6 +763,35 @@ impl ZenohServiceServer {
         }
         let buffer_index = session_index * ZPICO_MAX_QUERYABLES + local;
 
+        // phase-461 W1 - bind the ring BEFORE declaring, for the reason the
+        // session is recorded first below: a query that arrives during
+        // declaration must find storage to land in.
+        let (ring, drawn_from) = match inbox {
+            InboxSpec::Caller(ring) => (*ring, None),
+            InboxSpec::UserService | InboxSpec::Action => {
+                let family = match inbox {
+                    InboxSpec::Action => ShimFamily::Action,
+                    _ => ShimFamily::UserService,
+                };
+                match draw_shim_ring(session_index, family) {
+                    Some((ring, from)) => (ring, Some(from)),
+                    None => {
+                        // Unreachable while the two tables hold one ring per
+                        // header, which they do by construction; said rather
+                        // than assumed, because the header space above can be
+                        // raised without this file noticing.
+                        NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_sub(1, Ordering::SeqCst);
+                        return Err(TransportError::Backend(
+                            "zenoh service inbox tables exhausted - a queryable header was \
+                             free but no ring was; USER_SERVICE_INBOX and ACTION_INBOX must \
+                             hold ZPICO_MAX_QUERYABLES rings per session between them",
+                        ));
+                    }
+                }
+            }
+        };
+        bind_ring(buffer_index, ring);
+
         // Generate the service key
         let key: heapless::String<KEYEXPR_STRING_SIZE> = service.to_key();
 
@@ -477,6 +821,9 @@ impl ZenohServiceServer {
         }
         .map_err(|e| {
             NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_sub(1, Ordering::SeqCst);
+            if let Some(family) = drawn_from {
+                release_shim_ring(session_index, family);
+            }
             TransportError::from(e)
         })?;
 
@@ -541,7 +888,12 @@ impl ServiceTrait for ZenohServiceServer {
         if head == tail {
             return Ok(None);
         }
-        let slot = &buffer.ring[head % SERVICE_REQUEST_RING_DEPTH];
+        let ring = buffer.ring;
+        if !ring.is_bound() {
+            return Ok(None);
+        }
+        let index = head % ring.depth();
+        let slot = ring.entry(index);
 
         // Advance past the head entry (drop it).
         let pop = || buffer.head.store(head.wrapping_add(1), Ordering::Release);
@@ -564,7 +916,11 @@ impl ServiceTrait for ZenohServiceServer {
         zpico::ffi_guard(|| {
             // Safety: slot data + keyexpr are valid up to their respective lengths.
             unsafe {
-                core::ptr::copy_nonoverlapping(slot.data.as_ptr(), buf.as_mut_ptr(), len);
+                core::ptr::copy_nonoverlapping(
+                    ring.slot_ptr(index).cast_const(),
+                    buf.as_mut_ptr(),
+                    len,
+                );
 
                 // Save keyexpr for potential reply (constant per server).
                 let keyexpr_len = buffer.keyexpr_len.load(Ordering::Acquire);
@@ -1193,8 +1549,25 @@ pub(super) mod tests {
 
     // --- Service buffer helpers ---
 
-    /// Simulate a service request callback by enqueuing into the buffer ring.
+    /// The ring a test slot receives through: the shim's user table, bound on
+    /// first use the way `new_with_inbox` binds it for a real server. A slot
+    /// already bound (to a caller ring, below) keeps its binding.
+    fn bind_shim_ring_for_test(slot: usize) {
+        if !ServiceBufferRef::new(slot).get().ring.is_bound() {
+            bind_ring(slot, InboxRing::over(&USER_SERVICE_INBOX[slot]));
+        }
+    }
+
+    /// Give test slot `slot` the caller's ring, as `InboxSpec::Caller` would.
+    pub(in crate::shim) fn bind_caller_ring_for_test(slot: usize, ring: &'static InboxRing) {
+        bind_ring(slot, *ring);
+    }
+
+    /// Simulate a service request callback by enqueuing into the buffer ring:
+    /// the producer half of `queryable_callback`, ring-full drop and overflow
+    /// flag included.
     pub(in crate::shim) fn simulate_service_request(slot: usize, payload: &[u8], keyexpr: &[u8]) {
+        bind_shim_ring_for_test(slot);
         let mut buf_ref = ServiceBufferRef::new(slot);
         let buffer = buf_ref.get_mut();
 
@@ -1203,12 +1576,29 @@ pub(super) mod tests {
         buffer.keyexpr[klen] = 0;
         buffer.keyexpr_len.store(klen, Ordering::Release);
 
+        let ring = buffer.ring;
+        let head = buffer.head.load(Ordering::Acquire);
         let tail = buffer.tail.load(Ordering::Relaxed);
-        let entry = &mut buffer.ring[tail % SERVICE_REQUEST_RING_DEPTH];
-        let copy_len = payload.len().min(entry.data.len());
-        entry.data[..copy_len].copy_from_slice(&payload[..copy_len]);
-        entry.len.store(copy_len, Ordering::Relaxed);
-        entry.overflow.store(false, Ordering::Relaxed);
+        if tail.wrapping_sub(head) >= ring.depth() {
+            return;
+        }
+        let index = tail % ring.depth();
+        let entry = ring.entry(index);
+        if payload.len() > ring.slot_bytes() {
+            entry.overflow.store(true, Ordering::Relaxed);
+            entry.len.store(0, Ordering::Relaxed);
+        } else {
+            entry.overflow.store(false, Ordering::Relaxed);
+            // Safety: the slot is `slot_bytes` long and nothing reads it yet.
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    payload.as_ptr(),
+                    ring.slot_ptr(index),
+                    payload.len(),
+                );
+            }
+            entry.len.store(payload.len(), Ordering::Relaxed);
+        }
         let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
         entry.seq.store(seq, Ordering::Relaxed);
         buffer.tail.store(tail.wrapping_add(1), Ordering::Release);
@@ -1216,6 +1606,7 @@ pub(super) mod tests {
 
     /// Reset a service buffer to idle state (empty ring).
     pub(in crate::shim) fn reset_service_buffer(slot: usize) {
+        bind_shim_ring_for_test(slot);
         let mut buf_ref = ServiceBufferRef::new(slot);
         let buffer = buf_ref.get_mut();
         buffer.head.store(0, Ordering::Release);
@@ -1237,7 +1628,14 @@ pub(super) mod tests {
         if head == tail {
             return Ok(None);
         }
-        let entry = &buffer.ring[head % SERVICE_REQUEST_RING_DEPTH];
+        let ring = buffer.ring;
+        let index = head % ring.depth();
+        let entry = ring.entry(index);
+
+        if entry.overflow.load(Ordering::Acquire) {
+            buffer.head.store(head.wrapping_add(1), Ordering::Release);
+            return Err(TransportError::MessageTooLarge);
+        }
 
         let len = entry.len.load(Ordering::Acquire);
         if len > recv_buf.len() {
@@ -1247,7 +1645,11 @@ pub(super) mod tests {
 
         // Safety: Data is valid up to len bytes
         unsafe {
-            core::ptr::copy_nonoverlapping(entry.data.as_ptr(), recv_buf.as_mut_ptr(), len);
+            core::ptr::copy_nonoverlapping(
+                ring.slot_ptr(index).cast_const(),
+                recv_buf.as_mut_ptr(),
+                len,
+            );
         }
 
         buffer.head.store(head.wrapping_add(1), Ordering::Release);
@@ -1271,7 +1673,8 @@ pub(super) mod tests {
         let buf_ref = ServiceBufferRef::new(slot);
         let b = buf_ref.get();
         let head = b.head.load(Ordering::Relaxed);
-        b.ring[head % SERVICE_REQUEST_RING_DEPTH]
+        b.ring
+            .entry(head % b.ring.depth())
             .seq
             .load(Ordering::Acquire)
     }
@@ -1509,5 +1912,166 @@ pub(super) mod tests {
         let result = take_service(slot_a, &mut recv_buf);
         assert!(matches!(result, Ok(Some(8))));
         assert_eq!(&recv_buf[..8], b"req_zero");
+    }
+
+    // ========================================================================
+    // phase-461 W1: the ring is a header over caller-visible storage
+    // ========================================================================
+
+    /// A family that knows its bound brings its own storage. 300-byte slots,
+    /// two deep: neither number is a shim default, so a read that lands here
+    /// used the caller's geometry and not the crate's.
+    static CALLER_STORAGE: InboxStorage<300, 2> = InboxStorage::new();
+    static CALLER_RING: InboxRing = InboxRing::over(&CALLER_STORAGE);
+
+    /// The header slot the caller-ring test binds: the last one, above every
+    /// slot the older tests in this module and in `shim/mod.rs` use (0..=7).
+    const CALLER_SLOT: usize = SERVICE_BUFFER_COUNT - 1;
+
+    #[test]
+    fn an_inbox_ring_carries_the_callers_geometry() {
+        assert!(CALLER_RING.is_bound());
+        assert_eq!(CALLER_RING.slot_bytes(), 300);
+        assert_eq!(CALLER_RING.depth(), 2);
+        assert!(CALLER_RING.is_over(&CALLER_STORAGE));
+        assert_eq!(CALLER_RING.storage_bytes(), InboxStorage::<300, 2>::BYTES);
+        assert_eq!(
+            InboxStorage::<300, 2>::BYTES,
+            2 * (300 + core::mem::size_of::<InboxEntry>()),
+            "a ring costs depth x (slot + entry); the entry is the 12 B of len, seq, overflow"
+        );
+        assert_ne!(
+            (SERVICE_INBOX_BYTES, SERVICE_INBOX_DEPTH),
+            (300, 2),
+            "the caller's geometry must differ from the shim's for the test below to mean anything"
+        );
+    }
+
+    #[test]
+    fn a_caller_ring_receives_at_its_own_depth_and_slot_size() {
+        assert!(
+            CALLER_SLOT >= 8,
+            "the caller slot ({CALLER_SLOT}) collides with the slots the older tests use"
+        );
+        bind_caller_ring_for_test(CALLER_SLOT, &CALLER_RING);
+        reset_service_buffer(CALLER_SLOT);
+        assert!(
+            ServiceBufferRef::new(CALLER_SLOT)
+                .get()
+                .ring
+                .is_over(&CALLER_STORAGE),
+            "reset must keep a caller binding"
+        );
+
+        // Slot size is the caller's: 300 bytes land, 301 overflow.
+        let fits = [0x5Au8; 300];
+        simulate_service_request(CALLER_SLOT, &fits, b"svc/caller");
+        let mut recv = [0u8; 512];
+        assert!(matches!(
+            take_service(CALLER_SLOT, &mut recv),
+            Ok(Some(300))
+        ));
+        assert_eq!(&recv[..300], &fits[..]);
+
+        let too_big = [0xA5u8; 301];
+        simulate_service_request(CALLER_SLOT, &too_big, b"svc/caller");
+        assert!(matches!(
+            take_service(CALLER_SLOT, &mut recv),
+            Err(TransportError::MessageTooLarge)
+        ));
+        assert!(!service_buf_has_request(CALLER_SLOT));
+
+        // Depth is the caller's: two are held, the third is the ring-full drop.
+        simulate_service_request(CALLER_SLOT, b"one", b"svc/caller");
+        simulate_service_request(CALLER_SLOT, b"two", b"svc/caller");
+        simulate_service_request(CALLER_SLOT, b"three", b"svc/caller");
+        assert!(matches!(take_service(CALLER_SLOT, &mut recv), Ok(Some(3))));
+        assert_eq!(&recv[..3], b"one");
+        assert!(matches!(take_service(CALLER_SLOT, &mut recv), Ok(Some(3))));
+        assert_eq!(&recv[..3], b"two");
+        assert!(matches!(take_service(CALLER_SLOT, &mut recv), Ok(None)));
+
+        // And the bytes are the caller's: read them back off the static.
+        simulate_service_request(CALLER_SLOT, b"mine", b"svc/caller");
+        let head = ServiceBufferRef::new(CALLER_SLOT)
+            .get()
+            .head
+            .load(Ordering::Acquire);
+        let index = head % CALLER_RING.depth();
+        // SAFETY: a test-only read of the caller's storage after the producer
+        // published the slot; nothing writes it until it is taken below.
+        let landed =
+            unsafe { core::slice::from_raw_parts(CALLER_RING.slot_ptr(index).cast_const(), 4) };
+        assert_eq!(landed, b"mine");
+        let _ = take_service(CALLER_SLOT, &mut recv);
+    }
+
+    /// The shim's tables at their defaults ARE the single table this phase
+    /// split: one ring per header between them, each `NROS_SERVICE_INBOX_DEPTH`
+    /// x `NROS_SERVICE_INBOX_BYTES`, and the old name still spells the size.
+    #[test]
+    fn the_shim_tables_are_the_single_table_by_default() {
+        assert_eq!(SERVICE_INBOX_DEPTH, SERVICE_REQUEST_RING_DEPTH);
+        assert_eq!(
+            SERVICE_INBOX_BYTES,
+            crate::config::SERVICE_BUFFER_SIZE,
+            "SERVICE_BUFFER_SIZE is the one-release alias of NROS_SERVICE_INBOX_BYTES"
+        );
+        assert_eq!(
+            USER_SERVICE_INBOX_COUNT + ACTION_INBOX_COUNT,
+            SERVICE_BUFFER_COUNT,
+            "one ring per header, between the two tables"
+        );
+        let rings =
+            core::mem::size_of_val(&USER_SERVICE_INBOX) + core::mem::size_of_val(&ACTION_INBOX);
+        let user = USER_SERVICE_INBOX_COUNT
+            * InboxStorage::<SERVICE_INBOX_BYTES, SERVICE_INBOX_DEPTH>::BYTES;
+        let action =
+            ACTION_INBOX_COUNT * InboxStorage::<ACTION_INBOX_BYTES, ACTION_INBOX_DEPTH>::BYTES;
+        assert_eq!(
+            rings,
+            user + action,
+            "the tables are priced by their own formula"
+        );
+        // This test build states no knob and declares nothing, so the crate
+        // defaults are in force: 4 x 1024 per queryable, every queryable, and
+        // an empty action table.
+        assert_eq!(
+            (
+                SERVICE_INBOX_BYTES,
+                SERVICE_INBOX_DEPTH,
+                ACTION_INBOX_QUERYABLES
+            ),
+            (1024, 4, 0),
+            "the crate defaults are today's single table (set a knob and this test is not the gate)"
+        );
+        assert_eq!(ACTION_INBOX_COUNT, 0);
+        assert_eq!(
+            rings,
+            SERVICE_BUFFER_COUNT * 4 * (1024 + core::mem::size_of::<InboxEntry>()),
+            "the ring bytes are exactly what the inline [ServiceRequestSlot; 4] arrays held"
+        );
+        // The per-queryable header no longer embeds a ring.
+        assert!(core::mem::size_of::<ServiceBuffer>() < SERVICE_INBOX_BYTES);
+    }
+
+    /// On an image that declares no action server the action table is empty,
+    /// and an action queryable draws a user ring: today's behaviour, byte for
+    /// byte, until W3 prices the families apart.
+    #[test]
+    fn an_action_queryable_draws_a_user_ring_when_its_table_is_empty() {
+        assert_eq!(
+            ACTION_INBOX_PER_SESSION, 0,
+            "this test build declares no action server"
+        );
+        let (ring, from) = draw_shim_ring(0, ShimFamily::Action).expect("a user ring is spare");
+        assert_eq!(from, ShimFamily::UserService);
+        assert_eq!(
+            (ring.slot_bytes(), ring.depth()),
+            (SERVICE_INBOX_BYTES, SERVICE_INBOX_DEPTH)
+        );
+        release_shim_ring(0, from);
+        assert_eq!(NEXT_USER_SERVICE_INBOX[0].load(Ordering::SeqCst), 0);
+        assert_eq!(NEXT_ACTION_INBOX[0].load(Ordering::SeqCst), 0);
     }
 }

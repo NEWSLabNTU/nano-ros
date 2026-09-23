@@ -131,6 +131,15 @@ KNOB_CLASS = {
     "NROS_XRCE_TRANSPORT_MTU": ("sizing", "transport MTU (UDP/TCP); numeric"),
     "ZPICO_MAX_LARGE_SUBSCRIBERS": ("derived", "pool cardinality; multiplies LARGE_PAYLOADS, phase-392"),
     "ZPICO_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
+    # phase-461 W1 / issue 1352 -- the service inbox per FAMILY. The two slot
+    # sizes are DERIVED: W3 prices each family's `_Request` types and the
+    # derivable call replaces the plain one. The two depths are policy defaults
+    # like ZPICO_SUBSCRIBER_RING_DEPTH -- a burst absorber, not a bound -- and
+    # a `[knobs.zenoh.limits]` rung is their migration, so they are the backlog.
+    "NROS_SERVICE_INBOX_BYTES": ("derived", "user-service inbox slot; the largest declared service _Request bound (phase-461 W3)"),
+    "NROS_SERVICE_INBOX_DEPTH": ("sizing", "user-service inbox ring depth; a policy default, rung to come"),
+    "NROS_ACTION_INBOX_BYTES": ("derived", "action inbox slot; the largest declared action request bound (phase-461 W3)"),
+    "NROS_ACTION_INBOX_DEPTH": ("sizing", "action inbox ring depth; the twin of ZPICO_MAX_PENDING_REPLIES, rung to come"),
     # --- phase-392 W6: the executor backing static ---
     # NOT a ladder candidate, and the DECISION is the interesting part. A rung
     # gives a global a per-platform default, which is exactly wrong here: the

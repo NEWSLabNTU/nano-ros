@@ -1209,6 +1209,18 @@ function(nros_resolve_knobs)
         _nros_resolve_knob(NROS_DECLARED_PARAM_SERVICE_SHAPE
             "${NROS_PARAM_SERVICE_SHAPE}")
     endif()
+    # phase-461 W1 -- the per-family service inboxes (issue 1352), on the
+    # plain ladder under their RMW-agnostic names: Kconfig states them, the
+    # environment wins, nros-rmw-zenoh's build script reads them. Plain, not
+    # derivable, until W3 prices a family's _Request types: the derivable call
+    # then replaces the plain one for that name (check-knob-resolved-once),
+    # and the NROS_RESOLVED_NROS_* twin check-knob-delivery pairs with the
+    # NROS_DERIVED_* fact is already the name resolved here. The parameter
+    # family's pair lands with its reader in nros-node (W2).
+    _nros_resolve_knob(NROS_SERVICE_INBOX_BYTES "${CONFIG_NROS_SERVICE_INBOX_BYTES}")
+    _nros_resolve_knob(NROS_SERVICE_INBOX_DEPTH "${CONFIG_NROS_SERVICE_INBOX_DEPTH}")
+    _nros_resolve_knob(NROS_ACTION_INBOX_BYTES "${CONFIG_NROS_ACTION_INBOX_BYTES}")
+    _nros_resolve_knob(NROS_ACTION_INBOX_DEPTH "${CONFIG_NROS_ACTION_INBOX_DEPTH}")
 endfunction()
 
 # =============================================================================

@@ -80,7 +80,7 @@ pub use crate::zpico::ZenohId;
 
 // Re-export submodule types
 pub use publisher::ZenohPublisher;
-pub use service::{ZenohServiceClient, ZenohServiceServer};
+pub use service::{InboxRing, InboxSpec, InboxStorage, ZenohServiceClient, ZenohServiceServer};
 pub use session::{ZenohSession, effective_client_locator, normalize_locator};
 pub use subscriber::{ZenohSubscriber, overflow_drops_total, required_rx_bytes};
 pub use transport::{ZenohRmw, ZenohTransport};
@@ -1738,6 +1738,17 @@ mod ghost_checks {
     // ServiceBufferGhost Correspondence
     // ========================================================================
 
+    /// phase-461 W1 - a header receives through a ring bound at registration;
+    /// the ghost checks bind one over the shim's default geometry.
+    static GHOST_INBOX: service::InboxStorage<SERVICE_BUFFER_SIZE, 4> =
+        service::InboxStorage::new();
+
+    fn ghost_service_buffer() -> ServiceBuffer {
+        let mut buffer = ServiceBuffer::new();
+        buffer.ring = service::InboxRing::over(&GHOST_INBOX);
+        buffer
+    }
+
     /// Structural check: construct ServiceBufferGhost from ServiceBuffer private fields.
     /// If a field is renamed or retyped, this fails to compile.
     fn ghost_from_service_buffer(b: &ServiceBuffer) -> ServiceBufferGhost {
@@ -1745,18 +1756,19 @@ mod ghost_checks {
         // entry's state into the ghost (`has_request` = ring non-empty).
         let head = b.head.load(Ordering::Relaxed);
         let tail = b.tail.load(Ordering::Relaxed);
-        let slot = &b.ring[head % service::SERVICE_REQUEST_RING_DEPTH];
+        let ring = b.ring;
+        let slot = ring.entry(head % ring.depth());
         ServiceBufferGhost {
             has_request: head != tail,
             overflow: slot.overflow.load(Ordering::Relaxed),
             stored_len: slot.len.load(Ordering::Relaxed),
-            buf_capacity: slot.data.len(),
+            buf_capacity: ring.slot_bytes(),
         }
     }
 
     #[test]
     fn ghost_service_new_state() {
-        let buffer = ServiceBuffer::new();
+        let buffer = ghost_service_buffer();
         let ghost = ghost_from_service_buffer(&buffer);
         assert!(!ghost.has_request);
         assert!(!ghost.overflow);
@@ -1766,16 +1778,16 @@ mod ghost_checks {
 
     #[test]
     fn ghost_service_capacity_constant() {
-        let buffer = ServiceBuffer::new();
+        let buffer = ghost_service_buffer();
         let ghost = ghost_from_service_buffer(&buffer);
         assert_eq!(ghost.buf_capacity, SERVICE_BUFFER_SIZE);
     }
 
     #[test]
     fn svc_buf_overflow_signals_error() {
-        let buffer = ServiceBuffer::new();
+        let buffer = ghost_service_buffer();
         // Simulate the callback enqueuing an oversized request into the ring.
-        buffer.ring[0].overflow.store(true, Ordering::Release);
+        buffer.ring.entry(0).overflow.store(true, Ordering::Release);
         buffer.tail.store(1, Ordering::Release);
 
         let ghost = ghost_from_service_buffer(&buffer);

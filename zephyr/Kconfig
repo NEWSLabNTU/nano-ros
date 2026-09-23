@@ -957,11 +957,56 @@ config NROS_SUBSCRIBER_LARGE_SIZE
       The crate default then applies and costs nothing.
 
 config NROS_SERVICE_BUFFER_SIZE
-    int "Per-service static buffer size"
+    int "Per-service static buffer size (alias of NROS_SERVICE_INBOX_BYTES)"
     default 1024
     help
-      Size of the static buffer for each service server slot (bytes).
+      phase-461 W1 -- the one-release ALIAS of NROS_SERVICE_INBOX_BYTES,
+      which defaults to this value. Set that symbol instead; this one stays
+      so a board .conf that states it keeps building the same image.
       Maps to ZPICO_SERVICE_BUFFER_SIZE.
+
+config NROS_SERVICE_INBOX_BYTES
+    int "Service inbox slot size (bytes)"
+    default NROS_SERVICE_BUFFER_SIZE
+    help
+      Bytes one request slot holds in the inbox ring of every USER service
+      server (a zenoh queryable). The parameter and lifecycle services do
+      not share it: they bring their own ring, sized by nros-node from the
+      contract's declared parameters (phase-461, issue 1352). Maps to
+      NROS_SERVICE_INBOX_BYTES in nros-rmw-zenoh's build script. A request
+      larger than this is dropped with TransportError::MessageTooLarge.
+
+      Per queryable the ring costs
+        NROS_SERVICE_INBOX_DEPTH x (NROS_SERVICE_INBOX_BYTES + 12)
+      plus a fixed header; the map (just mem-report) prices it exactly.
+
+config NROS_SERVICE_INBOX_DEPTH
+    int "Service inbox ring depth"
+    default 4
+    help
+      Requests one USER service server holds before the newest is dropped.
+      4 was chosen for the action path (a burst of queries in one read-task
+      batch) and every family paid it; the parameter family's own depth is
+      1, on its own ring (phase-461 W2). Must be >= 1. Maps to
+      NROS_SERVICE_INBOX_DEPTH.
+
+config NROS_ACTION_INBOX_BYTES
+    int "Action inbox slot size (bytes)"
+    default NROS_SERVICE_INBOX_BYTES
+    help
+      Bytes one request slot holds in the inbox ring of each action server
+      queryable (send_goal, cancel_goal, get_result). Defaults to the
+      service family's size until phase-461 W3 prices the two families
+      from their declared _Request types. Maps to NROS_ACTION_INBOX_BYTES.
+
+config NROS_ACTION_INBOX_DEPTH
+    int "Action inbox ring depth"
+    default 4
+    help
+      Requests one action server queryable holds before the newest is
+      dropped: the family depth 4 was designed for, and the twin of the C
+      shim's ZPICO_MAX_PENDING_REPLIES (both 4). Must be >= 1. Maps to
+      NROS_ACTION_INBOX_DEPTH.
 
 # =============================================================================
 # Zenoh Platform Configuration
