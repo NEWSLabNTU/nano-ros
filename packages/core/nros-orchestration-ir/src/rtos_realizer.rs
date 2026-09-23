@@ -1027,9 +1027,11 @@ mod tests {
             "CONFIG_NUM_PREEMPT_PRIORITIES=15\n\
              CONFIG_NUM_COOP_PRIORITIES=16\n\
              CONFIG_POSIX_PRIORITY_SCHEDULING=y\n\
-             CONFIG_PREEMPT_ENABLED=y\n\
-             CONFIG_NROS_ZENOH_READ_PRIORITY=200\n\
-             CONFIG_NROS_ZENOH_LEASE_PRIORITY=255\n",
+             CONFIG_PREEMPT_ENABLED=y\n",
+            // The two normalised bands the island's transport tasks are
+            // created at, as a caller reads them from the symbols the board
+            // descriptor names (RFC-0071 D2: this crate is handed numbers).
+            &[200, 255],
         )
         .expect("the island's .config resolves");
         let realized = realize_rtos(&ranked, &input, &caps, &plan);

@@ -30,6 +30,7 @@ Usage:
 """
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -400,13 +401,37 @@ def selftest():
                stale["reserved"]["transport"], (0, 14))
         expect("the pre-0852 pool is empty", stale["pool"]["app"], (15, 14))
 
+    # RFC-0071 D2 - the Rust twin is a CORE crate, so it may not read the
+    # transport's Kconfig symbols by name: it is handed the normalised bands,
+    # and carries ONE number of its own for the case where no image is in hand
+    # (`ZEPHYR_TRANSPORT_BAND_DEFAULT`). That number is the platform default,
+    # and a second copy of a number is only safe while something compares it -
+    # so this is the comparison. The symbols themselves are named HERE, where
+    # backends are known, and by the board descriptor's `inputs`.
+    rust_default = None
+    rust_src = ROOT / "packages/core/nros-orchestration-ir/src/priority_plan.rs"
+    try:
+        text = rust_src.read_text(encoding="utf-8")
+    except OSError:
+        text = ""
+    m = re.search(r"ZEPHYR_TRANSPORT_BAND_DEFAULT:\s*i64\s*=\s*(\d+)\s*;", text)
+    if m is None:
+        fails.append(f"{rust_src.relative_to(ROOT)}: no "
+                     "ZEPHYR_TRANSPORT_BAND_DEFAULT to check - the core's "
+                     "default band is unverified")
+    else:
+        rust_default = int(m.group(1))
+        for key in BAND_DEFAULTED:
+            want = kconfig_default(key)
+            expect(f"the core's default band against {key}", rust_default, want)
+
     if fails:
         print("check-tier-priority-plan-image --selftest: FAILED")
         for f in fails:
             print(f"  {f}")
         return False
     print("check-tier-priority-plan-image --selftest: OK "
-          "(real zephyr/Kconfig parses; 14 synthetic cases, including the\n  RFC-0079 section 4.1 band the Rust realizer allocates from)")
+          "(real zephyr/Kconfig parses; 14 synthetic cases, the\n  RFC-0079 section 4.1 band the Rust realizer allocates from, and that\n  realizer's own default band against this Kconfig)")
     return True
 
 
