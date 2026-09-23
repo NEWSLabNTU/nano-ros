@@ -92,6 +92,20 @@ ci-doc-workflow-refs:
 ci-image-python-deps:
     @python3 scripts/check-ci-image-python-deps.py
 
+# Every CI image installs the SHARED apt closure, and nothing restates it
+# privately (phase-466). `ci-base` and `zephyr-ros` are siblings, not
+# parent/child, so each carried its own hand-written `apt-get install` list and
+# the two drifted by `unzip` (issue 1359 — all 22 nightly zephyr jobs died in
+# `_setup-common`) and a TOML parser (issue 1364 — every repo script that reads
+# a manifest died in the image). `ci/docker/apt-packages.txt` is now the one
+# list; this gate keeps an image from quietly opting out of it, keeps the shared
+# set covering what `[tool.clang-format] system` and the tree's own `import
+# tomli` chain demand, and keeps the published image TAG and its `container:`
+# consumers in step.
+[group("checks")]
+ci-image-apt-packages:
+    @python3 scripts/check-ci-image-apt-packages.py
+
 # CI may not set NROS_FIXTURES_OPTIONAL. A lane names its scope, so a missing
 # fixture INSIDE that scope is a failure; the flag turned it into a skip and made
 # correctness depend on remembering to unset a variable (phase-411 W4). The
