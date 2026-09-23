@@ -129,3 +129,31 @@ here.
 
 This does not change what closes the issue: the riscv64 axis building its own
 ThreadX port, not a lane that explains itself better.
+
+## Progress (2026-09-23) — the named cause no longer fires; the lane fails one stage later
+
+Nightly run **35830623546**, job **107082715068**. The riscv64 port now builds:
+`[233/754] Linking C static library nano_ros/libthreadx_kernel.a`, NetX Duo and
+the ThreadX glue link beside it, and the step prints neither
+`semaphore.h: No such file or directory` nor the
+`THREADX_PORT=linux/gnu targets x86_64-… but TARGET=riscv64…; skipping the
+ThreadX C build` line this issue's phase-451 entry added. Grepping the whole
+step for `THREADX_PORT`, `skipping the ThreadX` and `semaphore.h` returns
+nothing.
+
+So the finding this issue was opened on — the wrong port selected, and then the
+forced `THREADX_PORT` not reaching this lane — is no longer what the lane fails
+on.
+
+It still does not reach a verdict. All twelve rust leaves now fail at **link**,
+on duplicate `#[no_mangle]` and `__NROS_SIZE_*` symbols defined both in the
+leaf's own Rust staticlib and in `libnros_cpp.a`. That is a different defect in
+a different layer — a generated C interface library preferring the C++ umbrella
+whenever that target exists — and is filed as **issue 1467**.
+
+Keeping this issue open, because its acceptance is stated as the lane reaching a
+verdict and that is still false. Its remaining work, though, is no longer "find
+why the forced `THREADX_PORT` does not reach that lane's environment": that
+question is answered by the build. What is left here is to confirm, once 1467
+unblocks the link, that the riscv port keeps being selected on a cold workspace
+as well as this one — and then to close on the cells.
