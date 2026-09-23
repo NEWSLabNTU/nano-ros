@@ -12,7 +12,11 @@
 # `FROM ros:humble-ros-base` itself and inherits NOTHING from this file. This
 # header used to claim it was `FROM` this one, which is how a fix landing here
 # could look like it covered both (issue 0866). A change to the shared base
-# environment has to be made in BOTH. `platform-ci.yml` + `host-unit-
+# environment still has to be made in BOTH — EXCEPT for the apt closure, which
+# is no longer duplicated: `ci/docker/apt-packages.txt` is one list both images
+# COPY and install, because the hand-mirrored halves had drifted by `unzip` and
+# `python3-tomli` and that drift is what emptied every scheduled lane of its
+# verdict (issues 1359, 1364; phase-466). `platform-ci.yml` + `host-unit-
 # tests` run their cells in this image — no per-cell `setup-ros` / apt / tool
 # installs, and the AMENT/ROS gap that fails `nros generate-rust` is closed.
 #
@@ -75,14 +79,24 @@ ENV AMENT_PREFIX_PATH=/opt/ros/humble \
     ROS_LOCALHOST_ONLY=0
 ENV PATH=/opt/ros/humble/bin:$PATH
 
-# Host build deps shared across platforms + the arm cross-compiler (the setup-
-# time zenoh-pico build + freertos/nuttx/threadx/qemu cross builds need it on
-# PATH before `nros setup` provisions the index toolchain). curl/zstd/git for the
-# per-run install.sh + nros source provisioning.
+# The apt closure EVERY image installs, from the one list (phase-466). Its own
+# header says what belongs there; the short version is "a package the REPO needs
+# on any host", as against the per-image extras below.
+COPY ci/docker/apt-packages.txt /opt/nros-ssot/ci/docker/apt-packages.txt
+RUN apt-get update \
+    && sed -e 's/#.*//' /opt/nros-ssot/ci/docker/apt-packages.txt \
+       | xargs -r apt-get install -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+# ci-base's OWN packages — the ones the zephyr image has no use for. A name here
+# that is ALSO in the shared list is refused by `check-ci-image-apt-packages`:
+# restating a shared package privately is how two lists come back.
+#
+# The arm cross-compiler (the setup-time zenoh-pico build +
+# freertos/nuttx/threadx/qemu cross builds need it on PATH before `nros setup`
+# provisions the index toolchain), the QEMU runtime libs, and the tooling the
+# host gates run.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        cmake ninja-build device-tree-compiler gperf \
-        git curl ca-certificates zstd xz-utils file wget \
-        python3 python3-pip python3-venv python3-tomli build-essential \
         lld \
         gcc-arm-none-eabi gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf \
         libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
@@ -94,7 +108,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         `# or directory" and FAILED the merge group, while` \
         `# cross_libc_precedence_gate SKIPPED with "no usable libstdc++" —` \
         `# one absent package, one hard red and one silent coverage hole.` \
-        kconfig-frontends socat parallel unzip flex bison \
+        kconfig-frontends socat parallel flex bison \
         libslirp0 libpixman-1-0 \
         libmbedtls-dev \
         clang \
@@ -105,7 +119,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         `# which is why check-api-parity is today the only ci-gate step run` \
         `# by NO workflow, on any event. That is how phase-421's two` \
         `# serialization_format accessors landed unledgered.` \
-        ros-humble-example-interfaces \
         ros-humble-rmw-cyclonedds-cpp \
         `# ^ the STOCK Cyclone RMW the interop cells talk to. ros-base does` \
         `# not carry it: rmw-implementation depends on "rmw-fastrtps-cpp |` \

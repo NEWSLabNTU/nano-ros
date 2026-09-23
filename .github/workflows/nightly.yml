@@ -696,7 +696,7 @@ jobs:
       group: nightly-zephyr-matrix-${{ matrix.line }}-${{ matrix.example }}-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
     container:
-      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r4
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r5
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -843,7 +843,7 @@ jobs:
       group: nightly-zephyr-summary-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
     container:
-      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r4
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r5
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -940,7 +940,7 @@ jobs:
       group: nightly-zephyr-copyout-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
     container:
-      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r4
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r5
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

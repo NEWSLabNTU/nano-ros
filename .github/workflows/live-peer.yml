@@ -348,7 +348,7 @@ jobs:
     if: needs.membership.outputs.has_board == 'true'
     runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r4
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r5
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

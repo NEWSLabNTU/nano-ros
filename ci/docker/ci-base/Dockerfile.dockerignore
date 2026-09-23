@@ -6,5 +6,6 @@
 # Add a line here when the Dockerfile gains a COPY.
 *
 !ci/docker/ci-base/
+!ci/docker/apt-packages.txt
 !scripts/lib/rust-targets.sh
 !config/rust-targets.txt
