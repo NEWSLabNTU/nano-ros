@@ -263,6 +263,25 @@ roadmap-boxes:
 roadmap-claims:
     @python3 scripts/check-roadmap-claims.py
 
+# phase-464 -- a `PR #1234 (abc1234)` citation must name a commit main can
+# reach. Third sibling of `roadmap-status` and `roadmap-claims`: those ask
+# whether a status EXISTS and whether it contradicts its own body; this one
+# asks whether the EVIDENCE it cites can be opened.
+#
+# On 2026-09-23 ten citations across six phase docs named pre-squash branch
+# commits. The merge queue rebases a PR onto main, so a branch's commit ids do
+# not survive it. The expensive case was phase-459 W0 and W5: both footers read
+# "PR #1195 (...), in the queue" for a day after #1195 merged, the waves looked
+# unstarted from the doc alone, and a session rebuilt work already on main.
+#
+# Scoped to that one citation spelling on purpose, so the gate is
+# host-independent: a wider "any hex token must resolve" rule reads differently
+# in a long-lived clone that still holds deleted branch objects than in a fresh
+# CI clone that does not. Buildless -- git and a file read, nothing else.
+[private]
+roadmap-commit-refs:
+    @python3 scripts/check/check-roadmap-commit-refs.py
+
 # Every ACTIVE roadmap phase carries a findable status line; a finished one
 # belongs in `docs/roadmap/archived/`. A one-off pass does not hold — four
 # phases lost theirs within days of `ecc195ed6` doing exactly that.

@@ -210,7 +210,7 @@ projection: `mrm_emergency_stop_operator` and `stop_mode_operator` on the most
 urgent derived tier, `mrm_comfortable_stop_operator` and `mrm_handler` one
 below. The fixture is what every later wave's gate runs against.
 
-Claim: phase-459-W0. Depends on: none. Owns: examples/workspaces/derived-tiers-cpp/ (new); one case in packages/cli/nros-cli-core/tests/example_metadata_coverage.rs. Gate: cargo test -p nros-cli-core --test example_metadata_coverage. Status: PR #1195 (d4c4dae3b), in the queue; examples/workspaces/derived-tiers-cpp, four components with CALLBACK_GROUPS main.
+Claim: phase-459-W0. Depends on: none. Owns: examples/workspaces/derived-tiers-cpp/ (new); one case in packages/cli/nros-cli-core/tests/example_metadata_coverage.rs. Gate: cargo test -p nros-cli-core --test example_metadata_coverage. Status: landed in PR #1195 (2d8ce0012, merged 2026-09-22); examples/workspaces/derived-tiers-cpp, four components with CALLBACK_GROUPS main.
 
 **W1 - `codegen-system` reads the cmake metadata for groups.**
 `collect_callback_groups` gains a third source after `group_tiers` and the cargo
@@ -225,7 +225,7 @@ members; the negative control is the same fixture with the keyword removed,
 which must produce the groupless note for all four (issue 1371's persisted
 form).
 
-Claim: phase-459-W1. Depends on: phase-459-W0. Owns: packages/cli/nros-cli-core/src/orchestration/tier_resolver.rs; load_workspace_metadata in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs (signature only); packages/cli/nros-cli-core/tests/derived_tiers_bake.rs (new). Gate: cargo test -p nros-cli-core --test derived_tiers_bake. Status: landed in PR #1219 (0960b1509); `collect_callback_groups` takes the cmake nros-metadata.json as its third source after group_tiers and the cargo manifest. On the W0 fixture: four derived tiers over two ranks, the two 30 Hz nodes at rank 0 above the two 10 Hz at rank 1, no groupless note and no degradation; with the keyword absent, four groupless notes and an empty schedule. derived_tiers_bake 3, tier_resolver 23, codegen_system 27, orchestration-ir 151, check fast 344 ran. Correction: this doc said the reader is model_ingest.rs:344, which reads the source-metadata sidecars under a different schema; the cmake reader is new. The gate line "derived 2 scheduling tier(s)" is also wrong: derivation names one tier per NODE, so the fixture gives four over two ranks. Rank naming is W3.
+Claim: phase-459-W1. Depends on: phase-459-W0. Owns: packages/cli/nros-cli-core/src/orchestration/tier_resolver.rs; load_workspace_metadata in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs (signature only); packages/cli/nros-cli-core/tests/derived_tiers_bake.rs (new). Gate: cargo test -p nros-cli-core --test derived_tiers_bake. Status: landed in PR #1219 (6918743af); `collect_callback_groups` takes the cmake nros-metadata.json as its third source after group_tiers and the cargo manifest. On the W0 fixture: four derived tiers over two ranks, the two 30 Hz nodes at rank 0 above the two 10 Hz at rank 1, no groupless note and no degradation; with the keyword absent, four groupless notes and an empty schedule. derived_tiers_bake 3, tier_resolver 23, codegen_system 27, orchestration-ir 151, check fast 344 ran. Correction: this doc said the reader is model_ingest.rs:344, which reads the source-metadata sidecars under a different schema; the cmake reader is new. The gate line "derived 2 scheduling tier(s)" is also wrong: derivation names one tier per NODE, so the fixture gives four over two ranks. Rank naming is W3.
 
 **W2 - the entry derives, or reads what the bake derived.** `plan_from_model`
 runs the same `derive_tiers_from_contracts` when `model.execution.tiers` is
@@ -285,7 +285,7 @@ the list of blocks it could have named, instead of resolving the tier RTOS to
 the host. The Zephyr module already passes `--for-entry` and is unaffected.
 Gate: a unit test beside `resolve_target_block`.
 
-Claim: phase-459-W5. Depends on: none. Owns: resolve_target_block in packages/cli/nros-cli-core/src/cmd/codegen_system.rs and a unit test beside it. Gate: cargo test -p nros-cli-core resolve_target_block. Status: PR #1195 (d4c4dae3b), in the queue; --target naming no board block is refused.
+Claim: phase-459-W5. Depends on: none. Owns: resolve_target_block in packages/cli/nros-cli-core/src/cmd/codegen_system.rs and a unit test beside it. Gate: cargo test -p nros-cli-core resolve_target_block. Status: landed in PR #1195 (2d8ce0012, merged 2026-09-22); --target naming no board block is refused.
 
 **W6 - code and keyword agree.** A group created in code that the registration
 did not declare, or declared and never created when the node has more than one

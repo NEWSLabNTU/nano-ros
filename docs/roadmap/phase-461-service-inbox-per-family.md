@@ -285,7 +285,7 @@ action tests green with the table split; `just mem-report` on
 `bins/sim-clock-listener` shows `SERVICE_BUFFERS` replaced by the two symbols
 and the sum unchanged for an image with no builtin family.
 
-Claim: phase-461-W1. Depends on: none. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs, packages/rmw/zenoh/nros-rmw-zenoh/build.rs (tables and knob pairs), packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs, packages/rmw/zenoh/zpico-sys/src/ffi.rs and c/include/zpico.h if the header crosses the FFI, zephyr/Kconfig (inbox symbols), zephyr/cmake/nros_cargo_build.cmake (six resolves beside :1208), packages/api/nros/src/guide/configuration.rs. Gate: just check ffi-struct-mirrors, the zenoh_integration service and action tests, just mem-report on bins/sim-clock-listener. Status: landed in PR #1215 (14f120795, merged 2026-09-23); the ring is a header over caller-visible storage, with InboxStorage / InboxRing / InboxSpec and two shim tables (USER_SERVICE_INBOX, ACTION_INBOX). Measured on sim-clock-listener, x86-64 release: SERVICE_BUFFERS 144,128 B becomes USER_SERVICE_INBOX 134,144 B (ring bytes identical) plus 11,008 B of headers plus an empty action table, total 145,152 B, so the defaults cost one 32-byte header per queryable and nothing else. 97 unit tests, 2 router-backed integration tests, check fast 336 ran. The parameter-family knob pair moves to W2 with its reader, because check-kconfig-knob-forwarding refuses a forwarded knob nothing reads.
+Claim: phase-461-W1. Depends on: none. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs, packages/rmw/zenoh/nros-rmw-zenoh/build.rs (tables and knob pairs), packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs, packages/rmw/zenoh/zpico-sys/src/ffi.rs and c/include/zpico.h if the header crosses the FFI, zephyr/Kconfig (inbox symbols), zephyr/cmake/nros_cargo_build.cmake (six resolves beside :1208), packages/api/nros/src/guide/configuration.rs. Gate: just check ffi-struct-mirrors, the zenoh_integration service and action tests, just mem-report on bins/sim-clock-listener. Status: landed in PR #1215 (5f4386544, merged 2026-09-23); the ring is a header over caller-visible storage, with InboxStorage / InboxRing / InboxSpec and two shim tables (USER_SERVICE_INBOX, ACTION_INBOX). Measured on sim-clock-listener, x86-64 release: SERVICE_BUFFERS 144,128 B becomes USER_SERVICE_INBOX 134,144 B (ring bytes identical) plus 11,008 B of headers plus an empty action table, total 145,152 B, so the defaults cost one 32-byte header per queryable and nothing else. 97 unit tests, 2 router-backed integration tests, check fast 336 ran. The parameter-family knob pair moves to W2 with its reader, because check-kconfig-knob-forwarding refuses a forwarded knob nothing reads.
 
 ### W2 [nros-node, rmw] -- the parameter and lifecycle families bring their own inbox
 
@@ -311,7 +311,24 @@ real zenoh queryable callback into `PARAM_INBOX` and taken, on the native
 lane; a `-D` override one byte short fails the BUILD with the message above
 (negative control). Cyclone and xrce parameter e2e cells unchanged.
 
-Claim: phase-461-W2. Depends on: phase-461-W1, phase-460-W2. Owns: packages/core/nros-rmw/src/, one const each under packages/rmw/cyclonedds/nros-rmw-cyclonedds, packages/rmw/xrce/nros-rmw-xrce and packages/rmw/cffi, packages/core/nros-node/src/parameter_services.rs (PARAM_INBOX and the asserts), packages/core/nros-node/src/lifecycle_services.rs, packages/core/nros-node/build.rs, packages/core/nros-params/build.rs only if a new export is needed. Gate: the const assert's negative control, the_worst_messages_fit_the_derived_bound with the inbox leg, just check knob-single-reader. Status: not started.
+Claim: phase-461-W2. Depends on: phase-461-W1, phase-460-W2. Owns: packages/core/nros-rmw/src/, one const each under packages/rmw/cyclonedds/nros-rmw-cyclonedds, packages/rmw/xrce/nros-rmw-xrce and packages/rmw/cffi, packages/core/nros-node/src/parameter_services.rs (PARAM_INBOX and the asserts), packages/core/nros-node/src/lifecycle_services.rs, packages/core/nros-node/build.rs, packages/core/nros-params/build.rs only if a new export is needed. Gate: the const assert's negative control, the_worst_messages_fit_the_derived_bound with the inbox leg, just check knob-single-reader. Status: landed in PR #1223 (e0ef2d5a2, merged 2026-09-23); the parameter and lifecycle families size and bring their own inbox at depth 1 from the declared shape, const-asserted, and the 2,408 B claim it was written against was itself wrong: 25 parameters is `NROS_MAX_PARAMETERS` across all four island nodes, the per-node worst request is 669 B and it fits 1,024. A test now holds that.
+
+### W2b - the builtin families get their own ring, inside the zenoh shim
+
+W2 was written on the assumption that `nros-node` could hand its
+`PARAM_INBOX` down to the zenoh backend. It cannot: `nros-node` reaches its
+backend only through `nros-rmw-cffi`'s C vtable, whose `create_service`
+carries no inbox argument, so W2 as designed saved 0 bytes on the image. The
+storage has to be chosen where the queryable is created.
+
+W2b selects the family INSIDE the shim, by service name, which is the
+mechanism already in the tree: `service.rs:654` picks the action path with
+`service.name.contains("/_action/")`. A third table, `BUILTIN_INBOX`, is
+sized from the same `NROS_DECLARED_PARAM_SERVICE_SHAPE` token W2 reads, so
+one geometry is stated once and derived to the same number by two build
+scripts on purpose.
+
+Claim: phase-461-W2b. Depends on: phase-461-W1, phase-461-W2. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs (the family selection and BUILTIN_INBOX), packages/rmw/zenoh/nros-rmw-zenoh/build.rs (the third table's sizing), packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs, scripts/check/config-knob-census.py (the knob's description), book/src/reference/environment-variables.md. Gate: the zenoh_integration builtin-family test and just check knob-single-reader. Status: PR #1224, in the queue; frees 83,040 B at the island's 32-bit entry size against a 53,912 B overflow, which is 29,128 B of headroom if the projection holds. The projection is island-W3's to confirm or refute on a real link.
 
 ### W3 [cli] -- service and action request types are priced
 
@@ -331,7 +348,7 @@ inbox lands below 1,024 in `entity_inventory.cmake`; a service whose request
 carries an uncapped unbounded field refuses the derivation naming the member,
 as the message road already does.
 
-Claim: phase-461-W3. Depends on: phase-461-W1. Owns: packages/cli/rosidl-codegen/src/bounds.rs, packages/cli/nros-cli-core/src/entity_inventory.rs (the NROS_DERIVED_*_INBOX_BYTES rows), cmake/NanoRosEntityInventory.cmake, packages/rmw/zenoh/nros-rmw-zenoh/build.rs (declared_service_request_bytes). Gate: just check knob-delivery, the OperateMrm pricing and the unbounded-member refusal. Status: not started.
+Claim: phase-461-W3. Depends on: phase-461-W1. Owns: packages/cli/rosidl-codegen/src/bounds.rs, packages/cli/nros-cli-core/src/entity_inventory.rs (the NROS_DERIVED_*_INBOX_BYTES rows), cmake/NanoRosEntityInventory.cmake, packages/rmw/zenoh/nros-rmw-zenoh/build.rs (declared_service_request_bytes). Gate: just check knob-delivery, the OperateMrm pricing and the unbounded-member refusal. Status: PR #1225, in the queue; service and action request types are priced from the declared endpoints, `NROS_DECLARED_SERVICE_INBOX_BYTES` and `NROS_DECLARED_ACTION_INBOX_BYTES` ride the DECLARED road below both ladder rungs so a stated Kconfig or env value still wins. Gates: `config-knob-census`, `check-knob-single-reader` and `check-declared-fact-carriers` all OK, the last reporting 28 declared facts produced, consumed and watched.
 
 ### W4 [rmw-zenoh, nros-node] -- an inbox drop is counted and said once
 
