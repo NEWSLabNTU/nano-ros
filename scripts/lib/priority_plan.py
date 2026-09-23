@@ -434,6 +434,17 @@ def resolve_zephyr_plan(dotconfig):
     Kconfig means the priority is never set at all — in which case the
     transport INHERITS its creator and the band is not a choice, the way NuttX
     read before issue 0736.
+
+    phase-459 W4 (issue 1427) - this formula now has a SECOND implementation,
+    in Rust: `packages/core/nros-orchestration-ir/src/priority_plan.rs`
+    (`zephyr_plan` / `PriorityPlan::from_zephyr_dotconfig`), because the
+    realizer allocates a derived tier out of `pool.app` and cannot shell out to
+    a script from inside a proc-macro. That is two implementations of ONE
+    formula, and the split is only safe while one of them is a TEST of the
+    other: this module stays the CHECKER. `check-tier-priority-plan-image.py`
+    judges a BUILT image - which a unit test cannot see - and its `--selftest`
+    pins the same measured triple the Rust test asserts (15 preemptive
+    priorities, the two zenoh defaults: transport [0, 4], pool [5, 14]).
     """
     cfg = _dotconfig_ints(dotconfig)
     has = lambda k: _dotconfig_has(dotconfig, k)

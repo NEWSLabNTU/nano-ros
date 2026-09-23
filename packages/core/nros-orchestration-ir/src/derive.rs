@@ -20,6 +20,7 @@ use ros_launch_manifest_sched::chain_aware_rank;
 use crate::{
     CallbackGroupDecl, CallbackGroupOverride, NodeOverride, TierDef, TierRtosSpec,
     mapper_input::mapper_input_from_model,
+    priority_plan::PriorityPlan,
     rtos_realizer::{Degradation, realize_rtos, sched_caps_for},
 };
 
@@ -82,8 +83,14 @@ pub fn derive_tiers_from_contracts(
     // plumbing — which is why deleting it is the honest move: keeping it made
     // a knob that does nothing look supported.
     let caps = sched_caps_for(target_rtos);
+    // phase-459 W4 (issue 1427) - the priority is ALLOCATED out of the board's
+    // address plan, not read off the rank. `for_target` answers from the tier
+    // key, which is all this function is given; an image that resolves its own
+    // plan from its `.config` (`PriorityPlan::from_zephyr_dotconfig`) gets the
+    // same arithmetic with its own four Kconfig values.
+    let priority_plan = PriorityPlan::for_target(target_rtos);
 
-    let plan = realize_rtos(&ranked, &input, &caps);
+    let plan = realize_rtos(&ranked, &input, &caps, &priority_plan);
     let mut out = DerivedSchedule {
         degradations: plan.degradations.clone(),
         ..Default::default()

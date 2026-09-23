@@ -366,13 +366,47 @@ def selftest():
                stale_band_reasons(image("cond", "CONFIG_NROS_ZENOH_LEASE_PRIORITY=16\n",
                                         {"prj.conf": ""}), kc), [])
 
+        # phase-459 W4 (issue 1427) - the BAND ITSELF, not just the staleness
+        # rule around it. `realize_rtos` now allocates a derived tier out of
+        # `pool.app`, and the Rust half of that arithmetic
+        # (`packages/core/nros-orchestration-ir/src/priority_plan.rs`) is a
+        # second implementation of `resolve_zephyr_plan`. This file is the
+        # CHECKER of it, so the two must agree on the measured case: the
+        # island's image, 15 preemptive priorities with the two zenoh bands at
+        # their nano-ros defaults, puts the transport at k_thread 4 and leaves
+        # the application [5, 14]. The Rust test
+        # `priority_plan_resolves_the_island_band_from_a_dotconfig` asserts the
+        # same triple.
+        ISLAND = ("CONFIG_NUM_PREEMPT_PRIORITIES=15\n"
+                  "CONFIG_NUM_COOP_PRIORITIES=16\n"
+                  "CONFIG_POSIX_PRIORITY_SCHEDULING=y\n"
+                  "CONFIG_PREEMPT_ENABLED=y\n"
+                  "CONFIG_NROS_ZENOH_READ_PRIORITY=200\n"
+                  "CONFIG_NROS_ZENOH_LEASE_PRIORITY=255\n")
+        island = resolve_zephyr_plan(image("island", ISLAND, {"prj.conf": ""}))
+        expect("the island's transport band",
+               island["reserved"]["transport"], (0, 4))
+        expect("the island's application pool", island["pool"]["app"], (5, 14))
+        expect("the island's usable range", island["range"], (-16, 14))
+
+        # The negative control, and the reason the pool is checked at all: the
+        # pre-0852 band (16 on the 0-255 scale) resolves k_thread 14 - the
+        # least urgent preemptive priority - so the transport owns [0, 14] and
+        # `pool.app` is EMPTY. A derived tier has nowhere to go, which is what
+        # the realizer reports instead of allocating outside the plan.
+        stale_cfg = ISLAND.replace("READ_PRIORITY=200", "READ_PRIORITY=16")
+        stale = resolve_zephyr_plan(image("stale-band", stale_cfg, {"prj.conf": ""}))
+        expect("the pre-0852 transport band",
+               stale["reserved"]["transport"], (0, 14))
+        expect("the pre-0852 pool is empty", stale["pool"]["app"], (15, 14))
+
     if fails:
         print("check-tier-priority-plan-image --selftest: FAILED")
         for f in fails:
             print(f"  {f}")
         return False
     print("check-tier-priority-plan-image --selftest: OK "
-          "(real zephyr/Kconfig parses; 8 synthetic cases)")
+          "(real zephyr/Kconfig parses; 14 synthetic cases, including the\n  RFC-0079 section 4.1 band the Rust realizer allocates from)")
     return True
 
 

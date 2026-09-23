@@ -135,9 +135,10 @@ with `pthread_create`, so the priority travels a chain before it lands anywhere
 a tier can be compared against —
 
 ```
-CONFIG_NROS_ZENOH_{READ,LEASE}_PRIORITY   (Kconfig, default 16)
-  → ZPICO_{READ,LEASE}_TASK_PRIORITY      band 0..31
-  → POSIX   lo + (span·n·2 + 31)/62,  hi = CONFIG_NUM_PREEMPT_PRIORITIES − 1
+CONFIG_NROS_ZENOH_{READ,LEASE}_PRIORITY   (Kconfig, default 200 each)
+  -> the platform ABI band 0..255            (NROS_PLATFORM_PRIORITY_MAX)
+  -> POSIX   lo + band*(hi - lo)/255,  lo = 0, hi = CONFIG_NUM_PREEMPT_PRIORITIES - 1
+                                          (`nros_zephyr_native_priority`)
   → k_thread   NUM_PREEMPT − posix − 1   (SCHED_RR, `POSIX_TO_ZEPHYR_PRIORITY`)
 ```
 
@@ -146,6 +147,17 @@ CONFIG_NROS_ZENOH_{READ,LEASE}_PRIORITY   (Kconfig, default 16)
 `reserved.transport = [7, 7]` would be true for exactly one image and quietly
 wrong for the next. **That is this RFC's own defect, one level up**: a number
 written once, in a place that cannot see what it depends on.
+
+**Corrected 2026-09-23 (phase-459 W4).** This chain read "Kconfig, default 16",
+a private 0..31 band and `zpico_posix_set_priority`'s
+`lo + (span*n*2 + 31)/62`. Every line of that has been wrong since phase-364
+W5 / issue 0852: the band is the platform ABI's 0..255 with a default of 200,
+and the map is `nros_zephyr_native_priority`'s - the one the image actually
+runs. `zpico_posix_set_priority` wrote into a `pthread_attr_t` nothing on
+Zephyr ever read, and is deleted. The worked example below moved with it,
+which is exactly the failure mode this section describes: a number written
+once, in a place that cannot see what it depends on.
+
 
 So a plan declares one of two kinds of band:
 
@@ -178,13 +190,25 @@ Two rules make the derived kind honest rather than an excuse:
    in before issue 0736.
 
 `check-tier-priority-plan-image.py <build>/zephyr/.config` resolves and judges.
-Against the `ws-rs-realtime-entry` image
-(`NUM_PREEMPT_PRIORITIES=15`, both gates on):
+Against an image with `NUM_PREEMPT_PRIORITIES=15`, both gates on and the two
+bands at their current defaults - the Autoware Safety Island's configuration,
+and the fixture `examples/workspaces/derived-tiers-cpp` mirrors it:
 
 ```
-read   band  16 -> posix   7 -> k_thread   7
-reserved.transport = [7, 7]   pool.app = [8, 14]   range = (-16, 14)
+lease  band 200 -> posix  10 -> k_thread   4
+read   band 200 -> posix  10 -> k_thread   4
+reserved.transport = [4, 4]   pool.app = [5, 14]   range = (-16, 14)
 ```
+
+An image that raises the lease band (the island sets 255) resolves that task to
+k_thread 0 and widens the reserved band to `[0, 4]` - the SAME pool, with more
+of the space above it accounted for.
+
+So a derived table on this image is 30 Hz at **5** and 10 Hz at **6**, not 0
+and 1. The pre-0852 band (`READ_PRIORITY=16` on the 0..255 scale) resolves
+k_thread 14 instead - the least urgent preemptive priority - which makes
+`transport = [0, 14]` and leaves `pool.app` EMPTY; that is the stale-image
+state the checker reports rather than allocating into.
 
 and it finds four real violations — `tiers.high.zephyr = 5` outranks the
 transport in every bringup that has it, undeclared, exactly as every other port
@@ -210,6 +234,18 @@ spread with headroom, never overlapping a reservation. The result lands in the
 SystemModel build artifact (already a build artifact — RFC-0063) and is
 inspectable with `nros ws model-dims`. Insufficient distinct slots is a build
 error naming the pool, not a silent squeeze.
+
+**Implemented 2026-09-23 (phase-459 W4, issue 1427).** `realize_rtos` takes a
+`PriorityPlan` beside its `SchedCaps`
+(`packages/core/nros-orchestration-ir/src/priority_plan.rs`): dense rank 0 is
+the most urgent priority `pool.app` holds, rank *k* the *k*-th, in the plan's
+direction. Before it, `rank_to_priority` allocated from the kernel's whole
+range - on Zephyr rank 0 became priority 0, above the transport threads that
+feed the application, which is the inversion this RFC exists to prevent. Ranks
+past the pool's width are CLAMPED to its least urgent priority and the
+realizer records a `Degradation` naming the pool; the phase's spread-with-
+headroom half is not implemented, so consecutive ranks are consecutive
+priorities.
 
 ### 6. Crossing into a reserved band requires naming it
 
