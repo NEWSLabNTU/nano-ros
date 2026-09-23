@@ -2549,18 +2549,6 @@ impl EntityInventory {
         self.types_received_by(EntityKind::receives, "received")
     }
 
-    /// The one implementation behind the two views above.
-    ///
-    /// REFUSES in two cases, and both are "the answer would be short":
-    ///
-    /// 1. The image's own composition refused -- some component declared no
-    ///    `ENTITIES` at all. Its subscriptions are then unknown, and a set
-    ///    composed over the components that DID answer is a subset of what the
-    ///    image receives.
-    /// 2. A matching entity carries no `type_name`. A count needs no type and
-    ///    `MAX_CBS` derives happily without one, but a SIZE does: an untyped
-    ///    receiving entity is a payload of unknown size, and pricing the rest
-    ///    would publish a maximum a real sample can exceed.
     /// phase-461 W3 -- the REQUEST types this image's user service endpoints
     /// carry, under the spelling codegen prices them with.
     ///
@@ -2617,6 +2605,18 @@ impl EntityInventory {
         }
     }
 
+    /// The one implementation behind the two views above.
+    ///
+    /// REFUSES in two cases, and both are "the answer would be short":
+    ///
+    /// 1. The image's own composition refused -- some component declared no
+    ///    `ENTITIES` at all. Its subscriptions are then unknown, and a set
+    ///    composed over the components that DID answer is a subset of what the
+    ///    image receives.
+    /// 2. A matching entity carries no `type_name`. A count needs no type and
+    ///    `MAX_CBS` derives happily without one, but a SIZE does: an untyped
+    ///    receiving entity is a payload of unknown size, and pricing the rest
+    ///    would publish a maximum a real sample can exceed.
     fn types_received_by(&self, matches: fn(EntityKind) -> bool, what: &str) -> ReceivedTypes {
         if let Derivation::Refused { reason } = self.derive() {
             return ReceivedTypes::Refused {
