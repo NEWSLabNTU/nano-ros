@@ -13,8 +13,8 @@ use super::{
 };
 use crate::{
     config::{
-        ACTION_INBOX_BYTES, ACTION_INBOX_DEPTH, ACTION_INBOX_QUERYABLES, SERVICE_INBOX_BYTES,
-        SERVICE_INBOX_DEPTH,
+        ACTION_INBOX_BYTES, ACTION_INBOX_DEPTH, ACTION_INBOX_QUERYABLES, BUILTIN_INBOX_BYTES,
+        BUILTIN_INBOX_DEPTH, DECLARED_APP_QUERYABLES, SERVICE_INBOX_BYTES, SERVICE_INBOX_DEPTH,
     },
     keyexpr::ServiceKeyExpr,
     zpico::{
@@ -72,10 +72,9 @@ impl Default for InboxEntry {
 ///
 /// phase-461 W1 -- the ring is a HEADER ([`InboxRing`]) over storage the owner
 /// supplies, so a family that knows its own bound brings its own. The zenoh
-/// shim's two tables below (`USER_SERVICE_INBOX`, `ACTION_INBOX`) are
-/// instances of this type, and so is what a builtin family registers through
-/// [`InboxSpec::Caller`] (phase-461 W2, the parameter and lifecycle services
-/// sized by `nros-node`, the one crate that can price their requests).
+/// shim's three tables below (`USER_SERVICE_INBOX`, `ACTION_INBOX` and
+/// phase-461 W2b's `BUILTIN_INBOX`) are instances of this type, and so is what
+/// a caller registers through [`InboxSpec::Caller`].
 ///
 /// `Sync` because the ring over it is SPSC: the zenoh read task writes a slot
 /// the executor is not reading, and the `head` / `tail` cursors in the
@@ -219,6 +218,10 @@ pub enum InboxSpec {
     /// The shim's action table (`send_goal`, `cancel_goal`, `get_result`),
     /// `NROS_ACTION_INBOX_BYTES` x `NROS_ACTION_INBOX_DEPTH` per queryable.
     Action,
+    /// The shim's builtin table -- the six ROS parameter services of a node
+    /// and the five REP-2002 lifecycle ones -- `NROS_PARAM_SERVICE_INBOX_BYTES`
+    /// x `NROS_PARAM_SERVICE_INBOX_DEPTH` per queryable (phase-461 W2b).
+    Builtin,
     /// The caller's own ring, over storage it sized for its family.
     Caller(&'static InboxRing),
 }
@@ -309,7 +312,7 @@ impl ServiceBuffer {
 /// * `ZPICO_MAX_QUERYABLES` has a COMPUTED default, so there is no integer to
 ///   put in the comment even for the count.
 ///
-/// The same holds of the two ring tables below, whose element is an
+/// The same holds of the three ring tables below, whose element is an
 /// `InboxStorage` whose size is `DEPTH x (SLOT_BYTES + an entry)`: a product
 /// with a struct-sized term. So all three follow the documented deliberate
 /// non-annotations -- `shim/publisher.rs`'s `LendArena`, `nros_rmw_cffi`'s
@@ -341,9 +344,35 @@ const fn const_min(a: usize, b: usize) -> usize {
 /// draws a user ring, which is the single-table behaviour this phase splits,
 /// byte for byte, until W3 prices the two families apart.
 const ACTION_INBOX_PER_SESSION: usize = const_min(ACTION_INBOX_QUERYABLES, ZPICO_MAX_QUERYABLES);
-const USER_SERVICE_INBOX_PER_SESSION: usize = ZPICO_MAX_QUERYABLES - ACTION_INBOX_PER_SESSION;
+
+/// phase-461 W2b -- the BUILTIN family's share of one session's queryables:
+/// the slots this image's own declaration did NOT attribute to the
+/// application.
+///
+/// Derived by SUBTRACTION and never by counting the two families, because a
+/// service server IS a queryable and `ZPICO_MAX_QUERYABLES` is already
+/// `app + infra + transient-local` on an image that declared
+/// (`nros-zpico-build::queryable_default_from`). Restating "six per node and
+/// five" here is what issue 0827 measured and `check-infra-queryable-counts`
+/// refuses: this crate does not depend on `nros-node` and can see neither the
+/// constants nor whether their features are compiled in.
+///
+/// ZERO on an image that declares nothing (`DECLARED_APP_QUERYABLES` is then
+/// `usize::MAX`), so every queryable keeps the user-service geometry it has
+/// today, byte for byte -- the rule W1 set for the action table, and the
+/// reason an absent declaration means the OPPOSITE of what it means for the
+/// table's SIZE. Over-reserving a table costs RAM; under-sizing a ring drops a
+/// well-formed request, so the ring partition abstains where the table
+/// assumes.
+const BUILTIN_INBOX_PER_SESSION: usize = const_min(
+    ZPICO_MAX_QUERYABLES - const_min(DECLARED_APP_QUERYABLES, ZPICO_MAX_QUERYABLES),
+    ZPICO_MAX_QUERYABLES - ACTION_INBOX_PER_SESSION,
+);
+const USER_SERVICE_INBOX_PER_SESSION: usize =
+    ZPICO_MAX_QUERYABLES - ACTION_INBOX_PER_SESSION - BUILTIN_INBOX_PER_SESSION;
 const USER_SERVICE_INBOX_COUNT: usize = ZPICO_MAX_SESSIONS * USER_SERVICE_INBOX_PER_SESSION;
 const ACTION_INBOX_COUNT: usize = ZPICO_MAX_SESSIONS * ACTION_INBOX_PER_SESSION;
+const BUILTIN_INBOX_COUNT: usize = ZPICO_MAX_SESSIONS * BUILTIN_INBOX_PER_SESSION;
 
 /// The user-service family's rings, `NROS_SERVICE_INBOX_BYTES` x
 /// `NROS_SERVICE_INBOX_DEPTH` each. Together with `ACTION_INBOX` this is the
@@ -359,17 +388,116 @@ static USER_SERVICE_INBOX: [InboxStorage<SERVICE_INBOX_BYTES, SERVICE_INBOX_DEPT
 static ACTION_INBOX: [InboxStorage<ACTION_INBOX_BYTES, ACTION_INBOX_DEPTH>; ACTION_INBOX_COUNT] =
     [const { InboxStorage::new() }; ACTION_INBOX_COUNT];
 
+/// phase-461 W2b -- the builtin family's rings,
+/// `NROS_PARAM_SERVICE_INBOX_BYTES` x `NROS_PARAM_SERVICE_INBOX_DEPTH` each.
+///
+/// ONE table for the parameter and the lifecycle services, because their
+/// geometry is equal: both carry `rcl_interfaces` requests bounded by the
+/// contract's declared parameters, and every lifecycle request
+/// (`ChangeState`, and four with an empty body) is smaller than every
+/// parameter one. Two tables would always hold the same number.
+///
+/// This is the table the safety island's overflow is in. Twenty-four of its
+/// twenty-six queryables are parameter services, and each was paying the
+/// transport's 4 x 1,024 B for requests that cannot exceed 669.
+static BUILTIN_INBOX: [InboxStorage<BUILTIN_INBOX_BYTES, BUILTIN_INBOX_DEPTH>;
+    BUILTIN_INBOX_COUNT] = [const { InboxStorage::new() }; BUILTIN_INBOX_COUNT];
+
 /// Next free ring in each family's table, per session pool slot.
 static NEXT_USER_SERVICE_INBOX: [AtomicUsize; ZPICO_MAX_SESSIONS] =
     [const { AtomicUsize::new(0) }; ZPICO_MAX_SESSIONS];
 static NEXT_ACTION_INBOX: [AtomicUsize; ZPICO_MAX_SESSIONS] =
     [const { AtomicUsize::new(0) }; ZPICO_MAX_SESSIONS];
+static NEXT_BUILTIN_INBOX: [AtomicUsize; ZPICO_MAX_SESSIONS] =
+    [const { AtomicUsize::new(0) }; ZPICO_MAX_SESSIONS];
 
-/// The shim's own two families.
+/// The shim's own three families.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ShimFamily {
     UserService,
     Action,
+    Builtin,
+}
+
+/// phase-461 W2b -- the eleven well-known endpoints a NODE serves because the
+/// runtime registered them, not because the application asked.
+///
+/// The six ROS parameter services (`rcl_interfaces`, one set per node) and the
+/// five REP-2002 lifecycle services (`lifecycle_msgs`, one set per lifecycle
+/// node). The list is the WIRE's, which is why it can live here: these are
+/// spellings ROS 2 fixes, the same eleven `rclcpp` builds from a node's FQN,
+/// and not counts of what this image compiled in -- issue 0827's rule is about
+/// the COUNTS, which this file still refuses to restate.
+const BUILTIN_SERVICE_ENDPOINTS: [&str; 11] = [
+    // rcl_interfaces, per node
+    "get_parameters",
+    "get_parameter_types",
+    "set_parameters",
+    "set_parameters_atomically",
+    "describe_parameters",
+    "list_parameters",
+    // lifecycle_msgs, REP-2002
+    "change_state",
+    "get_state",
+    "get_available_states",
+    "get_available_transitions",
+    "get_transition_graph",
+];
+
+/// Is `name` one of the builtin families' endpoints?
+///
+/// # The guard, and what it is guarding against
+///
+/// A service name is all this layer gets, and a user service MAY be called
+/// `set_parameters`. Two things stop such a look-alike quietly receiving a
+/// 672-byte ring and dropping a well-formed request, which is the defect half
+/// of issue 1352 and would be a poor way to close its RAM half.
+///
+/// **The name must be a whole last SEGMENT under a node.** `contains` is what
+/// the action family can afford -- `/_action/` is an infix ROS reserves -- and
+/// it is not enough here. The match is the final `/`-segment, compared whole,
+/// with a non-empty node FQN in front of it: `<ns...>/<node>/set_parameters`
+/// matches, and `.../set_parameters_v2`, `.../my_set_parameters`,
+/// `.../set_parameters/extra` and a bare `set_parameters` with no node in
+/// front do not.
+///
+/// **And the image must have DECLARED the capability.** The name only selects
+/// a TABLE; the table is empty unless this image's own declaration left slots
+/// to the runtime (`BUILTIN_INBOX_PER_SESSION`, which is
+/// `ZPICO_MAX_QUERYABLES - <what the declaration attributed to the
+/// application>`). An image that declares nothing, and an image that declares
+/// every one of its queryables as its own, both have an empty builtin table --
+/// so on either one a look-alike draws exactly the ring it draws today. The
+/// two halves are independent on purpose: the first is about the NAME being
+/// well formed, the second about the image having said there is a runtime
+/// service to name.
+/// The family a service name selects, lifted out of [`ZenohServiceServer::new`]
+/// so it can be tested without a zenoh session.
+///
+/// Action first: `/_action/` is an infix ROS reserves, and an action channel is
+/// never one of the eleven builtin endpoints. Then the builtin families, then
+/// everything else.
+fn inbox_for(name: &str) -> InboxSpec {
+    if name.contains("/_action/") {
+        InboxSpec::Action
+    } else if is_builtin_service(name) {
+        InboxSpec::Builtin
+    } else {
+        InboxSpec::UserService
+    }
+}
+
+fn is_builtin_service(name: &str) -> bool {
+    let Some((fqn, endpoint)) = name.rsplit_once('/') else {
+        // No `/` at all: not a node-qualified name.
+        return false;
+    };
+    // A leading `/` alone is not a node. `rcl` resolves these under the node's
+    // fully-qualified name, so there is always at least one segment in front.
+    if fqn.trim_matches('/').is_empty() {
+        return false;
+    }
+    BUILTIN_SERVICE_ENDPOINTS.contains(&endpoint)
 }
 
 /// Take the next ring of `family`'s table for `session_index`, or `None` when
@@ -381,6 +509,10 @@ fn draw_from(session_index: usize, family: ShimFamily) -> Option<InboxRing> {
             USER_SERVICE_INBOX_PER_SESSION,
         ),
         ShimFamily::Action => (&NEXT_ACTION_INBOX[session_index], ACTION_INBOX_PER_SESSION),
+        ShimFamily::Builtin => (
+            &NEXT_BUILTIN_INBOX[session_index],
+            BUILTIN_INBOX_PER_SESSION,
+        ),
     };
     let local = cursor.fetch_add(1, Ordering::SeqCst);
     if local >= per_session {
@@ -391,6 +523,7 @@ fn draw_from(session_index: usize, family: ShimFamily) -> Option<InboxRing> {
     Some(match family {
         ShimFamily::UserService => InboxRing::over(&USER_SERVICE_INBOX[index]),
         ShimFamily::Action => InboxRing::over(&ACTION_INBOX[index]),
+        ShimFamily::Builtin => InboxRing::over(&BUILTIN_INBOX[index]),
     })
 }
 
@@ -404,8 +537,24 @@ fn draw_from(session_index: usize, family: ShimFamily) -> Option<InboxRing> {
 /// that did not.
 fn draw_shim_ring(session_index: usize, family: ShimFamily) -> Option<(InboxRing, ShimFamily)> {
     let order = match family {
-        ShimFamily::UserService => [ShimFamily::UserService, ShimFamily::Action],
-        ShimFamily::Action => [ShimFamily::Action, ShimFamily::UserService],
+        ShimFamily::UserService => [
+            ShimFamily::UserService,
+            ShimFamily::Action,
+            ShimFamily::Builtin,
+        ],
+        ShimFamily::Action => [
+            ShimFamily::Action,
+            ShimFamily::UserService,
+            ShimFamily::Builtin,
+        ],
+        // phase-461 W2b -- a builtin service that finds its own table spent
+        // takes a LARGER ring rather than failing. The three tables hold one
+        // ring per header between them, so a free header always finds one.
+        ShimFamily::Builtin => [
+            ShimFamily::Builtin,
+            ShimFamily::UserService,
+            ShimFamily::Action,
+        ],
     };
     order
         .into_iter()
@@ -416,6 +565,7 @@ fn release_shim_ring(session_index: usize, family: ShimFamily) {
     match family {
         ShimFamily::UserService => &NEXT_USER_SERVICE_INBOX[session_index],
         ShimFamily::Action => &NEXT_ACTION_INBOX[session_index],
+        ShimFamily::Builtin => &NEXT_BUILTIN_INBOX[session_index],
     }
     .fetch_sub(1, Ordering::SeqCst);
 }
@@ -644,19 +794,23 @@ impl ZenohServiceServer {
     /// phase-461 W1 -- the inbox family is read off the name: the three
     /// queryables of an action server are `<action>/_action/{send_goal,
     /// cancel_goal,get_result}` (`nros_rmw::ActionInfo`); everything else is a
-    /// user service. A builtin family that sizes its own ring registers
-    /// through [`Self::new_with_inbox`] instead.
+    /// user service. A caller that brings its OWN storage registers through
+    /// [`Self::new_with_inbox`] instead.
+    ///
+    /// phase-461 W2b -- and the BUILTIN families the same way: the six ROS
+    /// parameter services and the five REP-2002 lifecycle services are
+    /// well-known endpoints under a node's FQN, so the shim can select their
+    /// table from the name exactly as it selects the action one, with no ABI
+    /// hop and no caller-owned storage. `is_builtin_service` is the match and
+    /// states what stops a look-alike user service from taking a small ring.
+    /// (Named, not linked: it is private, and a public item may not link to
+    /// one under `NROS_RUSTDOC_LINKS_STRICT`.)
     pub fn new(
         context: &Context,
         service: &ServiceInfo,
         liveliness: Option<super::LivelinessToken>,
     ) -> Result<Self, TransportError> {
-        let inbox = if service.name.contains("/_action/") {
-            InboxSpec::Action
-        } else {
-            InboxSpec::UserService
-        };
-        Self::new_with_inbox(context, service, liveliness, inbox)
+        Self::new_with_inbox(context, service, liveliness, inbox_for(service.name))
     }
 
     /// Create a service server that receives through `inbox`.
@@ -768,9 +922,10 @@ impl ZenohServiceServer {
         // declaration must find storage to land in.
         let (ring, drawn_from) = match inbox {
             InboxSpec::Caller(ring) => (*ring, None),
-            InboxSpec::UserService | InboxSpec::Action => {
+            InboxSpec::UserService | InboxSpec::Action | InboxSpec::Builtin => {
                 let family = match inbox {
                     InboxSpec::Action => ShimFamily::Action,
+                    InboxSpec::Builtin => ShimFamily::Builtin,
                     _ => ShimFamily::UserService,
                 };
                 match draw_shim_ring(session_index, family) {
@@ -783,8 +938,9 @@ impl ZenohServiceServer {
                         NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_sub(1, Ordering::SeqCst);
                         return Err(TransportError::Backend(
                             "zenoh service inbox tables exhausted - a queryable header was \
-                             free but no ring was; USER_SERVICE_INBOX and ACTION_INBOX must \
-                             hold ZPICO_MAX_QUERYABLES rings per session between them",
+                             free but no ring was; USER_SERVICE_INBOX, ACTION_INBOX and \
+                             BUILTIN_INBOX must hold ZPICO_MAX_QUERYABLES rings per session \
+                             between them",
                         ));
                     }
                 }
@@ -2059,6 +2215,105 @@ pub(super) mod tests {
         );
         // The per-queryable header no longer embeds a ring.
         assert!(core::mem::size_of::<ServiceBuffer>() < SERVICE_INBOX_BYTES);
+    }
+
+    /// phase-461 W2b -- a parameter- or lifecycle-named queryable selects the
+    /// builtin table, and a look-alike user service does not.
+    ///
+    /// The eleven are matched as a whole last segment under a node FQN. The
+    /// negatives are the mis-detections that a `contains` would wave through:
+    /// a longer name with the endpoint as a prefix or a suffix, the endpoint
+    /// as an inner segment, and the bare endpoint with no node in front.
+    #[test]
+    fn the_builtin_endpoints_are_matched_whole_and_under_a_node() {
+        // `heapless` and not `format!`: this crate is `no_std` and its test
+        // build has no allocator either.
+        fn name(parts: &[&str]) -> heapless::String<128> {
+            let mut s = heapless::String::new();
+            for p in parts {
+                s.push_str(p).expect("service name fits 128 bytes");
+            }
+            s
+        }
+        for endpoint in BUILTIN_SERVICE_ENDPOINTS {
+            let under_node = name(&["/island/planner/", endpoint]);
+            assert!(
+                is_builtin_service(&under_node),
+                "{endpoint} under a node FQN is a builtin service"
+            );
+            assert!(
+                matches!(inbox_for(&under_node), InboxSpec::Builtin),
+                "{endpoint} selects the builtin table"
+            );
+            assert!(
+                is_builtin_service(&name(&["/planner/", endpoint])),
+                "{endpoint} under a node with no namespace is a builtin service"
+            );
+            // The look-alikes a `contains` would wave through.
+            for parts in [
+                &["/island/planner/", endpoint, "_v2"][..],
+                &["/island/planner/my_", endpoint][..],
+                &["/island/planner/", endpoint, "/extra"][..],
+                &["/", endpoint][..],
+                &[endpoint][..],
+            ] {
+                let n = name(parts);
+                assert!(
+                    !is_builtin_service(&n),
+                    "{n} is a user service, not a builtin one"
+                );
+                assert!(
+                    matches!(inbox_for(&n), InboxSpec::UserService),
+                    "{n} selects the user-service table"
+                );
+            }
+        }
+        // An action channel is neither, and is selected first.
+        assert!(!is_builtin_service("/island/dock/_action/send_goal"));
+        assert!(matches!(
+            inbox_for("/island/dock/_action/send_goal"),
+            InboxSpec::Action
+        ));
+    }
+
+    /// The capability half of the same guard: the builtin TABLE is empty
+    /// unless the image's own declaration left slots to the runtime, so on a
+    /// build that declares nothing -- this one -- a parameter-named queryable
+    /// draws exactly the ring it draws today.
+    #[test]
+    fn an_undeclared_image_has_no_builtin_table() {
+        assert_eq!(
+            DECLARED_APP_QUERYABLES,
+            usize::MAX,
+            "this test build declares no application service surface"
+        );
+        assert_eq!(BUILTIN_INBOX_PER_SESSION, 0);
+        assert_eq!(BUILTIN_INBOX_COUNT, 0);
+        assert_eq!(core::mem::size_of_val(&BUILTIN_INBOX), 0);
+        assert_eq!(
+            USER_SERVICE_INBOX_PER_SESSION + ACTION_INBOX_PER_SESSION,
+            ZPICO_MAX_QUERYABLES,
+            "with no builtin share the partition is W1's, byte for byte"
+        );
+        let (ring, from) = draw_shim_ring(0, ShimFamily::Builtin).expect("a user ring is spare");
+        assert_eq!(from, ShimFamily::UserService);
+        assert_eq!(
+            (ring.slot_bytes(), ring.depth()),
+            (SERVICE_INBOX_BYTES, SERVICE_INBOX_DEPTH)
+        );
+        release_shim_ring(0, from);
+        assert_eq!(NEXT_USER_SERVICE_INBOX[0].load(Ordering::SeqCst), 0);
+        assert_eq!(NEXT_BUILTIN_INBOX[0].load(Ordering::SeqCst), 0);
+    }
+
+    /// The three tables still hold exactly one ring per header, which is what
+    /// makes the fallback above total.
+    #[test]
+    fn the_three_tables_hold_one_ring_per_header() {
+        assert_eq!(
+            USER_SERVICE_INBOX_COUNT + ACTION_INBOX_COUNT + BUILTIN_INBOX_COUNT,
+            SERVICE_BUFFER_COUNT
+        );
     }
 
     /// On an image that declares no action server the action table is empty,
