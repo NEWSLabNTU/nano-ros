@@ -1,0 +1,106 @@
+# phase-457 W3 - the island, resolved, with every rate PROMISE deleted.
+#
+# Four nodes, one `on_timer` path each, at the rates their own
+# `update_rate`/`rate` parameters carry: 30 Hz for
+# mrm_emergency_stop_operator and stop_mode_operator, 10 Hz for
+# mrm_comfortable_stop_operator and mrm_handler. `structure.nodes` is in
+# LAUNCH DECLARATION order (emergency, comfortable, stop_mode, handler),
+# which interleaves the two rates, so a derivation that returned the nodes
+# as declared would not produce the order this fixture asserts.
+#
+# What is deliberately absent, and why this file exists: not one
+# `contracts.pub_endpoints.*.min_rate_hz`, not one
+# `contracts.sub_endpoints.*.min_rate_hz`, and no `contracts.topics.*.rate_hz`.
+# The island's real contract declares all three, equal to the timers, and the
+# resolver flags 14 of them as `derivable-min-rate`. Until phase-457 W2 this
+# side reconstructed a timer's period from the FIRST output's promise, so the
+# island's schedule was right by that redundant declaration and a model
+# without it ranked nothing at all. Delete the promises and the schedule must
+# still come out of `contracts.node_paths.*.trigger`, which is where the rate
+# lives.
+#
+# `structure.topics` keeps only the two island-internal status links; the
+# external wiring (the vehicle's and Autoware's 20 topics) is trimmed. The
+# derivation reads node paths and scope paths, never topics - rlm's own
+# `authored_rates_change_nothing_the_scheduler_sees` pins that - so the
+# trimmed wiring cannot change what this fixture ranks to.
+#
+# No `contracts.scope_paths`: the island declares no end-to-end budget, so
+# there is no chain here and these four are the non-chain remainder, ranked
+# by criticality bucket (none is declared, so one bucket) and then by time
+# budget ascending. That is rate-monotonic on four timers.
+meta:
+  version: 1
+structure:
+  nodes:
+    /mrm_emergency_stop_operator:
+      scope: safety_island.launch.xml
+      pkg: autoware_mrm_emergency_stop_operator
+      exec: mrm_emergency_stop_operator
+      node_name: mrm_emergency_stop_operator
+    /mrm_comfortable_stop_operator:
+      scope: safety_island.launch.xml
+      pkg: autoware_mrm_comfortable_stop_operator
+      exec: mrm_comfortable_stop_operator
+      node_name: mrm_comfortable_stop_operator
+    /stop_mode_operator:
+      scope: safety_island.launch.xml
+      pkg: autoware_stop_mode_operator
+      exec: stop_mode_operator
+      node_name: stop_mode_operator
+    /mrm_handler:
+      scope: safety_island.launch.xml
+      pkg: autoware_mrm_handler
+      exec: mrm_handler
+      node_name: mrm_handler
+  topics:
+    /system/mrm/comfortable_stop/status:
+      type: tier4_system_msgs/msg/MrmBehaviorStatus
+      pub:
+      - /mrm_comfortable_stop_operator/status
+      sub:
+      - /mrm_handler/comfortable_stop_status
+    /system/mrm/emergency_stop/status:
+      type: tier4_system_msgs/msg/MrmBehaviorStatus
+      pub:
+      - /mrm_emergency_stop_operator/status
+      sub:
+      - /mrm_handler/emergency_stop_status
+contracts:
+  node_paths:
+    /mrm_comfortable_stop_operator/on_timer:
+      output:
+      - /mrm_comfortable_stop_operator/status
+      trigger:
+        kind: timer
+        value:
+          rate_hz: 10.0
+    /mrm_emergency_stop_operator/on_timer:
+      output:
+      - /mrm_emergency_stop_operator/emergency_control_cmd
+      - /mrm_emergency_stop_operator/status
+      trigger:
+        kind: timer
+        value:
+          rate_hz: 30.0
+    /mrm_handler/on_timer:
+      output:
+      - /mrm_handler/mrm_state
+      - /mrm_handler/turn_indicators_cmd
+      - /mrm_handler/hazard_lights_cmd
+      - /mrm_handler/gear_cmd_out
+      - /mrm_handler/emergency_holding
+      trigger:
+        kind: timer
+        value:
+          rate_hz: 10.0
+    /stop_mode_operator/on_timer:
+      output:
+      - /stop_mode_operator/control
+      - /stop_mode_operator/gear
+      - /stop_mode_operator/turn_indicators
+      - /stop_mode_operator/hazard_lights
+      trigger:
+        kind: timer
+        value:
+          rate_hz: 30.0
