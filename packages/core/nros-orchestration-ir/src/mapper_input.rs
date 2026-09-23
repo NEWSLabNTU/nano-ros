@@ -55,27 +55,6 @@ fn derive_facts(wcet: Option<&WcetProfile>) -> DeriveFacts {
     }
 }
 
-/// The namespace an FQN lives in: `/perception/sensor` -> `/perception`,
-/// `/talker` -> `/`.
-///
-/// rlm design issue #52, the one seam the shared crate does not close yet:
-/// `MapperNode::scope` is the NAMESPACE a `manual` mapper's `[[assign]]
-/// scope = "/perception"` selector matches against
-/// (`ros_launch_manifest_sched::resolve::scope_selector_matches`), while
-/// the crate copies `NodeInstance::scope`, which is the model's FILE-scope
-/// key (`bringup.launch.xml`). play_launch phase 78 W2 found it and fixed
-/// it consumer-side; until the crate carries the namespace itself, both
-/// consumers must agree on the spelling or the two toolchains select
-/// different nodes for the same rule. `structure.nodes` is keyed by FQN and
-/// an FQN's parent is exactly the effective namespace, so it is read off
-/// the node's own key here as it is there.
-fn namespace_of(fqn: &str) -> String {
-    match fqn.rsplit_once('/') {
-        Some((ns, _)) if !ns.is_empty() => ns.to_string(),
-        _ => "/".to_string(),
-    }
-}
-
 /// Derive a [`MapperInput`] from the model through the shared derivation.
 pub fn mapper_input_from_model(model: &SystemModel) -> MapperInput {
     mapper_input_from_model_with_wcet(model, None)
@@ -103,12 +82,13 @@ pub fn mapper_input_and_report(
     model: &SystemModel,
     wcet: Option<&WcetProfile>,
 ) -> (MapperInput, DeriveReport) {
-    let (mut input, report) =
-        ros_launch_manifest_derive::mapper_input_from_model(model, &derive_facts(wcet));
-    for node in &mut input.nodes {
-        node.scope = namespace_of(&node.name);
-    }
-    (input, report)
+    // `MapperNode::scope` is the NAMESPACE a `manual` mapper's
+    // `[[assign]] scope = "/perception"` selector matches against. It used to
+    // be the model's FILE-scope key and this function patched it back on the
+    // way out; rlm v0.1.40 (design issue #52 R5) derives it in the crate, so
+    // the derivation is read through unchanged and both consumers agree by
+    // construction rather than by two copies of the same rule.
+    ros_launch_manifest_derive::mapper_input_from_model(model, &derive_facts(wcet))
 }
 
 /// `"<node fqn>/<path>"` of every node path the model carries no trigger fact
@@ -409,14 +389,19 @@ mod tests {
         assert_eq!(planner.rate_hz, None, "no timer path, no rate");
     }
 
-    /// phase-457 W2 - `MapperNode::scope` is the NAMESPACE, not the model's
-    /// file-scope key.
+    /// phase-457 W2, W5 - `MapperNode::scope` is the NAMESPACE, not the
+    /// model's file-scope key.
     ///
-    /// The shared crate copies `NodeInstance::scope`, which names the launch
-    /// FILE a node was declared in; the mapper matches a `[[assign]] scope =`
-    /// selector against a ROS namespace. play_launch derives it from the FQN
-    /// (phase 78 W2) and so does this side, or the same rule would select
-    /// different nodes in the two toolchains.
+    /// The mapper matches a `[[assign]] scope =` selector against a ROS
+    /// namespace, while `NodeInstance::scope` names the launch FILE a node
+    /// was declared in. W2 patched the difference on this side and
+    /// play_launch patched it on its own (phase 78 W2); rlm v0.1.40 closes
+    /// it in the crate (design issue #52 R5) and both patches are gone.
+    ///
+    /// The test stays, and is worth more now than when it guarded our own
+    /// loop: it asserts the OUTCOME rather than the mechanism, so it is what
+    /// catches an upstream regression in a pin bump instead of at the point
+    /// where a tier selector silently matches nothing.
     #[test]
     fn scope_is_the_namespace_not_the_file_scope_key() {
         let mut model = model_with_two_nodes();
