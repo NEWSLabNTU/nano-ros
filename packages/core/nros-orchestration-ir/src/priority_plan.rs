@@ -24,11 +24,23 @@
 //! stated in its descriptor (`packages/boards/*/nros-board.toml`
 //! `[board.priority_plan]`, `packages/platform/*/nros-platform.toml`
 //! `[priority_plan]`). Zephyr's is COMPUTED, per image, from Kconfig: the
-//! zenoh-pico read/lease tasks are created through the POSIX layer, so their
-//! k_thread priority depends on `CONFIG_NUM_PREEMPT_PRIORITIES` and on the
-//! two `CONFIG_NROS_ZENOH_*_PRIORITY` bands. [`zephyr_plan`] is that
-//! arithmetic, and [`PriorityPlan::from_zephyr_dotconfig`] runs it against one
-//! image's `.config`.
+//! transport's tasks are created through the POSIX layer, so their k_thread
+//! priority depends on
+//! `CONFIG_NUM_PREEMPT_PRIORITIES` and on the normalised band each task is
+//! created at. [`zephyr_plan`] is that arithmetic, and
+//! [`PriorityPlan::from_zephyr_dotconfig`] runs it against one image's
+//! `.config`.
+//!
+//! # What this crate is NOT allowed to know (RFC-0071 D2)
+//!
+//! It is a CORE crate, so it names no backend: it receives the transport's
+//! normalised bands as NUMBERS. Which Kconfig symbols carry them is a
+//! statement made by the backend (`nros-rmw.toml`, D1) and listed by the
+//! board descriptor (`[board.priority_plan] inputs`); reading those symbols
+//! out of an image is `scripts/lib/priority_plan.py`'s job. The one number
+//! that lives here, [`ZEPHYR_TRANSPORT_BAND_DEFAULT`], is a platform fact and
+//! is checked against `zephyr/Kconfig` by
+//! `check-tier-priority-plan-image.py --selftest` rather than trusted.
 //!
 //! The same formula exists once more, in Python
 //! (`scripts/lib/priority_plan.py:resolve_zephyr_plan`), and that copy is
@@ -128,12 +140,25 @@ pub const NROS_PLATFORM_PRIORITY_MAX: i64 = 255;
 const ZEPHYR_DEFAULT_NUM_PREEMPT: i64 = 15;
 /// Zephyr's own default for `CONFIG_NUM_COOP_PRIORITIES`.
 const ZEPHYR_DEFAULT_NUM_COOP: i64 = 16;
-/// nano-ros's default for `CONFIG_NROS_ZENOH_READ_PRIORITY` (`zephyr/Kconfig`).
-const ZENOH_DEFAULT_READ_BAND: i64 = 200;
-/// nano-ros's default for `CONFIG_NROS_ZENOH_LEASE_PRIORITY` (`zephyr/Kconfig`).
-/// The same 200 as the read band; an image may raise it (the Autoware Safety
-/// Island sets 255), which widens the reserved band without moving the pool.
-const ZENOH_DEFAULT_LEASE_BAND: i64 = 200;
+
+/// The normalised band nano-ros's Zephyr platform creates a TRANSPORT task at
+/// when the image states nothing.
+///
+/// RFC-0071 D2 - a core crate receives capabilities and numbers, never backend
+/// names. This is a number about the PLATFORM: `nros-platform-zephyr` applies
+/// it through `nros_zephyr_native_priority`, whichever transport the image
+/// links. Which Kconfig symbols carry it per image is the BOARD descriptor's
+/// statement (`packages/boards/zephyr/nros-board.toml`,
+/// `[board.priority_plan] inputs`), and resolving those symbols is the
+/// resolver's job (`scripts/lib/priority_plan.py`); an image's own values
+/// reach this module as the `transport_bands` argument below, already read.
+///
+/// The default is checked against its source rather than restated on trust:
+/// `check-tier-priority-plan-image.py --selftest` asserts this constant equals
+/// the unconditional default `zephyr/Kconfig` gives the transport-priority
+/// symbols the descriptor names. A second copy of a number is only safe while
+/// something compares it, which is this section's own lesson (RFC-0079 4.1).
+pub const ZEPHYR_TRANSPORT_BAND_DEFAULT: i64 = 200;
 
 /// The normalised band -> POSIX priority half of the chain, mirroring
 /// `nros_zephyr_native_priority` (`nros-platform-zephyr/src/platform.c`):
@@ -162,29 +187,36 @@ fn posix_rr_to_kthread(posix: i64, num_preempt: i64) -> i64 {
 /// application pool starts one step LESS urgent than the least urgent
 /// transport thread: a derived tier never preempts the transport that feeds
 /// it.
+/// `transport_bands` are the NORMALISED priorities (0..255, bigger is more
+/// urgent) the image creates its transport tasks at - numbers this module is
+/// handed, never symbols it looks up (RFC-0071 D2). An empty list means the
+/// image reserves nothing, and the application then owns the whole preemptive
+/// range.
 pub fn zephyr_plan(
     num_preempt: i64,
     num_coop: i64,
-    read_band: i64,
-    lease_band: i64,
+    transport_bands: &[i64],
     source: impl Into<String>,
 ) -> PriorityPlan {
-    let ks = {
-        let mut ks = [
-            posix_rr_to_kthread(band_to_posix(read_band, num_preempt), num_preempt),
-            posix_rr_to_kthread(band_to_posix(lease_band, num_preempt), num_preempt),
-        ];
-        ks.sort_unstable();
-        ks
-    };
+    let mut ks: Vec<i64> = transport_bands
+        .iter()
+        .map(|b| posix_rr_to_kthread(band_to_posix(*b, num_preempt), num_preempt))
+        .collect();
+    ks.sort_unstable();
     let mut reserved = BTreeMap::new();
-    reserved.insert("transport".to_string(), Band::new(ks[0], ks[1]));
+    let app_lo = match (ks.first(), ks.last()) {
+        (Some(lo), Some(hi)) => {
+            reserved.insert("transport".to_string(), Band::new(*lo, *hi));
+            *hi + 1
+        }
+        _ => 0,
+    };
     PriorityPlan {
         direction: Direction::SmallerIsUrgent,
         // Negative k_thread priorities are cooperative.
         range: Band::new(-num_coop, num_preempt - 1),
         reserved,
-        app: Band::new(ks[1] + 1, num_preempt - 1),
+        app: Band::new(app_lo, num_preempt - 1),
         source: source.into(),
     }
 }
@@ -221,13 +253,14 @@ impl PriorityPlan {
     /// behaviour and is what a target with no descriptor has ever promised.
     ///
     /// For Zephyr this is the DEFAULTS projection, not one image's answer:
-    /// Zephyr's own `CONFIG_NUM_PREEMPT_PRIORITIES` / `CONFIG_NUM_COOP_PRIORITIES`
-    /// defaults with nano-ros's two `CONFIG_NROS_ZENOH_*_PRIORITY` defaults,
-    /// through the same [`zephyr_plan`] arithmetic. An image that changes any
-    /// of the four resolves its own plan with
-    /// [`PriorityPlan::from_zephyr_dotconfig`], and
-    /// `check-tier-priority-plan-image.py` is what judges a BUILT image
-    /// against its `.config` - a unit test cannot see one.
+    /// Zephyr's own `CONFIG_NUM_PREEMPT_PRIORITIES` /
+    /// `CONFIG_NUM_COOP_PRIORITIES` defaults with one transport task at
+    /// [`ZEPHYR_TRANSPORT_BAND_DEFAULT`], through the same [`zephyr_plan`]
+    /// arithmetic. An image that changes any of them resolves its own plan
+    /// with [`PriorityPlan::from_zephyr_dotconfig`], handed the bands its own
+    /// transport declares, and `check-tier-priority-plan-image.py` is what
+    /// judges a BUILT image against its `.config` - a unit test cannot see
+    /// one.
     pub fn for_target(target: &str) -> Self {
         let band = |lo, hi| Band::new(lo, hi);
         let reserved = |name: &str, lo, hi| {
@@ -240,8 +273,7 @@ impl PriorityPlan {
             "zephyr" => zephyr_plan(
                 ZEPHYR_DEFAULT_NUM_PREEMPT,
                 ZEPHYR_DEFAULT_NUM_COOP,
-                ZENOH_DEFAULT_READ_BAND,
-                ZENOH_DEFAULT_LEASE_BAND,
+                &[ZEPHYR_TRANSPORT_BAND_DEFAULT],
                 "derived from the Kconfig DEFAULTS (RFC-0079 section 4.1); an \
                  image's own .config refines it",
             ),
@@ -310,13 +342,26 @@ impl PriorityPlan {
         }
     }
 
-    /// Resolve the DERIVED Zephyr plan against ONE image's `.config`.
+    /// Resolve the DERIVED Zephyr plan against ONE image's `.config`, given
+    /// the normalised bands its transport tasks are created at.
     ///
-    /// The `.config` is the only honest input: both ends of the chain are
-    /// per-image Kconfig, so a literal band would be true for one build and
-    /// quietly wrong for the next - the failure RFC-0079 exists to eliminate
-    /// one level up.
-    pub fn from_zephyr_dotconfig(text: &str) -> Result<Self, PriorityPlanError> {
+    /// The `.config` is the only honest input for the KERNEL half: both ends
+    /// of the chain are per-image Kconfig, so a literal band would be true for
+    /// exactly one build and quietly wrong for the next - the failure RFC-0079
+    /// exists to eliminate one level up.
+    ///
+    /// The TRANSPORT half arrives as numbers, not as symbols to look up
+    /// (RFC-0071 D2). Which Kconfig symbols carry an image's transport
+    /// priorities depends on what that image links, and that is the backend's
+    /// statement (`nros-rmw.toml`) read through the board descriptor's
+    /// `[board.priority_plan] inputs` - both outside this crate. An empty
+    /// slice means the caller read no band for this image, which is the same
+    /// state as an image that sets none of those symbols: the platform
+    /// default applies.
+    pub fn from_zephyr_dotconfig(
+        text: &str,
+        transport_bands: &[i64],
+    ) -> Result<Self, PriorityPlanError> {
         let cfg = dotconfig_ints(text);
         let num_preempt =
             *cfg.get("CONFIG_NUM_PREEMPT_PRIORITIES")
@@ -331,24 +376,18 @@ impl PriorityPlan {
         {
             return Err(PriorityPlanError::Unapplied);
         }
-        // Absent means the Kconfig default applies. The Python resolver reads
-        // it out of `zephyr/Kconfig`; this crate has no tree to read, so the
-        // defaults are the two constants above and they are checked against
-        // that file by `check-zephyr-priority-plan-defaults` (the Python
-        // selftest asserts the same triple).
-        let read = cfg
-            .get("CONFIG_NROS_ZENOH_READ_PRIORITY")
-            .copied()
-            .unwrap_or(ZENOH_DEFAULT_READ_BAND);
-        let lease = cfg
-            .get("CONFIG_NROS_ZENOH_LEASE_PRIORITY")
-            .copied()
-            .unwrap_or(ZENOH_DEFAULT_LEASE_BAND);
+        // A caller that read no band for this image gets the platform
+        // default, which is what an image whose symbols are all unset runs
+        // with anyway.
+        let bands: Vec<i64> = if transport_bands.is_empty() {
+            vec![ZEPHYR_TRANSPORT_BAND_DEFAULT]
+        } else {
+            transport_bands.to_vec()
+        };
         Ok(zephyr_plan(
             num_preempt,
             num_coop,
-            read,
-            lease,
+            &bands,
             "derived from an image .config (RFC-0079 section 4.1)",
         ))
     }
@@ -392,23 +431,28 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     /// The island's image, from its Kconfig: 15 preemptive priorities, the two
-    /// zenoh bands at their nano-ros defaults.
+    /// transport bands at the platform default.
     fn island_dotconfig() -> String {
         "CONFIG_NUM_PREEMPT_PRIORITIES=15\n\
          CONFIG_NUM_COOP_PRIORITIES=16\n\
          CONFIG_POSIX_PRIORITY_SCHEDULING=y\n\
-         CONFIG_PREEMPT_ENABLED=y\n\
-         CONFIG_NROS_ZENOH_READ_PRIORITY=200\n\
-         CONFIG_NROS_ZENOH_LEASE_PRIORITY=255\n"
+         CONFIG_PREEMPT_ENABLED=y\n"
             .to_string()
     }
+
+    /// The bands the island's image creates its two transport tasks at, as a
+    /// caller reads them from the symbols the board descriptor names: the
+    /// platform default for one, 255 for the other.
+    const ISLAND_TRANSPORT_BANDS: [i64; 2] = [ZEPHYR_TRANSPORT_BAND_DEFAULT, 255];
 
     /// The measured projection phase-459 records: transport at k_thread 4, the
     /// application pool `[5, 14]`. The same triple is asserted by
     /// `scripts/check-tier-priority-plan-image.py --selftest`.
     #[test]
     fn priority_plan_resolves_the_island_band_from_a_dotconfig() {
-        let plan = PriorityPlan::from_zephyr_dotconfig(&island_dotconfig()).expect("resolves");
+        let plan =
+            PriorityPlan::from_zephyr_dotconfig(&island_dotconfig(), &ISLAND_TRANSPORT_BANDS)
+                .expect("resolves");
         assert_eq!(plan.direction, Direction::SmallerIsUrgent);
         assert_eq!(plan.range, Band::new(-16, 14));
         assert_eq!(plan.reserved["transport"], Band::new(0, 4));
@@ -428,7 +472,9 @@ mod tests {
     /// about what else is reserved.
     #[test]
     fn priority_plan_for_zephyr_matches_the_defaults_image() {
-        let from_cfg = PriorityPlan::from_zephyr_dotconfig(&island_dotconfig()).expect("resolves");
+        let from_cfg =
+            PriorityPlan::from_zephyr_dotconfig(&island_dotconfig(), &ISLAND_TRANSPORT_BANDS)
+                .expect("resolves");
         let for_target = PriorityPlan::for_target("zephyr");
         assert_eq!(for_target.app, from_cfg.app, "the pool is the same");
         assert_eq!(for_target.range, from_cfg.range);
@@ -446,11 +492,8 @@ mod tests {
     /// reported as a zero-width pool rather than silently allocated into.
     #[test]
     fn priority_plan_reports_the_stale_band_as_an_empty_pool() {
-        let stale = island_dotconfig().replace(
-            "CONFIG_NROS_ZENOH_READ_PRIORITY=200",
-            "CONFIG_NROS_ZENOH_READ_PRIORITY=16",
-        );
-        let plan = PriorityPlan::from_zephyr_dotconfig(&stale).expect("resolves");
+        let plan =
+            PriorityPlan::from_zephyr_dotconfig(&island_dotconfig(), &[16, 255]).expect("resolves");
         assert_eq!(plan.reserved["transport"], Band::new(0, 14));
         assert_eq!(
             plan.app.width(),
@@ -468,11 +511,11 @@ mod tests {
         let text =
             island_dotconfig().replace("CONFIG_PREEMPT_ENABLED=y", "CONFIG_PREEMPT_ENABLED=n");
         assert_eq!(
-            PriorityPlan::from_zephyr_dotconfig(&text),
+            PriorityPlan::from_zephyr_dotconfig(&text, &ISLAND_TRANSPORT_BANDS),
             Err(PriorityPlanError::Unapplied)
         );
         assert!(matches!(
-            PriorityPlan::from_zephyr_dotconfig("CONFIG_FOO=y\n"),
+            PriorityPlan::from_zephyr_dotconfig("CONFIG_FOO=y\n", &ISLAND_TRANSPORT_BANDS),
             Err(PriorityPlanError::MissingKey { .. })
         ));
     }
