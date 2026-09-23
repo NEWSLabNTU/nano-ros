@@ -1451,6 +1451,27 @@ impl ParamServiceBound {
         ]
     }
 
+    /// phase-461 W2 -- the largest REQUEST of all: what one slot of the
+    /// family's inbox ring must hold.
+    ///
+    /// Three of the eight fields are requests; the other five are replies,
+    /// which go out through the executor-side buffer and never touch the
+    /// inbox. That asymmetry is the whole saving: on the island's worst node
+    /// ([8, 170]) the largest request is a 669 B `set_parameters` while
+    /// [`total`](Self::total) is dominated by `describe_reply` at capacity, so
+    /// sizing the inbox by `total` would pay for bytes that can only ever
+    /// travel the other way.
+    pub(crate) const fn request_max(&self) -> usize {
+        let mut max = self.names_request;
+        if self.list_request > max {
+            max = self.list_request;
+        }
+        if self.set_request > max {
+            max = self.set_request;
+        }
+        max
+    }
+
     /// The largest message of all: one half of the buffer pair.
     pub(crate) const fn total(&self) -> usize {
         let f = self.fields();
@@ -1553,6 +1574,156 @@ const fn node_bound(s: &[usize; 9], c: ParamWireCaps) -> ParamServiceBound {
         set_reply: max_usize(set_reply, atomic_reply),
     }
 }
+
+// ---------------------------------------------------------------------------
+// THE PARAMETER FAMILY'S OWN INBOX -- phase-461 W2, issue 1352
+// ---------------------------------------------------------------------------
+
+/// Issue 1352 -- how many bytes ONE slot of the parameter family's inbox ring
+/// holds.
+///
+/// Two buffers stand between a `set_parameters` request and this module, and
+/// until this wave only one of them was sized by anything. The executor-side
+/// pair above is [`param_service_buffer_bytes`], derived from the contract's
+/// declared parameters since phase-446 F3. The other is the transport's INBOX:
+/// the ring the read task lands a request in before any spin sees it. Every
+/// queryable got the same one -- 4 slots of 1,024 B -- and a request larger
+/// than a slot was not refused and not logged but dropped with a flag, which
+/// is the defect half of the issue. The RAM half is the same fact from the
+/// other side: on the safety island 24 of 26 queryables are parameter
+/// services, and 24 x 4 x 1,024 B is most of an image that is over RAM.
+///
+/// Sized by the same ladder as its sibling, one rung shallower in the message:
+/// a rung that STATES `NROS_PARAM_SERVICE_INBOX_BYTES` wins; otherwise the
+/// contract's declared parameters bound it, through
+/// [`ParamServiceBound::request_max`] rather than `total` (an inbox holds
+/// REQUESTS; the replies go out through the buffer pair); and with no
+/// declaration the executor-side fallback stands, because a family that cannot
+/// price its own requests must not under-size them.
+///
+/// Rounded up to a multiple of 4 so the ring's slots stay word-aligned on
+/// every target the tree builds for.
+pub const fn param_service_inbox_bytes() -> usize {
+    if crate::config::PARAM_SERVICE_INBOX_STATED {
+        return crate::config::PARAM_SERVICE_INBOX_BYTES;
+    }
+    let derived = match crate::config::DECLARED_PARAM_SERVICE_SHAPES {
+        Some(shapes) => param_service_bound(shapes, ParamWireCaps::THIS_BUILD).request_max(),
+        None => param_service_buffer_bytes(),
+    };
+    derived.next_multiple_of(4)
+}
+
+/// phase-461 W2 -- whether [`param_service_inbox_bytes`] was DERIVED from the
+/// contract rather than stated by a rung.
+///
+/// The const assert below is a tautology in the derived case and costs
+/// nothing; it bites exactly when someone states a size the declarations
+/// cannot fit into.
+pub const fn param_service_inbox_derived() -> bool {
+    !crate::config::PARAM_SERVICE_INBOX_STATED
+}
+
+/// Bytes one slot of the parameter family's inbox holds.
+pub const PARAM_INBOX_SLOT_BYTES: usize = param_service_inbox_bytes();
+
+/// Requests one parameter-service queryable holds before the newest is
+/// dropped (`NROS_PARAM_SERVICE_INBOX_DEPTH`, default 1).
+///
+/// One, because parameter traffic is one request and one reply from a client
+/// that waits: `ros2 param` and rclcpp's `SyncParametersClient` send and block,
+/// `AsyncParametersClient` callers await a future per call, and the six
+/// services of a node are polled serially in one spin
+/// ([`ParameterServiceServers::process`]) so a slot is drained within one spin
+/// period. Two clients addressing the SAME service of the SAME node inside one
+/// spin period is the only case depth 1 loses, and to the loser that is a
+/// timeout and a retry -- the failure mode every ROS 2 parameter client
+/// already handles. No data path, no control path and no contract field
+/// depends on a parameter request landing.
+///
+/// A DEFAULT on a knob, not a ceiling. An image that serves a parameter
+/// dashboard states 2.
+pub const PARAM_INBOX_DEPTH: usize = crate::config::PARAM_SERVICE_INBOX_DEPTH;
+
+/// phase-461 W2 -- the gate.
+///
+/// When the size is derived this is `x >= x` and the compiler folds it away.
+/// When a rung STATES `NROS_PARAM_SERVICE_INBOX_BYTES` and the contract
+/// declares its parameters, a short statement fails the BUILD here rather than
+/// dropping a well-formed request at run time -- which is what the flat 1,024 B
+/// slot did, silently, and is the whole of issue 1352's second half.
+const _: () = assert!(
+    inbox_fits(PARAM_INBOX_SLOT_BYTES, DECLARED_WORST_PARAM_REQUEST),
+    "NROS_PARAM_SERVICE_INBOX_BYTES is smaller than the largest parameter request the \
+     contract's declared parameters can produce (a set_parameters naming every parameter \
+     of the worst-declared node). Raise it, or drop the override and let it derive."
+);
+
+/// Does a slot of `slot` bytes hold a `worst`-byte request?
+///
+/// A `const fn` and not the comparison written out, because with no
+/// declaration `DECLARED_WORST_PARAM_REQUEST` is 0 and clippy's
+/// `absurd_extreme_comparisons` refuses `x >= 0` -- correctly, as an
+/// expression. As a const fn the operands are parameters, and the assert still
+/// fails the build for the image that has a declaration to be short of.
+const fn inbox_fits(slot: usize, worst: usize) -> bool {
+    slot >= worst
+}
+
+/// The largest request the contract's declared parameters can produce, or 0
+/// when nothing declared them (no declaration, nothing to check against).
+const DECLARED_WORST_PARAM_REQUEST: usize = match crate::config::DECLARED_PARAM_SERVICE_SHAPES {
+    Some(shapes) => param_service_bound(shapes, ParamWireCaps::THIS_BUILD).request_max(),
+    None => 0,
+};
+
+/// The same gate for the EXECUTOR-side pair, which until now was only a unit
+/// test (`the_derived_size_fits_the_worst_messages`).
+const _: () = assert!(
+    inbox_fits(PARAM_SERVICE_BUFFER_SIZE, DECLARED_WORST_PARAM_REQUEST)
+        || !crate::config::PARAM_SERVICE_BUFFER_STATED,
+    "NROS_PARAM_SERVICE_BUFFER_SIZE is smaller than the largest parameter request the \
+     contract's declared parameters can produce. Raise it, or drop the override and let \
+     phase-446 F3 derive it."
+);
+
+/// How many rings the parameter family needs: one per queryable, over every
+/// node one executor can serve.
+///
+/// ZERO while no backend the runtime can reach accepts a caller-owned ring
+/// ([`nros_rmw::Session::SUPPORTS_CALLER_INBOX`]), because a static nothing can
+/// register is RAM every image pays for nothing -- the exact cost this wave
+/// exists to remove. The geometry above is computed and asserted either way,
+/// so the size an image WILL pay is a compile-time fact before the ring is
+/// reachable rather than after.
+///
+/// **What "reachable" is waiting on.** `nros-node` speaks to its backend
+/// through `nros-rmw-cffi`'s C vtable, and `rmw_vtable.create_service` has no
+/// argument that carries a ring. The zenoh shim's side has been caller-visible
+/// since W1 (`InboxSpec::Caller`); the ABI slot between them is not this
+/// wave's to add (`packages/core/nros-rmw-abi/include/nros/`), and neither is
+/// the registration call site (`executor/spin.rs`).
+pub const PARAM_INBOX_COUNT: usize =
+    if <crate::session::ConcreteSession as nros_rmw::Session>::SUPPORTS_CALLER_INBOX {
+        PARAM_SERVICE_QUERYABLES * MAX_PARAM_SERVICE_SETS
+    } else {
+        0
+    };
+
+/// The parameter family's rings: `PARAM_INBOX_DEPTH` slots of
+/// [`PARAM_INBOX_SLOT_BYTES`] bytes per queryable.
+///
+/// `static`, not heap, for the reason phase-391 keeps every payload buffer
+/// static: the Zephyr heap gate prices `arena + 24576 <= NROS_ZEPHYR_HEAP_SIZE`
+/// and a new term in it is a new way for an image to stop linking.
+pub static PARAM_INBOX: [nros_rmw::CallerInboxStorage<PARAM_INBOX_SLOT_BYTES, PARAM_INBOX_DEPTH>;
+    PARAM_INBOX_COUNT] = [const { nros_rmw::CallerInboxStorage::new() }; PARAM_INBOX_COUNT];
+
+/// What one parameter-service queryable's ring costs at this image's geometry.
+/// The number `just mem-report` prices from the ELF; stated here so a reader
+/// can check the map against the knobs.
+pub const PARAM_INBOX_BYTES_PER_QUERYABLE: usize =
+    nros_rmw::CallerInboxStorage::<PARAM_INBOX_SLOT_BYTES, PARAM_INBOX_DEPTH>::BYTES;
 
 /// Issue 1270 -- ONE request buffer and ONE reply buffer, shared by every
 /// parameter service of an executor.
@@ -3668,5 +3839,132 @@ mod tests {
                 "{what} ({len}) does not fit the {half}-byte half"
             );
         }
+
+        // phase-461 W2 -- the INBOX leg. A request has to land in the
+        // transport's ring before any of the above runs, so the same real
+        // bytes are checked against the slot this shape derives, at depth 1.
+        let slot = bound.request_max().next_multiple_of(4);
+        for (what, len) in [
+            ("names request", names_request.len()),
+            ("list request", list_req.len()),
+            ("set request", set_req.len()),
+        ] {
+            assert!(
+                len <= slot,
+                "{what} ({len}) does not fit the {slot}-byte inbox slot this shape derives"
+            );
+        }
+        // And the saving: the slot is the REQUESTS' bound, well under the
+        // half the buffer pair needs, because the describe reply at capacity
+        // decides that one and never travels this way.
+        assert!(
+            slot < half,
+            "the inbox slot {slot} is not smaller than the buffer half {half}; the request \
+             / reply asymmetry is the whole of this wave's saving"
+        );
+    }
+
+    /// phase-461 W2 -- `request_max` is the largest of the three REQUESTS and
+    /// never a reply.
+    #[test]
+    fn the_inbox_bound_is_the_requests_and_only_the_requests() {
+        let b = ParamServiceBound {
+            names_request: 11,
+            get_reply: 9_000,
+            describe_reply: 9_001,
+            types_reply: 9_002,
+            list_request: 22,
+            list_reply: 9_003,
+            set_request: 33,
+            set_reply: 9_004,
+        };
+        assert_eq!(b.request_max(), 33);
+        assert_eq!(b.total(), 9_004);
+    }
+
+    /// phase-461 W2 / issue 1352 -- the island's shapes, priced.
+    ///
+    /// The issue and `nxp-deployment.md` section 8 carry 2,408 B for
+    /// `set_parameters`, read off `NROS_MAX_PARAMETERS` = 25. That is the
+    /// STORE's capacity across all four nodes (21 declared plus one
+    /// `use_sim_time` each), not any node's shape, and each request addresses
+    /// ONE node's six services. The worst island node declares 8; its worst
+    /// well-formed request is 669 B. A 2,408 B request is one naming 25
+    /// parameters at a node that has 8 -- refused by the issue-1151 path,
+    /// never sized for.
+    #[test]
+    fn the_islands_worst_request_is_one_nodes_not_the_stores() {
+        let caps = island_caps(256, 0);
+        let per_node: AllocVec<usize> = ISLAND_SHAPES
+            .iter()
+            .map(|shape| param_service_bound(core::slice::from_ref(shape), caps).request_max())
+            .collect();
+        assert_eq!(per_node, [295, 446, 669, 541], "per-node worst request");
+
+        // The worst NODE decides, which is what the family's one slot size is.
+        let worst = param_service_bound(&ISLAND_SHAPES, caps).request_max();
+        assert_eq!(worst, 669);
+        assert_eq!(worst.next_multiple_of(4), 672);
+
+        // Depth 1 at the declared shape, against the flat geometry it
+        // replaces: 4 slots of 1,024 B for each of the 24 parameter
+        // queryables. The entry is 12 B on the board (a 32-bit target); the
+        // host's is wider, so the ring bytes are compared at the board's.
+        const BOARD_ENTRY: usize = 12;
+        let before = 24 * 4 * (1024 + BOARD_ENTRY);
+        let after = 24 * (672 + BOARD_ENTRY);
+        assert_eq!(before, 99_456);
+        assert_eq!(after, 16_416);
+        assert!(
+            before - after == 83_040,
+            "the ring saving the phase doc's table states"
+        );
+
+        // A well-formed request at the STORE's capacity is what the issue
+        // priced, and it fits no node's slot -- correctly, because no node can
+        // receive it.
+        let store_wide =
+            param_service_bound(&[[25, 25 * 35, 0, 0, 0, 0, 0, 0, 0]], caps).request_max();
+        assert!(
+            store_wide > 2_400 && store_wide > worst,
+            "the 2,408 B figure is the store's capacity, not a node's: {store_wide}"
+        );
+    }
+
+    /// phase-461 W2 -- the geometry this build resolved, and the const assert
+    /// that guards it.
+    ///
+    /// The assert itself is a compile-time fact and cannot be observed from a
+    /// test; what a test CAN hold is the property the assert encodes, at the
+    /// values this build has. The negative control is a BUILD, run in the
+    /// commit that landed this:
+    ///
+    /// ```text
+    /// NROS_DECLARED_PARAM_SERVICE_SHAPE=8:170:1:17:0:0:0:0:0 \
+    ///   NROS_PARAM_SERVICE_INBOX_BYTES=672 cargo build -p nros-node   # builds
+    /// NROS_DECLARED_PARAM_SERVICE_SHAPE=8:170:1:17:0:0:0:0:0 \
+    ///   NROS_PARAM_SERVICE_INBOX_BYTES=668 cargo build -p nros-node   # refuses,
+    ///   naming NROS_PARAM_SERVICE_INBOX_BYTES
+    /// ```
+    #[test]
+    fn the_resolved_inbox_geometry_holds_its_own_bound() {
+        const { assert!(PARAM_INBOX_DEPTH >= 1, "a depth-0 ring holds nothing") };
+        if let Some(shapes) = crate::config::DECLARED_PARAM_SERVICE_SHAPES {
+            let worst = param_service_bound(shapes, ParamWireCaps::THIS_BUILD).request_max();
+            assert!(
+                PARAM_INBOX_SLOT_BYTES >= worst,
+                "the resolved slot {PARAM_INBOX_SLOT_BYTES} is under the declared worst \
+                 request {worst}; the const assert should have refused this build"
+            );
+        } else {
+            // No declaration: the executor-side fallback stands, and it is
+            // never smaller than the pair the same ladder resolved.
+            assert_eq!(PARAM_INBOX_SLOT_BYTES, param_service_buffer_bytes());
+        }
+        assert_eq!(
+            PARAM_INBOX_BYTES_PER_QUERYABLE,
+            PARAM_INBOX_DEPTH
+                * (PARAM_INBOX_SLOT_BYTES + core::mem::size_of::<nros_rmw::InboxEntry>())
+        );
     }
 }

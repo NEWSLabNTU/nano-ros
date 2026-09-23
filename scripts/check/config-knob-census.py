@@ -140,6 +140,13 @@ KNOB_CLASS = {
     "NROS_SERVICE_INBOX_DEPTH": ("sizing", "user-service inbox ring depth; a policy default, rung to come"),
     "NROS_ACTION_INBOX_BYTES": ("derived", "action inbox slot; the largest declared action request bound (phase-461 W3)"),
     "NROS_ACTION_INBOX_DEPTH": ("sizing", "action inbox ring depth; the twin of ZPICO_MAX_PENDING_REPLIES, rung to come"),
+    # phase-461 W2 -- the parameter and lifecycle families' inbox. The slot is
+    # DERIVED and finished in nros-node, the one crate that sees both the
+    # contract's declared parameters and the store's resolved capacities
+    # (phase-446 F3); a stated size that is short fails the build. The depth is
+    # a policy default like its two siblings above.
+    "NROS_PARAM_SERVICE_INBOX_BYTES": ("derived", "parameter/lifecycle inbox slot; param_service_bound(...).request_max(), finished in nros-node"),
+    "NROS_PARAM_SERVICE_INBOX_DEPTH": ("sizing", "parameter/lifecycle inbox ring depth; 1, the sequential-client default"),
     # --- phase-392 W6: the executor backing static ---
     # NOT a ladder candidate, and the DECISION is the interesting part. A rung
     # gives a global a per-platform default, which is exactly wrong here: the

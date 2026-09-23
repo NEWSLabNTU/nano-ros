@@ -1008,6 +1008,40 @@ config NROS_ACTION_INBOX_DEPTH
       shim's ZPICO_MAX_PENDING_REPLIES (both 4). Must be >= 1. Maps to
       NROS_ACTION_INBOX_DEPTH.
 
+config NROS_PARAM_SERVICE_INBOX_BYTES
+    int "Parameter/lifecycle service inbox slot size (bytes)"
+    default 0
+    help
+      phase-461 W2 -- bytes one request slot holds in the inbox ring of each
+      ROS parameter service queryable (six per node) and each REP-2002
+      lifecycle service queryable (five per node).
+
+      Leave it at 0 to DERIVE it, which is what almost every image wants:
+      nros-node then sizes the slot from the contract's declared parameters,
+      as the largest request a set_parameters over the worst-declared node
+      can produce, against the parameter store's resolved capacities. On the
+      Autoware Safety Island that is 672 bytes against a flat 1024.
+
+      A value here STATES the size and wins over the derivation. A stated
+      size smaller than the declarations can produce FAILS THE BUILD naming
+      this symbol, rather than dropping a well-formed request at run time
+      (issue 1352). Maps to NROS_PARAM_SERVICE_INBOX_BYTES.
+
+config NROS_PARAM_SERVICE_INBOX_DEPTH
+    int "Parameter/lifecycle service inbox ring depth"
+    default 1
+    help
+      phase-461 W2 -- requests one parameter or lifecycle service queryable
+      holds before the newest is dropped.
+
+      One, because this traffic is one request and one reply from a client
+      that waits: ros2 param and rclcpp's SyncParametersClient block on each
+      call, and a node's six services are polled serially in one spin. Two
+      clients hitting the SAME service of the SAME node inside one spin
+      period is the only case depth 1 loses, and the loser sees a timeout and
+      retries. Raise it to 2 for an image that serves a parameter dashboard.
+      Must be >= 1. Maps to NROS_PARAM_SERVICE_INBOX_DEPTH.
+
 # =============================================================================
 # Zenoh Platform Configuration
 # =============================================================================

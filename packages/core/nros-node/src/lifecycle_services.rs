@@ -556,6 +556,41 @@ pub use crate::config::PARAM_SERVICE_BUFFER_SIZE as LIFECYCLE_SERVICE_BUFFER_SIZ
 /// for why the count lives here rather than in the RMW.
 pub const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 
+// phase-461 W2 / issue 1352 -- the lifecycle family is the parameter family's
+// traffic class: one request, one reply, from a client that waits, five
+// queryables per node. So it brings its own inbox on the same terms and at the
+// same geometry, the way it already shares the buffer-size alias above.
+//
+// The slot size is the parameter family's because the lifecycle payloads are
+// strictly smaller (a transition id and a label against a set_parameters over
+// every declared parameter), so the parameter bound is an upper bound here and
+// a second knob would be a second number saying less. The DEPTH is the same 1
+// and for the same reason: `ros2 lifecycle set` sends one request and waits.
+pub use crate::parameter_services::{
+    PARAM_INBOX_DEPTH as LIFECYCLE_INBOX_DEPTH,
+    PARAM_INBOX_SLOT_BYTES as LIFECYCLE_INBOX_SLOT_BYTES,
+};
+
+/// How many rings the lifecycle family needs: one per queryable, over every
+/// node one executor can serve.
+///
+/// ZERO while no backend the runtime can reach accepts a caller-owned ring --
+/// see [`crate::parameter_services::PARAM_INBOX_COUNT`], which states what
+/// that is waiting on.
+pub const LIFECYCLE_INBOX_COUNT: usize =
+    if <crate::session::ConcreteSession as nros_rmw::Session>::SUPPORTS_CALLER_INBOX {
+        LIFECYCLE_SERVICE_QUERYABLES * crate::parameter_services::MAX_PARAM_SERVICE_SETS
+    } else {
+        0
+    };
+
+/// The lifecycle family's rings. `static`, not heap, for the reason
+/// [`crate::parameter_services::PARAM_INBOX`] gives.
+pub static LIFECYCLE_INBOX: [nros_rmw::CallerInboxStorage<
+    LIFECYCLE_INBOX_SLOT_BYTES,
+    LIFECYCLE_INBOX_DEPTH,
+>; LIFECYCLE_INBOX_COUNT] = [const { nros_rmw::CallerInboxStorage::new() }; LIFECYCLE_INBOX_COUNT];
+
 type LcSrv<Svc> =
     EmbeddedServiceServer<Svc, LIFECYCLE_SERVICE_BUFFER_SIZE, LIFECYCLE_SERVICE_BUFFER_SIZE>;
 

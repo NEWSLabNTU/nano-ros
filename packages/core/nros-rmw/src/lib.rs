@@ -38,6 +38,7 @@ extern crate alloc;
 
 pub mod custom_transport;
 pub mod event;
+pub mod service_inbox;
 pub mod sync;
 pub mod traits;
 pub mod type_descriptor;
@@ -56,6 +57,9 @@ pub use custom_transport::{
     NROS_TRANSPORT_OPS_ABI_VERSION_V1, NrosTransportOps, peek_custom_transport,
     set_custom_transport, take_custom_transport,
 };
+
+// phase-461 W2 -- the caller-owned service inbox seam.
+pub use service_inbox::{CallerInbox, CallerInboxStorage, InboxEntry, ServiceInboxSpec};
 
 // Phase 248 (C2) — generic per-type descriptor registration seam.
 pub use type_descriptor::{

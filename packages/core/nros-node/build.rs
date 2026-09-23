@@ -549,6 +549,27 @@ fn main() {
         4096
     };
     let param_svc_shapes = declared_param_service_shapes(sizing.as_ref());
+    // phase-461 W2 / issue 1352 -- the parameter family's own INBOX, the ring
+    // a request lands in before the executor-side pair above ever sees it.
+    // Same ladder, same sentinel probe, one rung further down the path: a
+    // stated size wins, otherwise the contract's declared parameters bound it
+    // (`param_service_inbox_bytes`, beside the serializers), and with no
+    // declaration the executor-side fallback stands.
+    //
+    // The DEPTH is 1 and not the transport's 4: one parameter client sends one
+    // request and waits for its reply (`ros2 param`, rclcpp's
+    // `SyncParametersClient`), and the six services of a node are polled
+    // serially in one spin, so a slot is drained within one spin period. It is
+    // a default on a knob, not a ceiling -- an image that serves a parameter
+    // dashboard states 2.
+    let param_inbox_probe = env_usize("NROS_PARAM_SERVICE_INBOX_BYTES", usize::MAX);
+    let param_inbox_stated = param_inbox_probe != usize::MAX;
+    let param_inbox_bytes = if param_inbox_stated {
+        param_inbox_probe
+    } else {
+        0
+    };
+    let param_inbox_depth = env_usize("NROS_PARAM_SERVICE_INBOX_DEPTH", 1);
     // phase-454 W10 — the per-endpoint declared depths, for the REGISTRATION
     // check. Same carrier `subs_arena` sizes from, different guard: see
     // `declared_qos_rows`.
@@ -985,6 +1006,23 @@ fn main() {
          string_arrays] (NROS_DECLARED_PARAM_SERVICE_SHAPE). `None` when the \
          contract does not declare every node's parameters.\n\
          pub const DECLARED_PARAM_SERVICE_SHAPES: Option<&[[usize; 9]]> = {param_svc_shapes};\n\
+         \n\
+         /// phase-461 W2 -- the parameter-service INBOX slot size a rung \
+         STATED (NROS_PARAM_SERVICE_INBOX_BYTES), or 0 for \"nobody stated \
+         one\". Never read without PARAM_SERVICE_INBOX_STATED beside it: 0 is \
+         an absence, not a size.\n\
+         pub const PARAM_SERVICE_INBOX_BYTES: usize = {param_inbox_bytes};\n\
+         \n\
+         /// phase-461 W2 -- whether a rung STATED \
+         NROS_PARAM_SERVICE_INBOX_BYTES. A stated size wins over the size \
+         derived from the contract's declared parameters.\n\
+         pub const PARAM_SERVICE_INBOX_STATED: bool = {param_inbox_stated};\n\
+         \n\
+         /// phase-461 W2 -- requests one parameter-service queryable holds \
+         before the newest is dropped (NROS_PARAM_SERVICE_INBOX_DEPTH, \
+         default 1). The parameter clients are sequential; 4 is the action \
+         path's depth and this family used to pay it.\n\
+         pub const PARAM_SERVICE_INBOX_DEPTH: usize = {param_inbox_depth};\n\
          \n\
          /// phase-454 W10 -- the QoS history DEPTH this image's system \
          DECLARED, per endpoint: `(type name, topic, depth)`. Read by \
