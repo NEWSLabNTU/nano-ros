@@ -920,6 +920,19 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // can make true.
     nros_orchestration_ir::qos_agreement::check_model(&model)
         .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?;
+    // phase-462 W2 -- the same ruling for `on_violation`: the contract's word
+    // and the tier table's `deadline_policy` are two statements about one
+    // fact. The map is applied to the tier defs below; the error is raised
+    // here, before anything is baked, for the reason the QoS check above
+    // gives.
+    let contract_deadline_policies =
+        nros_orchestration_ir::violation_agreement::contract_deadline_policies(&model)
+            .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?;
+    // ... and the rows the lowering produces, whose own refusals are about a
+    // reaction the image could not run (an unknown reaction path, an
+    // `on_violation` with no `max_age_ms` to detect it by).
+    model_ingest::violation_rows(&model)
+        .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?;
     let board = board.unwrap_or_else(|| "native".to_string());
     // Issue 1285 — only a key the entry table knows HAS a tier sub-table.
     //
@@ -1085,7 +1098,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // [`derive_entry_tiers`], which runs after [`metadata::enrich_plan`] has
     // put those groups on the plan. It cannot run here: the groups are not on
     // the plan yet, and the SystemModel carries none.
-    let tiers: BTreeMap<String, TierDef> = model
+    let mut tiers: BTreeMap<String, TierDef> = model
         .execution
         .tiers
         .iter()
@@ -1096,6 +1109,27 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             )
         })
         .collect();
+    // phase-462 W2 -- the contract is the SOURCE of `deadline_policy`, and
+    // this is where it becomes one. From here the word rides the ordinary
+    // tier road: `resolve_tiers` -> `ResolvedTier::deadline_policy` ->
+    // `tier_views`/`sched_view` -> the baked entry ->
+    // `SchedContext::from_tier_policy` -> `DeadlineAction`. Agreement with an
+    // authored string was already checked above, so an insert here either
+    // supplies what the tier table omitted or restates what it agreed to.
+    //
+    // A tier the contract says nothing about keeps whatever it authored: the
+    // contract abstaining is not the contract saying `ignore`.
+    //
+    // Declared tiers only. A node with no callback group has no tier to land
+    // on (`derive.rs:93-100` notes it and moves on), so on a groupless image
+    // this map is empty by construction -- phase-459 W2 is what gives such a
+    // node a SchedContext, and until it lands W2's deadline half reaches
+    // exactly the images that declare tiers.
+    for (tier, action) in &contract_deadline_policies {
+        if let Some(def) = tiers.get_mut(tier) {
+            def.deadline_policy = Some(action.clone());
+        }
+    }
 
     let lifecycle = model
         .structure

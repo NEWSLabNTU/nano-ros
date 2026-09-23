@@ -22,6 +22,14 @@
 //! - `deadline-miss-runtime` — a dispatched callback ran past its bound
 //!   SchedContext's `deadline_us`; what ELSE happens is the tier's
 //!   [`DeadlineAction`](super::sched_context::DeadlineAction).
+//!
+//! phase-462 W2 adds one more on the same drain, and it is the other half of
+//! what the contract's `on_violation` lowers to:
+//! - `silence-runtime` -- a contracted subscription that took NOTHING for a
+//!   whole `max_age_ms` window ([`check_silence`]). A violation is either "the
+//!   callback ran too long", which is the deadline action, or "the input
+//!   stopped coming", which is this; the four rules above can only see the
+//!   first kind.
 
 use core::sync::atomic::Ordering;
 // portable-atomic: RMW ops (fetch_add/fetch_max/swap) exist even on
@@ -80,21 +88,36 @@ impl PubMonitorCell {
 pub struct SubMonitorCell {
     /// Max observed take-age (ms) in the current check window.
     pub max_age_ms: AtomicU32,
+    /// phase-462 W2 -- observations recorded since the last check, drained
+    /// (swap 0) by [`check_age`]. The age itself cannot answer "did anything
+    /// arrive": a window with no take and a window whose only take was
+    /// perfectly fresh both leave `max_age_ms` at 0.
+    pub takes: AtomicU32,
 }
 
 impl SubMonitorCell {
     pub const fn new() -> Self {
         Self {
             max_age_ms: AtomicU32::new(0),
+            takes: AtomicU32::new(0),
         }
     }
 
     /// Take-path hook: record one message's age. `stamp_us` is the
     /// peeked `header.stamp` as µs since the UNIX epoch, `epoch_now_us`
     /// the receive-side wall clock. A stamp from the future clamps to 0.
+    ///
+    /// phase-462 W2 -- also the silence rule's only evidence that this
+    /// endpoint is being fed. It counts what the AGE rule can see, which is
+    /// stamped takes on a type that carries a stamp: a contracted endpoint
+    /// whose messages carry no readable stamp records nothing here and is
+    /// reported silent. That is the intended verdict rather than a gap --
+    /// its `max_age_ms` cannot be judged either, and an unjudgeable promise
+    /// reported as met is the silent class this phase exists to remove.
     pub fn observe(&self, stamp_us: u64, epoch_now_us: u64) {
         let age_ms = (epoch_now_us.saturating_sub(stamp_us) / 1_000).min(u32::MAX as u64) as u32;
         self.max_age_ms.fetch_max(age_ms, Ordering::Relaxed);
+        self.takes.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -208,7 +231,8 @@ pub const MAX_VIOLATIONS: usize = 8;
 pub struct Violation {
     /// `"rate-hierarchy-runtime"` | `"max-age-runtime"` |
     /// `"max-latency-runtime"` | `"deadline-miss-runtime"` |
-    /// `"stack-headroom-runtime"` | `"alive-supervision-runtime"`.
+    /// `"stack-headroom-runtime"` | `"alive-supervision-runtime"` |
+    /// `"silence-runtime"` (phase-462 W2).
     pub rule: &'static str,
     /// Violating endpoint ref (from the spec's `fqn`; the SC name for
     /// deadline misses).
@@ -322,13 +346,94 @@ pub(crate) fn check_latency(spec: &MonitorSpec, state: &mut MonitorState) -> Opt
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct AgeState {
     pub(crate) violated_last_window: bool,
+    /// phase-462 W2 -- the silence rule's window. `opened` is a plain bool for
+    /// the same reason [`MonitorState`]'s is: `now_us == 0` is a legitimate
+    /// first sample.
+    pub(crate) silence_opened: bool,
+    /// Report-once-until-recovery, matching every other rule here.
+    pub(crate) silence_reported: bool,
+    /// Monotonic MILLISECONDS of the last check that saw a take (or of the
+    /// first check, which starts the lease rather than judging it).
+    ///
+    /// Milliseconds and `u32`, not the uss the clock hands out, because this
+    /// array is INLINE in the `Executor` value (`[AgeState; MAX_MONITORS]`) and
+    /// that value has a byte budget a knob-scaled table must not blow (issue
+    /// 0961 / `storage.rs`'s `the_executor_value_does_not_scale_with_the_knobs`
+    /// -- a `u64` here costs 8 rows x 16 B and fails it). The unit is the
+    /// contract's own (`max_age_ms`), the comparison is a wrapping delta, so
+    /// the 49-day rollover is not a discontinuity, and a silence window is
+    /// never shorter than a millisecond.
+    pub(crate) last_take_ms: u32,
+}
+
+/// phase-462 W2 -- the on-target liveliness lease: a contracted subscription
+/// that has taken NOTHING for a whole `max_age_ms` window.
+///
+/// The bound needs no new declaration and deliberately does not invent one.
+/// `max_age_ms` already says how old this input's data may be; data that never
+/// arrives is older than that by the same clock, so the window IS the declared
+/// bound. (`on_violation` selects what the executor then DOES about it; the
+/// reaction beyond reporting is the fault hook phase-462 W3 owns.)
+///
+/// Why this is not `max-age-runtime` with a longer arm: that rule judges a
+/// message that arrived. An input that stops entirely produces no message to
+/// judge, so it leaves the age rule silent forever -- the exact failure a
+/// `max_age_ms` promise is made against, and the one play_launch's reaction
+/// engine catches on the Linux side of the same contract.
+///
+/// `now_us` is the executor's monotonic clock, `None` on a build with no clock
+/// at all. Then nothing is judged: a clock that never moves is a window that
+/// never elapses, and guessing a window from spin counts would put a tolerance
+/// nobody declared into a safety rule.
+fn check_silence(spec: &AgeMonitorSpec, state: &mut AgeState, took: u32, now_us: u64) -> bool {
+    let now_ms = (now_us / 1_000) as u32;
+    if !state.silence_opened {
+        state.silence_opened = true;
+        state.last_take_ms = now_ms;
+        return false;
+    }
+    if took > 0 {
+        state.last_take_ms = now_ms;
+        state.silence_reported = false;
+        return false;
+    }
+    if now_ms.wrapping_sub(state.last_take_ms) < spec.max_age_ms {
+        return false;
+    }
+    if state.silence_reported {
+        return false; // still silent -- already reported
+    }
+    state.silence_reported = true;
+    true
 }
 
 /// Pure age check: drains the sub cell's window-max take-age and fires
 /// when it exceeds the declared bound. Report-once-until-recovery.
-pub(crate) fn check_age(spec: &AgeMonitorSpec, state: &mut AgeState) -> Option<Violation> {
+///
+/// phase-462 W2 -- also the silence rule's tick, because the two verdicts read
+/// ONE observation (what this endpoint took since the last check) and reading
+/// it twice would let one rule's drain hide the other's evidence. They cannot
+/// both fire: with no takes the drained age is 0, so `max-age-runtime` has
+/// nothing to judge.
+pub(crate) fn check_age(
+    spec: &AgeMonitorSpec,
+    state: &mut AgeState,
+    now_us: Option<u64>,
+) -> Option<Violation> {
     if spec.max_age_ms == 0 {
         return None;
+    }
+    let took = spec.cell.takes.swap(0, Ordering::Relaxed);
+    if let Some(now_us) = now_us
+        && check_silence(spec, state, took, now_us)
+    {
+        return Some(Violation {
+            rule: "silence-runtime",
+            fqn: spec.fqn,
+            // Takes in the window, against the window the contract declares.
+            measured: 0,
+            declared: spec.max_age_ms,
+        });
     }
     let max_ms = spec.cell.max_age_ms.swap(0, Ordering::Relaxed);
     if max_ms > spec.max_age_ms {
@@ -428,24 +533,95 @@ mod tests {
         };
         let mut st = AgeState::default();
 
-        // Fresh message: stamped 5 ms ago — silent.
+        // Fresh message: stamped 5 ms ago -- silent. Every tick here SEES a
+        // take, so the silence rule never opens a window (phase-462 W2).
         SC.observe(1_000_000_000, 1_000_005_000);
-        assert!(check_age(&s, &mut st).is_none());
+        assert!(check_age(&s, &mut st, Some(0)).is_none());
         // Stale: 250 ms old — fires with the measured age.
         SC.observe(1_000_000_000, 1_000_250_000);
-        let v = check_age(&s, &mut st).expect("fires");
+        let v = check_age(&s, &mut st, Some(1_000)).expect("fires");
         assert_eq!(v.rule, "max-age-runtime");
         assert_eq!(v.fqn, "/perc/detector/scan");
         assert_eq!(v.measured, 250);
         assert_eq!(v.declared, 100);
         // Still stale next window — suppressed.
         SC.observe(1_000_000_000, 1_000_300_000);
-        assert!(check_age(&s, &mut st).is_none());
+        assert!(check_age(&s, &mut st, Some(2_000)).is_none());
         // Recovers — clean window resets; stale again refires.
         SC.observe(1_000_000_000, 1_000_010_000);
-        assert!(check_age(&s, &mut st).is_none());
+        assert!(check_age(&s, &mut st, Some(3_000)).is_none());
         SC.observe(1_000_000_000, 1_000_999_000);
-        assert!(check_age(&s, &mut st).is_some());
+        assert!(check_age(&s, &mut st, Some(4_000)).is_some());
+    }
+
+    /// phase-462 W2 -- an input that stops coming is a violation of the same
+    /// `max_age_ms` promise, and the age rule cannot see it.
+    #[test]
+    fn a_silent_subscription_fires_once_until_it_is_fed() {
+        static SC2: SubMonitorCell = SubMonitorCell::new();
+        let s = AgeMonitorSpec {
+            topic: "/scan",
+            fqn: "/perc/detector/scan",
+            max_age_ms: 100,
+            cell: &SC2,
+        };
+        let mut st = AgeState::default();
+
+        // t=0 opens the lease; a first check is never a verdict.
+        SC2.observe(1_000_000_000, 1_000_005_000);
+        assert!(check_age(&s, &mut st, Some(0)).is_none());
+        // 50 ms of nothing, inside the declared 100 ms window.
+        assert!(check_age(&s, &mut st, Some(50_000)).is_none());
+        // 120 ms of nothing: the lease is up.
+        let v = check_age(&s, &mut st, Some(120_000)).expect("silence fires");
+        assert_eq!(v.rule, "silence-runtime");
+        assert_eq!(v.fqn, "/perc/detector/scan");
+        assert_eq!(v.measured, 0, "nothing was taken");
+        assert_eq!(v.declared, 100, "the window the contract declares");
+        // Still silent -- one fault, not one per tick.
+        assert!(check_age(&s, &mut st, Some(500_000)).is_none());
+        // Fed again: the lease restarts and a later silence reports afresh.
+        SC2.observe(1_000_000_000, 1_000_005_000);
+        assert!(check_age(&s, &mut st, Some(600_000)).is_none());
+        assert!(check_age(&s, &mut st, Some(650_000)).is_none());
+        assert!(check_age(&s, &mut st, Some(800_000)).is_some());
+    }
+
+    /// The negative control for the same rule, in three parts: an
+    /// uncontracted endpoint, a fed endpoint, and a build with no clock.
+    #[test]
+    fn silence_needs_a_contract_a_gap_and_a_clock() {
+        static SC3: SubMonitorCell = SubMonitorCell::new();
+        // No age contract: nothing is promised, so nothing is judged.
+        let uncontracted = AgeMonitorSpec {
+            topic: "/t",
+            fqn: "/n/t",
+            max_age_ms: 0,
+            cell: &SC3,
+        };
+        let mut st = AgeState::default();
+        assert!(check_age(&uncontracted, &mut st, Some(0)).is_none());
+        assert!(check_age(&uncontracted, &mut st, Some(10_000_000)).is_none());
+
+        // Contracted and fed on every tick: silent rule, silent drain.
+        let s = AgeMonitorSpec {
+            max_age_ms: 100,
+            ..uncontracted
+        };
+        let mut st = AgeState::default();
+        for tick in 0..10u64 {
+            SC3.observe(1_000_000_000, 1_000_001_000);
+            assert!(
+                check_age(&s, &mut st, Some(tick * 1_000_000)).is_none(),
+                "a fed endpoint never reports silence"
+            );
+        }
+
+        // No clock: degrade, never guess. A window measured in spins would be
+        // a tolerance nobody declared.
+        let mut st = AgeState::default();
+        assert!(check_age(&s, &mut st, None).is_none());
+        assert!(check_age(&s, &mut st, None).is_none());
     }
 
     #[test]

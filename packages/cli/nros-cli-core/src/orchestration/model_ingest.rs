@@ -1397,6 +1397,83 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>> {
     Ok(rows)
 }
 
+/// phase-462 W2 -- one `on_violation` row: a contracted subscription whose
+/// contract says what is owed when its assumption is violated.
+///
+/// It carries the two things that lowering produces, and nothing else: the
+/// SILENCE window the executor leases the input against (`max_age_ms`, the
+/// same number [`AgeRow`] bakes -- there is no second declaration), and the
+/// ACTION the reaction path runs under, which reaches the executor as the
+/// tier's `deadline_policy` string. No new baked table: both halves ride
+/// tables the image already carries, which is why this wave adds no bytes to
+/// an image that declares nothing.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ViolationRow {
+    /// Endpoint ref (`<node FQN>/<endpoint>`) whose assumption this guards.
+    pub fqn: String,
+    /// The silence lease, ms -- the endpoint's `max_age_ms`.
+    pub silence_ms: u32,
+    /// The node path ref `on_violation.reaction` names.
+    pub reaction: String,
+    /// `warn` | `skip` | `fault` -- what the executor does when the reaction's
+    /// SchedContext misses its deadline.
+    pub action: String,
+}
+
+/// Extract the `on_violation` rows: every `sub_endpoints` entry that declares
+/// one, joined to the reaction path it names.
+///
+/// Two refusals, both of a contract that promises a reaction the image cannot
+/// run:
+///
+/// - `reaction` names no node path -- raised by
+///   [`nros_orchestration_ir::violation_agreement::node_actions`], which is
+///   where the same join is made for the tier lowering.
+/// - the endpoint declares `on_violation` and no `max_age_ms`. Then nothing
+///   can DETECT the violation: the age rule has no bound and the silence lease
+///   has no window, so the declared reaction would never fire and the image
+///   would carry the promise with none of the behaviour. The contract must say
+///   how long is too long.
+pub fn violation_rows(model: &SystemModel) -> Result<Vec<ViolationRow>> {
+    use nros_orchestration_ir::violation_agreement::{ViolationAction, node_actions};
+
+    // The join and its refusal live in ONE place; this reads the result per
+    // endpoint rather than walking `node_paths` a second time.
+    let by_node = node_actions(model).map_err(|e| eyre::eyre!("{e}"))?;
+    let mut rows = Vec::new();
+    for (ep_ref, sub) in &model.contracts.sub_endpoints {
+        let Some(on_violation) = sub.on_violation.as_ref() else {
+            continue;
+        };
+        let Some(age) = sub.max_age_ms else {
+            bail!(
+                "SystemModel: endpoint `{ep_ref}` declares `on_violation` (reaction \
+                 `{}`) but no `max_age_ms` -- nothing would detect the violation the \
+                 reaction answers, so the image would carry the promise and never run \
+                 it. Declare the age bound the reaction is owed against.",
+                on_violation.reaction
+            );
+        };
+        let reaction_node = on_violation
+            .reaction
+            .rsplit_once('/')
+            .map(|(n, _)| n)
+            .unwrap_or(on_violation.reaction.as_str());
+        let action = by_node
+            .get(reaction_node)
+            .map(|a| a.action)
+            .unwrap_or(ViolationAction::Warn);
+        rows.push(ViolationRow {
+            fqn: ep_ref.clone(),
+            silence_ms: age.round().max(1.0).min(u32::MAX as f64) as u32,
+            reaction: on_violation.reaction.clone(),
+            action: action.as_tier_str().to_string(),
+        });
+    }
+    rows.sort_by(|a, b| a.fqn.cmp(&b.fqn));
+    Ok(rows)
+}
+
 /// W3b.5 — extract the subscriber age rows: every `sub_endpoints` entry
 /// with `max_age_ms`, joined to the topic whose wiring lists it as a
 /// subscriber. Orphans fail loud (same rule as the publisher join).
@@ -1593,6 +1670,89 @@ mod monitor_tests {
         assert_eq!(rows[0].min_rate_hz_milli, 10_000, "rate contract kept");
         let rs = render_monitor_rs(&rows, &[]);
         assert!(rs.contains("max_latency_ms: 20u32"));
+    }
+
+    /// phase-462 W2 -- a model whose subscription declares `on_violation` and
+    /// whose reaction path declares `miss.action`.
+    fn model_with_on_violation(
+        action: Option<ros_launch_manifest_sched::MapperMissAction>,
+        age_ms: Option<f64>,
+    ) -> SystemModel {
+        use ros_launch_manifest_model::{PathContract, SubContract};
+        let mut m = SystemModel::default();
+        m.contracts.node_paths.insert(
+            "/perception/detector/proc".to_string(),
+            PathContract {
+                output: vec!["/perception/detector/objects".to_string()],
+                max_latency_ms: Some(20.0),
+                miss: action.map(|a| ros_launch_manifest_sched::MapperMiss {
+                    action: Some(a),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+        m.contracts.sub_endpoints.insert(
+            "/perception/detector/scan".to_string(),
+            SubContract {
+                max_age_ms: age_ms,
+                on_violation: Some(ros_launch_manifest_model::OnViolationContract {
+                    reaction: "/perception/detector/proc".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+        m
+    }
+
+    #[test]
+    fn on_violation_rows_carry_the_lease_and_the_action() {
+        let m = model_with_on_violation(
+            Some(ros_launch_manifest_sched::MapperMissAction::Abort),
+            Some(100.0),
+        );
+        let rows = violation_rows(&m).expect("rows");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].fqn, "/perception/detector/scan");
+        assert_eq!(rows[0].silence_ms, 100, "the lease is the declared age");
+        assert_eq!(rows[0].reaction, "/perception/detector/proc");
+        assert_eq!(rows[0].action, "fault", "abort lowers to the fault hook");
+    }
+
+    /// A reaction with no miss policy still has to be reported.
+    #[test]
+    fn a_reaction_without_a_miss_policy_is_a_warn_row() {
+        let m = model_with_on_violation(None, Some(50.0));
+        let rows = violation_rows(&m).expect("rows");
+        assert_eq!(rows[0].action, "warn");
+        assert_eq!(rows[0].silence_ms, 50);
+    }
+
+    /// The negative control: a promise nothing could detect refuses.
+    #[test]
+    fn on_violation_without_an_age_bound_refuses() {
+        let m = model_with_on_violation(
+            Some(ros_launch_manifest_sched::MapperMissAction::Abort),
+            None,
+        );
+        let err = violation_rows(&m).unwrap_err().to_string();
+        assert!(err.contains("max_age_ms"), "{err}");
+        assert!(err.contains("/perception/detector/scan"), "{err}");
+    }
+
+    #[test]
+    fn a_model_without_on_violation_has_no_rows() {
+        assert!(
+            violation_rows(&SystemModel::default())
+                .expect("rows")
+                .is_empty()
+        );
+        assert!(
+            violation_rows(&model_with_contract())
+                .expect("rows")
+                .is_empty()
+        );
     }
 }
 
