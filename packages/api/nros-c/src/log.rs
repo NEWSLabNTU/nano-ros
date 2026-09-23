@@ -77,8 +77,20 @@ impl nros_log_severity_t {
     /// between two named levels: such a value resolves to the named level at or
     /// below it. Totally, because the C type is an unfixed `enum` and any `int`
     /// can arrive — including `UNSET` (0) and negatives, which are below every
-    /// named level and therefore resolve to the lowest band we have. That is
-    /// rcutils's own treatment of `UNSET`, which is numerically its floor.
+    /// named level and therefore resolve to the lowest band we have.
+    ///
+    /// **ENVELOPE, and it is NOT what rcutils does** (ledger row
+    /// `c:log_severity_t`; this doc claimed the opposite until 2026-09-23).
+    /// rcutils's `UNSET` means INHERIT, not "the floor":
+    /// `rcutils_logging_set_logger_level(name, UNSET)` unsets a logger's level
+    /// and `rcutils_logging_get_logger_effective_level` then walks the dotted
+    /// ancestry up to `g_rcutils_logging_default_logger_level`.
+    /// `nros_log::Logger` has no level inheritance, so `UNSET` resolves here
+    /// to `Severity::Trace` — the most verbose
+    /// level, where upstream would restore the default. Every other value on
+    /// the line agrees with upstream; this one does not, and closing it is an
+    /// inheritable level on the `nros-log` facade rather than anything this
+    /// function can do.
     fn to_facade(self) -> nros_log::Severity {
         match self.0 {
             v if v >= Self::NROS_LOG_SEVERITY_FATAL.0 => nros_log::Severity::Fatal,

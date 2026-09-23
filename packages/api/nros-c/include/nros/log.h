@@ -54,6 +54,21 @@ extern "C" {
  *
  * `NROS_LOG_SEVERITY_TRACE` is ours; rcutils has no trace level. It takes `5`,
  * inside rcutils's own `UNSET`..`DEBUG` gap, which is what that gap is for.
+ *
+ * **ENVELOPE — `UNSET` IS NOT rcutils's `UNSET`, AND THE PARAGRAPH ABOVE
+ * DESCRIBES ONLY THE NUMBERING HALF.** Stage 3 moved the numbers; it did not
+ * change what `0` does. Upstream, `UNSET` means INHERIT:
+ * `rcutils_logging_set_logger_level(name, RCUTILS_LOG_SEVERITY_UNSET)` UNSETS
+ * a logger's level, after which `rcutils_logging_get_logger_effective_level`
+ * walks the dotted ancestry up to `g_rcutils_logging_default_logger_level`.
+ * `nros_log::Logger` has no level inheritance, so here `UNSET` is only the
+ * numeric floor: `nros_logger_set_level(logger, NROS_LOG_SEVERITY_UNSET)`
+ * selects `TRACE`, the MOST VERBOSE level, where upstream would restore the
+ * default. Every other value on the line means what it means upstream; this
+ * one does not. Closing the difference is a `nros-log` change — an inheritable
+ * level on the facade — not a C-API one, and it is the whole of what ledger
+ * row `c:log_severity_t` still owes (RFC-0089: the envelope is part of the
+ * API, not a footnote).
  */
 typedef enum nros_log_severity_t {
     NROS_LOG_SEVERITY_UNSET = 0,
