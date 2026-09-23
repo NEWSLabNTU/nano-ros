@@ -156,6 +156,22 @@ pub enum Sub {
     #[command(name = "entity-inventory")]
     EntityInventory(crate::cmd::entity_inventory::EntityInventoryArgs),
 
+    /// phase-463 W2 (issue 1419) -- run an entry's own native binary as the
+    /// CENSUS producer: what the code actually creates, node by node.
+    ///
+    /// The third question in the family above, asked of the only source that
+    /// can answer it. `entity-facts` reads the resolved model, `entity-inventory`
+    /// reads what the components DECLARE; both read declarations, and nothing
+    /// in the tree checked that a declaration is true. A census is evidence:
+    /// the entry's hosted boot funnel, run with `NROS_CENSUS_OUT` set, writes
+    /// what crossed the ABI and exits where it would have spun.
+    ///
+    /// Native only, by construction and not by policy: the switch is read in
+    /// the hosted boot funnel, the one place with the `env` capability, which
+    /// no RTOS board has.
+    #[command(name = "entity-census")]
+    EntityCensus(crate::cmd::entity_census::EntityCensusArgs),
+
     /// phase-454 W4 (RFC-0100 D4) — read back the sizing descriptor `nros sync`
     /// wrote for an entry: `<build>/nros/sizing/<entry>.toml`.
     ///
@@ -496,6 +512,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::EntityFacts(a) => crate::cmd::entity_facts::run(a),
         Sub::LeafSystem(a) => crate::cmd::leaf_system::run(a),
         Sub::EntityInventory(a) => crate::cmd::entity_inventory::run(a),
+        Sub::EntityCensus(a) => crate::cmd::entity_census::run(a),
         Sub::SizingDescriptor(a) => crate::cmd::sizing_descriptor::run(a),
         Sub::Providers(a) => run_providers(a),
         Sub::Order(a) => run_order(a),

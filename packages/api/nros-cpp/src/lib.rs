@@ -1550,6 +1550,130 @@ unsafe fn optional_cstr_arg(p: *const c_char) -> *const c_char {
     }
 }
 
+// ---------------------------------------------------------------------------
+// phase-463 W2 -- census mode: the hosted funnel IS the census producer.
+//
+// The generated native entry already does everything a census needs, in the
+// order boot does it: register the linked backend, open the executor, seed
+// every launch parameter, placement-new every component in launch order,
+// register the parameter services, then spin. Census mode is that sequence
+// with "write what the recorder saw and exit" where "spin" is. So the census
+// binary IS the boot binary -- same target, same objects, no second compile,
+// and no flag any component TU can see (phase-463 W5 I1).
+//
+// The switch is `$NROS_CENSUS_OUT`, read here and nowhere else. The two hosted
+// runners below are `#[cfg(all(feature = "rmw-cffi", feature = "env"))]`, and
+// `env` is a capability no RTOS board has (issue 0687, phase-359 W10): on the
+// RTOS road this mode is not compiled out, it does not exist.
+// ---------------------------------------------------------------------------
+
+/// The census switch's variable name, stated once.
+///
+/// A NAME and not a literal at the call site, deliberately. `check-config-knob-census`
+/// reads every `src/*.rs` of this crate as a BUILD-TIME source (the crate's
+/// manifest names `nros-build-helpers`, which is what puts it in that scan),
+/// and it would classify a literal here as a build knob that has to be
+/// entered in the ladder census. This is not a build knob: it is a RUNTIME
+/// switch read once, in the hosted boot funnel, by a process that is about to
+/// construct components. `$NROS_ENTRY_SPIN_MS` two functions down is a literal
+/// because it IS entered there; when phase-461 W1 releases
+/// `scripts/check/config-knob-census.py`, entering this name beside it as
+/// infrastructure and spelling the literal back would be equally correct.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+const CENSUS_OUT_ENV: &str = "NROS_CENSUS_OUT";
+
+/// `$NROS_CENSUS_OUT` -- the census file a hosted run writes instead of
+/// spinning. `None` when unset or empty (an empty value is "unset", the same
+/// reading `optional_cstr_arg` gives an empty baked string).
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+fn census_out_path() -> Option<alloc::string::String> {
+    let raw = std::env::var(CENSUS_OUT_ENV).ok()?;
+    if raw.is_empty() { None } else { Some(raw) }
+}
+
+/// Point this run at the RECORDING backend, by name.
+///
+/// Two halves, because the registry needs both: the backend's closure has to
+/// be linked (the `#[used]` anchor in `rmw_backend` keeps it, and calling
+/// `nros_rmw_metadata_register` here is what makes the call site exist on a
+/// path the generated `nros_app_register_backends()` stub does not cover --
+/// that stub names the SHIPPING backend), and `$NROS_RMW` has to select it,
+/// because `nros_cpp_init` resolves the backend through the one env reader
+/// (`nros::env::rmw_selector`, issue 0687) and this funnel must not become a
+/// second one. Forcing the variable rather than requiring the caller to set it
+/// is what makes `NROS_CENSUS_OUT` a switch and not half of one: a census run
+/// against a transporting backend would need a router to exist and would
+/// record nothing.
+#[cfg(all(feature = "rmw-cffi", feature = "env", feature = "metadata-mode"))]
+fn census_select_backend() {
+    let _ = nros_rmw_metadata::nros_rmw_metadata_register();
+    // SAFETY: this runs in the boot funnel BEFORE the executor opens and
+    // before any tier task is spawned, so the process is single-threaded at
+    // this point -- the condition `set_var` asks for.
+    unsafe { std::env::set_var("NROS_RMW", "metadata") };
+}
+
+/// Write the census of everything the setup path declared.
+///
+/// Serialization is `nros_cpp_metadata_dump`'s, which is
+/// `nros::metadata_mode::to_json`, which is the ONE schema emitter phase-308
+/// left: an entry census and a probe sidecar are the same document with the
+/// same version, so the host check reads one reader. The identity fields carry
+/// the primary session's name; the CLI wraps this document with the entry's
+/// provenance (RFC-0063) when it writes `build/nros/census/<entry>.json`.
+///
+/// Returns the process exit code: 0 when the census was written.
+#[cfg(all(feature = "rmw-cffi", feature = "env", feature = "metadata-mode"))]
+fn census_write(session: &core::ffi::CStr, out_path: &str) -> i32 {
+    let Ok(out) = alloc::ffi::CString::new(out_path) else {
+        cpp_diag!("nros census: $NROS_CENSUS_OUT contains a NUL byte");
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let exe = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_default();
+    let exe = alloc::ffi::CString::new(exe).unwrap_or_default();
+    // SAFETY: every pointer is a live NUL-terminated string for the call.
+    let rc = unsafe {
+        crate::metadata_hooks::nros_cpp_metadata_dump(
+            session.as_ptr(),
+            session.as_ptr(),
+            exe.as_ptr(),
+            c"cpp".as_ptr(),
+            out.as_ptr(),
+        )
+    };
+    if rc != 0 {
+        // -2 is "nothing was recorded", which for an entry census means the
+        // setup path created no entity at all. Say so rather than leave a file
+        // a check would read as "this image declares nothing".
+        cpp_diag!("nros census: dump to `{out_path}` failed (rc={rc})");
+    }
+    rc
+}
+
+/// No recorder to point at: the census run refuses in [`census_write`] a
+/// moment later, and the backend the image does link stays selected.
+#[cfg(all(feature = "rmw-cffi", feature = "env", not(feature = "metadata-mode")))]
+fn census_select_backend() {}
+
+/// The census switch in an image built WITHOUT `metadata-mode`: there is no
+/// recorder, so there is no census to write.
+///
+/// A refusal rather than a silent normal boot. The caller asked for a census
+/// by naming a file; booting the image instead would leave the file absent and
+/// the run looking successful, which is the shape of defect the phase exists
+/// to remove.
+#[cfg(all(feature = "rmw-cffi", feature = "env", not(feature = "metadata-mode")))]
+fn census_write(_session: &core::ffi::CStr, out_path: &str) -> i32 {
+    cpp_diag!(
+        "nros census: $NROS_CENSUS_OUT=`{out_path}` but this image was built \
+         without `metadata-mode` -- rebuild the NATIVE umbrella with it"
+    );
+    NROS_CPP_RET_UNSUPPORTED
+}
+
 /// Issue 1434 — [`nros_board_native_run_components_named`] with the primary
 /// session's NAMESPACE.
 ///
@@ -1603,6 +1727,13 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_ns(
     // needed the same one.
     let ns_resolved: *const c_char = unsafe { optional_cstr_arg(node_namespace) };
 
+    // phase-463 W2 -- census mode, decided BEFORE the session opens because it
+    // decides which backend opens it. See the region above `optional_cstr_arg`.
+    let census = census_out_path();
+    if census.is_some() {
+        census_select_backend();
+    }
+
     let mut storage = core::mem::MaybeUninit::<CppContext>::uninit();
     let sptr = storage.as_mut_ptr() as *mut c_void;
     let rc = unsafe {
@@ -1622,6 +1753,15 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_ns(
     if setup_rc != 0 {
         unsafe { nros_cpp_fini(sptr) };
         return setup_rc;
+    }
+
+    // phase-463 W2 -- "dump and exit 0" exactly where "spin" is. Everything a
+    // census counts has been declared by now: setup constructed and configured
+    // every component in launch order, on the parameters this entry seeded.
+    if let Some(path) = census {
+        let rc = census_write(name_resolved, &path);
+        unsafe { nros_cpp_fini(sptr) };
+        return rc;
     }
 
     // Issue 0329 — the bounded (`NROS_ENTRY_SPIN_MS`) external-observer path is
@@ -4694,6 +4834,15 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_ns(
     // `env.namespace.or(baked.namespace)`.
     let ns_resolved: *const c_char = unsafe { optional_cstr_arg(node_namespace) };
 
+    // phase-463 W2 -- the census switch, on this runner for the same reason it
+    // is on the single-executor one: a tiered entry is the shape the derived
+    // workspaces take, and a census that could not read one would cover the
+    // simpler half of the road only.
+    let census = census_out_path();
+    if census.is_some() {
+        census_select_backend();
+    }
+
     let mut boot_storage = core::mem::MaybeUninit::<CppContext>::uninit();
     let sptr = boot_storage.as_mut_ptr() as *mut c_void;
     let rc = unsafe {
@@ -4720,6 +4869,26 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_ns(
 
     // Get the shared session handle for borrowed-executor tier threads.
     let session_handle: usize = unsafe { nros_cpp_executor_session_handle(sptr) } as usize;
+
+    // phase-463 W2 -- a census of a TIERED entry runs every tier's setup on the
+    // boot executor, in tier order, and spawns no tier task. Each tier's setup
+    // constructs whole nodes (that is what makes it a tier and not a callback
+    // filter), so the union of them is the entry's entities; the active-groups
+    // filter is deliberately not applied, because it selects what DISPATCHES
+    // and a census counts what was CREATED.
+    if let Some(path) = census {
+        for tier in tier_slice {
+            let Some(setup_fn) = tier.setup else { continue };
+            let setup_rc = unsafe { setup_fn(sptr) };
+            if setup_rc != 0 {
+                unsafe { nros_cpp_fini(sptr) };
+                return setup_rc;
+            }
+        }
+        let rc = census_write(name_resolved, &path);
+        unsafe { nros_cpp_fini(sptr) };
+        return rc;
+    }
 
     // Boot tier — apply active_groups + run setup on the owning executor.
     let boot_tier = &tier_slice[0];
@@ -5209,6 +5378,255 @@ mod qos_override_tests {
         for raw in [1u8, 3, 7, 254] {
             assert_eq!(decode_node_id(encode_node_id(raw)), Some(raw), "raw={raw}");
         }
+    }
+}
+
+/// phase-463 W2 -- the census a RUN produces is the census the recorder saw.
+///
+/// The same fixture sequence `metadata_hooks::census_fixture_tests` drives
+/// through the real ABI (one subscription at `QoS(1)`, one publisher at the
+/// default profile, one wall timer, one guard condition, two parameters), but
+/// reached the way a generated native entry reaches it: as the `setup`
+/// function the hosted funnel calls. Nothing here selects a backend or dumps a
+/// file; `$NROS_CENSUS_OUT` is the whole input, which is the claim under test.
+///
+/// W1's test asserts the recorder records; this one asserts that a RUN of the
+/// boot funnel puts exactly that document on disk and exits 0 without spinning.
+/// The two assert the same facts on purpose: if they ever disagree, the census
+/// a host check reads is not what the ABI saw.
+///
+/// Single-threaded by necessity (`cargo test -p nros-cpp --lib
+/// --no-default-features --features std,env,rmw-cffi,metadata-mode,param-services
+/// -- census --test-threads=1`): the switch is a process environment variable
+/// and the recorder is a process global, which is what census mode IS.
+// One line, not five: `check-std-census` reads a test gate off a SINGLE
+// attribute line, and a wrapped one leaves the whole module counted as
+// production `std::` use.
+#[cfg(all(
+    test,
+    feature = "env",
+    feature = "rmw-cffi",
+    feature = "metadata-mode",
+    feature = "param-services"
+))]
+mod census_funnel_tests {
+    // ONE `std::` path for the whole module: `check-std-census` counts
+    // occurrences of the text, and rustfmt wraps this module's five-conjunct
+    // test gate over several lines, which is more than that census reads as
+    // a test gate. Importing once keeps the crate's production count honest
+    // without hiding a single use.
+    use std::{env, fs};
+
+    use core::{ffi::c_void, mem::MaybeUninit};
+
+    use crate::{
+        NROS_CPP_RET_OK,
+        guard_condition::nros_cpp_guard_condition_create,
+        nros_cpp_node_create_ex, nros_cpp_node_options_t, nros_cpp_node_t, nros_cpp_qos_t,
+        params_shim::{nros_cpp_node_declare_param_bool, nros_cpp_node_declare_param_double},
+        publisher::nros_cpp_publisher_create,
+        subscription::nros_cpp_subscription_create,
+        timer::nros_cpp_timer_create,
+    };
+
+    unsafe extern "C" fn noop(_context: *mut c_void) {}
+
+    fn qos_depth(depth: i32) -> nros_cpp_qos_t {
+        nros_cpp_qos_t {
+            reliability: crate::nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABLE,
+            durability: crate::nros_cpp_qos_durability_t::NROS_CPP_QOS_VOLATILE,
+            history: crate::nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_LAST,
+            liveliness_kind: crate::nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_NONE,
+            depth,
+            deadline_ms: 0,
+            lifespan_ms: 0,
+            liveliness_lease_ms: 0,
+            avoid_ros_namespace_conventions: 0,
+            tx_express: 0,
+        }
+    }
+
+    /// What a generated entry's `__nros_entry_setup` does, in miniature: create
+    /// the node, then declare its entities and parameters.
+    unsafe extern "C" fn fixture_setup(exec: *mut c_void) -> i32 {
+        let opts = nros_cpp_node_options_t::default();
+        let mut node = MaybeUninit::<nros_cpp_node_t>::uninit();
+        let rc = unsafe {
+            nros_cpp_node_create_ex(exec, c"census_fixture".as_ptr(), &opts, node.as_mut_ptr())
+        };
+        if rc != NROS_CPP_RET_OK {
+            return rc as i32;
+        }
+        let node = node.as_mut_ptr().cast_const();
+
+        let mut sub = MaybeUninit::<nros::internals::RmwSubscriber>::uninit();
+        let rc = unsafe {
+            nros_cpp_subscription_create(
+                node,
+                c"/control/command/control_cmd".as_ptr(),
+                c"autoware_control_msgs::msg::dds_::Control_".as_ptr(),
+                c"".as_ptr(),
+                qos_depth(1),
+                sub.as_mut_ptr().cast::<c_void>(),
+            )
+        };
+        if rc != NROS_CPP_RET_OK {
+            return rc as i32;
+        }
+
+        let mut publisher = MaybeUninit::<nros::internals::RmwPublisher>::uninit();
+        let rc = unsafe {
+            nros_cpp_publisher_create(
+                node,
+                c"/system/emergency/control_cmd".as_ptr(),
+                c"autoware_control_msgs::msg::dds_::Control_".as_ptr(),
+                c"".as_ptr(),
+                qos_depth(10),
+                publisher.as_mut_ptr().cast::<c_void>(),
+            )
+        };
+        if rc != NROS_CPP_RET_OK {
+            return rc as i32;
+        }
+
+        let mut handle_id = 0usize;
+        let rc = unsafe {
+            nros_cpp_timer_create(exec, 33, Some(noop), core::ptr::null_mut(), &mut handle_id)
+        };
+        if rc != NROS_CPP_RET_OK {
+            return rc as i32;
+        }
+
+        let mut guard = MaybeUninit::<nros_node::GuardCondition>::uninit();
+        let rc = unsafe {
+            nros_cpp_guard_condition_create(
+                exec,
+                Some(noop),
+                core::ptr::null_mut(),
+                guard.as_mut_ptr().cast::<c_void>(),
+            )
+        };
+        if rc != NROS_CPP_RET_OK {
+            return rc as i32;
+        }
+
+        let rc = unsafe { nros_cpp_node_declare_param_double(node, c"rate".as_ptr(), 30.0) };
+        if rc != NROS_CPP_RET_OK {
+            return rc as i32;
+        }
+        let rc =
+            unsafe { nros_cpp_node_declare_param_bool(node, c"use_pull_over".as_ptr(), false) };
+        if rc != NROS_CPP_RET_OK {
+            return rc as i32;
+        }
+        0
+    }
+
+    fn array_between<'a>(json: &'a str, key: &str) -> &'a str {
+        let start = json
+            .find(key)
+            .unwrap_or_else(|| panic!("{key} missing in {json}"));
+        let rows = &json[start..];
+        &rows[..rows.find(']').expect("array end")]
+    }
+
+    #[test]
+    fn census_out_makes_the_funnel_dump_and_exit() {
+        nros::metadata_mode::reset();
+        let out = env::temp_dir().join("nros-census-funnel.json");
+        let _ = fs::remove_file(&out);
+
+        // SAFETY (both blocks): the crate's tests run single-threaded under the
+        // `census-entry-produces-census` recipe, which is also the shape census
+        // mode itself requires.
+        unsafe {
+            env::set_var("NROS_CENSUS_OUT", &out);
+            // NOT set: the funnel selects the recording backend itself, and
+            // that is half of what this test is for.
+            env::remove_var("NROS_RMW");
+            env::remove_var("NROS_ENTRY_SPIN_MS");
+        }
+        let rc = unsafe {
+            crate::nros_board_native_run_components_named(
+                c"census_fixture".as_ptr(),
+                Some(fixture_setup),
+            )
+        };
+        unsafe { env::remove_var("NROS_CENSUS_OUT") };
+        assert_eq!(rc, 0, "a census run exits 0 where a boot would spin");
+
+        let json = fs::read_to_string(&out).expect("the census file");
+        let _ = fs::remove_file(&out);
+
+        assert!(json.contains("\"version\":2"), "schema v2: {json}");
+
+        let subs = array_between(&json, "\"subscribers\":");
+        assert_eq!(
+            subs.matches("\"id\":").count(),
+            1,
+            "one subscription: {subs}"
+        );
+        assert!(subs.contains("/control/command/control_cmd"), "{subs}");
+        assert!(
+            subs.contains("\"depth\":1,"),
+            "the QoS the code passed, not a default: {subs}"
+        );
+
+        let pubs = array_between(&json, "\"publishers\":");
+        assert_eq!(pubs.matches("\"id\":").count(), 1, "one publisher: {pubs}");
+        assert!(
+            pubs.contains("\"depth\":10,"),
+            "the default profile: {pubs}"
+        );
+
+        let timers = array_between(&json, "\"timers\":");
+        assert!(
+            timers.contains("\"kind\":\"wall\",\"period_ms\":33,"),
+            "one wall timer at the code's period: {timers}"
+        );
+        assert!(
+            timers.contains("\"kind\":\"guard_condition\""),
+            "one guard condition, under its own kind: {timers}"
+        );
+        assert_eq!(
+            timers.matches("\"kind\":").count(),
+            2,
+            "two slot rows: {timers}"
+        );
+
+        let params = array_between(&json, "\"parameters\":");
+        assert!(
+            params.contains("\"name\":\"rate\",\"type\":\"double\",\"default\":30.0,"),
+            "the declared type and code default: {params}"
+        );
+        assert!(
+            params.contains("\"name\":\"use_pull_over\",\"type\":\"bool\",\"default\":false,"),
+            "{params}"
+        );
+        assert_eq!(
+            params.matches("\"name\":").count(),
+            2,
+            "two parameters: {params}"
+        );
+
+        nros::metadata_mode::reset();
+    }
+
+    /// No switch, no mode: the funnel that was not asked for a census must not
+    /// write one, and must not take the recording backend either.
+    #[test]
+    fn no_census_out_leaves_the_funnel_alone() {
+        // SAFETY: as above.
+        unsafe { env::remove_var("NROS_CENSUS_OUT") };
+        assert!(crate::census_out_path().is_none());
+        // SAFETY: as above.
+        unsafe { env::set_var("NROS_CENSUS_OUT", "") };
+        assert!(
+            crate::census_out_path().is_none(),
+            "an empty value is unset, not a file called \"\""
+        );
+        // SAFETY: as above.
+        unsafe { env::remove_var("NROS_CENSUS_OUT") };
     }
 }
 

@@ -23,6 +23,7 @@ pub mod completions;
 pub mod config;
 pub mod doctor;
 pub mod emit_package_xml;
+pub mod entity_census;
 pub mod entity_facts;
 pub mod entity_inventory;
 pub mod explain;

@@ -311,7 +311,20 @@ BASELINE = {
     # genuinely need `std` — `metadata-mode` WRITES the sidecar file, `env`
     # reads `$NROS_ENTRY_SPIN_MS` — and both had been free-riding on `nros`'s
     # guards until issue 0669's follow-up correctly relaxed one of them.
-    "nros-cpp": {"cfg": 3, "path": 2},
+    # phase-463 W2 -- path 2 -> 6, deliberately, and all four are the `env`
+    # CAPABILITY doing what it is for. Census mode is a switch the hosted boot
+    # funnel reads from the process environment (`$NROS_CENSUS_OUT`), and the
+    # funnel is the one place in the tree that already resolves through that
+    # capability (issue 0687); no RTOS board has it, which is why the mode
+    # cannot exist on the RTOS road at all. Three are production
+    # (`env::var` for the switch, `env::set_var` to select the recording
+    # backend by name before the session opens, `env::current_exe` for the
+    # identity the census carries) and the fourth is the census funnel test's
+    # single `use std::{env, fs}` -- its five-conjunct test gate is wrapped by
+    # rustfmt over several lines, which is more than `is_test_gate` reads, so
+    # the module is counted as production and one import is the honest way to
+    # keep that from inflating the number.
+    "nros-cpp": {"cfg": 3, "path": 6},
     # 2026-09-06: cfg 1 -> 0. The one site was the crate attribute itself,
     # `#![cfg_attr(not(feature = "std"), no_std)]`, and it bought nothing --
     # this crate's `std` is `std = ["alloc"]` over `alloc = []`, so it enables

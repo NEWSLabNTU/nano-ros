@@ -232,6 +232,30 @@ function(nros_feature_set out_var)
             "threadx_riscv64, esp_idf)")
     endif()
 
+    # ---- analysis (phase-463 W2) -------------------------------------------
+    # The NATIVE C++ umbrella carries `metadata-mode`, so the entry's own host
+    # binary can be run as the census producer (`NROS_CENSUS_OUT`). Nothing
+    # else in the tree turns it on for a shipping image, and that is the point:
+    # the census binary IS the boot binary, so the recorder has to be in the
+    # one the host builds anyway rather than in a second compile.
+    #
+    # Three conditions, each load-bearing:
+    #
+    #  * `cpp` -- `metadata-mode` exists only on `nros-cpp`. Issue 0304 is the
+    #    precedent: `set(NROS_EXTRA_CPP_FEATURES "metadata-mode")` once reached
+    #    `nros-c` too and every probe build died on a feature that crate never
+    #    had. The hook below is per-crate now for that reason; so is this.
+    #  * `posix` -- the switch is read in the hosted boot funnel, which is
+    #    `#[cfg(feature = "env")]`. An RTOS umbrella has no `env`, so the mode
+    #    could not exist there even if the feature were on.
+    #  * `NOT _cross` -- a cross-built posix target is somebody's firmware, not
+    #    a host the CLI can run. phase-463 W5's
+    #    `rtos-feature-set-excludes-analysis` is the gate that holds this to
+    #    the native tier; keeping the condition narrow is what makes it pass.
+    if(_FS_CRATE STREQUAL "cpp" AND _FS_PLATFORM STREQUAL "posix" AND NOT _cross)
+        list(APPEND _feats metadata-mode)
+    endif()
+
     # ---- capabilities ------------------------------------------------------
     # Image-level, not platform-level. They used to be a `PLATFORM STREQUAL
     # posix` test on the direct paths only, so a MIXED workspace (which takes
