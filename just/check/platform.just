@@ -193,6 +193,41 @@ board-vocabulary:
 zephyr-module-allowlist:
     @python3 scripts/check-zephyr-module-allowlist.py
 
+# phase-460 W6 -- the Zephyr stack-slot pool gives back what it hands out.
+#
+# `zephyr/nros_platform_zephyr_shims.c` owns the ENTIRE task pool of the Zephyr
+# platform: `nros_claim_thread_slot` is the only way to a thread and
+# `_z_task_join` is the only way back. The counter that pairing replaced only
+# rose, so a reconnecting image walked out of slots and could not reopen at all
+# (issue 0839). The fix landed with nothing asserting it, and its failure mode
+# on target is quiet for minutes -- the image boots, declares, transmits and
+# never receives -- so a regression would be found again from a session-expiry
+# log rather than from a test.
+#
+# This compiles the REAL shims source against the stub Zephyr tree in
+# `tests/zephyr/host-shims/` and drives it with host pthreads: N concurrent
+# claims, a refusal at N+1, N joins, then two more creates and a full refill.
+# The negative control detaches one task instead of joining it and asserts the
+# slot is NOT returned, which is the documented rule (handing a live thread's
+# stack to the next task is the worse bug). A third run compiles the shims with
+# the release defused and asserts the gate FAILS, so its teeth are measured
+# rather than claimed.
+#
+# Fast lane, not the build tier: `cc` and pthreads are the whole prerequisite.
+# No west, no Zephyr SDK, no board -- which is the point, since nothing else
+# under `tests/zephyr/` can run without a provisioned workspace.
+[group("checks")]
+zephyr-thread-slots:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cc >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zephyr-thread-slots "missing host tool(s): cc"
+        exit 0
+    fi
+    ./tests/zephyr/run-thread-slots.sh
+
 # issue 1143 — a `when.capability` row must DECIDE something, and decide it the
 # right way. Six rules over the platform manifests plus the two Rust wires:
 #
