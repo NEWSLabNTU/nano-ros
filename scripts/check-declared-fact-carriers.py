@@ -185,6 +185,12 @@ _CELLS_NOT_ON_RESOLVER = (
     "The Zephyr RESOLVER road carries no such fact and wants no Kconfig")
 
 _QUERYABLES_NOT_DERIVED = "`ZPICO_MAX_QUERYABLES` is never stated here as a COUNT"
+
+# phase-461 W3 -- the two inbox slot sizes are off the resolver and sidecar
+# roads, each for a reason written where the decision was taken.
+_RESOLVER = "zephyr/cmake/nros_cargo_build.cmake"
+_INBOX_NOT_DERIVABLE = "They ride the DECLARED road, the one"
+_INBOX_DESCRIPTOR_ANSWERS = "A LEAF ANSWERS THIS QUESTION FROM ITS SIZING DESCRIPTOR"
 _QUERYABLES_COMPLETED = "sizes the queryable table from"
 
 FACT_DISPOSITION = {
@@ -350,6 +356,41 @@ FACT_DISPOSITION = {
             "same reason, same road-order: the declared road carries no "
             "NROS_ENTITY_COUNT_*, so the arena's per-kind sum is never reached "
             "and there is nothing for a bound table to refine"),
+    },
+    # phase-461 W3 (issue 1352) -- the two service-inbox families' slot sizes,
+    # joined in `NanoRosEntityInventory.cmake` from this image's declared
+    # service and action REQUEST types and the message-bound fragments. The
+    # DECLARED road is the one that matters here: a cmake / Zephyr west entry
+    # has no sizing descriptor at all, which is the gap phase-454 W11 measured
+    # and the road the safety island is on.
+    "NROS_DERIVED_SERVICE_INBOX_BYTES": {
+        "resolver": NotCarried(
+            _RESOLVER, _INBOX_NOT_DERIVABLE,
+            "`NROS_SERVICE_INBOX_BYTES`'s Kconfig default is the one-release "
+            "alias `NROS_SERVICE_BUFFER_SIZE`, so a DERIVE sentinel there "
+            "would break the alias and a derivation resolved into the same "
+            "name would outrank a stated board value. The fact rides the "
+            "DECLARED road instead, resolved beside it in the same function, "
+            "and the build script takes it as a rung below both"),
+        "sidecar": NotCarried(
+            _LEAF, _INBOX_DESCRIPTOR_ANSWERS,
+            "a cargo leaf is the one road that HAS a sizing descriptor, and "
+            "`declared_service_request_bytes` prices this family from its "
+            "`[[endpoint]] wire_bound_bytes` rows directly -- a second "
+            "carrier would be two derivations of one number (issue 1025)"),
+        "declared": ("NROS_DECLARED_SERVICE_INBOX_BYTES",),
+    },
+    "NROS_DERIVED_ACTION_INBOX_BYTES": {
+        "resolver": NotCarried(
+            _RESOLVER, _INBOX_NOT_DERIVABLE,
+            "same alias, same rung: `NROS_ACTION_INBOX_BYTES` defaults to "
+            "`NROS_SERVICE_INBOX_BYTES`, so it inherits the reason above"),
+        "sidecar": NotCarried(
+            _LEAF, _INBOX_DESCRIPTOR_ANSWERS,
+            "same descriptor, same family split -- the action rows are priced "
+            "from `pkg/action/Name_SendGoal_Request`, which is the largest of "
+            "the three requests an action server's queryables receive"),
+        "declared": ("NROS_DECLARED_ACTION_INBOX_BYTES",),
     },
     # ---- provenance: published, carried by nothing, and that is correct ---
     "NROS_DERIVED_LARGEST_TYPE": {

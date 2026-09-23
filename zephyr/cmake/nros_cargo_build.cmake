@@ -1211,15 +1211,29 @@ function(nros_resolve_knobs)
     endif()
     # phase-461 W1 -- the per-family service inboxes (issue 1352), on the
     # plain ladder under their RMW-agnostic names: Kconfig states them, the
-    # environment wins, nros-rmw-zenoh's build script reads them. Plain, not
-    # derivable, until W3 prices a family's _Request types: the derivable call
-    # then replaces the plain one for that name (check-knob-resolved-once),
-    # and the NROS_RESOLVED_NROS_* twin check-knob-delivery pairs with the
-    # NROS_DERIVED_* fact is already the name resolved here. The parameter
+    # environment wins, nros-rmw-zenoh's build script reads them. The parameter
     # family's pair lands with its reader in nros-node (W2).
-    _nros_resolve_knob(NROS_SERVICE_INBOX_BYTES "${CONFIG_NROS_SERVICE_INBOX_BYTES}")
+    # phase-461 W3 -- the two BYTES rows carry the `-1` DERIVE sentinel, and the
+    # guard is the one `NROS_PARAM_SERVICE_BUFFER_SIZE` already uses below: a
+    # STATED size is forwarded as before, and the sentinel forwards NOTHING, so
+    # `nros-rmw-zenoh`'s build script runs its own ladder --
+    # `NROS_DECLARED_*_INBOX_BYTES` (this image's declared request types,
+    # resolved at the end of this function) and then the one-release alias
+    # `ZPICO_SERVICE_BUFFER_SIZE`.
+    #
+    # NOT `_nros_resolve_derivable_knob`, and the difference is the ALIAS. That
+    # helper resolves the derived value into this name, which would make a
+    # derivation outrank a board `.conf` that states only
+    # `CONFIG_NROS_SERVICE_BUFFER_SIZE` -- a knob this release still honours.
+    # Forwarding nothing leaves both rungs visible to the build script under
+    # their own names, which is the one place that can rank them.
+    if(NOT "${CONFIG_NROS_SERVICE_INBOX_BYTES}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}")
+        _nros_resolve_knob(NROS_SERVICE_INBOX_BYTES "${CONFIG_NROS_SERVICE_INBOX_BYTES}")
+    endif()
     _nros_resolve_knob(NROS_SERVICE_INBOX_DEPTH "${CONFIG_NROS_SERVICE_INBOX_DEPTH}")
-    _nros_resolve_knob(NROS_ACTION_INBOX_BYTES "${CONFIG_NROS_ACTION_INBOX_BYTES}")
+    if(NOT "${CONFIG_NROS_ACTION_INBOX_BYTES}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}")
+        _nros_resolve_knob(NROS_ACTION_INBOX_BYTES "${CONFIG_NROS_ACTION_INBOX_BYTES}")
+    endif()
     _nros_resolve_knob(NROS_ACTION_INBOX_DEPTH "${CONFIG_NROS_ACTION_INBOX_DEPTH}")
     # phase-461 W2 -- the parameter and lifecycle families' own inbox. W1 left
     # this pair unforwarded on purpose: `check-kconfig-knob-forwarding` refuses
@@ -1227,6 +1241,33 @@ function(nros_resolve_knobs)
     # reader is nros-node's build script, which landed with W2.
     _nros_resolve_knob(NROS_PARAM_SERVICE_INBOX_BYTES "${CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES}")
     _nros_resolve_knob(NROS_PARAM_SERVICE_INBOX_DEPTH "${CONFIG_NROS_PARAM_SERVICE_INBOX_DEPTH}")
+
+    # phase-461 W3 -- the two families' slot sizes, DERIVED from the request
+    # types this image's declared service and action endpoints carry
+    # (`NanoRosEntityInventory.cmake` joins them against the message-bound
+    # fragments). They ride the DECLARED road, the one
+    # `NROS_DECLARED_PARAM_SERVICE_SHAPE` above already takes, and NOT
+    # `_nros_resolve_derivable_knob`.
+    #
+    # Stated once, because it is the question a reader will ask. That helper
+    # needs the Kconfig option to carry the `-1` DERIVE sentinel as its default,
+    # and `NROS_SERVICE_INBOX_BYTES`'s default is the one-release ALIAS
+    # `NROS_SERVICE_BUFFER_SIZE` (phase-461 W1) -- so every Zephyr image STATES
+    # a number on that rung, a sentinel there would break the alias a board
+    # `.conf` still sets, and a derivation resolved into the same name would
+    # outrank a stated alias. A declared fact sits BELOW both rungs instead:
+    # `nros-rmw-zenoh/build.rs` reads it through `env_usize_rung`, so anything
+    # stated in Kconfig or the environment still wins and the derivation only
+    # fills in what nobody stated. That is the same shape as the parameter
+    # shape above and it needs no new Kconfig symbol.
+    if(DEFINED NROS_DERIVED_SERVICE_INBOX_BYTES)
+        _nros_resolve_knob(NROS_DECLARED_SERVICE_INBOX_BYTES
+            "${NROS_DERIVED_SERVICE_INBOX_BYTES}")
+    endif()
+    if(DEFINED NROS_DERIVED_ACTION_INBOX_BYTES)
+        _nros_resolve_knob(NROS_DECLARED_ACTION_INBOX_BYTES
+            "${NROS_DERIVED_ACTION_INBOX_BYTES}")
+    endif()
 endfunction()
 
 # =============================================================================

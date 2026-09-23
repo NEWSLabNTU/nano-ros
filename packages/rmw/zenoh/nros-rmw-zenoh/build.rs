@@ -20,6 +20,13 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_INBOX_DEPTH");
     println!("cargo:rerun-if-env-changed=NROS_ACTION_INBOX_BYTES");
     println!("cargo:rerun-if-env-changed=NROS_ACTION_INBOX_DEPTH");
+    // phase-461 W3 -- the declared road's carriers for the two families' slot
+    // sizes. WATCHED and not merely read: `check-declared-fact-carriers` rule 3
+    // exists because `resolve_queryable_default` read two of these without
+    // watching either, and an entry that gained a service server kept its
+    // previously-sized tables until something else forced a rebuild.
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_SERVICE_INBOX_BYTES");
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_ACTION_INBOX_BYTES");
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_TIMEOUT_MS");
     println!("cargo:rerun-if-env-changed=NROS_KEYEXPR_STRING_SIZE");
     println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_RING_DEPTH");
@@ -65,8 +72,17 @@ fn main() {
     // phase-461 W1 - `ZPICO_SERVICE_BUFFER_SIZE` / `CONFIG_NROS_SERVICE_BUFFER_SIZE`
     // is the one-release ALIAS of `NROS_SERVICE_INBOX_BYTES`: it resolves
     // exactly as before, and the new name outranks it when both are stated.
-    let declared_request_bytes =
-        declared_service_request_bytes(sizing.as_ref()).unwrap_or(SERVICE_BUFFER_SIZE_DEFAULT);
+    //
+    // phase-461 W3 - the floor is GONE. W6.a kept `.max(1024)` because the
+    // builtin `[param_services]` (6) and `[lifecycle]` (5) queryables received
+    // through this very pool and appear in no `[[endpoint]]` row, so sizing
+    // down to the app's declarations would under-size a surface the
+    // declaration structurally cannot mention. W2 moves those two families off
+    // this pool and onto rings of their own, so the argument no longer holds
+    // and D7's unfloored demand is restored: what is published here is the
+    // DEMAND, and a consumer that needs a floor applies its own.
+    let declared_request_bytes = declared_service_request_bytes(sizing.as_ref(), SERVICE_FAMILY)
+        .unwrap_or(SERVICE_BUFFER_SIZE_DEFAULT);
     let svc_size: usize = env_usize("ZPICO_SERVICE_BUFFER_SIZE", declared_request_bytes);
     // phase-461 W1 - one inbox per FAMILY (issue 1352). The user-service and
     // action families each get a slot size and a ring depth; both default to
@@ -75,10 +91,27 @@ fn main() {
     // W3 prices the two families apart (`_Request` bounds per family); the
     // parameter and lifecycle families do not appear here at all -- they bring
     // their own ring (W2), sized by the crate that can price their requests.
-    let service_inbox_bytes: usize = env_usize("NROS_SERVICE_INBOX_BYTES", svc_size);
+    //
+    // phase-461 W3 - the two families are priced APART, each from the request
+    // types ITS OWN declared endpoints carry, on both roads that reach this
+    // crate: the sizing descriptor (a cargo leaf) and the `NROS_DECLARED_*`
+    // carrier the entity inventory writes (every cmake / Zephyr west image,
+    // which is the road the island is on -- phase-454 W11 measured that the
+    // descriptor is inert there). A stated knob still outranks both.
+    let service_inbox_bytes: usize = env_usize_rung(
+        "NROS_SERVICE_INBOX_BYTES",
+        declared_usize("NROS_DECLARED_SERVICE_INBOX_BYTES")
+            .or_else(|| declared_service_request_bytes(sizing.as_ref(), SERVICE_FAMILY)),
+        svc_size,
+    );
     let service_inbox_depth: usize =
         env_usize_min("NROS_SERVICE_INBOX_DEPTH", SERVICE_INBOX_DEPTH_DEFAULT, 1);
-    let action_inbox_bytes: usize = env_usize("NROS_ACTION_INBOX_BYTES", svc_size);
+    let action_inbox_bytes: usize = env_usize_rung(
+        "NROS_ACTION_INBOX_BYTES",
+        declared_usize("NROS_DECLARED_ACTION_INBOX_BYTES")
+            .or_else(|| declared_service_request_bytes(sizing.as_ref(), ACTION_FAMILY)),
+        svc_size,
+    );
     let action_inbox_depth: usize =
         env_usize_min("NROS_ACTION_INBOX_DEPTH", SERVICE_INBOX_DEPTH_DEFAULT, 1);
     let action_inbox_queryables: usize = declared_action_queryables(sizing.as_ref());
@@ -301,9 +334,11 @@ const SUBSCRIBER_RING_DEPTH_DEFAULT: usize = 4;
 
 /// The service-request slot size when nothing states or derives one.
 ///
-/// Also the FLOOR of the derivation below. See
-/// [`declared_service_request_bytes`] for why the app's own declarations may
-/// raise this number and may not lower it.
+/// NOT a floor any more. phase-454 W6.a made it one because the builtin
+/// parameter and lifecycle queryables shared this pool; phase-461 W2 gives
+/// those two families rings of their own, so the derivation below publishes
+/// the app's DEMAND unfloored (RFC-0100 D7) and this constant is what an image
+/// that derives NOTHING keeps.
 const SERVICE_BUFFER_SIZE_DEFAULT: usize = 1024;
 
 /// The per-queryable request ring depth when nothing states one -- for both
@@ -519,53 +554,65 @@ const TL_PUBLISHERS_DEFAULT: usize = 2;
 /// serve a late joiner garbage under a profile that promises it the last value.
 const TL_RETAIN_BYTES_DEFAULT: usize = 1024;
 
-/// The service-request slot size this image's declarations ask for.
+/// Which inbox family [`declared_service_request_bytes`] is pricing.
 ///
-/// RFC-0100 D2 gives `SERVICE_BUFFERS` as `sessions × queryables` slots of one
-/// request each, so `SLOT_BYTES` is the largest request or response this image
-/// can receive. `None` keeps [`SERVICE_BUFFER_SIZE_DEFAULT`].
+/// The two are not one number any more (phase-461 W1 gave them separate rings
+/// and separate knobs), and they are not one POPULATION either: a user service
+/// server receives `pkg/srv/Name_Request`, an action server's three queryables
+/// receive the SendGoal envelope. Pricing them together would give each family
+/// the other's worst case -- which is the flat table this phase exists to
+/// remove, one level finer.
+type InboxFamily = &'static [EndpointKind];
+
+/// The user-service family: a service server and the client that answers to it.
+const SERVICE_FAMILY: InboxFamily = &[EndpointKind::ServiceServer, EndpointKind::ServiceClient];
+
+/// The action family, whose queryables are the twin of `ZPICO_MAX_PENDING_REPLIES`.
+const ACTION_FAMILY: InboxFamily = &[EndpointKind::ActionServer, EndpointKind::ActionClient];
+
+/// The request-slot size one inbox FAMILY's declarations ask for.
 ///
-/// # The derivation may RAISE this number and may not lower it
+/// RFC-0100 D2 gives the pool as `COUNT x SLOTS x SLOT_BYTES`, so `SLOT_BYTES`
+/// is the largest request a queryable of this family can receive. `None` leaves
+/// the caller's default standing.
 ///
-/// That is not timidity, it is what the descriptor can and cannot see. A zenoh
-/// service server IS a queryable, and **eleven of them exist before the app
-/// declares anything** — `[param_services]` (6) and `[lifecycle]` (5), issue
-/// 0460's measurement. Those servers receive `rcl_interfaces/srv/*` and
-/// `lifecycle_msgs/srv/*` requests through this very pool, and NOTHING in the
-/// contract declares them, so they appear in no `[[endpoint]]` row. Sizing the
-/// slot down to what the app declared would under-size a surface the
-/// declaration structurally cannot mention — the failure would land as
-/// `ServiceRequestSlot::overflow` on a parameter set, at runtime, on an image
-/// whose every knob gate read green.
+/// # The floor is gone, and phase-461 W2 is why
 ///
-/// So the app's declarations are an over-ride upward and the builtin is the
-/// floor, with the floor at the CONSUMER rather than in the descriptor (D7).
-/// Lowering it is a separate question that needs the built-in service surface
-/// to become a declared one.
+/// phase-454 W6.a wrote this function with a `.max(SERVICE_BUFFER_SIZE_DEFAULT)`
+/// and stated the reason: a zenoh service server IS a queryable, and **eleven
+/// of them exist before the app declares anything** -- `[param_services]` (6)
+/// and `[lifecycle]` (5), issue 0460's measurement. Those servers received
+/// `rcl_interfaces/srv/*` and `lifecycle_msgs/srv/*` requests through this very
+/// pool and appear in no `[[endpoint]]` row, so sizing down to what the app
+/// declared would under-size a surface the declaration structurally cannot
+/// mention.
 ///
-/// # Why this refuses on every in-tree image today
+/// W2 moves both families onto rings of their OWN, sized by nros-node -- the
+/// crate that can price a parameter request, because it holds the store's
+/// capacities. Nothing shares this pool with the app any more, so the floor's
+/// premise is gone and D7's rule stands again: publish the DEMAND, and let a
+/// consumer that needs a floor apply its own. On the island that is the
+/// difference between 1,024 B and 24 B per user-service slot.
 ///
-/// The join is `(kind, type, topic)` and a service row's type is
-/// `pkg/srv/Name`. `BoundInventory::record_message` is called for `.msg` files
-/// and for nothing else, so `pkg/srv/Name_Request` and `pkg/action/Name_Result`
-/// have no bound entry — the entity inventory's own header says so, and the
-/// producer therefore writes `wire_bound_bytes` REFUSED on every service and
-/// action row. The refusal is printed rather than swallowed: it names the type,
-/// which is where the next wave has to start.
-fn declared_service_request_bytes(desc: Option<&SizingDescriptor>) -> Option<usize> {
+/// # The join, and why it used to refuse on every in-tree image
+///
+/// A service row's `type` is `pkg/srv/Name`, and no such type crosses a wire.
+/// The bound belongs to `pkg/srv/Name_Request`, which
+/// `BoundInventory::record_message` never saw -- it was called for `.msg` files
+/// and for nothing else -- so `wire_bound_bytes` was REFUSED on every service
+/// and action row and this function returned `None` every time. phase-461 W3
+/// prices those types (`BoundInventory::record_service` / `record_action`) and
+/// `sizing_descriptor::wire_type_of` joins on them, so the refusal below now
+/// means what it says: something in the closure genuinely has no bound.
+fn declared_service_request_bytes(
+    desc: Option<&SizingDescriptor>,
+    family: InboxFamily,
+) -> Option<usize> {
     let desc = desc?;
     let svc: Vec<_> = desc
         .endpoints
         .iter()
-        .filter(|e| {
-            matches!(
-                e.kind,
-                EndpointKind::ServiceServer
-                    | EndpointKind::ServiceClient
-                    | EndpointKind::ActionServer
-                    | EndpointKind::ActionClient
-            )
-        })
+        .filter(|e| family.contains(&e.kind))
         .collect();
     if svc.is_empty() {
         return None;
@@ -575,23 +622,27 @@ fn declared_service_request_bytes(desc: Option<&SizingDescriptor>) -> Option<usi
         match e.wire_bound_bytes() {
             Fact::Stated(b) => max = max.max(b),
             // ONE unpriced row refuses the whole derivation: the slot is shared
-            // by every queryable, so a maximum over the rows that answered is
-            // not a bound on the rows that did not.
+            // by every queryable of the family, so a maximum over the rows that
+            // answered is not a bound on the rows that did not.
             f => {
                 warn(&format!(
                     "sizing descriptor states no `wire_bound_bytes` for {} {} ({}): {}. The \
-                     service request slot keeps {SERVICE_BUFFER_SIZE_DEFAULT} bytes \
-                     (ZPICO_SERVICE_BUFFER_SIZE)",
+                     {} inbox slot keeps its stated or default size",
                     e.kind.tag(),
                     e.topic,
                     e.type_name,
                     f.refusal().unwrap_or("nothing derived it"),
+                    if family == ACTION_FAMILY {
+                        "action"
+                    } else {
+                        "service"
+                    },
                 ));
                 return None;
             }
         }
     }
-    Some(max.max(SERVICE_BUFFER_SIZE_DEFAULT))
+    Some(max)
 }
 
 /// The Kconfig option each knob is resolved from on Zephyr. Only the two the

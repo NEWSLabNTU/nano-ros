@@ -445,6 +445,91 @@ fn config_key_of(type_name: &str) -> (String, String) {
     (package, message)
 }
 
+/// phase-461 W3 -- the name a service's REQUEST is priced under.
+///
+/// `pkg/srv/Name` -> `pkg/srv/Name_Request`, the spelling ROS 2 gives the type
+/// that actually crosses the wire and the one
+/// `schema_value::carries_service_header` already reads as a request. Spelled
+/// ONCE here because three consumers join on it -- the sizing descriptor, the
+/// entity inventory's per-family lists and the zenoh build script -- and three
+/// private `format!`s are how a suffix comes to be spelled two ways.
+pub fn service_request_type(service_type: &str) -> String {
+    format!("{service_type}_Request")
+}
+
+/// [`service_request_type`]'s other half: `pkg/srv/Name` -> `pkg/srv/Name_Response`.
+///
+/// `_Response` and not `_Reply`: that is the name the generated code uses and
+/// the one `rosidl` gives the type. `carries_service_header` accepts both.
+pub fn service_reply_type(service_type: &str) -> String {
+    format!("{service_type}_Response")
+}
+
+/// phase-461 W3 -- the name an ACTION's largest request is priced under.
+///
+/// `pkg/action/Name` -> `pkg/action/Name_SendGoal_Request`. An action server's
+/// three queryables receive `SendGoal_Request`, `action_msgs/srv/CancelGoal`'s
+/// request (a fixed 32 bytes of goal-info, owned by that package) and
+/// `GetResult_Request` (a bare UUID). SendGoal is the only one that carries the
+/// user's own goal struct, so it is the one that can exceed the other two and
+/// the one an inbox slot has to hold.
+pub fn action_request_type(action_type: &str) -> String {
+    format!("{action_type}_SendGoal_Request")
+}
+
+/// The `unique_identifier_msgs/UUID goal_id` every action envelope opens with.
+fn goal_id_field() -> rosidl_parser::Field {
+    rosidl_parser::Field {
+        field_type: rosidl_parser::FieldType::NamespacedType {
+            package: Some("unique_identifier_msgs".to_string()),
+            name: "UUID".to_string(),
+        },
+        name: "goal_id".to_string(),
+        default_value: None,
+    }
+}
+
+/// `{ bool accepted, builtin_interfaces/Time stamp }` -- SendGoal_Response.
+fn send_goal_response() -> rosidl_parser::Message {
+    use rosidl_parser::{Field, FieldType, PrimitiveType};
+    rosidl_parser::Message {
+        fields: vec![
+            Field {
+                field_type: FieldType::Primitive(PrimitiveType::Bool),
+                name: "accepted".to_string(),
+                default_value: None,
+            },
+            Field {
+                field_type: FieldType::NamespacedType {
+                    package: Some("builtin_interfaces".to_string()),
+                    name: "Time".to_string(),
+                },
+                name: "stamp".to_string(),
+                default_value: None,
+            },
+        ],
+        constants: Vec::new(),
+    }
+}
+
+/// The `int8 status` GetResult_Response opens with.
+fn status_field() -> rosidl_parser::Field {
+    rosidl_parser::Field {
+        field_type: rosidl_parser::FieldType::Primitive(rosidl_parser::PrimitiveType::Int8),
+        name: "status".to_string(),
+        default_value: None,
+    }
+}
+
+/// An envelope as a [`rosidl_parser::Message`]. No constants: a constant costs
+/// no wire bytes, and an envelope declares none of its own.
+fn message_of(fields: Vec<rosidl_parser::Field>) -> rosidl_parser::Message {
+    rosidl_parser::Message {
+        fields,
+        constants: Vec::new(),
+    }
+}
+
 /// Every generated message type of one interface package, with its bound.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BoundInventory {
@@ -579,6 +664,140 @@ impl BoundInventory {
             caps.max_serialized(&pkg, &msg),
             schema_shape_for(type_name, message, caps, lookup),
         );
+    }
+
+    /// phase-461 W3 -- price the two wire types of one SERVICE.
+    ///
+    /// Until this existed [`Self::record_message`] was called for `.msg` files
+    /// and for nothing else, so `pkg/srv/Name_Request` had no row and every
+    /// consumer that joined a service endpoint to a bound REFUSED -- the
+    /// entity inventory's header says so, and `declared_service_request_bytes`
+    /// in `nros-rmw-zenoh/build.rs` printed that refusal on every in-tree
+    /// image. A service inbox cannot be sized per family or per type while the
+    /// only priced thing is a topic.
+    ///
+    /// The request and the reply are priced SEPARATELY and under the names
+    /// [`service_request_type`] and [`service_reply_type`] give them, because
+    /// they land in different places: the request lands in the server's inbox
+    /// ring, the reply in the client's take buffer. A maximum over both would
+    /// over-size the one the other drove.
+    ///
+    /// Same rule, same resolver and same lookup as a message: `_Request` is a
+    /// struct like any other, so an uncapped unbounded member leaves it
+    /// `Unbounded` naming that member exactly as a `.msg` would, and nothing
+    /// is derived from it.
+    pub fn record_service(
+        &mut self,
+        type_name: &str,
+        service: &rosidl_parser::Service,
+        caps: &crate::CapacityResolver,
+        lookup: &crate::schema_value::MsgLookup<'_>,
+    ) {
+        self.record_message(
+            &service_request_type(type_name),
+            &service.request,
+            caps,
+            lookup,
+        );
+        self.record_message(
+            &service_reply_type(type_name),
+            &service.response,
+            caps,
+            lookup,
+        );
+    }
+
+    /// phase-461 W3 -- price the five wire types of one ACTION.
+    ///
+    /// An action server is not one queryable but three (`send_goal`,
+    /// `cancel_goal`, `get_result`, issue 1378), and none of the three
+    /// receives the `.action`'s own goal struct: it receives the ENVELOPE ROS 2
+    /// wraps it in. So the envelopes are what this records, with exactly the
+    /// members and the NESTING `generator::common::build_action_envelope_schemas`
+    /// emits for the generated code:
+    ///
+    /// ```text
+    /// <A>_SendGoal_Request  { unique_identifier_msgs/UUID goal_id; <A>_Goal goal }
+    /// <A>_SendGoal_Response { bool accepted; builtin_interfaces/Time stamp }
+    /// <A>_GetResult_Request { unique_identifier_msgs/UUID goal_id }
+    /// <A>_GetResult_Response{ int8 status; <A>_Result result }
+    /// <A>_FeedbackMessage   { unique_identifier_msgs/UUID goal_id; <A>_Feedback feedback }
+    /// ```
+    ///
+    /// The goal, result and feedback are NESTED rather than inlined, and that
+    /// is the whole reason this builds envelopes instead of concatenating
+    /// fields: XCDR2 gives a nested struct its own DHEADER, so an inlined
+    /// version would under-state the envelope by exactly the bytes an inbox
+    /// slot has to hold. They resolve through a lookup wrapped around the
+    /// caller's, under `<pkg>/action/<A>_Goal` -- the same FQN
+    /// `generate_nros_action_package` gives that struct, so ONE
+    /// `nros-codegen.toml` cap on the goal reaches the generated header and
+    /// this bound alike.
+    ///
+    /// `cancel_goal` is `action_msgs/srv/CancelGoal`, a service of another
+    /// package priced there by [`Self::record_service`]; it is not this
+    /// action's type and is deliberately not recorded under this action's name.
+    ///
+    /// `goal_id` makes every envelope nest `unique_identifier_msgs/UUID` too,
+    /// so an action in a package whose lookup cannot reach it is `Unresolved`
+    /// rather than a number. That is the accurate answer and the one the module
+    /// header demands: "we could not look" is not a size.
+    pub fn record_action(
+        &mut self,
+        type_name: &str,
+        action: &rosidl_parser::Action,
+        caps: &crate::CapacityResolver,
+        lookup: &crate::schema_value::MsgLookup<'_>,
+    ) {
+        let goal_fqn = format!("{type_name}_Goal");
+        let result_fqn = format!("{type_name}_Result");
+        let feedback_fqn = format!("{type_name}_Feedback");
+        let spec = &action.spec;
+        let with_halves = |t: &str| -> Option<rosidl_parser::Message> {
+            if t == goal_fqn {
+                Some(spec.goal.clone())
+            } else if t == result_fqn {
+                Some(spec.result.clone())
+            } else if t == feedback_fqn {
+                Some(spec.feedback.clone())
+            } else {
+                lookup(t)
+            }
+        };
+        // `pkg/action/Name` splits into the `package` half the resolver joins
+        // with a `/` and the `name` half, so the nested FQN comes out as
+        // `pkg/action/Name_Goal` -- the spelling above.
+        let (env_pkg, env_name) = match type_name.rsplit_once('/') {
+            Some((p, n)) => (p.to_string(), n.to_string()),
+            None => (String::new(), type_name.to_string()),
+        };
+        let half = |field: &str, suffix: &str| rosidl_parser::Field {
+            field_type: rosidl_parser::FieldType::NamespacedType {
+                package: Some(env_pkg.clone()),
+                name: format!("{env_name}{suffix}"),
+            },
+            name: field.to_string(),
+            default_value: None,
+        };
+        let envelopes = [
+            (
+                "_SendGoal_Request",
+                message_of(vec![goal_id_field(), half("goal", "_Goal")]),
+            ),
+            ("_SendGoal_Response", send_goal_response()),
+            ("_GetResult_Request", message_of(vec![goal_id_field()])),
+            (
+                "_GetResult_Response",
+                message_of(vec![status_field(), half("result", "_Result")]),
+            ),
+            (
+                "_FeedbackMessage",
+                message_of(vec![goal_id_field(), half("feedback", "_Feedback")]),
+            ),
+        ];
+        for (suffix, msg) in envelopes {
+            self.record_message(&format!("{type_name}{suffix}"), &msg, caps, &with_halves);
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1540,6 +1759,182 @@ mod tests {
             ok.header.contains(&format!("_RX_MAX_SERIALIZED_SIZE {rx}")),
             "{}",
             ok.header
+        );
+    }
+
+    // =========================================================================
+    // phase-461 W3 -- services and actions are priced
+    // =========================================================================
+
+    /// The lookup the island's own service closure has: `builtin_interfaces`
+    /// and the two nested types `tier4_system_msgs` reaches for.
+    fn island_lookup(t: &str) -> Option<Message> {
+        match t {
+            "builtin_interfaces/Time" | "builtin_interfaces/msg/Time" => {
+                parse_message("int32 sec\nuint32 nanosec\n").ok()
+            }
+            "autoware_common_msgs/ResponseStatus" => {
+                parse_message("uint16 UNKNOWN = 50000\nbool success\nuint16 code\nstring message\n")
+                    .ok()
+            }
+            "unique_identifier_msgs/UUID" => parse_message("uint8[16] uuid\n").ok(),
+            _ => None,
+        }
+    }
+
+    fn operate_mrm() -> rosidl_parser::Service {
+        rosidl_parser::parse_service(
+            "builtin_interfaces/Time stamp\nbool operate\n---\n\
+             autoware_common_msgs/ResponseStatus response\n",
+        )
+        .expect("the island's OperateMrm.srv")
+    }
+
+    /// THE defect W6.a named: a service's request had no row, so every
+    /// consumer that joined a service endpoint to a bound refused. It has one
+    /// now, under the `_Request` spelling the wire uses.
+    #[test]
+    fn a_service_request_is_priced_under_the_request_spelling() {
+        let mut i = BoundInventory::new("tier4_system_msgs");
+        i.record_service(
+            "tier4_system_msgs/srv/OperateMrm",
+            &operate_mrm(),
+            &CapacityResolver::empty(),
+            &island_lookup,
+        );
+        let req = i
+            .entries()
+            .into_iter()
+            .find(|e| e.type_name == "tier4_system_msgs/srv/OperateMrm_Request")
+            .expect("the request has a row");
+        let rx = match req.bound {
+            BoundState::Bounded { rx, .. } => rx,
+            ref other => panic!("the request must be priced, got {other:?}"),
+        };
+        // The whole point of the wave: a user service prices WELL under the
+        // flat 1,024 the single table gave every queryable.
+        // 4 B encapsulation + 8 B `builtin_interfaces/Time` + 1 B bool, rounded
+        // up to the 4 B a transport can deliver. The whole point of the wave:
+        // a user service prices at 24 bytes, not at the flat 1,024 the single
+        // table gave every queryable.
+        assert_eq!(rx, 24, "OperateMrm_Request");
+        assert!(rx < 1024);
+    }
+
+    /// The reply is a SEPARATE row, because it lands in a different buffer.
+    /// This one is `Unbounded` -- `ResponseStatus.message` is an uncapped
+    /// `string` -- and the refusal NAMES the member, which is the acceptance
+    /// the wave states for an unbounded request too.
+    #[test]
+    fn an_uncapped_unbounded_member_refuses_and_names_it() {
+        let mut i = BoundInventory::new("tier4_system_msgs");
+        i.record_service(
+            "tier4_system_msgs/srv/OperateMrm",
+            &operate_mrm(),
+            &CapacityResolver::empty(),
+            &island_lookup,
+        );
+        let reply = i
+            .entries()
+            .into_iter()
+            .find(|e| e.type_name == "tier4_system_msgs/srv/OperateMrm_Response")
+            .expect("the reply has a row");
+        match &reply.bound {
+            BoundState::Unbounded { reason } => {
+                assert!(reason.contains("message"), "{reason}");
+            }
+            other => panic!("an uncapped string must refuse, got {other:?}"),
+        }
+    }
+
+    /// An action server receives ENVELOPES, not the goal struct, so the five
+    /// wire types are what get rows -- and `SendGoal_Request` is the one an
+    /// inbox slot has to hold.
+    #[test]
+    fn an_action_is_priced_through_its_five_envelopes() {
+        let action = rosidl_parser::parse_action(
+            "int32 order\n---\nint32[<=10] sequence\n---\nint32 partial\n",
+        )
+        .expect("a Fibonacci-shaped .action");
+        let mut i = BoundInventory::new("test_msgs");
+        i.record_action(
+            "test_msgs/action/Fib",
+            &action,
+            &CapacityResolver::empty(),
+            &island_lookup,
+        );
+        for suffix in [
+            "_SendGoal_Request",
+            "_SendGoal_Response",
+            "_GetResult_Request",
+            "_GetResult_Response",
+            "_FeedbackMessage",
+        ] {
+            let name = format!("test_msgs/action/Fib{suffix}");
+            let e = i
+                .entries()
+                .into_iter()
+                .find(|e| e.type_name == name)
+                .unwrap_or_else(|| panic!("{name} has no row"));
+            assert!(
+                matches!(e.bound, BoundState::Bounded { .. }),
+                "{name}: {:?}",
+                e.bound
+            );
+        }
+        let send = i
+            .entries()
+            .into_iter()
+            .find(|e| e.type_name == action_request_type("test_msgs/action/Fib"))
+            .expect("action_request_type names a row this call recorded");
+        let get = i
+            .entries()
+            .into_iter()
+            .find(|e| e.type_name == "test_msgs/action/Fib_GetResult_Request")
+            .expect("row");
+        // SendGoal carries the goal on top of the UUID; GetResult carries the
+        // UUID alone. That ordering is why `action_request_type` names SendGoal.
+        let (BoundState::Bounded { rx: send_rx, .. }, BoundState::Bounded { rx: get_rx, .. }) =
+            (&send.bound, &get.bound)
+        else {
+            panic!("both envelopes are bounded");
+        };
+        assert!(send_rx > get_rx, "{send_rx} vs {get_rx}");
+    }
+
+    /// An envelope whose `goal_id` cannot be resolved is `Unresolved`, never a
+    /// number -- the module header's rule, held on the action road too.
+    #[test]
+    fn an_action_envelope_with_no_uuid_in_reach_is_unresolved() {
+        let action = rosidl_parser::parse_action("int32 order\n---\nint32 r\n---\nint32 p\n")
+            .expect("parse");
+        let mut i = BoundInventory::new("test_msgs");
+        i.record_action(
+            "test_msgs/action/Fib",
+            &action,
+            &CapacityResolver::empty(),
+            &no_lookup,
+        );
+        let e = i
+            .entries()
+            .into_iter()
+            .find(|e| e.type_name == "test_msgs/action/Fib_SendGoal_Request")
+            .expect("row");
+        assert!(
+            matches!(e.bound, BoundState::Unresolved { .. }),
+            "{:?}",
+            e.bound
+        );
+    }
+
+    /// The three name helpers are the ONE spelling three consumers join on.
+    #[test]
+    fn the_wire_names_are_spelled_once() {
+        assert_eq!(service_request_type("p/srv/S"), "p/srv/S_Request");
+        assert_eq!(service_reply_type("p/srv/S"), "p/srv/S_Response");
+        assert_eq!(
+            action_request_type("p/action/A"),
+            "p/action/A_SendGoal_Request"
         );
     }
 }

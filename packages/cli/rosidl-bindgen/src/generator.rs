@@ -340,6 +340,16 @@ pub fn generate_package(
             // Write service file
             let srv_file = srv_dir.join(format!("{}.rs", to_snake_case(srv_name)));
             write_if_changed(&srv_file, &generated.service_rs)?;
+            // phase-461 W3 -- the request and reply types are priced here, on
+            // the same walk and with the same resolver the header got. Until
+            // this call a service row had no bound to join against and every
+            // inbox consumer refused.
+            inventory.record_service(
+                &format!("{}/srv/{}", package.name, srv_name),
+                &parsed_srv,
+                resolver,
+                &self_resolve,
+            );
             service_count += 1;
         }
     }
@@ -410,6 +420,15 @@ pub fn generate_package(
             // Write action file
             let action_file = action_dir.join(format!("{}.rs", to_snake_case(action_name)));
             write_if_changed(&action_file, &generated.action_rs)?;
+            // phase-461 W3 -- the five action ENVELOPES, for the same reason
+            // the services above are priced: an action server is three
+            // queryables and none of them receives the bare goal struct.
+            inventory.record_action(
+                &format!("{}/action/{}", package.name, action_name),
+                &parsed_action,
+                resolver,
+                &self_resolve,
+            );
             action_count += 1;
         }
     }

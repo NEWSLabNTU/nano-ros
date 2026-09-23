@@ -592,7 +592,7 @@ fn endpoint_row(
     // Everything below is a property of the TYPE and of the IMAGE, not of the
     // attribution, so it survives a refusal above -- D6: a refusal never
     // degrades another consumer's facts.
-    let bound = set_wire_bound(&mut ep, ty, inputs);
+    let bound = set_wire_bound(&mut ep, kind, ty, inputs);
 
     // phase-454 W14 — a model-only producer refuses the path OUTRIGHT, with its
     // own reason. It does not fall through the composer below: that one reports
@@ -642,7 +642,22 @@ fn endpoint_row(
 /// still has a type, so it still has a bound, and refusing the QoS must not
 /// refuse the payload class beside it (RFC-0100 D6 — a refusal never degrades
 /// another consumer's facts).
-fn set_wire_bound(ep: &mut Endpoint, ty: &str, inputs: &DescriptorInputs<'_>) -> Option<usize> {
+fn set_wire_bound(
+    ep: &mut Endpoint,
+    kind: EndpointKind,
+    ty: &str,
+    inputs: &DescriptorInputs<'_>,
+) -> Option<usize> {
+    // phase-461 W3 -- a service or action row's `type` is the INTERFACE
+    // (`pkg/srv/Name`), and no such type ever crosses a wire. What crosses it,
+    // and what a server's inbox slot has to hold, is the REQUEST
+    // (`pkg/srv/Name_Request`); codegen prices that one since W3 and priced
+    // neither before it, which is why W6.a's own header records this join
+    // refusing on every in-tree image. The spelling is
+    // `rosidl_codegen::service_request_type` and not a `format!` here, because
+    // three consumers join on it.
+    let ty = &wire_type_of(kind, ty);
+    let ty = ty.as_str();
     let bound = match lookup_bound(&inputs.bounds, ty) {
         Some(BoundState::Bounded { rx, .. }) => Some(*rx),
         Some(BoundState::Unbounded { reason }) => {
@@ -785,6 +800,32 @@ fn buffered_region(depth: usize, slot: usize, pointer_bytes: usize) -> usize {
         TRIPLE_BUFFER_SLOTS * slot
     } else {
         (depth + 1) * slot + (depth + 1) * pointer_bytes
+    }
+}
+
+/// phase-461 W3 -- the type whose bound sizes THIS endpoint's receive side.
+///
+/// A topic endpoint receives its own type. A service or action endpoint does
+/// not: it receives a REQUEST or a reply, and those are separate generated
+/// types with separate bounds. The server side is what every pool in this tree
+/// is sized from -- an inbox slot, a request buffer -- so the request is the
+/// one named here for all four kinds. A client's reply buffer is the other
+/// half and has no pool of its own yet; when it gets one it takes
+/// `service_reply_type`, beside this.
+///
+/// An action's three queryables receive `SendGoal_Request`,
+/// `action_msgs/srv/CancelGoal`'s request and `GetResult_Request`; only
+/// SendGoal carries the user's goal, so it is the one that can exceed the other
+/// two (see `rosidl_codegen::action_request_type`).
+fn wire_type_of(kind: EndpointKind, ty: &str) -> String {
+    match kind {
+        EndpointKind::ServiceServer | EndpointKind::ServiceClient => {
+            rosidl_codegen::service_request_type(ty)
+        }
+        EndpointKind::ActionServer | EndpointKind::ActionClient => {
+            rosidl_codegen::action_request_type(ty)
+        }
+        _ => ty.to_string(),
     }
 }
 
@@ -1783,6 +1824,63 @@ mod tests {
 
         // Nothing declared at all is the one case that IS `Absent`.
         assert_eq!(transient_local_publishers_from_decls(&[]), Fact::Absent);
+    }
+
+    /// phase-461 W3 -- the join W6.a's own header records as refusing on every
+    /// in-tree image: a service row's `type` is the INTERFACE, and the bound
+    /// belongs to the REQUEST. Now that codegen prices `_Request`, the row is
+    /// STATED and `declared_service_request_bytes` in the zenoh build script
+    /// has a number to derive from.
+    #[test]
+    fn a_service_row_joins_on_its_request_type_not_its_interface() {
+        use nros_sizing_descriptor::Fact;
+        let srv = EntityDecl::bare(
+            EntityKind::ServiceServer,
+            Some("tier4_system_msgs/srv/OperateMrm".into()),
+            Some("/operate_mrm".into()),
+        );
+        let act = EntityDecl::bare(
+            EntityKind::ActionServer,
+            Some("example_interfaces/action/Fibonacci".into()),
+            Some("/fibonacci".into()),
+        );
+        let inv = inventory(vec![srv, act]);
+        let mut inputs = base(&inv);
+        inputs.bounds = vec![
+            // The INTERFACE spelling, which nothing prices and nothing should
+            // read -- present here precisely so the assertion below is about
+            // the join and not about an empty table.
+            bounded("tier4_system_msgs/srv/OperateMrm", 9999),
+            bounded("tier4_system_msgs/srv/OperateMrm_Request", 24),
+            bounded("example_interfaces/action/Fibonacci_SendGoal_Request", 28),
+        ];
+        let desc = build(&inputs);
+        let row = |topic: &str| {
+            desc.endpoints
+                .iter()
+                .find(|e| e.topic == topic)
+                .unwrap_or_else(|| panic!("no row for {topic}"))
+                .wire_bound_bytes()
+        };
+        assert_eq!(row("/operate_mrm"), Fact::Stated(24));
+        assert_eq!(row("/fibonacci"), Fact::Stated(28));
+    }
+
+    /// A service whose REQUEST is unpriced still refuses, and the refusal names
+    /// the request type rather than the interface -- which is where the reader
+    /// has to go to fix it.
+    #[test]
+    fn an_unpriced_request_refuses_naming_the_request_type() {
+        let inv = inventory(vec![EntityDecl::bare(
+            EntityKind::ServiceServer,
+            Some("p/srv/S".into()),
+            Some("/s".into()),
+        )]);
+        let inputs = base(&inv);
+        let desc = build(&inputs);
+        let bound = desc.endpoints[0].wire_bound_bytes();
+        let reason = bound.refusal().expect("an unpriced request refuses");
+        assert!(reason.contains("p/srv/S_Request"), "{reason}");
     }
 
     fn bounded(ty: &str, rx: usize) -> (String, BoundState) {

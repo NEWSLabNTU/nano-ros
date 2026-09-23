@@ -1141,6 +1141,16 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                 write_if_changed(&source_path, &generated.source)?;
 
                 srv_headers.push(generated.header_name);
+                // phase-461 W3 -- the request and reply types, priced on the
+                // same walk and with the same resolver and lookup the headers
+                // above got. Before this a `pkg/srv/Name` row had no bound to
+                // join against and every service inbox consumer refused.
+                inventory.record_service(
+                    &format!("{}/srv/{}", args.package_name, file_name),
+                    &parsed,
+                    &resolver,
+                    &nested_lookup,
+                );
 
                 if config.verbose {
                     println!("  Generated service: {}", file_name);
@@ -1166,6 +1176,15 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                 write_if_changed(&source_path, &generated.source)?;
 
                 action_headers.push(generated.header_name);
+                // phase-461 W3 -- the five action ENVELOPES. An action server
+                // is three queryables and none of them receives the bare goal
+                // struct, so the envelopes are what an inbox slot must hold.
+                inventory.record_action(
+                    &format!("{}/action/{}", args.package_name, file_name),
+                    &parsed,
+                    &resolver,
+                    &nested_lookup,
+                );
 
                 if config.verbose {
                     println!("  Generated action: {}", file_name);
@@ -1399,6 +1418,16 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
                     write_if_changed(srv_dir.join(&generated.header_name), &generated.header)?;
                     write_if_changed(srv_dir.join(&generated.source_name), &generated.source)?;
                     srv_headers.push(generated.header_name);
+                    // phase-461 W3 -- the request and reply types, priced on the
+                    // same walk and with the same resolver and lookup the headers
+                    // above got. Before this a `pkg/srv/Name` row had no bound to
+                    // join against and every service inbox consumer refused.
+                    inventory.record_service(
+                        &format!("{}/srv/{}", pkg_name, file_name),
+                        &parsed,
+                        &resolver,
+                        &nested_lookup,
+                    );
                 }
                 "action" => {
                     let parsed = rosidl_parser::parse_action(&content)
@@ -1409,6 +1438,15 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
                     write_if_changed(action_dir.join(&generated.header_name), &generated.header)?;
                     write_if_changed(action_dir.join(&generated.source_name), &generated.source)?;
                     action_headers.push(generated.header_name);
+                    // phase-461 W3 -- the five action ENVELOPES. An action server
+                    // is three queryables and none of them receives the bare goal
+                    // struct, so the envelopes are what an inbox slot must hold.
+                    inventory.record_action(
+                        &format!("{}/action/{}", pkg_name, file_name),
+                        &parsed,
+                        &resolver,
+                        &nested_lookup,
+                    );
                 }
                 _ => {}
             }
@@ -1839,6 +1877,16 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     ffi_rs_files.push(format!("srv/{}", part.types_rs_name));
                     ffi_rs_files.push(format!("srv/{}", part.exports_rs_name));
                 }
+                // phase-461 W3 -- the request and reply types, priced on the
+                // same walk and with the same resolver and lookup the headers
+                // above got. Before this a `pkg/srv/Name` row had no bound to
+                // join against and every service inbox consumer refused.
+                inventory.record_service(
+                    &format!("{}/srv/{}", args.package_name, file_name),
+                    &parsed,
+                    &resolver,
+                    &nested_lookup,
+                );
 
                 if config.verbose {
                     println!("  Generated service: {}", file_name);
@@ -1885,6 +1933,15 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     ffi_rs_files.push(format!("action/{}", part.types_rs_name));
                     ffi_rs_files.push(format!("action/{}", part.exports_rs_name));
                 }
+                // phase-461 W3 -- the five action ENVELOPES. An action server
+                // is three queryables and none of them receives the bare goal
+                // struct, so the envelopes are what an inbox slot must hold.
+                inventory.record_action(
+                    &format!("{}/action/{}", args.package_name, file_name),
+                    &parsed,
+                    &resolver,
+                    &nested_lookup,
+                );
 
                 if config.verbose {
                     println!("  Generated action: {}", file_name);

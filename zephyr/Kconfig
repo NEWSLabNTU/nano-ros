@@ -966,8 +966,8 @@ config NROS_SERVICE_BUFFER_SIZE
       Maps to ZPICO_SERVICE_BUFFER_SIZE.
 
 config NROS_SERVICE_INBOX_BYTES
-    int "Service inbox slot size (bytes)"
-    default NROS_SERVICE_BUFFER_SIZE
+    int "Service inbox slot size (bytes, -1 = derive)"
+    default -1
     help
       Bytes one request slot holds in the inbox ring of every USER service
       server (a zenoh queryable). The parameter and lifecycle services do
@@ -975,6 +975,16 @@ config NROS_SERVICE_INBOX_BYTES
       contract's declared parameters (phase-461, issue 1352). Maps to
       NROS_SERVICE_INBOX_BYTES in nros-rmw-zenoh's build script. A request
       larger than this is dropped with TransportError::MessageTooLarge.
+
+      -1 means DERIVE it (phase-461 W3): the largest bound among the
+      `pkg/srv/Name_Request` types this image's declared service servers and
+      clients carry, which codegen prices and the entity inventory joins.
+      Any other value is yours and WINS. If NOTHING derives -- no contract,
+      or one request type with no static bound -- the crate falls through to
+      NROS_SERVICE_BUFFER_SIZE (1024), and the configure says which.
+
+      The derivation outranks the DEPRECATED alias NROS_SERVICE_BUFFER_SIZE
+      and nothing else: to pin a size, state THIS symbol.
 
       Per queryable the ring costs
         NROS_SERVICE_INBOX_DEPTH x (NROS_SERVICE_INBOX_BYTES + 12)
@@ -991,13 +1001,18 @@ config NROS_SERVICE_INBOX_DEPTH
       NROS_SERVICE_INBOX_DEPTH.
 
 config NROS_ACTION_INBOX_BYTES
-    int "Action inbox slot size (bytes)"
-    default NROS_SERVICE_INBOX_BYTES
+    int "Action inbox slot size (bytes, -1 = derive)"
+    default -1
     help
       Bytes one request slot holds in the inbox ring of each action server
-      queryable (send_goal, cancel_goal, get_result). Defaults to the
-      service family's size until phase-461 W3 prices the two families
-      from their declared _Request types. Maps to NROS_ACTION_INBOX_BYTES.
+      queryable (send_goal, cancel_goal, get_result).
+
+      -1 means DERIVE it (phase-461 W3), from this image's declared
+      `pkg/action/Name_SendGoal_Request` types -- the largest of the three
+      requests those queryables receive. A SEPARATE family from the service
+      one above, so neither inherits the other's worst case. Any other value
+      is yours and WINS; when nothing derives, the crate falls through to
+      the service family's resolved size. Maps to NROS_ACTION_INBOX_BYTES.
 
 config NROS_ACTION_INBOX_DEPTH
     int "Action inbox ring depth"
