@@ -114,14 +114,20 @@ _summary_line() {
     used_pct="$(df -h "${GITHUB_WORKSPACE:-$PWD}" 2>/dev/null | awk 'NR==2 {print $5}')"
     avail="$(df -h "${GITHUB_WORKSPACE:-$PWD}" 2>/dev/null | awk 'NR==2 {print $4}')"
     # The three biggest of the paths measured above, as `size path` pairs, so
-    # the line says what held the disk and not only how much was left.
+    # the line says what held the disk and not only how much was left. The path
+    # is rendered RELATIVE to the workspace, not as a basename: `target` and
+    # `packages/cli/target` share a basename, and on 2026-09-23 the after-report
+    # rendered them both as `target` — one at 13 G and the other at 6.9 G, with
+    # nothing in the line to say which one a reader was looking at.
     biggest="$(du -sh \
         "${GITHUB_WORKSPACE:-$PWD}/target" \
         "${GITHUB_WORKSPACE:-$PWD}/packages/cli/target" \
         "${GITHUB_WORKSPACE:-$PWD}/build" \
         "${GITHUB_WORKSPACE:-$PWD}/examples" \
         2>/dev/null | sort -rh | head -3 \
-        | awk '{n = split($2, p, "/"); printf "%s%s %s", (NR > 1 ? "; " : ""), $1, p[n]}')"
+        | awk -v root="${GITHUB_WORKSPACE:-$PWD}/" \
+            '{ path = $2; if (index(path, root) == 1) path = substr(path, length(root) + 1);
+               printf "%s%s %s", (NR > 1 ? "; " : ""), $1, path }')"
     printf '%s used, %s free — %s' "${used_pct:-?}" "${avail:-?}" "${biggest:-(no sizes)}"
 }
 

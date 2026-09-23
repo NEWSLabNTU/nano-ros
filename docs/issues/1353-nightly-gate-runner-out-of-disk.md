@@ -607,3 +607,48 @@ here says that number is necessary rather than incidental.
 
 Acceptance is unchanged: a scheduled run reaching a VERDICT on `check build`
 and `check no-std`, three nights running.
+
+## Reproduced on a second run, and the after-report names where it goes (2026-09-23)
+
+`host-tests` push run **35849381577**, job **107143164777** — the second run to
+carry the reclaim, and it repeats the first to the megabyte:
+
+```
+::notice:: 86% used, 22G free — 42G examples; 10G build; 404M target
+  reclaiming 5.6G /__t ; reclaiming 2.2G build/metadata-probe
+  freed 7933 MB; 30480904 KB free
+##[warning] … Free space left: 25 MB
+===== FAIL (cpp, rc=101, 8929ms) =====
+```
+
+Same reclaim, same 29.1 G entering the tier, same gate. So the previous
+section's finding is a property of the lane, not a one-off.
+
+What is new is the AFTER report, which this run reached:
+
+```
+--- du -sh of the usual suspects ---
+6.9G   target
+13G    packages/cli/target
+13G    build
+42G    examples
+1.3G   /usr/local/cargo
+```
+
+Against the before-report's `42G examples; 10G build; 404M target`, the tier
+grew `packages/cli/target` from **404 M to 13 G** and `build` from **10 G to
+13 G**, and created a workspace `target/` at **6.9 G** — about **22 G** of
+growth inside the checkout, against 29.1 G available.
+
+Two things follow that the earlier sections could not say:
+
+- **`examples` is not what the TIER spends.** Its 42 G is identical before and
+  after; it is the cost of *arriving*, already paid by the fixture build. So
+  pruning it enlarges the runway but does not shrink the tier's own appetite,
+  which is the ~22 G above.
+- **The three categories do not account for the whole disk.** The filesystem is
+  146 G at 100 %, and everything the report measures sums to ~76 G. The rest is
+  outside the checkout and outside this report's reach.
+
+Acceptance is unchanged: a scheduled run reaching a VERDICT on `check build`
+and `check no-std`, three nights running.
