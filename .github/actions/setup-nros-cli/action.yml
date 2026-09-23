@@ -20,6 +20,16 @@ description: >
   faithful de-duplication with no behavioural delta, and the verb conversion is
   left as its own change once W2 gets the lane green.
 
+  PREREQUISITE: `just` must already be on PATH — the last step runs
+  `just setup-launch-resolve`, and this action installs nothing. Every consumer
+  today is a `nano-ros-ci` / `nano-ros-zephyr-ci` container, which bakes it, so
+  the requirement is invisible here; a consumer on a bare `ubuntu-latest` would
+  reproduce `probe.yml`'s exit 127 with the failure pointing at this file rather
+  than at the workflow that reached it. `check-workflow-just-provisioning`
+  (phase-466 W2) expands this action into each consuming job and answers the
+  question there. The sibling `.github/actions/setup-qemu-patched` installs
+  `just` itself, which is the other legitimate answer.
+
 runs:
   using: composite
   steps:
