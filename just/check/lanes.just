@@ -70,6 +70,25 @@ borrowed-e2e:
 c: c-fmt
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    # issue 1354 — this lane's own Cargo target dir, so its generated config
+    # header cannot be written by another lane's feature set.
+    #
+    # `target/nros-c-generated/` is a build-script BYPRODUCT with no feature in
+    # its path, so the LAST cargo build of `nros-c` owns it. Under `just ci
+    # gate` the build tier runs at -P48, so "last" is a race: this lane compiled
+    # a TU against its own header and then linked against an archive another
+    # gate had just re-probed, and the config-variant interlock caught it as an
+    # undefined `nros_cpp_config_variant_*` symbol. The 40-byte executor
+    # difference between the two was CORRECT — different features, different
+    # layout — which is why the answer is a private dir and not one lane
+    # yielding to the other.
+    #
+    # `nros_scoped_target_dir`'s doc warns it is for dirs with no consumer
+    # reading a fixed relative path. That is honoured: every `-I` below is
+    # derived from this same variable, so no fixed path escapes this recipe.
+    gen="$(nros_scoped_target_dir check-c)"
+    export CARGO_TARGET_DIR="$gen"
     echo "Checking C code (build + syntax)..."
     echo "  - syntax (nros-c umbrella header)"
     # The per-variant `<nros/nros_config_generated.h>` (defining the
@@ -87,7 +106,7 @@ c: c-fmt
     # Variant dir FIRST so its `nros_config_generated.h` (with the
     # real OPAQUE_U64S macros) wins over the source-tree stub.
     cc -fsyntax-only \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -include packages/api/nros-c/include/nros/nros.h \
         -x c /dev/null
@@ -106,9 +125,9 @@ c: c-fmt
     mkdir -p tmp
     # profile-literal-ok: unprofiled: the archive is from the plain `cargo build`
     # at the top of this recipe, so `target/debug/` IS its derived output dir.
-    nros_c_lib=target/debug/libnros_c.a
+    nros_c_lib="$gen/debug/libnros_c.a"
     cc -std=c11 -Wall -Wextra \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/run/cdr_borrow_le_slice.c \
@@ -136,7 +155,7 @@ c: c-fmt
             echo "ERROR: $_tu.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
     done
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -164,7 +183,7 @@ c: c-fmt
         echo "ERROR: named_logger_levels.c is MISSING -- this check passes on absence." >&2; \
         exit 1; }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -191,7 +210,7 @@ c: c-fmt
         echo "ERROR: node_guard_condition.c is MISSING -- this check passes on absence." >&2; \
         exit 1; }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -217,7 +236,7 @@ c: c-fmt
     # and same archive as the probes above. `test -f` first — a missing TU must
     # not read as a pass (issue 0196).
     test -f packages/api/nros-c/tests/run/executor_backend_wake.c || {         echo "ERROR: executor_backend_wake.c is MISSING -- this check passes on absence." >&2;         exit 1; }
-    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE         -Itarget/nros-c-generated         -Ipackages/api/nros-c/include         -Ipackages/core/nros-rmw-abi/include         -Ipackages/platform/nros-platform-api/include         -Ipackages/api/nros-c/tests/run         packages/api/nros-c/tests/run/executor_backend_wake.c         packages/api/nros-c/tests/run/stub_rmw_backend.c         "$nros_c_lib" -lpthread -ldl -lm         -o tmp/executor_backend_wake
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE         -I"$gen/nros-c-generated"         -Ipackages/api/nros-c/include         -Ipackages/core/nros-rmw-abi/include         -Ipackages/platform/nros-platform-api/include         -Ipackages/api/nros-c/tests/run         packages/api/nros-c/tests/run/executor_backend_wake.c         packages/api/nros-c/tests/run/stub_rmw_backend.c         "$nros_c_lib" -lpthread -ldl -lm         -o tmp/executor_backend_wake
     ./tmp/executor_backend_wake
     echo "  - issue 1384: an executor-bound node creates its EAGER entities from EITHER slot"
     # The FIFTH compile+link+run TU, same reason as the four above: the defect
@@ -240,7 +259,7 @@ c: c-fmt
         echo "ERROR: executor_bound_node.c is MISSING -- this check passes on absence." >&2; \
         exit 1; }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -302,7 +321,7 @@ c: c-fmt
     # takes function POINTERS, so an alias naming a symbol that does not exist
     # fails here rather than at some consumer's link step.
     cc -fsyntax-only -std=c11 \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/executor_verb_aliases.c
@@ -313,7 +332,7 @@ c: c-fmt
     # uncallable from C while the Rust side stayed green. The probe takes
     # function POINTERS, so a missing declaration is a build failure here.
     cc -fsyntax-only -std=c11 \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/graph_query_entry_points.c
@@ -323,7 +342,7 @@ c: c-fmt
     # TU proves the assertion is reachable and does not fire on a matching pair;
     # the probe below proves it fires on a mismatched one.
     cc -fsyntax-only -std=c11 \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/serialization_format.c
@@ -336,7 +355,7 @@ c: c-fmt
         exit 1; \
     }
     if cc -fsyntax-only -std=c11 \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/serialization_format_mismatch_probe.c 2>/dev/null; then \
@@ -367,7 +386,7 @@ c: c-fmt
         test -f "packages/api/nros-c/tests/compile/$probe.c" || { \
             echo "ERROR: $probe.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
         cc -fsyntax-only -std=c11 \
-            -Itarget/nros-c-generated \
+            -I"$gen/nros-c-generated" \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
             "packages/api/nros-c/tests/compile/$probe.c" || exit 1; \
@@ -390,7 +409,7 @@ c: c-fmt
         test -f "packages/api/nros-c/tests/compile/$probe.c" || { \
             echo "ERROR: $probe.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
         cc -fsyntax-only -std=c11 -Wall -Wextra \
-            -Itarget/nros-c-generated \
+            -I"$gen/nros-c-generated" \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
             "packages/api/nros-c/tests/compile/$probe.c" || exit 1; \
@@ -410,7 +429,7 @@ c: c-fmt
         echo "ERROR: typed_subscription_storage_mismatch_probe.c is MISSING -- an" >&2; \
         echo "       expected-failure check passes on a missing file." >&2; exit 1; }
     if cc -fsyntax-only -std=c11 -Wall -Wextra -Werror \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/typed_subscription_storage_mismatch_probe.c \
@@ -439,7 +458,7 @@ c: c-fmt
     }
     cc -fsyntax-only -std=c11 -Wall -Wextra \
         -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/declared_qos_depth.c
@@ -451,7 +470,7 @@ c: c-fmt
     echo "  - declared QoS depth: a MISMATCH fails the build (c11, expected failure)"
     _dqc_out="$(cc -fsyntax-only -std=c11 -Wall -Wextra \
         -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/declared_qos_depth_probe.c 2>&1)" && { \
@@ -483,7 +502,7 @@ c: c-fmt
         echo "ERROR: typed_service_handler.c is MISSING." >&2; exit 1; }
     cc -fsyntax-only -std=c11 -Wall -Wextra \
         -Ipackages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/configured \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/typed_service_handler.c
@@ -501,7 +520,7 @@ c: c-fmt
         echo "       expected-failure check passes on a missing file." >&2; exit 1; }
     if cc -fsyntax-only -std=c11 -Wall -Wextra -Werror \
         -Ipackages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/configured \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/typed_service_storage_mismatch_probe.c \
@@ -525,7 +544,7 @@ c: c-fmt
         test -f "$f" || { echo "ERROR: $f is MISSING -- an expected-failure check" >&2; \
                           echo "       passes on a missing file." >&2; exit 1; }; \
         if cc -fsyntax-only -std=c11 -Wall -Wextra \
-            -Itarget/nros-c-generated \
+            -I"$gen/nros-c-generated" \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
             "$f" 2>"tmp/rename-$probe.log"; then \
@@ -541,7 +560,7 @@ c: c-fmt
         echo "ERROR: rcl_compat_collision_probe.c is MISSING -- the expected-failure" >&2; \
         echo "       check below would PASS on a missing file." >&2; exit 1; }
     if cc -fsyntax-only -std=c11 \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/rcl_compat_collision_probe.c 2>/dev/null; then \
@@ -565,8 +584,8 @@ c: c-fmt
     # wrong hypotheses; the build's own error names the cause in one line.
     cargo build -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
     cc -fsyntax-only \
-        -Itarget/nros-c-generated \
-        -Itarget/nros-cpp-generated \
+        -I"$gen/nros-c-generated" \
+        -I"$gen/nros-cpp-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/api/nros-cpp/include \
         -include packages/api/nros-cpp/include/nros/nros_cpp_ffi.h \
@@ -821,6 +840,13 @@ compile-smoke:
 cpp: cpp-fmt
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    # issue 1354 — this lane's own Cargo target dir. See the `c` lane above for
+    # the measurement; this is the lane the race was found on, failing with
+    #   undefined reference to `nros_cpp_config_variant_alloc_default_env_...'
+    # while `just check cpp` alone exited 0 immediately before and after.
+    gen="$(nros_scoped_target_dir check-cpp)"
+    export CARGO_TARGET_DIR="$gen"
     echo "Checking C++ headers (build + syntax + clippy)..."
     echo "  - freestanding syntax (c++14)"
     # parameter.hpp re-exposes the C-side `nros_parameter_*` API from
@@ -857,17 +883,17 @@ cpp: cpp-fmt
     # and the link fails on a stamp mismatch on every run after the first
     # (issue 0834's class, not a race).
     echo "  - a failed create aborts (runtime, c++14)"
-    mkdir -p target/nros-cpp-tests
+    mkdir -p "$gen/nros-cpp-tests"
     c++ -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         -Wl,--unresolved-symbols=ignore-all \
-        -o target/nros-cpp-tests/failed_create_aborts \
+        -o "$gen/nros-cpp-tests"/failed_create_aborts \
         packages/api/nros-cpp/tests/compile/failed_create_aborts.cpp
-    ./target/nros-cpp-tests/failed_create_aborts
+    "$gen/nros-cpp-tests"/failed_create_aborts
     # phase-417 stage 3 — `Publisher::publish` must refuse an UNINITIALISED
     # publisher. RUNTIME for the same reason as the probe above: the defect was
     # that nothing stopped, and `-fsyntax-only` is green either way. It asserts
@@ -889,15 +915,15 @@ cpp: cpp-fmt
     }
     echo "  - publish refuses an uninitialised publisher (runtime, c++14)"
     c++ -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         -Wl,--unresolved-symbols=ignore-all \
-        -o target/nros-cpp-tests/publisher_publish_guards_initialized \
+        -o "$gen/nros-cpp-tests"/publisher_publish_guards_initialized \
         packages/api/nros-cpp/tests/compile/publisher_publish_guards_initialized.cpp
-    ./target/nros-cpp-tests/publisher_publish_guards_initialized
+    "$gen/nros-cpp-tests"/publisher_publish_guards_initialized
     # phase-417 stage 3 — the loudness a RUN is the only witness for: issue 1019
     # (the `RCLCPP_*` family reaching `nros_log` at the RIGHT SEVERITY, carrying
     # its message and its logger name) and the VALUE half of
@@ -917,17 +943,17 @@ cpp: cpp-fmt
     echo "  - RCLCPP_* reach nros_log at the right severity; spin_once(-1) is refused (runtime)"
     # profile-literal-ok: unprofiled: the archive is from the plain `cargo build`
     # at the top of this recipe, so `target/debug/` IS its derived output dir.
-    nros_cpp_lib=target/debug/libnros_cpp.a
+    nros_cpp_lib="$gen/debug/libnros_cpp.a"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
-        -o target/nros-cpp-tests/ros2_loudness_runtime \
+        -o "$gen/nros-cpp-tests"/ros2_loudness_runtime \
         packages/api/nros-cpp/tests/compile/ros2_loudness_runtime.cpp \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    ./target/nros-cpp-tests/ros2_loudness_runtime
+    "$gen/nros-cpp-tests"/ros2_loudness_runtime
     # phase-417 W4.c/W4.d — the two behaviours a C++ `static_assert` cannot
     # reach. Both link `libnros_cpp.a` AND the shared C stub RMW backend
     # (`nros-c/tests/run/stub_rmw_backend.c`), because both need a real
@@ -948,11 +974,11 @@ cpp: cpp-fmt
         exit 1; \
     }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE -c \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
-        -o target/nros-cpp-tests/stub_rmw_backend.o \
+        -o "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         packages/api/nros-c/tests/run/stub_rmw_backend.c
     # W4.c — `cancel()` ends a real spin and the SESSION SURVIVES. The shape
     # probe (`executor_cancel.cpp`) cannot tell that apart from a loop that
@@ -963,18 +989,18 @@ cpp: cpp-fmt
     # to call `shutdown()` -> 6 failures.
     echo "  - cancel() stops a C++ spin and leaves the session open (runtime, phase-417 W4.c)"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o target/nros-cpp-tests/executor_cancel_runtime \
+        -o "$gen/nros-cpp-tests"/executor_cancel_runtime \
         packages/api/nros-cpp/tests/compile/executor_cancel_runtime.cpp \
-        target/nros-cpp-tests/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    ./target/nros-cpp-tests/executor_cancel_runtime
+    "$gen/nros-cpp-tests"/executor_cancel_runtime
     # W4.d — two nodes in one image under DISTINCT logger names, independent
     # thresholds through `rclcpp::Logger::set_level`, and ONE resolve-or-create
     # helper behind both the node accessor and the named lookup. The C twin is
@@ -984,18 +1010,18 @@ cpp: cpp-fmt
     # 2 failures.
     echo "  - two C++ nodes log under distinct names; set_level moves one (runtime, W4.d)"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o target/nros-cpp-tests/logger_names_and_levels_runtime \
+        -o "$gen/nros-cpp-tests"/logger_names_and_levels_runtime \
         packages/api/nros-cpp/tests/compile/logger_names_and_levels_runtime.cpp \
-        target/nros-cpp-tests/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    ./target/nros-cpp-tests/logger_names_and_levels_runtime
+    "$gen/nros-cpp-tests"/logger_names_and_levels_runtime
     # issue 1456 — an `rclcpp`-shape component's IDENTITY. The shape constructs
     # its own node, so the launch-declared name and namespace reach it only
     # through the `NodeHandle` the entry hands it; before the fix they reached
@@ -1007,18 +1033,18 @@ cpp: cpp-fmt
     # executor needs a session; no router, no wire.
     echo "  - an rclcpp-shape component takes the launch identity, and keeps its class's default without one (runtime, issue 1456)"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o target/nros-cpp-tests/node_launch_identity_runtime \
+        -o "$gen/nros-cpp-tests"/node_launch_identity_runtime \
         packages/api/nros-cpp/tests/compile/node_launch_identity_runtime.cpp \
-        target/nros-cpp-tests/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    ./target/nros-cpp-tests/node_launch_identity_runtime
+    "$gen/nros-cpp-tests"/node_launch_identity_runtime
     # issue 1473 — "the caller named no namespace" has ONE meaning across the
     # two C++ node-create entry points, and it is not "the root". A RUN on an
     # executor opened at a NON-ROOT namespace, because on a root executor
@@ -1026,18 +1052,18 @@ cpp: cpp-fmt
     # passes. Same stub backend, same reason.
     echo "  - an unset namespace inherits the executor's through BOTH node-create entry points, and an explicit \"/\" still reaches the root (runtime, issue 1473)"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o target/nros-cpp-tests/node_unset_namespace_runtime \
+        -o "$gen/nros-cpp-tests"/node_unset_namespace_runtime \
         packages/api/nros-cpp/tests/compile/node_unset_namespace_runtime.cpp \
-        target/nros-cpp-tests/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    ./target/nros-cpp-tests/node_unset_namespace_runtime
+    "$gen/nros-cpp-tests"/node_unset_namespace_runtime
     # issue 0730 — the (zephyr-embedded × C++ × cyclonedds) coordinate is a
     # pairwise-class gap no runtime tier covers (cyclone fixtures run on
     # native_sim, which appends `,std`), and it failed E0599 at COMPILE time:
@@ -1053,7 +1079,10 @@ cpp: cpp-fmt
             exit 1
         fi
         echo "  - embedded cyclone coordinate (issue 0730): ${_cyc_features},panic-platform @ aarch64-unknown-none"
-        cargo check -p nros-cpp --no-default-features \
+        # issue 1354 — its own dir, same reason as the zenoh clippy below: a
+        # different feature set writes a different config header.
+        CARGO_TARGET_DIR="$(nros_scoped_target_dir check-cpp-cyclone-embedded)" \
+            cargo check -p nros-cpp --no-default-features \
             --features "${_cyc_features},panic-platform" \
             --target aarch64-unknown-none --quiet
     else
@@ -1071,8 +1100,8 @@ cpp: cpp-fmt
         # by `heap_sequence.hpp` (Phase 229.5); without it the probe fails
         # `fatal error: nros/platform.h: No such file or directory`.
         c++ -fsyntax-only -std=c++14 $free -fno-exceptions -fno-rtti \
-            -Itarget/nros-cpp-generated \
-            -Itarget/nros-c-generated \
+            -I"$gen/nros-cpp-generated" \
+            -I"$gen/nros-c-generated" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -1083,8 +1112,8 @@ cpp: cpp-fmt
     # against a generated-shape service type, so the template body is checked.
     echo "  - typed bind_service instantiation (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1095,8 +1124,8 @@ cpp: cpp-fmt
     # declaration and is uncallable while the Rust side stays green. Method
     # POINTERS make that a build failure here.
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1118,8 +1147,8 @@ cpp: cpp-fmt
         exit 1; \
     }
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1137,8 +1166,8 @@ cpp: cpp-fmt
         exit 1; \
     }
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1152,8 +1181,8 @@ cpp: cpp-fmt
     # examples use could not reach it. Surface probe, including the defaults
     # that make it a one-liner.
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1163,8 +1192,8 @@ cpp: cpp-fmt
     # typed creators `static_assert` on it. The positive TU proves the assertion
     # is reachable; the probe proves it fires.
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1179,8 +1208,8 @@ cpp: cpp-fmt
         exit 1; \
     }
     if c++ -fsyntax-only -std=c++17 \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1198,8 +1227,8 @@ cpp: cpp-fmt
         exit 1; \
     }
     if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1214,8 +1243,8 @@ cpp: cpp-fmt
     # arities exist is what catches a regression.
     echo "  - spin verb shape (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1226,8 +1255,8 @@ cpp: cpp-fmt
     # a generated-shape message type.
     echo "  - PollingSubscription instantiation (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1243,8 +1272,8 @@ cpp: cpp-fmt
     # is worth re-opening and this fails first.
     echo "  - Owned<Publisher<M>> ported shape + type-independent size (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1264,8 +1293,8 @@ cpp: cpp-fmt
     # be a compile error for 81 of 120 stock Humble types.
     echo "  - rx_size_bound / rx_buffer_capacity / receive sites (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1276,8 +1305,8 @@ cpp: cpp-fmt
     # deserialize) is type-checked against a generated-shape service type.
     echo "  - Client::call_polling instantiation (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1290,8 +1319,8 @@ cpp: cpp-fmt
     # `CancelReturnCode` stay distinct types.
     echo "  - action callback tier instantiation (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1351,8 +1380,8 @@ cpp: cpp-fmt
         printf '#include <nros/%s>\n' "$(basename "$hdr")" > "$_nostd_tu"
         c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
             -nostdinc++ -isystem "$_threadx_shim" \
-            -Itarget/nros-cpp-generated \
-            -Itarget/nros-c-generated \
+            -I"$gen/nros-cpp-generated" \
+            -I"$gen/nros-c-generated" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -1377,8 +1406,8 @@ cpp: cpp-fmt
     for _w4_arm in "" "-nostdinc++ -isystem $_threadx_shim"; do
         # shellcheck disable=SC2086
         c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_w4_arm \
-            -Itarget/nros-cpp-generated \
-            -Itarget/nros-c-generated \
+            -I"$gen/nros-cpp-generated" \
+            -I"$gen/nros-c-generated" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -1402,8 +1431,8 @@ cpp: cpp-fmt
             printf '#include <nros/%s>\n' "$(basename "$hdr")" > "$_nostd_tu"
             c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
                 -nostdinc++ -isystem zephyr/cxx-compat -isystem "$_zephyr_min" \
-                -Itarget/nros-cpp-generated \
-                -Itarget/nros-c-generated \
+                -I"$gen/nros-cpp-generated" \
+                -I"$gen/nros-c-generated" \
                 -Ipackages/api/nros-cpp/include \
                 -Ipackages/api/nros-c/include \
                 -Ipackages/platform/nros-platform-api/include \
@@ -1441,8 +1470,8 @@ cpp: cpp-fmt
     echo "  - one node type: hosted shape + both create families (c++14, -DNROS_CPP_STD)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -DNROS_CPP_STD=1 \
         -Wno-deprecated-declarations \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1450,8 +1479,8 @@ cpp: cpp-fmt
     echo "  - one node type: FREESTANDING construct + create_publisher (-nostdinc++)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
         -nostdinc++ -isystem "$_threadx_shim" \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1473,8 +1502,8 @@ cpp: cpp-fmt
     mkdir -p tmp
     if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -DNROS_CPP_STD=1 \
         -Werror=deprecated-declarations \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1520,8 +1549,8 @@ cpp: cpp-fmt
     mkdir -p tmp
     if ! c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
         -nostdinc++ -isystem "$_threadx_shim" \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1578,8 +1607,8 @@ cpp: cpp-fmt
     # measure.
     echo "  - one node type: the ours-only family answers to _in names (c++17, -DNROS_CPP_STD)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti -DNROS_CPP_STD \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1593,8 +1622,8 @@ cpp: cpp-fmt
     # parsed, and the member its 22 call sites moved to is never built.
     echo "  - timer binding paths instantiate through the MEMBER overload (c++17)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1607,8 +1636,8 @@ cpp: cpp-fmt
     echo "  - ...and the retired nros::bind_timer WARNS"
     if c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Werror=deprecated-declarations \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1646,8 +1675,8 @@ cpp: cpp-fmt
     # chrono overload, which says nothing about the hierarchy it probes.
     echo "  - rclcpp::TimerBase is a NAME for the flat rclcpp::Timer, not a hierarchy (c++17, -DNROS_CPP_STD)"
     c++ -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1655,8 +1684,8 @@ cpp: cpp-fmt
 
     echo "  - QoS policy accessors + ms boundary (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Wno-deprecated-declarations \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1678,8 +1707,8 @@ cpp: cpp-fmt
         exit 1; \
     }
     if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Werror=deprecated-declarations \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1738,8 +1767,8 @@ cpp: cpp-fmt
     for probe in ros2_api_adoption node_graph_forwarders ros2_api_adoption_stage2 ros2_one_dispatch_path \
                  ros2_init_argv_refusal action_goal_uuid executor_cancel entity_name_accessors; do \
         c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-            -Itarget/nros-cpp-generated \
-            -Itarget/nros-c-generated \
+            -I"$gen/nros-cpp-generated" \
+            -I"$gen/nros-c-generated" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -1751,8 +1780,8 @@ cpp: cpp-fmt
     # nothing to adopt across), so what this pins today is the parameter surface
     # at the standard the component lane actually builds with.
     c++ -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1779,8 +1808,8 @@ cpp: cpp-fmt
     for _w4a_arm in "" "-nostdinc++ -isystem $_threadx_shim"; do
         # shellcheck disable=SC2086
         c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_w4a_arm \
-            -Itarget/nros-cpp-generated \
-            -Itarget/nros-c-generated \
+            -I"$gen/nros-cpp-generated" \
+            -I"$gen/nros-c-generated" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -1791,8 +1820,8 @@ cpp: cpp-fmt
     done
     echo "  - hosted parameter overloads: std::string + std::vector<T> on both node types (c++17)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1830,8 +1859,8 @@ cpp: cpp-fmt
     for _gc_arm in "" "-nostdinc++ -isystem $_threadx_shim"; do
         # shellcheck disable=SC2086
         c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_gc_arm \
-            -Itarget/nros-cpp-generated \
-            -Itarget/nros-c-generated \
+            -I"$gen/nros-cpp-generated" \
+            -I"$gen/nros-c-generated" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -1846,7 +1875,7 @@ cpp: cpp-fmt
         f="packages/api/nros-cpp/tests/compile/ros2_refuse_${probe}_probe.cpp"; \
         test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
         if c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-               -Itarget/nros-cpp-generated -Itarget/nros-c-generated \
+               -I"$gen/nros-cpp-generated" -I"$gen/nros-c-generated" \
                -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
                -Ipackages/platform/nros-platform-api/include "$f" 2>"tmp/refuse-$probe.log"; then \
             echo "ERROR: $f COMPILED. The refusal for '$probe' is not firing." >&2; exit 1; \
@@ -1862,8 +1891,8 @@ cpp: cpp-fmt
     echo "  - declared QoS depth: the three cases COMPILE (c++17)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1882,8 +1911,8 @@ cpp: cpp-fmt
     echo "  - declared QoS depth: a MISMATCH fails the build (c++17, expected failure)"
     _dq_out="$(c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1918,8 +1947,8 @@ cpp: cpp-fmt
     echo "  - declared parameters: the boot check's lookups agree with the table (c++17)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/tests/compile/declared-params-fixture \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1934,8 +1963,8 @@ cpp: cpp-fmt
     # spellings deliberately; the probe below is what proves they still warn.
     echo "  - receive verb aliases + deprecated forwarders (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Wno-deprecated-declarations \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1950,8 +1979,8 @@ cpp: cpp-fmt
         exit 1; \
     }
     if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Werror=deprecated-declarations \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1979,8 +2008,8 @@ cpp: cpp-fmt
     echo "  - phase-427 W8: a CHECKED result compiles clean (c++14, -Werror=unused-result)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -Werror=unused-result -Werror=deprecated-declarations \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1992,8 +2021,8 @@ cpp: cpp-fmt
     # lost from either one is exactly the silence this asserts against.
     echo "  - phase-427 W8: a DISCARDED result fails the build (expected failure, both halves)"
     _nd_out="$(c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Werror=unused-result \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2017,8 +2046,8 @@ cpp: cpp-fmt
     echo "  - phase-427 W8: the Expected<T> spelling is deprecated (expected failure)"
     _dep_out="$(c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -Werror=deprecated-declarations \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2040,15 +2069,29 @@ cpp: cpp-fmt
     # across dtor / move-assign / clear / reserve-relocation of a two-level
     # heap element shape).
     echo "  - HeapSequence element-lifetime runtime probe (c++14)"
-    mkdir -p target/nros-cpp-tests
+    mkdir -p "$gen/nros-cpp-tests"
     c++ -std=c++14 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/platform/nros-platform-api/include \
-        -o target/nros-cpp-tests/heap_sequence_lifetime \
+        -o "$gen/nros-cpp-tests"/heap_sequence_lifetime \
         packages/api/nros-cpp/tests/compile/heap_sequence_lifetime.cpp
-    ./target/nros-cpp-tests/heap_sequence_lifetime
+    "$gen/nros-cpp-tests"/heap_sequence_lifetime
     echo "  - nros-cpp clippy (zenoh-cffi + posix + humble)"
-    cargo clippy --quiet -p nros-cpp --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
+    # issue 1354 — a DIFFERENT feature set, so a different target dir.
+    #
+    # This is the same collision the lane-level dirs fix, one scale down and
+    # across RUNS rather than across gates: `nros-cpp`'s build script writes
+    # `nros_cpp_config_generated.h` per build with no feature in its path, so
+    # this step used to leave a `rmw_zenoh_cffi` header behind in the lane's own
+    # dir. The NEXT run then compiled a runtime probe against it while linking
+    # the archive built at the top of the recipe from the shipped features, and
+    # the config-variant interlock caught it:
+    #   header  NROS_CPP_CONFIG_VARIANT "…_rmw_cffi_rmw_zenoh_cffi_ros_humble_std"
+    #   archive nros_cpp_config_variant_…_rmw_cffi_ros_humble_std
+    # Green on a fresh dir, red on the second run — which is why it read as a
+    # race rather than as a lane that overwrites its own input.
+    CARGO_TARGET_DIR="$(nros_scoped_target_dir check-cpp-clippy-zenoh)" \
+        cargo clippy --quiet -p nros-cpp --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
     echo "All C++ checks passed!"
 
 # `decoupling` is REWRITTEN, not retired (phase-444 W4.b, issue 1219, which

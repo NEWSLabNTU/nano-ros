@@ -243,6 +243,18 @@ emitter-just-spelling:
 census-hooks-complete:
     #!/usr/bin/env bash
     set -euo pipefail
+    source scripts/build/cargo.sh
+    # issue 1354 — its own Cargo target dir, because its feature set is its own.
+    #
+    # `nros-cpp`'s build script writes `nros_config_generated.h` into
+    # `$CARGO_TARGET_DIR/nros-c-generated/`, a byproduct with no feature in its
+    # path, so the last build of a given crate owns it. This gate builds with
+    # `metadata-mode,param-services`, which no other gate does, and the
+    # resulting executor layout genuinely differs — measured against the `cpp`
+    # lane's: NROS_EXECUTOR_SIZE 90408 against 90448. Sharing the path made the
+    # writer's divergence guard fire and fail whichever gate lost the race.
+    gen="$(nros_scoped_target_dir check-census-hooks)"
+    export CARGO_TARGET_DIR="$gen"
     python3 scripts/check-census-hooks-complete.py
     cargo test -p nros --lib --features std,metadata-mode --quiet -- metadata_mode
     cargo test -p nros-rmw-metadata --quiet
