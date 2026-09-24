@@ -728,6 +728,18 @@ cli-clippy:
 cli-fresh:
     @bash scripts/check-cli-fresh.sh
 
+# issue 1487 — the sibling of `cli-fresh`, and the asymmetry it closes.
+#
+# `nros` and `nros-launch-resolve` are built by SEPARATE recipes from
+# overlapping inputs: both compile the `play_launch` submodule, so a pin move
+# stales BOTH, and only one of them was guarded on this lane. A stale resolver
+# then surfaced eleven minutes in, inside `check-template-copy-out`, as issue
+# 0409's sync refusal — correct, load-bearing, and unable to name the recipe
+# that fixes it. `check-tier-preconditions` knew, but only WARNS, and `ci gate`
+# does not run it. Buildless; SKIPs when no resolver has been built yet.
+launch-resolve-fresh:
+    @bash scripts/check-launch-resolve-fresh.sh
+
 [private]
 cli-tests:
     #!/usr/bin/env bash
