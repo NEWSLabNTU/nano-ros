@@ -4188,6 +4188,108 @@ pub fn xrce_action_server_concurrent_binary() -> PathBuf {
         .to_path_buf()
 }
 
+/// A `key=value` line a build-stage stamp records about the TOOL the build
+/// consumed — `tool:nros=` (#185) and `tool:nros-launch-resolve=` (issue 1454).
+///
+/// One reader, because the two had drifted into one hand-rolled
+/// `strip_prefix` each and a third was about to be written.
+fn stamped_tool(stamp_text: &str, key: &str) -> Option<String> {
+    stamp_text
+        .lines()
+        .find_map(|l| l.strip_prefix(key))
+        .map(|v| v.trim().to_string())
+}
+
+/// The launch-resolution toolchain on disk NOW, through the ONE ladder —
+/// issue 1454.
+///
+/// Shells `scripts/build/launch-resolver-identity.sh` rather than asking
+/// `nros-launch-resolve --version` here, so the value a build STAMPED and the
+/// value a test COMPARES cannot be computed two ways. The file documents why
+/// the identity is the `play_launch` commit and not a store path or a binary
+/// hash. Memoised: one spawn per test process, not one per fixture.
+fn launch_resolver_identity() -> Option<&'static str> {
+    static IDENTITY: OnceCell<Option<String>> = OnceCell::new();
+    IDENTITY
+        .get_or_init(|| {
+            let root = project_root();
+            let out = Command::new("bash")
+                .arg(root.join("scripts/build/launch-resolver-identity.sh"))
+                .arg(&root)
+                .output()
+                .ok()?;
+            if !out.status.success() {
+                return None; // no resolver on this host — nothing to compare
+            }
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            (!s.is_empty()).then_some(s)
+        })
+        .as_deref()
+}
+
+/// Issue 1454 — refuse a compile-check fixture baked by a DIFFERENT launch
+/// parser than the one on disk.
+///
+/// `stage_tree` runs `nros sync`, which spawns `nros-launch-resolve` to turn
+/// the staged bringup's launch tree into the SystemModel the build then bakes
+/// into `run_plan.rs` / `nros-plan.json`. So a parser bump changes what these
+/// fixtures contain — and nothing noticed: `nros-build` emits no
+/// `rerun-if-changed` naming the resolver, and the freshness probe compares the
+/// artifact against repo sources, which the resolver's identity is not. The
+/// result was the worst shape a museum artifact can take: the fixture holds
+/// REAL codegen evidence from the old parser, so the consuming test neither
+/// skipped nor failed — it asserted, truthfully, that *some* parser once
+/// produced a correct plan, and reported that as acceptance for a parser it
+/// never ran.
+///
+/// Both unknowns are "cannot judge", never "stale":
+///
+/// * no `tool:nros-launch-resolve=` line — a stamp written before this existed,
+///   or a row whose build ran no sync. The `.inputsig` signature
+///   (`compile-check-signature.sh`) is what calls those stale, and one rebuild
+///   gives the stamp a line;
+/// * no resolver on this host — `require_west_fixture` makes the same choice
+///   for a missing CLI, and for the same reason: a host that cannot ask the
+///   question must not answer it.
+fn require_stamped_launch_resolver(stamp: &Path, id: &str) -> TestResult<()> {
+    // Same escape hatch every other freshness answer honours — "I built it
+    // another way". Honoured HERE and not only in
+    // `require_prebuilt_binary_fresh`, because this check runs first and a
+    // bypass that half the ladder ignores is not a bypass.
+    if std::env::var_os("NROS_SKIP_FIXTURE_CHECK").is_some() {
+        return Ok(());
+    }
+    let Ok(text) = fs::read_to_string(stamp) else {
+        return Ok(()); // missing stamp: the artifact check reports it
+    };
+    let Some(stamped) = stamped_tool(&text, "tool:nros-launch-resolve=") else {
+        return Ok(());
+    };
+    let Some(current) = launch_resolver_identity() else {
+        return Ok(());
+    };
+    if stamped == current {
+        return Ok(());
+    }
+    Err(staleness::stale_error_custom(
+        stamp,
+        format!(
+            "Compile-check fixture `{id}` is STALE — it was built with a DIFFERENT \
+             launch parser than the one on disk now.\n  \
+             baked by play_launch: {}\n  \
+             on disk now:          {}\n\
+             Its `run_plan.rs` / `nros-plan.json` are real codegen evidence from the \
+             OLD parser, so asserting them would report acceptance for a parser \
+             nobody is running (issue 1454).\n\
+             Rebuild it:  NROS_FIXTURE_ID={id} bash scripts/build/compile-check-fixtures.sh\n  \
+             stamp: {}",
+            &stamped[..stamped.len().min(12)],
+            &current[..current.len().min(12)],
+            stamp.display(),
+        ),
+    ))
+}
+
 /// Resolve a build-stage "compile-check" fixture's `.compile-ok` stamp (issue
 /// 0034). `scripts/build/compile-check-fixtures.sh` (run by
 /// `build-test-fixtures`) stages the template, rewrites placeholders, runs
@@ -4197,6 +4299,7 @@ pub fn xrce_action_server_concurrent_binary() -> PathBuf {
 /// `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL=1`).
 pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
     let stamp = build_dir(crate::kind::COMPILE_CHECK, &[id]).join(".compile-ok");
+    require_stamped_launch_resolver(&stamp, id)?;
     require_prebuilt_binary_fresh(&stamp)
 }
 
@@ -4206,8 +4309,12 @@ pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
 /// `target/debug/demo_entry`) that a test executes. Tier-aware like
 /// `require_compile_check`.
 pub fn require_compile_check_bin(id: &str, rel: &str) -> TestResult<PathBuf> {
-    let bin = build_dir(crate::kind::COMPILE_CHECK, &[id]).join(rel);
-    require_prebuilt_binary_fresh(&bin)
+    let dir = build_dir(crate::kind::COMPILE_CHECK, &[id]);
+    // issue 1454 — same stamp, same question. A build-fixture's BINARY is baked
+    // from the same resolved SystemModel as its sibling `.compile-ok` row, so a
+    // parser bump makes it a museum binary in exactly the same way.
+    require_stamped_launch_resolver(&dir.join(".compile-ok"), id)?;
+    require_prebuilt_binary_fresh(&dir.join(rel))
 }
 
 /// Resolve a file inside a build-stage **cmake** fixture's persistent build dir
@@ -4219,8 +4326,14 @@ pub fn require_compile_check_bin(id: &str, rel: &str) -> TestResult<PathBuf> {
 /// fixture file is missing → `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL`, hard
 /// fail in the full tier).
 pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
-    let p = build_dir(crate::kind::CMAKE_FIXTURES, &[id]).join(rel);
-    require_prebuilt_binary_fresh(&p)
+    let dir = build_dir(crate::kind::CMAKE_FIXTURES, &[id]);
+    // issue 1454 — a WORKSPACE template's cmake fixture is built by `nros sync`
+    // + `nros build`, so it bakes a resolved SystemModel and is a function of
+    // the parser that resolved it. The rows that configure a plain
+    // `CMakeLists.txt` run no sync and carry no stamp, which reads as
+    // unjudgeable rather than stale.
+    require_stamped_launch_resolver(&dir.join(".compile-ok"), id)?;
+    require_prebuilt_binary_fresh(&dir.join(rel))
 }
 
 /// Resolve a file inside a build-stage **esp-idf** fixture (issue 0041).
@@ -4283,10 +4396,8 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     // reads as stale (one rebuild refreshes it).
     let stamp = fixture_dir.join(".compile-ok");
     if let Ok(stamp_text) = fs::read_to_string(&stamp) {
-        let stamped_tool = stamp_text
-            .lines()
-            .find_map(|l| l.strip_prefix("tool:nros="))
-            .map(str::trim);
+        let stamped = stamped_tool(&stamp_text, "tool:nros=");
+        let stamped_tool = stamped.as_deref();
         let cli = project_root().join("packages/cli/target/release/nros");
         // Same hasher the stamping script uses (sha256sum) — no new dep, and
         // byte-identical output by construction.
@@ -7574,6 +7685,36 @@ mod tests {
              `target/<triple>/<profile>/` literal in this file assumes the AMBIENT \
              profile, so a new carve-out needs its resolver moved onto the row route \
              first (issues 1027, 1045)."
+        );
+    }
+
+    /// Issue 1454 — the stamp is a date FIRST and `key=value` lines after, and
+    /// the reader has to find a key that is not on line 1 without being
+    /// swallowed by the shorter key that is a prefix of it.
+    #[test]
+    fn a_stamp_yields_the_tool_key_it_was_asked_for() {
+        let stamp = "2026-09-24T04:39:46Z\n\
+                     tool:nros=deadbeef\n\
+                     tool:nros-launch-resolve=9a61048813da\n";
+        assert_eq!(
+            stamped_tool(stamp, "tool:nros-launch-resolve=").as_deref(),
+            Some("9a61048813da")
+        );
+        assert_eq!(
+            stamped_tool(stamp, "tool:nros=").as_deref(),
+            Some("deadbeef"),
+            "the CLI key must not match the longer one that shares its prefix"
+        );
+    }
+
+    /// The arm that leaves every pre-1454 stamp on disk to the `.inputsig` edge
+    /// instead of failing it here: a date-only stamp records NOTHING about the
+    /// parser, which is not the same as recording one that disagrees.
+    #[test]
+    fn a_date_only_stamp_records_no_tool() {
+        assert_eq!(
+            stamped_tool("2026-09-24T04:39:46Z\n", "tool:nros-launch-resolve="),
+            None
         );
     }
 }

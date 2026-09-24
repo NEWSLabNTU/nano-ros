@@ -37,8 +37,43 @@ NROS_REPO_ROOT="$repo_root"
 # shellcheck source=scripts/build/build-root.sh
 source "$repo_root/scripts/build/build-root.sh"
 
+# issue 1454 — the identity of the launch-resolution toolchain a staged build
+# consumed. One spelling, shared with `compile-check-signature.sh` and (through
+# the script's runnable form) with the Rust fixture resolver.
+# shellcheck source=scripts/build/launch-resolver-identity.sh
+source "$repo_root/scripts/build/launch-resolver-identity.sh"
+
 out_root="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK")"
 mkdir -p "$out_root"
+
+# Write a fixture's `.compile-ok` stamp — issue 1454.
+#
+# The stamp used to be a bare date, i.e. "a build succeeded at some point",
+# which is true of a museum artifact too. `--resolver` additionally records
+# WHICH launch-resolution toolchain the build consumed, so
+# `nros_tests::fixtures::require_compile_check` can compare it against the one
+# on disk now and fail loud instead of asserting real codegen evidence produced
+# by a parser nobody is running any more.
+#
+# `--resolver` is passed by the call sites whose build actually ran `nros sync`
+# — never blanket, because this line is an ASSERTION: recording a tool a row
+# never used would turn the next parser bump into a hard failure for a `cxx-syntax`
+# snippet that a C++ compiler alone produced. (The `.inputsig` signature takes
+# the opposite trade for the same fact; see the note there.)
+#
+# A stamp with NO resolver line is "nothing recorded", which the reader treats
+# as unjudgeable rather than stale: every stamp on disk predating this change is
+# that, and the `.inputsig` edge is what calls those stale.
+nros_write_compile_ok() {
+    local dir="$1" want_resolver="${2:-}"
+    {
+        date -u +%Y-%m-%dT%H:%M:%SZ
+        if [ "$want_resolver" = "--resolver" ]; then
+            printf 'tool:nros-launch-resolve=%s\n' \
+                "$(nros_launch_resolver_identity "$repo_root" || echo absent)"
+        fi
+    } > "$dir/.compile-ok"
+}
 
 # id : source template dir (carries @NANO_ROS_ROOT@ placeholders)
 
@@ -106,8 +141,15 @@ PYSTRIP
 # that the test executes (e.g. boot/run-tier assertions). The compile is still
 # the build stage; the test runs the prebuilt binary.
 
+# Set by `stage_tree` to `--resolver` when this row's staging resolved a
+# bringup, and to the empty string when it did not. Read by the `.compile-ok`
+# write sites below (issue 1454). Cleared on every entry, so one row's answer
+# can never be recorded against the next.
+_cc_resolver_arg=""
+
 stage_tree() {
     local id="$1" src="$2" staged="$3"
+    _cc_resolver_arg=""
     [ -d "$repo_root/$src" ] || {
         echo "compile-check: source template missing: $src" >&2
         return 2
@@ -138,6 +180,11 @@ stage_tree() {
             return 2
         fi
         ( cd "$staged" && "$_sync_cli" sync >/dev/null )
+        # issue 1454 — this sync is where `nros-launch-resolve` ran, so THIS row
+        # is a function of the launch-resolution toolchain and its stamp must
+        # say so. Set here rather than guessed at the write site: the condition
+        # is "did a bringup get resolved", which only this branch knows.
+        _cc_resolver_arg="--resolver"
     fi
 }
 
@@ -148,7 +195,7 @@ stage_and_check() {
     stage_tree "$id" "$src" "$staged"
     rm -f "$staged/.compile-ok"
     ( cd "$staged" && cargo check --manifest-path Cargo.toml )
-    date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
+    nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     echo "   stamped $staged/.compile-ok"
 }
 
@@ -178,7 +225,7 @@ stage_and_clippy() {
     stage_tree "$id" "$src" "$staged"
     rm -f "$staged/.compile-ok"
     ( cd "$staged" && cargo clippy --manifest-path Cargo.toml )
-    date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
+    nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     echo "   stamped $staged/.compile-ok"
 }
 
@@ -193,7 +240,7 @@ stage_and_build() {
     # `posix_entry/`). `pkg` (4th field) names the package when it isn't the
     # default `demo_entry` (O.3 builds `posix_entry`).
     ( cd "$staged" && cargo build -p "$pkg" --manifest-path "$manifest_dir/Cargo.toml" )
-    date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
+    nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     # profile-literal-ok: dir vocabulary: echoes the manifest's target-directory name
     echo "   built $staged/$manifest_dir/target/debug/$pkg"
 }
@@ -278,7 +325,21 @@ cmake_fixture_prereqs_ok() {
         echo "cmake-fixtures: '$nb' lacks 'codegen entry' — stale CLI (just setup-cli)" >&2
         exit 2
     }
-    # The C/mixed Entry templates parse launch XML via play_launch_parser.
+    # "The C/mixed Entry templates parse launch XML via play_launch_parser."
+    #
+    # MEASURED FALSE, 2026-09-24 (issue 1454), and left in place deliberately:
+    # `strace -f -e trace=execve` over a `pure_c_workspace` cmake-configure
+    # build — 37,244 calls — spawns `nros-launch-resolve` twice and this binary
+    # ZERO times. The templates' launch XML is resolved by `nros sync` through
+    # the resolver, which statically links the parser crate from the
+    # `packages/cli/third-party/play_launch` submodule; the SDK-store binary is
+    # a standalone CLI nothing here runs. So on a host with a provisioned
+    # resolver and no store binary this skips every cmake fixture for a reason
+    # that is not true.
+    #
+    # NOT changed with 1454's fix: dropping it makes this lane RUN where it used
+    # to skip, which is a behaviour change that wants its own measurement rather
+    # than a ride on a fix about freshness. Recorded in the issue's Residue.
     #
     # A LANE SKIP, not `exit 2`, and the distinction is the point: a missing
     # play_launch_parser is a HOST CAPABILITY question, exactly like the
@@ -320,6 +381,13 @@ build_cmake_fixture() {
         ( cd "$bld" \
             && NROS_REPO_DIR="$repo_root" "$NROS_CLI_BIN" sync >/dev/null \
             && NROS_REPO_DIR="$repo_root" "$NROS_CLI_BIN" build --workspace . --offline )
+        # issue 1454 — this branch ran `nros sync`, so this fixture is baked
+        # from a resolved SystemModel and is a function of the parser that
+        # resolved it, exactly like the cargo rows. `require_cmake_fixture`
+        # compares the stamp. The OTHER branch below does not sync, and gets no
+        # stamp: an assertion about a tool a build never used is the thing this
+        # issue is about.
+        nros_write_compile_ok "$bld" --resolver
         echo "   built $bld (nros build)"
         return 0
     fi
@@ -408,7 +476,7 @@ stage_and_cross_build() {
                NROS_PLATFORM_CFFI_INCLUDE="$repo_root/packages/platform/nros-platform-api/include" \
                cargo build "${profile_flag[@]}" --target "$target" -p "$pkg" )
     done
-    date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
+    nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     echo "   built $staged/$subdir (target/$target; profiles: $profiles)"
 }
 
@@ -709,7 +777,7 @@ cxx_syntax_check() {
     esac
     rm -f "$staged/deps.d"
     if "$cxx" -std=c++14 -fsyntax-only "${std_opt[@]+"${std_opt[@]}"}" -MD -MF "$staged/deps.d" "${inc[@]}" "$src"; then
-        date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
+        nros_write_compile_ok "$staged"
         echo "   stamped $staged/.compile-ok"
     else
         echo "   cxx-syntax FAILED for $id (no stamp; consuming test will report)" >&2
@@ -806,7 +874,7 @@ while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     mkdir -p "$out_root/$id"
     rm -f "$out_root/$id/.compile-ok"
     if ( cd "$repo_root/$dir" && cargo check --target "$target" ); then
-        date -u +%Y-%m-%dT%H:%M:%SZ > "$out_root/$id/.compile-ok"
+        nros_write_compile_ok "$out_root/$id"
         echo "   stamped $out_root/$id/.compile-ok"
         write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
         cargo_check_n=$((cargo_check_n + 1))
@@ -923,7 +991,7 @@ if _lane_on px4 && [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null
         px4_tdir_flag="$(nros_fixture_target_dir_flag linux)"
         # shellcheck disable=SC2086
         if ( cd "$repo_root/$dir" && cargo check $px4_tdir_flag ); then
-            date -u +%Y-%m-%dT%H:%M:%SZ > "$out_root/$id/.compile-ok"
+            nros_write_compile_ok "$out_root/$id" --resolver
             echo "   stamped $out_root/$id/.compile-ok"
             px4_n=$((px4_n + 1))
         else
@@ -1028,7 +1096,7 @@ if _lane_on px4 && [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null
             # shellcheck disable=SC2086
             if ( cd "$px4_bridge_dir/ffi" \
                  && NROS_PX4_BRIDGE_GEN="$bridge_gen" cargo check $bridge_tdir_flag ); then
-                date -u +%Y-%m-%dT%H:%M:%SZ > "$out_root/$id/.compile-ok"
+                nros_write_compile_ok "$out_root/$id"
                 echo "   stamped $out_root/$id/.compile-ok"
                 px4_n=$((px4_n + 1))
             else
