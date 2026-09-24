@@ -15,7 +15,7 @@ related: [1309, 1451, phase-451]
 `exclude` list is reached by nothing — so its tests are not slow, not flaky and
 not skipped. They never execute, and nothing reports that they did not.
 
-[phase-451](../roadmap/phase-451-dead-build-declarations.md) W4 found this for
+[phase-451](../../roadmap/phase-451-dead-build-declarations.md) W4 found this for
 one crate:
 
 > `nros-platform-stm32f4`'s three `detect_phy_type` tests DID run while it was
