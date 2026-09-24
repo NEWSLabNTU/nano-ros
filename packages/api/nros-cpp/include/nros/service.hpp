@@ -262,8 +262,7 @@ template <typename S> class Service {
     // all there is.
     Service(Service&& other)
         : initialized_(other.initialized_), handle_id_(other.handle_id_),
-          callback_mode_(other.callback_mode_), service_name_{},
-          executor_(other.executor_) {
+          callback_mode_(other.callback_mode_), service_name_{}, executor_(other.executor_) {
         ::nros::detail::assign_entity_name(service_name_, other.service_name_);
         if (other.initialized_ && !other.callback_mode_) {
             nros_cpp_service_server_relocate(other.storage_, storage_);
