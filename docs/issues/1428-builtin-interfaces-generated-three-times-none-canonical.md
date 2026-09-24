@@ -395,7 +395,12 @@ any leaf that also generates a closure containing `builtin_interfaces`:
 > links to `nros_msgs_builtin_interfaces` as well
 
 Split out as **issue 1455** (severity high, independent of phase-465), rule as
-**RFC-0067 §D4**.
+**RFC-0067 §D4** — and **resolved 2026-09-24**: `apply_package_renames`
+recomputes `links` from the final crate name through `links_key`, the two
+shipped crates were corrected on disk, and it is rule 4 of this issue's own
+gate. 1428's measurement that giving the two older `builtin_interfaces` copies a
+`links` line makes the workspace unresolvable no longer holds — each would get
+a key derived from its own renamed name.
 
 ### Status
 

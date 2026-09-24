@@ -367,8 +367,9 @@ just-recipe-refs:
 leaf-lockfiles:
     @bash scripts/check-leaf-lockfiles.sh
 
-# Issue 1428 — a generated message crate's IDENTITY: its version, and the wire
-# types it claims. Three rules, one scan, buildless.
+# Issues 1428 + 1455 — a generated message crate's IDENTITY: its version, the
+# wire types it claims, and the `links` channel it occupies. Four rules, one
+# scan, buildless.
 #
 # `builtin_interfaces` is generated THREE times (each of rcl-interfaces,
 # diagnostic-msgs and rosgraph-msgs carries its own flat transitive closure),
@@ -397,6 +398,17 @@ leaf-lockfiles:
 # `#[cfg(test)]` claims are excluded, and that is what keeps the gate useful: of
 # the four type names duplicated across crates, two were hand-written fixture
 # structs in `mod tests` that are never linked into an image.
+#
+# Rule 4 (issue 1455) is the THIRD identity axis a `path` dep resolves on, after
+# the name and the version: `links`, which is also global to the dependency
+# graph. It was derived from the ament package while the committed set is all
+# renames, so `nros-builtin-interfaces-clock` shipped
+# `nros_msgs_builtin_interfaces` and a consumer's own generated
+# `builtin_interfaces` made their shared graph unresolvable — at RESOLVE time,
+# so every cargo command in that leaf. The rule reads the crate's OWN
+# `[package] name`, not a rename map, because that is what a reader of the
+# shipped file can check. A crate with no `links` stays legal: the pre-phase-403
+# vintages emit no bounds `build.rs`, so there is no channel to carry.
 [private]
 message-crate-identity:
     @python3 scripts/check-message-crate-identity.py

@@ -779,8 +779,14 @@ fn generate_cargo_toml(
     // native library is linked. `nros-node` uses `links = "nros_node"` the same
     // way, and `nros-c` reads `DEP_NROS_NODE_RX_BUF_SIZE` off it.
     //
-    // Cargo requires `links` to be unique across a dependency graph; a
-    // generated crate is named after its ament package, which already is.
+    // Cargo requires `links` to be unique across a dependency graph, so it is
+    // a third identity axis beside the name and the version (RFC-0067 §D4) and
+    // must be a function of the name the crate SHIPS under. Here that is the
+    // ament package, because nothing has renamed anything yet. When the
+    // `--rename` pass moves a crate into the `nros-` namespace it recomputes
+    // this value from the new name (`cargo_nano_ros::apply_package_renames`) —
+    // leaving the ament value behind is issue 1455, where a consumer's own
+    // unrenamed copy of the same package collides at RESOLVE time.
     let mut cargo_toml = format!(
         r#"[package]
 name = "{}"

@@ -450,6 +450,27 @@ pub fn generate_from_package_xml(config: GenerateConfig) -> Result<()> {
 /// 3. Update cross-package dependency names in Cargo.toml
 /// 4. Update `use old_name::` references in Rust source files
 /// 5. Update `std` feature propagation in Cargo.toml
+/// 6. Recompute `links` from the crate name that actually ships
+///
+/// # Why `links` is rewritten HERE and not at the emitter (issue 1455)
+///
+/// `links` is the THIRD identity axis a `path` dep resolves on (RFC-0067 §D4),
+/// beside the name and the version, and it is global to the dependency graph.
+/// The emitter writes `links_key(<ament package>)` under the assumption that a
+/// generated crate is named after its ament package — true until a rename, and
+/// the committed core set is ALL renames. So
+/// `nros-builtin-interfaces-clock` shipped with the ament value
+/// `nros_msgs_builtin_interfaces`, and a consumer's own unrenamed
+/// `builtin_interfaces` carries it too: cargo refuses the graph at RESOLVE
+/// time, which takes every cargo command in that leaf.
+///
+/// This function is the ONE place that knows what a generated crate is finally
+/// called — it owns the directory name, the `[package] name`, every sibling dep
+/// key and every `use` path. Teaching the emitter the rename map instead would
+/// put "what does this crate ship as" in two places, which is the shape
+/// CLAUDE.md warns about; the FORMULA stays in one place either way, because
+/// the value is recomputed with the emitter's own
+/// [`rosidl_codegen::BoundInventory::links_key`] rather than text-substituted.
 fn apply_package_renames(
     output_dir: &Path,
     renames: &std::collections::HashMap<String, String>,
@@ -515,6 +536,15 @@ fn apply_package_renames(
                     content.replace(&format!("{}/std", old_name), &format!("{}/std", new_name));
             }
 
+            // Issue 1455 — `links` follows the crate NAME, not the ament
+            // package. Recomputed, never substituted: `links_key` normalises
+            // `-`/`.`/`/` to `_`, so a textual old→new swap misses every rename
+            // whose old name is not spelled the same way in the key.
+            content = rewrite_package_links(
+                &content,
+                &rosidl_codegen::BoundInventory::links_key(new_name),
+            );
+
             write_if_changed(&cargo_path, content)?;
         }
 
@@ -526,6 +556,46 @@ fn apply_package_renames(
     }
 
     Ok(())
+}
+
+/// Replace the `[package] links` VALUE in a generated manifest, if it has one.
+///
+/// A no-op on a manifest with no `links` key: this rewrites, it never adds. The
+/// emitter is the only producer of that line, and a pre-phase-403 generated
+/// tree that predates it has no bounds `build.rs` for the channel to carry
+/// anything from — giving it a `links` here would claim a channel that emits
+/// nothing while still consuming the graph-global name.
+///
+/// Scoped to the `[package]` table. `links` is meaningless anywhere else in a
+/// manifest, but a `[dependencies]` key could legitimately be named `links`,
+/// and a whole-file line scan would rewrite it into nonsense.
+fn rewrite_package_links(content: &str, links: &str) -> String {
+    let mut out = String::with_capacity(content.len() + links.len());
+    // The emitter writes `[package]` first, so the implicit table before any
+    // header is not `[package]` — but treat a manifest with no header at all as
+    // out of scope rather than guessing.
+    let mut in_package = false;
+    for line in content.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_package = trimmed == "[package]";
+            out.push_str(line);
+            continue;
+        }
+        if in_package {
+            if let Some(rest) = trimmed.strip_prefix("links") {
+                if rest.trim_start().starts_with('=') {
+                    out.push_str(&format!("links = \"{links}\""));
+                    if line.ends_with('\n') {
+                        out.push('\n');
+                    }
+                    continue;
+                }
+            }
+        }
+        out.push_str(line);
+    }
+    out
 }
 
 /// Recursively fix Rust identifier references in .rs files.
@@ -2265,8 +2335,90 @@ pub fn install_to_ament(config: InstallConfig) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_interface_files, replace_outside_strings};
+    use super::{collect_interface_files, replace_outside_strings, rewrite_package_links};
     use std::fs;
+
+    /// Issue 1455 — `links` is the third identity axis, and a rename must move
+    /// it. The shipped `nros-builtin-interfaces-clock` carried the ament value,
+    /// so a consumer's own `builtin_interfaces` collided with it at resolve
+    /// time.
+    #[test]
+    fn rewrite_package_links_follows_the_shipped_crate_name() {
+        let manifest = concat!(
+            "[package]\n",
+            "name = \"nros-builtin-interfaces-clock\"\n",
+            "version = \"0.0.0\"\n",
+            "edition = \"2021\"\n",
+            "links = \"nros_msgs_builtin_interfaces\"\n",
+            "\n",
+            "[dependencies]\n",
+            "heapless = \"0.8\"\n",
+        );
+        let out = rewrite_package_links(
+            manifest,
+            &rosidl_codegen::BoundInventory::links_key("nros-builtin-interfaces-clock"),
+        );
+        assert!(
+            out.contains("links = \"nros_msgs_nros_builtin_interfaces_clock\"\n"),
+            "links did not follow the crate name: {out}"
+        );
+        assert!(!out.contains("links = \"nros_msgs_builtin_interfaces\""));
+        // Everything else is untouched.
+        assert!(out.contains("name = \"nros-builtin-interfaces-clock\"\n"));
+        assert!(out.contains("heapless = \"0.8\"\n"));
+    }
+
+    /// A pre-phase-403 generated tree has no bounds `build.rs`, so there is no
+    /// channel for a `links` key to carry. The rewrite must not invent one — a
+    /// crate claiming a graph-global name while emitting nothing is strictly
+    /// worse than not claiming it.
+    #[test]
+    fn rewrite_package_links_never_adds_a_missing_key() {
+        let manifest = "[package]\nname = \"nros-lifecycle-msgs\"\nversion = \"0.0.0\"\n";
+        assert_eq!(rewrite_package_links(manifest, "nros_msgs_x"), manifest);
+    }
+
+    /// `links` means something only in `[package]`. A dependency that happens to
+    /// be named `links` must survive.
+    #[test]
+    fn rewrite_package_links_is_scoped_to_the_package_table() {
+        let manifest = concat!(
+            "[package]\n",
+            "name = \"a\"\n",
+            "links = \"nros_msgs_a\"\n",
+            "\n",
+            "[dependencies]\n",
+            "links = { version = \"0.1\" }\n",
+        );
+        let out = rewrite_package_links(manifest, "nros_msgs_nros_a");
+        assert!(out.contains("links = \"nros_msgs_nros_a\"\n"));
+        assert!(
+            out.contains("links = { version = \"0.1\" }\n"),
+            "a dependency named `links` was rewritten: {out}"
+        );
+    }
+
+    /// The whole point: two crates generated from ONE ament package still
+    /// collide when they ship under the SAME name, and stop colliding only when
+    /// the names differ. The key is a function of the final name and nothing
+    /// else.
+    #[test]
+    fn links_key_separates_renamed_copies_and_still_joins_identical_ones() {
+        let links_key = rosidl_codegen::BoundInventory::links_key;
+        assert_ne!(
+            links_key("nros-builtin-interfaces-clock"),
+            links_key("builtin_interfaces"),
+        );
+        assert_ne!(
+            links_key("nros-builtin-interfaces-clock"),
+            links_key("nros-builtin-interfaces-diag"),
+        );
+        // Same final name, two output trees — a REAL collision, still reported.
+        assert_eq!(
+            links_key("nros-builtin-interfaces"),
+            links_key("nros-builtin-interfaces"),
+        );
+    }
 
     /// The `--rename` pass rewrites every generated `.rs` through
     /// [`replace_outside_strings`], so anything it mangles lands in the

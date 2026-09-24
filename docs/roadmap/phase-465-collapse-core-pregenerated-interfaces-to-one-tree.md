@@ -157,12 +157,14 @@ A build, not a gate:
 
 ## What this phase does NOT do
 
-**The `links` rename** (issue 1455, RFC-0067 §D4). `links` is derived from the
-ament package name and the rename pass does not rewrite it, so a shipped crate
-collides with a consumer's own copy of the same ament package at resolve time.
-The collapse does not fix that — it reduces nano-ros to one copy, while the
-consumer still has theirs — and 1455 does not block this phase either. They are
-independent, and 1455 is the cheaper and more urgent of the two.
+**The `links` rename** (issue 1455, RFC-0067 §D4) — **already landed, 2026-09-24,
+ahead of this phase and independently of it.** `links` was derived from the ament
+package name and the rename pass did not rewrite it, so a shipped crate collided
+with a consumer's own copy of the same ament package at resolve time. The
+collapse would not have fixed that — it reduces nano-ros to one copy, while the
+consumer still has theirs. `apply_package_renames` recomputes the key from the
+final crate name now; a crate this phase renames gets a correct one for free, and
+nothing here needs to re-decide it.
 
 **Multi-edition.** The tree stays `generated/humble/`. A second edition is a
 second tree and a legitimate duplicate under §D5; it is not in scope here.
