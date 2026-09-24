@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_interfaces</name>
+  <version>0.1.0</version>
+  <description>
+    The ONE driver package for nano-ros' core pre-generated message set
+    (RFC-0067 §D5, phase-465). Codegen emits the whole transitive closure of
+    these four packages into `generated/&lt;edition&gt;/`, deduplicated — one crate
+    per ament package, every dep a flat sibling. Four driver packages shipped
+    `builtin_interfaces` three times; one ships it once.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- ROS interface dependencies. One row per package a CORE crate needs
+       before any user codegen runs; their transitive closure (std_msgs,
+       builtin_interfaces) arrives on its own and is emitted once. -->
+  <depend>rcl_interfaces</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>rosgraph_msgs</depend>
+  <depend>lifecycle_msgs</depend>
+
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>
