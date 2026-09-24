@@ -233,7 +233,17 @@ def _adapter_bin_and_env() -> "tuple[Path, dict]":
         + "\n"
         "  Fix either one:\n"
         "    nros setup --source rosidl      # vendored copy, no ROS needed\n"
-        "      (+ deps: pip3 install --user catkin_pkg 'empy==3.3.4' lark)\n"
+        # Issue 1481 — the installer for these is HOST-DEPENDENT and this line
+        # used to spell one: `pip3 install --user catkin_pkg 'empy==3.3.4' lark`
+        # on a Debian/Ubuntu host puts a copy in ~/.local/lib/pythonX/
+        # site-packages, which precedes /usr/lib/python3/dist-packages on
+        # sys.path and shadows the build the `ros-<edition>-*` packages were
+        # compiled against. apt has all three (python3-catkin-pkg is ROS-repo,
+        # python3-empy and python3-lark are plain Ubuntu). The rule that decides
+        # has ONE spelling, `orchestration::python_provider` — so this points at
+        # the tool that applies it instead of carrying a second copy that would
+        # be right on some hosts and wrong on the rest.
+        "      (+ deps: nros setup --check   # names apt or pip, per host)\n"
         "    source /opt/ros/<distro>/setup.bash   # into the BUILD's env\n"
         "    NROS_ROSIDL_ADAPTER_BIN_DIR=<dir>     # explicit override"
     )
@@ -288,7 +298,8 @@ def find_adapter(name: str) -> Path:
         sys.exit(
             f"error: rosidl_adapter helper {name} not found at {p}.\n"
             "Provision the vendored copy:  nros setup --source rosidl\n"
-            "(+ python deps: pip3 install --user catkin_pkg 'empy==3.3.4' lark)\n"
+            # Issue 1481 — host-dependent; see the note in `_adapter_bin_and_env`.
+            "(+ python deps: nros setup --check   # names apt or pip, per host)\n"
             "or set NROS_ROSIDL_ADAPTER_BIN_DIR / install ros-humble-rosidl-adapter."
         )
     return p
