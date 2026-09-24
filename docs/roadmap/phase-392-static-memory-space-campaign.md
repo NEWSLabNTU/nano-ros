@@ -44,7 +44,7 @@ Nothing in W5 may be quoted as a shipped saving. Sizes
 below are `nm` output from `build-board/zephyr/zephyr.elf` on
 mr_canhubk3/s32k344 (zenoh over serial), not estimates. Depends on
 [phase 390](phase-390-storage-mode-rename-inline-heap-view.md) for vocabulary
-and [phase 391](phase-391-allocation-unification-and-tier-model.md) for the
+and [phase 391](archived/phase-391-allocation-unification-and-tier-model.md) for the
 gate that verifies the claims.
 
 ## Where the RAM goes
@@ -246,7 +246,7 @@ is confined to tiers that already admit an allocator.
 It does not answer the other, which is the stronger one. Sharing widens the
 arena's block-size range from infrastructure-only (~2^6) to payload-inclusive
 (~2^16), and that range is precisely what makes [phase
-391](phase-391-allocation-unification-and-tier-model.md)'s constant-time
+391](archived/phase-391-allocation-unification-and-tier-model.md)'s constant-time
 allocator sizeable. The refusal was not about whether pooling wastes RAM — it
 plainly does — but about the cost landing on the allocator that phase 391 is
 built around.
@@ -1075,7 +1075,7 @@ never own the second number.
 ### Why not const generics
 
 Checked, because the W5 endgame in [phase
-391](phase-391-allocation-unification-and-tier-model.md) sized component cells
+391](archived/phase-391-allocation-unification-and-tier-model.md) sized component cells
 exactly that way and the parallel is tempting. `SERVICE_BUFFERS` is a private
 `static mut`: no header, no `#[no_mangle]`, no `repr(C)`. C round-trips one
 opaque `*mut c_void` token (`session_index * ZPICO_MAX_QUERYABLES + local`) that
@@ -1646,7 +1646,7 @@ always-reserved RAM into peak-of-concurrent, which is a real saving, and it is
 declined deliberately. A statically provable buffer would become an allocation
 that can fail mid-callback, and it would widen the heap's block-size range from
 infrastructure-only (~2^6) to payload-inclusive (~2^16) — which is precisely
-what makes [phase 391](phase-391-allocation-unification-and-tier-model.md)'s
+what makes [phase 391](archived/phase-391-allocation-unification-and-tier-model.md)'s
 constant-time allocator sizeable. The two decisions are coupled; this is the
 side of the coupling that keeps both defensible.
 

@@ -53,7 +53,7 @@ built here are unreachable:
 215.A, 215.C, 215.D and 215.F are therefore **superseded** and their artifacts
 are deleted by **215.K**; 215.B, 215.E, 215.G and 215.J survive unchanged, which
 is why the goal does not move. The general half is
-[phase-375](phase-375-board-tier-policy-and-onboarding-cost.md) W6–W9.
+[phase-375](../phase-375-board-tier-policy-and-onboarding-cost.md) W6–W9.
 
 **Priority note.** The `P1` below rested on "unblocks ASI's actuation
 consumption story", and that justification was spent long before the phase
@@ -525,7 +525,7 @@ phase-375 W6–W8; 215.K is the FVP board's side of it, and lands after W7 exist
       the FVP runner as a shell script" note inverts once the runner is an env
       export, so it is rewritten rather than retargeted.
 - [x] **K.7** FILED and then FIXED —
-      [issue 1134](../issues/archived/1134-zephyr-size-probe-identity-diverges-on-reconfigure.md),
+      [issue 1134](../../issues/archived/1134-zephyr-size-probe-identity-diverges-on-reconfigure.md),
       resolved 2026-09-06. The mechanism was
       `nros_zephyr_build::knob_usize`'s `dotconfig_usize(k).unwrap_or(default)`:
       three different situations collapsed into one `None`, so "there is a

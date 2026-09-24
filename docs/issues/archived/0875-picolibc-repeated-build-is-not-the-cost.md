@@ -11,7 +11,7 @@ related: [issue-0805, issue-0616, phase-340, phase-371, phase-391]
 ## The lead
 
 Reported as *"the newlib build is repeated"*, with the hypothesis that newlib is
-there only to supply `malloc`, so the [phase-391](../../roadmap/phase-391-allocation-unification-and-tier-model.md)
+there only to supply `malloc`, so the [phase-391](../../roadmap/archived/phase-391-allocation-unification-and-tier-model.md)
 rlsf heap could displace it and take the repeated build with it.
 
 The repetition is real. Zephyr builds **picolibc** — a newlib fork, hence the
