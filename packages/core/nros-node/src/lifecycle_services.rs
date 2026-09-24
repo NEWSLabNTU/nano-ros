@@ -552,7 +552,7 @@ pub use crate::config::PARAM_SERVICE_BUFFER_SIZE as LIFECYCLE_SERVICE_BUFFER_SIZ
 /// `get_available_states`, `get_available_transitions`, `get_transition_graph`.
 /// Both places that stated a number for these stated six, which is where the
 /// widely-quoted "twelve slots before the application declares anything" came
-/// from; it is eleven. See [`crate::parameter_services::PARAM_SERVICE_QUERYABLES`]
+/// from; it is eleven. See `crate::parameter_services::PARAM_SERVICE_QUERYABLES`
 /// for why the count lives here rather than in the RMW.
 pub const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 
@@ -566,7 +566,15 @@ pub const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 // every declared parameter), so the parameter bound is an upper bound here and
 // a second knob would be a second number saying less. The DEPTH is the same 1
 // and for the same reason: `ros2 lifecycle set` sends one request and waits.
-pub use crate::parameter_services::{
+//
+// Issue 1468 -- from `crate::param_sizing`, not from `crate::parameter_services`.
+// Same numbers, same argument; the difference is that the geometry sits below
+// BOTH service features now, so reading it here no longer requires an image
+// that wants lifecycle to also carry the parameter services and their message
+// crate. Reading it from the gated module is what made this configuration --
+// `lifecycle-services` without `param-services`, which is what
+// `examples/native/rust/lifecycle-node` builds -- fail to compile at all.
+pub use crate::param_sizing::{
     PARAM_INBOX_DEPTH as LIFECYCLE_INBOX_DEPTH,
     PARAM_INBOX_SLOT_BYTES as LIFECYCLE_INBOX_SLOT_BYTES,
 };
@@ -575,17 +583,19 @@ pub use crate::parameter_services::{
 /// node one executor can serve.
 ///
 /// ZERO while no backend the runtime can reach accepts a caller-owned ring --
-/// see [`crate::parameter_services::PARAM_INBOX_COUNT`], which states what
-/// that is waiting on.
+/// see `crate::parameter_services::PARAM_INBOX_COUNT`, which states what
+/// that is waiting on. (A name, not an intra-doc link: that module is behind
+/// `param-services` and this one is not, so a link would dangle in exactly the
+/// configuration issue 1468 was about.)
 pub const LIFECYCLE_INBOX_COUNT: usize =
     if <crate::session::ConcreteSession as nros_rmw::Session>::SUPPORTS_CALLER_INBOX {
-        LIFECYCLE_SERVICE_QUERYABLES * crate::parameter_services::MAX_PARAM_SERVICE_SETS
+        LIFECYCLE_SERVICE_QUERYABLES * crate::param_sizing::MAX_SERVICE_SETS
     } else {
         0
     };
 
 /// The lifecycle family's rings. `static`, not heap, for the reason
-/// [`crate::parameter_services::PARAM_INBOX`] gives.
+/// `crate::parameter_services::PARAM_INBOX` gives.
 pub static LIFECYCLE_INBOX: [nros_rmw::CallerInboxStorage<
     LIFECYCLE_INBOX_SLOT_BYTES,
     LIFECYCLE_INBOX_DEPTH,

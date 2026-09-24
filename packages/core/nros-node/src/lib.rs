@@ -153,6 +153,27 @@ pub(crate) mod mock;
 #[cfg(all(feature = "param-services", any(has_rmw, test)))]
 pub mod parameter_services;
 
+// Issue 1468 — the parameter family's message GEOMETRY, which BOTH service
+// families are sized from, so its gate is the DISJUNCTION of theirs.
+//
+// `lifecycle_services` reads three numbers out of here (the inbox slot, the
+// depth, the service-set bound) and phase-461 W2 read them out of
+// `parameter_services` instead, across the gate above. The numbers were right;
+// the module holding them was behind a feature the reader does not select, so
+// `--features lifecycle-services` without `param-services` did not compile.
+//
+// Separating them is the fix and the honest shape: the SERVICES need the
+// `rcl_interfaces` message crate `param-services` brings, the GEOMETRY is
+// arithmetic over `config`'s declared shapes and `nros_params`' resolved
+// capacities and needs nothing. Only the first is a capability a consumer
+// picks. `any(has_rmw, test)` is carried over unchanged from both module
+// gates, so no image compiles this that did not compile it before.
+#[cfg(all(
+    any(feature = "param-services", feature = "lifecycle-services"),
+    any(has_rmw, test)
+))]
+pub mod param_sizing;
+
 /// phase-303 W4 (#0267) — construct the outbound CDR writer. Every tx path routes
 /// through here so the wire encoding is chosen in ONE place.
 ///

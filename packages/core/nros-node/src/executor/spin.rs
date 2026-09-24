@@ -9022,7 +9022,7 @@ impl<'s> Executor<'s> {
         }
         let mut todo: heapless::Vec<
             (u8, heapless::String<64>, heapless::String<64>),
-            { crate::parameter_services::MAX_PARAM_SERVICE_SETS },
+            { crate::param_sizing::MAX_SERVICE_SETS },
         > = heapless::Vec::new();
         for index in 0..want {
             let key = nros_params::NodeKey::new(index as u8);
@@ -9302,10 +9302,7 @@ impl<'s> Executor<'s> {
     /// enumerate. The wire assertion is W6.
     pub fn parameter_service_node_names(
         &self,
-    ) -> heapless::Vec<
-        crate::names::ResolvedName,
-        { crate::parameter_services::MAX_PARAM_SERVICE_SETS },
-    > {
+    ) -> heapless::Vec<crate::names::ResolvedName, { crate::param_sizing::MAX_SERVICE_SETS }> {
         let mut out = heapless::Vec::new();
         let Some(params) = self.params.as_ref() else {
             return out;
@@ -9716,7 +9713,7 @@ impl<'s> Executor<'s> {
             // phase-430 W2 — no node has been auto-declared yet; the caller
             // (`ensure_parameter_store`) seeds PRIMARY immediately after.
             #[cfg(feature = "sim-time")]
-            sim_time_seeded: [false; crate::parameter_services::MAX_PARAM_SERVICE_SETS],
+            sim_time_seeded: [false; crate::param_sizing::MAX_SERVICE_SETS],
         })
     }
 
