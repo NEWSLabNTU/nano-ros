@@ -91,10 +91,11 @@ pub struct RmwDispatch {
     pub link_strategy: &'static str,
     /// The `nros-c` feature that bundles this backend, or empty.
     ///
-    /// AUTHORED per backend rather than derived: the two in-tree values are
-    /// `cffi-zenoh-cffi` and `cffi-xrce-c`, irregular by history in the same way
-    /// `cpp_define` is. `umbrella_cffi_feature` is the `nros-cpp` half, which IS
-    /// regular (`<cargo_feature>-cffi`).
+    /// AUTHORED per backend rather than derived, in the same way `cpp_define`
+    /// is. `umbrella_cffi_feature` is the `nros-cpp` half, which IS regular
+    /// (`<cargo_feature>-cffi`) — and the two must agree on which `nros-c`
+    /// feature they select, or a road building both crates into one target dir
+    /// resolves `nros-c` twice (issues 1461, 1100).
     pub c_cffi_feature: &'static str,
     /// Whether the final link must use the C++ linker driver (libstdc++ on the
     /// line). True for cyclonedds (its wrapper is C++), even for C binaries.

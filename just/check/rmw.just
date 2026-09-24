@@ -279,6 +279,24 @@ entry-rmw-vocabulary:
 infra-queryable-counts:
     @python3 scripts/check-infra-queryable-counts.py
 
+# Issue 1461 — the C and C++ roads must resolve `nros-c` to ONE feature set.
+#
+# Every mixed-image road runs cargo twice into one `--target-dir`, and both
+# `nros-c` units write `nros-c-generated/nros/nros_config_generated.h`. Whether
+# that is fatal depends on WHICH features differ, and the cheap-looking case is
+# the one nobody sees: a back-compat alias spelling on one side gives two
+# headers that differ in one informational line, so every probed size agrees,
+# nothing fails, and the shared file's mtime moves on every build — which the
+# fixture staleness probe reads as an edited source. Three C pubsub coordinates
+# produced no runtime result for 18 days behind that.
+#
+# The same split has also been fatal twice (1100's divergence panic, 1354's
+# undefined `config_variant`), each fixed at its own site. This is the class.
+# Buildless: two manifests, the rmw descriptors, and a scan of the build glue.
+[private]
+nros-c-feature-agreement:
+    @python3 scripts/check-nros-c-feature-agreement.py
+
 # Issue 0737 — an example's message callback may not drop a sample silently.
 # From outside the process a silent `return` and a message that never arrived
 # are the SAME observation; that ambiguity cost two hosts an investigation each.

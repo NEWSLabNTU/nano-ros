@@ -24,7 +24,7 @@ nros-board-nuttx-qemu = { path = "..", default-features = false }
 # spin loop with the port's own ending: the image now panics through
 # `nros_platform_panic`, which on NuttX is the platform's, not a bare `loop {}`.
 nros-c = { path = "../../../api/nros-c", default-features = false, features = [
-    "alloc", "global-allocator", "panic-platform", "cffi-zenoh-cffi", "platform-nuttx", "ros-humble"
+    "alloc", "global-allocator", "panic-platform", "rmw-zenoh", "platform-nuttx", "ros-humble"
 ] }
 nros-cpp = { path = "../../../api/nros-cpp", default-features = false, features = [
     "alloc", "rmw-zenoh-cffi", "platform-nuttx", "ros-humble"

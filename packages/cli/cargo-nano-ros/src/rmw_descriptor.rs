@@ -73,11 +73,17 @@ pub struct RmwDescriptor {
     /// `[rmw.link].strategy`, or the derivation in [`derive_link_strategy`].
     pub link_strategy: String,
     /// `[rmw.link].c_cffi_feature` — the `nros-c` feature that bundles this
-    /// backend. AUTHORED, not derived: the two in-tree values are
-    /// `cffi-zenoh-cffi` and `cffi-xrce-c`, irregular by history in the same
-    /// way `cpp_define` is, and `nros-c`'s feature table is what a wrong guess
-    /// would break. Empty means "this backend is not bundled into `nros-c`",
-    /// which is correct for every non-Rust backend.
+    /// backend. AUTHORED, not derived, in the same way `cpp_define` is, and
+    /// `nros-c`'s feature table is what a wrong guess would break. Empty means
+    /// "this backend is not bundled into `nros-c`", which is correct for every
+    /// non-Rust backend.
+    ///
+    /// It must name the feature the `nros-cpp` half FORWARDS
+    /// (`rmw-<name>-cffi = [… "nros-c/rmw-<name>" …]`), never a back-compat
+    /// alias for it: cargo keys a unit by its feature SET, so a road that
+    /// builds both crates into one `--target-dir` would otherwise get two
+    /// `nros-c` units writing one generated header (issues 1461, 1100).
+    /// `check-nros-c-feature-agreement` holds both halves to it.
     pub c_cffi_feature: String,
     /// `[rmw.capabilities]` — capability name -> THIS backend's own feature.
     /// An open vocabulary by design (RFC-0071 D6): core never learns the

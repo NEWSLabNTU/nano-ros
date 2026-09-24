@@ -547,7 +547,7 @@ pub fn write_header_to_target_dir(relative: &[&str], contents: &str) {
         nros_sizes_build::cargo_target_dir().ok()
     };
     let Some(root) = root else { return };
-    write_to(root, relative, contents);
+    write_shared_header(root, relative, contents);
 
     // The OWNER must stamp too, or the check it owns goes toothless. This is
     // the path `nros-c` takes; `write_header_if_absent_or_verify` is the
@@ -562,6 +562,61 @@ pub fn write_header_to_target_dir(relative: &[&str], contents: &str) {
             probe_artifact_stamp().as_deref(),
         );
     }
+}
+
+/// The `NROS_CONFIG_VARIANT` string a generated header carries, if any.
+fn variant_of(header: &str) -> Option<&str> {
+    header
+        .lines()
+        .map(str::trim)
+        .find_map(|l| l.strip_prefix("#define NROS_CONFIG_VARIANT "))
+        .map(|v| v.trim().trim_matches('"'))
+}
+
+/// Write the SHARED `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/` copy.
+///
+/// Not `write_to`: this path is shared by every unit in the target dir, and a
+/// rewrite of it is not free. It is a `cargo:rerun-if-changed` input of
+/// `write_header_if_absent_or_verify`, it is listed in the staticlib's own
+/// dep-info, and the fixture staleness probe reads that dep-info — so an mtime
+/// move here says "a source was edited" to three different readers.
+///
+/// Two units of `nros-c` with different feature SETS but identical probed sizes
+/// produce headers that differ in exactly one line, `NROS_CONFIG_VARIANT` — a
+/// human-readable slug that [`defines_of`] deliberately excludes from the
+/// mismatch check, that no consumer reads, and that does not reach the size
+/// ANCHOR (issue 0369 derives that from the values). Rewriting for it made the
+/// file oscillate on every build, which is issue 1461: the three C
+/// `native_example_pubsub_e2e` coordinates spent 18 days reporting a STALE
+/// verdict instead of a runtime result, for a binary that was correct.
+///
+/// So the owner's write uses the same equality its own verifier uses. A
+/// DISAGREEING define is still a real change and is still written. The variant
+/// mismatch is not swallowed — it means two feature sets share this path, which
+/// is issue 1354's unfixed half, so it is SAID rather than silently smoothed
+/// over.
+fn write_shared_header(root: PathBuf, relative: &[&str], contents: &str) {
+    let mut dest = root;
+    for segment in relative {
+        dest.push(segment);
+    }
+    if let Ok(existing) = std::fs::read_to_string(&dest)
+        && existing != contents
+        && defines_of(&existing) == defines_of(contents)
+    {
+        println!(
+            "cargo:warning=nros: {} already holds an identical header built as variant \
+             '{}'; this unit is '{}'. Two feature sets share one byproduct path (issue \
+             1354). Every probed size agrees, so the file is left alone rather than \
+             rewritten on every build (issue 1461) — but the two cargo invocations that \
+             build this directory should resolve nros-c to ONE feature set.",
+            dest.display(),
+            variant_of(&existing).unwrap_or("<none>"),
+            variant_of(contents).unwrap_or("<none>"),
+        );
+        return;
+    }
+    write_to_path(&dest, contents);
 }
 
 fn write_to(root: PathBuf, relative: &[&str], contents: &str) {
@@ -1022,6 +1077,64 @@ pub fn variant_suffix_from_sizes(sizes: &[(&str, usize)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1461 — the shared byproduct path must not oscillate on a
+    /// difference no consumer reads.
+    ///
+    /// Two `nros-c` units in one `--target-dir` differ by one feature SPELLING
+    /// and therefore by `NROS_CONFIG_VARIANT`. `write_atomic` compares BYTES,
+    /// so each build rewrote the file the other had just written; the mtime
+    /// moved every build, the staticlib's dep-info carries the path, and the
+    /// fixture probe read that as an edited source. A disagreeing `#define` is
+    /// a different matter and must still be written — that is the sizes
+    /// contract the 0088…0268 family is about.
+    #[test]
+    fn a_variant_only_difference_does_not_rewrite_the_shared_header() {
+        let root = std::env::temp_dir().join(format!("nros-1461-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let rel = ["nros-c-generated", "nros", "nros_config_generated.h"];
+        let dest = root.join(rel[0]).join(rel[1]).join(rel[2]);
+
+        let a = "#define NROS_CONFIG_VARIANT \"alloc_rmw_zenoh\"\n#define NROS_EXECUTOR_SIZE 42\n";
+        let b = "#define NROS_CONFIG_VARIANT \"alloc_cffi_zenoh_cffi_rmw_zenoh\"\n\
+                 #define NROS_EXECUTOR_SIZE 42\n";
+        let c = "#define NROS_CONFIG_VARIANT \"alloc_rmw_zenoh\"\n#define NROS_EXECUTOR_SIZE 43\n";
+
+        write_shared_header(root.clone(), &rel, a);
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            a,
+            "first writer creates it"
+        );
+
+        write_shared_header(root.clone(), &rel, b);
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            a,
+            "a variant-only difference leaves the file alone"
+        );
+
+        write_shared_header(root.clone(), &rel, c);
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            c,
+            "a DISAGREEING define is a real change and is still written"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The variant reader, because the suppression above is only as good as
+    /// what it reports: a header with no variant line must not be mistaken for
+    /// one whose variant is empty.
+    #[test]
+    fn variant_of_reads_the_slug_or_nothing() {
+        assert_eq!(
+            variant_of("#define NROS_CONFIG_VARIANT \"a_b\"\n"),
+            Some("a_b")
+        );
+        assert_eq!(variant_of("#define NROS_EXECUTOR_SIZE 1\n"), None);
+    }
 
     /// The stale-vs-divergent question `write_header_if_absent_or_verify` asks
     /// when the probed sizes disagree.

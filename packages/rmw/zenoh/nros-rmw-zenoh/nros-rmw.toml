@@ -37,10 +37,18 @@ crate = "nros-rmw-zenoh"
 # reads it as `strategy = "umbrella"` (RFC-0094 D5), which is what retired the
 # root `CMakeLists.txt`'s `if(NANO_ROS_RMW STREQUAL "zenoh" OR ... "xrce")` arm.
 rlib_dep = "nros-rmw-zenoh"
-# The `nros-c` feature that bundles it. AUTHORED, like `cpp_define`: `nros-c`
-# spells this `cffi-zenoh-cffi` and xrce's `cffi-xrce-c`, which no convention
-# produces. The `nros-cpp` half IS regular and is derived (`rmw-zenoh-cffi`).
-c_cffi_feature = "cffi-zenoh-cffi"
+# The `nros-c` feature that bundles it. AUTHORED, like `cpp_define`, because
+# `nros-c` names its backends `rmw-<name>` while the `nros-cpp` half is regular
+# and derived (`rmw-zenoh-cffi`).
+#
+# This MUST be the feature `nros-cpp`'s own cffi feature forwards
+# (`rmw-zenoh-cffi = [… "nros-c/rmw-zenoh" …]`), not the `cffi-zenoh-cffi`
+# back-compat alias it used to name. The alias resolves to the same thing, but
+# cargo keys a unit by its feature SET, so naming it made the C road resolve
+# `nros-c` to a set no other consumer asks for — two `nros-c` units in one
+# `--target-dir`, both writing `nros-c-generated/nros/nros_config_generated.h`.
+# Issue 1461; the same divergence issue 1100 fixed one road over.
+c_cffi_feature = "rmw-zenoh"
 needs_cxx_linker = false
 # `extra_link_libs` was DELETED in phase-439 W4 (issue 1216). It was read by
 # NOTHING, and its cyclonedds value named the archives whose only correct use is
