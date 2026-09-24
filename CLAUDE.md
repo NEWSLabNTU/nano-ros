@@ -1043,7 +1043,16 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `packages/core/{nros-rmw-cffi,nros-platform-cffi}/`, a directory neither has ever lived in,
   and named two of the three surfaces `gen-abi-bindings.sh` writes).
   Header edit ⇒ run `scripts/gen-abi-bindings.sh` (pinned bindgen-cli 0.72.1) + commit both;
-  `check-abi-bindings` gates staleness. Never hand-edit `generated.rs`; vtable slots are
+  `check-abi-bindings` gates staleness — **and until issue 1464 NO CI image installed bindgen,
+  so that gate had never RUN anywhere, on any event** (1226's shape a lane over; the skip
+  itself was correct, `nros_check_skip` with a named remedy, and nothing else answered it).
+  `ci-base` installs the pin now; the committed output was MEASURED unchanged when the gate
+  first ran, so this was a gap and not a mismatch. Two things measured in that image and worth
+  keeping: `clang` already supplies the `libclang` bindgen `dlopen`s (no extra apt), and the
+  bytes do not depend on the libclang major (12 and 14 agree) — but there is **no toolchain
+  named `nightly` there**, so a bare `rustfmt +nightly` silently downloads an UNPINNED one
+  rather than failing. Read the channel from `tools/rust-toolchain.toml` like every other
+  recipe does. Never hand-edit `generated.rs`; vtable slots are
   `Option<fn>` (C nullability); no layout tests in generated code (host-64-bit literals
   break 32-bit targets).
 - **Hand-mirrored FFI structs drift on append** (QoS `tx_express`, `callback_group` — 3×):

@@ -54,6 +54,46 @@ if [ "$have" != "$BINDGEN_PIN" ]; then
     exit 2
 fi
 
+# The PINNED nightly, not a bare `+nightly` — issue 1464.
+#
+# `rustfmt +nightly` asks rustup for a toolchain named exactly `nightly`. A
+# developer box has one, which is why the bare spelling worked everywhere it was
+# ever tried. `ci/docker/ci-base/Dockerfile` installs `nightly-2026-04-11` and NO
+# `nightly` alias — MEASURED in that image: `rustup toolchain list` returns
+# `stable-x86_64-unknown-linux-gnu` and `nightly-2026-04-11-x86_64-unknown-linux-gnu`,
+# nothing else. There rustup does not fail; it goes to the network and installs
+# whatever nightly is current ("info: syncing channel updates for ..."), so the
+# formatter that decides the committed bytes would be an unpinned moving target
+# and this gate would flap for a reason that has nothing to do with the headers.
+# `scripts/api_parity/extract_rust.py` already records this exact hazard for
+# rustdoc; this file was the last bare `+nightly` in the tree.
+#
+# Read from `tools/rust-toolchain.toml`, where the pin lives, so a bump still
+# moves one file — the same awk every `just` module uses.
+NIGHTLY="$(awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-toolchain.toml)"
+[ -n "$NIGHTLY" ] || {
+    echo "error: no \`channel = \"...\"\` line in tools/rust-toolchain.toml" >&2
+    exit 2
+}
+
+# ...and it FAILS rather than being skipped. The old form was
+# `rustfmt +nightly "$f" 2>/dev/null || true`: a step that cannot fail is not a
+# step, and an unformatted regeneration does not announce itself — it reports as
+# "the committed ABI bindings are stale", which is a wrong diagnosis pointing at
+# the headers. (Today the pass is a NO-OP, measured: bindgen-cli formats its own
+# output, and skipping rustfmt entirely leaves all three files byte-identical. So
+# this is latent, not live — which is exactly how long it would have stayed
+# invisible once the gate started running in the container.)
+nros_rustfmt_pinned() {
+    local f="$1"
+    if ! rustfmt "+$NIGHTLY" "$f"; then
+        echo "error: rustfmt +$NIGHTLY failed on $f — the pinned nightly decides the" >&2
+        echo "       committed bytes, so an unformatted regeneration must not be written." >&2
+        echo "       Install it: rustup toolchain install $NIGHTLY -c rustfmt" >&2
+        exit 2
+    fi
+}
+
 # ---- RMW surface: nros-rmw-abi headers -> nros-rmw-cffi/src/generated.rs
 RMW_ABI="packages/core/nros-rmw-abi"
 RMW_OUT="packages/rmw/cffi/src/generated.rs"
@@ -97,7 +137,7 @@ EOF
 } > "$RMW_OUT.tmp"
 refuse_stub "$RMW_OUT.tmp"
 
-rustfmt +nightly "$RMW_OUT.tmp" 2>/dev/null || true
+nros_rustfmt_pinned "$RMW_OUT.tmp"
 # write-if-changed: an identical rewrite still bumps mtime, which re-stales
 # every fixture whose dep graph contains this file (the check lane runs this
 # script on EVERY `just check` via check-abi-bindings).
@@ -144,7 +184,7 @@ EOF2
 } > "$PLAT_OUT.tmp"
 refuse_stub "$PLAT_OUT.tmp"
 
-rustfmt +nightly "$PLAT_OUT.tmp" 2>/dev/null || true
+nros_rustfmt_pinned "$PLAT_OUT.tmp"
 if ! cmp -s "$PLAT_OUT.tmp" "$PLAT_OUT"; then
     mv "$PLAT_OUT.tmp" "$PLAT_OUT"
     echo "regenerated $PLAT_OUT ($(wc -l < "$PLAT_OUT") lines, bindgen $BINDGEN_PIN)"
@@ -179,7 +219,7 @@ BOARD_OUT="packages/boards/nros-board-cffi/src/generated.rs"
 } > "$BOARD_OUT.tmp"
 refuse_stub "$BOARD_OUT.tmp"
 
-rustfmt +nightly "$BOARD_OUT.tmp" 2>/dev/null || true
+nros_rustfmt_pinned "$BOARD_OUT.tmp"
 if ! cmp -s "$BOARD_OUT.tmp" "$BOARD_OUT"; then
     mv "$BOARD_OUT.tmp" "$BOARD_OUT"
     echo "regenerated $BOARD_OUT ($(wc -l < "$BOARD_OUT") lines, bindgen $BINDGEN_PIN)"
