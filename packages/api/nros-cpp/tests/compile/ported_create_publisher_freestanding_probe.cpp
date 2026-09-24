@@ -1,24 +1,38 @@
-// EXPECTED-FAILURE probe — phase-427 W3.
+// POSITIVE probe — phase-456 W5. It used to be an EXPECTED-FAILURE.
 //
-// A ported `node->create_publisher<M>("chatter", 10)` must FAIL TO COMPILE on a
-// freestanding target, and the diagnostic must name the out-ref overload that
-// IS available there.
+// A ported `node->create_publisher<M>("chatter", 10)` must COMPILE on a
+// freestanding target, and must hand back the same `Publisher<M>::SharedPtr` it
+// hands back hosted. That is RFC-0096 D1 — ONE C++ API, the same shape on every
+// platform — at the single most copied line in the porting corpus.
 //
-// This is the governing principle's whole mechanism, at its sharpest point. The
-// hosted overload returns `std::shared_ptr<Publisher<M>>` and there is no
-// allocator on this target, so the honest answers are "fails to compile" or
-// "compiles and allocates". The second is the one RFC-0089 forbids: a firmware
-// image that silently gained a heap allocation per publisher would be a
-// contract change nobody was told about.
+// WHAT THIS FILE ASSERTED BEFORE, AND WHY THE INVERSION IS THE FIX
 //
-// It fails for a STRUCTURAL reason rather than a `static_assert`: the hosted
-// signatures are gated on `NROS_CPP_NODE_HOSTED`, which is off here, so the
-// overload does not exist and overload resolution reports the ones that do.
-// That is why the check below greps the diagnostic — "it failed" is also what a
-// typo produces, and this probe must distinguish the two.
+// Until W5 this line was REFUSED here, and the refusal was honest given the
+// signature it was refusing. The hosted overload returned
+// `std::shared_ptr<Publisher<M>>`, so on a target with no allocator the only
+// two answers were "fails to compile" and "compiles and allocates" — and
+// RFC-0089 forbids the second, because a firmware image that silently gained a
+// heap allocation per publisher would be a contract change nobody was told
+// about. The file said so, and the lane's error text said so.
 //
-// Compiled `-nostdinc++` against the ThreadX minimal libcpp. Its positive twin
-// is `one_node_type_freestanding.cpp`.
+// W5 removed the premise rather than the rule. `Publisher<M>::SharedPtr` is
+// `nros::Owned<Publisher<M>>` now: the publisher BY VALUE, move-only, with an
+// `operator->` so `pub->publish(m)` keeps working, and with no allocator, no
+// control block and no `<memory>`. W4 measured the case for it — the arena has
+// no removal path, so an arena publisher would make `reset()` and scope exit
+// no-ops, and the Rust `create_publisher_with_qos` returns an
+// `EmbeddedPublisher<M>` by value with a `Drop` that `Owned<T>` mirrors. With
+// no allocation to hide, there is nothing left to refuse, and refusing anyway
+// would be a divergence this API exists to remove.
+//
+// The `const char*` key is the other half. A `std::string` parameter would have
+// re-imposed the gate through the ARGUMENT after the return type stopped
+// imposing it, so the ported overload is keyed on `const char*` (which a string
+// literal binds exactly) and the `std::string` forwarders stay hosted-only.
+//
+// Compiled `-nostdinc++` against the ThreadX minimal libcpp. Its sibling is
+// `one_node_type_freestanding.cpp`, which covers the rest of the freestanding
+// node surface.
 
 #include <nros/nros.hpp>
 
@@ -40,14 +54,46 @@ struct CounterMsg {
     static int ffi_deserialize(const uint8_t*, size_t, void*) { return 0; }
 };
 
-inline void a_ported_line_must_not_compile_here() {
+// THE LINE. On a freestanding target, with no allocator and no `<memory>`.
+inline void a_ported_line_compiles_here() {
     rclcpp::Node node("talker");
-    // THE LINE. Hosted, this returns a `std::shared_ptr<Publisher<CounterMsg>>`.
-    // Here there is no such overload, and the migration is the out-ref form:
-    //     rclcpp::Publisher<CounterMsg> pub;
-    //     node.create_publisher(pub, "chatter");
     auto pub = node.create_publisher<CounterMsg>("chatter", 10);
+    CounterMsg msg;
+    msg.data = 1;
+    // `operator->` is the property that separates a publisher holder from the
+    // two arena handles: the corpus calls `publish` through it 41 times.
+    if (pub) (void)pub->publish(msg);
+    // And `reset()` DESTROYS, which is the behaviour an arena slot could not
+    // have provided — the arena's `arena_used` only grows and nothing sets an
+    // entry back to `None`.
+    pub.reset();
+}
+
+// The explicit-QoS spelling, which is the other one ported source writes.
+inline void the_qos_spelling_compiles_too() {
+    rclcpp::Node node("talker");
+    rclcpp::Publisher<CounterMsg>::SharedPtr pub =
+        node.create_publisher<CounterMsg>("chatter", ::nros::QoS(10));
     (void)pub;
+}
+
+// It is the SAME TYPE the hosted build returns, which is the property this
+// probe exists for. A freestanding-only spelling that merely compiles would
+// satisfy "it builds" and miss the point.
+//
+// `node_ref()` rather than `std::declval` — this TU has no `<utility>`, which
+// is the whole situation being probed.
+rclcpp::Node& node_ref();
+static_assert(::nros::tr::is_same<decltype(node_ref().create_publisher<CounterMsg>("t", 10)),
+                                  rclcpp::Publisher<CounterMsg>::SharedPtr>::value,
+              "the ported create_publisher must return Publisher<M>::SharedPtr on every target");
+
+// And the out-ref form is still there — W5 added an overload, it removed
+// nothing, so a freestanding file written against the out-ref family keeps
+// compiling.
+inline ::nros::Result the_out_ref_form_is_unchanged(rclcpp::Node& node) {
+    rclcpp::Publisher<CounterMsg> pub;
+    return node.create_publisher(pub, "chatter");
 }
 
 } // namespace nros_cpp_ported_publisher_probe

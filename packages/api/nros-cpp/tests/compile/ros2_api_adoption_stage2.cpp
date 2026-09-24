@@ -238,7 +238,11 @@ class PortedServiceNode : public rclcpp::Node {
 
   private:
     rclcpp::Publisher<StringMsg>::SharedPtr publisher_;
-    rclcpp::Service<AddTwoInts>::SharedPtr poll_service_;
+    // phase-456 W5 — the POLL factory hands back the poll server itself, by
+    // value, because `Service<S>::SharedPtr` is a dispatch handle now and one
+    // alias cannot be both. `nros::Owned<T>` is what `auto` would have
+    // deduced; spelled out here because this file's subject is the spellings.
+    ::nros::Owned<::nros::PollService<AddTwoInts>> poll_service_;
     rclcpp::Service<AddTwoInts>::SharedPtr cb_service_;
     rclcpp::Service<AddTwoInts>::SharedPtr cb_service_lambda_;
     rclcpp::Client<AddTwoInts>::SharedPtr future_client_;
@@ -247,9 +251,22 @@ class PortedServiceNode : public rclcpp::Node {
 
 // The returned pointers are the nested-alias types the entity carries, so a
 // ported member declaration binds without a rewrite.
+//
+// phase-456 W5 — the POLL `create_service<S>(name)` is the one exception, and
+// it is asserted as such rather than left unasserted. It has no upstream
+// signature (upstream requires a handler), it exists to be `->take_request()`'d,
+// and `Service<S>::SharedPtr` became a two-word arena handle with no
+// `operator->`. So it hands back the poll server BY VALUE. Nothing in the
+// ported corpus calls it — measured in W3, zero sites in `examples/templates/`.
 static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_service<AddTwoInts>("s")),
+                           ::nros::Owned<::nros::PollService<AddTwoInts>>>::value,
+              "the POLL create_service<S>(name) must return nros::Owned<nros::PollService<S>> -- "
+              "Service<S>::SharedPtr is the DISPATCH handle and cannot be dereferenced");
+static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_service<AddTwoInts>(
+                               "s", &add_two_ints)),
                            rclcpp::Service<AddTwoInts>::SharedPtr>::value,
-              "create_service<S>(name) must return rclcpp::Service<S>::SharedPtr");
+              "the DISPATCH create_service<S>(name, handler) must return "
+              "rclcpp::Service<S>::SharedPtr");
 static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_client<AddTwoInts>("s")),
                            rclcpp::Client<AddTwoInts>::SharedPtr>::value,
               "create_client<S>(name) must return rclcpp::Client<S>::SharedPtr");

@@ -69,7 +69,7 @@ The `nros::sizes` module exports:
 | `PUBLISHER_SIZE` | `RmwPublisher` | `nros_publisher_t._opaque`, `nros::Publisher<M>::storage_` |
 | `SUBSCRIBER_SIZE` | `RmwSubscriber` | `nros::PollSubscription<M>::storage_` |
 | `SERVICE_CLIENT_SIZE` | `RmwServiceClient` | `nros::Client<S>::storage_` |
-| `SERVICE_SERVER_SIZE` | `RmwServiceServer` | `nros::Service<S>::storage_` |
+| `SERVICE_SERVER_SIZE` | `RmwServiceServer` | `nros::PollService<S>::storage_` |
 | `EXECUTOR_SIZE` | `nros_node::Executor` | `nros_executor_t._opaque`, `nros::Executor::storage_` |
 | `GUARD_CONDITION_SIZE` | `nros_node::GuardCondition` | `nros_guard_condition_t._guard_opaque`, `nros::GuardCondition::storage_` |
 | `LIFECYCLE_CTX_SIZE` | `nros_node::lifecycle::LifecyclePollingNodeCtx` | `nros_lifecycle_state_machine_t._opaque_storage` |

@@ -55,11 +55,10 @@
 #include "nros/subscription.hpp"
 #include "nros/traits.hpp"
 
-// phase-417 W1.a — `<memory>` for the nested pointer aliases below.
-// `NROS_CPP_HAS_SHARED_PTR` and the other five capability macros have ONE
-// definition site, and the measured reason the predicate needs both probes
-// (issues 0112, 1187, 1240) is stated there.
-#include "nros/std_detect.hpp"
+// phase-456 W5 — the nested pointer aliases below are `nros::Owned<T>`, which
+// is ours and needs no `<memory>`, so the capability probe this header used to
+// include is gone with the block it served.
+#include "nros/owned.hpp"
 
 #include "nros_cpp_ffi.h"
 
@@ -549,8 +548,7 @@ template <typename M> class PollSubscription {
 /// ```
 template <typename M> class PollingSubscription {
   public:
-#ifdef NROS_CPP_HAS_SHARED_PTR
-    /// `PollingSubscription<M>::SharedPtr` — phase-417 W1.a.
+    /// `PollingSubscription<M>::SharedPtr` — phase-456 W5.
     ///
     /// The nested-pointer spelling rclcpp uses for every entity type, carried
     /// here so a member declaration reads the same as its
@@ -558,18 +556,20 @@ template <typename M> class PollingSubscription {
     /// `PollingSubscription`; the analog is `autoware_utils::
     /// InterProcessPollingSubscriber` (issue 0278).
     ///
-    /// Ergonomics only (RFC-0089 §"Who implements an adopted name"): a
-    /// spelling for `std::shared_ptr<PollingSubscription<M>>`, no second code
-    /// path.
+    /// `nros::Owned<PollingSubscription<M>>`, and the reason is the ownership
+    /// rather than a preference: this entity's subscriber lives in the CALLER's
+    /// storage, so there is no arena slot to hand back a handle to, and the
+    /// object itself is what a holder must hold. `ConstSharedPtr` and
+    /// `UniquePtr` are the same type for the reasons `owned.hpp` gives.
     ///
-    /// Present only where `<memory>` is — a freestanding target has no
-    /// `std::shared_ptr` to alias.
-    using SharedPtr = std::shared_ptr<PollingSubscription<M>>;
+    /// It also exists on every target now, which the `std::shared_ptr` it
+    /// replaced did not — a freestanding leaf that declares one of these was
+    /// the case the old gate silently removed the alias from.
+    using SharedPtr = ::nros::Owned<PollingSubscription<M>>;
     /// `PollingSubscription<M>::ConstSharedPtr` — see `SharedPtr`.
-    using ConstSharedPtr = std::shared_ptr<const PollingSubscription<M>>;
+    using ConstSharedPtr = ::nros::Owned<PollingSubscription<M>>;
     /// `PollingSubscription<M>::UniquePtr` — see `SharedPtr`.
-    using UniquePtr = std::unique_ptr<PollingSubscription<M>>;
-#endif
+    using UniquePtr = ::nros::Owned<PollingSubscription<M>>;
 
     PollingSubscription() : sub_(), latest_(), has_ever_(false) {}
 

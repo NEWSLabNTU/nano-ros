@@ -86,9 +86,10 @@ struct StubAction {
 
 // ── The list. One row per entity class that remembers its own name. ────────
 //
-// Six families, eight classes: publisher, subscription, the service pair
-// (phase-444, the two rows this probe closes), and the action client and
-// server in BOTH the callback tier and the polling tier.
+// Six families, NINE classes: publisher, subscription, the service client and
+// its TWO servers (phase-444 closed the client and the server; phase-456 W5
+// split the server into a dispatch half and a poll half, and both answer), and
+// the action client and server in BOTH the callback tier and the polling tier.
 
 using TopicNameFn = const char* (::rclcpp::Publisher<Payload>::*)() const;
 TopicNameFn publisher_topic_name = &::rclcpp::Publisher<Payload>::get_topic_name;
@@ -101,6 +102,17 @@ ClientServiceNameFn client_service_name = &::rclcpp::Client<StubService>::get_se
 
 using ServiceServiceNameFn = const char* (::rclcpp::Service<StubService>::*)() const;
 ServiceServiceNameFn service_service_name = &::rclcpp::Service<StubService>::get_service_name;
+
+// phase-456 W5 — the service server became TWO classes, so the family gained a
+// ninth member and this list is where that has to show. `rclcpp::Service<S>`
+// above is the DISPATCH half (the arena owns the server); `nros::PollService<S>`
+// is the POLL half (the caller owns it). Each keeps its own `service_name_`,
+// because the copy is made at create from the caller's argument and no FFI
+// reads a name back out of either owner — so "one of them answers" would be a
+// silent per-class drift of exactly the kind this probe exists to catch.
+using PollServiceServiceNameFn = const char* (::nros::PollService<StubService>::*)() const;
+PollServiceServiceNameFn poll_service_service_name =
+    &::nros::PollService<StubService>::get_service_name;
 
 using ActionServerNameFn = const char* (::rclcpp_action::Server<StubAction>::*)() const;
 ActionServerNameFn action_server_name = &::rclcpp_action::Server<StubAction>::get_action_name;
@@ -150,12 +162,11 @@ inline bool uninitialised_entities_answer_empty_never_null() {
     ::rclcpp::Subscription<Payload> subscription;
     ::rclcpp::Client<StubService> client;
     ::rclcpp::Service<StubService> service;
+    ::nros::PollService<StubService> poll_service;
 
     const char* names[] = {
-        publisher.get_topic_name(),
-        subscription.get_topic_name(),
-        client.get_service_name(),
-        service.get_service_name(),
+        publisher.get_topic_name(), subscription.get_topic_name(),   client.get_service_name(),
+        service.get_service_name(), poll_service.get_service_name(),
     };
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
         if (names[i] == nullptr) return false;

@@ -26,14 +26,14 @@
 #include <memory>
 #include <thread>
 
-#include <rclcpp/rclcpp.hpp>                           // → nros/nros.hpp
-#include <diagnostic_updater/diagnostic_updater.hpp>   // → 209.D shim
+#include <rclcpp/rclcpp.hpp>                         // → nros/nros.hpp
+#include <diagnostic_updater/diagnostic_updater.hpp> // → 209.D shim
 
 // nano-ros codegen umbrella for std_msgs (Int32 lives here).
 #include "std_msgs/std_msgs.hpp"
 
 class SmokeNode : public rclcpp::Node {
-public:
+  public:
     SmokeNode() : rclcpp::Node("rclcpp_compat_smoke") {
         publisher_ = this->create_publisher<std_msgs::msg::Int32>("smoke_topic", 10);
         RCLCPP_INFO(this->get_logger(), "%s",
@@ -44,14 +44,13 @@ public:
     // n->post_init();` because `shared_from_this()` cannot be called from the
     // ctor. (Upstream rclcpp has the same restriction.)
     void post_init() {
-        updater_ = std::make_shared<diagnostic_updater::Updater>(
-            shared_from_this(), /*period_seconds=*/1.0);
+        updater_ = std::make_shared<diagnostic_updater::Updater>(shared_from_this(),
+                                                                 /*period_seconds=*/1.0);
         updater_->setHardwareID("smoke");
-        updater_->add("publish_count",
-                      [this](diagnostic_updater::DiagnosticStatusWrapper& w) {
-                          w.summary(diagnostic_updater::OK, "alive");
-                          w.add("count", static_cast<int>(count_));
-                      });
+        updater_->add("publish_count", [this](diagnostic_updater::DiagnosticStatusWrapper& w) {
+            w.summary(diagnostic_updater::OK, "alive");
+            w.add("count", static_cast<int>(count_));
+        });
     }
 
     void tick() {
@@ -63,8 +62,12 @@ public:
         }
     }
 
-private:
-    std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Int32>> publisher_;
+  private:
+    // phase-456 W5 — the nested alias, never `std::shared_ptr<...>`: nano-ros
+    // spells a publisher handle `nros::Owned<Publisher<M>>` (no allocator on a
+    // freestanding target) and upstream spells it `std::shared_ptr`, so only
+    // the alias compiles both ways.
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr publisher_;
     std::shared_ptr<diagnostic_updater::Updater> updater_;
     int32_t count_ = 0;
 };

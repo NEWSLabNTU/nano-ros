@@ -111,7 +111,9 @@ inline ::nros::Result instantiate() {
     ::nros::Timer timer;
     (void)node.create_wall_timer(timer, 100, &on_tick, nullptr);
 
-    ::nros::Service<AddTwoInts> poll_service;
+    // phase-456 W5 — the poll server is `nros::PollService<S>`, a different
+    // type from the dispatch one below. One class used to be both.
+    ::nros::PollService<AddTwoInts> poll_service;
     (void)node.create_service<AddTwoInts>(poll_service, "/add");
     ::nros::Service<AddTwoInts> cb_service;
     (void)node.create_service<AddTwoInts>(cb_service, "/add_cb", &on_request);
