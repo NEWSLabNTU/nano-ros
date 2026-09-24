@@ -88,6 +88,55 @@ build immediately before the runtime probes rather than once at the top, and
 accept that it is ordering-dependent — which is what the 0088 family kept
 failing to make stick.
 
+## Wider than the title, measured 2026-09-24
+
+The title says "Zephyr arm" and the first report was about `just check cpp`.
+Both are narrower than the defect. Two further collisions, on one tree, neither
+involving Zephyr:
+
+**1. `census-hooks-complete` vs `check cpp`, on `target/nros-c-generated/`.**
+
+```
+nros-cpp: target/nros-c-generated/nros/nros_config_generated.h was written by
+another crate with DIFFERENT probed sizes.
+  on disk: build/sizes-probe/.../fcfdf80b2360878f/.../libnros.rlib
+  current: build/sizes-probe/.../3d6a28c75a088e0a/.../libnros.rlib
+Disagreeing defines:
+  EXECUTOR_OPAQUE_U64S:       on-disk=11301 vs would-write=11306
+  NROS_EXECUTOR_SIZE:         on-disk=90408 vs would-write=90448
+  NROS_EXECUTOR_VALUE_SIZE:   on-disk=1856  vs would-write=1896
+```
+
+The two probe directories differ because the two lanes build `nros` with
+different features, and `nros-sizes-build` keys its probe directory by
+`(rustc, target, features)` precisely so they can. **The 40-byte difference is
+CORRECT** — a different feature set genuinely has a different executor layout.
+The defect is that both then write one path.
+
+**2. It is a RACE under `ci gate`, not only an ordering problem.**
+
+Measured in one sitting: `just check cpp` alone exits 0; `just ci gate`
+immediately afterwards fails that same lane with
+
+```
+undefined reference to `nros_cpp_config_variant_alloc_default_env_panic_platform_rmw_cffi_rmw_zenoh_cffi_ros_humble_std'
+```
+
+`ci gate` runs the build tier at `-P48`, so a concurrent gate rebuilds
+`nros-cpp` with its own features and replaces the header between the compile and
+the link. The stop-gap this issue proposed — "have the lane re-run the posix
+build immediately before the runtime probes" — **cannot fix that**: there is no
+ordering between parallel gates to fix. Only the per-variant path does.
+
+## Consequence worth stating
+
+On a machine where more than one feature set has been built, `ci gate`'s
+`check::build` cannot give a verdict on the C++ lane: a red there may be this,
+and a green may be luck about which gate wrote last. That is not a hypothetical
+— it is why phase-456 W5 could be verified by `check fast` (352 gates),
+`api-parity`, `cpp-fmt`, the compile-probe sweep and `check cpp` standalone, but
+not by `ci gate`.
+
 ## Repro
 
 ```sh
