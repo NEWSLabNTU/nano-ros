@@ -3,7 +3,7 @@ id: 1452
 title: "`check-dist-runtime-deps` walks a bundled CPython's optional extension
   modules, so on an arm64 host `just doctor` reports 12 undeclared sonames —
   and declaring two of them would be actively harmful"
-status: open
+status: resolved
 type: tech-debt
 area: tooling, build
 severity: low
@@ -188,3 +188,157 @@ host with the toolchain provisioned**, and it has to show both directions:
 
 Without the second half this is issue 0196 again, one layer down: a gate
 narrowed until the noise stopped, with no evidence it can still fail.
+
+---
+
+# Resolved — candidate 4, with the roots derived from the artifact
+
+Taken: **candidate 4, reachability**, in a form the "fix candidates" section did
+not quite anticipate, and NOT candidate 2 (path exclusion), 3 (a second index
+field) or 5 (a per-dist exemption table).
+
+**The rule now.** Scope = the dist's programs, plus every library a program's
+`DT_NEEDED` chain reaches inside the dist. A program is an ELF the loader can exec —
+`ET_EXEC`, or `ET_DYN` carrying a `PT_INTERP` — read from the ELF header. A
+dist with libraries and no program at all is a LIBRARY dist and all its
+libraries are roots, because otherwise such a dist would measure the empty set
+and print OK, which is a gate that can only pass.
+
+**Two things about the shape of candidate 4 that the filing got wrong**, both
+measured rather than argued:
+
+1. *"a `dlopen`ed plug-in that IS required (openocd's `libftdi` road) is
+   invisible to a `NEEDED` walk"* — `libftdi.so.1` is a **`DT_NEEDED` of the
+   `bin/openocd` PROGRAM** (`readelf -d`), which is exactly why it failed at the
+   loader (`error while loading shared libraries`) rather than at a `dlopen`.
+   The catch this gate first earned its keep on survives the narrowing
+   untouched, along with `libhidapi`, `libusb` and — transitively, through
+   libusb — `libudev`.
+2. Rooting the walk in **what the index declares** (`front`, `smoke`), which is
+   the obvious reading of "what the tool offers", is *worse* than rooting it in
+   the artifact. `smoke` for `arm-none-eabi-gcc` names 2 of ~40 shipped
+   binaries; a user runs `arm-none-eabi-objcopy` too, and `[tool.qemu]` smokes
+   `qemu-system-arm` while the tree also runs `qemu-system-riscv64`. Worse in
+   kind: `system = [..]` is hand-authored and *"only ever as complete as whoever
+   wrote it"* is the sentence this gate exists to answer — deriving its reach
+   from a second hand-authored field re-creates that dependency one level up.
+
+**Why `ldd` could not be left to do the transitivity.** Measured on
+`[tool.xrce-agent]` as provisioned: `bin/MicroXRCEAgent` is a launcher SCRIPT,
+the program is `lib/MicroXRCEAgent.real`, and its `ldd` stops at
+`libmicroxrcedds_agent.so.2.4 => not found` (the launcher supplies the path at
+exec time). So `libssl.so.3` / `libcrypto.so.3`, three links down and genuinely
+required, are invisible to a program-rooted walk that trusts the loader. A first
+draft of this fix did exactly that and **lost both of them on the author's own
+host** — the reason the chain is walked from parsed `DT_NEEDED`, resolved
+against the dist's own filenames *and* `DT_SONAME`s.
+
+## What this stops catching, and why that is acceptable
+
+**A dlopen'd plug-in's own dependencies.** If such a plug-in is REQUIRED rather
+than optional, a library behind it can now go undeclared and surfaces at first
+use as a `dlopen` failure instead of here.
+
+This is not hypothetical and the issue's framing understated it: the store
+already contains required dlopen plug-ins. `arm-none-eabi-gcc` ships
+`libexec/.../liblto_plugin.so` and `lib/bfd-plugins/libdep.so`, which `ld`
+dlopens during an LTO link; `riscv-none-elf-gcc` ships those **plus 75 CPython
+extension modules under `lib/python3.12/lib-dynload/`** — the arm64 class is
+already present on x86_64, one distro build difference away from producing the
+same report here.
+
+Bounding it, measured. The 88 out-of-scope objects across the provisioned store
+break down as 75 riscv `lib-dynload` modules, 4 gcc/BFD plug-ins, 8 riscv
+`libexec/` libraries that only those plug-ins reach, and one
+`share/qemu/s390-ccw.img` (an s390 firmware blob, never a host object at all).
+
+* **Not one of the 88 names anything outside the base glibc/gcc runtime** — and
+  the reason is worth recording, because it is the alternative arm64 declined:
+  `riscv-none-elf-gcc` **BUNDLES** what its modules need
+  (`libexec/libssl.so.3`, `libcrypto.so.3`, `libsqlite3.so.0.8.6`,
+  `libffi.so.8.1.4`, `libnsl`, `libpanel`, `libcrypt`), so they subtract out as
+  shipped. -nros5 bundled `libffi`/`libmpdec` for the same reason and
+  deliberately did NOT bundle the deprecated OpenSSL 1.1 pair.
+* It is not made invisible. An out-of-scope object that names an external
+  library is **reported as a note** — never a verdict — so the arm64 twelve
+  would still be printed, green, saying what they are.
+* `--include-unreached` restores the old measurement in one flag.
+
+## Acceptance
+
+The arm64 symptom could **not** be reproduced: the symptom needs an arm64 host
+with `arm-none-eabi-gcc` 13.2-nros5 installed, and the author's host is x86_64
+with -nros1/-nros4. What was done instead:
+
+* **The structure was reproduced on x86_64.** `riscv-none-elf-gcc` 14.2-nros1
+  bundles a dynamic `libexec/libpython3.12.so.1.0` *and* its
+  `lib/python3.12/lib-dynload/`. Under the new rule the libpython is IN SCOPE
+  (a program reaches it) and its 75 plug-ins are not — the arm64 shape exactly,
+  on real bytes.
+* **No regression, measured per dist.** Scoped closure vs the pre-fix
+  every-ELF closure over the 8 pinned-and-present dists: **difference 0**.
+  `[tool.qemu]` keeps `libselinux.so.1` + `libpcre2-8.so.0`, `[tool.xrce-agent]`
+  keeps `libssl.so.3` + `libcrypto.so.3`, `[tool.openocd]` (0.12.0-nros1, not
+  the pin) keeps all four including `libudev.so.1`.
+* **A recorded shape, both directions.** `ARM64_GDB_SHAPE` in the gate is the
+  arm64 dist transcribed from the table above; `XRCE_SHAPE` is the chain `ldd`
+  cannot follow. Eight reachability rows assert on them, and the two-directional
+  half is the mutations: a plug-in the program NEEDS is back in scope, a
+  program's own undeclared dependency is still measured, an internal chain is
+  still walked, a library-only dist still measures its libraries.
+* **The self-test rows were themselves mutation-tested.** Each of these source
+  mutations is caught, each by a different row — re-runnable by applying them by
+  hand and running `python3 scripts/check-dist-runtime-deps.py`:
+
+  | mutation | caught by |
+  | --- | --- |
+  | `dist_scope` returns everything (the pre-fix behaviour) | every lib-dynload plug-in is out of scope |
+  | drop the transitive walk (roots only) | 5 rows, incl. the internal chain |
+  | exclude on the `lib-dynload` path substring (candidate 2) | a plug-in a program NEEDS is back in scope |
+  | a library-only dist measures nothing | a dist with no program measures its libraries |
+  | `elf_facts` calls every ELF a program | a real shared library is NOT classified as a program |
+  | `elf_facts` calls every ELF a library | this interpreter is classified as a program |
+  | `coverage_problem` never complains | 2 rows |
+  | `coverage_problem` always complains | 2 rows |
+  | `sonames_of` ignores `provides` | 2 rows |
+
+* **The ELF classifier is probed against real bytes on every run**, not only
+  against the table: this interpreter must classify as a program and one of its
+  own resolved dependencies must classify as a library with a `DT_SONAME`. A
+  table alone would let the classifier answer "program" to everything.
+* **End to end, on a synthetic store built from real host ELFs** — because the
+  author's own store reaches neither the note path nor the failure path. One
+  `[tool.openocd]`-shaped tree under `--store`, three runs, **the same soname
+  each time**:
+
+  | the tree | result |
+  | --- | --- |
+  | `lib/plugin.so` (a copy of the host `libssl.so.3`) that no program reaches | `rc=0`, a NOTE naming `libcrypto.so.3`, **verdict on the first line** |
+  | the same tree, `--include-unreached` | `rc=1`, `libcrypto.so.3 — declared by [prereq.libssl3], not in system = [..]` |
+  | the same need on the PROGRAM (a copy of the real `bin/openocd`) | `rc=1`, four findings: `libftdi.so.1`, `libhidapi-hidraw.so.0`, `libusb-1.0.so.0` and — transitively through libusb — `libudev.so.1` |
+  | the same library ALONE, no program anywhere in the tree | `rc=1`, `libcrypto.so.3` — the library-only-dist clause, which has no example in the real store |
+
+  Rows 1 and 2 differ only in the flag; rows 1 and 3 only in *which file* names
+  the library; rows 1 and 4 only in whether a program is present at all. That
+  is the narrowing doing exactly what it claims and nothing more. Row 1's first
+  line matters on its own: `just doctor` renders this gate by `head -1`, so
+  notes print last, after the verdict, on both paths.
+
+## Left alone, deliberately
+
+* `nros-sdk-index.toml` is **unchanged apart from its comment**. That the fix
+  needed no declaration to move is the evidence that `system = ["libcrypt1"]`
+  was right.
+* `scripts/sdk/measure-dist-floor.py` still reads **every** ELF, and should.
+  "Can these bytes run on this host at all" is a property of the file; a
+  `lib-dynload` module with a higher `GLIBC_x.y` reference genuinely does raise
+  the artifact's floor even though nothing execs it. Same walk, different
+  question.
+* The gate keeps **no table of its own** — the property candidate 5 would have
+  cost. The soname mapping still lives only in the index.
+
+Side effect worth naming: `file` and the per-file `ldd` are gone from the walk
+in favour of reading the ELF header directly, so the gate runs in **0.4 s where
+it took 27 s**. It gains no dependency — the sibling `measure-dist-floor.py`
+keeps using `readelf` because it needs `.gnu.version_r`, which is a real reason
+to shell out.
