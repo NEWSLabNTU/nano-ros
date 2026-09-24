@@ -25,7 +25,18 @@ set -uo pipefail
 
 label="${1:-disk}"
 
+# The transcript — a file this report also lands in, so that a workflow step
+# can hand it to the artifact service while the runner is still alive. See
+# `disk-transcript.sh` for why neither channel phase-466 W4 added survives the
+# failure this script exists to describe.
+# shellcheck source=scripts/ci/disk-transcript.sh
+. "$(dirname "${BASH_SOURCE[0]}")/disk-transcript.sh"
+_transcript="$(nros_disk_transcript_open)"
+
+{
+
 echo "::group::disk report — ${label}"
+printf '(%s)\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo 'no date')"
 
 echo "--- df -h (workspace + root + tmp) ---"
 # Three paths, but often one filesystem — dedupe so the report does not
@@ -81,6 +92,11 @@ fi
 
 echo "::endgroup::"
 
+# `tee` rather than a redirect: the report keeps going to the job log, which is
+# what a reader uses on every lane whose runner lives. `/dev/null` when the
+# transcript could not be opened.
+} 2>&1 | tee -a "${_transcript:-/dev/null}"
+
 # ---------------------------------------------------------------------------
 # A CHANNEL THAT SURVIVES THE RUNNER'S DEATH — issue 1353, phase-466 W4.
 #
@@ -94,19 +110,32 @@ echo "::endgroup::"
 # runner is alive to honour it. So the measurement that exists to explain this
 # failure is unreadable on the one lane that most needs it.
 #
-# TWO channels, because neither is certain on its own and the issue says so:
+# THE EXPERIMENT HAS RUN, AND BOTH OF W4's CHANNELS LOST — scheduled `gate`
+# run 35945635228, job 107462875362 (2026-09-24). That job emitted a notice
+# from step 22 (this report), step 23 (the reclaim) and step 25 (this report
+# again), all three of which COMPLETED SUCCESSFULLY, and its annotation list
+# holds exactly one entry: the runner's `IOException`, which the service wrote
+# rather than the runner. Its run page renders no job summary at all. The
+# annotation channel is not broken — the sibling `host-tests` job
+# 107478998501, whose runner lived, shows all three notices — it is simply
+# flushed by the runner, so it dies when the runner does, and so does the step
+# summary.
 #
-#   * `$GITHUB_STEP_SUMMARY` — the runner uploads a step's summary file when
-#     that STEP completes, not when the job does. The BEFORE report completes
-#     successfully, so its numbers are already server-side before the compile
-#     tier starts. This is the one expected to work.
-#   * `::notice::` — the annotation channel. This issue is readable at all
-#     because an annotation carried the `IOException` out of a job whose log
-#     was lost, so the channel demonstrably survives; whether a workflow-emitted
-#     notice rides it the same way is NOT established, and the issue names
-#     finding out as the cheap experiment. Emitting one costs a line.
+# THREE channels now, the third being the one the issue names as the fallback:
 #
-# Both carry a one-line SUMMARY, not the full report: what is wanted after a
+#   * the TRANSCRIPT file plus a workflow step that uploads it as an artifact.
+#     An artifact is a completed server-side transaction, so once the upload
+#     step finishes the numbers exist without the runner. This is the one
+#     expected to work; `disk-transcript.sh` holds the path and the reasoning.
+#   * `$GITHUB_STEP_SUMMARY` — kept. It costs a line, it is the pleasant way to
+#     read a lane that DID survive, and it is now known not to be the answer
+#     for one that did not.
+#   * `::notice::` — kept, for the same reason and with the same caveat. On a
+#     lane whose runner lives it is the fastest thing to read
+#     (`check-runs/<jid>/annotations`, no log download).
+#
+# The two runner-side channels carry a one-line SUMMARY, not the full report:
+# what is wanted after a
 # runner death is "how much was free, and what held the disk", and a summary
 # that stays short is one a reader gets to before the noise.
 _summary_line() {
@@ -133,16 +162,23 @@ _summary_line() {
 
 _summary="$(_summary_line 2>/dev/null)" || _summary=""
 if [ -n "$_summary" ]; then
-    # `::notice::` — the experiment. If the next scheduled `gate` failure shows
-    # this under `check-runs/<jid>/annotations` while the log is still
-    # `BlobNotFound`, the annotation channel is confirmed; if it does not, the
-    # step summary below is what carried the numbers and this line can go.
+    # `::notice::` — fast to read on a lane whose runner lived, and measured
+    # not to survive one that died (see the block above).
     printf '::notice title=disk %s::%s\n' "$label" "$_summary"
-    # `$GITHUB_STEP_SUMMARY` — the one expected to survive. Appended, never
-    # truncated: both the BEFORE and the AFTER report write here, and a reader
-    # comparing them is the whole point.
+    # `$GITHUB_STEP_SUMMARY` — same standing. Appended, never truncated: both
+    # the BEFORE and the AFTER report write here, and a reader comparing them
+    # is the whole point.
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
         printf -- '- **disk %s** — %s\n' "$label" "$_summary" \
             >>"$GITHUB_STEP_SUMMARY" 2>/dev/null || true
     fi
+    # The transcript — the channel that survives, once a step has uploaded it.
+    # The summary goes in too, so an artifact read on its own answers the
+    # first question without re-reading the `du` block.
+    if [ -n "${_transcript:-}" ]; then
+        printf -- 'SUMMARY disk %s — %s\n\n' "$label" "$_summary" \
+            >>"$_transcript" 2>/dev/null || true
+    fi
 fi
+
+exit 0

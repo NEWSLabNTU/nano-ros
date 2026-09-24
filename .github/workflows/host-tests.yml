@@ -413,6 +413,22 @@ jobs:
         if: ${{ !cancelled() }}
         run: scripts/ci/reclaim-disk.sh "before just ci tier1"
 
+      # Issue 1353 — the same surviving channel gate.yml gets, for the same
+      # reason and not because this lane has needed it yet. This job's runner
+      # has so far stayed alive long enough to upload its log, which is why the
+      # 42 G / 22 G split is known at all; `live-peer` and `gate` on the same
+      # machine did not, and there is nothing about this lane that makes it the
+      # exception rather than the lucky one. The upload is its own step so that
+      # it COMPLETES before the tier starts — see the long note in gate.yml.
+      - name: Upload the disk transcript (before the tier) — issue 1353
+        if: ${{ !cancelled() && env.NROS_DISK_TRANSCRIPT != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-transcript-before-tier1
+          path: ${{ env.NROS_DISK_TRANSCRIPT }}
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: just ci tier1
         env:
           CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
@@ -442,6 +458,15 @@ jobs:
       - name: Disk report (after ci tier1) — issue 1353
         if: ${{ always() }}
         run: scripts/ci/disk-report.sh "after just ci tier1"
+
+      - name: Upload the disk transcript (after the tier) — issue 1353
+        if: ${{ always() && env.NROS_DISK_TRANSCRIPT != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-transcript-after-tier1
+          path: ${{ env.NROS_DISK_TRANSCRIPT }}
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Report skipped fixtures (post-run)
         if: always()

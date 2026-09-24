@@ -1024,6 +1024,38 @@ jobs:
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: scripts/ci/reclaim-disk.sh "before just check build"
 
+      # THE CHANNEL THAT SURVIVES — issue 1353, and the reason this step is
+      # here rather than one upload at the end of the job.
+      #
+      # Measured on scheduled run 35945635228 / job 107462875362 (2026-09-24):
+      # the two steps above both COMPLETED, and neither of the channels
+      # phase-466 W4 gave them carried their numbers off the runner. The job's
+      # annotations hold one entry — the runner's own `IOException`, written by
+      # the service — and its three `::notice::` lines are absent; the run page
+      # renders no job summary for it either. Both are runner-side buffers, so
+      # they die with the runner, which is the only failure mode this lane has.
+      #
+      # An artifact does not: once THIS step finishes, the blob exists
+      # server-side, and `just check build` can take the runner with it without
+      # taking the measurement. That is why the upload is its own step placed
+      # immediately after the reclaim, and why there is a second one after the
+      # compile tier rather than a single `always()` upload at the end —
+      # `always()` only binds while a runner is alive to honour it, which is
+      # exactly what this failure removes.
+      #
+      # The transcript path has one home, `scripts/ci/disk-transcript.sh`,
+      # which publishes it to `$GITHUB_ENV`; naming the variable here rather
+      # than repeating the path is what keeps the upload pointing at the file
+      # the scripts actually write.
+      - name: Upload the disk transcript (before check build) — issue 1353
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() && env.NROS_DISK_TRANSCRIPT != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-transcript-before-check-build
+          path: ${{ env.NROS_DISK_TRANSCRIPT }}
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: just check build (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
@@ -1035,6 +1067,26 @@ jobs:
       - name: Disk report (after check build) — issue 1353
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && always() }}
         run: scripts/ci/disk-report.sh "after just check build"
+
+      # The second upload, and the one that matters most on 2026-09-24's
+      # evidence: on that run `just check build` FAILED (a step verdict, step
+      # 24) and the after-report SUCCEEDED (step 25) — the runner was alive and
+      # writing — and it was `just check no-std`, the step below, that killed
+      # it. So the transcript held both brackets' numbers and nothing could
+      # read them. This carries the same file, now including the after-report,
+      # before the step that has been doing the killing.
+      #
+      # It replaces rather than duplicates the artifact above, by name: a
+      # separate name is deliberate, so a run that dies during the upload still
+      # leaves the earlier artifact intact.
+      - name: Upload the disk transcript (after check build) — issue 1353
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && always() && env.NROS_DISK_TRANSCRIPT != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-transcript-after-check-build
+          path: ${{ env.NROS_DISK_TRANSCRIPT }}
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: just check no-std (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
