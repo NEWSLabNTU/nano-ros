@@ -30,6 +30,36 @@
 # * named in a reader's `KCONFIG_KNOBS` table, or
 # * read through a derived `CONFIG_<ENV_NAME>` lookup (nros-node, xrce-cffi),
 # * or listed in NO_RUST_READER below with a reason.
+#
+# # Issue 1490 — a MENTION is not a ROW
+#
+# For a DERIVED reader, "does this file name the knob" is the right question:
+# those files build the Kconfig name from the env name (`CONFIG_{name}`), so a
+# knob they name is a knob they resolve.
+#
+# For a TABULATING reader it is the wrong question, and was the wrong question
+# for three live knobs. `nros-rmw-zenoh/build.rs` resolves through an AUTHORED
+# table precisely because its env names and its Kconfig names are DIFFERENT
+# WORDS (`ZPICO_SUBSCRIBER_RING_DEPTH` <-> `CONFIG_NROS_SUBSCRIBER_RING_DEPTH`),
+# which no derivation can bridge. So a knob appears in the file — in a
+# `rerun-if-env-changed` line, at the call site — while having no row, and the
+# per-knob arm below was satisfied by the mention.
+#
+# Measured: `CONFIG_NROS_SUBSCRIBER_RING_DEPTH=7` reached a native_sim build's
+# `.config` and the Rust half compiled `4`. Issue 0460, in a tree where the
+# gate for issue 0460 was green.
+#
+# This is issue 0751's finding one arm over — its whole point was "the name
+# APPEARING is not the name being resolved", and its fix hardened the DERIVED
+# arm. Its `env::var("<KNOB>")` probe cannot reach a tabulating reader either:
+# `env_usize` calls `std::env::var(name)` with a VARIABLE, so the literal the
+# probe greps for is never written.
+#
+# So: a forwarded knob that a tabulating reader mentions, and for which a
+# Kconfig symbol EXISTS, must be a row in that reader's table. A knob with no
+# Kconfig symbol is exempt BY SHAPE — `NROS_DECLARED_*` and `NROS_ENTITY_*` are
+# facts cmake DERIVED for this image, and there is no `$DOTCONFIG` rung for a
+# number cmake computed. Never exempt by name.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -42,6 +72,14 @@ cd "$(dirname "$0")/.."
 source scripts/lib/grep-q.sh
 
 CMAKE=zephyr/cmake/nros_cargo_build.cmake
+# Every Kconfig file that can DECLARE one of these symbols. Issue 1490's row
+# test asks "does a symbol exist for this knob"; reading one of the two and
+# not the other would answer "no symbol" for a knob that has one, i.e. would
+# exempt exactly the knobs it exists to catch.
+KCONFIG_FILES=(
+    zephyr/Kconfig
+    packages/rmw/zenoh/zpico-zephyr/Kconfig
+)
 READERS=(
     packages/rmw/zenoh/nros-zpico-build/src/runner.rs
     packages/rmw/zenoh/nros-rmw-zenoh/build.rs
@@ -105,6 +143,52 @@ knobs="$(grep -oE '_nros_resolve_knob\(([A-Z0-9_]+)' "$CMAKE" \
     | sed 's/^_nros_resolve_knob(//' | sort -u || true)"
 [ -n "$knobs" ] || { echo "[FAIL] no _nros_resolve_knob() calls found in $CMAKE" >&2; exit 1; }
 
+# --- issue 1490 -------------------------------------------------------------
+# The Kconfig symbols that EXIST, and each tabulating reader's table ROWS.
+# Harvested once; both are inputs to the per-knob row test below.
+declared_symbols=""
+for kf in "${KCONFIG_FILES[@]}"; do
+    [ -f "$kf" ] || { echo "[FAIL] KCONFIG_FILES names missing $kf" >&2; exit 1; }
+    declared_symbols="$declared_symbols
+$(sed -n 's/^config \([A-Z0-9_]*\).*/CONFIG_\1/p' "$kf")"
+done
+[ -n "$(echo "$declared_symbols" | tr -d '[:space:]')" ] || {
+    echo "[FAIL] no 'config <SYMBOL>' lines found in ${KCONFIG_FILES[*]}" >&2
+    echo "       — with no symbols harvested the row test below exempts" >&2
+    echo "       every knob, which is how this gate would pass while saying" >&2
+    echo "       nothing (issue 1490)." >&2
+    exit 1
+}
+
+# The Kconfig symbol a knob would use, or empty when none exists. Both
+# spellings the tree uses: the env name verbatim, and the `NROS_`-prefixed
+# form the RMW knobs take (`ZPICO_X` -> `CONFIG_NROS_X`).
+kconfig_symbol_for() {
+    local knob=$1 base=${1#ZPICO_} cand
+    base=${base#NROS_}; base=${base#XRCE_}
+    for cand in "CONFIG_$knob" "CONFIG_NROS_$base"; do
+        # Here-string, never a pipe: under `set -o pipefail` an early-exiting
+        # matcher SIGPIPEs the writer and 141 becomes the status, so a MATCH
+        # reads as a miss (issue 1077) — which here would silently exempt the
+        # knob whose symbol it just found.
+        if nros_grep_q -x -- "$cand" <<<"$declared_symbols"; then
+            printf '%s' "$cand"
+            return 0
+        fi
+    done
+    return 0
+}
+
+# A reader's KCONFIG_KNOBS rows: the ENV name of each `("<ENV>", "CONFIG_...")`
+# pair, whitespace and line breaks between the two allowed (rustfmt splits a
+# long pair across four lines).
+table_rows_of() {
+    local flat
+    flat="$(tr '\n' ' ' < "$1")"
+    grep -oE '"[A-Z0-9_]+"[[:space:]]*,[[:space:]]*"CONFIG_[A-Z0-9_]+"' <<<"$flat" \
+        | sed 's/^"//; s/".*//'
+}
+
 fail=0
 checked=0
 for knob in $knobs; do
@@ -114,6 +198,24 @@ for knob in $knobs; do
         [ -f "$f" ] || continue
         if nros_grep_q -F "\"$knob\"" "$f"; then
             found=1
+            # issue 1490 — for a TABULATING reader the mention above proves
+            # nothing. Demand the row, whenever a Kconfig symbol exists for
+            # this knob to carry.
+            readers_list="$(printf '%s\n' "${READERS[@]}")"
+            if nros_grep_q -xF -- "$f" <<<"$readers_list"; then
+                sym="$(kconfig_symbol_for "$knob")"
+                rows="$(table_rows_of "$f")"
+                if [ -n "$sym" ] && ! nros_grep_q -x -- "$knob" <<<"$rows"; then
+                    echo "[FAIL] $f names forwarded knob $knob but has no" >&2
+                    echo "       KCONFIG_KNOBS row for it, while $sym EXISTS." >&2
+                    echo "       This reader tabulates because its env names and its" >&2
+                    echo "       Kconfig names are different words, so a mention" >&2
+                    echo "       resolves nothing: on a Zephyr Rust image the crate" >&2
+                    echo "       default wins whatever Kconfig says (issues 0460, 1490)." >&2
+                    echo "       Add:  (\"$knob\", \"$sym\")," >&2
+                    fail=1
+                fi
+            fi
             # issue 0751 — the name APPEARING is not the name being resolved
             # through `$DOTCONFIG`. A forwarded knob read with a bare
             # `env::var("<KNOB>")` yields the crate DEFAULT on a Zephyr Rust
