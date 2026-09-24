@@ -28,6 +28,14 @@
 # toolchains, SDKs or submodules". CI is the oracle for that.
 sched-dim-arms
 
+# excluded-crate-tests COMPILES three workspace-excluded crates and runs their
+# tests — the ones `cargo test --workspace` cannot reach because they are not
+# members (issue 1472; 36 tests, all passing, one crate named nowhere else in
+# the repo). Fast at 0.6 s warm, but it is a cargo build: a pristine worktree
+# with PATH=/usr/bin:/bin fails at the first crate:
+#   scripts/run-excluded-crate-tests.sh: line 151: cargo: command not found
+excluded-crate-tests
+
 # --- compile a crate and read what it generates ---
 borrowed-e2e
 c

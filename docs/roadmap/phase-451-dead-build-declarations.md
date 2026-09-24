@@ -235,7 +235,7 @@ reached only as somebody else's path dependency.
       required `CI` context, and the panic named the port rather than the
       submodule. It probes the port tree and skips with the
       `git submodule update --init` to run.
-- [ ] ~~The four `cortex-m` / `esp-hal` crates — blocked on a missing mirror.~~
+- [x] ~~The four `cortex-m` / `esp-hal` crates — blocked on a missing mirror.~~
       **Refuted by doing it.** They are not waiting on the mirror: `cortex-m`,
       `esp-hal` and `nros-platform-critical-section` each select a different
       `critical-section` restore-state width, and critical-section refuses more
@@ -248,6 +248,15 @@ reached only as somebody else's path dependency.
       hand-written string: the 20-line hand list 0287 retired on the embedded
       side and nobody retired on this one. `nros-platform-stm32f4`'s three
       `#[test]`s over `detect_phy_type` stay unreachable until it is derived.
+
+      **Both halves are now done (2026-09-24).** The derivation landed already
+      — `HOST_UNCHECKABLE` is `` `bash scripts/build/embedded-only-members.sh` ``
+      over `[package.metadata.nros] embedded-only = true` — and the per-crate
+      test lane this box asks for is `check::excluded-crate-tests`
+      (issue 1472). Measured, the box understated its own subject: THREE
+      excluded crates have tests that run nowhere, 36 of them, all passing.
+      The largest — `openeth-smoltcp`, 32 tests — is named nowhere in `just/`,
+      `scripts/` or `.github/` at all. 0.6 s warm.
 
 The remaining work is one mechanism, not six crates: make the host lane's
 exclusion derived the way the embedded lane's already is, so "excluded" stops

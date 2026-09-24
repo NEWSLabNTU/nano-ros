@@ -3116,3 +3116,21 @@ zenoh:
 zenoh-archive:
     # profile-literal-ok: symbol fixture: the archive built by build-zenoh-posix-fixture
     @bash scripts/check-zenoh-archive-symbols.sh target/release/libnros_rmw_zenoh_staticlib.a
+
+# issue 1472 / phase-451 W4 — the tests of workspace-EXCLUDED crates.
+#
+# `cargo test --workspace` reaches members. A crate in the root `exclude` list
+# is reached by nothing, so its tests do not fail or flake — they never run,
+# and nothing says so. phase-451 W4 found it for one crate and called for "a
+# per-crate test lane, not membership", membership being unavailable:
+# `cortex-m`, `esp-hal` and `nros-platform-critical-section` each pick a
+# different `critical-section` restore-state width and it refuses more than one.
+#
+# Measured, the phase understated it — 36 tests across three crates, all
+# passing, one of which (`openeth-smoltcp`, 32 tests) is named nowhere in
+# `just/`, `scripts/` or `.github/` at all.
+#
+# On the BUILD lane: it compiles three crates. 0.6 s warm.
+[private]
+excluded-crate-tests:
+    @bash scripts/run-excluded-crate-tests.sh

@@ -256,6 +256,7 @@ build-serial: \
     cli-tests \
     cpp \
     embedded-feature-unification \
+    excluded-crate-tests \
     launch-resolve-builds \
     mem-report \
     no-alloc-image \
