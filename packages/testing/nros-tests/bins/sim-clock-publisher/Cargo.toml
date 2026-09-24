@@ -39,12 +39,12 @@ nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-featur
 # core pre-generated interface packages (phase-425 W2), so this leaf needs no
 # `nros sync` and no per-host codegen — which is also why it can carry a
 # tracked lockfile at all.
-nros-rosgraph-msgs = { path = "../../../../interfaces/rosgraph-msgs/generated/humble/nros-rosgraph-msgs", default-features = false }
+nros-rosgraph-msgs = { path = "../../../../interfaces/generated/humble/nros-rosgraph-msgs", default-features = false }
 # Named directly because the generated crate does not re-export its own deps —
 # `Clock`'s one field is a `builtin_interfaces/Time`, and the `-clock` suffix is
 # the rename that keeps two generated copies of builtin_interfaces from
 # colliding in one workspace (phase-425 W2).
-nros-builtin-interfaces-clock = { path = "../../../../interfaces/rosgraph-msgs/generated/humble/nros-builtin-interfaces-clock", default-features = false }
+nros-builtin-interfaces = { path = "../../../../interfaces/generated/humble/nros-builtin-interfaces", default-features = false }
 nros-rmw-cyclonedds-sys = { path = "../../../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = [
     "platform-posix",
 ], optional = true }

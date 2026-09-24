@@ -218,7 +218,7 @@ nros-params = { workspace = true, default-features = false }
 # version is the constant `0.0.0` and pinning either spelling broke root-workspace
 # resolution twice (#394), which is why every other in-tree consumer of one is
 # path-only too.
-nros-rosgraph-msgs = { path = "../../interfaces/rosgraph-msgs/generated/humble/nros-rosgraph-msgs", default-features = false, optional = true }
+nros-rosgraph-msgs = { path = "../../interfaces/generated/humble/nros-rosgraph-msgs", default-features = false, optional = true }
 # Phase 88.12 — `Node::logger()` returns a `&'static Logger` from the
 # nros-log intern table.
 nros-log = { version = "0.5.0", path = "../nros-log" }
@@ -228,8 +228,8 @@ portable-atomic-util = { version = "0.2", default-features = false, features = [
 atomic-waker = { version = "1.1", default-features = false, features = ["portable-atomic"] }
 log = { workspace = true, optional = true }
 futures-core = { version = "0.3", default-features = false, optional = true }
-nros-rcl-interfaces = { path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
-nros-lifecycle-msgs = { path = "../../interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs", default-features = false, optional = true }
+nros-rcl-interfaces = { path = "../../interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
+nros-lifecycle-msgs = { path = "../../interfaces/generated/humble/nros-lifecycle-msgs", default-features = false, optional = true }
 # Phase 248 (C2) — `nros-rmw-cyclonedds` + `nros-rmw-cyclonedds-sys`
 # deps REMOVED (issue #60, Tier 1). The per-type descriptor
 # registration that referenced them is now a generic vtable seam

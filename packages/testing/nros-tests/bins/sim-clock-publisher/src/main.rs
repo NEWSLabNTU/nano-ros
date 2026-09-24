@@ -72,7 +72,7 @@ fn main() {
 
     while elapsed_ms < run_ms {
         let msg = Clock {
-            clock: nros_builtin_interfaces_clock::msg::Time {
+            clock: nros_builtin_interfaces::msg::Time {
                 sec: (sim_ms / 1000) as i32,
                 nanosec: ((sim_ms % 1000) * 1_000_000) as u32,
             },

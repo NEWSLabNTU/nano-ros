@@ -1,5 +1,5 @@
 use nros::*;
-use nros_std_msgs_diag::msg::String as StringMsg;
+use nros_std_msgs::msg::String as StringMsg;
 
 fn main() -> Result<(), Box<dyn core::error::Error>> {
     let context = Context::default_from_env()?;

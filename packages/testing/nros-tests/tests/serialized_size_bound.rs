@@ -49,7 +49,7 @@ fn corpus() -> Vec<(&'static str, &'static [Field])> {
     use nros_diagnostic_msgs::msg as dm;
     use nros_lifecycle_msgs::msg as lm;
     use nros_rcl_interfaces::msg as rm;
-    use nros_std_msgs_diag::msg as sm;
+    use nros_std_msgs::msg as sm;
 
     vec![
         ("builtin_interfaces/Time", <bi::Time as Message>::FIELDS),
@@ -258,7 +258,7 @@ fn bound_holds_against_the_writer_for_every_generated_type() {
 #[test]
 fn xcdr2_dheader_matches_generated_serialize() {
     use nros_serdes::traits::Serialize;
-    let msg = nros_std_msgs_diag::msg::Header::default();
+    let msg = nros_std_msgs::msg::Header::default();
 
     let mut b1 = [0u8; 512];
     let mut w1 = CdrWriter::new_with_header(&mut b1).unwrap();
@@ -290,7 +290,7 @@ fn xcdr2_dheader_matches_generated_serialize() {
 fn serialized_size_equals_what_the_writer_produces() {
     use nros_serdes::{size::serialized_size, traits::Serialize};
 
-    let header = nros_std_msgs_diag::msg::Header::default();
+    let header = nros_std_msgs::msg::Header::default();
     let time = nros_builtin_interfaces::msg::Time::default();
 
     for version in [EncodingVersion::Xcdr1, EncodingVersion::Xcdr2] {
@@ -299,7 +299,7 @@ fn serialized_size_equals_what_the_writer_produces() {
         // serve.
         assert_eq!(
             max_serialized_size(
-                <nros_std_msgs_diag::msg::Header as Message>::FIELDS,
+                <nros_std_msgs::msg::Header as Message>::FIELDS,
                 version
             ),
             None,
@@ -350,7 +350,7 @@ fn serialized_size_equals_what_the_writer_produces() {
 fn buffer_fits_is_const_and_refuses_unbounded_types() {
     use nros_serdes::size::buffer_fits;
     type Time = nros_builtin_interfaces::msg::Time;
-    type Header = nros_std_msgs_diag::msg::Header;
+    type Header = nros_std_msgs::msg::Header;
 
     // Const-evaluable: this is the whole point — it can sit in a
     // `const { assert!(..) }` and fail the BUILD instead of dropping samples.
@@ -389,7 +389,7 @@ fn buffer_fits_is_const_and_refuses_unbounded_types() {
 fn loan_eligibility_tracks_plain() {
     use nros_serdes::size::is_loan_eligible;
     type Time = nros_builtin_interfaces::msg::Time;
-    type Header = nros_std_msgs_diag::msg::Header;
+    type Header = nros_std_msgs::msg::Header;
 
     const TIME_LOANABLE: bool = is_loan_eligible::<Time>();
     // Const-evaluable, so it is checked at build time — see the note above.

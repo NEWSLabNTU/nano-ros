@@ -15,10 +15,10 @@ use nros::{
     monitor::{MonitorSpec, PubMonitorCell},
     prelude::*,
 };
-use nros_builtin_interfaces_diag::msg::Time;
+use nros_builtin_interfaces::msg::Time;
 use nros_diagnostic_msgs::msg::DiagnosticArray;
 use nros_diagnostics::DiagnosticReporter;
-use nros_std_msgs_diag::msg::Header;
+use nros_std_msgs::msg::Header;
 
 use contract_monitor::{DIAG_TOPIC, HEADER_TOPIC, MIN_RATE_HZ_MILLI, drain_and_report, now_us};
 

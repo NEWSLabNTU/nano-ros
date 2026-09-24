@@ -125,21 +125,20 @@ members = [
     # an empty stub; `unix-mock` for host CI, `fsp` to link against
     # NVIDIA's `tegra_aon_fsp.a` (requires `NV_SPE_FSP_DIR`).
     "packages/drivers/ipc/nvidia-ivc",
-    # Generated ROS 2 interface types (rcl_interfaces, builtin_interfaces).
-    # Required by nros-node's param-services feature. Checked into git because
-    # cargo requires workspace member paths to exist on disk.
-    "packages/interfaces/rcl-interfaces/generated/humble/nros-builtin-interfaces",
-    "packages/interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces",
-    "packages/interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs",
-    "packages/interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs",
-    "packages/interfaces/diagnostic-msgs/generated/humble/nros-std-msgs-diag",
-    "packages/interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag",
-    # phase-425 W2 — rosgraph_msgs/msg/Clock, the wire form of ROS time. Its own
-    # builtin_interfaces copy carries the `-clock` suffix for the reason the
-    # `-diag` one does: a generated crate names its deps by crate name, so two
-    # trees generating `builtin_interfaces` would collide in one workspace.
-    "packages/interfaces/rosgraph-msgs/generated/humble/nros-rosgraph-msgs",
-    "packages/interfaces/rosgraph-msgs/generated/humble/nros-builtin-interfaces-clock",
+    # The core pre-generated ROS 2 interface set — ONE output tree, SIX crates,
+    # one per ament package (phase-465, RFC-0067 §D5). Checked into git because
+    # core crates need these messages before any codegen runs, and because cargo
+    # requires workspace member paths to exist on disk. There were eight members
+    # here across four trees: `builtin_interfaces` three times and `std_msgs`
+    # twice, with `-diag` / `-clock` suffixes that existed only to keep the
+    # copies from colliding (issue 1428). Regenerate with `just
+    # generate-interfaces`.
+    "packages/interfaces/generated/humble/nros-builtin-interfaces",
+    "packages/interfaces/generated/humble/nros-std-msgs",
+    "packages/interfaces/generated/humble/nros-rcl-interfaces",
+    "packages/interfaces/generated/humble/nros-diagnostic-msgs",
+    "packages/interfaces/generated/humble/nros-rosgraph-msgs",
+    "packages/interfaces/generated/humble/nros-lifecycle-msgs",
     "packages/core/nros-diagnostics",
     # C function table adapter for third-party RMW backends
     "packages/rmw/cffi",
@@ -212,10 +211,6 @@ exclude = [
     # Excluding the directory keeps a worktree's leaves resolving against the
     # worktree's own root, which is the whole point of the worktree.
     ".claude",
-    # rcl-interfaces parent package (metadata only, no Rust targets)
-    "packages/interfaces/rcl-interfaces",
-    # lifecycle-msgs parent package (metadata only, no Rust targets)
-    "packages/interfaces/lifecycle-msgs",
     # Examples are standalone packages that generate their own bindings
     # Native Rust examples (desktop/Linux)
     # Phase 118 — collapsed per-RMW cells (build-time RMW feature selection)

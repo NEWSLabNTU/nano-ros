@@ -422,7 +422,7 @@ name = "nros-build-paths"
 version = "0.5.0"
 
 [[package]]
-name = "nros-builtin-interfaces-clock"
+name = "nros-builtin-interfaces"
 version = "0.0.0"
 dependencies = [
  "heapless",
@@ -645,7 +645,7 @@ name = "nros-rosgraph-msgs"
 version = "0.0.0"
 dependencies = [
  "heapless",
- "nros-builtin-interfaces-clock",
+ "nros-builtin-interfaces",
  "nros-core",
  "nros-serdes",
 ]
@@ -926,7 +926,7 @@ dependencies = [
  "log",
  "nros",
  "nros-board-linux",
- "nros-builtin-interfaces-clock",
+ "nros-builtin-interfaces",
  "nros-platform-cffi",
  "nros-rmw-cyclonedds-sys",
  "nros-rmw-zenoh",

@@ -1760,24 +1760,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-builtin-interfaces-clock"
-version = "0.0.0"
-dependencies = [
- "heapless",
- "nros-core",
- "nros-serdes",
-]
-
-[[package]]
-name = "nros-builtin-interfaces-diag"
-version = "0.0.0"
-dependencies = [
- "heapless",
- "nros-core",
- "nros-serdes",
-]
-
-[[package]]
 name = "nros-c"
 version = "0.5.0"
 dependencies = [
@@ -1853,7 +1835,7 @@ dependencies = [
  "heapless",
  "nros-core",
  "nros-serdes",
- "nros-std-msgs-diag",
+ "nros-std-msgs",
 ]
 
 [[package]]
@@ -2198,7 +2180,7 @@ name = "nros-rosgraph-msgs"
 version = "0.0.0"
 dependencies = [
  "heapless",
- "nros-builtin-interfaces-clock",
+ "nros-builtin-interfaces",
  "nros-core",
  "nros-serdes",
 ]
@@ -2248,11 +2230,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-std-msgs-diag"
+name = "nros-std-msgs"
 version = "0.0.0"
 dependencies = [
  "heapless",
- "nros-builtin-interfaces-diag",
+ "nros-builtin-interfaces",
  "nros-core",
  "nros-serdes",
 ]
@@ -2267,7 +2249,6 @@ dependencies = [
  "libc",
  "nros",
  "nros-builtin-interfaces",
- "nros-builtin-interfaces-diag",
  "nros-cargo-profile",
  "nros-core",
  "nros-diagnostic-msgs",
@@ -2280,9 +2261,10 @@ dependencies = [
  "nros-rcl-interfaces",
  "nros-rmw",
  "nros-rmw-zenoh",
+ "nros-rosgraph-msgs",
  "nros-serdes",
  "nros-serdes-packed",
- "nros-std-msgs-diag",
+ "nros-std-msgs",
  "nvidia-ivc",
  "once_cell",
  "parking_lot",

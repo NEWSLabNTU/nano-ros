@@ -36,9 +36,9 @@ nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-featur
 # the executor bakes against (RFC-0033 capacities). Using the identical crates
 # keeps the wire ABI consistent across pub → sub → diagsink.
 nros-diagnostics = { path = "../../../../core/nros-diagnostics", default-features = false }
-nros-diagnostic-msgs = { path = "../../../../interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs", default-features = false }
-nros-std-msgs-diag = { path = "../../../../interfaces/diagnostic-msgs/generated/humble/nros-std-msgs-diag", default-features = false }
-nros-builtin-interfaces-diag = { path = "../../../../interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag", default-features = false }
+nros-diagnostic-msgs = { path = "../../../../interfaces/generated/humble/nros-diagnostic-msgs", default-features = false }
+nros-std-msgs = { path = "../../../../interfaces/generated/humble/nros-std-msgs", default-features = false }
+nros-builtin-interfaces = { path = "../../../../interfaces/generated/humble/nros-builtin-interfaces", default-features = false }
 heapless = "0.8"
 log = "0.4"
 env_logger = "0.11"
