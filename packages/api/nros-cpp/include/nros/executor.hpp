@@ -187,7 +187,9 @@ class Executor {
     ///
     /// @param out   Receives the initialized node.
     /// @param name  Node name (null-terminated).
-    /// @param ns    Node namespace (null-terminated), or nullptr for "/".
+    /// @param ns    Node namespace (null-terminated); nullptr or "" = unset
+    ///              (inherit THIS executor's namespace), "/" = the root. See
+    ///              `rclcpp::Node::create` (issue 1473).
     /// @return Result indicating success or failure.
     Result create_node(::rclcpp::Node& out, const char* name, const char* ns = nullptr);
 

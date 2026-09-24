@@ -3811,3 +3811,101 @@ Acceptance: `packages/api/nros-cpp/tests/compile/node_launch_identity_runtime.cp
 (a RUN, on `just check cpp` — every shape of this defect compiles), the
 `cpp_native_shapes` golden, which now carries a node declaring both halves
 beside one declaring neither, and the before/after table above.
+
+## Settled: at the C++ node-create ABI, an UNSET namespace INHERITS and `"/"` is the ROOT (2026-09-25)
+
+Issue 1473, left open by the section above. `NodeBuilder::build()` already
+implements "the caller named no namespace ⇒ inherit the executor's", and the
+two C++ FFI entry points reached it with opposite answers:
+`nros_cpp_node_create` substituted the literal `"/"` for a NULL namespace and
+always called `.namespace("/")`; `nros_cpp_node_create_ex` left `.namespace()`
+uncalled for `namespace_len == 0`.
+
+### What was measured (2026-09-25), and what it corrected
+
+Two layers, because they disagreed and the issue named only one.
+
+**At the builder** (`nros-node`, mock session, executor at `/island`):
+
+```
+node_builder("unset").build()                -> record.namespace = "/island"
+node_builder("root").namespace("/").build()  -> record.namespace = "/"
+node_builder("empty").namespace("").build()  -> record.namespace = ""
+```
+
+So the divergence as filed is REAL: those are the two answers the two entry
+points were producing for the same stated input.
+
+**At the C++ surface** (stub RMW backend, `nros_cpp_init_rmw(.., "/island", ..)`,
+a relative topic `chatter` read back through `nros_stub_rmw_last_entity_name`):
+
+```
+4-arg,  ns = NULL                  handle_ns=/  fqn=/alpha  'chatter' -> /chatter
+_ex,    namespace_len = 0          handle_ns=/  fqn=/beta   'chatter' -> /chatter
+4-arg,  ns = "/" (explicit root)   handle_ns=/  fqn=/gamma  'chatter' -> /chatter
+_ex,    namespace = "/"            handle_ns=/  fqn=/delta  'chatter' -> /chatter
+```
+
+**The two entry points did NOT disagree with each other here — `_ex` disagreed
+with ITSELF.** Its inheritance landed in the executor's `NodeRecord` and was
+then overwritten on the handle with `"/"`, and the handle is what
+`resolve_node_entity_name` reads for every C++ publisher, subscription and
+service — while `nros_node::executor::action` reads the RECORD. One node, two
+namespaces, split by entity kind. That second defect is the one that loses
+information, and the issue did not state it.
+
+### The decision
+
+**`NULL`, `""` and `namespace_len == 0` all mean UNSET: the node inherits the
+executor's namespace. `"/"` means the ROOT, explicitly. Both entry points
+answer identically, and each writes the RESOLVED namespace back onto the handle
+(`store_recorded_namespace`), so the handle, the `NodeRecord` and
+`nros_cpp_node_get_namespace` are one answer.**
+
+Why inherit and not root:
+
+* **The options struct already says so for every other field.**
+  `nros_cpp_node_get_default_options`' own contract is "all length fields
+  default to 0 (inherit)": `rmw_name_len == 0` inherits the executor's backend,
+  `locator_len == 0` its locator, `domain_id_override ==
+  NROS_CPP_DOMAIN_ID_INHERIT` its domain. Making the namespace the one field
+  that reads its struct's stated vocabulary backwards is the larger change.
+* **ROS 2's own semantics.** An unspecified namespace inherits the containing
+  context. Our executor IS that context, and `nros::init(locator, domain,
+  session, node_namespace)` has been able to set it since issue 1434. Under
+  "unset = root", that parameter reaches the session's own identity and nothing
+  the image creates afterwards — a rung that resolves and then decides nothing,
+  which is the shape issue 1050 was filed about one field over.
+* **A `const char*` CAN carry `Option<&str>`.** `NULL`, `""` and `"/"` are three
+  distinguishable values and the root costs one character. Collapsing `NULL`
+  onto `"/"` spends a distinction the ABI has; keeping them apart costs the
+  callers that mean the root a character they already write — the generated C
+  entry renders `"{{ n.namespace|c_str }}"`, which is `"/"` for a root node, and
+  `emit_c.rs` asserts it never emits `""`.
+* **nros-c never had the substitution.** `rclc_node_init_default` REFUSES a NULL
+  namespace outright and documents `"/"` for the root. The C++ 4-argument form
+  invented the collapse; it was not a tree-wide convention.
+
+Against, stated: the tree DID say "`nullptr` means root" at this constructor
+(`node.hpp`'s `@param ns`, `Node(NodeHandle, …)`'s precedence paragraph), so
+this is a decision and not a cleanup. What bounds it: the behaviour differs
+only on an executor whose namespace is NOT the root, and on a root executor
+inherit and root are the same value — so every image that never names a session
+namespace is bit-identical. Direction 2 of the section above stays rejected on
+its own merits (it reaches the namespace and not the name, and the executor's
+namespace is the launch namespace only for a single-node plan); the launch
+identity still travels on the `NodeHandle`. This settles what `nullptr` means
+UNDERNEATH that, which is a different question.
+
+`nros_cpp_init`'s own `namespace` argument is unchanged: NULL there is still the
+root, because the session is the outermost context and has nothing to inherit
+from.
+
+Acceptance, both directions:
+`packages/api/nros-cpp/tests/compile/node_unset_namespace_runtime.cpp` (a RUN on
+`just check cpp`, on a NON-ROOT executor because on a root one every shape of
+this defect passes; two negative controls measured, 8 and 5 failures) and
+`nros-node`'s
+`an_unnamed_namespace_inherits_the_executors_and_an_explicit_root_does_not`,
+which pins the builder half that had no test and is where a fix aimed at the
+wrong layer would have landed.

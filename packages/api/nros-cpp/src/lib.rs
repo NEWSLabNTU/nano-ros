@@ -2045,9 +2045,70 @@ impl Default for nros_cpp_node_options_t {
 /// All length fields default to 0 ("inherit"); `domain_id_override` is
 /// `NROS_CPP_DOMAIN_ID_INHERIT`. The C++ `NodeOptions` wrapper consumes
 /// this via `Executor::node_builder(name)`.
+///
+/// Issue 1473 — "inherit" is the vocabulary of the WHOLE struct, namespace
+/// included: `rmw_name_len == 0` inherits the executor's backend,
+/// `locator_len == 0` its locator, `domain_id_override ==
+/// NROS_CPP_DOMAIN_ID_INHERIT` its domain, and `namespace_len == 0` its
+/// namespace. To place a node at the ROOT of a namespaced executor, WRITE the
+/// root: `namespace_ = "/"`, `namespace_len = 1`.
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_cpp_node_get_default_options() -> nros_cpp_node_options_t {
     nros_cpp_node_options_t::default()
+}
+
+/// Issue 1473 — copy the namespace the executor RECORDED for `node_id` into a
+/// handle's inline buffer, normalising the empty spelling to the root.
+///
+/// ONE site, called by both `nros_cpp_node_create` and
+/// `nros_cpp_node_create_ex`, because the handle and the `NodeRecord` giving
+/// two answers is the defect this closes — not merely the two entry points
+/// giving two answers to each other.
+///
+/// Before this, each entry point wrote its own ARGUMENT back into the handle
+/// (`"/"` when the caller named nothing) while `NodeBuilder::build()` resolved
+/// something else into the record. That split was live and not theoretical: a
+/// C++ publisher, subscription or service takes its namespace from the HANDLE
+/// (`resolve_node_entity_name`), while an action takes it from the RECORD
+/// (`nros_node::executor::action` resolves `(name, namespace)` out of
+/// `self.nodes[id]`) — so one node could publish at `/` and serve its actions
+/// under `/island`.
+///
+/// `MEASURED` (2026-09-25, stub backend, executor at `/island`): `_ex` with
+/// `namespace_len == 0` recorded `/island` and reported `/`.
+#[cfg(feature = "rmw-cffi")]
+fn store_recorded_namespace(
+    executor: &CppExecutor,
+    node_id: nros_node::executor::NodeId,
+    out: &mut nros_cpp_node_t,
+) {
+    out.namespace = [0u8; NROS_CPP_NAMESPACE_LEN];
+    let recorded = executor.node(node_id).map(|r| r.namespace.as_str());
+    // An executor that recorded nothing is the root; so is one that recorded
+    // the empty string, which `nros_node::names` already normalises that way
+    // (`an_empty_namespace_normalises_to_root`). The handle carries ONE
+    // spelling of the root so `get_namespace()` never hands a caller `""`.
+    let ns = match recorded {
+        Some(s) if !s.is_empty() => s,
+        _ => "/",
+    };
+    let n = core::cmp::min(ns.len(), NROS_CPP_NAMESPACE_LEN - 1);
+    out.namespace[..n].copy_from_slice(&ns.as_bytes()[..n]);
+}
+
+/// Issue 1473 — the NUL-terminated namespace a handle carries, as a `&str`.
+///
+/// The counterpart read of [`store_recorded_namespace`]: both node-create
+/// paths report the handle's namespace to the metadata recorder, and one
+/// spelling of "decode the inline buffer" is one place for the `"/"` fallback
+/// to live.
+#[cfg(feature = "rmw-cffi")]
+fn handle_namespace(node: &nros_cpp_node_t) -> &str {
+    core::str::from_utf8(&node.namespace)
+        .ok()
+        .and_then(|s| s.split('\0').next())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("/")
 }
 
 /// Create a node on an executor.
@@ -2060,7 +2121,11 @@ pub extern "C" fn nros_cpp_node_get_default_options() -> nros_cpp_node_options_t
 /// # Parameters
 /// * `executor_handle` — Opaque executor handle from `nros_cpp_init()`.
 /// * `name` — Node name (null-terminated). Must not be NULL.
-/// * `namespace` — Node namespace (null-terminated), or NULL for `"/"`.
+/// * `namespace` — Node namespace (null-terminated). **NULL or `""` is
+///   UNSET**: the node INHERITS the executor's namespace, exactly as
+///   `nros_cpp_node_create_ex` does for `namespace_len == 0`. Pass `"/"` to
+///   place the node at the ROOT explicitly — the two are different requests
+///   and this ABI keeps them apart (issue 1473).
 /// * `out_node` — Receives the node handle on success.
 ///
 /// # Safety
@@ -2087,11 +2152,27 @@ pub unsafe extern "C" fn nros_cpp_node_create(
         Some(s) if !s.is_empty() && s.len() < 64 => s,
         _ => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
-    let ns_str = if namespace.is_null() {
-        "/"
+    // Issue 1473 — `None` is "the caller named no namespace", which is what
+    // `NodeBuilder` was already built to answer (`build()` falls back to the
+    // executor's namespace when `.namespace()` was never called). This used to
+    // substitute the literal `"/"` here and then ALWAYS call `.namespace()`,
+    // so an unset namespace OVERRODE the executor's with the root while
+    // `nros_cpp_node_create_ex` — the function this one is documented as a
+    // shorthand for — inherited it. `""` is unset too: an empty C string
+    // cannot be told apart from "the caller filled nothing in", which is the
+    // rule `nros::init`'s `node_namespace` and `NodeHandle::resolve_namespace`
+    // already state, and it is the 4-arg spelling of `namespace_len == 0`.
+    let ns_arg = if namespace.is_null() {
+        None
     } else {
         match unsafe { cstr_to_str(namespace) } {
-            Some(s) if s.len() < NROS_CPP_NAMESPACE_LEN => s,
+            Some(s) if s.len() < NROS_CPP_NAMESPACE_LEN => {
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
+            }
             _ => return NROS_CPP_RET_INVALID_ARGUMENT,
         }
     };
@@ -2110,12 +2191,11 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let node_id = match ctx
-        .executor
-        .node_builder(name_str)
-        .namespace(ns_str)
-        .build()
-    {
+    let mut builder = ctx.executor.node_builder(name_str);
+    if let Some(ns) = ns_arg {
+        builder = builder.namespace(ns);
+    }
+    let node_id = match builder.build() {
         Ok(id) => id,
         Err(_) => return NROS_CPP_RET_ERROR,
     };
@@ -2124,16 +2204,18 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     out.executor = executor_handle;
     out.name = [0u8; NROS_CPP_NAME_LEN];
     out.name[..name_str.len()].copy_from_slice(name_str.as_bytes());
-    out.namespace = [0u8; NROS_CPP_NAMESPACE_LEN];
-    if !ns_str.is_empty() {
-        out.namespace[..ns_str.len()].copy_from_slice(ns_str.as_bytes());
-    }
+    // Issue 1473 — the RESOLVED namespace, read back from the record the
+    // builder just wrote, never the argument. See `store_recorded_namespace`.
+    store_recorded_namespace(&ctx.executor, node_id, out);
     store_node_id(out, node_id);
     out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
 
     // phase-308 — open this node in the metadata recorder so the entities
     // declared next attribute to it (the RMW seam carries no node). No-op
-    // unless `metadata-mode` is on.
+    // unless `metadata-mode` is on. Reads the namespace back out of the handle
+    // for the same reason the `_ex` path does: the recorder must see the
+    // namespace the node LANDED in, not the one the caller asked for.
+    let ns_str = handle_namespace(out);
     crate::metadata_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
 
     NROS_CPP_RET_OK
@@ -2215,7 +2297,11 @@ pub(crate) fn node_id_opt(node: &nros_cpp_node_t) -> Option<nros_node::executor:
 /// * `name` — Node name (null-terminated). Must not be NULL.
 /// * `options` — Pointer to a populated `nros_cpp_node_options_t`. NULL
 ///   is rejected; use `nros_cpp_node_get_default_options()` to get a
-///   zero-initialised instance.
+///   zero-initialised instance. **`namespace_len == 0` is UNSET**: the node
+///   INHERITS the executor's namespace, the same answer
+///   `nros_cpp_node_create` gives for a NULL or empty `namespace`. Write
+///   `namespace_ = "/"`, `namespace_len = 1` to place the node at the ROOT
+///   explicitly (issue 1473).
 /// * `out_node` — Receives the node handle on success.
 ///
 /// # Safety
@@ -2294,24 +2380,21 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     out.name = [0u8; NROS_CPP_NAME_LEN];
     out.name[..name_str.len()].copy_from_slice(name_str.as_bytes());
 
-    out.namespace = [0u8; NROS_CPP_NAMESPACE_LEN];
-    if opts.namespace_len > 0 {
-        out.namespace[..opts.namespace_len].copy_from_slice(&opts.namespace[..opts.namespace_len]);
-    } else {
-        out.namespace[..1].copy_from_slice(b"/");
-    }
+    // Issue 1473 — the RESOLVED namespace, read back from the record the
+    // builder just wrote. This used to write the OPTIONS back (`"/"` when the
+    // caller filled nothing in), which threw away the inheritance the
+    // `.namespace()` call above had deliberately not overridden: the executor
+    // recorded `/island` and the handle — which every C++ publisher,
+    // subscription and service reads its namespace from — said `/`.
+    store_recorded_namespace(&ctx.executor, node_id, out);
     store_node_id(out, node_id);
     out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
 
     // phase-308 — open this node in the metadata recorder so the entities
-    // declared next attribute to it (the RMW seam carries no node). The `_ex`
-    // path takes its namespace from the options struct, so read it back out of
-    // the handle just written rather than re-deriving it. No-op unless
-    // `metadata-mode` is on.
-    let ns_str = core::str::from_utf8(&out.namespace)
-        .ok()
-        .and_then(|s| s.split('\0').next())
-        .unwrap_or("/");
+    // declared next attribute to it (the RMW seam carries no node). Read out
+    // of the handle just written rather than re-derived, so the recorder sees
+    // the namespace the node LANDED in. No-op unless `metadata-mode` is on.
+    let ns_str = handle_namespace(out);
     crate::metadata_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
 
     NROS_CPP_RET_OK
@@ -2346,6 +2429,12 @@ pub unsafe extern "C" fn nros_cpp_node_get_name(node: *const nros_cpp_node_t) ->
 ///
 /// Returns a pointer to the null-terminated namespace string stored in the node handle.
 /// The pointer is valid as long as the `nros_cpp_node_t` is alive.
+///
+/// Issue 1473 — this is the RESOLVED namespace, the one the executor recorded
+/// for this node, never the argument the caller passed. A node created with an
+/// unset namespace on an executor opened at `/island` answers `/island`, which
+/// is also where its relative topics resolve; one created with an explicit
+/// `"/"` answers `/`. The two used to be indistinguishable here.
 ///
 /// # Safety
 /// `node` must be a valid pointer to an initialized `nros_cpp_node_t`, or NULL.

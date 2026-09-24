@@ -10861,3 +10861,58 @@ fn the_endpoint_info_forwarders_do_not_collapse_unsupported_into_empty() {
         "the subscription side must say Unsupported too"
     );
 }
+
+/// Issue 1473 — "the caller named no namespace" and "the caller asked for the
+/// root" are DIFFERENT requests, and `NodeBuilder` is where the difference is
+/// decided for every language.
+///
+/// This is the half of 1473 that was already correct and had no test, so
+/// nothing stopped a fix at the C++ FFI from being applied here instead — the
+/// two C++ entry points disagreed precisely because one of them collapsed the
+/// distinction one layer up. MEASURED at this builder on 2026-09-25, before
+/// any change: `.build()` alone recorded `/island`, `.namespace("/")` recorded
+/// `/`. Those are the two answers `nros_cpp_node_create_ex` and
+/// `nros_cpp_node_create` were handing the SAME stated input.
+///
+/// The `""` arm is here because it is the one spelling a C caller can reach by
+/// accident (an unresolved bake macro expands to it). It is recorded verbatim
+/// and normalises to the root downstream — see
+/// `an_empty_namespace_normalises_to_root` — which is why the FFI edge treats
+/// it as UNSET rather than passing it through.
+#[test]
+fn an_unnamed_namespace_inherits_the_executors_and_an_explicit_root_does_not() {
+    let cfg = ExecutorConfig::default()
+        .namespace("/island")
+        .clock_us(test_clock_us);
+    let mut exec: Executor = Executor::from_session_with(MockSession::new(), &cfg);
+    // What `Executor::open_with_rmw` does with `config.namespace`; the
+    // `from_session*` constructors take a session that is already open, so they
+    // never see the config's identity.
+    exec.set_node_identity("session", "/island");
+
+    let unset = exec.node_builder("unset").build().unwrap();
+    assert_eq!(
+        exec.node(unset).unwrap().namespace.as_str(),
+        "/island",
+        "a node whose builder was never told a namespace must land in the \
+         executor's — that is what makes `nros::init(.., node_namespace)` \
+         (issue 1434) reach anything the image creates afterwards"
+    );
+
+    let root = exec.node_builder("root").namespace("/").build().unwrap();
+    assert_eq!(
+        exec.node(root).unwrap().namespace.as_str(),
+        "/",
+        "and a node that ASKED for the root must get the root, on the same \
+         executor — if these two agreed there would be no way to place a node \
+         outside a namespaced executor at all"
+    );
+
+    let empty = exec.node_builder("empty").namespace("").build().unwrap();
+    assert_eq!(
+        exec.node(empty).unwrap().namespace.as_str(),
+        "",
+        "the builder records `\"\"` verbatim; normalising it to the root is \
+         `nros_node::names`' job and treating it as UNSET is the FFI edge's"
+    );
+}

@@ -937,7 +937,7 @@ cpp: cpp-fmt
     # to `c++`: the driver picks the language by EXTENSION, and `c++ foo.c`
     # compiles C as C++, which mangles `nros_stub_rmw_register` and fails to
     # link against the `extern "C"` declaration in the header.
-    for _tu in executor_cancel_runtime logger_names_and_levels_runtime node_launch_identity_runtime; do \
+    for _tu in executor_cancel_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_unset_namespace_runtime; do \
         test -f "packages/api/nros-cpp/tests/compile/$_tu.cpp" || { \
             echo "ERROR: $_tu.cpp is MISSING -- this check would pass on absence." >&2; \
             exit 1; \
@@ -1019,6 +1019,25 @@ cpp: cpp-fmt
         target/nros-cpp-tests/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     ./target/nros-cpp-tests/node_launch_identity_runtime
+    # issue 1473 — "the caller named no namespace" has ONE meaning across the
+    # two C++ node-create entry points, and it is not "the root". A RUN on an
+    # executor opened at a NON-ROOT namespace, because on a root executor
+    # inherit and root are the same value and every shape of this defect
+    # passes. Same stub backend, same reason.
+    echo "  - an unset namespace inherits the executor's through BOTH node-create entry points, and an explicit \"/\" still reaches the root (runtime, issue 1473)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o target/nros-cpp-tests/node_unset_namespace_runtime \
+        packages/api/nros-cpp/tests/compile/node_unset_namespace_runtime.cpp \
+        target/nros-cpp-tests/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    ./target/nros-cpp-tests/node_unset_namespace_runtime
     # issue 0730 — the (zephyr-embedded × C++ × cyclonedds) coordinate is a
     # pairwise-class gap no runtime tier covers (cyclone fixtures run on
     # native_sim, which appends `,std`), and it failed E0599 at COMPILE time:

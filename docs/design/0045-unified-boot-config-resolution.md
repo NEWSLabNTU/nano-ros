@@ -312,6 +312,21 @@ two follow-ons are additive rather than rework:
   overrides them on hosted, the ROS convention); `domain_id == 0` remains
   the unset sentinel at the C/C++ ABI edge.
 
+- 2026-09-25 — issue 1473: the "EMPTY value is unset, never a configured
+  value" rule above is now also the rule for a NODE's namespace at the C++
+  ABI, and the two spellings that express the other meaning are named.
+  `nros_cpp_node_create(ns = NULL | "")` and `nros_cpp_node_create_ex(
+  namespace_len = 0)` both mean UNSET — the node INHERITS the executor's
+  namespace — and `"/"` means the ROOT explicitly. Before this the 4-argument
+  form substituted `"/"` for NULL while the options form inherited, so one FFI
+  over one `NodeBuilder` had two meanings for the same stated input (MEASURED;
+  see RFC-0089 §"Settled: at the C++ node-create ABI…"). Both entry points now
+  write the RESOLVED namespace onto the handle, so
+  `nros_cpp_node_get_namespace` reports what the executor recorded rather than
+  what the caller asked for. `nros_cpp_init`'s own `namespace` argument is
+  unchanged: NULL there is the root, because the session is the outermost
+  context and inherits from nothing.
+
 - 2026-07-17 — issue #227: `DOMAIN_ID_EXPLICIT_ZERO_C_ABI` (255) +
   `baked_domain_from_c_abi` give the u8 C/C++ init surface an explicit-zero
   escape (0 remains the unset sentinel per the #206 model-A decision).
