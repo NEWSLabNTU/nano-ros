@@ -2272,41 +2272,110 @@ crate = "cargo-show-asm"
 check = { cmd = "cargo-asm" }
 
 # --- Python layer (phase-327 W1) --------------------------------------------
+#
+# APT BEATS PIP WHERE APT CAN ANSWER — issue 1481, a maintainer decision.
+#
+# The `ros-<edition>-*` packages are built against the dependency versions
+# Ubuntu locks. `pip3 install --user <x>` drops a copy in
+# `~/.local/lib/pythonX/site-packages`, which PRECEDES
+# `/usr/lib/python3/dist-packages` on `sys.path`, so the remedy this layer
+# printed SHADOWED the very build ROS was compiled against. Measured on the
+# maintainer's jammy/arm64 host: apt carries `python3-catkin-pkg 1.1.0-101`,
+# `python3-yaml 5.4.1-1ubuntu1` and `python3-colcon-common-extensions 0.3.0-100`
+# AND `~/.local/.../{catkin_pkg,yaml,colcon}` is what `import` actually
+# resolves. The versions coincide today, which is why nobody noticed.
+#
+# `empy` is the sharpest case: this layer hand-pins 3.3.4 because 4.x breaks
+# rosidl templates, and Ubuntu's `python3-empy` IS ALREADY 3.3.4-2. The pip
+# remedy installed a shadowing duplicate of the correct version, for no gain,
+# on the one package where a wrong major version breaks codegen.
+#
+# SHAPE: `apt` is the `[prereq.*]` idiom (`ManagerPackages`, RFC-0099 D9 /
+# phase-447 D2) — a flat list, or `{ default = [..], <release> = [..] }` where a
+# release differs. NO entry needs the per-release split today and none is
+# written, because the resolver asks the HOST's apt for a candidate before it
+# prints an apt remedy: a release that does not package one falls to pip by
+# MEASUREMENT, not by a table someone has to keep current. The table shape stays
+# available for what measurement cannot reach (a rename we must anticipate), and
+# an explicit `<release> = []` still reads as "not packaged there".
+#
+# EVERY entry states its apt position — `apt = [..]` or `apt_refused = "<why>"`,
+# never silence. That is the per-FIELD status rule (a value, or a refusal with a
+# reason, never a silent default) and it is GATED in `SdkIndex::validate`, so a
+# new `[python.*]` entry cannot be added without ruling it. `west` and
+# `clang-format` are EXEMPT BY MEASUREMENT, written down, not overlooked.
+#
+# dnf / pacman / brew are deliberately NOT mapped. The book measured that Fedora
+# and Arch ship no rosidl packages (`book/src/getting-started/installation.md`
+# pip-installs these four there on purpose, saying so), and nothing here has
+# measured the rest. A GUESSED mapping prints a command that fails; an absent
+# one falls to pip, which is what those hosts already do — so absence is the
+# honest answer and costs nothing.
+#
+# `module` is the IMPORT name where it differs from `pip` (`PyYAML` -> `yaml`).
+# It is also what gives a probe-less entry a probe: an entry with no `check` is
+# probed by importing `module` in this host's `python3`. Five of these eight
+# reported `[UNPROBED]` before 1481 — a layer that answered nothing, and
+# therefore never printed the remedy this issue is about.
 
 [python.catkin-pkg]
 pip = "catkin_pkg"
+# ROS-REPO ONLY: `python3-catkin-pkg` comes from packages.ros.org/ros2, not from
+# plain Ubuntu. On a host without that repo apt has no candidate and the
+# resolver falls to pip — which is the case this layer was created for
+# (issue 0368 / phase-327: rosidl_adapter on a ROS-less host).
+apt = ["python3-catkin-pkg"]
 why = "rosidl_adapter import (cyclone msg->IDL on ROS-less hosts)"
 
 [python.pyyaml]
 pip = "PyYAML"
+module = "yaml"
+apt = ["python3-yaml"]
 why = "rosidl_cli imports yaml (reached via rosidl_adapter.cli since the vendored humble tree)"
 
 [python.empy]
 pip = "empy"
+module = "em"
 version = "3.3.4"
+# The apt candidate must SATISFY the pin or the resolver falls to pip: jammy
+# carries 3.3.4-2 (measured), and a release that moved to 4.x is refused by
+# measurement rather than by a table someone has to keep current.
+apt = ["python3-empy"]
 why = "rosidl_adapter templates — empy 4.x is INCOMPATIBLE, keep the pin"
 
 [python.lark]
 pip = "lark"
+apt = ["python3-lark"]
 why = "rosidl_parser grammar (cyclone msg->IDL on ROS-less hosts)"
 
 [python.tomli]
 pip = "tomli"
+# `ci/docker/ci-base/Dockerfile` already apt-installs this one while this layer
+# told a human to pip it — the tree contradicting itself, and the corroboration
+# that started 1481.
+apt = ["python3-tomli"]
 why = "check-fixtures-manifest (python3.10 has no stdlib tomllib; found undeclared running check-fast on a clean host)"
 
 [python.west]
 pip = "west"
+apt_refused = "PyPI only — no distro packages it (measured: `apt-cache policy python3-west` is empty on jammy, and Zephyr's own docs install it from PyPI)"
 why = "Zephyr workspace + SDK management"
 check = { cmd = "west" }
 
 [python.colcon]
 pip = "colcon-common-extensions"
+module = "colcon"
+# ROS-REPO ONLY, same as catkin-pkg: the apt name exists on ROS-repo hosts and
+# nowhere else, which is what issue 0368 F7 recorded as "pip works everywhere".
+# That reasoning is intact — it is now the FALLBACK rather than the only path.
+apt = ["python3-colcon-common-extensions"]
 why = "rmw_zenoh overlay build (issue 0368 F7 — apt name only exists on ROS-repo hosts; pip works everywhere)"
 check = { cmd = "colcon" }
 
 [python.clang-format]
 pip = "clang-format"
 version = "17.0.6"
+apt_refused = "the pin is exact and apt cannot meet it — jammy ships clang-format 1:14.0-55~exp2 (measured) — and `just setup-clang-format` wants the wheel's STANDALONE binary under build/clang-format/bin, not a host-wide install (AGENTS.md: no venv, nothing user-wide)"
 why = "pinned formatter (.clang-format-version); just setup-clang-format installs the wheel"
 check = { cmd = "clang-format" }
 
