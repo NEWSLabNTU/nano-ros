@@ -959,6 +959,22 @@ pub struct PythonDep {
     /// MEASUREMENT.
     #[serde(default)]
     pub apt: ManagerPackages,
+    /// The UPSTREAM rosdep key this dependency is declared under, for an entry
+    /// that is not ours — issue 1484.
+    ///
+    /// Set only where nothing in this repo imports the module: `empy` and
+    /// `lark` are `rosidl_adapter`'s and `rosidl_parser`'s own
+    /// `<exec_depend>`s, carried here because `[source.rosidl]` serves the
+    /// ROS-LESS host, where the maintainer's "install the apt ROS package and
+    /// let apt resolve it" has no ROS package to install.
+    ///
+    /// It is not a second spelling of [`Self::apt`]: the KEY is upstream's and
+    /// the apt NAME is the pinned `nros-rosdep-snapshot.toml`'s answer to it,
+    /// and `check-python-entry-provenance` requires the two to agree. The
+    /// snapshot maps `python3-lark-parser` to `python3-lark` — a rename we were
+    /// hand-copying one edge of.
+    #[serde(default)]
+    pub rosdep: Option<String>,
     /// Why this entry has no apt provider, when it has none.
     ///
     /// EXACTLY ONE of this and [`Self::apt`] is set, enforced in
@@ -1887,6 +1903,26 @@ impl SdkIndex {
             // made eight pip-only entries look deliberate when six of them had
             // an apt package all along, so an entry that neither declares nor
             // refuses apt is refused here rather than read as a decision.
+            // Issue 1484 — a `rosdep` key is a claim about where the apt NAMES
+            // come from, so an entry that refuses apt cannot carry one, and an
+            // entry that carries one must declare the names it resolved to.
+            // (That the names AGREE with the snapshot is the gate's job — it
+            // needs a second file, which this parse deliberately does not.)
+            if let Some(key) = &py.rosdep {
+                if py.apt.is_empty() {
+                    bail!(
+                        "[python.{alias}] declares `rosdep = \"{key}\"` and no `apt` — the key \
+                         names where the apt PACKAGE NAMES come from, so an entry with none \
+                         says nothing resolvable; drop the key or declare what it resolves to"
+                    );
+                }
+                if let Some(reason) = py.apt_refused.as_deref() {
+                    bail!(
+                        "[python.{alias}] declares BOTH `rosdep = \"{key}\"` and \
+                         `apt_refused = \"{reason}\"` — a rosdep key IS an apt position; keep one"
+                    );
+                }
+            }
             match (py.apt.is_empty(), py.apt_refused.as_deref()) {
                 (true, None) => bail!(
                     "[python.{alias}] states no apt position — set `apt = [\"python3-...\"]` \
@@ -2281,6 +2317,36 @@ check = { cmd = "west" }
         // deliberately pip-only for as long as they did. The two mutations
         // below are this gate's negative controls: each parses fine and is
         // caught only by `validate`.
+        // Issue 1484 — a `rosdep` key is an apt POSITION, so it has to
+        // resolve to names and cannot sit beside a refusal.
+        assert!(
+            SdkIndex::parse("[python.lark]\npip = \"lark\"\nrosdep = \"python3-lark-parser\"\n")
+                .unwrap()
+                .validate()
+                .is_err(),
+            "a rosdep key with no apt names resolves to nothing"
+        );
+        assert!(
+            SdkIndex::parse(
+                "[python.lark]\npip = \"lark\"\nrosdep = \"python3-lark-parser\"\n\
+                 apt_refused = \"no\"\n"
+            )
+            .unwrap()
+            .validate()
+            .is_err(),
+            "a rosdep key beside apt_refused states two apt positions"
+        );
+        let upstream = SdkIndex::parse(
+            "[python.lark]\npip = \"lark\"\nrosdep = \"python3-lark-parser\"\n\
+             apt = [\"python3-lark\"]\n",
+        )
+        .unwrap();
+        upstream.validate().unwrap();
+        assert_eq!(
+            upstream.python["lark"].rosdep.as_deref(),
+            Some("python3-lark-parser"),
+            "the KEY is upstream's spelling; the apt NAME is the snapshot's answer to it"
+        );
         let silent = SdkIndex::parse("[python.lark]\npip = \"lark\"\n").unwrap();
         let err = silent.validate().unwrap_err().to_string();
         assert!(err.contains("states no apt position"), "{err}");

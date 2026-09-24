@@ -3841,7 +3841,11 @@ mod tests {
             .check
             .as_ref()
             .expect("without a probe, every ROS host reports MISSING and --check exits nonzero");
-        assert_eq!(check.python_import.as_deref(), Some("rosidl_adapter"));
+        // `rosidl_adapter.cli`, not `rosidl_adapter` — issue 1457/1484. The
+        // package alone imports with none of its third-party deps present, so
+        // the narrower module answered PRESENT for an interpreter that could
+        // not run `msg2idl.py`. The probe asks what the script asks.
+        assert_eq!(check.python_import.as_deref(), Some("rosidl_adapter.cli"));
         assert_eq!(check.env.as_deref(), Some("NROS_ROSIDL_ADAPTER_BIN_DIR"));
     }
 

@@ -1765,8 +1765,38 @@ packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 # phase-327 / issue 0368 — rosidl_adapter for the cyclone msg->IDL step
 # WITHOUT a ROS install: scripts/cyclonedds/msg_to_cyclone_idl.py resolves
 # third-party/ros/rosidl/rosidl_adapter/scripts as its last ladder rung
-# (env override and /opt/ros still win). Python deps ride [python.*]:
-# catkin-pkg, empy (PINNED 3.3.4 — empy 4 breaks rosidl templates), lark.
+# (env override and /opt/ros still win).
+#
+# WHAT THE ROS-LESS PATH NEEDS FROM THE INTERPRETER, AND WHOSE EACH ONE IS
+# (measured 2026-09-24, issue 1484 — this line used to read "Python deps ride
+# [python.*]: catkin-pkg, empy …, lark", which named three of four and said
+# nothing about whose they are):
+#
+#   em      UPSTREAM's  [python.empy]  rosdep key `python3-empy`
+#                       (rosidl_adapter/package.xml <exec_depend>), version
+#                       PINNED 3.3.4 by US — empy 4 breaks the templates
+#   lark    UPSTREAM's  [python.lark]  rosdep key `python3-lark-parser`
+#                       (rosidl_parser/package.xml <exec_depend>)
+#   catkin_pkg  OURS    [python.catkin-pkg] — we import it too
+#   yaml        OURS    [python.pyyaml] — 11 of our own scripts import it
+#
+# THE LIST IS NOT DERIVABLE FROM UPSTREAM'S `package.xml` ALONE, measured at the
+# `ref` below: rosidl_adapter declares `python3-empy`, rosidl_parser declares
+# `python3-lark-parser`, rosidl_cli declares `python3-argcomplete` and
+# `python3-importlib-metadata` — and NOTHING declares `python3-catkin-pkg` or
+# `python3-yaml`, which `rosidl_adapter/rosidl_adapter/cli.py` imports on lines
+# 19-20. A derivation that trusted package.xml would under-declare exactly the
+# module whose absence killed tier-2 nightly (issue 1457). So the two that ARE
+# upstream's carry `rosdep = "<key>"`, which is what makes their apt NAME the
+# vendored snapshot's answer rather than a string we maintain; the other two are
+# ours on their own merits and would be here regardless.
+#
+# ON A HOST WITH THE ROS APT REPO none of this is reached: `apt install
+# ros-humble-rosidl-adapter` installs the adapter under
+# /opt/ros/humble/lib/rosidl_adapter AND lets apt resolve python3-empy at the
+# version ROS was built against, so ladder rung 2 wins and this clone is never
+# opened. That is the maintainer's rule working; this entry is the host shape
+# where the rule has nothing to install.
 #
 # RFC-0097 D12 — `build_stage = true`: a TARGET BUILD pulls this in, not a
 # board. `nros setup <board>` resolves the board's packages plus the chosen
@@ -1781,6 +1811,15 @@ packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 # so `python3 -c 'import rosidl_adapter'` cannot be written as one. And not a
 # `path` probe either — the directory existing is a PROXY, being importable is
 # the property, which is the distinction the script itself refuses on.
+#
+# `rosidl_adapter.cli`, not `rosidl_adapter` — issue 1457's finding applied to
+# the index that describes the same rung. `msg2idl.py`'s first statement is
+# `from rosidl_adapter.cli import convert_files_to_idl`, and `cli` is where the
+# third-party imports live (`catkin_pkg.package`, and `em` one frame down). The
+# package alone imports with NONE of them present, so the narrower probe
+# answered PRESENT for an interpreter that could not run the script — which is
+# how `nros setup --check` reported a green rung to hosts whose build then died
+# eleven minutes in. Ask what the script asks.
 version = "humble-5621b26"
 git = "https://github.com/ros2/rosidl"
 ref = "5621b26eff54596a356ad8abd72c06e7650d21f7"
@@ -1796,7 +1835,7 @@ ref = "5621b26eff54596a356ad8abd72c06e7650d21f7"
 # the store already knows.
 location = "store"
 build_stage = true
-check = { python_import = "rosidl_adapter", env = "NROS_ROSIDL_ADAPTER_BIN_DIR" }
+check = { python_import = "rosidl_adapter.cli", env = "NROS_ROSIDL_ADAPTER_BIN_DIR" }
 
 # --- OS packages (phase-327 W1, RFC-0062) -----------------------------------
 #
@@ -2312,17 +2351,41 @@ check = { cmd = "cargo-asm" }
 # one falls to pip, which is what those hosts already do — so absence is the
 # honest answer and costs nothing.
 #
-# AN ENTRY HERE MUST BE A DEPENDENCY OF *OURS*, not of something we vendor.
-# The index does not carry transitive deps: where a package comes in behind a
-# direct ROS dependency, install that and let apt resolve it. Measured against
-# the tree, six of these eight are ours (`catkin-pkg` — `workspace_bindgen.py`;
-# `pyyaml` — 11 of our scripts, several of them `check-fast` gates; `tomli`;
-# `colcon`; `west`; `clang-format`) and TWO are upstream rosidl's alone:
-# `empy` and `lark`, which nothing here imports. Those two are issue 1483 —
-# `[source.rosidl]` should reach upstream's own `package.xml` through the pinned
-# `nros-rosdep-snapshot.toml` instead. Do not add a third; do not remove those
-# two before the replacement exists, or issue 1457 re-opens on the ROS-less
-# runner (whose image derives its layer from this table — issue 1482).
+# WHOSE DEPENDENCY IS IT — issues 1483/1484, a second maintainer decision.
+#
+#   Our index must not carry transitive dependencies. Where a package is a
+#   transitive dep of a direct apt ROS dependency, install the apt ROS package
+#   and let apt resolve it.
+#
+# Measured over the tracked `*.py` of this repo (third-party/ and docs/
+# excluded, `import`/`from` parsed rather than grepped): `tomli` 42 direct
+# importers, `yaml` 11, `catkin_pkg` 1, `em` 0, `lark` 0. Six of the eight
+# entries are OURS; `empy` and `lark` are upstream rosidl's alone.
+#
+# The rule's remedy cannot reach those two, and that is the whole reason this
+# layer exists: `[source.rosidl]` is the ROS-LESS host (issue 0368 /
+# phase-327), where there is no `ros-humble-rosidl-adapter` to install. So they
+# stay, and instead each states WHOSE it is: `rosdep = "<upstream key>"` names
+# the key upstream's own `package.xml` declares, and `check-python-entry-
+# provenance` requires the declared `apt` names to be exactly what the pinned
+# `nros-rosdep-snapshot.toml` maps that key to. An entry with no importer here
+# and no `rosdep` is refused by that gate — which is the maintainer's rule,
+# gated, rather than a count someone re-derives.
+#
+# DO NOT DELETE THOSE TWO ENTRIES WITHOUT MOVING WHAT THEY SUPPLY. The runner
+# container is `FROM ubuntu:22.04` with no ROS apt repo and deliberately no
+# `nros-ros2` label — it IS this host shape — and issue 1482 made its python
+# layer DERIVED from the `[python.*]` entries that have no `check.cmd`. Removing
+# them there shrinks that image with no edit to `runner-container.sh` and no
+# lane watching, which re-opens 1457 on the tier-2 runner. Issue 1483 tracks the
+# move; the image derivation has to follow it in the same change.
+#
+# THE THREE THIS MEASUREMENT DOES NOT REACH, carried from #1483's wording: the
+# import census counts MODULES, so `west`, `colcon` and `clang-format` show no
+# importer and are ours all the same — each is a TOOL, declared here with
+# `check = { cmd = ... }`, which is also why none of them is in the runner
+# image's derived layer. And the rule has a second half worth stating plainly
+# beside the gate that enforces it: DO NOT ADD A THIRD upstream-only entry.
 #
 # `module` is the IMPORT name where it differs from `pip` (`PyYAML` -> `yaml`).
 # It is also what gives a probe-less entry a probe: an entry with no `check` is
@@ -2340,28 +2403,46 @@ pip = "catkin_pkg"
 # different candidate, not the only one. Which you get is exactly what the
 # resolver asks apt, per host; do not re-tabulate it here.
 apt = ["python3-catkin-pkg"]
-why = "rosidl_adapter import (cyclone msg->IDL on ROS-less hosts)"
+why = "OURS: packages/cli/colcon-cargo-ros2/colcon_nano_ros/workspace_bindgen.py imports catkin_pkg.package (measured 2026-09-24: 1 direct importer here). Upstream rosidl_adapter/cli.py imports it too and declares it in no package.xml, so [source.rosidl] needs it as well — but this entry would exist without that"
 
 [python.pyyaml]
 pip = "PyYAML"
 module = "yaml"
 apt = ["python3-yaml"]
-why = "rosidl_cli imports yaml (reached via rosidl_adapter.cli since the vendored humble tree)"
+why = "OURS: 11 of our own scripts import yaml (measured 2026-09-24) — scripts/ci/lane-stage.py, scripts/lib/workflow_commands.py, scripts/probe/extract-workflow-steps.py, gen-rosdep-snapshot.py and six check-* gates on the check-fast line. A host that cannot import yaml cannot run the lane this repo tells everyone to run before every push. The rosidl tree reaches it too and declares it nowhere"
 
 [python.empy]
 pip = "empy"
 module = "em"
 version = "3.3.4"
-# The apt candidate must SATISFY the pin or the resolver falls to pip: jammy
-# carries 3.3.4-2 (measured), and a release that moved to 4.x is refused by
-# measurement rather than by a table someone has to keep current.
+# NOT OURS (issues 1483/1484): zero direct importers of `em` in this repo,
+# measured. It is `rosidl_adapter`'s own
+# `<exec_depend>python3-empy</exec_depend>` at the commit `[source.rosidl]`
+# pins, and it is declared here only because the ROS-less host has no
+# `ros-humble-rosidl-adapter` to install and let apt resolve.
+#
+# The NAME is upstream's, so `rosdep` names their key and the apt list is the
+# vendored snapshot's answer to it. The VERSION is OURS and stays ours: a rosdep
+# key carries none, and empy 4.x breaks the rosidl templates. The apt candidate
+# must SATISFY the pin or the resolver falls to pip: jammy carries 3.3.4-2
+# (measured), and a release that moved to 4.x is refused by measurement rather
+# than by a table someone has to keep current.
+rosdep = "python3-empy"
 apt = ["python3-empy"]
-why = "rosidl_adapter templates — empy 4.x is INCOMPATIBLE, keep the pin"
+why = "UPSTREAM rosidl's: rosidl_adapter templates (rosidl_adapter/package.xml <exec_depend> at humble-5621b26); nothing here imports `em`. The 3.3.4 pin IS ours — empy 4.x is INCOMPATIBLE"
 
 [python.lark]
 pip = "lark"
+# NOT OURS (issues 1483/1484): zero direct importers of `lark` in this repo,
+# measured — and the sharpest case for `rosdep`. Upstream's key is
+# `python3-lark-parser`; the apt package is `python3-lark`. That RENAME is data
+# ros/rosdistro publishes and `nros-rosdep-snapshot.toml` vendors at a pinned
+# ref, and this entry used to hand-copy one edge of it — the exact shape that
+# goes silently wrong in the direction that reads as correct.
+# `check-python-entry-provenance` compares the two, so it can no longer.
+rosdep = "python3-lark-parser"
 apt = ["python3-lark"]
-why = "rosidl_parser grammar (cyclone msg->IDL on ROS-less hosts)"
+why = "UPSTREAM rosidl's: rosidl_parser grammar (rosidl_parser/package.xml <exec_depend>python3-lark-parser</exec_depend> at humble-5621b26); nothing here imports `lark`"
 
 [python.tomli]
 pip = "tomli"
