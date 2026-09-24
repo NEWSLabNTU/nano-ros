@@ -1202,7 +1202,7 @@ fn xrce_demand_selftest() {
             .set_reliability(rel)
             .set_depth(depth)
             .set_wire_bound_bytes(bound)
-            .set_registration_path(Some(RegistrationPath::RustTypedSchemaless));
+            .set_registration_path(Some(RegistrationPath::Unbounded));
         e
     };
     let be = Some(Reliability::BestEffort);
