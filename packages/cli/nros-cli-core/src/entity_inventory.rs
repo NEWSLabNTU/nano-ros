@@ -3723,6 +3723,18 @@ impl EntityInventory {
                     k.param_service_nodes,
                     k.infra_queryables - param_share
                 ));
+                // Issue 1485 -- the application's share of the SAME derivation,
+                // as a number a consumer can subtract. `nros-rmw-zenoh`
+                // partitions the table into the runtime's builtin inbox and the
+                // application's, and on the Zephyr resolver road this is the
+                // only carrier of the application's half: the CMake road's
+                // `NROS_DECLARED_SERVICE_SERVERS` never reaches a west build,
+                // so the builtin inbox was sized for a family and allocated
+                // zero times.
+                s.push_str(&format!(
+                    "set(NROS_ENTITY_APP_QUERYABLES {})\n",
+                    k.max_queryables - k.infra_queryables
+                ));
                 s.push_str(
                     "# One node per declared component. Over-counts if two share\n                     # a name (slots are keyed by name); UNDER-counts only for a\n                     # bridge, whose two nodes are runtime strings declared\n                     # nowhere -- that path names this knob when the table fills.\n",
                 );
@@ -5452,6 +5464,13 @@ execution:
         assert!(
             cmake.contains("of which 12 are the runtime's own servers"),
             "the runtime's share is attributed: {cmake}"
+        );
+        // Issue 1485 -- and the application's share is a NUMBER, the one the
+        // zenoh shim subtracts to give the runtime its builtin inbox. The
+        // table minus the runtime's twelve: the model's one service server.
+        assert!(
+            cmake.contains("set(NROS_ENTITY_APP_QUERYABLES 1)\n"),
+            "the application's share is published: {cmake}"
         );
     }
 

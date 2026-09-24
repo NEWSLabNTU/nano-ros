@@ -358,16 +358,19 @@ const ACTION_INBOX_PER_SESSION: usize = const_min(ACTION_INBOX_QUERYABLES, ZPICO
 /// constants nor whether their features are compiled in.
 ///
 /// ZERO on an image that declares nothing (`DECLARED_APP_QUERYABLES` is then
-/// `usize::MAX`), so every queryable keeps the user-service geometry it has
+/// `None`), so every queryable keeps the user-service geometry it has
 /// today, byte for byte -- the rule W1 set for the action table, and the
 /// reason an absent declaration means the OPPOSITE of what it means for the
 /// table's SIZE. Over-reserving a table costs RAM; under-sizing a ring drops a
 /// well-formed request, so the ring partition abstains where the table
 /// assumes.
-const BUILTIN_INBOX_PER_SESSION: usize = const_min(
-    ZPICO_MAX_QUERYABLES - const_min(DECLARED_APP_QUERYABLES, ZPICO_MAX_QUERYABLES),
-    ZPICO_MAX_QUERYABLES - ACTION_INBOX_PER_SESSION,
-);
+const BUILTIN_INBOX_PER_SESSION: usize = match DECLARED_APP_QUERYABLES {
+    Some(app) => const_min(
+        ZPICO_MAX_QUERYABLES - const_min(app, ZPICO_MAX_QUERYABLES),
+        ZPICO_MAX_QUERYABLES - ACTION_INBOX_PER_SESSION,
+    ),
+    None => 0,
+};
 const USER_SERVICE_INBOX_PER_SESSION: usize =
     ZPICO_MAX_QUERYABLES - ACTION_INBOX_PER_SESSION - BUILTIN_INBOX_PER_SESSION;
 const USER_SERVICE_INBOX_COUNT: usize = ZPICO_MAX_SESSIONS * USER_SERVICE_INBOX_PER_SESSION;
@@ -2283,8 +2286,7 @@ pub(super) mod tests {
     #[test]
     fn an_undeclared_image_has_no_builtin_table() {
         assert_eq!(
-            DECLARED_APP_QUERYABLES,
-            usize::MAX,
+            DECLARED_APP_QUERYABLES, None,
             "this test build declares no application service surface"
         );
         assert_eq!(BUILTIN_INBOX_PER_SESSION, 0);

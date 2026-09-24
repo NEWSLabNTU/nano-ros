@@ -567,12 +567,17 @@ fn main() {
     // serially in one spin, so a slot is drained within one spin period. It is
     // a default on a knob, not a ceiling -- an image that serves a parameter
     // dashboard states 2.
-    let param_inbox_probe = env_usize("NROS_PARAM_SERVICE_INBOX_BYTES", usize::MAX);
-    let param_inbox_stated = param_inbox_probe != usize::MAX;
-    let param_inbox_bytes = if param_inbox_stated {
-        param_inbox_probe
-    } else {
-        0
+    //
+    // issue 1485 -- "not stated" is the probe, and ONLY the probe. The Kconfig
+    // row's `-1` sentinel forwards nothing and does not parse as a `usize`
+    // anywhere on the ladder, so it lands here as the probe. A literal 0 is
+    // REFUSED rather than taken: it was this knob's derive sentinel until
+    // issue 1485, so a 0 in a board file means somebody asked for the
+    // derivation, and taking it as a size is a slot nothing fits in.
+    let param_inbox_bytes = match env_usize("NROS_PARAM_SERVICE_INBOX_BYTES", usize::MAX) {
+        usize::MAX => "None".to_string(),
+        0 => panic!("{PARAM_INBOX_ZERO_REFUSAL}"),
+        n => format!("Some({n})"),
     };
     let param_inbox_depth = env_usize("NROS_PARAM_SERVICE_INBOX_DEPTH", 1);
     // phase-454 W10 — the per-endpoint declared depths, for the REGISTRATION
@@ -1013,15 +1018,10 @@ fn main() {
          pub const DECLARED_PARAM_SERVICE_SHAPES: Option<&[[usize; 9]]> = {param_svc_shapes};\n\
          \n\
          /// phase-461 W2 -- the parameter-service INBOX slot size a rung \
-         STATED (NROS_PARAM_SERVICE_INBOX_BYTES), or 0 for \"nobody stated \
-         one\". Never read without PARAM_SERVICE_INBOX_STATED beside it: 0 is \
-         an absence, not a size.\n\
-         pub const PARAM_SERVICE_INBOX_BYTES: usize = {param_inbox_bytes};\n\
-         \n\
-         /// phase-461 W2 -- whether a rung STATED \
-         NROS_PARAM_SERVICE_INBOX_BYTES. A stated size wins over the size \
-         derived from the contract's declared parameters.\n\
-         pub const PARAM_SERVICE_INBOX_STATED: bool = {param_inbox_stated};\n\
+         STATED (NROS_PARAM_SERVICE_INBOX_BYTES), or `None` when nobody stated \
+         one. A stated size wins over the size derived from the contract's \
+         declared parameters (issue 1485: never 0, which is refused).\n\
+         pub const PARAM_SERVICE_INBOX_BYTES: Option<usize> = {param_inbox_bytes};\n\
          \n\
          /// phase-461 W2 -- requests one parameter-service queryable holds \
          before the newest is dropped (NROS_PARAM_SERVICE_INBOX_DEPTH, \
@@ -1358,6 +1358,19 @@ fn declared_max_qos_depth() -> Option<usize> {
         .ok()
         .and_then(|v| v.trim().parse().ok())
 }
+
+/// issue 1485 -- the refusal for a STATED `NROS_PARAM_SERVICE_INBOX_BYTES=0`.
+///
+/// RFC-0065 D2: refuse, and name the remedy. `nros-rmw-zenoh/build.rs` reads
+/// the same knob and refuses the same value with the same words, so a board
+/// that states 0 is told one thing whichever build script runs first.
+const PARAM_INBOX_ZERO_REFUSAL: &str = "NROS_PARAM_SERVICE_INBOX_BYTES=0: 0 is not a size; -1 derives.\n  \
+     It is the bytes ONE request slot of the parameter/lifecycle inbox holds, \
+     and a 0-byte slot drops every request. 0 was this knob's derive sentinel \
+     until issue 1485 and the readers took it literally.\n  \
+     Delete the line (on Zephyr, CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES, whose \
+     default -1 derives the size from the contract's declared parameters), \
+     or state the size you mean.";
 
 fn env_usize(name: &str, default: usize) -> usize {
     println!("cargo:rerun-if-env-changed={name}");

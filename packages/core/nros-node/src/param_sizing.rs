@@ -467,8 +467,8 @@ const fn node_bound(s: &[usize; 9], c: ParamWireCaps) -> ParamServiceBound {
 /// Rounded up to a multiple of 4 so the ring's slots stay word-aligned on
 /// every target the tree builds for.
 pub const fn param_service_inbox_bytes() -> usize {
-    if crate::config::PARAM_SERVICE_INBOX_STATED {
-        return crate::config::PARAM_SERVICE_INBOX_BYTES;
+    if let Some(stated) = crate::config::PARAM_SERVICE_INBOX_BYTES {
+        return stated;
     }
     let derived = match crate::config::DECLARED_PARAM_SERVICE_SHAPES {
         Some(shapes) => param_service_bound(shapes, ParamWireCaps::THIS_BUILD).request_max(),
@@ -484,7 +484,7 @@ pub const fn param_service_inbox_bytes() -> usize {
 /// nothing; it bites exactly when someone states a size the declarations
 /// cannot fit into.
 pub const fn param_service_inbox_derived() -> bool {
-    !crate::config::PARAM_SERVICE_INBOX_STATED
+    crate::config::PARAM_SERVICE_INBOX_BYTES.is_none()
 }
 
 /// Bytes one slot of the parameter family's inbox holds.

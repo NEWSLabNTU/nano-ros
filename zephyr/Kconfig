@@ -1024,23 +1024,26 @@ config NROS_ACTION_INBOX_DEPTH
       NROS_ACTION_INBOX_DEPTH.
 
 config NROS_PARAM_SERVICE_INBOX_BYTES
-    int "Parameter/lifecycle service inbox slot size (bytes)"
-    default 0
+    int "Parameter/lifecycle service inbox slot size (bytes, -1 = derive)"
+    default -1
     help
       phase-461 W2 -- bytes one request slot holds in the inbox ring of each
       ROS parameter service queryable (six per node) and each REP-2002
       lifecycle service queryable (five per node).
 
-      Leave it at 0 to DERIVE it, which is what almost every image wants:
-      nros-node then sizes the slot from the contract's declared parameters,
-      as the largest request a set_parameters over the worst-declared node
-      can produce, against the parameter store's resolved capacities. On the
-      Autoware Safety Island that is 672 bytes against a flat 1024.
+      -1 means DERIVE it, which is what almost every image wants: nros-node
+      and nros-rmw-zenoh then size the slot from the contract's declared
+      parameters, as the largest request a set_parameters over the
+      worst-declared node can produce, against the parameter store's
+      resolved capacities. On the Autoware Safety Island that is 1016 bytes
+      (a 1015-byte set_parameters, rounded to the slot alignment).
 
-      A value here STATES the size and wins over the derivation. A stated
+      Any other value STATES the size and wins over the derivation. A stated
       size smaller than the declarations can produce FAILS THE BUILD naming
       this symbol, rather than dropping a well-formed request at run time
-      (issue 1352). Maps to NROS_PARAM_SERVICE_INBOX_BYTES.
+      (issue 1352). 0 is not a size and is refused (issue 1485): it used to
+      be this symbol's derive sentinel, and the readers took it literally.
+      Maps to NROS_PARAM_SERVICE_INBOX_BYTES.
 
 config NROS_PARAM_SERVICE_INBOX_DEPTH
     int "Parameter/lifecycle service inbox ring depth"

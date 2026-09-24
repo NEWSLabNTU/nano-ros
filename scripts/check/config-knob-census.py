@@ -366,6 +366,10 @@ KNOB_CLASS = {
     "NROS_ENTITY_COUNT_SERVICE_SERVER": ("infra", "declared entity count"),
     "NROS_ENTITY_COUNT_ACTION_CLIENT": ("infra", "declared entity count"),
     "NROS_ENTITY_COUNT_ACTION_SERVER": ("infra", "declared entity count"),
+    # issue 1485 -- the application's share of the declared queryable table,
+    # which the zenoh shim subtracts to size the builtin (parameter/lifecycle)
+    # inbox partition on the Zephyr resolver road.
+    "NROS_ENTITY_APP_QUERYABLES": ("infra", "declared entity count"),
     # issue 1227 -- the DECLARED QoS depths, and the count that says whether the
     # subscription half of that table is complete. Infra for the same reason the
     # counts above are: they carry what the image already declared into the
