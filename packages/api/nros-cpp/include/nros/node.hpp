@@ -229,11 +229,60 @@ template <typename M> class PollingSubscription;
 /// type's TWO constructors — RFC-0047's "one component, several named nodes"
 /// does not exist (a component owns exactly one node; what the subnode packages
 /// exercise is several named CALLBACK GROUPS), so there is no third.
+///
+/// Issue 1456 — it also carries the node's LAUNCH-DECLARED IDENTITY, and that
+/// is what makes an `rclcpp`-shape component reachable from a launch file at
+/// all. That shape constructs its own node (`Comp(h) : Node(h, "talker")`), so
+/// the entry has no `create_node` call to pass a name and a namespace to — the
+/// only thing it hands the component is this handle. Measured before the fix,
+/// on a real bus, for a plan declaring `name="alpha" namespace="/island"`:
+/// `ros2 node list` answered `/rclcpp_class_name` and the component's relative
+/// topics resolved at the ROOT, beside a `configure`-shape sibling in the SAME
+/// image answering `/island/beta`.
+///
+/// This is the `NodeOptions` seam, in the one place this API has for it.
+/// Upstream's component container passes the launch identity into a component
+/// through `rclcpp::NodeOptions` (`--ros-args -r __node:=… -r __ns:=…`), where
+/// the remap OUTRANKS the name the class's constructor writes; the handle is
+/// the value our entry hands a component, so the identity rides here and
+/// `Node`'s handle constructor applies the same precedence. **No user
+/// component's signature changes** — `explicit Comp(nros::NodeHandle)` is
+/// still the one shape, and a handle built the 1-argument way declares
+/// nothing.
+///
+/// `nullptr` is "the launch file declared none", NOT the empty name or the
+/// root: it keeps meaning what it means everywhere else in this header, and
+/// the class's own literal stands. `""` says the same thing, because an empty
+/// C string cannot be told apart from "unset" at this edge (the rule
+/// `nros::init`'s `node_namespace` already states for the session).
 struct NodeHandle {
     void* executor;
-    constexpr NodeHandle() : executor(nullptr) {}
-    explicit constexpr NodeHandle(void* exec) : executor(exec) {}
+    /// Launch-declared node name, or `nullptr`/`""` when the launch file named
+    /// none. Must outlive the node's construction; the generated entry emits a
+    /// string literal.
+    const char* launch_name;
+    /// Launch-declared namespace, same contract.
+    const char* launch_namespace;
+
+    constexpr NodeHandle() : executor(nullptr), launch_name(nullptr), launch_namespace(nullptr) {}
+    explicit constexpr NodeHandle(void* exec)
+        : executor(exec), launch_name(nullptr), launch_namespace(nullptr) {}
+    /// The generated entry's constructor: the executor plus whatever the
+    /// launch file DECLARED. Pass `nullptr` for a half it did not.
+    constexpr NodeHandle(void* exec, const char* name, const char* ns)
+        : executor(exec), launch_name(name), launch_namespace(ns) {}
     constexpr bool valid() const { return executor != nullptr; }
+
+    /// The launch name if one was declared, else `fallback` — the component
+    /// class's own literal. See the type comment for why launch wins.
+    constexpr const char* resolve_name(const char* fallback) const {
+        return (launch_name != nullptr && launch_name[0] != '\0') ? launch_name : fallback;
+    }
+    /// The launch namespace if one was declared, else `fallback`.
+    constexpr const char* resolve_namespace(const char* fallback) const {
+        return (launch_namespace != nullptr && launch_namespace[0] != '\0') ? launch_namespace
+                                                                            : fallback;
+    }
 };
 
 /// Issue #227 — pass as `domain_id` to request an EXPLICIT domain 0. Plain
@@ -634,6 +683,25 @@ class Node {
     /// This is the SECOND of the type's two constructors. On a null handle or a
     /// creation failure it latches the error rather than aborting: the entry
     /// checks `ok()` post-construct and halts naming this node (RFC-0044 Q2).
+    ///
+    /// **Precedence (issue 1456), per HALF of the identity and stated rather
+    /// than emergent:**
+    ///
+    ///   launch-declared (on the handle)  >  this constructor's argument  >
+    ///   the type's own default (`name` is required; `ns` defaults to the root)
+    ///
+    /// So a component whose class hardcodes a DIFFERENT name than the launch
+    /// file declares is named by the LAUNCH FILE, which is the only answer that
+    /// lets one component class be instantiated twice in one launch file: two
+    /// `Comp(h) : Node(h, "talker")` objects would otherwise both be `/talker`.
+    /// It is upstream's order too — `-r __node:=alpha` outranks the literal an
+    /// `rclcpp::Node` subclass passes its base.
+    ///
+    /// The halves are independent: a launch file declaring only a namespace
+    /// leaves the class's name standing (`/island/talker`), and one declaring
+    /// neither changes nothing at all. The class's literal is a DEFAULT, never
+    /// dead — which is what keeps a hand-written `main` constructing the same
+    /// component (no entry, no handle identity) working unchanged.
     explicit Node(::nros::NodeHandle handle, const char* name, const char* ns = nullptr)
         : handle_(), initialized_(false), executor_handle_(nullptr), clock_(NROS_CLOCK_ROS_TIME),
           hosted_(nullptr) {
@@ -641,7 +709,8 @@ class Node {
             this->set_error("ctor (null executor handle)", -1);
             return;
         }
-        Result r = this->init_on(handle.executor, name, ns);
+        Result r =
+            this->init_on(handle.executor, handle.resolve_name(name), handle.resolve_namespace(ns));
         if (!r.ok()) {
             this->set_error("node create", r.raw());
         }

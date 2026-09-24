@@ -22,7 +22,7 @@ static ::talker_pkg::Talker* __nros_comp_0 = nullptr;
 
 static int32_t __nros_entry_setup() {
     {
-        ::nros::NodeHandle __h(::nros::global_handle());
+        ::nros::NodeHandle __h(::nros::global_handle(), "talker", nullptr);
         if (!__h.valid()) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
         __nros_comp_0 = new (__nros_comp_buf_0) ::talker_pkg::Talker(__h);
         if (!__nros_comp_0->ok()) {

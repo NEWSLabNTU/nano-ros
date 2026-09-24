@@ -15,6 +15,7 @@
 
 #include "talker_pkg/talker.hpp"
 #include "rclcpp_pkg/rcl_one.hpp"
+#include "rclcpp_pkg/rcl_two.hpp"
 
 // C component factory + configure seam (NROS_C_COMPONENT); the
 // node's `ffi_handle()` is handed to the C `configure` as an opaque
@@ -40,6 +41,8 @@ static ::rclcpp::Node __nros_node_2;
 static ::rclcpp::Node __nros_node_3;
 alignas(::rclcpp_pkg::RCL_ONE) static unsigned char __nros_comp_buf_6[sizeof(::rclcpp_pkg::RCL_ONE)];
 static ::rclcpp_pkg::RCL_ONE* __nros_comp_6 = nullptr;
+alignas(::rclcpp_pkg::RCL_TWO) static unsigned char __nros_comp_buf_7[sizeof(::rclcpp_pkg::RCL_TWO)];
+static ::rclcpp_pkg::RCL_TWO* __nros_comp_7 = nullptr;
 
 static int32_t __nros_entry_setup() {
     {
@@ -81,12 +84,21 @@ static int32_t __nros_entry_setup() {
         if (crc != 0) return crc;
     }
     {
-        ::nros::NodeHandle __h(::nros::global_handle());
+        ::nros::NodeHandle __h(::nros::global_handle(), nullptr, nullptr);
         if (!__h.valid()) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
         __nros_comp_6 = new (__nros_comp_buf_6) ::rclcpp_pkg::RCL_ONE(__h);
         if (!__nros_comp_6->ok()) {
             ::nros::detail::report_component_failure("rcl_one", __nros_comp_6->error_what(), __nros_comp_6->error_code());
             return __nros_comp_6->error_code();
+        }
+    }
+    {
+        ::nros::NodeHandle __h(::nros::global_handle(), "alpha", "/island");
+        if (!__h.valid()) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        __nros_comp_7 = new (__nros_comp_buf_7) ::rclcpp_pkg::RCL_TWO(__h);
+        if (!__nros_comp_7->ok()) {
+            ::nros::detail::report_component_failure("alpha", __nros_comp_7->error_what(), __nros_comp_7->error_code());
+            return __nros_comp_7->error_code();
         }
     }
     return 0;
