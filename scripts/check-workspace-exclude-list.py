@@ -31,9 +31,13 @@ justified when the tree itself says so, by one of:
   R4  its `.cargo/config.toml` pins a non-host `[build] target`
   R5  its manifest depends on a cross-only crate (cortex-m, esp-hal, rtic,
       stm32f4xx-hal, …) — it cannot build for the host by construction
-  R6  it declares no Rust target at all: no `src/`, no `[lib]`, no `[[bin]]`.
-      Metadata-only, e.g. `packages/interfaces/rcl-interfaces`, whose real
-      crates are the generated ones underneath it
+  R6  it declares no Rust target at all: no `src/`, no `[lib]`, no `[[bin]]`
+      (or no `Cargo.toml`). A metadata shell whose real crates are elsewhere.
+      This rule's two named examples, `packages/interfaces/rcl-interfaces` and
+      `packages/interfaces/lifecycle-msgs`, were DELETED by phase-465 — one
+      driver package cannot have two — so it is deliberately not re-named here:
+      a derived rule does not need a standing example, and an example is the
+      part that goes stale
 
 Anything else must be listed in `.config/workspace-exclude-reasons.txt` with a
 one-line reason, and that file is a RATCHET: it may only SHRINK. The allowlist

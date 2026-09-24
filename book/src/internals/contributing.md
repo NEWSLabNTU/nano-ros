@@ -122,7 +122,7 @@ Message types are always generated, never hand-written. Use the codegen tool:
 nros generate-rust
 ```
 
-Bundled interface definitions live in `packages/cli/interfaces/`. Example `generated/` directories are gitignored and recreated by `just generate-bindings`. Only the core pre-generated packages under `packages/interfaces/*` (`rcl-interfaces`, `lifecycle-msgs`, `diagnostic-msgs`) check their `generated/` into git.
+Bundled interface definitions live in `packages/cli/interfaces/`. Example `generated/` directories are gitignored and recreated by `just generate-bindings`. Only the core pre-generated set checks its `generated/` into git: ONE driver package at `packages/interfaces/`, one output tree at `packages/interfaces/generated/humble/`, six crates, regenerated with `just generate-interfaces` on a ROS 2 ament host.
 
 ## System Packages
 

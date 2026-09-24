@@ -114,7 +114,7 @@ def crate_is_no_std(crate_root: Path):
 # reason this comment can cite it, and this file is the sibling nobody fixed.
 #
 # SKIP_DIRS is still applied: some skipped dirs ARE tracked (the committed
-# `packages/interfaces/*/generated` trees), so the index lists them.
+# `packages/interfaces/generated` tree), so the index lists them.
 def _tracked_files(roots):
     """Paths under `roots`: the git index for in-repo roots, a walk otherwise.
 

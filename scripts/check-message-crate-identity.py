@@ -395,9 +395,7 @@ def scan_manifests(manifests: list):
                         continue
                     dep_name = spec.get("package", key)
                     if dep_name in gen_names and "version" in spec:
-                        versioned_rows.append(
-                            (path, "target." + table, key, spec["version"])
-                        )
+                        versioned_rows.append((path, "target." + table, key, spec["version"]))
     return gen_names, bad_version, versioned_rows, bad_links, with_links, unprefixed
 
 
@@ -497,7 +495,7 @@ def selftest() -> None:
 
     # A lifetime must not be read as a char literal and swallow the line.
     assert wire_claims_in(
-        'impl M for Y { const TYPE_NAME: &\'static str = "d/msg/Y"; }'
+        "impl M for Y { const TYPE_NAME: &'static str = \"d/msg/Y\"; }"
     ) == ["d/msg/Y"], "lifetime handling broken"
 
     # A nested cfg(test) module inside a live module still excludes only itself.
@@ -513,9 +511,7 @@ def selftest() -> None:
     assert got == ["e/msg/A", "e/msg/C"], f"nested cfg(test) broken: {got}"
 
     # The manifest rules, on planted documents.
-    assert is_generated_crate(
-        "packages/interfaces/x/generated/humble/nros-y/Cargo.toml"
-    )
+    assert is_generated_crate("packages/interfaces/x/generated/humble/nros-y/Cargo.toml")
     assert not is_generated_crate("packages/core/nros-node/Cargo.toml")
 
     # RULE 4 — the formula, and the two directions that matter. The value 1455
@@ -523,8 +519,7 @@ def selftest() -> None:
     # demands is derived from the name it ships under.
     assert links_key("builtin_interfaces") == "nros_msgs_builtin_interfaces"
     assert (
-        links_key("nros-builtin-interfaces-clock")
-        == "nros_msgs_nros_builtin_interfaces_clock"
+        links_key("nros-builtin-interfaces-clock") == "nros_msgs_nros_builtin_interfaces_clock"
     ), links_key("nros-builtin-interfaces-clock")
     # A renamed crate and a consumer's own copy must NOT share a key...
     assert links_key("nros-builtin-interfaces-clock") != links_key("builtin_interfaces")
@@ -550,8 +545,8 @@ def main() -> int:
     selftest()
 
     manifests = tracked("*Cargo.toml")
-    gen_names, bad_version, versioned_rows, bad_links, with_links, unprefixed = (
-        scan_manifests(manifests)
+    gen_names, bad_version, versioned_rows, bad_links, with_links, unprefixed = scan_manifests(
+        manifests
     )
     dupes = scan_wire_claims(manifests)
 
@@ -598,9 +593,7 @@ def main() -> int:
 
     if versioned_rows:
         failed = True
-        print(
-            "\ndep row(s) pinning a generated message crate's version:", file=sys.stderr
-        )
+        print("\ndep row(s) pinning a generated message crate's version:", file=sys.stderr)
         for path, table, key, ver in versioned_rows:
             print(
                 f"  {path}  [{table}] {key} = {{ version = {ver!r}, ... }}",

@@ -12,8 +12,8 @@
 #       `package.xml` are candidates.
 #   2. AMENT_PREFIX_PATH           (env; ROS 2 install-prefix layout —
 #       `<prefix>/share/<pkg>/{msg,srv,action}/`).
-#   3. Bundled                     (`<nano-ros>/packages/interfaces/<pkg>/` and
-#       `<nano-ros>/share/nano-ros/interfaces/<pkg>/`).
+#   3. Bundled                     (`<nano-ros>/packages/cli/interfaces/<pkg>/`
+#       and `<nano-ros>/share/nano-ros/interfaces/<pkg>/`).
 #
 # Shadowing: a workspace shadowing an AMENT pkg takes the higher layer; we
 # log a `message(STATUS ...)` line so the user knows which copy won.
@@ -181,14 +181,21 @@ function(_nros_find_msg_package_root pkg out_var)
         endforeach()
     endif()
 
-    # Layer 3 — bundled (in-tree packages/interfaces/<pkg> + share/nano-ros/).
+    # Layer 3 — bundled (the codegen bundle + share/nano-ros/).
     # _NANO_ROS_PREFIX is populated by NanoRosGenerateInterfaces.cmake on
     # first include.
+    #
+    # phase-465 W5 — a `${_NANO_ROS_PREFIX}/packages/interfaces/${pkg}` rung
+    # used to sit first here and it could never match. `${pkg}` is an AMENT
+    # name (`rcl_interfaces`), while that directory held four hyphenated DRIVER
+    # packages (`rcl-interfaces`, …), none of which carried `msg/` either — so
+    # even a name that matched would have found no IDL. The collapse removed
+    # those directories outright, which leaves a rung whose only remaining
+    # effect is on a reader's belief about where a message package can come
+    # from. Interface DEFINITIONS are bundled at `packages/cli/interfaces/`,
+    # below; `packages/interfaces/` holds pre-generated RUST crates, which are
+    # not something this stub can consume.
     if(DEFINED _NANO_ROS_PREFIX AND NOT _NANO_ROS_PREFIX STREQUAL "")
-        if(EXISTS "${_NANO_ROS_PREFIX}/packages/interfaces/${pkg}/package.xml")
-            set(${out_var} "${_NANO_ROS_PREFIX}/packages/interfaces/${pkg}" PARENT_SCOPE)
-            return()
-        endif()
         # phase-327 / issue 0368 — the CODEGEN bundle (`packages/cli/
         # interfaces/`, the same share trees `nros sync` falls back to), so
         # a ROS-less host resolves std_msgs & co. here too. Without this

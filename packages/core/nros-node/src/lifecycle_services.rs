@@ -249,7 +249,7 @@ fn transition_goal_state(t: InternalTransition) -> InternalState {
 //
 // No `lifecycle_msgs` type uses a DHEADER — every generated `serialize` is
 // plain sequential CDR, verified field-for-field against
-// `packages/interfaces/lifecycle-msgs/generated/*/nros-lifecycle-msgs/src/`:
+// `packages/interfaces/generated/*/nros-lifecycle-msgs/src/`:
 //
 //   msg/State                 = write_u8(id),  write_string(label)
 //   msg/Transition            = write_u8(id),  write_string(label)
