@@ -371,22 +371,26 @@ leaf-lockfiles:
 # wire types it claims, and the `links` channel it occupies. Four rules, one
 # scan, buildless.
 #
-# `builtin_interfaces` is generated THREE times (each of rcl-interfaces,
-# diagnostic-msgs and rosgraph-msgs carries its own flat transitive closure),
-# the three Rust sources are byte-identical, and all three declare
-# `TYPE_NAME = "builtin_interfaces/msg/Time"` — one type on the wire, three in
-# Rust, no conversion between them. What the gate forbids is a FOURTH arriving
-# unnoticed, which is how the third arrived.
+# `builtin_interfaces` WAS generated three times — each of rcl-interfaces,
+# diagnostic-msgs and rosgraph-msgs carried its own flat transitive closure, the
+# three Rust sources were byte-identical, and all three declared
+# `TYPE_NAME = "builtin_interfaces/msg/Time"`: one type on the wire, three in
+# Rust, no conversion between them. phase-465 collapsed the four output trees
+# into ONE, so each ament package is emitted once and six crates replace eight.
+# Rule 3's baseline is now EMPTY, and what the gate forbids is a SECOND copy of
+# any wire type arriving unnoticed — which is how the third `builtin_interfaces`
+# arrived.
 #
-# Collapsing it is NOT a codegen change, contrary to what this comment and the
+# Collapsing was NOT a codegen change, contrary to what this comment and the
 # issue both said until 2026-09-22: one invocation already emits each ament
-# package exactly once, so one output tree instead of four gets six crates with
-# every dep still a flat sibling. Decided as RFC-0067 §D5, planned as phase-465,
-# reader-facing summary in `packages/interfaces/README.md`. Rule 3's baseline is
-# a shrink-only ratchet, so that collapse must empty
-# `.config/duplicate-wire-type-baseline.txt` in the same commit.
+# package exactly once (`resolve_transitive_dependencies` returns a `HashSet`),
+# so one driver package instead of four got six crates with every dep still a
+# flat sibling. Decided as RFC-0067 §D5, executed as phase-465, reader-facing
+# summary in `packages/interfaces/README.md`. The baseline being a shrink-only
+# ratchet is what made that provable: a baselined duplicate that stops
+# duplicating fails as STALE, so the six rows had to go in the same commit.
 #
-# The version rules are the live half. Three of the eight tracked generated
+# The version rules are the live half. Three of the then-eight tracked generated
 # crates predate issue 0394 and carried `version.workspace = true` — the release
 # version — and FIVE dep rows across `packages/core`, `packages/rmw` and the
 # generated tree pinned it as `version = "0.5.0"`. A path dep's version is still
@@ -407,8 +411,9 @@ leaf-lockfiles:
 # `builtin_interfaces` made their shared graph unresolvable — at RESOLVE time,
 # so every cargo command in that leaf. The rule reads the crate's OWN
 # `[package] name`, not a rename map, because that is what a reader of the
-# shipped file can check. A crate with no `links` stays legal: the pre-phase-403
-# vintages emit no bounds `build.rs`, so there is no channel to carry.
+# shipped file can check. A crate with no `links` stays legal, and since
+# phase-465 regenerated the set there are none: all six now emit the bounds
+# `build.rs` whose channel `links` exists to carry.
 [private]
 message-crate-identity:
     @python3 scripts/check-message-crate-identity.py

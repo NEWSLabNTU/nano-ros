@@ -1,19 +1,18 @@
 # Wire type names claimed by MORE THAN ONE tracked crate (issue 1428).
 #
-# A RATCHET, not an allowlist: this file may only shrink. `builtin_interfaces`
-# is generated three times because codegen emits each package's whole
-# transitive closure into its own flat directory with no cross-tree reuse map,
-# so three closures each carry their own copy. Collapsing them is a codegen
-# change; until it lands the three are the cost of flat closures.
+# EMPTY, and that is the end state. It held six rows -- `builtin_interfaces`'s
+# `Time` and `Duration` times three crates -- because codegen emitted each
+# driver package's whole transitive closure into its own flat directory, and
+# three of the four closures contained `builtin_interfaces`. phase-465
+# collapsed the four trees into ONE, so each ament package is emitted once and
+# there is nothing left to baseline.
 #
-# What this file buys is that a FOURTH copy cannot appear unnoticed -- which is
-# exactly how the third arrived.
+# A RATCHET, not an allowlist: this file may only shrink. That is what made the
+# collapse provable rather than merely claimed -- a baselined duplicate that
+# stops duplicating fails as STALE, so the six rows had to go in the same
+# commit as the collapse, and a shipped duplicate that came BACK would fail as
+# new. It is also still what keeps a fourth copy from arriving unnoticed, which
+# is exactly how the third arrived.
 #
 # Format: <wire type name><TAB><crate directory>, one line per claimant.
 # Regenerate: python3 scripts/check-message-crate-identity.py --write-baseline
-builtin_interfaces/msg/Duration	packages/interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag
-builtin_interfaces/msg/Duration	packages/interfaces/rcl-interfaces/generated/humble/nros-builtin-interfaces
-builtin_interfaces/msg/Duration	packages/interfaces/rosgraph-msgs/generated/humble/nros-builtin-interfaces-clock
-builtin_interfaces/msg/Time	packages/interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag
-builtin_interfaces/msg/Time	packages/interfaces/rcl-interfaces/generated/humble/nros-builtin-interfaces
-builtin_interfaces/msg/Time	packages/interfaces/rosgraph-msgs/generated/humble/nros-builtin-interfaces-clock
