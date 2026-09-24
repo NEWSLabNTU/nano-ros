@@ -111,6 +111,25 @@ just-recipe-paths:
 set-e-bare-assignment:
     @python3 scripts/check-set-e-bare-assignment.py
 
+# Issue 1476 — `git merge-base --is-ancestor` answers NO both when it walked
+# the history and found nothing, and when there is no history here to walk. A
+# shallow checkout produces the second, and a SELF-HOSTED runner's persistent
+# workspace is the nastiest form of it: `git clean -ffdx` removes files and
+# never objects, so earlier runs' tips still RESOLVE while the path between
+# them is grafted away. `check-roadmap-commit-refs` read that as a verdict and
+# stopped tier 2 and the tier-2 nightly with three citations that are on main.
+#
+# The rule — truncation can only manufacture a false NEGATIVE — was already
+# written correctly in `check-play-launch-parser-ref.py`; the second gate to
+# need it wrote it again and got half. So there is one spelling
+# (`scripts/lib/git_history.py` + its shell twin) and this keeps a third from
+# appearing. Reach is what a line can show; honest REPORTING of the unknown
+# case is the verdict shape's job, not a regex's. Buildless, ~0.2 s,
+# self-tests seven cases on every run.
+[private]
+ancestry-truncation:
+    @python3 scripts/check/check-ancestry-truncation.py
+
 # phase-426 W4 — no shipped example may demonstrate the CALLER-STORAGE parameter
 # store. `nros_parameter_server_t` (and the `nros::ParameterServer<Cap>` wrapper
 # this wave deletes) is node-local and nothing joins it to the executor's
