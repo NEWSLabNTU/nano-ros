@@ -295,7 +295,7 @@ impl Interpreter {
 }
 
 /// Is `origin` inside `dir`? A prefix test with a separator boundary, so
-/// `/home/u/.local/lib/python3.10/site-packages-x` is not "under"
+/// `/site-root/.local/lib/python3.10/site-packages-x` is not "under"
 /// `.../site-packages`.
 #[must_use]
 pub fn is_under(origin: &str, dir: &str) -> bool {
@@ -507,7 +507,7 @@ mod tests {
     /// a sibling directory sharing a prefix is not inside.
     #[test]
     fn a_user_site_copy_is_recognised_by_containment_not_by_prefix() {
-        let site = "/home/u/.local/lib/python3.10/site-packages";
+        let site = "/site-root/.local/lib/python3.10/site-packages";
         assert!(is_under(&format!("{site}/catkin_pkg/__init__.py"), site));
         assert!(is_under(
             &format!("{site}/yaml/__init__.py"),
