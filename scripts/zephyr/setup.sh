@@ -462,8 +462,8 @@ export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 # manifest project carries no checkout now), so the path would name a directory
 # holding only a manifest file.
 #
-# The checkout is the CALLER's, and every caller already has one: `activate.sh`
-# exports `NANO_ROS_ROOT`, and `just` derives it from `justfile_directory()`.
+# The checkout is the CALLER's, and every caller already has one: activate.sh
+# exports NANO_ROS_ROOT, and just derives it from justfile_directory().
 # So this preserves what the caller set and says what to do when there is none,
 # rather than inventing an answer that is wrong for everybody but one tree.
 if [ -z "\${NANO_ROS_ROOT:-}" ]; then
@@ -481,7 +481,7 @@ echo "  NANO_ROS_ROOT: \${NANO_ROS_ROOT:-<unset — source activate.sh in your c
 echo ""
 echo "Build example (from YOUR checkout, which supplies the nros module):"
 echo "  cd \$WORKSPACE"
-echo "  west build -b native_sim/native/64 \$NANO_ROS_ROOT/examples/zephyr/rust/talker \\"
+echo "  west build -b native_sim/native/64 \$NANO_ROS_ROOT/examples/zephyr/rust/talker \\\\"
 echo "      -- -DZEPHYR_EXTRA_MODULES=\$NANO_ROS_ROOT -DCONF_FILE=\"prj.conf;prj-zenoh.conf\""
 ENVEOF
     chmod +x "$WORKSPACE_DIR/env.sh"
