@@ -674,12 +674,100 @@ Four things follow, and each is a simplification rather than a trade:
   and neither of which this commit touches. NOT run, and not claimed: `just ci`
   and anything that links an RMW backend, because a worktree has no submodules.
 
-* **W6 [ci] — the gates become structural.** phase-442 W10, inherited:
+* **W6 [ci] — the gates become structural. HALF LANDED, and the other half is
+  not reachable yet — measured, not estimated.** phase-442 W10, inherited:
   `check-cpp-freestanding-includes` loses its baseline;
   `check-cpp-capability-layout` asserts a constant rather than ratcheting.
-  *Acceptance:* zero `NROS_CPP_HAS_*`, zero `NROS_CPP_STD`, zero
+  *Acceptance as written:* zero `NROS_CPP_HAS_*`, zero `NROS_CPP_STD`, zero
   `NROS_CPP_NODE_HOSTED`; both gates fail on a mutation that reintroduces a
   `std` type in a public signature, and the mutation is in the selftest.
+
+  **What landed.** Both baseline files stop being ratchets. A row of any kind is
+  now a hard failure, and the three kinds survive only as the vocabulary of the
+  refusal message. The argument for making it a constant rather than leaving an
+  empty ratchet is in the baseline file itself and is worth repeating: an empty
+  slot is not tolerance for something measured, it is a place to put the NEXT
+  violation — and this rule has no legitimate exception, because two TUs of one
+  image may disagree about a capability macro (px4 sets `-DNROS_CPP_STD` on a
+  single module of a larger image), link anyway, and write an object through one
+  layout while reading it through the other. Issue 0135 is that bug, shipped.
+  Both gates carry the required mutation in their selftests — **7 cases** for
+  `check-cpp-capability-layout` and **15** for `check-cpp-freestanding-includes`,
+  including "a row in the baseline file is refused" on each, and verified the
+  only way a refusal can be: by putting a row in the tracked file and watching
+  each gate exit 1.
+
+  Two things the freestanding gate gains beside the constant. Its mutation runs
+  against a REAL header rather than a snippet — a copy of `publisher.hpp` with a
+  `std::string` returned from a public signature and the ungated `<string>` that
+  needs, with the UNMUTATED copy asserted clean first, because a gate that
+  already fires on a faithful copy proves nothing when it fires on a mutant. And
+  `scripts/lib/grep-q.sh` is no longer sourced: its two call sites were the
+  baseline lookup and the stale-entry sweep, both of which went with the ratchet,
+  and a sourced helper nobody calls is a claim about the file that is not true.
+
+  **What did not, and why the count is not being forced to zero.** Re-measured on
+  this base, over `packages/api/nros-cpp/include`, after W5:
+
+  | macro | uses | what still needs it |
+  | --- | --- | --- |
+  | `NROS_CPP_HAS_SHARED_PTR` | 12 | `Client<S>` and `Timer` still alias `std::shared_ptr`; `Node::SharedPtr` does too, inside `NROS_CPP_NODE_HOSTED` |
+  | `NROS_CPP_HAS_STD_STRING` | 9 | `get_logger(const std::string&)`, and `FixedString`/`HeapString`'s `std::string` interop |
+  | `NROS_CPP_HAS_STD_CHRONO` | 8 | `create_wall_timer` / `create_timer`'s duration overloads and `Rate`'s `std::chrono` constructor |
+  | `NROS_CPP_HAS_STD_FUNCTION` | 6 | `detail::WallTimer`'s type-erasure cell, plus the `NROS_CPP_NODE_HOSTED` conjunction |
+  | `NROS_CPP_HAS_STD_VECTOR` | 4 | the `NROS_CPP_NODE_HOSTED` conjunction |
+  | `NROS_CPP_HAS_STD_SSTREAM` | 4 | the `RCLCPP_*_STREAM` family |
+  | `NROS_CPP_STD` | 59 | the consumer-facing opt-in, which nothing that ships defines |
+  | `NROS_CPP_NODE_HOSTED` | 21 | derived from four of the above |
+
+  *Read the numbers exactly.* They are OCCURRENCES, not lines: `git grep -c`
+  counts lines and disagrees. The six `NROS_CPP_HAS_*` rows are 43 occurrences on
+  41 lines, and a bare `git grep -c NROS_CPP_HAS_` reports 41 because two of those
+  lines are prose naming the family rather than a macro. `NROS_CPP_STD` is **59**,
+  not the 62 a substring grep gives: three of those hits are
+  `NROS_CPP_STD_DETECT_HPP`, `std_detect.hpp`'s own include guard, which is not a
+  use of the capability macro at all.
+
+  **What W5 moved, measured against `ac7ff02a1^`.** `NROS_CPP_HAS_SHARED_PTR`
+  went 17 → 12 and `NROS_CPP_NODE_HOSTED` 20 → 21; every other macro is
+  unchanged, `NROS_CPP_STD` included. No macro reached zero. Three FILES did:
+  `publisher.hpp`, `service.hpp` and `polling_subscription.hpp` now name
+  `NROS_CPP_HAS_SHARED_PTR` zero times, which is the alias flip showing up
+  exactly where W5 said it would and nowhere else.
+
+  The remainder is the three items W5's own "what did NOT move" section already
+  names, and this is the count of what each costs.
+  `Client<S>::SharedPtr` needs a `ClientHandle<S>` plus the `PollClient<S>`
+  split, the identical remedy the poll `create_service` collision needed;
+  `Timer::SharedPtr` needs W1's capture-in-the-arena treatment for timers, which
+  is core Rust work; `Node::SharedPtr` is the whole `NROS_CPP_NODE_HOSTED` block,
+  spelled in `std::string` / `std::vector` / `std::function`. The
+  `std::string` / `std::vector` / `std::chrono` overloads are a different surface
+  again — the ported-source ergonomics RFC-0089 adopts on purpose — and removing
+  their gate means giving each a freestanding spelling (`nros::FixedString`, a
+  duration type), which is its own phase.
+
+  So W6's zero is blocked on work that does not exist yet, and asserting a
+  constant of zero today would mean either deleting surface that ported code uses
+  or moving it somewhere the gate does not look. **A gate that reaches zero by not
+  looking is worse than a ratchet**, which is the whole reason this item exists.
+  The structural half is what W6 delivers; the count stays measured and stated
+  here until those items land.
+
+  *Follow-ups this creates:* `Client<S>` as a handle with one verb, with its poll
+  half split off (W3's measurement is the input); timer callbacks captured in the
+  arena, which is what unblocks `Timer::SharedPtr`; a freestanding spelling for
+  the three STL-typed overload families.
+
+  *Verification (2026-09-25, in a worktree with no submodules):* both gates run
+  green and both refuse an appended baseline row (exit 1, message naming the row
+  and the gated form). The compile sweep over the 61 `tests/compile` probes is
+  **46 PASS / 15 FAIL before and after, cell for cell identical** — this commit
+  touches no header, so that is the control it should be. `just check fast` is
+  351 of 353, the two failures being `capability-conditionals` and
+  `xrce-vendored-versions`, each reporting "submodule not checked out" and neither
+  touched here. NOT run and not claimed: `just ci` and anything linking an RMW
+  backend, because a worktree has no submodules.
 
 Two further work items, **W7** and **W8**, are stated in the next section
 rather than here, because each is derived from a finding that arrived with a

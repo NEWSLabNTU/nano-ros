@@ -1,9 +1,11 @@
 # Hosted STL includes reached with `NROS_CPP_STD` undefined, in nros-cpp's
-# capability blocks.
+# capability blocks. There are none, and there may be none.
 #
-# A RATCHET, not an allowlist. It may only SHRINK: a line here that no longer
-# matches a violation is a FAILURE, so the debt cannot go stale, and a new
-# violation not listed here is a failure too, so it cannot grow.
+# READ THE LAST SECTION FIRST. This file was a RATCHET -- it could only SHRINK,
+# a line that no longer matched a violation was a FAILURE, and a violation not
+# listed here was a failure too. phase-456 W6 turned it into a CONSTANT: a row
+# is now a hard failure, checked before any scanning happens. What follows is
+# the record of what the ratchet measured and why.
 #
 # EMPTY as of issue 1240 (2026-09-09). All fourteen entries are paid, and
 # phase-438 W1+W2 then removed the shape that produced them.
@@ -54,11 +56,28 @@
 # `__has_include` at all, so the tightened walker has nothing left to reject
 # here; it stays because the rule outlives this file's emptiness.
 #
-# Keyed on FILE and HEADER, not on a line number, so an entry survives edits
-# above it and so a second `<memory>` appearing in a listed file is still
-# caught. Add a line here only with a written reason and a tracked issue id.
+# Keyed on FILE and HEADER, not on a line number, so an entry survived edits
+# above it and so a second `<memory>` appearing in a listed file was still
+# caught.
 #
-# The file stays rather than being deleted: the gate requires it, and the next
-# genuine hosted-include debt needs somewhere to be recorded with its reason
-# instead of being argued about in a review. An entry that stops offending
-# FAILS, so an empty file cannot quietly refill.
+# THIS FILE IS NO LONGER A RATCHET -- phase-456 W6, 2026-09-21.
+#
+# A row is now a hard failure, checked BEFORE any scanning happens. The
+# sentence that used to stand here -- "the next genuine hosted-include debt
+# needs somewhere to be recorded with its reason instead of being argued about
+# in a review" -- is what changed, and the reason it changed is that there is
+# no such thing as genuine debt for this rule. The GATED form is always
+# available and costs nothing:
+#
+#   #if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ \
+#       && __has_include(<hdr>))
+#
+# `bridge.hpp` uses it; `std_detect.hpp` uses it six times. So an ungated
+# hosted include is never the only way to write something -- it is a header
+# that will not compile on a board, found by a build nobody runs per PR, which
+# is the whole reason this source-level check exists. A slot for that is a slot
+# for the next one.
+#
+# The file stays rather than being deleted: the gate requires it to EXIST (an
+# absent file and an empty one are different states, and only one of them is
+# checked), and this is the record of what the ratchet measured and why.
