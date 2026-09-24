@@ -652,3 +652,108 @@ Two things follow that the earlier sections could not say:
 
 Acceptance is unchanged: a scheduled run reaching a VERDICT on `check build`
 and `check no-std`, three nights running.
+
+## The evidence-channel experiment has an answer, and it is NO for both (2026-09-24)
+
+The section "The report does NOT survive this failure on the scheduled `gate`
+lane" names the cheap experiment: emit a `::notice::`, let the next scheduled
+`gate` fail, and see whether it appears under `check-runs/<jid>/annotations`.
+Phase-466 W4 emitted it, and added a `$GITHUB_STEP_SUMMARY` line beside it as
+"the one expected to work". The next scheduled `gate` is run **35945635228**,
+job **107462875362** (02:04 UTC), and it answers both at once:
+
+| channel | emitted by | survived? |
+| --- | --- | --- |
+| `::notice::` | steps 22, 23 and 25, all of which report **success** | **no** |
+| `$GITHUB_STEP_SUMMARY` | the same three steps | **no** |
+| the job log | — | no (`BlobNotFound`, as always on this lane) |
+
+`gh api repos/NEWSLabNTU/nano-ros/check-runs/107462875362/annotations` returns
+**exactly one** annotation, and it is the runner's own
+
+```
+System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20260924-020406-utc.log'
+```
+
+which the SERVICE writes, not the runner. The run page renders no job summary
+for the job at all.
+
+**The channel is not broken — it is runner-side.** The control is the sibling
+`host-tests` job **107478998501** from the same night, whose runner lived: its
+annotations carry all three of the same notices, titled and intact
+(`disk before just ci tier1`, `disk reclaim before just ci tier1`,
+`disk after just ci tier1`). So a workflow-emitted annotation is buffered on the
+runner and flushed later; when the runner dies there is nothing to flush it, and
+the step summary behaves the same way.
+
+That leaves the other road this issue named: **an artifact uploaded before the
+compile tier**. An artifact is a completed server-side transaction — once the
+upload STEP finishes, the blob exists independently of the runner — and it is
+the only channel left that a dead runner cannot retract.
+
+## Two corrections to this issue's own record (2026-09-24)
+
+Both are things a reader would otherwise carry forward wrongly.
+
+**1. The reclaim ran, and `check build` produced a VERDICT.** The step list of
+job 107462875362 is not the shape the 2026-09-23 sections describe:
+
+| step | state |
+| --- | --- |
+| 22 `Disk report (before check build)` | success |
+| 23 `Reclaim disk before the compile tier` | **success** |
+| 24 `just check build` | **failure** |
+| 25 `Disk report (after check build)` | **success** |
+| 26 `just check no-std` | **in_progress** — the runner died here |
+| 27-32, `Stop containers` | pending |
+
+So the runner did NOT die inside `check build`: that step failed and the
+after-report then ran to completion, which means the process was alive and
+writing. The death moved one step later, into `just check no-std`. Whether step
+24's failure was the disk or a real gate verdict cannot be read — that is the
+whole of the problem above — but the after-report's success is evidence that the
+job was still functioning when it happened.
+
+**2. `host-tests` did not get past `just check build` either.** The scheduled
+`host-tests` of the same night — run **35950894731**, job **107478998501**
+(03:18) — failed at step 10, `Build rust core fixtures`:
+
+```
+error[E0432]: unresolved import `crate::parameter_services`
+error: could not compile `nros-node` (lib) due to 2 previous errors
+error: recipe `build-fixture-rust-core` failed with exit code 2
+```
+
+That is issue **1468**, a code defect, and step 14 `just ci tier1` was
+**skipped**. Its disk report therefore describes a job that aborted before
+spending anything: `50% used, 74G free`, `examples` **19 M** (not 42 G),
+`build` 2.6 G, no workspace `target/` at all. The reclaim freed 6,695 MB there
+(`/__t` 5.2 G + `build/metadata-probe` 1.4 G) against a disk that was not under
+pressure. **None of those numbers say anything about this issue**, in either
+direction, and reading that run as "the reclaim fixed host-tests" would be
+reading an early abort as a success.
+
+## What this commit does, and what it deliberately does not (2026-09-24)
+
+`scripts/ci/disk-transcript.sh` is the one spelling of where the numbers are
+written; `disk-report.sh` and `reclaim-disk.sh` append everything they print to
+it, and `gate.yml`, `host-tests.yml` and `live-peer.yml` upload it in a step of
+their own placed immediately after the report or reclaim that produced it.
+`gate` gets **two** uploads, before and after the compile tier, rather than one
+`always()` upload at the end of the job: `always()` only binds while a runner is
+alive to honour it, which is exactly what this failure removes. The second one
+sits between the after-report and `check no-std`, because that is where the
+runner now dies.
+
+It frees nothing new. The remedy this issue is still waiting for — prune what
+the tier builds (36 G of `examples/workspaces`, a fixture-coverage question),
+reclaim between `check build` and `check no-std`, shrink the tier's own ~22 G
+appetite, or move the lane off a hosted runner — is unchanged and still has
+**no `gate` numbers to be priced against**: no scheduled `gate` run has ever
+produced a readable disk figure, and there are no `workflow_dispatch` runs
+either. The 42 G/22 G split every section above argues from is `host-tests`, a
+different job with a different build.
+
+Acceptance is unchanged: a scheduled run reaching a VERDICT on `check build`
+and `check no-std`, three nights running.
