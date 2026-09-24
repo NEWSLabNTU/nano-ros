@@ -740,6 +740,17 @@ function(nros_derive_entity_inventory_knobs)
             "-> NROS_EXECUTOR_MAX_CBS, "
             "${NROS_DERIVED_EXECUTOR_ACTION_CLIENTS} of them action-sized "
             "-> NROS_EXECUTOR_ACTION_CLIENTS")
+        # Issue 1402 -- components this image registers but never launches. They
+        # no longer refuse the derivation; saying which ones keeps that visible,
+        # because "not started here" is an inference from the launch tree and a
+        # reader may know better than the model does.
+        if(NROS_ENTITY_INVENTORY_NOT_LAUNCHED)
+            list(LENGTH NROS_ENTITY_INVENTORY_NOT_LAUNCHED _nros_nl_n)
+            string(REPLACE ";" ", " _nros_nl "${NROS_ENTITY_INVENTORY_NOT_LAUNCHED}")
+            message(STATUS
+                "nros:   ${_nros_nl_n} component(s) registered but not launched by this "
+                "image, so they claim no slot: ${_nros_nl}")
+        endif()
         if(DEFINED NROS_ENTITY_COUNT_PUBLISHER AND
            NROS_ENTITY_COUNT_PUBLISHER GREATER 0)
             message(STATUS
