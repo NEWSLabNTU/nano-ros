@@ -2,7 +2,7 @@
 id: 1428
 title: "`builtin_interfaces` is generated three times in the core pre-generated
   set and none of the three is canonical — so nothing can depend on it by name"
-status: open
+status: resolved
 type: tech-debt
 area: [codegen, interfaces]
 severity: medium
@@ -91,8 +91,9 @@ across a dependency graph; a generated crate is named after its ament package,
 which already is."* After a rename it is not.
 
 MEASURED, not read. Giving the two older copies the `links` line and the `build.rs`
-a current `nros` would emit — i.e. simulating `just generate-rcl-interfaces` and
-`just generate-diagnostic-msgs` — makes the **whole workspace unresolvable**:
+a current `nros` would emit — i.e. simulating the then-separate `rcl-interfaces`
+and `diagnostic-msgs` regeneration recipes, which phase-465 W1 replaced with the
+single `just generate-interfaces` — makes the **whole workspace unresolvable**:
 
 ```
 $ cargo metadata --format-version 1 --offline
@@ -406,3 +407,84 @@ a key derived from its own renamed name.
 
 Stays **open**: the three crates are still in the tree. Closed by phase-465;
 nothing further is open on this issue's own analysis.
+
+## RESOLVED — 2026-09-25, phase-465
+
+The collapse landed exactly as RFC-0067 §D5 and the phase doc specified: **one
+driver package, one output tree, six crates**. `packages/interfaces/` now holds
+one `package.xml` with four `<depend>` rows, one `nros-codegen.toml`, and
+`generated/humble/{nros-builtin-interfaces, nros-std-msgs, nros-rcl-interfaces,
+nros-diagnostic-msgs, nros-rosgraph-msgs, nros-lifecycle-msgs}`. The three
+`builtin_interfaces` crates are ONE crate; `nros-std-msgs-diag` is
+`nros-std-msgs`; `nros-builtin-interfaces-diag` and
+`nros-builtin-interfaces-clock` are gone.
+
+**No codegen change was required**, as §D5 predicted and this run re-measured
+with the branch's own CLI: one invocation emitted 7 packages with
+`builtin_interfaces` and `std_msgs` appearing once each, every dep still a flat
+`path = "../<dep>"` sibling, every crate `nros-`prefixed.
+
+**The proof is the gate, not the claim.** Rule 3's baseline is a shrink-only
+ratchet, so with the tree collapsed `check-message-crate-identity` reported all
+six baselined claims as STALE — a tree that had only *looked* collapsed would
+have left rows behind. `.config/duplicate-wire-type-baseline.txt` is empty, and
+the gate reads: 6 generated crates, 6 declaring `links`, 324 manifests, 0
+duplicate wire-type claims, 0 version-carrying dep rows, 0 crates off `0.0.0`, 0
+`links` values that do not follow their name.
+
+**The acceptance was a build, twice.** `just generate-interfaces` run two times
+in a row leaves the worktree clean — in-place idempotence, which four trees never
+had. That is what retires this issue's "the documented procedure for updating
+these crates is to generate out of tree and copy one file back per crate": the
+six manifests are now exactly what codegen emits, so there is nothing
+hand-maintained left to clobber.
+
+### What the regeneration cost, decided rather than absorbed
+
+Taking the current codegen vintage was not optional — a tree that differs from
+what the recipe emits is a tree the second run rewrites, so pinning the old
+vintage and claiming idempotence are mutually exclusive. It was also cheap:
+`NROS_EMITTED_CODEGEN_VERSION` 2 -> 7 (the runtime's own constant is 7 and its
+floor is 1), a `links` + `build.rs` + `nros_message_bounds.json` bounds channel
+for the four crates that lacked one, `cyclone_schema_shape` added to the bounds
+JSON, `ament_version` 1.2.1 -> 1.2.2 on this host's ROS, and a **mojibake fix** —
+three `nros-diagnostic-msgs` sources carried UTF-8-read-as-latin-1 comment
+banners. After `rustfmt`, 4 of 60 source files differed for any reason other than
+the version constant and the renamed sibling crates.
+
+### The three consequences this issue named
+
+* (a) *a blocked build-list row* — phase-417's `rust:Time::to_ros_msg` is
+  unblocked on its stated blocker: there is now one canonical crate name,
+  `nros-builtin-interfaces`. The second constraint the issue recorded is
+  untouched and still correct — `nros-core` cannot depend on a message crate
+  without a cycle, so the conversion has to live in the message crate or above
+  both. Not decided here.
+* (b) *three manifests that cannot be regenerated in place* — fixed, and proven
+  by running the recipe twice.
+* (c) *two crates permanently missing the size-bounds channel* — fixed; all six
+  declare `links` and emit `nros_message_bounds.json`.
+* (d) *two Rust types for one wire type in any consumer that reaches both* —
+  fixed. `nros-tests` path-depped `nros-builtin-interfaces` and
+  `nros-builtin-interfaces-diag` at once; it has six message rows now, not seven.
+
+### Found on the way, and worth knowing
+
+`corpus_is_exhaustive` in `schema_serializer_round_trip.rs` counts every `impl
+::nros_serdes::Message` under `packages/interfaces` and asserts the corpus
+matches. phase-425 W2 added the rosgraph tree (3 impls) and no corpus row, so it
+has read 76 against 79 since — `rosgraph_msgs/msg/Clock` was never round-tripped
+by the sweep that exists to round-trip everything. Fixed with a
+`nros-rosgraph-msgs` dev-dep and one `entry!`; it is 75 against 75.
+
+`check-generated-schema-coverage` matched NOTHING after the move (its pathspec
+required a driver-package component before `generated/`) and said so through its
+own empty-list precondition rather than passing over zero files. Two more
+lookups were found dead *before* the collapse and removed or fixed: the cmake
+layer-3 `packages/interfaces/<pkg>` rung, and `cmd/build.rs`'s enumerator, which
+stripped an `nros-` prefix from four hyphenated driver-package directory names.
+
+### Status
+
+**Resolved.** The `links` half was split out as issue 1455 and resolved
+2026-09-24, independently and ahead of this. Nothing is open on this issue.
