@@ -303,6 +303,26 @@ set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED_FROM "${CMAKE_CURRENT_LIST_FILE}"
 # type whose own bound is `unbounded`/`unresolved`. ONE unpriced row refuses the
 # whole family, because the slot is shared by every queryable in it and a
 # maximum over the rows that answered is not a bound on the rows that did not.
+# _nros_entity_comment_block(<text> <out-var>)
+#
+# Issue 1480. A reason string is written into the GENERATED fragment beside an
+# absent value, and `_nros_entity_inbox_bytes` returns a MULTI-LINE one: it
+# lists each unbounded type on its own line. A `#` comment in CMake runs to the
+# end of ONE line, so interpolating that text after a single `#` comments the
+# first line and drops every later line at a COMMAND position -- which is how a
+# type name became `Parse error. Expected a command name, got unquoted argument
+# with text "example_interfaces/srv/AddTwoInts_Request"` and took every
+# `Build workspace fixtures` run with it.
+#
+# Comment EVERY line, so a reason may be as long as it needs to be. Both call
+# sites go through here rather than each spelling the replace, because one of
+# the two families would have been fixed and the other left (CLAUDE.md's
+# "fix the CLASS, not the reported site").
+function(_nros_entity_comment_block _text _o_var)
+    string(REPLACE "\n" "\n#   " _commented "${_text}")
+    set(${_o_var} "${_commented}" PARENT_SCOPE)
+endfunction()
+
 function(_nros_entity_inbox_bytes _types _family _o_bytes _o_why)
     set(${_o_bytes} "" PARENT_SCOPE)
     set(${_o_why} "" PARENT_SCOPE)
@@ -587,8 +607,9 @@ function(nros_derive_entity_inventory_knobs)
     endif()
     _nros_entity_inbox_bytes("${_svc_types}" "service" _svc_bytes _svc_why)
     if(_svc_bytes STREQUAL "")
+        _nros_entity_comment_block("${_svc_why}" _svc_why_comment)
         string(APPEND _inbox_appendix
-            "# NROS_DERIVED_SERVICE_INBOX_BYTES is ABSENT: ${_svc_why}\n")
+            "# NROS_DERIVED_SERVICE_INBOX_BYTES is ABSENT: ${_svc_why_comment}\n")
     else()
         string(APPEND _inbox_appendix
             "set(NROS_DERIVED_SERVICE_INBOX_BYTES ${_svc_bytes})\n")
@@ -601,8 +622,9 @@ function(nros_derive_entity_inventory_knobs)
     endif()
     _nros_entity_inbox_bytes("${_act_types}" "action" _act_bytes _act_why)
     if(_act_bytes STREQUAL "")
+        _nros_entity_comment_block("${_act_why}" _act_why_comment)
         string(APPEND _inbox_appendix
-            "# NROS_DERIVED_ACTION_INBOX_BYTES is ABSENT: ${_act_why}\n")
+            "# NROS_DERIVED_ACTION_INBOX_BYTES is ABSENT: ${_act_why_comment}\n")
     else()
         string(APPEND _inbox_appendix
             "set(NROS_DERIVED_ACTION_INBOX_BYTES ${_act_bytes})\n")

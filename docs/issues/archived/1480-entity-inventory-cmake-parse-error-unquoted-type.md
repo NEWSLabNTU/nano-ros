@@ -3,7 +3,7 @@ id: 1480
 title: "The generated `nros_entity_inventory.cmake` has a service REQUEST type at a
   command position, so CMake refuses to parse it and `host-tests` now stops at
   `Build workspace fixtures` — one step past the 1468 wall it just cleared"
-status: open
+status: resolved
 type: bug
 area: cli, cmake, build, ci
 severity: high
@@ -86,3 +86,49 @@ obvious suspect even though the exact line is not yet pinned.
 
 Acceptance is `host-tests` reaching `just ci tier1` — a tier-1 verdict, green
 or red, rather than a configure failure.
+
+## Resolution (2026-09-24)
+
+**The emitting line was not in the Rust renderer.** It is
+`cmake/NanoRosEntityInventory.cmake`, which APPENDS the per-family inbox join to
+the fragment the CLI wrote (phase-461 W3, issue 1352):
+
+```cmake
+string(APPEND _inbox_appendix
+    "# NROS_DERIVED_SERVICE_INBOX_BYTES is ABSENT: ${_svc_why}\n")
+```
+
+`_nros_entity_inbox_bytes` returns a **multi-line** reason when a request type
+carries no derived bound — one line per unbounded type, then a line telling the
+reader how to bound it. A `#` comment in CMake runs to the end of ONE line, so
+that interpolation commented the first line and left every later line at a
+COMMAND position. The second line begins with the type name, which is exactly
+the reported error.
+
+That is why the search under "what this is NOT" came up empty: `render_received`
+does quote both its joined values, and the CLI's own unit tests over individual
+`set(...)` strings could never see this, because the offending bytes are written
+by CMake after the CLI has finished.
+
+It also explains the delayed report. The append happens inside
+`nros_entity_inventory_read`, which does not re-include the file it just grew;
+the parse error surfaces on the NEXT include — `_nros_entity_budget_env` in
+`cmake/NanoRosEntityFacts.cmake` — so the function that wrote the bad line
+succeeded and the stack named a different file.
+
+**Fix.** One helper, `_nros_entity_comment_block`, comments EVERY line of the
+reason, and both call sites (service and action) go through it. The two
+families were one edit apart and fixing only the reported one would have left
+the action family armed with the same defect (CLAUDE.md: fix the CLASS).
+
+**Guard.** `tests/cmake-entity-inventory-tests.sh` case **I** builds a fragment
+whose service request type is absent from the registered bound inventory, then
+re-includes the appended fragment the way `_nros_entity_budget_env` does. The
+assertion is the re-include, not the text — an appendix that reads correctly and
+does not parse is the state that shipped. Negative control: with the helper
+reverted the case fails with the reported error verbatim,
+`Parse error.  Expected a command name, got unquoted argument with text
+"example_interfaces/srv/AddTwoInts_Request".`
+
+This answers both items under "what would close it": the emitting line is
+pinned, and the whole rendered artifact is now fed to a CMake parse.
