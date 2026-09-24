@@ -1,10 +1,14 @@
-# What `check-cpp-capability-layout` must tolerate today, and nothing more.
+# What `check-cpp-capability-layout` must tolerate today: NOTHING.
 #
-# A RATCHET, not an allowlist. It may only SHRINK: a line here that no longer
-# matches what the gate measures is a FAILURE, so the debt cannot go stale, and
-# a violation not listed here is a failure too, so it cannot grow.
+# READ THE LAST SECTION FIRST. This file was a RATCHET -- it could only SHRINK,
+# a line that no longer matched what the gate measures was a FAILURE, and a
+# violation not listed here was a failure too. phase-456 W6 turned it into a
+# CONSTANT: a row of any kind is now a hard failure, and the text between here
+# and there is the record of what the ratchet measured and why, kept in the
+# past tense it earned rather than deleted.
 #
-# Two kinds of entry, and they mean different things:
+# The three kinds below survive only as the vocabulary of the refusal message
+# and of that record. They mean different things and the gate accepts none:
 #
 #   diverges <subject>     `sizeof(subject)` follows a capability macro. This is
 #                          the defect the gate exists to catch. Delete the line
@@ -85,6 +89,33 @@
 
 # No rows remain in any of the three kinds. W1's `diverges` rows came off in
 # the commit that fixed the member (see the section above), and W5's
-# `hosted-only` / `std-only` rows came off with the gates they recorded. The
-# file stays as the ratchet's own record of what was measured and why.
+# `hosted-only` / `std-only` rows came off with the gates they recorded.
+#
+# THIS FILE IS NO LONGER A RATCHET -- phase-456 W6, 2026-09-21.
+#
+# A row of ANY kind is now a hard failure. The three kinds survive only as the
+# vocabulary of the refusal message and of this record; the gate accepts none
+# of them. Why: a ratchet is the right instrument for debt you intend to pay,
+# and the debt is paid. What an empty slot holds after that is not tolerance
+# for something measured but a place to put the NEXT violation -- and the rule
+# it would excuse has no legitimate exception, because two TUs of one image may
+# legitimately disagree about a capability macro (px4 sets -DNROS_CPP_STD on a
+# single module of a larger image) and would then link, write an object through
+# one layout and read it through the other. Issue 0135 is that bug, shipped.
+#
+# WHAT IS STILL PERMITTED, so the constant is not read as more than it says: a
+# capability macro may gate a METHOD, and several do -- `Rate`'s `std::chrono`
+# constructor, the whole `NROS_CPP_NODE_HOSTED` block on `rclcpp::Node`. Adding
+# a method changes no layout; the gate's selftest case 2 proves it lets that
+# through. What is refused is a capability macro reaching a MEMBER, a base
+# class, or the EXISTENCE of a public type.
+#
+# The paragraph above about `Rate`'s constructor said "W8's acceptance is zero
+# `NROS_CPP_HAS_*` in the tree, so it is W8's to resolve". That is still true
+# and still not resolved; it is not this file's business either way, because a
+# gated method has never needed a row here.
+#
+# The file stays rather than being deleted: the gate requires it to EXIST (an
+# absent file and an empty one are different states, and only one of them is
+# checked), and this is the record of what the ratchet measured and why.
 
