@@ -114,8 +114,8 @@ public:
         });
     }
 private:
-    std::shared_ptr<rclcpp::TimerBase> timer_;
-    std::shared_ptr<rclcpp::Publisher<my_msgs::msg::MyMsg>> publisher_;
+    rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Publisher<my_msgs::msg::MyMsg>::SharedPtr publisher_;
 };
 
 int main(int argc, char* argv[]) {

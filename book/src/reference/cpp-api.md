@@ -17,7 +17,8 @@ public surface a user application needs.
 - [`nros::init`](../api/cpp/namespacenros.html) / `nros::shutdown` — session lifetime
 - [`rclcpp::Node`](../api/cpp/classrclcpp_1_1Node.html) — node + create_publisher/subscription/service/client/action_*
 - [`rclcpp::Publisher<M>`](../api/cpp/classrclcpp_1_1Publisher.html) / [`Subscription<M>`](../api/cpp/classrclcpp_1_1Subscription.html)
-- [`rclcpp::Service<S>`](../api/cpp/classrclcpp_1_1Service.html) / [`Client<S>`](../api/cpp/classrclcpp_1_1Client.html)
+- [`rclcpp::Service<S>`](../api/cpp/classrclcpp_1_1Service.html) / [`Client<S>`](../api/cpp/classrclcpp_1_1Client.html) — the DISPATCH service server and client. A handler is registered into the executor arena, which owns the entity; `Service<S>::SharedPtr` is `nros::ServiceHandle<S>`, a two-word keep-alive with nothing to dereference (phase-456 W5).
+- [`nros::PollService<S>`](../api/cpp/classnros_1_1PollService.html) — L1 polling service server. The caller owns the server and drains it with `take_request` / `send_response` from its own spin loop. `node.create_service<S>(name)` with no handler hands one back.
 - [`rclcpp_action::Server<A>`](../api/cpp/classrclcpp__action_1_1Server.html) / [`Client<A>`](../api/cpp/classrclcpp__action_1_1Client.html) — L2 callback model (executor-arena registered). `nros::ActionServer<A>` / `nros::ActionClient<A>` are the same two types.
 - [`nros::PollingActionServer<A>`](../api/cpp/classnros_1_1PollingActionServer.html) / [`PollingActionClient<A>`](../api/cpp/classnros_1_1PollingActionClient.html) — L1 polling model. Caller drives `take_*` / `accept_goal` / `complete_goal` from a spin loop.
 - [`nros::Future<T>`](../api/cpp/classnros_1_1Future.html) — async result handle

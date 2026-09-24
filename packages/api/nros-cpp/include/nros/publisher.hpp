@@ -18,6 +18,7 @@
 #include "nros/config.hpp"
 #include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/executor.hpp"    // phase-444 — the graph counter these forward to
+#include "nros/owned.hpp" // phase-456 W5 — `Publisher<M>::SharedPtr` IS `Owned<Publisher<M>>`
 #include "nros/result.hpp"
 // RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creator below.
 #include "nros/serialization_format.hpp"
@@ -33,20 +34,22 @@
 // reaching it first makes the cbindgen header a REDEFINITION of all four.
 #include "nros/qos.hpp"
 
-// phase-417 W1.a — the nested pointer aliases below (`Publisher<M>::SharedPtr`
-// and friends, the spelling nearly every rclcpp source uses for a member) are
-// `std::shared_ptr` / `std::unique_ptr`, so they need `<memory>` — which a
-// MINIMAL freestanding libcpp does not ship (Zephyr's is `<cstddef>`,
-// `<cstdint>`, `<new>`, plus this repo's `zephyr/cxx-compat/`; neither has
-// `<memory>`).
+// phase-456 W5 — THIS HEADER NO LONGER DETECTS ANYTHING, and the include that
+// used to sit here is gone with the block it served.
 //
-// This header used to CARRY the detection block and the rationale for it, under
-// the note "the other entity headers repeat this block; the rationale lives
-// here". They no longer repeat it and it no longer lives here: phase-438 W1
-// moved both to `nros/std_detect.hpp`, so a correction lands once instead of
-// fifteen times. Issues 0112, 1187 and 1240 are each a correction to that
-// predicate, and each had to be applied by hand to every copy.
-#include "nros/std_detect.hpp"
+// From phase-417 W1.a until now, `Publisher<M>::SharedPtr` and friends were
+// `std::shared_ptr` / `std::unique_ptr`, so they needed `<memory>` — which a
+// MINIMAL freestanding libcpp does not ship (Zephyr's is `<cstddef>`,
+// `<cstdint>`, `<new>`, plus this repo's `zephyr/cxx-compat/`) — and the
+// aliases were therefore ABSENT on exactly the targets ported source needs them
+// on. The predicate that decided it needed three separate corrections to get
+// right (issues 0112, 1187, 1240).
+//
+// The aliases name `nros::Owned<Publisher<M>>` now, which is ours and exists
+// everywhere, so there is no capability left to probe: the alias is present
+// unconditionally and means the same thing on every target. That is RFC-0096 D1
+// — one API, no shape decided by a toolchain flag — reached by deleting the
+// question rather than by answering it more carefully.
 
 namespace nros {
 
@@ -137,22 +140,44 @@ namespace rclcpp {
 /// ```
 template <typename M> class Publisher {
   public:
-#ifdef NROS_CPP_HAS_SHARED_PTR
-    /// `rclcpp::Publisher<M>::SharedPtr` — phase-417 W1.a.
+    /// `rclcpp::Publisher<M>::SharedPtr` — phase-456 W5.
     ///
-    /// rclcpp indexes its entity types this way, and
     /// `rclcpp::Publisher<M>::SharedPtr member_;` is close to universal in
-    /// ported source. Ergonomics only (RFC-0089 §"Who implements an adopted
-    /// name"): a spelling for `std::shared_ptr<Publisher<M>>`, no second code path.
+    /// ported source, so this alias must exist on EVERY target — which
+    /// `std::shared_ptr` does not. It names `nros::Owned<Publisher<M>>`: the
+    /// publisher BY VALUE, with `operator->` so every ported `pub_->publish(m)`
+    /// keeps working, and no allocator, control block or `<memory>` anywhere.
     ///
-    /// Present only where `<memory>` is — a freestanding target has no
-    /// `std::shared_ptr` to alias.
-    using SharedPtr = std::shared_ptr<Publisher<M>>;
-    /// `rclcpp::Publisher<M>::ConstSharedPtr` — see `SharedPtr`.
-    using ConstSharedPtr = std::shared_ptr<const Publisher<M>>;
-    /// `rclcpp::Publisher<M>::UniquePtr` — see `SharedPtr`.
-    using UniquePtr = std::unique_ptr<Publisher<M>>;
-#endif
+    /// IT IS NOT AN ARENA HANDLE, and that is a decision rather than an
+    /// omission — W4 measured the case and refused it. The executor arena is a
+    /// bump allocator with no removal path (`EntryKind` has no publisher at
+    /// all), so an arena publisher would turn `~Publisher()` and
+    /// `Owned<T>::reset()` into no-ops holding a live RMW publisher for the
+    /// executor's lifetime. The Rust side settles it: `create_publisher_with_qos`
+    /// returns an `EmbeddedPublisher<M>` BY VALUE, with a `Drop`, and this
+    /// phase's principle is that the C++ lifetime mirrors the Rust one.
+    /// `owned.hpp` carries the long form.
+    ///
+    /// WHAT CHANGED FOR A PORTED FILE: one reference, not a shared count. The
+    /// entity is destroyed when the holder is, which is what upstream does when
+    /// the holder was the last owner — and the W0 census found no entity handle
+    /// copied anywhere in this tree or the porting corpus.
+    using SharedPtr = ::nros::Owned<Publisher<M>>;
+    /// `rclcpp::Publisher<M>::ConstSharedPtr` — the SAME type as `SharedPtr`.
+    ///
+    /// `Owned<const T>` is refused by a `static_assert` in `owned.hpp`: it
+    /// declares cleanly and is ill-formed on the first move or `reset()`, which
+    /// is worse than a refusal. A const/mutable distinction drawn over a
+    /// handle presupposes shared ownership, which a sole owner does not have;
+    /// `const SharedPtr&` already yields the `const Publisher<M>*` view.
+    using ConstSharedPtr = ::nros::Owned<Publisher<M>>;
+    /// `rclcpp::Publisher<M>::UniquePtr` — also the SAME type as `SharedPtr`.
+    ///
+    /// `Owned<T>` IS unique ownership — move-only, one owner, destroys on scope
+    /// exit — so a separate alias would be a second spelling of one type.
+    /// Measured before the collapse (phase-456 W5): zero uses in the tree
+    /// outside this definition and the one probe asserting its old shape.
+    using UniquePtr = ::nros::Owned<Publisher<M>>;
 
     /// Publish a typed message.
     ///

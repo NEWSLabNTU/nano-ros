@@ -41,8 +41,12 @@ class ShadowConsumer : public rclcpp::Node {
     // against real ROS 2 as well as against nano-ros; see the note in
     // `examples/templates/local-msg-package`. nano-ros has no timer hierarchy,
     // so the name is a flat alias for `rclcpp::Timer`.
-    std::shared_ptr<rclcpp::TimerBase> timer_;
-    std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Marker>> publisher_;
+    rclcpp::TimerBase::SharedPtr timer_;
+    // phase-456 W5 — the nested alias, never `std::shared_ptr<...>`: nano-ros
+    // spells a publisher handle `nros::Owned<Publisher<M>>` (no allocator on a
+    // freestanding target) and upstream spells it `std::shared_ptr`, so only
+    // the alias compiles both ways.
+    rclcpp::Publisher<std_msgs::msg::Marker>::SharedPtr publisher_;
 };
 
 int main(int argc, char* argv[]) {

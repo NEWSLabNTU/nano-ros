@@ -1494,17 +1494,31 @@ cpp: cpp-fmt
         echo "       See tmp/refuse-nros-node.log." >&2; \
         exit 1; \
     fi
-    # Expected-failure, asserted-present first for the reason every other
-    # probe of this shape is: a missing file is also a non-zero c++, and reads
-    # as a pass.
+    # phase-456 W5 — this probe INVERTED. It was an expected-FAILURE from
+    # phase-427 W3 until 2026-09-21, and it is a positive compile now.
+    #
+    # The refusal was honest for the signature it refused: the hosted
+    # `create_publisher` returned `std::shared_ptr<Publisher<M>>`, so on a
+    # target with no allocator the only two answers were "fails to compile" and
+    # "compiles and allocates", and RFC-0089 forbids the second. W5 removed the
+    # premise rather than the rule — `Publisher<M>::SharedPtr` is
+    # `nros::Owned<Publisher<M>>`, the publisher by value, no allocator and no
+    # `<memory>` — and the ported overload is keyed on `const char*` so a
+    # `std::string` parameter does not re-impose the gate through the argument.
+    # With no hidden allocation left there is nothing to refuse, and refusing
+    # anyway would be the platform-dependent API shape RFC-0096 D1 exists to
+    # remove.
+    #
+    # Asserted-present first, same as every other probe here: a missing file is
+    # also a zero-exit `test -f` away from reading as a pass.
     test -f packages/api/nros-cpp/tests/compile/ported_create_publisher_freestanding_probe.cpp || { \
         echo "ERROR: ported_create_publisher_freestanding_probe.cpp is MISSING -- the" >&2; \
-        echo "       expected-failure check below would PASS on a missing file." >&2; \
+        echo "       check below would then be checking nothing." >&2; \
         exit 1; \
     }
-    echo "  - one node type: a ported create_publisher<M>(topic, depth) is REFUSED freestanding"
+    echo "  - one node type: a ported create_publisher<M>(topic, depth) COMPILES freestanding"
     mkdir -p tmp
-    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
+    if ! c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
         -nostdinc++ -isystem "$_threadx_shim" \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \
@@ -1512,25 +1526,15 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/ported_create_publisher_freestanding_probe.cpp \
-        > tmp/refuse-ported-create-publisher.log 2>&1; then \
-        echo "ERROR: create_publisher<M>(\"chatter\", 10) COMPILED on a freestanding target." >&2; \
-        echo "       The hosted overload returns std::shared_ptr and there is no allocator" >&2; \
-        echo "       here, so a ported firmware image just gained a heap allocation per" >&2; \
-        echo "       publisher with nothing to tell it (RFC-0089: never compile and differ)." >&2; \
-        exit 1; \
-    fi
-    # "It failed" is also what a typo produces. The diagnostic must name the
-    # overload that IS available, because that naming is the migration.
-    #
-    # `nros_grep_q`, not `grep -q`: grep exits 1 for "no match" and >=2 for a
-    # tool failure, and `grep -q … || {finding}` cannot tell them apart (issue
-    # 0726). Sourced above, beside the other refusal probes.
-    nros_grep_q 'create_publisher(Publisher<M>& out, const char\* topic' \
-        tmp/refuse-ported-create-publisher.log && _rc=0 || _rc=$?
-    if [ "$_rc" -ne 0 ]; then \
-        echo "ERROR: the freestanding create_publisher refusal no longer names the out-ref" >&2; \
-        echo "       overload. The refusal is only useful if it says what to write instead;" >&2; \
-        echo "       see tmp/refuse-ported-create-publisher.log." >&2; \
+        > tmp/ported-create-publisher-freestanding.log 2>&1; then \
+        echo "ERROR: create_publisher<M>(\"chatter\", 10) does NOT compile on a freestanding" >&2; \
+        echo "       target. That line is the most copied one in the porting corpus, and" >&2; \
+        echo "       RFC-0096 D1 says the API has ONE shape on every platform." >&2; \
+        echo "       Two ways to break it, and the log says which: a std:: TYPE back in the" >&2; \
+        echo "       return (Publisher<M>::SharedPtr must stay nros::Owned<Publisher<M>>), or" >&2; \
+        echo "       a std::string back in the PARAMETER (the ported overload is keyed on" >&2; \
+        echo "       const char*, and the std::string forwarders are hosted-only)." >&2; \
+        echo "       See tmp/ported-create-publisher-freestanding.log." >&2; \
         exit 1; \
     fi
 

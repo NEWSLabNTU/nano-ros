@@ -50,7 +50,7 @@ int nros_app_main(int argc, char** argv) {
     NROS_TRY_RET(nros::create_node(node, "add_two_ints_server"), 1);
     printf("Node created: %s\n", node.get_name());
 
-    rclcpp::Service<example_interfaces::srv::AddTwoInts> srv;
+    nros::PollService<example_interfaces::srv::AddTwoInts> srv;
     NROS_TRY_RET(node.create_service(srv, "/add_two_ints"), 1);
     rclcpp::Result ret;
 

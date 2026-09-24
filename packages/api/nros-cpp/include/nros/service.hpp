@@ -1,10 +1,16 @@
-// nros-cpp: Service server class
+// nros-cpp: the DISPATCH service server
 // Freestanding C++ — no exceptions, no STL required
 
 /**
  * @file service.hpp
  * @ingroup grp_service
- * @brief `nros::Service<S>` — typed service server.
+ * @brief `rclcpp::Service<S>` — the arena-registered (callback-style) service
+ *        server, and `Service<S>::SharedPtr` = `nros::ServiceHandle<S>`.
+ *
+ * The POLL-style server — caller-owned storage, `take_request()` /
+ * `send_response()` — is `nros::PollService<S>` in
+ * `nros/polling_service.hpp` since phase-456 W5. See there for why the two
+ * are separate types.
  */
 
 #ifndef NROS_CPP_SERVICE_HPP
@@ -17,18 +23,13 @@
 #include "nros/config.hpp"
 #include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/result.hpp"
-#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
-
-// phase-417 W1.a — `<memory>` for the nested pointer aliases below.
-// `NROS_CPP_HAS_SHARED_PTR` and the other five capability macros have ONE
-// definition site, and the measured reason the predicate needs both probes
-// (issues 0112, 1187, 1240) is stated there.
-#include "nros/std_detect.hpp"
+#include "nros/service_handle.hpp" // phase-456 W5 — what `Service<S>::SharedPtr` IS
+#include "nros/size_bound.hpp"     // nros::rx_buffer_capacity<M> — the receive-buffer size
 
 #include "nros_cpp_ffi.h"
 
-// issue 1437 — `get_actual_qos()` returns a `nros::QoS` BY VALUE from an
-// inline body, so the complete type must be here, not only by the time
+// issue 1437 — the two granted-QoS accessors return a `nros::QoS` BY VALUE from
+// an inline body, so the complete type must be here, not only by the time
 // `nros/node.hpp` is pulled in below.
 //
 // AFTER `nros_cpp_ffi.h`, never before: `qos.hpp` defines the four
@@ -77,42 +78,64 @@ class Node;
 // (`rclcpp::Service<S>::SharedPtr`) resolves with no wrapper in between.
 namespace rclcpp {
 
-/// Typed service server for a ROS 2 service.
+/// Dispatch service server for a ROS 2 service — the rclcpp model.
 ///
-/// Mirrors `rclcpp::Service<S>`. The service type `S` must provide
-/// nested `Request` and `Response` types with `TYPE_NAME`, `TYPE_HASH`,
-/// `SERIALIZED_SIZE_MAX`, `ffi_serialize()`, and `ffi_deserialize()`.
+/// A handler is registered into the executor arena, which owns the
+/// `RmwServiceServer` and runs the handler during `spin_once`. The service type
+/// `S` must provide nested `Request` and `Response` types with `TYPE_NAME`,
+/// `TYPE_HASH`, `SERIALIZED_SIZE_MAX`, `ffi_serialize()`, and
+/// `ffi_deserialize()`.
+///
+/// THIS OBJECT IS BOOKKEEPING — phase-456 W5. The server, the request buffer,
+/// the handler and its context are all the arena's; W3 made the arena's
+/// trampoline context the user's HANDLER rather than `&out`, so after
+/// registration nothing of the caller's is referenced and this object is freely
+/// movable.
+///
+/// What it does hold is what a REGISTRATION can be asked about and the arena
+/// cannot be asked for by an index alone: `{initialized_, handle_id_,
+/// executor_, service_name_}`. `executor_` and `handle_id_` are the pair that
+/// names the arena entry (issue 1437) — without the executor an index points
+/// into an arena this object cannot reach — and `service_name_` is the
+/// phase-444 C++-side copy, because the runtime takes the name at create and
+/// drops it. Neither survives as state the arena refers back to; both are the
+/// caller's own record.
+///
+/// Measured (phase-456 W3), across `examples/`, `tests/`, `book/` and
+/// `packages/`: a dispatch service has **nothing invoked on it**, at any site,
+/// out-ref or `::SharedPtr`. It is a keep-alive — which is why
+/// `Service<S>::SharedPtr` is a two-word `nros::ServiceHandle<S>` with no
+/// `operator->` rather than a pointer to one of these.
 ///
 /// Usage:
 /// ```cpp
-/// nros::Service<example_interfaces::srv::AddTwoInts> srv;
-/// NROS_TRY(node.create_service(srv, "/add_two_ints"));
-/// typename decltype(srv)::RequestType req;
-/// int64_t seq;
-/// if (srv.take_request(req, seq)) {
-///     typename decltype(srv)::ResponseType resp;
+/// void add(const AddTwoInts::Request& req, AddTwoInts::Response& resp) {
 ///     resp.sum = req.a + req.b;
-///     srv.send_response(seq, resp);
 /// }
+/// rclcpp::Service<AddTwoInts> srv;
+/// NROS_TRY(node.create_service(srv, "/add_two_ints", &add));
+/// // ... or, in ported shape:
+/// auto handle = node.create_service<AddTwoInts>("/add_two_ints", &add);
 /// ```
 template <typename S> class Service {
   public:
-#ifdef NROS_CPP_HAS_SHARED_PTR
-    /// `rclcpp::Service<S>::SharedPtr` — phase-417 W1.a.
+    /// `rclcpp::Service<S>::SharedPtr` — phase-456 W5.
     ///
-    /// rclcpp indexes its entity types this way, and
-    /// `rclcpp::Service<S>::SharedPtr member_;` is close to universal in
-    /// ported source. Ergonomics only (RFC-0089 §"Who implements an adopted
-    /// name"): a spelling for `std::shared_ptr<Service<S>>`, no second code path.
+    /// `rclcpp::Service<S>::SharedPtr member_;` is how ported source declares a
+    /// service member, so this alias must exist on every target — which
+    /// `std::shared_ptr` does not.
     ///
-    /// Present only where `<memory>` is — a freestanding target has no
-    /// `std::shared_ptr` to alias.
-    using SharedPtr = std::shared_ptr<Service<S>>;
-    /// `rclcpp::Service<S>::ConstSharedPtr` — see `SharedPtr`.
-    using ConstSharedPtr = std::shared_ptr<const Service<S>>;
+    /// IT IS NOT A POINTER TO A `Service<S>`. A registered service is the
+    /// arena's; what this names is `nros::ServiceHandle<S>` — two words,
+    /// copyable, carrying only what a registration can perform, which the
+    /// census says is nothing but "exist". See `service_handle.hpp`.
+    using SharedPtr = ::nros::ServiceHandle<S>;
+    /// `rclcpp::Service<S>::ConstSharedPtr` — see `SharedPtr`. The same handle:
+    /// there is no mutable/const distinction to draw over a registration that
+    /// exposes no operation on the entity.
+    using ConstSharedPtr = ::nros::ServiceHandle<S>;
     /// `rclcpp::Service<S>::UniquePtr` — see `SharedPtr`.
-    using UniquePtr = std::unique_ptr<Service<S>>;
-#endif
+    using UniquePtr = ::nros::ServiceHandle<S>;
 
     using RequestType = typename S::Request;
     using ResponseType = typename S::Response;
@@ -130,85 +153,23 @@ template <typename S> class Service {
     /// the context and no runtime pointer pair is needed.
     using TypedServiceFn = void (*)(const RequestType& request, ResponseType& response);
 
-    /// Try to receive a typed request (non-blocking).
-    ///
-    /// @param req     Output request struct (filled on success).
-    /// @param seq_id  Output sequence number for reply matching.
-    /// @return Result::success() if a request was received and deserialized;
-    ///         ErrorCode::TryAgain if no data is available;
-    ///         ErrorCode::NotInitialized or the FFI error code otherwise;
-    ///         ErrorCode::Error if deserialization failed.
-    Result take_request(RequestType& req, int64_t& seq_id) {
-        return try_recv_request_sized<::nros::rx_buffer_capacity<RequestType>::value>(req, seq_id);
-    }
-
-    /// @ref take_request with the receive buffer sized by the CALLER.
-    ///
-    /// This IS a receive buffer — issue 0964's survey listed the service
-    /// request under "transmit", which is true of `Client<S>`'s request and
-    /// false here: the server deserializes out of it, so an under-estimate
-    /// truncates. See @ref Subscription::take_sized.
-    template <size_t Cap> Result try_recv_request_sized(RequestType& req, int64_t& seq_id) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-        uint8_t buf[Cap];
-        size_t len = 0;
-        int64_t seq = 0;
-        nros_cpp_ret_t ret =
-            nros_cpp_service_server_take_request_raw(storage_, buf, sizeof(buf), &len, &seq);
-        if (ret != 0) return Result(ret);
-        if (len == 0) return Result(::nros::ErrorCode::TryAgain);
-        if (RequestType::ffi_deserialize(buf, len, &req) != 0)
-            return Result(::nros::ErrorCode::Error);
-        seq_id = seq;
-        return Result::success();
-    }
-
-    /// @deprecated Use `take_request(RequestType&, int64_t&)`.
-    ///
-    /// phase-379 W6 decision 1 (2026-09-03): `take` -> `take`. rcl
-    /// (`rcl_take_request`), rclcpp (`Service::take_request`) and our own RMW
-    /// vtable (`take_request`) already said `take`; only this layer said
-    /// `take`. Header-only forwarder, no ABI cost. Scheduled for removal.
-    [[deprecated("Service::try_recv_request is deprecated; use Service::take_request")]] Result
-    try_recv_request(RequestType& req, int64_t& seq_id) {
-        return take_request(req, seq_id);
-    }
-
-    /// Send a typed reply to a previously received request.
-    ///
-    /// @param seq_id  Sequence number from take_request().
-    /// @param resp    Response to send.
-    /// @return Result indicating success or failure.
-    Result send_response(int64_t seq_id, const ResponseType& resp) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-        uint8_t buf[::nros::detail::buffer_bounds<ResponseType>::tx];
-        size_t len = 0;
-        if (ResponseType::ffi_serialize(&resp, buf, sizeof(buf), &len) != 0) {
-            return Result(::nros::ErrorCode::Error);
-        }
-        return Result(nros_cpp_service_server_send_response_raw(storage_, seq_id, buf, len));
-    }
-
-    /// @deprecated Use `send_response()`.
-    ///
-    /// Phase-379 W5: rcl, rclcpp and rclrs all say `send_response`, and our
-    /// own C already used that word. Kept as a forwarder so an out-of-tree
-    /// node on the old spelling still compiles and is told what to move to.
-    [[deprecated("Service::send_reply() is deprecated; use Service::send_response()")]] Result
-    send_reply(int64_t seq_id, const ResponseType& resp) {
-        return send_response(seq_id, resp);
-    }
-
-    /// Check if the service is initialized and valid.
+    /// Check if the service was registered.
     bool is_valid() const { return initialized_; }
 
-    /// Read back the service name this server was created on — phase-444.
+    /// Read back the service name this server was registered on — phase-444.
     ///
     /// rclcpp's `ServiceBase::get_service_name`, and the server half of
     /// `Client::get_service_name`; see that method for why the name lives
     /// C++-side and why the accessor returns `""` rather than NULL on an
-    /// uninitialised server. Both modes answer — the poll-style server that
-    /// owns its `storage_` and the callback-style one the executor arena owns.
+    /// unregistered server.
+    ///
+    /// phase-456 W5 split this class in two and the method answers on BOTH
+    /// halves, unchanged — the same shape `PollSubscription::get_publisher_count`
+    /// took under W2b. It reads `service_name_`, which each half keeps its own
+    /// copy of, because the copy is made at create from the argument the caller
+    /// passed and neither owner can recover it afterwards: the runtime takes the
+    /// name and drops it, and there is no FFI that reads a name back out of the
+    /// arena. A shared copy would have to live somewhere neither half owns.
     const char* get_service_name() const { return initialized_ ? service_name_ : ""; }
 
     /// The QoS the backend GRANTED this service's REQUEST endpoint — the
@@ -222,9 +183,19 @@ template <typename S> class Service {
     ///
     /// A policy the backend cannot report is an ABSENCE (`ReliabilityUnknown`
     /// and friends), never the request echoed back — see
-    /// @ref Publisher::get_actual_qos. Answers on both the poll-style road
-    /// (this object owns the entity) and the callback-style one (the executor
-    /// arena does).
+    /// @ref Publisher::get_actual_qos.
+    ///
+    /// phase-456 W5 — BOTH HALVES ANSWER, and the service comes out the other
+    /// way from the subscription. `PollSubscription::get_actual_qos` had to be
+    /// left off the dispatch half, because a dispatch `Subscription<M>` holds
+    /// only `sched_handle_id_` and reaching the arena would have meant inventing
+    /// a signature that takes an executor (ledgered at
+    /// `cpp:Subscription::get_actual_qos`). A dispatch service does NOT have that
+    /// problem: issue 1437 already gave it `executor_` beside `handle_id_`, and
+    /// `nros_cpp_service_server_get_actual_qos` serves both roads — `storage_`
+    /// for the owner, `(executor, handle_id)` for the arena. So the upstream
+    /// no-argument spelling is reachable here with no weakening, and no ledger
+    /// row is owed.
     ::nros::QoS get_request_subscription_actual_qos() const { return actual_qos_half(true); }
 
     /// The QoS the backend GRANTED this service's RESPONSE endpoint — the
@@ -232,24 +203,22 @@ template <typename S> class Service {
     /// @ref get_request_subscription_actual_qos.
     ::nros::QoS get_response_publisher_actual_qos() const { return actual_qos_half(false); }
 
-    /// Destructor — releases service server resources.
+    /// Destructor — there is nothing to release.
     ///
-    /// Poll-style services own an `RmwServiceServer` in `storage_` and free it
-    /// here. Callback-style services (Phase 189.M3.3.e) are owned by the executor
-    /// arena (freed when the executor drops), so the dtor must NOT touch
-    /// `storage_` for them.
-    ~Service() {
-        if (initialized_ && !callback_mode_) {
-            nros_cpp_service_server_destroy(storage_);
-        }
-        initialized_ = false;
-    }
+    /// The executor arena owns the server, the request buffer and the handler,
+    /// and frees them when the executor drops. No unregister FFI exists, so
+    /// this cannot remove the registration and does not pretend to: it clears
+    /// this object's own bookkeeping. Until phase-456 W5 the same destructor
+    /// also freed a POLL server, behind an `if (initialized_ &&
+    /// !callback_mode_)`; that half moved to `nros::PollService<S>`, where the
+    /// condition is unconditional.
+    ~Service() { initialized_ = false; }
 
-    // Move semantics (non-copyable). Poll-style relocation goes through the
-    // `nros_cpp_service_server_relocate` runtime call (Phase 84.C1).
+    // Move semantics (non-copyable). Bookkeeping only — there is no storage to
+    // relocate, so `nros_cpp_service_server_relocate` is not called here.
     //
-    // phase-456 W3 — a callback-style service is MOVABLE now, and the warning
-    // that used to stand here is gone with its subject. It said:
+    // phase-456 W3 — a callback-style service is MOVABLE, and the warning that
+    // used to stand here is gone with its subject. It said:
     //
     //     A callback-style service must NOT be moved after register — the arena
     //     holds `this` as the trampoline context (Phase 189.M3.3.e); the move
@@ -261,41 +230,29 @@ template <typename S> class Service {
     // what the warning said it was — the difference is that bookkeeping is now
     // all there is.
     Service(Service&& other)
-        : initialized_(other.initialized_), handle_id_(other.handle_id_),
-          callback_mode_(other.callback_mode_), service_name_{}, executor_(other.executor_) {
+        : initialized_(other.initialized_), handle_id_(other.handle_id_), service_name_{},
+          executor_(other.executor_) {
         ::nros::detail::assign_entity_name(service_name_, other.service_name_);
-        if (other.initialized_ && !other.callback_mode_) {
-            nros_cpp_service_server_relocate(other.storage_, storage_);
-        }
         other.initialized_ = false;
     }
 
     Service& operator=(Service&& other) {
         if (this != &other) {
-            if (initialized_ && !callback_mode_) {
-                nros_cpp_service_server_destroy(storage_);
-            }
             initialized_ = other.initialized_;
             handle_id_ = other.handle_id_;
-            callback_mode_ = other.callback_mode_;
             ::nros::detail::assign_entity_name(service_name_, other.service_name_);
-
             // issue 1437 — moves with the index it pairs with.
             executor_ = other.executor_;
-            if (other.initialized_ && !other.callback_mode_) {
-                nros_cpp_service_server_relocate(other.storage_, storage_);
-            }
             other.initialized_ = false;
         }
         return *this;
     }
 
-    /// Default constructor — creates an uninitialized service server.
-    /// Use `Node::create_service()` to initialize.
-    Service() : storage_(), initialized_(false), service_name_{} {}
+    /// Default constructor — creates an unregistered service server.
+    /// Use `Node::create_service()` to register one.
+    Service() : initialized_(false), service_name_{} {}
 
-    /// Executor handle for the callback-style service (Phase 189.M3.3.e);
-    /// `SIZE_MAX` for poll-style / uninitialized.
+    /// Executor arena slot for the registration; `SIZE_MAX` until registered.
     size_t handle_id() const { return handle_id_; }
 
   private:
@@ -329,26 +286,30 @@ template <typename S> class Service {
 
     /// The two directions differ only in which out-pointer is read, so one
     /// body serves both and they cannot end up swapped (issue 1437).
+    ///
+    /// `storage` is always NULL here: a dispatch service owns no
+    /// `RmwServiceServer`, so `(executor_, handle_id_)` is the only road. The
+    /// `callback_mode_ ? nullptr : storage_` branch this replaced existed
+    /// because one class served two owners; `nros::PollService<S>` takes the
+    /// other arm and passes its `storage_` unconditionally.
     ::nros::QoS actual_qos_half(bool request) const {
         nros_cpp_qos_t req{};
         nros_cpp_qos_t resp{};
         if (!initialized_) return ::nros::detail::qos_all_unknown();
-        const void* storage = callback_mode_ ? nullptr : static_cast<const void*>(storage_);
-        if (nros_cpp_service_server_get_actual_qos(storage, executor_, handle_id_, &req, &resp) !=
+        if (nros_cpp_service_server_get_actual_qos(nullptr, executor_, handle_id_, &req, &resp) !=
             0) {
             return ::nros::detail::qos_all_unknown();
         }
         return ::nros::detail::qos_from_ffi(request ? req : resp);
     }
 
-    alignas(8) uint8_t storage_[NROS_SERVICE_SERVER_SIZE];
     bool initialized_;
-    // Callback-style BOOKKEEPING (Phase 189.M3.3.e); unused in poll mode. The
-    // handler itself is not here — it lives in the arena (phase-456 W3), so
-    // these two are the caller's own record of a registration that no longer
-    // refers back to this object.
+    // Callback-style BOOKKEEPING (Phase 189.M3.3.e). The handler itself is not
+    // here — it lives in the arena (phase-456 W3) — and neither is the server,
+    // so what remains is the caller's own record of a registration that refers
+    // back to nothing of the caller's.
     size_t handle_id_ = static_cast<size_t>(-1);
-    bool callback_mode_ = false;
+
     /// phase-444 — the service name, kept C++-side for `get_service_name()`.
     /// See `Client`'s field of the same name.
     char service_name_[::nros::SERVICE_NAME_MAX];
@@ -372,25 +333,6 @@ template <typename S> using Service = ::rclcpp::Service<S>;
 
 // Phase 84.G8: out-of-line definition of Node::create_service<S>().
 #include "nros/node.hpp"
-
-namespace nros {} // namespace nros
-
-namespace rclcpp {
-template <typename S>
-Result Node::create_service(Service<S>& out, const char* service_name, const ::nros::QoS& qos) {
-    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
-    nros_cpp_ret_t ret = nros_cpp_service_server_create(
-        &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
-    if (ret == 0) {
-        // phase-444 — remember the name for `get_service_name()`; the runtime
-        // takes `service_name` and drops it.
-        ::nros::detail::assign_entity_name(out.service_name_, service_name);
-        out.initialized_ = true;
-    }
-    return Result(ret);
-}
-} // namespace rclcpp
 
 namespace nros {
 
@@ -424,8 +366,8 @@ Result Node::create_service(Service<S>& out, const char* service_name, F callbac
         ::nros::detail::fn_to_context(user_fn), sched, &handle);
     if (ret == 0) {
         out.handle_id_ = handle;
-        out.callback_mode_ = true;
-        // phase-444 — see the poll-style overload above.
+        // phase-444 — remember the name for `get_service_name()`; the runtime
+        // takes `service_name` and drops it.
         ::nros::detail::assign_entity_name(out.service_name_, service_name);
 
         // issue 1437 — the arena that owns the entity, beside its index.

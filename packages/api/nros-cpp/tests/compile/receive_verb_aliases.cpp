@@ -48,7 +48,7 @@ struct AddTwoInts {
 
 // 1. The renamed methods exist and their bodies type-check.
 inline ::nros::Result instantiate_new(::nros::PollSubscription<Int32>& sub,
-                                      ::nros::Service<AddTwoInts>& srv) {
+                                      ::nros::PollService<AddTwoInts>& srv) {
     Int32 msg{};
     uint8_t buf[64];
     uint8_t att[16];
@@ -74,7 +74,7 @@ inline ::nros::Result instantiate_new(::nros::PollSubscription<Int32>& sub,
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 inline ::nros::Result instantiate_old(::nros::PollSubscription<Int32>& sub,
-                                      ::nros::Service<AddTwoInts>& srv) {
+                                      ::nros::PollService<AddTwoInts>& srv) {
     Int32 msg{};
     uint8_t buf[64];
     uint8_t att[16];

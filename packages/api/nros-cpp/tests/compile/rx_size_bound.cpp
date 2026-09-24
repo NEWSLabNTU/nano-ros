@@ -208,7 +208,7 @@ inline ::nros::Result recv_paths(::nros::PollSubscription<M>& sub, ::nros::Strea
 
 template <class M>
 inline ::nros::Result client_paths(::nros::Client<SvcOf<M>>& client,
-                                   ::nros::Service<SvcOf<M>>& service, ::nros::TickCtx& tick,
+                                   ::nros::PollService<SvcOf<M>>& service, ::nros::TickCtx& tick,
                                    M& payload) {
     (void)client.send_request(payload); // future.hpp -- Future<T>'s cached_buf_
     (void)client.template send_request_sized<4096>(payload);
@@ -217,7 +217,7 @@ inline ::nros::Result client_paths(::nros::Client<SvcOf<M>>& client,
     (void)client.call_polling(payload, payload, 1); // client.hpp resp_buf
     (void)client.template call_polling_sized<4096>(payload, payload, 1);
     int64_t seq = 0;
-    (void)service.try_recv_request(payload, seq); // service.hpp -- a RECEIVE buffer
+    (void)service.try_recv_request(payload, seq); // polling_service.hpp -- a RECEIVE buffer
     (void)service.template try_recv_request_sized<4096>(payload, seq);
     (void)tick.template call<M, M>("e", payload, payload); // tick_ctx.hpp resp_buf
     (void)tick.template call_sized<M, M, 4096>("e", payload, payload);
@@ -279,7 +279,7 @@ static_assert(
 inline ::nros::Result instantiate_recv_paths(::nros::PollSubscription<Bounded>& bsub,
                                              ::nros::Stream<Bounded>& bstream, Bounded& bmsg,
                                              ::nros::Client<SvcOf<Bounded>>& bclient,
-                                             ::nros::Service<SvcOf<Bounded>>& bservice,
+                                             ::nros::PollService<SvcOf<Bounded>>& bservice,
                                              ::nros::TickCtx& tick,
                                              ::nros::ActionClient<ActionOf<Bounded>>& bac,
                                              ::nros::PollingActionClient<ActionOf<Bounded>>& bpac,

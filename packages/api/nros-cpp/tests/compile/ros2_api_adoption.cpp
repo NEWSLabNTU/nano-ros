@@ -146,15 +146,46 @@ struct StubService {
     static constexpr const char* TYPE_HASH = "RIHS01_srv_stub";
 };
 
+// phase-456 W5 — `Publisher<M>::SharedPtr` is DELIBERATELY not a
+// `std::shared_ptr`, and these three assertions inverted to say so.
+//
+// It is `nros::Owned<Publisher<M>>`: the publisher BY VALUE, move-only, with an
+// `operator->` so every `pub_->publish(m)` in the porting corpus (41 sites)
+// keeps working, and with no allocator, control block or `<memory>` — so the
+// alias exists on a freestanding target, which is the one thing
+// `std::shared_ptr` could not do.
+//
+// NOT an arena handle, unlike `Subscription<M>::SharedPtr` below, and W4
+// measured why: the arena is a bump allocator with no removal path, so an arena
+// publisher would make `reset()` and scope exit no-ops over a live RMW
+// publisher. The Rust side returns `EmbeddedPublisher<M>` BY VALUE with a
+// `Drop`, and `Owned<T>` mirrors that lifetime exactly.
 static_assert(std::is_same<::nros::Publisher<StringMsg>::SharedPtr,
-                           std::shared_ptr<::nros::Publisher<StringMsg>>>::value,
-              "Publisher<M>::SharedPtr must be std::shared_ptr<Publisher<M>>");
+                           ::nros::Owned<::nros::Publisher<StringMsg>>>::value,
+              "Publisher<M>::SharedPtr must be nros::Owned<Publisher<M>>");
+// `ConstSharedPtr` and `UniquePtr` are the SAME TYPE, and each for its own
+// reason. `Owned<const T>` is a hard error (`owned.hpp` says so and names the
+// resolution: a const VIEW is `const Owned<T>&`, because a const/mutable
+// distinction over a handle presupposes shared ownership a sole owner has not
+// got). And `Owned<T>` already IS unique ownership, so a separate unique alias
+// would be a second spelling of one type — measured zero uses in the tree
+// before the collapse.
 static_assert(std::is_same<::nros::Publisher<StringMsg>::ConstSharedPtr,
-                           std::shared_ptr<const ::nros::Publisher<StringMsg>>>::value,
-              "Publisher<M>::ConstSharedPtr must be std::shared_ptr<const Publisher<M>>");
+                           ::nros::Publisher<StringMsg>::SharedPtr>::value,
+              "Publisher<M>::ConstSharedPtr is the SAME type as SharedPtr");
 static_assert(std::is_same<::nros::Publisher<StringMsg>::UniquePtr,
-                           std::unique_ptr<::nros::Publisher<StringMsg>>>::value,
-              "Publisher<M>::UniquePtr must be std::unique_ptr<Publisher<M>>");
+                           ::nros::Publisher<StringMsg>::SharedPtr>::value,
+              "Publisher<M>::UniquePtr is the SAME type as SharedPtr -- Owned<T> IS unique "
+              "ownership, so a second alias would be a second spelling of one type");
+// The publisher handle DEREFERENCES, which is the property that separates it
+// from the two arena handles below. A ported body calls `publish` on it 41
+// times across the corpus; a two-word arena handle deliberately has no
+// `operator->`, which is why a publisher could not take that shape.
+static_assert(
+    std::is_same<decltype(std::declval<::nros::Publisher<StringMsg>::SharedPtr&>().operator->()),
+                 ::nros::Publisher<StringMsg>*>::value,
+    "Publisher<M>::SharedPtr must dereference to the publisher -- the corpus calls publish() "
+    "through it");
 // phase-456 W2 — `Subscription<M>::SharedPtr` is DELIBERATELY not a
 // `std::shared_ptr`, and this assertion inverted to say so.
 //
@@ -200,14 +231,53 @@ static_assert(!has_take<::nros::Subscription<StringMsg>>::value,
 static_assert(has_take<::nros::PollSubscription<StringMsg>>::value,
               "phase-456 W2b: the poll subscription is where take() went");
 static_assert(std::is_same<::nros::PollingSubscription<StringMsg>::SharedPtr,
-                           std::shared_ptr<::nros::PollingSubscription<StringMsg>>>::value,
-              "PollingSubscription<M>::SharedPtr must be std::shared_ptr<PollingSubscription<M>>");
+                           ::nros::Owned<::nros::PollingSubscription<StringMsg>>>::value,
+              "PollingSubscription<M>::SharedPtr must be nros::Owned<PollingSubscription<M>> -- "
+              "the caller owns the subscriber, so the holder owns the object");
+// phase-456 W5 — `Service<S>::SharedPtr` is the arena handle, for the same
+// reason the subscription's is, and W3 measured the same finding one entity
+// over: across `examples/`, `tests/`, `book/` and `packages/`, NOTHING is
+// invoked on a dispatch service. It is stored and dropped.
+//
+// The blocker W3 recorded was the alias serving two owners:
+// `create_service<S>(name)` with no handler also returned it and existed to be
+// `->take_request()`'d. That poll half is `nros::PollService<S>` now, which is
+// what unblocks this line.
 static_assert(std::is_same<::nros::Service<StubService>::SharedPtr,
-                           std::shared_ptr<::nros::Service<StubService>>>::value,
-              "Service<S>::SharedPtr must be std::shared_ptr<Service<S>>");
+                           ::nros::ServiceHandle<StubService>>::value,
+              "Service<S>::SharedPtr must be the two-word arena handle");
+static_assert(sizeof(::nros::Service<StubService>::SharedPtr) == 2 * sizeof(void*),
+              "the dispatch service handle must stay two words");
+static_assert(std::is_same<::nros::Service<StubService>::ConstSharedPtr,
+                           ::nros::Service<StubService>::SharedPtr>::value,
+              "ConstSharedPtr is the same handle: there is no const/mutable distinction to "
+              "draw over a registration that exposes no operation on the entity");
+static_assert(std::is_same<::nros::Service<StubService>::SharedPtr::element_type,
+                           ::nros::Service<StubService>>::value,
+              "ServiceHandle<S>::element_type names the dispatch service");
+// And the half that makes that name honest: the taking API is NOT reachable
+// through `Service<S>`. Same REACHABILITY shape as `has_take` above, and for
+// the same measured reason — `take_request` on a dispatch service used to hand
+// NROS_SERVICE_SERVER_SIZE zero bytes to the FFI, with `initialized_` true and
+// nothing on the path checking.
+template <typename T, typename = void> struct has_take_request : std::false_type {};
+template <typename T>
+struct has_take_request<T,
+                        decltype(void(std::declval<T&>().take_request(
+                            std::declval<typename T::RequestType&>(), std::declval<int64_t&>())))>
+    : std::true_type {};
+static_assert(!has_take_request<::nros::Service<StubService>>::value,
+              "phase-456 W5: the dispatch service must not carry take_request() -- the arena "
+              "owns the server and this object has no storage to take from");
+static_assert(has_take_request<::nros::PollService<StubService>>::value,
+              "phase-456 W5: the poll service is where take_request() went");
 static_assert(std::is_same<::nros::Client<StubService>::SharedPtr,
                            std::shared_ptr<::nros::Client<StubService>>>::value,
-              "Client<S>::SharedPtr must be std::shared_ptr<Client<S>>");
+              "Client<S>::SharedPtr is still std::shared_ptr<Client<S>> -- phase-456 W5 did "
+              "NOT flip it. W3 measured the shape a ClientHandle<S> would take (two words "
+              "plus async_send_request), but the FUTURE-style create_client<S>(name, qos) is "
+              "the same collision the poll create_service was, and splitting a PollClient<S> "
+              "out is its own item");
 static_assert(std::is_same<::nros::Timer::SharedPtr, std::shared_ptr<::nros::Timer>>::value,
               "Timer::SharedPtr must be std::shared_ptr<Timer>");
 static_assert(std::is_same<rclcpp::Timer::SharedPtr, std::shared_ptr<rclcpp::Timer>>::value,
@@ -282,7 +352,13 @@ static_assert(sizeof(::nros::HeapString) == sizeof(char*) + 2 * sizeof(size_t),
 
 // Instantiate the ported node's members so the bodies above are type-checked.
 inline void instantiate() {
-    ::nros::Publisher<StringMsg>::SharedPtr pub = std::make_shared<::nros::Publisher<StringMsg>>();
+    // phase-456 W5 — this line used to read
+    // `= std::make_shared<::nros::Publisher<StringMsg>>()`. There is no
+    // `make_shared` for a publisher any more, and there is nothing to allocate:
+    // the entity IS the member. `= nullptr` is the ported spelling
+    // `Owned<T>` exists to accept, and the publisher moves in later from
+    // `create_publisher`, exactly as `owned_publisher_ported_shape.cpp` shows.
+    ::nros::Publisher<StringMsg>::SharedPtr pub = nullptr;
     rclcpp::Timer::SharedPtr timer;
     (void)pub;
     (void)timer;

@@ -48,6 +48,7 @@
 #include "nros/action_client.hpp"
 #include "nros/polling_action_server.hpp"
 #include "nros/polling_action_client.hpp"
+#include "nros/polling_service.hpp"
 #include "nros/polling_subscription.hpp"
 #include "nros/parameter.hpp"
 // phase-426 W4 — the ONE parameter facade. Forwards a node's
@@ -430,11 +431,55 @@ enum class FutureReturnCode {
 
 } // namespace rclcpp
 
-// The node call-shape adapter and the verbs that take one. `std::shared_ptr` is
-// in `rclcpp::Node`'s every signature — `std::make_shared<rclcpp::Node>(…)` is
-// how a ported file constructs it and `create_publisher` hands one back — so
-// where `<memory>` / `<string>` / `<vector>` / `<functional>` are absent the
-// type is absent with them.
+// -- the ported publisher line, UNGATED — phase-456 W5 ------------------------
+//
+// `auto pub = node->create_publisher<M>("chatter", 10);` compiles on every
+// target now, including `-ffreestanding -nostdinc++` against Zephyr's and
+// ThreadX's minimal libcpp. It returns `Publisher<M>::SharedPtr`, which is
+// `nros::Owned<Publisher<M>>` — the publisher by value, `operator->` for
+// `pub->publish(m)`, no allocator, no control block, no `<memory>`.
+//
+// WHAT THE NODE STOPPED DOING, stated because it is a behaviour change.
+// The hosted body used to `make_shared` the publisher and push a second
+// reference into `hosted().owned_entities`, so the node co-owned it and a
+// ported body could drop the returned pointer mid-expression
+// (`node->create_publisher<M>(…)->publish(m);`) and still have a live
+// publisher afterwards. `Owned<T>` is SOLE ownership, so there is no second
+// reference to keep: the entity is destroyed when the holder is. For the
+// expression above that is still correct — the temporary outlives the
+// full-expression — and for the member pattern the corpus actually uses
+// (`publisher_ = this->create_publisher<M>(…)`) it is identical to upstream,
+// where the node is the last owner. What is gone is a publisher that survives
+// its own handle, which upstream does not give either once the node drops it.
+//
+// phase-456 W4 measured that the node was never an ARENA owner here: nothing
+// registers a publisher and `EntryKind` has no publisher kind, so the retention
+// was retention and nothing more. The comment that used to sit on it claimed
+// the arena stored `&entity`, which was false in both halves and is the kind of
+// copied rationale that teaches the next reader the wrong model.
+namespace rclcpp {
+template <typename M>
+inline typename Publisher<M>::SharedPtr Node::create_publisher(const char* topic,
+                                                               const ::nros::QoS& qos) {
+    Publisher<M> p;
+    ::rclcpp::detail::require_created(this->create_publisher<M>(p, topic, qos), "create_publisher",
+                                      topic);
+    return typename Publisher<M>::SharedPtr(::nros::tr::forward_rvalue(p));
+}
+
+template <typename M>
+inline typename Publisher<M>::SharedPtr Node::create_publisher(const char* topic, ::size_t depth) {
+    return this->create_publisher<M>(topic, ::nros::QoS(static_cast<uint32_t>(depth)));
+}
+} // namespace rclcpp
+
+// The node call-shape adapter and the verbs that take one. `std::string` /
+// `std::vector` / `std::function` are in these signatures — `std::make_shared
+// <rclcpp::Node>(…)` is how a ported file constructs the node, the graph
+// queries answer in `std::vector`, and the parameter facade is keyed on
+// `std::string` — so where those headers are absent the overloads are absent
+// with them. `create_publisher` no longer needs the gate and has left it
+// (above); the rest have not, and phase-456 W6 records exactly which and why.
 #if defined(NROS_CPP_HAS_SHARED_PTR) && defined(NROS_CPP_HAS_STD_STRING) &&                        \
     defined(NROS_CPP_HAS_STD_VECTOR) && defined(NROS_CPP_HAS_STD_FUNCTION)
 
@@ -516,25 +561,9 @@ namespace nros {
 
 namespace rclcpp {
 template <typename M>
-inline ::std::shared_ptr<Publisher<M>> Node::create_publisher(const ::std::string& topic,
-                                                              const ::nros::QoS& qos) {
-    auto p = ::std::make_shared<Publisher<M>>();
-    ::rclcpp::detail::require_created(this->create_publisher<M>(*p, topic.c_str(), qos),
-                                      "create_publisher", topic.c_str());
-    // OWNERSHIP: upstream's node owns the publishers it creates, and a ported
-    // body may drop the returned pointer at the end of the full-expression
-    // (`node->create_publisher<M>(…)->publish(m);`), so the node keeps a
-    // reference.
-    //
-    // phase-456 W4 — this comment used to read "the arena stores `&entity` as
-    // its dispatch context and there is no unregister". For a PUBLISHER both
-    // halves are false: nothing registers it and the arena holds nothing of it
-    // (`EntryKind` has no publisher, and the Rust `create_publisher` returns an
-    // `EmbeddedPublisher<M>` by value). The retention is still right; the
-    // reason was copied from the dispatch entities, and a rationale that makes
-    // the next reader believe a publisher is an arena entity is worse than none.
-    this->hosted().owned_entities.push_back(p);
-    return p;
+inline typename Publisher<M>::SharedPtr Node::create_publisher(const ::std::string& topic,
+                                                               const ::nros::QoS& qos) {
+    return this->create_publisher<M>(topic.c_str(), qos);
 }
 } // namespace rclcpp
 
@@ -542,9 +571,9 @@ namespace nros {} // namespace nros
 
 namespace rclcpp {
 template <typename M>
-inline ::std::shared_ptr<Publisher<M>> Node::create_publisher(const ::std::string& topic,
-                                                              ::size_t depth) {
-    return this->create_publisher<M>(topic, ::nros::QoS(static_cast<uint32_t>(depth)));
+inline typename Publisher<M>::SharedPtr Node::create_publisher(const ::std::string& topic,
+                                                               ::size_t depth) {
+    return this->create_publisher<M>(topic.c_str(), ::nros::QoS(static_cast<uint32_t>(depth)));
 }
 } // namespace rclcpp
 
@@ -698,13 +727,17 @@ namespace nros {
 
 namespace rclcpp {
 template <typename S>
-inline ::std::shared_ptr<Service<S>> Node::create_service(const ::std::string& name,
-                                                          const ::nros::QoS& qos) {
-    auto s = ::std::make_shared<Service<S>>();
-    ::rclcpp::detail::require_created(this->template create_service<S>(*s, name.c_str(), qos),
+inline ::nros::Owned<::nros::PollService<S>> Node::create_service(const ::std::string& name,
+                                                                  const ::nros::QoS& qos) {
+    // phase-456 W5 — the POLL server, by value. `Service<S>::SharedPtr` is a
+    // dispatch handle now, and this factory exists precisely to be
+    // `->take_request()`'d, so it must hand back something dereferenceable.
+    // `Owned<PollService<S>>` is that and costs no allocator; the node keeps no
+    // second reference because there is no second reference to keep.
+    ::nros::PollService<S> s;
+    ::rclcpp::detail::require_created(this->template create_service<S>(s, name.c_str(), qos),
                                       "create_service", name.c_str());
-    this->hosted().owned_entities.push_back(s);
-    return s;
+    return ::nros::Owned<::nros::PollService<S>>(::nros::tr::forward_rvalue(s));
 }
 } // namespace rclcpp
 
@@ -712,14 +745,18 @@ namespace nros {} // namespace nros
 
 namespace rclcpp {
 template <typename S, typename F, typename>
-inline ::std::shared_ptr<Service<S>> Node::create_service(const ::std::string& name, F callback,
-                                                          const ::nros::QoS& qos) {
-    auto s = ::std::make_shared<Service<S>>();
-    this->hosted().owned_entities.push_back(s);
+inline typename Service<S>::SharedPtr Node::create_service(const ::std::string& name, F callback,
+                                                           const ::nros::QoS& qos) {
+    // phase-456 W5 — the arena owns the server and (W3) the handler, so this
+    // allocates nothing and there is no cell to retain. The `owned_entities`
+    // push that used to stand here was LOAD-BEARING while the arena held
+    // `&*s` — dropping the caller's pointer would have dangled it — and became
+    // pure retention when W3 moved the context to the handler.
+    Service<S> s;
     ::rclcpp::detail::require_created(
-        this->template create_service<S>(*s, name.c_str(), callback, qos), "create_service",
+        this->template create_service<S>(s, name.c_str(), callback, qos), "create_service",
         name.c_str());
-    return s;
+    return typename Service<S>::SharedPtr(this->executor_handle(), s.handle_id());
 }
 } // namespace rclcpp
 
@@ -727,11 +764,11 @@ namespace nros {} // namespace nros
 
 namespace rclcpp {
 template <typename S, typename F, typename, typename>
-inline ::std::shared_ptr<Service<S>> Node::create_service(const ::std::string&, F,
-                                                          const ::nros::QoS&) {
+inline typename Service<S>::SharedPtr Node::create_service(const ::std::string&, F,
+                                                           const ::nros::QoS&) {
     static_assert(::rclcpp::detail::refuse<F>::value,
                   NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK);
-    return ::std::shared_ptr<Service<S>>();
+    return typename Service<S>::SharedPtr();
 }
 } // namespace rclcpp
 

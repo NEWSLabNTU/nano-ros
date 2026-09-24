@@ -373,6 +373,26 @@ KEY_OVERRIDES = {
     "Client::set_callbacks": "action",
     "Client::try_recv_feedback": "action",
     "Client::try_recv_feedback_sized": "action",
+    # phase-456 W5 — the same shape one topic over. The pubsub pattern claims
+    # any `try_recv`, which is right for `PollSubscription::try_recv*` and
+    # wrong for a service REQUEST: nothing about the pubsub API is incomplete
+    # without a way to drain a service request. It only surfaced now because
+    # the deprecated spelling had no ledger row until the poll server became
+    # its own type — `Service::try_recv_request` would have routed here too.
+    # An override rather than a narrowed pattern, for the reason stated above:
+    # `try_recv(?!_request)` would be a pattern edit made to fix two names.
+    "PollService::try_recv_request": "service",
+    "PollService::try_recv_request_sized": "service",
+    # phase-456 W5, the same shape again — issue 1437's two granted-QoS
+    # accessors spell the ENDPOINT in the verb, so `subscription` and
+    # `publisher` are literally in the names and pubsub takes both. They are
+    # service rows: the endpoints they report are the two halves of one service
+    # server, and nothing about the pubsub API is incomplete without a way to
+    # read a service's granted QoS. The dispatch half's pair never surfaced
+    # because it matches `rclcpp::Service` and so carries no ledger row; the
+    # poll half's does, because `PollService<S>` is ours.
+    "PollService::get_request_subscription_actual_qos": "service",
+    "PollService::get_response_publisher_actual_qos": "service",
 }
 
 
