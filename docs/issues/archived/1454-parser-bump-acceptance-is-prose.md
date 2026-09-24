@@ -3,7 +3,7 @@ id: 1454
 title: "A `play_launch_parser` bump's acceptance is PROSE — the named tests did
   not touch the parser, and the one that does reads a fixture nothing forces to
   be rebuilt"
-status: open
+status: resolved
 type: tech-debt
 area: build, testing
 severity: medium
@@ -164,3 +164,134 @@ the `nav2_compat_smoke` fixture against one parser, put a DIFFERENT parser on
 `PATH`, and require `n11_launch_xml_ros2_compat_smoke` to stop reporting a pass.
 A green run after a correct rebuild proves nothing — that is already green
 today, which is the whole defect.
+
+## Resolution — the edge, plus an assertion, plus a correction to WHICH parser
+
+Taken: fix-candidate **3** (record the parser's identity and assert it) as the
+loud half, on top of candidate **1**'s *intent* expressed the way candidate 1's
+own recorded hole demands — content, never a store path. Candidate 4 came for
+free: the rebuild command is printed by the failure rather than remembered from
+a comment, so `just/workspace.just` no longer has an acceptance sentence that
+can go stale. Candidate 2 (the fixture cache key) and candidate 5 (gating the
+bump from a diff) were not taken; the reasons are below.
+
+### The measurement that changed the fix
+
+Both prose answers named the wrong tool, so an edge on the obvious one would
+have watched a file no build reads. Traced with `strace -f -e trace=execve`:
+
+| build | traced `execve` | `nros-launch-resolve` | store `play_launch_parser` |
+| --- | --- | --- | --- |
+| `nav2_compat_smoke` (cargo-build row, full + successful) | 29,828 | 2 | **0** |
+| `pure_c_workspace` (cmake-configure row) | 37,244 | 2 | **0** |
+
+The SDK-store binary (`~/.nros/sdk/play_launch_parser/bin/`) is a standalone
+CLI **no build path spawns**. What parses is the `play_launch_parser` crate
+**statically linked into `nros-launch-resolve`** from the
+`packages/cli/third-party/play_launch` submodule: `stage_tree` runs `nros
+sync`, `run_sync` spawns the resolver by absolute path (never `$PATH` — issue
+0285), and the resolved SystemModel is what the entry's `build.rs` bakes. A
+static sweep agrees: no Rust, cmake or example source in the tree executes the
+store binary; the only references are a `command -v` presence check, `just
+doctor`, and `activate.sh`'s PATH.
+
+So the issue's own framing — "a build-stage fixture that drives the parser
+**with `play_launch_parser` on PATH**" — carried the same defect it documents,
+one layer in: the clause was inherited from PR #1130's prose and had never been
+measured. The fixture IS the binding acceptance; the binary it binds is the
+submodule half.
+
+### What landed
+
+1. **One spelling for the identity** — `scripts/build/launch-resolver-identity.sh`,
+   `nros_launch_resolver_identity <repo_root>`. It reports the `play_launch`
+   commit the resolver compiled in (`--version`'s `NROS_PLAY_LAUNCH_SHA`),
+   falling back to the binary hash for a resolver predating that field, and
+   exits 1 with no output when there is no resolver so each caller spells its
+   own absent-marker — the ladder `codegen-fingerprint.sh` established, not a
+   second one. Sourceable AND runnable, because the Rust fixture resolver has
+   to ask the same question and a second implementation is how two answers
+   drift apart.
+
+   Why that identity and not a `rerun-if-changed` on the store path: the store
+   accumulates (issue 0500), so a bump changes the PATH rather than the file —
+   an edge recorded against the old path names something that still exists and
+   never fires, which is the hole candidate 1 recorded against itself, and it
+   puts a host-dependent absolute path into a fingerprint, which is issue 0491.
+   The commit is also not a NEW declared fact: `nros sync` already stamps it
+   into every model it resolves (`meta.resolver`, issue 0427) and
+   `model_gate::provenance_stale` already treats a change in it as staleness.
+   This is that rule one layer up, on the artifact the model gets baked into.
+
+2. **The edge** — `compile-check-signature.sh` folds the identity into
+   `.inputsig` beside `tool:nros`, so `scripts/test/compile-check-stale.sh` and
+   the `check-fixtures-stale` preflight report a parser bump as staleness.
+   Unconditional, the same over-approximation `tool:nros` already accepts.
+
+3. **The assertion** — `compile-check-fixtures.sh` writes
+   `tool:nros-launch-resolve=<commit>` into `.compile-ok` (one helper,
+   `nros_write_compile_ok`, replacing eight hand-written `date >` sites), and
+   `nros_tests::fixtures::require_compile_check{,_bin}` refuses a fixture baked
+   by a different parser — naming both commits and the rebuild command. This is
+   `require_west_fixture`'s `tool:nros` guard (#185) applied to the lane that
+   never had one, and the two now share one reader. The stamp records the
+   resolver only for rows whose staging actually ran `nros sync`, because a
+   false stale on an assertion is a hard failure rather than a rebuild.
+
+   Both unknowns are "cannot judge", never "stale": a stamp with no resolver
+   line (every stamp predating this, and every `cxx-syntax` row) and a host
+   with no resolver. The `.inputsig` edge is what calls the first of those
+   stale, which is why the fix is both halves and not either one.
+
+### Demonstrated in the direction that used to pass wrongly
+
+```
+# fixture baked at play_launch 9a610488, then the parser is bumped:
+$ git -C packages/cli/third-party/play_launch checkout --detach eed2ade5
+$ just setup-launch-resolve      # play_launch eed2ade5239c…
+$ cargo nextest run -p nros-tests --test nav2_compat
+  FAIL [0.004s] nros-tests::nav2_compat n11_launch_xml_ros2_compat_smoke
+  Compile-check fixture `nav2_compat_smoke` is STALE — it was built with a
+  DIFFERENT launch parser than the one on disk now.
+    baked by play_launch: 9a61048813da
+    on disk now:          eed2ade5239c
+  Rebuild it:  NROS_FIXTURE_ID=nav2_compat_smoke bash scripts/build/compile-check-fixtures.sh
+
+# negative control — the stamp as the OLD builder wrote it (date only),
+# same bumped parser, same tree:
+$ grep -v 'tool:nros-launch-resolve=' .compile-ok > … && cargo nextest run …
+  PASS [0.079s] n11_launch_xml_ros2_compat_smoke
+
+# the edge half, same state:
+$ bash scripts/test/compile-check-stale.sh "$record"
+  nav2_compat_smoke (stale …/.inputsig)
+```
+
+The control is the point: the pass was indistinguishable from a real one, and
+it still is for anyone who has not rebuilt — which is what `.inputsig` covers.
+
+### Not taken, and why
+
+* **Candidate 2 (the fixture cache key).** The key is `phase-395 W10`
+  shadow-mode: it observes and records, and by construction "cannot skip
+  anything, cannot serve anything, and cannot fail this resolution". Putting
+  the answer there would have made it invisible until that layer goes live.
+* **Candidate 5 (gate the bump from the diff).** Unchanged from the issue's own
+  assessment: "somebody re-ran the acceptance" is not a property of a diff. The
+  stamp makes the artifact answer for itself instead, which is the same
+  guarantee without the proxy.
+
+### Residue
+
+`compile-check-fixtures.sh`'s cmake lane still requires `command -v
+play_launch_parser` and records a lane SKIP without it, on the stated grounds
+that "the C/mixed Entry templates parse launch XML via play_launch_parser" —
+which the 37,244-call trace above measures as false. A host with a provisioned
+resolver but no store binary therefore skips every cmake fixture for a reason
+that is not true. Left alone here deliberately: changing it makes a lane RUN
+where it used to skip, which is a behaviour change that wants its own
+measurement rather than a ride on a fix about freshness. The sentence is MARKED
+false in place with the measurement beside it, because an unmarked false claim
+is what this issue is about; the two other copies of it — `nav2_compat.rs`'s
+module header and `just/workspace.just` — are corrected rather than marked,
+since nothing depends on them being kept.

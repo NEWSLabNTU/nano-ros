@@ -22,6 +22,8 @@ source "$script_dir/build-root.sh"
 source "$script_dir/source-manifest.sh"
 # shellcheck source=scripts/build/codegen-fingerprint.sh
 source "$script_dir/codegen-fingerprint.sh"
+# shellcheck source=scripts/build/launch-resolver-identity.sh
+source "$script_dir/launch-resolver-identity.sh"
 
 IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$record"
 [ -n "$id" ] && [ -n "$builder" ] || {
@@ -47,6 +49,28 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
         printf 'tool:nros\0%s\0' "$fp"
     else
         printf 'tool:nros-absent\0'
+    fi
+
+    # issue 1454 — the SECOND tool these rows are a function of. `stage_tree`
+    # runs `nros sync`, which spawns `nros-launch-resolve` to turn the staged
+    # bringup's launch tree into the SystemModel the build then bakes. That
+    # resolver statically links the parser, so a parser bump changes the baked
+    # plan — and this signature named only `nros`, so a bumped parser moved
+    # nothing the probe examined and the artifact was not called stale. Measured
+    # rather than assumed: over a full `nav2_compat_smoke` build, 29,828 traced
+    # `execve` calls, `nros-launch-resolve` runs twice and the SDK-store
+    # `play_launch_parser` binary zero times.
+    #
+    # Unconditional, exactly like `tool:nros` above and for the same reason: a
+    # row whose build runs no sync (`cxx-syntax`) pays a rebuild it did not
+    # need, which is the over-approximation this lane already accepts. The
+    # `.compile-ok` ASSERTION is the precise half — it records the resolver only
+    # where sync actually ran, because a false stale there is a hard failure
+    # rather than a rebuild.
+    if lr="$(nros_launch_resolver_identity "$repo_root")"; then
+        printf 'tool:nros-launch-resolve\0%s\0' "$lr"
+    else
+        printf 'tool:nros-launch-resolve-absent\0'
     fi
 
     # `cxx-syntax` rows carry no dir — the snippet is resolved by id under

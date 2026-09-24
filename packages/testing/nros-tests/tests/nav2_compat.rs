@@ -11,11 +11,21 @@
 //! Per issue 0041 the compile runs in the **build stage**: the `nav2_compat_smoke`
 //! build-fixture (`compile-check-fixtures.sh`) stages the workspace (rewriting
 //! `@NANO_ROS_ROOT@` + `@NROS_CLI_ROOT@`) + `cargo build -p demo_entry` in the
-//! `demo_entry/` subdir (excluded from the fixture root workspace), with
-//! `play_launch_parser` on PATH. This test INSPECTS the prebuilt
-//! `out/run_plan.rs` + `out/nros-system/nros-plan.json` — no cargo at run time.
-//! If the build emitted the offline `Placeholder` stub (no `play_launch_parser`
-//! at build time), there is no codegen evidence → the test skips.
+//! `demo_entry/` subdir (excluded from the fixture root workspace). This test
+//! INSPECTS the prebuilt `out/run_plan.rs` + `out/nros-system/nros-plan.json`
+//! — no cargo at run time. If the build emitted the offline `Placeholder` stub,
+//! there is no codegen evidence → the test skips, carrying the `// reason:`
+//! line the stub records (issue 0683).
+//!
+//! WHICH parser this binds, measured rather than repeated (issue 1454). This
+//! header said "with `play_launch_parser` on PATH", and the SDK-store binary of
+//! that name is not what runs: over a full fixture build traced with
+//! `strace -f -e trace=execve` (29,828 calls) it is spawned ZERO times. The
+//! launch tree is resolved by `nros sync` → `nros-launch-resolve`, which
+//! statically links the parser crate from the `packages/cli/third-party/play_launch`
+//! submodule. `require_compile_check` refuses this fixture when the resolver on
+//! disk is not the one that baked it, so the pass below is about a parser
+//! somebody is actually running.
 
 use std::{
     fs,

@@ -18,23 +18,39 @@ CORROSION_VERSION := "v0.6.1"
 # superseded by `NEWSLabNTU/play_launch`, which vendors the same crate at
 # `src/ros-launch-resolve/parser/crates/play_launch_parser`.
 #
-# WHAT TO RE-RUN WHEN THE PIN MOVES. This used to say "the L.6 gate tests
-# `phase212_l6_launch_synth::*`", and that acceptance is STALE (issue 1413):
-# issue 0381 rewrote those tests to synthesise in-process
-# (`plan.rs synthesise_self_model`) and deleted the
-# `play_launch_parser_available()` gate, so they never shell to the parser and
-# cannot gate a bump of it — measured, by running them with each parser on PATH
-# in turn and getting the same result.
+# WHAT TO RE-RUN WHEN THE PIN MOVES — NOTHING TO REMEMBER, the tree now asks
+# (issue 1454). Two prose answers lived here and both were wrong, so the third
+# is a MECHANISM rather than a sentence:
 #
-# The acceptance that actually binds the binary is `nav2_compat`'s
-# `n11_launch_xml_ros2_compat_smoke`: a BUILD-STAGE fixture whose `build.rs`
-# drives `nros_build::generate_run_plan` over a nav2-shaped
-# `launch/system.launch.xml` with `play_launch_parser` on PATH, after which the
-# test inspects the emitted `run_plan.rs` + `nros-plan.json`. So the fixture
-# must be REBUILT against the new parser first
-# (`NROS_FIXTURE_ID=nav2_compat_smoke scripts/build/compile-check-fixtures.sh`),
-# or the test inspects a museum artifact and passes on the old one. The six
-# `record.json` consumers are worth running beside it.
+#   * "the L.6 gate tests `phase212_l6_launch_synth::*`" — issue 0381 rewrote
+#     those to synthesise in-process and deleted the
+#     `play_launch_parser_available()` gate, so they answer the same either way
+#     (measured, with each parser on PATH in turn);
+#   * "`nav2_compat`'s `n11_launch_xml_ros2_compat_smoke` … with
+#     `play_launch_parser` on PATH" — that fixture IS the binding acceptance,
+#     and the clause about the PATH binary was not: over a full fixture build
+#     traced with `strace -f -e trace=execve` (29,828 calls) the SDK-store
+#     `play_launch_parser` runs ZERO times. What parses is
+#     `nros-launch-resolve`, which STATICALLY LINKS the parser crate from the
+#     `packages/cli/third-party/play_launch` submodule; `nros sync` spawns it,
+#     and the store binary is a standalone CLI no build path reaches. The same
+#     trace over a `cmake-configure` row (37,244 calls) says the same.
+#
+# So a bumped parser is a bumped `nros-launch-resolve`, and the fixture now
+# RECORDS which one baked it: `compile-check-fixtures.sh` stamps
+# `tool:nros-launch-resolve=<play_launch commit>` into `.compile-ok` and
+# `compile-check-signature.sh` folds the same identity into `.inputsig`. A
+# fixture baked by a different parser then FAILS
+# (`nros_tests::fixtures::require_compile_check`, naming both commits and the
+# rebuild command) instead of asserting real codegen evidence from a parser
+# nobody is running. One spelling for the identity:
+# `scripts/build/launch-resolver-identity.sh`, which also records why it is the
+# commit and not a store path (issues 0491/0500).
+#
+# Rebuild it with
+# `NROS_FIXTURE_ID=nav2_compat_smoke bash scripts/build/compile-check-fixtures.sh`
+# — the failure prints that line. The six `record.json` consumers are worth
+# running beside it.
 #
 # NO CONSTANT LIVES HERE, and two sentences that used to claim one did (issue
 # 1413). `install-play-launch-parser` has been a one-line forwarder to
