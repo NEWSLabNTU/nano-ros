@@ -902,6 +902,37 @@ const KCONFIG_KNOBS: &[(&str, &str)] = &[
     ),
     ("NROS_ACTION_INBOX_BYTES", "CONFIG_NROS_ACTION_INBOX_BYTES"),
     ("NROS_ACTION_INBOX_DEPTH", "CONFIG_NROS_ACTION_INBOX_DEPTH"),
+    // issue 1490 -- three knobs this table forwarded to nothing.
+    //
+    // MEASURED, not inferred: `CONFIG_NROS_SUBSCRIBER_RING_DEPTH=7` in
+    // `examples/zephyr/rust/talker/prj.conf` reached the build's `.config` and
+    // the Rust half still compiled `SUBSCRIBER_RING_DEPTH: usize = 4`. The
+    // baseline could not have shown it -- unset, the Kconfig default and the
+    // crate default are both 4, so "delivered" and "fell back to the same
+    // number" are one observation. Issue 0460, in the crate that resolves
+    // through this table.
+    //
+    // They were invisible to `check-kconfig-knob-forwarding` because its
+    // per-knob arm asked whether a reader MENTIONS the name, and all three are
+    // mentioned here -- in the `rerun-if-env-changed` list above, and at the
+    // call site. That is issue 0751's finding one arm over; the gate now asks
+    // a tabulating reader for a ROW.
+    (
+        "ZPICO_SUBSCRIBER_RING_DEPTH",
+        "CONFIG_NROS_SUBSCRIBER_RING_DEPTH",
+    ),
+    // The param-service inbox pair is issue 1233's shape rather than plain
+    // 0460: `nros-node` reads the same two knobs through the DERIVED spelling
+    // and so takes the Kconfig value, while this crate took the default -- two
+    // crates sizing ONE geometry from two numbers.
+    (
+        "NROS_PARAM_SERVICE_INBOX_BYTES",
+        "CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES",
+    ),
+    (
+        "NROS_PARAM_SERVICE_INBOX_DEPTH",
+        "CONFIG_NROS_PARAM_SERVICE_INBOX_DEPTH",
+    ),
 ];
 
 /// issue 0827 — a floored knob must REFUSE a value below its floor, never
