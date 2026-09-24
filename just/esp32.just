@@ -242,8 +242,10 @@ build-fixtures: build-qemu build-logging-smoke
     #!/usr/bin/env bash
     bash scripts/dev/deprecated-scope-alias.sh esp32 build-fixtures "just build esp32"
     set -e
-    # issue 1395 — same rule as the Zephyr lane, for the other provisioned root
-    # the ownership guard sweeps: `esp-idf-workspace` (phase-440 W5). Reached
+    # issue 1395 — same rule as the Zephyr lane. The ownership guard sweeps
+    # every provisioned root, and this call is kept for that sweep, not for any
+    # one root: phase-468 W2 removed the `esp-idf-workspace` root this comment
+    # used to name. Reached
     # via a lane build this is already answered by `build-test-fixtures`;
     # `just build esp32` and `just esp32 build-fixtures` reach this lane
     # through neither, which is the gap issue 1395 measured for zephyr.
@@ -276,17 +278,6 @@ build-fixtures: build-qemu build-logging-smoke
     # carries `no_default_features` + `features = ["rmw-zenoh"]`, which is why it
     # lands in a variant group dir rather than beside the peers above.
     bash scripts/build/fixtures-build.sh linux rust --id int32-sink-zenoh
-    # esp-idf build-stage fixtures (issue 0041): build the idf.py ELF the
-    # cli_bringup_esp_idf test consumes, so it doesn't run idf.py at test time.
-    # Self-gates on idf.py/IDF env; non-fatal (a failed build leaves no stamp,
-    # and the test skips per tier). Slow (~7 min/ELF), so scoped to this esp
-    # lane, not build-test-fixtures.
-    # issue 0700 — NO `|| true`. It discarded the builder's exit code, so a
-    # fixture that failed to build reported `ESP32 fixtures built.` and the lane
-    # returned RC=0 having produced nothing. The builder now exits 0 for an
-    # absent toolchain (a real skip) and non-zero only when a build was
-    # attempted and produced nothing, so this can be load-bearing again.
-    bash scripts/build/idf-fixtures.sh
     echo "ESP32 fixtures built."
 
 # Build every ESP32 tier: core artifacts, examples, and test fixtures.
