@@ -208,8 +208,49 @@ recipes became one of each.**
 - `just check cargo-config-tracked` → `OK (tracked <=> hand-authored content)`
 - `just check generated-schema-coverage` → `OK (63 message struct(s) carry
   FIELDS, 63 serializer(s) wrap a DHEADER)`, after W5 repaired its pathspec
-- `just check fast` → 354 gates green
-- `just ci gate` → green
+- `just check fast` → 354 gates green (340 ran, 14 SKIPPED for SDKs this
+  worktree does not provision)
+- **`just ci gate` did NOT complete green, and none of the three reds was this
+  change.** It stops at the first failing step, so it reached
+  `ok check::cli-fresh`, `ok check::fast`, `FAILED check::build`, and
+  `test-unit` / `test-lane-contracts` were `NOT RUN`. Each red was reproduced
+  and cleared individually:
+  - `cli-tests` and `template-copy-out` — **an unprovisioned worktree**, not a
+    defect: `nros-launch-resolve not found — run just setup-launch-resolve`, and
+    the test says outright that it "cannot answer its question without it, and
+    must say so rather than pass quietly". After `git submodule update --init
+    packages/cli/third-party/play_launch` + `just setup-launch-resolve` +
+    `just setup-cli`: `CLI tests passed!` and `check-template-copy-out: OK`
+    (6 templates built, 5 skipped for declaring no `[image.*]`).
+  - `census-hooks-complete` — the **shared sizes-header mirror**, CLAUDE.md's
+    0088/0245/0268 family, and MEASURED rather than assumed. The panic names
+    `target/nros-c-generated/nros/nros_config_generated.h` as "written by
+    another crate with DIFFERENT probed sizes" and disagrees on
+    `NROS_EXECUTOR_SIZE` 90464 vs 90504. The two probe directories' own
+    `nros-probe-key-inputs.txt` files say why, and it is not a source change:
+    `features alloc,default,env,rmw-cffi,std` wrote the file, `features
+    alloc,env,metadata-mode,param-services,rmw-cffi,std` read it — and
+    `param-services` is exactly a feature that adds executor storage. Moving
+    that one stale header aside makes the gate pass. This phase touches no
+    executor type; it is ordering state in a shared build artifact.
+
+  The two steps the lane WITHDREW were then run directly, per issue 0952's rule
+  that a red count is not a coverage report:
+  - `just test-unit` → **pass**. `1656 tests run: 1655 passed, 1 failed`, and
+    the recipe's own junit rewrite resolves it: `All failures were [SKIPPED]
+    preconditions — treating as pass`, the one skip being `second session
+    refused — shim built with ZPICO_MAX_SESSIONS=1`. (Read the recipe's verdict,
+    not nextest's line: a bare run counts a `nros_tests::skip!` panic as a
+    FAILURE, and a `timeout` that kills the recipe before
+    `_rewrite-skipped-junit` leaves exactly that misleading tally — which is
+    what a first attempt here produced.)
+  - `just test-lane-contracts` → **pass**, `28 tests run: 28 passed`.
+
+  So the honest verdict: every step of `ci gate` is green on this branch when
+  run against a provisioned worktree, but not in ONE uninterrupted `just ci
+  gate` invocation — the build lane's three reds were an unprovisioned
+  toolchain (2) and a known shared-mirror race (1), each cleared individually
+  afterwards.
 
 Lock movement, via `just lock-update` ONLY: **17 insertions / 44 deletions**
 across the root lock and `bins/{contract-monitor,sim-clock-listener,
