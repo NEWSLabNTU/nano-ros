@@ -204,10 +204,34 @@ setup:
     #
     # 78 is interpreted; any OTHER non-zero is a real error and still fails.
     # `rc=0; cmd || rc=$?` and not a bare assignment — issue 1249.
+    #
+    # ISSUE 1477 — the interpretation has to ATTRIBUTE the line above it.
+    # `just` announces every non-zero recipe exit itself, from the SUB-process,
+    # before this shell can look at the code:
+    #
+    #     error: recipe `provision-zenohd` failed with exit code 78
+    #
+    # Nothing in the recipe can suppress that and nothing should: it is true, the
+    # recipe did exit non-zero. What it is not is a failure — 78 is the whole
+    # protocol, and the very next line is this handler saying so. The fixture
+    # fan-out never has this problem because it redirects each lane's `just` into
+    # a log and prints its own `== <lane> == SKIPPED (reason)`; this is the one
+    # interpreted producer whose sub-`just` writes straight to the console, so
+    # this is the one place that owes the reader a decoding. A bare `error: …
+    # exit code 78` in a nightly log, three lines from anything explaining it, is
+    # what a reader learns to scroll past.
     rc=0
     just ci provision-zenohd || rc=$?
     if [ "$rc" -eq 78 ]; then
-        echo "native setup: rmw_zenohd not provisioned — zenoh lanes will SKIP"
+        printf '%s\n' \
+            "native setup: the 'recipe provision-zenohd failed with exit code 78' line above" \
+            "              is EXPECTED and is NOT a failure. just announces every non-zero" \
+            "              recipe exit; 78 is the lane-skip protocol (sysexits EX_CONFIG," \
+            "              scripts/build/lane-skip.sh) and this is the caller that reads it" \
+            "              (gate: check-lane-skip-interpreters). Issue 1477." \
+            "native setup: rmw_zenohd not provisioned — zenoh lanes will SKIP. RFC-0075: we" \
+            "              ship no router, it comes from ROS, so a host with no ROS install" \
+            "              cannot have one and the zenoh cells report [SKIPPED:capability]."
     elif [ "$rc" -ne 0 ]; then
         exit "$rc"
     fi
