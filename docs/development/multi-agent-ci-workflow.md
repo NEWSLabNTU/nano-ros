@@ -149,6 +149,71 @@ host bind mounts, no socket, caches as named volumes.
 Runner **v2.329.0 or later** is required to configure or re-register since
 GitHub's 2026-06-12 change; the image pins it.
 
+#### A missing dependency on a self-hosted runner is fixed in the IMAGE
+
+The runner is a container, started by `scripts/ci/runner-container.sh` on a
+workstation. So when a self-hosted job fails for want of something, there is one
+place the fix goes — the image — and one place it must not go, which is an
+`apt install` somebody types on the box.
+
+This is structural, not a style preference:
+
+- **The running container cannot install it anyway.** It runs `--cap-drop ALL
+  --security-opt no-new-privileges` as a non-root user, so `sudo apt` inside a
+  job fails even where the package name is right. `runner-provision.sh` also
+  never sudoes and never installs a system package, by its own rule
+  (phase-327 W2 / issue 0368 F1: sudo-less installers run first, the
+  system-package step only *prints*). Between them, a system-wide dependency has
+  exactly one producer.
+- **A host install is invisible and unreproducible.** It is not in the image, so
+  a fresh container does not have it; it is not in `nros-sdk-index.toml`, so
+  nothing describes it; and nobody can later say what that runner actually
+  carries. That is issue 0833's shape — a machine whose toolchain is a thing no
+  file accounts for — and it is exactly the state `runner-provision.sh` exists
+  to prevent for everything *else* the runner needs.
+- **The image is generated from the index**, not hand-written.
+  `runner-container.sh` resolves `[prereq.*]` through
+  `scripts/sdk/prereq-packages.py` and `[python.*]` through
+  `scripts/sdk/python-packages.py`. A literal package list in either the script
+  or the Dockerfile is the second source of truth the whole arrangement exists
+  to avoid.
+
+The loop, in full:
+
+```sh
+# 1. Declare it in nros-sdk-index.toml — the layer it belongs to, with its
+#    apt position: `apt = [..]` xor `apt_refused = "<why>"` (issue 1481).
+# 2. Rebuild the image. This regenerates the Dockerfile from the index first.
+scripts/ci/runner-container.sh <labels> --build
+# 3. Restart. `--ephemeral` means the old container finishes its job and exits;
+#    the supervision loop (`just runner-loop-container`) starts the new image.
+scripts/ci/runner-container.sh <labels> --run
+# 4. Ask what the runner now claims and whether the claims hold.
+scripts/ci/runner-doctor.sh <labels>
+#    `--check` on either script prints the plan and touches nothing.
+```
+
+`runner-doctor.sh` reports per label — `[OK]` with the version it found, or
+`[MISSING]` with what it looked for — and the container's entrypoint runs it
+**before** registering, exiting 78 (`EX_CONFIG`) rather than joining the pool
+with a label it cannot keep. A runner that appears on GitHub has already passed
+it.
+
+What does *not* go in the image: anything installable as the `runner` user, which
+persists in the named volumes — rustup, the cargo tools, the SDK store
+`nros setup` writes, `west` in the in-repo Zephyr venv, the checkout. The split
+is **who can install it**, not preference: root-only things are baked,
+user-writable things are provisioned by the same verbs a contributor runs.
+
+The worked example is the `[python.*]` layer (issues 1457, 1482). Tier-2 nightly
+died on `ModuleNotFoundError: No module named 'catkin_pkg'` eleven minutes into
+a Zephyr build, and the first three readings of it were "the runner needs three
+pip installs", "the runner needs ROS" and "this needs root, which no agent has".
+All three are the host answer. A ROS-less runner is the *design* — the job's
+labels carry no `nros-ros2`, and the `[python.*]` layer exists precisely so the
+cyclone msg→IDL road works without a ROS install — and what was actually missing
+was four modules the image never carried.
+
 ## Scripts to own the procedure
 
 Registration should be one command, not a wiki page.

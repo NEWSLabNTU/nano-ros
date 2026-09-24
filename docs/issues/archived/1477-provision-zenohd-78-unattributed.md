@@ -8,7 +8,7 @@ area: [ci, tooling]
 severity: low
 found: 2026-09-23
 resolved_in: "phase-466 follow-up (this commit)"
-related: [1464, 1226, 1070, 1025, 0599, 0650]
+related: [1464, 1226, 1070, 1025, 0599, 0650, 1482]
 ---
 
 ## Symptom
@@ -84,3 +84,37 @@ the pairwise cover skips. Whether that is intended or a runner-provisioning gap
 like the `catkin_pkg` one belongs to whoever owns that box — installing
 `ros-humble-rmw-zenoh-cpp` there needs root on a self-hosted runner, which no
 agent has.
+
+## CORRECTED — 2026-09-24, issue 1482
+
+The last paragraph frames the remaining question as ownership of a box:
+
+> Whether that is intended or a runner-provisioning gap like the `catkin_pkg`
+> one belongs to whoever owns that box — installing `ros-humble-rmw-zenoh-cpp`
+> there needs root on a self-hosted runner, which no agent has.
+
+Two corrections, and the first is what the `catkin_pkg` comparison was reaching
+for.
+
+**A self-hosted runner here is a container**, started by
+`scripts/ci/runner-container.sh` from an image generated out of
+`nros-sdk-index.toml`. So "needs root on the runner" is not the obstacle it
+reads as: the image build HAS root, and the running container deliberately does
+not — `--cap-drop ALL --security-opt no-new-privileges`, non-root user — which
+means a root-owned dependency has exactly one legitimate producer and it is not
+a person typing `sudo apt` on the workstation. That is the shape 1482 fixed for
+the `[python.*]` layer, and this issue's `catkin_pkg` analogy was right about
+the class while both issues had the remedy pointing at the host.
+
+**But the zenoh half is NOT the same fix**, and it should not be waved through
+on the analogy. `catkin_pkg` is four pure-python modules Ubuntu already packages
+(measured: `ubuntu:22.04` universe carries every one), added to an image that
+stays `FROM ubuntu:22.04`. A router means `ros-humble-rmw-zenoh-cpp`, which
+means the ROS 2 apt archive in the runner image and a base that carries ROS —
+a real widening of what that image trusts and a label (`nros-ros2`) this runner
+does not claim. RFC-0075 ships no router precisely so it comes from a ROS
+install, so the choice is an ROS-carrying runner image or accepting
+`[SKIPPED:capability]` on the zenoh cells.
+
+So: still not fixed here, and still a decision rather than an oversight — but
+the decision is about the IMAGE, not about who has root on a box.

@@ -24,6 +24,18 @@
 # `runner-provision.sh` finishes by running it, so "provisioned" and "actually
 # has it" cannot drift.
 #
+# WHERE A `[MISSING]` LINE GETS FIXED
+#
+# Not by hand on the runner box. A self-hosted runner here IS a container
+# (`runner-container.sh`), so a system-wide dependency is fixed by declaring it
+# in `nros-sdk-index.toml` and rebuilding the image
+# (`runner-container.sh <labels> --build`, then `--run`); anything installable
+# as the `runner` user is fixed by `runner-provision.sh`, which runs the same
+# verbs a contributor runs. Installing it on the host by hand produces a machine
+# nobody can account for and that no fresh container reproduces — issues 1457
+# and 1482, and see the design doc's "A missing dependency on a self-hosted
+# runner is fixed in the IMAGE".
+#
 # TWO WAYS TO USE THIS FILE
 #
 #   executed   scripts/ci/runner-doctor.sh <labels> [--check] [--quiet]
