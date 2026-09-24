@@ -175,9 +175,24 @@ doc-recipe-refs:
 # a box tree — never resolvable here) and DEAD (real debt). Buildless, ~0.08 s,
 # one `cat-file --batch-check` for the whole set. SKIPS on a shallow clone,
 # where a live commit and an unfetched one are indistinguishable.
+#
+# That skip used to be an `echo` and an exit 0, so the lane's "Fast checks
+# passed!" spoke for a gate that verified nothing — issue 0650's defect, and
+# the same lane as issue 1476's. rc 78 puts it in the skip ledger instead.
 [private]
 doc-commit-citations:
-    @python3 scripts/check-doc-commit-citations.py
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rc=0
+    out="$(python3 scripts/check-doc-commit-citations.py)" || rc=$?
+    if [ "$rc" -eq 78 ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip doc-commit-citations "$out"
+        exit 0
+    fi
+    printf '%s\n' "$out"
+    exit "$rc"
 
 # Every `docs/{design,issues}/NNNN-*.md` path written anywhere — prose, issue
 # frontmatter, or a cmake error message — must resolve. Renumbering on an id
@@ -282,9 +297,29 @@ roadmap-claims:
 # here called 12 of 12 citations missing when all twelve were on main. It has
 # teeth where the history exists, which is the pre-push run. Buildless -- git
 # and a file read, nothing else.
+#
+# Issue 1476 -- that first guard covered the wrong negative. A SELF-HOSTED
+# runner's workspace persists, so a `--depth=1` fetch leaves earlier tips in
+# the object store: the cited commits RESOLVED, the graft cut the path to
+# them, and `not an ancestor of HEAD` was printed about three commits on main.
+# Tier 2 and the tier-2 nightly both stopped in a documentation gate before
+# building anything. So the gate has three outcomes now, and rc 78 is the
+# middle one: NOT VERIFIED, recorded in the skip ledger so the lane's closing
+# line names it instead of letting "Fast checks passed!" stand for it.
 [private]
 roadmap-commit-refs:
-    @python3 scripts/check/check-roadmap-commit-refs.py
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rc=0
+    out="$(python3 scripts/check/check-roadmap-commit-refs.py)" || rc=$?
+    if [ "$rc" -eq 78 ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip roadmap-commit-refs "$out"
+        exit 0
+    fi
+    printf '%s\n' "$out"
+    exit "$rc"
 
 # Every ACTIVE roadmap phase carries a findable status line; a finished one
 # belongs in `docs/roadmap/archived/`. A one-off pass does not hold — four
