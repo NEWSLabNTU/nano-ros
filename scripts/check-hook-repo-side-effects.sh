@@ -65,13 +65,41 @@
 #
 # WHAT IS ASSERTED, AND WHAT IS NOT
 #
-# The victim repository is built here, so it can be compared byte-for-byte
-# including mtimes. The REAL repo is not the assertion subject for the
-# end-to-end hook run — it is only the working directory, because the hook exits
-# at line 1 of its body against anything that is not this tree. The real repo's
-# `.git/config` is checked (cheap, and nothing else writes it), and the
-# per-script runs below carry the full-strength assertion with both the working
-# directory AND the environment under this script's control.
+# Every repository this gate makes an assertion about is one it BUILT, so it can
+# be compared byte-for-byte including mtimes, and so a difference can only have
+# come from the thing being probed.
+#
+# That second half was missing until issue 1465. A hook resolves its repository
+# from the WORKING DIRECTORY once it has cleared the inherited environment — the
+# hook's own first act, and the whole point of 0986 — so the cwd repo, not the
+# env-named one, is where a hook's damage actually lands. This gate used to
+# supply the REAL worktree as that cwd and assert on `git rev-parse --git-path
+# config`, which in every linked worktree resolves to the MAIN checkout's
+# `.git/config` (issue 1336): one file shared by every agent session in this
+# repository. The premise written beside it, "nothing else writes it", is false
+# here — `just setup-hooks` writes three builtins into exactly that file, and
+# this repo runs parallel agent sessions by design. Measured 2026-09-23: the
+# gate went red mid-campaign and passed solo on the same commit ten minutes
+# later, reporting 0986 — "it is live right now" — about a second terminal.
+# That is worse than a flake: 0986 is the class where a hook corrupts a real
+# repository, and a gate that cries it falsely teaches everyone to ignore the
+# one message that means it.
+#
+# So the cwd is now a repository this gate owns too: a `--local --shared` clone
+# of this checkout, built per run into the victim directory, with the working
+# tree's uncommitted tracked edits overlaid so the gate probes the scripts you
+# are EDITING and not the ones at HEAD. Measured: 0.69 s to build, 0.40 s to
+# snapshot, against a hook run that costs 20 s — and the assertion gets STRONGER
+# rather than weaker, because the whole repository is compared byte for byte
+# (config, index, object store, every mtime) instead of one file's sha1.
+#
+# What is still out of reach, said plainly: the per-script probes below run with
+# the real worktree as their cwd, so a script that ignored its environment and
+# wrote to its cwd's repository is not caught there. That was equally true
+# before — the old config assertion was sampled once, after those probes had all
+# finished — and giving each of ~50 probes its own clone would cost ~75 s on a
+# gate that costs 45. The cwd arm is covered where 0986 actually happened: the
+# hook.
 #
 # The hook's `just check fast` arm is skipped: it is deliberately about the
 # caller's repo, it is separately gated, and running it here would recurse into
@@ -212,12 +240,58 @@ build_victim() {
     ) >/dev/null 2>&1
 }
 
+# build_checkout <dir> — a checkout of THIS repository that only this gate can
+# write, for probing the arm of the rule that is about the WORKING DIRECTORY.
+#
+# A hook clears the inherited git environment as its first act, so from that
+# line on every git command in it resolves from the cwd. Handing it the real
+# worktree made the developer's own repository the assertion subject, which is
+# issue 1465: in a linked worktree the config it then compared is the MAIN
+# checkout's, shared by every agent session here, so any concurrent session's
+# `just setup-hooks` read as 0986 going off.
+#
+# `--local --shared` so the objects are not copied, then a full checkout rather
+# than a sparse list, because a sparse list is an authored set of the paths the
+# hook happens to reach today and would drift silently toward "the stage that
+# needed that directory never ran". Measured: 0.69 s and 105 MB, against a hook
+# run of 20 s.
+#
+# The working tree's uncommitted tracked edits are then overlaid, so the gate
+# probes the scripts you are EDITING. Without that it would probe HEAD's copies
+# and report on code nobody is about to push — the museum-binary shape, in the
+# one gate whose whole job is to be believed. `status --porcelain` afterwards
+# settles the index's stat cache, so a later read-only `git` in the hook cannot
+# write it back and read as a side effect.
+build_checkout() {
+    local d="$1" f
+    (
+        set -e
+        git clone --local --shared --no-checkout -q "$REPO" "$d"
+        git -C "$d" checkout -q
+    ) >/dev/null 2>&1 || return 1
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        if [ -e "$REPO/$f" ]; then
+            mkdir -p "$d/$(dirname "$f")" && cp -p "$REPO/$f" "$d/$f"
+        else
+            rm -f "$d/$f"
+        fi
+    done < <(git -C "$REPO" diff --name-only HEAD 2>/dev/null)
+    git -C "$d" status --porcelain >/dev/null 2>&1
+    return 0
+}
+
 # run_probe <shape> <cwd> <cmd…>
 #
 # Runs <cmd> with the hook environment of <shape> pointed at a freshly built
 # victim, and prints CLEAN/DIRTY plus the diff. Exit status of <cmd> is
 # deliberately IGNORED: the assertion is about side effects, and a script run
 # outside the tree it expects will legitimately refuse.
+#
+# <cwd> may be the token `@checkout`, which means "run this inside a checkout
+# this gate owns, built INSIDE the victim directory" — so the one snapshot
+# covers the environment-named repository AND the cwd-named one, and neither is
+# anybody else's (issue 1465).
 #
 # stdout: `CLEAN` or `DIRTY\n<diff>`. The probed command's own output goes to
 # $PROBE_LOG and its status to the first line of $PROBE_RC_FILE — through files
@@ -232,6 +306,12 @@ run_probe() {
     v="$(mktemp -d)" || { echo "DIRTY"; echo "  mktemp failed"; return 0; }
     if ! build_victim "$v"; then
         echo "DIRTY"; echo "  could not build the victim repo"; rm -rf "$v"; return 0
+    fi
+    if [ "$cwd" = "@checkout" ]; then
+        if ! build_checkout "$v/checkout"; then
+            echo "DIRTY"; echo "  could not build the owned checkout"; rm -rf "$v"; return 0
+        fi
+        cwd="$v/checkout"
     fi
 
     before="$(snapshot "$v")"
@@ -383,10 +463,48 @@ EOF
            printf '%s\n' "$verdict" >&2; errs=1 ;;
     esac
 
+    # --- the cwd arm, and the control that it is not YOUR repo -----------
+    #
+    # Issue 1465. Everything above reaches the victim through the ENVIRONMENT.
+    # A hook's first act is to clear that environment, so from its second line
+    # on the repository it can damage is the one its WORKING DIRECTORY resolves
+    # to — which is how 0986 wrote `core.bare=true` into a real checkout. This
+    # offender is that path in miniature: clear, then write to wherever the cwd
+    # points, with no GIT_DIR involved at all.
+    #
+    # Two assertions, and the second is the one 1465 is about:
+    #   1. `@checkout` CATCHES it — the cwd arm is not decorative;
+    #   2. the write landed in the gate's own clone and NOT in this checkout,
+    #      so a concurrent session can no longer be mistaken for the hook.
+    # The nonce is in the VALUE, so a sibling running this same selftest at the
+    # same moment cannot be read as our leak.
+    local nonce="cwd-$$-${RANDOM}"
+    printf '#!/usr/bin/env bash\n. %q\n%s\ngit config --local nros.hookselftest "$1" >/dev/null 2>&1\nexit 0\n' \
+        "$REPO/$LIB" "$CLEAR_FN" > "$t/cwd-offender.sh"
+    verdict="$(run_probe worktree @checkout bash "$t/cwd-offender.sh" "$nonce")"
+    case "$verdict" in
+        DIRTY*) ;;
+        *) echo "  selftest: a script that wrote to its WORKING DIRECTORY's repo" >&2
+           echo "       was reported CLEAN. The cwd arm — which is the arm 0986" >&2
+           echo "       actually travelled — is measuring nothing." >&2; errs=1 ;;
+    esac
+    local leaked=0 v
+    while IFS= read -r v; do
+        [ "$v" = "$nonce" ] && leaked=1
+    done < <(git -C "$REPO" config --local --get-all nros.hookselftest 2>/dev/null)
+    if [ "$leaked" -eq 1 ]; then
+        git -C "$REPO" config --local --unset nros.hookselftest "^${nonce}\$" 2>/dev/null
+        echo "  selftest: the probe wrote into THIS checkout's config. The gate is" >&2
+        echo "       pointed at the developer's own repository again, which is" >&2
+        echo "       issue 1465 — and it is now doing the damage, not reporting it." >&2
+        errs=1
+    fi
+
     rm -rf "$t"
     [ "$errs" -eq 0 ] || { echo "check-hook-repo-side-effects: SELFTEST FAILED" >&2; return 1; }
     echo "  ok    selftest: a shell AND a Python offender are caught in both shapes,
-        their cleared twins are not, and the Python helper's own control holds"
+        their cleared twins are not, a working-directory write is caught and
+        lands in the gate's own clone, and the Python helper's control holds"
     return 0
 }
 
@@ -461,67 +579,47 @@ done
 # leaving nothing for the pin checks to diff — so no network, no fetch, and the
 # throwaway-repo selftests (the 0986 sites) still run.
 #
-# ONE shape here, not two. A full hook run costs ~3.7 s and this gate sits on
-# the fan-out's critical path, where the floor is a single gate. `worktree` is
-# the shape that actually occurs (measured above); the other is covered where it
-# is cheap — the per-script probes, which exercise the same clearing helper the
-# hook calls.
+# ONE shape here, not two. A full hook run costs 20 s — 18.5 s of it
+# `issue-ids-check.sh`, measured, and the same either side of this change — and
+# this gate sits on the fan-out's critical path, where the floor is a single
+# gate. `worktree` is the shape that actually occurs (measured above); the other
+# is covered where it is cheap — the per-script probes, which exercise the same
+# clearing helper the hook calls.
+#
+# The cwd is `@checkout`, not the real worktree: BOTH repositories the hook can
+# reach are then ones this gate built, so a difference is attributable to the
+# hook by construction rather than by the absence of a second terminal (issue
+# 1465). That also makes this the FULL assertion — config, index, object store
+# and every file's mtime — where it used to be one file's sha1.
 echo "check-hook-repo-side-effects: the hook itself, under a hook environment"
 head_sha="$(git rev-parse HEAD 2>/dev/null)"
 if [ -z "$head_sha" ]; then
     bad "cannot resolve HEAD — refusing to report on a hook run that did not happen"
 else
-    # WHERE this repo's config is, asked rather than derived — issue 1336.
-    #
-    # This read `$(git rev-parse --git-dir)/config`, and in a linked worktree
-    # `--git-dir` is the PER-WORKTREE admin dir, which has no `config` (config
-    # lives only in the common dir; measured: that directory holds HEAD, index,
-    # commondir, gitdir, logs, modules and nothing else). So `sha1sum` failed,
-    # `2>/dev/null` ate the error, before and after were both EMPTY, they
-    # compared equal, and the `ok` below was printed having measured nothing —
-    # in every agent worktree, which is where this gate mostly runs. The
-    # assertion that would have caught 0986's `core.bare=true` was the one that
-    # went vacuous, in the gate whose whole subject is that hazard.
-    #
-    # `--git-path config` resolves to the common dir's file in both shapes,
-    # which is the file 0986 writes to and the one this compares.
-    cfg_file="$(git rev-parse --path-format=absolute --git-path config 2>/dev/null)"
-    if [ -z "$cfg_file" ] || [ ! -f "$cfg_file" ]; then
-        # LOUD, not silently equal: an unreadable config means this assertion
-        # cannot be made, which is not the same as it holding.
-        bad "cannot locate this repository's config (git rev-parse --git-path
-        config -> '${cfg_file:-<empty>}'), so the 0986 side-effect assertion
-        below cannot be made. Fix the resolution, do not skip the check."
-    fi
-    cfg_before="$(sha1sum "$cfg_file" 2>/dev/null)"
     verdict="$(printf 'refs/heads/probe %s refs/heads/probe %s\n' "$head_sha" "$head_sha" \
-        | run_probe worktree "$REPO" env NROS_SKIP_PREPUSH_CHECKS=1 \
-              timeout 120 bash "$REPO/$HOOK" origin "$REPO")"
+        | run_probe worktree @checkout env NROS_SKIP_PREPUSH_CHECKS=1 \
+              timeout 180 bash "$REPO/$HOOK" origin "$REPO")"
     case "$verdict" in
-        CLEAN) ok "$HOOK [worktree] left the environment's repository untouched" ;;
-        *) bad "$HOOK [worktree] MODIFIED the repository its environment named:
+        CLEAN) ok "$HOOK [worktree] left both repositories it can reach untouched
+        — the one its environment names and the checkout it runs in" ;;
+        *) bad "$HOOK [worktree] MODIFIED a repository across a hook run. A
+        change to the clone's own config is 0986's exact symptom
+        (core.bare=true); an index or object-store change is its other half. Both
+        repositories below were built by this gate seconds ago, so this is the
+        hook, not another session (issue 1465):
 $(printf '%s\n' "$verdict" | tail -n +2)" ;;
     esac
     # The hook must have reached its LAST stage, or the run above proves less
     # than it appears to — a hook that exits at line 1 leaves nothing behind and
     # would report CLEAN forever. If this fires, an earlier stage refused:
     # `just check issue-ids` and the submodule pin checks are where to look, and
-    # they are fast gates too, so they are red alongside this.
+    # they are fast gates too, so they are red alongside this. It also fires if
+    # the owned checkout is missing something a stage needs, which is the
+    # failure mode a sparse checkout would have made silent.
     if ! nros_grep_q -- 'fast gates SKIPPED' "$PROBE_LOG"; then
         bad "$HOOK exited before its final stage (rc=$(cat "$PROBE_RC_FILE")), so
         the stages after that point were not exercised. Its output:
 $(sed 's/^/          /' "$PROBE_LOG" | head -20)"
-    fi
-    cfg_after="$(sha1sum "$cfg_file" 2>/dev/null)"
-    if [ -z "$cfg_before" ] || [ -z "$cfg_after" ]; then
-        bad "this repo's config hashed to nothing ($cfg_file), so 'unchanged'
-        would be two empty strings comparing equal — issue 1336's shape, and
-        the reason this line no longer derives the path itself."
-    elif [ "$cfg_before" = "$cfg_after" ]; then
-        ok "this repo's own config ($cfg_file) is byte-identical across the hook runs"
-    else
-        bad "this repo's own config CHANGED across a hook run — that is
-        0986's exact symptom (core.bare=true), and it is live right now."
     fi
 fi
 
