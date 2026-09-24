@@ -756,6 +756,14 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `coverage` job's own check-run NAME, so `gh run view` answers it without a log.
   Gated by `check-lane-stage-reporting` — the step→stage map is AUTHORED, so a
   renamed step drifts it in the safe-looking direction.
+- **A self-hosted runner IS a container, so a missing dependency is an IMAGE fix,
+  never a host `apt install`** (issues 1457/1482). The running container is
+  `--cap-drop ALL` non-root and `runner-provision.sh` never sudoes, so the
+  Dockerfile `runner-container.sh` GENERATES from `nros-sdk-index.toml` is the only
+  producer of a system package — and apt-vs-pip is measured INSIDE the image, not on
+  the box that generated it. Loop (`--build`/`--run`, then `runner-doctor.sh`) →
+  [multi-agent-ci-workflow.md](docs/development/multi-agent-ci-workflow.md)
+  "A missing dependency on a self-hosted runner is fixed in the IMAGE".
 - **A gate that WORKS is not a gate that RUNS, and the scope of "runs" is the
   whole `ci gate` lane, not just `just check` names** (issue 1226).
   `fixture_rows_all_modeled_by_matrix` caught a `fixtures.toml` row with no

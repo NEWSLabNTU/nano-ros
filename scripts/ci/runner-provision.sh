@@ -34,6 +34,23 @@
 #     make `nros-ros2` a label this script claims to provision and does not.
 #     It prints the exact command and fails honestly instead.
 #
+# SO WHERE DO SYSTEM PACKAGES COME FROM? THE IMAGE.
+#
+# A self-hosted runner here is a CONTAINER (`runner-container.sh`), whose
+# Dockerfile is generated from `nros-sdk-index.toml` — `[prereq.*]` through
+# `prereq-packages.py`, `[python.*]` through `python-packages.py`. That is the
+# only producer of a root-owned dependency, and it is the right one: the running
+# container drops every capability and runs as a non-root user, so nothing
+# inside a job could install one anyway. Declare it in the index, then
+# `runner-container.sh <labels> --build && … --run`.
+#
+# What this script must NOT become is the other answer — "just apt-install it on
+# the runner box". That leaves a machine no file describes and no fresh
+# container reproduces, which is issue 0833's shape and the opposite of the
+# one-provisioning-path property above. Issues 1457 / 1482 are the worked
+# example; the design doc's "A missing dependency on a self-hosted runner is
+# fixed in the IMAGE" has the loop.
+#
 # usage:
 #   scripts/ci/runner-provision.sh <labels> [--check] [--no-base] [--no-verify]
 #

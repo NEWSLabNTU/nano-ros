@@ -8,7 +8,7 @@ type: bug
 area: [ci, tooling, zephyr]
 severity: high
 found: 2026-09-22
-related: [1389, 1360, 1158, 1387]
+related: [1389, 1360, 1158, 1387, 1482, 1481]
 ---
 
 ## What happens
@@ -166,3 +166,46 @@ error: rosidl_adapter is not importable by this build's interpreter.
   `import rosidl_adapter.cli` fails under it — its python deps
   are missing: catkin_pkg, empy==3.3.4, lark, PyYAML.
 ```
+
+## CORRECTED — 2026-09-24, issue 1482
+
+Everything above about the CAUSE holds. The sentence about the REMEDY does not:
+
+> They are not installed on that runner. So it is a HOST PROVISIONING GAP […]
+> the remaining work is on the host
+
+That framing is overridden. **A self-hosted runner here is a container**
+(`scripts/ci/runner-container.sh`), and when it lacks something the fix is the
+IMAGE, never the host environment. The host answer was never available anyway:
+the running container is `--cap-drop ALL --security-opt no-new-privileges` with
+a non-root user, so no job can install a system package, and
+`runner-provision.sh` never sudoes and never installs one either — which leaves
+the generated Dockerfile as the only producer there has ever been.
+
+Nor was it three pip installs. It is four modules (`catkin_pkg`, `em`, `lark`,
+`yaml`), and issue 1482 measured that `ubuntu:22.04` packages **all four in
+apt**, universe, no ROS repo — including `python3-catkin-pkg 0.4.24-2`, which
+this issue's own reading had assumed was ROS-repo only.
+
+The second option floated above — "a decision that `nros setup --source rosidl`
+should provision its `[python.*]` deps rather than report them" — is also
+declined, for the reason the layer is report-only in the first place: a
+provisioning step that pip-installs into whatever interpreter it finds is issue
+1481's shadowing hazard, and on a runner it would put the modules in a volume
+where nothing says they are there. The image states them.
+
+**Fixed in 1482**: `runner-container.sh` now resolves the `[python.*]` layer
+from `nros-sdk-index.toml` through `scripts/sdk/python-packages.py`, the same way
+it already resolved `[prereq.*]`, with the apt/pip split measured inside the
+image rather than on the workstation that generated it.
+
+**Left OPEN** for one reason only, and it is not a code change: the runner's
+image has to be rebuilt and the container restarted before the lane can be green.
+
+```sh
+scripts/ci/runner-container.sh nros-qemu,nros-sdk-zephyr,nros-big --build
+scripts/ci/runner-container.sh nros-qemu,nros-sdk-zephyr,nros-big --run
+scripts/ci/runner-doctor.sh   nros-qemu,nros-sdk-zephyr,nros-big
+```
+
+Close this when a tier-2 nightly gets past `msg_to_cyclone_idl` on that runner.
