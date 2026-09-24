@@ -1,7 +1,21 @@
 #!/usr/bin/env bash
 #
 # Run the nano-ros self-hosted runner INSIDE AN UNPRIVILEGED CONTAINER.
-# Design: docs/development/multi-agent-ci-workflow.md ("Security").
+# Design: docs/development/multi-agent-ci-workflow.md ("Security", and
+# "A self-hosted runner is a container" for where a missing dependency is fixed).
+#
+# A SELF-HOSTED RUNNER IS A CONTAINER, SO A MISSING DEPENDENCY IS AN IMAGE FIX.
+#
+# When a self-hosted job fails for want of something, the fix belongs HERE — in
+# the layers this script generates from `nros-sdk-index.toml` — and never in an
+# `apt install` somebody typed on the workstation. Two reasons, both structural:
+# the container drops every capability and runs as a non-root user, so a job
+# cannot install a system package even where the name is right; and a package
+# installed on the host is invisible to the image, so a fresh container does not
+# reproduce it and nobody can say what the runner actually has. That is the
+# state issue 0833 describes one level down. The rebuild is
+# `runner-container.sh <labels> --build`, the restart is `--run`, and
+# `runner-doctor.sh <labels>` says which labels hold and why.
 #
 # WHY A CONTAINER IS ENOUGH *HERE*, WHEN THE GENERAL ADVICE SAYS IT IS NOT
 #
@@ -130,6 +144,69 @@ if ! PREREQ_PACKAGES="$(python3 "$REPO_ROOT/scripts/sdk/prereq-packages.py" \
     exit 1
 fi
 
+# --- the `[python.*]` layer --------------------------------------------------
+#
+# `[prereq.*]` was only half of what the index declares, and the other half
+# never reached the image: tier-2 nightly died on `ModuleNotFoundError: No
+# module named 'catkin_pkg'` eleven minutes into a Zephyr build, because
+# `msg2idl.py` — upstream's, from the `rosidl` clone `[rmw.cyclonedds]`
+# provisions — imports `rosidl_adapter.cli`, and `cli` imports catkin_pkg, yaml
+# and em (issues 1457, 1482).
+#
+# THE RUNNER IS NOT MISSING ROS. A ROS-less runner is the design: the tier-2
+# job's labels carry no `nros-ros2`, `runner-provision.sh` deliberately does not
+# provision that label, and issue 0368 / phase-327 created the `[python.*]`
+# layer precisely so the cyclone msg->IDL road works without a ROS install.
+# What was missing is the layer itself.
+#
+# WHY THE IMAGE AND NOT THE HOST. The container runs `--cap-drop ALL
+# --security-opt no-new-privileges` as a non-root user, so nothing inside it can
+# install a system package; and `runner-provision.sh` never sudoes and never
+# installs one either, by its own rule. A python module that must be importable
+# by the AMBIENT interpreter — the one cmake and ninja invoke — therefore has
+# exactly one place it can come from, and this is it. Installing it on the host
+# by hand produces a runner nobody can account for and that no fresh container
+# reproduces.
+#
+# WHICH ENTRIES — DERIVED. `python-packages.py` takes the `[python.*]` entries
+# with no `check = { cmd = … }`, i.e. the ones the index probes by IMPORTING
+# their module in the host's python3. An entry with a command (`west`,
+# `clang-format`, `colcon`) is an executable some provisioning verb installs
+# into a place the container already persists, and baking a second copy is issue
+# 0500's shape — for `west`, worse: `runner-doctor.sh` probes `command -v west`,
+# so an image-provided copy would make `nros-sdk-zephyr` true by construction.
+#
+# WHY THE apt/pip SPLIT IS NOT DECIDED HERE. Issue 1481's resolver asks apt for
+# a candidate before preferring apt, and the host generating this Dockerfile is
+# the wrong host to ask: measured, a workstation with the ROS 2 apt repo reports
+# `python3-catkin-pkg` candidate 1.1.0-101, `ubuntu:22.04` reports 0.4.24-2 from
+# universe, and a host with neither reports nothing. Encoding any of those here
+# would make the image's contents depend on who ran the generator. So the
+# DECLARATIONS are read from the index here and the MEASUREMENT happens in the
+# `RUN` below, against that image's own apt.
+#
+# The self-test runs on the normal path rather than behind a flag, because a
+# negative control nobody runs decays into a comment.
+if ! python3 "$REPO_ROOT/scripts/sdk/python-packages.py" --self-test; then
+    echo "runner-container: python-packages.py fails its own self-test — refusing" >&2
+    echo "  to generate a Dockerfile from a resolver that cannot resolve." >&2
+    exit 1
+fi
+if ! PYTHON_LAYER="$(python3 "$REPO_ROOT/scripts/sdk/python-packages.py" --emit json)"; then
+    echo "runner-container: could not read the [python.*] layer from the index." >&2
+    echo "  Same rule as the prereq list above — the Dockerfile is GENERATED" >&2
+    echo "  from nros-sdk-index.toml, and a hand-written package list here is" >&2
+    echo "  the second source of truth this script exists to avoid." >&2
+    exit 1
+fi
+if ! PYTHON_KEYS="$(python3 "$REPO_ROOT/scripts/sdk/python-packages.py" --emit keys)"; then
+    echo "runner-container: could not derive the [python.*] key set." >&2
+    exit 1
+fi
+printf '%s\n' "$PYTHON_LAYER" > "$CONTEXT/nros-python-layer.json"
+cp "$REPO_ROOT/scripts/sdk/python-packages.py" "$CONTEXT/python-packages.py"
+cp "$REPO_ROOT/scripts/lib/index_packages.py" "$CONTEXT/index_packages.py"
+
 # The image provisions THROUGH `runner-provision.sh`, not through a second list
 # of apt packages. A runner and a contributor must provision the same way or the
 # runner's toolchain becomes a thing nobody can account for — the reason that
@@ -154,6 +231,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         @PREREQ_PACKAGES@ \
     && rm -rf /var/lib/apt/lists/*
 
+# The `[python.*]` layer — the modules the ambient interpreter must be able to
+# import, RESOLVED HERE rather than on the machine that generated this file.
+#
+# `--emit plan` writes the decision into the build log, so which packages came
+# from apt and which from pip — and WHY each — is a record of this image rather
+# than a claim about it. `--verify` imports them in the interpreter that will
+# run them: a package that installs and cannot be imported fails now, not
+# eleven minutes into a Zephyr build in a nightly lane.
+#
+# Keys: @PYTHON_KEYS@
+COPY nros-python-layer.json python-packages.py index_packages.py /opt/nros-python/
+RUN apt-get update \
+    && python3 /opt/nros-python/python-packages.py \
+         --resolve /opt/nros-python/nros-python-layer.json --emit plan \
+    && nros_apt="$(python3 /opt/nros-python/python-packages.py \
+         --resolve /opt/nros-python/nros-python-layer.json --emit apt)" \
+    && nros_pip="$(python3 /opt/nros-python/python-packages.py \
+         --resolve /opt/nros-python/nros-python-layer.json --emit pip)" \
+    && if [ -n "$nros_apt" ]; then \
+         apt-get install -y --no-install-recommends $nros_apt; fi \
+    && if [ -n "$nros_pip" ]; then pip3 install --no-cache-dir $nros_pip; fi \
+    && python3 /opt/nros-python/python-packages.py \
+         --resolve /opt/nros-python/nros-python-layer.json --verify \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN useradd -m -u ${RUNNER_UID} -s /bin/bash runner
 WORKDIR /home/runner
 
@@ -174,12 +276,15 @@ DOCKEREOF
 
 # The Dockerfile heredoc is QUOTED so its own $VAR references survive verbatim;
 # the two generated values are substituted here instead.
-python3 - "$CONTEXT/Dockerfile" "$PREREQ_PACKAGES" "${PREREQ_KEYS[*]}" <<'SUBEOF'
+python3 - "$CONTEXT/Dockerfile" "$PREREQ_PACKAGES" "${PREREQ_KEYS[*]}" "$PYTHON_KEYS" <<'SUBEOF'
 import sys
-path, packages, keys = sys.argv[1], sys.argv[2], sys.argv[3]
+path, packages, keys, python_keys = sys.argv[1:5]
 text = open(path).read()
 text = text.replace("@PREREQ_PACKAGES@", " \\\n        ".join(packages.split()))
 text = text.replace("@PREREQ_KEYS@", keys)
+# The python layer substitutes only its KEY NAMES — the packages are resolved
+# inside the image, which is the whole point of that layer.
+text = text.replace("@PYTHON_KEYS@", python_keys)
 open(path, "w").write(text)
 SUBEOF
 

@@ -2320,10 +2320,13 @@ check = { cmd = "cargo-asm" }
 
 [python.catkin-pkg]
 pip = "catkin_pkg"
-# ROS-REPO ONLY: `python3-catkin-pkg` comes from packages.ros.org/ros2, not from
-# plain Ubuntu. On a host without that repo apt has no candidate and the
-# resolver falls to pip — which is the case this layer was created for
-# (issue 0368 / phase-327: rosidl_adapter on a ROS-less host).
+# NOT ROS-repo only — this comment said it was, and issue 1482 measured
+# otherwise. Plain `ubuntu:22.04`, no ROS repo, universe enabled: candidate
+# `0.4.24-2`, and `from catkin_pkg.package import package_exists_at` — the
+# import `rosidl_adapter.cli` actually makes — resolves under it. The ROS repo
+# supplies a NEWER one (`1.1.0-101` on this workstation, measured), which is a
+# different candidate, not the only one. Which you get is exactly what the
+# resolver asks apt, per host; do not re-tabulate it here.
 apt = ["python3-catkin-pkg"]
 why = "rosidl_adapter import (cyclone msg->IDL on ROS-less hosts)"
 
