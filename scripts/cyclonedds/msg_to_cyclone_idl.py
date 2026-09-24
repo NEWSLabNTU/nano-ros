@@ -121,10 +121,20 @@ def _adapter_importable(env: "dict", module: str = "rosidl_adapter.cli") -> bool
 
 
 # What the vendored source tree needs from the interpreter, and the pip name
-# that supplies it. The SAME three the `cyclone-idl` group in
+# that supplies it. The SAME FOUR the `cyclone-idl` group in
 # `scripts/check-python-deps.py` lists and `[python.*]` in `nros-sdk-index.toml`
 # declares — named here so the refusal can say WHICH one is missing instead of
-# reprinting the whole line and leaving the reader to bisect it.
+# reprinting the whole line and leaving the reader to bisect it. (It said
+# "three" while listing four, which is the kind of drift that makes a reader
+# stop trusting the sentence rather than the list.)
+#
+# WHOSE THEY ARE differs, and the index now says so per entry (issues
+# 1483/1484): `em` and `lark` are upstream rosidl's own `<exec_depend>`s, which
+# nothing in this repo imports; `catkin_pkg` and `yaml` are ours anyway — and
+# upstream declares NEITHER of those two in any `package.xml`, though
+# `rosidl_adapter/cli.py` imports both. That asymmetry is why this tuple cannot
+# be replaced by reading upstream's manifest: it would drop exactly the module
+# whose absence killed tier-2 nightly (issue 1457).
 _VENDORED_PY_DEPS = (
     ("catkin_pkg", "catkin_pkg"),
     ("em", "empy==3.3.4"),
@@ -168,8 +178,8 @@ def _adapter_bin_and_env() -> "tuple[Path, dict]":
     vendored_env = None
     if vendored.is_dir():
         # Source-tree scripts import rosidl_adapter/_parser/_cli from their
-        # package dirs; python deps (catkin_pkg, empy 3.x, lark) come from
-        # the [python.*] index class.
+        # package dirs; the four python deps (catkin_pkg, yaml, empy 3.x, lark
+        # — see `_VENDORED_PY_DEPS`) come from the [python.*] index class.
         pythonpath = os.pathsep.join(
             str(_VENDORED_ROSIDL / pkg)
             for pkg in ("rosidl_adapter", "rosidl_parser", "rosidl_cli")
