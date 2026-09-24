@@ -173,3 +173,30 @@ The image is published only by `images.yml` on a push to `main`, and the consume
 moved to `humble-sdk0.17.4-r5`, which does not exist in the registry until that
 workflow has run. Acceptance is unchanged: the `rows whose board is NOT this
 runner` job reaching its cells.
+
+## 2026-09-24 — the named blocker is GONE; the acceptance is NOT yet met
+
+Stays `open`, deliberately. The two facts point different ways and both are
+measured on live-peer run **35954986426** (04:16Z), the first after the image
+republished.
+
+**The TOML parser is no longer missing.** `tomllib`/`tomli` appear **zero**
+times in that run's failed-step logs. Yesterday they were the fatal error, from
+`prereq-packages.py`, `fixtures-manifest.py` and `check-interop-verdicts.py`
+alike. `python3-tomli` now reaches the Zephyr image through the shared
+`ci/docker/apt-packages.txt` (PR #1211).
+
+**But `rows whose board is NOT this runner` has not reached its cells.** It now
+gets much further — into the Zephyr fixture build — and dies there:
+
+```
+FATAL ERROR: command exited with status 1: /usr/bin/cmake --build /github/home/.nros/wo…
+make: *** [/__w/nano-ros/nano-ros/build/zephyr-fixture-make-driver/zephyr-fixtures-2026…
+error: recipe `build-fixtures` failed with exit code 2
+```
+
+That is a different failure at a later stage, not this issue's. The acceptance
+written above is "reaching its cells", and building fixtures is upstream of
+that, so closing this now would be claiming ground nobody took. Whoever picks
+this up next: the remaining question is why that `cmake --build` fails, and it
+should probably be its own issue rather than a third section here.
