@@ -2,7 +2,10 @@ BLOCKERS
 None.
 
 CLARITY
-- All in-tree assets the page references exist: `integrations/nano-ros/{CMakeLists.txt,idf_component.yml,Kconfig.projbuild}`, `examples/esp32/rust/talker/`, `just esp_idf` recipes.
+- All in-tree assets the page references exist: `integrations/nano-ros/{CMakeLists.txt,idf_component.yml,Kconfig.projbuild}`, `examples/esp32/rust/talker/`, the `esp_idf` just-module's recipes.
+  *(Point-in-time finding. phase-468 W2 retired the ESP-IDF integration and its
+  just-module on 2026-09-25; this line records what was true at audit time and
+  is left standing rather than rewritten.)*
 - Kconfig surface matches the doc verbatim — only `NROS_RMW` + `NROS_ROS_EDITION` knobs, no `CONFIG_NROS_ENABLED`. First-pass-review fixes (post-`fb8568190` tightenings) hold: doc uses `nros.toml` consistently, `Published: 0` only.
 
 FRICTION (NIT only)

@@ -280,7 +280,7 @@ while IFS= read -r record; do
 done <<< "$records"
 echo "west fixtures: $n/$total ok ($reused reused, $((n - reused)) built)."
 
-# issue 0700 — same class as `idf-fixtures.sh`, same fix. This printed
+# issue 0700 — the class the retired `idf-fixtures.sh` shared, same fix. This printed
 # "(no stamp; the test will report)" and exited 0, and `just/zephyr-ci.just`
 # wrapped it in `|| true`, so a west fixture that failed to build left a green
 # lane and a test failure far away that blamed staleness.

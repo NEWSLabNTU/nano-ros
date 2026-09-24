@@ -820,7 +820,6 @@ pub mod kind {
     // Fixture trees — `<family>-fixtures` per R5.
     pub const CARGO_FIXTURES: &str = "cargo-fixtures";
     pub const CMAKE_FIXTURES: &str = "cmake-fixtures";
-    pub const IDF_FIXTURES: &str = "idf-fixtures";
     pub const WEST_FIXTURES: &str = "west-fixtures";
 
     /// The compile-check lane's trees. Renamed from `compile-check` to carry
@@ -1360,11 +1359,7 @@ mod tests {
             build_dir(kind::CMAKE_FIXTURES, &["shadowing"]),
             root.join("build/cmake-fixtures").join("shadowing")
         );
-        // scripts/build/idf-fixtures.sh / west-fixtures.sh
-        assert_eq!(
-            build_dir(kind::IDF_FIXTURES, &["esp_idf_bringup"]),
-            root.join("build/idf-fixtures").join("esp_idf_bringup")
-        );
+        // scripts/build/west-fixtures.sh
         assert_eq!(
             build_dir(kind::WEST_FIXTURES, &["west_board_import"]),
             root.join("build/west-fixtures").join("west_board_import")

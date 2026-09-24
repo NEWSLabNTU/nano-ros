@@ -70,7 +70,6 @@ LANE_SKIP = os.path.join(ROOT, "scripts", "build", "lane-skip.sh")
 # implement them. `zephyr` is three files; `qemu` is `qemu-baremetal.just`.
 PLATFORM_MODULE_FILES = (
     "esp32.just",
-    "esp_idf.just",
     "freertos.just",
     "native.just",
     "nuttx.just",

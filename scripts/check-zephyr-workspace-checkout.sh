@@ -74,17 +74,17 @@ fi
 # EVERY provisioned root, not just Zephyr (phase-440 W5). The ownership guard
 # does not care which tree it is handed: any path inside a FOREIGN checkout is
 # refused, so a check that asks about one root reports a property of that root
-# rather than of the host. esp-idf reached this shape too and nobody would have
-# heard about it until a fixture build fifteen minutes in.
+# rather than of the host. The ESP-IDF workspace reached this shape too, and
+# nobody would have heard about it until a fixture build fifteen minutes in;
+# that root is gone with the port (phase-468 W2).
 #
 # Each entry is `NAME:ENV_VAR:candidate[:candidate...]`, and a root with no env
 # override leaves that field empty. `RFC-0095 D2` folds these into one
 # store-resolved root, at which point this list collapses to that root and the
 # per-tree spellings go with it — until then the list is the honest shape,
-# because the tree really does carry four of them.
+# because the tree really does carry them.
 PROVISIONED_ROOTS="
 zephyr:NROS_ZEPHYR_WORKSPACE:zephyr-workspace:../nano-ros-workspace:../nano-ros-workspace-4.4
-esp-idf:NROS_ESP_IDF_WORKSPACE:esp-idf-workspace
 external:${NROS_EXTERNAL_DIR_UNSET:-}:external
 "
 
