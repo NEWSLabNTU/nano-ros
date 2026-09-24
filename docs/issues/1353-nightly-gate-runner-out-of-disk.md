@@ -757,3 +757,56 @@ different job with a different build.
 
 Acceptance is unchanged: a scheduled run reaching a VERDICT on `check build`
 and `check no-std`, three nights running.
+
+## The tier's own appetite, MEASURED at last (2026-09-24, `host-tests` push)
+
+Run **36022653723**, job **107711155226**, head `ba1a6f70b`, step **`just ci
+tier1`**. The job log is `BlobNotFound` and the only surviving evidence is the
+annotation, which is this issue's signature:
+
+```
+Unhandled exception. System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20260924-160424-utc.log'
+```
+
+**Why this run is different from every earlier one quoted above.** The section
+before this one records that the `host-tests` numbers then available came from
+a job that aborted at `Build rust core fixtures` on issue 1468, never reached
+`just ci tier1`, and therefore said nothing in either direction. Issue 1480 was
+the next wall and it was fixed in #1261; this is the FIRST `host-tests` run to
+get past `Build workspace fixtures` — that step reads `success` here — so it is
+the first time the tier's own consumption has been observable at all.
+
+**What it spent.** From `disk-transcript-before-tier1` (the artifact upload
+this issue added, which is why these numbers survive a dead runner):
+
+```
+SUMMARY disk before just ci tier1 — 88% used, 18G free
+  — 42G examples; 14G build; 410M packages/cli/target
+reclaiming    5.2G  /__t
+reclaiming    2.2G  /__w/nano-ros/nano-ros/build/metadata-probe
+freed 7517 MB; 26029560 KB free
+```
+
+So the tier started with **26,029,560 KB (~24.8 GiB) free**, on a checkout
+whose `examples/` was already the full 42 G (`workspaces` 37 G, `templates`
+5.3 G), and `just ci tier1` consumed **all of it** before finishing. The
+estimate this issue has been carrying — "the tier's own ~22 G appetite" — is
+now a floor with a measurement under it rather than an inference: **≥ 24.8 GiB,
+on top of a 42 G examples tree, after the reclaim has already run.**
+
+**The reclaim is not the gap.** Steps 12 and 13 (`Disk report (before ci
+tier1)`, `Reclaim disk before the tier — issue 1353`) both read `success`, the
+reclaim found and freed everything it knows how to free, and the tier exhausted
+the result anyway. Whatever closes this issue has to reduce what the tier
+BUILDS or move the lane off a 146 G hosted runner; it is not another reclaim
+site.
+
+**What this does NOT say.** Nothing about the scheduled `gate` lane, which
+still has no readable disk figure of its own — the split above is `host-tests`,
+a different job with a different build, and that caveat stands unchanged. It
+also does not say the tier would have PASSED with more disk: no tier-1 verdict
+has been produced on `main` since 2026-06-17 (2 successes against 356 failures
+on this workflow), so what the tests would have reported is still unknown.
+
+Acceptance is unchanged.
