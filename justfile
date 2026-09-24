@@ -4295,73 +4295,58 @@ clean-bindings:
     done
     echo "All generated bindings removed."
 
-# Regenerate rcl-interfaces bindings (workspace member with nros- prefix)
-[private]
-generate-rcl-interfaces:
+# Regenerate the core pre-generated interface set — ONE driver package, ONE
+# output tree (RFC-0067 §D5, phase-465 W1). Requires a ROS 2 ament host.
+#
+# This replaces four private per-package recipes, none of which any other recipe
+# ever invoked. Four driver packages meant four transitive closures, so
+# `builtin_interfaces` was emitted THREE times and `std_msgs` twice, with
+# `-diag` / `-clock` suffixes whose only job was to stop the copies colliding in
+# one workspace (issue 1428). ONE `package.xml` naming all four packages emits
+# each ament package exactly ONCE — `resolve_transitive_dependencies` returns a
+# `HashSet` and `filter_interface_packages` iterates it — so no codegen change
+# is needed and every dep stays a flat sibling.
+#
+# The run is IN PLACE and IDEMPOTENT, which the four-tree layout never was: its
+# manifests were three hand-adapted vintages, so the documented update procedure
+# was "generate out of tree and copy only src/lib.rs back" (4b80db633). That is
+# retired — nothing under `generated/` is hand-maintained any more. Run it
+# twice; the second run must leave the worktree clean.
+#
+# NOT wired into `generate-bindings`. That recipe is a dependency of `_codegen`,
+# i.e. of every build, and this tree is TRACKED: regenerating it per build would
+# rewrite tracked files (re-staling every fixture, CLAUDE.md's mtime treadmill)
+# and would make a ROS host a precondition for building anything at all.
+[group("maintenance")]
+generate-interfaces:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
     NROS="$(nros_cli_bin)"
-    echo "Regenerating rcl-interfaces bindings..."
-    cd packages/interfaces/rcl-interfaces
-    rm -rf generated/humble/nros-builtin-interfaces generated/humble/nros-rcl-interfaces
-    $NROS generate-rust --force -o generated/humble \
-        --rename builtin_interfaces=nros-builtin-interfaces \
-        --rename rcl_interfaces=nros-rcl-interfaces
-    echo "✓ rcl-interfaces regenerated"
-
-# Regenerate diagnostic-msgs bindings (RFC-0052 W3b.1; capacities from its
-# nros-codegen.toml — keep /diagnostics entries small and embeddable)
-[private]
-generate-diagnostic-msgs:
-    #!/usr/bin/env bash
-    set -e
-    source scripts/build/cargo.sh
-    NROS="$(nros_cli_bin)"
-    echo "Regenerating diagnostic-msgs bindings..."
-    cd packages/interfaces/diagnostic-msgs
+    echo "Regenerating packages/interfaces bindings..."
+    cd packages/interfaces
+    # Full re-emit, so a message deleted upstream cannot leave a stale file
+    # behind. Nothing here is hand-maintained, so there is nothing to lose.
     rm -rf generated/humble
     $NROS generate-rust --force -o generated/humble --codegen-config nros-codegen.toml \
+        --rename builtin_interfaces=nros-builtin-interfaces \
+        --rename std_msgs=nros-std-msgs \
+        --rename rcl_interfaces=nros-rcl-interfaces \
         --rename diagnostic_msgs=nros-diagnostic-msgs \
-        --rename std_msgs=nros-std-msgs-diag \
-        --rename builtin_interfaces=nros-builtin-interfaces-diag
-    rm -rf generated/humble/geometry_msgs
-    echo "✓ diagnostic-msgs regenerated"
-
-# Regenerate rosgraph-msgs bindings (workspace member with nros- prefix).
-# phase-425 W2 — `rosgraph_msgs/msg/Clock` is the wire form of ROS time; the
-# `-clock` rename on builtin_interfaces is not cosmetic: a generated crate
-# names its deps by CRATE name, so two trees generating `builtin_interfaces`
-# collide in one workspace (same reason diagnostic-msgs carries `-diag`).
-[private]
-generate-rosgraph-msgs:
-    #!/usr/bin/env bash
-    set -e
-    source scripts/build/cargo.sh
-    NROS="$(nros_cli_bin)"
-    echo "Regenerating rosgraph-msgs bindings..."
-    cd packages/interfaces/rosgraph-msgs
-    rm -rf generated/humble
-    $NROS generate-rust --force -o generated/humble \
         --rename rosgraph_msgs=nros-rosgraph-msgs \
-        --rename builtin_interfaces=nros-builtin-interfaces-clock
-    echo "✓ rosgraph-msgs regenerated"
-
-# Regenerate lifecycle-msgs bindings (workspace member with nros- prefix)
-[private]
-generate-lifecycle-msgs:
-    #!/usr/bin/env bash
-    set -e
-    source scripts/build/cargo.sh
-    NROS="$(nros_cli_bin)"
-    echo "Regenerating lifecycle-msgs bindings..."
-    cd packages/interfaces/lifecycle-msgs
-    rm -rf generated/humble/nros-lifecycle-msgs
-    $NROS generate-rust --force -o generated/humble \
         --rename lifecycle_msgs=nros-lifecycle-msgs
-    echo "✓ lifecycle-msgs regenerated"
-    echo "NOTE: re-apply workspace inheritance to the generated Cargo.toml"
-    echo "      (version.workspace, edition.workspace, etc.) — see rcl-interfaces."
+    # `geometry_msgs` arrives in the closure via diagnostic_msgs' ament deps and
+    # no message in the set references it. It is also the one emitted crate that
+    # would ship an UNPREFIXED ament name, which is the collision RFC-0067 §D4
+    # is about — so it goes, exactly as the old diagnostic-msgs recipe dropped it.
+    rm -rf generated/humble/geometry_msgs
+    cd ../..
+    # Per crate, never `--all`: formatting the whole tree re-stales every
+    # prebuilt fixture (CLAUDE.md, the mtime treadmill).
+    cargo +nightly fmt \
+        -p nros-builtin-interfaces -p nros-std-msgs -p nros-rcl-interfaces \
+        -p nros-diagnostic-msgs -p nros-rosgraph-msgs -p nros-lifecycle-msgs
+    echo "✓ packages/interfaces regenerated (6 crates, one tree)"
 
 # Clean and regenerate all bindings from scratch
 [group("maintenance")]
