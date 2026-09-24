@@ -1165,6 +1165,13 @@ nros_cpp_ret_t nros_cpp_node_set_qos_overrides(struct nros_cpp_node_t *node,
  * All length fields default to 0 ("inherit"); `domain_id_override` is
  * `NROS_CPP_DOMAIN_ID_INHERIT`. The C++ `NodeOptions` wrapper consumes
  * this via `Executor::node_builder(name)`.
+ *
+ * Issue 1473 — "inherit" is the vocabulary of the WHOLE struct, namespace
+ * included: `rmw_name_len == 0` inherits the executor's backend,
+ * `locator_len == 0` its locator, `domain_id_override ==
+ * NROS_CPP_DOMAIN_ID_INHERIT` its domain, and `namespace_len == 0` its
+ * namespace. To place a node at the ROOT of a namespaced executor, WRITE the
+ * root: `namespace_ = "/"`, `namespace_len = 1`.
  */
 struct nros_cpp_node_options_t nros_cpp_node_get_default_options(void);
 
@@ -1179,7 +1186,11 @@ struct nros_cpp_node_options_t nros_cpp_node_get_default_options(void);
  * # Parameters
  * * `executor_handle` — Opaque executor handle from `nros_cpp_init()`.
  * * `name` — Node name (null-terminated). Must not be NULL.
- * * `namespace` — Node namespace (null-terminated), or NULL for `"/"`.
+ * * `namespace` — Node namespace (null-terminated). **NULL or `""` is
+ *   UNSET**: the node INHERITS the executor's namespace, exactly as
+ *   `nros_cpp_node_create_ex` does for `namespace_len == 0`. Pass `"/"` to
+ *   place the node at the ROOT explicitly — the two are different requests
+ *   and this ABI keeps them apart (issue 1473).
  * * `out_node` — Receives the node handle on success.
  *
  * # Safety
@@ -1216,7 +1227,11 @@ nros_cpp_ret_t nros_cpp_node_create(void *executor_handle,
  * * `name` — Node name (null-terminated). Must not be NULL.
  * * `options` — Pointer to a populated `nros_cpp_node_options_t`. NULL
  *   is rejected; use `nros_cpp_node_get_default_options()` to get a
- *   zero-initialised instance.
+ *   zero-initialised instance. **`namespace_len == 0` is UNSET**: the node
+ *   INHERITS the executor's namespace, the same answer
+ *   `nros_cpp_node_create` gives for a NULL or empty `namespace`. Write
+ *   `namespace_ = "/"`, `namespace_len = 1` to place the node at the ROOT
+ *   explicitly (issue 1473).
  * * `out_node` — Receives the node handle on success.
  *
  * # Safety
@@ -1252,6 +1267,12 @@ const char *nros_cpp_node_get_name(const struct nros_cpp_node_t *node);
  *
  * Returns a pointer to the null-terminated namespace string stored in the node handle.
  * The pointer is valid as long as the `nros_cpp_node_t` is alive.
+ *
+ * Issue 1473 — this is the RESOLVED namespace, the one the executor recorded
+ * for this node, never the argument the caller passed. A node created with an
+ * unset namespace on an executor opened at `/island` answers `/island`, which
+ * is also where its relative topics resolve; one created with an explicit
+ * `"/"` answers `/`. The two used to be indistinguishable here.
  *
  * # Safety
  * `node` must be a valid pointer to an initialized `nros_cpp_node_t`, or NULL.

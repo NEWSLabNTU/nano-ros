@@ -690,7 +690,8 @@ class Node {
     /// than emergent:**
     ///
     ///   launch-declared (on the handle)  >  this constructor's argument  >
-    ///   the type's own default (`name` is required; `ns` defaults to the root)
+    ///   the type's own default (`name` is required; `ns` defaults to UNSET,
+    ///   which since issue 1473 means the EXECUTOR's namespace, not the root)
     ///
     /// So a component whose class hardcodes a DIFFERENT name than the launch
     /// file declares is named by the LAUNCH FILE, which is the only answer that
@@ -1101,9 +1102,22 @@ class Node {
 
     /// Create a new node.
     ///
+    /// **Issue 1473 — `ns == nullptr` (or `""`) is UNSET, not the root.** The
+    /// node INHERITS the executor's namespace, which is how a namespace given
+    /// to `nros::init(locator, domain, session, node_namespace)` (issue 1434)
+    /// reaches anything the image creates afterwards. To place a node at the
+    /// ROOT of a namespaced executor, pass `"/"` — one character, and the
+    /// spelling every generated C entry already emits. The two are different
+    /// requests and this API keeps them apart; `nros_cpp_node_create` and
+    /// `nros_cpp_node_create_ex` answer them identically.
+    ///
+    /// On an executor at the root the two are the same value, so an image that
+    /// never names a session namespace is unaffected.
+    ///
     /// @param out   Receives the initialized node.
     /// @param name  Node name (null-terminated).
-    /// @param ns    Node namespace (null-terminated), or nullptr for "/".
+    /// @param ns    Node namespace (null-terminated); nullptr or "" = unset
+    ///              (inherit the executor's), "/" = the root.
     /// @return Result indicating success or failure.
     static Result create(Node& out, const char* name, const char* ns = nullptr) {
         if (!out.executor_handle_) {
@@ -2661,7 +2675,8 @@ inline bool ok() {
 ///
 /// @param out   Receives the initialized node.
 /// @param name  Node name.
-/// @param ns    Node namespace, or nullptr for "/".
+/// @param ns    Node namespace; nullptr or "" = unset (inherit the executor's),
+///              "/" = the root. See `rclcpp::Node::create` (issue 1473).
 inline Result create_node(::rclcpp::Node& out, const char* name, const char* ns = nullptr) {
     if (!::rclcpp::Node::global_initialized()) {
         return Result(ErrorCode::NotInitialized);
@@ -2680,7 +2695,8 @@ inline Result create_node(::rclcpp::Node& out, const char* name, const char* ns 
 /// @param out              Receives the initialized node.
 /// @param executor_handle  Explicit executor handle (from a tier setup param).
 /// @param name             Node name.
-/// @param ns               Node namespace, or nullptr for "/".
+/// @param ns               Node namespace; nullptr or "" = unset (inherit the
+///                         executor's), "/" = the root (issue 1473).
 inline Result create_node_on(::rclcpp::Node& out, void* executor_handle, const char* name,
                              const char* ns = nullptr) {
     if (executor_handle == nullptr) {
@@ -2754,8 +2770,11 @@ class NodeBuilder {
         return *this;
     }
 
-    /// Set the Node's namespace (mirrors `rclcpp::Node`'s ctor). Empty
-    /// or nullptr defaults to `"/"` at build time.
+    /// Set the Node's namespace (mirrors `rclcpp::Node`'s ctor). Empty or
+    /// nullptr leaves it UNSET, and an unset namespace INHERITS the
+    /// executor's — the same vocabulary `rmw()`, `locator()` and
+    /// `domain_id()` above already use for this struct's other fields.
+    /// Pass `"/"` to place the Node at the root explicitly (issue 1473).
     NodeBuilder& namespace_(const char* ns) {
         copy_bounded(ns, options_.namespace_, &options_.namespace_len, NROS_CPP_NAMESPACE_LEN);
         return *this;
