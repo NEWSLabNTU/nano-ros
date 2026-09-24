@@ -819,10 +819,17 @@ jobs:
       # AND clang's resource-dir headers. Rust cells only (C/C++ cells skip).
       - name: Install clang + libclang for bindgen
         if: startsWith(matrix.example, 'rust/')
+        # RESOLVE FIRST, and capture the status: a `$(…)` in argument position
+        # discards it and `apt-get install` with no packages exits 0, so a
+        # failed resolve installs nothing and the step goes green (issue 1466).
         run: |
+          if ! pkgs="$(python3 scripts/sdk/prereq-packages.py --manager apt clang libclang-dev)"; then
+            echo "::error::prereq-packages.py could not resolve clang/libclang-dev from nros-sdk-index.toml"
+            exit 1
+          fi
           apt-get update -q
-          apt-get install -y --no-install-recommends \
-            $(python3 scripts/sdk/prereq-packages.py --manager apt clang libclang-dev)
+          # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
+          apt-get install -y --no-install-recommends $pkgs
 
       - name: Build zephyr/${{ matrix.example }} (zenoh) on ${{ matrix.line }}
         run: |

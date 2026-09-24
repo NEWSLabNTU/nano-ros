@@ -86,11 +86,19 @@ jobs:
       # compile one to learn that `doxygen` is spelled `doxygen` costs minutes
       # to answer what the index answers in milliseconds. The script reads the
       # same file the CLI reads.
+      # RESOLVE FIRST, and capture the status. A `$(…)` in argument position
+      # throws its exit status away, and `apt-get install` with zero packages
+      # exits 0 — so a failed resolve installs NOTHING and the step goes GREEN
+      # (issue 1466, measured live in live-peer).
       - name: Install Doxygen + Graphviz (from the index)
         run: |
+          if ! pkgs="$(python3 scripts/sdk/prereq-packages.py --manager apt doxygen graphviz)"; then
+            echo "::error::prereq-packages.py could not resolve doxygen/graphviz from nros-sdk-index.toml"
+            exit 1
+          fi
           sudo apt-get update
-          sudo apt-get install -y \
-            $(python3 scripts/sdk/prereq-packages.py --manager apt doxygen graphviz)
+          # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
+          sudo apt-get install -y $pkgs
 
       - name: Install Rust toolchain
         # tools/rust-toolchain.toml pins the workspace channel; reuse it so

@@ -480,10 +480,19 @@ jobs:
       # and clang's resource-dir headers.
       - name: Install clang + libclang for bindgen
         id: clang
+        # RESOLVE FIRST, and capture the status — issue 1466. This exact step,
+        # in run 35817736997, printed a `ModuleNotFoundError` traceback and then
+        # `0 upgraded, 0 newly installed` and SUCCEEDED, because a `$(…)` in
+        # argument position discards its status and `apt-get install` with zero
+        # packages exits 0. The lane then ran without clang.
         run: |
+          if ! pkgs="$(python3 scripts/sdk/prereq-packages.py --manager apt clang libclang-dev)"; then
+            echo "::error::prereq-packages.py could not resolve clang/libclang-dev from nros-sdk-index.toml"
+            exit 1
+          fi
           apt-get update -q
-          apt-get install -y --no-install-recommends \
-            $(python3 scripts/sdk/prereq-packages.py --manager apt clang libclang-dev)
+          # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
+          apt-get install -y --no-install-recommends $pkgs
 
       # NARROWED to the leaves these rows resolve. `just build zephyr` is the
       # whole west lane, and the tree already says what that is worth — on this
