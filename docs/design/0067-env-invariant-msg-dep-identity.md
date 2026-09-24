@@ -161,6 +161,27 @@ an option (the prefix is required by (3)) and neither is leaving `links` behind
 (it breaks (2)). This is decidable **independently of D5** — (3) is what makes it
 so, and it is why issue 1428 was wrong to hold it back pending the collapse.
 
+**Landed** (issue 1455, 2026-09-24). The recomputation lives in
+`apply_package_renames`, not in the emitter, because that function is the one
+place that knows what a generated crate is finally called — it owns the
+directory name, the `[package] name`, every sibling dep key and every `use`
+path. Handing the emitter the rename map instead would answer "what does this
+crate ship as" in two places. The FORMULA is still single: the value is
+recomputed through the emitter's own `BoundInventory::links_key`, never
+text-substituted, which also covers the renames whose old name is not spelled
+the way the key spells it (`links_key` normalises `-`/`.`/`/` to `_`).
+
+Renaming the channel is free because nothing consumes it by name: no `build.rs`
+in the tree reads `DEP_NROS_MSGS_*` (the only `DEP_*` readers are
+`nros-rmw-cyclonedds-sys` on `DEP_DDSC_*` and `nros-c` on `DEP_NROS_NODE_*`),
+and the cmake side reads the bounds from `nros_message_bounds.json` by PATH
+(`nros_message_bounds_files` → `NanoRosGenerateInterfaces.cmake`), never through
+cargo's env channel. Gated as rule 4 of `check-message-crate-identity`: a
+tracked generated crate whose `links` does not equal `nros_msgs_` + its own
+`[package] name`. A crate with NO `links` stays legal — a pre-phase-403 vintage
+emits no bounds `build.rs`, so claiming a graph-global name it never writes to
+would be strictly worse.
+
 ### D5 — Canonicality is a property of the output TREE, not of a shared crate
 
 One wire type should be one Rust crate per **(ros-edition, capacity profile)**.

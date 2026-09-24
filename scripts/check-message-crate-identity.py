@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""A generated message crate's IDENTITY — its version, and the wire types it claims.
+"""A generated message crate's IDENTITY — its version, the wire types it claims,
+and the `links` channel it occupies.
 
-Issue 1428. Three rules, one scan, no build.
+Issues 1428 + 1455. Four rules, one scan, no build.
 
-WHY ONE GATE AND NOT THREE
+WHY ONE GATE AND NOT FOUR
 
-All three rules are the same mistake seen from different sides: nothing in the
+All four rules are the same mistake seen from different sides: nothing in the
 tree knew which crate *is* `builtin_interfaces`. `builtin_interfaces` is
 generated three times (rcl-interfaces, diagnostic-msgs and rosgraph-msgs each
 carry the whole transitive closure of their own package), the three Rust
@@ -53,6 +54,23 @@ claimants (`nros-serdes`, `nros-rmw-cyclonedds`) are hand-written fixture
 structs inside `#[cfg(test)] mod tests`. A fixture is not linked into an image,
 so it cannot collide on the wire; flagging it would have put two non-problems in
 the baseline beside the real one.
+
+RULE 4 — a generated crate's `links` is a function of its own `[package] name`
+
+Issue 1455, RFC-0067 §D4. `links` is the THIRD identity axis a `path` dep
+resolves on, beside the name and the version, and like the other two it is
+global to the dependency graph — cargo refuses two packages that declare the
+same one. Codegen wrote `nros_msgs_<ament package>` on the assumption that a
+generated crate is named after its ament package; the committed core set is ALL
+renames, so `nros-builtin-interfaces-clock` shipped
+`links = "nros_msgs_builtin_interfaces"` and a consumer's own unrenamed
+`builtin_interfaces` collided with it at RESOLVE time — every cargo command in
+that leaf, not one build.
+
+The rule is deliberately about the crate's OWN name rather than about any rename
+map, because that is the invariant a reader of the shipped file can check: two
+crates shipping under different names cannot collide, and two shipping under the
+same name still do (which is a real collision, and stays reported).
 
 Usage::
 
@@ -271,8 +289,18 @@ def load(manifest_path: str):
         return None
 
 
+def links_key(crate_name: str) -> str:
+    """The `links` a generated crate named `crate_name` must declare.
+
+    The one Rust spelling is `rosidl_codegen::BoundInventory::links_key`; this
+    is the gate's copy of a four-token formula, and the crates it reads are the
+    cross-check that the two agree.
+    """
+    return "nros_msgs_" + re.sub(r"[-./]", "_", crate_name)
+
+
 def scan_manifests(manifests: list):
-    gen_names, bad_version, versioned_rows = {}, [], []
+    gen_names, bad_version, versioned_rows, bad_links, with_links = {}, [], [], [], []
     docs = {}
     for path in manifests:
         doc = load(path)
@@ -290,6 +318,14 @@ def scan_manifests(manifests: list):
         if version != "0.0.0":
             shown = "version.workspace = true" if version is None else repr(version)
             bad_version.append((path, name, shown))
+        # RULE 4 — a crate with NO `links` is fine (pre-phase-403 vintages emit
+        # no bounds `build.rs`, so there is no channel to carry). One that HAS
+        # it must have derived it from the name it ships under.
+        links = pkg.get("links")
+        if links is not None:
+            with_links.append(name)
+            if links != links_key(name):
+                bad_links.append((path, name, links, links_key(name)))
 
     for path, doc in docs.items():
         for table in DEP_TABLES:
@@ -309,7 +345,7 @@ def scan_manifests(manifests: list):
                     dep_name = spec.get("package", key)
                     if dep_name in gen_names and "version" in spec:
                         versioned_rows.append((path, "target." + table, key, spec["version"]))
-    return gen_names, bad_version, versioned_rows
+    return gen_names, bad_version, versioned_rows, bad_links, with_links
 
 
 def crate_of(rs_path: str, manifest_dirs) -> str:
@@ -427,6 +463,19 @@ def selftest() -> None:
     assert is_generated_crate("packages/interfaces/x/generated/humble/nros-y/Cargo.toml")
     assert not is_generated_crate("packages/core/nros-node/Cargo.toml")
 
+    # RULE 4 — the formula, and the two directions that matter. The value 1455
+    # measured is what the shipped `-clock` crate carried; the value the rule
+    # demands is derived from the name it ships under.
+    assert links_key("builtin_interfaces") == "nros_msgs_builtin_interfaces"
+    assert (
+        links_key("nros-builtin-interfaces-clock") == "nros_msgs_nros_builtin_interfaces_clock"
+    ), links_key("nros-builtin-interfaces-clock")
+    # A renamed crate and a consumer's own copy must NOT share a key...
+    assert links_key("nros-builtin-interfaces-clock") != links_key("builtin_interfaces")
+    # ...and two copies shipping under ONE name must, or the gate has stopped
+    # describing what cargo does.
+    assert links_key("nros-builtin-interfaces") == links_key("nros-builtin-interfaces")
+
 
 # --------------------------------------------------------------------------
 
@@ -436,7 +485,7 @@ def main() -> int:
     selftest()
 
     manifests = tracked("*Cargo.toml")
-    gen_names, bad_version, versioned_rows = scan_manifests(manifests)
+    gen_names, bad_version, versioned_rows, bad_links, with_links = scan_manifests(manifests)
     dupes = scan_wire_claims(manifests)
 
     if "--write-baseline" in sys.argv:
@@ -459,6 +508,7 @@ def main() -> int:
                 print(f"      {c}")
         print(f"\nversion-carrying dep rows: {len(versioned_rows)}")
         print(f"crates not at 0.0.0: {len(bad_version)}")
+        print(f"crates whose `links` does not follow their name: {len(bad_links)}")
         return 0
 
     failed = False
@@ -488,6 +538,24 @@ def main() -> int:
             "`path` alone — CLAUDE.md, issue 0394 (which broke root-workspace\n"
             "resolution twice). This is resolve-time, so it takes every cargo command\n"
             "in the tree, not just this consumer.",
+            file=sys.stderr,
+        )
+
+    if bad_links:
+        failed = True
+        print(
+            "\ngenerated message crate(s) whose `links` does not follow their name:",
+            file=sys.stderr,
+        )
+        for path, name, got, want in bad_links:
+            print(f"  {name}: links = {got!r}, must be {want!r}    {path}", file=sys.stderr)
+        print(
+            "\n`links` is global to the dependency graph, so it is an identity axis\n"
+            "like the name and the version (RFC-0067 §D4, issue 1455). A crate that\n"
+            "keeps its ament package's key after being renamed into `nros-` collides\n"
+            "with a consumer's own generated copy of that package, at RESOLVE time —\n"
+            "every cargo command in that leaf. Regenerate the tree (`just\n"
+            "generate-<pkg>`); the `--rename` pass recomputes this value now.",
             file=sys.stderr,
         )
 
@@ -521,6 +589,7 @@ def main() -> int:
 
     print(
         f"check-message-crate-identity: OK ({len(gen_names)} generated crate(s), "
+        f"{len(with_links)} declaring `links`, "
         f"{len(manifests)} manifest(s), {len(baseline)} baselined duplicate claim(s))"
     )
     return 0

@@ -1037,12 +1037,20 @@ fn main() {{
         )
     }
 
-    /// The `links` key for a generated crate of `package`.
+    /// The `links` key for a generated crate, from **the name that crate
+    /// actually ships under** — not from its ament package.
     ///
-    /// Cargo requires `links` to be unique across the dependency graph; a
-    /// generated crate is named after its ament package, which already is.
-    pub fn links_key(package: &str) -> String {
-        format!("nros_msgs_{}", package.replace(['-', '.', '/'], "_"))
+    /// Cargo requires `links` to be unique across the dependency graph, so it
+    /// is a third identity axis beside the name and the version (RFC-0067 §D4).
+    /// The two must therefore agree: pass the ament package for an unrenamed
+    /// crate, and the RENAMED crate name for one the `--rename` pass moved into
+    /// the `nros-` namespace. Issue 1455 is what happens when they disagree —
+    /// `nros-builtin-interfaces-clock` shipped the ament value, so a consumer's
+    /// own `builtin_interfaces` collided with it at RESOLVE time and took every
+    /// cargo command in that leaf. `apply_package_renames` recomputes the value
+    /// through this function once the final name is known.
+    pub fn links_key(crate_name: &str) -> String {
+        format!("nros_msgs_{}", crate_name.replace(['-', '.', '/'], "_"))
     }
 }
 

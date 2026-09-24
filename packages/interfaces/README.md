@@ -69,7 +69,9 @@ every tracked manifest in every workspace root and every tracked `.rs`:
    and `^0.5.0` stops resolving the day the workspace bumps (issue 0394);
 2. no dep row anywhere pins one of their versions;
 3. no wire `TYPE_NAME` is claimed by more than one **shipped** crate, against the
-   shrink-only baseline `.config/duplicate-wire-type-baseline.txt`.
+   shrink-only baseline `.config/duplicate-wire-type-baseline.txt`;
+4. a generated crate's `links`, when it has one, is `nros_msgs_` + its own
+   `[package] name` — the third identity axis, see below (issue 1455).
 
 Rule 3's baseline holds exactly the six claims of the `builtin_interfaces` triple
 (`Time` and `Duration` × three crates). A **fourth** copy fails the gate — which
@@ -81,12 +83,20 @@ therefore empties that file in the same commit.
 struct in `mod tests` is never linked into an image, so it cannot collide on the
 wire, and counting them would have put two non-problems in the baseline.
 
-## Known hazard: `links` is not renamed
+## `links` is the third identity axis, and a rename moves it
 
-`links` is derived from the **ament** package name
-(`nros_msgs_builtin_interfaces`) and the rename pass does not rewrite it. A
-shipped crate and a consumer's own copy of the same ament package therefore
-collide on `links` at resolve time even though their crate names differ —
-reachable today via `nros/sim-time`. Tracked as **issue 1455**; the rule
-(`links` follows the crate name) is RFC-0067 **§D4**, and it is decided
-independently of phase-465.
+`links` is global to the dependency graph, exactly like a crate's name and its
+version, so it is a third thing two packages can collide on. Codegen derived it
+from the **ament** package name and the rename pass did not rewrite it, so
+`nros-builtin-interfaces-clock` shipped `links = "nros_msgs_builtin_interfaces"`
+and a consumer's own generated `builtin_interfaces` — carrying the same value —
+made the graph unresolvable, for every cargo command in that leaf. Reachable via
+`nros/sim-time`.
+
+Fixed (**issue 1455**): `apply_package_renames` recomputes the key from the name
+the crate actually ships under, through the emitter's own `links_key`, so the
+two shipped crates now read `nros_msgs_nros_builtin_interfaces_clock` and
+`nros_msgs_nros_rosgraph_msgs`. The rule is RFC-0067 **§D4**, gated as rule 4
+above, and decided independently of phase-465. The other six shipped crates
+declare no `links` at all (they predate phase-403's bounds `build.rs`, so there
+is no channel to carry); a regeneration gives them one, correctly derived.
