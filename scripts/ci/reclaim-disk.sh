@@ -41,6 +41,16 @@ label="${1:-reclaim}"
 # tree whose scratch this script may touch, and `$PWD` is that tree.
 ws="${GITHUB_WORKSPACE:-$PWD}"
 
+# Same transcript `disk-report.sh` writes, so one uploaded artifact carries the
+# before-report, what the reclaim took, and the after-report in the order they
+# happened. `disk-transcript.sh` has the measurement that made a file
+# necessary.
+# shellcheck source=scripts/ci/disk-transcript.sh
+. "$(dirname "${BASH_SOURCE[0]}")/disk-transcript.sh"
+_transcript="$(nros_disk_transcript_open)"
+
+{
+
 echo "::group::disk reclaim — ${label}"
 
 _free_kb() { df -Pk "$ws" 2>/dev/null | awk 'NR==2 {print $4}'; }
@@ -132,13 +142,20 @@ summary="$(printf 'freed %s MB; %s KB free' "$freed_mb" "$after_kb")"
 echo "$summary"
 echo "::endgroup::"
 
-# Same two channels as `disk-report.sh`, and for the same reason: on the
-# scheduled `gate` lane the job log is what the failure destroys, so a number
-# that only reaches the log is a number nobody reads.
+# Same channels as `disk-report.sh`, and for the same reason: on the scheduled
+# `gate` lane the job log is what the failure destroys, so a number that only
+# reaches the log is a number nobody reads. Measured 2026-09-24 (job
+# 107462875362): neither of these two survived a runner death — the transcript
+# below, uploaded as an artifact by the step that follows, is the one that can.
 printf '::notice title=disk reclaim %s::%s\n' "$label" "$summary"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     printf -- '- **disk reclaim %s** — %s\n' "$label" "$summary" \
         >>"$GITHUB_STEP_SUMMARY" 2>/dev/null || true
 fi
+
+# Everything above — including the `::notice::` line — is carried into the
+# transcript by the `tee` this brace group closes into. There is no separate
+# append, because a second write is a second thing to keep in step.
+} 2>&1 | tee -a "${_transcript:-/dev/null}"
 
 exit 0

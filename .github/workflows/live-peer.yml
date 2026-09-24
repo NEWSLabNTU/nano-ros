@@ -398,6 +398,27 @@ jobs:
         id: disk
         run: scripts/ci/reclaim-disk.sh "before the SDK setup"
 
+      # Issue 1353 — what the reclaim freed, in the one channel that survives
+      # this lane's failure. `live-peer` is where the issue first saw a runner
+      # die with no failing step at all (run 35817736997: step 9 still
+      # `in_progress`, steps 10-13 `pending`), so its own uploads at the end of
+      # the job are exactly the ones that never happen. This step completes
+      # before any of that, which is the whole of its value.
+      #
+      # It is an ADDITIONAL step, not a change to an existing one: the step
+      # above keeps its name and `id`, so `lane-stage.py`'s authored map and
+      # `check-lane-stage-reporting` are untouched. This lane still has no
+      # `disk-report.sh` bracket — the `du` side of the measurement — and that
+      # stays out on purpose until there is a reason to pay for it here.
+      - name: Upload the disk transcript — issue 1353
+        if: ${{ !cancelled() && env.NROS_DISK_TRANSCRIPT != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-transcript-live-peer-board
+          path: ${{ env.NROS_DISK_TRANSCRIPT }}
+          if-no-files-found: ignore
+          retention-days: 7
+
       # The image bakes bin/cargo-clippy from a non-rustup-owner layer, so
       # `rustup target add` (which `just setup` reaches) trips on the
       # clippy-preview conflict. Same fix as nightly's zephyr line.
