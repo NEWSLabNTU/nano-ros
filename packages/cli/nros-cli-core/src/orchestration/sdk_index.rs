@@ -936,18 +936,64 @@ pub struct RustCargoTool {
     pub check: Option<CheckProbe>,
 }
 
-/// phase-327 W1 — one pip-installed tool.
+/// phase-327 W1 — one Python dependency, provisioned by apt where apt can
+/// answer and by pip where it cannot (issue 1481).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PythonDep {
     /// The PyPI distribution name.
     pub pip: String,
+    /// The IMPORT name, when it differs from [`Self::pip`] (`PyYAML` ->
+    /// `yaml`, `empy` -> `em`). See [`Self::module`].
+    #[serde(rename = "module", default)]
+    pub module_name: Option<String>,
     #[serde(default)]
     pub version: Option<String>,
+    /// The apt package(s) that provide this, in the `[prereq.*]` shape — a flat
+    /// list, or a per-release table (issue 1481; RFC-0099 D9 / phase-447 D2).
+    ///
+    /// Declaring it does NOT make the remedy apt: the resolver asks the host's
+    /// apt for a candidate first, so a release — or a host without the ROS 2
+    /// apt repo, which is `python3-catkin-pkg`'s and
+    /// `python3-colcon-common-extensions`'s only source — falls back to pip by
+    /// MEASUREMENT.
+    #[serde(default)]
+    pub apt: ManagerPackages,
+    /// Why this entry has no apt provider, when it has none.
+    ///
+    /// EXACTLY ONE of this and [`Self::apt`] is set, enforced in
+    /// [`SdkIndex::validate`]: an entry that says nothing about apt reads as
+    /// overlooked, and `west` / `clang-format` are decisions, not oversights.
+    /// Same per-field rule as the sizing descriptor's `[<section>.refused]` —
+    /// a value or a reason, never a silent default.
+    #[serde(default)]
+    pub apt_refused: Option<String>,
     #[serde(default)]
     pub why: Option<String>,
     #[serde(default)]
     pub check: Option<CheckProbe>,
+}
+
+impl PythonDep {
+    /// The name an `import` statement uses.
+    ///
+    /// Authored where it differs from the PyPI name; otherwise DERIVED, because
+    /// a second spelling of a fact that usually agrees is how the two drift.
+    /// Used both for the shadow probe and — when the entry declares no `check`
+    /// — as the probe itself.
+    #[must_use]
+    pub fn module(&self) -> String {
+        match &self.module_name {
+            Some(m) => m.clone(),
+            None => self.pip.replace('-', "_"),
+        }
+    }
+
+    /// The apt names that apply on `release`, as declared.
+    #[must_use]
+    pub fn apt_packages(&self, release: Option<&str>) -> &[String] {
+        self.apt.for_release(release)
+    }
 }
 
 /// A named `[reference.*]` source grouping (Phase 197.2).
@@ -1837,6 +1883,23 @@ impl SdkIndex {
             {
                 bail!("[python.{alias}].check must set exactly one probe field");
             }
+            // Issue 1481 — every entry STATES its apt position. Silence is what
+            // made eight pip-only entries look deliberate when six of them had
+            // an apt package all along, so an entry that neither declares nor
+            // refuses apt is refused here rather than read as a decision.
+            match (py.apt.is_empty(), py.apt_refused.as_deref()) {
+                (true, None) => bail!(
+                    "[python.{alias}] states no apt position — set `apt = [\"python3-...\"]` \
+                     if apt packages it (the remedy then prefers apt, which is what keeps a \
+                     `pip3 install --user` copy from shadowing the build ROS was compiled \
+                     against), or `apt_refused = \"<why>\"` if it does not"
+                ),
+                (false, Some(reason)) => bail!(
+                    "[python.{alias}] declares BOTH `apt` and `apt_refused = \"{reason}\"` — \
+                     a refusal beside a declaration says nothing true; keep one"
+                ),
+                _ => {}
+            }
         }
         // Phase 195.B — a `[source.*]` provisioning recipe must be coherent so
         // `nros setup` can act on it without guessing. `submodule` mode needs a
@@ -2187,6 +2250,7 @@ check = { cmd = "cargo-nextest" }
 
 [python.west]
 pip = "west"
+apt_refused = "PyPI only"
 check = { cmd = "west" }
 "#,
         )
@@ -2211,6 +2275,39 @@ check = { cmd = "west" }
         // a `[system.*]` entry still satisfies the reference while the alias
         // lives; only the wording moved.
         assert!(err.contains("no [prereq.nope] entry"), "{err}");
+
+        // Issue 1481 — an entry that says NOTHING about apt is refused, because
+        // silence is exactly what made six apt-provided packages look
+        // deliberately pip-only for as long as they did. The two mutations
+        // below are this gate's negative controls: each parses fine and is
+        // caught only by `validate`.
+        let silent = SdkIndex::parse("[python.lark]\npip = \"lark\"\n").unwrap();
+        let err = silent.validate().unwrap_err().to_string();
+        assert!(err.contains("states no apt position"), "{err}");
+
+        let both = SdkIndex::parse(
+            "[python.lark]\npip = \"lark\"\napt = [\"python3-lark\"]\napt_refused = \"no\"\n",
+        )
+        .unwrap();
+        let err = both.validate().unwrap_err().to_string();
+        assert!(err.contains("declares BOTH"), "{err}");
+
+        // And the module name is DERIVED where it agrees with the PyPI name,
+        // authored only where it does not — one spelling, two facts.
+        let named = SdkIndex::parse(
+            "[python.pyyaml]\npip = \"PyYAML\"\nmodule = \"yaml\"\napt = [\"python3-yaml\"]\n",
+        )
+        .unwrap();
+        assert!(named.validate().is_ok());
+        assert_eq!(named.python["pyyaml"].module(), "yaml");
+        assert_eq!(
+            named.python["pyyaml"].apt_packages(Some("jammy")),
+            ["python3-yaml"]
+        );
+        let derived =
+            SdkIndex::parse("[python.colcon]\npip = \"colcon-common\"\napt_refused = \"x\"\n")
+                .unwrap();
+        assert_eq!(derived.python["colcon"].module(), "colcon_common");
 
         // A system entry mapping no manager at all is rejected.
         let unmapped = SdkIndex::parse("[system.x]\nwhy=\"w\"\n").unwrap();
