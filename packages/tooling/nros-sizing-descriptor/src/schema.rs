@@ -748,10 +748,14 @@ impl Types {
 /// nothing does. A per-node table would be a shape the producer can never
 /// populate half of, and a consumer would have to re-derive the maximum anyway.
 ///
-/// [`Self::max_parameters`] and [`Self::max_param_name_len`] are nevertheless
-/// PER NODE, because the store is per node; [`Self::declared`] is the total
-/// across the image. The two are different questions and the field names say
-/// which is which.
+/// [`Self::max_parameters`] and [`Self::max_param_name_len`] are, like
+/// [`Self::declared`], IMAGE-WIDE. `nros_params::MAX_PARAMETERS` carries the
+/// canonical statement and the reason: `ParameterStorage` is ONE flat array
+/// for the whole image, so a capacity bounds every node's parameters taken
+/// together.
+///
+/// This said PER NODE, "because the store is per node", for as long as the
+/// section existed. No such store exists (issue 1450).
 ///
 /// # What is deliberately NOT here
 ///
@@ -806,15 +810,18 @@ impl Params {
         fact(&self.declared, "declared", &self.refused)
     }
 
-    /// `NROS_MAX_PARAMETERS` — PER NODE: the declared names plus the seeded
-    /// `use_sim_time`, counted once even when the contract also names it (the
-    /// seed steps aside for an application's own declaration and the two share
-    /// a slot).
+    /// `NROS_MAX_PARAMETERS` — the store's CAPACITY: every node's declared
+    /// names plus the seeded `use_sim_time`, counted once per node even when
+    /// the contract also names it (the seed steps aside for an application's
+    /// own declaration and the two share a slot).
     ///
-    /// Per node rather than per image because the store is per node, so this is
-    /// the maximum over the image's nodes and not the sum. A consumer that
-    /// summed [`Self::declared`] instead would size every node's store for the
-    /// whole image.
+    /// IMAGE-WIDE, so the producer SUMS over the image's nodes. See
+    /// `nros_params::MAX_PARAMETERS` for why: the arena is shared, so a
+    /// capacity has to hold every node's parameters at once. `max` names the
+    /// capacity, not a maximum taken over nodes.
+    ///
+    /// It differs from [`Self::declared`] only by the per-node seed, which is
+    /// a real slot and is why the two numbers are not the same.
     pub fn max_parameters(&self) -> Fact<usize> {
         fact(&self.max_parameters, "max_parameters", &self.refused)
     }

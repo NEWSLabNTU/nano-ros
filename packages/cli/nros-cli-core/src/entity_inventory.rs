@@ -1479,10 +1479,16 @@ pub enum ParamCapacity {
 pub struct ParamStoreSizing {
     /// Parameters the contract declares, across every node.
     pub declared: usize,
-    /// `NROS_MAX_PARAMETERS` -- per node, the declared names plus
-    /// [`SEEDED_PARAMETER`] (once, even when the contract also names it: the
-    /// seed steps aside for an application's own declaration and the two
-    /// share a slot).
+    /// `NROS_MAX_PARAMETERS` -- the store's CAPACITY: every node's declared
+    /// names plus [`SEEDED_PARAMETER`], counted once per node even when the
+    /// contract also names it (the seed steps aside for an application's own
+    /// declaration and the two share a slot).
+    ///
+    /// IMAGE-WIDE, which is why the derivation below SUMS over nodes while its
+    /// sibling `max_param_name_len` takes a `.max()`. The two are not
+    /// inconsistent: one is a capacity the shared arena must hold all at once,
+    /// the other is the longest single name. `nros_params::MAX_PARAMETERS`
+    /// carries the canonical statement (issue 1450).
     pub max_parameters: usize,
     /// `NROS_MAX_PARAM_NAME_LEN` -- the longest of those names, in bytes.
     pub max_param_name_len: usize,
