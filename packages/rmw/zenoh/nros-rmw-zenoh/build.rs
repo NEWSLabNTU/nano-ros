@@ -38,6 +38,8 @@ fn main() {
     // queryables are the runtime's, and a fact nothing watches reads as
     // applied while being stale (issue 1122).
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_SERVICE_SERVERS");
+    // issue 1485 -- the Zephyr resolver road's answer to the same question.
+    println!("cargo:rerun-if-env-changed=NROS_ENTITY_APP_QUERYABLES");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_SERVICE_SHAPE");
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_TIMEOUT_MS");
     println!("cargo:rerun-if-env-changed=NROS_KEYEXPR_STRING_SIZE");
@@ -145,10 +147,17 @@ fn main() {
     // `SyncParametersClient`), and a node's services are polled serially in
     // one spin, so a slot is drained within one spin period. A default on a
     // knob, not a ceiling -- an image serving a parameter dashboard states 2.
-    let builtin_inbox_bytes: usize = env_usize(
-        "NROS_PARAM_SERVICE_INBOX_BYTES",
-        declared_param_request_max(sizing.as_ref()).unwrap_or(svc_size),
-    );
+    //
+    // issue 1485 -- "not stated" is a value no rung can produce, exactly as
+    // `nros-node` probes the same knob, and a stated 0 is REFUSED with the same
+    // words there. It used to be read with the derivation as the DEFAULT, so
+    // the literal 0 the Kconfig row forwarded (its old derive sentinel) won
+    // over the derivation and became the slot size.
+    let builtin_inbox_bytes: usize = match env_usize("NROS_PARAM_SERVICE_INBOX_BYTES", usize::MAX) {
+        usize::MAX => declared_param_request_max(sizing.as_ref()).unwrap_or(svc_size),
+        0 => panic!("{PARAM_INBOX_ZERO_REFUSAL}"),
+        n => n,
+    };
     let builtin_inbox_depth: usize = env_usize_min("NROS_PARAM_SERVICE_INBOX_DEPTH", 1, 1);
     // Phase 160.C.2 — bumped 10_000 → 30_000. The original 10 s default
     // was too short for slow zenoh-pico flushes on Zephyr/NSOS where
@@ -286,17 +295,15 @@ fn main() {
     // has to subtract it: the transient-local demand is the one input that
     // does not arrive as an env string, and asking for it twice would warn
     // twice on a refusal.
-    // Emitted as a TOKEN, not a number, when it is the sentinel. `usize::MAX`
-    // is the build HOST's, and this file is compiled for the TARGET: printing
-    // it as a decimal put 18446744073709551615 into a thumbv7em build, where
-    // `usize` is 32 bits and the literal does not fit ("literal out of range
-    // for `usize`", denied by default). The token means the same thing on
-    // every word size, which is also what the constant is trying to say.
-    let declared_app_queryables: usize = declared_app_queryables(tl_demand);
-    let declared_app_queryables = if declared_app_queryables == usize::MAX {
-        "usize::MAX".to_string()
-    } else {
-        declared_app_queryables.to_string()
+    // issue 1485 -- emitted as an `Option`, never as a sentinel. It used to be
+    // `usize::MAX` for "nobody said", written as a token, and that is how the
+    // absence of a DELIVERY read as the absence of a DECLARATION: the Zephyr
+    // resolver road carried no application count at all, so an image whose
+    // contract declares the parameter family built its builtin table empty
+    // and every parameter service fell through to a user-service ring.
+    let declared_app_queryables = match declared_app_queryables(tl_demand) {
+        Some(n) => format!("Some({n})"),
+        None => "None".to_string(),
     };
 
     let out_dir = std::env::var("OUT_DIR").unwrap();
@@ -335,10 +342,10 @@ fn main() {
              /// NROS_PARAM_SERVICE_INBOX_DEPTH, default 1: these clients are sequential).\n\
              pub const BUILTIN_INBOX_DEPTH: usize = {builtin_inbox_depth};\n\
              /// phase-461 W2b - queryables this image's own DECLARATION attributes to the\n\
-             /// application, per session. `usize::MAX` when nothing declared them, which\n\
+             /// application, per session. `None` when nothing declared them, which\n\
              /// leaves the builtin table empty and every queryable on the user-service\n\
-             /// geometry it has today.\n\
-             pub const DECLARED_APP_QUERYABLES: usize = {declared_app_queryables};\n\
+             /// geometry it has today (issue 1485: never a sentinel).\n\
+             pub const DECLARED_APP_QUERYABLES: Option<usize> = {declared_app_queryables};\n\
              /// Default service client RPC timeout in milliseconds\n\
              /// (set via NROS_SERVICE_TIMEOUT_MS, default 30000).\n\
              pub const SERVICE_DEFAULT_TIMEOUT_MS: u32 = {service_timeout_ms};\n\
@@ -434,7 +441,7 @@ fn declared_action_queryables(desc: Option<&SizingDescriptor>) -> usize {
 }
 
 /// phase-461 W2b - queryables this image's own DECLARATION attributes to the
-/// APPLICATION, per session, or `usize::MAX` for "nobody said".
+/// APPLICATION, per session, or `None` for "nobody said".
 ///
 /// The builtin families have no count here, and deliberately so. A service
 /// server IS a queryable, so `ZPICO_MAX_QUERYABLES` is already
@@ -447,7 +454,7 @@ fn declared_action_queryables(desc: Option<&SizingDescriptor>) -> usize {
 /// nor whether their features are compiled in, so a number stated here is a
 /// number that drifts.
 ///
-/// `usize::MAX` rather than 0 for the undeclared case, because the two
+/// `None` rather than 0 for the undeclared case, because the two
 /// directions are opposite. For the TABLE's size an absent declaration means
 /// "assume the infrastructure is present" -- over-reserving costs RAM and
 /// under-reserving fails at boot. For the ring GEOMETRY it must mean the other
@@ -465,15 +472,27 @@ fn declared_action_queryables(desc: Option<&SizingDescriptor>) -> usize {
 /// `service_server` rows here while the table had been sized from the env
 /// carrier would let the two disagree, and the leftover would not be the
 /// runtime's share.
-fn declared_app_queryables(tl: Option<usize>) -> usize {
+///
+/// **The Zephyr resolver road (issue 1485).** A Zephyr west entry receives
+/// neither carrier above: its queryable table is `NROS_MAX_QUERYABLES`, which
+/// `nros_resolve_knobs()` resolves from the entity inventory's
+/// `NROS_DERIVED_MAX_QUERYABLES`, and that road never ran the CMake road's
+/// `nros_entity_facts_env`. So the inventory publishes the application's share
+/// of that SAME derivation, `NROS_ENTITY_APP_QUERYABLES` (servers, three per
+/// action server, and the transient-local cache queryables -- everything in
+/// the table that is not the runtime's), and the resolver forwards it beside
+/// the per-kind counts. Same rule as above: the subtraction is taken against
+/// the number the table was sized from. Read SECOND, because an image that
+/// has the CMake road's carriers sized its table from them.
+fn declared_app_queryables(tl: Option<usize>) -> Option<usize> {
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_TL_PUBLISHERS");
     match declared_usize("NROS_DECLARED_SERVICE_SERVERS") {
-        Some(app) => {
+        Some(app) => Some(
             app + tl
                 .or_else(|| declared_usize("NROS_DECLARED_TL_PUBLISHERS"))
-                .unwrap_or(0)
-        }
-        None => usize::MAX,
+                .unwrap_or(0),
+        ),
+        None => declared_usize("NROS_ENTITY_APP_QUERYABLES"),
     }
 }
 
@@ -924,6 +943,18 @@ fn env_usize_min(name: &str, default: usize, min: usize) -> usize {
     }
     v
 }
+
+/// issue 1485 -- the refusal for a STATED `NROS_PARAM_SERVICE_INBOX_BYTES=0`,
+/// word for word the one `nros-node/build.rs` raises for the same knob (RFC-0065
+/// D2: refuse, and name the remedy), so a board that states 0 is told one thing
+/// whichever build script runs first.
+const PARAM_INBOX_ZERO_REFUSAL: &str = "NROS_PARAM_SERVICE_INBOX_BYTES=0: 0 is not a size; -1 derives.\n  \
+     It is the bytes ONE request slot of the parameter/lifecycle inbox holds, \
+     and a 0-byte slot drops every request. 0 was this knob's derive sentinel \
+     until issue 1485 and the readers took it literally.\n  \
+     Delete the line (on Zephyr, CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES, whose \
+     default -1 derives the size from the contract's declared parameters), \
+     or state the size you mean.";
 
 fn env_usize(name: &str, default: usize) -> usize {
     match KCONFIG_KNOBS.iter().find(|(env, _)| *env == name) {

@@ -591,6 +591,19 @@ function(nros_resolve_knobs)
         _nros_resolve_knob(NROS_ENTITY_COUNT_ACTION_SERVER
             "${NROS_ENTITY_COUNT_ACTION_SERVER}")
     endif()
+    # Issue 1485 -- the APPLICATION's share of the queryable table this
+    # function resolves from NROS_DERIVED_MAX_QUERYABLES above. nros-rmw-zenoh
+    # gives the rest of the table to the runtime's parameter and lifecycle
+    # services at their own ring geometry, and it can only do that subtraction
+    # when it knows this number. The CMake road carries the same answer as
+    # NROS_DECLARED_SERVICE_SERVERS (`nros_entity_facts_env`), which a west
+    # build never runs; without this line the builtin inbox of every Zephyr
+    # image was sized and then allocated zero times.
+    if(DEFINED NROS_ENTITY_APP_QUERYABLES AND
+       NOT "${NROS_ENTITY_APP_QUERYABLES}" STREQUAL "")
+        _nros_resolve_knob(NROS_ENTITY_APP_QUERYABLES
+            "${NROS_ENTITY_APP_QUERYABLES}")
+    endif()
 
     # issue 1227 / phase-403 step 2 -- the DEPTHS, forwarded to the lane that
     # was emitted for them. `NanoRosEntityInventory.cmake` has published these
@@ -1239,7 +1252,19 @@ function(nros_resolve_knobs)
     # this pair unforwarded on purpose: `check-kconfig-knob-forwarding` refuses
     # a knob the cmake side exports and no Rust build script reads, and the
     # reader is nros-node's build script, which landed with W2.
-    _nros_resolve_knob(NROS_PARAM_SERVICE_INBOX_BYTES "${CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES}")
+    #
+    # issue 1485 -- the BYTES row carries the `-1` DERIVE sentinel and the same
+    # guard as its two siblings above. It used to default to 0 and be forwarded
+    # unconditionally, so every Zephyr image handed both readers a literal 0:
+    # nros-node took it as a STATED size (its probe for "not stated" is a value
+    # no rung can produce, and 0 is not that value), and nros-rmw-zenoh took it
+    # as the slot size. One family, two conventions, eleven lines apart. The
+    # sentinel forwards NOTHING, so both build scripts run their own
+    # derivation from `NROS_DECLARED_PARAM_SERVICE_SHAPE`; a stated 0 is
+    # forwarded and REFUSED there, naming this knob.
+    if(NOT "${CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}")
+        _nros_resolve_knob(NROS_PARAM_SERVICE_INBOX_BYTES "${CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES}")
+    endif()
     _nros_resolve_knob(NROS_PARAM_SERVICE_INBOX_DEPTH "${CONFIG_NROS_PARAM_SERVICE_INBOX_DEPTH}")
 
     # phase-461 W3 -- the two families' slot sizes, DERIVED from the request

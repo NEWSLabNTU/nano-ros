@@ -460,6 +460,7 @@ function(nros_derive_entity_inventory_knobs)
                NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES
                NROS_DERIVED_EXECUTOR_MAX_NODES NROS_DERIVED_EXECUTOR_MAX_SC
                NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
+               NROS_ENTITY_APP_QUERYABLES
                NROS_ENTITY_INVENTORY_ENTITY_TOTAL
                NROS_ENTITY_DECLARED_DEPTH_STATUS NROS_ENTITY_DECLARED_DEPTH_REASON
                NROS_ENTITY_DECLARED_DEPTHS NROS_ENTITY_DECLARED_DEPTH_COUNT
@@ -672,6 +673,13 @@ function(nros_derive_entity_inventory_knobs)
             _nros_entity_publish(${_pool} "${${_pool}}")
         endif()
     endforeach()
+    # Issue 1485 -- the application's share of NROS_DERIVED_MAX_QUERYABLES,
+    # so the zenoh shim can give the runtime's parameter and lifecycle services
+    # the rest of the table at their own ring geometry. Same terms as the pool
+    # it is a share of: present only when the image declared.
+    if(DEFINED NROS_ENTITY_APP_QUERYABLES)
+        _nros_entity_publish(NROS_ENTITY_APP_QUERYABLES "${NROS_ENTITY_APP_QUERYABLES}")
+    endif()
     foreach(_kind PUBLISHER SUBSCRIPTION TIMER SERVICE_SERVER SERVICE_CLIENT
                   ACTION_SERVER ACTION_CLIENT GUARD_CONDITION)
         if(DEFINED NROS_ENTITY_COUNT_${_kind})
@@ -837,6 +845,7 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         # publish comes to be missing without anyone noticing.
         NROS_DERIVED_MAX_LIVELINESS
         NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
+        NROS_ENTITY_APP_QUERYABLES
         NROS_ENTITY_COUNT_PUBLISHER
         NROS_ENTITY_COUNT_SUBSCRIPTION
         NROS_ENTITY_COUNT_TIMER
