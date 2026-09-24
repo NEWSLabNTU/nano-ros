@@ -1353,6 +1353,16 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>> {
             ),
         );
     }
+    // phase-82 follow-up: a path may name a service CLIENT in its output
+    // (the reaction walk follows that edge across the service). A call is
+    // not a publisher: it has no rate promise and no owning topic, so it
+    // gets no monitor row rather than tripping the owning-topic check below.
+    let service_clients: std::collections::BTreeSet<&String> = model
+        .structure
+        .services
+        .values()
+        .flat_map(|s| s.client.iter())
+        .collect();
     // W3b.5 — node-path budgets attach to the path's OUTPUT endpoints.
     for (path_ref, p) in &model.contracts.node_paths {
         let Some(lat) = p.max_latency_ms else {
@@ -1369,6 +1379,9 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>> {
             );
         }
         for out in &p.output {
+            if service_clients.contains(out) {
+                continue;
+            }
             let e = by_fqn.entry(out.clone()).or_insert((0, 0));
             e.1 = e.1.max(lat);
         }
