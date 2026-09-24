@@ -54,7 +54,7 @@ edition = "2024"
 
 [dependencies]
 nros-node     = { path = "../../packages/core/nros-node", default-features = false }
-nros-std-msgs = { path = "../../packages/interfaces/rcl-interfaces/generated/humble/nros-std-msgs" }
+nros-std-msgs = { path = "../../packages/interfaces/generated/humble/nros-std-msgs" }
 
 [build-dependencies]
 nros-build = { path = "../../packages/nros-build" }

@@ -286,3 +286,19 @@ Also fixed on the way: `nros-platform/src/resolve.rs` carried NINE identical
 exclusive by convention only, so two platform features at once was E0428.
 Collapsed to one `cfg(any(...))`. Nothing hit it until crates became members,
 because `--workspace` unifies features.
+
+## Two of the nine are gone — 2026-09-25 (phase-465)
+
+`packages/interfaces/rcl-interfaces` and `packages/interfaces/lifecycle-msgs`,
+the two metadata shells above, were **deleted**. phase-465 collapsed the four
+core interface driver packages into ONE (RFC-0067 §D5, issue 1428), and one
+driver package cannot have two parent manifests; nothing in the tree named
+either crate, their `[package]` tables declared no Rust target, and their real
+crates are the generated ones that are root workspace members. Their two
+`exclude` entries went with them: the root list is 122 entries, all still
+derived, none declared.
+
+That leaves **seven** of this issue's nine, and none of the seven is affected —
+the two removed here were the ones the issue itself already marked "not a
+defect". `check-workspace-exclude-list`'s R6 rule keeps its derivation and no
+longer names a standing example, since the example was the part that went stale.

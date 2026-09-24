@@ -330,7 +330,7 @@ pub fn to_rcl_set_result(result: SetParameterResult) -> SetParametersResult {
 // risk is DRIFT — a regenerated message gaining, losing or reordering a field
 // while these writes stay put — which is exactly what
 // `*_streams_like_the_oracle` in the test module is for. Read the generated
-// impls in `packages/interfaces/rcl-interfaces/generated/` beside any edit
+// impls in `packages/interfaces/generated/` beside any edit
 // here.
 
 use nros_core::{CdrReader, CdrWriter, DeserError, EncodingVersion, SerError};

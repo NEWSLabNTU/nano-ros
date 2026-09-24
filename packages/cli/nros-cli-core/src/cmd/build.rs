@@ -3101,15 +3101,30 @@ fn check_declared_depends(
             );
         }
     }
-    if let Some(nr) = nano_ros_root
-        && let Ok(rd) = std::fs::read_dir(nr.join("packages/interfaces"))
-    {
+    if let Some(nr) = nano_ros_root {
         // The committed `nros-`prefixed msg crates are reached by their ROS
-        // name in a `package.xml`, so strip the prefix the crate carries.
-        generated.extend(rd.flatten().map(|e| {
-            let n = e.file_name().to_string_lossy().into_owned();
-            n.strip_prefix("nros-").unwrap_or(&n).to_string()
-        }));
+        // name in a `package.xml`, so undo BOTH halves of the rename: the
+        // prefix, and the `-` a crate name uses where an ament name uses `_`.
+        //
+        // phase-465 W5 — this used to read `packages/interfaces` itself, whose
+        // immediate children were the four hyphenated DRIVER packages
+        // (`rcl-interfaces`, …) plus `README.md`, and it stripped a prefix none
+        // of them carried. So it contributed `rcl-interfaces` where a
+        // `<depend>` says `rcl_interfaces`, and this rung resolved nothing, for
+        // as long as it existed. The crates live one level down and always did;
+        // the collapse to one tree is what makes the path expressible at all.
+        for edition in std::fs::read_dir(nr.join("packages/interfaces/generated"))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            if let Ok(rd) = std::fs::read_dir(edition.path()) {
+                generated.extend(rd.flatten().map(|e| {
+                    let n = e.file_name().to_string_lossy().into_owned();
+                    n.strip_prefix("nros-").unwrap_or(&n).replace('-', "_")
+                }));
+            }
+        }
     }
 
     // Issue 1304 — the msg packages the toolchain BUNDLES (`std_msgs`,

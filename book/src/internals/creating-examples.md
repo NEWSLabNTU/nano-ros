@@ -227,8 +227,8 @@ tree.
 
 Examples with custom `.msg`, `.srv`, or `.action` files generate
 bindings in-tree under `generated/`. The `generated/` directory is
-gitignored per-example (only `packages/interfaces/rcl-interfaces/`
-generated bindings live in git Arduino bundle exception
+gitignored per-example (only the core pre-generated set at
+`packages/interfaces/generated/` lives in git, Arduino bundle exception
 aside).
 
 ```bash
