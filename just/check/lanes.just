@@ -928,7 +928,7 @@ cpp: cpp-fmt
     # to `c++`: the driver picks the language by EXTENSION, and `c++ foo.c`
     # compiles C as C++, which mangles `nros_stub_rmw_register` and fails to
     # link against the `extern "C"` declaration in the header.
-    for _tu in executor_cancel_runtime logger_names_and_levels_runtime; do \
+    for _tu in executor_cancel_runtime logger_names_and_levels_runtime node_launch_identity_runtime; do \
         test -f "packages/api/nros-cpp/tests/compile/$_tu.cpp" || { \
             echo "ERROR: $_tu.cpp is MISSING -- this check would pass on absence." >&2; \
             exit 1; \
@@ -987,6 +987,29 @@ cpp: cpp-fmt
         target/nros-cpp-tests/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     ./target/nros-cpp-tests/logger_names_and_levels_runtime
+    # issue 1456 — an `rclcpp`-shape component's IDENTITY. The shape constructs
+    # its own node, so the launch-declared name and namespace reach it only
+    # through the `NodeHandle` the entry hands it; before the fix they reached
+    # it not at all, and the component named itself at the root while a
+    # `configure`-shape sibling in the same image sat under the launch
+    # namespace. A RUN because every shape of that defect compiles: the
+    # question is what the created node ANSWERS, which only a created node can
+    # say. Same stub backend, same reason — a node needs an executor and an
+    # executor needs a session; no router, no wire.
+    echo "  - an rclcpp-shape component takes the launch identity, and keeps its class's default without one (runtime, issue 1456)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o target/nros-cpp-tests/node_launch_identity_runtime \
+        packages/api/nros-cpp/tests/compile/node_launch_identity_runtime.cpp \
+        target/nros-cpp-tests/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    ./target/nros-cpp-tests/node_launch_identity_runtime
     # issue 0730 — the (zephyr-embedded × C++ × cyclonedds) coordinate is a
     # pairwise-class gap no runtime tier covers (cyclone fixtures run on
     # native_sim, which appends `,std`), and it failed E0599 at COMPILE time:

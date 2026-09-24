@@ -412,6 +412,16 @@ struct CppNodeView {
     /// substitutes `"/"` for. Never empty (the derivation normalises "none" to
     /// `"/"`), so the same value is safe in every arity.
     namespace: String,
+    /// Issue 1456 — what the LAUNCH FILE declared, `None` when it declared
+    /// nothing. Deliberately NOT `name` / `namespace` above: those two are
+    /// resolved for a caller that must supply an answer (`name` falls back to
+    /// `exec`, `namespace` normalises "none" to `"/"`), and the `rclcpp` shape
+    /// needs the opposite — "did the launch file state one?", because when it
+    /// did not, the component CLASS's own literal is the answer and a resolved
+    /// value would silently outrank it. Reaches the `::nros::NodeHandle`
+    /// constructor; `None` renders `nullptr`.
+    launch_name: Option<String>,
+    launch_namespace: Option<String>,
     /// `"c"` | `"rust"` | `"rclcpp"` | `"configure"`.
     shape: &'static str,
     pkg: String,
@@ -480,6 +490,20 @@ fn node_view(n: &super::PlanNode, i: usize, on_executor: usize, tiered: bool) ->
         index: i,
         name: n.name.as_deref().unwrap_or(&n.exec).to_string(),
         namespace: super::node_namespace(n).to_string(),
+        // Issue 1456 — the RAW plan values, with an empty string treated as
+        // "not declared" the same way `node_namespace` does. `filter` rather
+        // than `map`, so `name=""` in a launch file cannot reach the handle
+        // and blank a component's name.
+        launch_name: n
+            .name
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+        launch_namespace: n
+            .namespace
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
         shape: node_shape(n),
         pkg: sanitize_pkg(&n.pkg),
         class: n.class_name.clone(),
@@ -1074,8 +1098,19 @@ mod tests {
             "alignas(::ctrl_pkg::Controller) static unsigned char __nros_comp_buf_0[sizeof(::ctrl_pkg::Controller)];"
         ));
         assert!(src.contains("static ::ctrl_pkg::Controller* __nros_comp_0 = nullptr;"));
-        // setup: handle → placement-new → ok() check naming the node
-        assert!(src.contains("::nros::NodeHandle __h(::nros::global_handle());"));
+        // setup: handle → placement-new → ok() check naming the node.
+        //
+        // Issue 1456 — the handle carries the LAUNCH-DECLARED identity. This
+        // fixture's node declares a name (`"controller"`) and no namespace, so
+        // the second slot is that name and the third is `nullptr`. The
+        // negative direction — a node declaring neither, whose class literal
+        // must stand — is `typed_emit_rclcpp_undeclared_identity_is_nullptr`
+        // below, and both are in the `cpp_native_shapes` golden.
+        assert!(
+            src.contains(
+                "::nros::NodeHandle __h(::nros::global_handle(), \"controller\", nullptr);"
+            )
+        );
         assert!(
             src.contains("__nros_comp_0 = new (__nros_comp_buf_0) ::ctrl_pkg::Controller(__h);")
         );
@@ -1089,6 +1124,125 @@ mod tests {
         assert!(src.contains(
             "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
         ));
+    }
+
+    /// Issue 1456 — the launch identity reaches an `rclcpp`-shape component
+    /// through its `NodeHandle`, and BOTH directions are load-bearing.
+    ///
+    /// Measured before the fix, on a real bus (zenoh router, `ros2 node list
+    /// --no-daemon`), for a plan declaring `name="alpha" namespace="/island"`:
+    /// the component answered `/rclcpp_class_name` — the literal its class
+    /// writes — and its relative topics resolved at the ROOT, beside a
+    /// `configure`-shape node in the SAME image answering `/island/beta`.
+    ///
+    /// The negative direction matters just as much and is the one a resolved
+    /// view would get wrong: a node the launch file gives no `name=` must keep
+    /// its class's literal, so the handle must read `nullptr` there — NOT the
+    /// `exec` that `n.name`'s resolution falls back to, and never `""`.
+    #[test]
+    fn typed_emit_rclcpp_launch_identity_rides_the_handle() {
+        let mut plan = fixture_plan_rclcpp(&[(
+            "ctrl_pkg",
+            "controller",
+            "controller",
+            "ctrl_pkg::Controller",
+            "ctrl_pkg/Controller.hpp",
+        )]);
+        plan.nodes[0].name = Some("alpha".into());
+        plan.nodes[0].namespace = Some("/island".into());
+        let src = emit_typed(&plan).expect("rclcpp emit ok");
+        assert!(
+            src.contains(
+                "::nros::NodeHandle __h(::nros::global_handle(), \"alpha\", \"/island\");"
+            ),
+            "a launch-declared name and namespace must reach the component's handle;\n{src}"
+        );
+    }
+
+    #[test]
+    fn typed_emit_rclcpp_undeclared_identity_is_nullptr() {
+        let mut plan = fixture_plan_rclcpp(&[(
+            "ctrl_pkg",
+            "controller",
+            "controller",
+            "ctrl_pkg::Controller",
+            "ctrl_pkg/Controller.hpp",
+        )]);
+        plan.nodes[0].name = None;
+        plan.nodes[0].namespace = None;
+        let src = emit_typed(&plan).expect("rclcpp emit ok");
+        assert!(
+            src.contains("::nros::NodeHandle __h(::nros::global_handle(), nullptr, nullptr);"),
+            "a node the launch file did not name must hand its component NO identity, so \
+             the class's own literal stands;\n{src}"
+        );
+        assert!(
+            !src.contains("__h(::nros::global_handle(), \"controller\""),
+            "`controller` is the EXEC, not a declared name — passing it would silently \
+             outrank the component class's literal for every node in every launch file \
+             that omits `name=`"
+        );
+        // Narrowed to the handle LINE: the boot-config blob legitimately holds
+        // `""` for an unset locator/rmw, so a whole-TU search for it proves
+        // nothing.
+        let handle_line = src
+            .lines()
+            .find(|l| l.contains("::nros::NodeHandle __h("))
+            .expect("the rclcpp arm emits a handle");
+        assert!(
+            !handle_line.contains("\"\""),
+            "an empty string must never reach the handle: it is `unset` at this edge, \
+             and a node named `\"\"` is not a node; got: {handle_line}"
+        );
+    }
+
+    /// Issue 1456, the other half of the negative direction — a launch file
+    /// that writes `name=""` / `namespace=""` says "unset", not "a node with
+    /// the empty name". The resolution is in the EMITTER (`filter`), so it
+    /// needs its own row: the `None` case above would pass with a `map`.
+    #[test]
+    fn typed_emit_rclcpp_empty_launch_identity_is_unset() {
+        let mut plan = fixture_plan_rclcpp(&[(
+            "ctrl_pkg",
+            "controller",
+            "controller",
+            "ctrl_pkg::Controller",
+            "ctrl_pkg/Controller.hpp",
+        )]);
+        plan.nodes[0].name = Some(String::new());
+        plan.nodes[0].namespace = Some(String::new());
+        let src = emit_typed(&plan).expect("rclcpp emit ok");
+        assert!(
+            src.contains("::nros::NodeHandle __h(::nros::global_handle(), nullptr, nullptr);"),
+            "an empty declared name or namespace is `unset`, so the handle carries \
+             nothing and the component class's literal stands;\n{src}"
+        );
+    }
+
+    /// Issue 1456 — the TIERED arm builds its handle from the tier's executor,
+    /// and it needs the identity for the same reason the single-executor arm
+    /// does. One `if` in the template selects the executor expression, so a
+    /// fix applied to one arm and not the other is exactly the shape this
+    /// pins shut.
+    #[test]
+    fn typed_emit_rclcpp_launch_identity_reaches_the_tiered_arm() {
+        // The node keeps its declared NAME (`ctrl`) because a tier's members
+        // are matched by name; the namespace is what moves.
+        let mut plan = fixture_plan_with_tiers();
+        plan.board = "freertos".into();
+        for n in &mut plan.nodes {
+            n.shape = Some("rclcpp".into());
+        }
+        plan.nodes[0].namespace = Some("/island".into());
+        let src = emit_typed(&plan).expect("tiered rclcpp emit ok");
+        assert!(
+            src.contains("::nros::NodeHandle __h(executor, \"ctrl\", \"/island\");"),
+            "the tiered arm must carry the launch identity too;\n{src}"
+        );
+        assert!(
+            src.contains("::nros::NodeHandle __h(executor, \"telem\", nullptr);"),
+            "and the sibling that declared no namespace must still get nullptr there;\n{src}"
+        );
     }
 
     #[test]

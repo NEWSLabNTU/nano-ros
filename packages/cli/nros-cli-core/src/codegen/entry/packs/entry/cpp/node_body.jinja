@@ -18,6 +18,19 @@
   root however the Plan namespaced it. `n.namespace` is
   `entry::node_namespace`, the same derivation the C pack and the sched binds
   read, and it is never empty.
+
+  Issue 1456 — the `rclcpp` arm has no `create_node` call to carry that, and
+  1443's fix therefore reached it not at all: the component CONSTRUCTS its own
+  node, so the only thing the entry hands it is the `NodeHandle`. The handle
+  now carries the launch identity and `nros::Node`'s handle constructor
+  prefers it over the class's own literal (see `node.hpp`, which states the
+  precedence). `n.launch_name` / `n.launch_namespace` are `Option`s — the RAW
+  plan values, NOT the resolved `n.name` / `n.namespace` beside them: a launch
+  file that declares neither must leave the class's literal standing, and the
+  resolved pair has no spelling for "the launch file said nothing" (`name`
+  falls back to `exec`, `namespace` to `"/"`). Both halves are emitted on
+  every render, `nullptr` where nothing was declared, so the generated text
+  SAYS which of the two cases a node is in.
 -#}
 {%- if n.shape == "rust" %}
 {%- if n.tiered %}
@@ -30,7 +43,7 @@
         if (crc != 0) return crc;
 {%- endif %}
 {%- elif n.shape == "rclcpp" %}
-        ::nros::NodeHandle __h({% if n.tiered %}executor{% else %}::nros::global_handle(){% endif %});
+        ::nros::NodeHandle __h({% if n.tiered %}executor{% else %}::nros::global_handle(){% endif %}, {% if n.launch_name %}"{{ n.launch_name | c_str }}"{% else %}nullptr{% endif %}, {% if n.launch_namespace %}"{{ n.launch_namespace | c_str }}"{% else %}nullptr{% endif %});
         if (!__h.valid()) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
         __nros_comp_{{ n.index }} = new (__nros_comp_buf_{{ n.index }}) ::{{ n.class }}(__h);
         if (!__nros_comp_{{ n.index }}->ok()) {

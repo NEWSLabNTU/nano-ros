@@ -454,6 +454,15 @@ fn cases() -> Vec<(&'static str, Plan, Lang)> {
     // emit one `extern` / one `#include` and still get its own slot.
     let mut dup_header = typed_node("talker_pkg", "talker2");
     dup_header.class_header = Some("talker_pkg/talker.hpp".into());
+    // Issue 1456 — BOTH directions of the launch identity, in one golden, on
+    // the shape that constructs its own node. `rcl_one` declares neither, so
+    // its handle must read `nullptr, nullptr` and the component class's own
+    // literal stands; `rcl_two` declares both, so the handle carries them and
+    // outranks that literal. A golden with only the first is what let the
+    // whole capability read as correct.
+    let mut rcl_named = cpp_rclcpp_node("rclcpp_pkg", "rcl_two");
+    rcl_named.name = Some("alpha".into());
+    rcl_named.namespace = Some("/island".into());
     out.push((
         "cpp_native_shapes",
         plan(
@@ -466,6 +475,7 @@ fn cases() -> Vec<(&'static str, Plan, Lang)> {
                 cpp_rust_node("rust_pkg", "rust_one"),
                 cpp_rust_node("rust_pkg", "rust_two"),
                 cpp_rclcpp_node("rclcpp_pkg", "rcl_one"),
+                rcl_named,
             ],
         ),
         Lang::Cpp,

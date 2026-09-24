@@ -14,7 +14,8 @@ is the implementation source of truth; C and C++ delegate. This RFC does not
 relax that, and §"Who implements an adopted name" states what it means for
 adoption.
 **Related:** RFC-0002 (one executor per RTOS task), RFC-0021 (blocking API
-rules), RFC-0035 (RMW seam), RFC-0044 (component model); issues 1012, 1019, 1020.
+rules), RFC-0035 (RMW seam), RFC-0044 (component model); issues 1012, 1019, 1020,
+1456.
 
 ## How to read this
 
@@ -3687,3 +3688,126 @@ Who initialises the context, per case:
 In a workspace project the user never writes any of this: `nros::main!(launch
 = "bringup")` generates the entry, the config comes from the SystemModel, and
 the same node links into a Linux process or a Zephyr image unchanged.
+
+## Settled: the LAUNCH FILE is authoritative over a component's own name and namespace, and the `NodeHandle` is where it says so (2026-09-24)
+
+Issue 1456. §"What this means for the merge" said *construction is not
+identity*, about collapsing `ComponentNode` into `Node`. It was right about the
+TYPE and it left the identity question itself unanswered, and the gap had a
+consequence: for an `rclcpp`-shape component, nothing carried the launch
+file's identity at all.
+
+### What it cost, measured
+
+The shape constructs its own node —
+
+```cpp
+explicit Talker(nros::NodeHandle h) : nros::NodeWithTimers<1>(h, "talker") {}
+```
+
+— so the generated entry has no `create_node` call to pass a name and a
+namespace to. Issue 1443 gave the `c` and `configure` shapes the Plan's
+namespace; this shape could not receive it, because the only value the entry
+hands the component is the handle, and the handle carried the executor and
+nothing else.
+
+Measured on a real bus (zenoh router, `ros2 node list --no-daemon`), with an
+`rclcpp`-shape component and a `configure`-shape component in ONE image, one
+session, for a plan declaring `name="alpha" namespace="/island"`:
+
+| | before | after |
+| --- | --- | --- |
+| `rclcpp` shape | `/rclcpp_class_name` | `/island/alpha` |
+| `configure` shape | `/island/beta` | `/island/beta` |
+| its topics | `/probe_rclcpp` | `/island/probe_rclcpp` |
+
+Both halves of the identity were lost, not just the name — so every relative
+topic the component declared resolved at the ROOT, beside a sibling in the same
+image under `/island`. Two nodes from one launch file disagreeing about where
+they are is a delivery bug, not a cosmetic one.
+
+### The decision
+
+**The `NodeHandle` carries the launch-declared identity, and
+`Node(NodeHandle, name, ns)` prefers it over its own arguments.**
+
+```cpp
+struct NodeHandle {
+    void* executor;
+    const char* launch_name;       // nullptr / "" = the launch file declared none
+    const char* launch_namespace;
+};
+```
+
+Precedence, **per half**, stated rather than emergent:
+
+> launch-declared (on the handle) > the constructor's argument (the class's
+> literal) > the type's default
+
+So a component whose class hardcodes a *different* name than the launch file
+declares is named by the LAUNCH FILE. That is the only answer under which one
+component class can be instantiated twice in one launch file: two
+`Comp(h) : Node(h, "talker")` objects otherwise both answer `/talker`, share one
+liveliness token, and one of them is invisible.
+
+The halves are independent. A launch file declaring only a namespace leaves the
+class's name standing (`/island/talker`); one declaring neither changes nothing.
+The class's literal is a DEFAULT, never dead — which is what keeps a
+hand-written `main` constructing the same component working unchanged.
+
+`nullptr` keeps meaning what it means everywhere else in the header, and `""`
+says the same thing as `nullptr`: an empty C string cannot be told apart from
+"unset" at this edge, the rule `nros::init`'s `node_namespace` already states
+one layer up (RFC-0045's unset-versus-root distinction). The generated entry
+emits `nullptr` for a half the launch file did not declare, and it reads the
+RAW plan values to do it — not the resolved `name`, which falls back to the
+node's `exec` and would therefore outrank every component class's literal in
+every launch file that omits `name=`.
+
+### Why this shape and not the two the issue proposed
+
+This is ADOPT-BOUNDED against upstream, and it is the same mechanism one layer
+over. ROS 2's component container passes the launch-declared identity into a
+component through `rclcpp::NodeOptions`
+(`--ros-args -r __node:=… -r __ns:=…`), where the remap OUTRANKS the name the
+class's constructor writes. The handle is the value OUR entry hands a
+component, so it is this API's `NodeOptions` seam, and the precedence is
+upstream's.
+
+Two alternatives were weighed:
+
+* **Give the component constructor the identity**
+  (`Class(h, "alpha", "/island")`). Matches upstream's authority order, and
+  breaks every user component's signature — an API break for a defect that is
+  ours. Rejected: the handle already reaches the same place and no user
+  component's declaration changes.
+* **Make `nullptr` mean "inherit from the executor"** at
+  `nros_cpp_node_create`. No user break, and it is HALF a fix twice over. It
+  reaches the NAMESPACE only, leaving the name; and the executor's namespace is
+  the launch namespace only for a SINGLE-node plan, because `boot_config_view`
+  emits identity facts only when `plan.nodes.len() == 1` — "there is no such
+  thing as *the* name of an image that runs three nodes". A multi-node plan's
+  executor sits at the root, so every component in one would still be misplaced.
+  It also puts a second meaning on `nullptr` at one C entry point while the
+  other (`nros_cpp_node_create_ex`, whose `namespace_len == 0` already inherits
+  through `NodeBuilder`) keeps the first. Rejected, but note the inconsistency
+  it surfaced: those two C functions disagree today, and that is worth its own
+  look.
+* **Rename after construction** was considered and rejected outright: the
+  component's constructor has already created its publishers by then, so a
+  post-construction rename moves the node and not its entities. That ordering
+  is precisely what passing options INTO the constructor avoids, which is why
+  upstream does it that way.
+
+### What this does not reach
+
+`NROS_COMPONENT(Class)`'s C-ABI factory builds `Class(nros::NodeHandle(void*))`
+and so declares no identity. No entry pack emits a call to it — the typed C++
+entry placement-news the class directly — so no launch file reaches that road,
+and a component constructed through it keeps its class's literal, correctly.
+If a generated entry is ever given that road, it must pass the identity with it.
+
+Acceptance: `packages/api/nros-cpp/tests/compile/node_launch_identity_runtime.cpp`
+(a RUN, on `just check cpp` — every shape of this defect compiles), the
+`cpp_native_shapes` golden, which now carries a node declaring both halves
+beside one declaring neither, and the before/after table above.
