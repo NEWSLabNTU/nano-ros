@@ -221,8 +221,76 @@ pub(crate) fn stack_headroom_check_due(
 /// so both runtimes converge on comparable cadence.
 pub const RATE_CHECK_INTERVAL_US: u64 = 5_000_000;
 
-/// Max monitored endpoints per executor (const table, no_std).
-pub const MAX_MONITORS: usize = 8;
+/// Max RATE/LATENCY-monitored endpoints per executor (inline table, no_std).
+///
+/// phase-467 W1 (issue 1471) -- generated, not a literal: the
+/// `NROS_EXECUTOR_MAX_MONITORS` knob, whose derived rung is the image's own
+/// `monitor_rows` count (`NROS_DECLARED_EXECUTOR_MAX_MONITORS`), 8 when nothing
+/// states or derives it. A table longer than this is REFUSED at install
+/// ([`check_table_capacity`]), never truncated: the spin loop inspects only the
+/// first `MAX_MONITORS` specs, so a truncating install would boot with the rest
+/// of the contract silently unwatched.
+pub const MAX_MONITORS: usize = crate::config::MAX_MONITORS;
+/// Max AGE-monitored subscriptions per executor -- the second table, on its
+/// own knob (`NROS_EXECUTOR_MAX_AGE_MONITORS`, derived from `age_rows`) so an
+/// image with rate contracts and no age contracts pays for one table only.
+pub const MAX_AGE_MONITORS: usize = crate::config::MAX_AGE_MONITORS;
+
+/// A monitor table longer than the executor can watch -- phase-467 W1.
+///
+/// Its `Display` NAMES THE KNOB to raise (RFC-0065 D2, refuse and name the
+/// remedy), so every installer that refuses reports the same words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MonitorTableFull {
+    /// `"NROS_EXECUTOR_MAX_MONITORS"` or `"NROS_EXECUTOR_MAX_AGE_MONITORS"`.
+    pub knob: &'static str,
+    /// Rows the table carries.
+    pub rows: usize,
+    /// Rows this build can watch (the knob's resolved value).
+    pub capacity: usize,
+}
+
+impl core::fmt::Display for MonitorTableFull {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "monitor table has {} rows but this executor watches {}; raise {} \
+             (it derives from the contract's row count when nothing states it)",
+            self.rows, self.capacity, self.knob
+        )
+    }
+}
+
+/// Whether a table of `n_rows` rate/latency rows and `n_ages` age rows fits
+/// this build's executor. The rate table is judged first.
+pub fn check_table_capacity(n_rows: usize, n_ages: usize) -> Result<(), MonitorTableFull> {
+    check_capacity_against(n_rows, n_ages, MAX_MONITORS, MAX_AGE_MONITORS)
+}
+
+/// [`check_table_capacity`] against explicit capacities, so the refusal is
+/// testable at any knob value without rebuilding the crate.
+pub fn check_capacity_against(
+    n_rows: usize,
+    n_ages: usize,
+    max_rows: usize,
+    max_ages: usize,
+) -> Result<(), MonitorTableFull> {
+    if n_rows > max_rows {
+        return Err(MonitorTableFull {
+            knob: "NROS_EXECUTOR_MAX_MONITORS",
+            rows: n_rows,
+            capacity: max_rows,
+        });
+    }
+    if n_ages > max_ages {
+        return Err(MonitorTableFull {
+            knob: "NROS_EXECUTOR_MAX_AGE_MONITORS",
+            rows: n_ages,
+            capacity: max_ages,
+        });
+    }
+    Ok(())
+}
 /// Violation ring depth.
 pub const MAX_VIOLATIONS: usize = 8;
 
@@ -356,7 +424,7 @@ pub(crate) struct AgeState {
     /// first check, which starts the lease rather than judging it).
     ///
     /// Milliseconds and `u32`, not the uss the clock hands out, because this
-    /// array is INLINE in the `Executor` value (`[AgeState; MAX_MONITORS]`) and
+    /// array is INLINE in the `Executor` value (`[AgeState; MAX_AGE_MONITORS]`) and
     /// that value has a byte budget a knob-scaled table must not blow (issue
     /// 0961 / `storage.rs`'s `the_executor_value_does_not_scale_with_the_knobs`
     /// -- a `u64` here costs 8 rows x 16 B and fails it). The unit is the
@@ -458,6 +526,37 @@ mod tests {
     use super::*;
 
     static CELL: PubMonitorCell = PubMonitorCell::new();
+
+    /// phase-467 W1 -- the Autoware Safety Island's shape: 14 rate rows and
+    /// no age rows fit an executor sized 14/0, and a 15th rate row is refused
+    /// with the knob to raise NAMED, not truncated.
+    #[test]
+    fn a_table_past_the_knob_is_refused_and_names_it() {
+        assert_eq!(check_capacity_against(14, 0, 14, 0), Ok(()));
+        let full = check_capacity_against(15, 0, 14, 0).expect_err("15 > 14 must refuse");
+        assert_eq!(full.knob, "NROS_EXECUTOR_MAX_MONITORS");
+        assert_eq!((full.rows, full.capacity), (15, 14));
+        let said = std::format!("{full}");
+        assert!(
+            said.contains("raise NROS_EXECUTOR_MAX_MONITORS"),
+            "the refusal must name the knob: {said}"
+        );
+        let age = check_capacity_against(0, 1, 14, 0).expect_err("an age row past 0 must refuse");
+        assert_eq!(age.knob, "NROS_EXECUTOR_MAX_AGE_MONITORS");
+        // The two tables are separate knobs: a full age table does not borrow
+        // from the rate one.
+        assert!(check_capacity_against(3, 9, 14, 8).is_err());
+    }
+
+    /// The generated consts ARE the public ones, so the installers and the
+    /// spin loop read one number.
+    #[test]
+    fn the_public_bounds_are_the_generated_config() {
+        assert_eq!(MAX_MONITORS, crate::config::MAX_MONITORS);
+        assert_eq!(MAX_AGE_MONITORS, crate::config::MAX_AGE_MONITORS);
+        assert_eq!(check_table_capacity(MAX_MONITORS, MAX_AGE_MONITORS), Ok(()));
+        assert!(check_table_capacity(MAX_MONITORS + 1, 0).is_err());
+    }
 
     fn spec(min_milli: u32) -> MonitorSpec {
         MonitorSpec {

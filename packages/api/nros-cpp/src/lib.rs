@@ -3938,11 +3938,15 @@ fn carve_monitor_storage<C, S>(
 /// attaches each contracted endpoint's cell by exact topic match at create
 /// time, so a table installed later monitors nothing.
 ///
-/// Rows beyond the executor's `MAX_MONITORS` are REFUSED (`NROS_CPP_RET_FULL`)
-/// rather than truncated: the executor checks only the first `MAX_MONITORS`
-/// specs of a table, and an image that boots with six of its fourteen
-/// contracts silently unwatched is the class of failure this table exists to
-/// remove. A short or misaligned storage buffer is refused the same way.
+/// Rows beyond the executor's `MAX_MONITORS` (rate/latency) or
+/// `MAX_AGE_MONITORS` (age) are REFUSED (`NROS_CPP_RET_FULL`) rather than
+/// truncated: the executor checks only the first `MAX_MONITORS` specs of a
+/// table, and an image that boots with six of its fourteen contracts silently
+/// unwatched is the class of failure this table exists to remove. The refusal
+/// logs the knob to raise, `NROS_EXECUTOR_MAX_MONITORS` or
+/// `NROS_EXECUTOR_MAX_AGE_MONITORS`; both derive from the contract's row
+/// counts when nothing states them (phase-467 W1). A short or misaligned
+/// storage buffer is refused the same way.
 ///
 /// # Safety
 /// `handle` must be a live executor handle from this ABI, or NULL. `tables`
@@ -3962,9 +3966,13 @@ pub unsafe extern "C" fn nros_cpp_install_monitors(
     let Some(t) = (unsafe { tables.as_ref() }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    if t.n_rows > nros_node::executor::monitor::MAX_MONITORS
-        || t.n_ages > nros_node::executor::monitor::MAX_MONITORS
-    {
+    // phase-467 W1 (issue 1471) -- NAME THE KNOB. Each table has its own
+    // (`NROS_EXECUTOR_MAX_MONITORS` / `NROS_EXECUTOR_MAX_AGE_MONITORS`), derived
+    // from the contract's row counts when nothing states them, so a refusal
+    // here means a stated value below the contract or a table built by hand.
+    // The text is `MonitorTableFull`'s own Display, written once.
+    if let Err(full) = nros_node::executor::monitor::check_table_capacity(t.n_rows, t.n_ages) {
+        cpp_diag!("install_monitors: {}", full);
         return NROS_CPP_RET_FULL;
     }
     // `'static` is the caller's contract (see Safety); the executor keeps

@@ -728,6 +728,13 @@ pub struct EntityInventory {
     /// See [`DerivedEntityKnobs::max_sc`] for what it is a term in and why the
     /// node count is the other term.
     tiers: usize,
+    /// phase-467 W1 -- the contract-monitor row counts,
+    /// `(monitor_rows(model).len(), age_rows(model).len())`: the SAME two
+    /// functions the entry emitters bake the tables from, so the executor is
+    /// sized for exactly the table it will be handed. `None` for an inventory
+    /// that saw no model (a probe): no model means no count, never zero, and
+    /// the crate default then stands.
+    monitor_rows: Option<(usize, usize)>,
 }
 
 /// MIRRORS of the action multipliers in
@@ -1034,6 +1041,23 @@ pub struct DerivedEntityKnobs {
     /// which is what makes deriving it safe. An image that hand-creates
     /// scheduling contexts states this knob.
     pub max_sc: usize,
+    /// `NROS_EXECUTOR_MAX_MONITORS` -- contract-monitor RATE/LATENCY rows
+    /// (phase-467 W1, issue 1471): `monitor_rows(model).len()`, one row per
+    /// contracted publisher with `min_rate_hz` plus latency-only rows from node
+    /// paths. The WHOLE image's count, so an image whose tiers split the table
+    /// over several executors over-counts each one, which is the safe
+    /// direction.
+    ///
+    /// `None` when this inventory saw no model: the knob is then not derived
+    /// and the crate default (8) stands. Under-counting has no source a
+    /// derivation cannot see -- a table built by hand is refused at install,
+    /// NAMING this knob (`MonitorTableFull`), and never truncated.
+    pub max_monitors: Option<usize>,
+    /// `NROS_EXECUTOR_MAX_AGE_MONITORS` -- contract-monitor AGE rows
+    /// (`age_rows(model).len()`), on the same terms. A separate knob because
+    /// it is a separate table: the Autoware Safety Island carries 14 rate rows
+    /// and 0 age rows.
+    pub max_age_monitors: Option<usize>,
     /// Per-kind counts across the image, in [`ALL_ENTITY_KINDS`] order.
     pub per_kind: BTreeMap<&'static str, usize>,
     /// Per-component `(pkg, component, entities, slots)`, so the output records
@@ -1749,6 +1773,7 @@ impl EntityInventory {
             infra: InfraServices::default(),
             params: ParamDeclarations::Absent,
             tiers: 0,
+            monitor_rows: None,
         }
     }
 
@@ -1785,6 +1810,19 @@ impl EntityInventory {
     /// Issue 1198 -- the authored tier count this inventory was given.
     pub fn tiers(&self) -> usize {
         self.tiers
+    }
+
+    /// phase-467 W1 -- state the contract-monitor row counts
+    /// `(rate/latency rows, age rows)` for an inventory whose model arrives by
+    /// some road other than [`Self::from_model`].
+    pub fn set_monitor_rows(&mut self, rows: usize, ages: usize) {
+        self.monitor_rows = Some((rows, ages));
+    }
+
+    /// phase-467 W1 -- the contract-monitor row counts this inventory was
+    /// given, `None` when it saw no model.
+    pub fn monitor_rows(&self) -> Option<(usize, usize)> {
+        self.monitor_rows
     }
 
     /// phase-412 -- build the inventory from a resolved SystemModel's wiring
@@ -2176,6 +2214,17 @@ impl EntityInventory {
         // this is what the integrator authored about how it runs (RFC-0016
         // tiers, `[tiers.*]` in `system.toml`).
         inv.tiers = model.execution.tiers.len();
+        // phase-467 W1 -- and the contract-monitor tables, counted by the
+        // functions the entry emitters bake them with. An inconsistent model
+        // (a contracted endpoint no topic owns) is the emitters' refusal to
+        // make, loudly, at codegen; here it only means "no count".
+        inv.monitor_rows = match (
+            crate::orchestration::model_ingest::monitor_rows(model),
+            crate::orchestration::model_ingest::age_rows(model),
+        ) {
+            (Ok(rows), Ok(ages)) => Some((rows.len(), ages.len())),
+            _ => None,
+        };
         for (node_fqn, entities) in per_node {
             let component = node_fqn.rsplit('/').next().unwrap_or(&node_fqn).to_string();
             inv.insert(ComponentEntities {
@@ -2245,6 +2294,12 @@ impl EntityInventory {
         // `system.toml`), so this is a max for the same reason `infra` is a
         // union: whichever side saw the declaration is the one that knows.
         out.tiers = self.tiers.max(model.tiers);
+        // phase-467 W1 -- the monitor rows are the model's alone too; a probe
+        // sees no contract. Per table, the larger of whichever side counted.
+        out.monitor_rows = match (self.monitor_rows, model.monitor_rows) {
+            (Some((r0, a0)), Some((r1, a1))) => Some((r0.max(r1), a0.max(a1))),
+            (one, other) => one.or(other),
+        };
         let mut seen: Vec<&str> = Vec::new();
 
         for decl_row in &self.components {
@@ -2549,6 +2604,9 @@ impl EntityInventory {
         // for why the second term is the larger of the authored tier count and
         // the node count rather than the tier count alone.
         let max_sc = 1 + self.tiers.max(max_nodes);
+        // phase-467 W1 -- the two monitor tables, straight from the counts.
+        let max_monitors = self.monitor_rows.map(|(rows, _)| rows);
+        let max_age_monitors = self.monitor_rows.map(|(_, ages)| ages);
 
         // phase-412 W2 -- the liveliness pool. Terms and their call sites are
         // on the field; every one is a count this derivation already made.
@@ -2573,6 +2631,8 @@ impl EntityInventory {
             max_liveliness,
             max_cell_entities,
             max_sc,
+            max_monitors,
+            max_age_monitors,
             per_kind,
             per_component,
         }))
@@ -3754,6 +3814,20 @@ impl EntityInventory {
                     "# Scheduling-context slots: slot 0 is the reserved default Fifo\n                     # context, plus one per tier the schedule can create. A bringup\n                     # that authors no tiers can still resolve one per node\n                     # (derive_tiers_from_contracts), so the second term is the LARGER\n                     # of the authored tier count and the node count.\n",
                 );
                 s.push_str(&format!("set(NROS_DERIVED_EXECUTOR_MAX_SC {})\n", k.max_sc));
+                // phase-467 W1 -- the contract-monitor tables, only when a model
+                // was seen: absent is "no count", and the crate default stands.
+                if let (Some(rows), Some(ages)) = (k.max_monitors, k.max_age_monitors) {
+                    s.push_str(
+                        "# Contract-monitor rows: one per contracted publisher with\n\
+                         # min_rate_hz (plus latency-only node-path outputs), and one\n\
+                         # per contracted subscriber with max_age_ms -- the counts the\n\
+                         # entry emitters bake the two tables from.\n",
+                    );
+                    s.push_str(&format!("set(NROS_DERIVED_EXECUTOR_MAX_MONITORS {rows})\n"));
+                    s.push_str(&format!(
+                        "set(NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS {ages})\n"
+                    ));
+                }
             }
         }
 
@@ -4324,6 +4398,97 @@ mod tests {
         // And no transport may carry a number.
         assert!(!inv.to_cmake().contains("NROS_DERIVED_EXECUTOR_MAX_CBS"));
         assert_eq!(inv.to_env(), "");
+    }
+
+    /// phase-467 W1 (issue 1471) -- the contract-monitor tables follow the
+    /// CONTRACT, per table, and only a model can say anything about them.
+    ///
+    /// The Autoware Safety Island's shape: 14 contracted publishers carrying
+    /// `min_rate_hz` on one node and no subscriber declaring `max_age_ms` ->
+    /// 14 rate rows and 0 age rows, counted by the functions the entry
+    /// emitters bake the tables with, and carried to cmake. A probe-only
+    /// inventory states neither, so the crate default stands.
+    #[test]
+    fn the_monitor_tables_follow_the_contract() {
+        use ros_launch_manifest_model::{PubContract, SystemModel, TopicWiring};
+        let mut m = SystemModel::default();
+        for i in 0..14 {
+            let ep = format!("/island/mrm/out_{i}");
+            m.structure.topics.insert(
+                format!("/out_{i}"),
+                TopicWiring {
+                    msg_type: "std_msgs/msg/String".to_string(),
+                    publishers: vec![ep.clone()],
+                    subscribers: vec![],
+                },
+            );
+            m.contracts.pub_endpoints.insert(
+                ep,
+                PubContract {
+                    min_rate_hz: Some(10.0),
+                    ..Default::default()
+                },
+            );
+        }
+        let inv = EntityInventory::from_model("island", &m).expect("wiring described");
+        assert_eq!(inv.monitor_rows(), Some((14, 0)));
+        let k = inv.derive();
+        let k = k.knobs().expect("derived");
+        assert_eq!((k.max_monitors, k.max_age_monitors), (Some(14), Some(0)));
+        let c = inv.to_cmake();
+        assert!(
+            c.contains("set(NROS_DERIVED_EXECUTOR_MAX_MONITORS 14)\n"),
+            "{c}"
+        );
+        assert!(
+            c.contains("set(NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS 0)\n"),
+            "{c}"
+        );
+
+        // Merged with a probe (which saw no contract), the model's count wins.
+        let mut probe = EntityInventory::new("probe");
+        probe.insert(stated("a", "talker", &["publisher", "timer"]));
+        assert_eq!(probe.monitor_rows(), None);
+        assert_eq!(
+            probe.merged_per_kind_max(&inv).monitor_rows(),
+            Some((14, 0))
+        );
+
+        // No model, no count: nothing is carried and the crate default stands.
+        let pk = probe.derive();
+        let pk = pk.knobs().expect("derived");
+        assert_eq!((pk.max_monitors, pk.max_age_monitors), (None, None));
+        assert!(!probe.to_cmake().contains("EXECUTOR_MAX_MONITORS"));
+        let sidecar = crate::leaf_entity_env::render_env_sidecar(
+            pk,
+            &crate::leaf_payload_classes::PayloadClasses::Refused {
+                reason: "test".into(),
+            },
+            &crate::leaf_take_buffer::TakeBuffer::Refused {
+                reason: "test".into(),
+            },
+            "test",
+        );
+        assert!(!sidecar.contains("MONITORS"), "{sidecar}");
+        // ... and with one, the sidecar road carries both.
+        let sidecar = crate::leaf_entity_env::render_env_sidecar(
+            k,
+            &crate::leaf_payload_classes::PayloadClasses::Refused {
+                reason: "test".into(),
+            },
+            &crate::leaf_take_buffer::TakeBuffer::Refused {
+                reason: "test".into(),
+            },
+            "test",
+        );
+        assert!(
+            sidecar.contains("NROS_EXECUTOR_MAX_MONITORS = \"14\""),
+            "{sidecar}"
+        );
+        assert!(
+            sidecar.contains("NROS_EXECUTOR_MAX_AGE_MONITORS = \"0\""),
+            "{sidecar}"
+        );
     }
 
     /// Issue 1198 — the executor's two FIXED TABLES follow the declaration.

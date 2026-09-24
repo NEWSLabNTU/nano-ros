@@ -79,6 +79,9 @@ static NATIVE_TALKER_HEADER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static CONTRACT_MONITOR_PUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static CONTRACT_MONITOR_SUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static CONTRACT_MONITOR_DIAGSINK_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// phase-467 W1 -- the monitor-capacity bin, built with
+/// `NROS_EXECUTOR_MAX_MONITORS=14` stated.
+static MONITOR_CAPACITY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the `safety-chatter-listener` fixture bin (phase-277 W3.a —
 /// was the listener `safety-e2e`-gated second `main`).
@@ -5537,6 +5540,21 @@ pub fn build_contract_monitor_diagsink() -> TestResult<&'static Path> {
         &CONTRACT_MONITOR_DIAGSINK_BINARY,
         "contract-monitor-diagsink",
     )
+}
+
+/// phase-467 W1 (issue 1471) -- the monitor-capacity bin: installs `MC_ROWS`
+/// rate rows through `Executor::try_set_monitor_tables` against a stated
+/// `NROS_EXECUTOR_MAX_MONITORS=14` (`examples/fixtures.toml` row
+/// `monitor-capacity`).
+pub fn build_monitor_capacity() -> TestResult<&'static Path> {
+    MONITOR_CAPACITY_BINARY
+        .get_or_try_init(|| {
+            let root = project_root();
+            let dir = root.join("packages/testing/nros-tests/bins/monitor-capacity");
+            let profile = cargo_target_profile_dir();
+            require_prebuilt_binary_fresh(&dir.join(format!("target/{profile}/monitor-capacity")))
+        })
+        .map(|p| p.as_path())
 }
 
 /// Resolve the prebuilt `safety-chatter-listener` fixture (cached).

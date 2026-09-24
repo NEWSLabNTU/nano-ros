@@ -388,6 +388,20 @@ KEPT = {
         "so a consumer would have to restate the action expansion",
     ),
     "NROS_DECLARED_EXECUTOR_MAX_NODES": Kept(1407, _COUNTS),
+    # phase-467 W1 (issue 1471) -- the contract-monitor row counts. The sizing
+    # descriptor has no field for them: they are counts of CONTRACT rows
+    # (`min_rate_hz` / `max_latency_ms` / `max_age_ms`), not of endpoints, so no
+    # `[[endpoint]]` row can state them without restating `monitor_rows`.
+    "NROS_DECLARED_EXECUTOR_MAX_MONITORS": Kept(
+        1407,
+        _COUNTS + "; and the count is of contract rows carrying `min_rate_hz` or "
+        "`max_latency_ms` (`monitor_rows`), which no descriptor field states",
+    ),
+    "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS": Kept(
+        1407,
+        _COUNTS + "; and the count is of contract rows carrying `max_age_ms` "
+        "(`age_rows`), which no descriptor field states",
+    ),
     "NROS_DECLARED_MAX_SUBSCRIBERS": Kept(1407, _COUNTS),
     "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS": Kept(1407, _COUNTS),
     # ---- the queryable raw inputs (issue 1407) --------------------------

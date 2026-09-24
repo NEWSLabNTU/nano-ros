@@ -467,6 +467,12 @@ function(_nros_entity_budget_env _out_var)
             "NROS_DECLARED_EXECUTOR_MAX_CBS;NROS_DERIVED_EXECUTOR_MAX_CBS"
             "NROS_DECLARED_EXECUTOR_MAX_NODES;NROS_DERIVED_EXECUTOR_MAX_NODES"
             "NROS_DECLARED_EXECUTOR_MAX_SC;NROS_DERIVED_EXECUTOR_MAX_SC"
+            # phase-467 W1 (issue 1471) -- the contract-monitor tables, counted
+            # from the contract the entry bakes them from. Present only when the
+            # fragment saw a model; a table past either knob is REFUSED at
+            # install naming it, never truncated.
+            "NROS_DECLARED_EXECUTOR_MAX_MONITORS;NROS_DERIVED_EXECUTOR_MAX_MONITORS"
+            "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS;NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS"
             "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS;NROS_DERIVED_RMW_SUBSCRIBER_SLOTS"
             "NROS_DECLARED_MAX_PUBLISHERS;NROS_DERIVED_MAX_PUBLISHERS"
             "NROS_DECLARED_MAX_SUBSCRIBERS;NROS_DERIVED_MAX_SUBSCRIBERS"

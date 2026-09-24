@@ -3,13 +3,40 @@ id: 1471
 title: "`MAX_MONITORS` is a hard-coded 8 with no rung on any knob ladder, and
   the C++ road bakes 14 monitor rows for the Autoware Safety Island -- the
   install REFUSES, so the entry's setup returns -6 before it creates a node"
-status: open
+status: resolved
 type: bug
 area: [core, api, cli]
 severity: high
 found: 2026-09-24
-related: [0810, 1198, phase-462]
+related: [0810, 1198, phase-462, phase-467]
+resolved_in: phase-467 W1
 ---
+
+## Resolution (phase-467 W1)
+
+`MAX_MONITORS` is now two generated consts on the same ladder as `MAX_CBS`
+/ `MAX_SC` / `MAX_NODES`, one per table:
+
+| const | explicit knob | derived rung | counted by |
+| --- | --- | --- | --- |
+| `MAX_MONITORS` | `NROS_EXECUTOR_MAX_MONITORS` | `NROS_DECLARED_EXECUTOR_MAX_MONITORS` | `monitor_rows(model).len()` |
+| `MAX_AGE_MONITORS` | `NROS_EXECUTOR_MAX_AGE_MONITORS` | `NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS` | `age_rows(model).len()` |
+
+The entity inventory counts both from the model with the same two functions
+the entry emitters bake the tables with, and carries them on all three roads
+(Zephyr resolver with a `-1` Kconfig sentinel, the cmake declared road, the
+cargo sidecar). No model means no count, and the crate default of 8 stands,
+so an image without a contract is byte-identical. Two knobs, not one: the
+island's 14 rate rows and 0 age rows size 14 and 0.
+
+The refusal stays and now names the knob: `monitor::check_table_capacity`
+returns `MonitorTableFull`, whose Display says which knob to raise; the C++
+install logs it before `NROS_CPP_RET_FULL`, the generated Rust table carries
+a compile-time assertion with the same words, and `Executor::set_monitor_table`
+panics in a debug build rather than truncating. See
+`docs/roadmap/phase-467-board-files-state-board-facts.md`.
+
+The original report follows unchanged.
 
 ## What happens
 

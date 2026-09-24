@@ -3,6 +3,18 @@
     "Schema: see docs/reference/api-parity-ledger/SCHEMA.md — the one home for what",
     "a row means. Do NOT copy it back here; issue 1095 is what that cost."
   ],
+  "rust:MAX_AGE_MONITORS": {
+    "verdict": "extension",
+    "why": "phase-467 W1 -- how many age contract rows one executor watches (`NROS_EXECUTOR_MAX_AGE_MONITORS`). See `rust:MAX_MONITORS`."
+  },
+  "rust:MAX_MONITORS": {
+    "verdict": "extension",
+    "why": "phase-467 W1 -- how many rate/latency contract rows one executor watches; the generated `NROS_EXECUTOR_MAX_MONITORS`, derived from the contract. See `rust:MonitorSpec`."
+  },
+  "rust:MonitorTableFull": {
+    "verdict": "extension",
+    "why": "phase-467 W1 -- the refusal of a monitor table past `MAX_MONITORS` / `MAX_AGE_MONITORS`; its Display names the knob to raise. See `rust:MAX_MONITORS`."
+  },
   "rust:SOURCE_METADATA_SCHEMA_VERSION": {
     "verdict": "extension",
     "why": "the sidecar schema version the one emitter writes (2 since phase-463 W1: `qos` on every endpoint kind, `kind` on every `timers[]` row, `type` on every `parameters[]` row). A constant rather than a literal in the writer so a reader that pins the version names the same number. See `rust:SourceMetadataExport`."
@@ -1229,6 +1241,10 @@
   "rust:carve": {
     "verdict": "extension",
     "why": "phase-391 W5 -- split a caller's `[u64]` static into `Slot`s per a `RuntimeSizing`; asserts (fail-loud) rather than truncating when the store is too small. No upstream analogue: rcl allocates."
+  },
+  "rust:check_table_capacity": {
+    "verdict": "extension",
+    "why": "phase-467 W1 -- the one capacity check every monitor installer makes (the Rust `try_set_monitor_tables` and the C ABI's `nros_cpp_install_monitors`). See `rust:MonitorTableFull`."
   },
   "rust:crc32": {
     "verdict": "extension",

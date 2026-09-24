@@ -1,0 +1,26 @@
+[workspace]
+
+[package]
+name = "monitor-capacity"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "phase-467 W1 (issue 1471) fixture: installs MC_ROWS contract-monitor rate rows on ONE executor through the refusing installer and reports whether it accepted them. Built against a stated NROS_EXECUTOR_MAX_MONITORS=14 (examples/fixtures.toml), so 14 rows (the Autoware Safety Island's shape) install and 15 are refused with the knob named."
+
+[[bin]]
+name = "monitor-capacity"
+path = "src/main.rs"
+
+[dependencies]
+nros = { path = "../../../../api/nros", default-features = false, features = [
+    "std", "alloc", "env",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
+    "std",
+    "platform-posix",
+    "ros-humble",
+] }

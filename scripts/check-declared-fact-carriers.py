@@ -288,6 +288,20 @@ FACT_DISPOSITION = {
         "sidecar": ("NROS_EXECUTOR_MAX_SC",),
         "declared": ("NROS_DECLARED_EXECUTOR_MAX_SC",),
     },
+    # phase-467 W1 (issue 1471) -- the contract-monitor tables. Counted from
+    # the MODEL (`monitor_rows` / `age_rows`, the functions the entry emitters
+    # bake the tables with), so every road carries them only when a model was
+    # seen, and absent leaves the crate default of 8.
+    "NROS_DERIVED_EXECUTOR_MAX_MONITORS": {
+        "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_MONITORS",),
+        "sidecar": ("NROS_EXECUTOR_MAX_MONITORS",),
+        "declared": ("NROS_DECLARED_EXECUTOR_MAX_MONITORS",),
+    },
+    "NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS": {
+        "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_AGE_MONITORS",),
+        "sidecar": ("NROS_EXECUTOR_MAX_AGE_MONITORS",),
+        "declared": ("NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS",),
+    },
     # ---- the message-bound inventory's sizes -----------------------------
     "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE": {
         "resolver": ("NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE",),
@@ -648,7 +662,7 @@ def leaf_keys():
     leaf = (ROOT / LEAF_ENV).read_text(errors="replace")
     keys = set()
     for const in ("DERIVED_ENV_KEYS", "DERIVED_PAYLOAD_ENV_KEYS",
-                  "DERIVED_CLOSURE_ENV_KEYS"):
+                  "DERIVED_CLOSURE_ENV_KEYS", "DERIVED_MONITOR_ENV_KEYS"):
         m = re.search(const + r"[^=]*=\s*&\[(.*?)\];", leaf, re.S)
         if m:
             keys |= set(re.findall(r'"([A-Z0-9_]+)"', m.group(1)))

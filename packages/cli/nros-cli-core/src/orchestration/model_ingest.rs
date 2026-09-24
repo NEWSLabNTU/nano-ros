@@ -1551,6 +1551,37 @@ pub fn render_monitor_rs(rows: &[MonitorRow], ages: &[AgeRow]) -> String {
         ));
     }
     out.push_str("];\n\n");
+    // phase-467 W1 (issue 1471) -- the executor watches at most
+    // `MAX_MONITORS` / `MAX_AGE_MONITORS` rows, and the spin loop inspects only
+    // that many. A table past either is a COMPILE error here that names the
+    // knob, never a table that boots with its tail unwatched. Both knobs derive
+    // from these same row counts, so this fires only when a stated value is
+    // below the contract. An empty table cannot overflow and gets no assert
+    // (`0 <= N` is clippy's deny-level `absurd_extreme_comparisons`).
+    for (n, bound, knob, what) in [
+        (
+            rows.len(),
+            "MAX_MONITORS",
+            "NROS_EXECUTOR_MAX_MONITORS",
+            "rate/latency",
+        ),
+        (
+            ages.len(),
+            "MAX_AGE_MONITORS",
+            "NROS_EXECUTOR_MAX_AGE_MONITORS",
+            "age",
+        ),
+    ] {
+        if n == 0 {
+            continue;
+        }
+        out.push_str(&format!(
+            "const _: () = assert!(\n    {n} <= ::nros_node::executor::monitor::{bound},\n    \
+             \"this contract bakes {n} {what} monitor rows, more than the executor watches: \
+             raise {knob} (it derives from the contract when nothing states it)\"\n);\n"
+        ));
+    }
+    out.push('\n');
     out.push_str(
         "pub fn nros_install_monitors(executor: &mut ::nros_node::executor::Executor<'_>) {\n    executor.set_monitor_table(NROS_MONITORS);\n    executor.set_age_table(NROS_AGE_MONITORS);\n}\n",
     );
@@ -1589,6 +1620,16 @@ mod monitor_tests {
         assert_eq!(rows[0].topic, "/perception/objects");
         assert_eq!(rows[0].min_rate_hz_milli, 10_000);
         let rs = render_monitor_rs(&rows, &[]);
+        // phase-467 W1 -- the table carries its own bound, naming the knob.
+        assert!(
+            rs.contains("1 <= ::nros_node::executor::monitor::MAX_MONITORS"),
+            "{rs}"
+        );
+        assert!(rs.contains("raise NROS_EXECUTOR_MAX_MONITORS"), "{rs}");
+        assert!(
+            !rs.contains("MAX_AGE_MONITORS"),
+            "an empty age table needs no bound: {rs}"
+        );
         assert!(rs.contains("NROS_MONITOR_CELL_0"));
         assert!(rs.contains("min_rate_hz_milli: 10000u32"));
         assert!(rs.contains("topic: \"/perception/objects\""));

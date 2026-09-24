@@ -969,6 +969,10 @@
     "verdict": "extension",
     "why": "phase-436 E3. Whether `stack-headroom-runtime` is armed on a port that cannot measure: a minimum is set, but the port's `stack_unused_bytes` answers 0, which the rule reads as \"not instrumented\" and skips every tick. `true` means the rule's silence is not evidence of headroom.\n\nExists because the two cases were indistinguishable. On ASI's default Zephyr FVP build (no `CONFIG_INIT_STACKS`) the rule was armed by the entry and reported zero violations, which read as a healthy stack and was in fact no measurement at all. Recorded when the bound is set, on the thread it describes, with one warning naming the fix.\n\nNo upstream counterpart: rclcpp/rclc/rclrs have no stack-headroom rule, so nothing to be blind about (same basis as `rust:Executor::set_min_stack_headroom_bytes` beside it)."
   },
+  "rust:Executor::try_set_monitor_tables": {
+    "verdict": "extension",
+    "why": "phase-467 W1 -- installs both baked contract-monitor tables or neither, REFUSING a table longer than the executor watches with a `MonitorTableFull` that names the knob to raise. rclrs has no on-target contract monitor. See `rust:MonitorSpec`."
+  },
   "rust:Executor::wait_for_subscribers": {
     "verdict": "divergence",
     "why": "phase-444. OUR spelling of upstream's `rcl_wait_for_subscribers` — see `c:wait_for_subscribers` for the decision, the RFC-0021 argument for why the one blocking member of the graph family is allowed to block, and why `Unsupported` returns at once instead of waiting out the budget.\n\nSame verb as ROS 2; the RECEIVER differs, as it does for every other graph verb here. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE transport session for the whole image — a session per node is RAM a 128 KiB target does not have — and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
