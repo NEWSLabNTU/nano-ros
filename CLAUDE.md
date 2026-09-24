@@ -661,6 +661,19 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `out="$(cmd)"` then `rc=$?`/`[ -n "$out" ]` never reaches the handler; write
   `rc=0; out="$(cmd)" || rc=$?` or `if out="$(cmd)"; then`. Two same-day defects (PR #780's
   fixture build, PR #798's `pre-push`, each silent). Gate: `check-set-e-bare-assignment`.
+  **The sibling one construct over is a `$(…)` in ARGUMENT position, and that gate cannot
+  see it** (issue 1466, measured: its one `ASSIGN` regex needs `var="$(` at statement
+  position, so `scan_text` over the real offender returns `[]`). `apt-get install -y
+  $(prereq-packages.py …)` discarded the script's status and `apt-get` with zero packages
+  exits 0, so a `ModuleNotFoundError` traceback printed three lines above `0 newly
+  installed` and the step went GREEN — a whole `live-peer` lane ran without clang. The
+  idiom was PRESCRIBED by `check-workflow-indexed-apt`, remedy text and passing fixture
+  both, which is why fixing the four sites alone would have re-created it; that gate now
+  refuses it at every call site of the helper it names (workflows AND `just` AND
+  `scripts/`, because `ci.just` reached the same swallow through a missing `-e`). Write
+  `if ! pkgs="$(…)"; then … exit 1; fi` — fatal with or without `set -e`. A blanket
+  argument-position rule was measured and NOT written: 742 candidates, ~123 in-repo, i.e.
+  an allowlist instead of a rule.
 - **A script a git hook reaches must clear the inherited git environment first**
   (issues 0986/0988). `GIT_DIR` & co. override BOTH a path argument and
   `git -C`, so `git init "$tmp/x"` in a selftest builds nothing and instead
@@ -684,6 +697,16 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   git's 16 names, leaking `GIT_OBJECT_DIRECTORY` into the victim's object store.
   The Python spelling of the helper is `scripts/lib/git_hook_env.py`, same
   function name; popping some `GIT_*` variables is never what earns the credit.
+  **A gate may only assert on a repository IT BUILT** (issue 1465). The
+  end-to-end hook run used the real worktree as its cwd and sha1'd
+  `--git-path config`, which in a linked worktree is the MAIN checkout's —
+  shared by every agent session — so a concurrent `just setup-hooks` made the
+  fast line print 0986's "it is live right now" about a second terminal.
+  Attribution cannot come from an authored key list or a lock; it comes from
+  the subject. The cwd is a `--local --shared` clone built per run inside the
+  victim dir (`run_probe … @checkout`), with uncommitted tracked edits
+  overlaid so it probes what you are EDITING, and the assertion got STRONGER:
+  the whole repo byte for byte instead of one file's sha1, for +3.7 s.
 - **An inherited absolute path outranks the checkout you are building, and a
   linked worktree inherits 24 of them** (issue 1280). Every path-valued
   variable here resolves ENV-FIRST — which is how a real out-of-tree SDK gets
