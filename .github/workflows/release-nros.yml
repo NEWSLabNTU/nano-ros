@@ -117,11 +117,18 @@ jobs:
       # package NAME comes from the index, not from here: it carries the
       # apt/dnf/pacman/brew spellings, and a copy in a workflow is the one that
       # goes stale (`check-workflow-indexed-apt`, which caught this line).
+      # RESOLVE FIRST, and capture the status: a `$(…)` in argument position
+      # discards it and `apt-get install` with no packages exits 0, so a failed
+      # resolve installs nothing and the step goes green (issue 1466).
       - name: Install zstd
         run: |
+          if ! pkgs="$(python3 scripts/sdk/prereq-packages.py --manager apt zstd)"; then
+            echo "::error::prereq-packages.py could not resolve zstd from nros-sdk-index.toml"
+            exit 1
+          fi
           sudo apt-get update
-          # shellcheck disable=SC2046
-          sudo apt-get install -y $(python3 scripts/sdk/prereq-packages.py --manager apt zstd)
+          # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
+          sudo apt-get install -y $pkgs
 
       - name: Build the CLI from source
         run: |

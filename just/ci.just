@@ -461,7 +461,18 @@ provision-zenohd:
     # Through the helper rather than the CLI: this runs before anything has
     # built `nros`, which is the reason `prereq-packages.py` exists (phase-413
     # W3). Same index either way.
-    pkg="$(python3 scripts/sdk/prereq-packages.py --manager apt ros-rmw-zenoh-cpp)"
+    #
+    # `if !`, not a bare assignment. This recipe is `set -uo pipefail` with NO
+    # `-e`, so a plain `pkg="$(…)"` would leave `pkg` EMPTY and keep going —
+    # straight to the `apt-get install -y --no-install-recommends "$pkg"` below,
+    # which exits 0 on an empty argument and then reports `installed `. Same
+    # swallow as issue 1466's workflow sites, reached through a missing `-e`
+    # instead of through argument position.
+    if ! pkg="$(python3 scripts/sdk/prereq-packages.py --manager apt ros-rmw-zenoh-cpp)"; then
+        echo "provision-zenohd: could not resolve [prereq.ros-rmw-zenoh-cpp] from nros-sdk-index.toml." >&2
+        echo "  Refusing to 'install' an empty package list and call it success (issue 1466)." >&2
+        exit 1
+    fi
     # The PREFIX probe still needs the distro directly — that is a path on this
     # host, not a package name, and `nros_zenohd_bin` is the resolver for it.
     distro="${ROS_DISTRO:-humble}"
