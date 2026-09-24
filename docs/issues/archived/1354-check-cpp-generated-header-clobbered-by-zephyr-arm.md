@@ -3,7 +3,7 @@ id: 1354
 title: "`check cpp`'s runtime probes link a posix archive against a Zephyr
   `nros_cpp_config_generated.h` — one shared `target/nros-cpp-generated/` for
   two feature sets, and the loser is an undefined `config_variant` symbol"
-status: open
+status: resolved
 type: bug
 area: [ci, api, build]
 related: [0088, 0114, 0122, 0834, 0196, phase-456]
@@ -146,3 +146,68 @@ just check cpp        # dies on the undefined config_variant symbol
 grep CONFIG_VARIANT target/nros-cpp-generated/nros/nros_cpp_config_generated.h
 nm target/debug/libnros_cpp.a | grep -o 'nros_cpp_config_variant_[a-z_]*' | sort -u
 ```
+
+## Fix — 2026-09-25
+
+The remedy this issue proposed was a per-VARIANT byproduct path, and it named
+the cost: every consumer's `-I` would have to carry the variant, across ~165
+sites in cmake, west, px4 and the check lanes. That was never done, which is why
+this sat open.
+
+What shipped instead reaches the same invariant from the other side: **a build
+that probes its own feature set gets its own `CARGO_TARGET_DIR`**, so no two
+feature sets share a byproduct path and the flat layout stays. The colliding
+builds were few and are all in the check lanes:
+
+| build | feature set | dir |
+| --- | --- | --- |
+| `check c` | `C_API_SHIPPED_FEATURES` | `target-check-c` |
+| `check cpp` | `C_API_SHIPPED_FEATURES` | `target-check-cpp` |
+| `check cpp`'s zenoh clippy | `std,rmw-zenoh-cffi,platform-posix,ros-humble` | `target-check-cpp-clippy-zenoh` |
+| `check cpp`'s embedded cyclone | `<cyclone>,panic-platform` | `target-check-cpp-cyclone-embedded` |
+| `census-hooks-complete` | `std,rmw-cffi,metadata-mode,param-services` | `target-check-census-hooks` |
+
+`nros_scoped_target_dir` already existed for exactly this and its doc warns it is
+only for dirs with no consumer reading a fixed relative path. That is honoured:
+all 118 `-I` paths, both `libnros_*.a` link arguments and the lane's scratch
+directory are derived from the same variable, so no fixed path escapes the
+recipe.
+
+## What the fix taught that the diagnosis had wrong
+
+The first repair scoped the lanes and `check cpp` still failed — on an archive,
+not a header: the lane linked `target/debug/libnros_cpp.a` from the shared tree
+while its own build had moved. The `-I` paths were only half the coupling.
+
+Then it failed a third time, and this is the part worth keeping: **the lane
+overwrites its own input across runs.** `check cpp` builds `nros-cpp` twice with
+different feature sets — the shipped set at the top, `rmw-zenoh-cffi` for the
+clippy at the end — so the clippy left a zenoh-variant header in the lane's own
+directory, and the NEXT run compiled a runtime probe against it while linking
+the shipped-features archive:
+
+```
+header   NROS_CPP_CONFIG_VARIANT "…_rmw_cffi_rmw_zenoh_cffi_ros_humble_std"
+archive  nros_cpp_config_variant_…_rmw_cffi_ros_humble_std
+```
+
+Green on a fresh directory, red on the second run. That is why it read as a race
+between gates: the symptom was timing-shaped, and one of its causes was not.
+"`just check cpp` alone exits 0" was true and misleading — it was true of the
+FIRST run.
+
+## Verification
+
+* `just check cpp` green, and green again on an immediate second run — the case
+  that failed before.
+* `just check c` green.
+* `just ci gate` green, with zero occurrences of either symptom (the
+  config-variant undefined reference and the "DIFFERENT probed sizes" panic).
+
+## What is NOT fixed
+
+Builds outside the check lanes still share the flat path: cmake, west, px4 and
+the fixture builders. They do not currently run concurrently with each other or
+with the lanes, so they do not collide today — but the invariant is a property
+of who happens to run when, not of the layout. The per-variant path remains the
+structural answer, and this issue stays the record of why.
