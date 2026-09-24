@@ -376,3 +376,95 @@ fn the_links_std_column_agrees_with_the_descriptors_entry_kind() {
          matching has probably broken, so this test is checking nothing"
     );
 }
+
+/// The FRAMEWORK a key resolves to agrees with the descriptors' `entry_kind`,
+/// for every key a descriptor knows.
+///
+/// This is the sibling of [`the_links_std_column_agrees_with_the_descriptors_entry_kind`]
+/// over the same catalog and the same key set, and it exists because the gate
+/// issue 1435 shipped has a reach narrower than the rule it enforces — issue
+/// 0196's shape.
+///
+/// That gate is `nros_orchestration_ir`'s
+/// `every_key_of_one_board_zst_wants_one_framework`, and it compares keys that
+/// SHARE a board ZST. It therefore checks AGREEMENT, not correctness, and is
+/// blind to the two ways a framework row can be wrong without two keys
+/// disagreeing:
+///
+/// - a ZST named by exactly ONE key (`threadx-linux` today) — nothing to
+///   compare it against, so any value passes;
+/// - BOTH keys of a shared ZST wrong the SAME way. Had phase-445 W5 RENAMED
+///   the zephyr key instead of adding a second spelling, `framework_for_board_key`
+///   would have answered `None` for the only key there was, every consumer
+///   would have read `owned-spin`, and the agreement gate would have been
+///   green on a table that emits `<ZephyrBoard as BoardEntry>::run` — the
+///   `E0277` of issue 1435, unremarked.
+///
+/// `entry_kind` is an INDEPENDENT authority on the entry shape, written per
+/// board in `nros-board.toml` rather than derived from the key, so it can
+/// answer both cases. What it can answer is the `zephyr-staticlib` shape
+/// exactly: Zephyr owns `main`, so the macro's `Framework::Zephyr` arm emits a
+/// `rust_main` staticlib export and no `BoardEntry::run` call. The assertion is
+/// therefore a BICONDITIONAL on `zephyr` alone, and deliberately says nothing
+/// about the rest: `board-run` covers `owned-spin`, `rtic`, `embassy` and
+/// `esp32` at once, so it does not name a framework and a test pretending it
+/// did would be asserting something the data does not hold.
+#[test]
+fn the_framework_agrees_with_the_descriptors_entry_kind() {
+    use nros_cli_core::orchestration::board_descriptor::{BoardCatalog, EntryKind};
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("repo root")
+        .to_path_buf();
+    // Same reason as the sibling test: a catalog that will not load is a
+    // failure, not a green having checked nothing (issue 0571's shape).
+    let catalog = BoardCatalog::load(&root)
+        .unwrap_or_else(|e| panic!("shipped board catalog under {}: {e}", root.display()));
+
+    let mut checked = 0;
+    let mut zephyr_keys = 0;
+    for &(key, zst, _links_std) in nros_orchestration_ir::BOARD_PATHS {
+        let Some(d) = catalog
+            .descriptors()
+            .iter()
+            .find(|d| d.names.iter().any(|n| n == key))
+        else {
+            continue;
+        };
+        // `None` is what every consumer reads as `owned-spin`, so resolve it
+        // the way they do rather than skipping it — a MISSING row is exactly
+        // the defect this test is here for.
+        let framework = nros_orchestration_ir::framework_for_board_key(key).unwrap_or("owned-spin");
+        let wants_zephyr = matches!(d.entry_kind, EntryKind::ZephyrStaticlib);
+        assert_eq!(
+            framework == "zephyr",
+            wants_zephyr,
+            "`{key}` ({zst}): `framework_for_board_key` says `{framework}`, but its \
+             descriptor declares entry_kind = {:?}. A `zephyr-staticlib` board wants the \
+             `zephyr` entry shape (a `rust_main` staticlib export) and nothing else wants \
+             it; any other answer makes both Rust emitters render \
+             `<Board as BoardEntry>::run` for a ZST that does not implement it, which is \
+             the `E0277` of issue 1435. Add `{key}` to `framework_for_board_key`.",
+            d.entry_kind
+        );
+        checked += 1;
+        if wants_zephyr {
+            zephyr_keys += 1;
+        }
+    }
+    // A scan that matched nothing would pass silently, and a scan that matched
+    // no ZEPHYR key would pass while checking only the uninteresting half.
+    assert!(
+        checked >= 8,
+        "only {checked} BOARD_PATHS keys were matched to a descriptor — the name \
+         matching has probably broken, so this test is checking nothing"
+    );
+    assert!(
+        zephyr_keys >= 2,
+        "only {zephyr_keys} matched key(s) belong to a `zephyr-staticlib` board — the \
+         one shape this test can actually name is unrepresented, so it is checking \
+         nothing that matters"
+    );
+}
