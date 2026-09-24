@@ -384,7 +384,21 @@ doctor:
         timeout 5s rustup component list --installed --toolchain "$2" 2>/dev/null \
             | grep -qE "^$1(-[^[:space:]]+)?$"
     }
-    for f in $(just workspace _pinned-toolchain-files); do
+    # Enumerate FIRST and check the status — issue 1466's class. `for f in
+    # $(…)` throws the producer's status away, and this recipe runs under
+    # `set +e`, so a failing `_pinned-toolchain-files` iterated an EMPTY list
+    # and reached the `[OK] rust-pinned-toolchains` below having examined zero
+    # files. The producer really can fail: it is `set -e`, and its `emit`
+    # helper returns 1 for a file that is simply absent.
+    pinned_files_rc=0
+    pinned_files="$(just workspace _pinned-toolchain-files)" || pinned_files_rc=$?
+    if [ "$pinned_files_rc" -ne 0 ]; then
+        echo "  [ERROR] rust-pinned-toolchains: could not enumerate the pinned"
+        echo "          toolchain files (rc=$pinned_files_rc). Not reporting [OK]"
+        echo "          over a list that was never produced."
+        fail=1
+    fi
+    for f in $pinned_files; do
         channel=$(awk '/^channel *=/ { gsub(/["]/, "", $3); print $3; exit }' "$f")
         [ -z "$channel" ] && continue
         list_out="$(timeout 5s rustup toolchain list 2>/dev/null)"
@@ -403,7 +417,7 @@ doctor:
             has_component "$c" "$channel" || comp_missing+=("$channel/$c")
         done
     done
-    if [ ${#pinned_missing[@]} -eq 0 ] && [ ${#comp_missing[@]} -eq 0 ] && [ ${#rustup_timeout[@]} -eq 0 ]; then
+    if [ "$pinned_files_rc" -eq 0 ] && [ ${#pinned_missing[@]} -eq 0 ] && [ ${#comp_missing[@]} -eq 0 ] && [ ${#rustup_timeout[@]} -eq 0 ]; then
         echo "  [OK] rust-pinned-toolchains"
     else
         if [ ${#pinned_missing[@]} -gt 0 ]; then
@@ -623,7 +637,12 @@ _pinned-toolchain-files:
     # on a warm tree) and took ~78 s on this host — the symptom the
     # audit reported as "`just doctor tier=default` hangs". The find
     # form prunes those dirs and returns in ~10 ms.
-    emit() { [ -f "$1" ] && echo "$1"; }
+    # `return 0`, because "emit it if it is there" is the whole job and a file
+    # that is absent is the expected case. Without it the `&&` leaves the
+    # function's status at 1, `set -e` above aborts the recipe mid-list, and
+    # the caller sees a TRUNCATED list with a non-zero status nobody read
+    # (issue 1466).
+    emit() { [ -f "$1" ] && echo "$1"; return 0; }
     emit rust-toolchain.toml
     emit tools/rust-toolchain.toml
     emit packages/verification/nros-verification/rust-toolchain.toml
