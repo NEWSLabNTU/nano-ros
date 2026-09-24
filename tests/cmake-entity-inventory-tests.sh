@@ -823,6 +823,64 @@ if ! nros_grep_q "PARAM=\[\]" <<<"$OUT"; then
 fi
 
 # ---------------------------------------------------------------------------
+# I. Issue 1480 -- an ABSENT inbox size writes its reason as a COMMENT, and the
+#    fragment it is appended to must still PARSE.
+#
+#    `_nros_entity_inbox_bytes` returns a MULTI-LINE reason when a request type
+#    carries no derived bound: one line per unbounded type. A `#` comment in
+#    CMake runs to the end of ONE line, so writing that reason after a single
+#    `#` left every later line at a COMMAND position, and the fragment became
+#    `Parse error. Expected a command name, got unquoted argument with text
+#    "example_interfaces/srv/AddTwoInts_Request"` on the NEXT include -- which
+#    is `_nros_entity_budget_env`, not this function, so nothing here failed
+#    and every `Build workspace fixtures` run died at cmake configure.
+#
+#    The assertion is the re-include, not the text: an appendix that reads
+#    correctly and does not parse is exactly the state that shipped.
+# ---------------------------------------------------------------------------
+log_info "I. an absent inbox size leaves a fragment that still parses (issue 1480)"
+
+BOUNDS_FRAG="$TEST_TMPDIR/i-bounds.cmake"
+cat > "$BOUNDS_FRAG" <<'EOF'
+# A bound inventory that knows one type and NOT the service request type below.
+set(NROS_MESSAGE_BOUND_std_msgs_msg_Int32_STATE "bounded")
+set(NROS_MESSAGE_BOUND_std_msgs_msg_Int32_RX 32)
+EOF
+
+UNBOUNDED_BODY="$TEST_TMPDIR/i-derived.cmake"
+cp "$DERIVED_BODY" "$UNBOUNDED_BODY"
+cat >> "$UNBOUNDED_BODY" <<EOF
+set(NROS_ENTITY_SERVICE_REQUEST_TYPES_STATUS "resolved")
+set(NROS_ENTITY_SERVICE_REQUEST_TYPES "example_interfaces/srv/AddTwoInts_Request")
+set_property(GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_FRAGMENTS "$BOUNDS_FRAG")
+EOF
+
+I_FRAG="$TEST_TMPDIR/i.cmake"
+OUT="$(derive "$UNBOUNDED_BODY" 0 "$META" "$I_FRAG")"
+check
+if ! nros_grep_q "NROS_DERIVED_SERVICE_INBOX_BYTES is ABSENT" "$I_FRAG"; then
+    fail "I: the appendix did not record the absent service inbox size -- \
+the case cannot assert anything about a reason it never wrote -- $OUT"
+fi
+check
+if nros_grep_q "^set(NROS_DERIVED_SERVICE_INBOX_BYTES" "$I_FRAG"; then
+    fail "I: an unbounded request type published a number anyway; absence is \
+the answer here (RFC-0100 D6)"
+fi
+# The regression itself. Include the fragment the way `_nros_entity_budget_env`
+# does; a stray line at a command position is a hard parse error.
+I_INCLUDE="$TEST_TMPDIR/i-include.cmake"
+cat > "$I_INCLUDE" <<EOF
+include("$I_FRAG")
+message(STATUS "I: fragment re-included")
+EOF
+check
+if ! I_OUT="$(cmake -P "$I_INCLUDE" 2>&1)"; then
+    fail "I: the appended fragment does not parse on re-include -- this is \
+issue 1480, and it takes every cmake workspace image down at configure -- $I_OUT"
+fi
+
+# ---------------------------------------------------------------------------
 if [ "$FAILURES" -eq 0 ]; then
     log_success "cmake-entity-inventory: $CHECKS assertion(s) held"
     exit 0
