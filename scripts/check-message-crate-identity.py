@@ -1,32 +1,36 @@
 #!/usr/bin/env python3
-"""A generated message crate's IDENTITY — its version, the wire types it claims,
-and the `links` channel it occupies.
+"""A generated message crate's IDENTITY — its name, its version, the wire types
+it claims, and the `links` channel it occupies.
 
-Issues 1428 + 1455. Four rules, one scan, no build.
+Issues 1428 + 1455. Five rules, one scan, no build.
 
-WHY ONE GATE AND NOT FOUR
+WHY ONE GATE AND NOT FIVE
 
-All four rules are the same mistake seen from different sides: nothing in the
-tree knew which crate *is* `builtin_interfaces`. `builtin_interfaces` is
-generated three times (rcl-interfaces, diagnostic-msgs and rosgraph-msgs each
-carry the whole transitive closure of their own package), the three Rust
-sources are byte-identical, and all three declare
-`TYPE_NAME = "builtin_interfaces/msg/Time"`. That is one type on the wire and
-three types in Rust, with no conversion between them, and `nros-tests` already
-path-deps two at once.
+All five rules are the same mistake seen from different sides: nothing in the
+tree knew which crate *is* `builtin_interfaces`. It WAS generated three times
+(rcl-interfaces, diagnostic-msgs and rosgraph-msgs each carried the whole
+transitive closure of their own package), the three Rust sources were
+byte-identical, and all three declared
+`TYPE_NAME = "builtin_interfaces/msg/Time"` — one type on the wire, three types
+in Rust, with no conversion between them, and `nros-tests` path-depping two at
+once.
 
-Triplication itself is NOT what this gate forbids — collapsing it is a codegen
-change, not a file move (see the issue), and until that lands the three copies
-are the documented cost of flat closures. What the gate forbids is a FOURTH
-appearing without anyone deciding, which is exactly how the third arrived.
+phase-465 collapsed the four output trees into ONE, so each ament package is
+emitted exactly once and rule 3's baseline is empty. That was NOT a codegen
+change, contrary to what this docstring and the issue both said until
+2026-09-22: one invocation already deduplicates, because
+`resolve_transitive_dependencies` returns a `HashSet`. What the gate forbids is
+a SECOND copy of any wire type appearing without anyone deciding, which is
+exactly how the third `builtin_interfaces` arrived.
 
 RULE 1 — a generated message crate's version is the CONSTANT `0.0.0`
 
 CLAUDE.md, from issue 0394, which broke root-workspace resolution twice: a
 generated crate carries `version = "0.0.0"` and consumers path-dep it with NO
-version. Three of the eight tracked generated crates predate that rule and were
-hand-adapted as workspace members, so they carried `version.workspace = true`
-— the release version, 0.5.0.
+version. Three of the then-eight tracked generated crates predate that rule and
+were hand-adapted as workspace members, so they carried
+`version.workspace = true` — the release version, 0.5.0. phase-465 reshaped
+all six survivors to the emitted shape, so none is hand-adapted any more.
 
 RULE 2 — no consumer may pin that version
 
@@ -41,10 +45,12 @@ tracked manifest in the repo, not the interfaces tree.
 
 RULE 3 — two shipped crates may not claim the same wire type
 
-Ratcheted, because the `builtin_interfaces` triple is real today and its removal
-is the phase-sized half. The baseline may only shrink: a new duplicate fails, and
-a baselined duplicate that stops duplicating fails as stale (the issue-0743
-class, where a stale override degrades silently into a no-op).
+Ratcheted, because the `builtin_interfaces` triple was real when the rule landed
+and removing it was the phase-sized half. The baseline may only shrink: a new
+duplicate fails, and a baselined duplicate that stops duplicating fails as stale
+(the issue-0743 class, where a stale override degrades silently into a no-op).
+That is what made phase-465's collapse PROVABLE rather than claimed — the six
+rows had to go in the same commit, and the file is empty now.
 
 `#[cfg(test)]` declarations are EXCLUDED, and that exclusion is the difference
 between a useful gate and one that gets baselined into uselessness. Measured on
@@ -72,6 +78,20 @@ map, because that is the invariant a reader of the shipped file can check: two
 crates shipping under different names cannot collide, and two shipping under the
 same name still do (which is a real collision, and stays reported).
 
+RULE 5 — a shipped generated crate is in the `nros-` namespace
+
+phase-465 W4. The same collision as rule 4, one axis over: two `path` packages
+sharing a NAME and a version are a hard cargo error with no workaround at all
+("package collision in the lockfile: … only one can be written to lockfile
+unambiguously"), and a consumer's own `nros sync` emits a crate named after each
+ament package verbatim. So the `nros-` prefix on the committed set is
+load-bearing, not cosmetic.
+
+It is not hypothetical: `geometry_msgs` arrives in the interfaces closure via
+diagnostic_msgs' ament deps, unrenamed and unused, and only one `rm -rf` line in
+`just generate-interfaces` keeps it out of the tree. Checking the tree is what
+makes that line's failure visible; trusting the recipe is what would not.
+
 Usage::
 
     check-message-crate-identity.py             # the gate (self-tests first)
@@ -95,14 +115,19 @@ BASELINE = os.path.join(ROOT, ".config", "duplicate-wire-type-baseline.txt")
 BASELINE_HEADER = """\
 # Wire type names claimed by MORE THAN ONE tracked crate (issue 1428).
 #
-# A RATCHET, not an allowlist: this file may only shrink. `builtin_interfaces`
-# is generated three times because codegen emits each package's whole
-# transitive closure into its own flat directory with no cross-tree reuse map,
-# so three closures each carry their own copy. Collapsing them is a codegen
-# change; until it lands the three are the cost of flat closures.
+# EMPTY, and that is the end state. It held six rows -- `builtin_interfaces`'s
+# `Time` and `Duration` times three crates -- because codegen emitted each
+# driver package's whole transitive closure into its own flat directory, and
+# three of the four closures contained `builtin_interfaces`. phase-465
+# collapsed the four trees into ONE, so each ament package is emitted once and
+# there is nothing left to baseline.
 #
-# What this file buys is that a FOURTH copy cannot appear unnoticed -- which is
-# exactly how the third arrived.
+# A RATCHET, not an allowlist: this file may only shrink. That is what made the
+# collapse provable rather than merely claimed -- a baselined duplicate that
+# stops duplicating fails as STALE, so the six rows had to go in the same
+# commit as the collapse, and a shipped duplicate that came BACK would fail as
+# new. It is also still what keeps a fourth copy from arriving unnoticed, which
+# is exactly how the third arrived.
 #
 # Format: <wire type name><TAB><crate directory>, one line per claimant.
 # Regenerate: python3 scripts/check-message-crate-identity.py --write-baseline
@@ -289,6 +314,16 @@ def load(manifest_path: str):
         return None
 
 
+def ships_prefixed(crate_name: str) -> bool:
+    """RULE 5 — is this a name a consumer's own generated tree cannot collide with?
+
+    `nros sync` names a crate after its ament package verbatim, so anything in
+    the `nros-` namespace is safe by construction and anything outside it is a
+    name a consumer may also produce.
+    """
+    return crate_name.startswith("nros-")
+
+
 def links_key(crate_name: str) -> str:
     """The `links` a generated crate named `crate_name` must declare.
 
@@ -301,6 +336,7 @@ def links_key(crate_name: str) -> str:
 
 def scan_manifests(manifests: list):
     gen_names, bad_version, versioned_rows, bad_links, with_links = {}, [], [], [], []
+    unprefixed = []
     docs = {}
     for path in manifests:
         doc = load(path)
@@ -314,6 +350,21 @@ def scan_manifests(manifests: list):
         if not name:
             continue
         gen_names[name] = path
+        # RULE 5 — a SHIPPED generated crate is in the `nros-` namespace.
+        #
+        # Two `path` packages sharing a name and a version are a hard cargo
+        # error with no workaround ("package collision in the lockfile: … only
+        # one can be written to lockfile unambiguously"), and a consumer's own
+        # `nros sync` produces a crate named after each ament package verbatim.
+        # So a committed crate named `geometry_msgs` would make every leaf that
+        # also generates `geometry_msgs` unresolvable. It is not hypothetical:
+        # `geometry_msgs` arrives in the interfaces closure via diagnostic_msgs'
+        # ament deps, unrenamed and unused, and only the recipe's `rm -rf`
+        # keeps it out of the tree (phase-465 W4). That is one line standing
+        # between a regeneration and a consumer-facing resolve failure, so the
+        # tree is checked rather than the recipe trusted.
+        if not ships_prefixed(name):
+            unprefixed.append((path, name))
         version = pkg.get("version")
         if version != "0.0.0":
             shown = "version.workspace = true" if version is None else repr(version)
@@ -344,8 +395,10 @@ def scan_manifests(manifests: list):
                         continue
                     dep_name = spec.get("package", key)
                     if dep_name in gen_names and "version" in spec:
-                        versioned_rows.append((path, "target." + table, key, spec["version"]))
-    return gen_names, bad_version, versioned_rows, bad_links, with_links
+                        versioned_rows.append(
+                            (path, "target." + table, key, spec["version"])
+                        )
+    return gen_names, bad_version, versioned_rows, bad_links, with_links, unprefixed
 
 
 def crate_of(rs_path: str, manifest_dirs) -> str:
@@ -444,7 +497,7 @@ def selftest() -> None:
 
     # A lifetime must not be read as a char literal and swallow the line.
     assert wire_claims_in(
-        "impl M for Y { const TYPE_NAME: &'static str = \"d/msg/Y\"; }"
+        'impl M for Y { const TYPE_NAME: &\'static str = "d/msg/Y"; }'
     ) == ["d/msg/Y"], "lifetime handling broken"
 
     # A nested cfg(test) module inside a live module still excludes only itself.
@@ -460,7 +513,9 @@ def selftest() -> None:
     assert got == ["e/msg/A", "e/msg/C"], f"nested cfg(test) broken: {got}"
 
     # The manifest rules, on planted documents.
-    assert is_generated_crate("packages/interfaces/x/generated/humble/nros-y/Cargo.toml")
+    assert is_generated_crate(
+        "packages/interfaces/x/generated/humble/nros-y/Cargo.toml"
+    )
     assert not is_generated_crate("packages/core/nros-node/Cargo.toml")
 
     # RULE 4 — the formula, and the two directions that matter. The value 1455
@@ -468,13 +523,23 @@ def selftest() -> None:
     # demands is derived from the name it ships under.
     assert links_key("builtin_interfaces") == "nros_msgs_builtin_interfaces"
     assert (
-        links_key("nros-builtin-interfaces-clock") == "nros_msgs_nros_builtin_interfaces_clock"
+        links_key("nros-builtin-interfaces-clock")
+        == "nros_msgs_nros_builtin_interfaces_clock"
     ), links_key("nros-builtin-interfaces-clock")
     # A renamed crate and a consumer's own copy must NOT share a key...
     assert links_key("nros-builtin-interfaces-clock") != links_key("builtin_interfaces")
     # ...and two copies shipping under ONE name must, or the gate has stopped
     # describing what cargo does.
     assert links_key("nros-builtin-interfaces") == links_key("nros-builtin-interfaces")
+
+    # RULE 5 — both directions, including the crate that would actually arrive.
+    # `geometry_msgs` is the one the interfaces closure emits unrenamed, and the
+    # only thing keeping it out of the tree is one line in the recipe.
+    assert ships_prefixed("nros-builtin-interfaces")
+    assert not ships_prefixed("geometry_msgs")
+    assert not ships_prefixed("builtin_interfaces")
+    # Not a substring test: a name that merely CONTAINS the prefix still collides.
+    assert not ships_prefixed("my-nros-msgs")
 
 
 # --------------------------------------------------------------------------
@@ -485,7 +550,9 @@ def main() -> int:
     selftest()
 
     manifests = tracked("*Cargo.toml")
-    gen_names, bad_version, versioned_rows, bad_links, with_links = scan_manifests(manifests)
+    gen_names, bad_version, versioned_rows, bad_links, with_links, unprefixed = (
+        scan_manifests(manifests)
+    )
     dupes = scan_wire_claims(manifests)
 
     if "--write-baseline" in sys.argv:
@@ -509,6 +576,7 @@ def main() -> int:
         print(f"\nversion-carrying dep rows: {len(versioned_rows)}")
         print(f"crates not at 0.0.0: {len(bad_version)}")
         print(f"crates whose `links` does not follow their name: {len(bad_links)}")
+        print(f"crates shipping an unprefixed ament name: {len(unprefixed)}")
         return 0
 
     failed = False
@@ -530,9 +598,14 @@ def main() -> int:
 
     if versioned_rows:
         failed = True
-        print("\ndep row(s) pinning a generated message crate's version:", file=sys.stderr)
+        print(
+            "\ndep row(s) pinning a generated message crate's version:", file=sys.stderr
+        )
         for path, table, key, ver in versioned_rows:
-            print(f"  {path}  [{table}] {key} = {{ version = {ver!r}, ... }}", file=sys.stderr)
+            print(
+                f"  {path}  [{table}] {key} = {{ version = {ver!r}, ... }}",
+                file=sys.stderr,
+            )
         print(
             "\nA path dep's `version` is still a REQUIREMENT. Drop the field and keep\n"
             "`path` alone — CLAUDE.md, issue 0394 (which broke root-workspace\n"
@@ -548,20 +621,45 @@ def main() -> int:
             file=sys.stderr,
         )
         for path, name, got, want in bad_links:
-            print(f"  {name}: links = {got!r}, must be {want!r}    {path}", file=sys.stderr)
+            print(
+                f"  {name}: links = {got!r}, must be {want!r}    {path}",
+                file=sys.stderr,
+            )
         print(
             "\n`links` is global to the dependency graph, so it is an identity axis\n"
             "like the name and the version (RFC-0067 §D4, issue 1455). A crate that\n"
             "keeps its ament package's key after being renamed into `nros-` collides\n"
             "with a consumer's own generated copy of that package, at RESOLVE time —\n"
             "every cargo command in that leaf. Regenerate the tree (`just\n"
-            "generate-<pkg>`); the `--rename` pass recomputes this value now.",
+            "generate-interfaces`); the `--rename` pass recomputes this value now.",
+            file=sys.stderr,
+        )
+
+    if unprefixed:
+        failed = True
+        print(
+            "\ntracked generated message crate(s) shipping an UNPREFIXED name:",
+            file=sys.stderr,
+        )
+        for path, name in unprefixed:
+            print(f"  {name}    {path}", file=sys.stderr)
+        print(
+            "\nA shipped crate must be in the `nros-` namespace (RFC-0067 §D4). A\n"
+            "consumer's own `nros sync` emits a crate named after each ament package\n"
+            "verbatim, and two `path` packages sharing a name and a version are a hard\n"
+            "cargo error with no workaround — 'package collision in the lockfile: …\n"
+            "only one can be written to lockfile unambiguously'. `geometry_msgs` reaches\n"
+            "the interfaces closure via diagnostic_msgs' ament deps and is dropped by\n"
+            "`just generate-interfaces`; if one is here, that drop did not happen.",
             file=sys.stderr,
         )
 
     if new_dupes:
         failed = True
-        print("\nwire type(s) newly claimed by more than one shipped crate:", file=sys.stderr)
+        print(
+            "\nwire type(s) newly claimed by more than one shipped crate:",
+            file=sys.stderr,
+        )
         for name, crate in new_dupes:
             print(f"  {name}  claimed by  {crate}", file=sys.stderr)
         print(

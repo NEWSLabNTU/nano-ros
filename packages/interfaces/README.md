@@ -1,62 +1,67 @@
 # `packages/interfaces/` — the core pre-generated message set
 
 Committed ROS 2 message bindings that **core crates need before any codegen
-runs**. Everything under a `generated/` directory here is emitted by
-`nros generate-rust` from an ament install, and is the one place in the tree
-where a `generated/` tree is tracked (CLAUDE.md's named exception to "never
-commit `generated/`"; RFC-0023 is the generator, RFC-0067 the crate identity).
+runs**. Everything under `generated/` here is emitted by `nros generate-rust`
+from an ament install, and is the one place in the tree where a `generated/`
+tree is tracked (CLAUDE.md's named exception to "never commit `generated/`";
+RFC-0023 is the generator, RFC-0067 the crate identity).
 
-| driver package | tracked crates |
+**ONE driver package, ONE output tree, SIX crates** (phase-465, RFC-0067 §D5):
+
+| file | what it is |
 | --- | --- |
-| `rcl-interfaces/` | `nros-rcl-interfaces`, `nros-builtin-interfaces` |
-| `diagnostic-msgs/` | `nros-diagnostic-msgs`, `nros-std-msgs-diag`, `nros-builtin-interfaces-diag` |
-| `rosgraph-msgs/` | `nros-rosgraph-msgs`, `nros-builtin-interfaces-clock` |
-| `lifecycle-msgs/` | `nros-lifecycle-msgs` |
+| `package.xml` | the driver package: four `<depend>` rows naming `rcl_interfaces`, `diagnostic_msgs`, `rosgraph_msgs`, `lifecycle_msgs` |
+| `nros-codegen.toml` | RFC-0033 capacities for the whole closure (keys are package-qualified) |
+| `generated/humble/` | `nros-builtin-interfaces`, `nros-std-msgs`, `nros-rcl-interfaces`, `nros-diagnostic-msgs`, `nros-rosgraph-msgs`, `nros-lifecycle-msgs` |
 
-Each directory is a **driver package**: a `package.xml` naming one ament package
-in `<depend>`, plus an optional RFC-0033 `nros-codegen.toml`. Codegen emits that
-package's whole transitive closure into `generated/<edition>/`. Regenerate with
-`just generate-bindings` (one private recipe per driver package); a ROS 2 ament
-host is required, and the result is `cargo fmt`-ed afterwards.
+Codegen emits the four packages' whole transitive closure — so `std_msgs` and
+`builtin_interfaces` arrive on their own — into `generated/<edition>/`, and each
+ament package is emitted exactly **once**, because
+`resolve_transitive_dependencies` returns a `HashSet` and
+`filter_interface_packages` iterates it.
 
-## Why `nros-` prefixes, and why three copies of `builtin_interfaces`
+Regenerate with **`just generate-interfaces`**. A ROS 2 ament host is required.
+The recipe re-emits the whole tree, drops `geometry_msgs` (see below) and
+`cargo fmt`s the six crates, and it is **idempotent**: a second run leaves the
+worktree clean.
 
-Both follow from one fact: **a generated crate names its dependencies by CRATE
-name and reaches them as flat siblings, `path = "../<dep>"`.**
+## Why `nros-` prefixes
 
-- **The prefix is load-bearing.** A consumer runs `nros sync` on their own
-  workspace and gets their own `builtin_interfaces` crate. If nano-ros shipped a
-  crate with that same ament name, the two would be a hard cargo error — *"package
-  collision in the lockfile: … only one can be written to lockfile
-  unambiguously"* — with no workaround, since two `path` packages sharing a
-  `name` + `version` cannot both be recorded. So the committed set is renamed
-  into the `nros-` namespace and stays there.
-- **The three copies are the price of four output trees.** `rcl_interfaces`,
-  `diagnostic_msgs` and `rosgraph_msgs` each reference
-  `builtin_interfaces/msg/Time`, so each of the three closures contains its own
-  copy; the `-diag` / `-clock` suffixes exist only to stop three crates named
-  `nros-builtin-interfaces` colliding in one workspace. Their Rust sources are
-  **byte-identical** and all three declare
-  `TYPE_NAME = "builtin_interfaces/msg/Time"` — one type on the wire, three in
-  Rust, with no conversion between them.
+**The prefix is load-bearing.** A consumer runs `nros sync` on their own
+workspace and gets their own `builtin_interfaces` crate. If nano-ros shipped a
+crate with that same ament name, the two would be a hard cargo error — *"package
+collision in the lockfile: … only one can be written to lockfile
+unambiguously"* — with no workaround, since two `path` packages sharing a `name`
+and a `version` cannot both be recorded. So the committed set is renamed into the
+`nros-` namespace and stays there, and **rule 5** of the gate below checks it.
 
-This is accepted tech-debt, tracked as **issue 1428**, not a design intent.
+`geometry_msgs` is the one crate the closure emits that would ship an unprefixed
+name: it arrives via `diagnostic_msgs`' ament deps, no message in the set
+references it, and the recipe deletes it. That is one `rm -rf` line standing
+between a regeneration and a consumer-facing resolve failure, which is why the
+gate reads the tree instead of trusting the recipe.
 
-## What would make it one
+## Why there used to be three copies of `builtin_interfaces`
 
-**One output tree instead of four.** Codegen already deduplicates within a single
-invocation, so one driver `package.xml` depending on all four core packages emits
-each ament package exactly once — six crates instead of eight, every dep still a
-flat sibling, `links` unique because there is one copy. Measured; see RFC-0067
-**§D5**, which also records why the two objections to collapsing (that it needs a
-codegen change, and that it costs generated trees their relocatability) apply to
-a *shared crate across trees* and not to this shape.
+Because there used to be **four driver packages and four output trees**.
+`rcl_interfaces`, `diagnostic_msgs` and `rosgraph_msgs` each reference
+`builtin_interfaces/msg/Time`, so each of the three closures carried its own
+copy, and the `-diag` / `-clock` suffixes existed only to stop three crates
+named `nros-builtin-interfaces` colliding in one workspace. Their Rust sources
+were **byte-identical** and all three declared
+`TYPE_NAME = "builtin_interfaces/msg/Time"` — one type on the wire, three in
+Rust, with no conversion between them, and `nros-tests` path-depped two at once.
 
-The remaining cost is migration, not design: the root workspace member list,
-~19 consumer dep rows, four regeneration recipes becoming one, the tracked
-lockfiles, and the gate baseline below. Planned as **phase-465**. Do not
-half-apply it — a shared crate wired for two of three parents is worse than
-either end state (the issue-0394 class, which broke a fresh clone twice).
+That was tracked as **issue 1428** and is closed by phase-465. Two objections to
+collapsing were recorded and are both answered: it needed **no codegen change**
+(the emitted rows were already right — it was a driver-package, recipe and layout
+change), and it cost **no relocatability** (state the property precisely as *no
+generated tree references another generated tree* and one tree preserves it
+trivially; the looser reading was never true, since every generated crate already
+reaches `nros-core` / `nros-serdes` by relative path).
+
+A **second** edition would be a second tree, and a legitimate duplicate under
+§D5. Not in scope here; the tree stays `generated/humble/`.
 
 ## What is gated
 
@@ -71,13 +76,15 @@ every tracked manifest in every workspace root and every tracked `.rs`:
 3. no wire `TYPE_NAME` is claimed by more than one **shipped** crate, against the
    shrink-only baseline `.config/duplicate-wire-type-baseline.txt`;
 4. a generated crate's `links`, when it has one, is `nros_msgs_` + its own
-   `[package] name` — the third identity axis, see below (issue 1455).
+   `[package] name` — the third identity axis, see below (issue 1455);
+5. a shipped generated crate's name is in the `nros-` namespace (phase-465 W4).
 
-Rule 3's baseline holds exactly the six claims of the `builtin_interfaces` triple
-(`Time` and `Duration` × three crates). A **fourth** copy fails the gate — which
-is how the third arrived unnoticed — and a baselined duplicate that stops
-duplicating fails as *stale*, so the debt cannot silently go hollow. Collapsing
-therefore empties that file in the same commit.
+Rule 3's baseline is **empty**, and that is how the collapse was proved rather
+than claimed: it held exactly the six claims of the `builtin_interfaces` triple
+(`Time` and `Duration` × three crates), and the ratchet fails a baselined
+duplicate that *stops* duplicating, so those six rows had to go in the same
+commit. A second copy of any wire type now fails as new — which is how the third
+`builtin_interfaces` arrived unnoticed.
 
 `#[cfg(test)]` claims are excluded from rule 3 on purpose: a hand-written fixture
 struct in `mod tests` is never linked into an image, so it cannot collide on the
@@ -94,9 +101,7 @@ made the graph unresolvable, for every cargo command in that leaf. Reachable via
 `nros/sim-time`.
 
 Fixed (**issue 1455**): `apply_package_renames` recomputes the key from the name
-the crate actually ships under, through the emitter's own `links_key`, so the
-two shipped crates now read `nros_msgs_nros_builtin_interfaces_clock` and
-`nros_msgs_nros_rosgraph_msgs`. The rule is RFC-0067 **§D4**, gated as rule 4
-above, and decided independently of phase-465. The other six shipped crates
-declare no `links` at all (they predate phase-403's bounds `build.rs`, so there
-is no channel to carry); a regeneration gives them one, correctly derived.
+the crate actually ships under, through the emitter's own `links_key`. The rule
+is RFC-0067 **§D4**, gated as rule 4 above, and was decided independently of
+phase-465. All six crates declare a `links` now — the regeneration gave the four
+that predated phase-403's bounds `build.rs` a channel to carry.
