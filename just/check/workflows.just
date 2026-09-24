@@ -266,6 +266,24 @@ prereq-roles:
 rosdep-snapshot:
     @python3 scripts/check-rosdep-snapshot.py
 
+# Issues 1483/1484 — a `[python.*]` entry names WHOSE dependency it is.
+#
+# The maintainer's rule: our index must not carry transitive dependencies, and
+# where a package rides behind a direct apt ROS dependency, install that and let
+# apt resolve it. Six of the eight entries are ours (measured: `tomli` 42 direct
+# importers, `yaml` 11, `catkin_pkg` 1); `empy` and `lark` are upstream rosidl's
+# alone, carried only because `[source.rosidl]` serves the ROS-LESS host, where
+# there is no `ros-humble-rosidl-adapter` for apt to resolve behind.
+#
+# So the census runs every time instead of being re-derived by hand — it was
+# re-derived three times in one day and got `pyyaml` wrong twice — and an entry
+# nothing here imports must name upstream's `rosdep` key, whose apt name comes
+# from the pinned snapshot rather than from a hand-copy. `python3-lark-parser`
+# -> `python3-lark` is a rename we WERE hand-copying one edge of.
+[group("checks")]
+python-entry-provenance:
+    @python3 scripts/check-python-entry-provenance.py
+
 # phase-447 C1 / RFC-0099 D5 — every `[tool.*]` proves it RUNS, or says why not.
 #
 # `nros setup` runs a tool's `smoke` probes on the INSTALL path now, so a dist
