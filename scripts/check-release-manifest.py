@@ -31,11 +31,23 @@ So the properties below are gated rather than remembered.
 * **R3 — the surviving equality is present.** The workflow must read
   `NROS_CODEGEN_VERSION` out of `packages/core/nros-core/src/codegen_version.rs`
   and compare it against the number in the manifest it just wrote.
-* **R4 — no OTHER version comparison may block a release.** Every `exit 1` in
-  the workflow must sit in a paragraph that is about `codegen`. Stated as a
-  property of the fatal paths rather than as a ban on the two old wordings,
-  because a reintroduction would be written in new words — the shape the
-  2026-07-28 audit found in four gates whose reach was narrower than their rule.
+* **R4 — no OTHER version comparison may block a release.** A fatal paragraph
+  that COMPARES two values must be about `codegen`. Stated as a property of the
+  fatal paths rather than as a ban on the two old wordings, because a
+  reintroduction would be written in new words — the shape the 2026-07-28 audit
+  found in four gates whose reach was narrower than their rule.
+
+  The comparison clause is issue 1452's shape, the OTHER direction of 0196: this
+  read "every `exit 1` must mention codegen", which is WIDER than the rule it
+  states and therefore a false report waiting to happen. It waited until issue
+  1466: the zstd step has to refuse when `prereq-packages.py` cannot resolve its
+  packages — a release that cannot be BUILT must still stop — and that paragraph
+  compares nothing and asserts no version, yet R4 called it a release-blocking
+  version check. Both `exit 1`s the workflow carried until then sat in the
+  codegen paragraph, so the over-reach had never been measured against anything.
+  The subject is now derived (does this fatal path compare two values?) rather
+  than declared, which is what 1452 settled on. What it consequently does not
+  see: a version assertion written with no comparison operator at all.
 * **R5 — the asset carries what a BUILD reads** (phase-447 A1, RFC-0099 D2).
   Two artifacts, both measured absent before phase-447 and each fatal on its
   own:
@@ -212,6 +224,21 @@ def pins_violations(store_text, stage_text, provision_text):
     return bad
 
 
+# A shell comparison of two values — R4's subject. `[ -z "$x" ]` is a test but
+# not a comparison: it asks whether ONE value arrived, which is how the codegen
+# guard itself reads its inputs, and banning it would ban reading them.
+#
+# `case … in` is in here because the crate-prefix assertion R4 already catches is
+# written that way and carries no operator at all. Leaving it out would have made
+# this narrowing silently weaker than what the gate already held — the thing to
+# check when narrowing anything, and the gate's own self-test is what asked.
+COMPARES = re.compile(
+    r"!=|(?<![\w-])-(?:ne|eq|gt|lt|ge|le)(?![\w-])"
+    r"|\[\[?[^]]*\s=~?\s[^]]*\]\]?"
+    r"|\bcase\s+\S+\s+in\b"
+)
+
+
 def fatal_paragraphs(text):
     """Every `exit 1` and the contiguous non-blank block it ends.
 
@@ -281,7 +308,7 @@ def violations(workflow_text, reader_text, launcher_text, ws_text, stage_text):
         )
 
     for n, para in fatal_paragraphs(workflow_text):
-        if "codegen" not in para:
+        if COMPARES.search(para) and "codegen" not in para:
             bad.append(
                 (
                     "R4",
@@ -325,6 +352,18 @@ REINTRODUCED_CRATE_ASSERT = GOOD + """
               "$crate"-nros*) ;;
               *) echo "::error::not <crate>-nrosN" >&2; exit 1 ;;
           esac
+"""
+
+# A fatal path that compares NOTHING: the release cannot be built, so it stops.
+# R4 used to call this a release-blocking version check (issue 1466/1452).
+NON_VERSION_FATAL = GOOD + """
+      - name: Install zstd
+        run: |
+          if ! pkgs="$(python3 scripts/sdk/prereq-packages.py --manager apt zstd)"; then
+              echo "::error::could not resolve zstd from nros-sdk-index.toml"
+              exit 1
+          fi
+          sudo apt-get install -y $pkgs
 """
 
 HAND_WRITTEN = """
@@ -383,6 +422,11 @@ def self_test():
             "a reintroduced crate-prefix assertion",
             REINTRODUCED_CRATE_ASSERT + STAGES_WHAT_A_BUILD_READS,
             READER_STUB, LAUNCHER_STUB, WS_STUB, S, {"R4"},
+        ),
+        (
+            "a fatal path that compares nothing is not a version assertion",
+            NON_VERSION_FATAL + STAGES_WHAT_A_BUILD_READS,
+            READER_STUB, LAUNCHER_STUB, WS_STUB, S, set(),
         ),
         (
             "a hand-composed manifest",
