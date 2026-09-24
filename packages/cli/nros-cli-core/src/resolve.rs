@@ -306,20 +306,29 @@ impl Resolved {
     pub fn value_rows(&self) -> Vec<(&'static str, usize)> {
         match self.knobs() {
             None => Vec::new(),
-            Some(k) => vec![
-                ("max_cbs", k.max_cbs),
-                ("action_clients", k.heavy_slots),
-                ("max_nodes", k.max_nodes),
-                // Issue 1198 -- the executor's other fixed table.
-                ("max_sc", k.max_sc),
-                ("entity_total", k.entity_total),
-                ("max_subscribers", k.max_subscribers),
-                ("rmw_subscriber_slots", k.max_subscribers),
-                ("max_publishers", k.max_publishers),
-                ("max_queryables", k.max_queryables),
-                ("max_liveliness", k.max_liveliness),
-                ("max_cell_entities", k.max_cell_entities),
-            ],
+            Some(k) => {
+                let mut rows = vec![
+                    ("max_cbs", k.max_cbs),
+                    ("action_clients", k.heavy_slots),
+                    ("max_nodes", k.max_nodes),
+                    // Issue 1198 -- the executor's other fixed table.
+                    ("max_sc", k.max_sc),
+                    ("entity_total", k.entity_total),
+                    ("max_subscribers", k.max_subscribers),
+                    ("rmw_subscriber_slots", k.max_subscribers),
+                    ("max_publishers", k.max_publishers),
+                    ("max_queryables", k.max_queryables),
+                    ("max_liveliness", k.max_liveliness),
+                    ("max_cell_entities", k.max_cell_entities),
+                ];
+                // phase-467 W1 -- the monitor tables, only when a model was
+                // counted; absent is "no count", never zero.
+                if let (Some(r), Some(a)) = (k.max_monitors, k.max_age_monitors) {
+                    rows.push(("max_monitors", r));
+                    rows.push(("max_age_monitors", a));
+                }
+                rows
+            }
         }
     }
 
@@ -393,6 +402,11 @@ impl Resolved {
                 let _ = writeln!(s, "action_clients = {}", k.heavy_slots);
                 let _ = writeln!(s, "max_nodes = {}", k.max_nodes);
                 let _ = writeln!(s, "max_sc = {}", k.max_sc);
+                // phase-467 W1 -- the two contract-monitor tables, when counted.
+                if let (Some(r), Some(a)) = (k.max_monitors, k.max_age_monitors) {
+                    let _ = writeln!(s, "max_monitors = {r}");
+                    let _ = writeln!(s, "max_age_monitors = {a}");
+                }
                 let _ = writeln!(s, "entity_total = {}", k.entity_total);
                 s.push('\n');
 
@@ -707,6 +721,31 @@ mod tests {
     /// hand-listed pairing, so a knob added to one transport and not the other
     /// reds this instead of drifting quietly (the `NROS_DERIVED_NROS_MAX_*`
     /// class, which cmake resolves to EMPTY rather than to an error).
+    /// phase-467 W1 -- the monitor rows, which only a model states, travel
+    /// on BOTH transports with the same numbers: the island's 14 rate rows and
+    /// 0 age rows.
+    #[test]
+    fn resolved_toml_and_cmake_agree_on_monitor_rows() {
+        let mut inv = inventory(&["pub:std_msgs/msg/String", "timer"]);
+        inv.set_monitor_rows(14, 0);
+        let r = Resolved::compose(ident(), &inv);
+        let rows: BTreeMap<&str, usize> = r.value_rows().into_iter().collect();
+        assert_eq!(rows.get("max_monitors"), Some(&14));
+        assert_eq!(rows.get("max_age_monitors"), Some(&0));
+        let cmake = inv.to_cmake();
+        assert!(
+            cmake.contains("set(NROS_DERIVED_EXECUTOR_MAX_MONITORS 14)\n"),
+            "{cmake}"
+        );
+        assert!(
+            cmake.contains("set(NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS 0)\n"),
+            "{cmake}"
+        );
+        let toml = r.to_toml();
+        assert!(toml.contains("max_monitors = 14\n"), "{toml}");
+        assert!(toml.contains("max_age_monitors = 0\n"), "{toml}");
+    }
+
     #[test]
     fn resolved_toml_and_cmake_agree() {
         let inv = inventory(&[
@@ -723,6 +762,8 @@ mod tests {
             ("action_clients", "NROS_DERIVED_EXECUTOR_ACTION_CLIENTS"),
             ("max_nodes", "NROS_DERIVED_EXECUTOR_MAX_NODES"),
             ("max_sc", "NROS_DERIVED_EXECUTOR_MAX_SC"),
+            ("max_monitors", "NROS_DERIVED_EXECUTOR_MAX_MONITORS"),
+            ("max_age_monitors", "NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS"),
             ("max_subscribers", "NROS_DERIVED_MAX_SUBSCRIBERS"),
             ("rmw_subscriber_slots", "NROS_DERIVED_RMW_SUBSCRIBER_SLOTS"),
             ("max_publishers", "NROS_DERIVED_MAX_PUBLISHERS"),
@@ -735,7 +776,19 @@ mod tests {
         ];
         let rows: BTreeMap<&str, usize> = r.value_rows().into_iter().collect();
         for (toml_key, cmake_var) in pairs {
-            let v = rows[toml_key];
+            // phase-467 W1 -- the monitor rows are stated only with a model;
+            // `resolved_toml_and_cmake_agree_on_monitor_rows` covers them.
+            let Some(&v) = rows.get(toml_key) else {
+                assert!(
+                    toml_key.contains("monitors"),
+                    "`{toml_key}` is missing from value_rows"
+                );
+                assert!(
+                    !cmake.contains(cmake_var),
+                    "the CMake projection states {cmake_var} and resolved.toml does not:\n{cmake}"
+                );
+                continue;
+            };
             assert!(
                 cmake.contains(&format!("set({cmake_var} {v})\n")),
                 "resolved.toml says {toml_key} = {v}; the CMake projection does not:\n{cmake}"

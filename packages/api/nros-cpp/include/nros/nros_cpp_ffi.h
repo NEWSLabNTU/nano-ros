@@ -1695,11 +1695,15 @@ nros_cpp_ret_t nros_cpp_executor_set_min_stack_headroom(void *handle, size_t byt
  * attaches each contracted endpoint's cell by exact topic match at create
  * time, so a table installed later monitors nothing.
  *
- * Rows beyond the executor's `MAX_MONITORS` are REFUSED (`NROS_CPP_RET_FULL`)
- * rather than truncated: the executor checks only the first `MAX_MONITORS`
- * specs of a table, and an image that boots with six of its fourteen
- * contracts silently unwatched is the class of failure this table exists to
- * remove. A short or misaligned storage buffer is refused the same way.
+ * Rows beyond the executor's `MAX_MONITORS` (rate/latency) or
+ * `MAX_AGE_MONITORS` (age) are REFUSED (`NROS_CPP_RET_FULL`) rather than
+ * truncated: the executor checks only the first `MAX_MONITORS` specs of a
+ * table, and an image that boots with six of its fourteen contracts silently
+ * unwatched is the class of failure this table exists to remove. The refusal
+ * logs the knob to raise, `NROS_EXECUTOR_MAX_MONITORS` or
+ * `NROS_EXECUTOR_MAX_AGE_MONITORS`; both derive from the contract's row
+ * counts when nothing states them (phase-467 W1). A short or misaligned
+ * storage buffer is refused the same way.
  *
  * # Safety
  * `handle` must be a live executor handle from this ABI, or NULL. `tables`

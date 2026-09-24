@@ -1494,6 +1494,35 @@ config NROS_EXECUTOR_MAX_SC
       thumbv7m-none-eabi. Too small is NodeError::NoSchedContextSlot at
       create_sched_context, which names this knob.
 
+config NROS_EXECUTOR_MAX_MONITORS
+    int "Contract-monitor rate/latency rows per executor (-1 = derive)"
+    default -1
+    help
+      Rate/latency contract rows one executor watches (nros-node build.rs
+      MAX_MONITORS, phase-467 W1 / issue 1471). One row per contracted
+      publisher carrying min_rate_hz, plus latency-only rows from node
+      paths carrying max_latency_ms.
+
+      `-1` DERIVES this from the image's entity inventory, which counts the
+      rows from the same contract the entry bakes its table from. Without
+      a contract the crate default of 8 stands. A stated number wins, in
+      both directions. The rows are inline in the executor (24 bytes each
+      on a 32-bit target), so a board file should never state a count the
+      contract already determines. A table longer than this is REFUSED at
+      install (nros_cpp_install_monitors logs this knob's name and returns
+      NROS_CPP_RET_FULL; a Rust entry fails to compile), never truncated.
+
+config NROS_EXECUTOR_MAX_AGE_MONITORS
+    int "Contract-monitor age rows per executor (-1 = derive)"
+    default -1
+    help
+      Age contract rows one executor watches (nros-node build.rs
+      MAX_AGE_MONITORS, phase-467 W1): one per contracted subscription
+      carrying max_age_ms. A separate knob from NROS_EXECUTOR_MAX_MONITORS
+      because it is a separate table, so an image with rate contracts and
+      no age contracts pays for one table only. `-1` derives it on the same
+      terms, and a longer table is refused naming this knob.
+
 config NROS_EXECUTOR_MAX_SHUTDOWN_CBS
     int "Shutdown-hook slots per phase"
     default 2

@@ -1750,6 +1750,22 @@ platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/contract-monitor"
 
+# phase-467 W1 (issue 1471) -- the capacity half of the contract monitors: 14
+# rate rows on ONE executor (the Autoware Safety Island's shape) install, and a
+# 15th is refused with the knob to raise NAMED, through the refusing installer
+# `Executor::try_set_monitor_tables` (the check `nros_cpp_install_monitors`
+# makes too). `NROS_EXECUTOR_MAX_MONITORS` is STATED here, because a stated
+# cap of 14 is the case under test; the derived rung is the CLI's
+# `the_monitor_tables_follow_the_contract`. Its own leaf rather than a variant
+# of the row above: the knob recompiles `nros-node`, and the two would share
+# `<dir>/target`. Consumed by tests/contract_monitor_parity.rs.
+[[fixture]]
+platform = "linux"
+lang = "rust"
+id = "monitor-capacity"
+dir = "packages/testing/nros-tests/bins/monitor-capacity"
+env = { NROS_EXECUTOR_MAX_MONITORS = "14" }
+
 # phase-462 W1 (RFC-0052) -- the C++ twin of contract-monitor-pub: the same
 # min_rate_hz row installed through `nros_cpp_install_monitors`, the stock
 # `Publisher<Header>` bumping its cell, `nros_cpp_executor_drain_violations`

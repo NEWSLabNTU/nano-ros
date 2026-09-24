@@ -459,6 +459,7 @@ function(nros_derive_entity_inventory_knobs)
                NROS_DERIVED_MAX_SUBSCRIBERS NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
                NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES
                NROS_DERIVED_EXECUTOR_MAX_NODES NROS_DERIVED_EXECUTOR_MAX_SC
+               NROS_DERIVED_EXECUTOR_MAX_MONITORS NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS
                NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
                NROS_ENTITY_APP_QUERYABLES
                NROS_ENTITY_INVENTORY_ENTITY_TOTAL
@@ -668,6 +669,9 @@ function(nros_derive_entity_inventory_knobs)
     foreach(_pool NROS_DERIVED_MAX_SUBSCRIBERS NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
                   NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES
                   NROS_DERIVED_EXECUTOR_MAX_NODES NROS_DERIVED_EXECUTOR_MAX_SC
+                  # phase-467 W1 -- the contract-monitor tables, present only
+                  # when the fragment was composed with a model.
+                  NROS_DERIVED_EXECUTOR_MAX_MONITORS NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS
                   NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES)
         if(DEFINED ${_pool})
             _nros_entity_publish(${_pool} "${${_pool}}")
@@ -837,6 +841,8 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_DERIVED_MAX_QUERYABLES
         NROS_DERIVED_EXECUTOR_MAX_NODES
         NROS_DERIVED_EXECUTOR_MAX_SC
+        NROS_DERIVED_EXECUTOR_MAX_MONITORS
+        NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS
         # phase-412 W2 / issue 1130 -- the liveliness pool and the cell
         # registry bound. Listed here because this dump IS the module's own
         # diagnostic surface and the one `tests/cmake-entity-inventory-tests.sh`

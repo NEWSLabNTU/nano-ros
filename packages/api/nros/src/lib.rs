@@ -1308,7 +1308,8 @@ pub use nros_rmw::TransportError;
 #[cfg(feature = "rmw-cffi")]
 pub mod monitor {
     pub use nros_node::executor::monitor::{
-        AgeMonitorSpec, MonitorSpec, PubMonitorCell, SubMonitorCell, Violation,
+        AgeMonitorSpec, MAX_AGE_MONITORS, MAX_MONITORS, MonitorSpec, MonitorTableFull,
+        PubMonitorCell, SubMonitorCell, Violation, check_table_capacity,
     };
 }
 

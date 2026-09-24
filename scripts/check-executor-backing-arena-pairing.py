@@ -270,6 +270,13 @@ SIZING_KNOBS = {
     "NROS_SUBSCRIBED_TYPE_BOUNDS": "each subscription's own region (issue 1255)",
 }
 NOT_SIZING = {
+    # phase-467 W1 -- the contract-monitor state tables are INLINE in the
+    # `Executor` value (the spin loop indexes them beside a `&'static` spec
+    # table), not carved from the backing, so they move no backing word.
+    "NROS_EXECUTOR_MAX_MONITORS": "inline in the Executor value, not the backing",
+    "NROS_DECLARED_EXECUTOR_MAX_MONITORS": "the declared rung of the same",
+    "NROS_EXECUTOR_MAX_AGE_MONITORS": "inline in the Executor value, not the backing",
+    "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS": "the declared rung of the same",
     "NROS_EXECUTOR_BACKING_U64S": "the claim itself",
     "NROS_EXECUTOR_BACKING_SECTION": "placement only, not size",
     "NROS_BOOT_REPORT": "a cfg, no size",

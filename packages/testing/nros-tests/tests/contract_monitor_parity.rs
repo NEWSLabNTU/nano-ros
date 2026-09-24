@@ -47,7 +47,7 @@ use nros_tests::{
     fixtures::{
         ManagedProcess, RequireFixture, Rmw, ZenohRouter, build_cmake_leaf_rmw,
         build_contract_monitor_diagsink, build_contract_monitor_pub, build_contract_monitor_sub,
-        require_zenohd, zenohd_unique,
+        build_monitor_capacity, require_zenohd, zenohd_unique,
     },
     output::{
         CONTRACT_MONITOR_DIAG_PREFIX, CONTRACT_MONITOR_DIAGSINK_READY_MARKER, RULE_MAX_AGE_RUNTIME,
@@ -329,5 +329,52 @@ fn contract_monitor_cpp_uncontracted_twin_carries_zero_rows(zenohd_unique: Zenoh
     assert!(
         !out.contains("cm_pub_cpp: row "),
         "an uncontracted C++ image must install no row, got:\n{out}"
+    );
+}
+
+/// Run the capacity fixture with `MC_ROWS=<rows>` to completion and return
+/// what it printed. `examples/fixtures.toml` row `monitor-capacity`, built with
+/// `NROS_EXECUTOR_MAX_MONITORS=14` stated.
+fn run_monitor_capacity(locator: &str, rows: &str) -> String {
+    let bin = build_monitor_capacity().require("monitor-capacity");
+    let mut p = spawn(bin, &format!("mc-{rows}"), locator, &[("MC_ROWS", rows)]);
+    p.wait_for_all_output(Duration::from_secs(10))
+        .unwrap_or_else(|e| panic!("monitor-capacity (MC_ROWS={rows}) did not finish: {e}"))
+}
+
+/// phase-467 W1 (issue 1471) -- the Autoware Safety Island's shape: 14
+/// contracted rate rows on ONE executor install, where `MAX_MONITORS = 8`
+/// refused them (the C++ setup returned -6 before any node existed).
+#[rstest]
+fn fourteen_monitor_rows_install_on_one_executor(zenohd_unique: ZenohRouter) {
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+    let out = run_monitor_capacity(&zenohd_unique.locator(), "14");
+    assert!(
+        out.contains("mc: installed 14 monitor rows (cap 14)"),
+        "14 rows against NROS_EXECUTOR_MAX_MONITORS=14 must install, got:\n{out}"
+    );
+}
+
+/// ... and a 15th against the same stated 14 is REFUSED, never truncated, with
+/// the knob to raise named in the runtime's own words.
+#[rstest]
+fn a_fifteenth_monitor_row_is_refused_naming_the_knob(zenohd_unique: ZenohRouter) {
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+    let out = run_monitor_capacity(&zenohd_unique.locator(), "15");
+    assert!(
+        out.contains("mc: install refused: monitor table has 15 rows but this executor watches 14"),
+        "15 rows against NROS_EXECUTOR_MAX_MONITORS=14 must be refused, got:\n{out}"
+    );
+    assert!(
+        out.contains("raise NROS_EXECUTOR_MAX_MONITORS"),
+        "the refusal must name the knob to raise, got:\n{out}"
+    );
+    assert!(
+        !out.contains("mc: installed"),
+        "a refused table must not be reported installed:\n{out}"
     );
 }

@@ -417,6 +417,20 @@ pub const DERIVED_ENV_KEYS: &[&str] = &[
     "ZPICO_MAX_SUBSCRIBERS",
 ];
 
+/// phase-467 W1 (issue 1471) -- the contract-monitor table sizes.
+///
+/// Kept apart from [`DERIVED_ENV_KEYS`] because they need a MODEL and those
+/// keys need only the probe: the counts are `monitor_rows(model).len()` and
+/// `age_rows(model).len()`, the functions the entry emitters bake the tables
+/// with, so a leaf or workspace image whose model describes no wiring states
+/// neither and keeps the crate default of 8. Same terms as the rest when they
+/// are stated: a DEFAULT (cargo `[env]` without `force`), and a table past the
+/// knob is REFUSED naming it (`MonitorTableFull`), never truncated.
+pub const DERIVED_MONITOR_ENV_KEYS: &[&str] = &[
+    "NROS_EXECUTOR_MAX_AGE_MONITORS",
+    "NROS_EXECUTOR_MAX_MONITORS",
+];
+
 /// Issue 1125 — the PAYLOAD-CLASS keys, which come from a second inventory.
 ///
 /// Kept apart from [`DERIVED_ENV_KEYS`] because they empty independently and
@@ -586,6 +600,12 @@ pub fn render_env_sidecar_with_facts(
     ]);
     for (k, v) in &vals {
         s.push_str(&format!("{k} = \"{v}\"\n"));
+    }
+    // phase-467 W1 -- the monitor tables, only when a model was counted.
+    // Unfloored: zero rows is an empty inline array, not a `#error`.
+    if let (Some(rows), Some(ages)) = (knobs.max_monitors, knobs.max_age_monitors) {
+        s.push_str(&format!("NROS_EXECUTOR_MAX_AGE_MONITORS = \"{ages}\"\n"));
+        s.push_str(&format!("NROS_EXECUTOR_MAX_MONITORS = \"{rows}\"\n"));
     }
     if !facts.is_empty() {
         s.push_str(
@@ -850,7 +870,7 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
     let manifest = manifest_infra(leaf);
     let bare_facts = || leaf_facts(&model_facts, manifest, None);
 
-    let (inv, unprobeable) = match inventory_for_leaf(leaf) {
+    let (mut inv, unprobeable) = match inventory_for_leaf(leaf) {
         Ok(v) => v,
         Err(e) => {
             eprintln!(
@@ -882,6 +902,17 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
         };
     }
     let declared = matches!(declared_entities(leaf), Ok(Some(_)));
+    // phase-467 W1 -- the probe sees no contract, so the monitor-table counts
+    // come from the leaf's resolved model, and only when that model describes
+    // wiring (the same predicate the cmake road's `from_model` applies): a
+    // model with no contract says nothing about monitors, and a hand-built
+    // table in such a leaf keeps the crate default rather than a derived zero.
+    if let Some(model) = leaf_model(leaf)
+        && let Some((rows, ages)) =
+            EntityInventory::from_model("leaf model", &model).and_then(|m| m.monitor_rows())
+    {
+        inv.set_monitor_rows(rows, ages);
+    }
     match inv.derive() {
         Derivation::Derived(knobs) => {
             // The application's servers, as the inventory counts them. Only when

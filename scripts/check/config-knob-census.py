@@ -257,6 +257,22 @@ KNOB_CLASS = {
     "NROS_DECLARED_EXECUTOR_MAX_CBS": ("infra", "a COUNT the resolver passes down, not a knob"),
     "NROS_DECLARED_EXECUTOR_MAX_NODES": ("infra", "a COUNT the resolver passes down, not a knob"),
     "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS": ("infra", "a COUNT the resolver passes down, not a knob"),
+    # phase-467 W1 (issue 1471) -- the contract-monitor tables. DERIVED, and
+    # deliberately not ladder candidates: the row count is a property of the
+    # CONTRACT the image bakes, never of the board it runs on (phase-467's rule:
+    # a board file states board facts, never a count the contract determines).
+    "NROS_EXECUTOR_MAX_MONITORS": (
+        "derived",
+        "rate/latency monitor rows per executor; counted from the contract's "
+        "`monitor_rows` by the entity inventory, phase-467 W1",
+    ),
+    "NROS_EXECUTOR_MAX_AGE_MONITORS": (
+        "derived",
+        "age monitor rows per executor; counted from the contract's `age_rows` "
+        "by the entity inventory, phase-467 W1",
+    ),
+    "NROS_DECLARED_EXECUTOR_MAX_MONITORS": ("derived", "the declared rung of NROS_EXECUTOR_MAX_MONITORS, phase-467 W1"),
+    "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS": ("derived", "the declared rung of NROS_EXECUTOR_MAX_AGE_MONITORS, phase-467 W1"),
     # issue 1130 — the per-kind cell registry capacity the image declares; a
     # rung below the board's in `nros/build.rs`, never an override.
     "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES": ("infra", "a COUNT the resolver passes down, not a knob"),

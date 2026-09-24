@@ -1657,7 +1657,7 @@ pub struct Executor<'s> {
     pub(crate) alive_slots: &'s mut [super::monitor::AliveSlot],
     /// W3b.5 — baked subscriber age-contract table (empty = none).
     pub(crate) age_table: &'static [super::monitor::AgeMonitorSpec],
-    pub(crate) age_states: [super::monitor::AgeState; super::monitor::MAX_MONITORS],
+    pub(crate) age_states: [super::monitor::AgeState; super::monitor::MAX_AGE_MONITORS],
     /// W3b.5 — hook invoked on `DeadlineAction::Fault` (panic when unset).
     pub(crate) fault_fn: Option<fn(&super::monitor::Violation)>,
     /// Issue #515 — the spin cadence audit runs once, on the first spin
@@ -1946,7 +1946,7 @@ impl<'s> Executor<'s> {
             monitor_table: &[],
             monitor_states: [super::monitor::MonitorState::default(); super::monitor::MAX_MONITORS],
             age_table: &[],
-            age_states: [super::monitor::AgeState::default(); super::monitor::MAX_MONITORS],
+            age_states: [super::monitor::AgeState::default(); super::monitor::MAX_AGE_MONITORS],
             fault_fn: None,
             spin_quantization_checked: false,
             spin_quantization_us: 0,
@@ -2136,9 +2136,9 @@ pub enum WakeSourceId {
     Platform(u8),
 }
 
-/// How many platform sources one executor can carry. Fixed, like `MAX_SC` and
-/// `MAX_MONITORS`: the table is inline, so no allocator is required on the
-/// no_std targets this seam mainly exists for.
+/// How many platform sources one executor can carry. A plain const, not a
+/// sizing knob: the table is inline, so no allocator is required on the no_std
+/// targets this seam mainly exists for.
 pub const MAX_WAKE_SOURCES: usize = 8;
 
 /// When this source will next need the executor, in the executor's clock,
@@ -2617,8 +2617,41 @@ impl<'s> Executor<'s> {
     /// BEFORE entity creation so `create_publisher` can attach each
     /// contracted endpoint's counter cell. Mirrors `set_qos_overrides`:
     /// `&'static`, codegen-baked, empty by default.
+    ///
+    /// phase-467 W1 -- the executor watches at most
+    /// [`MAX_MONITORS`](super::monitor::MAX_MONITORS) rows
+    /// (`NROS_EXECUTOR_MAX_MONITORS`). A generated entry cannot reach this with
+    /// more: its table carries a compile-time assertion that names the knob,
+    /// and the C++ installer refuses at runtime. A hand-written longer table is
+    /// a debug-build panic naming the knob, because in release the spin loop
+    /// would inspect only the first `MAX_MONITORS` and leave the rest silently
+    /// unwatched.
     pub fn set_monitor_table(&mut self, table: &'static [super::monitor::MonitorSpec]) {
+        if let Err(full) = super::monitor::check_table_capacity(table.len(), 0)
+            && cfg!(debug_assertions)
+        {
+            panic!("set_monitor_table: {full}");
+        }
         self.monitor_table = table;
+    }
+
+    /// phase-467 W1 -- install BOTH baked monitor tables, or neither.
+    ///
+    /// The refusing installer: a table longer than this executor watches
+    /// (`MAX_MONITORS` / `MAX_AGE_MONITORS`) is `Err`, and its `Display` names
+    /// the knob to raise, before anything is installed. Nothing is truncated:
+    /// the spin loop inspects only the first `MAX_*` specs, so accepting a
+    /// longer table would boot with its tail silently unwatched. The C ABI's
+    /// `nros_cpp_install_monitors` refuses on the same check.
+    pub fn try_set_monitor_tables(
+        &mut self,
+        table: &'static [super::monitor::MonitorSpec],
+        ages: &'static [super::monitor::AgeMonitorSpec],
+    ) -> Result<(), super::monitor::MonitorTableFull> {
+        super::monitor::check_table_capacity(table.len(), ages.len())?;
+        self.monitor_table = table;
+        self.age_table = ages;
+        Ok(())
     }
 
     /// The installed monitor table (empty unless the entry set one).
@@ -2632,7 +2665,17 @@ impl<'s> Executor<'s> {
     /// contracted endpoint's age cell (needs an epoch source — see
     /// `ExecutorConfig::epoch_us`; without one the take path records
     /// nothing and age monitors stay silent).
+    ///
+    /// phase-467 W1 -- at most
+    /// [`MAX_AGE_MONITORS`](super::monitor::MAX_AGE_MONITORS) rows
+    /// (`NROS_EXECUTOR_MAX_AGE_MONITORS`), on the same terms as
+    /// [`Self::set_monitor_table`].
     pub fn set_age_table(&mut self, table: &'static [super::monitor::AgeMonitorSpec]) {
+        if let Err(full) = super::monitor::check_table_capacity(0, table.len())
+            && cfg!(debug_assertions)
+        {
+            panic!("set_age_table: {full}");
+        }
         self.age_table = table;
     }
 
@@ -3139,7 +3182,7 @@ impl<'s> Executor<'s> {
             for (i, spec) in self
                 .age_table
                 .iter()
-                .take(super::monitor::MAX_MONITORS)
+                .take(super::monitor::MAX_AGE_MONITORS)
                 .enumerate()
             {
                 if let Some(v) = super::monitor::check_age(spec, &mut self.age_states[i], now_us) {

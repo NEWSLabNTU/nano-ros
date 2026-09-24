@@ -518,6 +518,26 @@ fn main() {
     // `NodeError::NoSchedContextSlot` at `create_sched_context`, which names
     // this knob, not a link error.
     let max_sc = env_usize_declared("NROS_EXECUTOR_MAX_SC", "NROS_DECLARED_EXECUTOR_MAX_SC", 8);
+    // phase-467 W1 / issue 1471 -- the contract-monitor tables, TWO knobs
+    // because they are two tables: rate/latency rows (one per contracted
+    // publisher, `monitor_rows`) and age rows (one per contracted subscriber,
+    // `age_rows`). The image's own inventory counts both from the contract it
+    // bakes, so an image with 14 rate rows and no age rows sizes 14 and 0
+    // rather than paying for a table it does not have. 8 stands when nothing
+    // derived, which is what every image carried before this knob existed.
+    // Too small is a REFUSAL at install that names the knob
+    // (`monitor::MonitorTableFull`, and a compile-time assert in the generated
+    // Rust entry), never a truncation: the spin loop inspects only the first N.
+    let max_monitors = env_usize_declared(
+        "NROS_EXECUTOR_MAX_MONITORS",
+        "NROS_DECLARED_EXECUTOR_MAX_MONITORS",
+        8,
+    );
+    let max_age_monitors = env_usize_declared(
+        "NROS_EXECUTOR_MAX_AGE_MONITORS",
+        "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS",
+        8,
+    );
     // Phase 214.C.3 — default coordinated with
     // `packages/rmw/zenoh/nros-rmw-zenoh/build.rs::ZPICO_SUBSCRIBER_BUFFER_SIZE`
     // (also 1024). If you change one, change the other — they share the
@@ -987,6 +1007,16 @@ fn main() {
          (set via NROS_EXECUTOR_MAX_SC, default 8). Phase 110.B.\n\
          pub const MAX_SC: usize = {max_sc};\n\
          \n\
+         /// Contract-monitor RATE/LATENCY rows one executor can watch \
+         (set via NROS_EXECUTOR_MAX_MONITORS, derived from the contract's \
+         `monitor_rows`, default 8). phase-467 W1.\n\
+         pub const MAX_MONITORS: usize = {max_monitors};\n\
+         \n\
+         /// Contract-monitor AGE rows one executor can watch \
+         (set via NROS_EXECUTOR_MAX_AGE_MONITORS, derived from the contract's \
+         `age_rows`, default 8). phase-467 W1.\n\
+         pub const MAX_AGE_MONITORS: usize = {max_age_monitors};\n\
+         \n\
          /// Executor arena size in bytes (derived from MAX_CBS, RX_BUF_SIZE \
          and ACTION_CLIENTS).\n\
          pub const ARENA_SIZE: usize = {arena_size};\n\
@@ -1411,6 +1441,9 @@ fn watch_declared_facts() {
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE");
     // issue 1198 -- and the SCHEDULING table, which was on no road at all.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_SC");
+    // phase-467 W1 -- the two contract-monitor tables, which had no rung.
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_MONITORS");
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS");
 }
 
 fn env_usize_declared(name: &str, declared: &str, default: usize) -> usize {
