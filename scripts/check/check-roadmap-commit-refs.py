@@ -42,6 +42,30 @@ than failing, so the gate keeps its teeth where the history exists, which
 is the pre-push run on a developer's machine, and stays honest about what
 it cannot see anywhere else.
 
+THE OTHER NEGATIVE (issue 1476) — that guard covered half the question,
+and CI produced the other half. On 2026-09-24 this gate stopped tier 2 and
+the tier-2 nightly before either built anything, naming three citations
+"not an ancestor of HEAD" that are all on main. The clone WAS shallow and
+the guard did not fire, because the guard asks only whether the object
+resolves and these objects did: the tier-2 runner is SELF-HOSTED, so its
+workspace persists, `git clean -ffdx` removes files and never objects, and
+each `--depth=1` fetch leaves the previous run's tip behind. The objects a
+recent doc cites are therefore present while the history between them is
+not, and `merge-base --is-ancestor` answers a confident false.
+
+So the rule is about ancestry, not about resolution: truncation can only
+manufacture a false NEGATIVE, and both of this gate's negatives are
+subject to it. `scripts/lib/git_history.py` holds that rule for the
+repository; this gate asks it rather than restating it.
+
+The three outcomes (issue 1043's shape, issue 0650's ledger):
+
+    FAIL          ancestry was MEASURED and the citation is not on main
+    NOT VERIFIED  the history here cannot answer; exit 78, and the recipe
+                  records it so the lane's closing line names it instead
+                  of letting "Fast checks passed!" stand for it
+    OK            every citation measured and reachable
+
 The convention that keeps a footer green while its work is in flight:
 write `PR #1234, in the queue` with NO commit id, and add the id once it
 lands. A commit id is a claim that something landed; do not write one
@@ -54,6 +78,15 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from lib.git_history import (  # noqa: E402
+    TRUTH_TABLE,
+    UNKNOWN,
+    ancestry,
+    interpret_ancestry,
+    is_truncated,
+)
 
 # The footers spell it both `PR #1234 (abc1234)` and
 # `PR #1234 (abc1234, merged 2026-09-23)`, so the sha ends at a word
@@ -104,15 +137,19 @@ def tracked_docs(root: Path) -> list[Path]:
 
 
 def is_shallow(root: Path) -> bool:
-    """A shallow clone cannot answer the question this gate asks.
+    """A truncated history cannot answer the question this gate asks.
 
     CI checks out with a truncated history, so the commits the footers cite
     are simply absent there: the first CI run of this gate reported 12 of 12
     citations as "not a commit in this repository at all", every one of which
     is on main in a full clone. Treating that as a failure made the gate say
     the opposite of the truth, which is worse than saying nothing.
+
+    One spelling, `scripts/lib/git_history.py`, because the SECOND negative —
+    an object that is present with the path to it cut — was missed for as long
+    as this file owned the rule by itself (issue 1476).
     """
-    return git(root, "rev-parse", "--is-shallow-repository").stdout.strip() == "true"
+    return is_truncated(root)
 
 
 def classify(root: Path, sha: str, shallow: bool = False) -> str:
@@ -123,11 +160,21 @@ def classify(root: Path, sha: str, shallow: bool = False) -> str:
     worst form of the defect the gate exists for, so it fails. In a SHALLOW
     clone it is the expected state for any commit older than the checkout
     depth, and says nothing at all, so it is not counted.
+
+    Issue 1476: that holds for "not an ancestor" exactly as it holds for "not
+    here at all". Both are negatives, and a graft manufactures both. The
+    asymmetry lives in `interpret_ancestry`, so this function has one job —
+    naming the four outcomes for the report.
     """
-    if git(root, "cat-file", "-e", f"{sha}^{{commit}}").returncode != 0:
-        return "unknowable" if shallow else "unknown"
-    if git(root, "merge-base", "--is-ancestor", sha, "HEAD").returncode == 0:
+    verdict = ancestry(root, sha, "HEAD", truncated=shallow)
+    if verdict is True:
         return "ok"
+    if verdict is UNKNOWN:
+        return "unknowable"
+    # Measured negative. Which KIND it is, is worth saying: a commit this
+    # repository cannot even name reads differently from one on a dead branch.
+    if git(root, "cat-file", "-e", f"{sha}^{{commit}}").returncode != 0:
+        return "unknown"
     return "unreachable"
 
 
@@ -185,6 +232,17 @@ def selftest(root: Path) -> None:
         "selftest: HEAD must classify ok even when the clone is shallow"
     )
 
+    # THE RULE ITSELF, clone-independent (issue 1476). The two cases above
+    # cover one of the gate's negatives; this covers the other, and it is the
+    # one no clone state can be relied on to produce. Truncation may only turn
+    # a `False` into "cannot tell" — never a `True` into anything.
+    for is_ancestor, truncated, want in TRUTH_TABLE:
+        got = interpret_ancestry(is_ancestor, truncated)
+        assert got is want, (
+            f"selftest: interpret_ancestry({is_ancestor}, {truncated}) = "
+            f"{got!r}, wanted {want!r}"
+        )
+
     # The unreachable case needs a commit outside HEAD's history, which this
     # script must not create. Use one if the clone happens to hold it, and
     # stay quiet if it does not, so the selftest never depends on the clone.
@@ -194,11 +252,23 @@ def selftest(root: Path) -> None:
         assert classify(root, stray) == "unreachable", (
             f"selftest: {stray} should classify unreachable"
         )
+        # Present, and NOT an ancestor: the exact pair the tier-2 runner's
+        # persistent workspace hands this gate. A truncated checkout must call
+        # it unknowable, because the graft is a sufficient explanation.
+        assert classify(root, stray, shallow=True) == "unknowable", (
+            f"selftest: {stray} is present but unreachable — a truncated "
+            "history cannot tell that from a graft, so it must be unknowable"
+        )
 
+    # STDERR on purpose: on the NOT-VERIFIED path this gate's stdout is the
+    # ledger REASON and nothing else (see main()), so a diagnostic may not
+    # share it.
     print(
         "check-roadmap-commit-refs selftest: OK "
         f"({len(cases_match) + len(cases_no_match)} pattern case(s), "
-        f"{5 if stray else 4} classify case(s))"
+        f"{6 if stray else 4} classify case(s), "
+        f"{len(TRUTH_TABLE)} ancestry rule row(s))",
+        file=sys.stderr,
     )
 
 
@@ -249,22 +319,44 @@ def main() -> int:
         print(HINT)
         return 1
 
-    note = ""
     if unknowable:
-        note = (
-            f"; {unknowable} not checkable in this SHALLOW clone "
-            "(their commits are older than the checkout depth)"
+        # NOT VERIFIED, not OK — issue 1476. The verdict is narrowed, and the
+        # narrowing has to reach the lane's closing line rather than this
+        # gate's stdout, which `run-gates-parallel.sh` discards on exit 0.
+        # Exit 78 is the repo's Python-to-ledger bridge (the
+        # `zephyr-workspace-foreign-checkout` recipe shape): stdout is the
+        # REASON the recipe records, so everything else goes to stderr.
+        print(
+            f"check-roadmap-commit-refs: {unknowable} of {checked + unknowable} "
+            "citation(s) could NOT be measured -- this checkout's history is "
+            "truncated (a shallow clone), so `not an ancestor` here is not "
+            "evidence about main.",
+            file=sys.stderr,
         )
+        print(
+            "  A shallow checkout grafts its tip parentless, and objects left "
+            "behind by earlier runs in a persistent workspace still resolve, "
+            "so both `git cat-file` and `git merge-base --is-ancestor` can "
+            "answer NO about a commit that is on main.",
+            file=sys.stderr,
+        )
+        print(
+            "  To measure them here: `git fetch --unshallow`. This gate has "
+            "teeth where the history exists, which is the pre-push run on a "
+            "developer's machine.",
+            file=sys.stderr,
+        )
+        print(
+            f"PARTIAL -- {unknowable} of {checked + unknowable} citation(s) "
+            f"NOT VERIFIED ({checked} measured): this checkout's history is "
+            "truncated (git fetch --unshallow)"
+        )
+        return 78
+
     print(
         f"check-roadmap-commit-refs: {checked} pull-request citation(s) "
-        f"reachable from HEAD across {len(files)} roadmap doc(s){note}."
+        f"reachable from HEAD across {len(files)} roadmap doc(s)."
     )
-    if shallow and not checked:
-        print(
-            "  Nothing was verified here. This gate is meaningful only in a "
-            "full clone; the pre-push run on a developer's machine is where "
-            "it has teeth."
-        )
     return 0
 
 
