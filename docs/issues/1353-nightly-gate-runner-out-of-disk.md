@@ -833,3 +833,50 @@ therefore a measurement rather than an observation.
 
 Nothing else about the two runs differs, so this adds no new cause — only the
 confidence that the existing one is exact.
+
+### The AFTER numbers, and they name the directory that grows
+
+Run **36051691975**, job **107808557432**, head `95693968d`. The first run of
+this lane whose post-tier steps RAN: `just ci tier1` reports `failure` and then
+`Disk report (after ci tier1)` and its upload both report `success`, so the
+runner survived and the after-transcript exists. Every earlier instance killed
+the worker mid-step and left only an annotation.
+
+```
+SUMMARY disk before just ci tier1 — 88% used, 18G free
+  — 42G examples; 14G build; 409M packages/cli/target
+freed 7518 MB; 26023412 KB free
+
+SUMMARY disk after  just ci tier1 — 100% used, 84K free
+  — 42G examples; 14G packages/cli/target; 13G build
+```
+
+Two things follow, and the second is the useful one.
+
+**Third reproduction of the entry figure.** `26023412 KB` against `26029560`
+and `26033844` from the two runs above: three runs, spread over four hours and
+several commits, agreeing within **10 MB**. The tier's starting headroom is a
+constant.
+
+**`packages/cli/target` grows from 409 MB to 14 GB DURING THE TIER** — about
+13.6 GB, and it is the only entry that moves. `examples/` is 42 G before and
+42 G after; `build/` goes 14 G to 13 G. So the tier does not overflow the disk
+by building more examples: it overflows it by filling the CLI's own cargo
+target directory, from a state the CLI-build steps had left at 409 MB.
+
+That redirects the remedy this issue has been carrying. "Prune what the tier
+builds (36 G of `examples/workspaces`)" is aimed at a tree that does not grow
+here; the 13.6 GB that does is `packages/cli/target`, which is also the
+directory `gate.yml` CACHES. Whether the right move is a `--target-dir` the
+tier shares with the earlier steps, a prune between the CLI build and the tier,
+or a smaller profile for the tier's own cargo invocations is a maintainer
+decision — but it can now be aimed at a measured 13.6 GB rather than at an
+estimate.
+
+**What this does NOT say.** It is still not a test verdict: `just ci tier1`
+failed on the disk, not on an assertion, so what tier 1 would REPORT on a
+runner with room remains unknown, and the two successes since 2026-06-17 stand.
+It also says nothing about the scheduled `gate` lane, whose own figures are
+still absent. Adjacent but distinct: issue 1491 records 329 MB of untracked
+cargo output at the REPO ROOT from a merge-gating gate, which is three orders
+of magnitude smaller and a different directory.
