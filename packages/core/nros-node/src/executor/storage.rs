@@ -927,12 +927,24 @@ mod tests {
         //     instead of eating another feature's headroom. The rest of
         //     phase-436's header fields (the park bookkeeping scalars) are
         //     NOT exempted and fit inside the 1280 as they should.
+        //   * phase-462 W2's age-monitor state table, a fixed `MAX_MONITORS`
+        //     array. Same reason again — `MAX_MONITORS` is a plain `const`,
+        //     not a sizing knob, so the table does not move with `MAX_CBS` or
+        //     `MAX_NODES` — and named for the same reason as the wake-source
+        //     table: `AgeState` grew from one byte to eight when the silence
+        //     rule gained its lease, and that 56 B belongs on this line where
+        //     the next field added to it is visible, not silently inside the
+        //     1280. Its sibling `[MonitorState; MAX_MONITORS]` predates the
+        //     allowance idiom and stays folded into the base; naming it too
+        //     would mean re-tuning the base literal against a size that is
+        //     target-dependent, which is a tightening this test cannot afford.
         #[allow(unused_mut)]
         let mut ceiling = 1280
             + size_of::<super::super::spin::SessionStore>()
             + size_of::<
                 [Option<super::super::spin::WakeSourceSlot>; super::super::spin::MAX_WAKE_SOURCES],
-            >();
+            >()
+            + size_of::<[super::super::monitor::AgeState; super::super::monitor::MAX_MONITORS]>();
         #[cfg(all(
             feature = "alloc",
             feature = "rmw-cffi",
