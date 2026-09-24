@@ -57,12 +57,23 @@ done
 # commit on neither main nor release/1.8.0. Building from a checkout based on
 # anything else produces a demo that does not represent the deployed stack.
 EXPECTED_BASE=2687c51352121f006e3a603ce07925a8ad0b295c
+# shellcheck source=scripts/lib/git-history.sh
+. "$HERE/../../scripts/lib/git-history.sh"
 if git -C "$ZENOH_DIR" cat-file -e "$EXPECTED_BASE^{commit}" 2>/dev/null; then
-    if ! git -C "$ZENOH_DIR" merge-base --is-ancestor "$EXPECTED_BASE" HEAD 2>/dev/null; then
-        echo "[can-demo] WARNING: $ZENOH_DIR is not based on $EXPECTED_BASE," >&2
-        echo "           the zenoh revision rmw_zenoh actually builds. The demo will" >&2
-        echo "           still run, but it no longer reproduces the deployed stack." >&2
-    fi
+    # `no` and `unknown` are different sentences: a shallow checkout's graft
+    # reports an unrelated pair for a related one, so warning on it would send
+    # the reader looking for a rebase that never happened (issue 1476).
+    case "$(nros_git_ancestry "$EXPECTED_BASE" HEAD -C "$ZENOH_DIR")" in
+        no)
+            echo "[can-demo] WARNING: $ZENOH_DIR is not based on $EXPECTED_BASE," >&2
+            echo "           the zenoh revision rmw_zenoh actually builds. The demo will" >&2
+            echo "           still run, but it no longer reproduces the deployed stack." >&2
+            ;;
+        unknown)
+            echo "[can-demo] note: $ZENOH_DIR is a SHALLOW clone, so its base was not" >&2
+            echo "           checked. git -C $ZENOH_DIR fetch --unshallow to check it." >&2
+            ;;
+    esac
 else
     echo "[can-demo] note: $EXPECTED_BASE not present locally; cannot check the base" >&2
 fi

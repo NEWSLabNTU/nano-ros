@@ -31,6 +31,13 @@
 #            rebase, not an update — `git submodule update` would DISCARD the
 #            local commits by checking out the recorded one detached.
 #
+# "neither" is only a measurement where the history is COMPLETE. A shallow
+# submodule clone grafts its tip parentless, so `merge-base --is-ancestor`
+# answers no in both directions for a pair that is perfectly related, and this
+# would then tell the reader to rebase work that needs no rebasing. A truncated
+# store reports NOT VERIFIED instead — `scripts/lib/git-history.sh` holds the
+# rule, issue 1476 is what it cost the other time it was written by hand.
+#
 # UNINITIALIZED submodules ('-' prefix) are not drift and are not reported:
 # px4, play_launch's layer-3 runtime submodules and the nuttx tree are all
 # deliberately absent until a recipe inits them.
@@ -48,8 +55,12 @@ if [ "${NROS_SKIP_SUBMODULE_DRIFT_CHECK:-0}" != "0" ]; then
     exit 0
 fi
 
+# shellcheck source=scripts/lib/git-history.sh
+. "$repo_root/scripts/lib/git-history.sh"
+
 fail=0
 ahead=0
+unverified=0
 
 # `git submodule status` marks a mismatch between the checked-out commit and
 # the one in the index with a leading '+'; 'U' is an unmerged conflict. Both
@@ -85,20 +96,29 @@ while IFS= read -r line; do
         continue
     fi
 
-    if git -C "$path" merge-base --is-ancestor "$current" "$recorded" 2>/dev/null; then
+    if [ "$(nros_git_ancestry "$current" "$recorded" -C "$path")" = yes ]; then
         behind="$(git -C "$path" rev-list --count "${current}..${recorded}")"
         echo "  [x] $path is $behind commit(s) BEHIND the recorded pointer" >&2
         echo "      at ${current:0:9}, HEAD records ${recorded:0:9}" >&2
         git -C "$path" log --oneline "${current}..${recorded}" | sed 's/^/        /' >&2
         echo "      remedy: git submodule update $path   (fast-forward, no local work at risk)" >&2
         fail=$((fail + 1))
-    elif git -C "$path" merge-base --is-ancestor "$recorded" "$current" 2>/dev/null; then
+    elif [ "$(nros_git_ancestry "$recorded" "$current" -C "$path")" = yes ]; then
         # Local work ahead of the pointer — the vendored-fork workflow's normal
         # middle state. Say it, do not fail it.
         ahead=$((ahead + 1))
         echo "check-submodule-drift: note — $path is AHEAD of the recorded pointer" >&2
         echo "  ($(git -C "$path" rev-list --count "${recorded}..${current}") local commit(s)). Expected mid-fork-fix; push the fork" >&2
         echo "  branch, then bump the superproject pointer to the pushed commit." >&2
+    elif nros_git_history_truncated -C "$path"; then
+        # NOT a verdict. The graft, not the pins, is a sufficient explanation
+        # for "no ancestry either way" — and telling someone to rebase work
+        # that is already on the line is worse than saying nothing.
+        unverified=$((unverified + 1))
+        echo "check-submodule-drift: NOT VERIFIED — $path" >&2
+        echo "  at ${current:0:9}, HEAD records ${recorded:0:9}; this clone is SHALLOW," >&2
+        echo "  so neither direction of ancestry could be measured. Deepen it to get a" >&2
+        echo "  verdict: git -C $path fetch --unshallow" >&2
     else
         echo "  [x] $path has DIVERGED from the recorded pointer" >&2
         echo "      at ${current:0:9}, HEAD records ${recorded:0:9} — no ancestry either way" >&2
@@ -123,8 +143,15 @@ EOF
     exit 1
 fi
 
+narrowing=""
+if [ "$unverified" -ne 0 ]; then
+    # The verdict line states the NARROWING, not just the outcome — the
+    # `submodule-pins` precedent. An OK that skipped a pin claims a check that
+    # did not happen.
+    narrowing="; $unverified NOT VERIFIED (shallow submodule clone)"
+fi
 if [ "$ahead" -eq 0 ]; then
-    echo "check-submodule-drift: OK (every initialized submodule matches its recorded pointer)"
+    echo "check-submodule-drift: OK (every initialized submodule matches its recorded pointer)$narrowing"
 else
-    echo "check-submodule-drift: OK ($ahead submodule(s) ahead of the pointer — see note above)"
+    echo "check-submodule-drift: OK ($ahead submodule(s) ahead of the pointer — see note above)$narrowing"
 fi

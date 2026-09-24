@@ -55,6 +55,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib.git_history import interpret_ancestry  # noqa: E402,F401
+
 try:
     import tomllib  # Python 3.11+
 except ModuleNotFoundError:  # 3.10 backport, same spelling as the sibling gates
@@ -170,23 +173,21 @@ def _stores():
         yield Path(name)
 
 
-def interpret_ancestry(is_ancestor: bool, shallow: bool):
-    """What a store's answer is worth. Deliberately ASYMMETRIC.
-
-    A SHALLOW clone's graft cuts history, so `merge-base --is-ancestor` can
-    report a pair as unrelated when the full history relates them — MEASURED
-    here: the `--depth 1`-initialised submodule said `838ce948` is not an
-    ancestor of `07f0461e`, and the full clone says it is. Truncation can only
-    manufacture a FALSE negative, never a false positive, so a `True` from a
-    shallow store still counts and a `False` becomes "cannot tell".
-
-    Same class as the cyclonedds-fork note in CLAUDE.md: read a shallow or
-    single-branch clone as "what this checkout has fetched", never as "what
-    exists".
-    """
-    if is_ancestor:
-        return True
-    return None if shallow else False
+# `interpret_ancestry` is imported from `scripts/lib/git_history.py`, which is
+# where this rule now lives for the whole repository.
+#
+# It was authored HERE, and the reasoning is worth keeping beside its
+# measurement: a SHALLOW clone's graft cuts history, so `merge-base
+# --is-ancestor` can report a pair as unrelated when the full history relates
+# them — the `--depth 1`-initialised submodule said `838ce948` is not an
+# ancestor of `07f0461e`, and the full clone says it is. Truncation can only
+# manufacture a FALSE negative, never a false positive, so a `True` from a
+# shallow store still counts and a `False` becomes "cannot tell".
+#
+# It moved because a second gate wrote the rule again and got half of it
+# (issue 1476): `check-roadmap-commit-refs` guarded the absent-object negative
+# and not the cut-history one, and stopped tier 2 with three verdicts that
+# were the opposite of the truth. One spelling, one place.
 
 
 def _has(store: Path, commit: str) -> bool:

@@ -48,7 +48,11 @@
 # the other direction. So the three outcomes are now distinct:
 #
 #   FAIL        the ancestry was MEASURED and the move is not a fast-forward.
-#   NOT VERIFIED  the objects to measure with are absent here. Reported per
+#   NOT VERIFIED  the objects to measure with are absent here, OR they are
+#               present in a SHALLOW store whose graft cuts the history
+#               between them (issue 1476 — a truncated clone answers "no
+#               relation" for a related pair, and reading that as a verdict
+#               turns a fast-forward into a reported REWIND). Reported per
 #               path AND in the verdict line, so `OK` never overstates what was
 #               checked. Never silent.
 #   OK          measured, fast-forward.
@@ -72,6 +76,8 @@ set -uo pipefail
 # explicitly.
 # shellcheck source=scripts/lib/git-hook-env.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/git-hook-env.sh"
+# shellcheck source=scripts/lib/git-history.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/git-history.sh"
 nros_clear_inherited_git_env
 
 baseline="${1:-${NROS_SUBMODULE_PIN_BASELINE:-origin/main}}"
@@ -202,6 +208,45 @@ nros_submodule_pins_mutation_selftest() {
             echo "  and report it (got rc=$rc, want 0 with 'NOT VERIFIED'). A gate" >&2
             echo "  that fails when it cannot evaluate is issue 1043; one that" >&2
             echo "  passes silently is worse." >&2
+            echo "$out" | sed 's/^/    /' >&2
+            rm -rf "$tmp"
+            exit 1
+            ;;
+    esac
+
+    # Mutation 3 — issue 1476's arm. The SAME rewind, with a store that HOLDS
+    # both commits and has the history between them cut. Mutation 2 covers the
+    # objects being absent; this one covers the harder case, where they resolve
+    # and `merge-base` still answers no. It must report NOT VERIFIED, because
+    # calling it a REWIND is a verdict the clone cannot support — that is the
+    # mistake `check-roadmap-commit-refs` made about main.
+    (
+        set -e
+        export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+        git -C "$tmp/sub-git-away" --work-tree="$tmp" branch -f old "$(cat "$tmp/old")"
+        git -C "$tmp/sub-git-away" --work-tree="$tmp" branch -f new "$(cat "$tmp/new")"
+        git init -q "$sub"
+        git -C "$sub" remote add origin "file://$tmp/sub-git-away"
+        git -C "$sub" fetch -q --depth 1 origin "refs/heads/old:refs/heads/old"
+        git -C "$sub" fetch -q --depth 1 origin "refs/heads/new:refs/heads/new"
+        git -C "$sub" checkout -q --detach new
+    ) >"$tmp/shallow.log" 2>&1 || {
+        echo "submodule-pins SELFTEST FAILED: could not build the SHALLOW fixture" >&2
+        sed 's/^/    /' "$tmp/shallow.log" >&2
+        rm -rf "$tmp"
+        exit 1
+    }
+    out="$(cd "$super" && NROS_SUBMODULE_PINS_REENTRY=1 NROS_ALLOW_SUBMODULE_REWIND=0 \
+           NROS_SUBMODULE_PINS_STRICT= NROS_SUBMODULE_PIN_EXCEPTIONS=/dev/null \
+           bash "$self" HEAD~1 HEAD 2>&1)"
+    rc=$?
+    case "$rc:$out" in
+        0:*"NOT VERIFIED"*) ;;
+        *)
+            echo "submodule-pins SELFTEST FAILED: a SHALLOW store that holds both" >&2
+            echo "  pins must skip and report it (got rc=$rc, want 0 with 'NOT" >&2
+            echo "  VERIFIED'). A graft answers 'no relation' for a related pair," >&2
+            echo "  and reading that as a measurement is issue 1476." >&2
             echo "$out" | sed 's/^/    /' >&2
             rm -rf "$tmp"
             exit 1
@@ -433,15 +478,32 @@ while IFS=$'\t' read -r path new_sha; do
         fi
     done
 
-    if git --git-dir="$store" merge-base --is-ancestor "$old_sha" "$new_sha" 2>/dev/null; then
+    if [ "$(nros_git_ancestry "$old_sha" "$new_sha" --git-dir="$store")" = yes ]; then
         verified=$((verified + 1))
         continue  # fast-forward: the sanctioned move
+    fi
+
+    # Both objects are here and neither contains the other — which is a
+    # MEASUREMENT only where the history is complete. A shallow store grafts
+    # its tip parentless, so it answers no in both directions for a pair that
+    # is related, and the arms below would then call a legitimate
+    # fast-forward a REWIND or a fork. Same class as the absent-object arm
+    # above, one step further in: there the objects are missing, here the path
+    # between them is. Issue 1476 is what this costs when it is not checked.
+    if nros_git_history_truncated --git-dir="$store"; then
+        unverifiable "$path" "$old_sha" "$new_sha"
+        echo "    both commits are present, but this submodule's clone is SHALLOW:" >&2
+        echo "    its graft cuts the history BETWEEN them, so \`merge-base" >&2
+        echo "    --is-ancestor\` reports no relation for a pair that may well be a" >&2
+        echo "    fast-forward. Deepen the store to get a verdict:" >&2
+        echo "      git --git-dir=$store fetch --unshallow" >&2
+        continue
     fi
 
 
     # Not an ancestor. Say WHICH kind of wrong it is — a rewind and a fork need
     # different fixes, and the diff looks identical for both.
-    if git --git-dir="$store" merge-base --is-ancestor "$new_sha" "$old_sha" 2>/dev/null; then
+    if [ "$(nros_git_ancestry "$new_sha" "$old_sha" --git-dir="$store")" = yes ]; then
         kind="REWIND — the new pin is an ANCESTOR of the old one"
         remedy="If you meant to keep the newer commit, restore it:
         git -C $path checkout $old_sha && git add $path"
