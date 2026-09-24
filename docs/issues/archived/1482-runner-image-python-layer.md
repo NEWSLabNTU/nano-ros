@@ -9,7 +9,7 @@ area: [ci, tooling]
 severity: high
 found: 2026-09-24
 resolved_in: "this commit"
-related: [1457, 1481, 1477, 0368, 0500, 0833]
+related: [1457, 1481, 1477, 1483, 0368, 0500, 0833]
 ---
 
 ## The governing rule
@@ -213,3 +213,19 @@ one: a router comes from a ROS install (RFC-0075 ships none), so making it true
 means either an `nros-ros2`-labelled runner image with the ROS apt repo in it, or
 accepting the skip. Issue 1477 records the symptom and is corrected to say the
 decision is about the image, not about who has root.
+
+## Follow-on — issue 1483
+
+A maintainer rule arrived while this was in flight: **the index must not carry
+transitive dependencies.** Measured against it, two of the five entries this
+image now installs — `empy` and `lark` — are upstream rosidl's alone and belong
+with `[source.rosidl]`, reached through the pinned `nros-rosdep-snapshot.toml`
+rather than hand-listed here. (`pyyaml` was relayed as a third; it is not —
+eleven of our own scripts import `yaml`, several of them `check-fast` gates.)
+
+Nothing here changes. The image layer is DERIVED from `[python.*]`, so when
+those two leave, the layer follows with no edit to `runner-container.sh` — which
+is the property that let this land first. The one direction that is not safe is
+removing them before the replacement exists: this runner is `FROM ubuntu:22.04`
+with no ROS repo, i.e. exactly the ROS-less host that layer was created for, so
+that order re-opens 1457 here. Issue 1483 carries the measurement and says so.

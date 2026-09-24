@@ -2312,6 +2312,18 @@ check = { cmd = "cargo-asm" }
 # one falls to pip, which is what those hosts already do — so absence is the
 # honest answer and costs nothing.
 #
+# AN ENTRY HERE MUST BE A DEPENDENCY OF *OURS*, not of something we vendor.
+# The index does not carry transitive deps: where a package comes in behind a
+# direct ROS dependency, install that and let apt resolve it. Measured against
+# the tree, six of these eight are ours (`catkin-pkg` — `workspace_bindgen.py`;
+# `pyyaml` — 11 of our scripts, several of them `check-fast` gates; `tomli`;
+# `colcon`; `west`; `clang-format`) and TWO are upstream rosidl's alone:
+# `empy` and `lark`, which nothing here imports. Those two are issue 1483 —
+# `[source.rosidl]` should reach upstream's own `package.xml` through the pinned
+# `nros-rosdep-snapshot.toml` instead. Do not add a third; do not remove those
+# two before the replacement exists, or issue 1457 re-opens on the ROS-less
+# runner (whose image derives its layer from this table — issue 1482).
+#
 # `module` is the IMPORT name where it differs from `pip` (`PyYAML` -> `yaml`).
 # It is also what gives a probe-less entry a probe: an entry with no `check` is
 # probed by importing `module` in this host's `python3`. Five of these eight
