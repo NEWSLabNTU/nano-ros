@@ -30,7 +30,7 @@ nothing is in a position to notice it.
 fixtures build. [phase-356](archived/phase-356-test-evidence-and-measurement-trust.md)
 owns "a number you cannot distinguish from a non-measurement" and already owns
 #0968; this phase owns the lane and the duplication that breaks it.
-[phase-391](phase-391-allocation-unification-and-tier-model.md) takes #1010,
+[phase-391](archived/phase-391-allocation-unification-and-tier-model.md) takes #1010,
 which surfaced here but is an arena-sizing defect and belongs with the funnel.
 
 ## Landed before this doc existed
@@ -89,7 +89,7 @@ tier-2 from three broken modules to six of seven green.
 
 It does not chase the runtime failures the lane then reveals. Those go to
 [phase-414](phase-414-rtos-runtime-correctness.md) (RTOS runtime correctness) and
-[phase-391](phase-391-allocation-unification-and-tier-model.md) (#1010). The
+[phase-391](archived/phase-391-allocation-unification-and-tier-model.md) (#1010). The
 distinction is worth keeping: this phase is about whether the lane can produce a
 verdict at all, not about whether the verdict is green.
 

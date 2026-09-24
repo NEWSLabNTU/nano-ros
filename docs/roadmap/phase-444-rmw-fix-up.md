@@ -387,7 +387,7 @@ one-line script is in the truth-pass section above.
    - `get_clock` and `now` on the lifecycle node.
 5. **Our three languages disagree** — home **phase-417 stage 4**; the catalogue
    is issue 0788, homed in
-   [phase-381](phase-381-graph-queries-read-the-ros-graph.md).
+   [phase-381](archived/phase-381-graph-queries-read-the-ros-graph.md).
    - Logging: named loggers and per-logger levels in C and C++, and `rosout`
      (W4.d, part-landed — the Rust façade re-exports `nros_log`, closing 0589).
    - Actions: a goal-id type in C++ (W4.b).

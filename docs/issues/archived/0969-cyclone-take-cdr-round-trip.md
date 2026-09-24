@@ -100,7 +100,7 @@ control loop.
 > at ~6 KB. So of the three costs asserted here, the CPU one is real at every
 > size and the allocation one is a trade, not a win.
 
-**Real-time bound.** [phase 391](../../roadmap/phase-391-allocation-unification-and-tier-model.md) argues
+**Real-time bound.** [phase 391](../../roadmap/archived/phase-391-allocation-unification-and-tier-model.md) argues
 the heap holds infrastructure while payload buffers stay static, and derives a
 Robson bound from that. Every Cyclone take allocates a *payload-sized* block, and
 the ostream's growth-by-realloc allocates a second one whose size depends on the
@@ -492,7 +492,7 @@ the two curves cross at roughly **8 KB of reply payload**:
 
 Flat-versus-linear is the more useful half. A fixed ~8.4 KB per exchange is easy
 to bound and impossible to shrink; a payload-proportional cost is the opposite.
-For [phase 391](../../roadmap/phase-391-allocation-unification-and-tier-model.md)'s
+For [phase 391](../../roadmap/archived/phase-391-allocation-unification-and-tier-model.md)'s
 Robson bound the linear one is the better shape — it is derivable from the type's
 own `MAX_SERIALIZED_SIZE`, which is exactly what issue 0896 makes available —
 whereas the old constant was a number nobody could attribute.

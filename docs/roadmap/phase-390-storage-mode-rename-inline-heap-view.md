@@ -180,5 +180,5 @@ internal tidiness with a real footgun attached.
 The support matrix does not change. `heap` and `view` remain unsupported for
 srv/action payloads and shape-limited in C/C++ exactly as
 `config.rs:45-65` records today. Whether `heap` survives at all is a question
-for [phase 391](phase-391-allocation-unification-and-tier-model.md), which owns
+for [phase 391](archived/phase-391-allocation-unification-and-tier-model.md), which owns
 the tier model; this phase renames what exists.

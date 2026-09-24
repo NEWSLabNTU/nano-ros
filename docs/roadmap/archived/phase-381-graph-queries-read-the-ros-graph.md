@@ -308,5 +308,5 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0788](../issues/0788-api-verbs-disagree-across-our-three-languages.md) | the same API verb is spelled differently in our C, C++ and Rust — the sweep this phase's lane choice depends on |
+| [#0788](../../issues/0788-api-verbs-disagree-across-our-three-languages.md) | the same API verb is spelled differently in our C, C++ and Rust — the sweep this phase's lane choice depends on |
 

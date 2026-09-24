@@ -1,7 +1,7 @@
 # Phase 391 — one funnel, one arena, a constant-time allocator behind it, and a link-time gate that proves it
 
 **Status (2026-08-30). W1-W5 landed; the tier is real and gated.** Opened from a
-memory-allocation review. [Issue 0817](../issues/archived/0817-platform-funnel-bypassed-in-zephyr-port.md)
+memory-allocation review. [Issue 0817](../../issues/archived/0817-platform-funnel-bypassed-in-zephyr-port.md)
 (the sixteen Zephyr funnel bypasses) is fixed and archived.
 
 Landed since: **W1/W1b/W4** (`heap-free` tier declared per image and gated in
@@ -16,7 +16,7 @@ finish signal this phase was written to reach.
 Read the per-wave "LANDED — measured" blocks below rather than this summary
 before quoting a number; each carries its own A/B.
 
-Depends on [phase 390](phase-390-storage-mode-rename-inline-heap-view.md) for
+Depends on [phase 390](../phase-390-storage-mode-rename-inline-heap-view.md) for
 vocabulary only, not for code.
 
 ## Where this starts from
@@ -132,7 +132,7 @@ image, so this is a tier, not a global choice:
 The tree is already built for this: `alloc` is a Cargo feature and every core
 crate gates `extern crate alloc` on it. What is missing is enforcement — the
 book already promises "fully no-alloc" for embassy and RTIC with nothing
-checking it ([issue 0816](../issues/0816-no-alloc-claimed-but-unenforced.md)).
+checking it ([issue 0816](../../issues/0816-no-alloc-claimed-but-unenforced.md)).
 
 ## Waves
 
@@ -350,7 +350,7 @@ landed" while delivering none of its property.
 no Zephyr subsystem calling `k_malloc` is enabled (fs, mcumgr, net,
 `log_mgmt`, cfb — none are in the serial image, but this needs a link test, not
 an assertion). Prerequisite
-[issue 0811](../issues/archived/0811-zephyr-net-iptcp-allocator-provenance-mismatch.md)
+[issue 0811](../../issues/archived/0811-zephyr-net-iptcp-allocator-provenance-mismatch.md)
 is RESOLVED (e71548e44) — the multicast-teardown use-after-free is gone, so the
 two-allocator overlap no longer protects anything.
 
@@ -433,7 +433,7 @@ builds and links.
 
 **W5 — a static component pool in `node_runtime`, so the `heap-free` tier is
 USEFUL rather than merely reachable.**
-[Issue 0843](../issues/archived/0843-node-runtime-forces-alloc-on-every-cffi-image.md)
+[Issue 0843](../../issues/archived/0843-node-runtime-forces-alloc-on-every-cffi-image.md)
 decoupled the allocation gate from the transport gate, so a cffi image now links
 without `alloc`. What it did not do is leave anything useful behind: with
 `alloc` off, `node_runtime` is gated out entirely, and it is the only path to a
@@ -841,11 +841,11 @@ probes have already passed that gate vacuously at `symbols read: 1`.
 
 ## Related, not owned here
 
-- [issue 0812](../issues/archived/0812-publisher-loan-heap-allocates-per-loan.md) —
+- [issue 0812](../../issues/archived/0812-publisher-loan-heap-allocates-per-loan.md) —
   `Box::new` per loan. As written, `lending` and `heap-free` are mutually
   exclusive for no inherent reason. Fixing it is a precondition for the loan
   API existing on the heap-free tier.
-- [issue 0814](../issues/0814-lending-never-exercised-on-hardware.md) — the
+- [issue 0814](../../issues/0814-lending-never-exercised-on-hardware.md) — the
   whole zero-copy surface is posix-test-only.
 - Whether `heap` survives as a storage mode at all. Payload buffers staying
   static means no payload field needs it; the question is whether infrastructure
@@ -860,7 +860,7 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0816](../issues/0816-no-alloc-claimed-but-unenforced.md) | the book promises no-alloc integrations and nothing checks the linked image |
-| [#0827](../issues/archived/0827-unused-rmw-pools-dominate-static-ram.md) | static RAM is a property of the RMW, not of the node |
-| [#0857](../issues/archived/0857-cell-registry-inline-capacity-heap-regression.md) | ComponentCell's inline registries cost worst-case x biggest-payload heap per component |
+| [#0816](../../issues/0816-no-alloc-claimed-but-unenforced.md) | the book promises no-alloc integrations and nothing checks the linked image |
+| [#0827](../../issues/archived/0827-unused-rmw-pools-dominate-static-ram.md) | static RAM is a property of the RMW, not of the node |
+| [#0857](../../issues/archived/0857-cell-registry-inline-capacity-heap-regression.md) | ComponentCell's inline registries cost worst-case x biggest-payload heap per component |
 

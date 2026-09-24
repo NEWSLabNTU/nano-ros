@@ -6,7 +6,7 @@ concurrent branch may take 456; a clash in numbers is worse than a gap.
 Consumer side of ros-launch-manifest design issue #52
 (`docs/design-issues.md`) and play_launch phase 78
 (`docs/roadmap/phase-78-one-derivation-two-consumers.md`). Successor to
-[phase-434](phase-434-contract-seams-closed.md), which closed the `miss`,
+[phase-434](archived/phase-434-contract-seams-closed.md), which closed the `miss`,
 `max_jitter_ms` and `node_concurrency` seams and left this one, and to
 [phase-296](phase-296-system-model-consumption.md) W5, which wrote
 `mapper_input.rs` in the first place.

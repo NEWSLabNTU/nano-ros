@@ -77,7 +77,7 @@ the `ConfigUnreadable` arm back into `AbsentFromConfig` makes it fail.
 **What this does not claim.** It converts a silent wrong-sized image into a
 loud build failure. Whether a `west build -t run` reconfigure actually loses
 `DOTCONFIG` on an FVP board is still unverified — that needs the model, which
-[phase-215](../../roadmap/phase-215-board-crate-as-importable-unit.md) can now
+[phase-215](../../roadmap/archived/phase-215-board-crate-as-importable-unit.md) can now
 provision (`nros setup --tool arm-fvp`, landed the same day). If it does, the
 build now says so instead of producing a broken image.
 

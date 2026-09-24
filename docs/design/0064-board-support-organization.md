@@ -1891,6 +1891,6 @@ without ever announcing itself.
 * `check-provider-announcements` without the `continue` (D5).
 
 Tracked by [phase-375](../roadmap/phase-375-board-tier-policy-and-onboarding-cost.md)
-W6–W9; the FVP migration is [phase-215](../roadmap/phase-215-board-crate-as-importable-unit.md)
+W6–W9; the FVP migration is [phase-215](../roadmap/archived/phase-215-board-crate-as-importable-unit.md)
 215.K. The package-shape half lands inside
 [phase-420](../roadmap/archived/phase-420-package-identity-and-provider-format.md) W3.

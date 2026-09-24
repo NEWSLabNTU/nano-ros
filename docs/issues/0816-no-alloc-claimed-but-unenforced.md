@@ -55,7 +55,7 @@ a per-tier strictness:
 
 That turns both the book's promise and RFC-0034 D6's single-funnel rule into
 things a build can fail on. Owned by
-[phase 391](../roadmap/phase-391-allocation-unification-and-tier-model.md).
+[phase 391](../roadmap/archived/phase-391-allocation-unification-and-tier-model.md).
 
 ## What landed: `scripts/check-no-alloc-image.py`
 

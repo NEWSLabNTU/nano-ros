@@ -32,7 +32,7 @@ Measured against the tree today, not inferred:
 * [issue 0006](../issues/archived/0006-rtos-dual-heap.md) — the accurate heap
   accounting this phase said it would unblock — is `status: resolved` and
   archived.
-* [phase-391](phase-391-allocation-unification-and-tier-model.md) reports
+* [phase-391](archived/phase-391-allocation-unification-and-tier-model.md) reports
   "W1-W5 landed; the tier is real and gated", covering the same allocation
   ground from the tier side.
 
