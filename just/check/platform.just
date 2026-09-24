@@ -895,3 +895,23 @@ zephyr-workspace-foreign-checkout:
     fi
     printf '%s\n' "$out"
     exit "$rc"
+
+# phase-468 W3 — a board that compiles C routes through `nros-board-common`.
+#
+# That crate is the shared build-script layer: the per-RTOS-family builders
+# (`freertos_build`, `nuttx_platform_build`, `threadx_sources`) over shared
+# `arch_flags` / `base_config` / `policy` / `host_probe`. A board reaching for
+# `cc::Build` alone is choosing its own compiler flags, include set and
+# vendored-source resolution — the three things those modules exist to make
+# ONE answer.
+#
+# Measured before it was written: eight board build scripts compile C and all
+# eight already comply, so this is a REGRESSION gate, not a repair. It keys on
+# "compiles C", never on "has a build.rs" — three board crates emit only a
+# linker script, which is a different job and a phase-468 non-goal.
+#
+# An exemption is stated at the site (`// nros-board-common-exempt: <reason>`),
+# next to the code it excuses rather than in a distant list. There are none.
+[private]
+board-build-wiring:
+    @python3 scripts/check-board-build-wiring.py
