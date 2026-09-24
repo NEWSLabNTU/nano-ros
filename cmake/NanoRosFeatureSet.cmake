@@ -82,7 +82,7 @@ endfunction()
 #     CRATE        <c|cpp>               which crate's feature vocabulary
 #     EDITION      <humble|iron|jazzy>   default: NANO_ROS_ROS_EDITION, else humble
 #     RMW          <zenoh|xrce|cyclonedds|uorb|none>
-#     PLATFORM     <posix|freertos|nuttx|threadx|esp_idf|…>
+#     PLATFORM     <posix|freertos|nuttx|threadx|…>
 #                                        (the threadx tier now derives from
 #                                        CMAKE_CROSSCOMPILING, not board identity);
 #                                        kept so callers need not change
@@ -176,13 +176,10 @@ function(nros_feature_set out_var)
     endif()
     if(_FS_PLATFORM STREQUAL "posix")
         list(APPEND _feats std platform-posix)
-    elseif(_FS_PLATFORM STREQUAL "freertos" OR _FS_PLATFORM STREQUAL "freertos_armcm3"
-           OR _FS_PLATFORM STREQUAL "esp_idf")
-        # ESP-IDF is Espressif's FreeRTOS port — same no_std tier.
-        #
+    elseif(_FS_PLATFORM STREQUAL "freertos" OR _FS_PLATFORM STREQUAL "freertos_armcm3")
         # phase-370 — FreeRTOS gained the same two tiers ThreadX has, and for the
-        # same reason, so it takes the same test. `mps2-an385-freertos` and
-        # ESP-IDF are cross builds with no hosted libc; the POSIX simulator
+        # same reason, so it takes the same test. `mps2-an385-freertos` is a
+        # cross build with no hosted libc; the POSIX simulator
         # (`freertos-posix`) is a HOST build whose FreeRTOS tasks are pthreads.
         # The phase-338 W5.a note below argues at length that the property, not
         # the board name, is what decides this — deriving it here rather than
@@ -229,7 +226,7 @@ function(nros_feature_set out_var)
         message(FATAL_ERROR
             "nros_feature_set: unknown PLATFORM '${_FS_PLATFORM}' (expected: posix, "
             "freertos, freertos_armcm3, nuttx, nuttx_armv7a, threadx, threadx_linux, "
-            "threadx_riscv64, esp_idf)")
+            "threadx_riscv64)")
     endif()
 
     # ---- analysis (phase-463 W2) -------------------------------------------

@@ -5113,7 +5113,11 @@ _orchestrate verb tier="everything":
             # nobody could fix — measured 2026-08-31: "doctor finished with 3
             # failure(s): workspace verification rmw_zenoh".
             run cyclonedds
-            run esp_idf
+            # No `run esp_idf` — phase-468 W2 retired the ESP-IDF port and its
+            # `just/esp_idf.just` module. Left behind, the line reproduced the
+            # `rmw_zenoh` failure recorded above, word for word: a tier that
+            # names a module that does not exist fails for a reason nobody can
+            # fix (`error: justfile does not contain recipe \`esp_idf\``).
             run px4
             ;;
         *)

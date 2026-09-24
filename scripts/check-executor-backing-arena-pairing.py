@@ -204,10 +204,6 @@ PORTS = {
         "reservation, so the static is the only copy of those bytes "
         "(measured in phase-392 W6 on the native zenoh talker)"
     )},
-    "esp-idf": {"kind": "none", "why": (
-        "IDF registers the DRAM left after .bss with `heap_caps_init`, so the "
-        "backing is paid once, like NuttX"
-    )},
 }
 
 # The ThreadX subtraction site, and the tokens that prove it is wired. Both

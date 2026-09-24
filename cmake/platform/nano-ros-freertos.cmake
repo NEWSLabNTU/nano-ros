@@ -94,12 +94,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosGenerateInterfaces.cmake")
 # netif driver, and compose `freertos_platform` from them. That is what the
 # `cmake/board/nano-ros-board-<board>.cmake` overlays do.
 #
-# RFC-0062 — but a HOST ECOSYSTEM that owns its own build (ESP-IDF, a vendor
-# SDK build such as S32DS/RTD, PlatformIO) has already produced every one of
-# those artefacts. Its integration shell binds them to the target names this
-# module expects — exactly as `cmake/platform/nano-ros-esp_idf.cmake` aliases
-# `idf::freertos` / `idf::lwip` and consequently needs no NANO_ROS_BOARD at
-# all. In that case there is no board to name and no overlay to include, and
+# RFC-0062 — but a HOST ECOSYSTEM that owns its own build (a vendor SDK build
+# such as S32DS/RTD, PlatformIO) has already produced every one of those
+# artefacts. Its integration shell binds them to the target names this module
+# expects, and consequently needs no NANO_ROS_BOARD at all. (`integrations/`
+# holds those shells; the ESP-IDF one was retired in phase-468 W2.)
+# In that case there is no board to name and no overlay to include, and
 # demanding one would force a per-board file into this tree for a board
 # nano-ros never builds.
 #

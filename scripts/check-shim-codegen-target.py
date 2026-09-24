@@ -462,7 +462,8 @@ def self_test(verbose: bool, quiet: bool = False) -> int:
     chk("the NuttX template Makefile is", is_build_file(
         "integrations/nuttx/apps-external-template/Makefile"))
     chk("the PlatformIO hook is", is_build_file("integrations/platformio/nros_codegen.py"))
-    chk("the ESP-IDF shim is", is_build_file("integrations/nano-ros/CMakeLists.txt"))
+    chk("a vendor-SDK integration shell is", is_build_file(
+        "integrations/s32ds/CMakeLists.txt"))
     chk("the Zephyr module is", is_build_file("zephyr/cmake/nros_system_generate.cmake"))
     # The self-exclusion, and its exact width. A gate that quietly stopped
     # reading `scripts/` would look identical to one that reads all of it.
