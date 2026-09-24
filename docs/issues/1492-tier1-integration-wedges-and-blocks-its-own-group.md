@@ -69,9 +69,9 @@ older one. That pairing is deliberate and right for a heavy lane — the comment
 one job up says so, and issue 1158 records the same reasoning for tier 2. It is
 only dangerous in combination with the third fact:
 
-**the workflow sets no `timeout-minutes`** (`grep` finds none), so a wedged job
-runs to GitHub's default **6-hour** limit. For those six hours the lane is not
-slow, it is **offline**.
+**the workflow sets no `timeout-minutes`** (`grep` finds none), so nothing in
+the repository bounds how long a wedged job may hold the group. For as long as
+it holds it the lane is not slow, it is **offline**.
 
 ## What this is NOT
 
@@ -103,3 +103,26 @@ slow, it is **offline**.
 
 Acceptance: a `host-tests` push run that fails the tier CONCLUDES, and the next
 push's integration job starts without waiting on it.
+
+## How it actually ended — MEASURED, and not the way this issue first guessed
+
+The first version of this text said a wedged job "runs to GitHub's default
+6-hour limit". That was an inference and it is wrong. Run **36051691975** ended
+at **23:05:21**, created 19:58:03 — **3 h 7 m**, about half the 6-hour ceiling.
+
+How it ended is the more useful part: the run is `completed/failure` while its
+job carries `completed_at = null`, and steps 18–20 still have **no conclusion
+at all**. That is the signature of a job that was KILLED — by the runner going
+away or by GitHub reclaiming an orphan — not of one that timed out or finished
+its post-steps. Nothing in this repository chose the moment.
+
+So the lane was offline from 19:58 to 23:05 and then recovered by luck rather
+than by policy. The downstream evidence matches: `host-tests` on `c84fbc73a`,
+which had been `pending` for 51 minutes waiting on the group, ends
+**`cancelled`** — it never ran at all — and the next push's run (`547c575d5`,
+23:01) is the first to start.
+
+This STRENGTHENS remedy 1 rather than weakening it. A `timeout-minutes` would
+have bounded the outage at a number somebody chose; without one the outage was
+bounded at three hours by an accident of infrastructure, and the next one has
+no reason to be that short.
