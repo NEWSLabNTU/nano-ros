@@ -33,7 +33,7 @@ cd "$(git rev-parse --show-toplevel)"
 # 2026-08-06 while removing the probe's fallbacks (issue 0464), and plausibly the
 # reason the fallback rot went unnoticed for so long.
 HEADER="${CARGO_TARGET_DIR:-target}/nros-c-generated/nros/nros_config_generated.h"
-FEATURES="cffi-zenoh-cffi,platform-posix,ros-humble"
+FEATURES="rmw-zenoh,platform-posix,ros-humble"
 JOBS="${JOBS:-8}"
 SOAK_ROUNDS="${SOAK_ROUNDS:-3}"
 
@@ -89,7 +89,7 @@ if installed_targets="$(rustup target list --installed)" \
         && nros_grep_q '^i686-unknown-linux-gnu$' <<<"$installed_targets"; then
     cargo clean -p nros-c >/dev/null
     cargo build -p nros-c --target i686-unknown-linux-gnu \
-        --features cffi-zenoh-cffi,platform-posix,ros-humble \
+        --features rmw-zenoh,platform-posix,ros-humble \
         -j "$JOBS" 2>&1 | tail -3 || true
     # nros-c emits the same header path under the 32-bit build's
     # OUT_DIR; capture sizes from the canonical install location.

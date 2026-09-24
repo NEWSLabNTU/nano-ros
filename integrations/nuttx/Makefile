@@ -75,11 +75,15 @@ clean::
 #
 # Phase 157.C.11 — feature names mirror what
 # `packages/api/nros-c/CMakeLists.txt` passes to Corrosion. nros-c
-# carries `cffi-zenoh-cffi` / `cffi-dds-cffi` / `cffi-xrce-c` as
-# Cargo features that select the RMW + flip on `rmw-cffi`. Kconfig
-# RMW choice maps onto those names.
-# nros-c features. Names mirror what `packages/api/nros-c/CMakeLists.txt`
-# passes to Corrosion. nros-c uses `cffi-zenoh-cffi` etc.
+# carries `rmw-zenoh` / `rmw-xrce` / `rmw-cyclonedds` as Cargo
+# features that select the RMW + flip on `rmw-cffi`. Kconfig RMW
+# choice maps onto those names.
+#
+# NEVER the `cffi-*` back-compat aliases. They resolve to the same feature, but
+# cargo keys a unit by its feature SET — and NROS_CPP_FEATURES below forwards
+# `nros-c/rmw-<name>` — so an alias here gives this build TWO `nros-c` units
+# sharing one `target/nros-c-generated/nros/nros_config_generated.h`.
+# Issues 1461, 1100.
 # issue 0947 — derived, so a new edition needs no edit here. The Kconfig choice
 # guarantees the value is one of the three; `patsubst "%",%` strips the quotes
 # Kconfig puts around a string symbol, the same way NROS_APPS_ARCH does above.
@@ -94,17 +98,17 @@ endif
 
 NROS_C_FEATURES := std ros-$(NROS_ROS_EDITION) platform-nuttx
 ifneq ($(CONFIG_NROS_RMW_ZENOH),)
-NROS_C_FEATURES += cffi-zenoh-cffi
+NROS_C_FEATURES += rmw-zenoh
 endif
 ifneq ($(CONFIG_NROS_RMW_XRCE),)
-NROS_C_FEATURES += cffi-xrce-c
+NROS_C_FEATURES += rmw-xrce
 endif
 ifneq ($(CONFIG_NROS_RMW_CYCLONEDDS),)
 NROS_C_FEATURES += rmw-cffi
 endif
 
 # nros-cpp features. Different per-backend feature names from nros-c
-# (rmw-{zenoh,xrce,cyclonedds}-cffi instead of cffi-{...}). Mirrors
+# (`rmw-<name>-cffi`, which forwards `nros-c/rmw-<name>`). Mirrors
 # `packages/api/nros-cpp/CMakeLists.txt`.
 NROS_CPP_FEATURES := std ros-$(NROS_ROS_EDITION) platform-nuttx
 ifneq ($(CONFIG_NROS_RMW_ZENOH),)

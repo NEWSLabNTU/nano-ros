@@ -337,16 +337,21 @@ if(CONFIG_NROS_C_API)
     # the generator's include above — no separate zephyr copy.
 
     # Select Cargo features based on RMW backend
+    # `rmw-zenoh` / `rmw-xrce`, never the `cffi-*` back-compat aliases: the
+    # nros-cpp build below forwards `nros-c/rmw-<name>`, and naming the alias
+    # here asks cargo for a feature SET no other consumer names — two `nros-c`
+    # units in one target dir, both writing the shared generated header
+    # (issues 1461, 1100). `cffi-zenoh-cffi = ["rmw-zenoh"]` resolves to the
+    # same thing; the spelling is what splits the unit.
     if(CONFIG_NROS_RMW_ZENOH)
-        set(_nros_features "rmw-cffi,cffi-zenoh-cffi,platform-zephyr,ros-humble")
+        set(_nros_features "rmw-cffi,rmw-zenoh,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_XRCE)
-        # Phase 115.K.2.5.1.3-zephyr — XRCE now routes through the C
+        # Phase 115.K.2.5.1.3-zephyr — XRCE routes through the C
         # backend's cffi shim instead of the deleted Rust direct-impl.
-        # `cffi-xrce-c` flips on the auto-register hook inside
-        # `nros_support_init` (mirrors the cyclonedds wiring); the
-        # cffi shim's `platform-zephyr` feature drops every POSIX TU
-        # and emits `UCLIENT_PLATFORM_ZEPHYR` in the generated config.
-        set(_nros_features "rmw-cffi,cffi-xrce-c,platform-zephyr,ros-humble")
+        # `rmw-xrce` bundles that shim's rlib into the umbrella; its
+        # `platform-zephyr` feature drops every POSIX TU and emits
+        # `UCLIENT_PLATFORM_ZEPHYR` in the generated config.
+        set(_nros_features "rmw-cffi,rmw-xrce,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         # Phase 168.X gap 2.B — cyclonedds is now usable from the C
         # API too. The backend's `nros_rmw_cyclonedds_register`
@@ -704,7 +709,9 @@ if(CONFIG_NROS_CPP_API)
             # set, which is what the shared generated header needs.
             set(_nros_c_for_cpp_features "rmw-cffi,rmw-zenoh,platform-zephyr,ros-humble")
         elseif(CONFIG_NROS_RMW_XRCE)
-            set(_nros_c_for_cpp_features "rmw-cffi,cffi-xrce-c,platform-zephyr,ros-humble")
+            # `rmw-xrce`, for the reason stated for zenoh above — the rule was
+            # written for one branch and applied to one branch (issue 1461).
+            set(_nros_c_for_cpp_features "rmw-cffi,rmw-xrce,platform-zephyr,ros-humble")
         elseif(CONFIG_NROS_RMW_CYCLONEDDS)
             set(_nros_c_for_cpp_features "rmw-cffi,platform-zephyr,ros-humble")
         endif()
