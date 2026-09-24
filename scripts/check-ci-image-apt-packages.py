@@ -24,7 +24,11 @@ Four things one file cannot enforce by itself:
      list is back where it started, and nothing else would notice until a lane
      went red. Checked over `ci/docker/*/Dockerfile`, by glob -- a THIRD image
      added later is covered without editing this gate, which is the reach gap
-     the 2026-07-28 audit found in four gates at once.
+     the 2026-07-28 audit found in four gates at once. Minus the GENERATED
+     contexts: `ci/docker/runner/` is written by `runner-container.sh` from
+     `nros-sdk-index.toml` and is gitignored, so it has no hand-written list to
+     drift, and holding build output to this rule made `just check fast` red
+     for anyone who had run that script (issue 1482).
 
   2. NO PRIVATE RESTATEMENT. A package in the shared list must not also appear
      in an image's own apt list. That is how two lists come back: the second
@@ -165,14 +169,59 @@ def consumes_shared(dockerfile_text):
     return copies, installs
 
 
+def _tracked_paths(root, rel_dir):
+    """Paths under `rel_dir` that git TRACKS, or `None` outside a git repo.
+
+    `None` is the fail-CLOSED answer: a tree with no git (the self-test's temp
+    dirs, an unpacked tarball) checks every Dockerfile it finds, which is the
+    behaviour this gate had before generated contexts existed.
+
+    The inherited git environment is cleared first -- issue 0986: `GIT_DIR` and
+    friends outrank `-C`, so from a hook or a linked worktree this would
+    otherwise answer about a DIFFERENT repository.
+    """
+    env = nros_clear_inherited_git_env(dict(os.environ))
+    try:
+        proc = subprocess.run(
+            ["git", "-C", root, "ls-files", "--", rel_dir],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+
+
 def image_dockerfiles(root):
-    """`ci/docker/*/Dockerfile`, by glob -- a new image is covered for free."""
+    """`ci/docker/*/Dockerfile`, by glob -- a new image is covered for free.
+
+    Minus the GENERATED ones. `scripts/ci/runner-container.sh` writes its build
+    context to `ci/docker/runner/`, which `.gitignore` carries, and that
+    Dockerfile has no hand-written apt list to drift: its packages are resolved
+    from `nros-sdk-index.toml` at generation time, which is a stronger property
+    than the shared list this gate enforces, not a weaker one. Before this, any
+    contributor who ran that script turned `just check fast` red on a build
+    artifact -- a gate answering about something nobody committed.
+
+    TRACKEDNESS is the discriminator, not the directory name: a hand-maintained
+    image is committed, build output is not, and a third generated context is
+    covered without editing this gate.
+    """
     base = os.path.join(root, IMAGE_DIR)
+    tracked = _tracked_paths(root, IMAGE_DIR)
     out = []
     for name in sorted(os.listdir(base)):
         path = os.path.join(base, name, "Dockerfile")
-        if os.path.isfile(path):
-            out.append((name, os.path.join(IMAGE_DIR, name, "Dockerfile")))
+        if not os.path.isfile(path):
+            continue
+        rel = os.path.join(IMAGE_DIR, name, "Dockerfile")
+        if tracked is not None and rel.replace(os.sep, "/") not in tracked:
+            continue
+        out.append((name, rel))
     return out
 
 
@@ -487,6 +536,20 @@ def _fake_tree(tmp):
     subprocess.run(
         ["git", "-C", tmp, "add", "--", "uses_toml.py"], check=True, env=env
     )
+    _git_track(tmp)
+
+
+def _git_track(tmp):
+    """Stage the fixture's images and index -- `image_dockerfiles` skips
+    UNTRACKED Dockerfiles, so a fixture that never staged them would exercise
+    the empty case rather than the rule. Same cleared environment, same reason.
+    """
+    env = nros_clear_inherited_git_env(dict(os.environ))
+    subprocess.run(
+        ["git", "-C", tmp, "add", "-A", "--", IMAGE_DIR, WORKFLOWS, INDEX],
+        check=True,
+        env=env,
+    )
 
 
 def self_test(quiet=False):
@@ -494,13 +557,20 @@ def self_test(quiet=False):
     import tempfile
 
     failures = 0
+    cases = 0
 
-    def case(why, mutate, want_fail):
-        nonlocal failures
+    def case(why, mutate, want_fail, track=True):
+        nonlocal failures, cases
+        cases += 1
         tmp = tempfile.mkdtemp(prefix="nros-ci-apt-")
         try:
             _fake_tree(tmp)
             mutate(tmp)
+            # A mutation writes files; staging them is what makes the mutated
+            # tree the shape the rule is about. `track=False` is the one case
+            # that deliberately leaves a Dockerfile as build output.
+            if track:
+                _git_track(tmp)
             got = check(tmp)
             if want_fail and not got:
                 print("  FAIL: %s -- expected a failure, got none" % why)
@@ -601,11 +671,30 @@ def self_test(quiet=False):
     # comment as code would make this gate unusable on the real tree.
     case("a shared name appears only in a backtick comment", lambda t: None, False)
 
+    # MUTATION 8 -- a GENERATED build context (issue 1482).
+    # `scripts/ci/runner-container.sh` writes `ci/docker/runner/Dockerfile`,
+    # which `.gitignore` carries, and it resolves its packages from the index
+    # rather than from a hand-written list. Before this, running that script
+    # turned `just check fast` red -- a gate reporting on build output.
+    _generated = lambda t: _write(  # noqa: E731 -- one expression, used twice
+        t,
+        os.path.join(IMAGE_DIR, "runner", "Dockerfile"),
+        "# Generated by scripts/ci/runner-container.sh\n"
+        "FROM ubuntu:22.04\nRUN apt-get install -y cmake\n",
+    )
+    case("an untracked, generated Dockerfile is not an image", _generated, False,
+         track=False)
+
+    # ...and the discriminator is TRACKEDNESS, not the directory's name: the
+    # same file, committed, is a hand-maintained image again and still fails.
+    # Without this case the skip above would also excuse a real second list.
+    case("the same Dockerfile, tracked, is still an image", _generated, True)
+
     if failures:
         print("check-ci-image-apt-packages self-test: %d case(s) FAILED" % failures)
         return 1
     if not quiet:
-        print("check-ci-image-apt-packages self-test: OK (9 cases)")
+        print("check-ci-image-apt-packages self-test: OK (%d cases)" % cases)
     return 0
 
 
