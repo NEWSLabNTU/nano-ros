@@ -73,6 +73,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lib import git_history  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASELINE = os.path.join(ROOT, ".config", "doc-commit-citations-baseline.txt")
 
@@ -150,9 +153,14 @@ def read_baseline(path=None):
 
 
 def is_shallow():
-    r = subprocess.run(["git", "-C", ROOT, "rev-parse", "--is-shallow-repository"],
-                       capture_output=True, text=True)
-    return r.stdout.strip() == "true"
+    """One spelling for the whole repo — `scripts/lib/git_history.py`.
+
+    This gate already had the rule right; what it did not have was a way to
+    SAY so. Its skip printed `[SKIPPED]` and exited 0, which the lane's
+    closing "Fast checks passed!" then spoke for — the issue-0650 defect, one
+    gate over. It exits 78 now and the recipe records it in the ledger.
+    """
+    return git_history.is_truncated(ROOT)
 
 
 def main():
@@ -162,10 +170,11 @@ def main():
         return 1
 
     if is_shallow():
-        print("[SKIPPED] doc-commit-citations: shallow clone — `git cat-file` "
-              "cannot tell a dead commit from an unfetched one "
-              "(git fetch --unshallow)")
-        return 0
+        # rc 78: NOT VERIFIED. stdout is the ledger REASON and nothing else —
+        # the recipe hands it to `nros_check_skip`.
+        print("shallow clone — `git cat-file` cannot tell a dead commit from "
+              "an unfetched one (git fetch --unshallow)")
+        return 78
 
     files = tracked_markdown()
     found = citations(files)
@@ -299,8 +308,10 @@ def self_test():
     if bad:
         print(f"check-doc-commit-citations self-test: {bad} case(s) FAILED")
         return 1
+    # STDERR: on the NOT-VERIFIED path this gate's stdout is the ledger REASON
+    # and nothing else, so a diagnostic may not share it.
     print("check-doc-commit-citations self-test: OK (%d cases + baseline parse)"
-          % len(cases))
+          % len(cases), file=sys.stderr)
     return 0
 
 
