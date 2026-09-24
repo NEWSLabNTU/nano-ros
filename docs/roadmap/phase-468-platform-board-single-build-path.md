@@ -112,14 +112,24 @@ where the dead declaration is a whole port rather than a cmake module.
 the ESP-IDF port does not touch esp32 fixtures. Any change here must state
 which of the two it is affecting, in those words.
 
-- [ ] The removal is measured before it is made: every referrer of
+- [x] The removal is measured before it is made: every referrer of
       `nros-platform-esp-idf` enumerated UNTRUNCATED, and each classified as
-      port / tooling / documentation.
-- [ ] The port, `just/esp_idf.just` and `scripts/esp_idf/` go together — a
+      port / tooling / documentation. (PR #1279.)
+- [x] The port, `just/esp_idf.just` and `scripts/esp_idf/` go together — a
       recipe module for a deleted port is the same defect one level up.
-- [ ] Book and `nros-sdk-index.toml` coverage follows; ESP-IDF stops being an
-      answer `nros setup` or the book offers.
-- [ ] esp32 QEMU fixtures still build, asserted rather than assumed.
+      **It was that defect, briefly**: steps 2-3 deleted `just/esp_idf.just`
+      and left `run esp_idf` in the `doctor`/`setup` `all` tier, so
+      `just doctor tier=all` failed with `error: justfile does not contain
+      recipe \`esp_idf\`` — word for word the `rmw_zenoh` failure the comment
+      six lines above it already records. Step 5 removed it.
+- [x] Book and `nros-sdk-index.toml` coverage follows; ESP-IDF stops being an
+      answer `nros setup` or the book offers. (PR #1273.)
+- [x] esp32 QEMU fixtures still build, asserted rather than assumed. Plus the
+      cmake vocabulary asserted BOTH directions: `-DNANO_ROS_PLATFORM=posix`
+      still configures, `-DNANO_ROS_PLATFORM=esp_idf` is now REJECTED.
+
+Steps 6-8 remain: retype (do not delete) the zenoh vocabulary keys, the
+`NROS_ESP_IDF_*` environment knobs and `.env.example`, and close issue 1282.
 
 ## W3 — the board build wiring, confirmed and held
 
@@ -139,9 +149,14 @@ that true rather than making it true.
 ## W4 — knob READING, the one that is not mostly done
 
 The ladder resolves a knob's VALUE. It does not decide who reads it, and the
-readers disagree: Kconfig via `$DOTCONFIG` on Zephyr, env elsewhere, and
-`nros_zephyr_build::knob_usize` appears in exactly ONE build script in the
-tree.
+readers disagree: Kconfig via `$DOTCONFIG` on Zephyr, env elsewhere.
+
+> **The "exactly ONE build script" this paragraph used to claim is REFUTED**
+> (issue 1490, measured). FOUR call `nros_zephyr_build::knob*` —
+> `nros`, `nros-platform`, `nros-rmw-zenoh`, `rmw/cffi` — and three more
+> (`nros-node`, `nros-params`, `nros-rmw-xrce-cffi`) reach `$DOTCONFIG`
+> through the DERIVED spelling, building the Kconfig name from the env name.
+> That is what the first box meant by not assuming the claim.
 
 Issue 0460 is the live hazard — a Kconfig knob reaching the Zephyr C lane and
 not the Rust one, so an image compiles crate defaults while Kconfig says
@@ -154,8 +169,37 @@ CLAUDE.md records for the old single `just ci`, "an instruction nobody could
 afford per task, so it got followed selectively, which is worse than a smaller
 instruction followed honestly".
 
-- [ ] The population first: every knob, its producer, and every reader, with
+- [x] The population first: every knob, its producer, and every reader, with
       the lane each reader runs in. The claim "one reader" is not assumed.
+      **Done, and it found a live 0460 (issue 1490, PR #1281).** 52 knobs are
+      forwarded by `zephyr/cmake/nros_cargo_build.cmake`. Readers split into
+      TWO shapes and the shapes are not interchangeable:
+
+      * **DERIVED** (`nros-node`, `nros-params`, `nros-rmw-xrce-cffi`) — build
+        the Kconfig name as `CONFIG_{env_name}`. A knob such a reader names is
+        a knob it resolves, so "does the file mention it" is a sound test.
+      * **TABULATING** (`nros-zpico-build/runner.rs`, `nros-rmw-zenoh`) — an
+        AUTHORED `KCONFIG_KNOBS` table, needed because their env names and
+        Kconfig names are different words (`ZPICO_SUBSCRIBER_RING_DEPTH` <->
+        `CONFIG_NROS_SUBSCRIBER_RING_DEPTH`). Here a mention proves nothing.
+
+      Seven knobs were mentioned by a tabulating reader with no row. Four are
+      cmake-DERIVED facts with no Kconfig symbol (legitimately table-less —
+      there is no `$DOTCONFIG` rung for a number cmake computed). The other
+      three were live splits, measured end to end on
+      `examples/zephyr/rust/talker`: `CONFIG_NROS_SUBSCRIBER_RING_DEPTH=7`
+      reached the build's `.config` while the Rust half compiled `4`.
+
+      Two things that generalise past this phase:
+
+      * **The BASELINE could not have shown it.** Unset, the Kconfig default
+        and the crate default are both `4`, so "delivered" and "fell back to
+        the same number" are ONE observation. Only a non-default probe value
+        separates them — which is the method any later box here should use.
+      * `check-kconfig-knob-forwarding` was GREEN over all three. It is issue
+        0751's finding one arm over: 0751 hardened the DERIVED arm against
+        exactly this ("the name APPEARING is not the name being resolved") and
+        the tabulating arm kept the mention test. The gate asks for a ROW now.
 - [ ] One resolution function, with the Kconfig and env sources as INPUTS to it
       rather than as separate call paths.
 - [ ] `check-kconfig-knob-forwarding` either becomes unnecessary or narrows to
