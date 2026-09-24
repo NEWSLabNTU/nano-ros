@@ -69,6 +69,28 @@ for p in \
     fi
 done
 
+# EVERY top-level entry of the checkout, biggest first — because the hand-written
+# list above has a REACH narrower than the question it is asked (issue 0196's
+# shape, one lane over). Issue 1353's own 2026-09-23 section records the gap and
+# misattributes it: "everything the report measures sums to ~76 G [of 146 G] …
+# the rest is outside the checkout and outside this report's reach." Some of it
+# is not outside the checkout at all. `nros_scoped_target_dir <suffix>` puts a
+# gate's cargo scratch at `$PWD/target-<suffix>`, a SIBLING of `target/` that no
+# line above names, and the build tier makes several of them —
+# `target-embedded` (`check workspace-all`'s concurrent embedded clippy),
+# `target-param-services` (`check compile-smoke`, issue 1382),
+# `target-excluded-tests`, plus four more the root `.gitignore` enumerates.
+# A list of paths cannot answer "what is on this disk"; a sweep can, and it
+# costs one more `du` pass on a nightly bracket.
+#
+# Dotted entries are in the sweep too, and `.git` is the reason: this job
+# fetches the history of twenty submodules, and a submodule's object store
+# lives under `.git/modules`, which is neither `third-party/` nor anything else
+# the list names.
+echo "--- every top-level entry of the checkout, biggest first ---"
+du -sh "${GITHUB_WORKSPACE:-$PWD}"/* "${GITHUB_WORKSPACE:-$PWD}"/.[!.]* 2>/dev/null \
+    | sort -rh | head -15 || true
+
 # The biggest children of the workspace target dir, when there is one: this is
 # where the 2026-09-12 and 2026-09-17 measurements both landed
 # (`target/debug/deps/…rmeta`), so a size breakdown there is the first thing a
