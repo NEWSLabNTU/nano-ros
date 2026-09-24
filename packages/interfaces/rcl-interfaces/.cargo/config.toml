@@ -1,5 +1,0 @@
-[patch.crates-io.nros-core]
-path = "../../core/nros-core"
-
-[patch.crates-io.nros-serdes]
-path = "../../core/nros-serdes"

@@ -1,0 +1,91 @@
+{
+  "derivation": "nros_serdes::size::max_serialized_size",
+  "package": "diagnostic_msgs",
+  "producer": "nros-codegen",
+  "schema_version": 1,
+  "types": [
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 15,
+        "nested_depth": 5
+      },
+      "reason": "unbounded member: header.frame_id (string)",
+      "sequence_chains": [
+        {
+          "elements": 32,
+          "factors": [
+            4,
+            8
+          ],
+          "path": "status.values"
+        }
+      ],
+      "state": "unbounded",
+      "type_name": "diagnostic_msgs/msg/DiagnosticArray"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 5,
+        "kinds": 8,
+        "nested_depth": 3
+      },
+      "rx_max_serialized_size": 1256,
+      "state": "bounded",
+      "tx_max_serialized_size": 1217,
+      "type_name": "diagnostic_msgs/msg/DiagnosticStatus"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 2,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 120,
+      "state": "bounded",
+      "tx_max_serialized_size": 113,
+      "type_name": "diagnostic_msgs/msg/KeyValue"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 3,
+        "kinds": 3,
+        "nested_depth": 1
+      },
+      "reason": "unbounded member: load_namespace (string)",
+      "state": "unbounded",
+      "type_name": "diagnostic_msgs/srv/AddDiagnostics_Request"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 4,
+        "kinds": 4,
+        "nested_depth": 1
+      },
+      "reason": "unbounded member: message (string)",
+      "state": "unbounded",
+      "type_name": "diagnostic_msgs/srv/AddDiagnostics_Response"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 2,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 8,
+      "state": "bounded",
+      "tx_max_serialized_size": 4,
+      "type_name": "diagnostic_msgs/srv/SelfTest_Request"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 5,
+        "kinds": 14,
+        "nested_depth": 5
+      },
+      "reason": "unbounded members: id (string), status (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "diagnostic_msgs/srv/SelfTest_Response"
+    }
+  ]
+}
