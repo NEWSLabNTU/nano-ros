@@ -800,9 +800,18 @@ compile-smoke:
     # which the sanctioned helper always produces: issue 1383.)
     CARGO_TARGET_DIR="$(nros_scoped_target_dir param-services)" \
         cargo check -p nros-c -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
+    # Issue 1468 -- and `nros-node` with each MODULE-GATING feature ALONE.
+    # The workspace check above unifies features, so it builds that crate with
+    # `param-services` AND `lifecycle-services` on and can never see a module
+    # reaching across the gate between them. This crate's own target dir is
+    # fine: a `cargo check -p nros-node` emits no generated-header mirror, so
+    # issue 1382's hazard (which is `nros-sizes-build`'s, in nros-c/nros-cpp)
+    # does not apply. The feature list is read out of `lib.rs`. ~12 s warm.
+    bash scripts/check-feature-gated-modules.sh
     echo "compile smoke: workspace + all targets check clean (no lints; see check-build);"
     echo "  nros-c + nros-cpp check clean in the shipped shape ({{C_API_SHIPPED_FEATURES}}),"
-    echo "  and with param-services (issue 1260)."
+    echo "  with param-services (issue 1260), and nros-node per module-gating"
+    echo "  feature alone (issue 1468)."
 
 # Check C++ headers: formatting + freestanding syntax + nros-cpp clippy. The
 # clippy (rmw-zenoh-cffi) + syntax probe COMPILE nros-cpp/nros-c (zpico-sys pulls
