@@ -21,6 +21,7 @@ use self::session::{
 use crate::{
     cmd::board::find_workspace_root,
     orchestration::{
+        python_provider,
         sdk_index::{SdkIndex, ToolPackage, ZephyrModule, host_key},
         sdk_store::{InstallAction, SourceDisposition, execute, provision_source, store_root},
     },
@@ -2955,6 +2956,9 @@ fn run_check_all(index: &SdkIndex, workspace: &Path) -> Result<()> {
     // Separate from `missing` only because the `report` closure below captures
     // that one mutably; both are summed at the end.
     let mut broken = 0usize;
+    // Issue 1481 — present, and the wrong copy of it. Neither `missing` nor
+    // `broken`, so it is counted apart and reported in its own words.
+    let mut shadowed = 0usize;
     let mut report = |class: &str, name: &str, ok: ProbeResult, remedy: String| match ok {
         ProbeResult::Present => println!("  [OK]      {class:<7} {name}"),
         ProbeResult::Missing => {
@@ -3140,20 +3144,69 @@ fn run_check_all(index: &SdkIndex, workspace: &Path) -> Result<()> {
         );
     }
 
-    // [python.*].
+    // [python.*] — issue 1481. The remedy PREFERS apt where this host's apt can
+    // satisfy the entry, because a `pip3 install --user` copy precedes
+    // `/usr/lib/python3/dist-packages` on `sys.path` and shadows the build the
+    // `ros-<edition>-*` packages were compiled against. pip is what a host
+    // without that package gets, with the reason named.
+    let apt_cache = python_provider::AptCache::detect();
+    let apt_query = apt_cache
+        .as_ref()
+        .map(|c| c as &dyn python_provider::AptQuery);
+    let interpreter = python_provider::Interpreter::detect();
     for (alias, py) in &index.python {
+        let provider = python_provider::resolve(py, doctor_ctx.os_release.as_deref(), apt_query);
+        // An entry with no `check` is probed by IMPORTING its module. Five of
+        // the eight had no probe at all, so they reported `[UNPROBED]` — and an
+        // unprobed entry never prints a remedy, which is why this layer's
+        // remedy could be wrong for as long as it was.
+        let probed = match &py.check {
+            Some(c) => run_probe(Some(c)),
+            None => match interpreter.module_origin(&py.module()) {
+                Some(_) => ProbeResult::Present,
+                None => ProbeResult::Missing,
+            },
+        };
         report(
             "python",
             &format!("{alias} ({})", py.pip),
-            run_probe(py.check.as_ref()),
-            format!(
-                "pip3 install --user {}{}",
+            probed,
+            python_remedy(py, &provider),
+        );
+        // A `~/.local` copy winning the import while apt's is installed is a
+        // SECOND build of the same library, and the one that a ROS-built
+        // extension will not have been compiled against. Named, not silent.
+        if let python_provider::PythonProvider::Apt {
+            packages,
+            installed: true,
+        } = &provider
+            && let Some(origin) = interpreter.shadowing_user_copy(&py.module())
+        {
+            println!(
+                "  [SHADOWED] python {alias} ({}) — apt's {} is installed, but \
+                 `import {}` resolves {origin}",
                 py.pip,
-                py.version
-                    .as_deref()
-                    .map(|v| format!("=={v}"))
-                    .unwrap_or_default()
-            ),
+                packages.join(" "),
+                py.module()
+            );
+            println!(
+                "            (run: python3 -m pip uninstall {} — apt's copy then answers)",
+                py.pip
+            );
+            shadowed += 1;
+        }
+    }
+
+    // A shadow is its OWN verdict, not a kind of "missing" and not a kind of
+    // "broken": every declared dependency is present, and the defect is WHICH
+    // copy answers. Folding it into either count would make the summary line
+    // say something false, so it gets its own sentence and its own bail.
+    if shadowed > 0 && missing + broken == 0 {
+        bail!(
+            "nros setup --check: {shadowed} python package(s) are provided by apt AND shadowed \
+             by a pip --user copy (above). Nothing is missing — the `ros-<edition>-*` packages \
+             are built against the versions apt locks, and a ~/.local copy precedes \
+             /usr/lib/python3/dist-packages on sys.path, so it wins every import."
         );
     }
 
@@ -3184,6 +3237,48 @@ fn command_stdout(cmd: &str, args: &[&str]) -> String {
         .unwrap_or_default()
 }
 
+/// The install line for one `[python.*]` entry on this host — issue 1481.
+///
+/// apt where apt can satisfy it, pip otherwise, and the pip arm always SAYS why
+/// it is not apt: on a host whose apt clearly has the package, an unexplained
+/// `pip3 install --user` is exactly the advice this issue exists to stop, and a
+/// reader cannot tell a considered fallback from the old unconditional string.
+fn python_remedy(
+    py: &crate::orchestration::sdk_index::PythonDep,
+    provider: &python_provider::PythonProvider,
+) -> String {
+    use python_provider::{PipBecause, PythonProvider};
+    match provider {
+        PythonProvider::Apt { packages, .. } => native_install_command("apt", packages),
+        PythonProvider::Pip(because) => {
+            let pip = format!(
+                "pip3 install --user {}{}",
+                py.pip,
+                py.version
+                    .as_deref()
+                    .map(|v| format!("=={v}"))
+                    .unwrap_or_default()
+            );
+            let why = match because {
+                PipBecause::Refused(reason) => format!("no apt package: {reason}"),
+                PipBecause::NotPackagedOnThisRelease => {
+                    "apt does not package it on this release".to_string()
+                }
+                PipBecause::NoAptHost => "this host has no apt".to_string(),
+                PipBecause::NoCandidate(pkg) => {
+                    format!("apt has no candidate for {pkg} here")
+                }
+                PipBecause::PinUnmet {
+                    package,
+                    candidate,
+                    want,
+                } => format!("apt's {package} is {candidate}, and the pin is {want}"),
+            };
+            format!("{pip} — {why}")
+        }
+    }
+}
+
 fn compose_packages(
     entries: &[(&String, &crate::orchestration::sdk_index::PrereqDep)],
     manager: &str,
@@ -3201,6 +3296,65 @@ fn compose_packages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1481 — the remedy `nros setup --check` PRINTS. This was an
+    /// unconditional `pip3 install --user <pip>` for every `[python.*]` entry
+    /// on every host, so on the Ubuntu hosts the book already sends to apt the
+    /// tool contradicted the documentation and told the user to install a copy
+    /// that shadows the build `ros-<edition>-*` was compiled against.
+    #[test]
+    fn a_python_remedy_names_apt_where_apt_can_satisfy_it() {
+        use crate::orchestration::sdk_index::PythonDep;
+        let empy = PythonDep {
+            pip: "empy".into(),
+            module_name: Some("em".into()),
+            version: Some("3.3.4".into()),
+            apt: vec!["python3-empy".to_string()].into(),
+            ..PythonDep::default()
+        };
+        let apt = python_remedy(
+            &empy,
+            &python_provider::PythonProvider::Apt {
+                packages: vec!["python3-empy".into()],
+                installed: false,
+            },
+        );
+        assert!(
+            apt.starts_with("sudo apt-get install -y python3-empy"),
+            "{apt}"
+        );
+        assert!(
+            !apt.contains("pip3 install"),
+            "a host whose apt has the pinned version must not be told to pip it: {apt}"
+        );
+
+        // The pip arm keeps the pin AND says why it is not apt — on a host that
+        // plainly has `python3-empy`, an unexplained pip line is the advice
+        // this issue exists to stop, and a reader cannot otherwise tell a
+        // considered fallback from the old unconditional string.
+        let pip = python_remedy(
+            &empy,
+            &python_provider::PythonProvider::Pip(python_provider::PipBecause::NoCandidate(
+                "python3-empy".into(),
+            )),
+        );
+        assert!(pip.starts_with("pip3 install --user empy==3.3.4"), "{pip}");
+        assert!(
+            pip.contains("apt has no candidate for python3-empy"),
+            "{pip}"
+        );
+
+        // `west` and `clang-format` stay pip, and carry the recorded reason
+        // rather than looking overlooked.
+        let west = PythonDep {
+            pip: "west".into(),
+            apt_refused: Some("PyPI only — no distro packages it".into()),
+            ..PythonDep::default()
+        };
+        let line = python_remedy(&west, &python_provider::resolve(&west, Some("jammy"), None));
+        assert!(line.contains("pip3 install --user west"), "{line}");
+        assert!(line.contains("PyPI only"), "{line}");
+    }
 
     /// Issue 1262, the CALL SITES — every lock path this command writes comes
     /// from [`project_lock_path`], never from the bare constant.
