@@ -103,7 +103,7 @@ carrying its weight today.
 | `just/esp_idf.just` | a full module: `doctor`, `build-c-port`, `build-examples`, `ci` |
 
 So it is a platform port that no lane builds and no fixture targets, with a
-`just esp_idf ci` recipe nothing invokes — phase-451's class at platform scale,
+a `ci` recipe nothing invokes — phase-451's class at platform scale,
 where the dead declaration is a whole port rather than a cmake module.
 
 **It is NOT the esp32 QEMU path, and the two are easy to conflate.**

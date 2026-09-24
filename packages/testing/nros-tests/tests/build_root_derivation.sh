@@ -304,9 +304,7 @@ scenario '
         "$repo_root/build/cmake-fixtures" "$(nros_build_dir "$NROS_KIND_CMAKE_FIXTURES")"
     check "cmake-fixtures stamp dir" \
         "$repo_root/build/cmake-fixtures/shadowing" "$(nros_build_dir "$NROS_KIND_CMAKE_FIXTURES" shadowing)"
-    # idf/west fixture families: <script>.sh (build) + require_{idf,west}_fixture.
-    check "idf-fixtures out_root" \
-        "$repo_root/build/idf-fixtures" "$(nros_build_dir "$NROS_KIND_IDF_FIXTURES")"
+    # west fixture family: <script>.sh (build) + require_west_fixture.
     check "west-fixtures out_root" \
         "$repo_root/build/west-fixtures" "$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
     # cargo-fixtures: the shell half moved in step 1, the resolver half here.
@@ -376,7 +374,7 @@ echo "no literal remains in the migrated families:"
 # narrow, per-family greps rather than a repo-wide gate — that gate is step 4.
 scenario '
     for f in scripts/build/compile-check-fixtures.sh scripts/test/compile-check-stale.sh \
-             scripts/build/idf-fixtures.sh scripts/build/west-fixtures.sh; do
+             scripts/build/west-fixtures.sh; do
         hits="$(grep -n "\$repo_root/build/" "$f" || true)"
         if [ -n "$hits" ]; then
             echo "  FAIL $f still spells a cache path literally"
@@ -392,7 +390,7 @@ scenario '
 # sees code only.
 scenario '
     f=packages/testing/nros-tests/src/fixtures/binaries/mod.rs
-    hits="$(grep -nE "\"build/(compile-check|cmake-fixtures|idf-fixtures|west-fixtures|cargo-fixtures)" "$f" || true)"
+    hits="$(grep -nE "\"build/(compile-check|cmake-fixtures|west-fixtures|cargo-fixtures)" "$f" || true)"
     if [ -n "$hits" ]; then
         echo "  FAIL $f still resolves a migrated family from a literal"
         echo "$hits" | sed "s/^/        /"

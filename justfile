@@ -69,7 +69,6 @@ mod threadx_linux 'just/threadx-linux.just'
 mod threadx_riscv64 'just/threadx-riscv64.just'
 mod zephyr 'just/zephyr.just'
 mod esp32 'just/esp32.just'
-mod esp_idf 'just/esp_idf.just'
 mod qemu 'just/qemu-baremetal.just'
 mod native 'just/native.just'
 mod xrce 'just/xrce.just'
@@ -156,7 +155,7 @@ default:
         "    just test   <scope>        run its tests" \
         "" \
         "    scope = a platform   native zephyr freertos nuttx threadx_linux" \
-        "                         threadx_riscv64 esp32 esp_idf qemu px4 xrce" \
+        "                         threadx_riscv64 esp32 qemu px4 xrce" \
         "                         cyclonedds" \
         "         or a preset     all native tier1 tier2 tier2-nightly" \
         "" \
@@ -4427,7 +4426,7 @@ setup target="" tier="" *extra:
           "Platform scopes:" \
           "" \
           "  native zephyr freertos nuttx threadx_linux threadx_riscv64" \
-          "  esp32 esp_idf qemu px4 xrce cyclonedds" \
+          "  esp32 qemu px4 xrce cyclonedds" \
           "" \
           "Preset scopes (a named set of platforms — the fixture lanes):" \
           "" \
@@ -5425,7 +5424,6 @@ clean-examples:
     just threadx_riscv64 clean
     just zephyr clean
     just esp32 clean
-    just esp_idf clean
     just px4 clean
     @echo "All example artifacts cleaned"
 

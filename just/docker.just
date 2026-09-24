@@ -7,7 +7,7 @@ default:
 # Every recipe in this module shells out to `docker` and assumes both the client
 # and a reachable daemon. Without this, a missing daemon surfaces as whatever
 # `docker build` happens to print, several layers into a QEMU test run. The
-# other modules (cyclonedds, rmw_zenoh, esp_idf) each carry a `doctor`; this one
+# other modules (cyclonedds, rmw_zenoh) each carry a `doctor`; this one
 # did not.
 [group("setup")]
 doctor:

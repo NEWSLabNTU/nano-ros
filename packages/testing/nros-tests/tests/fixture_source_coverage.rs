@@ -161,12 +161,6 @@ fn every_test_bin_is_a_row_or_a_tracked_exception() {
 /// a recipe that quietly stops producing one is caught.
 const NON_MANIFEST_BUILD_ROOTS: &[(&str, &str)] = &[
     (
-        "scripts/build/idf-fixtures.sh",
-        "esp-idf smoke: `idf.py` needs a full IDF env and ~7 min/ELF, so the \
-         esp32 lane self-gates and builds it best-effort. Consumed by \
-         cli_bringup_esp_idf.rs.",
-    ),
-    (
         "just/ros-editions.just",
         "RFC-0058 edition axis: a PER-RUN global (NROS_ROS_EDITION), not a \
          fixture coordinate, and docker-gated out of `just ci`.",

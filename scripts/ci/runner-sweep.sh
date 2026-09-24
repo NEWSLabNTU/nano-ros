@@ -639,7 +639,7 @@ _sweep_disk() {
     # reason for a persistent runner is not paying that cost.
     local -a cache_dirs=()
     local kind
-    for kind in cargo-fixtures cmake-fixtures west-fixtures idf-fixtures \
+    for kind in cargo-fixtures cmake-fixtures west-fixtures \
                 corrosion-cargo example-build example-lint \
                 zephyr-fixture-build compile-check-fixtures; do
         [ -d "$build_root/$kind" ] && cache_dirs+=("$build_root/$kind")

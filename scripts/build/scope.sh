@@ -76,7 +76,7 @@ fi
 # Platform scope tokens: the justfile modules that own build/test artifacts for
 # a target platform or an RMW backend. Ordered host-first, then by how often a
 # person names them.
-_NROS_SCOPE_PLATFORMS="native zephyr freertos nuttx threadx_linux threadx_riscv64 esp32 esp_idf qemu px4 xrce cyclonedds"
+_NROS_SCOPE_PLATFORMS="native zephyr freertos nuttx threadx_linux threadx_riscv64 esp32 qemu px4 xrce cyclonedds"
 
 # Modules that are deliberately NOT scope tokens, with the reason — because
 # "why is `docker` not a scope?" is the question a reader will have, and an

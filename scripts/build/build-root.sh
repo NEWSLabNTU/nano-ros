@@ -15,7 +15,6 @@
 #   cmake-fixtures  scripts/test/compile-check-stale.sh     (probe)
 #                   nros_tests::fixtures::require_compile_check{,_bin} /
 #                   require_cmake_fixture                   (resolver)
-#   idf-fixtures    scripts/build/idf-fixtures.sh  + require_idf_fixture
 #   west-fixtures   scripts/build/west-fixtures.sh + require_west_fixture
 #   cargo-fixtures  fixtures-target-dir.sh (step 1) + fixture_shared_target_dir
 #
@@ -116,7 +115,6 @@ nros_build_root() {
 # Fixture trees — `<family>-fixtures` per R5.
 export NROS_KIND_CARGO_FIXTURES="cargo-fixtures"
 export NROS_KIND_CMAKE_FIXTURES="cmake-fixtures"
-export NROS_KIND_IDF_FIXTURES="idf-fixtures"
 export NROS_KIND_WEST_FIXTURES="west-fixtures"
 
 # The compile-check lane's trees. Renamed from `compile-check` to carry the

@@ -91,12 +91,6 @@ LANE_FRONT_DOORS = {
 # a classification, not an exemption: it asserts R2 is the only way in.
 ROOT_LANES = {
     "zephyr": [("just/zephyr-ci.just", "build-fixtures")],
-    "esp-idf": [
-        ("just/esp32.just", "build-fixtures"),
-        # `esp_idf build` and `esp_idf build-fixtures` both reach the workspace
-        # only through this one, so it is the lane, not either caller.
-        ("just/esp_idf.just", "build-c-port"),
-    ],
     # `external/` is a provisioning directory consumed by the generic build, not
     # a platform with a lane of its own. R2 is its only front door.
     "external": [],

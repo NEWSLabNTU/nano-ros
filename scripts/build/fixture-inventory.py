@@ -499,17 +499,6 @@ def prerequisite_rows():
             "shared_mutation": "packages/cli/target",
             "notes": "host nros-codegen passed to Zephyr C/C++ nros_generate_interfaces",
         },
-        {
-            "id": "esp-idf-sdk-prereq",
-            "platform": "esp_idf",
-            "kind": "sdk-prereq",
-            "role": "esp-idf",
-            "dir": "just/esp_idf.just",
-            "build_root": "$NROS_ESP_IDF_WORKSPACE",
-            "scheduler": "just esp_idf doctor/setup",
-            "shared_mutation": "$NROS_ESP_IDF_WORKSPACE; tests/esp-idf-smoke/build",
-            "notes": "idf.py and ESP-IDF environment required before esp-idf smoke fixture",
-        },
     ]
     for row in rows:
         normalized = {field: "" for field in FIELDS}
@@ -558,19 +547,6 @@ def hand_authored_rows():
             "scheduler": "just esp32 build-logging-smoke",
             "shared_mutation": "logging-smoke ELF .bin sibling",
             "notes": "espflash packs binary after manifest cargo leaf",
-        },
-        {
-            "id": "esp-idf-smoke",
-            "platform": "esp_idf",
-            "kind": "hand-authored-idf",
-            "lang": "c",
-            "rmw": "",
-            "role": "smoke",
-            "dir": "tests/esp-idf-smoke",
-            "build_root": "tests/esp-idf-smoke/build",
-            "scheduler": "just esp_idf build-fixtures",
-            "shared_mutation": "tests/esp-idf-smoke/build; tests/esp-idf-smoke/sdkconfig",
-            "notes": "idf.py set-target/build path",
         },
     ]
     for row in rows:
