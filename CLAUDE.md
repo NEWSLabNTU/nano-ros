@@ -770,6 +770,24 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   for the failure TEXT: index tuples are not a diagnosis — the orphan message
   used to be `[(1, 2, 1, true)]` and cost a hand-decode against three tables;
   name the cell to write and the row that wants it.
+- **`--is-ancestor` answers NO for two reasons and only one is about the
+  commits** (issue 1476). Truncation manufactures FALSE NEGATIVES: a shallow
+  clone grafts its tip parentless, so a commit that IS on main reads as "not an
+  ancestor of HEAD". `check-roadmap-commit-refs` printed exactly that about
+  three commits on main and stopped tier 2 and the tier-2 nightly in a
+  DOCUMENTATION gate. It already had a shallow guard — covering the other
+  negative, `cat-file` — and the guard could not fire, because the objects were
+  PRESENT: the tier-2 runner is self-hosted, `git clean -ffdx` removes files and
+  never objects, so each `--depth=1` fetch leaves the previous run's tip in a
+  workspace that persists. A fresh `--depth 1` clone would have skipped
+  correctly; the workspace's own memory is what turned a skip into a verdict.
+  One spelling, `scripts/lib/git_history.py` + its shell twin — a positive
+  counts from any clone, a negative from a truncated one is NOT VERIFIED
+  (issue 1043's third outcome, reported through the `nros_check_skip` ledger).
+  Gate: `check-ancestry-truncation`. Priced, not preferred: `fetch-depth: 0` is
+  49 s / 998 MiB / 12,413 commits against the lane's measured 1.7 s, on EVERY
+  lane since `check fast` runs in all of them — and a targeted fetch cannot
+  work at all, since proving ancestry needs the PATH, not the endpoints.
 - **0196 runs the OTHER way too: a reach WIDER than the rule is a false report,
   and the fix is to derive the subject — never to widen the declaration** (issue
   1452). `check-dist-runtime-deps` asked "what must be present for this tool to
