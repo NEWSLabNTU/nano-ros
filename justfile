@@ -2497,11 +2497,6 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     # Filtering deselects them entirely: no scary console line, no wasted in-test
     # build attempt. Each suite runs (and skip!s with an actionable reason) the
     # moment its toolchain is present, so this only loosens lighter tiers.
-    if ! { command -v idf.py >/dev/null 2>&1 || [ -n "${IDF_PATH:-}" ] || [ -n "${NROS_ESP_IDF_ENV_SHIM:-}" ]; }; then
-        env_exclude+=("not binary(cli_bringup_esp_idf)")
-        env_exclude+=("not binary(esp32_idf_talker_builds)")
-        env_exclude+=("not binary(esp32_idf_listener_builds)")
-    fi
     # ros_editions (phase-309): the multi-edition harness lanes are OPT-IN — they
     # need docker, a slow-to-build `nano-ros-ros:<edition>` image, AND a
     # per-edition-regenerated publisher fixture (not part of build-test-fixtures).
