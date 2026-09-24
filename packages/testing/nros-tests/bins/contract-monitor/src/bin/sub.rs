@@ -15,7 +15,7 @@ use nros::{
 };
 use nros_diagnostic_msgs::msg::DiagnosticArray;
 use nros_diagnostics::DiagnosticReporter;
-use nros_std_msgs_diag::msg::Header;
+use nros_std_msgs::msg::Header;
 
 use contract_monitor::{DIAG_TOPIC, HEADER_TOPIC, MAX_AGE_MS, drain_and_report};
 

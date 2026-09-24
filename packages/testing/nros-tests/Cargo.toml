@@ -540,16 +540,26 @@ workspace = true
 
 [dev-dependencies]
 # Phase 380 W2 — the size-bound property test walks the REAL schemas of every
-# committed generated message, so it needs all four families. Dev-deps: a test
+# committed generated message, so it needs the whole set. Dev-deps: a test
 # crate depending on generated crates is not a cycle (they depend on
 # `nros-serdes`, not on this) and nothing downstream sees them.
+#
+# phase-465 — SIX rows, not seven: this crate used to path-dep `builtin_interfaces`
+# TWICE (`nros-builtin-interfaces` and `nros-builtin-interfaces-diag`), i.e. two
+# Rust types for one wire type with no conversion between them (issue 1428). One
+# output tree means one crate per ament package, so the second row is gone.
 nros-serdes = { path = "../../core/nros-serdes" }
-nros-builtin-interfaces = { path = "../../interfaces/rcl-interfaces/generated/humble/nros-builtin-interfaces" }
-nros-rcl-interfaces = { path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces" }
-nros-lifecycle-msgs = { path = "../../interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs" }
-nros-std-msgs-diag = { path = "../../interfaces/diagnostic-msgs/generated/humble/nros-std-msgs-diag" }
-nros-diagnostic-msgs = { path = "../../interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs" }
-nros-builtin-interfaces-diag = { path = "../../interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag" }
+nros-builtin-interfaces = { path = "../../interfaces/generated/humble/nros-builtin-interfaces" }
+nros-rcl-interfaces = { path = "../../interfaces/generated/humble/nros-rcl-interfaces" }
+nros-lifecycle-msgs = { path = "../../interfaces/generated/humble/nros-lifecycle-msgs" }
+nros-std-msgs = { path = "../../interfaces/generated/humble/nros-std-msgs" }
+nros-diagnostic-msgs = { path = "../../interfaces/generated/humble/nros-diagnostic-msgs" }
+# phase-465 — NEW, and it closes a hole rather than opening one. `corpus_is_exhaustive`
+# counts every `impl ::nros_serdes::Message` under `packages/interfaces` and asserts the
+# corpus matches; phase-425 W2 added the rosgraph tree (3 impls) and no corpus row, so
+# the count has read 76 against 79 since. Collapsing removes 4 of those impls and this
+# row supplies the missing `rosgraph_msgs/msg/Clock`, making it 75 against 75.
+nros-rosgraph-msgs = { path = "../../interfaces/generated/humble/nros-rosgraph-msgs" }
 # phase-421 W5 — the reference schema-driven serdes provider (RFC-0088 D7).
 # `schema_serializer_round_trip` transcodes every generated message above
 # through it and back. A dev-dep, like the generated crates it is exercised

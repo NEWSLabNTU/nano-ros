@@ -64,7 +64,7 @@ const EXPECTED: &[(usize, &str, &str, Kind)] = &[
     (
         1,
         "use example_interfaces::msg::String as StringMsg;",
-        "use nros_std_msgs_diag::msg::String as StringMsg;",
+        "use nros_std_msgs::msg::String as StringMsg;",
         // Likewise. Message crates are generated per workspace (RFC-0023), so
         // the path is the user's, not ours.
         Kind::Import,

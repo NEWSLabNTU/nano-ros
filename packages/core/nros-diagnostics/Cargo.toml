@@ -25,5 +25,5 @@ default = []
 # the ROOT workspace when the constant landed (0394); the second named 0.0.0 and
 # broke again when the core crates were briefly reverted. A path dep with no
 # version cannot be wrong in either direction.
-nros-diagnostic-msgs = { path = "../../interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs", default-features = false }
+nros-diagnostic-msgs = { path = "../../interfaces/generated/humble/nros-diagnostic-msgs", default-features = false }
 heapless = "0.8"

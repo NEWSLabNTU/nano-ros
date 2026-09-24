@@ -112,12 +112,12 @@ dependencies = [
  "heapless",
  "log",
  "nros",
- "nros-builtin-interfaces-diag",
+ "nros-builtin-interfaces",
  "nros-diagnostic-msgs",
  "nros-diagnostics",
  "nros-platform-cffi",
  "nros-rmw-zenoh",
- "nros-std-msgs-diag",
+ "nros-std-msgs",
 ]
 
 [[package]]
@@ -307,7 +307,7 @@ name = "nros-build-paths"
 version = "0.5.0"
 
 [[package]]
-name = "nros-builtin-interfaces-diag"
+name = "nros-builtin-interfaces"
 version = "0.0.0"
 dependencies = [
  "heapless",
@@ -338,7 +338,7 @@ dependencies = [
  "heapless",
  "nros-core",
  "nros-serdes",
- "nros-std-msgs-diag",
+ "nros-std-msgs",
 ]
 
 [[package]]
@@ -496,11 +496,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-std-msgs-diag"
+name = "nros-std-msgs"
 version = "0.0.0"
 dependencies = [
  "heapless",
- "nros-builtin-interfaces-diag",
+ "nros-builtin-interfaces",
  "nros-core",
  "nros-serdes",
 ]
