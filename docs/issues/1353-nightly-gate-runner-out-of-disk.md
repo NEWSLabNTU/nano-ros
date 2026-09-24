@@ -810,3 +810,26 @@ has been produced on `main` since 2026-06-17 (2 successes against 356 failures
 on this workflow), so what the tests would have reported is still unknown.
 
 Acceptance is unchanged.
+
+### Reproduced, and the figure is DETERMINISTIC (second run, same day)
+
+Run **36033675501**, job **107748375245**, head `a7f829300`, two hours after
+the one above and on a `main` four commits further along. Same shape and the
+same annotation (`No space left on device : '…/Worker_20260924-174242-utc.log'`),
+same `steps_failed=[]`, same `Build workspace fixtures = success` then death
+inside `just ci tier1`. Its transcript:
+
+```
+SUMMARY disk before just ci tier1 — 88% used, 18G free
+  — 42G examples; 14G build; 409M packages/cli/target
+freed 7517 MB; 26033844 KB free
+```
+
+against the first run's `26029560 KB free`. **The two agree to within 4 MB**,
+so what the tier needs is not load-dependent or a one-off: it is a stable
+number that a remedy can be priced against, and ~24.8 GiB of headroom after
+the reclaim is reproducibly NOT enough. The earlier section's "≥ 24.8 GiB" is
+therefore a measurement rather than an observation.
+
+Nothing else about the two runs differs, so this adds no new cause — only the
+confidence that the existing one is exact.
