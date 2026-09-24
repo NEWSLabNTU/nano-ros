@@ -1,0 +1,323 @@
+{
+  "derivation": "nros_serdes::size::max_serialized_size",
+  "package": "std_msgs",
+  "producer": "nros-codegen",
+  "schema_version": 1,
+  "types": [
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 12,
+      "state": "bounded",
+      "tx_max_serialized_size": 5,
+      "type_name": "std_msgs/msg/Bool"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 12,
+      "state": "bounded",
+      "tx_max_serialized_size": 5,
+      "type_name": "std_msgs/msg/Byte"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 9,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: layout.dim (sequence<T>), data (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/ByteMultiArray"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 12,
+      "state": "bounded",
+      "tx_max_serialized_size": 5,
+      "type_name": "std_msgs/msg/Char"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 4,
+        "kinds": 4,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 24,
+      "state": "bounded",
+      "tx_max_serialized_size": 20,
+      "type_name": "std_msgs/msg/ColorRGBA"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 0,
+        "kinds": 0,
+        "nested_depth": 0
+      },
+      "rx_max_serialized_size": 8,
+      "state": "bounded",
+      "tx_max_serialized_size": 4,
+      "type_name": "std_msgs/msg/Empty"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 12,
+      "state": "bounded",
+      "tx_max_serialized_size": 8,
+      "type_name": "std_msgs/msg/Float32"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 9,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: layout.dim (sequence<T>), data (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/Float32MultiArray"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 16,
+      "state": "bounded",
+      "tx_max_serialized_size": 12,
+      "type_name": "std_msgs/msg/Float64"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 9,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: layout.dim (sequence<T>), data (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/Float64MultiArray"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 4,
+        "nested_depth": 2
+      },
+      "reason": "unbounded member: frame_id (string)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/Header"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 12,
+      "state": "bounded",
+      "tx_max_serialized_size": 6,
+      "type_name": "std_msgs/msg/Int16"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 9,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: layout.dim (sequence<T>), data (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/Int16MultiArray"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 12,
+      "state": "bounded",
+      "tx_max_serialized_size": 8,
+      "type_name": "std_msgs/msg/Int32"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 9,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: layout.dim (sequence<T>), data (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/Int32MultiArray"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 16,
+      "state": "bounded",
+      "tx_max_serialized_size": 12,
+      "type_name": "std_msgs/msg/Int64"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 9,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: layout.dim (sequence<T>), data (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/Int64MultiArray"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 12,
+      "state": "bounded",
+      "tx_max_serialized_size": 5,
+      "type_name": "std_msgs/msg/Int8"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 9,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: layout.dim (sequence<T>), data (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/Int8MultiArray"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 3,
+        "kinds": 3,
+        "nested_depth": 1
+      },
+      "reason": "unbounded member: label (string)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/MultiArrayDimension"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 6,
+        "nested_depth": 3
+      },
+      "reason": "unbounded member: dim (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/MultiArrayLayout"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "reason": "unbounded member: data (string)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/String"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 12,
+      "state": "bounded",
+      "tx_max_serialized_size": 6,
+      "type_name": "std_msgs/msg/UInt16"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 9,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: layout.dim (sequence<T>), data (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/UInt16MultiArray"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 12,
+      "state": "bounded",
+      "tx_max_serialized_size": 8,
+      "type_name": "std_msgs/msg/UInt32"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 9,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: layout.dim (sequence<T>), data (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/UInt32MultiArray"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 16,
+      "state": "bounded",
+      "tx_max_serialized_size": 12,
+      "type_name": "std_msgs/msg/UInt64"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 9,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: layout.dim (sequence<T>), data (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/UInt64MultiArray"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 12,
+      "state": "bounded",
+      "tx_max_serialized_size": 5,
+      "type_name": "std_msgs/msg/UInt8"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 9,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: layout.dim (sequence<T>), data (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "std_msgs/msg/UInt8MultiArray"
+    }
+  ]
+}

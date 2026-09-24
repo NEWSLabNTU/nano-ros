@@ -1,0 +1,30 @@
+{
+  "derivation": "nros_serdes::size::max_serialized_size",
+  "package": "builtin_interfaces",
+  "producer": "nros-codegen",
+  "schema_version": 1,
+  "types": [
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 2,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 16,
+      "state": "bounded",
+      "tx_max_serialized_size": 12,
+      "type_name": "builtin_interfaces/msg/Duration"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 2,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 16,
+      "state": "bounded",
+      "tx_max_serialized_size": 12,
+      "type_name": "builtin_interfaces/msg/Time"
+    }
+  ]
+}

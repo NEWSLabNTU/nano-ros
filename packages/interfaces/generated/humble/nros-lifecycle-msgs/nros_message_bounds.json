@@ -1,0 +1,132 @@
+{
+  "derivation": "nros_serdes::size::max_serialized_size",
+  "package": "lifecycle_msgs",
+  "producer": "nros-codegen",
+  "schema_version": 1,
+  "types": [
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 2,
+        "nested_depth": 1
+      },
+      "reason": "unbounded member: label (string)",
+      "state": "unbounded",
+      "type_name": "lifecycle_msgs/msg/State"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 2,
+        "nested_depth": 1
+      },
+      "reason": "unbounded member: label (string)",
+      "state": "unbounded",
+      "type_name": "lifecycle_msgs/msg/Transition"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 3,
+        "kinds": 9,
+        "nested_depth": 2
+      },
+      "reason": "unbounded members: transition.label (string), start_state.label (string), goal_state.label (string)",
+      "state": "unbounded",
+      "type_name": "lifecycle_msgs/msg/TransitionDescription"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 4,
+        "kinds": 10,
+        "nested_depth": 2
+      },
+      "reason": "unbounded members: transition.label (string), start_state.label (string), goal_state.label (string)",
+      "state": "unbounded",
+      "type_name": "lifecycle_msgs/msg/TransitionEvent"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 3,
+        "kinds": 5,
+        "nested_depth": 2
+      },
+      "reason": "unbounded member: transition.label (string)",
+      "state": "unbounded",
+      "type_name": "lifecycle_msgs/srv/ChangeState_Request"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 3,
+        "kinds": 3,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 12,
+      "state": "bounded",
+      "tx_max_serialized_size": 5,
+      "type_name": "lifecycle_msgs/srv/ChangeState_Response"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 2,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 8,
+      "state": "bounded",
+      "tx_max_serialized_size": 4,
+      "type_name": "lifecycle_msgs/srv/GetAvailableStates_Request"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 3,
+        "kinds": 6,
+        "nested_depth": 3
+      },
+      "reason": "unbounded member: available_states (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "lifecycle_msgs/srv/GetAvailableStates_Response"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 2,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 8,
+      "state": "bounded",
+      "tx_max_serialized_size": 4,
+      "type_name": "lifecycle_msgs/srv/GetAvailableTransitions_Request"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 3,
+        "kinds": 13,
+        "nested_depth": 4
+      },
+      "reason": "unbounded member: available_transitions (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "lifecycle_msgs/srv/GetAvailableTransitions_Response"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 2,
+        "nested_depth": 1
+      },
+      "rx_max_serialized_size": 8,
+      "state": "bounded",
+      "tx_max_serialized_size": 4,
+      "type_name": "lifecycle_msgs/srv/GetState_Request"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 3,
+        "kinds": 5,
+        "nested_depth": 2
+      },
+      "reason": "unbounded member: current_state.label (string)",
+      "state": "unbounded",
+      "type_name": "lifecycle_msgs/srv/GetState_Response"
+    }
+  ]
+}
