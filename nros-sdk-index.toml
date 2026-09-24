@@ -227,11 +227,16 @@ install = "make -j$(nproc) && make install"
 # it declares what the dist needs to FUNCTION, and a debugger needs none of
 # those. Declaring the OpenSSL pair would be actively harmful — they are
 # unobtainable on jammy, so D1's backward half would refuse the whole toolchain
-# over two unimportable Python modules. Consequence worth knowing:
-# `check-dist-runtime-deps` derives that closure from a PROVISIONED dist, so on
-# an arm64 host that has installed this toolchain it will report those sonames
-# as undeclared. That predates -nros5 (nros4 shipped the same modules and two
-# MORE undeclared sonames) and is a gate-reach question, not a dist defect.
+# over two unimportable Python modules.
+#
+# `check-dist-runtime-deps` used to disagree, and that was the GATE's reach
+# rather than this declaration (issue 1452, FIXED): it derived the closure from
+# every ELF in the tree, so on an arm64 host with this toolchain provisioned it
+# reported those twelve as undeclared and turned `just doctor` red. It now walks
+# the DT_NEEDED chain from the dist's PROGRAMS, which reaches the bundled
+# libpython and not its `lib-dynload/` plug-ins, and prints an out-of-scope NOTE
+# for any of them rather than a finding. Nothing here had to change, which is
+# the outcome that says the declaration was right.
 #
 # x86_64 and macos-arm64 were re-cut with it because `build-tool.yml` publishes
 # one tag across the matrix, NOT because either needed the fix: none of the

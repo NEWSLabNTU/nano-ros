@@ -747,6 +747,25 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   for the failure TEXT: index tuples are not a diagnosis — the orphan message
   used to be `[(1, 2, 1, true)]` and cost a hand-decode against three tables;
   name the cell to write and the row that wants it.
+- **0196 runs the OTHER way too: a reach WIDER than the rule is a false report,
+  and the fix is to derive the subject — never to widen the declaration** (issue
+  1452). `check-dist-runtime-deps` asked "what must be present for this tool to
+  RUN" and measured "what does any `.so` in its tree name", which agreed until a
+  dist bundled a CPython: on arm64 its `lib-dynload/` plug-ins made `just doctor`
+  RED over 12 sonames, and declaring two of them (`libssl.so.1.1`, unobtainable
+  on jammy) would have made RFC-0099 D1 REFUSE the whole cross toolchain. Scope
+  is now the `DT_NEEDED` closure of the dist's PROGRAMS — **not** its index
+  `front`/`smoke` rows: those name a release job's smoke command (2 of ~40
+  binaries), and rooting a gate in a hand-authored field re-creates one level up
+  the "only as complete as whoever wrote it" problem it exists to answer. Two
+  things measured, both against the reading: openocd's `libftdi.so.1` is a
+  program `DT_NEEDED`, not a dlopen, so narrowing keeps the catch this gate
+  earned its keep on; and `ldd` cannot be trusted for the transitivity — on
+  `xrce-agent` it stops at `... => not found` and loses two REAL OpenSSL needs
+  three links down. What it now misses is written down: a required dlopen'd
+  plug-in's deps (`liblto_plugin.so` is one of 88 such objects in the store),
+  reported as a NOTE rather than silently, with `--include-unreached` restoring
+  the old measurement.
 - **Rust edition 2024:** `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in
   `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
 - **No POSIX-style Rust ctor sections on Zephyr/native_sim/RTOS** — backend registration is an
