@@ -9,9 +9,13 @@
 //!
 //! Two decisions are worth stating, because neither is obvious:
 //!
-//! * **Availability is MEASURED, not tabulated.** `python3-catkin-pkg` and
-//!   `python3-colcon-common-extensions` come only from packages.ros.org/ros2;
-//!   `python3-empy`/`lark`/`tomli`/`yaml` come from plain Ubuntu. Those are
+//! * **Availability is MEASURED, not tabulated.** `python3-colcon-common-
+//!   extensions` comes only from packages.ros.org/ros2;
+//!   `python3-empy`/`lark`/`tomli`/`yaml` come from plain Ubuntu; and
+//!   `python3-catkin-pkg` comes from BOTH, at different versions — `0.4.24-2`
+//!   in plain jammy universe, `1.1.0-101` with the ROS repo (issue 1482
+//!   measured both; this comment used to call it ROS-repo only, which is the
+//!   kind of thing a table gets wrong and a measurement does not). Those are
 //!   different fallback stories, and a table saying which would have to know
 //!   whether the host configured the ROS repo — which only the host knows. So
 //!   the resolver asks `apt-cache policy` (read-only) and falls to pip with the
