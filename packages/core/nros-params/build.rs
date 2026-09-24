@@ -156,6 +156,15 @@ fn main() {
     let contents = format!(
         "/// Maximum number of parameters the server can store \
          (set via NROS_MAX_PARAMETERS, default 32).\n\
+         ///\n\
+         /// IMAGE-WIDE, not per node. `ParameterStorage` is ONE flat\n\
+         /// `[Option<ParameterEntry>; N]` for the whole image and each entry\n\
+         /// carries its own node, so this bounds every node's parameters\n\
+         /// TAKEN TOGETHER -- `ParameterServer::is_full` is documented\n\
+         /// \"across every node\" for the same reason. The number a contract\n\
+         /// derives is therefore a SUM over the image's nodes, and `max` here\n\
+         /// names a CAPACITY (the most the store can hold), never a maximum\n\
+         /// taken over nodes. Reading it the other way is issue 1450.\n\
          pub const MAX_PARAMETERS: usize = {max_parameters};\n\
          \n\
          /// Maximum length for parameter names \
