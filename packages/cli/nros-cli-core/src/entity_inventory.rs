@@ -628,10 +628,19 @@ impl EntityDecl {
 
 /// What one component said about its entities.
 ///
-/// Three-valued for the reason [`rosidl_codegen::bounds::BoundState`] is:
-/// "it creates none" and "it did not say" license completely different actions,
-/// and collapsing them is exactly the under-report this module exists to make
-/// impossible.
+/// FOUR-valued for the reason [`rosidl_codegen::bounds::BoundState`] is
+/// three-valued: "it creates none", "it did not say", and "this image does not
+/// run it" license completely different actions, and collapsing them is exactly
+/// the under-report this module exists to make impossible.
+///
+/// Issue 1402 added the fourth. `Absent` used to carry two meanings — nobody
+/// declared this component, AND this image's launch tree does not instantiate
+/// it — and [`EntityInventory::derive`] refuses on `Absent`, so a component the
+/// image never runs voided the sizing for every component it does. Measured on
+/// `examples/workspaces/cpp`: 4 of 6 components scored `Absent` purely because
+/// `[image.threadx]` names no `launch` and falls back to `system.launch.xml`,
+/// whose tree holds two of the six. The other four are registered, compile in,
+/// and are started by nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Declaration {
     /// `ENTITIES <spec>...` -- the component named what it creates.
@@ -640,6 +649,23 @@ pub enum Declaration {
     None,
     /// The register call carried no `ENTITIES` at all.
     Absent,
+    /// Registered in this image, and absent from the LAUNCH TREE the model
+    /// describes -- so nothing starts it and it creates no entities at runtime.
+    ///
+    /// Only [`EntityInventory::merged_per_kind_max`] produces this, and it runs
+    /// ONLY when a model with wiring exists (`cmd::entity_inventory` calls it
+    /// under `if let Some(model_inv)`). An image with no launch file reaches no
+    /// model, never reaches the merge, and keeps `Absent` — so the refusal
+    /// still fires there, which is the case that makes this safe.
+    ///
+    /// THE ASSUMPTION, stated because it is what this variant rests on: a
+    /// component absent from the model of an image that HAS a model is not
+    /// started. Searched for a manual start path in `nros-node` and the C++
+    /// component header and found none; the refusal text's own wording is "the
+    /// launch file that runs it". If such a path exists, this variant would let
+    /// a running component's entities go uncounted, which is why every one of
+    /// these is NAMED in the derivation's status line rather than passed over.
+    NotLaunched,
 }
 
 impl Declaration {
@@ -648,6 +674,7 @@ impl Declaration {
             Declaration::Stated(_) => "stated",
             Declaration::None => "none",
             Declaration::Absent => "absent",
+            Declaration::NotLaunched => "not-launched",
         }
     }
 
@@ -657,7 +684,7 @@ impl Declaration {
     pub fn entities(&self) -> &[EntityDecl] {
         match self {
             Declaration::Stated(v) => v,
-            Declaration::None | Declaration::Absent => &[],
+            Declaration::None | Declaration::Absent | Declaration::NotLaunched => &[],
         }
     }
 }
@@ -2222,7 +2249,27 @@ impl EntityInventory {
 
         for decl_row in &self.components {
             let Some(model_row) = model_rows.get(decl_row.component.as_str()) else {
-                out.insert(decl_row.clone());
+                // Issue 1402 -- no model row means this image's LAUNCH TREE does
+                // not instantiate the component. It is registered (it is in
+                // `nros-metadata.json`, so it compiles in), but nothing starts
+                // it, so it creates no entities and cannot make MAX_CBS short.
+                //
+                // Only `Absent` is reclassified. A component that STATED its
+                // entities keeps that statement even when this image does not
+                // run it -- the statement is a property of the component, not
+                // of the image, and `derive` takes the max over what it finds.
+                // Reclassifying a `Stated` row would silently drop a real
+                // declaration, which is the opposite defect.
+                //
+                // Safe here and nowhere else: this function runs ONLY under
+                // `if let Some(model_inv)`, so a model with wiring exists. An
+                // image with no launch file never reaches this code and keeps
+                // `Absent`, which still refuses.
+                let mut row = decl_row.clone();
+                if matches!(row.declaration, Declaration::Absent) {
+                    row.declaration = Declaration::NotLaunched;
+                }
+                out.insert(row);
                 continue;
             };
             seen.push(decl_row.component.as_str());
@@ -2338,6 +2385,11 @@ impl EntityInventory {
             };
         }
 
+        // Issue 1402 -- `NotLaunched` is deliberately NOT in this filter. It is
+        // the half of the old `Absent` that says "this image does not run it",
+        // and refusing on it voided the sizing of every component the image DOES
+        // run. `Absent` keeps its other half -- registered, launched, and
+        // nobody said what it creates -- which is a real gap and still refuses.
         let undeclared: Vec<&ComponentEntities> = self
             .components()
             .into_iter()
@@ -3538,6 +3590,25 @@ impl EntityInventory {
             "set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT {})\n",
             self.components.len()
         ));
+        // Issue 1402 -- the components this image REGISTERS but does not LAUNCH,
+        // named rather than counted. They no longer refuse the derivation, and a
+        // number alone would make that invisible: the reader needs to be able to
+        // check that each one really is something this image does not start,
+        // because that is the assumption `Declaration::NotLaunched` rests on.
+        // Empty for the images where the question does not arise, which is every
+        // image whose launch tree covers its registrations.
+        let not_launched: Vec<&str> = self
+            .components()
+            .into_iter()
+            .filter(|c| matches!(c.declaration, Declaration::NotLaunched))
+            .map(|c| c.component.as_str())
+            .collect();
+        if !not_launched.is_empty() {
+            s.push_str(&format!(
+                "set(NROS_ENTITY_INVENTORY_NOT_LAUNCHED \"{}\")\n",
+                cmake_escape(&not_launched.join(";"))
+            ));
+        }
         match &derivation {
             Derivation::Refused { reason } => {
                 s.push_str(&format!(
@@ -7047,6 +7118,113 @@ contracts:
         assert_eq!(merged.len(), 1);
         let d = merged.derive();
         assert_eq!(d.knobs().expect("knobs").max_cbs, 1);
+    }
+
+    /// Issue 1402 -- a component the image REGISTERS but never LAUNCHES stops
+    /// voiding the derivation, and is named instead of refused.
+    ///
+    /// The measured shape: `examples/workspaces/cpp` registers six components
+    /// and `[image.threadx]` names no `launch`, so it falls back to a tree
+    /// holding two. Before this, the four the image does not start scored
+    /// `Absent` and refused the sizing for the two it does.
+    #[test]
+    fn a_registered_component_the_image_never_launches_does_not_refuse_it() {
+        let mut decl = EntityInventory::new("metadata");
+        decl.insert(ComponentEntities {
+            pkg: "p".into(),
+            component: "launched".into(),
+            class: "L".into(),
+            declaration: Declaration::Stated(vec![EntityDecl::bare(EntityKind::Timer, None, None)]),
+        });
+        decl.insert(ComponentEntities {
+            pkg: "p".into(),
+            component: "never_started".into(),
+            class: "N".into(),
+            declaration: Declaration::Absent,
+        });
+
+        // A model with wiring that names only the launched one.
+        let mut model = EntityInventory::new("model");
+        model.insert(ComponentEntities {
+            pkg: "p".into(),
+            component: "launched".into(),
+            class: "L".into(),
+            declaration: Declaration::Stated(vec![EntityDecl::bare(EntityKind::Timer, None, None)]),
+        });
+
+        let merged = decl.merged_per_kind_max(&model);
+        let row = merged
+            .components()
+            .into_iter()
+            .find(|c| c.component == "never_started")
+            .expect("the row is kept, not dropped");
+        assert_eq!(
+            row.declaration,
+            Declaration::NotLaunched,
+            "absent + no model row = this image does not run it"
+        );
+
+        let d = merged.derive();
+        assert_eq!(
+            d.knobs()
+                .expect("derives over the launched component")
+                .max_cbs,
+            1,
+            "the component the image DOES run is sized; the other claims no slot"
+        );
+
+        // NAMED, not silently skipped -- the assumption is visible to a reader.
+        let frag = merged.to_cmake();
+        assert!(
+            frag.contains("NROS_ENTITY_INVENTORY_NOT_LAUNCHED") && frag.contains("never_started"),
+            "the not-launched component must be named in the fragment: {frag}"
+        );
+    }
+
+    /// The control that makes the variant safe: an image with NO launch file
+    /// never reaches the merge, so its undeclared components keep `Absent` and
+    /// the refusal still fires.
+    ///
+    /// Without this, issue 1402's fix would turn every standalone image's
+    /// missing declaration into "not launched" and derive a slot count of zero
+    /// -- the exact boot failure the refusal exists to prevent.
+    #[test]
+    fn an_image_with_no_model_still_refuses_an_undeclared_component() {
+        let mut decl = EntityInventory::new("metadata");
+        decl.insert(ComponentEntities {
+            pkg: "p".into(),
+            component: "undeclared".into(),
+            class: "U".into(),
+            declaration: Declaration::Absent,
+        });
+        // No merge: `cmd::entity_inventory` only calls it under
+        // `if let Some(model_inv)`, and a standalone image has no model.
+        let d = decl.derive();
+        assert_eq!(
+            d.tag(),
+            "refused",
+            "an undeclared, launched component still refuses"
+        );
+    }
+
+    /// A component that STATED its entities keeps the statement even when this
+    /// image does not run it. The statement is a property of the component, not
+    /// of the image; reclassifying it would drop a real declaration.
+    #[test]
+    fn a_stated_component_absent_from_the_model_keeps_its_statement() {
+        let mut decl = EntityInventory::new("metadata");
+        decl.insert(ComponentEntities {
+            pkg: "p".into(),
+            component: "stated_elsewhere".into(),
+            class: "S".into(),
+            declaration: Declaration::Stated(vec![EntityDecl::bare(EntityKind::Timer, None, None)]),
+        });
+        let merged = decl.merged_per_kind_max(&EntityInventory::new("model"));
+        let row = merged.components().into_iter().next().expect("kept");
+        assert!(
+            matches!(row.declaration, Declaration::Stated(_)),
+            "a Stated row is never reclassified as NotLaunched"
+        );
     }
 
     /// A model that describes NO wiring must abstain, never report zero.
