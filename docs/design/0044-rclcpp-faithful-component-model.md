@@ -97,6 +97,15 @@ NROS_COMPONENT(Controller);   // factory + sizeof + metadata (class/header)
 
 - The ctor receives the **executor-bound node handle** (not a default-constructed
   shell) — the entry constructs it *after* `nros::init`, in arena storage.
+- **AMENDED 2026-09-24 (issue 1456):** the handle also carries the node's
+  **launch-declared identity**, and `Node(NodeHandle, name, ns)` prefers it over
+  the literal written above. It has to: this shape constructs its own node, so
+  the handle is the only thing the entry can hand it, and without that a launch
+  file's `name=` / `namespace=` reached nothing — the component named itself and
+  its relative topics resolved at the root. Precedence (launch > the class's
+  literal > the default), why it is upstream's order, and what an undeclared
+  half does → RFC-0089 §"Settled: the LAUNCH FILE is authoritative over a
+  component's own name and namespace". The ctor signature above is unchanged.
 - `create_*` are **members** (the node IS its own context); they bind **typed
   member callbacks** by member-fn-pointer (the no-alloc trampoline RFC-0043's
   `bind_*` already proves, lifted to the typed path) — no string names, no raw

@@ -4,7 +4,7 @@ title: "An `rclcpp`-shape component gets NEITHER the launch name nor the launch
   namespace — the generated entry hands it only an executor handle, so the
   component names itself and the launch file's identity reaches nothing"
 status: resolved
-resolved_in: "RFC-0089 §Settled 2026-09-24 (this branch)"
+resolved_in: "RFC-0089 §Settled 2026-09-24; RFC-0044 §1 amendment"
 type: bug
 area: codegen, api
 related: [rfc-0043, rfc-0089, 1172, 1434, 1443, 1473]
