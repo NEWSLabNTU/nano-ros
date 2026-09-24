@@ -121,7 +121,11 @@ VENDORED = {"zenoh_pico"}
 PER_PLATFORM_TREES = {
     "arduino": "no nano-ros platform selects it",
     "emscripten": "no nano-ros platform selects it",
-    "espidf": "nros-platform-esp-idf, via its own build",
+    # phase-468 W2 — the ESP-IDF port is retired, so nothing selects this
+    # tree any more. It joins the six trees below rather than being deleted:
+    # the manifest's job is to account for EVERY `src/system/<platform>/`
+    # directory the vendored tree ships, claimed or not.
+    "espidf": "no nano-ros platform selects it",
     "flipper": "no nano-ros platform selects it",
     "freertos": "packages/platform/nros-platform-freertos/nros-platform.toml extra_sources",
     "mbed": "no nano-ros platform selects it",

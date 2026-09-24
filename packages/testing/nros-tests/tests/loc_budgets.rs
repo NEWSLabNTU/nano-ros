@@ -37,7 +37,6 @@
 //! | ThreadX    | SKIPPED — phase-432 W2.6 removed the per-RTOS entry     |
 //! |            | template; the entry TU comes from the shared pack, so   |
 //! |            | ThreadX ships no adapter shim of its own (see `SHIMS`). |
-//! | ESP-IDF    | `integrations/nano-ros/CMakeLists.txt` (esp-idf component) |
 //! | PlatformIO | `integrations/platformio/nros_codegen.py` (extra_script) |
 //! | PX4        | `integrations/px4/module-template/` (dir sum)          |
 //! | FreeRTOS   | SKIPPED — H.3 makes the cargo path itself the adapter; |
@@ -56,7 +55,7 @@ const BUDGET_WORKSPACE_METADATA: u64 = 150;
 const BUDGET_ADAPTER_SHIM: u64 = 200;
 
 /// Adapter shim entries: `(label, repo-relative path)`. A path may name
-/// a single file (Zephyr / ThreadX / ESP-IDF / PlatformIO) or a
+/// a single file (Zephyr / ThreadX / PlatformIO) or a
 /// directory (NuttX / PX4) — in the directory case we sum the `code`
 /// counts across all languages tokei recognises inside it.
 const SHIMS: &[(&str, &str)] = &[
@@ -82,7 +81,10 @@ const SHIMS: &[(&str, &str)] = &[
     // row's analog is `integrations/nuttx`, an integration directory ThreadX
     // does not have. Repointing would swap a missing-path red for a
     // budget-violation red while measuring a different thing.
-    ("esp-idf", "integrations/nano-ros/CMakeLists.txt"),
+    // The ESP-IDF row is GONE, not repointed: phase-468 W2 retired the port
+    // and `integrations/nano-ros/` with it, so there is no shim left to
+    // measure. A row naming a deleted file measures nothing while reading as
+    // coverage -- the shape the ThreadX note above refuses for its own reason.
     ("platformio", "integrations/platformio/nros_codegen.py"),
     ("px4", "integrations/px4/module-template"),
 ];

@@ -184,7 +184,8 @@ SYSTEM_DIR_PLATFORMS = {
     "arduino": set(),
     "bare-metal": {"bare-metal"},
     "emscripten": set(),
-    "espidf": {"esp-idf"},
+    # phase-468 W2 — the ESP-IDF port is retired; no platform claims this tree.
+    "espidf": set(),
     "flipper": set(),
     "freertos": {"freertos", "freertos-lwip"},
     "mbed": set(),

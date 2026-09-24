@@ -6,7 +6,7 @@
 # `nros` (the umbrella) and `nros-node` (the runtime) must reach the platform
 # only through the generic ABI — `nros-platform-api` / `nros-platform-cffi` —
 # never through a Cargo dependency, a `dep:` directive or `?/` forwarding on a
-# concrete `nros-platform-{posix,freertos,nuttx,threadx,zephyr,esp-idf,posix-c}`.
+# concrete `nros-platform-{posix,freertos,nuttx,threadx,zephyr,posix-c}`.
 # Choosing the platform is the outer build system's job (the board crate and the
 # generated selection facade); a concrete platform in these two graphs means a
 # consumer picking a board also picks these crates' idea of one.
@@ -35,7 +35,7 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-PLATFORMS='posix|freertos|nuttx|threadx|zephyr|esp-idf|posix-c'
+PLATFORMS='posix|freertos|nuttx|threadx|zephyr|posix-c'
 # A dependency line, a `dep:` feature directive, or `?/` forwarding — any Cargo
 # knowledge of a concrete platform crate.
 DEP_LINE_RE="^nros-platform-($PLATFORMS)[[:space:]]*="

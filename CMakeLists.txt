@@ -40,7 +40,7 @@ set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS ${_nros_rmw_choices})
 set(NANO_ROS_PLATFORM "posix" CACHE STRING
     "Target platform (canonical: posix/freertos/nuttx/threadx; legacy: freertos_armcm3, nuttx_armv7a, threadx_linux, threadx_riscv64)")
 set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS
-    posix freertos nuttx threadx esp_idf
+    posix freertos nuttx threadx
     freertos_armcm3 nuttx_armv7a threadx_linux threadx_riscv64)
 # phase-405 W3 — the default and the valid list come from the one module that
 # is allowed to spell an edition, so adding an edition is one edit.
@@ -157,7 +157,7 @@ if(NOT EXISTS "${_nros_platform_module}")
     message(FATAL_ERROR
         "Unknown NANO_ROS_PLATFORM: '${NANO_ROS_PLATFORM}' "
         "(no module at cmake/platform/nano-ros-${_nros_platform_module_name}.cmake). "
-        "Supported: posix, zephyr, freertos, nuttx, threadx, baremetal, esp_idf "
+        "Supported: posix, zephyr, freertos, nuttx, threadx, baremetal "
         "(plus legacy freertos_armcm3 / nuttx_armv7a / threadx_linux / threadx_riscv64).")
 endif()
 include("${_nros_platform_module}")
@@ -219,8 +219,7 @@ if(NOT TARGET NanoRos)
     if(NANO_ROS_PLATFORM STREQUAL "posix")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_POSIX)
     elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
-           OR NANO_ROS_PLATFORM STREQUAL "freertos"
-           OR NANO_ROS_PLATFORM STREQUAL "esp_idf")
+           OR NANO_ROS_PLATFORM STREQUAL "freertos")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_FREERTOS)
     elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
            OR NANO_ROS_PLATFORM STREQUAL "nuttx")
