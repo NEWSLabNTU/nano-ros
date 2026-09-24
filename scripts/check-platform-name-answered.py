@@ -73,22 +73,50 @@ except ModuleNotFoundError:  # py<3.11
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLATFORM_DIR = os.path.join(ROOT, "packages", "platform")
+# The loader searches TWO roots, and this gate used to scan one.
+#
+# `PlatformsTree::default_search_path` is `$NROS_PLATFORMS_DIR` (if set), then
+# `packages/platform`, then `config` — so `config/bare-metal/nros-platform.toml`
+# (`names = ["bare-metal"]`, since phase-349 W1) answers that name at runtime.
+# Reading only the first root made this gate report it UNANSWERED, and the
+# repair was to write it into `BASELINE_UNANSWERED` rather than to widen the
+# reach (issue 1486).
+#
+# The second-order effect is worse than the false entry. `stale_baseline()`
+# compares the baseline against `declared`, and `declared` came from the same
+# narrow root — so the ratchet could never observe `bare-metal` becoming
+# answered, and the one mechanism meant to retire a baseline row could not fire
+# for the row that was wrong. A ratchet computed from the same partial view it
+# is ratcheting is not a ratchet.
+#
+# `$NROS_PLATFORMS_DIR` is deliberately NOT read here: it is a per-invocation
+# override, and a gate that answered differently depending on the caller's
+# environment would be reporting a property of the shell rather than of the
+# tree.
+CONFIG_DIR = os.path.join(ROOT, "config")
+SEARCH_ROOTS = (PLATFORM_DIR, CONFIG_DIR)
 BOARDS_DIR = os.path.join(ROOT, "packages", "boards")
 
 
-def declared_names(platform_dir=PLATFORM_DIR):
-    """Every name any descriptor answers to -> the file that declares it."""
+def declared_names(search_roots=SEARCH_ROOTS):
+    """Every name any descriptor answers to -> the file that declares it.
+
+    Over the loader's whole search path, not just its first root. An earlier
+    root wins on a duplicate, matching `PlatformsTree`: "first root defining a
+    name wins".
+    """
     out = {}
-    if not os.path.isdir(platform_dir):
-        return out
-    for entry in sorted(os.listdir(platform_dir)):
-        path = os.path.join(platform_dir, entry, "nros-platform.toml")
-        if not os.path.isfile(path):
+    for root in search_roots:
+        if not os.path.isdir(root):
             continue
-        with open(path, "rb") as fh:
-            doc = tomllib.load(fh)
-        for name in doc.get("names", []):
-            out[name] = os.path.relpath(path, ROOT)
+        for entry in sorted(os.listdir(root)):
+            path = os.path.join(root, entry, "nros-platform.toml")
+            if not os.path.isfile(path):
+                continue
+            with open(path, "rb") as fh:
+                doc = tomllib.load(fh)
+            for name in doc.get("names", []):
+                out.setdefault(name, os.path.relpath(path, ROOT))
     return out
 
 
@@ -164,7 +192,9 @@ NOT_A_DESCRIPTOR_NAME = frozenset()
 # spelling, so even its one real entry named a string this population never
 # produces.
 BASELINE_UNANSWERED = {
-    "bare-metal",
+    # `bare-metal` LEFT this set (issue 1486): it has been answered by
+    # `config/bare-metal/nros-platform.toml` since phase-349 W1, and only the
+    # gate's one-root reach said otherwise.
     "esp32",
 }
 
@@ -241,7 +271,8 @@ def main():
         for name in bad:
             where = ", ".join(used_map.get(name, []))
             print(f"  {name!r} is declared by {where or 'a board'}, and no "
-                  f"packages/platform/*/nros-platform.toml lists it in `names`.", file=sys.stderr)
+                  f"packages/platform/*/ or config/*/nros-platform.toml lists it in `names`.",
+                  file=sys.stderr)
         print("\n  An unanswered name is NOT fatal at build time — it warns and falls", file=sys.stderr)
         print("  through to the BUILTIN knob defaults, which are not that platform's", file=sys.stderr)
         print("  numbers. That is how `threadx-linux` stopped compiling (issue 1145).", file=sys.stderr)
