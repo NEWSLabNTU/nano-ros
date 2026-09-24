@@ -4,10 +4,11 @@ title: "All 22 nightly `zephyr` jobs die in `setup`, not in Zephyr provisioning:
   container has no `unzip`, so `nros setup --tool clang-format` cannot unpack its
   prebuilt — and the step NAME says `Set up Zephyr … workspace`, which is how this got
   read as issue 1158 for days"
-status: open
+status: resolved
 type: bug
 area: ci, tooling
 severity: high
+resolved: 2026-09-24
 found: 2026-09-13
 related: [1158, 0368, 1353]
 ---
@@ -129,3 +130,36 @@ on a push to `main` touching these paths, and the tag consumers pin moved to
 has run. Acceptance is unchanged and still remote: the `zephyr 3.7 / rust/talker`
 nightly job reaching a Zephyr build, and the RTOS jobs downstream of it running at
 all. Close this when a scheduled run shows that, not when the merge lands.
+
+## RESOLVED 2026-09-24 — acceptance met, measured on two scheduled runs
+
+Both clauses of the acceptance above are satisfied by the first nightly runs
+after the image republished (`images.yml` run 35843238854, 2026-09-23 09:29Z,
+which fired on the merge push and needed no dispatch).
+
+**Clause 1 — `zephyr 3.7 / rust/talker` reaching a Zephyr build.** Nightly run
+**35958890602** (05:12Z): `zephyr 3.7 / rust/talker` **success**, and so is
+`zephyr 4.4 / rust/talker`. Across that run, **22 of 23 zephyr jobs pass** and
+**zero** fail in `Set up Zephyr 3.7/4.4 workspace` — the step that killed all of
+them for twelve days. The single failure is `zephyr copy-out check (4.4)` at
+`Copy-out build check`, which is a verdict about the code rather than about the
+lane, and is what this issue existed to make possible.
+
+**Clause 2 — the downstream jobs running at all.** Nightly run **35968523188**
+(07:14Z, the `0 7 * * *` cron that gates them): `installed-probe` **success**,
+`bootstrap-probe` **runs and fails at its own `Run bootstrap probe` step**. Both
+were unreachable before. Note for anyone re-checking: their `skipped` status in
+the 05:12 run is correct and not a symptom — they are gated on the 07:00
+schedule.
+
+**What fixed it** (PR #1211, phase-466 W1): `unzip` was absent from the Zephyr
+image, so `setup-clang-format` failed and took `_setup-common` with it. The fix
+is not the package — it is one shared `ci/docker/apt-packages.txt` both
+Dockerfiles COPY, so the drift that caused this is unrepresentable rather than
+merely detected, plus moving the clang-format assertion out of the provisioning
+path into `check-tier-preconditions`, where a caller has said it is about to run
+a tier.
+
+The lane is still RED overall, and that is the point worth recording: 22 jobs
+went from dead to passing underneath an unchanged red. Read the failing step,
+never the colour.
