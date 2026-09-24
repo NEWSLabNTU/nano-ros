@@ -193,7 +193,10 @@ The core pre-generated set violated this: `builtin_interfaces` existed three
 times with byte-identical sources, one per output tree
 (`packages/interfaces/{rcl-interfaces,diagnostic-msgs,rosgraph-msgs}/generated/humble/`),
 distinguished only by `--rename` suffixes (`-diag`, `-clock`) whose whole job was
-to stop three copies colliding in one workspace.
+to stop three copies colliding in one workspace. **LANDED 2026-09-25**
+(phase-465): the set is one driver package, one tree at
+`packages/interfaces/generated/humble/` and six crates, regenerated in place by
+`just generate-interfaces`.
 
 **The fix is not a shared canonical crate — it is one output tree.** Codegen
 emits the whole transitive closure of a driver `package.xml` into one directory
@@ -245,7 +248,25 @@ that needs the *same* ament package at a *different* capacity is the legitimate
 duplicate D5 allows — and then the suffix names the profile, not the neighbouring
 tree.
 
-Implementation: phase-465. Not a prerequisite for D4.
+Implementation: phase-465, **landed 2026-09-25**, closing issue 1428. Not a
+prerequisite for D4, and D4 landed first (2026-09-24). Two things the execution
+measured that the design above could not:
+
+- **The acceptance is in-place idempotence, and it forces the codegen vintage.**
+  `just generate-interfaces` twice in a row leaves the worktree clean. A tree
+  pinned to an older emitted vintage cannot have that property, so "collapse but
+  keep the current bytes" is not an available option — the regeneration is part
+  of the collapse, not an optional extra. It cost `NROS_EMITTED_CODEGEN_VERSION`
+  2 -> 7, a bounds channel for the four crates that had none, and a mojibake fix
+  in three `nros-diagnostic-msgs` sources; 4 of 60 sources differed for any other
+  reason.
+- **The shrink-only baseline is what proves a collapse happened.** With the tree
+  collapsed, `check-message-crate-identity` failed with all six baselined
+  duplicate claims reported STALE. A tree that had only *looked* collapsed would
+  have left rows behind, so emptying `.config/duplicate-wire-type-baseline.txt`
+  is a measurement rather than an assertion. Rule 5 was added with it: a shipped
+  generated crate must be `nros-`prefixed, because `geometry_msgs` arrives in
+  this closure unrenamed and only one `rm -rf` line in the recipe keeps it out.
 
 ## Consequences / migration shape
 

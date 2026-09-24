@@ -4343,7 +4343,7 @@ generate-interfaces:
     cd ../..
     # Per crate, never `--all`: formatting the whole tree re-stales every
     # prebuilt fixture (CLAUDE.md, the mtime treadmill).
-    cargo +nightly fmt \
+    cargo +{{NIGHTLY}} fmt \
         -p nros-builtin-interfaces -p nros-std-msgs -p nros-rcl-interfaces \
         -p nros-diagnostic-msgs -p nros-rosgraph-msgs -p nros-lifecycle-msgs
     echo "✓ packages/interfaces regenerated (6 crates, one tree)"

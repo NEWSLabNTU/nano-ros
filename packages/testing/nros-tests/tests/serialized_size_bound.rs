@@ -298,10 +298,7 @@ fn serialized_size_equals_what_the_writer_produces() {
         // the case `max_serialized_size` answers None for and W3 exists to
         // serve.
         assert_eq!(
-            max_serialized_size(
-                <nros_std_msgs::msg::Header as Message>::FIELDS,
-                version
-            ),
+            max_serialized_size(<nros_std_msgs::msg::Header as Message>::FIELDS, version),
             None,
             "Header must be unbounded, or this test is not covering the W3 case"
         );
