@@ -38,7 +38,15 @@
 #         untouched. Deleting the citation would delete the reason W0 is first.
 #         REMOVE THIS ROW when #1123 merges.
 #
+#   1483  IN FLIGHT — filed on PR #1263 (`runner-image-carries-python-layer`).
+#         It states the debt that issue 1484's gate and index fields are the
+#         first half of, and the citations are the cross-link the maintainer
+#         asked for rather than a duplicate filing. REMOVE THESE ROWS when
+#         #1263 merges.
+#
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
+just/check/workflows.just:1483
+scripts/check-python-entry-provenance.py:1483
