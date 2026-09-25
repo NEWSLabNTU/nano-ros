@@ -2613,11 +2613,17 @@ unsafe fn granted_qos_of<E>(
 
 impl Session for CffiSession {
     /// The backend is chosen at run time here, so the trait's compile-time
-    /// default would be a guess. Ask the vtable, and fall back to the constant
-    /// only for a backend that installed no body — which reads as "this backend
-    /// has not said", not as "cdr".
-    fn serialization_format(&self) -> &'static str {
-        CffiSession::serialization_format(self).unwrap_or(Self::SERIALIZATION_FORMAT)
+    /// default would be a guess. Ask the vtable, and answer `None` when the
+    /// slot is NULL: a backend that installed no body has not said what it
+    /// speaks, which is the contract `rmw_vtable.h` states for the slot.
+    ///
+    /// A forwarder onto the inherent
+    /// [`CffiSession::serialization_format`](CffiSession::serialization_format),
+    /// which has always read the slot that way. Until phase-467 Q2 this impl
+    /// `unwrap_or`-ed the trait constant instead, so the one session that
+    /// cannot know its format at compile time was the one that guessed.
+    fn serialization_format(&self) -> Option<&'static str> {
+        CffiSession::serialization_format(self)
     }
 
     /// phase-461 W2 / issue 1352 -- this session FORWARDS over a C vtable,

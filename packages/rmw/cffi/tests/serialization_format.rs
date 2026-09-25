@@ -20,12 +20,12 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use nros_rmw::{RmwConfig, SessionMode};
+use nros_rmw::{RmwConfig, Session, SessionMode};
 use nros_rmw_cffi::{
-    CffiRmw, EMPTY_VTABLE, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
-    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher,
-    NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSessionOptions,
-    NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
+    CffiRmw, CffiSession, EMPTY_VTABLE, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK,
+    NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode,
+    NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession,
+    NrosRmwSessionOptions, NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
 };
 
 static OPEN_CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -251,6 +251,19 @@ fn two_sessions_report_their_own_backends_formats() {
         "both sessions reported the same format, so the answer is not coming \
          from the session's own vtable (RFC-0088 D4)",
     );
+
+    // The same question down the TRAIT, which is the user-reachable spelling
+    // (`nros::Session`, re-exported from the facade). Named explicitly because
+    // an inherent method shadows a trait method of the same name, so the two
+    // calls above prove nothing about this one.
+    assert_eq!(
+        <CffiSession as Session>::serialization_format(&session_cdr),
+        Some("cdr"),
+    );
+    assert_eq!(
+        <CffiSession as Session>::serialization_format(&session_uorb),
+        Some("uorb"),
+    );
 }
 
 #[test]
@@ -269,6 +282,18 @@ fn a_backend_that_declares_nothing_answers_none_not_cdr() {
     // in its doc comment with no code behind it (corrected phase-393 W2).
     assert_eq!(session.serialization_format(), None);
     assert!(session.serialization_format_cstr().is_null());
+
+    // phase-467 Q2 — AND down the trait, which is where this WAS wrong. The
+    // impl read `CffiSession::serialization_format(self).unwrap_or(Self::
+    // SERIALIZATION_FORMAT)`, so the honest inherent method above answered
+    // `None` while the user-reachable trait method four hundred lines later
+    // answered `"cdr"` for the same session. The two assertions must not be
+    // collapsed into one: the whole defect was that they disagreed.
+    assert_eq!(
+        <CffiSession as Session>::serialization_format(&session),
+        None,
+        "the trait method guessed a format for a backend that declared none",
+    );
 }
 
 #[test]

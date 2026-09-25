@@ -1630,12 +1630,22 @@ pub trait Session {
     /// because one process links one middleware; an `Executor::open_multi`
     /// image links two, so the answer must be asked of the session.
     ///
-    /// The default answers from [`Self::SERIALIZATION_FORMAT`], which is right
-    /// for any backend whose format is a compile-time fact. A session that
-    /// dispatches to a backend chosen at run time — the C-ABI adapter, whose
-    /// vtable carries the answer — overrides this to ask the backend.
-    fn serialization_format(&self) -> &'static str {
-        Self::SERIALIZATION_FORMAT
+    /// **`None` means the backend has NOT SAID**, and that is not a synonym
+    /// for `"cdr"`. The seam's contract is stated once, for the
+    /// `get_serialization_format` slot in
+    /// `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h`: "NULL slot: the
+    /// runtime answers NULL — it does NOT guess `cdr`." This method is the
+    /// Rust face of that slot and carries the same absence. A `&'static str`
+    /// could not: the only value it had to hand back was the literal `"cdr"`,
+    /// indistinguishable at every call site from a backend that declared CDR.
+    ///
+    /// The default answers `Some(Self::SERIALIZATION_FORMAT)`, which is right
+    /// for any backend whose format is a compile-time fact — it HAS said, in
+    /// the const. A session that dispatches to a backend chosen at run time —
+    /// the C-ABI adapter, whose vtable carries the answer — overrides this to
+    /// ask the backend, and hands on the `None` a NULL slot gives it.
+    fn serialization_format(&self) -> Option<&'static str> {
+        Some(Self::SERIALIZATION_FORMAT)
     }
 
     /// Error type for this session
