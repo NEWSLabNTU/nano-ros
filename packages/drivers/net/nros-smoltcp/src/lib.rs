@@ -20,6 +20,9 @@
 
 pub mod bridge;
 mod config;
+// phase-436 B2 — the executor's first real deadline source: smoltcp's own
+// `poll_delay`, which the bridge used to compute and discard.
+pub mod deadline;
 // Phase 173.6 — optional `embedded-nal` adapter (TcpClientStack /
 // UdpClientStack over the bridge socket ops).
 #[cfg(feature = "embedded-nal")]
@@ -36,6 +39,14 @@ pub use nros_platform_api::{
 };
 
 pub use network_state::NetworkState;
+
+// phase-436 B2 — what a board hands `Executor::register_wake_source`. Exported
+// at the crate root because that call site is one line in a board entry and
+// should not have to name a module path for each half of one pair.
+pub use deadline::{
+    NOTHING_PENDING_US, SMOLTCP_DEADLINE_SOURCE, SmoltcpDeadlineSource, deadline_source_ctx,
+    next_deadline_us,
+};
 
 pub use bridge::{
     CONNECT_TIMEOUT_MS, MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE, SOCKET_TIMEOUT_MS,
