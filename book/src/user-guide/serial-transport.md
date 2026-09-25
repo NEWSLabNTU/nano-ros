@@ -38,7 +38,7 @@ Serial transport support varies by platform:
 | Platform | Serial Implementation | Extra Crate Needed |
 |----------|----------------------|--------------------|
 | Bare-metal (MPS2-AN385) | `zpico-serial` + UART driver | Yes |
-| ESP32-QEMU (esp-hal, no IDF) | `zpico-serial` path, same as bare-metal | Yes |
+| ESP32-QEMU (esp-hal, no IDF) | **Not wired** — see [issue 1499](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1499-esp32-serial-transport-is-documented-and-does-not-compile.md) | — |
 | Zephyr | zenoh-pico built-in (`uart_poll_in/out`) | No |
 | FreeRTOS / NuttX | zenoh-pico built-in (POSIX `/dev/ttyXXX`) | No |
 | ThreadX | zenoh-pico built-in (HAL DMA) | No |
@@ -288,12 +288,24 @@ The zenoh serial handshake (Init → Ack) must complete within zenoh-pico's time
 
 On physical hardware, ensure the UART TX/RX pins aren't shared with the debug console. Some boards use UART0 for debug output — use a different UART for zenoh transport, or disable debug prints.
 
-### ESP32 Serial
+### ESP32 Serial — not wired
 
-ESP32 uses zenoh-pico's built-in serial implementation — the board crate's own words, and it needs no `zpico-serial` dependency. (This said "built-in **ESP-IDF** serial" until phase-468 W2; nothing selects zenoh-pico's `src/system/espidf/` tree, so that qualifier named a backend this path does not reach.) Select serial transport in the board crate:
+**ESP32 serial does not work today, and this page used to say it did.** The
+`serial` feature on `nros-board-esp32-qemu` exists and declares a locator, but
+the configuration does not compile:
 
-```toml
-nros-board-esp32-qemu = { version = "*", default-features = false, features = ["serial"] }
+```
+$ cargo build --no-default-features --features serial --target riscv32imc-unknown-none-elf
+error[E0609]: no field `mac_addr` on type `&config::Config`
+error[E0609]: no field `ip` on type `&config::Config`
 ```
 
-The default locator is `serial/UART_0#baudrate=115200`. ESP32's USB-JTAG-Serial peripheral or UART0/UART1 can be used.
+and even with that repaired it has no serial backend to link: the feature is
+`serial = []`, pulling neither `zpico-serial` nor a UART driver, and ESP32-QEMU
+is a bare-metal target, which is precisely the case `zpico-serial` says
+zenoh-pico has no built-in serial backend for. Nothing in the tree builds this
+combination, which is why it went unnoticed.
+
+Use the ethernet transport on ESP32-QEMU. Tracking, with the measurement and
+the two ways out: [issue
+1499](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1499-esp32-serial-transport-is-documented-and-does-not-compile.md).
