@@ -347,3 +347,46 @@ Remedies are unchanged. Remedy 1 still bounds every row, and it would now be
 chosen against a measured envelope: the disk mode needs less than an hour, the
 runner-lost mode needs 2 h 30 m, so any `timeout-minutes` below 150 makes the
 outage a number this repository owns.
+
+## An eighth, which retires the indicator the section above proposed
+
+Run **36116325366** (push, `525f80620`), job **108011187018**: started 10:09:09
+— two seconds after the seventh released the group — ended **11:50:10**, so
+**1 h 41 m 01 s**, `No space left on device`. Step 15 `just ci tier1` concluded
+**failure** and the job then wedged on step 16 `Disk report (after ci tier1)`,
+leaving steps 16–20 with no conclusion.
+
+The section above replaced `completed_at = null` with three indicators, one of
+which was "a run whose `failure` names no failed step". Measured across all
+eight, that one is worth no more than the field it replaced:
+
+| job | steps done | step 15 `just ci tier1` | annotation |
+| --- | --- | --- | --- |
+| 107808557432 | 17 | **failure** | lost communication |
+| 107870291862 | 16 | **failure** | `No space left on device` |
+| 107929495142 | 14 | no conclusion | `No space left on device` |
+| 107933079057 | 14 | no conclusion | `No space left on device` |
+| 107939676858 | 14 | no conclusion | `No space left on device` |
+| 107956754356 | 16 | **failure** | `No space left on device` |
+| 107977492420 | 14 | no conclusion | lost communication |
+| 108011187018 | 15 | **failure** | `No space left on device` |
+
+**Four of eight** name a failed step, and the split does not follow the
+annotation: one lost-communication job names one and one does not, and the disk
+jobs are 3–3. So "names no failed step" describes half the population and
+predicts nothing.
+
+What holds for all eight is narrower and should be the only thing read as the
+signature: **the job is `failure` with steps still `in_progress`/`pending`,
+carrying no conclusion at all**, plus an annotation about the runner rather than
+about the build. Everything else here is per-run detail.
+
+One consequence for a claim made earlier in this issue: four of eight did get a
+CONCLUSION out of `just ci tier1`, so "none has produced a test verdict" is
+unproven as stated. Whether a step-15 `failure` is the tier reporting or the disk
+killing it cannot be decided from here — every one of these jobs returns
+`BlobNotFound` for its log, which is why the annotation is all there is. Do not
+upgrade it to a verdict without a run that preserved its log.
+
+The disk mode's measured range widens to **57 m 12 s – 1 h 43 m 34 s** over six
+jobs; the lost-communication pair stays at 2 h 30 m.
