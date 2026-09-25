@@ -239,19 +239,47 @@ where
 /// nothing on a Rust board could read it out, so the answer existed and was
 /// unobservable — the same shape as the `poll_delay` this work item is about.
 /// One line, latched, so a long run is not a log of one message.
+///
+/// **Silence would be the wrong answer.** A platform source only WINS the park
+/// when its deadline beats the caller's budget, and this loop's budget is
+/// 10 ms while most of smoltcp's deadlines are longer (a SYN retransmit backs
+/// off from 1 s). So "no line" is ambiguous between "the source is not wired"
+/// and "the source is wired and further out than the budget" — which is
+/// exactly the failure class where nothing printing reads as nothing wrong.
+/// After `REPORT_AFTER_SPINS` the report fires anyway and names what DID win,
+/// so one line always appears and it always says which of the two happened.
 #[cfg(feature = "ethernet")]
 fn report_first_platform_park(runtime: &mut ExecutorNodeRuntime) {
-    use core::sync::atomic::{AtomicBool, Ordering};
+    use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
+    /// ~10 s at this loop's 10 ms budget. Long enough that a stack with
+    /// anything to do has had its turn.
+    const REPORT_AFTER_SPINS: u32 = 1000;
+
     static REPORTED: AtomicBool = AtomicBool::new(false);
+    static SPINS: AtomicU32 = AtomicU32::new(0);
     if REPORTED.load(Ordering::Relaxed) {
         return;
     }
     let (bound_us, source) = runtime.executor_mut().last_park();
-    if let nros::WakeSourceId::Platform(idx) = source {
-        REPORTED.store(true, Ordering::Relaxed);
-        Mps2An385::println(format_args!(
-            "phase-436 B2: park bounded by Platform({idx}) at {bound_us} us"
-        ));
+    match source {
+        nros::WakeSourceId::Platform(idx) => {
+            REPORTED.store(true, Ordering::Relaxed);
+            Mps2An385::println(format_args!(
+                "phase-436 B2: park bounded by Platform({idx}) at {bound_us} us"
+            ));
+        }
+        other => {
+            let n = SPINS.fetch_add(1, Ordering::Relaxed) + 1;
+            if n >= REPORT_AFTER_SPINS {
+                REPORTED.store(true, Ordering::Relaxed);
+                Mps2An385::println(format_args!(
+                    "phase-436 B2: no Platform park in {n} spins; last was \
+                     {other:?} at {bound_us} us — the smoltcp source is \
+                     registered and further out than the budget"
+                ));
+            }
+        }
     }
 }
 
