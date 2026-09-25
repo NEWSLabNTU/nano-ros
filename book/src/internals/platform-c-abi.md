@@ -4,8 +4,8 @@ nano-ros separates the platform layer (clock, sleep, allocator,
 threading, critical section, network, timer, …) from the rest of the
 code via a **single canonical C ABI** of free `extern "C"` symbols.
 Every supported port — POSIX, FreeRTOS, NuttX, ThreadX, Zephyr,
-ESP-IDF, bare-metal Cortex-M — implements the same symbols against
-its host kernel. RMW backends, codegen output, and the
+bare-metal Cortex-M, bare-metal RISC-V (ESP32-C3) — implements the
+same symbols against its host kernel. RMW backends, codegen output, and the
 `nros-node` runtime all link against the ABI; nobody links against a
 specific port's Rust crate.
 
@@ -89,11 +89,11 @@ single-task stub impls are written in Rust and exported via the macro.
 
 ### Path B — pure C port
 
-The kernel-side ports (FreeRTOS, NuttX, ThreadX, Zephyr, ESP-IDF) write
-the bodies directly in `src/platform.c`, `src/net.c`, `src/timer.c`
+The kernel-side ports (FreeRTOS, NuttX, ThreadX, Zephyr) write the
+bodies directly in `src/platform.c`, `src/net.c`, `src/timer.c`
 inside each `packages/platform/nros-platform-<rtos>/` directory. The Rust
 side has no implementation file — the build script (or parent build
-system: NuttX make, Zephyr west module, ESP-IDF cmake) compiles the C
+system: NuttX make, Zephyr west module) compiles the C
 sources against the kernel's headers.
 
 Pure-C bodies are the more natural fit when the kernel already speaks
@@ -163,9 +163,10 @@ The platform tier today is:
 - One canonical header per capability family (`platform.h`,
   `platform_net.h`, `platform_timer.h`). Every port mirrors them
   exactly; a drift gate fails the build on divergence.
-- Pure-C ports under `nros-platform-{posix,freertos,nuttx,threadx,zephyr,esp-idf}`
+- Pure-C ports under `nros-platform-{posix,freertos,nuttx,threadx,zephyr}`
   — the per-RTOS Rust platform crates were retired in favour of
-  one C body per RTOS.
+  one C body per RTOS. (`nros-platform-esp-idf` was a sixth until
+  phase-468 W2 retired the ESP-IDF port.)
 - `critical_section` promoted to a canonical platform capability
   owned by every port's C body; `nros-platform-critical-section`
   is the global-registration shim.

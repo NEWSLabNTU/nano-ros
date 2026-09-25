@@ -33,7 +33,7 @@ Pick your row:
 | --- | --- | --- | --- |
 | Zephyr (`west`) | west module | `zephyr/` (`module.yml`, `Kconfig`, `CMakeLists.txt`) | [Zephyr (west module)](./integration-zephyr.md) |
 | NuttX (`make` + Kconfig) | `apps/external/` app | `integrations/nuttx/` (`Make.defs`, `Kconfig`, `Makefile`) | [NuttX (apps/external)](./integration-nuttx.md) |
-| ESP-IDF (`idf.py`) | IDF component | `integrations/nano-ros/` (`idf_component.yml`, `CMakeLists.txt`, `Kconfig.projbuild`) | [ESP32 (ESP-IDF component)](./integration-esp-idf.md) |
+| ESP-IDF (`idf.py`) | *retired* — `integrations/nano-ros/` is gone | none ships today | [ESP32 (ESP-IDF component) — retired](./integration-esp-idf.md); for an ESP32-C3 use [ESP32 (esp-hal)](./esp32.md) |
 | FreeRTOS, CMake project | `add_subdirectory(nano-ros)` | `cmake/platform/nano-ros-freertos.cmake` | [Build as a CMake subdirectory](./build-as-subdirectory.md), [FreeRTOS (QEMU)](./freertos.md) |
 | ThreadX, CMake project | `add_subdirectory(nano-ros)` | `cmake/platform/nano-ros-threadx.cmake` | [Build as a CMake subdirectory](./build-as-subdirectory.md), [ThreadX](./threadx.md) |
 | PX4 (`make px4_…`) | `EXTERNAL_MODULES_LOCATION` copy-out | `integrations/px4/module-template/` | [PX4 (integration shell)](./integration-px4.md) |
@@ -117,7 +117,8 @@ and links in as a library, the same as every other row in the table.
 
 - Zephyr workspace: [Zephyr (west module)](./integration-zephyr.md)
 - NuttX board: [NuttX (apps/external)](./integration-nuttx.md)
-- ESP-IDF app: [ESP32 (ESP-IDF component)](./integration-esp-idf.md)
+- ESP32-C3: [ESP32 (esp-hal)](./esp32.md) — bare-metal. The ESP-IDF
+  component shell is [retired](./integration-esp-idf.md)
 - PX4 firmware: [PX4 (integration shell)](./integration-px4.md)
 - Plain CMake host (FreeRTOS, ThreadX, POSIX):
   [Build as a CMake subdirectory](./build-as-subdirectory.md)

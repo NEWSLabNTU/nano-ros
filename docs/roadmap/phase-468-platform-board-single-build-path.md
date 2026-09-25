@@ -128,8 +128,39 @@ which of the two it is affecting, in those words.
       cmake vocabulary asserted BOTH directions: `-DNANO_ROS_PLATFORM=posix`
       still configures, `-DNANO_ROS_PLATFORM=esp_idf` is now REJECTED.
 
-Steps 6-8 remain: retype (do not delete) the zenoh vocabulary keys, the
-`NROS_ESP_IDF_*` environment knobs and `.env.example`, and close issue 1282.
+- [x] Steps 6-8. The zenoh vocabulary keys were RETYPED, not deleted (step 6,
+      in #1279) — the `espidf` vendored tree is now claimed by nothing, which
+      is a fact worth stating rather than a line worth removing.
+
+      **The environment knobs went the other way, and the difference is
+      whether anything can still reach the value.** `NROS_ESP_IDF_WORKSPACE`,
+      `NROS_ESP_IDF_ENV_SHIM` and the `IDF_PATH` derived from them are DELETED
+      from `just/sdk-env.just`, `.env.example` and the
+      `KNOBS_THAT_CANNOT_CHANGE_A_SIZE` table, with a note in each place saying
+      so. `IDF_PATH` was checked before deciding, because it is the one with a
+      reader outside the port:
+      `packages/platform/nros-platform-freertos/CMakeLists.txt`'s
+      `if(DEFINED IDF_TARGET)` branch does `$ENV{IDF_PATH}`, for somebody
+      vendoring that shim into their OWN ESP-IDF project. That reader is KEPT
+      and untouched — and it never read our export. `IDF_TARGET` is defined
+      only by ESP-IDF's build system, which is reached by `idf.py`, which does
+      not run through `just`; the value comes from ESP-IDF's `export.sh`.
+      Exporting ours only re-rooted a real out-of-tree `IDF_PATH` on the way
+      past, which is issue 1391's measured tripling. So: keep the reader, drop
+      the three exports that could never feed it.
+
+      `Driver::IdfPy` is kept for the same reason — an esp32 image that crosses
+      languages still hands off to `idf.py`, against a project that is now
+      necessarily the user's own.
+
+- [x] Issue 1282 is AMENDED and left OPEN, deliberately. Retiring the port
+      settles the *duplication* framing by subtraction (there is no separate
+      ESP-IDF provisioning to duplicate any more), but nothing measured about
+      `hal_espressif` changed: still zero build consumers, still no
+      `xtensa-espressif_*` toolchain provisioned, still 275 MB. The open
+      question only changed its rival's name — "ESP-IDF vs Zephyr" became
+      "esp-hal bare-metal vs Zephyr" — and deleting the manifest line would
+      still settle it by accident, which is what the issue exists to prevent.
 
 ## W3 — the board build wiring, confirmed and held
 

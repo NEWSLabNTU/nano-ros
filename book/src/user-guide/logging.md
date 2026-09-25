@@ -104,7 +104,6 @@ call sites work without an explicit init step.
 |--------|---------|
 | POSIX | `fprintf(stderr, "[<LEVEL>] <name>: <msg>\n")` |
 | Zephyr | `LOG_INF` / `LOG_WRN` / etc. (or `printk` if `CONFIG_LOG=n`); module `nros` |
-| ESP-IDF | `esp_log_write` with logger-name = ESP TAG |
 | NuttX | `syslog(priority, "%s", buf)` |
 | FreeRTOS | board-registered UART writer fn-ptr |
 | ThreadX | board-registered UART writer fn-ptr |

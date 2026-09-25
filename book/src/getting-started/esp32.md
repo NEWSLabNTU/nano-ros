@@ -2,8 +2,8 @@
 
 Single-node starter on ESP32-C3 using the bare-metal `esp-hal` Rust
 path — no ESP-IDF — running under the Espressif QEMU fork (OpenETH
-ethernet). For the ESP-IDF component path (C / C++ apps), see
-[ESP32 (ESP-IDF component)](./integration-esp-idf.md).
+ethernet). **This is the only ESP32 path nano-ros ships**: the ESP-IDF
+component shell was [retired](./integration-esp-idf.md) in phase-468 W2.
 
 > **Prereqs.** `nros setup esp32-c3-baremetal` prepares the build: the
 > riscv cross-gcc and `espflash` from a pinned index into the shared
@@ -221,8 +221,8 @@ If no `Publishing:` line:
 
 - Subscriber + service + action peer directories under the same
   `examples/esp32-c3-baremetal/rust/`.
-- ESP-IDF component path for C / C++ apps:
-  [ESP32 (ESP-IDF component)](./integration-esp-idf.md).
+- C / C++ apps on an ESP32 have no in-tree path today — the ESP-IDF
+  component shell is [retired](./integration-esp-idf.md).
 - ESP32-S3 (Xtensa) — not supported today. The Xtensa toolchain
   does not ship via `rustup` (it requires
   [`espup`](https://github.com/esp-rs/espup)), and there is no

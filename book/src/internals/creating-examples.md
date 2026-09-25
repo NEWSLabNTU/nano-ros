@@ -197,7 +197,7 @@ contract is in
 that calls every linked RMW's `nros_rmw_<x>_register()` symbol — the
 auto-registration path for targets where `linkme`'s distributed-slice
 contribution isn't picked up by the linker (FreeRTOS, NuttX, Zephyr,
-ESP-IDF).
+bare-metal).
 
 Note `find_package(nano_ros)` above is the **ament package**. There is still no
 `find_package(NanoRos)` CMake-config export — that was deleted along with

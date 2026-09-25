@@ -33,9 +33,9 @@ nano-ros on them. Per-crate tier truth is the generated
 | Nordic       | nRF52840-DK          | Cortex-M4F         | Armv7E-M   | Zephyr        | Untested | Zephyr starter — supply `-b nrf52840dk_nrf52840`                  |
 | Nordic       | nRF5340-DK           | Cortex-M33 (dual)  | Armv8-M    | Zephyr        | Untested | Zephyr starter — supply `-b nrf5340dk_nrf5340_cpuapp`             |
 | Espressif    | ESP32-C3 (QEMU)      | RISC-V (RV32IMC)   | RISC-V     | bare (esp-hal) | Tested  | `examples/esp32-c3-baremetal/rust/`                              |
-| Espressif    | ESP32-C3-DevKit      | RISC-V (RV32IMC)   | RISC-V     | ESP-IDF        | **Unbuilt** | `integrations/nano-ros/` — measured 2026-09-25: no workflow builds it and no fixture row names it. The `full-matrix` claim was false |
-| Espressif    | ESP32-S3-DevKit      | Xtensa LX7         | Xtensa     | ESP-IDF        | Not supported (no board crate) | Xtensa is not a supported target today — see [ESP32 chapter](../getting-started/esp32.md) |
-| Espressif    | ESP32-C6-DevKit      | RISC-V             | RISC-V     | ESP-IDF        | Untested | Same ESP-IDF path as C3                                            |
+| Espressif    | ESP32-C3-DevKit      | RISC-V (RV32IMC)   | RISC-V     | ESP-IDF        | **Retired** | The in-tree component shell (`integrations/nano-ros/`) was deleted in phase-468 W2 after being measured on 2026-09-25: no workflow built it and no fixture row named it. Bare-metal esp-hal is the supported ESP32-C3 path — see the QEMU row above |
+| Espressif    | ESP32-S3-DevKit      | Xtensa LX7         | Xtensa     | —              | Not supported (no board crate) | Xtensa is not a supported target today — see [ESP32 chapter](../getting-started/esp32.md) |
+| Espressif    | ESP32-C6-DevKit      | RISC-V             | RISC-V     | bare (esp-hal) | Untested | Same bare-metal path as the C3; no board crate ships for it        |
 | NXP          | LPC55S69-EVK         | Cortex-M33         | Armv8-M    | Zephyr        | Untested | Zephyr `-b lpcxpresso55s69_cpu0`                                  |
 | NXP          | MIMXRT1170-EVK       | Cortex-M7 + M4     | Armv7-M    | FreeRTOS / Zephyr | Untested | FreeRTOS starter + vendor BSP                                  |
 | TI           | LP-CC1352P7          | Cortex-M4F         | Armv7E-M   | FreeRTOS / TI-RTOS | Untested | FreeRTOS starter + TI driver overlay                         |
@@ -54,7 +54,8 @@ nano-ros on them. Per-crate tier truth is the generated
 1. **Pick the matching RTOS path.** Cortex-M3 / M4 / M7 + RTOS → use
    FreeRTOS or Zephyr starter. Cortex-M0+ → bare-metal starter
    (limited; no NVIC priority headroom). Cortex-A / RISC-V64 → NuttX
-   or Zephyr. Xtensa / RISC-V32 + Wi-Fi → ESP-IDF or esp-hal.
+   or Zephyr. RISC-V32 + Wi-Fi → esp-hal (bare-metal); Xtensa has no
+   supported path here.
 2. **Find or write a board crate.** Existing crates under
    `packages/boards/nros-board-*/` cover most QEMU + reference dev
    kits. Real-hardware boards need a thin board crate that supplies

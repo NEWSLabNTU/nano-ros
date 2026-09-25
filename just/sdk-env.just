@@ -114,6 +114,11 @@ export THREADX_CONFIG_DIR := shell(_NROS_REROOT, env("THREADX_CONFIG_DIR", _NROS
 export NETX_DIR := shell(_NROS_REROOT, env("NETX_DIR", _NROS_HERE / "third-party/threadx/netxduo"), _NROS_HERE)
 export NETX_CONFIG_DIR := shell(_NROS_REROOT, env("NETX_CONFIG_DIR", _NROS_HERE / "packages/boards/nros-board-threadx-linux/config"), _NROS_HERE)
 export PX4_AUTOPILOT_DIR := shell(_NROS_REROOT, env("PX4_AUTOPILOT_DIR", _NROS_HERE / "third-party/px4/PX4-Autopilot"), _NROS_HERE)
-export NROS_ESP_IDF_WORKSPACE := shell(_NROS_REROOT, env("NROS_ESP_IDF_WORKSPACE", _NROS_HERE / "esp-idf-workspace/esp-idf"), _NROS_HERE)
-export NROS_ESP_IDF_ENV_SHIM := shell(_NROS_REROOT, env("NROS_ESP_IDF_ENV_SHIM", _NROS_HERE / "esp-idf-workspace/env.sh"), _NROS_HERE)
-export IDF_PATH := shell(_NROS_REROOT, env("IDF_PATH", NROS_ESP_IDF_WORKSPACE), _NROS_HERE)
+# phase-468 W2 — `NROS_ESP_IDF_WORKSPACE`, `NROS_ESP_IDF_ENV_SHIM` and the
+# `IDF_PATH` derived from them are GONE with the ESP-IDF port. They defaulted to
+# `esp-idf-workspace/`, a root no provisioning path creates any more, and the one
+# in-tree `$ENV{IDF_PATH}` reader — `nros-platform-freertos/CMakeLists.txt`'s
+# `if(DEFINED IDF_TARGET)` branch, for somebody vendoring that shim into their
+# OWN ESP-IDF project — is fed by ESP-IDF's `export.sh`, never from here: an
+# `idf.py` build does not run through `just`. Exporting them only re-rooted a
+# real out-of-tree `IDF_PATH` on the way past (issue 1391 measured it tripled).

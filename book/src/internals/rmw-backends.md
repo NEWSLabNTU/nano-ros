@@ -205,7 +205,7 @@ mechanisms, layered:
    on the hosted targets whose linker sections `linkme` recognises —
    of which nano-ros builds only the `native` host board. Macro
    expands to a no-op on RTOS targets where `linkme` can't recognise
-   the section (NuttX, Zephyr, ESP-IDF, FreeRTOS bare-metal).
+   the section (NuttX, Zephyr, FreeRTOS, bare-metal).
 2. **Rust ctor** (legacy fallback): `#[unsafe(link_section =
    ".init_array")] #[used] static AUTO_REGISTER_CTOR`. `#[used]`
    keeps rustc from dead-stripping.

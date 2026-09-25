@@ -471,8 +471,9 @@ path = "tests/bringup_scaffold.rs"
 name = "freertos_firmware_entry"
 path = "tests/freertos_firmware_entry.rs"
 
-# Phase 212.H.5 — ESP-IDF 2-component bringup build via `idf.py`. Skips
-# cleanly when `$IDF_PATH` / `idf.py` / nros CLI are missing.
+# (The Phase 212.H.5 `cli_bringup_esp_idf` target was here. Its test binary went
+# with the ESP-IDF port in phase-468 W2; this comment is all that outlived it,
+# and it had drifted into reading as a preamble to the PX4 target below.)
 # Phase 212.H.7 — PX4 hookless-vendor 2-component module-build gate.
 # Skips cleanly when `$PX4_AUTOPILOT_DIR` / nros CLI / `make` are missing
 # (or when `nros codegen-system --ahead-of-vendor --target px4` is not
