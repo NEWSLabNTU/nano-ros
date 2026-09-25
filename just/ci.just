@@ -63,7 +63,7 @@ default: tier1
 gate:
     #!/usr/bin/env bash
     set -uo pipefail
-    steps=(check::cli-fresh check::fast check::build check::api-parity test-unit test-lane-contracts)
+    steps=(check::cli-fresh check::launch-resolve-fresh check::fast check::build check::api-parity test-unit test-lane-contracts)
     declare -a verdict=()
     failed_at=-1
     for i in "${!steps[@]}"; do
