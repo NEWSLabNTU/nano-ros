@@ -321,6 +321,16 @@ nextest-test-filters:
 no-tracked-models:
     @bash scripts/check-no-tracked-models.sh
 
+# issue 1501 — the other half of the model rule. `no-tracked-models` bans
+# committing the artifact; this one asks whether the bringup that needs it can
+# be REACHED by the only thing that produces it. `nros sync` scans
+# `src/<pkg>/package.xml` or a root `package.xml` and rejects a dir with
+# neither, so a self-pkg bringup declaring `[[component]]` without a
+# `package.xml` has no producer for its model and refuses at every bake.
+[private]
+self-pkg-package-xml:
+    @python3 scripts/check-self-pkg-package-xml.py
+
 # phase-383 W10.c — an example workspace ROOT is generated, never tracked.
 #
 # `nros build` emits it from the discovered packages plus `[image.*]` (RFC-0065
