@@ -334,14 +334,18 @@ executor-stack-floor:
 host-platform-vocabulary:
     @python3 scripts/check-host-platform-vocabulary.py
 
-# Issue 1145 / 1362 — a platform name the TREE uses must be answered by some
-# `nros-platform.toml`'s `names`. An unanswered name is not fatal at build
-# time: `or_builtin_rungs` warns and falls through to the BUILTIN knobs, which
-# is right for a typo and wrong for a platform that never declared its own
-# name. `threadx-linux` fell through, took builtin executor knobs below
+# Issue 1145 / 1362 / phase-468 W1 — every platform name a BOARD declares must
+# be answered by some `nros-platform.toml`'s `names`. An unanswered name IS
+# fatal at build time now: `BuildRungs::require_rungs` panics instead of
+# warning and falling through to the BUILTIN knobs, which was right for a typo
+# and wrong for a platform that never declared its own name. `threadx-linux`
+# fell through, took builtin executor knobs below
 # `EXECUTOR_BACKING_DEFAULT_U64S`, and stopped COMPILING in a nightly with an
-# error naming neither the descriptor nor the name. A `cargo:warning` is the
-# shape nobody reads. Buildless; RATCHETED (five names baselined).
+# error naming neither the descriptor nor the name; a `cargo:warning` is the
+# shape nobody reads. This gate is what keeps that panic unreachable in a green
+# tree, and the panic is what makes this gate's verdict mean something — either
+# alone is the shape phase-400 W6 tried. Buildless; NO baseline and no ratchet
+# (phase-468 W1 emptied it), so an unanswered name can only be answered.
 [private]
 platform-name-answered:
     @python3 scripts/check-platform-name-answered.py

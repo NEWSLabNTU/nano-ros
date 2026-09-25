@@ -1,7 +1,8 @@
 # Phase 468 — one build path for every platform and board
 
 **Status (2026-09-25). Opened from a review of all 14 platform and 22 board
-entries. Nothing has landed. The review's first finding was that the system
+entries. **W1 has landed** (2026-09-25) — read its section, not this line, for
+what it measured. The review's first finding was that the system
 this phase asks for mostly EXISTS — RFC-0049's knob ladder and RFC-0064 R5 D4's
 "a board states its facts once" — so three of the four work items are about
 closing its last asymmetries rather than building it. W4 is the exception and
@@ -37,6 +38,7 @@ point where a knob is actually read.
 | --- | --- |
 | platform packages | 14 — 6 pure-C ports, 8 Rust crates |
 | of those, carrying `nros-platform.toml` | 5 (freertos, nuttx, posix, threadx, zephyr) |
+| descriptors in the TREE | **7** — the five above plus `config/{bare-metal,generic}`; W1 made it 7 answering 11 names |
 | board entries | 22 — 19 Rust crates, 2 announcement-only packages, 1 PAC |
 | board `build.rs` routed through `nros-board-common` | 8 of 11 |
 | build scripts calling `nros_zephyr_build::knob_usize` | **1** |
@@ -52,7 +54,11 @@ announcement role (RFC-0071 D5), not a second descriptor location.
 
 ## W1 — a platform with no descriptor is an ERROR, and says so
 
-Today it is not. The loader states the current rule outright:
+**LANDED 2026-09-25.** All four boxes below are ticked with the measurement that
+closed each. The rest of this section is kept as written and annotated in place,
+because two of its numbers moved.
+
+Today it was not. The loader stated the current rule outright:
 
 > A platform with NO `nros-platform.toml` has no rungs, and that is a normal
 > state — not an error.
@@ -79,15 +85,89 @@ exist: the platform NAME and the package DIRECTORY are keyed differently, and
 W1 has to establish which platform names must resolve before it can make a
 missing one fatal.
 
-- [ ] Enumerate every platform NAME that any board, fixture or lane resolves,
-      and which package directory each keys to. The three names in phase-400's
-      regression are the known-hard cases; the enumeration decides whether
-      there are others.
-- [ ] Every such name has a descriptor, or a descriptor that DECLARES it has no
-      rungs — an explicit empty, not an absent file.
-- [ ] A missing descriptor for a resolved name is a hard error naming the
-      platform, the directory it looked in, and the remedy.
-- [ ] A gate asserts the set, and fails on a deliberately removed descriptor.
+**Two numbers in the paragraph above moved, and a reader needs to know which.**
+Of phase-400 W6's three casualties, `zephyr` and `threadx-linux` were already
+answered before W1 started (`threadx` grew its two aliases in issue 1145);
+`esp32` was the last, and the only one left in
+`check-platform-name-answered`'s baseline. And the population was never three:
+it is **8 names, declared by 14 `[[board]]` entries** — `bare-metal`, `esp32`,
+`freertos`, `nuttx`, `posix`, `threadx-linux`, `threadx-riscv64`, `zephyr`. The
+work item's "the enumeration decides whether there are others" answered *no
+others*, which is a smaller job than this section expected.
+
+- [x] **Enumerate every platform NAME that any board, fixture or lane resolves,
+      and which package directory each keys to.**
+      The population is board-declared `platform = "…"`, which is what
+      `nros ws board-facts` emits as `NROS_PLATFORM_NAME` — **not** a fixture
+      row's `platform`, which is a coordinate label and was the wrong
+      population until issue 1362 corrected it. 8 names over 14 `[[board]]`
+      entries; 7 descriptors answer 11 names between them. The keying is the
+      point of the work item and the measurement confirms it: not one name
+      equals its descriptor's directory in all cases — `esp32` and `bare-metal`
+      are both answered by `config/bare-metal/`, `threadx-linux` and
+      `threadx-riscv64` by `packages/platform/nros-platform-threadx/`.
+- [x] **Every such name has a descriptor, or a descriptor that DECLARES it has
+      no rungs.**
+      One name was unanswered: `esp32`. The answer is **not** an explicit empty
+      and not a new descriptor — `config/bare-metal/nros-platform.toml` now
+      lists it in `names`, because four measurements say this platform IS
+      bare-metal and the tree already acted on that everywhere except here:
+      (1) `PlatformKind::Esp32::platform_feature()` already returns
+      `platform-bare-metal`, in a doc-comment that says "There is no
+      `config/esp32/`"; (2) `nros-board-esp32-qemu` takes
+      `nros-rmw-zenoh/platform-bare-metal` -> `zpico-sys/bare-metal` ->
+      `CARGO_FEATURE_BARE_METAL`, so `nros-zpico-build`'s own `platform_name`
+      derivation already resolves *this file* for the vendored zenoh-pico C
+      build of every esp32 image; (3) `[arch.riscv32imc]` in that file was
+      written for the ESP32-C3 and says so; (4) the file declares no
+      `[knobs.*]` and no `[capabilities]`, so the rungs esp32 resolves are
+      byte-identical to the builtins it was falling through to — the image does
+      not move, the two roads stop naming two descriptors.
+      **This is the bare-metal ESP32-C3 QEMU path, not the ESP-IDF port W2
+      retires** (W2 asks for that sentence in those words). W2's warning was
+      right and the gate's own guess — "`esp32` has an RTOS (ESP-IDF's
+      FreeRTOS) and so probably wants one" — was wrong; that text is gone with
+      the baseline.
+- [x] **A missing descriptor for a resolved name is a hard error naming the
+      platform, the directory it looked in, and the remedy.**
+      `BuildRungs::or_builtin_rungs` is `BuildRungs::require_rungs`: the
+      `cargo:warning` + `T::default()` arm is gone and `UnknownPlatform` panics.
+      The message is a free function with its own unit tests, because the part
+      that went wrong last time was the TEXT — phase-400 W6 printed
+      `…/packages/platform/threadx-linux/nros-platform.toml`, a path that could
+      never exist. It now names every root searched (`BuildRungs` keeps the
+      search path rather than re-deriving it, since `UnknownPlatform` carries
+      only the FIRST root), the 11 names the tree does answer, that `names` is
+      what answers a name, both remedies, and the buildless gate. Measured
+      end-to-end: `NROS_PLATFORM_NAME=wumpus cargo build -p nros-params` exits
+      101 with that message; all 8 real names build with **0**
+      `cargo:warning` lines.
+      Reach checked (issue 0196): the zpico road already panicked on
+      `UnknownPlatform`, and `nros config explain` was already strict. One road
+      was not — `arch_flags::cflags_for_target` returned `Ok(None)` for an
+      unknown platform, indistinguishable from "declares no profile admitting
+      this triple", which sends the reader to add an `[arch.*]` block to a file
+      that is not there. It also read ONE root (issue 1486's defect a third
+      time), so `config/bare-metal`'s four `[arch.*]` profiles were invisible to
+      it; `config_root()` is `platform_search_path()` now and both directions
+      are tested.
+- [x] **A gate asserts the set, and fails on a deliberately removed
+      descriptor.**
+      `check-platform-name-answered` has **no baseline at all** — the ratchet
+      and `BASELINE_UNANSWERED` are deleted, so an unanswered name cannot be
+      silenced, only answered. Its self-test gained a control that mirrors the
+      REAL descriptors into a temp root MINUS one and asserts the gate reports
+      exactly the names that went with it (asserted on the DELTA, so an
+      already-red tree does not make the control fail for a reason that is not
+      about the control). Both directions measured by hand as well: moving
+      `config/bare-metal/nros-platform.toml` aside makes the gate report
+      `bare-metal` and `esp32`; renaming one board's `platform` to an invented
+      name makes it report that name.
+
+Also filed on the way through: **issue 1494** — `BuildRungs` reads every
+descriptor on the search path and watches none of them, so this newly-fatal
+verdict is not re-evaluated when its input moves. Measured here: adding `esp32`
+to `names` did not clear the refusal until `build.rs` was touched.
 
 ## W2 — `nros-platform-esp-idf` is out, and goes
 
@@ -238,8 +318,11 @@ instruction followed honestly".
 
 ## Acceptance for the phase
 
-* No platform resolves to a silently empty rung set: every resolved name has a
-  descriptor or an explicit declaration that it has none.
+* **MET (W1, 2026-09-25).** No platform resolves to a silently empty rung set:
+  every resolved name has a descriptor or an explicit declaration that it has
+  none. Measured through the live path, not off the files: all 8 board-declared
+  names build with 0 `cargo:warning` fall-through lines, and an unanswered name
+  is a panic rather than a warning.
 * `nros-platform-esp-idf` and its tooling are gone, and esp32 QEMU still builds.
 * Every board `build.rs` that compiles C routes through `nros-board-common` or
   states why not.

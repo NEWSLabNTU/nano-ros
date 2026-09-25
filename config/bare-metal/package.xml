@@ -22,5 +22,15 @@
       `check-provider-announcements.py` compares them.
     -->
     <nano_ros_provides kind="platform" name="bare-metal"/>
+    <!--
+      phase-468 W1 — `esp32` is the second name the descriptor answers to, and
+      discovery has to claim it too or the two halves disagree about what this
+      package provides. It is the bare-metal ESP32-C3 QEMU path
+      (`nros-board-esp32-qemu`, esp-hal, riscv32imc), NOT the ESP-IDF port that
+      phase-468 W2 retires; the `[arch.riscv32imc]` profile in the sibling
+      descriptor was written for that chip. See that file's `names` comment for
+      the four measurements.
+    -->
+    <nano_ros_provides kind="platform" name="esp32"/>
   </export>
 </package>

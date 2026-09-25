@@ -11,12 +11,14 @@
 # directory is just where the file lives. names[0] is canonical.
 # `threadx-linux` and `threadx-riscv64` are the names the TREE uses
 # (`examples/fixtures.toml` has no row spelled plain `threadx`), and a name this
-# file does not answer to is an UnknownPlatform — which `or_builtin_rungs`
-# deliberately turns into a warning plus builtin knobs rather than a panic, so
-# a typo stays visible. That is right for a typo and wrong here: the builtin
-# executor knobs sit BELOW `EXECUTOR_BACKING_DEFAULT_U64S`, so the backing
-# guard then refuses the reservation and `threadx-linux` stopped COMPILING
-# (issue 1145's 2026-09-12 regression, nightly run 34680021029).
+# file does not answer to is an UnknownPlatform. That used to become a warning
+# plus builtin knobs rather than a panic, so a typo stayed visible — right for
+# a typo and wrong here: the builtin executor knobs sit BELOW
+# `EXECUTOR_BACKING_DEFAULT_U64S`, so the backing guard then refused the
+# reservation and `threadx-linux` stopped COMPILING (issue 1145's 2026-09-12
+# regression, nightly run 34680021029). phase-468 W1 made the UnknownPlatform
+# itself fatal (`BuildRungs::require_rungs`), which is only safe because every
+# board-declared name is now answered; these two aliases are part of why.
 #
 # `freertos` already carries its variant this way (`["freertos",
 # "freertos-lwip"]`); this is the same shape. names[0] stays canonical.

@@ -9,9 +9,9 @@ declared `names = ["threadx"]` while `examples/fixtures.toml` only ever spells
 `threadx-linux` and `threadx-riscv64`. So every threadx build asked for a name
 no descriptor answered.
 
-That is NOT a hard error by design. `or_builtin_rungs` turns an
+That USED NOT TO BE a hard error, by design. `or_builtin_rungs` turned an
 `UnknownPlatform` into a warning plus the builtin knob defaults, deliberately,
-so that a TYPO in `NROS_PLATFORM_NAME` stays visible instead of silently
+so that a TYPO in `NROS_PLATFORM_NAME` stayed visible instead of silently
 selecting builtins. Right for a typo — and wrong for a platform that simply
 never declared its own name, because the builtins it falls through to are not
 that platform's numbers. The builtin executor knobs sit below
@@ -23,13 +23,22 @@ A `cargo:warning` is exactly the shape nobody reads: it scrolls past a green
 build for as long as the fall-through happens to be survivable. This asks the
 question once, cheaply, at the one moment it is still cheap to answer.
 
+IT IS A HARD ERROR NOW (phase-468 W1, 2026-09-25). `BuildRungs::require_rungs`
+— what `or_builtin_rungs` became — panics on an `UnknownPlatform`, naming the
+platform, every root it searched, the names the tree does answer, and the
+remedy. That is only safe because this gate's population is fully answered, so
+the two land together: the gate is what keeps the panic unreachable in a green
+tree, and the panic is what makes a red gate mean something. A warning that
+nobody reads has been replaced by a build that stops.
+
 It is deliberately BUILDLESS — TOML and a manifest read, no cargo — so it runs
 on the fast line and does not depend on a build succeeding.
 
 WHICH NAMES IT READS, and why that changed (issue 1362, corrected 2026-09-18).
 
 This gate first read `platform = "…"` out of `examples/fixtures.toml`. That is
-the wrong population, and it put three false entries in the baseline below.
+the wrong population, and it put three false entries in the baseline this
+gate used to carry (see where that baseline lived, further down).
 
 A fixture row's `platform` is a COORDINATE LABEL — it names the lane cell and
 feeds `build_subdir` — and it is not what any build looks a descriptor up by.
@@ -65,6 +74,7 @@ the threadx descriptor fix reports both threadx names again.
 import os
 import re
 import sys
+import tempfile
 
 try:
     import tomllib
@@ -164,51 +174,50 @@ def looked_up_names(boards_dir=BOARDS_DIR):
 # otherwise re-derive the question.
 NOT_A_DESCRIPTOR_NAME = frozenset()
 
-# A RATCHET, not an allowlist: this set may only SHRINK (issue 1362).
+# THE BASELINE IS GONE (phase-468 W1). There is no `BASELINE_UNANSWERED` any
+# more, and re-adding one would be the defect rather than the repair.
 #
-# TWO entries, down from five. The other three — `freertos-posix`,
-# `nuttx-riscv`, `zephyr-cortex-m` — were never fall-throughs at all: they are
-# fixture COORDINATE labels, and their boards declare `freertos` / `nuttx` /
-# `zephyr`, each already answered. See the module docstring for the measurement
-# that retired them.
+# It existed because the rule could not be met: an unanswered name only warned,
+# so a gate that refused one outright would have been refusing a state the tree
+# was in. It held five entries, then two, then one:
 #
-# These two are real. Each is a `platform = "…"` a board declares and no
-# descriptor lists, so their builds take the BUILTIN knobs — three
-# `cargo:warning` lines each (executor, params, memory), the three
-# `or_builtin_rungs` call sites:
+#   freertos-posix / nuttx-riscv / zephyr-cortex-m
+#       never fall-throughs at all — fixture COORDINATE labels, whose boards
+#       declare `freertos` / `nuttx` / `zephyr`. Retired by issue 1362, which
+#       changed the POPULATION this gate reads.
+#   bare-metal
+#       answered by `config/bare-metal/nros-platform.toml` since phase-349 W1.
+#       Only this gate's one-root reach said otherwise (issue 1486); reading
+#       both of the loader's `SEARCH_ROOTS` retired it.
+#   esp32
+#       the last one, and the only one that was ever a real fall-through.
+#       phase-468 W1 answered it: `config/bare-metal` now lists `esp32` in its
+#       `names`, because the esp32 board's zenoh C build ALREADY resolved that
+#       file (`platform-bare-metal` -> `zpico-sys/bare-metal` ->
+#       `CARGO_FEATURE_BARE_METAL` -> `nros-zpico-build`'s own `platform_name`),
+#       `PlatformKind::Esp32::platform_feature()` already answered
+#       `platform-bare-metal`, and `[arch.riscv32imc]` in that file was written
+#       for the ESP32-C3. The file's own `names` comment carries the four
+#       measurements. It declares no `[knobs.*]`, so the resolved rungs are
+#       byte-identical to the builtins esp32 was falling through to — the image
+#       does not move.
 #
-#   esp32       packages/boards/nros-board-esp32-qemu/nros-board.toml
-#   bare-metal  packages/boards/nros-board-mps2-an385/nros-board.toml
+# Three of the five entries were never real, and the one that was got answered
+# by reading what the tree already did rather than by inventing numbers. That
+# is the case against ever writing another one: a baseline here records a
+# question nobody asked, and the ratchet can only retire an entry the tree
+# happens to fix by accident.
 #
-# Neither has a platform package, so neither is a missing NAME — it is a
-# decision: does it get a descriptor, or is falling through to builtins the
-# correct answer for a target with no RTOS to describe? `bare-metal` is the
-# clearer case for "correct as is"; `esp32` has an RTOS (ESP-IDF's FreeRTOS)
-# and so probably wants one. Both need their knobs compared on a built image
-# before either is claimed.
-#
-# NOTE the spelling. The board declares `bare-metal`; `examples/fixtures.toml`
+# NOTE the spelling. A board declares `bare-metal`; `examples/fixtures.toml`
 # labels the same rows `baremetal`. The old baseline carried the fixtures
 # spelling, so even its one real entry named a string this population never
 # produces.
-BASELINE_UNANSWERED = {
-    # `bare-metal` LEFT this set (issue 1486): it has been answered by
-    # `config/bare-metal/nros-platform.toml` since phase-349 W1, and only the
-    # gate's one-root reach said otherwise.
-    "esp32",
-}
 
 
-def findings(used, declared, baseline=frozenset()):
+def findings(used, declared):
     return sorted(
-        n for n in used
-        if n not in declared and n not in NOT_A_DESCRIPTOR_NAME and n not in baseline
+        n for n in used if n not in declared and n not in NOT_A_DESCRIPTOR_NAME
     )
-
-
-def stale_baseline(used, declared, baseline):
-    """Baselined names that now resolve — the ratchet must tighten."""
-    return sorted(n for n in baseline if n in declared or n not in used)
 
 
 def self_test():
@@ -227,23 +236,80 @@ def self_test():
         # the board's name, and that one is answered.
         ({"freertos"}, {"freertos": "f"}, []),
     ]
-    # The ratchet: a baselined name is silent, and stops being baselined the
-    # moment a descriptor answers it.
-    if findings({"esp32"}, {}, {"esp32"}) != []:
-        print("  self-test FAIL: a baselined name should not be reported")
-        return 1
-    if stale_baseline({"esp32"}, {"esp32": "f"}, {"esp32"}) != ["esp32"]:
-        print("  self-test FAIL: a baselined name that now resolves must be reported stale")
-        return 1
     bad = 0
     for used, declared, want in cases:
         got = findings(used, declared)
         if got != want:
             print(f"  self-test FAIL: used={used} declared={set(declared)} -> {got}, want {want}")
             bad += 1
+    bad += removed_descriptor_is_reported()
     print(f"check-platform-name-answered self-test: {'OK' if not bad else 'FAILED'} "
-          f"({len(cases)} cases)")
+          f"({len(cases)} table cases + the removed-descriptor control)")
     return bad
+
+
+def removed_descriptor_is_reported():
+    """phase-468 W1 box 4 — the gate must FAIL on a deliberately removed descriptor.
+
+    The table cases above exercise `findings()` over hand-written sets, which
+    proves the predicate and nothing about the tree. This runs the REAL board
+    population against a search path built from the real descriptors MINUS one,
+    so it answers the question the work item actually asks: if a descriptor
+    disappeared, would this gate say so?
+
+    Mirroring rather than copying the files: the synthetic root holds one
+    `nros-platform.toml` per descriptor with only the `names` line, which is the
+    only key `declared_names()` reads. That keeps the control independent of
+    whatever else those files grow.
+
+    The removed descriptor is chosen from the tree, never named here — a
+    hardcoded platform is the shape that rots into a vacuous control the day
+    that platform is renamed.
+    """
+    declared = declared_names()
+    used = set(looked_up_names())
+    answering = sorted({f for n, f in declared.items() if n in used})
+    if not answering:
+        print("  self-test FAIL: no descriptor answers any board-declared name, so "
+              "the removed-descriptor control cannot run")
+        return 1
+
+    victim = answering[0]
+    with tempfile.TemporaryDirectory() as tmp:
+        root = os.path.join(tmp, "platform")
+        by_file = {}
+        for name, rel in declared.items():
+            by_file.setdefault(rel, []).append(name)
+        for rel, names in by_file.items():
+            if rel == victim:
+                continue
+            # The directory name is irrelevant to `declared_names()` — it reads
+            # `names` — but keep it recognisable for anyone debugging this.
+            d = os.path.join(root, os.path.basename(os.path.dirname(rel)))
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "nros-platform.toml"), "w") as fh:
+                fh.write("names = [" + ", ".join(f'"{n}"' for n in sorted(names)) + "]\n")
+        maimed = declared_names(search_roots=(root,))
+        lost = {n for n in declared if n not in maimed}
+        got = set(findings(used, maimed))
+
+    # The assertion is on the DELTA, never on the absolute set. A tree that is
+    # ALREADY reporting something — which is exactly the tree an operator is
+    # looking at when this control runs — must not make the control fail for a
+    # reason that is not about the control; `main()` below is what names those,
+    # and it says far more useful things than a self-test can.
+    base = set(findings(used, declared))
+    want = base | {n for n in lost if n in used and n not in NOT_A_DESCRIPTOR_NAME}
+
+    if want == base:
+        print(f"  self-test FAIL: removing {victim} took no board-declared name with it, "
+              f"so the control proves nothing")
+        return 1
+    if got != want:
+        print(f"  self-test FAIL: with {victim} removed the gate reports "
+              f"{sorted(got)}, expected {sorted(want)}")
+        return 1
+    return 0
 
 
 def main():
@@ -255,16 +321,8 @@ def main():
     declared = declared_names()
     used_map = looked_up_names()
     used = set(used_map)
-    stale = stale_baseline(used, declared, BASELINE_UNANSWERED)
-    if stale:
-        print("check-platform-name-answered: FAIL — the baseline is STALE.", file=sys.stderr)
-        for name in stale:
-            print(f"  {name!r} no longer needs baselining; drop it from "
-                  f"BASELINE_UNANSWERED.", file=sys.stderr)
-        print("  A ratchet that does not tighten stops being one.", file=sys.stderr)
-        return 1
 
-    bad = findings(used, declared, BASELINE_UNANSWERED)
+    bad = findings(used, declared)
     if bad:
         print("check-platform-name-answered: FAIL — platform name(s) no descriptor answers to:",
               file=sys.stderr)
@@ -273,15 +331,27 @@ def main():
             print(f"  {name!r} is declared by {where or 'a board'}, and no "
                   f"packages/platform/*/ or config/*/nros-platform.toml lists it in `names`.",
                   file=sys.stderr)
-        print("\n  An unanswered name is NOT fatal at build time — it warns and falls", file=sys.stderr)
-        print("  through to the BUILTIN knob defaults, which are not that platform's", file=sys.stderr)
-        print("  numbers. That is how `threadx-linux` stopped compiling (issue 1145).", file=sys.stderr)
-        print("  Add the name to that platform's `names`, the way `freertos` carries", file=sys.stderr)
-        print("  `freertos-lwip`. names[0] stays canonical.", file=sys.stderr)
+        print("\n  An unanswered name is FATAL at build time (phase-468 W1):", file=sys.stderr)
+        print("  `BuildRungs::require_rungs` panics rather than falling through to", file=sys.stderr)
+        print("  the BUILTIN knob defaults, which are not that platform's numbers.", file=sys.stderr)
+        print("  Falling through is how `threadx-linux` stopped compiling with an", file=sys.stderr)
+        print("  error naming neither the descriptor nor the name (issue 1145).", file=sys.stderr)
+        print("\n  Two remedies, and which one is right is a MEASUREMENT, not a", file=sys.stderr)
+        print("  preference:", file=sys.stderr)
+        print("    - the platform already resolves to an existing descriptor on some", file=sys.stderr)
+        print("      other road (feature, cmake token, arch table) -> add the name to", file=sys.stderr)
+        print("      that descriptor's `names`, the way `config/bare-metal` carries", file=sys.stderr)
+        print("      `esp32` and `freertos` carries `freertos-lwip`. names[0] stays", file=sys.stderr)
+        print("      canonical, and write the measurement down beside it.", file=sys.stderr)
+        print("    - it is a genuinely new platform -> give it its own", file=sys.stderr)
+        print("      `nros-platform.toml`. A descriptor declaring only `names` is a", file=sys.stderr)
+        print("      legitimate answer ('this platform states no rungs'); an ABSENT", file=sys.stderr)
+        print("      file is not an answer at all, which is the whole point.", file=sys.stderr)
+        print("\n  Do NOT add a baseline. There used to be one here and phase-468 W1", file=sys.stderr)
+        print("  emptied it; see the comment where it lived.", file=sys.stderr)
         return 1
-    answered = sum(1 for n in used if n in declared)
     print(f"check-platform-name-answered: OK ({len(used)} platform name(s) declared by "
-          f"boards: {answered} answered, {len(BASELINE_UNANSWERED)} baselined — issue 1362; "
+          f"boards, all answered — no baseline since phase-468 W1; "
           f"descriptors answer to {len(declared)} name(s))")
     return 0
 

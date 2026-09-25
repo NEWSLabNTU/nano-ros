@@ -311,10 +311,79 @@ pub fn build_search_path() -> Vec<PathBuf> {
     PlatformsTree::default_search_path(&repo, std::env::var("NROS_PLATFORMS_DIR").ok().as_deref())
 }
 
+/// What a build script prints when `NROS_PLATFORM_NAME` names a platform no
+/// descriptor answers to (phase-468 W1).
+///
+/// A free function, and unit-tested as one, because the thing that has gone
+/// wrong twice here is the MESSAGE, not the predicate. phase-400 W6's refusal
+/// said
+///
+/// ```text
+/// no …/packages/platform/threadx-linux/nros-platform.toml
+/// ```
+///
+/// — a path that does not exist and never would, because a descriptor's
+/// DIRECTORY is not its NAME (`config/bare-metal/` answers `esp32`). A reader
+/// who takes that literally creates the wrong directory. So this names the
+/// roots that were actually searched, what the tree actually answers to, and
+/// what to do; it never invents a path.
+fn unanswered_platform_message(
+    platform: &str,
+    what: &str,
+    search: &[PathBuf],
+    known: &[String],
+) -> String {
+    let roots = if search.is_empty() {
+        "(an empty search path)".to_string()
+    } else {
+        search
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join("\n    ")
+    };
+    let known = if known.is_empty() {
+        "(none — the search path holds no descriptor at all)".to_string()
+    } else {
+        known.join(", ")
+    };
+    format!(
+        "NROS_PLATFORM_NAME={platform}: no nros-platform.toml answers to `{platform}`, \
+         so the {what} knobs have no platform rung.\n\
+         \n  searched (every root, in order):\n    {roots}\n\
+         \n  descriptors in those roots answer to: {known}\n\
+         \n  A platform name is answered by a descriptor's `names = [..]` list, NOT by \
+         a directory of that name — `config/bare-metal/nros-platform.toml` is what \
+         answers `esp32`. So do not create a `{platform}/` directory on the strength of \
+         this message.\n\
+         \n  Either add `{platform}` to the `names` of the descriptor this platform \
+         already resolves to on its other roads (its `nros/platform-*` feature, its \
+         cmake deploy token, its `[arch.*]` profile), or give it its own \
+         nros-platform.toml. A descriptor that declares only `names` is a legitimate \
+         answer — 'this platform states no rungs' — and an absent file is not an answer \
+         at all, which is why this is fatal rather than a fall-through to the builtin \
+         defaults (phase-468 W1; falling through is how `threadx-linux` stopped \
+         compiling, issue 1145).\n\
+         \n  `just check platform-name-answered` asks this question for the whole tree \
+         without a build."
+    )
+}
+
 pub struct BuildRungs {
     pub platform: String,
     pub tree: PlatformsTree,
     pub board: Option<BoardKnobsFile>,
+    /// Every root [`build_search_path`] offered, in order.
+    ///
+    /// phase-468 W1 — kept rather than re-derived, because it is what the
+    /// refusal has to print. `ConfigError::UnknownPlatform` names
+    /// `PlatformsTree::root`, which after `load_search_path` is the FIRST root
+    /// that existed — so a descriptor living in the second root reads as "no
+    /// `<first root>/<name>/nros-platform.toml`", which is issue 1486's
+    /// one-root reading one level down, in the message this time. Deriving it a
+    /// second time inside the panic arm would be the issue-1025 shape: one
+    /// formula, two callers, two chances to disagree.
+    pub search: Vec<PathBuf>,
 }
 
 impl BuildRungs {
@@ -351,49 +420,66 @@ impl BuildRungs {
             platform,
             tree,
             board,
+            search,
         })
     }
 
-    /// A platform with NO `nros-platform.toml` has no rungs, and that is a
-    /// normal state — not an error.
+    /// A platform with NO `nros-platform.toml` is an ERROR, and this is where
+    /// it is refused.
     ///
-    /// phase-400 W6 REGRESSION, and this is the second half of issue 0979.
-    /// `nros-node/build.rs` resolved the platform with `.ok()` before the rungs
-    /// moved here; the move turned an absent descriptor into a `panic!`. Three
-    /// of the platforms this tree builds — `threadx-linux`, `esp32`,
-    /// `zephyr` — have never had a descriptor, so every one of their images
-    /// died in a build script:
+    /// WHAT THIS USED TO DO, and why the number moved (phase-468 W1).
+    ///
+    /// This was `or_builtin_rungs`, and its rule was the opposite: an absent
+    /// descriptor warned and fell through to the builtin knob defaults, because
+    /// three of the platforms this tree builds — `threadx-linux`, `esp32`,
+    /// `zephyr` — had no descriptor at all, and phase-400 W6 had turned that
+    /// into a `panic!` that killed every one of their images:
     ///
     /// ```text
     /// NROS_PLATFORM_NAME=threadx-linux: unknown platform `threadx-linux`:
     ///   no …/packages/platform/threadx-linux/nros-platform.toml
     /// ```
     ///
-    /// 0979 fixed the ROOT being empty, which is why the message now names a
-    /// real path. It did not fix this: a correct root still has no file for a
-    /// platform that declares none.
+    /// The tolerance was right THEN and is wrong now, and nothing about the
+    /// argument changed — the POPULATION did. All three of those names are
+    /// answered today: `zephyr` and `threadx-linux` by their own descriptors
+    /// (issue 1145 added the threadx aliases), `esp32` by
+    /// `config/bare-metal/nros-platform.toml`, which its zenoh C build already
+    /// resolved. `check-platform-name-answered` measures the whole population —
+    /// every `platform = "…"` a board declares — and it is EMPTY of
+    /// fall-throughs, with no baseline left. So the warning arm now describes a
+    /// state the tree cannot be in, and a `cargo:warning` for a state that
+    /// cannot happen is indistinguishable from one nobody reads.
     ///
-    /// What stays fatal is a descriptor that EXISTS and is broken — `Io`,
-    /// `Parse`, `Manifest`, a cycle, an arch conflict. Those are a wrong
-    /// answer; an absent file is no answer, and no answer means the builtin
-    /// defaults every knob already carries. The warning keeps it visible, so a
-    /// TYPO in `NROS_PLATFORM_NAME` still shows up rather than silently
-    /// selecting builtins — which is the one thing the panic was buying.
+    /// The two halves land together on purpose. The gate keeps this panic
+    /// unreachable in a green tree; this panic is what makes the gate's verdict
+    /// mean something. Either alone is the shape phase-400 W6 tried.
     ///
-    /// One helper, not three call sites with three spellings: the panic existed
-    /// three times over (executor, params, memory) and would have been fixed
-    /// once and left twice.
-    fn or_builtin_rungs<T: Default>(&self, what: &str, r: Result<T, ConfigError>) -> T {
+    /// The refusal names the platform, every root searched, what the tree DOES
+    /// answer to, and both remedies — because the phase-400 W6 message named a
+    /// directory that does not exist (`…/packages/platform/threadx-linux/`),
+    /// the platform NAME and the package DIRECTORY being keyed differently.
+    ///
+    /// A descriptor that EXISTS and is broken — `Io`, `Parse`, `Manifest`, a
+    /// cycle, an arch conflict — was always fatal and still is. What changed is
+    /// only that "no answer" joined "wrong answer".
+    ///
+    /// One helper, not nine call sites with nine spellings: this arm is reached
+    /// by every knob family (executor, params, xrce, zenoh.limits, zenoh.wire,
+    /// runtime, net, rmw, memory), and the original panic existed three times
+    /// over — it would have been fixed once and left twice.
+    fn require_rungs<T: Default>(&self, what: &str, r: Result<T, ConfigError>) -> T {
         match r {
             Ok(v) => v,
-            Err(ConfigError::UnknownPlatform { .. }) => {
-                println!(
-                    "cargo:warning=NROS_PLATFORM_NAME={}: no nros-platform.toml, \
-                     so the {what} knobs fall through to their builtin defaults",
-                    self.platform
-                );
-                T::default()
-            }
+            Err(ConfigError::UnknownPlatform { .. }) => panic!(
+                "{}",
+                unanswered_platform_message(
+                    &self.platform,
+                    what,
+                    &self.search,
+                    &self.tree.all_names(),
+                )
+            ),
             Err(e) => panic!("NROS_PLATFORM_NAME={}: {e}", self.platform),
         }
     }
@@ -408,7 +494,7 @@ impl BuildRungs {
     /// otherwise would have quietly dropped its Kconfig rung.
     pub fn executor_rungs(&self) -> ExecutorKnobs {
         let plat = self.tree.platform_executor_rungs(&self.platform);
-        let plat = self.or_builtin_rungs("executor", plat);
+        let plat = self.require_rungs("executor", plat);
         let b = self
             .board
             .as_ref()
@@ -436,7 +522,7 @@ impl BuildRungs {
     /// descriptors.
     pub fn param_rungs(&self) -> ParamKnobs {
         let plat = self.tree.platform_param_rungs(&self.platform);
-        let plat = self.or_builtin_rungs("params", plat);
+        let plat = self.require_rungs("params", plat);
         let b = self
             .board
             .as_ref()
@@ -460,7 +546,7 @@ impl BuildRungs {
     /// The `[knobs.xrce]` RUNGS for this build. See [`Self::rmw_rungs`].
     pub fn xrce_rungs(&self) -> XrceKnobs {
         let plat = self.tree.platform_xrce_rungs(&self.platform);
-        let plat = self.or_builtin_rungs("xrce", plat);
+        let plat = self.require_rungs("xrce", plat);
         let b = self
             .board
             .as_ref()
@@ -475,7 +561,7 @@ impl BuildRungs {
     /// The `[knobs.zenoh.limits]` RUNGS for this build. See [`Self::rmw_rungs`].
     pub fn zenoh_limit_rungs(&self) -> ZenohLimitKnobs {
         let plat = self.tree.platform_zenoh_limit_rungs(&self.platform);
-        let plat = self.or_builtin_rungs("zenoh.limits", plat);
+        let plat = self.require_rungs("zenoh.limits", plat);
         let b = self
             .board
             .as_ref()
@@ -492,7 +578,7 @@ impl BuildRungs {
     /// board, board winning. See [`Self::rmw_rungs`].
     pub fn wire_rungs(&self) -> WireKnobs {
         let plat = self.tree.platform_wire_rungs(&self.platform);
-        let plat = self.or_builtin_rungs("zenoh.wire", plat);
+        let plat = self.require_rungs("zenoh.wire", plat);
         let b = self
             .board
             .as_ref()
@@ -511,7 +597,7 @@ impl BuildRungs {
     /// board winning. See [`Self::rmw_rungs`].
     pub fn runtime_rungs(&self) -> RuntimeKnobs {
         let plat = self.tree.platform_runtime_rungs(&self.platform);
-        let plat = self.or_builtin_rungs("runtime", plat);
+        let plat = self.require_rungs("runtime", plat);
         let b = self
             .board
             .as_ref()
@@ -530,7 +616,7 @@ impl BuildRungs {
     /// board winning. See [`Self::rmw_rungs`].
     pub fn net_rungs(&self) -> NetKnobs {
         let plat = self.tree.platform_net_rungs(&self.platform);
-        let plat = self.or_builtin_rungs("net", plat);
+        let plat = self.require_rungs("net", plat);
         let b = self
             .board
             .as_ref()
@@ -553,7 +639,7 @@ impl BuildRungs {
     /// which are a property of the array it carves and not of the ladder.
     pub fn rmw_rungs(&self) -> RmwKnobs {
         let plat = self.tree.platform_rmw_rungs(&self.platform);
-        let plat = self.or_builtin_rungs("rmw", plat);
+        let plat = self.require_rungs("rmw", plat);
         let b = self
             .board
             .as_ref()
@@ -569,7 +655,7 @@ impl BuildRungs {
     /// The memory tenant for this build, over the full ladder.
     pub fn memory(&self, defaults: &[(&'static str, usize)]) -> Vec<(&'static str, ResolvedUsize)> {
         let plat = self.tree.platform_memory_rungs(&self.platform);
-        let plat = self.or_builtin_rungs("memory", plat);
+        let plat = self.require_rungs("memory", plat);
         self.tree.resolve_memory_from(
             &self.platform,
             &plat,
@@ -2296,11 +2382,18 @@ impl PlatformsTree {
 
     /// The memory ladder over an ALREADY-RESOLVED platform rung.
     ///
-    /// Split out so the build side can supply an empty rung for a platform that
-    /// declares no descriptor (see `BuildRungs::or_builtin_rungs`) without
-    /// re-implementing the ladder, while `nros config explain` keeps the strict
-    /// lookup above — a typo in `--platform` should still be an error there,
-    /// and silently printing builtins for it would be the wrong answer.
+    /// Split out so a caller holding an ALREADY-RESOLVED (possibly empty)
+    /// platform rung can run the ladder without re-implementing it, while
+    /// `nros config explain` keeps the strict lookup above — a typo in
+    /// `--platform` should still be an error there, and silently printing
+    /// builtins for it would be the wrong answer.
+    ///
+    /// phase-468 W1: the original reason for the split was the build side
+    /// supplying an empty rung for a platform with NO descriptor, which
+    /// `BuildRungs::require_rungs` now refuses outright. An empty rung is still
+    /// a real case — a descriptor that declares `names` and no `[knobs.*]`,
+    /// which is how `config/bare-metal` answers both its names — so the split
+    /// keeps earning its keep; it just no longer stands in for an absent file.
     pub fn resolve_memory_from(
         &self,
         platform: &str,
@@ -3031,18 +3124,22 @@ mod tests {
         assert_eq!(hit.1.source, KnobSource::Env);
     }
 
-    /// A platform with NO descriptor resolves to builtins; a BROKEN one does not.
+    /// An absent descriptor is `UnknownPlatform`; a BROKEN one is not.
     ///
-    /// The phase-400 W6 regression this pins killed every image of the three
-    /// platforms that declare no `nros-platform.toml` — `threadx-linux`,
-    /// `esp32`, `zephyr` — by panicking in a build script. Issue 0979 fixed the
-    /// search ROOT being empty; this is the other half, and the two look
-    /// identical in a log (`unknown platform \`x\`: no <root>/x/…`), which is
-    /// why the second one survived the first fix.
+    /// The DISCRIMINATION is what this pins, and it is what the two callers
+    /// above the loader are built on: `BuildRungs::require_rungs` prints a
+    /// remedy for one and re-raises the other, and it can only tell them apart
+    /// if the variant is right. Issue 0979 fixed the search ROOT being empty,
+    /// and the two failures look identical in a log
+    /// (`unknown platform \`x\`: no <root>/x/…`) — which is why the second one
+    /// survived the first fix.
     ///
-    /// Both directions, because the tolerant arm must not swallow a real error:
-    /// an absent file is NO answer (builtins are correct), a malformed file is
-    /// a WRONG answer (still fatal).
+    /// phase-468 W1 moved what the BUILD does with `UnknownPlatform`, from a
+    /// `cargo:warning` plus builtins to a panic, and deliberately did NOT move
+    /// this test: the loader's job is to say WHICH failure it is, not what a
+    /// build should do about it. The ladder below still answers with builtins
+    /// over an empty rung, because a descriptor may legitimately declare no
+    /// `[knobs.*]` — `config/bare-metal` does.
     #[test]
     fn an_absent_descriptor_is_unknown_platform_and_a_broken_one_is_not() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -3051,7 +3148,7 @@ mod tests {
         let tree = PlatformsTree::load_search_path(&[root.to_path_buf()])
             .expect("an empty but EXISTING root is a valid tree");
 
-        // Absent: the variant `or_builtin_rungs` keys its tolerant arm on.
+        // Absent: the variant `require_rungs` keys its remedy arm on.
         match tree.platform_param_rungs("threadx-linux") {
             Err(ConfigError::UnknownPlatform { name, .. }) => {
                 assert_eq!(name, "threadx-linux");
@@ -3084,6 +3181,68 @@ mod tests {
             "a malformed descriptor must not be reported as an absent one — \
              the tolerant arm would then silently substitute builtins"
         );
+    }
+
+    /// The refusal a build script prints names every root, never a directory
+    /// it invented.
+    ///
+    /// phase-468 W1. The thing that went wrong the last time this was fatal
+    /// was the MESSAGE: phase-400 W6 printed
+    /// `no …/packages/platform/threadx-linux/nros-platform.toml`, a path that
+    /// does not exist and never would, because a descriptor's directory is not
+    /// its name. A reader who follows it creates the wrong directory. So the
+    /// assertions here are about what the text contains, which is the part a
+    /// type cannot check.
+    #[test]
+    fn the_unanswered_platform_refusal_names_the_roots_and_not_a_guessed_path() {
+        let search = vec![
+            PathBuf::from("/checkout/packages/platform"),
+            PathBuf::from("/checkout/config"),
+        ];
+        let known = vec!["bare-metal".to_string(), "esp32".to_string()];
+        let msg = unanswered_platform_message("wumpus", "executor", &search, &known);
+
+        assert!(msg.contains("wumpus"), "must name the platform: {msg}");
+        assert!(msg.contains("executor"), "must name the knob family: {msg}");
+        for root in &search {
+            assert!(
+                msg.contains(&root.display().to_string()),
+                "must name EVERY root searched, missing {root:?}: {msg}"
+            );
+        }
+        assert!(
+            msg.contains("bare-metal") && msg.contains("esp32"),
+            "must list what the tree does answer to: {msg}"
+        );
+        assert!(
+            !msg.contains("/checkout/packages/platform/wumpus")
+                && !msg.contains("/checkout/config/wumpus"),
+            "must NOT name a <root>/<name>/ path — that is the phase-400 W6 \
+             message that sent readers to create a directory keyed the wrong \
+             way: {msg}"
+        );
+        assert!(
+            msg.contains("names"),
+            "must point at `names = [..]`, which is what actually answers a \
+             platform name: {msg}"
+        );
+        assert!(
+            msg.contains("check platform-name-answered"),
+            "must name the buildless gate that asks this for the whole tree: {msg}"
+        );
+    }
+
+    /// ...and an empty search path says so rather than printing `[]`.
+    ///
+    /// Reachable: `build_search_path` falls back to `try_repo_root` returning
+    /// nothing for an out-of-tree consumer that also set no
+    /// `NROS_PLATFORMS_DIR`. Issue 0979 is what an empty root looks like when
+    /// nothing says it is empty.
+    #[test]
+    fn the_refusal_says_when_there_were_no_roots_at_all() {
+        let msg = unanswered_platform_message("wumpus", "net", &[], &[]);
+        assert!(msg.contains("an empty search path"), "{msg}");
+        assert!(msg.contains("no descriptor at all"), "{msg}");
     }
 
     use super::*;

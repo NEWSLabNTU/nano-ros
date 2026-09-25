@@ -3,12 +3,13 @@ id: 1362
 title: "TWO platform names boards declare are answered by no
   `nros-platform.toml` and take the BUILTIN knob defaults — the other three
   were fixture coordinate labels the gate mistook for platform names"
-status: open
+status: resolved
 type: bug
 area: build, boards
 severity: medium
 found: 2026-09-13
-related: [1145, 0196, 1382, phase-448]
+resolved_in: "fix(#1362, phase-468 W1): a platform with no descriptor is an ERROR"
+related: [1145, 0196, 1382, 1486, 1494, phase-448, phase-468]
 ---
 
 ## What this is
@@ -157,3 +158,38 @@ Same shape as the rest of this campaign: the gate was authored, registered,
 mutation-tested, and watching the wrong names. It caught issue 1145 only
 because that board's declared platform and its fixtures label happen to be the
 same string.
+
+## RESOLVED 2026-09-25 — phase-468 W1
+
+Both remaining names are answered, and the fall-through they were falling
+through is gone.
+
+* `bare-metal` was never unanswered. `config/bare-metal/nros-platform.toml` has
+  answered it since phase-349 W1; the gate read ONE of the loader's two search
+  roots and so reported it, and the repair at the time was to baseline it rather
+  than widen the reach — issue 1486.
+* `esp32` was the one real fall-through, and the decision this issue said was
+  needed went the way its own table did not expect. It reads "has an RTOS
+  (ESP-IDF's FreeRTOS) and no descriptor; probably wants one". That conflates
+  the two esp32 paths phase-468 W2 warns about: the board declaring
+  `platform = "esp32"` is `nros-board-esp32-qemu`, the **bare-metal ESP32-C3
+  QEMU** board (esp-hal, riscv32imc), not the ESP-IDF port. It has no RTOS, and
+  `config/bare-metal` was already its descriptor on every other road —
+  `PlatformKind::Esp32::platform_feature()` returns `platform-bare-metal`, the
+  board takes `nros-rmw-zenoh/platform-bare-metal` so `nros-zpico-build`
+  resolves that file for its vendored zenoh-pico C build, and
+  `[arch.riscv32imc]` in it was written for the ESP32-C3. `esp32` joined that
+  file's `names`.
+* The "compare the knobs on a built image before claiming it" protocol was
+  followed and the comparison is empty by construction: `config/bare-metal`
+  declares no `[knobs.*]`, so the rungs esp32 resolves through it are
+  byte-identical to the builtins it was falling through to. What changed is the
+  diagnosis, not the image.
+
+And the shape that made this an issue rather than an edit is retired.
+`or_builtin_rungs` is `require_rungs`: an `UnknownPlatform` panics with a
+message naming the platform, every root searched, the names the tree answers to
+and the remedy. `check-platform-name-answered` has no `BASELINE_UNANSWERED` and
+no ratchet at all — there is nothing left to baseline into, so a sixth name
+cannot wait, it can only be answered. Measured: all 8 board-declared names build
+with 0 `cargo:warning` fall-through lines; an invented name exits 101.

@@ -9,7 +9,36 @@
 # Schema + loader: nros-board-common/src/platform_config.rs.
 # phase-349 W1 / RFC-0072 — the names this platform answers to; the
 # directory is just where the file lives. names[0] is canonical.
-names = ["bare-metal"]
+#
+# phase-468 W1 — `esp32` joins the list, and it is not a convenience alias: it
+# is the name this file was already answering under a different spelling.
+# Four measurements, none of them a reading of intent:
+#
+#   1. `PlatformKind::Esp32::platform_feature()` returns `platform-bare-metal`
+#      (nros-cli-core/src/orchestration/board_descriptor.rs, RFC-0064 R5 D6 /
+#      phase-375 W8). Its own doc-comment says so and adds "There is no
+#      `config/esp32/`" — the repo had already decided esp32's platform, and
+#      then had nowhere to write it down.
+#   2. `nros-board-esp32-qemu` depends on `nros-rmw-zenoh` with feature
+#      `platform-bare-metal`, which is `["zpico-sys/bare-metal", …]`, which
+#      sets `CARGO_FEATURE_BARE_METAL`, which makes `nros-zpico-build`'s own
+#      `platform_name` derivation resolve `"bare-metal"`. So the vendored
+#      zenoh-pico C build of EVERY esp32 image already reads this file. Only
+#      the knob-rung road (`NROS_PLATFORM_NAME`, from the board's
+#      `platform = "esp32"`) asked for a name nothing answered.
+#   3. `[arch.riscv32imc]` below was written FOR the ESP32-C3 — see the
+#      "Phase 148: bare-metal spans cortex-m3 … AND riscv32imc (ESP32-C3)"
+#      comment on `arch` in `[build.zenoh]`.
+#   4. This file declares NO `[knobs.*]` and NO `[capabilities]`, so the rungs
+#      esp32 resolves through it are byte-identical to the builtin defaults it
+#      fell through to before. The image does not move; what moves is that the
+#      name is ANSWERED and the two roads name ONE descriptor instead of two.
+#
+# esp32's two real hardware budgets are BOARD facts and already sit at the
+# board rung — `[board.knobs.net] max_udp_sockets` and
+# `[board.knobs.executor] arena_size` in `nros-board-esp32-qemu/nros-board.toml`
+# (phase-445 W2/W6). The platform rung has nothing left to add for it.
+names = ["bare-metal", "esp32"]
 
 [build.zenoh]
 # `ZPICO_SMOLTCP` activates the smoltcp branches inside `zpico.c`
