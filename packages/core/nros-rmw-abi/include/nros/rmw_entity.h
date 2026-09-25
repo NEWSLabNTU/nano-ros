@@ -115,14 +115,18 @@ typedef int64_t rmw_time_point_value_t;
  *  identifier shorter than 24 bytes rather than leave the tail undefined —
  *  otherwise two gids naming the same entity compare unequal on stack garbage.
  *
- *  **24, not 16, and that is a discrepancy worth knowing about.** Our own
- *  `MessageInfo::publisher_gid` (`nros-core`, `PUBLISHER_GID_SIZE`) is 16 bytes,
- *  while the Cyclone backend already computes 24-byte gids for the DDS graph
- *  (`entity_gid_24` in `graph.cpp`). Under upstream semantics those are the SAME
- *  identifier, so a gid obtained from a take cannot today be compared with one
- *  from `get_gid_for_publisher` without a documented mapping — and the narrower
- *  one truncates. The ABI takes upstream's width; reconciling `MessageInfo` is
- *  its own change and is NOT done here. */
+ *  **The width discrepancy is GONE; the identity one is not.** `nros-core`'s
+ *  `MessageInfo::publisher_gid` was 16 bytes against this 24 until the
+ *  phase-467 RMW gap-closure design study's Q1(a). `PUBLISHER_GID_SIZE` is 24
+ *  now, so a gid obtained from a take and a gid obtained from
+ *  `get_gid_for_publisher` are ONE TYPE and need no mapping. What they still
+ *  are not is one VALUE: no backend fills both. Cyclone fills this slot from
+ *  the DDS writer GUID and never writes `MessageInfo::publisher_gid` — a pure
+ *  C/C++ backend reports no `MessageInfo` at all; zenoh fills
+ *  `MessageInfo::publisher_gid` from its 16-byte attachment gid
+ *  (zero-extended) and leaves this slot NULL. Making the two agree is issue
+ *  1495 — it changes a value a stock ROS 2 peer reads, so it is deliberately
+ *  separate from the widening. */
 /** Bytes to READ — phase-406 W2.
  *
  *  `len` is a FACT: how many bytes exist. Nothing is written through this, and
