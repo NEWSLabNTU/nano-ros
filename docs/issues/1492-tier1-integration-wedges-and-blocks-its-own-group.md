@@ -502,3 +502,54 @@ or never reached it — so the 1353 evidence is lost by a third route. And the
 job's log returns `BlobNotFound` after conclusion, as every other one has, so
 the open question stands unchanged: whether a step-15 `failure` is the tier
 reporting or the disk killing it cannot be read off any wedge recorded here.
+
+## The first run after #1313 did NOT wedge — and the ceiling had nothing to do with it
+
+Run **36146158187** (push, `94124a0d6`), job **108107735210**: the first
+`nros-tests integration (host)` to start with `timeout-minutes: 150` in place.
+Started 16:07:03, ended **18:32:55** — 2 h 25 m 52 s — conclusion `failure`,
+**23 steps completed**, one failed step.
+
+Three things separate it from all nine wedges above, and only one of them is
+the remedy this issue asked for:
+
+1. **It terminated on its own.** Steps 16 through 20 ran: the after-tier disk
+   report, BOTH transcript uploads, the JUnit artifact and the post-run steps.
+   No step was left without a conclusion. That is the signature the previous
+   append settled on, and this run does not have it.
+2. **The ceiling never fired.** 150 minutes from 16:07:03 is **18:37:03**; the
+   job ended at 18:32:55, **4 m 08 s early**. So `timeout-minutes: 150` remains
+   untested as a mechanism — it has still never cancelled anything.
+3. **The log survived.** 1313 lines, readable. Every one of the nine wedges
+   returns `BlobNotFound`, before and after conclusion. This is what actually
+   changed the diagnosability, and it came from the job FINISHING, not from the
+   ceiling.
+
+### What `just ci tier1` reported — the open question, answered for this run
+
+Three appends have said a step-15 `failure` could be the tier reporting or the
+disk killing it, and that no recorded wedge could tell you which. This run can:
+
+```
+  multi-package-workspace: FAIL — the copy does not build
+      sync: wrote [patch.crates-io] → /tmp/nros-template-copy-out.QGHv44/copy/…/src/pkg_rust_puerror: recipe `build` failed on line 233 with exit c
+error: recipe `tier1` failed with exit code 1
+```
+
+A NAMED check failed — the template copy-out — rather than the step dying
+silently. Note the text `pkg_rust_pu` + `error:` spliced mid-word and the line
+cut at `exit c`: that is log truncation, so the run is still not a clean
+verdict. But it is a verdict about a check, which is more than any wedge
+produced.
+
+Whether the copy-out FAIL is itself caused by the disk cannot be settled from
+this log, and the numbers below say it must be considered.
+
+### One run is one run
+
+Nine consecutive wedges, then one run that did not. That is the first evidence
+in this issue's favour, not a proof the class is gone: #1313 changed the disk
+reclaim AND added the ceiling in the same commit, the ceiling demonstrably did
+nothing here, so the credit belongs to the reclaim or to luck and this run
+cannot separate them. Keep the issue open until several runs in a row finish
+their steps.

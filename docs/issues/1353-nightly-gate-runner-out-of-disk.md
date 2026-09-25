@@ -1043,3 +1043,42 @@ belong on the other two jobs.
 
 Acceptance is unchanged: a scheduled run reaching a VERDICT on `check build`
 and `check no-std`, three nights running.
+
+## 2026-09-25 — the FIRST measured before/after pair, and the tier still ends at 100 %
+
+Every disk transcript this issue wanted was lost with its job (issue 1492: nine
+consecutive wedges, all `BlobNotFound`). Run **36146158187**, job
+**108107735210**, is the first `nros-tests integration (host)` to finish its
+steps, so its `disk-report.sh` output survived:
+
+```
+before just ci tier1:
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root       146G  128G   18G  89% /__w
+
+after just ci tier1:
+/dev/root       146G  146G  272K 100% /__w
+```
+
+Mid-step, GitHub's own warning: `Free space left: 31 MB`.
+
+So on a **146 G** runner the tier arrives with the disk already **89 % full**
+— 128 G consumed before `just ci tier1` starts — and consumes the remaining
+**18 G**, ending at **272 K free, 100 %**. This is measurement, not inference:
+the two `df` lines are from the same job, 6 minutes apart in the log.
+
+Two things follow, and neither is a diagnosis:
+
+* **#1313's reclaim did not stop the exhaustion.** It plausibly bought the run
+  enough headroom to FINISH (this is the first job that did), which is how the
+  transcript exists at all. But the tier still ends at 100 %.
+* **The tier's own failure may be a consequence.** The step reported
+  `multi-package-workspace: FAIL — the copy does not build`, a template
+  copy-out into `/tmp`, on a filesystem that reached 272 K. The log line is
+  truncated mid-word, so this cannot be settled here; it is the first thing to
+  check on the next run that finishes.
+
+What would make the 128 G attributable: the before-transcript that
+`scripts/ci/disk-report.sh` writes now reaches its artifact, because the job
+finishes. So the next run can be asked WHAT holds those 128 G before the tier
+starts. Until one is read, the figure is a total and nothing more.
