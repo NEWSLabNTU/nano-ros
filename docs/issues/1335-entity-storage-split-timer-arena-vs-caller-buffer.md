@@ -6,7 +6,8 @@ title: "The C++ API uses the POLL path where it means the DISPATCH path, and
 status: open
 type: question
 area: [api, api-c, core, docs]
-related: [rfc-0022, rfc-0054, rfc-0096, phase-409, phase-412, phase-442, phase-456]
+related: [rfc-0022, rfc-0054, rfc-0096, phase-409, phase-412, phase-442, phase-456,
+  issue-1496]
 ---
 
 ## The question
@@ -84,9 +85,22 @@ already had, so nothing of the caller's is referenced after registration and
 both types are movable; the quoted comment is gone from `service.hpp` with its
 subject, which is why it reads here as a quotation of something absent. The
 issue stays open for the rest: the two-path split itself, the subscription
-out-ref form, and the ACTION types, whose C++ object genuinely IS the entity
-(`nros_cpp_action_server_register` is handed `out.storage_`) and which
-phase-456 W3b carries.
+out-ref form, and the ACTION types, which phase-456 W3b carries.
+
+**Correction to the ACTION half of that sentence, measured (phase-456 W3b).** It
+read "whose C++ object genuinely IS the entity (`nros_cpp_action_server_register`
+is handed `out.storage_`)". The handing-over is real; the conclusion is not.
+`out.storage_` holds a `CppActionServer`, which is an
+`Option<ActionServerRawHandle>` — an ARENA handle — plus a four-word callback
+record, a `node_id` and a create-time QoS; the five RMW entities, the goal table,
+the completed-result table and every buffer are fields of
+`ActionServerRawArenaEntry` in the arena, and `CppActionServer`'s own doc comment
+says *"the arena in `nros-node` owns all lifecycle state"*. The action CLIENT is
+literally `{callbacks, arena_entry_index: i32, executor_ptr}` — this issue's end
+state, reached in Phase 87.6. So actions are the entity family FURTHEST along the
+road this issue asks for, not the one furthest behind; what remains is a
+duplicated callback record and a 256-byte name cache. Separately: destroying
+either C++ action object is a no-op over its arena entry — issue 1496.
 
 ## Why it matters, in numbers
 
