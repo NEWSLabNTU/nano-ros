@@ -218,12 +218,27 @@ while IFS= read -r record; do
     # rejects outright — and the shim resolves such a bringup as its OWN
     # workspace (`_nros_system_detect_self_pkg`), so `<bringup>/build/nros/models/`
     # is exactly where the configure looks.
+    #
+    # issue 1501 — SAY WHY when sync fails. This used to discard sync's output
+    # (`>/dev/null 2>&1`) and print one line that named neither the cause nor
+    # the remedy, so when both `zephyr_self_pkg` rows became unsyncable
+    # (`system.toml` with no `package.xml` — sync scans `src/<pkg>/package.xml`
+    # or a root `package.xml` and rejects a dir with neither) the visible
+    # failure was the configure's "no SystemModel was found", one tool and one
+    # step away from the refusal that explains it.
+    #
+    # `set -e` is not in force here, but the issue-1249 shape still applies:
+    # capture the status at the command, never at a later assignment.
     _wf_cli="${NROS_CLI_BIN:-$repo_root/packages/cli/target/release/nros}"
     if [ -x "$_wf_cli" ]; then
         for _bringup in "$repo_root/$src"/*/; do
             [ -f "$_bringup/system.toml" ] || continue
-            ( cd "$_bringup" && "$_wf_cli" sync >/dev/null 2>&1 ) \
-                || echo "   nros sync failed in $(basename "$_bringup") (configure may fail)" >&2
+            _wf_sync_rc=0
+            _wf_sync_out="$( cd "$_bringup" && "$_wf_cli" sync 2>&1 )" || _wf_sync_rc=$?
+            if [ "$_wf_sync_rc" -ne 0 ]; then
+                echo "   nros sync FAILED in $(basename "$_bringup") (rc=$_wf_sync_rc) — the configure below will refuse for want of a SystemModel:" >&2
+                printf '%s\n' "$_wf_sync_out" | sed 's/^/     /' >&2
+            fi
         done
     fi
     args=(build -d "$bld")
