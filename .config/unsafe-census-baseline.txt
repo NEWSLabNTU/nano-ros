@@ -63,7 +63,7 @@ nros-rmw-metadata                    1   0     0       0      0
 nros-rmw-xrce-cffi                   3   1     0       5      0
 nros-rmw-zenoh                     121  11     5      17      0
 nros-sizes-build                    28   0     0       0      0
-nros-smoltcp                        97  17     1       7      0
+nros-smoltcp                       108  19     2       9      0
 nros-tests                          28   0     0       0      0
 nros-transport-callbacks             9   0     0       8      0
 nros-zephyr-build                    5   0     0       0      0

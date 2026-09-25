@@ -867,6 +867,10 @@
     "verdict": "extension",
     "why": "that bound (128 bytes), matched to `METADATA_STRING_CAPACITY` so a name that entered the seam can always leave it. See `rust:ResolvedName`."
   },
+  "rust:MAX_WAKE_SOURCES": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436, re-exported from the `nros` umbrella by B2 because a board that registers a deadline source has to know the capacity it can be refused at. How many platform sources one executor carries: a plain const, not a sizing knob, because the table is INLINE — no allocator, which is the whole reason this seam exists on the targets it exists for. rclrs has no wake-source concept, so there is nothing to size against. (Shard: `topics.py` routes this key to this file rather than to exec.json, where its `Executor::register_wake_source` / `Executor::last_park` siblings live — the same split `c:deadline_policy_t` records. The verdict is right; the shard is an artifact of the key's wording.)"
+  },
   "rust:METADATA_STRING_CAPACITY": {
     "verdict": "extension",
     "why": "that capacity (128 bytes), and the bound `nros_node::names::MAX_RESOLVED_NAME_LEN` is matched to. See `rust:MetadataString`."
@@ -1237,6 +1241,10 @@
   "rust:Violation": {
     "verdict": "extension",
     "why": "what the executor pushes into the ring the entry glue drains into the diagnostics reporter. See `rust:MonitorSpec`."
+  },
+  "rust:WakeSourceId": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436, re-exported by B2 — `Executor::last_park` RETURNS one and `register_wake_source` hands one back, so without a path a caller outside the crate could receive a value it cannot name or match on. `CallerBudget` / `Timer` / `Session` / `Platform(u8)`: which deadline source won the last park. Attribution costs one byte per spin and is the difference between a schedulability argument you can audit and one you have to trust; rclrs reports no wake cause at all. (Shard: `topics.py` routes this key to this file rather than to exec.json, where its `Executor::register_wake_source` / `Executor::last_park` siblings live — the same split `c:deadline_policy_t` records. The verdict is right; the shard is an artifact of the key's wording.)"
   },
   "rust:add_sink": {
     "verdict": "extension",
