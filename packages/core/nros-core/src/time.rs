@@ -28,6 +28,35 @@ fn split_secs_f64(secs: f64) -> (i32, u32) {
     (sec, nanosec)
 }
 
+/// A generated message whose field set is `{ sec: i32, nanosec: u32 }` —
+/// `builtin_interfaces/msg/Time` and its `Duration` twin.
+///
+/// **This is the Rust substitute for a C++ template parameter.** `nros-cpp`
+/// spells the same conversion as
+/// `template <typename TimeMsgT> void Time::to_msg(TimeMsgT&)`
+/// (`packages/api/nros-cpp/include/nros/time.hpp`), which binds structurally to
+/// anything carrying `sec` / `nanosec`. Rust has no structural bound, so the same
+/// trick needs an AUTHORED trait that `rosidl-codegen` implements for every
+/// generated message with that exact field set — the same binding set the C++
+/// template has, decided by SHAPE rather than by a hard-coded package name.
+///
+/// Why the trait lives here and the impl does not: `nros-core` can never name a
+/// message type. Every generated message crate depends on `nros-core`, so a
+/// dependency the other way is a cycle, and message types are generated per USER
+/// package (RFC-0023 / RFC-0067) — there is no one crate for the client library
+/// to name. The trait is the seam that lets the conversion cross that edge
+/// without an edge.
+///
+/// Implemented by codegen; nothing in this crate implements it.
+pub trait SecNanosecMsg: Sized {
+    /// Build the message from an already-decomposed timestamp.
+    ///
+    /// Infallible by construction — both components are already the message's
+    /// own field types. See [`Time::to_ros_msg`] for why no `Result` appears
+    /// here.
+    fn from_sec_nanosec(sec: i32, nanosec: u32) -> Self;
+}
+
 /// ROS Time representation
 ///
 /// Matches `builtin_interfaces/msg/Time`:
@@ -94,6 +123,29 @@ impl Time {
     /// Convert to seconds (float)
     pub fn to_secs_f64(&self) -> f64 {
         self.sec as f64 + (self.nanosec as f64 / NANOS_PER_SEC as f64)
+    }
+
+    /// Stamp a generated `builtin_interfaces/msg/Time` — the single most common
+    /// thing a publisher does.
+    ///
+    /// ```ignore
+    /// msg.header.stamp = node.now().to_ros_msg();
+    /// ```
+    ///
+    /// The return type is inferred from the call site; any generated message
+    /// with the `{ sec, nanosec }` field set satisfies [`SecNanosecMsg`], which
+    /// is the same binding set the C++ `Time::to_msg` template has.
+    ///
+    /// **INFALLIBLE, deliberately.** `rclrs::Time::to_ros_msg` returns
+    /// `Result<builtin_interfaces::msg::Time, TryFromIntError>` because its
+    /// `Time` holds `i64` nanoseconds and narrowing to `sec: i32` can overflow.
+    /// Ours ALREADY IS `{ sec: i32, nanosec: u32 }`, so this is two field copies
+    /// and cannot fail. Wrapping it in a `Result` so a ported `t.to_ros_msg()?`
+    /// keeps compiling would hide a difference instead of making the compiler
+    /// point at it — the inverse of RFC-0089's rule. A ported `?` fails to
+    /// compile, locally, with one character to fix.
+    pub fn to_ros_msg<M: SecNanosecMsg>(&self) -> M {
+        M::from_sec_nanosec(self.sec, self.nanosec)
     }
 }
 
@@ -247,6 +299,48 @@ impl Deserialize for Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Stands in for a generated `builtin_interfaces/msg/Time`. This crate
+    /// cannot name the real one — that edge is the whole reason
+    /// [`SecNanosecMsg`] exists — so the trait's contract is checked here and
+    /// the CODEGEN side of it is checked where a generated crate is available
+    /// (`packages/testing/nros-tests/tests/time_to_ros_msg.rs`).
+    #[derive(Debug, PartialEq)]
+    struct FakeTimeMsg {
+        sec: i32,
+        nanosec: u32,
+    }
+
+    impl SecNanosecMsg for FakeTimeMsg {
+        fn from_sec_nanosec(sec: i32, nanosec: u32) -> Self {
+            Self { sec, nanosec }
+        }
+    }
+
+    #[test]
+    fn to_ros_msg_copies_both_fields_and_cannot_fail() {
+        let t = Time::new(1_234_567_890, 123_456_789);
+        // No `?`, no `.unwrap()`: the return type IS the message. Upstream's
+        // `Result` is upstream's `i64` narrowing, which ours does not do.
+        let msg: FakeTimeMsg = t.to_ros_msg();
+        assert_eq!(
+            msg,
+            FakeTimeMsg {
+                sec: 1_234_567_890,
+                nanosec: 123_456_789
+            }
+        );
+    }
+
+    #[test]
+    fn to_ros_msg_carries_a_pre_epoch_stamp_unchanged() {
+        // `sec` is signed and `nanosec` is not; a pre-epoch stamp is two field
+        // copies like any other, with no renormalisation on the way out.
+        let t = Time::new(-5, 999_999_999);
+        let msg: FakeTimeMsg = t.to_ros_msg();
+        assert_eq!(msg.sec, -5);
+        assert_eq!(msg.nanosec, 999_999_999);
+    }
 
     #[test]
     fn test_time_roundtrip() {

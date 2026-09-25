@@ -12,7 +12,7 @@
 #
 # Regenerate after a DELIBERATE surface move (bump the constant first):
 #     python3 scripts/check-codegen-version-surface.py --write-baseline
-version 7
+version 8
 9a40c1a1fadbae06 cpp|fn|component.hpp|bind_subscription_sized
 4e2616f1497bc854 cpp|struct|fixed_sequence.hpp|FixedSequence
 05b2ecfd67796b30 cpp|struct|fixed_string.hpp|FixedString
@@ -206,6 +206,7 @@ b8d6b91fcebdd992 rust|reexport|nros_core|action::
 64b5234e4523e037 rust|reexport|nros_core|alloc::
 04af8135f6c0f043 rust|reexport|nros_core|heapless
 8a02d9e49c131476 rust|reexport|nros_core|nros_serdes::
+acedc58c8c253b6b rust|reexport|nros_core|time::
 3e8c91d37a454288 rust|reexport|nros_core|types::
 1e2ce90d8c437d47 rust|reexport|nros_serdes|cdr::
 8fd7fafa0e77df6a rust|reexport|nros_serdes|error::
@@ -267,6 +268,7 @@ a9333c7d526cb7b2 rust|traitimpl|nros_serdes|impl<const N: usize> Serialize for h
 73fe425b16279818 rust|trait|nros_core::RosAction
 7a87e42a7fc69aaa rust|trait|nros_core::RosMessage
 3cb0c6cc55a93688 rust|trait|nros_core::RosService
+6919a2666ff65bd7 rust|trait|nros_core::SecNanosecMsg
 1b2b447ecd268b4c rust|trait|nros_core::ViewableMessage
 ec2b25cef5a5269f rust|trait|nros_serdes::Deserialize
 ef7c807c6c367846 rust|trait|nros_serdes::DeserializeView

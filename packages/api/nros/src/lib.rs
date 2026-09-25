@@ -226,7 +226,8 @@ pub mod cdr {
 // Re-export core types
 pub use nros_core::{
     CdrReader, CdrWriter, Clock, ClockType, DeserError, Deserialize, Duration, MessageInfo,
-    PUBLISHER_GID_SIZE, RawMessageInfo, RosMessage, RosService, SerError, Serialize, Time,
+    PUBLISHER_GID_SIZE, RawMessageInfo, RosMessage, RosService, SecNanosecMsg, SerError, Serialize,
+    Time,
 };
 
 // -----------------------------------------------------------------------------

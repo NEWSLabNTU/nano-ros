@@ -38,6 +38,19 @@ impl Deserialize for Duration {
     }
 }
 
+// ── nros_core::SecNanosecMsg — what `Time::to_ros_msg()` returns ────────────
+// phase-467 Q3. This message's field set is `{ sec: i32, nanosec: u32 }`, so a
+// `nros_core::Time` reaches it by two field copies. `nros-core` cannot name a
+// message type — every generated crate depends on it, and message types are
+// generated per USER package — so the impl is emitted HERE and the trait is the
+// seam. It is the Rust stand-in for `nros::Time::to_msg`'s C++
+// `template <typename TimeMsgT>`, which binds structurally to the same shape.
+impl nros_core::SecNanosecMsg for Duration {
+    fn from_sec_nanosec(sec: i32, nanosec: u32) -> Self {
+        Self { sec, nanosec }
+    }
+}
+
 impl RosMessage for Duration {
     const TYPE_NAME: &'static str = "builtin_interfaces::msg::dds_::Duration_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
