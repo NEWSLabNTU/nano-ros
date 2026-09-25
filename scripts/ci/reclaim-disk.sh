@@ -80,6 +80,43 @@ before_kb="$(_free_kb)"
 #    lane reaches the expensive step. Deleting it costs a re-probe if something
 #    later syncs again; it cannot make a wrong artifact, because there is no
 #    artifact here to get wrong.
+#
+# 3. `/__host-reclaim/*` — the hosted runner's own preinstalled toolchains,
+#    bind-mounted in by the lane that wants them gone.
+#
+#    Issue 1353 wrote this road off: "both are `container:` jobs, so a container
+#    cannot delete the host's preinstalled tooling, and the runner's 146 G is
+#    the ceiling." The first half is true of the image's own filesystem and
+#    false of anything the lane MOUNTS. A `container:` job may declare
+#    `volumes:`, and a bind mount is not an overlay layer — removing a file
+#    through one unlinks it on the host and the space comes back on the
+#    filesystem `/__w` lives on, which is the same `/dev/root` the disk report
+#    measures. That is exactly how candidate 1 already works: `/__t` IS the
+#    runner's `/opt/hostedtoolcache`, mounted, and deleting through it has been
+#    freeing a measured 5.2 G per run since phase-466 W4. This is the same
+#    mechanism pointed at the rest of the preinstalled software.
+#
+#    WHY IT IS NEEDED. The `host-tests` integration job enters `just ci tier1`
+#    with ~24.8 GiB free, three runs agreeing within 10 MB, and the tier spends
+#    all of it (issue 1353). Of the 146 G filesystem, ~57 G is the checkout
+#    (42 G `examples`, 14 G `build`) and ~71 G is outside it: the image plus
+#    the runner's preinstalled Android SDK, .NET, GHC/ghcup, Swift and
+#    PowerShell, none of which any lane here opens. The lanes' toolchains come
+#    from the `nano-ros-ci` image and the JavaScript actions run on the
+#    runner's bundled node under `/__e` — the same argument candidate 1 makes,
+#    and no step in any of these three workflows is a `setup-*` action.
+#
+#    WHAT IS NOT ESTABLISHED: how much this frees. The sizes above are the
+#    published `ubuntu-22.04` image's, not a measurement taken here, and this
+#    runner reports a 146 G disk rather than the standard 75 G, so it may not
+#    be that image. The script prints its own delta through the transcript that
+#    survives a dead runner, so the next run prices it — the same standard
+#    phase-466 W4 set for the reclaim it added.
+#
+#    The MOUNT LIST lives in each workflow's `container.volumes:`, because that
+#    is the only place a host path can be named; this arm removes whatever was
+#    mounted and nothing else. A path that does not exist on the runner is
+#    created empty by docker and costs nothing.
 _candidates=()
 if [ -n "${RUNNER_TOOL_CACHE:-}" ] && [ -d "${RUNNER_TOOL_CACHE}" ]; then
     case "${RUNNER_TOOL_CACHE}" in
@@ -90,6 +127,26 @@ if [ -n "${RUNNER_TOOL_CACHE:-}" ] && [ -d "${RUNNER_TOOL_CACHE}" ]; then
     esac
 fi
 [ -d "$ws/build/metadata-probe" ] && _candidates+=("$ws/build/metadata-probe")
+
+# Candidate 3, above. `/__host-reclaim` itself is never a candidate — only its
+# children, so an unmounted lane contributes nothing and a mounted one cannot
+# have its mount point removed out from under it. The checkout guard is the
+# same one candidate 1 carries, and for the same reason: a mount that somehow
+# pointed into the checkout would be build output.
+#
+# `NROS_CI_HOST_RECLAIM_ROOT` is a TEST SEAM, not a knob: `/__host-reclaim` is
+# an absolute path only a runner has, so without it this arm could only ever be
+# exercised in CI, which is where it is least affordable to be wrong.
+_host_reclaim_root="${NROS_CI_HOST_RECLAIM_ROOT:-/__host-reclaim}"
+if [ -d "$_host_reclaim_root" ]; then
+    for _hp in "$_host_reclaim_root"/*; do
+        [ -d "$_hp" ] || continue
+        case "$_hp" in
+            "$ws"|"$ws"/*) continue ;;
+        esac
+        _candidates+=("$_hp")
+    done
+fi
 
 if [ "${#_candidates[@]}" -eq 0 ]; then
     echo "nothing to reclaim here (no tool cache mount, no probe scratch)"

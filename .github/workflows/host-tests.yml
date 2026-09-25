@@ -60,6 +60,13 @@ jobs:
   unit:
     name: workspace unit tests
     runs-on: ubuntu-22.04
+    # Issue 1492 — the same ceiling argument as the integration job below, with
+    # a real margin, because here the healthy duration IS measured. This job
+    # succeeds: 8 m 21 s, 10 m 23 s and 11 m 13 s on the three most recent runs
+    # that were not superseded (2026-09-25). 45 is four times the worst of
+    # those and still an eighth of the default it replaces. It has never
+    # wedged; this is what a bound costs when nothing is wrong.
+    timeout-minutes: 45
     # Per-job concurrency: the cheap unit lane supersedes its older PR run; the
     # heavy integration lane below uses its own group (cancel: false).
     concurrency:
@@ -157,6 +164,28 @@ jobs:
   integration:
     name: nros-tests integration (host)
     runs-on: ubuntu-22.04
+    # Issue 1492 — a CEILING this repository owns, not a bound on anything
+    # observed. Measured over the eight consecutive wedges 1492 records: five
+    # ended on the disk between 57 m and 1 h 44 m, and the two that lost the
+    # runner ended at 2 h 30 m 11 s and 2 h 30 m 03 s — eight seconds apart, a
+    # day and a half apart in wall time, and a number nothing in this
+    # repository chose. Without this the next one has GitHub's six-hour default
+    # to run to, and the group is held for all of it.
+    #
+    # 150 rather than something smaller, and that is a CORRECTION to 1492's
+    # own "any `timeout-minutes` below 150 makes the outage a number this
+    # repository owns". That sentence prices the two terminal modes and not the
+    # HEALTHY duration, which is the one a timeout can destroy. Measured on job
+    # 107808557432: this job reaches `just ci tier1` at about **82 minutes**
+    # (`Build rust core fixtures` 14.2 m + `Build workspace fixtures` 60.1 m is
+    # 74 of them), and the tier then ran 22.5 m before dying on the disk — so
+    # 105 m of work with the tier only a fifth of the way in. The lane has not
+    # produced a green run since 2026-06-17, so what a COMPLETE tier 1 costs on
+    # top of those 82 minutes is unknown, and a timeout under 150 would be a
+    # guess against an unmeasured number that turns a verdict into a timeout.
+    # Once this lane answers again, that number is measurable and this should
+    # come down to it plus a margin.
+    timeout-minutes: 150
     concurrency:
       group: host-tests-integration-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
@@ -168,6 +197,39 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      # Issue 1353 — the preinstalled toolchains this job never opens, mounted
+      # so `scripts/ci/reclaim-disk.sh` can actually remove them.
+      #
+      # The issue's standing reading is that this road is closed: "both are
+      # `container:` jobs, so a container cannot delete the host's preinstalled
+      # tooling, and the runner's 146 G is the ceiling." That is true of the
+      # image's own filesystem and false of anything the job MOUNTS — a bind
+      # mount is not an overlay layer, so unlinking through one frees space on
+      # the same `/dev/root` that `/__w` lives on. The proof is already in this
+      # lane: `/__t` is the runner's `/opt/hostedtoolcache`, mounted by the
+      # runner rather than by us, and deleting through it has freed a measured
+      # 5.2 G every run since phase-466 W4.
+      #
+      # The choice of trees is the same argument `reclaim-disk.sh` makes for
+      # `/__t`: this job's compilers, Python and Node come from the
+      # `nano-ros-ci` image, the JavaScript actions run on the runner's bundled
+      # node under `/__e`, and no step in this workflow is a `setup-*` action.
+      # Nothing here reads Android, .NET, GHC, Swift or PowerShell.
+      #
+      # What this is NOT: a measurement. The sizes these carry on the published
+      # `ubuntu-22.04` image sum to roughly 20 G, but this runner reports a
+      # 146 G disk rather than that image's 75 G, so it may not be that image,
+      # and no run has priced them here. The reclaim prints its own delta into
+      # the transcript artifact, which is the one channel that survives a dead
+      # runner (issue 1353), so the next run answers it. A path that is absent
+      # is created empty by docker and costs nothing.
+      volumes:
+        - /usr/local/lib/android:/__host-reclaim/android
+        - /usr/share/dotnet:/__host-reclaim/dotnet
+        - /usr/local/.ghcup:/__host-reclaim/ghcup
+        - /opt/ghc:/__host-reclaim/ghc
+        - /usr/share/swift:/__host-reclaim/swift
+        - /usr/local/share/powershell:/__host-reclaim/powershell
     defaults:
       run:
         shell: bash
