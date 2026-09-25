@@ -15,9 +15,9 @@ related: [1353, 1158, 1365]
 
 `host-tests.yml`'s `nros-tests integration (host)` job runs out of disk inside
 `just ci tier1` (that part is issue **1353**). What this issue is about is what
-happens NEXT: the job does not end. It fails the tier step, writes its
-after-report, and then **hangs on its upload steps**, holding its concurrency
-group — and because that group is shared by every push to `main` and configured
+happens NEXT: the job does not end. It hangs — on its upload steps in the first
+two instances, and on the TIER STEP ITSELF in the two below — holding its
+concurrency group — and because that group is shared by every push to `main` and configured
 `cancel-in-progress: false`, **no later integration job can start at all.**
 
 Measured, 2026-09-24:
@@ -160,3 +160,47 @@ Three things differ between the two, and all three matter:
 
 Nothing here changes the remedies. It removes the possibility that the first
 instance was a one-off.
+
+## Four of four, and the victim moved INTO the tier step
+
+Two more, both this morning, both `nros-tests integration (host)`, both the
+`No space left on device` annotation, both `completed_at = null`:
+
+| run | job | event | head | wedged at | outage |
+| --- | --- | --- | --- | --- | --- |
+| 36051691975 | 107808557432 | push | `95693968d` | step 18 | 3 h 07 m |
+| 36070565655 | 107870291862 | push | `547c575d5` | step 17 | 1 h 41 m |
+| 36089769184 | 107929495142 | **schedule** | `2a04ecb8e` | **step 15** | 1 h 44 m |
+| 36090952448 | 107933079057 | push | `1096e5fb8` | **step 15** | 1 h 25 m |
+
+**Four of four runs that reached the tier have wedged**, and the victim has
+walked forward every time: 18, 17, then twice 15 — which is `just ci tier1`
+itself, with NO conclusion. The body above said the job "fails the tier step …
+and then hangs on its upload steps"; that was true of the first two and is too
+narrow for these, so it is reworded rather than left to mislead. What survives
+is the general form: whatever is running when the disk fills is what hangs, and
+the uploads were simply the first two victims.
+
+**The evidence degrades as the victim moves earlier, and that is the part worth
+acting on.** `Disk report (after ci tier1)` is step 16. When the wedge takes
+step 17 or 18, that report has already run and the after-transcript exists —
+which is the entire basis for 1353's `packages/cli/target` 410 MB → 14 GB
+attribution. When the wedge takes step 15, **step 16 never runs and there is no
+after-transcript at all**: both runs here uploaded only
+`disk-transcript-before-tier1`. So the deeper the fault, the less it can be
+measured, and a future instance may leave nothing but the annotation.
+
+Their entry figures, consistent with the other three (this is 1353's number,
+recorded here only because these runs produced nothing else):
+
+```
+schedule 36089769184: 89% used, 18G free — 42G examples; 409M packages/cli/target
+                      freed 7527 MB; 25843444 KB free
+push     36090952448: 89% used, 18G free — 42G examples; 410M packages/cli/target
+                      freed 7527 MB; 25843160 KB free
+```
+
+**What this does NOT say.** It does not show the tier step failing an
+assertion — it shows it never finishing, which is a different thing and still
+not a test verdict. And it does not narrow the remedy: `timeout-minutes` bounds
+all four instances identically, whichever step is holding.
