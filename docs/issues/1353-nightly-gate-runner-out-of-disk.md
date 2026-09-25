@@ -1145,3 +1145,39 @@ space is the obvious reading and two-for-two is not a coincidence — but the
 error line is still truncated mid-word, so this is not proven from the log.
 What would prove it: the same check passing on a run that does not reach 100 %,
 or an `ENOSPC` visible in an untruncated tail.
+
+## 2026-09-25, third finishing run — the reclaim frees 33 G and the fixtures eat it
+
+Run **36177357218**, job **108211089668** (2 h 19 m 55 s, 23 steps) reproduces the
+previous two to the gigabyte, and its check-run annotations carry the figures
+without opening the log at all:
+
+```
+freed 33286 MB; 52100356 KB free
+89% used, 18G free — 42G examples; 14G build; 409M packages/cli/target     (before the tier)
+100% used, 196K free — 42G examples; 19G build; 16G target                  (after)
+```
+
+Three runs, three identical `before` breakdowns. The new number is the first one:
+**#1313's reclaim frees 33.3 G and leaves ~49.7 G free** — and by the time the
+tier starts, only **18 G** remains. So about **31 G disappears between the reclaim
+and the tier**, which is the fixture build, and that is on top of the ~30 G the
+tier itself then wants.
+
+Stated as a budget on a 146 G runner:
+
+| stage | free after |
+| --- | --- |
+| after `reclaim-disk.sh` | ~49.7 G |
+| before `just ci tier1` (fixtures built) | 18 G |
+| after `just ci tier1` | 196 K |
+
+That reframes the remedy space. Reclaiming harder buys at most the 33 G it
+already finds; the two consumers that matter are the **fixture build's ~31 G**
+and the **tier's ~30 G**, against a 146 G disk that arrives with ~70 G already
+spoken for outside the checkout. Any fix that does not reduce one of those two,
+or move the lane to a bigger disk, is arithmetic that does not close.
+
+Issue **1492** (the wedge this evidence used to arrive through) is resolved as of
+this run; tier-1 jobs now finish and report, so this issue's transcripts will keep
+arriving.
