@@ -79,7 +79,9 @@ done
 # line above names, and the build tier makes several of them —
 # `target-embedded` (`check workspace-all`'s concurrent embedded clippy),
 # `target-param-services` (`check compile-smoke`, issue 1382),
-# `target-excluded-tests`, plus four more the root `.gitignore` enumerates.
+# `target-excluded-tests` (issue 1472), plus four more. All seven are ignored,
+# but only since issue 1491 — this comment asserted it of `target-excluded-tests`
+# while nothing did, which is how 329 MB sat untracked at the repo root.
 # A list of paths cannot answer "what is on this disk"; a sweep can, and it
 # costs one more `du` pass on a nightly bracket.
 #

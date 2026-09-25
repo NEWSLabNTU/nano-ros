@@ -206,6 +206,17 @@ test-precondition-guards:
 test-generated-dir-guards:
     @python3 scripts/check-test-generated-dir-guards.py
 
+# Issue 1491 — `nros_scoped_target_dir <suffix>` puts a gate's cargo scratch at
+# `target-<suffix>/`, a SIBLING of `target/` that the root `.gitignore`'s
+# `/target/` line does not cover, so each one needs its own entry. That list is
+# AUTHORED and it drifted: `target-excluded-tests` reached 329 MB, untracked, at
+# the repo root — left by a gate on the merge-gating PR lane, which is the
+# `git add -A` hazard CLAUDE.md names. The required entries are DERIVED from the
+# call sites here rather than trusted to the list.
+[private]
+scoped-target-dirs-ignored:
+    @python3 scripts/check-scoped-target-dirs-ignored.py
+
 # Issue 0975 — a REQUIRED check that cannot report on a pull request freezes the
 # repo, and it freezes it SILENTLY: no red check, no message, just PRs that never
 # merge. Requiring `L3` (a merge_group-only job) did exactly that to seven PRs.
