@@ -157,6 +157,17 @@ jobs:
         run: |
           source ./activate.sh
           just ci matrix
+      # THE PER-MODULE BUILD LOGS TOO — issue 1158's reporting half.
+      #
+      # Twelve consecutive runs stopped in `just build tier2`, and the job log
+      # carries only the fixture runner's summary: `== zephyr == FAILED (rc=1)`,
+      # a "first error line(s)" list that matches `error:` and therefore never
+      # the lines above it, and a `log tail` of whichever leaf finished LAST.
+      # Which of five failures you learn about is luck. The real evidence is
+      # `<module>.log` in `tmp/build-test-fixtures-<stamp>/`, which nothing
+      # uploaded — so every instance of this class became a manual
+      # reproduction, and issues 1457 and 1458 were both filed saying the cause
+      # was not in the log when it was, one file over.
       - name: Upload junit and logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -165,6 +176,9 @@ jobs:
           path: |
             target/nextest/**/junit*.xml
             build/**/*.log
+            tmp/build-test-fixtures-*/*.log
+            tmp/build-test-fixtures-*/**/*.log
+            tmp/build-test-fixtures-*/*.joblog
           if-no-files-found: ignore
           retention-days: 14
       - name: Sweep orphans and disk

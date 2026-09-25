@@ -5,7 +5,7 @@ status: open
 type: bug
 area: ci, testing
 severity: high
-related: [0968, 1016, 1029, 1043, 1075, 1098, 1104, 1114, 1127, RFC-0061, phase-416]
+related: [0968, 1016, 1029, 1043, 1075, 1098, 1104, 1114, 1127, 1353, 1457, 1458, 1476, 1477, 1492, 1497, 1501, RFC-0061, phase-416]
 found: 2026-09-06
 ---
 
@@ -276,3 +276,86 @@ candidates.
 The reporting half above earns another mention here: the cause of THIS stop was
 again in the module's `log tail`, and the quoted "first error line(s)" gave the
 cmake frame without the `Error:` line under it that names the file.
+
+## 2026-09-25 — the whole life of the lane: 31 runs, 0 verdicts
+
+The sections above measure one run, or a window of eight.
+`just matrix-triage 31` covers **every run `run-matrix.yml` has ever had** —
+the workflow landed 2026-08-31 in phase-410 W3 (`5bc355411`), and
+`gh run list --limit 100` returns 31 rows:
+
+```
+  0 of 31 run(s) reached the cells and produced a VERDICT.
+  31 of 31 run(s) produced NO VERDICT — the lane stopped before its cells.
+```
+
+split **8 provisioning / 23 build / 0 cells**, every row `failure` or
+`cancelled`. So "when was the last green run" has an answer nobody had asked
+for: **there has never been one.** Item 1 is not overdue — it has never once
+been met, and the tier-2 runtime coverage the rest of the repo reasons about
+(1-wise over platform x language x rmw x kind, the RUN depth `queue.yml` and
+`build-wide.yml` deliberately do not pay for) has never existed at all.
+
+That reframes the three serial stops this issue has been tracking. They are not
+what broke a working lane; they are the first three faults anyone could SEE,
+because item 3's stage reporting is what made the stopping point legible:
+
+| runs | stop | issue |
+| --- | --- | --- |
+| 09-01 .. 09-05 (5) | runner labels, then provisioning | — |
+| 09-14 .. 09-16 (3) | cancelled in provisioning | — |
+| 09-06 .. 09-23 (23 build, of which 09-17..09-23) | `== zephyr == FAILED`, `1/5 ok` | **1458**, resolved |
+| 09-24 | `check fast` inside `just build tier2` | **1476**, resolved |
+| 09-25 | `2 of 5 fixture(s) FAILED`, `no SystemModel was found` | **1497** / **1501** |
+
+### Three negative results, so nobody re-measures them
+
+Recorded because each is a plausible-sounding candidate that the run's own
+output rules out:
+
+* **NOT issue 1492** (a job that wedges and holds its concurrency group). That
+  is `host-tests.yml`, whose jobs run on GitHub-hosted `ubuntu-22.04`.
+  `run-matrix` runs on the self-hosted `nros-qemu, nros-sdk-zephyr, nros-big`
+  set and **all 31 of its runs ran to completion** — the 09-25 one in 48
+  minutes, through its own sweep and stage report. No wedge, no held group,
+  different runner, different mechanism.
+* **NOT issue 1353** (disk). The 09-25 run's own `runner-sweep.sh`:
+  `fixtures: 1.3 GiB used / 60.0 GiB budget (high-water 1.3 GiB)`,
+  `filesystem: 633G free on the checkout's volume`,
+  `runner-sweep: done — nothing to sweep.`
+* **NOT `provision-zenohd`.** `error: recipe 'provision-zenohd' failed with
+  exit code 78` appears inside `just setup tier2` on nearly every run and reads
+  like a provisioning failure. It is the lane-skip protocol (sysexits
+  `EX_CONFIG`), and the caller that reads it says so three lines later —
+  issue 1477. Provisioning is green on every run since 09-06.
+
+### Item 3's gate: verified, not trusted
+
+The step->stage map is AUTHORED, so it drifts in the safe-looking direction.
+`python3 scripts/ci/lane-stage.py --selftest` — **83 passed, 0 failed**: the map
+still matches `run-matrix.yml`'s real steps in both directions. And the 09-25
+run's own in-job report classified correctly
+(`[ok] provisioning / [FAIL] build / [----] cells`), which is the first time
+that dynamic `coverage` job name has been observed on a real run — the one
+thing the 2026-09-07 entry above listed as unobserved.
+
+### The reporting half: the module logs are now an artifact
+
+The section directly above, and issue 1497, both say the cause was in the module's `log tail` rather
+than in the quoted "first error line(s)", which matches `error:` and so never
+the lines above it. The real evidence is `<module>.log` in
+`tmp/build-test-fixtures-<stamp>/`, and **nothing uploaded that directory** —
+which is why 1457, 1458 and 1497 were each filed saying the cause was not in
+the log when it was, one file over. `run-matrix.yml`'s artifact step now
+carries `tmp/build-test-fixtures-*/…/*.log` plus the joblog, so the next stop
+in this lane is diagnosable by download instead of by reproduction.
+
+Still open from that paragraph: quoting the lines ABOVE the first `error:` in
+the fixture runner's own summary. The uploaded log makes that less urgent, not
+unnecessary.
+
+### Items 1 and 2
+
+**Item 1 (a verdict, once)** — open, and now known to have been open since the
+lane's first run. **Item 2 (contention)** — untouched, for the reason already
+given. No `runs-on`, required-check set or path filter was changed here.
