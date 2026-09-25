@@ -226,7 +226,7 @@ static DEFAULT_LEVEL: AtomicU8 = AtomicU8::new(Severity::Info as u8);
 /// call sites with the same name share the same threshold.
 pub struct Logger {
     name: &'static str,
-    /// Either a [`Severity`] discriminant or [`LEVEL_UNSET`].
+    /// Either a [`Severity`] discriminant or the private `LEVEL_UNSET`.
     level: AtomicU8,
 }
 
@@ -340,7 +340,7 @@ impl Logger {
     /// against an immediate, plus a byte load of one process-global that a
     /// logger with its own level never performs.
     ///
-    /// [`LEVEL_UNSET`] being ABOVE `Fatal` rather than below `Trace` is what
+    /// `LEVEL_UNSET` being ABOVE `Fatal` rather than below `Trace` is what
     /// keeps this correct if the select is ever reordered: `severity >=
     /// u8::MAX` is false for every `Severity`, so an unresolved sentinel can
     /// only ever suppress a record, never emit one at the most verbose level —
