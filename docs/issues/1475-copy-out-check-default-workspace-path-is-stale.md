@@ -102,3 +102,58 @@ or produce the first real copy-out verdict — which is the acceptance already
 written above, unchanged.
 
 Nothing here changes either remedy.
+
+## Fix applied 2026-09-25 — option 2, via the resolver that already exists
+
+`scripts/zephyr/check-copy-out.sh` no longer writes a path down. It sources
+`scripts/lib/zephyr-workspace.sh` — the ONE Zephyr workspace resolver
+(RFC-0095 D4, phase-440 W1) — and asks it for the 4.4 line:
+
+```sh
+. "$NROS_ROOT/scripts/lib/zephyr-workspace.sh"
+ZEPHYR_LINE=4.4
+workspace="$(nros_zephyr_ws_resolve_abs "$ZEPHYR_LINE" "$NROS_ROOT" || true)"
+```
+
+That ladder is `$NROS_ZEPHYR_WORKSPACE` -> `$NROS_STORE/workspaces/zephyr/4.4`
+-> the legacy sibling, so the tree `just zephyr setup` actually writes is now on
+it and the sibling layout still resolves for a host provisioned before W4.
+Option 1 (export the variable from `nightly.yml`) was not taken: it fixes this
+caller and leaves the stale constant for the next one, which is the
+second-spelling shape CLAUDE.md says this repo keeps paying for.
+
+The remedy text was wrong for the failure it printed, so it moved too. The
+check can now only fail here when nothing is provisioned at all, and it says
+which candidates it tried:
+
+```
+FAIL: no Zephyr 4.4 workspace on the resolver ladder. Candidates tried:
+    /nonexistent-store/workspaces/zephyr/4.4
+    ../nano-ros-workspace-4.4
+  run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup
+```
+
+`.config/zephyr-workspace-resolvers.txt` shrinks by one line — its
+`scripts/zephyr/check-copy-out.sh  # a WORKSPACE_DEFAULT constant for the 4.4
+line, not a ladder walk` entry. The reason on that line was accurate about the
+code and wrong about the consequence: a constant naming a rung of the ladder is
+a spelling of the ladder, and this is what it cost. 28 spellings remain.
+
+### Negative control
+
+With a store populated at `$NROS_STORE/workspaces/zephyr/4.4/zephyr` — the CI
+shape — the fixed script resolves it and moves on to the next precondition,
+while the same environment against the previous revision reproduces the nightly
+failure verbatim:
+
+```
+$ git stash && NROS_STORE=…/store bash scripts/zephyr/check-copy-out.sh
+FAIL: Zephyr 4.4 workspace not set up at ../nano-ros-workspace-4.4
+```
+
+### Still open
+
+Acceptance is unchanged and this does not meet it: a copy-out BUILD reported by
+the `zephyr copy-out check (4.4)` job. That job has never performed one, so what
+it finds past this rung is unmeasured — the next 05:12 nightly is the first run
+that can say. Keep this issue open until it does.

@@ -48,7 +48,6 @@ scripts/ci/runner-doctor.sh  # shell ladder in the runner probe; a straight fold
 scripts/lib/zephyr-workspace.sh  # THE resolver — the one place the ladder is allowed to be written
 scripts/zephyr/aarch64-rust-patch.sh  # patch script: wants the LEGACY tree specifically, to patch a checkout that predates the in-tree default
 scripts/zephyr/cargo-features-patch.sh  # patch script; same legacy-tree rung
-scripts/zephyr/check-copy-out.sh  # a WORKSPACE_DEFAULT constant for the 4.4 line, not a ladder walk
 scripts/zephyr/cortex-a9-rust-patch.sh  # patch script; same legacy-tree rung
 scripts/zephyr/cortex-r-rust-patch.sh  # patch script; same legacy-tree rung
 scripts/zephyr/llext-edk-conditional-patch.sh  # patch script; same legacy-tree rung
