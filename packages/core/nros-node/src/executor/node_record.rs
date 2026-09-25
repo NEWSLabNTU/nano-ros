@@ -93,7 +93,7 @@ pub struct NodeRecord {
     /// Codes rather than [`nros_rmw::QoSOverride`] because the entry codegen
     /// bakes this through `RuntimeCtx`, and `nros-platform` sits BELOW
     /// `nros-rmw` in the layer graph — a typed field there would invert it.
-    /// Decoded at entity-create time by [`decode_qos_override`].
+    /// Decoded at entity-create time by [`decode_qos_override`](nros_rmw::decode_qos_override).
     ///
     /// Empty by default: a system with no overrides pays nothing.
     pub qos_overrides: &'static [QoSOverrideCode],
@@ -196,7 +196,7 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
     }
 
     /// Phase 172.K.5 — bind this Node to an explicit session slot (index into
-    /// the sessions opened by [`Executor::open_multi`]: `0` = primary,
+    /// the sessions opened by [`Executor::open_multi`](crate::executor::Executor::open_multi): `0` = primary,
     /// `N` = `extra_sessions[N-1]`). Bypasses the rmw-based session resolution
     /// — the caller (generated multi-domain wiring) already knows the slot.
     pub fn session_idx(mut self, idx: u8) -> Self {

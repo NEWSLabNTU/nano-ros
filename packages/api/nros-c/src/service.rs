@@ -370,7 +370,7 @@ pub extern "C" fn rcl_service_get_default_options() -> nros_service_options_t {
 /// Phase 189.M3.3.a — initialize a service server with custom QoS + named
 /// options. Behaves like [`nros_service_init_with_qos`] except a non-zero
 /// `options->sched_context` is stashed on the service so that
-/// [`nros_executor_add_service`] binds the resulting executor handle to
+/// `nros_executor_add_service` binds the resulting executor handle to
 /// that scheduling context once the handle is known (server creation is
 /// deferred to registration, so the handle does not exist at init time).
 ///
@@ -956,7 +956,7 @@ impl nros_service_t {
 ///
 /// # Returns
 /// * Pointer to service name (null-terminated), or NULL if the handle is not
-///   usable (see [`nros_service_t::is_usable`]) or NULL
+///   usable (see `nros_service_t::is_usable`) or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_service_get_service_name(
     service: *const nros_service_t,
@@ -977,7 +977,7 @@ pub unsafe extern "C" fn rcl_service_get_service_name(
 ///
 /// rcl's `rcl_service_is_valid`, whose contract is "true for any handle that
 /// can be used" — the ported idiom is a guard. See
-/// [`nros_service_t::is_usable`] for which states those are.
+/// `nros_service_t::is_usable` for which states those are.
 ///
 /// # Parameters
 /// * `service` - Pointer to a service
@@ -1132,7 +1132,7 @@ pub struct nros_client_t {
     /// Phase 189.M3.3.a — scheduling-context slot to bind the client's executor
     /// handle to. `0` = inherit the executor / Node default; set via
     /// `nros_client_init_with_options`. When non-zero,
-    /// `nros_executor_register_client` binds the freshly-created handle to this
+    /// `nros_executor_add_client` binds the freshly-created handle to this
     /// SC after registration. No effect on the L1 polling path.
     pub sched_context_id: crate::executor::nros_sched_context_id_t,
     /// Internal state (arena entry index + executor pointer + timeout).
@@ -1232,7 +1232,7 @@ pub unsafe extern "C" fn rclc_client_init_default(
     client.context = ptr::null_mut();
 
     // Phase 193.4b — default to the services profile; nros_client_init_with_qos
-    // overrides. (`nros_executor_register_client` reads this at registration.)
+    // overrides. (`nros_executor_add_client` reads this at registration.)
     client.qos = crate::qos::nros_qos_t::default();
 
     // Initialise the internal state (executor_ptr null until registration).
@@ -1273,7 +1273,7 @@ pub struct nros_client_options_t {
     /// Scheduling-context slot to bind the client's executor handle to.
     /// `0` = inherit the executor / Node default. A non-zero value must be an id
     /// from `nros_executor_create_sched_context`; the bind is applied by
-    /// `nros_executor_register_client` once the handle exists. No effect on L1.
+    /// `nros_executor_add_client` once the handle exists. No effect on L1.
     pub sched_context: crate::executor::nros_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads for ABI stability.
     pub _reserved: [u8; 3],
@@ -1287,7 +1287,7 @@ pub extern "C" fn rcl_client_get_default_options() -> nros_client_options_t {
 
 /// Phase 189.M3.3.a — initialize a service client with custom QoS + named
 /// options. Like [`nros_client_init_with_qos`] except a non-zero
-/// `options->sched_context` is stashed so [`nros_executor_register_client`]
+/// `options->sched_context` is stashed so `nros_executor_add_client`
 /// binds the resulting executor handle to that scheduling context once known.
 ///
 /// # Safety
@@ -2176,7 +2176,7 @@ impl nros_client_t {
 ///
 /// # Returns
 /// * Pointer to service name (null-terminated), or NULL if the handle is not
-///   usable (see [`nros_client_t::is_usable`]) or NULL
+///   usable (see `nros_client_t::is_usable`) or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_client_get_service_name(
     client: *const nros_client_t,
@@ -2196,7 +2196,7 @@ pub unsafe extern "C" fn rcl_client_get_service_name(
 /// Is this client handle usable?
 ///
 /// rcl's `rcl_client_is_valid`, whose contract is "true for any handle that can
-/// be used" — the ported idiom is a guard. See [`nros_client_t::is_usable`] for
+/// be used" — the ported idiom is a guard. See `nros_client_t::is_usable` for
 /// which states those are.
 ///
 /// # Parameters

@@ -474,9 +474,11 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
     }
 
     /// Total managed heap capacity in bytes (main free-list region +
-    /// slab region). The denominator that pairs with [`used`](Self::used)
-    /// for a "used / total" footprint figure — same basis as
-    /// [`free_bytes`](Self::free_bytes). Always available (no atomics).
+    /// slab region). The denominator that pairs with `used()` for a
+    /// "used / total" footprint figure — same basis as `free_bytes()`.
+    /// Always available (no atomics). Those two are not links because
+    /// both are `#[cfg(feature = "stats")]`, which a default doc pass
+    /// does not enable.
     pub const fn capacity(&self) -> usize {
         N + SLAB_REGION_SIZE
     }

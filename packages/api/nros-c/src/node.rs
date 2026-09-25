@@ -216,7 +216,7 @@ pub struct nros_node_t {
     /// dispatch path. `nros_executor_node_init` populates this when
     /// the Node is bound; per-entity `nros_*_init` paths
     /// (`rclc_publisher_init_default`, `nros_subscription_init`, etc.) branch
-    /// on [`nros_node_t::is_executor_bound`] — i.e. on this pointer ALONE — to
+    /// on `nros_node_t::is_executor_bound` — i.e. on this pointer ALONE — to
     /// route through `Executor::node_session_mut(NodeId)` instead of the legacy
     /// support-based dispatch. NULL = legacy single-Node path
     /// (`rclc_node_init_default` / `nros_node_init_ex`).
@@ -228,7 +228,7 @@ pub struct nros_node_t {
     // `create_publisher` / `create_subscription` time. Appended at the END of
     // the struct so existing field offsets (hence the C ABI) are unchanged;
     // `null` / `0` means "no overrides" (the legacy behaviour).
-    /// Pointer to a `&'static`-lifetime array of [`nros_qos_override_t`], or
+    /// Pointer to a `&'static`-lifetime array of `nros_qos_override_t`, or
     /// null. The caller (a generated entry / a hand-written app) owns the
     /// storage for the node's lifetime.
     pub qos_overrides: *const crate::qos::nros_qos_override_t,
@@ -925,7 +925,7 @@ unsafe fn write_cstr_out(s: &str, out: *mut c_char, out_size: usize) -> nros_ret
 /// records its support directly, while `nros_executor_node_init` leaves
 /// `support` NULL on purpose (the multi-Node paths key off `node_id` +
 /// executor, phase-156 sub-bug D) and reaches the same support through the
-/// executor — [`crate::executor::executor_context_is_valid`], which consults
+/// executor — `crate::executor::executor_context_is_valid`, which consults
 /// [`crate::support::nros_support_is_valid`] rather than re-deriving it. An
 /// executor-bound node had NO context check at all before: the arm that stood
 /// there compared the slot's current generation with itself.
@@ -976,7 +976,7 @@ pub unsafe extern "C" fn rcl_node_is_valid(node: *const nros_node_t) -> bool {
 /// to `nros_support_init` and could not be read back, while on a device the
 /// value that actually won came from the boot ladder.
 ///
-/// So this forwards to [`resolve_session_and_domain`] — the one place the
+/// So this forwards to `resolve_session_and_domain` — the one place the
 /// ladder is decoded (per-node override → C-ABI byte → the session's own
 /// domain). Re-deriving it here is precisely issue 0972's defect: the same
 /// decode at a third call site, where `NROS_DOMAIN_ID_EXPLICIT_ZERO` (255)
@@ -1329,7 +1329,7 @@ impl nros_node_t {
 
 /// Phase 156 Sub-bug D — resolve the per-Node session + effective
 /// domain id for entity-init paths. Branches on
-/// [`nros_node_t::is_executor_bound`]:
+/// `nros_node_t::is_executor_bound`:
 ///   * Executor-bound: dereferences `node.executor`, walks the
 ///     NodeRecord table via [`Executor::node_session_mut`], pulls the
 ///     domain id from `node.domain_id_override` (or the executor's

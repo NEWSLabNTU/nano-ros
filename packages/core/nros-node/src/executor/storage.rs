@@ -428,7 +428,7 @@ const fn compute_offsets_with(sizing: ExecutorSizing, units: RegionUnits) -> Fie
 /// Byte [`Layout`] of the backing, evaluated against a SUPPLIED unit table.
 ///
 /// issue 1197 — the public half of the split. `executor_storage_layout` is this
-/// with [`NATIVE_UNITS`]; an external consumer that has recovered the
+/// with `NATIVE_UNITS`; an external consumer that has recovered the
 /// units for another target (a build script probing an rlib, the way `nros-c`
 /// recovers `EXECUTOR_OPAQUE_U64S`) gets the same arithmetic rather than a
 /// second implementation of it.
@@ -465,7 +465,7 @@ pub const fn executor_storage_u64_len(sizing: ExecutorSizing) -> usize {
 /// than as type/const generics C can't name. Used to size + carve the backing.
 ///
 /// `cbs` is capped at 64 by the executor's `u64` ready-set bitmask (asserted in
-/// [`carve`]-time / `open_in`).
+/// `carve`-time / `open_in`).
 #[derive(Clone, Copy)]
 pub struct ExecutorSizing {
     /// Callback-table slots (`entries`, the per-entry SC bindings, and the

@@ -18,11 +18,12 @@
 //!
 //! # Pattern
 //!
-//! 1. Open the executor with [`Executor::open_multi`].
-//! 2. Build per-backend Nodes via [`Executor::create_node_on`].
+//! 1. Open the executor with [`Executor::open_multi`](nros_node::executor::Executor::open_multi).
+//! 2. Build per-backend Nodes via [`Executor::create_node_on`](nros_node::executor::Executor::create_node_on).
 //! 3. Create a raw subscription on the source Node and a raw publisher
 //!    on the destination Node (existing
-//!    [`create_subscription_raw`] / [`create_publisher_raw`] APIs).
+//!    [`create_subscription_raw`](nros_node::executor::NodeHandle::create_subscription_raw) /
+//!    [`create_publisher_raw`](nros_node::executor::NodeHandle::create_publisher_raw) APIs).
 //! 4. Hand them to [`PubSubBridge::new`] and call
 //!    [`PubSubBridge::pump`] inside the executor's spin loop.
 //!

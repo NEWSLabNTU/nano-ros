@@ -56,7 +56,7 @@ const ELAPSED_MASK: u64 = u64::MAX >> 1;
 
 /// The whole rule, as a pure function. Both storages call this.
 ///
-/// `state` is the site's state word — [`NEVER`] for a site that has not
+/// `state` is the site's state word — `NEVER` for a site that has not
 /// emitted, otherwise what an earlier call returned. Returns `Some(next)` iff a
 /// record raised at `now_ns` should be EMITTED, and `next` is the word to store
 /// in its place; `None` means suppressed and the word is left alone. Returning

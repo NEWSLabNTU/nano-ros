@@ -2191,7 +2191,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw(
 /// `node.subscription(t).generic(..).message_info()` builder; rclc's
 /// generic-with-info subscription). Direct-arg form (no `nros_subscription_t`
 /// struct): the callback signature differs from the plain
-/// [`nros_subscription_callback_t`], so this is its own entry point rather than
+/// `nros_subscription_callback_t`, so this is its own entry point rather than
 /// a flag on `nros_executor_add_subscription`.
 ///
 /// `node` may be NULL (legacy single-Node path) or a Node created via
@@ -3304,7 +3304,7 @@ fn period_spin_wait_ns(executor: &nros_executor_t, period_ns: u64) -> u64 {
 /// # Returns
 /// `NROS_RET_OK` for any completed cycle, whether or not a callback ran —
 /// rclc discards the wait's timeout, so an idle tick is a success. See
-/// [`spin_cycle_ret`].
+/// `spin_cycle_ret`.
 ///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor

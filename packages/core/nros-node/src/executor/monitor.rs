@@ -13,7 +13,7 @@
 //!
 //! W3b.5 adds three more rules on the same drain:
 //! - `max-age-runtime` — subscriber take-age (`epoch_now - header.stamp`
-//!   peeked from the raw CDR buffer at [`RosMessage::STAMP_OFFSET`],
+//!   peeked from the raw CDR buffer at `RosMessage::STAMP_OFFSET`,
 //!   recorded into a [`SubMonitorCell`] on the take path).
 //! - `max-latency-runtime` — node-path (take → publish) latency: the
 //!   dispatch elapsed time is attributed to every monitored publisher
@@ -26,7 +26,7 @@
 //! phase-462 W2 adds one more on the same drain, and it is the other half of
 //! what the contract's `on_violation` lowers to:
 //! - `silence-runtime` -- a contracted subscription that took NOTHING for a
-//!   whole `max_age_ms` window ([`check_silence`]). A violation is either "the
+//!   whole `max_age_ms` window (`check_silence`). A violation is either "the
 //!   callback ran too long", which is the deadline action, or "the input
 //!   stopped coming", which is this; the four rules above can only see the
 //!   first kind.
@@ -89,7 +89,7 @@ pub struct SubMonitorCell {
     /// Max observed take-age (ms) in the current check window.
     pub max_age_ms: AtomicU32,
     /// phase-462 W2 -- observations recorded since the last check, drained
-    /// (swap 0) by [`check_age`]. The age itself cannot answer "did anything
+    /// (swap 0) by `check_age`. The age itself cannot answer "did anything
     /// arrive": a window with no take and a window whose only take was
     /// perfectly fresh both leave `max_age_ms` at 0.
     pub takes: AtomicU32,

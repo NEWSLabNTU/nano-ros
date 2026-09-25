@@ -44,7 +44,6 @@
 #         asked for rather than a duplicate filing. REMOVE THESE ROWS when
 #         #1263 merges.
 #
-docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110

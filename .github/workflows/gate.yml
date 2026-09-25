@@ -693,9 +693,9 @@ jobs:
       # pull request — `check-lane-contracts`'s rule is that a lane may only
       # resolve artifacts the job itself builds. It documents the DEPLOYED crate
       # set (scripts/build/rustdoc-set.sh, shared with `just book`), not the
-      # workspace: the wider pass has ~70 diagnostics in crates nothing
-      # publishes (issue 1116), which is a separate cleanup and would make this
-      # gate un-landable rather than useful.
+      # workspace. The wider pass is now its own step below (issue 1116 /
+      # phase-452 W4) and stays separate: what makes THIS one worth being red
+      # is that a red here means the deploy is broken.
       # issue 1138 — the gate has three outcomes now (FAIL / NOT VERIFIED / OK),
       # because `cargo doc` runs `zpico-sys`'s build script and that script
       # PANICS on an unprovisioned zenoh-pico. A checkout without the source
@@ -714,6 +714,34 @@ jobs:
         run: |
           source ./activate.sh
           just check rustdoc-links
+
+      # issue 1116 / phase-452 W4 — the OTHER scope, in its OWN step.
+      #
+      # `rustdoc-links` above answers for the six crates the book deploys and
+      # must keep answering only for those: a crate nothing publishes must not
+      # be able to turn a pull request red over a docs deploy that is fine.
+      # This step answers for the rest of the workspace, which had never been
+      # asked: 179 diagnostics and twelve crates that could not document at
+      # all, measured 2026-09-25, where the issue had recorded "~70, five"
+      # three weeks earlier. All fixed; this holds the zero. 8.6 s warm.
+      #
+      # A SEPARATE step, not another command in the block above, for issue
+      # 1040's R2: a `run:` block is `bash -e`, so a second `just check`
+      # sequenced after a red first one never executes — and a gate that did
+      # not execute is indistinguishable from one that passed.
+      #
+      # STRICT here for the same reason as its sibling and NOWHERE else: this
+      # job's "Provision compile-tier sources" step really does install every
+      # source in the table (zenoh-pico, cyclonedds, micro-cdr,
+      # micro-xrce-dds-client), so an absent one is the WORKFLOW's regression
+      # and must be a red rather than a reported skip.
+      - name: just check rustdoc-workspace (pull request only)
+        if: ${{ github.event_name == 'pull_request' && !cancelled() }}
+        env:
+          NROS_RUSTDOC_WORKSPACE_STRICT: "1"
+        run: |
+          source ./activate.sh
+          just check rustdoc-workspace
 
       # The CLI sub-workspace's own tests, on BOTH merge-gating events.
       #

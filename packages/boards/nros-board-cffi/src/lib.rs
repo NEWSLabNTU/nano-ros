@@ -1,7 +1,7 @@
 //! Rust mirror of the canonical board C ABI in `<nros/board.h>`.
 //!
 //! The board layer sits one tier above the platform layer
-//! ([`nros-platform-cffi`]): the platform supplies system primitives
+//! (`nros-platform-cffi`): the platform supplies system primitives
 //! (clock, alloc, threading); the board supplies the *entry workflow*
 //! — hardware bring-up, status output, process exit — that drives the
 //! user application.

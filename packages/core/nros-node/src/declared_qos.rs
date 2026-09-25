@@ -44,12 +44,12 @@
 //!
 //! # And two things are done with them, because the surfaces differ
 //!
-//!   * [`check`] REFUSES a disagreement, with
+//!   * [`check`](crate::declared_qos::check) REFUSES a disagreement, with
 //!     [`NodeError::DeclaredDepthMismatch`] — the registration fails, the
 //!     subscription never exists, and the entry's `?` carries it out. Reached
 //!     from the C and C++ FFI seams, which took the declared depth at their own
 //!     call site already.
-//!   * [`honour`] is what a RUST registration calls: it TAKES a declared depth
+//!   * [`honour`](crate::declared_qos::honour) is what a RUST registration calls: it TAKES a declared depth
 //!     shallower than the ask (the C++ three-argument `NROS_SUBSCRIBE`'s answer,
 //!     delivered one layer down because Rust has no call-site seam) and refuses
 //!     a declaration DEEPER than the ask. Its doc comment has the whole rule and
@@ -227,7 +227,7 @@ pub fn check(type_name: &str, topic: &str, depth: u32) -> Result<(), NodeError> 
 /// 40-byte `QoSProfile` moving in and out by value is past LLVM's inlining
 /// budget. Matching the `Option` HERE, behind `#[inline]`, is what lets a
 /// `None` table fold the call to `Ok(qos)` at every one of the fourteen
-/// registration sites and leave [`honour_in`] unreferenced. Verified by
+/// registration sites and leave `honour_in` unreferenced. Verified by
 /// rebuilding both trees and comparing the linked binary byte for byte.
 #[inline]
 pub fn honour(type_name: &str, topic: &str, qos: QoSProfile) -> Result<QoSProfile, NodeError> {

@@ -7,7 +7,7 @@
 //! selects its backend by cargo feature, so the same question has a
 //! compile-time answer: [`crate::session::IMAGE_SERIALIZATION_FORMAT_ID`].
 //!
-//! [`assert_message_format`] compares a message's declared
+//! [`assert_message_format`](crate::format_check::assert_message_format) compares a message's declared
 //! [`nros_core::RosMessage::SERIALIZATION_FORMAT_ID`] against that constant inside an
 //! inline `const {}` block. The comparison therefore happens during
 //! monomorphisation of the entity-creation call, and costs nothing at run

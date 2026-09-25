@@ -22,8 +22,11 @@
 //!
 //! There is no single "ROS 2 spelling", so each of our languages follows ITS
 //! OWN upstream. For Rust that is rclrs, and rclrs's five severity macros are
-//! [`log_debug!`], [`log_info!`], [`log_warn!`], [`log_error!`],
-//! [`log_fatal!`] — which is what this module now exports. The pre-rename
+//! [`log_debug!`](crate::log_debug), [`log_info!`](crate::log_info),
+//! [`log_warn!`](crate::log_warn), [`log_error!`](crate::log_error) and
+//! [`log_fatal!`](crate::log_fatal) — which is what this module now exports.
+//! (They carry an explicit target because `#[macro_export]` puts a macro at
+//! the CRATE ROOT, not in the module whose file declares it.) The pre-rename
 //! `nros_debug!` .. `nros_fatal!` forwarders, and the
 //! `deprecate-legacy-names` feature that armed their `#[deprecated]`, were
 //! removed in phase-417 W-B5 once every in-tree call site had moved. There is
@@ -34,7 +37,7 @@
 //! inside rclrs's namespace-alike would claim an upstream twin that does not
 //! exist:
 //!
-//! * [`nros_trace!`] — rclrs stops at `debug`. TRACE is ours (ledger
+//! * [`nros_trace!`](crate::nros_trace) — rclrs stops at `debug`. TRACE is ours (ledger
 //!   `rust:nros_trace`, verdict `extension`), so it keeps a name that says so.
 //! * the `nros_*_throttle!` / `nros_*_throttle_at!` family — rclrs expresses
 //!   throttling as a modifier on ONE macro
@@ -46,7 +49,8 @@
 
 /// Internal macro emitting one log record at `$severity`.
 ///
-/// Use the named helpers ([`nros_trace!`], [`log_debug!`], etc.) — they
+/// Use the named helpers ([`nros_trace!`](crate::nros_trace),
+/// [`log_debug!`](crate::log_debug), etc.) — they
 /// gate on the compile-time ceiling before evaluating this body.
 #[doc(hidden)]
 #[macro_export]
@@ -92,7 +96,7 @@ macro_rules! __nros_log_emit {
 /// that is the whole risk in a macro this cheap: the compile-time ceiling, the
 /// runtime `is_enabled` threshold and the one `FormatBuffer`. If it grew its
 /// own gate, `log!(logger, Severity::Debug, …)` would obey a different
-/// threshold from [`log_debug!`] and the two spellings of one call would
+/// threshold from [`log_debug!`](crate::log_debug) and the two spellings of one call would
 /// disagree — which is what a second implementation of a gate always ends up
 /// meaning.
 ///
@@ -344,7 +348,7 @@ macro_rules! __nros_throttle_site {
 /// call site.
 ///
 /// Reads the platform clock; needs the `platform-clock` feature (see
-/// [`nros_trace_throttle_at!`] for the form that takes the time).
+/// [`nros_trace_throttle_at!`](crate::nros_trace_throttle_at) for the form that takes the time).
 #[macro_export]
 macro_rules! nros_trace_throttle {
     ($logger:expr, $interval_ms:expr, $($arg:tt)+) => {
@@ -380,7 +384,7 @@ macro_rules! nros_trace_throttle_at {
 /// call site.
 ///
 /// Reads the platform clock; needs the `platform-clock` feature (see
-/// [`nros_debug_throttle_at!`] for the form that takes the time).
+/// [`nros_debug_throttle_at!`](crate::nros_debug_throttle_at) for the form that takes the time).
 #[macro_export]
 macro_rules! nros_debug_throttle {
     ($logger:expr, $interval_ms:expr, $($arg:tt)+) => {
@@ -416,7 +420,7 @@ macro_rules! nros_debug_throttle_at {
 /// call site.
 ///
 /// Reads the platform clock; needs the `platform-clock` feature (see
-/// [`nros_info_throttle_at!`] for the form that takes the time).
+/// [`nros_info_throttle_at!`](crate::nros_info_throttle_at) for the form that takes the time).
 #[macro_export]
 macro_rules! nros_info_throttle {
     ($logger:expr, $interval_ms:expr, $($arg:tt)+) => {
@@ -452,7 +456,7 @@ macro_rules! nros_info_throttle_at {
 /// call site.
 ///
 /// Reads the platform clock; needs the `platform-clock` feature (see
-/// [`nros_warn_throttle_at!`] for the form that takes the time).
+/// [`nros_warn_throttle_at!`](crate::nros_warn_throttle_at) for the form that takes the time).
 #[macro_export]
 macro_rules! nros_warn_throttle {
     ($logger:expr, $interval_ms:expr, $($arg:tt)+) => {
@@ -488,7 +492,7 @@ macro_rules! nros_warn_throttle_at {
 /// call site.
 ///
 /// Reads the platform clock; needs the `platform-clock` feature (see
-/// [`nros_error_throttle_at!`] for the form that takes the time).
+/// [`nros_error_throttle_at!`](crate::nros_error_throttle_at) for the form that takes the time).
 #[macro_export]
 macro_rules! nros_error_throttle {
     ($logger:expr, $interval_ms:expr, $($arg:tt)+) => {
@@ -524,7 +528,7 @@ macro_rules! nros_error_throttle_at {
 /// call site.
 ///
 /// Reads the platform clock; needs the `platform-clock` feature (see
-/// [`nros_fatal_throttle_at!`] for the form that takes the time).
+/// [`nros_fatal_throttle_at!`](crate::nros_fatal_throttle_at) for the form that takes the time).
 #[macro_export]
 macro_rules! nros_fatal_throttle {
     ($logger:expr, $interval_ms:expr, $($arg:tt)+) => {

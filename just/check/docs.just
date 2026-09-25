@@ -439,6 +439,29 @@ rustdoc-links:
         "${pkgs[@]}"
     echo "rustdoc-links OK — the ${#NROS_RUSTDOC_CRATES[@]} published crates document cleanly."
 
+# Issue 1116 / phase-452 W4 — the OTHER scope: every workspace crate documents,
+# not just the six the book deploys.
+#
+# `rustdoc-links` above stays narrow on purpose, because a red there is a
+# broken docs deploy and a crate the book does not publish must not be able to
+# cause one. This gate is the second scope, and it is where the drift was: 179
+# diagnostics and twelve crates that could not document at all, measured
+# 2026-09-25, against the "~70, five" issue 1116 recorded three weeks earlier.
+# All 179 are fixed, so the gate holds a zero.
+#
+# Same three outcomes as its sibling (issues 1043 / 1138) and a wider source
+# table, because the workspace pass also runs `cyclonedds-sys`'s and
+# `nros-rmw-xrce-cffi`'s build scripts. Measured 8.6 s warm.
+#
+# The negative control runs ON THE NORMAL PATH (phase-428 W6's rule), because
+# "every workspace crate documents cleanly" is also what a gate that can never
+# fail would print. It proves BOTH halves: that the deny posture reaches a
+# crate with no `[lints]` table, and that the derived scope really is wider
+# than the deployed set. `--self-test` runs it alone and verbosely.
+[group("ci")]
+rustdoc-workspace:
+    @bash scripts/check-rustdoc-workspace.sh
+
 # Issue 0937's shape — an issue in `archived/` must SAY it is resolved.
 #
 # `4f1305788` archived 0937 with an `R100` rename: a 100% similarity move, zero

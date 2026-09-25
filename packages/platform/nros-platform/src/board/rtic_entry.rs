@@ -51,7 +51,7 @@ use super::{Board, DeployOverlay, runtime::NodeDispatchRuntime};
 /// storage.
 ///
 /// Distinct from [`super::BoardEntry`] (board-owns-spin) and
-/// [planned] `EmbassyBoardEntry` (216.C.1, executor-owns-spin via
+/// `[planned]` `EmbassyBoardEntry` (216.C.1, executor-owns-spin via
 /// `embassy_executor::Spawner`).
 pub trait RticBoardEntry: Board {
     /// Chip Peripheral Access Crate handle (e.g.

@@ -27,7 +27,7 @@
 //!
 //! That is the issue-0328 shape: a fix applied at the sites where the symptom
 //! was seen. The remedy CLAUDE.md prescribes is a gate that covers the class,
-//! which is [`tests::every_cell_iterating_test_is_classified`].
+//! which is `tests::every_cell_iterating_test_is_classified`.
 //!
 //! So the narrowing happens where the platform is actually known: in the cell
 //! list. This is the run-scope twin of
@@ -68,7 +68,7 @@ pub fn scope_admits(scope: Option<&str>, platform: PlatformId) -> bool {
 ///
 /// Data, not prose, because prose is what let `sched_dims_applied` be the
 /// fifth (issue 0630). Paired with [`EXEMPT`] by
-/// [`tests::every_cell_iterating_test_is_classified`], which recomputes the
+/// `tests::every_cell_iterating_test_is_classified`, which recomputes the
 /// candidate set from the sources and refuses anything in neither list.
 pub const CONSUMERS: &[&str] = &[
     "entry_e2e.rs",

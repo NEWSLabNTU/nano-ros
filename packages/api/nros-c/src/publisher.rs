@@ -101,7 +101,7 @@ impl Default for nros_publisher_t {
 /// separately, this struct carries the non-QoS publisher-creation axes.
 /// Publishers are not executor handles and therefore have no
 /// scheduling-context binding — this struct is intentionally thin and
-/// exists for rclc symmetry with [`nros_subscription_options_t`] plus
+/// exists for rclc symmetry with `nros_subscription_options_t` plus
 /// forward ABI headroom.
 ///
 /// The struct contains only plain scalar fields — no pointers — so it is
@@ -869,7 +869,7 @@ impl nros_publisher_t {
 ///
 /// # Returns
 /// * Pointer to topic name (null-terminated), or NULL if the handle is not
-///   usable (see [`nros_publisher_t::is_usable`]) or NULL
+///   usable (see `nros_publisher_t::is_usable`) or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_publisher_get_topic_name(
     publisher: *const nros_publisher_t,
@@ -951,7 +951,7 @@ pub unsafe extern "C" fn rcl_publisher_get_subscription_count(
 ///
 /// rcl's `rcl_publisher_is_valid`, whose contract is "true for any handle that
 /// can be used" — the ported idiom is a guard. See
-/// [`nros_publisher_t::is_usable`] for which states those are.
+/// `nros_publisher_t::is_usable` for which states those are.
 ///
 /// # Parameters
 /// * `publisher` - Pointer to a publisher

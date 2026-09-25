@@ -1072,7 +1072,8 @@ fn init_network(config: &Config) -> FrResult<()> {
 
 /// Phase 212.N.2 — family-driver entry point for FreeRTOS boards.
 ///
-/// Mirrors the legacy [`crate::run`] body — allocates an app task on
+/// Mirrors the body of the legacy `run` that phase 212.N.7 retired —
+/// allocates an app task on
 /// the FreeRTOS heap, hands it the user closure, calls
 /// `vTaskStartScheduler()`, never returns — but routes through the
 /// 212.N.1 `nros_platform::board` trait set + [`RuntimeCtx`].

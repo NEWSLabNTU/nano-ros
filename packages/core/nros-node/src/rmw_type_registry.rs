@@ -8,7 +8,7 @@
 //! runtime registry instead of a static-init table. Each `nros-node`
 //! typed creator (`create_publisher`, `create_subscription`,
 //! `create_client`, `create_service`, `create_action_*`) routes through
-//! [`register_type::<M>`] *before* asking the cffi vtable to create the
+//! `register_type::<M>` *before* asking the cffi vtable to create the
 //! entity so the descriptor exists when the backend's `dds_create_topic`
 //! (or equivalent) runs.
 //!
@@ -33,13 +33,13 @@
 //! activates alongside its own `dep:nros-rmw-cyclonedds-sys`. Callers
 //! depend on `nros = { features = ["rmw-cyclonedds"] }`; the hook lights
 //! up automatically — no user-facing feature flag on `nros-node`. Each
-//! typed creator calls [`register_type::<M>`] unconditionally; the body
+//! typed creator calls `register_type::<M>` unconditionally; the body
 //! is empty when the cfg is off so zenoh/xrce paths pay nothing. With the
 //! cfg on, the caller pays one mutex acquisition + one lookup per creator
 //! invocation (idempotent; the backend caches the descriptor on first
 //! hit).
 //!
-//! # Trait bound — [`MessageForRmw`]
+//! # Trait bound — `MessageForRmw`
 //!
 //! A descriptor-needing backend needs [`nros_serdes::schema::Message`]
 //! for the static field schema, but `nros-node`'s typed creators
@@ -49,7 +49,7 @@
 //! `Message`). Adding it as a per-method bound on every typed creator
 //! touches 30+ sites.
 //!
-//! Compromise: introduce a helper trait [`MessageForRmw`] that is **the
+//! Compromise: introduce a helper trait `MessageForRmw` that is **the
 //! bound the typed creators use** in place of bare `M: RosMessage`. It is
 //! a blanket impl over `RosMessage` whose extra requirement is `Message`
 //! when `cfg(rmw_needs_type_descriptors)` is on, and just `RosMessage` when

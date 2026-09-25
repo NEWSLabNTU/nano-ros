@@ -8,7 +8,7 @@
 //! by design — NuttX owns the kernel build through its own
 //! `apps/external/nano-ros/` + `Make.defs` + `Kconfig` integration
 //! (see `integrations/nuttx/` and the Phase 152.7 polish). The
-//! Cargo side only needs to ship `Config` + `run` + board-init
+//! Cargo side only needs to ship the boot driver plus the board-init
 //! hooks; there is no `build.rs` bundling the NuttX kernel
 //! sources here.
 //!
@@ -28,30 +28,20 @@
 //!
 //! ## Public contract
 //!
-//! Two boot-driver shapes coexist during the 212.N migration:
-//!
-//! ### Legacy (152.4.B) — config-carrying
-//!
-//! - `Config` — TOML-loaded network + zenoh config.
-//! - `run(Config, FnOnce(&Config) -> Result<(), E>) -> !` — entry
-//!   point. For NuttX this is a regular Rust `main` that initialises
-//!   nros + drops into the user closure; the NuttX kernel is already
-//!   up by the time `main` runs (NuttX init is the OS, not something
-//!   this crate boots). Diverges via `std::process::exit`.
-//! - `run_generic::<B>(cfg, f) -> !` — kernel-agnostic generic over
-//!   the legacy [`nros_board_common::BoardInit`] (which carries a
-//!   `type Config`).
-//! - `init_hardware()` — board-specific peripheral wakes (sensors,
-//!   displays, vendor-specific GPIO that NuttX's `apps/` discovery
-//!   doesn't auto-configure).
+//! The 212.N migration has LANDED, so the shapes this section used to
+//! list in parallel are down to one: the config-carrying `run` /
+//! `run_generic` pair is gone, and so is the `BoardInit` trait
+//! `nros-board-common` once declared — it is
+//! [`nros_platform::BoardInit`] now.
 //!
 //! ### Phase 212.N.2 — `BoardEntry`-shaped `run_entry`
 //!
-//! - [`run_entry`] (free fn) — mirrors the
-//!   [`nros_platform::BoardEntry::run`] signature so codegen-emitted
-//!   `main.rs` can call it without owning a [`Config`]. Parameterised
-//!   on a 212.N.1 [`nros_platform::BoardInit`] impl `B` whose
-//!   `init_hardware()` takes no argument (overlay state, if any,
+//! - `run_entry` (free fn; `#[cfg(target_os = "nuttx")]`, which is why
+//!   this is not a link — a host rustdoc pass does not compile it) —
+//!   mirrors the [`nros_platform::BoardEntry::run`] signature so
+//!   codegen-emitted `main.rs` can call it without owning a `Config`.
+//!   Parameterised on a 212.N.1 [`nros_platform::BoardInit`] impl `B`
+//!   whose `init_hardware()` takes no argument (overlay state, if any,
 //!   lives in `B`'s impl block or in a separate per-board `Config`
 //!   the Entry pkg threads through the `setup` closure).
 //! - Returns the [`Result`] the closure produces. NuttX is hosted +

@@ -441,7 +441,7 @@ pub fn select_sole_row(dir: &str) -> TestResult<&'static GroupRow> {
 
 /// Does `examples/fixtures.toml` carry ANY row for this leaf?
 ///
-/// The distinction [`row_artifact_dir`] cannot make on its own, and the two
+/// The distinction `nros_fixture_row_artifact_dir` cannot make on its own, and the two
 /// cases deserve opposite answers:
 ///
 /// * leaf HAS rows, none matching the variant → fail closed. The leaf is
@@ -474,7 +474,7 @@ pub fn leaf_is_multi_row(dir: &str) -> bool {
 }
 
 /// The row a caller means, by leaf dir and configuration — the selection half of
-/// [`row_artifact_dir`], exposed so a resolver can also ask the lane about the
+/// `nros_fixture_row_artifact_dir`, exposed so a resolver can also ask the lane about the
 /// row it just selected (issue 0517 step 1).
 pub fn select_row(dir: &str, variant: &FixtureVariant) -> TestResult<&'static GroupRow> {
     select_row_in(manifest_rows(), dir, variant)

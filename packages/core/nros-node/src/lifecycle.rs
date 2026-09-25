@@ -383,7 +383,7 @@ pub enum LifecycleCallbackSlot {
 /// (rclcpp `LifecycleNodeInterface`). Implement the transitions you need; the
 /// rest default to `Success` (`on_error` to `Failure`), matching rclcpp's
 /// non-pure-virtual defaults. Register the node with
-/// [`Executor::register_lifecycle_node`](crate::Executor::register_lifecycle_node),
+/// `Executor::register_lifecycle_node`,
 /// which binds the five REP-2002 services and wires each transition here — no
 /// `unsafe` in user code.
 ///
@@ -403,7 +403,7 @@ pub enum LifecycleCallbackSlot {
 /// `previous` argument: the FFI callback boundary ([`LifecycleCallbackFnCtx`])
 /// carries only the user context, and the [`LifecyclePollingNode`] fn-pointer
 /// API is likewise state-less. Read the current state via
-/// [`Executor::lifecycle_state_machine`](crate::Executor::lifecycle_state_machine)
+/// `Executor::lifecycle_state_machine`
 /// `.state()` if a transition needs it.
 pub trait LifecycleCallbacks {
     /// `Unconfigured -> Inactive`. Default: `Success`.
@@ -435,7 +435,7 @@ pub trait LifecycleCallbacks {
 /// Monomorphized `extern "C"` trampolines that recover `&mut T` from the FFI
 /// context pointer and dispatch to the [`LifecycleCallbacks`] method. rustc
 /// emits one per `T`, so there is no closure box — `no_std`-safe. Registered by
-/// [`Executor::register_lifecycle_node`](crate::Executor::register_lifecycle_node);
+/// `Executor::register_lifecycle_node`;
 /// not meant to be called directly.
 pub mod trampolines {
     use super::{LifecycleCallbacks, TransitionResult};

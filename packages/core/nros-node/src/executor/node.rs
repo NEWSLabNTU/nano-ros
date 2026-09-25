@@ -680,7 +680,7 @@ impl<'a> NodeHandle<'a> {
         })
     }
 
-    /// Typeless service server. L1 counterpart of [`create_service`]
+    /// Typeless service server. L1 counterpart of [`Self::create_service`]
     /// for the C / C++ FFI shims and callers that own their own
     /// scheduler. Returns a [`crate::executor::handles::RawServiceServer`]
     /// which polls request bytes directly.
@@ -718,7 +718,7 @@ impl<'a> NodeHandle<'a> {
         Ok(crate::executor::handles::RawServiceServer::new(handle))
     }
 
-    /// Typeless service client. L1 counterpart of [`create_client`].
+    /// Typeless service client. L1 counterpart of [`Self::create_client`].
     pub fn create_client_raw(
         &mut self,
         service_name: &str,
@@ -1502,7 +1502,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// **A delegation, not a second clock.** [`nros_core::clock::Clock`] is a
     /// one-field value naming a time SOURCE — it holds no state of its own, and
     /// `now()` on a ROS-time clock reads the process-global override that
-    /// [`install_ros_time_source`](Self::install_ros_time_source) installs. So
+    /// `install_ros_time_source` installs. So
     /// this returns the same answer as the executor's clock by construction
     /// rather than by agreement, which is the property the graph forwarders in
     /// this family are shaped for.
@@ -1736,7 +1736,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// [`create_timer_in_group`](Self::create_timer_in_group) and the executor's
     /// `register_timer` are the WALL case: they consume the spin delta the
     /// executor already measured, and no simulator can slow them down. A
-    /// [`TimerClockSource::Ros`] timer instead follows `/clock`, so it stops
+    /// [`TimerClockSource::Ros`](crate::executor::TimerClockSource::Ros) timer instead follows `/clock`, so it stops
     /// while the simulator is paused and tracks a bag's replay rate; with no
     /// `/clock` source installed it reads system time, the same fallback
     /// `rclcpp::Clock` has.
@@ -1843,7 +1843,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// `async_send_request(req, cb)` analogue). The reply is delivered to
     /// `callback` at `spin_once` (no `Promise` poll). Returns a
     /// [`ServiceClientCallback`] send handle; dual-mode — the `Promise`-based
-    /// [`create_client`](Self::create_client) is unchanged.
+    /// `create_client` is unchanged.
     pub fn create_client_with_callback<Svc, F>(
         &mut self,
         service_name: &str,
@@ -1895,7 +1895,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// result_callback}` analogue). Goal-response / feedback / result are
     /// delivered to the closures at `spin_once`. Returns an
     /// [`ActionClientCallback`] send handle (`send_goal` / `get_result`);
-    /// dual-mode — the `Promise`-based [`create_action_client`](Self::create_action_client)
+    /// dual-mode — the `Promise`-based `create_action_client`
     /// is unchanged.
     #[allow(clippy::type_complexity)]
     pub fn create_action_client_with_callbacks<A, GRespF, FbF, ResF>(
@@ -2171,7 +2171,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     // ====================================================================
 
     /// Every node on the graph, with its namespace — rclrs's
-    /// [`Node::get_node_names`].
+    /// `Node::get_node_names`.
     ///
     /// `visit(name, namespace)` once per node. For the enclave as well, use
     /// [`get_node_names_with_enclaves`](Self::get_node_names_with_enclaves):
@@ -2191,7 +2191,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     }
 
     /// Every node on the graph with its namespace AND its enclave — rclrs's
-    /// [`Node::get_node_names_with_enclaves`].
+    /// `Node::get_node_names_with_enclaves`.
     ///
     /// `visit(name, namespace, enclave)`. `enclave` is `None` when the backend
     /// reports the node but not its enclave, which is a partial answer rather
@@ -2205,7 +2205,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     }
 
     /// Every topic on the graph, with the types on it — rclrs's
-    /// [`Node::get_topic_names_and_types`].
+    /// `Node::get_topic_names_and_types`.
     ///
     /// `visit(topic_name, types)` once per distinct TOPIC: a topic carrying
     /// two types is one call with two entries, not two calls. `types` may
@@ -2219,7 +2219,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     }
 
     /// Every service on the graph, with its types — rclrs's
-    /// [`Node::get_service_names_and_types`]. As
+    /// `Node::get_service_names_and_types`. As
     /// [`get_topic_names_and_types`](Self::get_topic_names_and_types), over
     /// servers and clients.
     pub fn get_service_names_and_types(
@@ -2230,7 +2230,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     }
 
     /// How many publishers are visible on `topic_name` — rclrs's
-    /// [`Node::count_publishers`].
+    /// `Node::count_publishers`.
     ///
     /// **This is the GRAPH's count, not this node's.** The number of
     /// publishers this node itself DECLARED is
@@ -2245,7 +2245,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     }
 
     /// How many subscriptions are visible on `topic_name` — rclrs's
-    /// [`Node::count_subscriptions`].
+    /// `Node::count_subscriptions`.
     ///
     /// **`subscriptions`, not `subscribers`** — this is rclrs's spelling, and
     /// the Rust surface takes its vocabulary from rclrs so a user porting Rust
@@ -2262,7 +2262,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     }
 
     /// What one named node PUBLISHES, with the types — rclrs's
-    /// [`Node::get_publisher_names_and_types_by_node`].
+    /// `Node::get_publisher_names_and_types_by_node`.
     ///
     /// A node the graph has not discovered yields no visits, which is not an
     /// error — see [`get_node_names`](Self::get_node_names) for why an empty
@@ -2278,7 +2278,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     }
 
     /// What one named node SUBSCRIBES to, with the types — rclrs's
-    /// [`Node::get_subscription_names_and_types_by_node`]. See
+    /// `Node::get_subscription_names_and_types_by_node`. See
     /// [`count_subscriptions`](Self::count_subscriptions) on the spelling.
     pub fn get_subscription_names_and_types_by_node(
         &mut self,
@@ -2291,7 +2291,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     }
 
     /// What services one named node SERVES, with the types — rclrs's
-    /// [`Node::get_service_names_and_types_by_node`].
+    /// `Node::get_service_names_and_types_by_node`.
     pub fn get_service_names_and_types_by_node(
         &mut self,
         node_name: &str,
@@ -2303,7 +2303,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     }
 
     /// What services one named node CALLS, with the types — rclrs's
-    /// [`Node::get_client_names_and_types_by_node`].
+    /// `Node::get_client_names_and_types_by_node`.
     pub fn get_client_names_and_types_by_node(
         &mut self,
         node_name: &str,
@@ -2315,7 +2315,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     }
 
     /// The PUBLISHERS on `topic_name`, one visit each — rclrs's
-    /// [`Node::get_publishers_info_by_topic`].
+    /// `Node::get_publishers_info_by_topic`.
     ///
     /// The last two members of the graph family to reach upstream's receiver.
     /// `visit(info)` per discovered endpoint; every `&str` on the
@@ -2337,7 +2337,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     }
 
     /// The SUBSCRIPTIONS on `topic_name`, one visit each — rclrs's
-    /// [`Node::get_subscriptions_info_by_topic`]. See
+    /// `Node::get_subscriptions_info_by_topic`. See
     /// [`get_publishers_info_by_topic`](Self::get_publishers_info_by_topic).
     pub fn get_subscriptions_info_by_topic(
         &mut self,

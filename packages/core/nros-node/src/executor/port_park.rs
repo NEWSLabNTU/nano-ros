@@ -14,7 +14,7 @@
 //! deadline with a message already waiting. That is worse than not parking at
 //! all, it passes every test, and it is invisible in a quiet run.
 //!
-//! [`spin_once`]: super::spin::Executor::spin_once
+//! [`spin_once`]: crate::executor::Executor::spin_once
 
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 use super::spin::{Executor, ParkUntilFn};

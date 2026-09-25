@@ -25,23 +25,17 @@
 //!   semihosting) stays per-board until a `BoardPrint` /
 //!   `BoardExit` trait abstraction lands (coupled with 152.4.B's
 //!   `BoardInit` trait).
-//! - 212.N.2 — additive [`run_entry`] over the new
-//!   [`nros_platform::board`] trait set (Phase 212.N.1). The legacy
-//!   [`run`] (taking the `nros-board-common` traits + `&Config`
-//!   closure) and the new [`run_entry`] (taking the
-//!   `nros-platform::board` traits + `&mut RuntimeCtx` closure)
-//!   coexist during the 212.N migration; per-board crates pick
-//!   whichever entry point their `impl BoardEntry` / legacy `run`
-//!   wrapper needs. Phase 212.N.7 retires the legacy shape and
-//!   collapses to `run_entry` alone.
+//! - 212.N.2 — additive [`run_entry`] over the
+//!   [`nros_platform::Board`] trait set (Phase 212.N.1). Phase 212.N.7
+//!   then RETIRED the legacy `run` (the `nros-board-common` traits plus a
+//!   `&Config` closure), so [`run_entry`] is the only entry point left
+//!   and every per-board `impl BoardEntry` delegates to it.
 //!
 //! ## Public contract
 //!
 //! - [`Config`] — TOML-loaded network + zenoh config + FreeRTOS
 //!   priority knobs. Overlay extends defaults.
 //! - `Error` (pub(crate)) — internal init errors.
-//! - [`run`] — legacy `(Config, FnOnce(&Config) -> Result<(), E>) -> !`
-//!   entry point over the `nros-board-common` traits.
 //! - [`run_entry`] — Phase 212.N.2
 //!   `(Config, FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>) -> Result<(), E>`
 //!   entry point over the `nros-platform::board` traits. Per-board
