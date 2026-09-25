@@ -38,7 +38,7 @@ nros config explain --platform myrtos [--board-toml path/to/nros-board.toml]
 ```
 
 Kconfig appears only where the host framework is Kconfig-native
-(Zephyr / NuttX / ESP-IDF packagings) — a hand-wired fragment whose
+(the Zephyr and NuttX packagings) — a hand-wired fragment whose
 defaults mirror the platform toml (drift-tested). A port to a
 non-Kconfig RTOS never touches it.
 

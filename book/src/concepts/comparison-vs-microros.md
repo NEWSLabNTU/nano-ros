@@ -22,7 +22,7 @@ comparison.
 | **RMW backend choice** | Zenoh, XRCE-DDS, Cyclone DDS — pick at compile time | XRCE-DDS only |
 | **Network model** | Peer-to-peer (Zenoh / Cyclone DDS) **or** agent-based (XRCE) | Agent-based only |
 | **Bridge process required?** | No for Zenoh / Cyclone DDS; yes for XRCE | Yes (Micro-XRCE-DDS Agent) |
-| **Supported RTOSes** | FreeRTOS, NuttX, ThreadX, Zephyr, ESP-IDF, PX4 (NuttX), POSIX, bare-metal | FreeRTOS, NuttX, Zephyr, ESP-IDF, POSIX; PX4 is the canonical deployment |
+| **Supported RTOSes** | FreeRTOS, NuttX, ThreadX, Zephyr, PX4 (NuttX), POSIX, bare-metal (incl. ESP32-C3 over `esp-hal`). No ESP-IDF — that port was retired in phase-468 W2 | FreeRTOS, NuttX, Zephyr, ESP-IDF, POSIX; PX4 is the canonical deployment |
 | **`no_std` core** | Yes — entire client stack compiles `no_std` + heapless | No — `rclc` requires libc + a heap |
 | **Heap usage** | Optional on bare-metal (XRCE backend is fully static); required for Zenoh / Cyclone DDS | Required (malloc-based DDS-XRCE client) |
 | **RT scheduling story** | SchedContext classes (Fifo/Edf/Sporadic live in dispatch; TT deprecated-cooperating) + per-platform kernel capabilities — the generated [Scheduling Wiring Matrix](../reference/sched-matrix.md) is the per-cell truth | rclc executor with priority callbacks; no SchedContext / EDF / TT story |

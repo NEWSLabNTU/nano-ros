@@ -2107,7 +2107,11 @@ check = { pkg_config = "python3" }
 
 [prereq.python3-venv]
 role = "buildtool"
-why = "ESP-IDF install + tool venvs (issue 0368 F7)"
+# phase-468 W2 — "ESP-IDF install" was the first half of this reason and went
+# with the port. The second half is what keeps the row: `scripts/zephyr/setup.sh`
+# and `scripts/zephyr/provision-py312-venv.sh` build west venvs, and
+# `scripts/nuttx/build-nuttx.sh` builds a kconfiglib one.
+why = "west + kconfiglib tool venvs (issue 0368 F7)"
 apt = ["python3-venv"]
 dnf = ["python3"]
 pacman = ["python"]

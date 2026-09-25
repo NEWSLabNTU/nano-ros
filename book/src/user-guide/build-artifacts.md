@@ -32,11 +32,11 @@ workspace crosses languages:
 
 | platform / shape | driver | the artifact |
 | --- | --- | --- |
-| Rust single package, any non-Zephyr non-ESP32 board | `cargo` | `<leaf>/build/<image-id>/target/[<triple>/]<profile>/<bin>` |
+| Rust single package, any non-Zephyr board (ESP32 included — see below) | `cargo` | `<leaf>/build/<image-id>/target/[<triple>/]<profile>/<bin>` |
 | Rust-only workspace, the same boards | `cargo` | `<ws>/build/<coordinate>/<image>_entry/target/[<triple>/]<profile>/<image>_entry` |
 | any workspace containing C or C++ | `cmake` | `<ws>/build/<coordinate>/cmake/<image>_entry` |
 | a `zephyr` board | `west` | `<ws>/build/zephyr/zephyr.{elf,bin,exe}` |
-| an `esp32` board | `idf.py` | ESP-IDF's own `build/` in the project directory |
+| an `esp32` board, image crossing languages | `idf.py` | ESP-IDF's own `build/` in the project directory — an OUT-OF-TREE project; nano-ros ships no ESP-IDF component |
 
 The **coordinate** is the platform and the RMW — `posix-zenoh`,
 `freertos-cyclonedds` — plus, for CMake, the board, because CMake pins one
@@ -173,15 +173,21 @@ they work from wherever you would normally run `west`.
 
 Two different shapes, because there are two ways to build for an ESP32:
 
-**ESP-IDF component** (`idf.py` driver) — `nros build` runs `idf.py build` in
-the project directory, and the artifact is whatever ESP-IDF writes under that
-project's `build/`. The next step is Espressif's:
+**ESP-IDF (`idf.py` driver)** — reached only when an esp32 image crosses
+languages. `nros build` runs `idf.py build` in the project directory and the
+artifact is whatever ESP-IDF writes under that project's `build/`; the next
+step is Espressif's:
 
 ```bash
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
-See [ESP32 (ESP-IDF component)](../getting-started/integration-esp-idf.md).
+The driver survives, but the project it drives must be your own: the in-tree
+ESP-IDF component was
+[retired](../getting-started/integration-esp-idf.md) in phase-468 W2. A Rust
+`board-run` esp32 image is a **cargo** image, not an `idf.py` one — deciding
+that by platform alone is what made `nros build esp32` exec a tool with no
+project to build.
 
 **Rust bare-metal (esp-hal)** — a single-package image on the cargo driver
 like any other, so the ELF is under that image's own target dir:

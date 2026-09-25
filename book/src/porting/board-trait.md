@@ -187,7 +187,6 @@ The family crate is where the `BoardEntry::run` *body* actually lives. The kerne
 - `nros-board-threadx` — ThreadX + NetX BSD; same shape over NetX.
 - `nros-board-nuttx` — NuttX POSIX layer; `init_transport` shells `ifup`-style logic.
 - `nros-board-zephyr` — carve-out: Kconfig + DTS own BSP; the crate exposes an inherent `wait_link_up` over `<zephyr/net/net_if.h>`. The Rust staticlib cannot take over `main` on Zephyr.
-- `nros-board-esp-idf` — ESP-IDF component shape; WiFi association lives in `init_transport`, IP lease in `wait_link_up`.
 - Direct-exec (Cortex-M / RV32, no RTOS) has **no family crate**: each board
   implements `BoardEntry::run` itself with a single-thread `zp_read` loop. A
   `nros-board-bare-metal` family driver was written for this shape and no board

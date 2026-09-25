@@ -252,7 +252,7 @@ Canonical, copy-out:
   the no-RTOS variant.
 - Your own board / RTOS: the
   [Board Integration matrix](../concepts/board-integration.md) maps each
-  user profile (Cargo-first, vendor-IDE, Zephyr, ESP-IDF, NuttX, niche fork)
+  user profile (Cargo-first, vendor-IDE, Zephyr, NuttX, ESP32-C3, niche fork)
   to the shortest bring-up path.
 - RTOS-specific debugging: [FreeRTOS LAN9118
   Debugging](../internals/freertos-lan9118-debugging.md).

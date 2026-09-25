@@ -7,7 +7,7 @@ type: tech-debt
 area: build, esp32
 severity: low
 found: 2026-09-11
-related: [issue-1275, issue-0500]
+related: [issue-1275, issue-0500, phase-468]
 ---
 
 ## What this is
@@ -67,6 +67,45 @@ There are real costs on both sides. ESP-IDF is what Espressif supports and what
 the esp32 examples are written against; the bare-metal rows are esp-hal, which
 is neither. So this wants a measurement and probably an RFC, not a decision
 taken in passing.
+
+### Amended 2026-09-25 (phase-468 W2): the premise above is half false now, and the issue STAYS OPEN
+
+phase-468 W2 retired the ESP-IDF port. `scripts/esp_idf/setup.sh`,
+`just/esp_idf.just`, `packages/platform/nros-platform-esp-idf/`,
+`integrations/nano-ros/` and the `esp_idf` cmake vocabulary are all gone, the
+book stopped offering it, and step 7 deleted the last environment knobs
+(`NROS_ESP_IDF_WORKSPACE`, `NROS_ESP_IDF_ENV_SHIM`, `IDF_PATH`) along with the
+`esp-idf-workspace` root they named.
+
+**So the duplication framing is settled, by subtraction rather than by
+argument.** There is no separate ESP-IDF provisioning any more, so we do not
+carry two toolchains for one target. The paragraph above describing that state
+is history, not the present.
+
+**What is NOT settled, and is why this stays open.** Nothing measured about
+`hal_espressif` itself changed. Re-checked on this branch: still zero consumers
+(the west allowlists and prose only), still no `xtensa-espressif_*` toolchain in
+what `scripts/zephyr/setup.sh` installs, still the unreachable
+`CONFIG_SOC_SERIES_ESP32C3` branch in `zephyr/cmake/nros_cargo_build.cmake`
+(now line 84; the `:78` cited above is where F1 found it), still 275 MB on every
+fresh `west update`. Measured the same way F1 did: `hal_espressif` appears in
+exactly three non-prose places, `nros-sdk-index.toml` and the two west
+allowlists, and none of them is a build. The reason F1 kept it was that
+deleting the line would settle a strategy question by accident, and that reason
+survives the retirement — it has only changed shape:
+
+* **before:** ESP-IDF vs Zephyr — do we carry two host ecosystems for esp32?
+* **now:** esp-hal bare-metal vs Zephyr — should the one remaining esp32 path
+  gain a Zephyr-hosted sibling, or is bare-metal the whole answer?
+
+That is a narrower question and a genuinely open one. Retiring ESP-IDF removed a
+competitor, which if anything makes a Zephyr esp32 path *easier* to argue for,
+not harder — so deleting `hal_espressif` now would still settle it in the
+direction of "we do not do Zephyr esp32", which is exactly the accident this
+issue exists to prevent.
+
+The closing conditions below are unchanged and still correct; only the second
+bullet's rival has changed name, from ESP-IDF to esp-hal.
 
 ## What would close this
 

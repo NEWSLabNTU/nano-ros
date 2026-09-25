@@ -258,9 +258,12 @@ nros_scope_module_has_verb() {
 }
 
 # The refusal a scope gets when the verb has no implementation for it. A named
-# scope must WORK or say why — reaching `just esp_idf test` and letting `just`
-# answer "justfile does not contain recipe" names neither the scope nor the
-# verb the person actually typed.
+# scope must WORK or say why — reaching `just threadx-riscv64 test` (a real
+# module with no `test` lane) and letting `just` answer "justfile does not
+# contain recipe" names neither the scope nor the verb the person actually
+# typed. This example used to be `just esp_idf test`, which stopped making the
+# point when phase-468 W2 deleted that module: a scope that does not exist at
+# all fails one step earlier, for a different reason.
 nros_scope_require_module_verb() {
     local mod="${1:?}" verb="${2:?}"
     nros_scope_module_has_verb "$mod" "$verb" && return 0

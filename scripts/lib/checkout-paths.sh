@@ -50,7 +50,15 @@ NROS_CHECKOUT_MARKER="packages/core/nros-core/Cargo.toml"
 #
 # Print the nano-ros checkout `<path>` belongs to, or nothing when it belongs
 # to none. Purely lexical: the path need not exist (an unprovisioned SDK dir is
-# still attributable) and may name a file (`NROS_ESP_IDF_ENV_SHIM`).
+# still attributable) and may name a FILE rather than a directory — the walk is
+# `${d%/*}` on the string, so nothing here asks the filesystem what kind of
+# thing it was handed.
+#
+# That last property has no live example as of phase-468 W2: every variable
+# `sdk-env.just` now exports is directory-valued, and the one that named a file,
+# `NROS_ESP_IDF_ENV_SHIM`, went with the ESP-IDF port. It is stated anyway
+# because it is a property of the CONTRACT, not of the current caller set — a
+# future file-valued root must not have to rediscover that this is allowed.
 #
 # A RELATIVE path answers nothing on purpose — it cannot have been inherited
 # from another checkout, because it is resolved against the caller's own cwd.

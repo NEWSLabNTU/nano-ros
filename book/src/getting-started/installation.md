@@ -341,7 +341,7 @@ door from a fresh checkout (`just` is NOT a prereq; rustup is installed
 on demand):
 
 > Sourcing `activate.sh` on a host without `just` prints one line about
-> RTOS SDK path defaults (`FREERTOS_DIR`, `NUTTX_DIR`, `IDF_PATH`, …)
+> RTOS SDK path defaults (`FREERTOS_DIR`, `NUTTX_DIR`, `THREADX_DIR`, …)
 > not being loaded. Harmless — nothing in the user flows reads them,
 > and embedded builds go through `nros sync` + `nros build`, which
 > drives cargo, cmake, west or `idf.py` for you. `just` is a

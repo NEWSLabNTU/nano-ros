@@ -324,8 +324,13 @@ impl SystemAsk {
     /// then the note about keys asked earlier. `--system --check` lists its
     /// keys itself and wants just this part.
     ///
-    /// The OS command is kept LAST of the commands: `scripts/esp_idf/setup.sh`
-    /// reads the tail of this output to show the one line that installs.
+    /// The OS command is kept LAST of the commands. The caller that PINNED that
+    /// order — `scripts/esp_idf/setup.sh`, which read the tail of this output to
+    /// show the one line that installs — went with the ESP-IDF port in
+    /// phase-468 W2, and a sweep found no other tail reader. The order stays on
+    /// its own merit: the store command needs no root, so offering it first lets
+    /// a reader stop at the first remedy that works instead of reaching for
+    /// `sudo` because it was the line in front of them.
     pub(super) fn remedy(
         &self,
         prereqs: &BTreeMap<String, PrereqDep>,

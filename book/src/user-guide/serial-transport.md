@@ -181,7 +181,7 @@ Serial locators follow zenoh-pico convention:
 
 | Format | Example | Use Case |
 |--------|---------|----------|
-| `serial/<dev>#baudrate=<baud>` | `serial/UART_0#baudrate=115200` | Device name (Zephyr, ESP-IDF, bare-metal) |
+| `serial/<dev>#baudrate=<baud>` | `serial/UART_0#baudrate=115200` | Device name (Zephyr, bare-metal) |
 | `serial/<tx>.<rx>#baudrate=<baud>` | `serial/0.1#baudrate=115200` | Pin numbers (Arduino) |
 
 ## QEMU PTY Testing
@@ -290,7 +290,7 @@ On physical hardware, ensure the UART TX/RX pins aren't shared with the debug co
 
 ### ESP32 Serial
 
-ESP32 uses zenoh-pico's built-in ESP-IDF serial implementation. No `zpico-serial` dependency is needed. Select serial transport in the board crate:
+ESP32 uses zenoh-pico's built-in serial implementation — the board crate's own words, and it needs no `zpico-serial` dependency. (This said "built-in **ESP-IDF** serial" until phase-468 W2; nothing selects zenoh-pico's `src/system/espidf/` tree, so that qualifier named a backend this path does not reach.) Select serial transport in the board crate:
 
 ```toml
 nros-board-esp32-qemu = { version = "*", default-features = false, features = ["serial"] }

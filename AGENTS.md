@@ -157,7 +157,7 @@ Native C/XRCE tests are runtime-only and consume prebuilt CMake fixtures under `
 
 ## SDK Environment Defaults
 
-Keep repo-local SDK defaults centralized in `just/sdk-env.just`. This includes paths such as `FREERTOS_DIR`, `NUTTX_DIR`, `THREADX_DIR`, `PX4_AUTOPILOT_DIR`, `NROS_ESP_IDF_WORKSPACE`, `NROS_ESP_IDF_ENV_SHIM`, and `IDF_PATH`. Local overrides belong in `.env` or the caller environment.
+Keep repo-local SDK defaults centralized in `just/sdk-env.just`. This includes paths such as `FREERTOS_DIR`, `NUTTX_DIR`, `THREADX_DIR`, `NETX_DIR`, and `PX4_AUTOPILOT_DIR`. Local overrides belong in `.env` or the caller environment. (`NROS_ESP_IDF_WORKSPACE`, `NROS_ESP_IDF_ENV_SHIM` and `IDF_PATH` were on this list until phase-468 W2 retired the ESP-IDF port; nothing exports them now.)
 
 Do not duplicate those defaults in package code, tests, examples, CMake, or scripts. Packages and examples must remain position-independent: they may read explicit environment variables and should skip or fail with a clear setup hint when a required SDK variable is absent, but they must not assume the checkout lives at a particular repo-relative path.
 

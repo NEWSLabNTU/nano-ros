@@ -159,7 +159,7 @@ _nros_sdk_env_apply() {
     if ! command -v just >/dev/null 2>&1; then
         if [ -z "${NROS_QUIET_ACTIVATE:-}" ]; then
             echo "nano-ros sdk-env: \`just\` not found — RTOS SDK path defaults" \
-                "(FREERTOS_DIR, NUTTX_DIR, THREADX_DIR, IDF_PATH, …) not loaded." >&2
+                "(FREERTOS_DIR, NUTTX_DIR, THREADX_DIR, PX4_AUTOPILOT_DIR, …) not loaded." >&2
             echo "  Harmless for the native/host flow. Needed for embedded builds" \
                 "and every \`just\` recipe: cargo install just" >&2
         fi

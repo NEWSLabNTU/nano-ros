@@ -1212,8 +1212,10 @@ const KNOBS_THAT_CANNOT_CHANGE_A_SIZE: &[(&str, &str)] = &[
     ),
     ("NROS_LAN9118_LWIP_DIR", "vendored driver source dir"),
     ("NROS_VIRTIO_NET_NETX_DIR", "vendored driver source dir"),
-    ("NROS_ESP_IDF_WORKSPACE", "ESP-IDF checkout location"),
-    ("NROS_ESP_IDF_ENV_SHIM", "path to the ESP-IDF env script"),
+    // `NROS_ESP_IDF_WORKSPACE` and `NROS_ESP_IDF_ENV_SHIM` were here until
+    // phase-468 W2 retired the ESP-IDF port. Nothing exports them now, so the
+    // rows excluded a name no probe could ever see — inert, but a dead
+    // declaration, which is the class this phase exists to remove.
     ("NROS_ZEPHYR_BUILD_ROOT", "where Zephyr builds go"),
     ("NROS_ZEPHYR_CCACHE_DIR", "ccache location"),
     ("NROS_ZEPHYR_CCACHE_TEMPDIR", "ccache scratch location"),

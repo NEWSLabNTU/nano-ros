@@ -2,9 +2,11 @@
 """A fixture build must ask whose checkout its provisioned roots are — issue 1395.
 
 `scripts/check-zephyr-workspace-checkout.sh` refuses a provisioned root (a Zephyr
-west workspace, `esp-idf-workspace`, `external/`) that belongs to a DIFFERENT
-nano-ros checkout. Issue 1253 wrote it; phase-440 W5 generalised it from one root
-to every root.
+west workspace, `external/`) that belongs to a DIFFERENT nano-ros checkout. Issue
+1253 wrote it; phase-440 W5 generalised it from one root to every root. Its
+`esp-idf-workspace` entry went with the ESP-IDF port in phase-468 W2 — R3 below
+READS the root names from that script, so this sentence is the only place the
+list is also spelled, and it is prose.
 
 The guard was never wrong. Its REACH was: three callers, all of them downstream
 of the build they are about. `check-tier-preconditions` (tier 1), and the two
