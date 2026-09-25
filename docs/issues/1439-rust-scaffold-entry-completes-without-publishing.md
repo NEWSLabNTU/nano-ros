@@ -102,3 +102,56 @@ reports `resolved → …/resolved.toml (no count derived; see
 [provenance].refused)`. Whether a refused provenance and a talker that never
 publishes are the same fact is not established here — it is the first thing to
 check, not a conclusion.
+
+## 2026-09-25 — a SECOND lane, in a different workflow, fails identically
+
+Everything above is `nightly.yml`'s `bootstrap-probe`. The `probe.yml` workflow
+(cron `0 8 * * *`, landed 2026-09-21 in `a625ef279`) runs the same book flow in
+its own container, and its `book probe — checkout track` job fails on this
+defect too, byte for byte:
+
+```
+PROBE FAIL: rust entry exited before publishing
+[INFO] nros: session open
+nros: application complete
+error: recipe `checkout` failed on line 30 with exit code 1
+```
+
+| run | date | job | verdict |
+| --- | --- | --- | --- |
+| 35703950897 | 09-22 08:16 | 106668267535 | `just: command not found` — NOT this issue, fixed the same day by `9722fca32` |
+| 35836219468 | 09-23 08:16 | 107100197079 | this issue |
+| 35974416022 | 09-24 08:17 | 107551395041 | this issue |
+| 36112086671 | 09-25 08:17 | 107997623085 | this issue |
+
+So **every run of this lane that could reach the assertion has hit it** — three
+of four, the fourth predating the lane being runnable at all.
+
+### What the second lane adds, and what it does not
+
+It adds independence. Two workflows, two container images, two schedules, one
+`nros new … --lang rust --rmw cyclonedds` scaffold, and the same three lines.
+That removes the nightly's environment from the candidate set: whatever makes
+the entry reach `application complete` without publishing travels with the
+scaffold, not with the runner.
+
+It does not narrow the cause. The 09-25 log shows the entry building to
+`Finished dev profile … in 30.60s` and linking `native_entry v0.0.0
+(/tmp/probe_quickstart_rs/build/posix-cyclonedds/native_entry)`, exactly as
+before, so this is a third observation of the same symptom rather than a new
+measurement of it. The 2026-09-22 note's open question — whether the refused
+provenance and the silent talker are one fact — is still open and still the
+first thing to check.
+
+### Consequence for triage
+
+This lane now has **no signal capacity** (CLAUDE.md, "A red CI lane answers one
+of two questions"): a regression landing in `just probe checkout` would look
+exactly like tonight. It also means issue 0204's front-door coverage is
+reporting nothing about either track while this stands, and the sibling
+`installed track` job has been green since the 09-22 `just` fix, so the two
+tracks are not failing together.
+
+Acceptance is unchanged, with one addition: **both** probe jobs reaching
+`PROBE OK` for the Rust arm — the `nightly` `bootstrap-probe` and `probe.yml`'s
+`book probe — checkout track`.
