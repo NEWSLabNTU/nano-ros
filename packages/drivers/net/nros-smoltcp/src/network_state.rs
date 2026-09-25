@@ -62,6 +62,12 @@ impl<D: 'static> NetworkState<D> {
         self.iface.store(iface, Ordering::Release);
         self.sockets.store(sockets, Ordering::Release);
         self.device.store(device, Ordering::Release);
+        // phase-436 B2 — arming the poll callback and arming the deadline
+        // source are ONE act. Two calls would be two things to remember, and
+        // a board that remembered only the first would park past every
+        // retransmit while every test still passed.
+        // SAFETY: this function's own contract is exactly `arm`'s.
+        unsafe { crate::deadline::SMOLTCP_DEADLINE_SOURCE.arm(iface, sockets) };
     }
 
     /// Clear all three pointers. Subsequent `poll` calls short-circuit.
@@ -74,6 +80,9 @@ impl<D: 'static> NetworkState<D> {
         self.iface.store(core::ptr::null_mut(), Ordering::Release);
         self.sockets.store(core::ptr::null_mut(), Ordering::Release);
         self.device.store(core::ptr::null_mut(), Ordering::Release);
+        // The same pointers the deadline source holds. Leaving it armed here
+        // would hand the executor a dangling `Interface` on every park.
+        crate::deadline::SMOLTCP_DEADLINE_SOURCE.disarm();
     }
 
     /// Drive one smoltcp poll cycle. No-op if any pointer is null.

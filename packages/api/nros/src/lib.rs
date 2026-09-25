@@ -1295,6 +1295,16 @@ pub use nros_node::{
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::executor::port_park;
 
+/// phase-436 B2 — the other half of the seam, for the boards that now use it.
+///
+/// `port_park` above is what a port hands the executor to WAIT with;
+/// these are what it hands the executor to be told WHEN. A board registering
+/// a deadline source receives a [`WakeSourceId`] and reads it back out of
+/// `Executor::last_park()`, so without this re-export it could match on
+/// neither.
+#[cfg(feature = "rmw-cffi")]
+pub use nros_node::executor::{MAX_WAKE_SOURCES, NextDeadlineFn, WakeSourceId};
+
 pub use nros_node::NodeError;
 pub use nros_rmw::TransportError;
 
