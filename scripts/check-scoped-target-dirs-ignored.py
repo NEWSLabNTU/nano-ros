@@ -21,11 +21,19 @@ that runs).
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+# Issue 0986 — this file builds a throwaway repository with `git init`, and an
+# inherited `GIT_DIR` makes that rewrite the CALLER's repository instead. Every
+# sibling gate that plants a repo clears the environment first, and
+# `check-hook-repo-side-effects` holds all of them to it.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
 
 CALL = re.compile(r"nros_scoped_target_dir\s+([A-Za-z0-9][A-Za-z0-9_.-]*)")
 # The helper's own definition and its doc block spell the name; they are not calls.
@@ -131,8 +139,9 @@ def _plant(root: Path, gitignore: str, files: dict[str, str]) -> None:
         p = root / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(body, encoding="utf-8")
-    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+    env = nros_clear_inherited_git_env(dict(os.environ))
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True, env=env)
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True, env=env)
 
 
 def self_test() -> int:
