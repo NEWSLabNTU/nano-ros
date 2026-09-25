@@ -69,6 +69,16 @@ inline ::nros::Result instantiate_server(::rclcpp::Node& node) {
     // (issue 0796 problem 2); keep both instantiated together.
     Fib::Result result;
     (void)server.complete_goal(nullptr, ::nros::GoalStatus::Aborted, result);
+
+    // phase-456 W3b — `for_each_active_goal` had ZERO instantiations in the
+    // whole tree (measured: no `examples/`, `book/`, test or probe site), so
+    // this member template, its inner trampoline and the `reinterpret_cast` on
+    // that trampoline's address had never been type-checked anywhere. An
+    // uninstantiated member template is not coverage, for the same reason a
+    // `required-features` target no recipe enables is not coverage. It is also
+    // the member whose visitor W3b moved into the FFI's own `void* ctx`, so the
+    // carrier is on this line too.
+    (void)server.for_each_active_goal([](const uint8_t[16], ::nros::GoalStatus) {});
     return r;
 }
 
