@@ -215,11 +215,15 @@ an earlier one written from a single reading; three of its rows were wrong.
 | **NuttX** | **No** — same opaque pattern | inherits POSIX | POSIX |
 | **POSIX** | n/a — `nros_board_native_run_tiers` | `sem_timedwait` / `pthread_cond_timedwait`, **timespec-native** | nanosecond-capable |
 
-**There is no `nros_cpp_executor_register_wake_source` or
+**There was no `nros_cpp_executor_register_wake_source` or
 `..._set_park_primitive` C-ABI export.** So FreeRTOS, NuttX and the C arm of
-Zephyr — which is the arm the ASI FVP lane actually takes — cannot reach this
-seam at all without new FFI surface. ThreadX, bare metal and Zephyr's Rust arm
-can wire directly today.
+Zephyr — which is the arm the ASI FVP lane actually takes — could not reach
+this seam at all without new FFI surface, while ThreadX, bare metal and
+Zephyr's Rust arm could wire directly. *W7.a wrote that surface* — both
+symbols are in `nros_cpp_ffi.h` (`:1846`, `:1881`) and
+`nros-cpp/src/lib.rs` (`:4564`, and the park's neighbour), and
+`zephyr_run_tiers.c:199` is the one C caller, for the PARK half. The DEADLINE
+half of the C export still has no caller: B2's two are Rust boards.
 
 **No port multiplexes.** `k_poll` does not appear anywhere (the single grep hit
 is `nros_platform_network_poll`, a name collision with a no-op body). FreeRTOS
