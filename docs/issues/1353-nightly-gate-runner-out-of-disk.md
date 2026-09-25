@@ -880,3 +880,27 @@ It also says nothing about the scheduled `gate` lane, whose own figures are
 still absent. Adjacent but distinct: issue 1491 records 329 MB of untracked
 cargo output at the REPO ROOT from a merge-gating gate, which is three orders
 of magnitude smaller and a different directory.
+
+### The `packages/cli/target` attribution reproduces (second after-transcript)
+
+Run **36070565655**, head `547c575d5`:
+
+```
+SUMMARY disk before just ci tier1 — 89% used, 18G free
+  — 42G examples; 14G build; 410M packages/cli/target
+freed 7527 MB; 25841676 KB free
+
+SUMMARY disk after  just ci tier1 — 100% used, 92K free
+  — 42G examples; 14G packages/cli/target; 13G build
+```
+
+Same shape as the section above, independently: `packages/cli/target` goes
+**410 MB to 14 GB** during the tier, `examples/` is 42 G either side, `build/`
+goes 14 G to 13 G. Two of two runs with an after-transcript agree, so the
+attribution is not a single reading.
+
+Entry figure, fourth measurement: `25841676 KB` against `26029560`, `26033844`
+and `26023412`. This one is ~180 MB lower than the other three — its BEFORE
+line also reads 89 % rather than 88 %, so the runner started marginally fuller;
+the reclaim freed the same 7.5 GB. The tier's requirement is still ~24.6–24.8
+GiB and still not met.
