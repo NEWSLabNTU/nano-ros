@@ -720,13 +720,41 @@ outside tests. Every wired port waits; none says WHEN.
 * **Exit for the path:** `register_wake_source` has a non-test caller, and a
   target run shows `last_park()` attributing a park to `Platform(n)`.
 
-  **Half met.** The non-test caller exists (two of them). The target-run half
-  is NOT verified in the landing change: the mps2-an385 board now prints
-  `phase-436 B2: park bounded by Platform(n) at <bound> us` on the first such
-  park — `Executor::last_park` recorded it on every spin and no Rust board
-  could read it out — but the QEMU run that would show that line was not
-  performed. What would verify it: `just qemu zenohd` in one shell and
-  `just qemu talker` in another, reading for that line.
+  **Half met, and the other half MEASURED rather than left silent.** The
+  non-test caller exists (two of them), and a QEMU mps2-an385 run of
+  `examples/mps2-an385-baremetal/rust/talker` prints, verbatim:
+
+  ```
+  smoltcp deadline source registered as Platform(0)
+  Application setup complete — entering spin loop.
+  phase-436 B2: no Platform park in 1000 spins; last was CallerBudget at 10000 us
+    — the smoltcp source is registered and further out than the budget
+  ```
+
+  So `last_park()` attributing a park to `Platform(n)` is **NOT** shown, and
+  the run says why instead of saying nothing. A platform source only WINS when
+  its deadline beats the caller's budget; this board's loop passes **10 ms**
+  and smoltcp's deadlines are mostly longer (a SYN retransmit backs off from
+  1 s). The run had no zenoh session — QEMU slirp could not reach the host
+  router in this sandbox — so the stack sat in retransmit backoff throughout,
+  which is the case that loses by the widest margin. The window where smoltcp
+  wins is a delayed ACK (smoltcp's `ACK_DELAY_DEFAULT` is 10 ms, right at this
+  budget) or an overdue stack, and neither occurred.
+
+  **That is the honest reading of what B2 buys today, and it is the reason to
+  finish Path C rather than to redo B2.** A deadline source pays off where the
+  budget is LONG — `spin_default`'s 50 ms, a tier with a declared period, a
+  port that parks. The three ports with a `ParkUntilFn` are exactly those, and
+  none of them runs smoltcp. What would close this half: a run in which
+  smoltcp has something due inside the budget (a live session, i.e. the QEMU
+  networking this sandbox lacked) or a board whose park budget is longer than
+  10 ms. The report line fires on the FIRST Platform-won park, so such a run
+  answers immediately.
+
+  The report is deliberately two-sided. Silence would be ambiguous between
+  "the source is not wired" and "the source is wired and further out than the
+  budget" — the failure class where nothing printing reads as nothing wrong —
+  so it fires either way, once.
 
 ### Path C — Park coverage across ports.
 
