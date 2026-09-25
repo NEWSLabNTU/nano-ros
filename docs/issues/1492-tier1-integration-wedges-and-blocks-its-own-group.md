@@ -443,3 +443,62 @@ costs 82–150 minutes and its push trigger fires every ~47 minutes, so 14 of th
 30 most recent runs had their integration job cancelled with **zero steps
 recorded**. That is a loss of signal this issue's remedies do not touch, and it
 outlives the wedge.
+
+## A ninth: three samples make the 2 h 30 m bound real, and it lands ON the ceiling
+
+Run **36142070305** (push, `91a9a1edc`), job **108094066500** — the last run
+started before `timeout-minutes` merged, so the last one on the unbounded
+workflow. Started 13:36:54, ended **16:07:02**: **2 h 30 m 08 s**, annotation
+`The hosted runner lost communication with the server.`
+
+That is the third job in this mode, and the previous section's hedge ("two
+samples are two samples") does not survive it:
+
+| job | duration | seconds |
+| --- | --- | --- |
+| 107808557432 | 2 h 30 m 11 s | 9011 |
+| 107977492420 | 2 h 30 m 03 s | 9003 |
+| 108094066500 | 2 h 30 m 08 s | 9008 |
+
+An **8-second spread** across three runs 43 hours apart. Whatever ends a wedge
+that survives the disk does so at 9000-odd seconds, reliably. It is still an
+empirical bound on GitHub's behaviour, documented nowhere and free to move, but
+it is no longer a coincidence of two.
+
+### What that means for the ceiling this issue asked for
+
+`timeout-minutes: 150` landed in `host-tests.yml` with #1313, quoting the
+previous append's "any `timeout-minutes` below 150 makes the outage a number
+this repository owns". **150 minutes is 9000 seconds, and the measured bound is
+9003–9011** — so the ceiling fires **3 to 11 seconds** before the runner would
+have gone away. It is at the boundary, not below it.
+
+Read precisely, that is worth something and not what was asked for:
+
+* **What it changes:** the job ends by a cancellation this repository issued
+  rather than by a runner disappearing. A cancelled job's runner is alive, so
+  the log and the artifacts should survive where every one of the nine wedges
+  so far has lost them. EXPECTED, not measured — the first ceiling-terminated
+  run is the one to check.
+* **What it does NOT change:** the outage. The group is still held for
+  2 h 30 m. If the intent was to bound how long tier 1 can be unavailable,
+  the number has to be meaningfully below 150, chosen against the disk mode's
+  57 m – 1 h 44 m rather than against the runner-loss bound it currently
+  matches.
+
+### Deepest yet, and the log is still gone
+
+This wedge reached **step 18**, with TWO steps concluding `failure`:
+
+```
+15 completed/failure  just ci tier1
+16 completed/success  Disk report (after ci tier1) — issue 1353
+17 completed/failure  Upload the disk transcript (after the tier) — issue 1353
+18 pending            Report skipped fixtures (post-run)
+```
+
+A *failed* after-transcript upload is new — previous wedges either uploaded it
+or never reached it — so the 1353 evidence is lost by a third route. And the
+job's log returns `BlobNotFound` after conclusion, as every other one has, so
+the open question stands unchanged: whether a step-15 `failure` is the tier
+reporting or the disk killing it cannot be read off any wedge recorded here.
