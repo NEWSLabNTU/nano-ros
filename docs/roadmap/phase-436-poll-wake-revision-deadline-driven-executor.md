@@ -19,7 +19,9 @@ through A3's clear accessor is on `main`: W1-W7 (#849), A2 (#871), E3 + E4
    type before it can pin past `af14492fe`. The readout itself is written and
    verified; it waits on ASI branch `wip/a3-rt-probe-readout`. ASI's
    `docs/roadmap/phase-11-executor-evidence.md` carries the ASI side.
-4. Then Path B (B2, smoltcp `poll_at`), Path C (C1 FreeRTOS, C2 POSIX/NuttX;
+4. Path B's B2 LANDED 2026-09-25 (smoltcp `poll_delay` is the first real
+   deadline source; the target-run half of the exit is still open — see Path
+   B). Then Path C (C1 FreeRTOS, C2 POSIX/NuttX;
    C3 bare metal deferred), Path D (D1 measure 1195, D2 close 1196), E1
    (issue 1232), and A2b.
 
@@ -39,9 +41,11 @@ three ports now install one: Zephyr's C arm (#792), then ThreadX and Zephyr's
 Rust arm (#814). What no port yet does is *contribute a deadline* — every
 installed primitive waits, none of them says when.
 
-That gap is the honest reading of where this phase is. `set_park_primitive`
-has three callers; `register_wake_source` has none outside tests. The seam is
-half-used, and the half in use is the half that was already easy.
+That gap was the honest reading of where this phase was. `set_park_primitive`
+has three callers; `register_wake_source` had none outside tests until B2
+(2026-09-25) gave it two — the mps2-an385 and esp32-qemu boards, contributing
+smoltcp's `poll_delay`. The rest of this section is left as written, because
+it is the argument that produced the seam.
 
 Five things the work changed about the phase as written:
 
@@ -117,18 +121,18 @@ does not replace it.
   (`tx_semaphore_get`), FreeRTOS, POSIX, ESP-IDF — each with an **ISR-safe**
   signal variant. The core never names an RTOS.
 * **Selection is a runtime probe, not a `cfg`.** `has_async_wake` comes from
-  `supports_wake_callback()` (`spin.rs:2994`), which for C backends is
-  "the vtable slot is non-NULL" (`cffi/src/lib.rs:2591`). A port that gains an
+  `supports_wake_callback()` (`spin.rs:3823`), which for C backends is
+  "the vtable slot is non-NULL" (`cffi/src/lib.rs:3142`). A port that gains an
   async source gets the fast path without a core change. This is the extension
   point the phase builds on.
 * **Degradation is already correct in kind.** No wake primitive, or a poll-only
   backend, means blocking in the transport's own `recv` for the full timeout —
   not a spin.
-* **`spin_period` refuses to run without a clock** (`spin.rs:8343`, issue 0709)
+* **`spin_period` refuses to run without a clock** (`spin.rs:10941`, issue 0709)
   rather than silently free-running. That is the standard this phase applies to
   the remaining degradations: refuse, or declare, but never silently degrade.
 * **Priority inheritance holds on all three RTOSes.** ThreadX `TX_INHERIT`
-  (`platform.c:611`), Zephyr `k_mutex`, and — checked because recursive mutexes
+  (`nros-platform-threadx/src/platform.c:668`), Zephyr `k_mutex`, and — checked because recursive mutexes
   are a common exception — FreeRTOS recursive mutexes do inherit, via
   `xQueueTakeMutexRecursive` → `xQueueSemaphoreTake` → `xTaskPriorityInherit`
   (`third-party/freertos/kernel/queue.c:1791`). No work item here.
@@ -137,8 +141,9 @@ does not replace it.
 
 ### 1. One time base, nanoseconds, no truncation
 
-`spin_once` currently does `timeout.as_millis()` — a **truncation**
-(`spin.rs:6374`). `Duration::from_micros(500)` becomes `0`, which selects the
+`spin_once` **did** `timeout.as_millis()` — a **truncation**. (W2 landed;
+the site is `spin.rs:7754`, which now carries the microsecond budget and the
+note explaining what it replaced.) `Duration::from_micros(500)` becomes `0`, which selects the
 non-blocking path and turns `spin()` into a 100 % CPU loop with no warning
 (issue 1193). The floor is real: all five `nros_platform_wake_wait_ms` slots
 take `uint32_t timeout_ms`, so sub-ms cannot reach the primitive on any target.
@@ -242,6 +247,12 @@ be connected.
   when the stack next needs servicing — the natural deadline source. It has
   **zero hits** in this repo; `SmoltcpBridge::poll` calls `iface.poll()` and
   discards the timing.
+
+  *Done — B2, 2026-09-25.* `nros-smoltcp/src/deadline.rs` reads
+  `Interface::poll_delay` (`poll_at` minus `now`, saturating, which is the same
+  answer without the subtraction written twice) and the mps2-an385 and
+  esp32-qemu boards register it. The driver cannot name an `Executor` — it sits
+  BELOW `nros-node` — so it exports the raw C-ABI pair and the board joins them.
 
 #### Bare metal: the argument, corrected
 
@@ -658,12 +669,60 @@ outside tests. Every wired port waits; none says WHEN.
     example a sporadic-server budget refill, the job the Zephyr shim was
     written for. If that becomes real, it is a wake source with its own
     attribution code, not a deadline source.
-* **B2 — smoltcp `poll_at()` as the first real `NextDeadlineFn`.**
-  `nros-smoltcp/src/bridge.rs:710` calls `iface.poll(timestamp, …)` and
-  `poll_at` appears nowhere; the interface knows when it next needs service
-  and the bridge discards it. The clearest real source in the tree.
+* **B2 — smoltcp `poll_at()` as the first real `NextDeadlineFn`. LANDED
+  2026-09-25.** `SmoltcpBridge::poll` (`nros-smoltcp/src/bridge.rs:730` and
+  `:739` — the `:710` this line used to cite is now the doc comment above
+  them; the code moved, the claim held) calls `iface.poll(timestamp, …)` and
+  discarded the timing. `nros-smoltcp/src/deadline.rs` no longer does.
+
+  Four decisions worth keeping, because each had a wrong answer that compiles:
+
+  * **Where the registration lives: the BOARD, not the driver.** The layering
+    runs `nros-smoltcp` → `nros-board-common`, so the driver is below
+    `nros-node` and cannot name an `Executor`. It exports the raw C-ABI pair
+    (`next_deadline_us` + `deadline_source_ctx()`); `nros-board-mps2-an385`
+    and `nros-board-esp32-qemu`, which depend on both, join them — one line
+    each, the same shape `install_port_park` gave the other half of the seam.
+  * **The `ctx` lifetime.** A raw `ctx` outliving its bridge is the obvious
+    hazard, so there is nothing to outlive: `SMOLTCP_DEADLINE_SOURCE` is a
+    `'static` singleton holding two `AtomicPtr`s, which is what the bridge
+    already is (`SOCKET_TABLE`, the staging buffers and the poll callback are
+    all module statics). It is armed by `NetworkState::set` and disarmed by
+    `NetworkState::clear` — the SAME call that arms the poll callback, not a
+    second thing to remember — and reports "nothing pending" while unarmed.
+  * **`Option<Instant>` over a `-> u64` ABI.** No new sentinel: the seam
+    already spells the absent case `u64::MAX`, which is how an async source
+    declines to shorten a park. `None` → `u64::MAX`, `Some(d>0)` → `d` in µs,
+    `Some(0)` → `0`. The two ends are the two failures — `None` read as "due
+    now" is a busy loop, `Some(0)` read as "never" sleeps through a
+    retransmit — and each has its own test.
+  * **Truncation (§1).** The bridge builds smoltcp's clock as
+    `Instant::from_millis(now_ns / 1_000_000)`, a FLOOR, so a delay measured
+    against it OVERSTATES the time remaining by up to 999 µs — the harmful
+    direction, a park past the moment smoltcp asked for. The sub-millisecond
+    remainder is subtracted back out, `div_ceil` and saturating, so the
+    reported deadline is at worst one microsecond EARLY. Measured on a real
+    `Interface`: smoltcp's initial SYN RTO reaches the seam as exactly
+    `1_000_000` µs, and as `999_500` when asked 500 µs into the same
+    millisecond.
+
+  **Inert where nothing parks, verified not assumed.** Only three ports install
+  a `ParkUntilFn` and no bare-metal board is one of them, so on mps2-an385 the
+  bound never reaches a park primitive. It is not inert there either, and that
+  is correct: `spin_once` still uses `park_achieved_us` as the transport
+  drain's `timeout_ms`, so the executor comes back to service smoltcp instead
+  of blocking out its 10 ms quantum. A source that reports `u64::MAX` changes
+  nothing at all.
 * **Exit for the path:** `register_wake_source` has a non-test caller, and a
   target run shows `last_park()` attributing a park to `Platform(n)`.
+
+  **Half met.** The non-test caller exists (two of them). The target-run half
+  is NOT verified in the landing change: the mps2-an385 board now prints
+  `phase-436 B2: park bounded by Platform(n) at <bound> us` on the first such
+  park — `Executor::last_park` recorded it on every spin and no Rust board
+  could read it out — but the QEMU run that would show that line was not
+  performed. What would verify it: `just qemu zenohd` in one shell and
+  `just qemu talker` in another, reading for that line.
 
 ### Path C — Park coverage across ports.
 
