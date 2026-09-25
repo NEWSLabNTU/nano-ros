@@ -259,8 +259,22 @@ impl InitOptions {
     }
 
     /// The domain override, if any.
-    pub const fn domain_id(&self) -> Option<u32> {
-        self.domain_id
+    ///
+    /// `Option<usize>`, which is rclrs's signature and the same reason
+    /// [`with_domain_id`](Self::with_domain_id) takes one. phase-467: this
+    /// returned `Option<u32>` — the STORED width — so the two setters spoke
+    /// rclrs and the getter spoke the field, and a ported
+    /// `let d: Option<usize> = opts.domain_id();` failed on a type nobody
+    /// chose. The value is still stored as a `u32` and `with_domain_id`'s
+    /// saturation still applies, so a round trip through `u32::MAX + 1`
+    /// reports `u32::MAX`; the refusal stays on the consuming constructor
+    /// ([`InitError::DomainIdOutOfRange`]), which is where a `Result` exists
+    /// to carry it.
+    pub const fn domain_id(&self) -> Option<usize> {
+        match self.domain_id {
+            Some(d) => Some(d as usize),
+            None => None,
+        }
     }
 }
 
@@ -279,6 +293,30 @@ fn check_domain_id(domain_id: u32) -> Result<u32, InitError> {
 
 #[cfg(feature = "alloc")]
 impl Context {
+    /// `rclrs::Context::domain_id()` — the resolved ROS domain.
+    ///
+    /// `usize`, because that is rclrs's return type (0.7.0,
+    /// `rclrs/src/context.rs`) and this name exists so a ported
+    /// `ctx.domain_id()` compiles. The field stays `pub` and stays `u32`:
+    /// `Context` is a plain value with nothing to hide, `u32` is the width
+    /// every producer and consumer of a domain in this tree speaks
+    /// (`BoardConfig::domain_id`, `ExecutorConfig::domain_id`,
+    /// `NodeHandle::domain_id`, the `NROS_DOMAIN_ID` bake), and fields and
+    /// methods are in different namespaces in Rust, so the two coexist. The
+    /// widening is lossless on every target here — `usize` is at least 32
+    /// bits on all of them, down to `thumbv7m-none-eabi`.
+    ///
+    /// phase-467 row `rust:Context::domain_id`. The row proposed `-> u32`
+    /// once and that would have been a second, quieter port break; it then
+    /// argued `usize` from consistency with [`InitOptions`], which was only
+    /// two thirds true — the setters took `usize`, the getter returned
+    /// `Option<u32>`. Both getters speak `usize` now, so the argument is the
+    /// one this crate can actually make: it is upstream's type.
+    #[must_use]
+    pub const fn domain_id(&self) -> usize {
+        self.domain_id as usize
+    }
+
     /// Materialise an [`ExecutorConfig`] for a node with the given name.
     ///
     /// The returned config borrows from `self`, so callers usually do:
@@ -600,10 +638,13 @@ honour (RFC-0089, phase-417 W3.b). Proceeding would DISCARD it, so `-r chatter:=
 silently become a wrong-topic bug at runtime -- the 'compiles and differs' the rule \
 forbids. Nothing in this process parses --ros-args yet, and honouring them is remap \
 resolution -- RFC-0020 violation class 4 -- so the parser belongs beside nros::resolve_name, \
-not in this wrapper. Today remaps and parameter overrides come from the LAUNCHER, which \
-projects them into the environment before exec. Call nros::init() / \
-nros::Context::default_from_env(), or nros::init_with_launch_auto() for the launch-aware \
-entry point.";
+not in this wrapper. Today remaps and parameter overrides reach a node from `nros sync`, which \
+projects the launch file's rules into the GENERATED ENTRY at BUILD time -- `runtime.remaps` / \
+`runtime.params` on the Rust road, nros_cpp_declare_remap / nros_cpp_declare_param calls on the \
+C and C++ roads. They do NOT travel in the process environment, which carries the domain, \
+locator, session mode and RMW hint and nothing else. Call nros::init() / \
+nros::Context::default_from_env(); nros::init_with_launch_auto() reads the same environment \
+under a different ContextSource and parses no launch file yet.";
 
 /// The refusal's predicate, separately checkable (RFC-0089 §"where the
 /// refusal fires": an abort inlined into `init` can only be observed by a
@@ -902,6 +943,23 @@ mod baked_tests {
         assert_eq!(ctx.source, ContextSource::Baked);
     }
 
+    /// phase-467 row `rust:Context::domain_id`. Two claims, and the second is
+    /// the one worth a test: the accessor answers the field, and it answers it
+    /// as a `usize` — rclrs's type — so a ported `let d: usize =
+    /// ctx.domain_id();` compiles. The annotation is the assertion; without it
+    /// an integer literal would infer whatever the accessor returns and the
+    /// test would pass against a `u32` too.
+    #[test]
+    fn context_domain_id_reads_the_field_as_rclrs_types_it() {
+        let ctx = Context::from_baked(Some("tcp/10.0.2.2:7447"), Some("7")).unwrap();
+        let d: usize = ctx.domain_id();
+        assert_eq!(d, 7);
+        assert_eq!(ctx.domain_id(), ctx.domain_id as usize);
+        // The field did not move: `Context` is a plain struct and both
+        // spellings reach the same byte.
+        assert_eq!(ctx.domain_id, 7u32);
+    }
+
     #[test]
     fn baked_reads_this_crates_build_environment() {
         // The values depend on the build; the SHAPE does not. Whatever was
@@ -931,11 +989,15 @@ mod baked_tests {
             None
         );
         // Saturates rather than truncates: `u32::MAX + 1` must not read as 0.
+        // Reported back as a `usize`, which is the getter's type since
+        // phase-467 — the saturation is in the STORED `u32` and the getter
+        // only widens it, so this is the one place the two widths are both
+        // visible in one line.
         assert_eq!(
             InitOptions::new()
                 .with_domain_id(Some(u32::MAX as usize + 1))
                 .domain_id(),
-            Some(u32::MAX)
+            Some(u32::MAX as usize)
         );
         // The in-place spelling is the same operation.
         let mut opts = InitOptions::new();

@@ -354,11 +354,14 @@ inline void require_created(::nros::Result r, const char* verb, const char* name
 ///   rather than proceeding with a remap it did not apply. A wrong-topic bug that
 ///   surfaces three hours into a run is the outcome this exists to prevent.
 ///
-/// Remaps and parameter overrides reach a nano-ros process from the LAUNCHER,
-/// which projects them into the environment before exec. Honouring them from
-/// `argv` is remap resolution — RFC-0020 violation class 4 — so the parser
-/// belongs beside `nros::resolve_name`, and phase-417 W3.b tracks it. Until it
-/// lands this call is honest about what it cannot do.
+/// Remaps and parameter overrides reach a nano-ros node from `nros sync`, which
+/// projects the launch file's rules into the GENERATED ENTRY at build time —
+/// `nros_cpp_declare_remap` / `nros_cpp_declare_param` calls emitted before the
+/// component configure. They do NOT travel in the process environment, which
+/// carries the domain, locator, session mode and RMW hint and nothing else.
+/// Honouring them from `argv` is remap resolution — RFC-0020 violation class 4 —
+/// so the parser belongs beside `nros::resolve_name`, and phase-417 W3.b tracks
+/// it. Until it lands this call is honest about what it cannot do.
 inline void init(int argc, char const* const* argv) {
     if (detail::argv_has_ros_args(argc, argv)) {
         // `std::abort`, not a return code: this call site has nowhere to put a
