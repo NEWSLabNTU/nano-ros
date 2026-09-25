@@ -161,7 +161,13 @@ impl<'a> NodeHandle<'a> {
     /// [`crate::session::IMAGE_SERIALIZATION_FORMAT`], which is what the
     /// entity-creation assertions compare against. Use this accessor when the
     /// answer must be a value: a bridge, a diagnostic, a tool.
-    pub fn serialization_format(&self) -> &'static str {
+    ///
+    /// **`None` means the backend has not said** — the same discipline the C
+    /// entry point `nros_node_get_serialization_format` has always kept by
+    /// returning NULL, and the one `rmw_vtable.h` states for the slot
+    /// underneath. It is not a synonym for `"cdr"`.
+    #[must_use]
+    pub fn serialization_format(&self) -> Option<&'static str> {
         nros_rmw::Session::serialization_format(&*self.session)
     }
 
