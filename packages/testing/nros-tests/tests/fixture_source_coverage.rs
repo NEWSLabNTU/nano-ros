@@ -27,13 +27,27 @@ use std::{collections::BTreeSet, fs};
 ///
 /// An entry here that GAINS a manifest row fails this test — a stale exception
 /// is the failure mode, not a tidy-up.
-const BINS_ALLOWLIST: &[(&str, &str)] = &[(
-    "ros-edition-pose-pub",
-    "RFC-0058 ROS-edition axis: built per distro by `just ros_editions \
-     build-fixture` into build/ros-editions/<distro>-<rmw>, which is a \
-     PER-RUN global (NROS_ROS_EDITION), not a fixture coordinate. Deliberately \
-     gated out of `just ci` (needs docker + a built image).",
-)];
+const BINS_ALLOWLIST: &[(&str, &str)] = &[
+    (
+        "ros-edition-pose-pub",
+        "RFC-0058 ROS-edition axis: built per distro by `just ros_editions \
+         build-fixture` into build/ros-editions/<distro>-<rmw>, which is a \
+         PER-RUN global (NROS_ROS_EDITION), not a fixture coordinate. \
+         Deliberately gated out of `just ci` (needs docker + a built image).",
+    ),
+    (
+        "heap-free-poc-mps2",
+        "phase-391 W1/W4 (issues 0816/0843) heap-free tier: built by `just ci \
+         l3` (just/ci.just, the `cargo build` in the bins dir) and immediately \
+         interrogated by `scripts/check-no-alloc-image.py --tier heap-free`. \
+         `_matrix-build` IS `l3`, so `queue.yml` runs this on every \
+         merge_group. A `fixtures.toml` row is the wrong arm: the artifact is \
+         a cross-linked thumbv7m ELF with no runtime, consumed by a symbol-\
+         table checker inside the lane that builds it, with no \
+         platform/lang/rmw/kind coordinate and no test resolving it as a \
+         fixture. Issue 1493.",
+    ),
+];
 
 /// Every `dir = "..."` value in the manifest, of every row kind.
 fn manifest_dirs(root: &std::path::Path) -> BTreeSet<String> {
