@@ -325,9 +325,14 @@ ways a ported program can compile and differ.
     meaning `UNSET` silently meant TRACE. Now on rcutils's line, mirrored
     `#[repr(transparent)]` over `c_int` against the header's `int`-sized `enum`
     (with the `static_assert` that was missing anywhere in `include/` or `src/`),
-    resolved by band so every integer is defined. The row stays open for one
-    envelope: rcutils's `UNSET` means *inherit*, and our facade has no
-    inheritable level.
+    resolved by band so every integer is defined. The row stayed open for one
+    envelope: rcutils's `UNSET` means *inherit*, and our facade had no
+    inheritable level. **phase-467 closed that half** — `UNSET` unsets, and a
+    logger with no level of its own filters on one process-wide default
+    (`nros_log_set_default_level`), which is also what closed
+    `rust:Logger::set_default_level`. The row stays `adopt-bounded` for what is
+    left: upstream walks a dotted ancestry to that default and we walk nothing,
+    there being no dotted logger name in the tree to walk.
   * **`c:timer_get_time_until_next_call`** (DELETED, closes issue 1049) — it
     returned `uint64_t` and took the clock IN, so the error channel was gone
     (five cases shared the value `0`) and overdue was not expressible; it also

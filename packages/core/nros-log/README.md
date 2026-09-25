@@ -79,6 +79,14 @@ has one, on the logger that forwards to the `log` crate rather than to
   every other unregistered name in the image.
 - `Logger::set_level` / `level` / `is_enabled` — per-logger runtime threshold,
   checked before any sink sees the record.
+- `Logger::unset_level` / `Logger::set_default_level` / `Logger::default_level`
+  — a logger built with `Logger::new` has NO level of its own and filters on
+  the PROCESS DEFAULT (`Severity::Info` until `set_default_level` moves it,
+  which is `RCUTILS_DEFAULT_LOGGER_DEFAULT_LEVEL`'s value). `with_level` /
+  `set_level` give it one, `unset_level` takes it away again. This is the whole
+  of our level hierarchy: rcutils resolves an unset logger by walking a dotted
+  ancestry (`x.y.z` → `x.y` → `x`) to its default, and with no dotted name and
+  an exact-match intern table that walk degenerates here to its last step.
 
 ## Sinks
 

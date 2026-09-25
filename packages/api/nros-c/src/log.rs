@@ -47,8 +47,11 @@ use core::ffi::{c_char, c_void};
 pub struct nros_log_severity_t(pub core::ffi::c_int);
 
 impl nros_log_severity_t {
-    /// rcutils's "no level set". Not a level to emit AT; see
-    /// [`Self::to_facade`] for how it resolves.
+    /// rcutils's "no level set" — INHERIT, not a level. Where a level is
+    /// STORED ([`nros_logger_set_level`], [`nros_log_set_default_level`]) it
+    /// means "take the stored level away"; anywhere a severity is merely
+    /// compared it resolves by band like any other integer, which puts it at
+    /// `TRACE` (see [`Self::to_facade`]).
     /// cbindgen:ignore
     pub const NROS_LOG_SEVERITY_UNSET: Self = Self(0);
     /// Ours, in rcutils's `UNSET`..`DEBUG` gap — rcutils has no trace level.
@@ -79,18 +82,18 @@ impl nros_log_severity_t {
     /// can arrive — including `UNSET` (0) and negatives, which are below every
     /// named level and therefore resolve to the lowest band we have.
     ///
-    /// **ENVELOPE, and it is NOT what rcutils does** (ledger row
-    /// `c:log_severity_t`; this doc claimed the opposite until 2026-09-23).
-    /// rcutils's `UNSET` means INHERIT, not "the floor":
-    /// `rcutils_logging_set_logger_level(name, UNSET)` unsets a logger's level
-    /// and `rcutils_logging_get_logger_effective_level` then walks the dotted
-    /// ancestry up to `g_rcutils_logging_default_logger_level`.
-    /// `nros_log::Logger` has no level inheritance, so `UNSET` resolves here
-    /// to `Severity::Trace` — the most verbose
-    /// level, where upstream would restore the default. Every other value on
-    /// the line agrees with upstream; this one does not, and closing it is an
-    /// inheritable level on the `nros-log` facade rather than anything this
-    /// function can do.
+    /// **`UNSET` IS NOT RESOLVED HERE, AND THAT IS THE POINT** (ledger row
+    /// `c:log_severity_t`). `UNSET` means INHERIT, which is a statement about
+    /// a STORED level, not about a severity being compared —
+    /// [`nros_logger_set_level`] and [`nros_log_set_default_level`] read it
+    /// before they ever reach this function, and they are the only two entry
+    /// points where "take the level away" is a thing a caller can mean. What
+    /// arrives here is a record's severity or a threshold question, for which
+    /// upstream has no answer either (`rcutils_logging_logger_is_enabled_for`
+    /// simply compares the number), so `0` resolves by band like every other
+    /// integer: to `Severity::Trace`, the lowest band we have. Refusing it
+    /// instead would make this function partial for one value, which is what
+    /// the transparent newtype exists to avoid.
     fn to_facade(self) -> nros_log::Severity {
         match self.0 {
             v if v >= Self::NROS_LOG_SEVERITY_FATAL.0 => nros_log::Severity::Fatal,
@@ -331,6 +334,21 @@ pub unsafe extern "C" fn nros_logger_get_name(
 /// Set this logger's runtime severity threshold. Records below it are dropped
 /// before any sink sees them.
 ///
+/// `NROS_LOG_SEVERITY_UNSET` UNSETS the level instead of setting one — the
+/// logger goes back to filtering on [`nros_log_get_default_level`]. phase-467,
+/// ledger row `c:log_severity_t`: this used to resolve `UNSET` by band and so
+/// selected `TRACE`, the most verbose level, where upstream restores a default.
+///
+/// Measured against the implementation Humble ships (rcutils 5.1.9,
+/// `src/logging.c`), because upstream's own DOC BLOCK does not promise this:
+/// `rcutils_logging_set_logger_level(name, UNSET)` stores the string `"UNSET"`
+/// in the severity map, `rcutils_logging_get_logger_leveln` maps it back to
+/// `RCUTILS_LOG_SEVERITY_UNSET`, and `..._get_logger_effective_level` treats
+/// that exactly as it treats an absent entry — it keeps walking, and falls to
+/// `g_rcutils_logging_default_logger_level`. See `<nros/log.h>`'s
+/// `nros_log_severity_t` comment for the one thing we do NOT do: the ancestry
+/// walk itself.
+///
 /// Returns `false` for a NULL handle, `true` otherwise.
 ///
 /// # Safety
@@ -342,14 +360,24 @@ pub unsafe extern "C" fn nros_logger_set_level(
 ) -> bool {
     match logger_ref(logger) {
         Some(logger) => {
-            logger.set_level(severity.to_facade());
+            if severity == nros_log_severity_t::NROS_LOG_SEVERITY_UNSET {
+                logger.unset_level();
+            } else {
+                logger.set_level(severity.to_facade());
+            }
             true
         }
         None => false,
     }
 }
 
-/// This logger's runtime severity threshold.
+/// This logger's EFFECTIVE runtime severity threshold — its own level if it
+/// has one, the process default if it does not.
+///
+/// `rcutils_logging_get_logger_effective_level`'s answer rather than
+/// `rcutils_logging_get_logger_level`'s, so it is never
+/// `NROS_LOG_SEVERITY_UNSET`: this is the number that decides whether a record
+/// is emitted, which is the question a call site asks.
 ///
 /// A NULL handle answers `NROS_LOG_SEVERITY_FATAL` — the value at which almost
 /// nothing is emitted — so a dropped handle reads as "quiet", not as "trace
@@ -363,6 +391,36 @@ pub unsafe extern "C" fn nros_logger_get_level(logger: *const c_void) -> nros_lo
         Some(logger) => nros_log_severity_t::from_facade(logger.level()),
         None => nros_log_severity_t::NROS_LOG_SEVERITY_FATAL,
     }
+}
+
+/// Move the threshold that every logger WITHOUT a level of its own filters on.
+///
+/// phase-467. `nros_log::Logger::set_default_level`, which is where the one
+/// process-wide byte lives; RFC-0019 keeps the store on the Rust side.
+///
+/// `NROS_LOG_SEVERITY_UNSET` restores `NROS_LOG_SEVERITY_INFO` rather than
+/// resolving by band — `rcutils_logging_set_default_logger_level` documents
+/// exactly that ("the default value for the default logger,
+/// `RCUTILS_DEFAULT_LOGGER_DEFAULT_LEVEL`, will be restored instead"), and
+/// `RCUTILS_DEFAULT_LOGGER_DEFAULT_LEVEL` is `RCUTILS_LOG_SEVERITY_INFO`.
+/// There is nothing for the default itself to inherit FROM, so this is the one
+/// place where `UNSET` means "restore" rather than "take away".
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_log_set_default_level(severity: nros_log_severity_t) {
+    let level = if severity == nros_log_severity_t::NROS_LOG_SEVERITY_UNSET {
+        nros_log::Severity::Info
+    } else {
+        severity.to_facade()
+    };
+    nros_log::Logger::set_default_level(level);
+}
+
+/// The threshold every logger without a level of its own filters on.
+///
+/// `NROS_LOG_SEVERITY_INFO` until [`nros_log_set_default_level`] moves it.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_log_get_default_level() -> nros_log_severity_t {
+    nros_log_severity_t::from_facade(nros_log::Logger::default_level())
 }
 
 /// Whether a record at `severity` would pass this logger's threshold.
@@ -750,6 +808,59 @@ mod severity_tests {
                 "raw {raw} resolved out of range"
             );
         }
+    }
+
+    /// phase-467, ledger row `c:log_severity_t`: `UNSET` is INHERIT where a
+    /// level is STORED, and the floor nowhere.
+    ///
+    /// ONE test, and it restores what it moved: the process default is
+    /// process-wide state shared with every other test in this binary.
+    ///
+    /// ONE `unsafe` block, too — the entry points that take a handle are
+    /// `unsafe extern "C"`, and a block per call would be seven sites for one
+    /// safety argument (`check-unsafe-census`).
+    #[test]
+    fn unset_takes_a_stored_level_away_rather_than_selecting_trace() {
+        use nros_log_severity_t as Sev;
+
+        // SAFETY: `name` is a NUL-terminated literal, and every handle passed
+        // below is the `'static` one `nros_log_get_logger` returned (it is
+        // total — the catch-all on failure — so it is never null). A fresh
+        // interned logger, not `nros_log_default_logger()`: that is the one
+        // logger named "nros" and every other test in this binary can see it.
+        unsafe {
+            let logger = nros_log_get_logger(c"phase467_c_unset".as_ptr());
+            assert!(!logger.is_null());
+
+            // Stated, then taken away: the level falls back to the process
+            // default, which is INFO. Before phase-467 this selected TRACE.
+            assert!(nros_logger_set_level(logger, Sev::NROS_LOG_SEVERITY_ERROR));
+            assert_eq!(nros_logger_get_level(logger), Sev::NROS_LOG_SEVERITY_ERROR);
+            assert!(nros_logger_set_level(logger, Sev::NROS_LOG_SEVERITY_UNSET));
+            assert_eq!(nros_logger_get_level(logger), Sev::NROS_LOG_SEVERITY_INFO);
+            assert!(!nros_logger_is_enabled(
+                logger,
+                Sev::NROS_LOG_SEVERITY_TRACE
+            ));
+
+            // The process default is reachable from C, and moving it moves
+            // this logger with it.
+            assert_eq!(nros_log_get_default_level(), Sev::NROS_LOG_SEVERITY_INFO);
+            nros_log_set_default_level(Sev::NROS_LOG_SEVERITY_WARN);
+            assert_eq!(nros_logger_get_level(logger), Sev::NROS_LOG_SEVERITY_WARN);
+        }
+
+        // `UNSET` on the DEFAULT restores INFO — the one place it means
+        // "restore" rather than "take away", because the default has nothing
+        // to inherit from. `rcutils_logging_set_default_logger_level`
+        // documents exactly this.
+        nros_log_set_default_level(Sev::NROS_LOG_SEVERITY_UNSET);
+        assert_eq!(nros_log_get_default_level(), Sev::NROS_LOG_SEVERITY_INFO);
+
+        // A value in a gap still bands, on this entry point too.
+        nros_log_set_default_level(Sev(31));
+        assert_eq!(nros_log_get_default_level(), Sev::NROS_LOG_SEVERITY_WARN);
+        nros_log_set_default_level(Sev::NROS_LOG_SEVERITY_INFO);
     }
 
     /// Every facade severity has a C spelling, and it maps back unchanged —

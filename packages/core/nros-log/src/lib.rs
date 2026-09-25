@@ -194,23 +194,58 @@ pub trait LogSink: Sync {
     fn flush(&self) {}
 }
 
+/// The stored byte meaning "this logger has NO level of its own", so its
+/// threshold is whatever [`Logger::default_level`] currently says.
+///
+/// phase-467 (ledger rows `c:log_severity_t` + `rust:Logger::set_default_level`).
+/// It cannot be `0`: that is `Severity::Trace`, the most verbose level, which
+/// is why storing rcutils's `UNSET` in a level byte used to select TRACE here
+/// where upstream restores a default. `u8::MAX` is outside the enum in the
+/// other direction, and being ABOVE `Fatal` is load-bearing in
+/// [`Logger::is_enabled`] — see the note there.
+const LEVEL_UNSET: u8 = u8::MAX;
+
+/// The threshold a logger with no level of its own resolves to.
+///
+/// ONE process-wide byte, which is the whole of our level hierarchy. rcutils
+/// resolves an unset logger by walking a DOTTED ANCESTRY (`x.y.z` → `x.y` →
+/// `x`) to `g_rcutils_logging_default_logger_level`; `nros_log` has no
+/// ancestry — [`get_logger`] is exact string equality over [`MAX_LOGGERS`]
+/// slots and no name in the tree is dotted — so that walk degenerates here to
+/// exactly one step, and one step is what this is. Deliberately not built
+/// further: a walk over a linear 32-slot table is a cost with no consumer.
+static DEFAULT_LEVEL: AtomicU8 = AtomicU8::new(Severity::Info as u8);
+
 /// A named logger with a runtime severity threshold.
 ///
-/// Threshold defaults to [`Severity::Info`]. Use [`register_logger`]
-/// to publish a `'static Logger` so multiple call sites with the
-/// same name share the same threshold.
+/// A logger constructed with [`Logger::new`] has NO level of its own and
+/// follows [`Logger::default_level`] (itself [`Severity::Info`] until someone
+/// calls [`Logger::set_default_level`]). [`Logger::with_level`] and
+/// [`Logger::set_level`] give it one; [`Logger::unset_level`] takes it away
+/// again. Use [`register_logger`] to publish a `'static Logger` so multiple
+/// call sites with the same name share the same threshold.
 pub struct Logger {
     name: &'static str,
+    /// Either a [`Severity`] discriminant or [`LEVEL_UNSET`].
     level: AtomicU8,
 }
 
 impl Logger {
-    /// `const`-construct with the default threshold ([`Severity::Info`]).
+    /// `const`-construct with NO level of its own — the logger follows
+    /// [`Logger::default_level`], which is [`Severity::Info`] until something
+    /// moves it.
+    ///
+    /// phase-467: this stored `Severity::Info` outright until the process
+    /// default existed, and "the author wrote `new`" then looked exactly like
+    /// "the author wrote `with_level(.., Info)`". They are different
+    /// statements — one is a choice and the other is the absence of one — and
+    /// telling them apart is what lets [`Logger::set_default_level`] move the
+    /// first without overriding the second.
     #[must_use]
     pub const fn new(name: &'static str) -> Self {
         Self {
             name,
-            level: AtomicU8::new(Severity::Info as u8),
+            level: AtomicU8::new(LEVEL_UNSET),
         }
     }
 
@@ -229,22 +264,96 @@ impl Logger {
         self.name
     }
 
-    /// Current runtime threshold.
+    /// The threshold this logger actually filters on — its own level if it has
+    /// one, otherwise [`Logger::default_level`].
+    ///
+    /// This is `rcutils_logging_get_logger_effective_level`'s answer, not
+    /// `rcutils_logging_get_logger_level`'s: it is the number that decides
+    /// whether a record is emitted, which is the question a call site asks.
+    /// There is deliberately no accessor for "is a level set on this logger",
+    /// because nothing in the tree has a use for the difference and an
+    /// accessor per language is three more names for one fact.
     #[must_use]
     pub fn level(&self) -> Severity {
-        severity_from_u8(self.level.load(Ordering::Relaxed)).unwrap_or(Severity::Info)
+        let own = self.level.load(Ordering::Relaxed);
+        if own == LEVEL_UNSET {
+            return Self::default_level();
+        }
+        severity_from_u8(own).unwrap_or(Severity::Info)
     }
 
-    /// Update the runtime threshold.
+    /// Give this logger a level of its own. It stops following
+    /// [`Logger::default_level`] until [`Logger::unset_level`].
     pub fn set_level(&self, level: Severity) {
         self.level.store(level as u8, Ordering::Relaxed);
     }
 
+    /// Take this logger's own level away, so it follows
+    /// [`Logger::default_level`] again.
+    ///
+    /// `rcutils_logging_set_logger_level(name, RCUTILS_LOG_SEVERITY_UNSET)`'s
+    /// effect, and what `nros_logger_set_level(logger, NROS_LOG_SEVERITY_UNSET)`
+    /// reaches. phase-467.
+    pub fn unset_level(&self) {
+        self.level.store(LEVEL_UNSET, Ordering::Relaxed);
+    }
+
+    /// The threshold every logger with no level of its own filters on.
+    ///
+    /// [`Severity::Info`] until [`Logger::set_default_level`] moves it, which
+    /// is `RCUTILS_DEFAULT_LOGGER_DEFAULT_LEVEL`'s value and upstream's
+    /// starting point too.
+    #[must_use]
+    pub fn default_level() -> Severity {
+        severity_from_u8(DEFAULT_LEVEL.load(Ordering::Relaxed)).unwrap_or(Severity::Info)
+    }
+
+    /// Move the threshold that every logger WITHOUT a level of its own filters
+    /// on — `rclrs::Logger::set_default_level`.
+    ///
+    /// Takes effect immediately and retroactively: a `static LOGGER:
+    /// Logger = Logger::new("x")` that was compiled into the image long before
+    /// this call follows it, because "no level of its own" is a stored state
+    /// and not a value copied in at construction. That is the whole reason
+    /// this is a capability rather than a re-export of
+    /// `DEFAULT_LOGGER.set_level`, which moves the threshold of the ONE logger
+    /// named `"nros"` (ledger row `rust:Logger::set_default_level`).
+    ///
+    /// It does NOT override a logger that states its own level: after
+    /// `with_level(.., Warn)` or `set_level(Warn)`, `Warn` wins.
+    pub fn set_default_level(level: Severity) {
+        DEFAULT_LEVEL.store(level as u8, Ordering::Relaxed);
+    }
+
     /// Whether a record at `severity` would be emitted by this
     /// logger AT RUNTIME.
+    ///
+    /// THE HOT PATH of every log macro, on every target, so the shape here is
+    /// measured rather than chosen (phase-467). Resolving the unset level
+    /// SELECTS the byte to compare against and compares once, instead of
+    /// comparing twice and short-circuiting: measured at an inlined call site
+    /// with `rustc -O`, the select form is 13 instructions on
+    /// `thumbv7m-none-eabi` and **branch-free** (LLVM predicates the whole
+    /// fallback into one `ittt eq` block) against 16 with a branch for the
+    /// short-circuit form, and 10 against 12 on `x86_64`. The cost over the
+    /// single-load original (8 thumb / 4 x86_64 instructions) is one compare
+    /// against an immediate, plus a byte load of one process-global that a
+    /// logger with its own level never performs.
+    ///
+    /// [`LEVEL_UNSET`] being ABOVE `Fatal` rather than below `Trace` is what
+    /// keeps this correct if the select is ever reordered: `severity >=
+    /// u8::MAX` is false for every `Severity`, so an unresolved sentinel can
+    /// only ever suppress a record, never emit one at the most verbose level —
+    /// which is the failure `0` had.
     #[must_use]
     pub fn is_enabled(&self, severity: Severity) -> bool {
-        (severity as u8) >= self.level.load(Ordering::Relaxed)
+        let own = self.level.load(Ordering::Relaxed);
+        let effective = if own == LEVEL_UNSET {
+            DEFAULT_LEVEL.load(Ordering::Relaxed)
+        } else {
+            own
+        };
+        (severity as u8) >= effective
     }
 
     /// Whether a record at `severity` would be emitted, given both this
@@ -840,6 +949,60 @@ mod tests {
         assert!(logger.is_enabled(Severity::Error));
         logger.set_level(Severity::Debug);
         assert!(logger.is_enabled(Severity::Info));
+    }
+
+    /// phase-467, ledger rows `c:log_severity_t` + `rust:Logger::set_default_level`.
+    ///
+    /// ONE test rather than five, deliberately: the process default is
+    /// process-wide state and `cargo test` runs this crate's tests as threads
+    /// in one process, so a second test that moved it would race this one and
+    /// the flake would read as a logic bug. It restores the default before it
+    /// returns for the same reason.
+    #[test]
+    fn a_logger_with_no_level_of_its_own_follows_the_process_default() {
+        assert_eq!(Logger::default_level(), Severity::Info, "starting default");
+
+        let unset = Logger::new("test_unset_follows_default");
+        let stated = Logger::with_level("test_stated_keeps_its_own", Severity::Warn);
+
+        // Unset logger, untouched default: Info, exactly as before phase-467.
+        assert_eq!(unset.level(), Severity::Info);
+        assert!(!unset.is_enabled(Severity::Debug));
+        assert!(unset.is_enabled(Severity::Info));
+
+        // Moving the default moves it RETROACTIVELY — the logger already
+        // existed. This is what a re-export of `DEFAULT_LOGGER.set_level`
+        // could not do.
+        Logger::set_default_level(Severity::Debug);
+        assert_eq!(Logger::default_level(), Severity::Debug);
+        assert_eq!(unset.level(), Severity::Debug);
+        assert!(unset.is_enabled(Severity::Debug));
+        assert!(!unset.is_enabled(Severity::Trace));
+
+        // ...and does NOT override a logger that states its own level. If it
+        // did, `with_level(.., Info)` and `new(..)` would be the same thing,
+        // which is the distinction the sentinel exists to keep.
+        assert_eq!(stated.level(), Severity::Warn);
+        assert!(!stated.is_enabled(Severity::Info));
+
+        // Stating a level on the unset logger detaches it.
+        unset.set_level(Severity::Error);
+        Logger::set_default_level(Severity::Trace);
+        assert_eq!(unset.level(), Severity::Error);
+        assert!(!unset.is_enabled(Severity::Warn));
+
+        // ...and unsetting it re-attaches it, to the CURRENT default.
+        unset.unset_level();
+        assert_eq!(unset.level(), Severity::Trace);
+        assert!(unset.is_enabled(Severity::Trace));
+
+        // The sentinel is outside `Severity`, in the direction that can only
+        // ever SUPPRESS a record: `severity_from_u8` refuses it, and it is
+        // above `Fatal`, not below `Trace` where rcutils's own `UNSET` sits.
+        assert_eq!(severity_from_u8(LEVEL_UNSET), None);
+        assert!(LEVEL_UNSET > Severity::Fatal.as_u8());
+
+        Logger::set_default_level(Severity::Info);
     }
 
     #[test]

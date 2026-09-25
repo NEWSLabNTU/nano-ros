@@ -149,8 +149,36 @@ let logger = nros_log::get_logger("my_node");
 logger.set_level(nros_log::Severity::Warn);   // silences Trace/Debug/Info
 ```
 
-Default = `Severity::Info` for any logger constructed via
-`Logger::new(name)`.
+### The process default, and "unset"
+
+A logger built with `Logger::new(name)` has **no level of its own**. It filters
+on the process-wide default, which is `Severity::Info` until something moves
+it:
+
+```rust
+nros_log::Logger::set_default_level(nros_log::Severity::Debug);  // every
+                                     // logger that has not been given a level
+logger.set_level(nros_log::Severity::Warn);   // this one now states its own
+logger.unset_level();                         // ...and follows the default again
+```
+
+`set_default_level` is retroactive — a `static LOGGER: Logger =
+Logger::new("my_node")` compiled into the image follows it — and it never
+overrides a logger that states its own level, so `Logger::with_level(name,
+Severity::Info)` keeps `Info` whatever the default becomes.
+
+From C, the same three verbs are `nros_log_set_default_level`,
+`nros_log_get_default_level`, and `nros_logger_set_level(logger,
+NROS_LOG_SEVERITY_UNSET)` — which UNSETS the level rather than selecting a
+value, exactly as `rcutils_logging_set_logger_level(name,
+RCUTILS_LOG_SEVERITY_UNSET)` does. C++ spells the last one
+`logger.set_level(nros::Logger::Level::Unset)`.
+
+**One bound worth knowing if you are porting.** rcutils resolves an unset
+logger by walking the dotted ancestry its name spells (`x.y.z` → `x.y` → `x`)
+before falling to the default. `nros_log` has no hierarchy: logger lookup is
+exact string equality over a fixed slot table, so a dotted name is just a name
+and the walk has exactly one step — the process default.
 
 ## Buffer size
 
