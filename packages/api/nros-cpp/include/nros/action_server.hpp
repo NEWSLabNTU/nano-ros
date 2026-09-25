@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <string.h>
 
+#include "nros/callback_context.hpp" // phase-456 W3's one-word context carrier
 #include "nros/config.hpp"
 #include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/result.hpp"
@@ -471,21 +472,32 @@ template <typename A> class Server {
     /// status are forwarded — if you need the goal bytes, stash them in
     /// a `{uuid → state}` table from inside `set_goal_callback`.
     /// F must be a stateless callable convertible to void(*)(const uint8_t[16], GoalStatus).
+    /// phase-456 W3b — the visitor rides the `void* ctx` this FFI already has,
+    /// carried by value through `nros::detail::fn_to_context`, instead of a
+    /// `TypedVisitorFn user_visitor_fn_` member set on entry and cleared on
+    /// exit. That member was the only piece of per-instance state on this class
+    /// that was `nullptr` everywhere except inside one function body, and the
+    /// move constructor and move assignment each copied it — bookkeeping for a
+    /// value known to be null at every point a move can observe it.
+    ///
+    /// The lifetime argument is stronger here than the one W3 made for a
+    /// service handler: this FFI call is SYNCHRONOUS, so the context does not
+    /// outlive the full-expression that built it. Nothing of the caller's is
+    /// referenced after the call returns, which is also why the visitor needs
+    /// no clearing step — there is nowhere for it to be left behind.
     template <typename F>::nros::Result for_each_active_goal(F f) {
-        using Fn = void (*)(const uint8_t[16], ::nros::GoalStatus);
         if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
-        user_visitor_fn_ = Fn(f); // compile error if F is not convertible
+        TypedVisitorFn visitor = TypedVisitorFn(f); // compile error if F is not convertible
 
         auto trampoline = [](const uint8_t goal_id[16], int8_t status, void* ctx) {
-            auto* self = static_cast<Server*>(ctx);
-            if (!self || self->user_visitor_fn_ == nullptr) return;
-            self->user_visitor_fn_(goal_id, static_cast<::nros::GoalStatus>(status));
+            TypedVisitorFn fn = ::nros::detail::fn_from_context<TypedVisitorFn>(ctx);
+            if (fn == nullptr) return;
+            fn(goal_id, static_cast<::nros::GoalStatus>(status));
         };
-        ::nros::Result ret(nros_cpp_action_server_for_each_active_goal(
+        return ::nros::Result(nros_cpp_action_server_for_each_active_goal(
             storage_, executor_,
-            reinterpret_cast<void (*)(const uint8_t(*)[16], int8_t, void*)>(+trampoline), this));
-        user_visitor_fn_ = nullptr; // one-shot — don't leak the function pointer between calls
-        return ret;
+            reinterpret_cast<void (*)(const uint8_t(*)[16], int8_t, void*)>(+trampoline),
+            ::nros::detail::fn_to_context(visitor)));
     }
 
     /// Read back the action name this server was created on — phase-417 W4.b.
@@ -550,8 +562,8 @@ template <typename A> class Server {
           user_cancel_fn_(other.user_cancel_fn_), user_cancel_fn_ctx_(other.user_cancel_fn_ctx_),
           user_cancel_ctx_(other.user_cancel_ctx_), user_accepted_fn_(other.user_accepted_fn_),
           user_accepted_fn_ctx_(other.user_accepted_fn_ctx_),
-          user_accepted_ctx_(other.user_accepted_ctx_), user_visitor_fn_(other.user_visitor_fn_),
-          action_name_{}, initialized_(other.initialized_) {
+          user_accepted_ctx_(other.user_accepted_ctx_), action_name_{},
+          initialized_(other.initialized_) {
         ::memcpy(action_name_, other.action_name_, sizeof(action_name_));
         if (other.initialized_) {
             nros_cpp_action_server_relocate(other.storage_, storage_);
@@ -575,7 +587,6 @@ template <typename A> class Server {
             user_accepted_fn_ = other.user_accepted_fn_;
             user_accepted_fn_ctx_ = other.user_accepted_fn_ctx_;
             user_accepted_ctx_ = other.user_accepted_ctx_;
-            user_visitor_fn_ = other.user_visitor_fn_;
             ::memcpy(action_name_, other.action_name_, sizeof(action_name_));
             initialized_ = other.initialized_;
             if (other.initialized_) {
@@ -593,8 +604,7 @@ template <typename A> class Server {
         : executor_(nullptr), user_goal_fn_(nullptr), user_goal_fn_ctx_(nullptr),
           user_goal_ctx_(nullptr), user_cancel_fn_(nullptr), user_cancel_fn_ctx_(nullptr),
           user_cancel_ctx_(nullptr), user_accepted_fn_(nullptr), user_accepted_fn_ctx_(nullptr),
-          user_accepted_ctx_(nullptr), user_visitor_fn_(nullptr), action_name_{},
-          initialized_(false) {}
+          user_accepted_ctx_(nullptr), action_name_{}, initialized_(false) {}
 
   private:
     Server(const Server&) = delete;
@@ -677,7 +687,9 @@ template <typename A> class Server {
     TypedAcceptedFn user_accepted_fn_;
     TypedAcceptedFnWithCtx user_accepted_fn_ctx_;
     void* user_accepted_ctx_;
-    TypedVisitorFn user_visitor_fn_;
+    // phase-456 W3b — a `TypedVisitorFn user_visitor_fn_` sat here, written at
+    // the head of `for_each_active_goal` and cleared at its tail. The visitor
+    // travels in the FFI's own `void* ctx` now; see that function.
     // Phase 87.6 put a `char action_name_[256]` here for a `get_action_name()`
     // that was never written, and an earlier phase-417 W4.b wave deleted it as
     // dead state. W4.b's second half writes the accessor, so it is back and it
