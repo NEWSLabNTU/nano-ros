@@ -6,7 +6,7 @@
 /// executor instead: a component is a **stateful object** that binds its real
 /// callbacks **by identity** (no string names), and `spin_once` dispatches them.
 ///
-/// The typed callback-style `Node::create_subscription(sub, topic, fn)` is
+/// The typed callback-style `Node::create_subscription(sub, topic, qos, fn)` is
 /// **stateless** (`void(const M&)`, no ctx) — useless for a component that
 /// mutates its own state. The helpers here bind a **member function** of the
 /// component as the callback, with the component pointer carried as the executor

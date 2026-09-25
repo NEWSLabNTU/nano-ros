@@ -51,8 +51,8 @@ use nros_rmw::{
 
 use crate::{
     EMPTY_VTABLE, MAX_SESSION_PROPERTIES, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK,
-    NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode,
-    NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession,
+    NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwGid,
+    NrosRmwNode, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession,
     NrosRmwSessionOptions, NrosRmwSubscription, NrosRmwVtable, event_kind_from_c, ret_from_error,
     rmw_publisher_options_t, rmw_subscription_options_t,
 };
@@ -494,6 +494,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         subscription_event_init: Some(subscription_event_init_trampoline::<R>),
         publisher_event_init: Some(publisher_event_init_trampoline::<R>),
         publisher_assert_liveliness: Some(publisher_assert_liveliness_trampoline::<R>),
+        get_gid_for_publisher: Some(get_gid_for_publisher_trampoline::<R>),
         next_deadline_ms: Some(next_deadline_ms_trampoline::<R>),
         set_wake_callback: Some(set_wake_callback_trampoline::<R>),
         // Phase 124.A — zero-copy slots default to NULL on the
@@ -1558,6 +1559,42 @@ unsafe extern "C" fn publisher_assert_liveliness_trampoline<R: RustBackend>(
     };
     match Publisher::assert_liveliness(p) {
         Ok(()) => NROS_RMW_RET_OK,
+        Err(e) => ret_from_error(&e),
+    }
+}
+
+/// Upstream `rmw_get_gid_for_publisher` — the phase-467 RMW gap-closure
+/// design study's Q1.
+///
+/// This slot was NULL on the Rust adapter table until that study, so a Rust
+/// backend with a real publisher identity — zenoh has one, the gid it stamps
+/// into every outgoing attachment — could not report it through any language
+/// surface. `Publisher::get_gid`'s default is `Unsupported`, so a backend
+/// that does not override it still answers honestly here.
+///
+/// Only `data` is written. `implementation_identifier` is left as the caller
+/// found it: `CffiPublisher::get_gid` discards it (the identifier a caller
+/// needs is the one on the session it asked), and writing a pointer the
+/// trampoline would have to source from a second slot is a second place for
+/// it to disagree.
+unsafe extern "C" fn get_gid_for_publisher_trampoline<R: RustBackend>(
+    publisher: *const NrosRmwPublisher,
+    gid: *mut NrosRmwGid,
+) -> NrosRmwRet {
+    if gid.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let Some(p) = (unsafe { publisher_ref::<R::Publisher>(publisher) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    match Publisher::get_gid(p) {
+        Ok(bytes) => {
+            // SAFETY: checked non-null above; the caller owns the storage.
+            unsafe {
+                (*gid).data = bytes;
+            }
+            NROS_RMW_RET_OK
+        }
         Err(e) => ret_from_error(&e),
     }
 }

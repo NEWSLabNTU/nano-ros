@@ -88,6 +88,15 @@ pub use traits::{
 // nros-core dep.
 pub use nros_core::MessageInfo;
 
+// Same reason, one method over: [`Publisher::get_gid`]'s return type is
+// `[u8; PUBLISHER_GID_SIZE]`, so a backend implementing it — or a caller
+// sizing a buffer for it — would otherwise need a direct nros-core dep to
+// name the width of a signature this crate declares. `pad_publisher_gid`
+// rides along because a backend whose identity is narrower than 24 bytes
+// must zero-extend through it rather than inventing its own padding (the
+// phase-467 RMW gap-closure design study's Q1).
+pub use nros_core::{PUBLISHER_GID_SIZE, pad_publisher_gid};
+
 // Phase 99 — zero-copy raw API: SlotLending / SlotBorrowing traits.
 // Backends opt in by impl'ing these (and forwarding their own `lending`
 // feature to `nros-rmw/lending`).

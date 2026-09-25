@@ -199,8 +199,17 @@ pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
 // same value by contract; a header edit that drifts one fails here.
 const _: () = assert!(nros_rmw::DURATION_INFINITE_MS as i64 == NROS_RMW_DURATION_INFINITE_MS);
 
+// The trait's gid width and the ABI header's are the same number by contract,
+// which is the whole point of the phase-467 RMW gap-closure design study's
+// Q1(a) — `Publisher::get_gid` hands its bytes straight into `rmw_gid_t::data`
+// and back, so a header edit that drifts one fails here rather than
+// truncating an identifier at the seam.
+const _: () = assert!(nros_rmw::PUBLISHER_GID_SIZE == RMW_GID_STORAGE_SIZE as usize);
+
 /// Compat alias for the generated `rmw_qos_profile_t`.
 pub type NrosRmwQos = rmw_qos_profile_t;
+/// Compat alias for the generated `rmw_gid_t`.
+pub type NrosRmwGid = rmw_gid_t;
 /// Compat alias for the generated `rmw_session_t`.
 pub type NrosRmwSession = rmw_session_t;
 /// issue 0808 — session creation options; NULL means every default.
@@ -4185,17 +4194,32 @@ impl Publisher for CffiPublisher {
     }
 
     fn assert_liveliness(&self) -> Result<(), TransportError> {
-        // Phase 108.B — manual liveliness assertion. NULL function
-        // pointer = backend doesn't support manual liveliness; the
-        // runtime caller (Node) gates the call by liveliness_kind so
-        // we just delegate.
+        // Phase 108.B — manual liveliness assertion.
         let view_ptr = self as *const _ as *mut Self;
         let view = unsafe { (*view_ptr).make_view() };
         // Issue 0349 — a NULL slot means the backend does not implement this
         // OPTIONAL capability (xrce NULLs all three). Report it as
         // `Unsupported`; never panic, and never make it a registration error.
+        //
+        // ...but ONLY when the caller actually asked for manual assertion.
+        // `rmw_vtable.h` has stated this split since phase 108 — "runtime
+        // returns `NROS_RMW_RET_OK` for AUTOMATIC / NONE callers and
+        // `NROS_RMW_RET_UNSUPPORTED` for MANUAL_*" — and it was implemented
+        // NOWHERE: this comment used to say "the runtime caller (Node) gates
+        // the call by liveliness_kind so we just delegate", and
+        // `EmbeddedPublisher::assert_liveliness` does no such gating, it
+        // forwards. So a publisher with AUTOMATIC liveliness on a backend
+        // with a NULL slot read `Unsupported` for a call that had nothing to
+        // do. `self.qos` is the REQUEST, which is the right side to ask:
+        // `actual_qos` may be the `Unknown` absence on a backend with no
+        // read-back, and an absence is not a reason to refuse.
+        // (The phase-467 RMW gap-closure design study's Row 7.)
         let Some(assert_liveliness) = self.vtable.publisher_assert_liveliness else {
-            return Err(TransportError::Unsupported);
+            return if qos_from_c(&self.qos).liveliness_kind.is_manual() {
+                Err(TransportError::Unsupported)
+            } else {
+                Ok(())
+            };
         };
         let ret = unsafe { assert_liveliness(&view) };
         if ret != NROS_RMW_RET_OK {
@@ -4216,6 +4240,39 @@ impl Publisher for CffiPublisher {
     /// a `&self` that any callback may hold.
     fn actual_qos(&self) -> QoSProfile {
         qos_from_c(&self.actual_qos)
+    }
+
+    /// Upstream `rmw_get_gid_for_publisher`, through the vtable slot.
+    ///
+    /// The phase-467 RMW gap-closure design study's Q1, step 2. A NULL slot
+    /// answers `Unsupported` — uORB and XRCE NULL it. The Rust adapter table
+    /// zenoh rides FILLS it now (it was NULL there too until this study, so a
+    /// Rust backend with a real identity could not report one). Never an
+    /// all-zero gid: that is what the uninitialised `rmw_gid_t` below holds,
+    /// so returning it on the NULL path would make "no identity" read exactly
+    /// like an answer.
+    ///
+    /// The backend's `implementation_identifier` is deliberately DROPPED
+    /// here. `nros_rmw_cffi_register_named` admits several backends in one
+    /// image and gids from two of them are not comparable, so upstream's
+    /// pairing matters — but the trait answers bytes, and the identifier a
+    /// caller needs is the one on the SESSION it asked. Carrying a second
+    /// copy per publisher would be a second place for it to disagree.
+    fn get_gid(&self) -> Result<[u8; nros_rmw::PUBLISHER_GID_SIZE], TransportError> {
+        let view_ptr = self as *const _ as *mut Self;
+        let view = unsafe { (*view_ptr).make_view() };
+        let Some(get_gid_for_publisher) = self.vtable.get_gid_for_publisher else {
+            return Err(TransportError::Unsupported);
+        };
+        let mut gid = NrosRmwGid {
+            implementation_identifier: core::ptr::null(),
+            data: [0u8; nros_rmw::PUBLISHER_GID_SIZE],
+        };
+        let ret = unsafe { get_gid_for_publisher(&view, &mut gid) };
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        Ok(gid.data)
     }
 }
 

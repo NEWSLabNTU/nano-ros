@@ -512,18 +512,29 @@ pub unsafe extern "C" fn nros_publisher_publish_streamed(
 /// Phase 108.B.7 — manually assert this publisher's liveliness.
 ///
 /// Required for entities created with QoS `liveliness_kind =
-/// NROS_QOS_LIVELINESS_MANUAL_BY_TOPIC` or `MANUAL_BY_NODE`. No-op for
-/// `AUTOMATIC` / `NONE`. Backends that don't implement manual
-/// assertion (XRCE-DDS, zenoh-pico, uORB today) treat this as a no-op
-/// and return `NROS_RET_OK`.
+/// NROS_QOS_LIVELINESS_MANUAL_BY_TOPIC` or `MANUAL_BY_NODE`; there is
+/// nothing to assert under `AUTOMATIC` / `NONE`, and those answer
+/// `NROS_RET_OK` on every backend.
+///
+/// **A BACKEND THAT CANNOT ASSERT REMOTELY ANSWERS `NROS_RET_UNSUPPORTED`,
+/// and this doc said the opposite until the phase-467 RMW gap-closure design
+/// study's Row 7.** It read "Backends that don't implement manual assertion
+/// (XRCE-DDS, zenoh-pico, uORB today) treat this as a no-op and return
+/// `NROS_RET_OK`" — an `OK` from a call that put nothing on the wire, which
+/// is the one thing a caller uses this function to find out. cyclonedds does
+/// implement it (`dds_assert_liveliness` renews the writer lease and sends a
+/// Heartbeat); zenoh-pico, XRCE-DDS and uORB have no per-topic lease and now
+/// say so.
 ///
 /// # Parameters
 /// * `publisher` - Pointer to an initialized publisher
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
+/// * `NROS_RET_OK` — asserted, or there was nothing to assert
 /// * `NROS_RET_INVALID_ARGUMENT` if publisher is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized
+/// * `NROS_RET_UNSUPPORTED` — a manual liveliness kind on a backend with no
+///   per-topic lease. NOT a failure of this call; the entity is fine.
 /// * `NROS_RET_PUBLISH_FAILED` on backend failure
 ///
 /// # Safety
@@ -548,6 +559,7 @@ pub unsafe extern "C" fn rcl_publisher_assert_liveliness(
         let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
         match pub_handle.assert_liveliness() {
             Ok(()) => NROS_RET_OK,
+            Err(nros_rmw::TransportError::Unsupported) => NROS_RET_UNSUPPORTED,
             Err(_) => NROS_RET_PUBLISH_FAILED,
         }
     }
@@ -555,6 +567,95 @@ pub unsafe extern "C" fn rcl_publisher_assert_liveliness(
     #[cfg(not(feature = "rmw-cffi"))]
     {
         NROS_RET_ERROR
+    }
+}
+
+/// The number of bytes in a publisher GID — upstream's
+/// `RMW_GID_STORAGE_SIZE`, and the size of the buffer
+/// [`nros_publisher_get_gid`] fills.
+pub const NROS_PUBLISHER_GID_SIZE: usize = 24;
+
+/// This publisher's own global identifier — upstream
+/// `rmw_get_gid_for_publisher`.
+///
+/// The phase-467 RMW gap-closure design study's Q1. Writes
+/// `NROS_PUBLISHER_GID_SIZE` (24) bytes into `out_gid` and touches nothing on
+/// failure.
+///
+/// **Three bounds, each of which a caller will otherwise assume away:**
+///
+/// * **How many of the 24 bytes MEAN anything is a backend property.** A
+///   backend whose identity is narrower zero-extends into the tail, so two
+///   gids naming one entity compare equal. Gids from two different backends
+///   in one image are never comparable.
+/// * **Not comparable with the gid on a received sample, yet.** They are the
+///   same width and, on every backend but zenoh, are not produced from the
+///   same source. Issue 1495.
+/// * **An all-zero gid is never returned as an answer.** A backend with no
+///   identity for this publisher reports `NROS_RET_UNSUPPORTED`, because
+///   all-zero is what an unwritten buffer holds and the two must not read
+///   alike.
+///
+/// # Parameters
+/// * `publisher` — pointer to an initialized publisher
+/// * `out_gid` — buffer of at least `gid_capacity` bytes, filled on
+///   `NROS_RET_OK`
+/// * `gid_capacity` — how many bytes `out_gid` can hold. CHECKED, not
+///   assumed. The C surface has no `nros_gid_t`, so the out-param is a bare
+///   `uint8_t *` that carries no width of its own, and the callee's only
+///   alternative to a capacity argument is to write 24 bytes on the caller's
+///   word. The width is also not a constant that has held still: the Rust
+///   `PUBLISHER_GID_SIZE` this mirrors was 16 until the same study's Q1(a).
+///
+/// # Returns
+/// * `NROS_RET_OK` — `out_gid[0 .. NROS_PUBLISHER_GID_SIZE]` written
+/// * `NROS_RET_INVALID_ARGUMENT` — a NULL argument, or
+///   `gid_capacity < NROS_PUBLISHER_GID_SIZE`
+/// * `NROS_RET_NOT_INIT` if not initialized
+/// * `NROS_RET_UNSUPPORTED` — this backend has no identity for this
+///   publisher (XRCE-DDS, uORB)
+/// * `NROS_RET_ERROR` — the backend was asked and failed
+///
+/// # Safety
+/// * `publisher` must be a valid pointer to an initialized publisher.
+/// * `out_gid` must be writable for `gid_capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_publisher_get_gid(
+    publisher: *const nros_publisher_t,
+    out_gid: *mut u8,
+    gid_capacity: usize,
+) -> nros_ret_t {
+    validate_not_null!(publisher, out_gid);
+    if gid_capacity < NROS_PUBLISHER_GID_SIZE {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    let publisher = &*publisher;
+
+    validate_state!(
+        publisher,
+        nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
+    );
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        use nros_node::Publisher;
+
+        let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
+        match pub_handle.get_gid() {
+            Ok(gid) => {
+                ptr::copy_nonoverlapping(gid.as_ptr(), out_gid, NROS_PUBLISHER_GID_SIZE);
+                NROS_RET_OK
+            }
+            Err(nros_rmw::TransportError::Unsupported) => NROS_RET_UNSUPPORTED,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = out_gid;
+        NROS_RET_UNSUPPORTED
     }
 }
 

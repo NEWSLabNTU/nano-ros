@@ -64,7 +64,7 @@ void SafetyListener::on_chatter(const std_msgs::msg::Int32& msg,
     // The `+` forces the non-capturing lambda to a function pointer (the API's
     // required signature); it forwards to the singleton's `on_chatter`.
     return node.create_subscription_with_safety<std_msgs::msg::Int32>(
-        sub_, "/chatter",
+        sub_, "/chatter", ::nros::QoS::default_profile(),
         +[](const std_msgs::msg::Int32& msg, const nros_cpp_integrity_status_t& status) {
             if (g_safety_listener_self != nullptr) {
                 g_safety_listener_self->on_chatter(msg, status);

@@ -35,7 +35,7 @@ int main() {
     rclcpp::Node node;
     rclcpp::Subscription<FakeString> info_sub;
     (void)node.create_subscription_with_info<FakeString>(
-        info_sub, "/chatter_info",
+        info_sub, "/chatter_info", ::nros::QoS(10),
         [](const FakeString& m, const uint8_t* attachment, size_t attachment_len) {
             (void)m;
             (void)attachment;

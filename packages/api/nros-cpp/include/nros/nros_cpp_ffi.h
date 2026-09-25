@@ -2217,14 +2217,49 @@ nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(void *_storage,
  * Phase 108.B.7 — manually assert this publisher's liveliness.
  *
  * Required for entities created with QoS `liveliness_kind =
- * MANUAL_BY_TOPIC` / `MANUAL_BY_NODE`. No-op otherwise. Backends
- * without manual-assertion wiring return `OK` (the trait default).
+ * MANUAL_BY_TOPIC` / `MANUAL_BY_NODE`; nothing to assert otherwise, and
+ * those answer `OK` on every backend.
+ *
+ * **`NROS_CPP_RET_UNSUPPORTED` under a manual kind on a backend with no
+ * per-topic lease** (zenoh-pico, XRCE-DDS, uORB) — the phase-467 RMW
+ * gap-closure design study's Row 7. This doc said "Backends without
+ * manual-assertion wiring return `OK` (the trait default)", and the mapping
+ * below flattened every error to `NROS_CPP_RET_ERROR`, so neither half of
+ * the answer reached a C++ caller. cyclonedds performs the assertion for
+ * real.
  *
  * # Safety
  * `storage` must be a valid publisher storage (initialised by
  * `nros_cpp_publisher_create`).
  */
 nros_cpp_ret_t nros_cpp_publisher_assert_liveliness(void *storage);
+
+/**
+ * This publisher's own global identifier — upstream
+ * `rmw_get_gid_for_publisher`, `rclcpp::PublisherBase::get_gid`.
+ *
+ * The phase-467 RMW gap-closure design study's Q1. Writes 24 bytes into
+ * `out_gid` and touches nothing on any other verdict.
+ *
+ * Upstream returns `const rmw_gid_t &`, which cannot fail. Ours can and must
+ * (RFC-0018: no exceptions, caller-placed storage), so the value leaves
+ * through an out-param and the verdict through the return code.
+ *
+ * * `NROS_CPP_RET_OK` — 24 bytes written
+ * * `NROS_CPP_RET_INVALID_ARGUMENT` — NULL argument, or
+ *   `gid_capacity < 24`
+ * * `NROS_CPP_RET_UNSUPPORTED` — this backend has no identity for this
+ *   publisher. Never an all-zero gid: that is what an unwritten buffer
+ *   holds, and the two must not read alike.
+ *
+ * # Safety
+ * `storage` must be a live publisher storage (initialised by
+ * `nros_cpp_publisher_create`); `out_gid` must be writable for
+ * `gid_capacity` bytes.
+ */
+nros_cpp_ret_t nros_cpp_publisher_get_gid(const void *storage,
+                                          uint8_t *out_gid,
+                                          size_t gid_capacity);
 
 /**
  * The QoS profile this publisher is ACTUALLY running — issue 1437.

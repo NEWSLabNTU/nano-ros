@@ -759,11 +759,7 @@ impl ZenohPublisher {
     /// Called from `publish_raw`; if the app stops publishing entirely,
     /// no event fires (publisher path has no spin tick).
     fn check_liveliness_lost(&self) {
-        use nros_rmw::QoSLivelinessPolicy;
-        if !matches!(
-            self.liveliness_kind,
-            QoSLivelinessPolicy::ManualByTopic | QoSLivelinessPolicy::ManualByNode
-        ) {
+        if !self.liveliness_kind.is_manual() {
             return;
         }
         if self.liveliness_lease_ms == 0 {
@@ -1001,20 +997,58 @@ impl Publisher for ZenohPublisher {
     }
 
     /// Phase 108.C.zenoh.4-followup — manual liveliness assertion.
-    /// Refreshes the lease for `ManualByTopic` / `ManualByNode`. No-op
-    /// for `Automatic` (zenoh keepalive covers it) and `None`.
+    ///
+    /// **`Unsupported` under a manual kind, and that is the correction**
+    /// (the phase-467 RMW gap-closure design study's Row 7). This returned
+    /// `Ok(())` unconditionally while sending NOTHING: zenoh-pico's
+    /// liveliness is a SESSION-scoped keepalive, and a per-topic lease a peer
+    /// can renew on demand is a DDS concept this transport does not have.
+    /// Re-declaring the `@ros2_lv` token on every assert was the alternative
+    /// and is worse than silence — a peer reads the churn as leave/join. So
+    /// the honest answer is the one `rmw_vtable.h` already prescribes for a
+    /// backend without manual liveliness. Cyclone DOES implement this
+    /// (`dds_assert_liveliness`), which is why the divergence is per backend
+    /// and not a property of the API.
+    ///
+    /// The LOCAL record survives, deliberately. `last_assert_at_ms` drives
+    /// [`Self::check_liveliness_lost`], a watchdog that fires this
+    /// publisher's own `LivelinessLost` callback when the app stops
+    /// asserting — a real, working, LOCAL capability. Recording the call and
+    /// then reporting `Unsupported` is not a contradiction: the return value
+    /// says what a PEER can see.
+    ///
+    /// `Ok(())` for `Automatic` (zenoh's session keepalive covers it) and
+    /// `None` — under those kinds there was nothing to assert, so nothing
+    /// was lost.
     fn assert_liveliness(&self) -> Result<(), Self::Error> {
-        use nros_rmw::QoSLivelinessPolicy;
-        if matches!(
-            self.liveliness_kind,
-            QoSLivelinessPolicy::ManualByTopic | QoSLivelinessPolicy::ManualByNode
-        ) {
-            let now = now_ms();
-            if now != 0 {
-                self.last_assert_at_ms.set(now);
-            }
+        if !self.liveliness_kind.is_manual() {
+            return Ok(());
         }
-        Ok(())
+        let now = now_ms();
+        if now != 0 {
+            self.last_assert_at_ms.set(now);
+        }
+        Err(TransportError::Unsupported)
+    }
+
+    /// Upstream `rmw_get_gid_for_publisher` — the phase-467 RMW gap-closure
+    /// design study's Q1, step 2 for the shim road.
+    ///
+    /// zenoh is the one backend that can answer this from a value it already
+    /// PUBLISHES: `rmw_gid` is the 16-byte id stamped into every outgoing
+    /// attachment, so a subscriber's
+    /// [`MessageInfo::publisher_gid`](nros_core::MessageInfo::publisher_gid)
+    /// and this answer are the SAME BYTES, zero-extended by the one spelling
+    /// of the padding. Nothing here touches the wire — the attachment stays
+    /// 16 bytes, which is `rmw_zenoh_cpp`'s layout and whose reader rejects
+    /// any other length.
+    ///
+    /// What it is NOT: derived from anything a stock ROS 2 peer would compute
+    /// for the same publisher. `generate_gid()` is a counter and a stack
+    /// address, not the session's `ZenohId`; making it mean something to a
+    /// peer is issue 1495 and moves a wire value.
+    fn get_gid(&self) -> Result<[u8; nros_rmw::PUBLISHER_GID_SIZE], Self::Error> {
+        Ok(nros_rmw::pad_publisher_gid(&self.rmw_gid))
     }
 
     fn buffer_error(&self) -> Self::Error {

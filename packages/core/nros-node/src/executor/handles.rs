@@ -286,12 +286,45 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     /// [`QoSLivelinessPolicy::ManualByTopic`](nros_rmw::QoSLivelinessPolicy::ManualByTopic) /
     /// [`QoSLivelinessPolicy::ManualByNode`](nros_rmw::QoSLivelinessPolicy::ManualByNode). No-op for AUTOMATIC /
     /// NONE kinds. Returns `Err(Unsupported)` if the backend doesn't
-    /// implement manual liveliness.
+    /// implement manual liveliness — which, since the phase-467 RMW
+    /// gap-closure design study's Row 7, includes **zenoh under a manual
+    /// kind**: its liveliness is a session keepalive, and a `Ok(())` from a
+    /// call that put nothing on the wire was the wrong answer. Cyclone
+    /// performs the assertion for real.
     pub fn assert_liveliness(&self) -> Result<(), NodeError> {
         use nros_rmw::Publisher as _;
         self.handle
             .assert_liveliness()
             .map_err(NodeError::Transport)
+    }
+
+    /// This publisher's own global identifier — upstream
+    /// `rmw_get_gid_for_publisher` / `rclcpp::PublisherBase::get_gid`.
+    ///
+    /// The phase-467 RMW gap-closure design study's Q1. 24 bytes,
+    /// [`nros_rmw::PUBLISHER_GID_SIZE`], the width upstream's
+    /// `RMW_GID_STORAGE_SIZE` uses.
+    ///
+    /// **Three bounds, each of which a caller will otherwise assume away:**
+    ///
+    /// * **How many of the 24 bytes mean anything is a BACKEND property.**
+    ///   zenoh fills 16 and zero-extends the rest; Cyclone fills a 16-byte
+    ///   DDS writer GUID the same way. The padding has one spelling
+    ///   ([`nros_rmw::pad_publisher_gid`]) so two gids naming one entity
+    ///   compare equal.
+    /// * **Not comparable with a gid from a TAKE, yet.** A received sample's
+    ///   [`MessageInfo::publisher_gid`](nros_core::MessageInfo::publisher_gid)
+    ///   is the same TYPE and, on every backend shipped today, is not
+    ///   produced from the same source as this — zenoh is the one exception,
+    ///   where both are its attachment gid. Making the rest agree is issue
+    ///   1495.
+    /// * **`Err(Unsupported)` is a real answer, and it is not zero.** A
+    ///   backend with no identity for this publisher (XRCE, uORB) says so;
+    ///   nothing here ever hands back an all-zero gid, because that is what
+    ///   an unwritten buffer holds.
+    pub fn get_gid(&self) -> Result<[u8; nros_rmw::PUBLISHER_GID_SIZE], NodeError> {
+        use nros_rmw::Publisher as _;
+        self.handle.get_gid().map_err(NodeError::Transport)
     }
 
     // ====================================================================
@@ -858,12 +891,22 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
 
     /// Phase 108.B — manually assert this publisher's liveliness.
     /// Required for `QoSLivelinessPolicy::ManualByTopic` /
-    /// `ManualByNode`. No-op for AUTOMATIC / NONE.
+    /// `ManualByNode`. No-op for AUTOMATIC / NONE. See
+    /// [`EmbeddedPublisher::assert_liveliness`] for what `Err(Unsupported)`
+    /// means per backend.
     pub fn assert_liveliness(&self) -> Result<(), NodeError> {
         use nros_rmw::Publisher as _;
         self.handle
             .assert_liveliness()
             .map_err(NodeError::Transport)
+    }
+
+    /// This publisher's own global identifier — upstream
+    /// `rmw_get_gid_for_publisher`. See [`EmbeddedPublisher::get_gid`] for
+    /// the three bounds on what the bytes mean.
+    pub fn get_gid(&self) -> Result<[u8; nros_rmw::PUBLISHER_GID_SIZE], NodeError> {
+        use nros_rmw::Publisher as _;
+        self.handle.get_gid().map_err(NodeError::Transport)
     }
 
     /// Reserve a writable slot of `len` bytes. Caller writes into the

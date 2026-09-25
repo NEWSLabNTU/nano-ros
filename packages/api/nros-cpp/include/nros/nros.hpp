@@ -594,7 +594,7 @@ namespace nros {
 // node-local `pump()`, which only `rclcpp::spin` / `spin_some` called: a file
 // that spun `nros::spin_once()` instead got zero callbacks and no diagnostic.
 //
-// Why not the out-ref `create_subscription(sub, topic, cb, qos)` overload: that
+// Why not the out-ref `create_subscription(sub, topic, qos, cb)` overload: that
 // one is SFINAE-restricted to `void(*)(const M&)` — a plain function pointer
 // with NO context slot — and every ported rclcpp callback captures.
 //

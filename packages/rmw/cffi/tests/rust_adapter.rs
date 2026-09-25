@@ -295,7 +295,20 @@ impl Publisher for NoopPublisher {
         ASSERT_LIVELINESS_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
+    /// The phase-467 RMW gap-closure design study's Q1 — a Rust backend with a
+    /// publisher identity NARROWER than 24 bytes, which is the shape zenoh has
+    /// (a 16-byte attachment gid). Zero-extends through the one spelling of
+    /// the padding, so the assertion below is about the trampoline carrying
+    /// all 24 bytes and not about this fixture's own arithmetic.
+    fn get_gid(&self) -> Result<[u8; nros_rmw::PUBLISHER_GID_SIZE], Self::Error> {
+        Ok(nros_rmw::pad_publisher_gid(&NARROW_GID))
+    }
 }
+
+/// A 16-byte identity, the width zenoh's attachment actually carries.
+const NARROW_GID: [u8; 16] = [
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x01,
+];
 
 impl Subscription for NoopSubscriber {
     type Error = TransportError;
@@ -957,6 +970,24 @@ fn rust_backend_adapter_routes_events_and_services() {
         NROS_RMW_RET_OK
     );
     assert_eq!(ASSERT_LIVELINESS_HITS.load(Ordering::SeqCst), 1);
+
+    // get_gid_for_publisher routes to Publisher::get_gid — the phase-467 RMW
+    // gap-closure design study's Q1. This slot was NULL on the adapter table
+    // until that study, so a Rust backend that HAD an identity could not
+    // report it through any language surface. The tail must be the eight zero
+    // bytes the padding wrote, not whatever the caller's struct held: the
+    // sentinel below is non-zero for exactly that reason.
+    let mut gid = nros_rmw_cffi::NrosRmwGid {
+        implementation_identifier: core::ptr::null(),
+        data: [0xA5u8; nros_rmw::PUBLISHER_GID_SIZE],
+    };
+    assert_eq!(
+        unsafe { (vt.get_gid_for_publisher.expect("vtable slot"))(&pubr, &mut gid) },
+        NROS_RMW_RET_OK
+    );
+    assert_eq!(gid.data, nros_rmw::pad_publisher_gid(&NARROW_GID));
+    assert_eq!(&gid.data[..16], &NARROW_GID[..]);
+    assert_eq!(&gid.data[16..], &[0u8; 8][..]);
 
     // next_deadline_ms: the trampoline forwards to
     // `Session::next_deadline_ms`, whose default body returns None. The

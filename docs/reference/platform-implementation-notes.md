@@ -339,6 +339,62 @@ Verified 2026-06-09: native_sim-less, on `qemu-system-arm -M virt -cpu
 cortex-a7`, the NuttX workspace Entry boots → registers → publishes `/chatter`
 → an external native listener receives it cross-process.
 
+## Manual liveliness assertion is per BACKEND, and only cyclonedds does it
+
+The phase-467 RMW gap-closure design study's Row 7. `assert_liveliness()` is
+one API call with four answers, and the divergence belongs to the backends
+rather than to the API — which is why it is recorded here and not as an
+API-parity divergence.
+
+| backend | `AUTOMATIC` / `NONE` | `MANUAL_BY_TOPIC` / `MANUAL_BY_NODE` |
+| --- | --- | --- |
+| cyclonedds | `OK` | **`OK`, and real** — `dds_assert_liveliness` on the writer renews the lease and sends a Heartbeat |
+| zenoh-pico | `OK` | **`UNSUPPORTED`** — session-scoped keepalive only; no per-topic lease exists to renew |
+| XRCE-DDS | `OK` | **`UNSUPPORTED`** — NULL vtable slot, no lease in the protocol |
+| uORB | `OK` | **`UNSUPPORTED`** — NULL vtable slot, no wire liveliness at all |
+
+`OK` under a manual kind therefore MEANS the assertion reached the wire. That
+is the whole change: zenoh returned `Ok(())` unconditionally while sending
+nothing, and the NULL-slot arm in `nros-rmw-cffi` returned `Unsupported`
+unconditionally — including for an `AUTOMATIC` publisher that had asked for
+nothing. `rmw_vtable.h` has stated the split since phase 108 and neither half
+implemented it.
+
+Two things NOT to change while reading this:
+
+* **zenoh's local watchdog stays.** `assert_liveliness()` still stamps
+  `last_assert_at_ms`, and `check_liveliness_lost` still fires this
+  publisher's own `LivelinessLost` when the gap exceeds the lease. It is a
+  real capability; it is LOCAL, and the return value is about what a PEER can
+  see. Recording the call and reporting `UNSUPPORTED` is not a contradiction.
+* **Do not "fix" zenoh by re-declaring the `@ros2_lv` token on every
+  assert.** A peer reads the churn as leave/join, which is worse than
+  silence.
+
+The test is `packages/rmw/cffi/tests/publisher_gid.rs`; the one spelling of
+"the application owns the assertion" is `QoSLivelinessPolicy::is_manual`.
+
+## Publisher GID: one width, and not yet one value
+
+Same study, Q1. `Publisher::get_gid()` — upstream's
+`rmw_get_gid_for_publisher` — is 24 bytes on every surface, matching
+upstream's `RMW_GID_STORAGE_SIZE`.
+
+| backend | `get_gid()` | `MessageInfo::publisher_gid` on a take |
+| --- | --- | --- |
+| cyclonedds | the DDS writer GUID, 16 bytes zero-extended to 24 | never written — a pure C/C++ backend reports no `MessageInfo` at all, so the callback sees `None` |
+| zenoh-pico | the 16-byte attachment gid, zero-extended | the same bytes, from the received attachment |
+| XRCE-DDS, uORB | `UNSUPPORTED` — NULL slot | never written |
+
+So the two gids are one TYPE and, except on zenoh, are not one VALUE. Issue
+1495 is the item that makes each backend derive both from one source; it
+moves a value a stock ROS 2 peer reads off our wire, which is why it is
+separate.
+
+**Never report an all-zero gid as an answer.** That is what an uninitialised
+`rmw_gid_t` holds, and a caller cannot tell it from an identity. A backend
+with none says `UNSUPPORTED`.
+
 ## Platform-ABI carve-outs: Serial / IVC / PlatformLibc are Rust-only (issue 0244)
 
 Not every platform primitive has a C-ABI mirror in the `nros_platform_*`

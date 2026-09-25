@@ -528,7 +528,13 @@ pub.assert_liveliness()?;   // refresh this publisher's lease
 ```
 
 C side: `rcl_publisher_assert_liveliness(&pub)`. C++ side:
-`pub.assert_liveliness()`. No-op for `AUTOMATIC` and `NONE` kinds.
+`pub.assert_liveliness()`. Nothing to do for `AUTOMATIC` and `NONE` kinds,
+which answer `Ok` on every backend.
+
+Under a manual kind the answer is per backend, and `Ok` means the assertion
+reached the wire: cyclonedds performs it (`dds_assert_liveliness`), while
+zenoh-pico, XRCE-DDS and uORB have no per-topic lease and answer
+`UNSUPPORTED` (phase-467 RMW gap-closure study, Row 7).
 
 ### Differences from upstream's matching
 
@@ -680,10 +686,15 @@ generate every event:
 | zenoh-pico | ✅ Sub: per-publisher count via `zpico_liveliness_get_count` + wildcard keyexpr query; pub: shim-side keepalive timer fires `LivelinessLost` from `publish` when `MANUAL_BY_*` lease expires. | ✅ Clock-based check at sub + pub, rate-limited to ≤ 1 fire per deadline period | ✅ Sequence-gap detection from RMW attachment |
 | uORB | ❌ No wire-level liveliness | ❌ No rate concept | ✅ Native: `RustSubscriptionCallback` publish-counter delta on host mock + real PX4 |
 
-`assert_liveliness()` (manual): not all backends expose manual
-liveliness through nano-ros yet. Unsupported backends' default is
-`Ok(())` (no-op) since they don't honour `MANUAL_BY_TOPIC` /
-`MANUAL_BY_NODE` liveliness kinds.
+`assert_liveliness()` (manual): **cyclonedds** performs a real assertion
+(`dds_assert_liveliness`). **zenoh-pico, XRCE-DDS and uORB** have no
+per-topic lease, so under `MANUAL_BY_TOPIC` / `MANUAL_BY_NODE` they answer
+`UNSUPPORTED`; under `AUTOMATIC` / `NONE` they answer `Ok(())`, because
+there was nothing to assert. This said the unsupported default was `Ok(())`
+whatever the kind, which reported an assertion that never happened
+(phase-467 RMW gap-closure study, Row 7). zenoh's shim-side watchdog is
+unchanged and still fires `LivelinessLost` on expiry — it is LOCAL, and the
+return value is about what a peer can see.
 
 ## 9. Loaned messages first-class
 

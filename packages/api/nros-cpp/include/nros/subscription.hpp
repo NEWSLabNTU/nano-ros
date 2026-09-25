@@ -287,6 +287,7 @@ template <typename M> class Subscription {
         user_fn_safety_ = other.user_fn_safety_;
 #endif // NANO_ROS_SAFETY_E2E
         sched_handle_id_ = other.sched_handle_id_;
+        executor_ = other.executor_;
         other.initialized_ = false;
     }
 
@@ -302,6 +303,7 @@ template <typename M> class Subscription {
             user_fn_safety_ = other.user_fn_safety_;
 #endif // NANO_ROS_SAFETY_E2E
             sched_handle_id_ = other.sched_handle_id_;
+            executor_ = other.executor_;
             other.initialized_ = false;
         }
         return *this;
@@ -323,6 +325,37 @@ template <typename M> class Subscription {
     /// object. `Node` is a friend and sets this on create.
     bool has_sched_handle() const { return sched_handle_id_ != static_cast<size_t>(-1); }
     size_t sched_handle_id() const { return sched_handle_id_; }
+
+    /// The QoS profile this subscription is ACTUALLY running —
+    /// `rclcpp::Subscription::get_actual_qos`, no arguments, as upstream's is.
+    ///
+    /// The phase-467 RMW gap-closure design study's Row 13, closing the gap
+    /// phase-456 W2b RECORDED rather than guessed at. The split gave the two
+    /// subscription roads two types; `nros::PollSubscription<M>` owns its
+    /// subscriber and kept this, and the DISPATCH half — the one a ported
+    /// `rclcpp` node holds, and therefore the one where a missing accessor is
+    /// a compile error on ported source — lost it, because the FFI needs
+    /// `(storage, executor, handle_id)` and this class held only the handle.
+    /// The fix is the executor pointer beside it, NOT an argument: adding one
+    /// would close the gate and open a divergence on a method that exists to
+    /// adopt the no-argument spelling.
+    ///
+    /// **Per policy, and a policy the backend cannot report is an ABSENCE** —
+    /// `ReliabilityUnknown`, `DurabilityUnknown`, … — never the request echoed
+    /// back. See `nros::PollSubscription::get_actual_qos` and
+    /// `nros::Publisher::get_actual_qos`, which answer the same question on
+    /// their own roads.
+    ///
+    /// A default-constructed or unregistered subscription answers the
+    /// all-absent profile, as the sibling accessors do.
+    ::nros::QoS get_actual_qos() const {
+        nros_cpp_qos_t f{};
+        if (!initialized_ || executor_ == nullptr ||
+            nros_cpp_subscription_get_actual_qos(nullptr, executor_, sched_handle_id_, &f) != 0) {
+            return ::nros::detail::qos_all_unknown();
+        }
+        return ::nros::detail::qos_from_ffi(f);
+    }
 
   private:
     Subscription(const Subscription&) = delete;
@@ -407,6 +440,17 @@ template <typename M> class Subscription {
     // Phase 189.M3.1 — executor HandleId for sched-context binding, or
     // SIZE_MAX (the default) when the registration has not happened yet.
     size_t sched_handle_id_ = static_cast<size_t>(-1);
+    // The executor that owns the arena entry `sched_handle_id_` indexes —
+    // the phase-467 RMW gap-closure design study's Row 13.
+    //
+    // A `HandleId` is EXECUTOR-SCOPED: an index into one executor's arena, not
+    // a process-wide identity, and RFC-0002 puts one executor on one RTOS
+    // task, so a tiered image has several. That is why `get_actual_qos()`
+    // could not be answered from `sched_handle_id_` alone, and why resolving
+    // it "from the sched handle" would have needed a global executor
+    // registry. The pair is the same one `rclcpp::Client` already keeps
+    // (`{executor_, handle_id_}`), for the same reason.
+    void* executor_ = nullptr;
     // The user's handler, dispatched by `message_trampoline` during spin.
     TypedSubscriptionFn user_fn_ = nullptr;
     TypedSubscriptionFnWithCtx user_fn_ctx_ = nullptr;
@@ -443,9 +487,8 @@ namespace nros {
 
 namespace rclcpp {
 template <typename M, typename F, typename>
-Result Node::create_subscription(Subscription<M>& out, const char* topic, F callback,
-                                 const ::nros::QoS& qos,
-                                 const ::nros::SubscriptionOptions& options) {
+Result Node::create_subscription(Subscription<M>& out, const char* topic, const ::nros::QoS& qos,
+                                 F callback, const ::nros::SubscriptionOptions& options) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
@@ -476,6 +519,7 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, F call
         &out, &handle, &ffi_options);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
+        out.executor_ = executor_handle_;
         // phase-456 W2b — `get_topic_name()` answered "" on every callback-style
         // subscription until this line existed.
         out.store_topic_name(topic);
@@ -495,7 +539,7 @@ namespace nros {
 namespace rclcpp {
 template <typename M, typename F, typename>
 Result Node::create_subscription_in_group(const ::nros::CallbackGroup& group, Subscription<M>& out,
-                                          const char* topic, F callback, const ::nros::QoS& qos,
+                                          const char* topic, const ::nros::QoS& qos, F callback,
                                           const ::nros::SubscriptionOptions& options) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
@@ -523,6 +567,7 @@ Result Node::create_subscription_in_group(const ::nros::CallbackGroup& group, Su
         &out, &handle, &ffi_options);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
+        out.executor_ = executor_handle_;
         // phase-456 W2b — `get_topic_name()` answered "" on every callback-style
         // subscription until this line existed.
         out.store_topic_name(topic);
@@ -542,8 +587,8 @@ namespace nros {
 
 namespace rclcpp {
 template <typename M, typename F, typename>
-Result Node::create_subscription_with_info(Subscription<M>& out, const char* topic, F callback,
-                                           const ::nros::QoS& qos,
+Result Node::create_subscription_with_info(Subscription<M>& out, const char* topic,
+                                           const ::nros::QoS& qos, F callback,
                                            const ::nros::SubscriptionOptions& options) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
@@ -572,6 +617,7 @@ Result Node::create_subscription_with_info(Subscription<M>& out, const char* top
         &Subscription<M>::message_info_trampoline, &out, &handle, &ffi_options);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
+        out.executor_ = executor_handle_;
         // phase-456 W2b — `get_topic_name()` answered "" on every callback-style
         // subscription until this line existed.
         out.store_topic_name(topic);
@@ -592,8 +638,8 @@ namespace nros {
 
 namespace rclcpp {
 template <typename M, typename F, typename>
-Result Node::create_subscription_with_safety(Subscription<M>& out, const char* topic, F callback,
-                                             const ::nros::QoS& qos,
+Result Node::create_subscription_with_safety(Subscription<M>& out, const char* topic,
+                                             const ::nros::QoS& qos, F callback,
                                              const ::nros::SubscriptionOptions& options) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
@@ -622,6 +668,7 @@ Result Node::create_subscription_with_safety(Subscription<M>& out, const char* t
         &Subscription<M>::message_safety_trampoline, &out, &handle, &ffi_options);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
+        out.executor_ = executor_handle_;
         // phase-456 W2b — `get_topic_name()` answered "" on every callback-style
         // subscription until this line existed.
         out.store_topic_name(topic);
