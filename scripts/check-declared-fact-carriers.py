@@ -406,6 +406,34 @@ FACT_DISPOSITION = {
             "the three requests an action server's queryables receive"),
         "declared": ("NROS_DECLARED_ACTION_INBOX_BYTES",),
     },
+    # issue 1498 -- the transient-local retention pool: its slot COUNT from
+    # the entity inventory (the same rule that adds one cache queryable per
+    # such publisher to NROS_DERIVED_MAX_QUERYABLES) and its slot SIZE from
+    # the message-bound inventory. The resolver forwards the count under the
+    # CMake road's carrier name, so `nros-rmw-zenoh/build.rs` has one reader.
+    "NROS_DERIVED_TL_PUBLISHERS": {
+        "resolver": ("NROS_RESOLVED_NROS_DECLARED_TL_PUBLISHERS",),
+        "sidecar": NotCarried(
+            _LEAF, _INBOX_DESCRIPTOR_ANSWERS,
+            "a cargo leaf names its sizing descriptor to cargo, and "
+            "`transient_local_publisher_demand` reads the count from its "
+            "`[[endpoint]]` durability rows first -- the same rule"),
+        "declared": NotCarried(
+            _FACTS, "server count and NOT folded into it: that number is already multiplied by",
+            "the declared road composes the same count itself, from `nros ws "
+            "entity-facts` over the same rule, under the carrier name the "
+            "resolver forwards this fact as -- so the fact has nothing to add"),
+    },
+    "NROS_DERIVED_TL_RETAIN_BYTES": {
+        "resolver": ("NROS_RESOLVED_ZPICO_TL_RETAIN_BYTES",),
+        "sidecar": OpenGap(
+            1498, "a leaf's descriptor states `wire_bound_bytes` per endpoint, "
+            "and nothing yet prices the retention slot from it; the slot keeps "
+            "its builtin 1024 B there"),
+        "declared": OpenGap(
+            1498, "the CMake road composes no bound for the types an entry "
+            "publishes transient-local; the slot keeps its builtin 1024 B"),
+    },
     # ---- provenance: published, carried by nothing, and that is correct ---
     "NROS_DERIVED_LARGEST_TYPE": {
         "resolver": _provenance(_PROV_TYPE),
@@ -500,8 +528,9 @@ ROAD_UNPAIRED = {
         "NROS_DECLARED_SERVICE_SERVERS -- that number is already multiplied by "
         "ACTION_SERVER_QUERYABLES, so a consumer holding `3` cannot tell one "
         "action server from three service servers, and only the first owes a "
-        "cache slot. No leaf twin, for TWO reasons: no inventory publishes it "
-        "as an NROS_DERIVED_* fact, and the cargo-leaf road answers this "
+        "cache slot. No leaf twin: the entity inventory publishes it as "
+        "NROS_DERIVED_TL_PUBLISHERS for the Zephyr resolver road only (issue "
+        "1498), and the cargo-leaf road answers this "
         "question from its SIZING DESCRIPTOR instead (phase-455 W5). This "
         "carrier exists for the roads that have no descriptor at all, which is "
         "every cmake / Zephyr west / NuttX entry (issue 1393) -- and that gap "

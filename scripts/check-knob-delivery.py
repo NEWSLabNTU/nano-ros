@@ -160,6 +160,15 @@ DERIVED_PAIRS = {
     "NROS_DERIVED_MAX_STRING_VALUE_LEN": ("NROS_RESOLVED_NROS_MAX_STRING_VALUE_LEN",),
     "NROS_DERIVED_MAX_ARRAY_LEN": ("NROS_RESOLVED_NROS_MAX_ARRAY_LEN",),
     "NROS_DERIVED_MAX_BYTE_ARRAY_LEN": ("NROS_RESOLVED_NROS_MAX_BYTE_ARRAY_LEN",),
+    # The transient-local retention pool: its SLOT COUNT from the entity
+    # inventory, forwarded under the CMake road's carrier name (one reader,
+    # `nros-rmw-zenoh/build.rs`, serves both roads), and its SLOT SIZE from
+    # the message-bound inventory. Undelivered, the count falls to a builtin
+    # of 2 while the queryable table counts every such publisher -- measured
+    # as a boot failure on the Autoware Safety Island -- and the size to a
+    # flat 1024 B.
+    "NROS_DERIVED_TL_PUBLISHERS": ("NROS_RESOLVED_NROS_DECLARED_TL_PUBLISHERS",),
+    "NROS_DERIVED_TL_RETAIN_BYTES": ("NROS_RESOLVED_ZPICO_TL_RETAIN_BYTES",),
 }
 
 # The `if(...)` conditions that make a resolver call BACKEND-CONDITIONAL. A knob

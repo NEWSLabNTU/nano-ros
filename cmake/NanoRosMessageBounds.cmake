@@ -438,6 +438,7 @@ function(nros_derive_message_bound_knobs)
         NROS_DERIVED_LARGEST_RX
         NROS_DERIVED_LARGE_TYPES
         NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS
+        NROS_DERIVED_TL_RETAIN_BYTES
         NROS_MESSAGE_BOUNDS_BASIS)
         unset(${_v})
         unset(${_v} PARENT_SCOPE)
@@ -591,6 +592,18 @@ function(nros_derive_message_bound_knobs)
         _sub_small _sub_large_types _sub_large_max _sub_large_count
         _sub_type_bounds)
 
+    # The transient-local retention slot, from the bounds of the types this
+    # image PUBLISHES transient-local. Independent of both refusals around it:
+    # it needs only those types to be bounded, not the whole closure, and it
+    # reads no subscription. Published before either write, so both carry it.
+    _nros_bounds_tl_retain("${_B_ENTITY_INVENTORY}" _tl_retain _tl_retain_why)
+    if(_tl_retain)
+        _nros_bounds_publish(NROS_DERIVED_TL_RETAIN_BYTES "${_tl_retain}")
+    elseif(_tl_retain_why AND NOT _B_QUIET)
+        message(STATUS
+            "nros: ZPICO_TL_RETAIN_BYTES not derived -- ${_tl_retain_why}")
+    endif()
+
     if(_open)
         list(LENGTH _open _open_count)
         string(REPLACE ";" "\n" _open_block "${_open_detail}")
@@ -735,6 +748,82 @@ function(nros_derive_message_bound_knobs)
     endif()
 
     _nros_message_bounds_write_output("${_B_OUTPUT_FILE}" "derived" "" "${_ceiling}")
+endfunction()
+
+# _nros_bounds_tl_retain(<entity_fragment> <out_bytes> <out_why>)
+#
+# The bytes ONE transient-local retention slot must hold: the largest
+# serialized bound (`_TX`, what the runtime's own serializer can produce,
+# encapsulation header included) over the types this image publishes
+# TRANSIENT_LOCAL. `nros-rmw-zenoh` keeps `ZPICO_MAX_TL_PUBLISHERS` slots of
+# `ZPICO_TL_RETAIN_BYTES` each, and until this the slot was a flat 1024 B
+# whatever was published into it. Measured on the Autoware Safety Island: five
+# latched publishers of 13-105 B each held 5 x 1024 B, and with the pool sized
+# right (5, not the builtin 2) the S32K344 image overflowed its RAM by 3,352 B.
+#
+# `<out_bytes>` is EMPTY, with `<out_why>` saying why, whenever the answer
+# would not be a bound, and the knob then keeps its builtin:
+#   * the entity inventory states no transient-local COUNT (the rule refused:
+#     a publisher states no durability), or states zero -- a pool of no slots
+#     has no slot size to derive;
+#   * the image declares an ACTION SERVER, whose `/status` publisher is
+#     transient-local by protocol and appears in no durability table, so its
+#     type would be missing from the maximum;
+#   * the durability table names fewer transient-local rows than the count;
+#   * any of those types is not bounded in the composed inventory.
+#
+# The two tables it reads are the ones the rest of this module already reads:
+# the entity fragment (`NROS_ENTITY_DECLARED_DURABILITY_PUBLISHER`, rows of
+# `<type>|<topic>=<durability>`) and the message-bound fragments already
+# included by the caller (`NROS_MESSAGE_BOUND_<key>_TX`).
+function(_nros_bounds_tl_retain _frag _o_bytes _o_why)
+    set(${_o_bytes} "" PARENT_SCOPE)
+    set(${_o_why} "" PARENT_SCOPE)
+    if(NOT _frag OR NOT EXISTS "${_frag}")
+        return()
+    endif()
+    unset(NROS_DERIVED_TL_PUBLISHERS)
+    unset(NROS_ENTITY_COUNT_ACTION_SERVER)
+    unset(NROS_ENTITY_DECLARED_DURABILITY_PUBLISHER)
+    include("${_frag}")
+    if(NOT DEFINED NROS_DERIVED_TL_PUBLISHERS)
+        # Silent: the entity fragment carries the count's own refusal (or is
+        # the placeholder a first configure reads), and an image that declares
+        # nothing must derive exactly what it did before (cmake-message-bounds
+        # case N).
+        return()
+    endif()
+    if(NROS_DERIVED_TL_PUBLISHERS EQUAL 0)
+        return()
+    endif()
+    if(DEFINED NROS_ENTITY_COUNT_ACTION_SERVER AND
+       NOT NROS_ENTITY_COUNT_ACTION_SERVER EQUAL 0)
+        set(${_o_why} "the image declares an action server, whose transient-local `/status` type no durability table names" PARENT_SCOPE)
+        return()
+    endif()
+    set(_max 0)
+    set(_rows 0)
+    foreach(_row IN LISTS NROS_ENTITY_DECLARED_DURABILITY_PUBLISHER)
+        if(NOT _row MATCHES "^([^|]+)\\|.*=transient_local$")
+            continue()
+        endif()
+        set(_t "${CMAKE_MATCH_1}")
+        math(EXPR _rows "${_rows} + 1")
+        string(REGEX REPLACE "[^A-Za-z0-9]" "_" _key "${_t}")
+        if(NOT "${NROS_MESSAGE_BOUND_${_key}_STATE}" STREQUAL "bounded" OR
+           NOT "${NROS_MESSAGE_BOUND_${_key}_TX}" MATCHES "^[0-9]+$")
+            set(${_o_why} "${_t} is published transient-local and has no derived bound" PARENT_SCOPE)
+            return()
+        endif()
+        if(NROS_MESSAGE_BOUND_${_key}_TX GREATER _max)
+            set(_max "${NROS_MESSAGE_BOUND_${_key}_TX}")
+        endif()
+    endforeach()
+    if(NOT _rows EQUAL NROS_DERIVED_TL_PUBLISHERS)
+        set(${_o_why} "the durability table names ${_rows} transient-local publisher(s) and the inventory counts ${NROS_DERIVED_TL_PUBLISHERS}" PARENT_SCOPE)
+        return()
+    endif()
+    set(${_o_bytes} "${_max}" PARENT_SCOPE)
 endfunction()
 
 # _nros_bounds_join_subscribed(<entity_fragment> <ceiling>
@@ -993,6 +1082,15 @@ endfunction()
 # the fully-derived one) because the table is published in exactly the cases the
 # three class knobs are, and a second spelling of the `set()` line is how the two
 # come to differ.
+macro(_nros_bounds_append_tl_retain _content)
+    if(DEFINED NROS_DERIVED_TL_RETAIN_BYTES)
+        string(APPEND ${_content}
+            "# The transient-local retention slot: the largest serialized bound over\n"
+            "# the types this image publishes TRANSIENT_LOCAL (ZPICO_TL_RETAIN_BYTES).\n"
+            "set(NROS_DERIVED_TL_RETAIN_BYTES ${NROS_DERIVED_TL_RETAIN_BYTES})\n")
+    endif()
+endmacro()
+
 macro(_nros_bounds_append_type_bounds _content)
     if(DEFINED NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS)
         string(APPEND ${_content}
@@ -1085,6 +1183,7 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
                     "set(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE ${NROS_DERIVED_SUBSCRIBER_LARGE_SIZE})\n")
             endif()
             _nros_bounds_append_type_bounds(_c)
+            _nros_bounds_append_tl_retain(_c)
         else()
             string(APPEND _c "# No knob is derived. Every one keeps its configured value.\n")
         endif()
@@ -1155,6 +1254,7 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
             endif()
             _nros_bounds_append_type_bounds(_c)
         endif()
+        _nros_bounds_append_tl_retain(_c)
     endif()
     set(_write TRUE)
     if(EXISTS "${_path}")
