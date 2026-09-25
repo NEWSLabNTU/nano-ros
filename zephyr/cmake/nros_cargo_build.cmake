@@ -285,7 +285,8 @@ function(_nros_load_derived_message_bounds)
         NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE
         NROS_DERIVED_SUBSCRIBER_LARGE_SIZE
         NROS_DERIVED_MAX_LARGE_SUBSCRIBERS
-        NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE)
+        NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE
+        NROS_DERIVED_TL_RETAIN_BYTES)
         if(DEFINED ${_v})
             set(${_v} "${${_v}}" PARENT_SCOPE)
         endif()
@@ -604,6 +605,23 @@ function(nros_resolve_knobs)
         _nros_resolve_knob(NROS_ENTITY_APP_QUERYABLES
             "${NROS_ENTITY_APP_QUERYABLES}")
     endif()
+    # The transient-local retention pool's DEMAND, the other half of the
+    # cache queryables NROS_DERIVED_MAX_QUERYABLES already counts. The CMake
+    # road carries it as NROS_DECLARED_TL_PUBLISHERS (`nros_entity_facts_env`)
+    # beside the sizing descriptor; a west build runs neither, so without this
+    # line nros-rmw-zenoh's pool fell to its builtin of 2 on an image whose
+    # queryable table had derived 5 -- the Autoware Safety Island's third
+    # latched publisher then failed create_publisher (-100) at boot, on QEMU
+    # and on Renode. Forwarded under the CMake road's name, so one reader
+    # serves both roads. On the derivable ladder with the sentinel passed
+    # literally (there is no Kconfig row; a count of declared endpoints is not
+    # a number a person states), so an environment value still wins and
+    # `check-knob-delivery` sees the call. Absent when the inventory refused
+    # to count (a publisher that states no durability): rung 4, and
+    # nros-rmw-zenoh keeps its builtin, which is today's number.
+    _nros_resolve_derivable_knob(NROS_DECLARED_TL_PUBLISHERS
+        "${NROS_KNOB_DERIVE_SENTINEL}" NROS_DERIVED_TL_PUBLISHERS
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
 
     # issue 1227 / phase-403 step 2 -- the DEPTHS, forwarded to the lane that
     # was emitted for them. `NanoRosEntityInventory.cmake` has published these
@@ -724,6 +742,73 @@ function(nros_resolve_knobs)
         _nros_resolve_knob(ZPICO_MAX_PUBLISHERS "${_nros_zpico_pubs}")
         _nros_resolve_knob(ZPICO_MAX_SUBSCRIBERS "${_nros_zpico_subs}")
         _nros_resolve_knob(ZPICO_MAX_QUERYABLES "${_nros_zpico_qrys}")
+        # The POSIX MUTEX and CONDITION-VARIABLE pools, for an image whose
+        # entity inventory DERIVED its queryable table. zenoh-pico gives every
+        # declared subscriber AND every declared queryable a callback-drop sync
+        # group (`_z_declare_subscriber` / `_z_declare_queryable` ->
+        # `_z_sync_group_create` -> `_z_sync_group_state_create`), which takes
+        # one `pthread_mutex_init` and one `pthread_cond_init`. Both Zephyr
+        # pools are static, and past either one the declaration fails and the
+        # application sees -100 naming nothing.
+        #
+        # The mutex floor above counts subscribers only, which held while the
+        # images it was measured on declared few queryables. A declared image
+        # can now carry dozens (six parameter services per node, one cache
+        # queryable per transient-local publisher), so for such an image the
+        # floor is re-taken here with both terms, and the cond pool -- which
+        # had no floor at all -- gets its own.
+        #
+        # MEASURED on the Autoware Safety Island under QEMU mps2/an385 (11
+        # subscribers, 31 queryables; gdb on `pthread_cond_init` and on the
+        # zpico declare-failure sites, 2026-09-25):
+        #   * conds: one for the session's sync group, one in `zpico_open`,
+        #     then exactly one per subscriber and per queryable. At the
+        #     Kconfig default of 16 the 8th subscriber failed (pool 0x0000ffff).
+        #   * mutexes: at 64 the 30th queryable failed with 11 subscribers and
+        #     29 queryables declared and the pool full, so 24 are the rest of
+        #     zenoh-pico's (session, liveliness, channels, scheduler).
+        # Same +4 headroom as the floor above. Only on a DERIVED table: an
+        # undeclared image's table is a default, not a demand, and the floor
+        # above keeps answering for it.
+        if(DEFINED NROS_DERIVED_MAX_QUERYABLES AND
+           NOT "${NROS_DERIVED_MAX_QUERYABLES}" STREQUAL "" AND
+           "${_nros_zpico_qrys}" STREQUAL "${NROS_DERIVED_MAX_QUERYABLES}")
+            set(_nros_zpico_cond_overhead 2)
+            set(_nros_zpico_mutex_overhead_q 24)
+            math(EXPR _nros_cond_floor
+                 "${_nros_zpico_subs} + ${_nros_zpico_qrys} + ${_nros_zpico_cond_overhead} + 4")
+            math(EXPR _nros_mutex_floor_q
+                 "${_nros_zpico_subs} + ${_nros_zpico_qrys} + ${_nros_zpico_mutex_overhead_q} + 4")
+            foreach(_nros_pool COND MUTEX)
+                if(_nros_pool STREQUAL "COND")
+                    set(_nros_have "${CONFIG_MAX_PTHREAD_COND_COUNT}")
+                    set(_nros_need "${_nros_cond_floor}")
+                    set(_nros_fixed "${_nros_zpico_cond_overhead}")
+                    set(_nros_what "condition variable")
+                else()
+                    set(_nros_have "${CONFIG_MAX_PTHREAD_MUTEX_COUNT}")
+                    set(_nros_need "${_nros_mutex_floor_q}")
+                    set(_nros_fixed "${_nros_zpico_mutex_overhead_q}")
+                    set(_nros_what "mutex")
+                endif()
+                if(NOT "${_nros_have}" STREQUAL "" AND _nros_have LESS _nros_need)
+                    message(FATAL_ERROR
+                        "CONFIG_MAX_PTHREAD_${_nros_pool}_COUNT=${_nros_have} is too small "
+                        "for ${_nros_zpico_subs} subscribers and ${_nros_zpico_qrys} queryables.\n"
+                        "\n"
+                        "  need at least ${_nros_need}"
+                        " = ${_nros_zpico_subs} subscribers + ${_nros_zpico_qrys} queryables"
+                        " + ${_nros_fixed} zenoh-pico fixed + 4 headroom\n"
+                        "\n"
+                        "zenoh-pico takes one pthread ${_nros_what} per subscriber and "
+                        "queryable sync group, and Zephyr's POSIX pool is static. Past it "
+                        "the declaration fails, and by the time that crosses the C ABI it "
+                        "is an opaque -100 transport error that names nothing.\n"
+                        "\n"
+                        "Set CONFIG_MAX_PTHREAD_${_nros_pool}_COUNT=${_nros_need} or higher.")
+                endif()
+            endforeach()
+        endif()
         # phase-412 W2 -- a fourth fixed C array (`liveliness[ZPICO_MAX_LIVELINESS]`,
         # `#if < 1 / #error` in zpico.c), so the same consumer-side floor. The
         # derived demand is never below 1 (the session's own node token), but
@@ -778,6 +863,14 @@ function(nros_resolve_knobs)
             NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE)
         _nros_resolve_knob(ZPICO_SERVICE_BUFFER_SIZE
             "${CONFIG_NROS_SERVICE_BUFFER_SIZE}")
+        # The transient-local retention SLOT: the largest serialized bound over
+        # the types this image publishes transient-local
+        # (`_nros_bounds_tl_retain` in NanoRosMessageBounds.cmake). The pool is
+        # ZPICO_MAX_TL_PUBLISHERS of these; a flat 1024 B slot was 5 x 1024 B
+        # on the Autoware Safety Island for five 13-105 B latched messages.
+        # No Kconfig row, so the sentinel literally, as for the type table.
+        _nros_resolve_derivable_knob(ZPICO_TL_RETAIN_BYTES
+            "${NROS_KNOB_DERIVE_SENTINEL}" NROS_DERIVED_TL_RETAIN_BYTES)
 
         # The payload-class trio. These size LARGE_PAYLOADS and SMALL_PAYLOADS
         # (subscriber.rs:199-200) and were reachable only from the environment

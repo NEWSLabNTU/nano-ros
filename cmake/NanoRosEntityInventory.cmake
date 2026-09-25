@@ -461,7 +461,7 @@ function(nros_derive_entity_inventory_knobs)
                NROS_DERIVED_EXECUTOR_MAX_NODES NROS_DERIVED_EXECUTOR_MAX_SC
                NROS_DERIVED_EXECUTOR_MAX_MONITORS NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS
                NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
-               NROS_ENTITY_APP_QUERYABLES
+               NROS_ENTITY_APP_QUERYABLES NROS_DERIVED_TL_PUBLISHERS
                NROS_ENTITY_INVENTORY_ENTITY_TOTAL
                NROS_ENTITY_DECLARED_DEPTH_STATUS NROS_ENTITY_DECLARED_DEPTH_REASON
                NROS_ENTITY_DECLARED_DEPTHS NROS_ENTITY_DECLARED_DEPTH_COUNT
@@ -684,6 +684,13 @@ function(nros_derive_entity_inventory_knobs)
     if(DEFINED NROS_ENTITY_APP_QUERYABLES)
         _nros_entity_publish(NROS_ENTITY_APP_QUERYABLES "${NROS_ENTITY_APP_QUERYABLES}")
     endif()
+    # The transient-local retention pool, from the same rule that put one
+    # cache queryable per such publisher into NROS_DERIVED_MAX_QUERYABLES.
+    # Absent when the rule refused (a publisher stated no durability): the
+    # fragment carries the reason as a comment, and the pool keeps its builtin.
+    if(DEFINED NROS_DERIVED_TL_PUBLISHERS)
+        _nros_entity_publish(NROS_DERIVED_TL_PUBLISHERS "${NROS_DERIVED_TL_PUBLISHERS}")
+    endif()
     foreach(_kind PUBLISHER SUBSCRIPTION TIMER SERVICE_SERVER SERVICE_CLIENT
                   ACTION_SERVER ACTION_CLIENT GUARD_CONDITION)
         if(DEFINED NROS_ENTITY_COUNT_${_kind})
@@ -852,6 +859,7 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_DERIVED_MAX_LIVELINESS
         NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
         NROS_ENTITY_APP_QUERYABLES
+        NROS_DERIVED_TL_PUBLISHERS
         NROS_ENTITY_COUNT_PUBLISHER
         NROS_ENTITY_COUNT_SUBSCRIPTION
         NROS_ENTITY_COUNT_TIMER

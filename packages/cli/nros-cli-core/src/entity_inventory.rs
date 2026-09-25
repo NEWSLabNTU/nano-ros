@@ -1058,6 +1058,19 @@ pub struct DerivedEntityKnobs {
     /// it is a separate table: the Autoware Safety Island carries 14 rate rows
     /// and 0 age rows.
     pub max_age_monitors: Option<usize>,
+    /// The TRANSIENT_LOCAL publishers this image declares -- the size of
+    /// `nros-rmw-zenoh`'s retention pool (`MAX_TL_PUBLISHERS`), and the same
+    /// count [`Self::max_queryables`] already adds one cache queryable per.
+    ///
+    /// The fact is `nros_sizing_descriptor::transient_local_publishers_over`'s
+    /// answer, kept whole: a `Refused` is published as a refusal, never as the
+    /// zero `max_queryables` counts it as. The table and the pool must size
+    /// from one answer (issue 1025), and before this the Zephyr resolver road
+    /// carried only the table's half: a west entry names no sizing descriptor
+    /// to cargo, so the pool fell to its builtin of 2 while the table derived
+    /// 5 -- measured on the Autoware Safety Island, whose third latched
+    /// publisher then failed `create_publisher` at boot on QEMU and on Renode.
+    pub tl_publishers: nros_sizing_descriptor::Fact<usize>,
     /// Per-kind counts across the image, in [`ALL_ENTITY_KINDS`] order.
     pub per_kind: BTreeMap<&'static str, usize>,
     /// Per-component `(pkg, component, entities, slots)`, so the output records
@@ -2592,13 +2605,12 @@ impl EntityInventory {
         // A REFUSAL contributes zero, the same direction every other refusal
         // here takes: the number stays what it was and the reason is published
         // beside it, rather than a build failing on a pool it cannot price.
-        let tl_queryables =
-            match crate::sizing_descriptor::transient_local_publishers_from_decls(&tl_decls) {
-                nros_sizing_descriptor::Fact::Stated(n) => n,
-                nros_sizing_descriptor::Fact::Refused(_) | nros_sizing_descriptor::Fact::Absent => {
-                    0
-                }
-            };
+        let tl_publishers =
+            crate::sizing_descriptor::transient_local_publishers_from_decls(&tl_decls);
+        let tl_queryables = match &tl_publishers {
+            nros_sizing_descriptor::Fact::Stated(n) => *n,
+            nros_sizing_descriptor::Fact::Refused(_) | nros_sizing_descriptor::Fact::Absent => 0,
+        };
         let max_queryables = n(EntityKind::ServiceServer.tag())
             + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES
             + tl_queryables
@@ -2639,6 +2651,7 @@ impl EntityInventory {
             max_sc,
             max_monitors,
             max_age_monitors,
+            tl_publishers,
             per_kind,
             per_component,
         }))
@@ -3801,6 +3814,26 @@ impl EntityInventory {
                     "set(NROS_ENTITY_APP_QUERYABLES {})\n",
                     k.max_queryables - k.infra_queryables
                 ));
+                // The transient-local retention pool, from the SAME fact the
+                // table above counted one cache queryable per. Published only
+                // when the rule STATED it: a refusal is carried as prose, so
+                // `nros_cargo_build.cmake` forwards nothing and
+                // `nros-rmw-zenoh` keeps its builtin and says why, rather than
+                // reading the zero the table had to count it as.
+                match &k.tl_publishers {
+                    nros_sizing_descriptor::Fact::Stated(n) => s.push_str(&format!(
+                        "# Transient-local publishers: the retention pool, one slot each,\n\
+                         # and one cache queryable each in the table above.\n\
+                         set(NROS_DERIVED_TL_PUBLISHERS {n})\n"
+                    )),
+                    nros_sizing_descriptor::Fact::Refused(why) => s.push_str(&format!(
+                        "# NROS_DERIVED_TL_PUBLISHERS is not derived: {}\n",
+                        why.replace('\n', " ")
+                    )),
+                    nros_sizing_descriptor::Fact::Absent => s.push_str(
+                        "# NROS_DERIVED_TL_PUBLISHERS is not derived: no endpoint is declared.\n",
+                    ),
+                }
                 s.push_str(
                     "# One node per declared component. Over-counts if two share\n                     # a name (slots are keyed by name); UNDER-counts only for a\n                     # bridge, whose two nodes are runtime strings declared\n                     # nowhere -- that path names this knob when the table fills.\n",
                 );
@@ -5612,6 +5645,31 @@ execution:
         assert_eq!(inv.derive().knobs().expect("derived").max_queryables, 1);
     }
 
+    /// The transient-local retention pool travels BESIDE the queryable table,
+    /// from the same rule, and a refusal travels as a refusal.
+    ///
+    /// The table counts a refused rule as zero, which is its safe direction;
+    /// the pool must not, because a published `0` would size a retention pool
+    /// of no slots for an image that may have latched publishers. So the
+    /// fragment states a count only when the rule stated one. Measured before
+    /// this on the Autoware Safety Island (a Zephyr west entry): the table
+    /// derived 31 with five latched publishers in it, the pool never heard of
+    /// them and kept its builtin 2, and the third `create_publisher` failed.
+    #[test]
+    fn the_transient_local_count_is_published_only_when_the_rule_states_it() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated("p", "n", &["action_server:example/action/Fib:/fib"]));
+        let k = inv.derive().knobs().expect("derived").clone();
+        assert_eq!(k.tl_publishers, nros_sizing_descriptor::Fact::Stated(1));
+        let cmake = inv.to_cmake();
+        assert!(
+            cmake.contains("set(NROS_DERIVED_TL_PUBLISHERS 1)\n"),
+            "{cmake}"
+        );
+        // The refusal half is `a_silent_publisher_refuses_the_transient_local_count`
+        // in `from_model_tests`, beside the model it reads.
+    }
+
     /// Issue 1270 -- the configure's inventory is metadata MERGED with the
     /// model, and metadata carries no bringup features: the model's
     /// declaration must survive the merge and reach the CMake knob.
@@ -6665,6 +6723,27 @@ contracts:
         history: keep_last
 "#,
         )
+    }
+
+    /// `/talker/quiet` states no durability, so no transient-local count is a
+    /// bound: the fragment carries the refusal and no number, and the pool
+    /// keeps its builtin rather than a zero.
+    #[test]
+    fn a_silent_publisher_refuses_the_transient_local_count() {
+        let inv = EntityInventory::from_model("model", &model_with_four_policies())
+            .expect("model describes wiring");
+        let k = inv.derive().knobs().expect("derived").clone();
+        assert!(
+            matches!(k.tl_publishers, nros_sizing_descriptor::Fact::Refused(_)),
+            "{:?}",
+            k.tl_publishers
+        );
+        let cmake = inv.to_cmake();
+        assert!(!cmake.contains("set(NROS_DERIVED_TL_PUBLISHERS"), "{cmake}");
+        assert!(
+            cmake.contains("# NROS_DERIVED_TL_PUBLISHERS is not derived: publisher /quiet"),
+            "the refusal names the silent row: {cmake}"
+        );
     }
 
     /// One entity row as the acceptance below reads it: `(kind, topic, depth,

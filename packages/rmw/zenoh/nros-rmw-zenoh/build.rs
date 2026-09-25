@@ -61,6 +61,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=ZPICO_PUBLISHER_TX_BUFFER_SIZE");
     // phase-455 W5 / issue 1341 — the TRANSIENT_LOCAL retention pool.
     println!("cargo:rerun-if-env-changed=ZPICO_MAX_TL_PUBLISHERS");
+    // The retention pool's DECLARED demand, for a road with no descriptor
+    // (`transient_local_publisher_demand`).
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_TL_PUBLISHERS");
     println!("cargo:rerun-if-env-changed=ZPICO_TL_RETAIN_BYTES");
 
     // Phase 214.C.3 — default coordinated with
@@ -716,8 +719,22 @@ fn declared_ring_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
 /// This wrapper only turns the descriptor's three answers into the two a
 /// consumer needs — a demand to floor, or nothing — and prints the refusal,
 /// because a refusal that reaches no log is a default nobody chose (D6).
+///
+/// **No descriptor: the DECLARED carrier.** A cmake / Zephyr west / NuttX entry
+/// names no descriptor to cargo (issue 1393), and before this the pool then
+/// kept its builtin of [`TL_PUBLISHERS_DEFAULT`] while the queryable table --
+/// sized from the same rule on the same road -- counted every transient-local
+/// publisher. Measured on the Autoware Safety Island (Zephyr, west): table 31,
+/// pool 2, five latched publishers, and the third `create_publisher` failed at
+/// boot. `NROS_DECLARED_TL_PUBLISHERS` is that road's carrier (the CMake road
+/// composes it in `NanoRosEntityFacts.cmake`, the Zephyr resolver forwards the
+/// entity inventory's `NROS_DERIVED_TL_PUBLISHERS` under the same name), and
+/// `nros-zpico-build` already reads it for the table. The descriptor still
+/// wins when both are present, as it does there.
 fn transient_local_publisher_demand(desc: Option<&SizingDescriptor>) -> Option<usize> {
-    let desc = desc?;
+    let Some(desc) = desc else {
+        return declared_transient_local_publishers(declared_fact("NROS_DECLARED_TL_PUBLISHERS"));
+    };
     match nros_sizing_descriptor::transient_local_publishers(desc) {
         Fact::Stated(n) => Some(n),
         Fact::Absent => None,
@@ -728,6 +745,36 @@ fn transient_local_publisher_demand(desc: Option<&SizingDescriptor>) -> Option<u
             ));
             None
         }
+    }
+}
+
+/// The DECLARED road's transient-local count, or `None` for "nobody said".
+///
+/// The same three spellings `nros-zpico-build`'s reader of this carrier
+/// accepts: absent (or empty, issue 1429) is undeclared; the word `refused` is
+/// a composer that looked and could not answer, which keeps the builtin and
+/// says so; a count is the demand. A malformed value panics there and here,
+/// for the reason given there -- a value that reads as applied and is not is
+/// worse than no value.
+fn declared_transient_local_publishers(v: Option<String>) -> Option<usize> {
+    let v = v?;
+    let v = v.trim();
+    if v == "refused" {
+        warn(&format!(
+            "NROS_DECLARED_TL_PUBLISHERS=refused: the entry declares a publisher whose \
+             `durability` nothing states, so no count of transient-local publishers is a \
+             bound. The transient-local retention pool keeps {TL_PUBLISHERS_DEFAULT} \
+             slot(s) (ZPICO_MAX_TL_PUBLISHERS)"
+        ));
+        return None;
+    }
+    match v.parse::<usize>() {
+        Ok(n) => Some(n),
+        Err(_) => panic!(
+            "NROS_DECLARED_TL_PUBLISHERS={v:?} is neither a count nor `refused`. It is how \
+             many TRANSIENT_LOCAL publishers the entry declares, which sizes the retention \
+             pool (ZPICO_MAX_TL_PUBLISHERS)."
+        ),
     }
 }
 
