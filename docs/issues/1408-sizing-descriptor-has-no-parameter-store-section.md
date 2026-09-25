@@ -90,11 +90,21 @@ section.
 
 The four questions above, answered:
 
-1. **Per image or per node?** BOTH, per field, because the storage is. `declared`
-   is the image total; `max_parameters` and `max_param_name_len` are the store's,
-   which is per node. There is no partial per-node state to model, because
-   `ParamDeclarations::from_model` refuses outright unless every node declares —
-   so the section is one table and not a row per node.
+1. **Per image or per node?** IMAGE-WIDE, every field. There is no partial
+   per-node state to model, because `ParamDeclarations::from_model` refuses
+   outright unless every node declares — so the section is one table and not a
+   row per node.
+
+   **This answer said "the store ... is per node" until issue 1450 measured it,
+   and that was wrong.** `ParameterStorage<const N>` is ONE flat
+   `[Option<ParameterEntry>; N]` for the whole image, each entry carrying its own
+   node; `ParameterServer::capacity` has said so since phase-426 W1 ("the arena
+   is SHARED across nodes, so this is not a per-node budget: `MAX_PARAMETERS`
+   bounds the image, not each node"). So `max_parameters` is a CAPACITY the
+   producer SUMS over nodes, `max_param_name_len` is the longest single name
+   image-wide, and `declared` differs from `max_parameters` only by the per-node
+   seeded `use_sim_time`. `nros_params::MAX_PARAMETERS` carries the canonical
+   statement.
 2. **Capacities or declarations?** NEITHER, for the three capacities: they are
    RFC-0100 D1 **target** facts owned by `[board.knobs.params]` (an MCU and a PC
    want different string lengths for the same node), so the schema deliberately
