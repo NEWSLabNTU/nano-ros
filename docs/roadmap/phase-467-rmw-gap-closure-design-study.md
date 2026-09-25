@@ -77,8 +77,9 @@ not:
    `nullptr` listener (`src/graph.cpp:359`, `src/graph_query.cpp:95`), so
    Cyclone has no change signal at all. This asymmetry is the whole of row 8's
    cost and the ledger does not record it.
-4. **`rust:Time::to_ros_msg` has a hard blocker with an issue already open**,
-   and it is not the one the row names. Issue 1428
+4. **`rust:Time::to_ros_msg` had a hard blocker with an issue already open**,
+   and it was not the one the row names. **RESOLVED, and the row has since
+   SHIPPED — see "Q3 … LANDED".** Issue 1428
    ([docs/issues/archived/1428-builtin-interfaces-generated-three-times-none-canonical.md](../issues/archived/1428-builtin-interfaces-generated-three-times-none-canonical.md))
    measured that `builtin_interfaces` is pre-generated **three times** under
    `packages/interfaces/` — `nros-builtin-interfaces`,
@@ -144,7 +145,7 @@ doing `log_severity_t` alone leaves a default nothing can set.
 | `c:node_get_graph_guard_condition` | a backend edge, per backend | nothing |
 | `c:lifecycle_change_state` | nothing; it is just expensive | nothing |
 | `c:logging_rosout_enabled` | Q4's verdict | the two `declined` rows |
-| `rust:Time::to_ros_msg` | **issue 1428** | nothing |
+| `rust:Time::to_ros_msg` | ~~issue 1428~~ (resolved by phase-465; row SHIPPED, see Q3 "LANDED") | nothing |
 | `cpp:Subscription::get_actual_qos` | an executor reachable from the dispatch object | nothing |
 | `c:log_severity_t` | the unset-level mechanism | — |
 | `rust:Logger::set_default_level` | the unset-level mechanism | — |
@@ -174,7 +175,8 @@ doing `log_severity_t` alone leaves a default nothing can set.
    nobody has asked for; see Row 7.
 10. **`cpp:Subscription::get_actual_qos`** — the newest row, and the one whose
     answer belongs to phase-456 rather than here; see Row 13.
-11. **`rust:Time::to_ros_msg`** — blocked behind issue 1428. Do not start.
+11. **`rust:Time::to_ros_msg`** — was blocked behind issue 1428; phase-465
+    resolved it and the row SHIPPED (Q3 "LANDED", 2026-09-25).
 12. **`rust:init_with_args`** — owed to a wave that does not exist yet. Leave.
 
 Steps 1–5 are a day's work plus the tier each earns. Steps 6–12 are each their
@@ -445,6 +447,57 @@ canonical crate, and because it is the shape the C++ lane already proved. Enter
 it knowing it costs a codegen-version bump — that is the price of the
 structural-typing substitute, and it is worth stating in the row so nobody
 prices this as "one `impl From`".
+
+### LANDED — 2026-09-25, option (a), and what the prices turned out to be
+
+Issue 1428 was **already resolved** when this row was picked up: phase-465 landed
+all five waves on 2026-09-24/25, so `packages/interfaces/generated/humble/` is one
+tree of six crates and the triple is gone. The blocker this section is built on
+was closed by someone else; nothing here had to re-open it.
+
+Shipped as **(a)**, with one refinement this section did not name. The trait is
+`nros_core::SecNanosecMsg` — `fn from_sec_nanosec(sec: i32, nanosec: u32) -> Self`
+— and `Time::to_ros_msg<M: SecNanosecMsg>(&self) -> M` is the inherent method
+that goes through it. Codegen implements it keyed on the **SHAPE**, not on a
+package name: `is_sec_nanosec_msg` in
+`packages/cli/rosidl-codegen/src/generator/msg.rs` matches a message whose field
+set is exactly `{ int32 sec, uint32 nanosec }`. That is the same binding set the
+C++ template has (it takes
+`builtin_interfaces/msg/Duration` too), and it keeps an upstream package name out
+of the pack. Name-keying would not have been foreign — `stamp_offset_for`, ten
+lines above, keys on `builtin_interfaces`/`Time` — but that predicate answers a
+question about a wire LAYOUT only that type produces, and this one answers the
+question the template answers.
+
+**No `Result`**, per the reasoning above, recorded as `adopt-bounded`.
+
+**The codegen-version bump was real and was the cheaper half.**
+`NROS_CODEGEN_VERSION` 7 → 8, `_MIN` unchanged at 2 (additive: a version-7 tree
+names nothing withdrawn). Measured cost: the constant plus its rationale
+paragraph, the two committed NuttX snapshot headers, one `--write-baseline`, and
+**20 golden fixtures re-blessed with a one-line diff each** — the version number,
+nothing else, because the corpus holds no `{ sec, nanosec }` message. The surface
+gate reported the move as exactly two ADDED rows
+(`rust|trait|nros_core::SecNanosecMsg` and the `pub use time::` re-export that
+publishes it), which is what an additive move should look like.
+
+**What this section did not price, and it is the thing to remember.** The
+committed `packages/interfaces/` tree stamps `NROS_EMITTED_CODEGEN_VERSION`, so
+the bump obliges a `just generate-interfaces` run — and on an ament host whose
+ROS has moved since phase-465 blessed the tree, that run carries the host's drift
+in with it. Measured here: `rosgraph_msgs` 1.2.2 → **1.2.3 with eight new message
+types**, plus `ament_version` bumps on five other crates, none of it caused by
+this change. The drift was reverted hunk by hunk and the tree's only diff is the
+version constant in six `lib.rs` files and the two `impl SecNanosecMsg` blocks in
+`nros-builtin-interfaces`. Anyone bumping the codegen version again should expect
+to do the same separation, and a separate change should own the `rosgraph_msgs`
+move.
+
+Ledger after: `rust:Time::to_ros_msg` is `divergence` + `adopt-bounded` (the name
+CORRELATES now, so it dropped out of the report's non-matching set entirely), and
+the trait adds two ours-only rows, `rust:SecNanosecMsg` and
+`rust:SecNanosecMsg::from_sec_nanosec`, both `divergence`. Net `gap` rows in
+`timer.json`: one fewer.
 
 ## Q4 — settle the `/rosout` family one way
 

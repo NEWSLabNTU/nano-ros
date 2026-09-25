@@ -120,8 +120,10 @@ class Time {
     /// Time()`. nros-cpp is header-only and message types are generated per
     /// user package, so the client library cannot name one; a template that
     /// binds to the generated struct is the same conversion without the
-    /// dependency. (`rust:Time::to_ros_msg` is the same call one language over,
-    /// still recorded as a gap.)
+    /// dependency. (`rust:Time::to_ros_msg` is the same call one language over.
+    /// Rust has no structural bound, so phase-467 Q3 shipped it as an AUTHORED
+    /// trait `nros_core::SecNanosecMsg` that codegen implements for the same
+    /// `{ sec, nanosec }` shape this template binds to.)
     ///
     /// ```cpp
     /// node.now().to_msg(msg.header.stamp);

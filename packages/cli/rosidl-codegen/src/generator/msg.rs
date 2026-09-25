@@ -212,6 +212,7 @@ pub fn generate_nros_message_package(
         message_name,
         type_hash,
         stamp_offset,
+        is_sec_nanosec_msg: is_sec_nanosec_msg(message),
         fields,
         constants,
         has_fields,
@@ -276,6 +277,7 @@ pub fn generate_nros_inline_message(
         package_name,
         message_name,
         stamp_offset: stamp_offset_for(message),
+        is_sec_nanosec_msg: is_sec_nanosec_msg(message),
         type_hash,
         fields,
         constants,
@@ -497,6 +499,118 @@ fn stamp_offset_for(message: &rosidl_parser::ast::Message) -> Option<usize> {
             if is_header || is_time { Some(4) } else { None }
         }
         _ => None,
+    }
+}
+
+/// phase-467 Q3 — is this message `builtin_interfaces/msg/Time`'s field set,
+/// `{ int32 sec, uint32 nanosec }`?
+///
+/// A message that is gets `impl nros_core::SecNanosecMsg`, which is what makes
+/// `nros_core::Time::to_ros_msg()` able to return it. `nros-core` can never name
+/// a message type — every generated crate depends on it, and message types are
+/// generated per user package — so the conversion has to be implemented on the
+/// generated side, and the trait is the seam.
+///
+/// **SHAPE, not name.** `stamp_offset_for` above keys on `builtin_interfaces` /
+/// `Time` because it answers a question about a WIRE LAYOUT that only that type
+/// produces. This one answers the question the C++
+/// `template <typename TimeMsgT> Time::to_msg(TimeMsgT&)`
+/// (`packages/api/nros-cpp/include/nros/time.hpp`) answers, and that template
+/// binds to anything with `sec` / `nanosec`. Keying on the shape gives the Rust
+/// substitute the same binding set as the template it stands in for, and keeps a
+/// hard-coded upstream package name out of the pack.
+///
+/// `builtin_interfaces/msg/Duration` matches too, and so does any user message
+/// with that field set — exactly as in C++, where `time.to_msg(duration_msg)`
+/// also compiles.
+fn is_sec_nanosec_msg(message: &rosidl_parser::ast::Message) -> bool {
+    use rosidl_parser::ast::{FieldType, PrimitiveType};
+    let [sec, nanosec] = &message.fields[..] else {
+        return false;
+    };
+    sec.name == "sec"
+        && matches!(sec.field_type, FieldType::Primitive(PrimitiveType::Int32))
+        && nanosec.name == "nanosec"
+        && matches!(
+            nanosec.field_type,
+            FieldType::Primitive(PrimitiveType::UInt32)
+        )
+}
+
+#[cfg(test)]
+mod sec_nanosec_msg_tests {
+    use super::*;
+    use rosidl_parser::ast::{Constant, ConstantValue, Field, FieldType, Message, PrimitiveType};
+
+    fn field(name: &str, field_type: FieldType) -> Field {
+        Field {
+            name: name.to_string(),
+            field_type,
+            default_value: None,
+        }
+    }
+
+    fn time_fields() -> Vec<Field> {
+        vec![
+            field("sec", FieldType::Primitive(PrimitiveType::Int32)),
+            field("nanosec", FieldType::Primitive(PrimitiveType::UInt32)),
+        ]
+    }
+
+    fn msg(fields: Vec<Field>) -> Message {
+        Message {
+            fields,
+            constants: vec![],
+        }
+    }
+
+    #[test]
+    fn time_and_duration_shape_matches() {
+        // `Time.msg` and `Duration.msg` are the same two lines upstream, which
+        // is why this predicate is about the shape and not about a name.
+        assert!(is_sec_nanosec_msg(&msg(time_fields())));
+    }
+
+    #[test]
+    fn a_constant_does_not_disqualify_the_shape() {
+        // Constants are not fields: they neither serialize nor take part in the
+        // conversion, so a message that declares one still HAS the field set.
+        let mut m = msg(time_fields());
+        m.constants.push(Constant {
+            name: "EPOCH".to_string(),
+            constant_type: FieldType::Primitive(PrimitiveType::Int32),
+            value: ConstantValue::Integer(0),
+        });
+        assert!(is_sec_nanosec_msg(&m));
+    }
+
+    #[test]
+    fn near_misses_do_not_match() {
+        // Wrong width: `uint32 sec` would silently reinterpret a pre-epoch
+        // stamp, so the signedness is part of the shape.
+        assert!(!is_sec_nanosec_msg(&msg(vec![
+            field("sec", FieldType::Primitive(PrimitiveType::UInt32)),
+            field("nanosec", FieldType::Primitive(PrimitiveType::UInt32)),
+        ])));
+        // Wrong ORDER. The emitted `Self { sec, nanosec }` initialises by name
+        // and would compile either way, so this is the predicate being exact
+        // rather than the impl needing it: the two fields the other way round
+        // are a different CDR layout, i.e. a different wire type that happens
+        // to be the same size.
+        assert!(!is_sec_nanosec_msg(&msg(vec![
+            field("nanosec", FieldType::Primitive(PrimitiveType::UInt32)),
+            field("sec", FieldType::Primitive(PrimitiveType::Int32)),
+        ])));
+        // A third field: the impl's `Self { sec, nanosec }` would not compile.
+        let mut extra = time_fields();
+        extra.push(field("frame", FieldType::String));
+        assert!(!is_sec_nanosec_msg(&msg(extra)));
+        // And the shapes with nothing to do with time.
+        assert!(!is_sec_nanosec_msg(&msg(vec![field(
+            "data",
+            FieldType::String
+        )])));
+        assert!(!is_sec_nanosec_msg(&msg(vec![])));
     }
 }
 

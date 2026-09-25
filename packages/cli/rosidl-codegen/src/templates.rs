@@ -222,6 +222,15 @@ pub struct MessageNrosTemplate<'a> {
     /// offset of `stamp.sec` (4-byte encapsulation header + zero
     /// preceding fields). `None` = no stamp to monitor.
     pub stamp_offset: Option<usize>,
+    /// phase-467 Q3 — true when this message's field set is exactly
+    /// `{ int32 sec, uint32 nanosec }`, i.e. `builtin_interfaces/msg/Time` and
+    /// its `Duration` twin. Such a message gets an
+    /// `impl nros_core::SecNanosecMsg`, which is what lets
+    /// `nros_core::Time::to_ros_msg()` return it. Decided by SHAPE, not by
+    /// package name: it is the Rust stand-in for the C++
+    /// `template <typename TimeMsgT> Time::to_msg(TimeMsgT&)`, and that template
+    /// binds structurally too.
+    pub is_sec_nanosec_msg: bool,
     pub fields: Vec<NrosField>,
     pub constants: Vec<MessageConstant>,
     /// True if there are fields to serialize/deserialize

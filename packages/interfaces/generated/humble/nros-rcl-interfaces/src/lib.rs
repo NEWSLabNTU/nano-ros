@@ -11,7 +11,7 @@
 /// The runtime declares the versions it accepts in `nros_core::codegen_version`;
 /// the assertion below is what turns a disagreement into a build failure rather
 /// than a wrong field offset several frames down at run time.
-pub const NROS_EMITTED_CODEGEN_VERSION: u32 = 7;
+pub const NROS_EMITTED_CODEGEN_VERSION: u32 = 8;
 
 // Crate scope, deliberately: rustc evaluates a crate-scope `const` item for a
 // crate that is merely COMPILED, so `cargo check` reports this. An inline

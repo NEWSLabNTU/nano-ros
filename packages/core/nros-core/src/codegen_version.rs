@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 7;
+pub const NROS_CODEGEN_VERSION: u32 = 8;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -127,6 +127,24 @@ pub const NROS_CODEGEN_VERSION: u32 = 7;
 /// tagged reference and keys on the same `c|type|<header>|<name>` row as the
 /// struct itself. That is the gate being fail-closed on text, which is the
 /// property the version-4 paragraph above argues for keeping.
+///
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 8 (phase-467 Q3). ADDITIVE,
+/// and the first move that adds a TRAIT generated code implements — which is
+/// the trigger the doc above names first. `nros_core::SecNanosecMsg` is the
+/// Rust stand-in for the C++ `template <typename TimeMsgT> Time::to_msg`: Rust
+/// has no structural bound for "has `sec` and `nanosec`", so
+/// `rosidl-codegen` emits `impl nros_core::SecNanosecMsg for <Msg>` for every
+/// generated message with that exact field set, and
+/// `nros_core::Time::to_ros_msg()` returns through it. The surface moved by two
+/// rows, both additions: the trait, and the `pub use time::` re-export that
+/// publishes it.
+///
+/// A version-7 tree still runs: it names nothing that was withdrawn, and the
+/// impl is something a NEWER tree emits rather than something an older one is
+/// missing. What an older tree loses is only the conversion itself —
+/// `t.to_ros_msg()` into one of ITS types will not resolve until it is
+/// regenerated, which is a compile error at the call site on the day someone
+/// writes the call, not a silent mismatch. So the floor stays where it is.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

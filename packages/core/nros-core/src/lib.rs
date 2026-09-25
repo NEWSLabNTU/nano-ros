@@ -116,7 +116,7 @@ pub use lifecycle::{LifecycleState, LifecycleTransition, TransitionResult};
 pub use logger::{Logger, OnceFlag};
 pub use message_info::{MessageInfo, PUBLISHER_GID_SIZE, RawMessageInfo, pad_publisher_gid};
 pub use service::{ServiceCallback, ServiceClient, ServiceRequest, ServiceServer};
-pub use time::{Duration, Time};
+pub use time::{Duration, SecNanosecMsg, Time};
 pub use types::{RosMessage, RosService, ViewableMessage};
 
 // Re-export serdes types for convenience

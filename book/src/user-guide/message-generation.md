@@ -243,6 +243,31 @@ impl RosService for AddTwoInts {
 }
 ```
 
+**A timestamp message gets `SecNanosecMsg`, so `Time::to_ros_msg()` can return
+it:**
+```rust
+impl nros_core::SecNanosecMsg for Time {
+    fn from_sec_nanosec(sec: i32, nanosec: u32) -> Self { Self { sec, nanosec } }
+}
+```
+
+Emitted for every message whose field set is exactly `{ int32 sec, uint32
+nanosec }` — `builtin_interfaces/msg/Time`, its `Duration` twin, and any message
+of yours with that shape. It is what makes the call a publisher writes work:
+
+```rust
+msg.header.stamp = node.now().to_ros_msg();
+```
+
+`nros-core` cannot name a message type — every generated crate depends on it, and
+your message crates are generated from *your* packages — so the conversion is
+implemented on the generated side and the trait is the seam. The C++ side spells
+the same thing as a template (`node.now().to_msg(msg.header.stamp)`); Rust has no
+structural bound, so it needs the named trait. There is no `Result`: `nros`'s
+`Time` already *is* `{ sec, nanosec }`, so nothing can fail. (`rclrs` returns
+`Result<_, TryFromIntError>` because its `Time` is `i64` nanoseconds; a ported
+`t.to_ros_msg()?` will not compile here, and deleting the `?` is the fix.)
+
 ## Standalone Package Mode
 
 Examples are standalone copy-out projects: each carries its own
