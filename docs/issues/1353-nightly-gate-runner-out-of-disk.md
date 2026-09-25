@@ -957,3 +957,89 @@ about what is left BEHIND rather than what is needed DURING.
 Acceptance is unchanged — and its first clause, "a scheduled run reaching a
 VERDICT on `check build` and `check no-std`", is still unmet: this run reached
 neither.
+
+## The road this issue wrote off is open: a `container:` job CAN delete the host's preinstalled tooling (2026-09-25)
+
+Every section above that prices a remedy ends at the same two roads — prune
+what the tier builds, or move the lane off a hosted runner — because of one
+sentence, in `reclaim-disk.sh`'s own header and repeated in the 2026-09-23
+measurement:
+
+> Raising the runner is not available here (both lanes are `container:` jobs,
+> and a container cannot delete the host's preinstalled tooling).
+
+**That is true of the image's filesystem and false of anything the job
+MOUNTS**, and this issue already contains the counter-example. Candidate 1 of
+the reclaim is `$RUNNER_TOOL_CACHE`, i.e. `/__t`, which IS the host's
+`/opt/hostedtoolcache` — mounted into the container by the runner — and
+deleting through it has freed a measured **5.2 G every run** since phase-466
+W4. A bind mount is not an overlay layer: unlinking through one frees space on
+the same `/dev/root` that `/__w` lives on, which is the filesystem every number
+in this issue is measured against. The only thing special about `/__t` is that
+the runner mounts it for us. A job may mount whatever else it likes.
+
+So the third road exists and had been ruled out by a premise rather than by a
+measurement.
+
+### What landed
+
+`host-tests.yml`'s integration job now declares:
+
+```yaml
+      volumes:
+        - /usr/local/lib/android:/__host-reclaim/android
+        - /usr/share/dotnet:/__host-reclaim/dotnet
+        - /usr/local/.ghcup:/__host-reclaim/ghcup
+        - /opt/ghc:/__host-reclaim/ghc
+        - /usr/share/swift:/__host-reclaim/swift
+        - /usr/local/share/powershell:/__host-reclaim/powershell
+```
+
+and `reclaim-disk.sh` gains one candidate class: the CHILDREN of
+`/__host-reclaim`, emptied and reported exactly like the other two. The mount
+list lives in the workflow because that is the only place a host path can be
+named; the script removes what was mounted and nothing else, so a lane that
+mounts nothing behaves exactly as before.
+
+The safety argument is the one candidate 1 already makes and needs no new
+premise: this job's compilers, Python and Node come from the `nano-ros-ci`
+image, its JavaScript actions run on the runner's bundled node under `/__e`,
+and no step in the workflow is a `setup-*` action. Nothing in any of these
+lanes reads Android, .NET, GHC, Swift or PowerShell.
+
+### What is NOT established, and how it gets answered
+
+**How much it frees.** Those six trees sum to roughly 20 G on the published
+`ubuntu-22.04` image — but this runner reports a **146 G** disk where that
+image has 75 G, so it may not be that image, and nothing has priced them here.
+The arm prints its own `du` per tree and the `freed N MB` delta into the
+transcript artifact, which is the one channel this issue established survives a
+dead runner, so the next `host-tests` run on `main` answers it. Against the
+tier's reproducible ~24.8 GiB of entry headroom and the ~22 G of growth the two
+after-transcripts attribute, roughly 20 G would be decisive and roughly 5 G
+would not; the run says which.
+
+**Whether the tier then PASSES.** It does not say that and cannot. No tier-1
+verdict has been produced on this lane since 2026-06-17, so a run that gets
+further is progress and not a verdict — the same caveat the 2026-09-23 section
+attaches to the first reclaim, and the "expect a second fault behind this one"
+warning stands unchanged.
+
+### The sweep, and why it is staged
+
+Three jobs call `reclaim-disk.sh`: `host-tests`' integration job, `gate`'s
+`check` job (schedule/dispatch only), and `live-peer`'s `board` job. Only the
+first got the mounts.
+
+That is deliberate and it is a deferral, not an oversight. `gate`'s `check` job
+is the source of the repository's ONE required status check, and a `volumes:`
+entry that docker refuses would fail every pull request before a step ran.
+`host-tests` gates nothing and reaches its container in about ninety seconds,
+so it prices the mount at no risk to anyone's merge. The arm itself is already
+exercised off a runner — `NROS_CI_HOST_RECLAIM_ROOT` is a test seam, and the
+probe covers a populated tree, an empty one, a non-directory child and an
+absent root. When a `host-tests` run has reported a delta, the same six lines
+belong on the other two jobs.
+
+Acceptance is unchanged: a scheduled run reaching a VERDICT on `check build`
+and `check no-std`, three nights running.

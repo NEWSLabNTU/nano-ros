@@ -390,3 +390,56 @@ upgrade it to a verdict without a run that preserved its log.
 
 The disk mode's measured range widens to **57 m 12 s – 1 h 43 m 34 s** over six
 jobs; the lost-communication pair stays at 2 h 30 m.
+
+## Remedy 1 is LANDED, and the number is not the one this issue proposed
+
+`timeout-minutes: 150` on `nros-tests integration (host)` and
+`timeout-minutes: 45` on `workspace unit tests`. That is remedy 1, eight
+instances after it was first written down.
+
+**Be precise about what it buys, because it is less than the remedy text
+implies.** The section above measures the two terminal modes at 57 m – 1 h 44 m
+(disk) and 2 h 30 m (runner lost). Both are already below the ceiling, so this
+shortens **nothing that has been observed**. What it removes is the tail: with
+no `timeout-minutes` a job that hangs for a reason neither mode covers runs to
+GitHub's six-hour default and holds the group for all of it, and the 2 h 30 m
+that bounded the two lost-runner jobs is, as this issue says, "a bound
+somebody's infrastructure chose". Now it is one this repository chose.
+
+**And it corrects this issue's own arithmetic.** The seventh-wedge section
+concludes: "any `timeout-minutes` below 150 makes the outage a number this
+repository owns." That prices the two ways the job DIES and never prices the
+way it would LIVE, which is the only duration a timeout can destroy. Measured
+on job 107808557432:
+
+```
+Initialize containers          1.3
+Build nros CLI                 3.0
+just setup native              2.8
+Build rust core fixtures      14.2
+Build workspace fixtures      60.1
+disk report + reclaim + upload 0.7
+just ci tier1                 22.5   <- died here, one fifth of the way in
+```
+
+The job reaches the tier at **~82 minutes** and had spent **105** when the tier
+failed. Job 107977492420 agrees (13.7 + 61.4, tier reached at ~82 m). A
+COMPLETE tier 1 — `check` plus `rust-rtos-link-check` plus `test-all` — has not
+run on this lane since 2026-06-17, so what it costs on top of those 82 minutes
+is **unknown**. A timeout under 150 would therefore be a guess against an
+unmeasured number, and the failure mode of guessing low is the one this
+repository cares about most: it converts a verdict into no verdict, which is
+the disease, not the cure. 150 is the largest value that is still strictly a
+ceiling; when the lane answers again, the healthy duration becomes measurable
+and this should come down to it plus a margin.
+
+Remedy 2 (uploads that survive a full disk) and remedy 3 (a group key that lets
+a newer push supersede a run whose tier already failed) are **not** landed. The
+same PR aims at the cause instead — see issue 1353's new reclaim arm — on the
+grounds that a wedge that is never reached needs no upload that survives it.
+
+Filed alongside: **issue 1500**, the arithmetic underneath this one. The job
+costs 82–150 minutes and its push trigger fires every ~47 minutes, so 14 of the
+30 most recent runs had their integration job cancelled with **zero steps
+recorded**. That is a loss of signal this issue's remedies do not touch, and it
+outlives the wedge.
