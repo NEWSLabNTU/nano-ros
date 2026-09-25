@@ -96,6 +96,13 @@ tools/*
 # and a shared sizes-header mirror can only hold one of them.
 /target-param-services/
 
+# Issue 1472 — `just check test-targets` runs the tests of workspace-excluded
+# crates in its own target dir. Issue 1491: this line was the one scoped dir
+# `nros_scoped_target_dir` produces that nothing ignored, so a 329 MB tree sat
+# untracked at the repo root; `check-scoped-target-dirs-ignored` now derives
+# the required entries from the call sites instead of trusting this list.
+/target-excluded-tests/
+
 # Per-RMW example build dirs (target-xrce/ etc.) — build output, never committed
 examples/**/target-*/
 

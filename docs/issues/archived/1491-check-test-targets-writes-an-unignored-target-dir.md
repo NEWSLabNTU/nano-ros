@@ -2,7 +2,8 @@
 id: 1491
 title: "`just check test-targets` writes a 329 MB `target-excluded-tests/` at the
   repo root that `.gitignore` does not cover — and `disk-report.sh` says it does"
-status: open
+status: resolved
+resolved_in: 2026-09-25
 type: bug
 area: build
 related: [0400]
@@ -76,3 +77,54 @@ drifts" shape as the rmw parity map. Whoever takes it should check
 
 Found while measuring issue 1473 (the gate ran, the dir appeared); not caused
 by that change and not fixed on its branch, to keep that one single-purpose.
+
+## Resolution — 2026-09-25
+
+Three parts, because the one-line fix was the smallest of them.
+
+**The line.** `/target-excluded-tests/` now sits beside `/target-param-services/`
+in the root `.gitignore`. Verified: `git check-ignore -v target-excluded-tests/`
+answers `.gitignore:104`, and a directory planted there with a file in it is
+invisible to `git status --short`.
+
+**The comment that asserted it.** `scripts/ci/disk-report.sh` read
+"`target-excluded-tests`, plus four more the root `.gitignore` enumerates",
+naming this dir as already covered. It now says all seven are ignored and that
+`target-excluded-tests` only became so here — a comment stating a fact one line
+away from being true is what kept this open, and the issue said so itself.
+
+**The drift, which is the part worth having.** The entries are HAND-AUTHORED, one
+per suffix, and the producer is a single function — the issue's own "the map is
+authored, so it drifts" observation, the rmw-parity-map shape. New gate
+`check-scoped-target-dirs-ignored` (`just check scoped-target-dirs-ignored`,
+fast lane, buildless) **derives** the required entries from the
+`nros_scoped_target_dir <suffix>` call sites instead of trusting the list:
+
+```
+check-scoped-target-dirs-ignored: OK (4 call site(s) over 4 suffix(es);
+every scoped target dir is ignored)
+```
+
+One direction only. A suffix a recipe asks for must be ignored; an ignore entry
+that outlives its call site is not a defect, and a self-test case pins that.
+
+**Negative control on the real tree:** removing the new `.gitignore` line makes
+it red naming the exact site —
+`scripts/run-excluded-crate-tests.sh:151: nros_scoped_target_dir excluded-tests
+writes target-excluded-tests/ … does not enumerate /target-excluded-tests/`.
+Restored, green.
+
+Self-test 8/8 on the normal path, including the three readings that would make
+it useless: a commented-out call site is not a call site, prose naming the
+helper is not a call site, and a `#` inside a quoted string does not truncate
+the line. Vacuity guard: fewer than three harvested call sites is a FAILURE,
+since three recipes use one today — "OK (0 call sites)" is what a collapsed
+scan prints.
+
+Meta-gates after registration: `check-gate-lists` OK (357 fast gates),
+`check-default-gates-run-somewhere` OK, `check-gate-selftests` OK.
+
+**Not done:** the 329 MB directory measured in the issue is build output in one
+agent worktree, not something this change deletes. It is ignored now, so it no
+longer reads as untracked.
+
