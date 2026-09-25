@@ -8,8 +8,19 @@ type: bug
 area: ci, build, cli, testing
 severity: high
 found: 2026-09-25
-related: [1158, 1457, 0533]
+related: [1158, 1457, 0533, 1501]
 ---
+
+> **Root cause found and fixed — issue 1501 (2026-09-25).** None of the three
+> candidates below was the answer, and the first one was already implemented:
+> `west-fixtures.sh` has run `nros sync` per bringup since issue 0533. It could
+> not work, because these two leaves carry no `package.xml`, and sync scans
+> `src/<pkg>/package.xml` or a root `package.xml` and rejects a dir with
+> neither. So the fix is a FOURTH option — make the leaves syncable, which is
+> what every converted example leaf (`examples/zephyr/rust/*`) already was.
+> Kept OPEN until a `run-matrix` run reports a stage past the build: this was
+> one of at least two independent build-stage blockers, the other being issue
+> 1457's `rosidl_adapter` in the cyclonedds leaves.
 
 ## What happens
 
