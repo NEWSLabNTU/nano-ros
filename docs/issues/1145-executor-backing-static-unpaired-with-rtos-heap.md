@@ -425,10 +425,19 @@ verified; the nightly is the thing that will confirm the symptom is gone.
 **It was never only threadx.** A gate written for this found five more names in
 the same state — `esp32`, `baremetal`, `nuttx-riscv`, `freertos-posix`,
 `zephyr-cortex-m` — each taking builtin knobs today. They are
-[issue 1362](1362-platform-names-fall-through-to-builtin-knobs.md), baselined in
-`check-platform-name-answered` so a sixth cannot appear unnoticed, and NOT
-fixed here: adding a name swaps builtin knobs for a descriptor's, and doing that
-to four platforms on an assumption is how one fixed regression becomes four.
+[issue 1362](archived/1362-platform-names-fall-through-to-builtin-knobs.md),
+baselined in `check-platform-name-answered` so a sixth could not appear
+unnoticed, and NOT fixed here: adding a name swaps builtin knobs for a
+descriptor's, and doing that to four platforms on an assumption is how one
+fixed regression becomes four.
+
+That five was later measured down to one. Three of them — `nuttx-riscv`,
+`freertos-posix`, `zephyr-cortex-m` — were fixture COORDINATE labels and never
+reached the lookup at all, and `baremetal` was a fixtures spelling of a name a
+descriptor already answered. 1362 is RESOLVED: phase-468 W1 answered the last
+one (`esp32`, via `config/bare-metal`'s `names`) and made an unanswered name
+FATAL rather than a fall-through, so the baseline this paragraph relies on no
+longer exists — there is nothing to baseline into.
 
 ## Regression, 2026-09-12: `threadx-linux` now fails to COMPILE
 

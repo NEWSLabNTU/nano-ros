@@ -84,22 +84,23 @@ fn resolve_cflags() -> String {
     if !target.starts_with("thumb") && !target.starts_with("arm") {
         return "-mcpu=cortex-m3 -mthumb".to_string();
     }
-    let config_root = arch_flags::config_root().unwrap_or_else(|| {
+    let roots = arch_flags::platform_search_path().unwrap_or_else(|| {
         panic!(
-            "nros-board-freertos: TARGET=`{target}` needs arch cflags but the nano-ros \
-             config/ tree was not found walking up from CARGO_MANIFEST_DIR. Out-of-tree \
-             consumer? Set FREERTOS_CFLAGS explicitly."
+            "nros-board-freertos: TARGET=`{target}` needs arch cflags but no nano-ros \
+             platform descriptor root (packages/platform, config) was found walking up \
+             from CARGO_MANIFEST_DIR. Out-of-tree consumer? Set FREERTOS_CFLAGS \
+             explicitly."
         )
     });
-    match arch_flags::cflags_for_target(&config_root, PLATFORM, &target) {
+    match arch_flags::cflags_for_target(&roots, PLATFORM, &target) {
         Ok(Some(flags)) => flags.join(" "),
         Ok(None) => panic!(
             "nros-board-freertos: no [arch.*] profile of platform `{PLATFORM}` admits \
              TARGET=`{target}`.\n  declared: {}\n  Either add an [arch.*] block to \
-             config/{PLATFORM}/nros-platform.toml, or set FREERTOS_CFLAGS in the board's \
+             that platform's nros-platform.toml, or set FREERTOS_CFLAGS in the board's \
              .cargo/config.toml [env] — e.g. `-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 \
              -mfloat-abi=hard` for a Cortex-M4F.",
-            arch_flags::describe_profiles(&config_root, PLATFORM)
+            arch_flags::describe_profiles(&roots, PLATFORM)
         ),
         Err(e) => panic!("nros-board-freertos: reading arch profiles: {e}"),
     }
