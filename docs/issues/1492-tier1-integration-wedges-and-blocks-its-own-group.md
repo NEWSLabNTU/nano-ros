@@ -223,3 +223,49 @@ since.
 
 Nothing here changes a remedy. It is recorded so the count is not stale and so
 the "no after-transcript" consequence reads as the norm rather than a one-off.
+
+## A sixth CORRECTS two claims above: the victim is not monotonic, and step 17 is a coin flip
+
+Run **36098829716**, job in `host-tests` push on `71935ea44`, 05:30:13 →
+07:39:02 — **2 h 09 m**, `completed_at = null`. But the shape is not the one the
+section above predicted:
+
+```
+15 just ci tier1                               = failure   <-- CONCLUDED
+16 Disk report (after ci tier1)                = success
+17 Upload the disk transcript (after the tier) = (none)     <-- wedged HERE
+18 Report skipped fixtures (post-run)          = (none)
+```
+
+**Correction 1 — "the victim has walked forward every time … the shape has
+stopped varying" is false.** Across six runs it goes 18, 17, 15, 15, 15, **17**.
+It is not monotonic and it has not settled; and here the tier step *concluded*
+(`failure`) rather than hanging, which the three step-15 runs did not.
+
+**Correction 2 — "a wedge at 17 or 18 leaves an after-transcript" is false, and
+step 17 is the interesting case.** Step 16 GENERATES the report; step 17 UPLOADS
+it. Measured per run:
+
+| run | wedged at | `disk-transcript-after-tier1` |
+| --- | --- | --- |
+| 36051691975 | 18 | **yes** |
+| 36070565655 | 17 | **yes** |
+| 36089769184 | 15 | no |
+| 36090952448 | 15 | no |
+| 36093164015 | 15 | no |
+| 36098829716 | 17 | **NO** |
+
+Two runs wedged at the same step 17 and only one produced the artifact. So a
+step-17 wedge is a **coin flip** on the evidence, not a guarantee either way —
+the upload evidently registers the artifact before hanging sometimes and not
+others. Only a wedge at 18 has preserved it every time, and that has happened
+once.
+
+What survives from the earlier sections is the part that matters: six of six
+runs reaching the tier have wedged, none has produced a test verdict, and the
+diagnostic needed to attribute 1353's growth is lost more often than it is kept
+— **four of six runs left only the before-transcript**, one more than the
+earlier count implied.
+
+Nothing here changes a remedy; `timeout-minutes` still bounds all six
+identically.
