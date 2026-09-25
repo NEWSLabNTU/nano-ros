@@ -1757,7 +1757,9 @@ impl Subscription for ZenohSubscriber {
                 let mut info = nros_core::MessageInfo::new();
                 info.set_publication_sequence_number(zi.sequence_number);
                 info.set_source_timestamp(nros_core::Time::from_nanos(zi.timestamp_ns));
-                info.set_publisher_gid(zi.publisher_gid);
+                // 16 on the wire (`rmw_zenoh_cpp`'s attachment layout, which
+                // cannot move), 24 in the field. One spelling of the padding.
+                info.set_publisher_gid(nros_core::pad_publisher_gid(&zi.publisher_gid));
                 info
             })
         } else {
@@ -1861,7 +1863,7 @@ impl Subscription for ZenohSubscriber {
                     let mut info = nros_core::MessageInfo::new();
                     info.set_publication_sequence_number(zi.sequence_number);
                     info.set_source_timestamp(nros_core::Time::from_nanos(zi.timestamp_ns));
-                    info.set_publisher_gid(zi.publisher_gid);
+                    info.set_publisher_gid(nros_core::pad_publisher_gid(&zi.publisher_gid));
                     info
                 });
                 Ok(Some((len, core_info)))

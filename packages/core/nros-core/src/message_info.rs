@@ -13,8 +13,48 @@
 
 use crate::Time;
 
-/// Size of the publisher Global Identifier (GID)
-pub const PUBLISHER_GID_SIZE: usize = 16;
+/// Size of the publisher Global Identifier (GID), in bytes.
+///
+/// **24, which is upstream's `RMW_GID_STORAGE_SIZE`** — measured against Humble,
+/// `/opt/ros/humble/include/rmw/rmw/types.h:42` reads `24u` — and the width of
+/// the ABI's own `rmw_gid_t::data` (`RMW_GID_STORAGE_SIZE`,
+/// `packages/core/nros-rmw-abi/include/nros/rmw_entity.h`). So a gid read out of
+/// a [`MessageInfo`] and a gid written by the `get_gid_for_publisher` vtable
+/// slot are the same TYPE, comparable without a conversion.
+///
+/// It was 16 until the phase-467 RMW gap-closure design study's Q1(a). The 16
+/// is *zenoh's* wire width, not a property of the identifier — see
+/// [`MessageInfo::publisher_gid`] for what that leaves a reader owing.
+pub const PUBLISHER_GID_SIZE: usize = 24;
+
+/// Zero-extend a backend's narrower identity into a full-width publisher GID.
+///
+/// A backend whose identity is shorter than [`PUBLISHER_GID_SIZE`] must pad the
+/// TAIL with zeros rather than leave it undefined, or two gids naming the same
+/// publisher compare unequal on stack garbage. This is the one spelling of that
+/// padding on the Rust side; the Cyclone backend does the same thing in C++
+/// (`cyclone_get_gid_for_publisher` in
+/// `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/vtable.cpp` — a `memset`,
+/// then a `memcpy` of the 16-byte DDS writer GUID).
+///
+/// An `N` wider than [`PUBLISHER_GID_SIZE`] is a compile error, which is the
+/// Rust spelling of Cyclone's
+/// `static_assert(sizeof(guid.v) <= RMW_GID_STORAGE_SIZE)`.
+pub const fn pad_publisher_gid<const N: usize>(narrow: &[u8; N]) -> [u8; PUBLISHER_GID_SIZE] {
+    const {
+        assert!(
+            N <= PUBLISHER_GID_SIZE,
+            "a publisher identity wider than PUBLISHER_GID_SIZE cannot be zero-extended into it"
+        );
+    }
+    let mut wide = [0u8; PUBLISHER_GID_SIZE];
+    let mut i = 0;
+    while i < N {
+        wide[i] = narrow[i];
+        i += 1;
+    }
+    wide
+}
 
 /// Metadata about a received message
 ///
@@ -77,7 +117,37 @@ impl MessageInfo {
         self.reception_sequence_number
     }
 
-    /// Get the publisher's Global Identifier (GID)
+    /// Get the publisher's Global Identifier (GID).
+    ///
+    /// **The array is 24 bytes. How many of them MEAN anything is a backend
+    /// property, and today it is never all 24.**
+    ///
+    /// The width is upstream's ([`PUBLISHER_GID_SIZE`]), so this value and the
+    /// `rmw_gid_t` the `get_gid_for_publisher` vtable slot fills are one type.
+    /// What the width does NOT say:
+    ///
+    /// * **zenoh fills 16 and zero-pads 8.** `RMW_ATTACHMENT_SIZE` carries a
+    ///   16-byte gid because that is `rmw_zenoh_cpp`'s wire layout — its reader
+    ///   REJECTS any other length — so the trailing 8 bytes here are padding
+    ///   written by [`pad_publisher_gid`] and carry no information. Compare
+    ///   whole arrays anyway: the padding is deterministic, and truncating to
+    ///   16 by hand is how a future backend's extra bytes get silently dropped.
+    /// * **Cyclone never fills it.** A pure C/C++ backend writes no
+    ///   `MessageInfo` at all — the `message_info()` callback sees `None`
+    ///   there, not a gid — and nothing on the Cyclone receive path calls
+    ///   [`set_publisher_gid`](Self::set_publisher_gid). Wherever a
+    ///   `MessageInfo` does exist unpopulated it keeps its `Default`: all
+    ///   zeros, which is the ABI's spelling for "unknown", not an identity.
+    /// * **A gid from here is NOT today comparable with one from
+    ///   `get_gid_for_publisher`.** No backend produces both: on Cyclone the
+    ///   vtable slot returns a real DDS writer GUID and this field is never
+    ///   written; on zenoh this field is a per-publisher value and the slot is
+    ///   NULL. Making the two answers agree is issue 1495 — it changes a value
+    ///   a stock ROS 2 peer reads off our wire, so it is deliberately not part
+    ///   of the widening that made them the same type.
+    ///
+    /// An all-zero gid therefore means "this backend did not say", never "the
+    /// publisher's id is zero".
     pub const fn publisher_gid(&self) -> &[u8; PUBLISHER_GID_SIZE] {
         &self.publisher_gid
     }
@@ -102,7 +172,12 @@ impl MessageInfo {
         self.reception_sequence_number = seq;
     }
 
-    /// Set the publisher GID
+    /// Set the publisher GID.
+    ///
+    /// Takes the full [`PUBLISHER_GID_SIZE`] width. A backend whose identity is
+    /// narrower zero-extends it through [`pad_publisher_gid`] rather than
+    /// building the array itself — see [`publisher_gid`](Self::publisher_gid)
+    /// for what a reader may and may not conclude from the result.
     pub fn set_publisher_gid(&mut self, gid: [u8; PUBLISHER_GID_SIZE]) {
         self.publisher_gid = gid;
     }
@@ -164,6 +239,10 @@ impl<'a> RawMessageInfo<'a> {
     }
 
     /// Publisher's Global Identifier (GID).
+    ///
+    /// Same bound as [`MessageInfo::publisher_gid`]: 24 bytes wide, with the
+    /// meaningful prefix decided by the backend and today never the whole
+    /// array.
     pub const fn publisher_gid(&self) -> &[u8; PUBLISHER_GID_SIZE] {
         self.info.publisher_gid()
     }
@@ -179,6 +258,32 @@ mod tests {
         assert_eq!(info.source_timestamp(), Time::new(0, 0));
         assert_eq!(info.publication_sequence_number(), 0);
         assert_eq!(info.publisher_gid(), &[0u8; PUBLISHER_GID_SIZE]);
+    }
+
+    /// The width is upstream's, and that is the whole point of it: measured in
+    /// the `ros2` box, `/opt/ros/humble/include/rmw/rmw/types.h:42` reads
+    /// `#define RMW_GID_STORAGE_SIZE 24u`, and our own ABI header takes the
+    /// same number. A gid taken from a sample and a gid written into an
+    /// `rmw_gid_t` are one type only while this holds.
+    #[test]
+    fn publisher_gid_is_upstreams_storage_size() {
+        assert_eq!(PUBLISHER_GID_SIZE, 24);
+    }
+
+    /// zenoh's identity is 16 bytes and cannot move — that is
+    /// `rmw_zenoh_cpp`'s `RMW_ATTACHMENT_SIZE` wire layout, whose reader
+    /// rejects any other length. Padding is what lets it be stored at the
+    /// upstream width without either side moving.
+    #[test]
+    fn a_narrow_backend_identity_zero_extends_into_the_tail() {
+        let wire = [0xABu8; 16];
+        let wide = pad_publisher_gid(&wire);
+        assert_eq!(&wide[..16], &wire[..]);
+        assert_eq!(&wide[16..], &[0u8; PUBLISHER_GID_SIZE - 16]);
+
+        // Deterministic, so two samples from one publisher still compare equal
+        // over the WHOLE array — the property `test_gid_consistency` reads.
+        assert_eq!(pad_publisher_gid(&wire), wide);
     }
 
     #[test]

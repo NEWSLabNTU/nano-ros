@@ -828,10 +828,18 @@ every sample with the writer's GID.
 nano-ros **does carry a publisher GID** where the wire supports it: a
 zenoh publisher generates a 16-byte GID at create time
 (`RmwAttachment::generate_gid`) and stamps it into the per-sample
-attachment; the subscriber extracts it into `MessageInfo.publisher_gid`,
-so **per-message publisher attribution is observable** via
-`info.publisher_gid()` (populated on the zenoh path; zero-filled on
-backends whose wire carries no writer GID).
+attachment; the subscriber zero-extends it into
+`MessageInfo.publisher_gid`, so **per-message publisher attribution is
+observable** via `info.publisher_gid()` (populated on the zenoh path;
+zero-filled on backends whose wire carries no writer GID).
+
+The field is **24 bytes** — upstream's `RMW_GID_STORAGE_SIZE`, the same
+width as the ABI's `rmw_gid_t` (the phase-467 RMW gap-closure design
+study's Q1(a); it was 16 before). The 16 is zenoh's *wire* width and
+stays there: `rmw_zenoh_cpp`'s attachment reader rejects any other
+length. So the widths no longer differ — but the two gids are still not
+one VALUE, because no backend fills both. See the `rmw_gid_t` comment in
+`rmw_entity.h`, and issue 1495.
 
 - **What's carved out.** The standalone `rmw_get_gid_for_publisher`
   QUERY — reading a *publisher's own* GID back through a C API — is not
