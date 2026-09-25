@@ -103,6 +103,17 @@ tools/*
 # the required entries from the call sites instead of trusting this list.
 /target-excluded-tests/
 
+# Issue 1354's five scoped dirs, added the same way: `check-c`, `check-cpp` and
+# the two cpp clippy/embedded probes each build with their own feature set, and
+# `check-census-hooks` probes its own — so each gets a `nros_scoped_target_dir`
+# of its own, and each therefore needs its line here. Derived from the call
+# sites by `check-scoped-target-dirs-ignored`, not remembered.
+/target-check-c/
+/target-check-census-hooks/
+/target-check-cpp/
+/target-check-cpp-clippy-zenoh/
+/target-check-cpp-cyclone-embedded/
+
 # Per-RMW example build dirs (target-xrce/ etc.) — build output, never committed
 examples/**/target-*/
 
