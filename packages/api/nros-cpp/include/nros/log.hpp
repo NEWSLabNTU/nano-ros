@@ -335,6 +335,14 @@ class Logger {
     /// `Trace` is ours and has no rclcpp counterpart -- `nros_log` has the
     /// level, and a `Level` that could not name it would make `set_level`
     /// unable to reach a threshold the C and Rust surfaces both reach.
+    ///
+    /// `Unset` is NOT a level: it means INHERIT (phase-467, ledger row
+    /// `c:log_severity_t`). `set_level(Level::Unset)` takes this logger's own
+    /// level away, after which it filters on the process default
+    /// (`nros_log_get_default_level()`, `<nros/log.h>`). It reached that
+    /// meaning without a line changing here, because the cast is an identity
+    /// and the C entry point is where the decision lives -- which is RFC-0019
+    /// working.
     enum class Level : int {
         Unset = NROS_LOG_SEVERITY_UNSET,
         Trace = NROS_LOG_SEVERITY_TRACE,
@@ -378,7 +386,9 @@ class Logger {
                    : ::nros::Result(::nros::ErrorCode::InvalidArgument);
     }
 
-    /// This logger's current runtime threshold -- OURS-ONLY, phase-417 W4.d.
+    /// This logger's EFFECTIVE runtime threshold -- its own level if it has
+    /// one, the process default if it does not, so it is never `Level::Unset`.
+    /// OURS-ONLY, phase-417 W4.d.
     ///
     /// rclcpp has no getter. C (`nros_logger_get_level`) and Rust
     /// (`nros_log::Logger::level`) both do, and W4.d is about our own three

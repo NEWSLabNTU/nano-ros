@@ -55,20 +55,31 @@ extern "C" {
  * `NROS_LOG_SEVERITY_TRACE` is ours; rcutils has no trace level. It takes `5`,
  * inside rcutils's own `UNSET`..`DEBUG` gap, which is what that gap is for.
  *
- * **ENVELOPE — `UNSET` IS NOT rcutils's `UNSET`, AND THE PARAGRAPH ABOVE
- * DESCRIBES ONLY THE NUMBERING HALF.** Stage 3 moved the numbers; it did not
- * change what `0` does. Upstream, `UNSET` means INHERIT:
- * `rcutils_logging_set_logger_level(name, RCUTILS_LOG_SEVERITY_UNSET)` UNSETS
- * a logger's level, after which `rcutils_logging_get_logger_effective_level`
- * walks the dotted ancestry up to `g_rcutils_logging_default_logger_level`.
- * `nros_log::Logger` has no level inheritance, so here `UNSET` is only the
- * numeric floor: `nros_logger_set_level(logger, NROS_LOG_SEVERITY_UNSET)`
- * selects `TRACE`, the MOST VERBOSE level, where upstream would restore the
- * default. Every other value on the line means what it means upstream; this
- * one does not. Closing the difference is a `nros-log` change — an inheritable
- * level on the facade — not a C-API one, and it is the whole of what ledger
- * row `c:log_severity_t` still owes (RFC-0089: the envelope is part of the
- * API, not a footnote).
+ * **`UNSET` MEANS INHERIT, NOT "THE FLOOR"** (phase-467; it meant the floor
+ * until then, and that was ledger row `c:log_severity_t`'s whole debt).
+ * `nros_logger_set_level(logger, NROS_LOG_SEVERITY_UNSET)` takes away that
+ * logger's own level, after which it filters on the PROCESS DEFAULT —
+ * `nros_log_get_default_level()`, `NROS_LOG_SEVERITY_INFO` until
+ * `nros_log_set_default_level()` moves it, which is the value and the starting
+ * point `RCUTILS_DEFAULT_LOGGER_DEFAULT_LEVEL` has upstream. A logger you
+ * never set a level on is already in that state.
+ *
+ * **ENVELOPE — one process default, no dotted ancestry.** Upstream resolves an
+ * unset logger by walking the ancestry its name spells with dots (`x.y.z` →
+ * `x.y` → `x`) and only then falls to
+ * `g_rcutils_logging_default_logger_level`. `nros_log` has no hierarchy at all
+ * — `nros_log_get_logger` is exact string equality over a fixed slot table —
+ * so that walk has exactly one step here and this is that step. A dotted name
+ * is accepted and is simply a name. Building the walk is what row
+ * `c:log_severity_t` still records as owed, and it has no consumer in this
+ * tree today (RFC-0089: the envelope is part of the API, not a footnote).
+ *
+ * `UNSET` is only special where a LEVEL IS STORED. Passed as a record's
+ * severity (`nros_log_emit`) or as a threshold question
+ * (`nros_logger_is_enabled`) it resolves by band like any other integer, which
+ * puts it at `TRACE`: "no level set" is not a level to emit at, upstream has
+ * no answer for that call either, and refusing it would make one of these
+ * entry points reject a value the other needs.
  */
 typedef enum nros_log_severity_t {
     NROS_LOG_SEVERITY_UNSET = 0,
@@ -312,17 +323,51 @@ size_t nros_logger_get_name(nros_logger_t logger, char* buf, size_t buf_len);
  * Set `logger`'s runtime severity threshold. Records below it are dropped
  * before any sink sees them.
  *
+ * `NROS_LOG_SEVERITY_UNSET` takes the level away again rather than setting one:
+ * the logger goes back to filtering on `nros_log_get_default_level()`. See the
+ * `nros_log_severity_t` comment for what that inheritance is and is not.
+ *
  * @return false for a NULL handle, true otherwise.
  */
 bool nros_logger_set_level(nros_logger_t logger, nros_log_severity_t severity);
 
 /**
- * `logger`'s runtime severity threshold.
+ * `logger`'s EFFECTIVE runtime severity threshold — its own level if it has
+ * one, the process default if it does not.
+ *
+ * `rcutils_logging_get_logger_effective_level`'s answer rather than
+ * `rcutils_logging_get_logger_level`'s: this is the number that decides
+ * whether a record is emitted, so it is never `NROS_LOG_SEVERITY_UNSET`.
  *
  * A NULL handle answers `NROS_LOG_SEVERITY_FATAL` — the quiet end — so a
  * dropped handle cannot read as "trace everything".
  */
 nros_log_severity_t nros_logger_get_level(nros_logger_t logger);
+
+/**
+ * Move the threshold that every logger WITHOUT a level of its own filters on.
+ *
+ * phase-467. Retroactive: a logger interned long before this call follows it,
+ * because "no level of its own" is a stored state and not a value copied in at
+ * construction. A logger that states its own level is NOT overridden.
+ *
+ * `NROS_LOG_SEVERITY_UNSET` here restores `NROS_LOG_SEVERITY_INFO`, which is
+ * `rcutils_logging_set_default_logger_level`'s documented behaviour for the
+ * same argument. Every other value resolves by band, as everywhere else on
+ * this surface.
+ *
+ * Not `nros_logger_set_level(nros_log_default_logger(), ...)`: that moves the
+ * threshold of the one logger NAMED `"nros"`, which is a different logger from
+ * "every logger that has not been given a level".
+ */
+void nros_log_set_default_level(nros_log_severity_t severity);
+
+/**
+ * The threshold every logger without a level of its own filters on.
+ *
+ * `NROS_LOG_SEVERITY_INFO` until `nros_log_set_default_level` moves it.
+ */
+nros_log_severity_t nros_log_get_default_level(void);
 
 /**
  * Whether a record at `severity` would pass `logger`'s threshold.

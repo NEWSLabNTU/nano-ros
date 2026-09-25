@@ -109,6 +109,10 @@ exclude = [
     "nros_logger_set_level",
     "nros_logger_get_level",
     "nros_logger_is_enabled",
+    # phase-467 — the process-wide default threshold, hand-authored in
+    # `<nros/log.h>` beside the rest of the level surface for the same reason.
+    "nros_log_set_default_level",
+    "nros_log_get_default_level",
     "nros_log_sink_fn",
     "Option_nros_log_sink_fn",
     "nros_log_add_sink",
