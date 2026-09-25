@@ -904,3 +904,56 @@ and `26023412`. This one is ~180 MB lower than the other three — its BEFORE
 line also reads 89 % rather than 88 %, so the runner started marginally fuller;
 the reclaim freed the same 7.5 GB. The tier's requirement is still ~24.6–24.8
 GiB and still not met.
+
+## The scheduled `gate` lane's OWN numbers — the gap this issue kept naming
+
+Every section above argues from `host-tests`, and says so: *"no scheduled
+`gate` run has ever produced a readable disk figure, and there are no
+`workflow_dispatch` runs either. The 42 G/22 G split every section above argues
+from is `host-tests`, a different job with a different build."* That is no
+longer true.
+
+Scheduled `gate` run **36084587324**, job **107913551185**, head `27f1e8ef5`,
+step **`just check build`** (the compile tier, which only the schedule event
+reaches). Log is `BlobNotFound`; the annotation is this issue's signature,
+`No space left on device : '…/Worker_20260925-020238-utc.log'`. Both disk
+artifacts uploaded:
+
+```
+SUMMARY disk before just check build — 86% used, 21G free
+  — 30G packages/cli/target; 19G examples; 3.5G build
+reclaiming    5.2G  /__t
+reclaiming    1.5G  /__w/nano-ros/nano-ros/build/metadata-probe
+freed 6700 MB; 28690428 KB free
+
+SUMMARY disk after  just check build — 100% used, 432K free
+  — 31G packages/cli/target; 19G examples; 16G target
+```
+
+**The `gate` lane overflows through a DIFFERENT directory than `host-tests`,
+and from a different starting state.** Side by side:
+
+| | scheduled `gate` (`check build`) | `host-tests` (`ci tier1`) |
+| --- | --- | --- |
+| headroom after reclaim | 28,690,428 KB (~27.4 GiB) | ~24.6–24.8 GiB |
+| `examples/` | 19 G, unchanged | 42 G, unchanged |
+| `packages/cli/target` | **30 G going in**, 31 G after | 410 MB going in, **14 G after** |
+| repo-root `target/` | **1.1 G → 16 G** | not a mover |
+
+So two lanes, two growers: the tier fills `packages/cli/target` from nearly
+nothing, while the compile tier arrives with that directory already at 30 G and
+fills the repo-root `target/` instead, by ~14.9 GB. A remedy aimed at one does
+not help the other, which is exactly why this issue insisted the `host-tests`
+numbers could not be spent on the `gate` lane.
+
+**What this does NOT say.** Nothing about why `packages/cli/target` is 30 G here
+and 410 MB there — the two jobs restore different caches and run different
+recipes, and this is one observation of each, not a characterisation. Nothing
+about whether `check build` would PASS with room. And it is adjacent to but
+distinct from issue **1491**, which measures 329 MB of untracked cargo output at
+the repo root: same directory, three orders of magnitude apart, and 1491 is
+about what is left BEHIND rather than what is needed DURING.
+
+Acceptance is unchanged — and its first clause, "a scheduled run reaching a
+VERDICT on `check build` and `check no-std`", is still unmet: this run reached
+neither.
