@@ -23,7 +23,8 @@
 # Defaults: c/talker zenoh native_sim/native/64
 #
 # Env knobs (all optional):
-#   NROS_ZEPHYR_WORKSPACE   override the 4.4 workspace path
+#   NROS_ZEPHYR_WORKSPACE   override the 4.4 workspace path (first rung of the
+#                           scripts/lib/zephyr-workspace.sh ladder)
 #   NROS_COPY_OUT_KEEP=1    keep the temp dir (debugging)
 
 set -euo pipefail
@@ -56,12 +57,24 @@ export NROS_ACTION_MSGS_DIR="${NROS_ACTION_MSGS_DIR:-/opt/ros/humble/share/actio
 
 # This check exercises the 4.4 line (latest rolling) — that is the line
 # with the module-contributed snippets + the Phase 180 module mechanism.
-WORKSPACE_DEFAULT="../nano-ros-workspace-4.4"
-WORKSPACE="${NROS_ZEPHYR_WORKSPACE:-$WORKSPACE_DEFAULT}"
-workspace="$(realpath "$WORKSPACE" 2>/dev/null || echo "")"
+#
+# issue 1475 — the line is named, the PATH is not. This used to write the
+# legacy sibling tree down as a constant, and `just zephyr setup` has landed
+# workspaces in `$NROS_STORE/workspaces/zephyr/<version>` since phase-440 W4,
+# so the check failed on a path it had guessed instead of on the copy-out it
+# exists to test. Ask the ONE resolver (RFC-0095 D4) for the 4.4 line: it keeps
+# the override, the store and the legacy sibling on one ladder, in that order.
+# shellcheck source=scripts/lib/zephyr-workspace.sh
+. "$NROS_ROOT/scripts/lib/zephyr-workspace.sh"
+ZEPHYR_LINE=4.4
+workspace="$(nros_zephyr_ws_resolve_abs "$ZEPHYR_LINE" "$NROS_ROOT" || true)"
+if [ -n "$workspace" ]; then
+    workspace="$(realpath "$workspace" 2>/dev/null || echo "$workspace")"
+fi
 if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
-    echo "FAIL: Zephyr 4.4 workspace not set up at $WORKSPACE"
-    echo "  run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup"
+    echo "FAIL: no Zephyr $ZEPHYR_LINE workspace on the resolver ladder. Candidates tried:"
+    nros_zephyr_ws_candidates "$ZEPHYR_LINE" "$NROS_ROOT" | sed 's/^/    /'
+    echo "  run: NROS_ZEPHYR_VERSION=$ZEPHYR_LINE just zephyr setup"
     exit 1
 fi
 
