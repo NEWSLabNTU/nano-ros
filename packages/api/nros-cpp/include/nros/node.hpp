@@ -220,6 +220,11 @@ template <typename M> class PollSubscription;
 template <typename M> class PollingSubscription;
 // phase-456 W5 — the poll-side service server (`polling_service.hpp`).
 template <typename S> class PollService;
+// phase-456 W9 — the poll-side (future-style) service client
+// (`polling_client.hpp`), and the dispatch client's handle
+// (`client_handle.hpp`).
+template <typename S> class PollClient;
+template <typename S> class ClientHandle;
 
 /// Executor-bound node handle the generated entry hands to a node constructor
 /// (RFC-0044 §Design.1, merged onto `Node` by phase-427 W4).
@@ -894,16 +899,31 @@ class Node {
     typename ::rclcpp::Service<S>::SharedPtr
     create_service(const ::std::string&, F, const ::nros::QoS& = ::nros::QoS::services());
 
-    /// Future-style service client — pair with `spin_until_future_complete`.
+    /// Future-style service client (`create_client<S>(name, qos)`) — pair with
+    /// `spin_until_future_complete`.
+    ///
+    /// phase-456 W9 — returns `nros::Owned<nros::PollClient<S>>`, which is the
+    /// future-style client BY VALUE with an `operator->` so
+    /// `client->send_request(...)` keeps working. It is deliberately NOT
+    /// `Client<S>::SharedPtr`: that alias is a dispatch handle now, and one alias
+    /// cannot be both a handle and a pointer to a caller-owned object. W3
+    /// recorded that collision as the blocker on the flip and W6 costed it;
+    /// splitting the future-style half out is its removal.
+    ///
+    /// DIVERGENCE from upstream, unlike the poll `create_service` beside it:
+    /// upstream DOES have `create_client<S>(name)` with no handler and it returns
+    /// `Client<S>::SharedPtr`, on a client you then `async_send_request` for a
+    /// future. Ours hands back the future-style client instead, because our two
+    /// roads are two registrations. Ledgered at `cpp:Node::create_client`.
     template <typename S>
-    ::std::shared_ptr<::rclcpp::Client<S>>
+    ::nros::Owned<::nros::PollClient<S>>
     create_client(const ::std::string& name, const ::nros::QoS& qos = ::nros::QoS::services());
 
     /// Callback-style service client (`void(const S::Response&)`).
     template <typename S, typename F,
               typename = typename std::enable_if<
                   std::is_convertible<F, void (*)(const typename S::Response&)>::value>::type>
-    ::std::shared_ptr<::rclcpp::Client<S>>
+    typename ::rclcpp::Client<S>::SharedPtr
     create_client(const ::std::string& name, F callback,
                   const ::nros::QoS& qos = ::nros::QoS::services());
 
@@ -913,7 +933,7 @@ class Node {
                   !::rclcpp::detail::is_qos_arg<F>::value &&
                   !std::is_convertible<F, void (*)(const typename S::Response&)>::value>::type,
               typename = void>
-    ::std::shared_ptr<::rclcpp::Client<S>>
+    typename ::rclcpp::Client<S>::SharedPtr
     create_client(const ::std::string&, F, const ::nros::QoS& = ::nros::QoS::services());
 
     /// @internal Hand the node co-ownership of an arena-registered cell.
@@ -1674,14 +1694,23 @@ class Node {
                           const ::nros::QoS& qos = ::nros::QoS::services(),
                           const ::nros::ServiceOptions& options = {});
 
-    /// Create a service client.
+    /// Create a FUTURE-style service client.
+    ///
+    /// phase-456 W9 — the out parameter is `nros::PollClient<S>`, not
+    /// `rclcpp::Client<S>`. This overload creates a client the CALLER owns, in
+    /// the caller's own storage, drained with `send_request()` / `call()` /
+    /// `call_polling()` and probed with `wait_for_service()`; the dispatch
+    /// overload below registers a response handler into the executor arena and
+    /// the caller's one verb is `async_send_request`. One class used to be both,
+    /// behind a `callback_mode_` flag, which meant `wait_for_service()` was
+    /// offered on objects whose storage the arena never filled.
     ///
     /// @tparam S  Service type (must define nested Request and Response with TYPE_NAME/TYPE_HASH).
     /// @param out           Receives the initialized service client.
     /// @param service_name  Service name (null-terminated).
     /// @param qos           QoS profile (default: services preset).
     template <typename S>
-    Result create_client(::rclcpp::Client<S>& out, const char* service_name,
+    Result create_client(::nros::PollClient<S>& out, const char* service_name,
                          const ::nros::QoS& qos = ::nros::QoS::services());
 
     /// Create a **callback-style** service client (rclcpp async dispatch;

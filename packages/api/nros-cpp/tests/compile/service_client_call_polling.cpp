@@ -1,9 +1,15 @@
-// Compile regression for issue 0278 Half B: `nros::Client<Svc>::call_polling`
-// — a bounded service call that does NOT spin the executor, so it is safe from
-// inside a subscription/timer callback (on a multi-threaded backend).
+// Compile regression for issue 0278 Half B:
+// `nros::PollClient<Svc>::call_polling` — a bounded service call that does NOT
+// spin the executor, so it is safe from inside a subscription/timer callback
+// (on a multi-threaded backend).
+//
+// phase-456 W9 — the type is `nros::PollClient<S>`, which is what
+// `nros::Client<S>` was on this road. `call_polling` reads the
+// `RmwServiceClient` in CALLER storage, so it belongs to the half that owns
+// one; the dispatch `rclcpp::Client<S>` has no storage and no longer offers it.
 //
 // The header `-fsyntax-only` loop in `just check cpp` only PARSES the templates;
-// this TU instantiates `Client<AddTwoInts>::call_polling` against a
+// this TU instantiates `PollClient<AddTwoInts>::call_polling` against a
 // generated-shape service type, so the method BODY (serialize req →
 // nros_cpp_service_client_call_raw(..., timeout_ms) → deserialize resp) is
 // type-checked, including the new `timeout_ms` FFI parameter.
@@ -44,7 +50,7 @@ struct AddTwoInts {
 };
 
 // Force instantiation of call_polling (body type-checked at compile).
-inline ::nros::Result instantiate(::nros::Client<AddTwoInts>& client) {
+inline ::nros::Result instantiate(::nros::PollClient<AddTwoInts>& client) {
     AddTwoInts::Request req;
     AddTwoInts::Response resp;
     // The callback-safe bounded call with an explicit timeout.
@@ -52,10 +58,10 @@ inline ::nros::Result instantiate(::nros::Client<AddTwoInts>& client) {
 }
 
 // API-shape assertion — call_polling returns nros::Result and takes a timeout.
-static_assert(std::is_same<decltype(std::declval<::nros::Client<AddTwoInts>&>().call_polling(
+static_assert(std::is_same<decltype(std::declval<::nros::PollClient<AddTwoInts>&>().call_polling(
                                std::declval<const AddTwoInts::Request&>(),
                                std::declval<AddTwoInts::Response&>(), 10u)),
                            ::nros::Result>::value,
-              "Client<Svc>::call_polling(req, resp, timeout_ms) must return nros::Result");
+              "PollClient<Svc>::call_polling(req, resp, timeout_ms) must return nros::Result");
 
 } // namespace nros_cpp_service_client_call_polling_compile_test

@@ -393,6 +393,16 @@ KEY_OVERRIDES = {
     # poll half's does, because `PollService<S>` is ours.
     "PollService::get_request_subscription_actual_qos": "service",
     "PollService::get_response_publisher_actual_qos": "service",
+    # phase-456 W9 — the client's half of the pair above, and it needs the same
+    # override for the same reason: the verb spells the ENDPOINT, so `publisher`
+    # and `subscription` are literally in the names and pubsub takes both. They
+    # are service rows — the endpoints they report are the two halves of one
+    # service CLIENT, and nothing about the pubsub API is incomplete without a
+    # way to read a service client's granted QoS. The dispatch half's pair never
+    # surfaces because it matches `rclcpp::Client` and so carries no ledger row;
+    # the poll half's does, because `PollClient<S>` is ours.
+    "PollClient::get_request_publisher_actual_qos": "service",
+    "PollClient::get_response_subscription_actual_qos": "service",
 }
 
 

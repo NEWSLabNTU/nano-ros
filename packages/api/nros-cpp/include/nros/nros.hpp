@@ -48,6 +48,7 @@
 #include "nros/action_client.hpp"
 #include "nros/polling_action_server.hpp"
 #include "nros/polling_action_client.hpp"
+#include "nros/polling_client.hpp"
 #include "nros/polling_service.hpp"
 #include "nros/polling_subscription.hpp"
 #include "nros/parameter.hpp"
@@ -776,13 +777,17 @@ namespace nros {} // namespace nros
 
 namespace rclcpp {
 template <typename S>
-inline ::std::shared_ptr<Client<S>> Node::create_client(const ::std::string& name,
-                                                        const ::nros::QoS& qos) {
-    auto c = ::std::make_shared<Client<S>>();
-    ::rclcpp::detail::require_created(this->template create_client<S>(*c, name.c_str(), qos),
+inline ::nros::Owned<::nros::PollClient<S>> Node::create_client(const ::std::string& name,
+                                                                const ::nros::QoS& qos) {
+    // phase-456 W9 — the FUTURE-style client, by value. `Client<S>::SharedPtr`
+    // is a dispatch handle now, and this factory exists precisely to be
+    // `->send_request()`'d, so it must hand back something dereferenceable.
+    // `Owned<PollClient<S>>` is that and costs no allocator; the node keeps no
+    // second reference because there is no second reference to keep.
+    ::nros::PollClient<S> c;
+    ::rclcpp::detail::require_created(this->template create_client<S>(c, name.c_str(), qos),
                                       "create_client", name.c_str());
-    this->hosted().owned_entities.push_back(c);
-    return c;
+    return ::nros::Owned<::nros::PollClient<S>>(::nros::tr::forward_rvalue(c));
 }
 } // namespace rclcpp
 
@@ -790,14 +795,19 @@ namespace nros {} // namespace nros
 
 namespace rclcpp {
 template <typename S, typename F, typename>
-inline ::std::shared_ptr<Client<S>> Node::create_client(const ::std::string& name, F callback,
-                                                        const ::nros::QoS& qos) {
-    auto c = ::std::make_shared<Client<S>>();
-    this->hosted().owned_entities.push_back(c);
+inline typename Client<S>::SharedPtr Node::create_client(const ::std::string& name, F callback,
+                                                         const ::nros::QoS& qos) {
+    // phase-456 W9 — the arena owns the client and (W3) the handler, so this
+    // allocates nothing and there is no cell to retain. The `owned_entities`
+    // push that used to stand here was LOAD-BEARING while the arena held
+    // `&*c` — dropping the caller's pointer would have dangled it — and became
+    // pure retention when W3 moved the context to the handler. Same removal W5
+    // made one entity over.
+    Client<S> c;
     ::rclcpp::detail::require_created(
-        this->template create_client<S>(*c, name.c_str(), callback, qos), "create_client",
+        this->template create_client<S>(c, name.c_str(), callback, qos), "create_client",
         name.c_str());
-    return c;
+    return typename Client<S>::SharedPtr(this->executor_handle(), c.handle_id());
 }
 } // namespace rclcpp
 
@@ -805,11 +815,11 @@ namespace nros {} // namespace nros
 
 namespace rclcpp {
 template <typename S, typename F, typename, typename>
-inline ::std::shared_ptr<Client<S>> Node::create_client(const ::std::string&, F,
-                                                        const ::nros::QoS&) {
+inline typename Client<S>::SharedPtr Node::create_client(const ::std::string&, F,
+                                                         const ::nros::QoS&) {
     static_assert(::rclcpp::detail::refuse<F>::value,
                   NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK);
-    return ::std::shared_ptr<Client<S>>();
+    return typename Client<S>::SharedPtr();
 }
 } // namespace rclcpp
 

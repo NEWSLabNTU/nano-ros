@@ -207,14 +207,14 @@ inline ::nros::Result recv_paths(::nros::PollSubscription<M>& sub, ::nros::Strea
 }
 
 template <class M>
-inline ::nros::Result client_paths(::nros::Client<SvcOf<M>>& client,
+inline ::nros::Result client_paths(::nros::PollClient<SvcOf<M>>& client,
                                    ::nros::PollService<SvcOf<M>>& service, ::nros::TickCtx& tick,
                                    M& payload) {
     (void)client.send_request(payload); // future.hpp -- Future<T>'s cached_buf_
     (void)client.template send_request_sized<4096>(payload);
     (void)client.call(payload, payload, 1);
     (void)client.template call_sized<4096>(payload, payload, 1);
-    (void)client.call_polling(payload, payload, 1); // client.hpp resp_buf
+    (void)client.call_polling(payload, payload, 1); // polling_client.hpp resp_buf
     (void)client.template call_polling_sized<4096>(payload, payload, 1);
     int64_t seq = 0;
     (void)service.try_recv_request(payload, seq); // polling_service.hpp -- a RECEIVE buffer
@@ -247,20 +247,24 @@ inline ::nros::Result action_paths(::nros::ActionClient<ActionOf<M>>& client,
 }
 
 // A SITE-level assertion, not just a trait-level one. `Future<T, Cap>` carries
-// its receive capacity in its TYPE, so what number `Client<S>::send_request`
-// actually spends is observable here: 137 is the derived RX bound, 1170 is the
-// estimate this issue is about. Reverting that one call site to the estimate --
-// with `rx_buffer_capacity` left entirely correct -- fails THIS line and
-// nothing else.
+// its receive capacity in its TYPE, so what number
+// `PollClient<S>::send_request` actually spends is observable here: 137 is the
+// derived RX bound, 1170 is the estimate this issue is about. Reverting that one
+// call site to the estimate -- with `rx_buffer_capacity` left entirely correct
+// -- fails THIS line and nothing else.
+//
+// phase-456 W9 — the type is `nros::PollClient<S>`; `send_request` and the
+// `Future` it hands back belong to the half that owns the `RmwServiceClient`.
 static_assert(
-    std::is_same<decltype(std::declval<::nros::Client<SvcOf<Bounded>>&>().send_request(
+    std::is_same<decltype(std::declval<::nros::PollClient<SvcOf<Bounded>>&>().send_request(
                      std::declval<const Bounded&>())),
                  ::nros::Future<Bounded, 137>>::value,
-    "Client<S>::send_request must hand back a Future sized from the response type's DERIVED "
+    "PollClient<S>::send_request must hand back a Future sized from the response type's DERIVED "
     "bound, not from its SERIALIZED_SIZE_MAX estimate");
-// Issue 0964: the matching `Client<SvcOf<Unbounded>>` assertion is gone for the
-// same reason -- `send_request` over an unbounded response type is now a build
-// error, which is the point, and an expected-failure TU is where that is shown.
+// Issue 0964: the matching `PollClient<SvcOf<Unbounded>>` assertion is gone for
+// the same reason -- `send_request` over an unbounded response type is now a
+// build error, which is the point, and an expected-failure TU is where that is
+// shown.
 
 /// Every path instantiates for a type with a derived bound.
 ///
@@ -278,7 +282,7 @@ static_assert(
 /// program sends.
 inline ::nros::Result instantiate_recv_paths(::nros::PollSubscription<Bounded>& bsub,
                                              ::nros::Stream<Bounded>& bstream, Bounded& bmsg,
-                                             ::nros::Client<SvcOf<Bounded>>& bclient,
+                                             ::nros::PollClient<SvcOf<Bounded>>& bclient,
                                              ::nros::PollService<SvcOf<Bounded>>& bservice,
                                              ::nros::TickCtx& tick,
                                              ::nros::ActionClient<ActionOf<Bounded>>& bac,

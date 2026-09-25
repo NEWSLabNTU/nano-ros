@@ -271,13 +271,63 @@ static_assert(!has_take_request<::nros::Service<StubService>>::value,
               "owns the server and this object has no storage to take from");
 static_assert(has_take_request<::nros::PollService<StubService>>::value,
               "phase-456 W5: the poll service is where take_request() went");
-static_assert(std::is_same<::nros::Client<StubService>::SharedPtr,
-                           std::shared_ptr<::nros::Client<StubService>>>::value,
-              "Client<S>::SharedPtr is still std::shared_ptr<Client<S>> -- phase-456 W5 did "
-              "NOT flip it. W3 measured the shape a ClientHandle<S> would take (two words "
-              "plus async_send_request), but the FUTURE-style create_client<S>(name, qos) is "
-              "the same collision the poll create_service was, and splitting a PollClient<S> "
-              "out is its own item");
+// phase-456 W9 — `Client<S>::SharedPtr` is the arena handle, and this is the
+// one in the family that carries a VERB. W3's census, re-measured on W9's base:
+// a dispatch service has NOTHING invoked on it, and a dispatch client has
+// exactly one thing, `async_send_request`. So a bare `ServiceHandle`-shaped
+// keep-alive would be one verb short, and an `Owned<Client<S>>` would claim an
+// ownership the arena holds.
+//
+// The blocker W5 recorded and W6 costed was the alias serving two owners:
+// `create_client<S>(name, qos)` with no handler also returned it and existed to
+// be `->send_request()`'d. That half is `nros::PollClient<S>` now, which is what
+// unblocks this line.
+static_assert(
+    std::is_same<::nros::Client<StubService>::SharedPtr, ::nros::ClientHandle<StubService>>::value,
+    "Client<S>::SharedPtr must be the two-word arena handle");
+static_assert(sizeof(::nros::Client<StubService>::SharedPtr) == 2 * sizeof(void*),
+              "the dispatch client handle must stay two words -- {executor, handle_id} is the "
+              "argument list of nros_cpp_service_client_send_on_handle, which is why the verb "
+              "fits on it");
+static_assert(std::is_same<::nros::Client<StubService>::ConstSharedPtr,
+                           ::nros::Client<StubService>::SharedPtr>::value,
+              "ConstSharedPtr is the same handle: async_send_request is const on it, because the "
+              "two words are the caller's and the mutation is the arena's");
+static_assert(std::is_same<::nros::Client<StubService>::SharedPtr::element_type,
+                           ::nros::Client<StubService>>::value,
+              "ClientHandle<S>::element_type names the dispatch client");
+
+// THE ONE VERB, asserted in both directions, because "a handle with a method"
+// is exactly what distinguishes this type from `ServiceHandle<S>` and a silent
+// loss of the method would leave every other assertion here green.
+template <typename T, typename = void> struct has_async_send : std::false_type {};
+template <typename T>
+struct has_async_send<T, decltype(void(std::declval<const T&>().async_send_request(
+                             std::declval<const StubService::Request&>())))> : std::true_type {};
+static_assert(has_async_send<::nros::ClientHandle<StubService>>::value,
+              "phase-456 W9: the dispatch client handle carries async_send_request -- it is the "
+              "one verb the census measured, and a keep-alive with no method would be wrong by "
+              "exactly that much");
+static_assert(!has_async_send<::nros::ServiceHandle<StubService>>::value,
+              "phase-456 W9: the service handle is the EMPTY one -- nothing is invoked on a "
+              "dispatch service, which is the measurement that made the two shapes differ");
+
+// And the half that makes the handle honest: the draining API is NOT reachable
+// through `Client<S>`. Same REACHABILITY shape as `has_take` and
+// `has_take_request` above, for the same measured reason -- `send_request` /
+// `wait_for_service` on a dispatch client used to hand NROS_SERVICE_CLIENT_SIZE
+// zero bytes to an FFI whose own doc comment says it needs "a valid initialized
+// future-style service client", with `initialized_` true and nothing on the path
+// checking.
+template <typename T, typename = void> struct has_send_request : std::false_type {};
+template <typename T>
+struct has_send_request<T, decltype(void(std::declval<T&>().send_request(
+                               std::declval<const StubService::Request&>())))> : std::true_type {};
+static_assert(!has_send_request<::nros::Client<StubService>>::value,
+              "phase-456 W9: the dispatch client must not carry send_request() -- the arena owns "
+              "the client and this object has no storage to send from");
+static_assert(has_send_request<::nros::PollClient<StubService>>::value,
+              "phase-456 W9: the poll client is where send_request() went");
 static_assert(std::is_same<::nros::Timer::SharedPtr, std::shared_ptr<::nros::Timer>>::value,
               "Timer::SharedPtr must be std::shared_ptr<Timer>");
 static_assert(std::is_same<rclcpp::Timer::SharedPtr, std::shared_ptr<rclcpp::Timer>>::value,

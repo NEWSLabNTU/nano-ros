@@ -118,7 +118,11 @@ inline ::nros::Result instantiate() {
     ::nros::Service<AddTwoInts> cb_service;
     (void)node.create_service<AddTwoInts>(cb_service, "/add_cb", &on_request);
 
-    ::nros::Client<AddTwoInts> future_client;
+    // phase-456 W9 — the future-style client is `nros::PollClient<S>`, a
+    // different type from the dispatch one below, for the reason the service
+    // pair above states: one class used to be both, and every verb that reads
+    // caller storage was offered on the half that has none.
+    ::nros::PollClient<AddTwoInts> future_client;
     (void)node.create_client<AddTwoInts>(future_client, "/add");
     ::nros::Client<AddTwoInts> cb_client;
     (void)node.create_client<AddTwoInts>(cb_client, "/add_cb", &on_response);

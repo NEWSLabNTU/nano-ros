@@ -111,9 +111,10 @@ template <typename S> class PollService {
     /// @ref take_request with the receive buffer sized by the CALLER.
     ///
     /// This IS a receive buffer — issue 0964's survey listed the service
-    /// request under "transmit", which is true of `Client<S>`'s request and
-    /// false here: the server deserializes out of it, so an under-estimate
-    /// truncates. See @ref PollSubscription::take_sized.
+    /// request under "transmit", which is true of a CLIENT's request
+    /// (`PollClient<S>`'s and `ClientHandle<S>`'s alike, phase-456 W9) and false
+    /// here: the server deserializes out of it, so an under-estimate truncates.
+    /// See @ref PollSubscription::take_sized.
     template <size_t Cap> Result try_recv_request_sized(RequestType& req, int64_t& seq_id) {
         if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         uint8_t buf[Cap];

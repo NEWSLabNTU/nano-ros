@@ -277,8 +277,8 @@ template <typename T> struct refuse {
     "value to port -1 to either. The no-argument form used to substitute 5000 ms -- a budget "     \
     "the caller did not choose, silently, which is exactly what the compile-or-conform rule "      \
     "forbids. NAME YOUR BUDGET: wait_for_service(10000) / wait_for_action_server(10000). To "      \
-    "keep doing other work while you wait, poll Client::service_is_ready() from your own spin "    \
-    "loop, or call the action form with a short budget inside a loop you control."
+    "keep doing other work while you wait, poll PollClient::service_is_ready() from your own "     \
+    "spin loop, or call the action form with a short budget inside a loop you control."
 
 #define NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK                                             \
     "the shared_ptr service-callback shape is REFUSED by nano-ros (RFC-0089, phase-417 W2.c). "    \

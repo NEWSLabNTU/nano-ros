@@ -245,7 +245,10 @@ class PortedServiceNode : public rclcpp::Node {
     ::nros::Owned<::nros::PollService<AddTwoInts>> poll_service_;
     rclcpp::Service<AddTwoInts>::SharedPtr cb_service_;
     rclcpp::Service<AddTwoInts>::SharedPtr cb_service_lambda_;
-    rclcpp::Client<AddTwoInts>::SharedPtr future_client_;
+    // phase-456 W9 — same shape one entity over: the FUTURE-style factory hands
+    // back the client itself, by value, because `Client<S>::SharedPtr` is a
+    // dispatch handle now.
+    ::nros::Owned<::nros::PollClient<AddTwoInts>> future_client_;
     rclcpp::Client<AddTwoInts>::SharedPtr cb_client_;
 };
 
@@ -267,9 +270,24 @@ static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_service
                            rclcpp::Service<AddTwoInts>::SharedPtr>::value,
               "the DISPATCH create_service<S>(name, handler) must return "
               "rclcpp::Service<S>::SharedPtr");
+// phase-456 W9 — the FUTURE-style `create_client<S>(name)` hands back the client
+// BY VALUE, and here the divergence from upstream is REAL rather than an absence:
+// upstream DOES have this signature and it returns `Client<S>::SharedPtr`, on a
+// client you then `async_send_request` for a future. Our two roads are two
+// registrations — the arena owns a dispatch client, the caller owns a
+// future-style one — so one alias cannot serve both, and this factory is the one
+// that must hand back something dereferenceable. Ledgered at
+// `cpp:Node::create_client`.
 static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_client<AddTwoInts>("s")),
+                           ::nros::Owned<::nros::PollClient<AddTwoInts>>>::value,
+              "the FUTURE-style create_client<S>(name) must return "
+              "nros::Owned<nros::PollClient<S>> -- Client<S>::SharedPtr is the DISPATCH handle "
+              "and cannot be dereferenced");
+static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_client<AddTwoInts>(
+                               "s", &on_add_two_ints_response)),
                            rclcpp::Client<AddTwoInts>::SharedPtr>::value,
-              "create_client<S>(name) must return rclcpp::Client<S>::SharedPtr");
+              "the DISPATCH create_client<S>(name, handler) must return "
+              "rclcpp::Client<S>::SharedPtr");
 
 // --- W2.d: the rate loop, written the upstream way --------------------------
 

@@ -56,7 +56,12 @@ int nros_app_main(int argc, char** argv) {
     NROS_TRY_RET(nros::create_node(node, "add_two_ints_client"), 1);
     printf("Node created: %s\n", node.get_name());
 
-    rclcpp::Client<example_interfaces::srv::AddTwoInts> client;
+    // phase-456 W9 — the FUTURE-style client is `nros::PollClient<S>`: this
+    // caller owns the `RmwServiceClient`, drives `spin_once` itself, and drains
+    // the reply below. `rclcpp::Client<S>` is the DISPATCH client, whose one verb
+    // is `async_send_request` and whose entity the executor arena owns — see
+    // `service-client-callback` for that road.
+    nros::PollClient<example_interfaces::srv::AddTwoInts> client;
     NROS_TRY_RET(node.create_client(client, "/add_two_ints"), 1);
 
     example_interfaces::srv::AddTwoInts::Request req;

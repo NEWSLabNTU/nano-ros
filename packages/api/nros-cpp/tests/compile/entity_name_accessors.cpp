@@ -87,9 +87,10 @@ struct StubAction {
 // ── The list. One row per entity class that remembers its own name. ────────
 //
 // Six families, NINE classes: publisher, subscription, the service client and
-// its TWO servers (phase-444 closed the client and the server; phase-456 W5
-// split the server into a dispatch half and a poll half, and both answer), and
-// the action client and server in BOTH the callback tier and the polling tier.
+// its TWO servers and its TWO clients (phase-444 closed the client and the
+// server; phase-456 W5 split the server into a dispatch half and a poll half and
+// W9 did the same to the client, and all four answer), and the action client and
+// server in BOTH the callback tier and the polling tier.
 
 using TopicNameFn = const char* (::rclcpp::Publisher<Payload>::*)() const;
 TopicNameFn publisher_topic_name = &::rclcpp::Publisher<Payload>::get_topic_name;
@@ -113,6 +114,15 @@ ServiceServiceNameFn service_service_name = &::rclcpp::Service<StubService>::get
 using PollServiceServiceNameFn = const char* (::nros::PollService<StubService>::*)() const;
 PollServiceServiceNameFn poll_service_service_name =
     &::nros::PollService<StubService>::get_service_name;
+
+// phase-456 W9 — and the CLIENT became two classes for the same reason, so the
+// family has a tenth member. `rclcpp::Client<S>` above is the DISPATCH half;
+// `nros::PollClient<S>` is the FUTURE-style half the caller owns. Same argument
+// as the service pair: each keeps its own `service_name_`, so a per-class drift
+// is exactly what this list exists to catch.
+using PollClientServiceNameFn = const char* (::nros::PollClient<StubService>::*)() const;
+PollClientServiceNameFn poll_client_service_name =
+    &::nros::PollClient<StubService>::get_service_name;
 
 using ActionServerNameFn = const char* (::rclcpp_action::Server<StubAction>::*)() const;
 ActionServerNameFn action_server_name = &::rclcpp_action::Server<StubAction>::get_action_name;
@@ -161,11 +171,13 @@ inline bool uninitialised_entities_answer_empty_never_null() {
     ::rclcpp::Publisher<Payload> publisher;
     ::rclcpp::Subscription<Payload> subscription;
     ::rclcpp::Client<StubService> client;
+    ::nros::PollClient<StubService> poll_client;
     ::rclcpp::Service<StubService> service;
     ::nros::PollService<StubService> poll_service;
 
     const char* names[] = {
-        publisher.get_topic_name(), subscription.get_topic_name(),   client.get_service_name(),
+        publisher.get_topic_name(), subscription.get_topic_name(),
+        client.get_service_name(),  poll_client.get_service_name(),
         service.get_service_name(), poll_service.get_service_name(),
     };
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {

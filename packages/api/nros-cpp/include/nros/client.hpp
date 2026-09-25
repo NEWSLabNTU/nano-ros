@@ -1,10 +1,16 @@
-// nros-cpp: Service client class
+// nros-cpp: the DISPATCH service client
 // Freestanding C++ -- no exceptions, no STL required
 
 /**
  * @file client.hpp
  * @ingroup grp_service
- * @brief `nros::Client<S>` — typed service client.
+ * @brief `rclcpp::Client<S>` — the arena-registered (callback-style) service
+ *        client, and `Client<S>::SharedPtr` = `nros::ClientHandle<S>`.
+ *
+ * The FUTURE-style client — caller-owned storage, `send_request()` / `call()` /
+ * `wait_for_service()` — is `nros::PollClient<S>` in
+ * `nros/polling_client.hpp` since phase-456 W9. See there for why the two are
+ * separate types.
  */
 
 #ifndef NROS_CPP_CLIENT_HPP
@@ -14,18 +20,11 @@
 #include <cstddef>
 
 #include "nros/callback_context.hpp" // phase-456 W3 — the handler IS the arena context
+#include "nros/client_handle.hpp"    // phase-456 W9 — what `Client<S>::SharedPtr` IS
 #include "nros/config.hpp"
 #include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
-#include "nros/log.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "nros/result.hpp"
-#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
-#include "nros/future.hpp"
-
-// phase-417 W1.a — `<memory>` for the nested pointer aliases below.
-// `NROS_CPP_HAS_SHARED_PTR` and the other five capability macros have ONE
-// definition site, and the measured reason the predicate needs both probes
-// (issues 0112, 1187, 1240) is stated there.
-#include "nros/std_detect.hpp"
+#include "nros/size_bound.hpp" // nros::detail::buffer_bounds<M>::tx — the request scratch bound
 
 #include "nros_cpp_ffi.h"
 
@@ -77,38 +76,66 @@ class Node;
 // (`rclcpp::Client<S>::SharedPtr`) resolves with no wrapper in between.
 namespace rclcpp {
 
-/// Typed service client for a ROS 2 service.
+/// Dispatch service client for a ROS 2 service — the rclcpp model.
 ///
-/// Mirrors `rclcpp::Client<S>`. The service type `S` must provide
-/// nested `Request` and `Response` types with `TYPE_NAME`, `TYPE_HASH`,
-/// `SERIALIZED_SIZE_MAX`, `ffi_serialize()`, and `ffi_deserialize()`.
+/// A response handler is registered into the executor arena, which owns the
+/// `RmwServiceClient` and runs the handler during `spin_once`. The service type
+/// `S` must provide nested `Request` and `Response` types with `TYPE_NAME`,
+/// `TYPE_HASH`, `SERIALIZED_SIZE_MAX`, `ffi_serialize()`, and
+/// `ffi_deserialize()`.
 ///
-/// Usage (async -- preferred):
+/// THIS OBJECT IS BOOKKEEPING PLUS ONE VERB — phase-456 W9. The client, the
+/// reply buffer, the handler and its context are all the arena's; W3 made the
+/// arena's trampoline context the user's HANDLER rather than `&out`, so after
+/// registration nothing of the caller's is referenced and this object is freely
+/// movable.
+///
+/// What it does hold is what a REGISTRATION can be asked about and the arena
+/// cannot be asked for by an index alone: `{initialized_, handle_id_,
+/// executor_, service_name_}`. `executor_` and `handle_id_` are the pair that
+/// names the arena entry (issue 1437) — and they are also the argument list of
+/// `nros_cpp_service_client_send_on_handle`, which is why @ref
+/// async_send_request needs nothing more. `service_name_` is the phase-444
+/// C++-side copy, because the runtime takes the name at create and drops it.
+///
+/// Measured (phase-456 W3, re-measured W9), across `examples/`, `tests/`,
+/// `book/` and `packages/`: a dispatch client has exactly ONE verb invoked on
+/// it, `async_send_request`, at one example site plus the move probe W3 added.
+/// That is why `Client<S>::SharedPtr` is a two-word `nros::ClientHandle<S>`
+/// carrying that verb — not the empty keep-alive `ServiceHandle<S>` is, and not
+/// an `Owned<Client<S>>`, because the arena owns the entity and the caller does
+/// not.
+///
+/// Usage:
 /// ```cpp
-/// nros::Client<example_interfaces::srv::AddTwoInts> client;
-/// NROS_TRY(node.create_client(client, "/add_two_ints"));
-/// auto fut = client.send_request(req);
-/// ResponseType resp;
-/// NROS_TRY(fut.wait(executor.handle(), 5000, resp));
+/// void on_response(const AddTwoInts::Response& resp) { /* ... */ }
+/// rclcpp::Client<AddTwoInts> client;
+/// NROS_TRY(node.create_client(client, "/add_two_ints", &on_response));
+/// NROS_TRY(client.async_send_request(req));
+/// // ... or, in ported shape:
+/// auto handle = node.create_client<AddTwoInts>("/add_two_ints", &on_response);
+/// NROS_TRY(handle.async_send_request(req));
 /// ```
 template <typename S> class Client {
   public:
-#ifdef NROS_CPP_HAS_SHARED_PTR
-    /// `rclcpp::Client<S>::SharedPtr` — phase-417 W1.a.
+    /// `rclcpp::Client<S>::SharedPtr` — phase-456 W9.
     ///
-    /// rclcpp indexes its entity types this way, and
-    /// `rclcpp::Client<S>::SharedPtr member_;` is close to universal in
-    /// ported source. Ergonomics only (RFC-0089 §"Who implements an adopted
-    /// name"): a spelling for `std::shared_ptr<Client<S>>`, no second code path.
+    /// `rclcpp::Client<S>::SharedPtr member_;` is how ported source declares a
+    /// client member, so this alias must exist on every target — which
+    /// `std::shared_ptr` does not.
     ///
-    /// Present only where `<memory>` is — a freestanding target has no
-    /// `std::shared_ptr` to alias.
-    using SharedPtr = std::shared_ptr<Client<S>>;
-    /// `rclcpp::Client<S>::ConstSharedPtr` — see `SharedPtr`.
-    using ConstSharedPtr = std::shared_ptr<const Client<S>>;
+    /// IT IS NOT A POINTER TO A `Client<S>`. A registered client is the
+    /// arena's; what this names is `nros::ClientHandle<S>` — two words,
+    /// copyable, carrying exactly the one verb the census says a dispatch client
+    /// is asked for. See `client_handle.hpp`.
+    using SharedPtr = ::nros::ClientHandle<S>;
+    /// `rclcpp::Client<S>::ConstSharedPtr` — see `SharedPtr`. The same handle:
+    /// `async_send_request` is `const` on it (the handle is two words the caller
+    /// owns; the mutation is the arena's), so there is no mutable/const
+    /// distinction to draw.
+    using ConstSharedPtr = ::nros::ClientHandle<S>;
     /// `rclcpp::Client<S>::UniquePtr` — see `SharedPtr`.
-    using UniquePtr = std::unique_ptr<Client<S>>;
-#endif
+    using UniquePtr = ::nros::ClientHandle<S>;
 
     using RequestType = typename S::Request;
     using ResponseType = typename S::Response;
@@ -124,115 +151,30 @@ template <typename S> class Client {
     /// overload could set it and the branch reading it was unreachable.
     using TypedResponseFn = void (*)(const ResponseType& response);
 
-    /// Send a request and return a Future for the response (non-blocking).
+    /// Phase 189.M3.3.f — THE ONE VERB. Send a request; the reply is delivered
+    /// to the registered response handler during `spin_once` (no Future).
+    /// Returns immediately after sending.
     ///
-    /// Call `wait()` on the returned future to block until the response
-    /// arrives, or poll with `is_ready()` / `try_take()`.
-    ///
-    /// @param req  Request to send.
-    /// @return Future that resolves to the response. Returns a consumed
-    ///         (empty) future on serialization or send failure.
-    ::nros::Future<ResponseType> send_request(const RequestType& req) {
-        return send_request_sized<::nros::rx_buffer_capacity<ResponseType>::value>(req);
-    }
-
-    /// @ref send_request with the REPLY buffer sized by the caller.
-    ///
-    /// The receive buffer of a `Future<T>` is a member, so the capacity is a
-    /// class template argument rather than a function one: this returns a
-    /// `Future<ResponseType, RespCap>` (issue 0964). The request buffer is a
-    /// transmit scratch buffer and is deliberately left on the estimate --
-    /// over-sizing there only wastes stack.
-    ///
-    /// @tparam RespCap  Stack bytes the returned future holds for the reply.
-    template <size_t RespCap>
-    ::nros::Future<ResponseType, RespCap> send_request_sized(const RequestType& req) {
-        using Fut = ::nros::Future<ResponseType, RespCap>;
-        if (!initialized_) return Fut();
-
-        uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
-        size_t req_len = 0;
-        if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
-            return Fut();
-        }
-
-        nros_cpp_ret_t ret = nros_cpp_service_client_send_request(storage_, req_buf, req_len);
-        if (ret != 0) return Fut();
-
-        return Fut(storage_, &nros_cpp_service_client_take_response,
-                   0 // slot 0 (single outstanding request)
-        );
-    }
-
-    /// Send a request and block until a reply is received.
-    ///
-    /// Spins the executor internally (like the runtime's `Promise::wait`).
-    /// Never calls `zpico_get` — all I/O is driven by `spin_once`.
-    ///
-    /// @param req          Request to send.
-    /// @param resp         Output response struct (filled on success).
-    /// @param timeout_ms   Maximum wait time (default 5000ms).
-    /// @return Result indicating success, timeout, or failure.
-    Result call(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 5000) {
-        return call_sized<::nros::rx_buffer_capacity<ResponseType>::value>(req, resp, timeout_ms);
-    }
-
-    /// @ref call with the REPLY buffer sized by the caller (issue 0964).
-    template <size_t RespCap>
-    Result call_sized(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 5000) {
-        if (!initialized_ || !executor_) return Result(::nros::ErrorCode::NotInitialized);
-        auto fut = send_request_sized<RespCap>(req);
-        return fut.wait(executor_, timeout_ms, resp);
-    }
-
-    /// Issue 0278 (Half B) — send a request and block up to `timeout_ms` for the
-    /// reply WITHOUT spinning the executor, so this is safe to call from inside
-    /// a subscription/timer callback (where `call()`/`Future::wait` would return
-    /// `Reentrant`, issue 0290). It sends then sleep-polls the reply queue.
-    ///
-    /// CONSTRAINT: usable from a callback only on a MULTI-THREADED backend
-    /// (zenoh MT, cyclonedds), where the backend's own read task delivers the
-    /// reply into the client's queue while this loop yields. On a
-    /// single-threaded / polled backend the reply can only arrive via
-    /// `spin_once` — which the callback is blocking — so it will TIME OUT; use
-    /// `call()` from the main loop there. Keep `timeout_ms` SHORT (tens of ms):
-    /// this blocks the executor's dispatch thread for its duration.
-    ///
-    /// @param req          Request to send.
-    /// @param resp         Output response struct (filled on success).
-    /// @param timeout_ms   Maximum wait (default 100ms).
-    /// @return success on a received reply; ErrorCode::Timeout on no reply in
-    ///         time; NotInitialized / Error otherwise.
-    Result call_polling(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 100) {
-        return call_polling_sized<::nros::rx_buffer_capacity<ResponseType>::value>(req, resp,
-                                                                                   timeout_ms);
-    }
-
-    /// @ref call_polling with the REPLY buffer sized by the caller (issue
-    /// 0964). The request buffer stays on the estimate: it is transmit
-    /// scratch, where an over-estimate only wastes stack.
-    template <size_t RespCap>
-    Result call_polling_sized(const RequestType& req, ResponseType& resp,
-                              uint32_t timeout_ms = 100) {
+    /// UPSTREAM PARITY: upstream's `async_send_request(req)` returns a
+    /// `std::shared_future<Response::SharedPtr>` and its two-argument form takes
+    /// a callback per REQUEST. Ours returns a `Result` and the handler is bound
+    /// once, at registration — ledgered at `cpp:Client::async_send_request`,
+    /// divergence / adopt. What changed in phase-456 W9 is only that the
+    /// `callback_mode_` check is gone with the flag: every `rclcpp::Client<S>`
+    /// is a dispatch client now, and the future-style road is
+    /// `nros::PollClient<S>`.
+    Result async_send_request(const RequestType& req) {
         if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
         size_t req_len = 0;
         if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
             return Result(::nros::ErrorCode::Error);
         }
-        uint8_t resp_buf[RespCap];
-        size_t resp_len = 0;
-        nros_cpp_ret_t ret = nros_cpp_service_client_call_raw(
-            storage_, req_buf, req_len, resp_buf, sizeof(resp_buf), &resp_len, timeout_ms);
-        if (ret != 0) return Result(ret);
-        if (resp_len == 0) return Result(::nros::ErrorCode::Timeout);
-        if (ResponseType::ffi_deserialize(resp_buf, resp_len, &resp) != 0) {
-            return Result(::nros::ErrorCode::Error);
-        }
-        return Result::success();
+        return Result(
+            nros_cpp_service_client_send_on_handle(executor_, handle_id_, req_buf, req_len));
     }
 
-    /// Check if the client is initialized and valid.
+    /// Check if the client was registered.
     bool is_valid() const { return initialized_; }
 
     /// Read back the service name this client was created on — phase-444.
@@ -246,15 +188,19 @@ template <typename S> class Client {
     ///
     /// The name lives C++-side in `service_name_`, for the reason
     /// `ActionServer::get_action_name` states: the runtime does NOT own it.
-    /// `nros_cpp_service_client_create` takes `service_name` and drops it, so
+    /// `nros_cpp_service_client_register` takes `service_name` and drops it, so
     /// there is nothing FFI-side to hand back, and a borrowed `const char*`
     /// was rejected because `create_client` takes a pointer a hosted caller may
     /// well have obtained from a temporary.
     ///
-    /// Returns `""` (never NULL) on an uninitialised client, matching
-    /// `Publisher::get_topic_name` and both action tiers. Both client modes
-    /// answer — the future-style client that owns its `storage_` and the
-    /// callback-style one the executor arena owns.
+    /// Returns `""` (never NULL) on an unregistered client, matching
+    /// `Publisher::get_topic_name` and both action tiers.
+    ///
+    /// phase-456 W9 split this class in two and the method answers on BOTH
+    /// halves, unchanged — the same shape `Service::get_service_name` took under
+    /// W5. Each half keeps its own `service_name_`, because the copy is made at
+    /// create from the argument the caller passed and neither owner can recover
+    /// it afterwards.
     const char* get_service_name() const { return initialized_ ? service_name_ : ""; }
 
     /// The QoS the backend GRANTED this client's REQUEST endpoint — the
@@ -267,9 +213,20 @@ template <typename S> class Client {
     ///
     /// A policy the backend cannot report is an ABSENCE (`ReliabilityUnknown`
     /// and friends), never the request echoed back — see
-    /// @ref Publisher::get_actual_qos. Answers on both the future-style road
-    /// (this object owns the entity) and the callback-style one (the executor
-    /// arena does).
+    /// @ref Publisher::get_actual_qos.
+    ///
+    /// phase-456 W9 — BOTH HALVES ANSWER, and the client comes out the way the
+    /// SERVICE did rather than the way the subscription did.
+    /// `PollSubscription::get_actual_qos` had to be left off the dispatch
+    /// `Subscription<M>`, because a dispatch subscription holds only
+    /// `sched_handle_id_` and reaching the arena would have meant inventing a
+    /// signature that takes an executor (ledgered at
+    /// `cpp:Subscription::get_actual_qos`). A dispatch client does NOT have that
+    /// problem: issue 1437 already gave it `executor_` beside `handle_id_`, and
+    /// `nros_cpp_service_client_get_actual_qos` serves both roads — `storage`
+    /// for the owner, `(executor, handle_id)` for the arena. So the upstream
+    /// no-argument spelling is reachable here with no weakening, and no ledger
+    /// row is owed.
     ::nros::QoS get_request_publisher_actual_qos() const { return actual_qos_half(true); }
 
     /// The QoS the backend GRANTED this client's RESPONSE endpoint — the
@@ -277,155 +234,51 @@ template <typename S> class Client {
     /// @ref get_request_publisher_actual_qos.
     ::nros::QoS get_response_subscription_actual_qos() const { return actual_qos_half(false); }
 
-    /// Phase 124.C.3 — graph-aware "is the matching server up?" probe.
-    ///
-    /// Returns the count from the RMW backend's matched-server view:
-    /// * `1`  — at least one matching server is currently visible.
-    /// * `ok(false)` — no matching server discovered yet.
-    /// * `error(Unsupported)` — backend cannot answer (e.g. XRCE without
-    ///           participant enumeration); caller must fall back to a timed
-    ///           `wait_for_service` or assume reachability.
-    /// * `error(<code>)` — the probe itself failed.
-    ///
-    /// Never spins the executor — synchronous, safe to call from
-    /// inside callbacks. Mirrors `rclcpp::ClientBase::service_is_ready`
-    /// but with a tri-state result instead of collapsing
-    /// "don't know" and "no" into the same `false`.
-    ::nros::ResultOf<bool> service_is_ready() const {
-        if (!initialized_) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::NotInitialized);
-        int out = -1;
-        nros_cpp_ret_t ret =
-            nros_cpp_service_client_server_available(const_cast<uint8_t*>(storage_), &out);
-        // A failed CALL and a backend that cannot ANSWER are different facts,
-        // and the old `int` form reported both as `-1`. Keep them apart.
-        if (ret != 0) return ::nros::ResultOf<bool>::error(static_cast<::nros::ErrorCode>(ret));
-        if (out < 0) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::Unsupported);
-        return ::nros::ResultOf<bool>::ok(out != 0);
-    }
-
-    /// @deprecated Use `service_is_ready()`.
-    ///
-    /// phase-379 W6 — preserved exactly: `1` ready, `0` not yet, `-1` cannot
-    /// answer. It cannot distinguish a failed call from an unsupported backend,
-    /// which is why it is replaced rather than kept.
-    [[deprecated("Client::server_available is deprecated; use "
-                 "Client::service_is_ready, which returns ::nros::ResultOf<bool>")]] int
-    server_available() const {
-        auto r = service_is_ready();
-        if (!r.ok()) return -1;
-        return r.value() ? 1 : 0;
-    }
-
-    /// phase-338 W8 — block until a matching service server is discoverable.
-    ///
-    /// Mirrors `rclcpp::ClientBase::wait_for_service`. Prefer this over
-    /// hand-rolling a retry loop around the first `call()` / `send_request()`:
-    /// it waits for the actual condition instead of guessing an attempt count,
-    /// and it re-probes, so a server that starts AFTER the wait begins is still
-    /// seen (a single liveliness query samples the router's current token list
-    /// and terminates).
-    ///
-    /// Spins the executor cooperatively while probing, so do NOT call it from
-    /// inside a callback — use the non-blocking `server_available()` there.
-    ///
-    /// Returns ok when the server is visible, `Timeout` when the budget
-    /// elapses.
-    ///
-    /// **The budget is REQUIRED** — phase-417 stage 3. Upstream's default is
-    /// `-1`, WAIT FOREVER; this call cannot (RFC-0021: it drives the executor
-    /// cooperatively, and a wait that never returns starves every other entity
-    /// on a single-threaded transport), and `uint32_t` has no value to port -1
-    /// to. It used to default to 5000, so a ported argument-free
-    /// `client->wait_for_service()` returned `Timeout` after five seconds where
-    /// upstream was still waiting — and `[[nodiscard]]` does not catch
-    /// `if (!client->wait_for_service())`, which is what upstream code writes.
-    /// The no-argument form is now a compile error carrying
-    /// `NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT`.
-    Result wait_for_service(uint32_t timeout_ms) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-        return Result(nros_cpp_service_client_wait_for_service(storage_, executor_, timeout_ms));
-    }
-
-    /// **REFUSED** — `wait_for_service()` with no budget. phase-417 stage 3.
-    ///
-    /// A member template rather than `= delete` for the C++14 reason given on
-    /// `Executor::spin_once()`: a deleted function carries no message there.
-    template <typename T = void> Result wait_for_service() {
-        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT);
-        return Result(::nros::ErrorCode::Unsupported);
-    }
-
-    /// Phase 189.M3.3.f — callback-style async send. Only valid on a
-    /// callback-style client (created via the `create_client(out, name, callback,
-    /// ...)` overload); the reply is delivered to the registered response handler
-    /// during `spin_once` (no Future). Returns immediately after sending.
-    Result async_send_request(const RequestType& req) {
-        if (!initialized_ || !callback_mode_) return Result(::nros::ErrorCode::NotInitialized);
-        uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
-        size_t req_len = 0;
-        if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
-            return Result(::nros::ErrorCode::Error);
-        }
-        return Result(
-            nros_cpp_service_client_send_on_handle(executor_, handle_id_, req_buf, req_len));
-    }
-
-    /// Executor handle for the callback-style client (Phase 189.M3.3.f);
-    /// `SIZE_MAX` for future-style / uninitialized.
+    /// Executor arena slot for the registration; `SIZE_MAX` until registered.
     size_t handle_id() const { return handle_id_; }
 
-    /// Destructor -- releases service client resources.
+    /// Destructor — there is nothing to release.
     ///
-    /// Future-style clients own an `RmwServiceClient` in `storage_`; callback-style
-    /// clients (M3.3.f) are owned by the executor arena, so the dtor must NOT
-    /// touch `storage_` for them.
-    ~Client() {
-        if (initialized_ && !callback_mode_) {
-            nros_cpp_service_client_destroy(storage_);
-        }
-        initialized_ = false;
-    }
+    /// The executor arena owns the client, the reply buffer and the handler, and
+    /// frees them when the executor drops. No unregister FFI exists, so this
+    /// cannot remove the registration and does not pretend to: it clears this
+    /// object's own bookkeeping. Until phase-456 W9 the same destructor also
+    /// freed a FUTURE-style client, behind an `if (initialized_ &&
+    /// !callback_mode_)`; that half moved to `nros::PollClient<S>`, where the
+    /// condition is unconditional.
+    ~Client() { initialized_ = false; }
 
-    // Move semantics (non-copyable). Future-style relocation goes through the
-    // `nros_cpp_service_client_relocate` runtime call (Phase 84.C1).
+    // Move semantics (non-copyable). Bookkeeping only — there is no storage to
+    // relocate, so `nros_cpp_service_client_relocate` is not called here.
     //
-    // phase-456 W3 — a callback-style client is MOVABLE now. The warning that
-    // stood here ("must NOT be moved after register — the arena holds `this` as
-    // the response trampoline context") lost its subject with the same change
-    // `service.hpp` records: the arena holds the user's HANDLER, not `this`.
-    // What survives the move is the caller's own `{executor_, handle_id_}`,
-    // which is what `async_send_request` needs and all it needs.
+    // phase-456 W3 — a callback-style client is MOVABLE, and the warning that
+    // used to stand here is gone with its subject. It said the arena holds
+    // `this` as the response trampoline context; the arena holds the user's
+    // HANDLER now, so nothing of the caller's is referenced after registration
+    // and there is no pointer a move could leave stale. What survives the move
+    // is `{executor_, handle_id_}`, which is what `async_send_request` needs and
+    // all it needs.
     Client(Client&& other)
         : executor_(other.executor_), initialized_(other.initialized_),
-          handle_id_(other.handle_id_), callback_mode_(other.callback_mode_), service_name_{} {
+          handle_id_(other.handle_id_), service_name_{} {
         ::nros::detail::assign_entity_name(service_name_, other.service_name_);
-        if (other.initialized_ && !other.callback_mode_) {
-            nros_cpp_service_client_relocate(other.storage_, storage_);
-        }
         other.initialized_ = false;
     }
 
     Client& operator=(Client&& other) {
         if (this != &other) {
-            if (initialized_ && !callback_mode_) {
-                nros_cpp_service_client_destroy(storage_);
-            }
             executor_ = other.executor_;
             initialized_ = other.initialized_;
             handle_id_ = other.handle_id_;
-            callback_mode_ = other.callback_mode_;
             ::nros::detail::assign_entity_name(service_name_, other.service_name_);
-            if (other.initialized_ && !other.callback_mode_) {
-                nros_cpp_service_client_relocate(other.storage_, storage_);
-            }
             other.initialized_ = false;
         }
         return *this;
     }
 
-    /// Default constructor -- creates an uninitialized service client.
-    /// Use `Node::create_client()` to initialize.
-    Client() : storage_(), executor_(nullptr), initialized_(false), service_name_{} {}
+    /// Default constructor -- creates an unregistered service client.
+    /// Use `Node::create_client()` to register one.
+    Client() : executor_(nullptr), initialized_(false), service_name_{} {}
 
   private:
     Client(const Client&) = delete;
@@ -449,26 +302,32 @@ template <typename S> class Client {
 
     /// The two directions differ only in which out-pointer is read, so one
     /// body serves both and they cannot end up swapped (issue 1437).
+    ///
+    /// `storage` is always NULL here: a dispatch client owns no
+    /// `RmwServiceClient`, so `(executor_, handle_id_)` is the only road. The
+    /// `callback_mode_ ? nullptr : storage_` branch this replaced existed
+    /// because one class served two owners; `nros::PollClient<S>` takes the
+    /// other arm and passes its `storage_` unconditionally.
     ::nros::QoS actual_qos_half(bool request) const {
         nros_cpp_qos_t req{};
         nros_cpp_qos_t resp{};
         if (!initialized_) return ::nros::detail::qos_all_unknown();
-        const void* storage = callback_mode_ ? nullptr : static_cast<const void*>(storage_);
-        if (nros_cpp_service_client_get_actual_qos(storage, executor_, handle_id_, &req, &resp) !=
+        if (nros_cpp_service_client_get_actual_qos(nullptr, executor_, handle_id_, &req, &resp) !=
             0) {
             return ::nros::detail::qos_all_unknown();
         }
         return ::nros::detail::qos_from_ffi(request ? req : resp);
     }
 
-    alignas(8) uint8_t storage_[NROS_SERVICE_CLIENT_SIZE];
+    // Callback-style BOOKKEEPING (Phase 189.M3.3.f). The handler itself is not
+    // here — it lives in the arena (phase-456 W3) — and neither is the client,
+    // so what remains is the caller's own record of a registration that refers
+    // back to nothing of the caller's. `{executor_, handle_id_}` is also the
+    // send road, which is why this object has a verb where `Service<S>` has
+    // none.
     void* executor_;
     bool initialized_;
-    // Callback-style BOOKKEEPING (Phase 189.M3.3.f); unused in future mode. The
-    // handler lives in the arena (phase-456 W3); `{executor_, handle_id_}` is
-    // what `async_send_request` sends on, and it is the caller's own.
     size_t handle_id_ = static_cast<size_t>(-1);
-    bool callback_mode_ = false;
     /// phase-444 — the service name, kept C++-side for `get_service_name()`.
     /// `::nros::SERVICE_NAME_MAX` bytes, the same bound every other entity
     /// family uses.
@@ -488,26 +347,6 @@ template <typename S> using Client = ::rclcpp::Client<S>;
 
 // Phase 84.G8: out-of-line definition of Node::create_client<S>().
 #include "nros/node.hpp"
-
-namespace nros {} // namespace nros
-
-namespace rclcpp {
-template <typename S>
-Result Node::create_client(Client<S>& out, const char* service_name, const ::nros::QoS& qos) {
-    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
-    nros_cpp_ret_t ret = nros_cpp_service_client_create(
-        &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
-    if (ret == 0) {
-        out.executor_ = executor_handle_;
-        // phase-444 — remember the name for `get_service_name()`; the runtime
-        // takes `service_name` and drops it.
-        ::nros::detail::assign_entity_name(out.service_name_, service_name);
-        out.initialized_ = true;
-    }
-    return Result(ret);
-}
-} // namespace rclcpp
 
 namespace nros {
 
@@ -540,8 +379,7 @@ Result Node::create_client(Client<S>& out, const char* service_name, F callback,
     if (ret == 0) {
         out.executor_ = executor_handle_;
         out.handle_id_ = handle;
-        out.callback_mode_ = true;
-        // phase-444 — see the future-style overload above.
+        // phase-444 — see `nros::PollClient`'s overload, which does the same.
         ::nros::detail::assign_entity_name(out.service_name_, service_name);
         out.initialized_ = true;
     }
