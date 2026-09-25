@@ -6,6 +6,15 @@
 settled on. phase-442 keeps W0–W7, which landed; its W8 text describes a design
 that revision superseded, and the work items below replace it.
 
+**W3b measured 2026-09-25 and SPLIT.** W1, W2, W2b, W3, W4, W7 and W8 have
+landed. W3b — actions — was opened as "move `CppActionServerLayout` into the
+arena and give ~25 verbs arena-side entry points"; two of its three premises do
+not survive measurement (that struct is a size mirror, the entity is already in
+the arena, and the verb count mixed the dispatch and polling tiers), so the item
+is refused as written and split into **W3b-i**, which landed with that record,
+and **W3b-ii**, which is specified and refused for now on verification grounds.
+Read W3b before acting on W3's action rows.
+
 ## The decision this implements
 
 > The C/C++ API is a thin wrapper over the Rust API. Entity lifetime is defined
@@ -283,7 +292,12 @@ Four things follow, and each is a simplification rather than a trade:
      `SubscriptionHandle<M>` carries. So a `ClientHandle<S>` is the same shape
      with a method on it, not an empty one. Saying "same as the subscription"
      would have been wrong by exactly one verb.
-  3. **An action is not a handle candidate at all** — see below.
+  3. **An action is not a handle candidate at all** — see below. (Superseded by
+     W3b, which measured this row and found it wrong in two places: four of the
+     twelve server verbs counted here are `PollingActionServer<A>` members, and
+     the corpus invokes 3 of the dispatch class's 15. The action CLIENT is
+     already `{arena_entry_index, executor_ptr}` plus a callback record. Read
+     W3b's correction, not this line.)
 
   *The `&out` hazard was cheaper to remove than the phase doc assumed, and the
   reason is a measured one.* The SFINAE guard on both callback-style factories
@@ -343,26 +357,203 @@ Four things follow, and each is a simplification rather than a trade:
   `check-ffi-struct-mirrors`, `check-unsafe-census` and `api-parity --check` all
   green.
 
-* **W3b [cpp, core] — actions, measured and deliberately separate.** The audit
-  says an action is a different kind of thing from a service, on three counts,
-  and "same audit, one kind at a time" does not survive any of them:
+* **W3b [cpp, core] — actions. MEASURED, and REFUSED as written; SPLIT.** The
+  item was opened on three counts against treating actions like W3's services.
+  Two of the three do not survive being measured against the tree, and the third
+  survives but points somewhere else, so the item as stated — *"move
+  `CppActionServerLayout` into the arena and give all ~25 verbs arena-side entry
+  points"* — is not the work. What IS the work is stated below and split in two;
+  the first half landed with this record, the second is refused with its price.
 
-  1. **It is not a keep-alive.** 12 verbs on the server, 13 on the client, in
-     the table above. Every one of them is reached on the object.
-  2. **The C++ object IS the entity.** `nros_cpp_action_server_register` is
-     handed `out.storage_` — the `CppActionServerLayout` living inside the C++
-     object — not a context pointer, and Phase 87.6's own comment says the
-     name buffers live there too. `owned.hpp` already calls this out: it is
-     "the one type in nros-cpp that registers its storage address externally".
-  3. **Its move is a working mechanism, not a hazard.** `relocate` followed by
-     `install_callbacks()` re-registers the trampolines with the new `this`.
-     There is no warning here to delete, because the problem was solved rather
-     than documented.
+  *Count 1, "it is not a keep-alive: 12 verbs on the server, 13 on the client,
+  every one reached on the object" — WRONG ABOUT THE CORPUS.* That count is over
+  the verbs this API's own compile probes exercise, which are written to be
+  exhaustive. W2 and W3 both decided their shape on what a CALLER invokes, and
+  that census had not been run for actions. Run now, over everything outside
+  `packages/api/nros-cpp/include/` (2026-09-25):
 
-  So an action becomes a handle only by moving `CppActionServerLayout` into the
-  arena and giving all ~25 verbs arena-side entry points — a core Rust change of
-  a different order from W3, and one that wants W8's single registration
-  function underneath it. Not started.
+  | site | class instantiated | verbs USED | of available |
+  | --- | --- | --- | --- |
+  | `examples/native/cpp/action-server` + its 4 embedded twins (mps2-an385-freertos, threadx-linux, rv-virt-threadx, qemu-armv7a-nuttx) | `nros::ActionServer<Fib>` | `set_goal_callback_with_ctx`, `publish_feedback`, `complete_goal` | **3 of 15** |
+  | `examples/native/cpp/action-client-callback` | `nros::ActionClient<Fib>` | `set_callbacks`, `send_goal_async`, `get_result_async`, `poll` | **4 of 18** |
+  | `examples/zephyr/cpp/action-{server,client}`, `examples/workspaces/cpp/src/action_{server,client}_pkg` | **none** — `::nros::ActionServerStorage` / `ActionClientStorage` plus the raw FFI, through `component.hpp` | **0** | — |
+  | `examples/templates/` — the ported corpus | none; there is no action of any kind in it | **0** | — |
+  | `tests/compile/action_goal_uuid.cpp` | both | server 7, client 8 | — |
+  | `tests/compile/action_callback_tier.cpp` | both | server 5, client 2 | — |
+  | `tests/compile/ros2_refuse_unbounded_action_wait_probe.cpp` | client | `wait_for_action_server` | — |
+  | `tests/compile/rx_size_bound.cpp` | client | `get_result`, `get_result_future`, `try_recv_feedback` | — |
+
+  Three things fall out of that, and each is a design input:
+
+  - **The application corpus uses 3 server verbs and 4 client verbs**, not 12
+    and 13. "25 verbs need arena-side entry points" is a statement about the
+    surface, not about what anyone calls.
+  - **4 of the 10 corpus action files never instantiate the C++ class at all.**
+    They hold a byte buffer and drive the C FFI. So the surface a redesign would
+    perturb is the FFI, and 4 sites call it by name — which is the opposite of
+    the freedom W2 had with `Subscription<M>`.
+  - **`for_each_active_goal` had ZERO instantiations in the tree.** An
+    uninstantiated member template is not type-checked, so that member, its
+    inner trampoline and the `reinterpret_cast` on the trampoline's address had
+    never been compiled anywhere. Same class as a `required-features` target no
+    recipe enables. It compiles; it is now instantiated by
+    `action_callback_tier.cpp`, which is where W3b's landed half lives.
+
+  *And the "12 verbs / 13 verbs" was counting two classes as one.* Of the twelve
+  server verbs in W3's table, **four do not exist on the dispatch class at all** —
+  `accept_goal`, `send_cancel_reply`, `try_recv_goal_request` and
+  `try_recv_cancel_request` are `PollingActionServer<A>` members (grep of the two
+  headers: 0 and 3/5/2/3 respectively). Of the thirteen client verbs, **two are
+  `PollingActionClient<A>`-only** (`send_cancel_request`,
+  `send_get_result_request`). The census that produced the row read
+  `action_goal_uuid.cpp`, which exercises the dispatch tier in §3 and the polling
+  tier in §4 in one file, and did not split them. The dispatch classes have
+  **15** and **18** public verbs; the polling ones, which this phase does not
+  touch, have their own. A count that mixes the tiers is exactly the count that
+  makes "actions cannot be a handle" look like a size argument.
+
+  *Count 2, "the C++ object IS the entity" — WRONG, and the mistake is one
+  identifier.* `CppActionServerLayout` is not the entity. It is a size-mirror
+  struct in `packages/api/nros/src/sizes.rs` whose only job is to make
+  `NROS_CPP_ACTION_SERVER_STORAGE_SIZE` come out right on 32-bit targets; the
+  thing it mirrors is `CppActionServer` in `packages/api/nros-cpp/src/action.rs`,
+  and that struct's own doc comment says where the entity is:
+
+  > No C++-side goal queue — **the arena in `nros-node` owns all lifecycle
+  > state.**
+
+  Measured, the five RMW entities (three service servers for
+  send_goal/cancel_goal/get_result, the feedback publisher, the status
+  publisher), `active_goals`, `completed_results`, `result_slab`, `goal_buffer`,
+  `feedback_buffer` and `cancel_buffer` are all fields of
+  `ActionServerRawArenaEntry` in the arena. `CppActionServer` holds an
+  `Option<ActionServerRawHandle>` — an arena handle — plus a four-word callback
+  record, a `node_id` and a create-time `qos`. **So the phase's governing
+  principle is already satisfied for an action, and more completely than for a
+  publisher:** the entity's lifetime is defined by a Rust data structure, and
+  that structure is in the arena.
+
+  The client says it louder. `CppActionClient` is, in full:
+
+  ```rust
+  #[repr(C)]
+  pub(crate) struct CppActionClient {
+      callbacks: CppActionClientCallbacks, // 4 words
+      arena_entry_index: i32,
+      executor_ptr: *mut c_void,
+  }
+  ```
+
+  `{arena_entry_index, executor_ptr}` IS `{handle_id, executor}` — the end state
+  this phase describes, reached in Phase 87.6 and wearing a callback record.
+
+  *Count 3, "its move is a working mechanism" — TRUE, and it is the thing that
+  actually needs changing.* `relocate` + `install_callbacks()` works because
+  there are TWO pointers into the C++ object, and a goal dispatch traverses both:
+
+  ```
+  arena entry .goal_callback = goal_callback_trampoline, .context = &storage_
+      -> reads CppActionServer.goal_cb  (= Server<A>::goal_trampoline)
+                            .cb_ctx   (= this)
+      -> reads user_goal_fn_ / user_goal_fn_ctx_ / user_goal_ctx_
+      -> the user's callback
+  ```
+
+  **Three hops, and the middle one is a pure duplicate.** The arena entry already
+  declares `goal_callback`, `cancel_callback`, `accepted_callback` and `context`;
+  `CppActionServer` declares the same four again. That is W3's finding one entity
+  over — W3 deleted a `&out` back-reference by putting the user's handler in the
+  `void* context` the registration already had — except that here it cannot be
+  done the same way, and the reason is measured: **the `_with_ctx` arm is the
+  DOMINANT corpus usage.** W3 deleted `TypedServiceFnWithCtx`/`user_fn_ctx_`/
+  `user_ctx_` because the SFINAE guard made them unreachable; for actions, 5 of
+  the 6 real server sites call `set_goal_callback_with_ctx(on_goal, &state)` and
+  then reach `publish_feedback`/`complete_goal` through `state->srv->`. A
+  `(fn, ctx)` pair is two words, so `fn_to_context` cannot carry it and the
+  one-word trick does not transfer.
+
+  *Sizes, measured on x86-64 (gcc, `-std=c++14`):* `sizeof(nros::ActionServer<A>)`
+  **496 -> 488** with W3b's landed half, decomposing as `storage_` 144 +
+  `action_name_` 256 + nine typed callback words 72 + `executor_` 8 + `bool` and
+  padding 8. `sizeof(nros::ActionClient<A>)` **336**. The polling tiers, for
+  contrast, are 6 944 and 5 760 — nothing in this item touches them.
+
+  ### W3b-i — the one-shot visitor member. LANDED.
+
+  `for_each_active_goal` wrote a `TypedVisitorFn user_visitor_fn_` member on
+  entry and cleared it on exit; the move constructor and move assignment each
+  copied it. It was the one piece of per-instance state on the class that is
+  `nullptr` at every point a move can observe it. The visitor rides the FFI's own
+  `void* ctx` now, carried by value through W3's `nros::detail::fn_to_context`,
+  and the member is gone. The lifetime argument is stronger than W3's: the call
+  is SYNCHRONOUS, so the context does not outlive the full-expression that built
+  it, which is also why the clearing step has nothing to clear.
+
+  *Acceptance, met:* compile-probe sweep unchanged (46 PASS / 16 FAIL, identical
+  set, against a baseline taken before the edit); `action_callback_tier.cpp` now
+  instantiates `for_each_active_goal`, which nothing in the tree did; 8 bytes off
+  every C++ action server, three move-bookkeeping lines deleted, no FFI change,
+  no new `unsafe`.
+
+  ### W3b-ii — the handle. REFUSED for now, with the price stated.
+
+  The remaining change is *"the arena's callback record is the only one"*: delete
+  `goal_cb`/`cancel_cb`/`accepted_cb`/`cb_ctx` from `CppActionServer` and have
+  `nros_cpp_action_server_set_callbacks` write through the arena handle into the
+  entry's existing four fields, which removes the middle hop. It is the right
+  change and it is specified enough to start. It is not taken here for reasons
+  that are about verification, not design:
+
+  1. **It needs the arena entry's callback fields to be MUTABLE after build.**
+     They are set once, at entry construction — `action.rs` says so about
+     `accepted_callback`: *"The arena captures this pointer when the entry is
+     built, so it cannot be added later."* The entry is generic over four const
+     buffer sizes, so a type-erased setter needs either an eighth function
+     pointer on `ActionServerRawHandle` or a `#[repr(C)]` prefix struct
+     (`{goal, cancel, accepted, context}`) moved to offset 0 of the entry so a
+     `*mut u8` cast is sound for every instantiation. The prefix is the cheaper
+     of the two — it costs no words — and is the recommended shape.
+  2. **It moves `NROS_CPP_ACTION_SERVER_STORAGE_SIZE`,** which is a THREE-file
+     change, one of which is a committed snapshot: the layout mirror in
+     `sizes.rs`, the hardcoded fallback in `nros-build-helpers/src/cpp.rs`, and
+     `packages/api/nros-cpp/include/nros/nros_cpp_config_generated_nuttx.h`
+     (CLAUDE.md's NuttX pitfall, and issue 0954). The `const _: () = assert!`
+     pair in `action.rs` catches a mismatch, so this is tedious rather than
+     risky.
+  3. **It cannot be verified where it was written.** The change is on the
+     goal/cancel/accepted DISPATCH path — the one thing a `-fsyntax-only` probe
+     and a `cargo check` cannot exercise. There are five C++ action-server images
+     and one action-client image in the tree, plus four `component.hpp` sites
+     calling `nros_cpp_action_server_set_callbacks` by name, and a worktree with
+     no submodules can run none of them. Landing an unrunnable rewrite of the
+     dispatch path is how a green `just check` comes to mean less than it says.
+
+  *And what it would buy, priced honestly.* The full handle form — C++ object
+  down to `{executor, handle_id}` — needs 9 typed callback words (72 bytes) and
+  256 bytes of name RELOCATED into the arena, against 488 removed from the C++
+  object: a net removal of about 160 bytes per action server, plus the hop. That
+  is better than W4's publisher accounting (*"would relocate 872 bytes, not
+  remove them"*) and far short of W2's subscription (an 888-byte object plus a
+  heap cell, removed). The 256 bytes are the hard part: `get_action_name()`
+  returns the name the CALLER passed, and the arena holds the name after
+  `resolve_entity_name`, so they are different strings and a handle cannot answer
+  with the one the accessor promises.
+
+  *Does W4's no-removal-path argument apply here? NO — and the reason is not
+  reassuring.* W4 refused an arena slot for publishers because *"an arena
+  publisher would silently turn `pub_.reset()` and scope exit into no-ops holding
+  a live RMW publisher for the executor's lifetime"*. For actions that is not a
+  risk to create; it is the measured status quo. `ActionServerRawHandle` is
+  `impl Copy` with no `Drop`, and both `nros_cpp_action_server_destroy` and
+  `nros_cpp_action_client_destroy` are a bare `drop_in_place` over a struct whose
+  every field is `Copy` or a raw pointer — a no-op with the shape of a release.
+  The arena has no removal path at all (`arena_used` only grows; no
+  `unregister`/`deregister`/`remove_entry` exists in
+  `packages/core/nros-node/src/executor/`). So the arena cannot make an action's
+  lifetime worse, because an action is already there and its destructor already
+  does nothing. Filed as **issue 1496** so W4's argument stays usable: it is an
+  argument about what a MOVE would create, and it says nothing either way about
+  an entity that was moved four phases ago.
 
 * **W4 [cpp] — publishers. DECIDED: `Owned<T>` stays, and an arena slot is
   refused.** No dispatch, so no arena slot exists today. `nros::Owned<T>` covers
