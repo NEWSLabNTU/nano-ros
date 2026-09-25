@@ -206,6 +206,22 @@ impl Esp32QemuEntry {
             }
         };
         let mut crt = ExecutorNodeRuntime::from_executor(executor);
+
+        // phase-436 B2 — smoltcp says WHEN. Same registration as the
+        // mps2-an385 board and for the same reason: the driver sits below
+        // `nros-node` and cannot name an `Executor`, so it exports the C-ABI
+        // pair and the board, which depends on both, joins them. Inert until
+        // `set_network_state` arms it, and a refusal is reported rather than
+        // dropped.
+        #[cfg(feature = "ethernet")]
+        match crt.executor_mut().register_wake_source(
+            nros_smoltcp::next_deadline_us,
+            nros_smoltcp::deadline_source_ctx(),
+        ) {
+            Ok(id) => esp_println::println!("smoltcp deadline source registered as {:?}", id),
+            Err(err) => esp_println::println!("smoltcp deadline source REFUSED: {:?}", err),
+        }
+
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
 
         match setup(&mut runtime) {
