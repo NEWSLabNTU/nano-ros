@@ -1082,3 +1082,66 @@ What would make the 128 G attributable: the before-transcript that
 `scripts/ci/disk-report.sh` writes now reaches its artifact, because the job
 finishes. So the next run can be asked WHAT holds those 128 G before the tier
 starts. Until one is read, the figure is a total and nothing more.
+
+## 2026-09-25, second finishing run — the 128 G is ATTRIBUTED, and the tier's own 30 G is the exhaustion
+
+The previous append asked the next finishing run WHAT holds the 128 G. Run
+**36171483132**, job **108191821508** (18:32:56 → 20:52:56, all 23 steps) answers
+it: `disk-report.sh` runs a `du` breakdown either side of the tier, and both
+survived.
+
+**Before `just ci tier1`** (19:48:04Z), `/dev/root 146G 128G 18G 89%`:
+
+```
+42G   examples/            ← 37G examples/workspaces, 5.3G examples/templates
+14G   build/
+1.1G  packages/
+409M  packages/cli/target
+110M  .git
+```
+
+**After** (20:52:27Z), `/dev/root 146G 146G 264K 100%`:
+
+```
+42G   examples/      (unchanged)
+19G   build/         (+5G)
+16G   target/        (did not exist before — 13G target/debug, 3.0G nros-relwithdebinfo)
+15G   packages/      (+14G, of which packages/cli/target is 14G, was 409M)
+~3.6G target-check-{c,cpp,cpp-clippy-zenoh,cpp-cyclone-embedded,census-hooks}/ + target-embedded + target-excluded-tests
+589M  tmp/
+```
+
+So the split is clean, and neither half is the other's fault:
+
+* **~57 G is standing state** the tier inherits — `examples/` 42 G and `build/`
+  14 G, left by the fixture build that runs before it. Unchanged across the
+  tier, and identical to the byte in the first finishing run.
+* **~30 G is what `just ci tier1` CREATES** — a 16 G repo-root `target/` plus
+  `packages/cli/target` growing 409 M → 14 G, against **18 G** of headroom.
+  That is the exhaustion, and it is arithmetic rather than inference.
+
+The remaining ~70 G of the 128 G is outside the checkout (image, toolchains,
+`/usr/local/cargo` at 1.3 G, and whatever else the runner image carries); this
+report does not break that down.
+
+### The `before` figure is DETERMINISTIC, which makes it a budget
+
+Both finishing runs report `146G 128G 18G 89%` before the tier — the same
+numbers, hours apart, on different commits. So 18 G is not a fluctuating
+margin, it is the budget the tier has, and the tier wants about 30 G.
+
+### The copy-out FAIL now has a well-supported cause, still not proven
+
+Both runs fail the same check with the disk at 100 %:
+
+```
+  multi-package-workspace: FAIL — the copy does not build
+```
+
+It copies a template to `/tmp/nros-template-copy-out.XXXXXX` and builds it, and
+`/` is the same 146 G filesystem that the report shows at **264 K free**
+(`Free space left: 7 MB` mid-step; 31 MB in the first run). A build with no
+space is the obvious reading and two-for-two is not a coincidence — but the
+error line is still truncated mid-word, so this is not proven from the log.
+What would prove it: the same check passing on a run that does not reach 100 %,
+or an `ENOSPC` visible in an untruncated tail.

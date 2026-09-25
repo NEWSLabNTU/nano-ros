@@ -553,3 +553,25 @@ reclaim AND added the ceiling in the same commit, the ceiling demonstrably did
 nothing here, so the credit belongs to the reclaim or to luck and this run
 cannot separate them. Keep the issue open until several runs in a row finish
 their steps.
+
+## Two in a row now finish — the wedge has not recurred since #1313
+
+Run **36171483132**, job **108191821508**: 18:32:56 → 20:52:56, **2 h 20 m 00 s**,
+conclusion `failure`, **23 steps completed**, one failed step (15, `just ci
+tier1`). It started one second after the first finishing run released the group.
+
+| run | job | duration | steps done | ceiling fired | log |
+| --- | --- | --- | --- | --- | --- |
+| 36146158187 | 108107735210 | 2 h 25 m 52 s | 23 | no (4 m 08 s early) | readable |
+| 36171483132 | 108191821508 | 2 h 20 m 00 s | 23 | no (30 m early) | readable |
+
+Against nine consecutive wedges before them. Both finish every post-step, both
+preserve their log, and **`timeout-minutes: 150` has still never fired** — it
+remains an untested mechanism, and the credit for the change belongs to #1313's
+disk reclaim or to luck.
+
+Two is not many, but it is enough to stop calling this an open wedge: the
+question has moved from "why does tier 1 hang" to "why does tier 1 fail", and
+that second question is 1353's, where the same job supplies a full `du`
+attribution of the disk. This issue stays open only until a third run finishes;
+if one does, close it and let 1353 carry the remaining work.
