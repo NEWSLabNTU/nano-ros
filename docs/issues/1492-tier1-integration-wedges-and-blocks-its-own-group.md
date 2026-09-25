@@ -204,3 +204,22 @@ push     36090952448: 89% used, 18G free — 42G examples; 410M packages/cli/tar
 assertion — it shows it never finishing, which is a different thing and still
 not a test verdict. And it does not narrow the remedy: `timeout-minutes` bounds
 all four instances identically, whichever step is holding.
+
+### A fifth, same shape, and the table's pattern holds
+
+Run **36093164015**, job **107939676858**, push, head `8bfe8accf`, created
+04:07:42, last updated 05:57:15 — **1 h 50 m**. `just ci tier1` (step 15) with
+no conclusion, `completed_at = null`, the `No space left on device` annotation,
+and — as the section above predicts for a wedge at 15 — **only
+`disk-transcript-before-tier1` uploaded**. Step 16 never ran, so there is again
+no after-transcript.
+
+Five of five now, and the shape has stopped varying: the last three have all
+taken step 15, and all three left the before-transcript as the sole artifact.
+The first two, at steps 18 and 17, remain the only runs that produced an
+after-report — which is to say the two measurements 1353's attribution rests on
+came from the two least severe instances, and the lane has not produced another
+since.
+
+Nothing here changes a remedy. It is recorded so the count is not stale and so
+the "no after-transcript" consequence reads as the norm rather than a one-off.
