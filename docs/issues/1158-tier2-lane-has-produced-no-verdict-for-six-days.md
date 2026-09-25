@@ -236,3 +236,43 @@ the LAST leaf's output, so which of five failures you learn about is luck. A
 runner that reports "there was an error" and not the error turns every instance
 of this class into a manual reproduction; quoting the lines ABOVE the first
 `error:` is worth doing regardless of cause.
+
+### The third fault, 2026-09-25 — and it was foreseen above
+
+The 2026-09-25 06:29Z `run-matrix` (run **36103083615**) is the first with both
+phase-466 fixes in it, and both held: `check-fast (parallel): 354 gate(s) ran,
+4 SKIPPED` with no gate failure (1476 gone), and `catkin_pkg` appears ZERO
+times in the 1-wise job (1457 is the pairwise lane's, not this one). The lane
+went FURTHER into `just build tier2` and stopped somewhere new, exactly as the
+paragraph above predicted:
+
+```
+== zephyr == FAILED (rc=1)
+CMake Error at .../zephyr/cmake/nros_system_generate.cmake:316 (message):
+  nros codegen-system failed (rc=1):
+  Error: codegen-system: .../zephyr_self_pkg/sibling/alpha_pkg/system.toml
+  declares system semantics but no SystemModel was found.
+west fixtures: 3/5 ok (0 reused, 3 built).
+west-fixtures: 2 of 5 fixture(s) FAILED to build.
+```
+
+Filed as issue **1497**, root-caused and fixed as issue **1501**: the two
+`zephyr_self_pkg` fixture leaves carry no `package.xml`, so the `nros sync`
+this lane has run per bringup since issue 0533 could never scan them — sync
+takes `src/<pkg>/package.xml` or a root `package.xml` and rejects a dir with
+neither. phase-445 W5 gave these leaves a `system.toml` (which MAKES a model
+mandatory) without the manifest that makes one obtainable, on 2026-09-11; the
+1458 Kconfig stop hid it from that day to this one. Gate:
+`check-self-pkg-package-xml`.
+
+**Stage reached, measured, not inferred**: `just setup tier2` green, `just
+build tier2` red at the zephyr module, 3 of 5 west fixtures built. Still NO
+cell. Three faults have now been cleared in sequence, each revealed by the one
+before it; the honest expectation for the next run is a fourth stop rather than
+a verdict, and the two sibling reds in the same run (`host-tests` with no step
+attributed, `probe` now running and failing on its own work) are further
+candidates.
+
+The reporting half above earns another mention here: the cause of THIS stop was
+again in the module's `log tail`, and the quoted "first error line(s)" gave the
+cmake frame without the `Error:` line under it that names the file.
