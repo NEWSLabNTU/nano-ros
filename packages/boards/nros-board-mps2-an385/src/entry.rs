@@ -188,6 +188,31 @@ where
     };
 
     let mut runtime_inner = ExecutorNodeRuntime::from_executor(executor);
+
+    // phase-436 B2 — the first real deadline source in the tree. The executor
+    // parks on a `min` over declared deadlines; until now every wired port had
+    // a park primitive and nothing to bound it but the caller's budget, so an
+    // image slept its whole 10 ms quantum past a TCP retransmit smoltcp had
+    // already scheduled.
+    //
+    // The registration lives HERE and not in the driver because the layering
+    // runs the other way: `nros-smoltcp` is below `nros-node` and cannot name
+    // an `Executor`. It exports the C-ABI pair; the board, which depends on
+    // both, joins them. The `ctx` is a `'static` singleton, so it cannot
+    // outlive what it points at, and the source is INERT until
+    // `set_network_state` arms it.
+    //
+    // Refusal is reported, never swallowed: a source silently dropped would
+    // leave the executor sleeping past a deadline it had been told about.
+    #[cfg(feature = "ethernet")]
+    match runtime_inner.executor_mut().register_wake_source(
+        nros_smoltcp::next_deadline_us,
+        nros_smoltcp::deadline_source_ctx(),
+    ) {
+        Ok(id) => Mps2An385::println(format_args!("smoltcp deadline source registered as {id:?}")),
+        Err(err) => Mps2An385::println(format_args!("smoltcp deadline source REFUSED: {err:?}")),
+    }
+
     let mut runtime = RuntimeCtx::with_runtime(&mut runtime_inner);
 
     setup(&mut runtime)?;
@@ -202,6 +227,31 @@ where
             Mps2An385::println(format_args!("spin_once error: {err:?}"));
             Mps2An385::exit_failure();
         }
+        #[cfg(feature = "ethernet")]
+        report_first_platform_park(&mut runtime_inner);
+    }
+}
+
+/// phase-436 B2 — announce the first park a PLATFORM source won, once.
+///
+/// Path B's exit criterion is a target run in which `last_park()` attributes a
+/// park to `Platform(n)`. `Executor::last_park` records that on every spin and
+/// nothing on a Rust board could read it out, so the answer existed and was
+/// unobservable — the same shape as the `poll_delay` this work item is about.
+/// One line, latched, so a long run is not a log of one message.
+#[cfg(feature = "ethernet")]
+fn report_first_platform_park(runtime: &mut ExecutorNodeRuntime) {
+    use core::sync::atomic::{AtomicBool, Ordering};
+    static REPORTED: AtomicBool = AtomicBool::new(false);
+    if REPORTED.load(Ordering::Relaxed) {
+        return;
+    }
+    let (bound_us, source) = runtime.executor_mut().last_park();
+    if let nros::WakeSourceId::Platform(idx) = source {
+        REPORTED.store(true, Ordering::Relaxed);
+        Mps2An385::println(format_args!(
+            "phase-436 B2: park bounded by Platform({idx}) at {bound_us} us"
+        ));
     }
 }
 
