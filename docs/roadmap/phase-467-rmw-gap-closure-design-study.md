@@ -79,7 +79,7 @@ not:
    cost and the ledger does not record it.
 4. **`rust:Time::to_ros_msg` has a hard blocker with an issue already open**,
    and it is not the one the row names. Issue 1428
-   ([docs/issues/1428-builtin-interfaces-generated-three-times-none-canonical.md](../issues/1428-builtin-interfaces-generated-three-times-none-canonical.md))
+   ([docs/issues/archived/1428-builtin-interfaces-generated-three-times-none-canonical.md](../issues/archived/1428-builtin-interfaces-generated-three-times-none-canonical.md))
    measured that `builtin_interfaces` is pre-generated **three times** under
    `packages/interfaces/` — `nros-builtin-interfaces`,
    `nros-builtin-interfaces-diag`, `nros-builtin-interfaces-clock`, byte-
