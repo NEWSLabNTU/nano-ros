@@ -31,7 +31,6 @@ uint64_t nros_cpp_time_ns(void);
 // name, hence these declarations.
 namespace rclcpp {
 template <typename M> class Subscription;
-template <typename S> class Client;
 } // namespace rclcpp
 
 namespace rclcpp_action {
@@ -40,9 +39,18 @@ template <typename A> class Client;
 
 namespace nros {
 
+// phase-456 W9 — `send_request` and the `Future` it hands back moved off
+// `rclcpp::Client<S>` onto `nros::PollClient<S>`, the half that owns the
+// `RmwServiceClient` this future takes from. The friend list FOLLOWS the method:
+// the poll client is declared here, and `rclcpp::Client<S>` left both this
+// declaration and the friend list below, because a friendship nothing uses is a
+// claim about the code that is not true.
+template <typename S> class PollClient;
+
 /// Single-shot deferred result for request/response operations.
 ///
-/// Returned by Client<S>::send_request. The future is consumed
+/// Returned by PollClient<S>::send_request (phase-456 W9; it was
+/// `Client<S>::send_request` before the split). The future is consumed
 /// when the result is taken -- move-only, single-shot.
 ///
 /// Usage:
@@ -171,7 +179,7 @@ template <typename T, size_t Cap = ::nros::rx_buffer_capacity<T>::value> class F
     Future(const Future&) = delete;
     Future& operator=(const Future&) = delete;
 
-    template <typename S> friend class ::rclcpp::Client;
+    template <typename S> friend class ::nros::PollClient;
     template <typename A> friend class ::rclcpp_action::Client;
 
     using TryRecvFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*);

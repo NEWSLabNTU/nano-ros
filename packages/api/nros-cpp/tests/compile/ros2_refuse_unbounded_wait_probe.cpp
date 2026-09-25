@@ -1,6 +1,6 @@
 /*
- * NEGATIVE probe — phase-417 stage 3, `cpp:Client::wait_for_service` and its
- * sibling `rclcpp_action::Client::wait_for_action_server`.
+ * NEGATIVE probe — phase-417 stage 3, `cpp:PollClient::wait_for_service` and
+ * its sibling `rclcpp_action::Client::wait_for_action_server`.
  *
  * Upstream defaults BOTH timeouts to -1, which means WAIT FOREVER. Ours are
  * `uint32_t` millisecond budgets that used to default to 5000, so a ported
@@ -23,12 +23,19 @@
 
 #include <nros/nros.hpp>
 
-#include <nros/client.hpp>
+// phase-456 W9 — `wait_for_service` lives on the FUTURE-style client, which owns
+// the `RmwServiceClient` the FFI reads. `rclcpp::Client<S>` is the dispatch
+// client and has no such method at all, so pointing this probe there would make
+// it fail on "no member named 'wait_for_service'" — non-zero, and NOT the
+// refusal. That is the "broke for another reason" the lane's grep exists to
+// catch, and it is why the probe moved rather than being left to pass by
+// accident.
+#include <nros/polling_client.hpp>
 
 namespace {
 
 // Minimal generated-shape service: `wait_for_service` names nothing on `S`, but
-// `Client<S>` needs the nested request/response types to be declarable.
+// `PollClient<S>` needs the nested request/response types to be declarable.
 struct FakeRequest {
     static const size_t SERIALIZED_SIZE_MAX = 16;
     int a;
@@ -46,7 +53,7 @@ struct FakeService {
 
 int ros2_refuse_unbounded_wait_probe();
 int ros2_refuse_unbounded_wait_probe() {
-    nros::Client<FakeService> client;
+    nros::PollClient<FakeService> client;
     // The line upstream's own tutorials write.
     (void)client.wait_for_service();
     return 0;

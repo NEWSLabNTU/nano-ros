@@ -153,10 +153,14 @@ NROS_TRY(pub.publish(msg));
 
 ### Subscription
 
-Subscriptions use manual polling — call `spin_once()` to drive I/O, then `take()` to check for messages:
+Poll-style subscriptions — call `spin_once()` to drive I/O, then `take()` to check
+for messages. The type is `nros::PollSubscription<M>` (phase-456 W2b): the caller
+owns the subscriber, so the caller is the one that can take from it.
+`nros::Subscription<M>` is the DISPATCH subscription, whose samples the executor
+arena delivers to a callback.
 
 ```cpp
-nros::Subscription<std_msgs::msg::Int32> sub;
+nros::PollSubscription<std_msgs::msg::Int32> sub;
 NROS_TRY(node.create_subscription(sub, "/chatter"));
 
 nros::spin_once(100);
@@ -174,7 +178,9 @@ if (sub.take(msg)) {
 
 using AddTwoInts = example_interfaces::srv::AddTwoInts;
 
-nros::Service<AddTwoInts> srv;
+// `nros::PollService<S>` (phase-456 W5) — the caller owns the server and drains
+// it. `nros::Service<S>` is the DISPATCH server, which takes a handler instead.
+nros::PollService<AddTwoInts> srv;
 NROS_TRY(node.create_service(srv, "/add_two_ints"));
 
 // In your main loop:
@@ -191,7 +197,10 @@ if (srv.take_request(req, seq)) {
 ### Service Client
 
 ```cpp
-nros::Client<AddTwoInts> client;
+// `nros::PollClient<S>` (phase-456 W9) — the caller owns the client and drains
+// the reply. `nros::Client<S>` is the DISPATCH client, whose one verb is
+// `async_send_request` and whose reply reaches a handler during `spin_once`.
+nros::PollClient<AddTwoInts> client;
 NROS_TRY(node.create_client(client, "/add_two_ints"));
 
 AddTwoInts::Request req;

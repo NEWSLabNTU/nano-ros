@@ -798,7 +798,8 @@ Four things follow, and each is a simplification rather than a trade:
     `create_client<S>(name, qos)` returns the same alias and is drained with
     `send_request` / `wait_for_service` — the identical collision the poll
     `create_service` was, needing the identical remedy (a `PollClient<S>`). It
-    is a second split, not a line of this one.
+    is a second split, not a line of this one. **That split is W9, and it
+    LANDED** — the census W3 took was re-measured there and still says one verb.
   - **`Timer::SharedPtr`.** Not blocked by an alias at all: `create_wall_timer`
     returns a `shared_ptr` ALIASING into a heap `detail::WallTimer` cell that
     holds the callback's `std::function`. Flipping it needs W1's
@@ -902,7 +903,7 @@ Four things follow, and each is a simplification rather than a trade:
 
   | macro | uses | what still needs it |
   | --- | --- | --- |
-  | `NROS_CPP_HAS_SHARED_PTR` | 12 | `Client<S>` and `Timer` still alias `std::shared_ptr`; `Node::SharedPtr` does too, inside `NROS_CPP_NODE_HOSTED` |
+  | `NROS_CPP_HAS_SHARED_PTR` | ~~12~~ **10** | ~~`Client<S>` and~~ `Timer` still aliases `std::shared_ptr`; `Node::SharedPtr` does too, inside `NROS_CPP_NODE_HOSTED`. **W9 took the client's two** (`client.hpp` names the macro zero times now), leaving exactly ONE alias gate, `timer.hpp:59` — the other nine are the definition site, the hosted conjunction and four prose mentions |
   | `NROS_CPP_HAS_STD_STRING` | 9 | `get_logger(const std::string&)`, and `FixedString`/`HeapString`'s `std::string` interop |
   | `NROS_CPP_HAS_STD_CHRONO` | 8 | `create_wall_timer` / `create_timer`'s duration overloads and `Rate`'s `std::chrono` constructor |
   | `NROS_CPP_HAS_STD_FUNCTION` | 6 | `detail::WallTimer`'s type-erasure cell, plus the `NROS_CPP_NODE_HOSTED` conjunction |
@@ -929,7 +930,8 @@ Four things follow, and each is a simplification rather than a trade:
   The remainder is the three items W5's own "what did NOT move" section already
   names, and this is the count of what each costs.
   `Client<S>::SharedPtr` needs a `ClientHandle<S>` plus the `PollClient<S>`
-  split, the identical remedy the poll `create_service` collision needed;
+  split, the identical remedy the poll `create_service` collision needed — **W9
+  DID that, and the table above is corrected rather than left standing**;
   `Timer::SharedPtr` needs W1's capture-in-the-arena treatment for timers, which
   is core Rust work; `Node::SharedPtr` is the whole `NROS_CPP_NODE_HOSTED` block,
   spelled in `std::string` / `std::vector` / `std::function`. The
@@ -945,10 +947,10 @@ Four things follow, and each is a simplification rather than a trade:
   The structural half is what W6 delivers; the count stays measured and stated
   here until those items land.
 
-  *Follow-ups this creates:* `Client<S>` as a handle with one verb, with its poll
-  half split off (W3's measurement is the input); timer callbacks captured in the
-  arena, which is what unblocks `Timer::SharedPtr`; a freestanding spelling for
-  the three STL-typed overload families.
+  *Follow-ups this creates:* ~~`Client<S>` as a handle with one verb, with its
+  poll half split off (W3's measurement is the input)~~ — **LANDED as W9**; timer
+  callbacks captured in the arena, which is what unblocks `Timer::SharedPtr`; a
+  freestanding spelling for the three STL-typed overload families.
 
   *Verification (2026-09-25, in a worktree with no submodules):* both gates run
   green and both refuse an appended baseline row (exit 1, message naming the row
@@ -1175,6 +1177,153 @@ one. The default is the defect.
   *Related:* issue 1319 (the five rows), issue 1340 (`rust_typed_in_place` is
   priced at the bound while claiming no region — the sibling over-statement one
   row over, which this item's in-place unification touches directly).
+
+* **W9 [cpp, examples] — `Client<S>` becomes a handle with ONE VERB, and the
+  future-style half is split off. LANDED.** W6's own follow-up list names this
+  item: "`Client<S>` as a handle with one verb, with its poll half split off
+  (W3's measurement is the input)". Both halves landed together, because the
+  split is what unblocks the alias — the identical shape W5 took for the service.
+
+  *The census, RE-MEASURED on this base rather than inherited.* W3's number was
+  taken before W5 and several rebases, so it was re-run over the same four trees
+  (`examples/`, `tests/`, `book/`, `packages/`). It holds exactly:
+
+  | entity, path | sites | what is invoked on it |
+  | --- | --- | --- |
+  | `Client<S>` **dispatch** | 2 | **`async_send_request`**, and nothing else |
+  | `Client<S>` future-style | 5 + 4 probes | `send_request`, `send_request_sized`, `call`, `call_sized`, `call_polling`, `call_polling_sized`, `wait_for_service`, `get_service_name` |
+  | `Client<S>::SharedPtr` | 1 | **NOTHING** (a member in `ros2_api_adoption_stage2.cpp`) |
+  | **the ported templates** (`examples/templates/`) | **0** | still no client in the ported corpus at all |
+
+  `async_send_request` IS STILL THE ONLY VERB. The two dispatch sites are
+  `examples/native/cpp/service-client-callback/src/main.cpp:95` and
+  `tests/compile/bind_service.cpp:139`, the second being the move probe W3 added;
+  the sweep is `grep -rn 'async_send_request' --include='*.cpp' --include='*.hpp'`
+  plus the same over every other `Client<S>` method name. So the shape W3 derived
+  is the shape that landed: **two words with a method on them**, which is neither
+  `ServiceHandle<S>` (empty) nor `Owned<T>` (the caller owns the entity).
+
+  *What landed, in three types where there was one.*
+  - `nros::ClientHandle<S>` (`client_handle.hpp`) — `{executor, handle_id}` plus
+    `async_send_request`, and that pair is not bookkeeping: it is the ARGUMENT
+    LIST of `nros_cpp_service_client_send_on_handle`, which is why the verb fits
+    on two words. `Client<S>::SharedPtr` / `ConstSharedPtr` / `UniquePtr` are all
+    this, UNCONDITIONALLY — the `#ifdef NROS_CPP_HAS_SHARED_PTR` block and the
+    `std_detect.hpp` include are gone from `client.hpp`.
+  - `nros::PollClient<S>` (`polling_client.hpp`) — every verb that reads caller
+    storage: the `Future` pair, `call`, `call_polling`, their `_sized` forms,
+    `service_is_ready`, the deprecated `server_available`, `wait_for_service` and
+    its no-budget refusal.
+  - `rclcpp::Client<S>` (`client.hpp`) — the dispatch client: bookkeeping,
+    `async_send_request`, `get_service_name`, the two granted-QoS accessors,
+    `handle_id`, the response trampoline. No `storage_`, no `callback_mode_`.
+
+  *NO `operator->` on the handle, and that is a decision with a cost.* A ported
+  `client_->async_send_request(req)` is a compile error naming `ClientHandle`; the
+  edit is one character. A self-returning `operator->` would have compiled that
+  line by claiming a pointee that does not exist, and would have reported
+  `->send_request(...)` against the wrong type. Measured: no in-tree site writes
+  `->` on a dispatch client handle, so nothing pays for this today.
+
+  *The bug the split removes is the same one W2b and W5 removed, one entity over.*
+  `nros_cpp_service_client_wait_for_service`'s own doc comment says `storage` must
+  be "a valid initialized future-style service client". A dispatch `Client<S>`
+  never had one — `create_client(out, name, callback, …)` calls
+  `nros_cpp_service_client_register` and never touches `out.storage_`, which is
+  value-initialized to `NROS_SERVICE_CLIENT_SIZE` zero bytes — and `initialized_`
+  is true on both paths, so nothing checked. `service_is_ready`,
+  `server_available`, `send_request`, `call` and `call_polling` were all reachable
+  the same way.
+
+  *What the split COSTS, stated as a gap rather than absorbed.* Two verbs leave
+  the dispatch road and do not come back in this item:
+  `nros_cpp_service_client_server_available(storage, out)` and
+  `..._wait_for_service(storage, executor, timeout_ms)` have only the storage
+  road, so a porter holding a `Client<S>::SharedPtr` cannot wait for a server at
+  all. Ledgered at **`cpp:Client::wait_for_service`** (verdict
+  `divergence`/`refuse-loud` -> **`gap`/`adopt`**), which carries the argument for
+  both verbs, with a pointer from `cpp:Client::service_is_ready`. The remedy is
+  those two entry points gaining the `(executor, handle_id)` arm the granted-QoS
+  one already has — core Rust work, and the same thing
+  `cpp:Subscription::get_actual_qos` is waiting on. Inventing an `Executor&`
+  parameter on the C++ signature instead was refused for the reason that row
+  refuses it.
+
+  *And the client comes out the way the SERVICE did on the QoS pair, which is the
+  contrast worth keeping.* `cpp:Subscription::get_actual_qos` is a gap because a
+  dispatch subscription holds only `sched_handle_id_`; a dispatch client holds
+  `executor_` beside `handle_id_` (issue 1437 put it there), and
+  `nros_cpp_service_client_get_actual_qos` serves both roads by construction. So
+  both granted-QoS accessors and `get_service_name` answer on BOTH halves, on
+  upstream's no-argument spelling, and **no gap row is owed for those three**.
+
+  *`NROS_CPP_HAS_SHARED_PTR`: 12 -> 10, measured the way W6's table measures it
+  (occurrences, `grep -roh … | wc -l` over `packages/api/nros-cpp/include`).*
+  `client.hpp`'s two are gone and it now names the macro zero times — the fourth
+  file to reach zero, after W5's three. Of the remaining ten, exactly **one** is
+  an alias gate: `timer.hpp:59`. The rest are `std_detect.hpp`'s definition site
+  (1 `#define` + 1 prose), the `NROS_CPP_NODE_HOSTED` conjunction in `nros.hpp`
+  (1 `#if`, 2 comments) and `node.hpp` (1 `#if`, 1 comment), and one prose mention
+  each in `subscription.hpp` and `timer.hpp`. So W6's attribution narrows from
+  "`Client<S>` and `Timer` … `Node::SharedPtr` too" to **`Timer` and the hosted
+  conjunction**; the two items left are the ones W5 already named (timer callbacks
+  captured in the arena — core Rust work; and the whole `NROS_CPP_NODE_HOSTED`
+  block).
+
+  *The returning factories, and one REAL divergence this creates.*
+  `create_client<S>(name, qos)` returns `nros::Owned<nros::PollClient<S>>` and
+  `create_client<S>(name, handler)` returns `Client<S>::SharedPtr`. The first is
+  NOT the same situation as W5's poll `create_service`: upstream HAS
+  `create_client<S>(name)` and it returns `Client<S>::SharedPtr`, on a client you
+  then `async_send_request` for a future. Our two roads are two registrations, so
+  one alias cannot serve both and this factory is the one that must hand back
+  something dereferenceable. Asserted in `ros2_api_adoption_stage2.cpp` — both
+  overloads, not just the one that changed — and stated rather than left for a
+  porter to hit.
+
+  *Two things fixed as a CLASS while here, because the reported site was not the
+  only one.* `docs/guides/cpp-api.md` still showed `nros::Service<AddTwoInts>` with
+  `take_request` and `nros::Subscription<M>` with `take` — code W2b and W5 made
+  uncompilable, in the user-facing guide, which is where a reader starts; all
+  three blocks are the `Poll*` type now. And five ledger rows this phase authored
+  (`cpp:Owned`, `cpp:Owned::reset`, `cpp:SubscriptionHandle`, `cpp:PollService`,
+  `cpp:ServiceHandle`) carried a LITERAL `\n` in their `why` instead of a
+  newline, so every paragraph break rendered as two characters; fixed across all
+  three shards with the sweep command in the commit message.
+
+  *Ledger: 20 rows added, 2 amended.* `cpp:ClientHandle` (+4 members) and
+  `cpp:PollClient` (+13 members), each `extension`; every UPSTREAM name on the
+  ours-only type gets its own row rather than inheriting the type's verdict, which
+  is the shape W5 settled. Two `KEY_OVERRIDES` entries in
+  `scripts/api_parity/topics.py`, for the same reason W5 needed two: the
+  granted-QoS verbs spell the ENDPOINT, so `publisher`/`subscription` are
+  literally in the names and pubsub would claim them.
+
+  *Verification (2026-09-25, in a worktree with no submodules):* the compile sweep
+  over the 62 `tests/compile` probes is **46 PASS / 16 FAIL before and after,
+  cell for cell identical**, over four configurations each (c++14/c++17 x
+  with/without `NROS_CPP_STD`). No probe changed state, which is the control this
+  item should produce — every probe that asserted the old shape was rewritten to
+  assert the new one rather than deleted, and one was MOVED for a reason worth
+  naming: `ros2_refuse_unbounded_wait_probe.cpp` now instantiates
+  `nros::PollClient<S>`, because left on `rclcpp::Client<S>` it would fail on "no
+  member named 'wait_for_service'" — non-zero, and NOT the refusal, which is
+  exactly the "broke for another reason" `just check cpp`'s grep for `REFUSED by
+  nano-ros` exists to catch. Verified by hand that the refusal text is what the
+  compiler prints. `entity_name_accessors.cpp` gained the family's tenth member
+  (`nros::PollClient<S>::get_service_name`) for the reason W5 gave for the ninth.
+  `just check api-parity` green (it FAILED first, on exactly the
+  `cpp:Client::wait_for_service` row above, which is the gate doing its job);
+  `just check api-parity-ledger` self-test 0 failures; `just check cpp-fmt` green.
+  NOT run, and not claimed: `just ci` and anything that links an RMW backend,
+  because a worktree has no submodules.
+
+  *One stale reference left deliberately:* `packages/core/nros-rmw-abi/include/nros/
+  rmw_vtable.h`'s doc comment for the availability slot names
+  `Client<S>::server_available()`, which is `PollClient<S>::server_available()`
+  now. Editing it regenerates `packages/rmw/cffi/src/generated.rs` (bindgen copies
+  doc comments), which needs the pinned bindgen-cli 0.72.1 and a `check-abi-bindings`
+  run this worktree cannot do; left for whoever next touches that header.
 
 Two smaller ones, noted so a reader does not rediscover them:
 
