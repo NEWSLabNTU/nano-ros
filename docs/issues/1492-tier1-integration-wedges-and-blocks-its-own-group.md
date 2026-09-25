@@ -269,3 +269,81 @@ earlier count implied.
 
 Nothing here changes a remedy; `timeout-minutes` still bounds all six
 identically.
+
+## A seventh, and it corrects the two indicators this issue has been reading
+
+Run **36105663404** (push, `7c908efe1`), job **107977492420**: started 07:39:04,
+ended **10:09:07** — 2 h 30 m 03 s — wedged on step 15 `just ci tier1` with 14
+steps completed. That makes seven consecutive wedges. Two things measured while
+adding it contradict text above, and both indicators need retiring.
+
+### `completed_at = null` says "not finished yet", not "killed"
+
+The "How it actually ended" section rests on job **107808557432** carrying
+`completed_at = null` while its run read `completed/failure` — read as "the
+signature of a job that was KILLED". Queried today, that job reads:
+
+```
+job 107808557432 started=2026-09-24T20:35:10Z completed=2026-09-24T23:05:21Z failure
+```
+
+The field FILLED IN, at exactly its run's end. So did every other null cited
+here (`107956754356`, `107929495142`, `107933079057`, `107939676858`). The
+null was an artifact of observing a job that had not terminated yet, not a
+property of these jobs, and three sections used it as one.
+
+The conclusion it was supporting may still be right — but it has to rest on
+evidence that does not evaporate: steps left with **no conclusion at all**, a
+run whose `failure` names no failed step, and the ANNOTATION.
+
+### There are TWO terminal modes, and the table conflated them
+
+Every wedge carries an annotation, and they are not the same annotation. Sorted
+by job, with durations from `started_at`/`completed_at`:
+
+| run | job | start → end | duration | steps done | annotation |
+| --- | --- | --- | --- | --- | --- |
+| 36051691975 | 107808557432 | 09-24 20:35:10 → 23:05:21 | **2 h 30 m 11 s** | — | **lost communication** |
+| 36070565655 | 107870291862 | 09-24 23:05:22 → 00:42:19 | 1 h 36 m 57 s | 16 | `No space left on device` |
+| 36089769184 | 107929495142 | 03:17:40 → 05:01:14 | 1 h 43 m 34 s | 14 | `No space left on device` |
+| 36090952448 | 107933079057 | 03:45:51 → 05:00:00 | 1 h 14 m 09 s | 14 | `No space left on device` |
+| 36093164015 | 107939676858 | 05:00:02 → 05:57:14 | 57 m 12 s | 14 | `No space left on device` |
+| 36098829716 | 107956754356 | 05:57:16 → 07:39:02 | 1 h 41 m 46 s | 16 | `No space left on device` |
+| 36105663404 | 107977492420 | 07:39:04 → 10:09:07 | **2 h 30 m 03 s** | 14 | **lost communication** |
+
+`36051691975`'s row above says `No space left on device`; it does not. Its
+annotation is `The hosted runner lost communication with the server.` — the same
+one the seventh wedge carries, and the only other job here with it.
+
+The split is clean and it is worth stating because the two modes have different
+durations:
+
+* **Disk** (five jobs, `System.IO.IOException: No space left on device` on
+  `_diag/Worker_<date>-utc.log`): **57 m – 1 h 44 m**, scattered. These end when
+  the disk fills, so 1353 sets the clock.
+* **Runner lost** (two jobs): **2 h 30 m 11 s and 2 h 30 m 03 s** — eight
+  seconds apart, a day and eleven hours apart in wall time. That is a bound
+  somebody's infrastructure chose, not an accident of the build, and it is
+  nowhere near the 6-hour ceiling this issue first guessed at and then corrected
+  to "three hours by an accident of infrastructure". Three hours was the RUN,
+  including 36 minutes of waiting for the group; the JOB was 2 h 30 m both
+  times.
+
+What causes ~2 h 30 m is NOT established here. Nothing in this repository sets
+it (`grep` still finds no `timeout-minutes`), and two samples are two samples.
+The useful part is that a wedge which survives the disk is bounded, repeatably,
+at a number nobody here picked.
+
+### The group is held continuously, measured to the second
+
+The handoffs are 1–2 seconds: 23:05:21 → 23:05:22, 05:00:00 → 05:00:02,
+05:57:14 → 05:57:16, 07:39:02 → 07:39:04. So from 2026-09-24 20:35 to
+2026-09-25 10:09 — **13 h 34 m** — the `host-tests-integration-refs/heads/main-push`
+group was never free for longer than two seconds, and no run in that window
+produced a tier-1 verdict. That is the cost `cancel-in-progress: false` with no
+`timeout-minutes` buys, stated as an interval rather than as a count of runs.
+
+Remedies are unchanged. Remedy 1 still bounds every row, and it would now be
+chosen against a measured envelope: the disk mode needs less than an hour, the
+runner-lost mode needs 2 h 30 m, so any `timeout-minutes` below 150 makes the
+outage a number this repository owns.
