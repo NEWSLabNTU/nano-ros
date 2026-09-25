@@ -71,3 +71,34 @@ Decide who states the workspace path, then make the two agree:
    the default is derived rather than written down twice.
 
 Acceptance is the job performing a copy-out build and reporting on it.
+
+## UNMASKED — this is now the whole of the job's failure (2026-09-25 nightly)
+
+Nightly **36097564895** (the 05:12 zephyr line), job **107952943423**,
+`zephyr copy-out check (4.4)`:
+
+```
+./scripts/zephyr/check-copy-out.sh "c/talker" "zenoh" "native_sim/native/64"
+FAIL: Zephyr 4.4 workspace not set up at ../nano-ros-workspace-4.4
+  run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup
+```
+
+The setup step **succeeded** immediately above it, and said where the workspace
+actually is: `/github/home/.nros/workspaces/zephyr/4.4` — venv created, west and
+zephyr-build present, all five 4.4 NSOS patches applied. So the job now provisions
+correctly and fails only on the path this issue is about.
+
+That matters for two reasons.
+
+**It confirms the diagnosis rather than restating it.** On the 2026-09-24 nightly
+this same job died earlier, in `create_env_script`, on the unquoted heredoc that
+executed its own comment text — a different defect, fixed in `f3a55d21f`. While
+that stood, the stale default was unreachable and this issue was an inference
+from reading the script. It is now the observed failure.
+
+**It is the last wall for this cell.** The 05:12 nightly ran 23 green, 5 skipped
+and exactly ONE failure, and this is it. Closing 1475 should turn the job green
+or produce the first real copy-out verdict — which is the acceptance already
+written above, unchanged.
+
+Nothing here changes either remedy.
