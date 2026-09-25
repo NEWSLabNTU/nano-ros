@@ -7,7 +7,12 @@
   <maintainer email="example@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- RFC-0094 D3 — `nros_cargo`, not `nros_cmake`: the sibling self-pkg has
+       no CMakeLists.txt of its own (the sibling `caller/` app drives the west
+       build and names this dir as its bringup), so a cmake build type would
+       route a package that cannot be configured. The `self/` twin declares
+       `nros_cmake` because it IS the application. -->
   <export>
-    <build_type>nros_cmake</build_type>
+    <build_type>nros_cargo</build_type>
   </export>
 </package>
