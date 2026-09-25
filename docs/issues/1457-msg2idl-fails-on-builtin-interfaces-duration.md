@@ -209,3 +209,39 @@ scripts/ci/runner-doctor.sh   nros-qemu,nros-sdk-zephyr,nros-big
 ```
 
 Close this when a tier-2 nightly gets past `msg_to_cyclone_idl` on that runner.
+
+## The SYMPTOM CHANGED — the probe now refuses up front (2026-09-25 nightly)
+
+Nightly **36097564895** (05:12 schedule), job **107952942994**, `tier 2 nightly
+(pairwise cover)`, step `just build tier2-nightly`. Same lane, same job, the
+same four cyclonedds leaves — and a different line:
+
+```
+  145:  69:error: rosidl_adapter is not importable by this build's interpreter.
+  146:  81:FATAL ERROR: command exited with status 1: /usr/bin/cmake --build \
+        /home/runner/.nros/workspaces/zephyr/3.7/build-cpp-service-server-cyclonedds
+  147:  69:error: rosidl_adapter is not importable by this build's interpreter.
+  148:  81:FATAL ERROR: ... build-cpp-talker-cyclonedds
+  149:  69:error: rosidl_adapter is not importable by this build's interpreter.
+  150:  81:FATAL ERROR: ... build-cpp-action-client-cyclonedds
+```
+
+**This is worth recording because the text a reader would grep for is gone.**
+The section above documents `msg2idl.py failed on …/builtin_interfaces/msg/
+Duration.msg (exit 1)` — msg2idl dying several frames deep, with the real cause
+(`rosidl_adapter.cli` importing catkin_pkg and yaml) only visible in the
+traceback. Tonight the build refuses at the PROBE instead, before invoking
+msg2idl at all, and says so in one line. Anyone searching this issue's original
+error string against a current log will find nothing.
+
+That is the `_adapter_importable` probe this issue's own analysis names, now
+reaching the condition it was written for. The diagnostic improved; **the
+underlying dependency gap did not close** — the same three leaves fail, in the
+same job, in the same lane.
+
+**What this does NOT say.** It does not say the probe is wrong — refusing early
+with a clear message is better than a traceback, and if anything it strengthens
+the case that the remedy belongs where the interpreter's packages are chosen.
+It also does not re-open the question of WHICH package is missing: this run's
+message names importability, not a package, so the catkin_pkg/yaml analysis
+above is neither confirmed nor refuted by it.
