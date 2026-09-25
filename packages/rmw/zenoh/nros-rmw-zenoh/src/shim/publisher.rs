@@ -1011,7 +1011,7 @@ impl Publisher for ZenohPublisher {
     /// and not a property of the API.
     ///
     /// The LOCAL record survives, deliberately. `last_assert_at_ms` drives
-    /// [`Self::check_liveliness_lost`], a watchdog that fires this
+    /// `check_liveliness_lost`, a watchdog that fires this
     /// publisher's own `LivelinessLost` callback when the app stops
     /// asserting — a real, working, LOCAL capability. Recording the call and
     /// then reporting `Unsupported` is not a contradiction: the return value
