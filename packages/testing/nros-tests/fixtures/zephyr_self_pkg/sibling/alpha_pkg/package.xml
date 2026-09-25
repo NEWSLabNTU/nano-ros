@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>alpha_pkg</name>
+  <version>0.1.0</version>
+  <description>§212.M-F.3 self-pkg bringup fixture (issue 0041, "sibling" layout)</description>
+  <maintainer email="example@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>
