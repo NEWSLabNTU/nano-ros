@@ -226,13 +226,34 @@ fn zenoh_event_matrix() {
     );
     assert_eq!(LL_LAST_TOTAL.load(AtomicOrdering::Relaxed), 1);
 
-    // Assert liveliness — should reset the lease, then immediate
-    // publish does NOT fire again.
-    manual_pub.assert_liveliness().expect("assert_liveliness");
+    // Assert liveliness — BOTH halves, and they disagree on purpose (the
+    // phase-467 RMW gap-closure design study's Row 7).
+    //
+    // The RETURN is `Unsupported`: zenoh-pico's liveliness is a session-scoped
+    // keepalive and it has no per-topic lease a peer could observe being
+    // renewed, so this call put nothing on the wire. It answered `Ok(())`
+    // until that study, which is a report that an assertion reached a peer
+    // when none did — and this line asserted that wrong answer.
+    //
+    // The EFFECT survives: `last_assert_at_ms` is still stamped, so the LOCAL
+    // watchdog below still sees a fresh lease and does not fire again. That
+    // watchdog is a real capability; what it is not is remote assertion.
+    assert_eq!(
+        manual_pub.assert_liveliness(),
+        Err(nros_rmw::TransportError::Unsupported),
+        "zenoh has no per-topic lease; `Ok` here would claim a peer saw this"
+    );
     manual_pub.publish_raw(b"hello").expect("publish_raw");
     assert_eq!(
         LL_COUNT.load(AtomicOrdering::Relaxed),
         1,
-        "assert_liveliness should reset lease"
+        "assert_liveliness must still reset the LOCAL lease it drives"
     );
+
+    // And the other kinds answer `Ok(())` on the same backend: there was
+    // nothing to assert, so nothing was lost.
+    let automatic_pub = sess
+        .create_publisher(&topic(), Qos::QOS_PROFILE_DEFAULT)
+        .expect("create_publisher automatic liveliness");
+    assert_eq!(automatic_pub.assert_liveliness(), Ok(()));
 }

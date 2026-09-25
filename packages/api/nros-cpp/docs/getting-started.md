@@ -135,7 +135,7 @@ Replace the publisher loop with a subscription:
 
 ```cpp
 nros::Subscription<std_msgs::msg::Int32> sub;
-NROS_TRY(node.create_subscription(sub, "/chatter",
+NROS_TRY(node.create_subscription(sub, "/chatter", nros::QoS(10),
     [](const std_msgs::msg::Int32& msg) {
         std::printf("Received: %d\n", msg.data);
     }));
@@ -178,7 +178,7 @@ For host platforms where the STL is available:
 using namespace std::chrono_literals;
 
 nros::create_node(node, std::string("cpp_talker"));
-node.create_subscription(sub, "/chatter",
+node.create_subscription(sub, "/chatter", nros::QoS(10),
     std::function<void(const std_msgs::msg::Int32&)>{...});
 node.create_wall_timer(timer, 100ms, ...);
 ```

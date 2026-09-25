@@ -179,6 +179,12 @@ template <typename M> class Publisher {
     /// outside this definition and the one probe asserting its old shape.
     using UniquePtr = ::nros::Owned<Publisher<M>>;
 
+    /// Width of the buffer `get_gid()` fills — upstream's
+    /// `RMW_GID_STORAGE_SIZE`, the phase-467 RMW gap-closure design study's
+    /// Q1(a). Named here so a call site spells the size once and the compiler
+    /// checks it, rather than copying a `24` that has already moved once.
+    static constexpr size_t GID_SIZE = 24;
+
     /// Publish a typed message.
     ///
     /// Calls the codegen-generated `M::ffi_publish()` which serializes the
@@ -449,10 +455,47 @@ template <typename M> class Publisher {
 
     /// Phase 108.B.7 — manually assert liveliness. Required for
     /// publishers configured with `LivelinessManualByTopic` /
-    /// `ManualByNode`; no-op for `Automatic` / `None`.
+    /// `ManualByNode`; nothing to assert for `Automatic` / `None`, which
+    /// answer `Ok` on every backend.
+    ///
+    /// **`ErrorCode::Unsupported` under a manual kind on a backend with no
+    /// per-topic lease** — zenoh-pico, XRCE-DDS, uORB (the phase-467 RMW
+    /// gap-closure design study's Row 7). The entity is fine; the assertion
+    /// simply did not reach a peer, which is the one thing a caller uses this
+    /// for. cyclonedds performs it for real.
     Result assert_liveliness() {
         if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         return Result(nros_cpp_publisher_assert_liveliness(storage_));
+    }
+
+    /// This publisher's own global identifier — `rclcpp::PublisherBase::get_gid`.
+    ///
+    /// The phase-467 RMW gap-closure design study's Q1. Fills `out_gid` with
+    /// [`GID_SIZE`](GID_SIZE) bytes on `Ok`, and writes nothing otherwise.
+    ///
+    /// Upstream returns `const rmw_gid_t &` and cannot fail. Ours can — a
+    /// backend may have no identity for this publisher — and RFC-0018 leaves
+    /// no exceptions to say so with, so the value leaves through a reference
+    /// to a caller-placed array and the verdict through the `Result`. An
+    /// array REFERENCE rather than a pointer is what makes the width a
+    /// compile-time fact at every call site.
+    ///
+    /// **Three bounds, each of which a caller will otherwise assume away:**
+    ///
+    /// * **How many of the bytes MEAN anything is a backend property.** A
+    ///   backend whose identity is narrower zero-extends into the tail, so
+    ///   two gids naming one entity compare equal. Gids produced by two
+    ///   different backends in one image are never comparable.
+    /// * **Not comparable with the gid on a RECEIVED sample, yet.** Same
+    ///   width, and on every backend but zenoh not the same source — issue
+    ///   1495.
+    /// * **An all-zero gid is never handed back as an answer.** A backend
+    ///   with no identity for this publisher reports
+    ///   `ErrorCode::Unsupported`, because all-zero is what an unwritten
+    ///   buffer holds and the two must not read alike.
+    Result get_gid(uint8_t (&out_gid)[GID_SIZE]) const {
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        return Result(nros_cpp_publisher_get_gid(storage_, out_gid, GID_SIZE));
     }
 
   private:

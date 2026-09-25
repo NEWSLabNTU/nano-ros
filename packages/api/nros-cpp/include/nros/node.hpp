@@ -1604,17 +1604,35 @@ class Node {
     /// CONSTRAINT: do not move `out` after this returns — the executor arena
     /// holds `&out` as the dispatch context.
     ///
+    /// **ARGUMENT ORDER IS UPSTREAM'S: `(out, topic, qos, callback, options)`**
+    /// — the phase-467 RMW gap-closure design study's Row 12. It was
+    /// `(out, topic, callback, qos = default, options)` until then, for no
+    /// platform reason: the only force was the C++ rule that a defaulted
+    /// parameter cannot precede a non-defaulted one, and upstream answers it
+    /// by making `qos` MANDATORY, which is what we do now. The proof it was a
+    /// preference and not a constraint was in this same header — the
+    /// `rclcpp::Node` adapter at `nros.hpp` has always used upstream's order,
+    /// so both orders coexisted, and `log.hpp`'s own abort advisory told
+    /// readers to write `node.create_subscription(sub, topic, qos, cb)`,
+    /// which did not compile. RFC-0036 does not allow recording an ordering
+    /// preference as a divergence, and RFC-0089 clause 2 says not to trade
+    /// one away.
+    ///
+    /// COST, stated: the three-argument convenience
+    /// `create_subscription(sub, "chatter", cb)` is gone. Write
+    /// `create_subscription(sub, "chatter", ::nros::QoS(10), cb)`.
+    ///
     /// @tparam M  Message type (must define TYPE_NAME, TYPE_HASH, ffi_deserialize).
     /// @param out       Receives the initialized subscription (callback mode).
     /// @param topic     Topic name (null-terminated).
+    /// @param qos       QoS profile. MANDATORY, as upstream's is.
     /// @param callback  Handler invoked as `callback(const M&)` per sample.
-    /// @param qos       QoS profile.
     /// @param options   Named subscription options (e.g. sched_context).
     template <
         typename M, typename F,
         typename = typename std::enable_if<std::is_convertible<F, void (*)(const M&)>::value>::type>
-    Result create_subscription(::rclcpp::Subscription<M>& out, const char* topic, F callback,
-                               const ::nros::QoS& qos = ::nros::QoS::default_profile(),
+    Result create_subscription(::rclcpp::Subscription<M>& out, const char* topic,
+                               const ::nros::QoS& qos, F callback,
                                const ::nros::SubscriptionOptions& options = {});
 
     /// Create a **callback-style** subscription that also delivers each sample's
@@ -1624,12 +1642,15 @@ class Node {
     /// handler is invoked as `callback(const M&, const uint8_t* attachment, size_t
     /// attachment_len)`; `attachment_len == 0` means the sample carried none.
     /// Cross-RMW bridges read the `bridge_origin` tag from the attachment.
+    ///
+    /// Argument order follows the callback-style `create_subscription` above:
+    /// `qos` before `callback`, and mandatory (Row 12 of the phase-467 RMW
+    /// gap-closure design study).
     template <typename M, typename F,
               typename = typename std::enable_if<
                   std::is_convertible<F, void (*)(const M&, const uint8_t*, size_t)>::value>::type>
     Result create_subscription_with_info(::rclcpp::Subscription<M>& out, const char* topic,
-                                         F callback,
-                                         const ::nros::QoS& qos = ::nros::QoS::default_profile(),
+                                         const ::nros::QoS& qos, F callback,
                                          const ::nros::SubscriptionOptions& options = {});
 
 #if defined(NANO_ROS_SAFETY_E2E)
@@ -1647,12 +1668,15 @@ class Node {
     ///
     /// CONSTRAINT: do not move `out` after this returns — the executor arena
     /// holds `&out` as the trampoline context.
+    ///
+    /// Argument order follows the callback-style `create_subscription` above:
+    /// `qos` before `callback`, and mandatory (Row 12 of the phase-467 RMW
+    /// gap-closure design study).
     template <typename M, typename F,
               typename = typename std::enable_if<std::is_convertible<
                   F, void (*)(const M&, const nros_cpp_integrity_status_t&)>::value>::type>
     Result create_subscription_with_safety(::rclcpp::Subscription<M>& out, const char* topic,
-                                           F callback,
-                                           const ::nros::QoS& qos = ::nros::QoS::default_profile(),
+                                           const ::nros::QoS& qos, F callback,
                                            const ::nros::SubscriptionOptions& options = {});
 #endif // NANO_ROS_SAFETY_E2E
 
@@ -1952,20 +1976,24 @@ class Node {
     /// SchedContext via `group_sched_table`. Out-of-line definition in
     /// `subscription.hpp`.
     ///
+    /// Argument order follows the callback-style `create_subscription` above:
+    /// `qos` before `callback`, and mandatory (Row 12 of the phase-467 RMW
+    /// gap-closure design study — the siblings move together or the fix is
+    /// the "fixed the reported site" failure).
+    ///
     /// @tparam M  Message type (must define TYPE_NAME, TYPE_HASH, ffi_deserialize).
     /// @param group      Callback group.
     /// @param out        Receives the initialized subscription (callback mode).
     /// @param topic      Topic name (null-terminated).
+    /// @param qos        QoS profile. MANDATORY, as upstream's is.
     /// @param callback   Handler invoked as `callback(const M&)` per sample.
-    /// @param qos        QoS profile.
     /// @param options    Named subscription options.
     template <
         typename M, typename F,
         typename = typename std::enable_if<std::is_convertible<F, void (*)(const M&)>::value>::type>
     Result create_subscription_in_group(const ::nros::CallbackGroup& group,
                                         ::rclcpp::Subscription<M>& out, const char* topic,
-                                        F callback,
-                                        const ::nros::QoS& qos = ::nros::QoS::default_profile(),
+                                        const ::nros::QoS& qos, F callback,
                                         const ::nros::SubscriptionOptions& options = {});
 
     /// Create a publisher **in** a callback group (API symmetry; RFC-0047).

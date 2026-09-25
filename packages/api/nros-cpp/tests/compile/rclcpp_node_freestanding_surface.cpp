@@ -106,7 +106,7 @@ inline ::nros::Result instantiate() {
     ::nros::Result r = node.create_publisher(pub, "/count", ::nros::QoS(10));
 
     ::nros::Subscription<Int32> sub;
-    (void)node.create_subscription(sub, "/count", &on_sample, ::nros::QoS(10));
+    (void)node.create_subscription(sub, "/count", ::nros::QoS(10), &on_sample);
 
     ::nros::Timer timer;
     (void)node.create_wall_timer(timer, 100, &on_tick, nullptr);

@@ -207,10 +207,24 @@ zenoh endpoints communicate intent through the topic-key encoding.
 `assert_liveliness()` explicitly to refresh the lease. Available on
 every language surface (Rust `Publisher<M>::assert_liveliness()`, C
 `rcl_publisher_assert_liveliness(&pub)`, C++
-`pub.assert_liveliness()`). The zenoh backend wires it: a shim-side
-keepalive lease that `assert_liveliness()` refreshes, with
-`LivelinessLost` fired on expiry. Backends without manual-assertion
-wiring (xrce, cyclonedds) treat the call as a no-op. See [Status events](status-events.md) for the runtime-event
+`pub.assert_liveliness()`).
+
+**Which backend actually asserts — this paragraph said the opposite until
+the phase-467 RMW gap-closure study.** It read "the zenoh backend wires it
+... Backends without manual-assertion wiring (xrce, cyclonedds) treat the
+call as a no-op", and both halves were wrong. **cyclonedds implements it**
+(`dds_assert_liveliness` on the writer: renews the lease and sends a
+Heartbeat). **zenoh-pico does not** — its liveliness is a session-scoped
+keepalive, it has no per-topic lease a call can renew, and what
+`assert_liveliness()` refreshes there is a LOCAL watchdog that fires this
+publisher's own `LivelinessLost` on expiry. That local behaviour is real
+and is kept; what changed is the return value. Under a manual kind,
+zenoh-pico, XRCE-DDS and uORB now answer `UNSUPPORTED` rather than `Ok`,
+because an `Ok` from a call that put nothing on the wire is the one thing a
+caller uses this function to rule out. `AUTOMATIC` and `NONE` answer `Ok`
+everywhere: there was nothing to assert.
+
+See [Status events](status-events.md) for the runtime-event
 side of liveliness, deadline, and message-lost.
 
 **Per-backend coverage** is documented in

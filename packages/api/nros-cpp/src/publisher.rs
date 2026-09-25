@@ -474,8 +474,16 @@ pub unsafe extern "C" fn nros_cpp_publisher_set_offered_deadline_missed(
 /// Phase 108.B.7 — manually assert this publisher's liveliness.
 ///
 /// Required for entities created with QoS `liveliness_kind =
-/// MANUAL_BY_TOPIC` / `MANUAL_BY_NODE`. No-op otherwise. Backends
-/// without manual-assertion wiring return `OK` (the trait default).
+/// MANUAL_BY_TOPIC` / `MANUAL_BY_NODE`; nothing to assert otherwise, and
+/// those answer `OK` on every backend.
+///
+/// **`NROS_CPP_RET_UNSUPPORTED` under a manual kind on a backend with no
+/// per-topic lease** (zenoh-pico, XRCE-DDS, uORB) — the phase-467 RMW
+/// gap-closure design study's Row 7. This doc said "Backends without
+/// manual-assertion wiring return `OK` (the trait default)", and the mapping
+/// below flattened every error to `NROS_CPP_RET_ERROR`, so neither half of
+/// the answer reached a C++ caller. cyclonedds performs the assertion for
+/// real.
 ///
 /// # Safety
 /// `storage` must be a valid publisher storage (initialised by
@@ -490,7 +498,49 @@ pub unsafe extern "C" fn nros_cpp_publisher_assert_liveliness(
     let publisher = unsafe { &*(storage as *const CppPublisher) };
     match publisher.handle.assert_liveliness() {
         Ok(()) => NROS_CPP_RET_OK,
-        Err(_) => NROS_CPP_RET_ERROR,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
+    }
+}
+
+/// This publisher's own global identifier — upstream
+/// `rmw_get_gid_for_publisher`, `rclcpp::PublisherBase::get_gid`.
+///
+/// The phase-467 RMW gap-closure design study's Q1. Writes 24 bytes into
+/// `out_gid` and touches nothing on any other verdict.
+///
+/// Upstream returns `const rmw_gid_t &`, which cannot fail. Ours can and must
+/// (RFC-0018: no exceptions, caller-placed storage), so the value leaves
+/// through an out-param and the verdict through the return code.
+///
+/// * `NROS_CPP_RET_OK` — 24 bytes written
+/// * `NROS_CPP_RET_INVALID_ARGUMENT` — NULL argument, or
+///   `gid_capacity < 24`
+/// * `NROS_CPP_RET_UNSUPPORTED` — this backend has no identity for this
+///   publisher. Never an all-zero gid: that is what an unwritten buffer
+///   holds, and the two must not read alike.
+///
+/// # Safety
+/// `storage` must be a live publisher storage (initialised by
+/// `nros_cpp_publisher_create`); `out_gid` must be writable for
+/// `gid_capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_publisher_get_gid(
+    storage: *const c_void,
+    out_gid: *mut u8,
+    gid_capacity: usize,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || out_gid.is_null() || gid_capacity < nros_rmw::PUBLISHER_GID_SIZE {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let publisher = unsafe { &*(storage as *const CppPublisher) };
+    match PublisherTrait::get_gid(&publisher.handle) {
+        Ok(gid) => {
+            unsafe {
+                core::ptr::copy_nonoverlapping(gid.as_ptr(), out_gid, nros_rmw::PUBLISHER_GID_SIZE);
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 

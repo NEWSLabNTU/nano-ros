@@ -122,7 +122,7 @@ inline void both_create_families_on_one_object() {
     (void)node.create_publisher(pub, "chatter");
     nros::Subscription<CounterMsg> sub;
     (void)node.create_subscription(
-        sub, "chatter", +[](const CounterMsg&) {});
+        sub, "chatter", ::nros::QoS(10), +[](const CounterMsg&) {});
 
     // shared_ptr: upstream's signatures, on the same object.
     auto pub2 = node.create_publisher<CounterMsg>("chatter", 10);

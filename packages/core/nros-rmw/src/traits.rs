@@ -485,6 +485,24 @@ pub enum QoSLivelinessPolicy {
     Unknown = 4,
 }
 
+impl QoSLivelinessPolicy {
+    /// `true` for the two kinds under which the APPLICATION owns the
+    /// assertion — [`ManualByNode`](Self::ManualByNode) and
+    /// [`ManualByTopic`](Self::ManualByTopic).
+    ///
+    /// The ONE spelling of that test (the phase-467 RMW gap-closure design
+    /// study's Row 7). It decides what [`Publisher::assert_liveliness`] owes:
+    /// under a manual kind the caller asked for something a backend either
+    /// performs or cannot, so a backend that cannot must answer
+    /// `Unsupported`; under `Automatic` / `None` there is nothing to assert
+    /// and `Ok(())` is the whole truth. `Unknown` is an absence, never a
+    /// request, so it is not manual.
+    #[must_use]
+    pub const fn is_manual(self) -> bool {
+        matches!(self, Self::ManualByNode | Self::ManualByTopic)
+    }
+}
+
 /// Phase 211.H — which side of a topic a [`QoSOverride`] targets.
 /// Mirrors the `<role>` segment of a ROS 2
 /// `qos_overrides.<topic>.<role>.<policy>` launch parameter.
@@ -2673,12 +2691,57 @@ pub trait Publisher {
 
     /// Phase 109 — assert this publisher's liveliness manually.
     /// Required for publishers configured with
-    /// `QoSLivelinessPolicy::ManualByTopic`. No-op for other
-    /// liveliness kinds. Default impl returns `Ok(())` (no-op);
-    /// backends override when they implement manual liveliness.
+    /// [`QoSLivelinessPolicy::ManualByTopic`] / [`ManualByNode`](QoSLivelinessPolicy::ManualByNode);
+    /// nothing to do for the other kinds.
+    ///
+    /// **`Ok(())` MEANS THE ASSERTION REACHED THE WIRE, or that there was
+    /// nothing to assert** (the phase-467 RMW gap-closure design study's
+    /// Row 7). Under a kind for which [`QoSLivelinessPolicy::is_manual`]
+    /// holds, a backend that cannot renew a lease a PEER can observe must
+    /// answer `Unsupported` — an `Ok(())` from a call that sent nothing is
+    /// the silently-wrong shape RFC-0089 Part I refuses, and it is what the
+    /// zenoh shim answered until this study. A backend is free to keep a
+    /// LOCAL record of the call (zenoh drives its own `LivelinessLost`
+    /// watchdog off one) and still report `Unsupported`; the return value is
+    /// about what a peer can see, not about what we noted down.
+    ///
+    /// The default body is `Ok(())`, which is correct only for a publisher
+    /// whose kind is not manual — a backend that can be created with a manual
+    /// kind must override.
     fn assert_liveliness(&self) -> Result<(), Self::Error> {
         Ok(())
     }
+
+    /// This publisher's own global identifier — upstream
+    /// `rmw_get_gid_for_publisher`, the vtable's `get_gid_for_publisher`.
+    ///
+    /// The phase-467 RMW gap-closure design study's Q1. **Not the same
+    /// question as [`MessageInfo::publisher_gid`](nros_core::MessageInfo::publisher_gid)**,
+    /// which is the identity of whoever sent a message we RECEIVED. Since
+    /// that study's Q1(a) the two are one TYPE — both
+    /// [`PUBLISHER_GID_SIZE`](nros_core::PUBLISHER_GID_SIZE) wide, nothing
+    /// truncated, no mapping — and they are still not one VALUE: no backend
+    /// we ship fills both from one source, so comparing a gid from a take
+    /// against a gid from here is meaningful only once issue 1495 lands.
+    ///
+    /// **How many of the 24 bytes MEAN anything is a backend property.** A
+    /// backend whose identity is narrower zero-extends through
+    /// [`pad_publisher_gid`](nros_core::pad_publisher_gid) rather than
+    /// leaving the tail undefined, so two gids naming one entity compare
+    /// equal. Gids from DIFFERENT backends are never comparable.
+    ///
+    /// The default is `Err(Unsupported)`, never a fabricated or all-zero id:
+    /// an all-zero gid is what an unwritten buffer holds, so handing one back
+    /// would make "this backend has no identity for this publisher"
+    /// indistinguishable from an answer. That is the same NULL-slot
+    /// discipline the ABI header states for `get_serialization_format`.
+    fn get_gid(&self) -> Result<[u8; nros_core::PUBLISHER_GID_SIZE], Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        Err(TransportError::Unsupported.into())
+    }
+
     /// The profile this entity is ACTUALLY running — what the backend GRANTED,
     /// not what the call site requested.
     ///
@@ -4549,6 +4612,37 @@ mod granted_qos_tests {
             QoSProfile::QOS_PROFILE_DEFAULT,
             "a backend that cannot say must not answer a profile nobody chose"
         );
+    }
+
+    /// The phase-467 RMW gap-closure design study's Q1 — the trait default is
+    /// a REFUSAL, never a gid.
+    ///
+    /// `Mute` overrides nothing, so it stands for every backend that has not
+    /// implemented the accessor. The tempting default is `Ok([0u8; 24])`: it
+    /// compiles, it needs no error plumbing, and it is indistinguishable from
+    /// a real gid a backend zero-padded — which is the RFC-0089 Part I shape
+    /// this method exists on the loud side of.
+    #[test]
+    fn the_default_gid_is_a_refusal_not_zeros() {
+        let answered = Publisher::get_gid(&Mute);
+        assert_eq!(answered, Err(TransportError::Unsupported));
+        assert_ne!(answered, Ok([0u8; nros_core::PUBLISHER_GID_SIZE]));
+    }
+
+    /// Row 7 of the same study — the ONE spelling of "the application owns
+    /// the assertion", which two backends had written out by hand.
+    ///
+    /// `Unknown` is deliberately not manual: it is what a `*_get_actual_qos`
+    /// read-back writes for a policy the backend could not report, and an
+    /// absence is not a request. Reading it as manual would make a backend
+    /// with no read-back refuse an assertion nobody asked for.
+    #[test]
+    fn only_the_two_manual_kinds_are_manual() {
+        assert!(QoSLivelinessPolicy::ManualByNode.is_manual());
+        assert!(QoSLivelinessPolicy::ManualByTopic.is_manual());
+        assert!(!QoSLivelinessPolicy::Automatic.is_manual());
+        assert!(!QoSLivelinessPolicy::None.is_manual());
+        assert!(!QoSLivelinessPolicy::Unknown.is_manual());
     }
 
     /// `UNKNOWN` and `SYSTEM_DEFAULT` are DIFFERENT absences and the ABI keeps
