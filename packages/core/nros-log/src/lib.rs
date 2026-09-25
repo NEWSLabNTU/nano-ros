@@ -211,9 +211,20 @@ const LEVEL_UNSET: u8 = u8::MAX;
 /// resolves an unset logger by walking a DOTTED ANCESTRY (`x.y.z` → `x.y` →
 /// `x`) to `g_rcutils_logging_default_logger_level`; `nros_log` has no
 /// ancestry — [`get_logger`] is exact string equality over [`MAX_LOGGERS`]
-/// slots and no name in the tree is dotted — so that walk degenerates here to
-/// exactly one step, and one step is what this is. Deliberately not built
-/// further: a walk over a linear 32-slot table is a cost with no consumer.
+/// slots — so that walk degenerates here to exactly one step, and one step is
+/// what this is.
+///
+/// Deliberately not built further, and phase-467 recorded that as PERMANENT on
+/// ledger row `c:log_severity_t` rather than as work. A dotted name is accepted
+/// and is just a name with a dot in it; what is missing is the PARENT, and the
+/// two things that would give it one are both absent for the same reason.
+/// Upstream keys a level by NAME (`rcutils_logging_set_logger_level(const char
+/// *, int)` writes an allocator-backed severity map), so an ancestor there can
+/// carry a level without being a logger; here the level is an `AtomicU8` INSIDE
+/// the [`Logger`], so an ancestor would have to occupy one of the 32 slots to
+/// hold one. And the producer of dotted names upstream, `Logger::get_child`,
+/// has no allocator here to concatenate `parent.child` with. A resolver for a
+/// hierarchy nothing can construct is not a missing feature.
 static DEFAULT_LEVEL: AtomicU8 = AtomicU8::new(Severity::Info as u8);
 
 /// A named logger with a runtime severity threshold.

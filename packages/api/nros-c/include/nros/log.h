@@ -64,15 +64,26 @@ extern "C" {
  * point `RCUTILS_DEFAULT_LOGGER_DEFAULT_LEVEL` has upstream. A logger you
  * never set a level on is already in that state.
  *
- * **ENVELOPE — one process default, no dotted ancestry.** Upstream resolves an
- * unset logger by walking the ancestry its name spells with dots (`x.y.z` →
- * `x.y` → `x`) and only then falls to
+ * **ENVELOPE — one process default, no dotted ancestry, PERMANENTLY.** Upstream
+ * resolves an unset logger by walking the ancestry its name spells with dots
+ * (`x.y.z` → `x.y` → `x`) and only then falls to
  * `g_rcutils_logging_default_logger_level`. `nros_log` has no hierarchy at all
  * — `nros_log_get_logger` is exact string equality over a fixed slot table —
  * so that walk has exactly one step here and this is that step. A dotted name
- * is accepted and is simply a name. Building the walk is what row
- * `c:log_severity_t` still records as owed, and it has no consumer in this
- * tree today (RFC-0089: the envelope is part of the API, not a footnote).
+ * is ACCEPTED and is simply a name: setting `nav`'s level does not move
+ * `nav.costmap`'s, because `nav` here is a different logger, not an ancestor.
+ *
+ * The walk is not owed work, and phase-467 re-verdicted ledger row
+ * `c:log_severity_t` to say so. Upstream keys a level by NAME —
+ * `rcutils_logging_set_logger_level(const char *name, int)` writes an
+ * allocator-backed severity map, which is how an ANCESTOR carries a level
+ * without being a logger — while here a level lives inside the `Logger`
+ * object, so an ancestor would have to be MATERIALISED into one of the fixed
+ * slots to hold one. And the only thing that produces a dotted name upstream,
+ * `Logger::get_child`, is absent here for the same no-allocator reason (its
+ * own ledger rows carry it). An ancestry resolver would resolve a hierarchy
+ * nothing can construct. (RFC-0089: the envelope is part of the API, not a
+ * footnote.)
  *
  * `UNSET` is only special where a LEVEL IS STORED. Passed as a record's
  * severity (`nros_log_emit`) or as a threshold question
