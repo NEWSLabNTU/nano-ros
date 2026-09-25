@@ -327,7 +327,7 @@ impl Clock {
 
     /// The monotonic clock, in ONE place — issue 1334's sibling site.
     ///
-    /// Same rule as [`Self::wall_now`], one clock over: a linked port IS the
+    /// Same rule as `Self::wall_now`, one clock over: a linked port IS the
     /// monotonic clock, and the counter is what a build with no port was
     /// given.
     ///
@@ -369,7 +369,7 @@ impl Clock {
     /// depend on whether some crate in the graph happened to name `std`.
     ///
     /// `RosTime` with no override is `SystemTime`, in EVERY build shape and by
-    /// construction — both arms call [`Self::wall_now`]. That is rclcpp's
+    /// construction — both arms call `Self::wall_now`. That is rclcpp's
     /// contract (`ClockType::ROS_TIME` with `use_sim_time` false reads the
     /// system clock), what five doc sites across three languages already
     /// promised, and what the C surface already did; issue 1334 is the four

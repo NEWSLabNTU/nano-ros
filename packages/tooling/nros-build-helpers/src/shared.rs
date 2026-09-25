@@ -147,7 +147,7 @@ pub fn picolibc_include() -> Option<String> {
 
 /// Render a committed cbindgen header's CONTENT, without writing anything.
 ///
-/// Split out of [`generate_cbindgen_header`] so the regenerator binary and the
+/// Split out of `generate_cbindgen_header` so the regenerator binary and the
 /// build-script comparison path run the *same* generation — a second spelling
 /// here is how the two would drift and the gate would start passing for the
 /// wrong reason.

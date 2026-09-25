@@ -572,7 +572,7 @@ impl SchedContext {
     /// RFC-0052 — the **common backend** that lowers an RTOS-agnostic tier
     /// policy (`[tiers.<t>]` class / budget / period / deadline) to a
     /// [`SchedContext`]. ONE implementation shared by every language: the Rust
-    /// runtime ([`crate::node_runtime::ExecutorNodeRuntime::apply_tier_sched_policy`])
+    /// runtime (`ExecutorNodeRuntime::apply_tier_sched_policy`)
     /// and the C / C++ entries (`nros_{c,cpp}_create_sched_context_from_policy`)
     /// all call this, so the mapping can never drift between codegen paths.
     ///

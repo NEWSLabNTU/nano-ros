@@ -7,7 +7,7 @@
 //! * `CMAKE_BUILD_TYPE` → cargo profile name  ([`resolve`])
 //! * profile name → cargo flags               ([`build_args`], [`nextest_args`])
 //! * profile name → `target/` subdirectory    ([`target_dir`])
-//! * profile name → its DEFINITION, as environment variables ([`env`])
+//! * profile name → its DEFINITION, as environment variables ([`env()`])
 //!
 //! # Who defines a profile
 //!
@@ -99,7 +99,7 @@ pub const RELWITHDEBINFO: Preset = Preset {
 ///
 /// Two independent reasons, both found by trying the chain first:
 ///
-/// 1. [`env`] injects ONE profile's settings. A chained parent is not injected
+/// 1. [`env()`] injects ONE profile's settings. A chained parent is not injected
 ///    with it, so in a workspace outside this checkout — where the
 ///    `.cargo/config.toml` walk-up does not reach — cargo fails with
 ///    `profile 'nros-relwithdebinfo' is not defined`.

@@ -262,7 +262,7 @@ pub fn tier_tick_marker(tier: impl std::fmt::Display) -> String {
 /// issue 0636 gap 2 — the RUST realtime nodes' per-tier dispatch marker.
 ///
 /// `realtime-rust`'s `ctrl_pkg` / `telem_pkg` print
-/// `on_<x>: first publish OK (tier `<name>` is dispatching)` on their FIRST
+/// `on_<x>: first publish OK (tier <name> is dispatching)` on their FIRST
 /// successful publish and nothing per tick after it — a recorded decision
 /// (issue 0572), because the 10 ms tier would swamp the serial console the
 /// e2e observers read. So the C/C++ [`tier_tick_marker`] has no Rust

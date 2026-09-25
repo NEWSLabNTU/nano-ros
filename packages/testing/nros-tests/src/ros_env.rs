@@ -709,7 +709,7 @@ impl DockerRosEnv {
     /// Codegen golden variant (phase-309 W4): run `nros generate-rust` in-container
     /// against a HOST consumer directory (a dir with a `package.xml` that `<depend>`s
     /// the interface packages to generate), writing bindings to `out_host`. Unlike
-    /// [`generate`], which points at an installed `share/<pkg>` dir (and so emits
+    /// [`Self::generate`], which points at an installed `share/<pkg>` dir (and so emits
     /// that manifest's DEPENDENCIES), a consumer manifest emits the DECLARED
     /// packages themselves — how the golden lane gets `geometry_msgs`.
     pub fn generate_from_consumer(

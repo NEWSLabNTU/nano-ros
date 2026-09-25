@@ -54,7 +54,7 @@ pub struct Field {
 /// Covers every variant Cyclone DDS' dynamic-type C API needs for
 /// constructing a `dds_topic_descriptor_t` at runtime:
 ///
-/// * primitives (bool, [iu]{8,16,32,64}, f{32,64})
+/// * primitives (bool, `[iu]{8,16,32,64}`, `f{32,64}`)
 /// * strings (unbounded / bounded; narrow / wide)
 /// * nested structs (recurse into a child `&'static [Field]`)
 /// * fixed-size arrays (`T[N]`)

@@ -457,7 +457,7 @@ pub extern "C" fn rcl_action_server_get_default_options() -> nros_action_server_
 
 /// Phase 189.M3.3.b — initialize an action server with custom QoS + named
 /// options. Like [`nros_action_server_init_with_qos`] except a non-zero
-/// `options->sched_context` is stashed so [`nros_executor_add_action_server`]
+/// `options->sched_context` is stashed so `nros_executor_add_action_server`
 /// binds the resulting executor handle to that scheduling context once known.
 ///
 /// # Safety

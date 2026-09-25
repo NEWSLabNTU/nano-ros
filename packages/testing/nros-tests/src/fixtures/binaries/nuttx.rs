@@ -362,7 +362,7 @@ pub fn build_nuttx_action_client() -> TestResult<&'static Path> {
 /// So the row answers both questions the literals were guessing at:
 /// [`groups::select_sole_row`] + [`groups::row_resolved_dir`] give the artifact
 /// ROOT (leaf or group, decided by the row's own `shared`/`slug`), and
-/// [`super::row_profile_dir`] gives the PROFILE from the row's coordinate. The
+/// `super::row_profile_dir` gives the PROFILE from the row's coordinate. The
 /// only literal left is the target triple, which no row carries.
 ///
 /// The miscompile warning is KEPT and now means what it says: the artifact is

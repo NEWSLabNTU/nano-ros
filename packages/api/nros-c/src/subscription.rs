@@ -28,7 +28,7 @@ pub type nros_subscription_callback_t =
 /// Subscription callback that also receives the sample's wire **attachment**
 /// (Phase 189.M3.4 — the C analog of the Rust
 /// `node.subscription(t).generic(..).message_info()` builder path). Used by
-/// [`nros_executor_add_subscription_raw_with_info`].
+/// `nros_executor_add_subscription_raw_with_info`.
 ///
 /// # Parameters
 /// * `data` / `len` — received CDR bytes.
@@ -204,7 +204,7 @@ pub extern "C" fn rcl_subscription_get_default_options() -> nros_subscription_op
 ///   does not do.
 ///
 /// So the callback is supplied where rclc supplies it, at registration:
-/// [`nros_executor_add_subscription_typed`] for the typed path (rclc's
+/// `nros_executor_add_subscription_typed` for the typed path (rclc's
 /// `rclc_executor_add_subscription_with_context` shape) and
 /// `nros_executor_add_subscription_raw` for the byte path, which has no rclc
 /// counterpart and therefore keeps an `nros_` name.
@@ -339,7 +339,7 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
 /// default) and the non-QoS axes ride in `options` (NULL = defaults).
 /// Behaves exactly like [`nros_subscription_init_with_qos`] except that
 /// a non-zero `options->sched_context` is stashed on the subscription so
-/// that [`nros_executor_add_subscription`] binds the resulting
+/// that `nros_executor_add_subscription` binds the resulting
 /// executor handle to that scheduling context once the handle is known
 /// (entity creation is deferred to registration, so the handle does not
 /// exist at init time). `options->message_info` is RESERVED and ignored
@@ -1108,7 +1108,7 @@ impl nros_subscription_t {
 ///
 /// # Returns
 /// * Pointer to topic name (null-terminated), or NULL if the handle is not
-///   usable (see [`nros_subscription_t::is_usable`]) or NULL
+///   usable (see `nros_subscription_t::is_usable`) or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_subscription_get_topic_name(
     subscription: *const nros_subscription_t,
@@ -1165,7 +1165,7 @@ pub unsafe extern "C" fn rcl_subscription_get_publisher_count(
 ///
 /// rcl's `rcl_subscription_is_valid`, whose contract is "true for any handle
 /// that can be used" — the ported idiom is a guard. See
-/// [`nros_subscription_t::is_usable`] for which states those are.
+/// `nros_subscription_t::is_usable` for which states those are.
 ///
 /// # Parameters
 /// * `subscription` - Pointer to a subscription

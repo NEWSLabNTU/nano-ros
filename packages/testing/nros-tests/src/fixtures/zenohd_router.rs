@@ -41,7 +41,7 @@ fn resolve_router_log_filter(caller_filter: Option<&str>) -> Option<String> {
 
 /// The precedence itself, with the operator's value handed in.
 ///
-/// Split out from [`resolve_router_log_filter`] so the rule can be TESTED
+/// Split out from `resolve_router_log_filter` so the rule can be TESTED
 /// without a test writing process env — which is the whole point of issue
 /// 1394. The one line that is not covered here is the `env::var` read above,
 /// and deliberately: proving that needs a child process (issue 1313's shape)
@@ -310,9 +310,9 @@ impl ZenohRouter {
     /// writing `ZENOHD_LOG` into the process environment before calling
     /// `start_on`, which is a `setenv` racing every other thread's `getenv` in
     /// a `cargo test` binary. The filter is a per-call input, so it is a
-    /// parameter; see [`resolve_router_log_filter`] for who wins.
+    /// parameter; see `resolve_router_log_filter` for who wins.
     ///
-    /// Every existing caller passes `None` through [`start_on`] and is
+    /// Every existing caller passes `None` through [`start_on`](Self::start_on) and is
     /// unaffected: with no filter and no `ZENOHD_LOG`, the behaviour is exactly
     /// what it was.
     pub fn start_on_with_log_filter(

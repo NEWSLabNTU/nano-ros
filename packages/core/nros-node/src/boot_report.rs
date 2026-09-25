@@ -44,8 +44,8 @@
 //! python3 scripts/read-boot-report.py <elf> report.bin
 //! ```
 //!
-//! [`MAGIC`] distinguishes a written record from uninitialised RAM, and
-//! [`BootReport::struct_size`] lets a reader refuse a layout it does not know
+//! [`MAGIC`](crate::boot_report::MAGIC) distinguishes a written record from uninitialised RAM, and
+//! `BootReport::struct_size` lets a reader refuse a layout it does not know
 //! rather than decode it wrongly.
 //!
 //! # Cost, and why it is opt-in
@@ -58,7 +58,7 @@
 //! same rule issue 0900's arena knob and phase-403's `rx_buffer_from_type()`
 //! both keep.
 //!
-//! Enabled, it costs [`BootReport::struct_size`] bytes of `.bss` -- 92, the
+//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 92, the
 //! same on every target because every field is a `u32` -- and a handful of
 //! relaxed atomic stores on paths that run once per entity at registration.
 //!
@@ -77,9 +77,9 @@
 //! APPENDED -- after the last field, never inserted between two -- and the
 //! four edits are one commit:
 //!
-//! 1. the field on [`BootReport`], its zero in `BootReport::new`, the same
-//!    name in the same position on [`Snapshot`], and its load in [`snapshot`];
-//! 2. [`VERSION`] bumped, so an older decoder REFUSES the record instead of
+//! 1. the field on `BootReport`, its zero in `BootReport::new`, the same
+//!    name in the same position on `Snapshot`, and its load in `snapshot`;
+//! 2. [`VERSION`](crate::boot_report::VERSION) bumped, so an older decoder REFUSES the record instead of
 //!    reading the new word as one it knows;
 //! 3. `FIELDS` in `scripts/read-boot-report.py`, same name, same position, and
 //!    `KNOWN_VERSION` to match;
@@ -129,10 +129,10 @@ pub enum Stage {
     ReportReady = 1,
     /// The boot config resolved: node name, namespace, locator and domain id
     /// all parsed. Everything between here and [`Stage::ReportReady`] is
-    /// argument validation, and [`BootReport::cpp_init_ret`] says which check
+    /// argument validation, and `BootReport::cpp_init_ret` says which check
     /// rejected it.
     BootConfigResolved = 2,
-    /// An `Executor` has bound its arena, so [`BootReport::arena_capacity`]
+    /// An `Executor` has bound its arena, so `BootReport::arena_capacity`
     /// is the real slice length rather than the compiled constant.
     ExecutorReady = 3,
     /// Entity registration has begun: something claimed arena bytes.
@@ -153,7 +153,7 @@ pub enum Stage {
     ///
     /// The interval between this and [`Stage::FirstSpin`] is where an
     /// under-sized arena halts, so `stage == 4` with a non-zero
-    /// [`BootReport::failed_alloc_shortfall`] is the signature of the failure
+    /// `BootReport::failed_alloc_shortfall` is the signature of the failure
     /// this whole record exists to catch.
     RegisteringEntities = 4,
     /// RESERVED. Nothing emits this, and nothing can from inside the core.

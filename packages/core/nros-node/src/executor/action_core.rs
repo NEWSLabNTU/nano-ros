@@ -46,14 +46,14 @@ pub(crate) fn action_service_base_type<'a>(
 /// The per-channel DDS type name for a RAW-registered action server.
 ///
 /// The typed path derives these from `A::SendGoalRequest::TYPE_NAME` via
-/// [`action_service_base_type`]. The raw path (`register_action_server_raw*`)
+/// `action_service_base_type`. The raw path (`register_action_server_raw*`)
 /// has only the BARE action type, so it must construct them — and until
 /// phase-338 W3 it did not, advertising `…Fibonacci_` on send_goal / get_result
 /// / feedback where ROS 2 expects `…Fibonacci_SendGoal_`,
 /// `…Fibonacci_GetResult_` and `…Fibonacci_FeedbackMessage_`. The type name is
 /// baked into the keyexpr, so a client's query never matched the server's
 /// queryable and every goal timed out with `Transport(Timeout)` — exactly the
-/// failure [`action_service_base_type`]'s own doc warns about, on the other
+/// failure `action_service_base_type`'s own doc warns about, on the other
 /// registration path.
 ///
 /// `action_type` is DDS-form and ends in `_` (`…::dds_::Fibonacci_`); the
@@ -145,7 +145,7 @@ pub struct PendingGetResult {
 /// `offset` order**: results are appended at `result_slab_used` and the slab is
 /// compacted in place whenever an entry is reclaimed. Every reclamation path
 /// preserves that ordering (`heapless::Vec::remove` / `retain`, never
-/// `swap_remove`) because [`ActionServerCore::compact_result_slab`] moves
+/// `swap_remove`) because `ActionServerCore::compact_result_slab` moves
 /// survivors *down* and would clobber a not-yet-moved entry otherwise.
 #[derive(Clone, Copy)]
 pub struct CompletedResultEntry {
@@ -1177,7 +1177,7 @@ impl<
     /// result is reclaimed* — that is, until the client fetches it and
     /// [`expire_completed_results`](Self::expire_completed_results) runs, or
     /// until `MAX_GOALS` newer goals displace it through
-    /// [`evict_one_completed_result`](Self::evict_one_completed_result). It is a
+    /// `evict_one_completed_result`. It is a
     /// rule a caller can reason about, and it is the closest thing to upstream
     /// reachable without a time source; it is deliberately not a duration.
     ///

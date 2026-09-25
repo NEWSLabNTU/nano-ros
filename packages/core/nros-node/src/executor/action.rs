@@ -647,7 +647,7 @@ impl<A: RosAction> ActionServerHandle<A> {
     /// rcl's `rcl_action_server_goal_exists`, and the Rust half of the ledger
     /// row `c:action_server_goal_exists`. TRUE while the goal is active AND
     /// while its completed result is still retained, which is a strictly wider
-    /// window than [`goal_status`](Self::goal_status) reports — see
+    /// window than `goal_status` reports — see
     /// [`ActionServerCore::goal_exists`](super::action_core::ActionServerCore::goal_exists).
     ///
     /// Returns `false` if the handle slot has been removed from the executor,

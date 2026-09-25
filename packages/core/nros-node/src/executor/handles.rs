@@ -221,11 +221,11 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     /// without a per-publisher staging copy. Saves on RAM-constrained
     /// nodes that publish multi-KB payloads.
     ///
-    /// The `writer` closure receives a [`StreamWriter`] mutable
-    /// reference and uses [`StreamWriter::write`] / [`extend`] /
-    /// [`reserved_len`] to fill the slot in chunks. The total
+    /// The `writer` closure receives a `StreamWriter` mutable
+    /// reference and uses `StreamWriter::write` / `extend` /
+    /// `reserved_len` to fill the slot in chunks. The total
     /// payload length must be declared up-front via
-    /// [`StreamWriter::reserve_total`]; the backend allocates that
+    /// `StreamWriter::reserve_total`; the backend allocates that
     /// many bytes in its outbound buffer before any chunks land.
     ///
     /// Backends without a native stream slot fall through to a
@@ -283,8 +283,8 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 
     /// Phase 108.B — manually assert this publisher's liveliness.
     /// Required for publishers configured with
-    /// [`QoSLivelinessPolicy::ManualByTopic`] /
-    /// [`QoSLivelinessPolicy::ManualByNode`]. No-op for AUTOMATIC /
+    /// [`QoSLivelinessPolicy::ManualByTopic`](nros_rmw::QoSLivelinessPolicy::ManualByTopic) /
+    /// [`QoSLivelinessPolicy::ManualByNode`](nros_rmw::QoSLivelinessPolicy::ManualByNode). No-op for AUTOMATIC /
     /// NONE kinds. Returns `Err(Unsupported)` if the backend doesn't
     /// implement manual liveliness.
     pub fn assert_liveliness(&self) -> Result<(), NodeError> {
@@ -801,10 +801,10 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     /// `RmwPublisher` handle. Public so external extension crates
     /// (e.g. `nros-px4` for typed uORB wrappers) can wrap a handle
     /// they obtained directly from the active session via
-    /// [`crate::Node::session_mut`] + a backend-specific create method.
+    /// [`NodeHandle::session_mut`](crate::executor::NodeHandle::session_mut) + a backend-specific create method.
     ///
-    /// Most users should not call this — use [`crate::Node::create_publisher`]
-    /// or [`crate::Node::create_publisher_raw`] instead.
+    /// Most users should not call this — use [`NodeHandle::create_publisher`](crate::executor::NodeHandle::create_publisher)
+    /// or [`NodeHandle::create_publisher_raw`](crate::executor::NodeHandle::create_publisher_raw) instead.
     pub fn new(handle: session::RmwPublisher) -> Self {
         Self {
             handle,
@@ -874,7 +874,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     /// `len` exceeds the publisher's slot capacity.
     ///
     /// With the `rmw-lending` cargo feature on, this dispatches to the
-    /// active backend's [`SlotLending::try_lend_slot`](nros_rmw::SlotLending::try_lend_slot)
+    /// active backend's `SlotLending::try_lend_slot`
     /// — zero-copy on backends that natively lend (zenoh-pico via
     /// `z_bytes_from_static_buf`, XRCE-DDS via `uxr_prepare_output_stream`).
     /// Without `rmw-lending`, the arena fallback is used: caller fills a
@@ -946,9 +946,9 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     /// the backend's outbound stream has room (lending path).
     ///
     /// Phase 99.H': cancellation-safe Future. Registers the task's
-    /// waker on the arena's [`AtomicWaker`] before checking
-    /// [`try_loan`]; another task's `commit` / `discard` calls
-    /// [`TxArena::release`] which wakes us. Dropping the future before
+    /// waker on the arena's `AtomicWaker` before checking
+    /// [`Self::try_loan`]; another task's `commit` / `discard` calls
+    /// `TxArena::release` which wakes us. Dropping the future before
     /// it resolves removes nothing from any wait queue (single-slot
     /// AtomicWaker semantics: only the latest registration matters)
     /// and explicitly wakes another waiter so the next task in line
@@ -1129,7 +1129,7 @@ impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
     }
 
     /// Discard the loan without publishing. Equivalent to dropping, but
-    /// explicit (no #[must_use] warning).
+    /// explicit (no `#[must_use]` warning).
     pub fn discard(mut self) {
         self.committed = true; // Suppress Drop's "discard" log if any.
         drop(self);
@@ -1450,7 +1450,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     /// **A policy the backend could not report reads back as its `Unknown`
     /// variant**, never as the request — upstream's contract for this call.
     /// A backend with no read-back at all (XRCE) answers
-    /// [`QoSProfile::QOS_PROFILE_UNKNOWN`], every field an absence.
+    /// [`QoSProfile::QOS_PROFILE_UNKNOWN`](nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN), every field an absence.
     ///
     /// Free: read once at create and retained on the handle, so this never
     /// re-enters the transport.
@@ -1521,11 +1521,11 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// `RmwSubscriber` handle. Public so external extension crates
     /// (e.g. `nros-px4` for typed uORB wrappers) can wrap a handle
     /// they obtained directly from the active session via
-    /// [`crate::Node::session_mut`] + a backend-specific create method.
+    /// [`NodeHandle::session_mut`](crate::executor::NodeHandle::session_mut) + a backend-specific create method.
     ///
     /// Most users should not call this — use
-    /// [`crate::Node::create_subscription`] or
-    /// [`crate::Node::create_subscription_raw`] instead.
+    /// [`NodeHandle::create_subscription`](crate::executor::NodeHandle::create_subscription) or
+    /// [`NodeHandle::create_subscription_raw`](crate::executor::NodeHandle::create_subscription_raw) instead.
     pub fn new(handle: session::RmwSubscriber) -> Self {
         Self {
             handle,
@@ -1804,7 +1804,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// **A policy the backend could not report reads back as its `Unknown`
     /// variant**, never as the request — upstream's contract for this call.
     /// A backend with no read-back at all (XRCE) answers
-    /// [`QoSProfile::QOS_PROFILE_UNKNOWN`], every field an absence.
+    /// [`QoSProfile::QOS_PROFILE_UNKNOWN`](nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN), every field an absence.
     ///
     /// Free: read once at create and retained on the handle, so this never
     /// re-enters the transport.
@@ -1854,7 +1854,7 @@ impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP
     /// Construct a [`RawServiceServer`] from a backend-allocated
     /// `RmwServiceServer` handle. Public so external crates and the
     /// C / C++ FFI shims can wrap a handle obtained directly from
-    /// [`crate::Node::session_mut`].
+    /// [`NodeHandle::session_mut`](crate::executor::NodeHandle::session_mut).
     pub fn new(handle: session::RmwServiceServer) -> Self {
         Self {
             handle,
@@ -1993,7 +1993,7 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
     }
 
     /// Phase 124.G.3 — graph-aware "is the matching server up?"
-    /// probe. Mirrors [`Client::server_available`] for the raw API.
+    /// probe. Mirrors [`EmbeddedServiceClient::service_is_ready`](crate::executor::EmbeddedServiceClient::service_is_ready) for the raw API.
     pub fn service_is_ready(&self) -> Result<bool, NodeError> {
         use nros_rmw::ClientTrait;
         self.handle.service_is_ready().map_err(NodeError::Transport)
@@ -2031,7 +2031,7 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
 /// Two backings, selected at compile time by the `rmw-lending` feature:
 /// the no-lending variant points at `RawSubscription::buffer` (filled by
 /// `take_serialized`'s memcpy); the lending variant holds the backend's
-/// own [`SlotBorrowing::View`](nros_rmw::SlotBorrowing::View) — zero
+/// own `SlotBorrowing::View` — zero
 /// copies on the receive path, with the backend's Drop taking care of
 /// releasing the buffer lock.
 #[cfg(not(feature = "rmw-lending"))]
@@ -2201,7 +2201,7 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
 /// Returned by `create_client_with_callback`: the reply is delivered to the
 /// registered closure at `spin_once` (no `Promise` poll). This handle only
 /// **sends** — it holds a `*mut` to the arena entry's
-/// [`ServiceClientSendHeader`](super::arena::ServiceClientSendHeader) (pinned in
+/// `ServiceClientSendHeader` (pinned in
 /// the executor arena, like a guard-condition flag), so a single outstanding
 /// request is gated by `hdr.pending`.
 ///
@@ -3099,7 +3099,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     ///
     /// Implementation: spins on the `send_goal` service client's
     /// `service_is_ready`, the same primitive as
-    /// [`Client::wait_for_service`]. Once that service is reachable the
+    /// [`EmbeddedServiceClient::wait_for_service`](crate::executor::EmbeddedServiceClient::wait_for_service). Once that service is reachable the
     /// remaining four action entities (cancel queryable + feedback /
     /// status / result publishers) are also reachable in practice — they
     /// were declared by the same server in one batch.

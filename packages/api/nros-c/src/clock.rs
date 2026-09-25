@@ -68,8 +68,10 @@ pub enum nros_clock_type_t {
 /// `CARGO_FEATURE_RMW_CFFI` -- so without an RMW seam the type does not exist
 /// and this signature does not resolve:
 ///
-///     error[E0432]: unresolved import `nros_node::executor::TimerClockSource`
-///         --> packages/api/nros-c/src/clock.rs:65:9
+/// ```text
+/// error[E0432]: unresolved import `nros_node::executor::TimerClockSource`
+///     --> packages/api/nros-c/src/clock.rs:65:9
+/// ```
 ///
 /// `clock` is one of this crate's backend-INDEPENDENT modules, so it is
 /// compiled under `nros-c`'s bare default (`panic-platform`), where every

@@ -3,7 +3,7 @@
 //! # Nothing here may serve a hit, and that is the whole design
 //!
 //! For a staleness PROBE an incomplete input set is survivable. It errs toward
-//! rebuilding, and [`super::staleness::candidates_changed_content_policy`]
+//! rebuilding, and `super::staleness::candidates_changed_content_policy`
 //! returns `None` rather than "fresh" when it examined nothing, deferring to
 //! the stricter mtime verdict. That fallback is what makes the current design
 //! safe.

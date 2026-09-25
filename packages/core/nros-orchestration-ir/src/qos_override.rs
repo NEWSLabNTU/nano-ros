@@ -248,7 +248,7 @@ pub fn is_qos_override(name: &str) -> bool {
 
 /// The canonical spelling of a [`qos_override_role`] code, for a diagnostic.
 ///
-/// The inverse of the role match in [`split_key`], and the reason it is a
+/// The inverse of the role match in `split_key`, and the reason it is a
 /// function: phase-454 W7's messages name the role the author WROTE, and a
 /// message that respelled it would send someone looking for a key they did not
 /// type.

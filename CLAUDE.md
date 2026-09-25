@@ -815,6 +815,20 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   plug-in's deps (`liblto_plugin.so` is one of 88 such objects in the store),
   reported as a NOTE rather than silently, with `--include-unreached` restoring
   the old measurement.
+- **rustdoc has TWO scopes, and `-D warnings` is what makes the wider one answer**
+  (issue 1116 / phase-452 W4). `just check rustdoc-links` documents the six
+  DEPLOYED crates and stays narrow, because a red there means the docs deploy is
+  broken; `just check rustdoc-workspace` is every other member (DERIVED — the
+  workspace minus `embedded-only`), on the same `compile-smoke` job, since it also
+  runs cyclonedds's and xrce's build scripts and so needs those sources too. The
+  flag is load-bearing: deny comes from `[workspace.lints.rust]`, which reaches
+  only crates writing `[lints] workspace = true`, and **`cargo doc` EXITS 0 over a
+  warning** — so without it the gate is green over every diagnostic in a crate
+  that did not opt in, and 17 of those existed. The issue's "~70 diagnostics, five
+  crates" measured 179 and TWELVE: `~70` was taken with no `--features`, and
+  "five" was where `cargo doc` STOPPED rather than what exists — use
+  `--keep-going`. Most of the 179 were stale PROSE, not stale links (a deleted
+  `run`, a moved `Node`, a renamed C symbol in the committed cbindgen header).
 - **Rust edition 2024:** `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in
   `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
 - **No POSIX-style Rust ctor sections on Zephyr/native_sim/RTOS** — backend registration is an

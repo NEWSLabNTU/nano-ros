@@ -2381,7 +2381,7 @@ impl<'s> Executor<'s> {
     /// Record one launch `<remap from= to=/>` rule for the node identified by
     /// `(node_name, namespace)`. Rules are matched in declaration order (first
     /// wins) by [`Self::resolve_entity_name_for`]. Errors when a string
-    /// overflows its slot or the table is at [`MAX_REMAPS`] — callers surface
+    /// overflows its slot or the table is at `MAX_REMAPS` — callers surface
     /// this rather than silently dropping a routing rule.
     #[allow(clippy::result_unit_err)]
     pub fn declare_remap(
@@ -2572,13 +2572,13 @@ impl<'s> Executor<'s> {
 
     /// Identifier of the auto-created default `Fifo`-class scheduling
     /// context. Every callback registered without an explicit
-    /// [`bind_handle_to_sched_context`] binds to this SC.
+    /// [`Self::bind_handle_to_sched_context`] binds to this SC.
     pub fn default_sched_context_id(&self) -> super::sched_context::SchedContextId {
         super::sched_context::SchedContextId(0)
     }
 
-    /// Register a new scheduling context. Returns a [`SchedContextId`]
-    /// callers pass to [`bind_handle_to_sched_context`] to attach
+    /// Register a new scheduling context. Returns a [`SchedContextId`](crate::executor::sched_context::SchedContextId)
+    /// callers pass to [`Self::bind_handle_to_sched_context`] to attach
     /// callbacks. Phase 110.B.
     pub fn create_sched_context(
         &mut self,
@@ -3488,7 +3488,7 @@ impl<'s> Executor<'s> {
     /// executor's major-frame length, then materialises one
     /// `SchedContext` per window with `class = TimeTriggered` +
     /// the window's offset / duration. Returns the per-window
-    /// [`SchedContextId`] array so callers can immediately
+    /// [`SchedContextId`](crate::executor::sched_context::SchedContextId) array so callers can immediately
     /// `bind_handle_to_sched_context(handle, sc_id)` for their
     /// subscription / timer handles.
     ///
@@ -3800,7 +3800,7 @@ impl<'s> Executor<'s> {
     /// binding, and until 1385 it did not — leaving `has_async_wake` false
     /// for the life of every C executor on every backend.
     ///
-    /// Pairs with [`clear_wake_signal`](Self::clear_wake_signal), which the
+    /// Pairs with `clear_wake_signal`, which the
     /// executor runs from `close()` and from `drop`. A caller that installs
     /// owes nothing further: the teardown is the executor's.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -3990,7 +3990,8 @@ impl<'s> Executor<'s> {
     }
 
     /// Phase 104.C.3.2 — scoped Node-handle access. The closure
-    /// receives a [`Node`] bound to the requested [`NodeId`]'s
+    /// receives a [`NodeHandle`](crate::executor::NodeHandle) bound to the
+    /// requested [`NodeId`](crate::executor::NodeId)'s
     /// session + identity. Use the standard `Node::create_publisher`,
     /// `create_subscription`, etc. APIs inside.
     ///
@@ -4177,7 +4178,8 @@ impl<'s> Executor<'s> {
     /// Phase 128.F.2 — bridge-mode node factory. Registers a Node
     /// bound to the named RMW backend by opening (or reusing) an
     /// extra session via `node_builder().rmw(rmw).build()`, then
-    /// returns a [`Node`] borrowing that session. Use when the
+    /// returns a [`NodeHandle`](crate::executor::NodeHandle) borrowing that
+    /// session. Use when the
     /// binary intentionally links more than one backend and a Node
     /// must speak a specific one.
     ///
@@ -4512,7 +4514,7 @@ impl<'s> Executor<'s> {
     /// tick registry. Called by `nros`'s `install`/`register_node_borrowed`
     /// after it builds the `Arc<ComponentCell>`: `state` is the leaked
     /// `Arc<ComponentCell>` (the slot takes ownership), `tick`/`drop` are the
-    /// `nros`-side trampolines (see [`ComponentSlot`]). The slot's `tick`
+    /// `nros`-side trampolines (see `ComponentSlot`). The slot's `tick`
     /// runs at the tail of every [`spin_once`](Self::spin_once); its `drop`
     /// runs once on `Executor::drop`.
     ///
@@ -4547,7 +4549,7 @@ impl<'s> Executor<'s> {
 
     /// issue #140 — the enrolled components' opaque `state` pointers, in enroll
     /// order. Each is the *leaked* `Arc<ComponentCell>` `enroll_component` was
-    /// handed (see [`ComponentSlot::state`]); the `nros` layer re-borrows them
+    /// handed (see `ComponentSlot::state`); the `nros` layer re-borrows them
     /// to fold per-component dispatch counters into
     /// `observed_callback_counts` — install-seam components
     /// (`register_node_borrowed`) live ONLY here, not in
@@ -4578,7 +4580,7 @@ impl<'s> Executor<'s> {
     ///
     /// ## Body — linear scan of the dispatch registry
     ///
-    /// Each registered [`DispatchSlot`] holds an
+    /// Each registered `DispatchSlot` holds an
     /// `__nros_node_<pkg>_on_callback` fn pointer + the owning Node's
     /// `state` blob. The macro-emitted trampoline body
     /// `match`es on `CallbackId` tags the Node declared and is a
@@ -4850,7 +4852,7 @@ impl<'s> Executor<'s> {
     ///
     /// Returns `Ok(true)` when the graph showed at least `count` inside the
     /// budget, `Ok(false)` on timeout. The startup-ordering primitive one
-    /// entity kind over from [`Client::wait_for_service`](super::handles::Client::wait_for_service),
+    /// entity kind over from [`EmbeddedServiceClient::wait_for_service`](super::handles::EmbeddedServiceClient::wait_for_service),
     /// and built the same way: a spin on a discovery read, so other
     /// subscriptions and timers keep making progress while it waits.
     ///
@@ -5742,7 +5744,7 @@ impl<'s> Executor<'s> {
     /// builder — the cross-RMW bridge reads the `bridge_origin` tag from
     /// `info.attachment()` for echo suppression. One sample per
     /// `spin_once`; the attachment is staged in a flat per-entry buffer
-    /// (cap [`RAW_INFO_ATT_CAP`](super::arena::RAW_INFO_ATT_CAP)).
+    /// (cap `RAW_INFO_ATT_CAP`).
     pub fn register_subscription_buffered_raw_info_on<F, const RX_BUF: usize>(
         &mut self,
         node_id: super::node_record::NodeId,
@@ -5805,7 +5807,7 @@ impl<'s> Executor<'s> {
     /// that surfaces E2E [`IntegrityStatus`](nros_rmw::IntegrityStatus) (CRC +
     /// sequence gap/dup) alongside the raw CDR bytes
     /// (`FnMut(&[u8], &IntegrityStatus)`). The type-erased analog of
-    /// [`register_subscription_with_safety_sized_inner`]: the validator lives in
+    /// `register_subscription_with_safety_sized_inner`: the validator lives in
     /// the `RmwSubscriber` (`take_validated`), so the subscriber is created
     /// plainly and no `register_type::<M>()` is needed (the declarative `Node`
     /// path is generic). Used by the declarative runtime's `.safety()` opt-in.
@@ -6498,7 +6500,7 @@ impl<'s> Executor<'s> {
     /// rather than a second implementation.
     ///
     /// **phase-456 W8 changed two things here.** The capture is a RUNTIME
-    /// length — see [`Self::stow_capture`] — so there is no constant the C++
+    /// length — see `Self::stow_capture` — so there is no constant the C++
     /// side has to match and no `BufferTooSmall` reachable only by drifting
     /// from it. And this path now reaches the in-place dispatch that the Rust
     /// typed path has had since phase-231: `RawSubscriptionCallback` is
@@ -6770,7 +6772,7 @@ impl<'s> Executor<'s> {
     /// context)`) — the C analog of the Rust
     /// `node.subscription(t).generic(..).message_info()` builder. Backs the C
     /// FFI `nros_executor_add_subscription_raw_with_info`. Flat per-entry
-    /// payload + attachment buffers (cap [`RAW_INFO_ATT_CAP`](super::arena::RAW_INFO_ATT_CAP));
+    /// payload + attachment buffers (cap `RAW_INFO_ATT_CAP`);
     /// one sample per `spin_once`.
     #[allow(clippy::too_many_arguments)]
     pub fn add_arena_subscription_c_info_callback<const RX_BUF: usize>(
@@ -6859,7 +6861,7 @@ impl<'s> Executor<'s> {
     /// cbindgen-visible struct at the executor layer; the C/C++ headers pack them
     /// back into their local integrity-status typedef.
     ///
-    /// Requires the `safety-e2e` feature. Backed by [`SubBufferedRawSafetyCEntry`].
+    /// Requires the `safety-e2e` feature. Backed by `SubBufferedRawSafetyCEntry`.
     #[cfg(feature = "safety-e2e")]
     #[allow(clippy::too_many_arguments)]
     pub fn add_arena_subscription_c_validated_callback<const RX_BUF: usize>(
@@ -6990,7 +6992,7 @@ impl<'s> Executor<'s> {
     }
 
     /// Phase 104.C.3.3.a — Node-aware variant of
-    /// [`register_service_raw_sized`]. C-FFI path.
+    /// [`Self::register_service_raw_sized`]. C-FFI path.
     #[allow(clippy::too_many_arguments)]
     pub fn register_service_raw_sized_on<const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
@@ -7145,7 +7147,7 @@ impl<'s> Executor<'s> {
     }
 
     /// Phase 104.C.3.3.a — Node-aware variant of
-    /// [`register_service_client_raw_sized`]. Routes the client
+    /// [`Self::register_service_client_raw_sized`]. Routes the client
     /// creation through the named Node's session.
     #[allow(clippy::too_many_arguments)]
     pub fn register_service_client_raw_sized_on<const REPLY_BUF: usize>(
@@ -10991,7 +10993,7 @@ impl<'s> Executor<'s> {
     /// Phase 110.D.b — move this Executor onto a fresh OS thread,
     /// apply a per-thread scheduling policy via the caller-supplied
     /// `apply_policy` function, and run the spin loop until
-    /// [`ThreadHandle::halt`] fires.
+    /// `ThreadHandle::halt` fires.
     ///
     /// The function-pointer indirection on `apply_policy` lets the
     /// caller pass any platform's `PlatformScheduler::set_current_thread_policy`

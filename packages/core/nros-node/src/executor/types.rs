@@ -1567,7 +1567,7 @@ impl<'a> BootConfig<'a> {
     ///
     /// The NEGATIVE direction is the half that matters: a blob with
     /// `BOOT_SET_NAMESPACE` clear arrives as `namespace: None` from
-    /// [`from_baked`], travels through here as `None`, and lands on the
+    /// [`Self::from_baked`], travels through here as `None`, and lands on the
     /// resolver's compiled default. It never becomes `Some("")`, which would
     /// read as "configured to the empty namespace" to every rung above it.
     #[must_use]

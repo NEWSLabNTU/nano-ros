@@ -1367,14 +1367,14 @@ typedef struct nros_node_t {
    * dispatch path. `nros_executor_node_init` populates this when
    * the Node is bound; per-entity `nros_*_init` paths
    * (`rclc_publisher_init_default`, `nros_subscription_init`, etc.) branch
-   * on [`nros_node_t::is_executor_bound`] — i.e. on this pointer ALONE — to
+   * on `nros_node_t::is_executor_bound` — i.e. on this pointer ALONE — to
    * route through `Executor::node_session_mut(NodeId)` instead of the legacy
    * support-based dispatch. NULL = legacy single-Node path
    * (`rclc_node_init_default` / `nros_node_init_ex`).
    */
   const struct nros_executor_t *executor;
   /**
-   * Pointer to a `&'static`-lifetime array of [`nros_qos_override_t`], or
+   * Pointer to a `&'static`-lifetime array of `nros_qos_override_t`, or
    * null. The caller (a generated entry / a hand-written app) owns the
    * storage for the node's lifetime.
    */
@@ -2233,7 +2233,7 @@ typedef void (*nros_typed_subscription_callback_t)(const void *msg, void *contex
  * Subscription callback that also receives the sample's wire **attachment**
  * (Phase 189.M3.4 — the C analog of the Rust
  * `node.subscription(t).generic(..).message_info()` builder path). Used by
- * [`nros_executor_add_subscription_raw_with_info`].
+ * `nros_executor_add_subscription_raw_with_info`.
  *
  * # Parameters
  * * `data` / `len` — received CDR bytes.
@@ -2507,7 +2507,7 @@ typedef struct nros_client_t {
    * Phase 189.M3.3.a — scheduling-context slot to bind the client's executor
    * handle to. `0` = inherit the executor / Node default; set via
    * `nros_client_init_with_options`. When non-zero,
-   * `nros_executor_register_client` binds the freshly-created handle to this
+   * `nros_executor_add_client` binds the freshly-created handle to this
    * SC after registration. No effect on the L1 polling path.
    */
   nros_sched_context_id_t sched_context_id;
@@ -2681,7 +2681,7 @@ typedef uint8_t (*nros_lifecycle_callback_t)(void *context);
  * separately, this struct carries the non-QoS publisher-creation axes.
  * Publishers are not executor handles and therefore have no
  * scheduling-context binding — this struct is intentionally thin and
- * exists for rclc symmetry with [`nros_subscription_options_t`] plus
+ * exists for rclc symmetry with `nros_subscription_options_t` plus
  * forward ABI headroom.
  *
  * The struct contains only plain scalar fields — no pointers — so it is
@@ -2771,7 +2771,7 @@ typedef struct nros_client_options_t {
    * Scheduling-context slot to bind the client's executor handle to.
    * `0` = inherit the executor / Node default. A non-zero value must be an id
    * from `nros_executor_create_sched_context`; the bind is applied by
-   * `nros_executor_register_client` once the handle exists. No effect on L1.
+   * `nros_executor_add_client` once the handle exists. No effect on L1.
    */
   nros_sched_context_id_t sched_context;
   /**
@@ -4052,7 +4052,7 @@ NROS_PUBLIC struct nros_action_client_options_t rcl_action_client_get_default_op
 /**
  * Phase 189.M3.3.b — initialize an action client with named options. Like
  * [`nros_action_client_init`] except a non-zero `options->sched_context` is
- * stashed so [`nros_executor_add_action_client`] binds the resulting
+ * stashed so `nros_executor_add_action_client` binds the resulting
  * executor handle to that scheduling context once known.
  *
  * # Safety
@@ -4467,7 +4467,7 @@ NROS_PUBLIC struct nros_action_server_options_t rcl_action_server_get_default_op
 /**
  * Phase 189.M3.3.b — initialize an action server with custom QoS + named
  * options. Like [`nros_action_server_init_with_qos`] except a non-zero
- * `options->sched_context` is stashed so [`nros_executor_add_action_server`]
+ * `options->sched_context` is stashed so `nros_executor_add_action_server`
  * binds the resulting executor handle to that scheduling context once known.
  *
  * # Safety
@@ -5595,7 +5595,7 @@ nros_ret_t nros_executor_add_subscription_raw(struct nros_executor_t *executor,
  * `node.subscription(t).generic(..).message_info()` builder; rclc's
  * generic-with-info subscription). Direct-arg form (no `nros_subscription_t`
  * struct): the callback signature differs from the plain
- * [`nros_subscription_callback_t`], so this is its own entry point rather than
+ * `nros_subscription_callback_t`, so this is its own entry point rather than
  * a flag on `nros_executor_add_subscription`.
  *
  * `node` may be NULL (legacy single-Node path) or a Node created via
@@ -5759,7 +5759,7 @@ nros_ret_t nros_executor_add_action_client(struct nros_executor_t *executor,
  * # Returns
  * `NROS_RET_OK` for any completed cycle, whether or not a callback ran —
  * rclc discards the wait's timeout, so an idle tick is a success. See
- * [`spin_cycle_ret`].
+ * `spin_cycle_ret`.
  *
  * # Safety
  * * `executor` must be a valid pointer to an initialized executor
@@ -6721,7 +6721,7 @@ NROS_PUBLIC const void *nros_node_get_logger(const struct nros_node_t *node);
  * records its support directly, while `nros_executor_node_init` leaves
  * `support` NULL on purpose (the multi-Node paths key off `node_id` +
  * executor, phase-156 sub-bug D) and reaches the same support through the
- * executor — [`crate::executor::executor_context_is_valid`], which consults
+ * executor — `crate::executor::executor_context_is_valid`, which consults
  * [`crate::support::nros_support_is_valid`] rather than re-deriving it. An
  * executor-bound node had NO context check at all before: the arm that stood
  * there compared the slot's current generation with itself.
@@ -6752,7 +6752,7 @@ NROS_PUBLIC bool rcl_node_is_valid(const struct nros_node_t *node);
  * to `nros_support_init` and could not be read back, while on a device the
  * value that actually won came from the boot ladder.
  *
- * So this forwards to [`resolve_session_and_domain`] — the one place the
+ * So this forwards to `resolve_session_and_domain` — the one place the
  * ladder is decoded (per-node override → C-ABI byte → the session's own
  * domain). Re-deriving it here is precisely issue 0972's defect: the same
  * decode at a third call site, where `NROS_DOMAIN_ID_EXPLICIT_ZERO` (255)
@@ -7198,7 +7198,7 @@ NROS_PUBLIC nros_ret_t nros_publisher_fini(struct nros_publisher_t *publisher);
  *
  * # Returns
  * * Pointer to topic name (null-terminated), or NULL if the handle is not
- *   usable (see [`nros_publisher_t::is_usable`]) or NULL
+ *   usable (see `nros_publisher_t::is_usable`) or NULL
  */
 NROS_PUBLIC const char *rcl_publisher_get_topic_name(const struct nros_publisher_t *publisher);
 
@@ -7255,7 +7255,7 @@ nros_ret_t rcl_publisher_get_subscription_count(const struct nros_publisher_t *p
  *
  * rcl's `rcl_publisher_is_valid`, whose contract is "true for any handle that
  * can be used" — the ported idiom is a guard. See
- * [`nros_publisher_t::is_usable`] for which states those are.
+ * `nros_publisher_t::is_usable` for which states those are.
  *
  * # Parameters
  * * `publisher` - Pointer to a publisher
@@ -7342,7 +7342,7 @@ NROS_PUBLIC struct nros_service_options_t rcl_service_get_default_options(void);
  * Phase 189.M3.3.a — initialize a service server with custom QoS + named
  * options. Behaves like [`nros_service_init_with_qos`] except a non-zero
  * `options->sched_context` is stashed on the service so that
- * [`nros_executor_add_service`] binds the resulting executor handle to
+ * `nros_executor_add_service` binds the resulting executor handle to
  * that scheduling context once the handle is known (server creation is
  * deferred to registration, so the handle does not exist at init time).
  *
@@ -7502,7 +7502,7 @@ NROS_PUBLIC void nros_service_typed_report_error(int32_t error, const char *type
  *
  * # Returns
  * * Pointer to service name (null-terminated), or NULL if the handle is not
- *   usable (see [`nros_service_t::is_usable`]) or NULL
+ *   usable (see `nros_service_t::is_usable`) or NULL
  */
 NROS_PUBLIC const char *rcl_service_get_service_name(const struct nros_service_t *service);
 
@@ -7511,7 +7511,7 @@ NROS_PUBLIC const char *rcl_service_get_service_name(const struct nros_service_t
  *
  * rcl's `rcl_service_is_valid`, whose contract is "true for any handle that
  * can be used" — the ported idiom is a guard. See
- * [`nros_service_t::is_usable`] for which states those are.
+ * `nros_service_t::is_usable` for which states those are.
  *
  * # Parameters
  * * `service` - Pointer to a service
@@ -7575,7 +7575,7 @@ NROS_PUBLIC struct nros_client_options_t rcl_client_get_default_options(void);
 /**
  * Phase 189.M3.3.a — initialize a service client with custom QoS + named
  * options. Like [`nros_client_init_with_qos`] except a non-zero
- * `options->sched_context` is stashed so [`nros_executor_register_client`]
+ * `options->sched_context` is stashed so `nros_executor_add_client`
  * binds the resulting executor handle to that scheduling context once known.
  *
  * # Safety
@@ -7810,7 +7810,7 @@ nros_ret_t nros_client_call(struct nros_client_t *client,
  *
  * # Returns
  * * Pointer to service name (null-terminated), or NULL if the handle is not
- *   usable (see [`nros_client_t::is_usable`]) or NULL
+ *   usable (see `nros_client_t::is_usable`) or NULL
  */
 NROS_PUBLIC const char *rcl_client_get_service_name(const struct nros_client_t *client);
 
@@ -7818,7 +7818,7 @@ NROS_PUBLIC const char *rcl_client_get_service_name(const struct nros_client_t *
  * Is this client handle usable?
  *
  * rcl's `rcl_client_is_valid`, whose contract is "true for any handle that can
- * be used" — the ported idiom is a guard. See [`nros_client_t::is_usable`] for
+ * be used" — the ported idiom is a guard. See `nros_client_t::is_usable` for
  * which states those are.
  *
  * # Parameters
@@ -7953,7 +7953,7 @@ NROS_PUBLIC struct nros_subscription_options_t rcl_subscription_get_default_opti
  *   does not do.
  *
  * So the callback is supplied where rclc supplies it, at registration:
- * [`nros_executor_add_subscription_typed`] for the typed path (rclc's
+ * `nros_executor_add_subscription_typed` for the typed path (rclc's
  * `rclc_executor_add_subscription_with_context` shape) and
  * `nros_executor_add_subscription_raw` for the byte path, which has no rclc
  * counterpart and therefore keeps an `nros_` name.
@@ -8014,7 +8014,7 @@ nros_ret_t nros_subscription_init_with_qos(struct nros_subscription_t *subscript
  * default) and the non-QoS axes ride in `options` (NULL = defaults).
  * Behaves exactly like [`nros_subscription_init_with_qos`] except that
  * a non-zero `options->sched_context` is stashed on the subscription so
- * that [`nros_executor_add_subscription`] binds the resulting
+ * that `nros_executor_add_subscription` binds the resulting
  * executor handle to that scheduling context once the handle is known
  * (entity creation is deferred to registration, so the handle does not
  * exist at init time). `options->message_info` is RESERVED and ignored
@@ -8317,7 +8317,7 @@ NROS_PUBLIC nros_ret_t nros_subscription_fini(struct nros_subscription_t *subscr
  *
  * # Returns
  * * Pointer to topic name (null-terminated), or NULL if the handle is not
- *   usable (see [`nros_subscription_t::is_usable`]) or NULL
+ *   usable (see `nros_subscription_t::is_usable`) or NULL
  */
 NROS_PUBLIC
 const char *rcl_subscription_get_topic_name(const struct nros_subscription_t *subscription);
@@ -8350,7 +8350,7 @@ nros_ret_t rcl_subscription_get_publisher_count(const struct nros_subscription_t
  *
  * rcl's `rcl_subscription_is_valid`, whose contract is "true for any handle
  * that can be used" — the ported idiom is a guard. See
- * [`nros_subscription_t::is_usable`] for which states those are.
+ * `nros_subscription_t::is_usable` for which states those are.
  *
  * # Parameters
  * * `subscription` - Pointer to a subscription

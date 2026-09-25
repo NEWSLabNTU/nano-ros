@@ -1,5 +1,5 @@
 //! Phase 115.K.2.5.1.0 — Rust shim that links the C XRCE backend
-//! ([`nros-rmw-xrce`]) and exposes its register entry point.
+//! (`nros-rmw-xrce`) and exposes its register entry point.
 //!
 //! Mirrors the role the cyclonedds backend would play if it had Rust
 //! users — it doesn't, so this is the project's first cffi-shim crate.

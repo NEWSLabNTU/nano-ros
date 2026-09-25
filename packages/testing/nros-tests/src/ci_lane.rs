@@ -225,7 +225,7 @@ impl CiLane {
 
 impl CiLane {
     /// Which TESTS this lane's recipe executes — and therefore, through
-    /// [`RunScope::build_lane`], which fixtures must EXIST for it.
+    /// [`CiLane::build_lane`], which fixtures must EXIST for it.
     ///
     /// # Why this is not `coords(lane)` (issue 0482)
     ///

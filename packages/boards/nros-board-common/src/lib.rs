@@ -4,9 +4,12 @@
 //!
 //! Two distinct surfaces under one crate name:
 //!
-//! - [`BoardInit`] trait — kernel-agnostic per-board init contract
-//!   (Phase 152.4.B). `no_std`, zero deps. Always available; safe
-//!   to pull from a bare-metal firmware crate under
+//! - the kernel-agnostic per-board init contract (Phase 152.4.B). The
+//!   `BoardInit` trait itself has MOVED and this crate no longer
+//!   declares one: it is `nros_platform::BoardInit` as of phase
+//!   212.N.1. (Not a link, because this crate's `nros-platform` dep is
+//!   optional, behind `deploy-overlay`.) What survives here is the
+//!   dependency-free half a bare-metal firmware crate can pull under
 //!   `default-features = false`.
 //! - `build-helpers` (default-on feature) — manifest parser +
 //!   link-feature policy + ThreadX source helpers. Used from

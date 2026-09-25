@@ -236,7 +236,7 @@ pub extern "C" fn rcl_action_client_get_default_options() -> nros_action_client_
 
 /// Phase 189.M3.3.b — initialize an action client with named options. Like
 /// [`nros_action_client_init`] except a non-zero `options->sched_context` is
-/// stashed so [`nros_executor_add_action_client`] binds the resulting
+/// stashed so `nros_executor_add_action_client` binds the resulting
 /// executor handle to that scheduling context once known.
 ///
 /// # Safety

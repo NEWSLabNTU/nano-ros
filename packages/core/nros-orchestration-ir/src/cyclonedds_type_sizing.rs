@@ -1,7 +1,7 @@
 //! Issue 0284 — model-derived CycloneDDS type-registry sizing.
 //!
 //! The CycloneDDS backend memoises one DDS type descriptor per DISTINCT ROS type
-//! name in a bounded [`heapless::FnvIndexMap`] of `NROS_CYCLONEDDS_MAX_TYPES`
+//! name in a bounded `heapless::FnvIndexMap` of `NROS_CYCLONEDDS_MAX_TYPES`
 //! slots (default 32, MUST be a power of two). Before this module the knob was
 //! discovered at RUNTIME: a bringup that registers more distinct types than the
 //! table holds boots and dies on the first over-capacity `get_or_build` with

@@ -1,8 +1,10 @@
 # Phase 452 — what a new user copies, and what builds it
 
-**Status (2026-09-11). Opened to give five homeless issues one owner. Nothing in
-this phase has landed; W1–W5 are open. W5 is blocked on a decision, not on
-effort, and says so.**
+**Status (2026-09-25). Opened to give five homeless issues one owner. W1, W2, W3
+and W4 have LANDED — four issues resolved (1058, 1107, 1108, 1116) and three of
+those four boxes turned out to have been closed by other work before anyone
+reached them, which is recorded in place rather than dropped. W5 is the only
+thing left and it is blocked on a decision, not on effort, and says so.**
 
 ## Why this phase exists
 
@@ -21,7 +23,7 @@ merely observed, and they are precisely the part with no compile step:
 | [#1058](../issues/archived/1058-scaffold-output-is-grepped-never-built.md) | `nros new` scaffold output | ~30 substring assertions; nothing compiles the result |
 | [#1108](../issues/archived/1108-templates-materialize-dead-entry-pkgs.md) | four copy-out templates | nothing — two declare no `[image.*]`, so `nros build` refuses them outright |
 | [#1107](../issues/archived/1107-book-teaches-entry-pkg-per-target.md) | book pages | nothing — an out-of-tree consumer was scaffolded from the retired shape |
-| [#1116](../issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md) | rustdoc outside the six published crates | nothing — ~70 diagnostics, five crates fail to document at all |
+| [#1116](../issues/archived/1116-rustdoc-diagnostics-outside-the-published-crate-set.md) | rustdoc outside the six published crates | nothing — the issue said ~70 diagnostics and five crates that cannot document; W4 measured 179 and twelve |
 | [#1141](../issues/1141-book-visual-identity-favicon-logo-accent-css.md) | the book's front door | nothing — no favicon, logo or accent CSS |
 
 Three of the five (#1107, #1108, and the consumer scaffolded from them) are one
@@ -191,17 +193,75 @@ state they are in now.
 
 ### W4 — rustdoc is clean where the tree is documented, or says where it is not
 
-[Issue 1116](../issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md).
+[Issue 1116](../issues/archived/1116-rustdoc-diagnostics-outside-the-published-crate-set.md).
 `just check rustdoc-links` runs on a pull-request lane for the **deployed** six
 crates, deliberately — that scope is what keeps the docs deploy green.
-Workspace-wide there are ~70 diagnostics and five crates that
-`could not document` at all.
+Workspace-wide the issue counted ~70 diagnostics and five crates that
+`could not document` at all. **Re-measured before implementing: 179 and
+twelve** — see the box below for why both numbers moved and why one of them was
+never the number it looked like.
 
-- [ ] The five that fail to document, document.
-- [ ] The remaining diagnostics are either fixed or held by a ratchet that may
+- [x] The five that fail to document, document.
+      **There were TWELVE, not five, and the box's premise was measured before
+      anything was written.** Issue 1116 counted on 2026-09-06; re-measured
+      2026-09-25 with the deployed feature set
+      (`cargo doc --no-deps --keep-going --workspace` minus the `embedded-only`
+      members) the answer was **179 diagnostics** and **12 crates that could
+      not document at all** — `nros-core`, `nros-platform`, `zpico-alloc`,
+      `nros-build-helpers`, `nros-serdes`, `nros-log`, `nros-orchestration-ir`,
+      `nros-node`, `nros-bridge`, `nros-tests`, `nros-rmw-xrce-cffi`,
+      `nros-c`. Three weeks of drift on a surface nothing checked, which is the
+      argument for the gate rather than for the cleanup.
+      Two numbers worth keeping: the issue's `~70` was taken with NO
+      `--features`, which documents LESS code — that same command answers 157
+      today (140 errors, 17 warnings) against this one's 179; and its pass
+      stopped at the first crate that failed, so "five" was the count cargo
+      REACHED, not the count that exists. `--keep-going` is what turns it into
+      twelve, and it is the same stop-at-the-first-failure property the
+      `rustdoc-links` gate was written about. All twelve document now.
+- [x] The remaining diagnostics are either fixed or held by a ratchet that may
       only shrink. A ratchet, not a widened lane: the deployed-set lane exists
       to keep the docs deploy green and must not be made slower or redder for
       crates the book does not publish.
+      **Fixed — all 179 — so the gate holds a ZERO and no ratchet was written.**
+      A count that may only shrink is a weaker statement than a count that is
+      already nothing, and the ratchet was this box's fallback for a remainder
+      that no longer exists. Issue 1116 said the same in its own "Doing it"
+      section ("a ratchet is the wrong tool here"); the two halves of the
+      instruction disagreed and the measurement settles it.
+      The deployed lane is UNTOUCHED, per the box: `NROS_RUSTDOC_CRATES` still
+      names six crates and `just check rustdoc-links` still answers only for
+      them. The workspace pass is a SECOND scope —
+      `just check rustdoc-workspace`, `scripts/check-rustdoc-workspace.sh` —
+      with its own gate.yml step on the same `compile-smoke` job, which is the
+      one lane that provisions every source it needs. 8.6 s warm.
+      Three things the work turned up that reading could not:
+      * **`RUSTDOCFLAGS=-D warnings` is load-bearing.** Deny comes from
+        `[workspace.lints.rust]`, which reaches only crates writing
+        `[lints] workspace = true`; `cargo doc` exits 0 over a warning. Without
+        the flag the gate would have gone green over the 17 diagnostics the
+        board crates carried and over `nros-cargo-profile`'s two ambiguous
+        `` [`env`] `` links — which is how those two were found at all.
+      * **The source table had to grow.** `rustdoc-set.sh` predicted this
+        ("widening means revisiting this table") and it was right: the
+        workspace pass runs `cyclonedds-sys`'s and `nros-rmw-xrce-cffi`'s
+        build scripts too, so cyclonedds, micro-cdr and micro-xrce-dds-client
+        join zenoh-pico. Measured one source at a time; `mbedtls` and `px4-rs`
+        are NOT needed and are deliberately not rows.
+      * **Most of the 179 were stale prose, not stale links.** `crate::Node`
+        after the node type moved, a `run` three board crates still document
+        that phase 212.N.7 deleted, a `BoardInit` trait `nros-board-common`
+        has not declared since 212.N.1, `RunScope::build_lane` for
+        `CiLane::build_lane`, and `nros_executor_register_client` — a C symbol
+        named in four places, including the committed cbindgen header, that
+        has been `nros_executor_add_client` for some time.
+      Negative control, on the NORMAL path: the gate proves it can fail before
+      it reports, both halves — that the deny posture reaches a crate with no
+      `[lints]` table, and that the derived scope is wider than the deployed
+      six (56 more workspace members beyond them). Proven live as well: a broken link injected into
+      `nros-board-nuttx` (a crate that does not deny warnings) took the gate
+      red, and removing one required source produced NOT VERIFIED, with
+      `NROS_RUSTDOC_WORKSPACE_STRICT=1` turning that back into a red.
 
 ### W5 — the front door has an identity
 

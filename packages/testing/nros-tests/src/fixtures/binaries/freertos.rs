@@ -73,7 +73,7 @@ static FREERTOS_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// shape and the reason build, probe and resolver have to move together.
 ///
 /// Goes through the row-keyed chokepoint
-/// [`super::require_prebuilt_row_binary_fresh`], so the artifact ROOT (leaf or
+/// `super::require_prebuilt_row_binary_fresh`, so the artifact ROOT (leaf or
 /// shared cargo group) and the PROFILE both come from the manifest row —
 /// callers never spell the group dir and never name a profile constant.
 pub fn require_entry_binary(name: &str) -> TestResult<PathBuf> {

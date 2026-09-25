@@ -9,7 +9,7 @@
 //! the kernel beside it got M7 flags. One spelling lives here; both build
 //! scripts call it (CLAUDE.md: add ONE shared helper, never a second spelling).
 //!
-//! [`emit_app_config_tu`] is the third de-duplication: the `NROS_APP_CONFIG` C
+//! [`emit_app_config_tu`](crate::freertos_build::emit_app_config_tu) is the third de-duplication: the `NROS_APP_CONFIG` C
 //! symbol was a 57-line hand-maintained C string in the overlay's `build.rs`
 //! mirroring `nros_board_freertos::Config::default()` by eye. It now takes a
 //! [`BaseConfig`] and a [`FreertosScheduling`] and writes the same TU from

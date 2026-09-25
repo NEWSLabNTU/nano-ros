@@ -744,7 +744,7 @@ where
 /// routes here. Mirrors [`run_entry`] (build the boot context into
 /// `CTX_STORAGE`, push the network config + app callback through the C glue,
 /// `tx_kernel_enter()`) but runs one `Executor` per tier over one shared
-/// session (see [`app_task_entry_tiers`]).
+/// session (see `app_task_entry_tiers`).
 ///
 /// `tiers` is the macro-baked `&'static [TierSpec]`; `setup` is the
 /// register-only closure (invoked once per tier — `Fn + Copy`).
@@ -917,10 +917,10 @@ where
 }
 
 /// Phase 245 — the post-kernel app-thread body, factored out of
-/// [`app_task_entry_runtime`] so the **bare-metal CycloneDDS path** can reuse it.
+/// `app_task_entry_runtime` so the **bare-metal CycloneDDS path** can reuse it.
 ///
 /// The cargo/zenoh path enters via [`run_entry`] (which calls `tx_kernel_enter`
-/// and registers [`app_task_entry_runtime`] as the app callback). The
+/// and registers `app_task_entry_runtime` as the app callback). The
 /// CMake/CycloneDDS firmware instead has a **C** `startup.c::main` that calls
 /// `tx_kernel_enter` itself and dispatches to a Rust `app_main` — so by the time
 /// `app_main` runs, **the kernel is already entered**. `app_main` must therefore
@@ -1096,7 +1096,8 @@ where
 
 /// Phase 212.N.2 — family-driver entry point for ThreadX boards.
 ///
-/// Mirrors the legacy [`crate::run`] body — stashes the user closure
+/// Mirrors the body of the legacy `run` that phase 212.N.7 retired —
+/// stashes the user closure
 /// into static storage, registers the network config + app callback
 /// through the unified ThreadX C glue, calls `tx_kernel_enter()`,
 /// never returns — but routes through the 212.N.1
