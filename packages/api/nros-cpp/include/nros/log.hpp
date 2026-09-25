@@ -176,10 +176,12 @@ template <typename T> struct refuse {
     "(RFC-0089, phase-417 W3.f). Each one used to store its argument in a private field that "     \
     "NOTHING read and return *this, so the idiomatic chained call compiled and configured "        \
     "nothing -- a silent drop of configuration, which the compile-or-conform rule requires to "    \
-    "fail to compile instead. nano-ros resolves parameters and remaps in the LAUNCHER "            \
-    "(`nros launch` / play_launch, RFC-0060) and projects them into the process environment "      \
-    "before exec; it has no runtime ComponentManager, no intra-process transport, no topic "       \
-    "statistics collector and no /rosout topic, so there is nothing for these knobs to switch. "   \
+    "fail to compile instead. nano-ros resolves parameters and remaps from the LAUNCH FILE "       \
+    "at BUILD time -- `nros sync` projects them into the generated entry as "                      \
+    "nros_cpp_declare_remap / nros_cpp_declare_param calls, not into the process environment "     \
+    "(RFC-0046, RFC-0060); it has no runtime ComponentManager, no intra-process transport, no "    \
+    "topic statistics collector and no /rosout topic, so there is nothing for these knobs to "     \
+    "switch. "                                                                                     \
     "Use: node->declare_parameter<T>(name, default) for parameter overrides; the launch file "     \
     "for remaps; and drop the option chain. `rclcpp::NodeOptions{}` itself still constructs, so "  \
     "the `::rclcpp::Node(name, options)` constructor shape a composable node needs keeps "         \
@@ -190,11 +192,15 @@ template <typename T> struct refuse {
     "(RFC-0089, phase-417 W3.b). Proceeding would DISCARD it, so `-r chatter:=/other` would "      \
     "silently become a wrong-topic bug at runtime -- the 'compiles and differs' the rule "         \
     "forbids. Nothing in this process parses --ros-args yet: nros::init_with_launch_auto(argc, "   \
-    "argv) discards them too (node.hpp:1025-1027), and honouring them is remap resolution -- "     \
-    "RFC-0020 violation class 4 -- so the parser belongs beside nros::resolve_name, not in this "  \
-    "header. Today remaps and parameter overrides come from the LAUNCHER, which projects them "    \
-    "into the environment before exec. Call the zero-argument rclcpp::init(), or "                 \
-    "nros::init_with_launch_auto(0, nullptr, \"my_session\") for the launch-aware entry point."
+    "argv) discards them too -- `(void)argc; (void)argv;` is its whole treatment of them -- and "  \
+    "honouring them is remap resolution -- RFC-0020 violation class 4 -- so the parser belongs "   \
+    "beside nros::resolve_name, not in this "                                                      \
+    "header. Today remaps and parameter overrides reach a node from `nros sync`, which projects "  \
+    "the launch file's rules into the GENERATED ENTRY at BUILD time as nros_cpp_declare_remap / "  \
+    "nros_cpp_declare_param calls; they do NOT travel in the process environment, which carries "  \
+    "the domain, locator, session mode and RMW hint and nothing else. Call the zero-argument "     \
+    "rclcpp::init(); nros::init_with_launch_auto(0, nullptr, \"my_session\") reads that same "     \
+    "environment and parses no launch file yet."
 
 // phase-428 W5 finding 9. Runtime, like `NROS_RCLCPP_REFUSE_INIT_ARGV` above
 // and for the same reason: only the VALUE carries the defect, so the earliest

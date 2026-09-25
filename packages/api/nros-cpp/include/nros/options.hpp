@@ -175,9 +175,11 @@ struct ClientOptions {
 //
 // It is not fixable by implementing them, either: nano-ros has no runtime
 // ComponentManager, no intra-process transport, no topic-statistics collector
-// and no `/rosout` topic, and its parameters and remaps are resolved by the
-// LAUNCHER and projected into the environment before exec (RFC-0060). There is
-// nothing behind these knobs to switch. So they refuse, with one message.
+// and no `/rosout` topic, and its parameters and remaps are resolved from the
+// LAUNCH FILE at BUILD time — `nros sync` projects them into the generated
+// entry as `nros_cpp_declare_remap` / `nros_cpp_declare_param` calls, not into
+// the process environment (RFC-0046, RFC-0060). There is nothing behind these
+// knobs to switch. So they refuse, with one message.
 //
 // The DEFAULT CONSTRUCTOR stays, because `rclcpp::NodeOptions{}` and
 // `Node(name, options)` are the load-bearing shapes for a composable node and
