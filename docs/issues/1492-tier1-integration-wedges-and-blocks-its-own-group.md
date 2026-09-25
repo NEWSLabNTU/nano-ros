@@ -126,3 +126,37 @@ This STRENGTHENS remedy 1 rather than weakening it. A `timeout-minutes` would
 have bounded the outage at a number somebody chose; without one the outage was
 bounded at three hours by an accident of infrastructure, and the next one has
 no reason to be that short.
+
+## REPRODUCED, at a different step and a different duration
+
+Run **36070565655**, job **107870291862**, head `547c575d5` — the next push's
+run, i.e. the first attempt after the wedge above finally cleared. It did the
+same thing:
+
+```
+15 just ci tier1                               = failure
+16 Disk report (after ci tier1)                = success
+17 Upload the disk transcript (after the tier) = (none)   <-- stops HERE
+18 Report skipped fixtures (post-run)          = (none)
+19 Upload nextest JUnit artifact               = (none)
+20 Upload fixture and tier logs                = (none)
+```
+
+`completed_at = null` again, so again killed rather than finished. Two of two
+runs that reached the tier since the lane unblocked have wedged, which makes
+this a reproducible defect rather than the single observation it was filed as.
+
+Three things differ between the two, and all three matter:
+
+* **It stops one step EARLIER** — step 17 here, step 18 in the first instance.
+  So "the uploads cannot stage" is consistent but the exact victim is not
+  fixed; whatever runs first after the disk is full is the one that hangs.
+* **The outage was 1 h 41 m** (23:01:08 → 00:42:20), against 3 h 7 m for the
+  first. Neither is near the 6-hour ceiling and nothing in the repository chose
+  either number — which is the point the correction above makes.
+* **The after-transcript still exists** (artifact `disk-transcript-after-tier1`,
+  1114 B), because step 16 completed before step 17 hung. The evidence survives
+  the wedge; only the run does not.
+
+Nothing here changes the remedies. It removes the possibility that the first
+instance was a one-off.
