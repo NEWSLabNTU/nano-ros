@@ -3,11 +3,12 @@ id: 1475
 title: "`check-copy-out.sh` defaults to `../nano-ros-workspace-4.4`, which `just
   zephyr setup` has not written for some time — so the nightly copy-out check fails
   on a path rather than on the copy-out it exists to test"
-status: open
+status: resolved
 type: bug
 area: ci, zephyr, testing
 severity: medium
 found: 2026-09-24
+resolved: 2026-09-26
 related: [1474]
 ---
 
@@ -157,3 +158,34 @@ Acceptance is unchanged and this does not meet it: a copy-out BUILD reported by
 the `zephyr copy-out check (4.4)` job. That job has never performed one, so what
 it finds past this rung is unmeasured — the next 05:12 nightly is the first run
 that can say. Keep this issue open until it does.
+
+## RESOLVED 2026-09-26 — the acceptance is met: the job built a copy-out and said so
+
+Nightly run **36220045896** (schedule, 05:11), job **108343456536**
+(`zephyr copy-out check (4.4)`): **success**, 14 steps, and the step that has
+never once reached a build now reports one:
+
+```
+[copy-out] example   : examples/zephyr/c/talker  (zenoh, native_sim/native/64)
+[copy-out] copied to : /tmp/nros-copy-out.zBWENx/talker  (OUTSIDE repo tree)
+[copy-out] workspace : /github/home/.nros/workspaces/zephyr/4.4 (4.4 line)
+Built: /tmp/nros-copy-out.zBWENx/build/zephyr/zephyr.elf
+PASS: copied-out example built from OUTSIDE the repo tree via the nano-ros Zephyr module.
+```
+
+The `workspace :` line is the fix working: the resolver ladder picked the STORE
+tree that `just zephyr setup` actually writes, where the retired constant named a
+sibling directory nothing had created for some time.
+
+Acceptance as written was "the job performing a copy-out build and reporting on
+it". Met. And the thing the check exists for — the copy-out promise, that an
+`examples/zephyr/<lang>/<example>` dir copied out of the repo still builds
+against the nano-ros Zephyr module — is now EXERCISED rather than asserted: it
+reached `zephyr.elf` from `/tmp`, outside the tree.
+
+Note what this does and does not say about the lane. The same nightly run has
+21 jobs `success`, 5 skipped and 0 failed so far, with only the tier-2 pairwise
+job still running — so this job is no longer the thing hiding the rest. What it
+found once it could run is that the contract holds; had it been broken, that
+would have been a different issue, and the two were indistinguishable for as
+long as the check died on a path.
