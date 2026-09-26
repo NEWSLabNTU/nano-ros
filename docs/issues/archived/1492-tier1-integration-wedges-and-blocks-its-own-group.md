@@ -3,11 +3,12 @@ id: 1492
 title: "The tier-1 integration job WEDGES after filling the disk, and its
   concurrency group has `cancel-in-progress: false` and no `timeout-minutes` — so
   one run takes the whole lane offline for hours, not just itself"
-status: open
+status: resolved
 type: bug
 area: ci, testing
 severity: high
 found: 2026-09-24
+resolved: 2026-09-25
 related: [1353, 1158, 1365]
 ---
 
@@ -575,3 +576,40 @@ question has moved from "why does tier 1 hang" to "why does tier 1 fail", and
 that second question is 1353's, where the same job supplies a full `du`
 attribution of the disk. This issue stays open only until a third run finishes;
 if one does, close it and let 1353 carry the remaining work.
+
+## RESOLVED 2026-09-25 — a third run finished, so the wedge class is closed
+
+Run **36177357218**, job **108211089668**: 20:52:58 → 23:12:53, **2 h 19 m 55 s**,
+**23 steps completed**, one failed step (15, `just ci tier1`). Third consecutive
+finishing run, and the previous append's closing condition.
+
+| run | job | duration | steps done | ceiling fired |
+| --- | --- | --- | --- | --- |
+| 36146158187 | 108107735210 | 2 h 25 m 52 s | 23 | no (4 m 08 s early) |
+| 36171483132 | 108191821508 | 2 h 20 m 00 s | 23 | no (30 m early) |
+| 36177357218 | 108211089668 | 2 h 19 m 55 s | 23 | no (10 m early) |
+
+Nine consecutive wedges before #1313; three consecutive clean finishes after it.
+Every one of the three terminates itself, completes its post-steps, preserves its
+log, releases the group within two seconds, and reports a NAMED failing check.
+That is the defect this issue describes, gone.
+
+### What is NOT resolved, and where it lives
+
+* **`timeout-minutes: 150` has never fired** — 4, 30 and 10 minutes of slack.
+  It is a ceiling nobody has tested, and the earlier append measured that it sits
+  ON the 2 h 30 m runner-loss bound rather than below it. If the outage is worth
+  bounding at a number this repository owns, that is a live decision; it just is
+  not a wedge any more. The `timeout-minutes` remedy stays in the record above.
+* **The tier still fails and still fills the disk.** All three runs end with
+  `multi-package-workspace: FAIL — the copy does not build` at 100 % full. That
+  is **issue 1353**, which now carries a full `du` attribution. The lane's cost
+  is **issue 1500**.
+* **Why the wedges stopped is inferred, not proven.** #1313 changed the disk
+  reclaim and added the ceiling in one commit; the ceiling did nothing in any of
+  the three, so the reclaim is the remaining explanation. Three-for-three after
+  nine-for-nine is strong, and it is still an inference from behaviour rather
+  than a mechanism anyone traced.
+
+Closing on the evidence that the symptom is gone, with the two open threads named
+above rather than folded into this issue.
