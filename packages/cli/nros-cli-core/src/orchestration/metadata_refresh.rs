@@ -120,10 +120,29 @@ pub fn refresh_stale_sidecars(
                 // possible progress. `nros sync` is run 22 times by
                 // `regenerate-bindings.sh` at the head of every fixture build.
                 Ok(Some(opts)) if is_known_unprobeable_now(&opts.output_path, decl) => {
+                    // issue 1469 — carry the RECORDED CAUSE up, not just the
+                    // fact of the skip. "probe failed at this source last sync;
+                    // unchanged" named the node and nothing else, and because
+                    // the skip never re-attempts, the error it stands for is
+                    // reachable from no later sync at all. The marker holds the
+                    // first error line; say it here, and where the whole file
+                    // is, so the next reader starts at the cause.
+                    let why = match recorded_unprobeable_reason(&opts.output_path) {
+                        Some(line) => format!("; last error: {line}"),
+                        None => String::new(),
+                    };
                     report.unsupported.push(format!(
-                        "{}::{} (probe failed at this source last sync; unchanged)",
+                        "{}::{} (probe failed at this source last sync; unchanged{why})",
                         decl.config.package, decl.config.component
                     ));
+                    if verbose {
+                        println!(
+                            "sync: metadata {}::{} — skipped; recorded failure in {}",
+                            decl.config.package,
+                            decl.config.component,
+                            unprobeable_marker(&opts.output_path).display()
+                        );
+                    }
                 }
                 Ok(Some(opts)) => cpp_batch.push(opts),
                 // Already current — no probe needed.
@@ -146,10 +165,25 @@ pub fn refresh_stale_sidecars(
         // THIS source last sync is not re-attempted (a full failing build) until
         // its sources change and the digest differs.
         if decl.deploy_bound && is_known_unprobeable(&sidecar, &digest) {
+            // issue 1469, same class as the C/C++ branch above: the skip is
+            // absorbing, so the marker's recorded cause is the only place the
+            // reason survives.
+            let why = match recorded_unprobeable_reason(&sidecar) {
+                Some(line) => format!("; last error: {line}"),
+                None => String::new(),
+            };
             report.unsupported.push(format!(
-                "{}::{} (deploy-bound: probe failed at this source last sync; unchanged)",
+                "{}::{} (deploy-bound: probe failed at this source last sync; unchanged{why})",
                 decl.config.package, decl.config.component
             ));
+            if verbose {
+                println!(
+                    "sync: metadata {}::{} — skipped; recorded failure in {}",
+                    decl.config.package,
+                    decl.config.component,
+                    unprobeable_marker(&sidecar).display()
+                );
+            }
             continue;
         }
         let Some(nano_ros) = nano_ros else {
@@ -180,7 +214,7 @@ pub fn refresh_stale_sidecars(
             // the whole sync. A REGULAR workspace package that fails to probe is
             // a real bug and still hard-fails.
             Err(why) if decl.deploy_bound => {
-                mark_unprobeable(&sidecar, &digest);
+                mark_unprobeable_with_reason(&sidecar, &digest, Some(&format!("{why:#}")));
                 report.unsupported.push(format!(
                     "{}::{} (deploy-bound probe failed: {why:#})",
                     decl.config.package, decl.config.component
@@ -217,26 +251,27 @@ pub fn refresh_stale_sidecars(
                             report.rebuilt.push(opts.output_path.clone());
                         }
                         Err(why) => {
-                            mark_unprobeable_now(&opts.output_path, &opts.package_dir);
+                            let text = format!("{why:#}");
+                            mark_unprobeable_now(&opts.output_path, &opts.package_dir, &text);
                             report
                                 .unsupported
-                                .push(format!("{}::{} ({why:#})", o.package, o.component));
+                                .push(format!("{}::{} ({text})", o.package, o.component));
                         }
                     }
                 }
             }
             // A configure failure is the whole project, not one component.
             Err(why) => {
+                let text = format!("probe project configure failed: {why:#}");
                 for opts in &cpp_batch {
                     // Every component in the batch shares the project that
                     // failed to configure, so every one of them is unprobeable
                     // until something changes — mark each, or the next sync
                     // rebuilds the same broken project.
-                    mark_unprobeable_now(&opts.output_path, &opts.package_dir);
-                    report.unsupported.push(format!(
-                        "{}::{} (probe project configure failed: {why:#})",
-                        opts.package, opts.component
-                    ));
+                    mark_unprobeable_now(&opts.output_path, &opts.package_dir, &text);
+                    report
+                        .unsupported
+                        .push(format!("{}::{} ({text})", opts.package, opts.component));
                 }
             }
         }
@@ -421,28 +456,90 @@ fn is_known_unprobeable_now(sidecar: &Path, decl: &ComponentDeclaration) -> bool
     unprobeable_key(&decl.package_root).is_some_and(|key| is_known_unprobeable(sidecar, &key))
 }
 
-/// Record a C/C++ probe failure against [`unprobeable_key`].
-fn mark_unprobeable_now(sidecar: &Path, package_dir: &Path) {
+/// Record a C/C++ probe failure against [`unprobeable_key`], WITH its reason.
+fn mark_unprobeable_now(sidecar: &Path, package_dir: &Path, why: &str) {
     if let Some(key) = unprobeable_key(package_dir) {
-        mark_unprobeable(sidecar, &key);
+        mark_unprobeable_with_reason(sidecar, &key, Some(why));
     }
 }
 
+/// The marker's FIRST LINE is the key; anything after it is the recorded reason
+/// (issue 1469). An older single-line marker therefore still matches, and a
+/// marker carrying a reason answers this question exactly as before.
 fn is_known_unprobeable(sidecar: &Path, digest: &str) -> bool {
     std::fs::read_to_string(unprobeable_marker(sidecar))
-        .map(|m| m.trim() == digest)
+        .map(|m| marker_key(&m) == digest)
         .unwrap_or(false)
+}
+
+fn marker_key(body: &str) -> &str {
+    body.lines().next().unwrap_or("").trim()
+}
+
+/// Why a prior sync gave up on this component, as it recorded it — `None` when
+/// the marker predates issue 1469 or carried no reason.
+fn recorded_unprobeable_reason(sidecar: &Path) -> Option<String> {
+    let body = std::fs::read_to_string(unprobeable_marker(sidecar)).ok()?;
+    let reason = body
+        .split_once('\n')
+        .map(|(_, rest)| rest)?
+        .trim()
+        .to_string();
+    (!reason.is_empty()).then_some(reason)
 }
 
 /// Record that the package's probe failed at `digest`, so it is not retried
 /// until its sources change. Best-effort — a marker we cannot write just means
 /// a wasted retry next sync, never a hard error.
-fn mark_unprobeable(sidecar: &Path, digest: &str) {
+///
+/// The REASON is recorded beside the key because this skip is ABSORBING (issue
+/// 1469). Once the marker exists, `nros sync` reports "probe failed at this
+/// source last sync; unchanged" on every later run and never re-attempts, so the
+/// compiler error that caused it is unreachable from any number of syncs — the
+/// Autoware Safety Island's eight `E0428`s were recovered by deleting the marker
+/// by hand. A cache entry that suppresses a diagnosis it does not record costs
+/// every future reader the same excavation.
+fn mark_unprobeable_with_reason(sidecar: &Path, digest: &str, why: Option<&str>) {
+    let body = match why.map(first_error_line) {
+        Some(line) if !line.is_empty() => format!("{digest}\n{line}\n"),
+        _ => digest.to_string(),
+    };
     // Issue 0498 — atomic, like the sidecar beside it: `is_known_unprobeable`
-    // compares the WHOLE file against a digest, so a concurrent reader catching
+    // compares the marker's KEY against a digest, so a concurrent reader catching
     // a truncated one reads "not unprobeable" and pays the full failing probe
     // this marker exists to skip.
-    let _ = crate::atomic_file::atomic_write(&unprobeable_marker(sidecar), digest);
+    let _ = crate::atomic_file::atomic_write(&unprobeable_marker(sidecar), &body);
+}
+
+/// The one line worth carrying up from a probe failure.
+///
+/// A probe failure's text is the component's whole build log — `run_step`
+/// surfaces stdout AND stderr precisely so the useful part is not lost — which
+/// is right for the sync that HITS it and far too much to store in a marker, or
+/// to print on every later sync. So the marker keeps the first line that names
+/// an error, which for a compiler is the line that says what is wrong:
+/// `error[E0428]: the name … is defined multiple times`, or `error: static
+/// assertion failed: NROS_UNBOUNDED__…`.
+///
+/// Falls back to the message's own first line (the `metadata probe <step> failed
+/// for …` frame) when nothing matches, so a failure that is not a compile still
+/// records something a reader can act on rather than nothing at all.
+fn first_error_line(why: &str) -> String {
+    const CAP: usize = 300;
+    let pick = why
+        .lines()
+        .map(str::trim)
+        .find(|l| {
+            let lower = l.to_ascii_lowercase();
+            lower.starts_with("error") || lower.contains("error:") || lower.contains("error[")
+        })
+        .or_else(|| why.lines().map(str::trim).find(|l| !l.is_empty()))
+        .unwrap_or("");
+    let mut line: String = pick.chars().take(CAP).collect();
+    if pick.chars().count() > CAP {
+        line.push('…');
+    }
+    line
 }
 
 /// Drop the negative marker — the package probed successfully (or its sidecar
@@ -716,7 +813,7 @@ mod tests {
 
         assert!(!is_known_unprobeable(&sidecar, "d1"), "no marker yet");
 
-        mark_unprobeable(&sidecar, "d1");
+        mark_unprobeable_with_reason(&sidecar, "d1", None);
         assert!(is_known_unprobeable(&sidecar, "d1"), "recorded at d1");
         assert!(
             !is_known_unprobeable(&sidecar, "d2"),
@@ -727,6 +824,72 @@ mod tests {
         assert!(
             !is_known_unprobeable(&sidecar, "d1"),
             "a successful probe / fix clears the marker so it stops shadowing"
+        );
+    }
+
+    /// issue 1469 — the marker carries the reason, and carrying it must not
+    /// change what the marker is FOR. The skip never re-attempts, so a marker
+    /// that records no cause makes the compiler error unreachable from any
+    /// number of syncs.
+    #[test]
+    fn a_marker_records_why_and_still_keys_on_the_digest() {
+        let dir = tmp("negcache-reason");
+        let sidecar = dir.join("metadata").join("comp.json");
+        std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+
+        let log = "metadata probe build failed for `pkg::comp` (exit 2):\n\
+                   \x20  Compiling nano-ros-cpp-ffi-nav_msgs v0.0.0\n\
+                   error[E0428]: the name `builtin_interfaces_msg_time_t` is defined multiple times\n\
+                   \x20 --> src/../../../pkg/nano_ros_cpp/…/types.rs:19:1\n";
+        mark_unprobeable_with_reason(&sidecar, "d1", Some(log));
+
+        assert!(
+            is_known_unprobeable(&sidecar, "d1"),
+            "the key is the FIRST LINE, so a reason must not break the skip"
+        );
+        assert!(
+            !is_known_unprobeable(&sidecar, "d2"),
+            "a source change must still retry"
+        );
+        let why = recorded_unprobeable_reason(&sidecar).expect("a reason was recorded");
+        assert_eq!(
+            why, "error[E0428]: the name `builtin_interfaces_msg_time_t` is defined multiple times",
+            "the recorded line must be the one that says what is wrong, not the frame around it"
+        );
+
+        // A marker written before this change (key only) is still valid, and
+        // honestly reports that it knows no reason.
+        mark_unprobeable_with_reason(&sidecar, "d1", None);
+        assert!(
+            is_known_unprobeable(&sidecar, "d1"),
+            "key-only still matches"
+        );
+        assert_eq!(
+            recorded_unprobeable_reason(&sidecar),
+            None,
+            "no reason recorded must read as None, never as an empty one"
+        );
+    }
+
+    /// The pick is the ERROR line, and a failure with no error line still
+    /// records something rather than nothing.
+    #[test]
+    fn the_recorded_line_is_the_error_or_the_first_line() {
+        assert_eq!(
+            first_error_line("a preamble\nerror: static assertion failed: NROS_UNBOUNDED__x\nmore"),
+            "error: static assertion failed: NROS_UNBOUNDED__x"
+        );
+        assert_eq!(
+            first_error_line("\n\nmetadata probe run failed for `p::c` (exit 101):\n"),
+            "metadata probe run failed for `p::c` (exit 101):"
+        );
+        assert_eq!(first_error_line(""), "");
+        let long = format!("error: {}", "x".repeat(400));
+        let got = first_error_line(&long);
+        assert!(
+            got.chars().count() == 301 && got.ends_with('…'),
+            "a marker is a cache entry, not a log: got {} chars",
+            got.chars().count()
         );
     }
 
