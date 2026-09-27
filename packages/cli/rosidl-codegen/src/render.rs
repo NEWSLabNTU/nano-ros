@@ -1,9 +1,11 @@
 //! RFC-0068 Stage 3 — Render.
 //!
-//! A runtime (`minijinja`) template engine over data packs. A language backend
-//! is a set of `.jinja` templates plus a `serde`-serializable data context;
-//! nothing about a language lives in Rust here. Templates are bundled at build
-//! time via `include_str!` (fast, no I/O) and rendered from a view struct.
+//! A runtime (`minijinja`) template engine over data packs: a pack is a set of
+//! `.jinja` templates rendered from a `serde`-serializable data context, so the
+//! TEMPLATES are data and not Rust. A LANGUAGE is more than its templates —
+//! `PACKS` below states the rest (a filter set and a generator per kind), and
+//! RFC-0068 Amendment 2 measured it. Templates are bundled at build time via
+//! `include_str!` (fast, no I/O) and rendered from a view struct.
 //!
 //! Every backend AND the per-package scaffolding (Cargo/lib/build) render through
 //! this one `Environment` now — askama is fully removed (phase-335 W6). Type
@@ -121,8 +123,13 @@ const PACKS: &[(&str, &str)] = &[
 
 /// Optional external pack directory (W4). When set (before the first render), a
 /// file `<dir>/<name>` or `<dir>/<name>.jinja` OVERRIDES the bundled pack of that
-/// name; anything absent falls back to bundled. Lets a language pack be swapped
-/// or added with NO rebuild.
+/// name; anything absent falls back to bundled.
+///
+/// So this REPLACES the body of a registry key with no rebuild — which is what
+/// `tests/external_pack_smoke.rs` proves, by writing over the bundled
+/// `build.rs.jinja`. It does NOT add a language: the loader is only ever asked
+/// for names the Rust generators request, so a file under a name no generator
+/// requests is never read.
 static OVERRIDE_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
 
 /// Every bundled pack `(name, content)`. The codegen fingerprint (RFC-0061 /

@@ -1,7 +1,9 @@
-//! phase-335 W4.c — the "add a language = a pack, no rebuild" proof.
+//! phase-335 W4.c — what the `--template-dir` mechanism actually proves.
 //!
-//! An external pack directory (the `--template-dir` mechanism) overrides a
-//! bundled template purely at runtime: no recompile, no Rust change. This test
+//! An external pack directory OVERRIDES a bundled template purely at runtime:
+//! no recompile, no Rust change. That is override of an EXISTING registry key,
+//! not addition of a language — nothing here requests a name the Rust
+//! generators do not already request (see `render::OVERRIDE_DIR`). This test
 //! lives in its OWN binary so the process-global override + lazily-built render
 //! `Environment` are isolated (each integration test file is a separate process).
 
