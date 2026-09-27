@@ -669,27 +669,53 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # WHY THEY STILL DIFFER, measured rather than assumed. Issue 0897 W2b/W3 moved
 # pyo3 OUT of the `play_launch_parser` crate in `f7f6d2cf`: the Python half
 # became `pyexec` (a cdylib) loaded at run time by `pyload`, and `pyload` is
-# reached through `resolve/`, NOT through the standalone CLI's `main.rs`. Three
-# revisions built and run here against the same two launch files:
+# reached through `resolve/`, NOT through the standalone CLI's `main.rs`. So a
+# `cargo install` of that crate at or past `f7f6d2cf` links no interpreter.
 #
-#   ref            DT_NEEDED                 .launch.py          $(eval '1+1')
-#   838ce948       libpython3.10.so.1.0      /from_python        /from_eval_2
-#   27b6749b       libpython3.10.so.1.0      /from_python        /from_eval_2
-#   07f0461e       (no libpython at all)     hard error          /from_eval_$(eval '1+1')
+# RE-MEASURED 2026-09-27 against the CURRENT gitlink, because the table that
+# used to sit here was written about `07f0461e` and the gitlink has moved since.
+# Two binaries, three launch shapes, built and run on this host:
 #
-# The `.launch.py` arm is a clean catchable error by 0897's design. The
-# `$(eval …)` arm exits 0 and emits an UNEXPANDED substitution — a wrong node
-# name with no diagnostic — so moving to the gitlink would trade a correct
-# parser for one that silently mis-parses.
+#   binary                  DT_NEEDED       .launch.py  $(eval) direct  $(eval) via <arg default>
+#   published nros2 dist    libpython3.10   /from_python  /from_eval_2  /from_eval_2
+#   67dc7691, the gitlink   no libpython    exit 1        exit 1        /from_eval_$(eval '1 + 1'), exit 0
+#
+# `$(eval …)` HAS TWO PATHS AND ONLY ONE OF THEM IS LOUD — which is what still
+# makes this a blocker rather than a documented decline. Upstream `caab6fbc`
+# gave the DIRECT path a named diagnostic ("no Python backend is loaded, and a
+# `$(eval …)` substitution needs one", exit 1): that is issue 1413's own third
+# option, already taken upstream before the issue was filed, and both the issue's
+# table and the sentence that used to sit here missed it. But a `$(eval …)`
+# written into an `<arg default=…>` and read back with `$(var …)` still exits 0
+# with the substitution UNEXPANDED — a wrong node name, no diagnostic — at
+# `07f0461e` and at the gitlink alike. Arg defaults are where real launch files
+# put eval, so the arm that stayed silent is the arm that matters.
 #
 # `27b6749b` is `f7f6d2cf^`: the NEWEST ref whose `cargo install` still yields a
-# Python-capable binary. The pin sat 54 commits behind it and now sits ON it —
-# that half of the gap is CLOSED (`0.1.0-nros2`, this entry). The remaining 54
-# commits to the gitlink are the blocked half, and closing them needs an install
-# target that builds `pyexec` + `pyload` and stages
-# `libplay_launch_parser_pyexec.so` beside the binary — the pair shape
+# Python-capable binary, and the pin sits ON it (`0.1.0-nros2`, this entry).
+# NO COMMIT COUNT IS WRITTEN HERE any more: the two that were ("54 behind", "54
+# remaining") were both stale within days, and the distance is one `git rev-list
+# --count <ref>..<gitlink>` away in any checkout that has the submodule.
+# Closing the gap needs an install target that builds `pyexec` + `pyload` and
+# stages `libplay_launch_parser_pyexec.so` beside the binary — the pair shape
 # `nros-launch-resolve` already ships and `launch_py_resolves_as_shipped`
 # already tests — or upstream restoring a Python-capable CLI binary.
+#
+# AND THE GITLINK CANNOT BECOME THIS ENTRY'S SOURCE — measured 2026-09-27, not
+# preferred. `nros setup --tool` fetches this index over HTTPS
+# (`raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/nros-sdk-index.toml`) and
+# source-builds by cloning `source.git` into the SDK store; it runs on a user's
+# host with NO nano-ros checkout, so a `source.submodule = "<path>"` field would
+# name a directory that is not there and `git ls-tree HEAD <path>` would have
+# nothing to read. The index is the only thing that crosses that boundary and it
+# carries no repository with it — the same boundary stops `nano-ros-sdk`'s
+# `build-play_launch_parser.sh` one layer up. Nor are the two a duplicated fact:
+# the gitlink is ALREADY the sole spelling of which parser the BUILD consumes
+# (`nros-launch-resolve` statically links the crate out of the submodule, and
+# issue 1454 stamps that commit into `.compile-ok`), while the ref below names a
+# standalone CLI that issue 1454's strace measured running ZERO times in any
+# build path. Deriving one from the other would erase that distinction and ship
+# the Python-less binary measured above.
 #
 # Acceptance for this bump, run before it was cut: `nav2_compat`'s
 # `n11_launch_xml_ros2_compat_smoke` with its build-stage fixture REBUILT
@@ -704,7 +730,7 @@ install = "cmake --build build --parallel $(nproc) --target install"
 #
 # Gate: `check-play-launch-parser-ref`, which asserts ancestry, the two
 # spellings agreeing, and that this declaration exists while they differ.
-# ref-lag: issue 1413 — the gitlink is 54 commits past `f7f6d2cf`, where the standalone CLI lost its Python backend; closing it needs an install target that stages `libplay_launch_parser_pyexec.so` beside the binary, not a ref bump
+# ref-lag: issue 1413 — the gitlink is past `f7f6d2cf`, where the standalone CLI lost its Python backend, and `$(eval …)` inside an `<arg default=…>` still exits 0 there with the substitution unexpanded (measured 2026-09-27); closing it needs an install target that stages `libplay_launch_parser_pyexec.so` beside the binary, not a ref bump
 #
 # SEEDED 2026-09-21 (issue 1273 / RFC-0099 D4), then RE-CUT the same day at
 # `27b6749b` (issue 1413). `nano-ros-sdk`'s `scripts/build-play_launch_parser.sh`
