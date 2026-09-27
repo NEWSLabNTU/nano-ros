@@ -328,10 +328,12 @@ instruction followed honestly".
         nothing enforcing it. A pairing is a property of the KNOB, so the table
         is `nros_zephyr_build::KCONFIG_PAIRS`, beside the function that consumes
         it, and a row is only legal where the two names are DIFFERENT WORDS
-        (gated by a unit test). 25 rows became 16: nine were derived-identical,
-        and two of 1490's three live splits — the
+        (gated by a unit test). 25 rows became 19 — eight dropped as
+        derived-identical, two added for knobs that had a row in NEITHER old
+        table. Two of 1490's three live splits — the
         `NROS_PARAM_SERVICE_INBOX_{BYTES,DEPTH}` pair — were of exactly that
-        shape and are now **unwritable** rather than merely written. The third,
+        derived-identical shape, so they are now **unwritable** rather than
+        merely written. The third,
         `ZPICO_SUBSCRIBER_RING_DEPTH`, still needs a row, and that residue is
         what the gate keeps.
       * **The table was missing two.** `ZPICO_MAX_LARGE_SUBSCRIBERS` and

@@ -58,7 +58,9 @@
 #
 # A knob whose cmake value is a computed variable (`ZPICO_MAX_PUBLISHERS
 # "${_nros_zpico_pubs}"`) declares no symbol at the call site, so its row is
-# authored and unchecked here — 4 of the 16 rows.
+# authored and unchecked by arm 2 — 9 of the 19 rows, the four computed
+# `_nros_zpico_*` counts, the two tx flags cmake passes as a literal "1"/"0",
+# and three the cmake module does not forward at all.
 #
 # And arm 1's harvest still reads `_nros_resolve_knob(` only, while 27 knobs are
 # forwarded by `_nros_resolve_derivable_knob(` — issue 1505, and `_knob(` is not

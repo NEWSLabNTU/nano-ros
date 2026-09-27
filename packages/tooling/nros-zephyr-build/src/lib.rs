@@ -100,10 +100,12 @@ fn bake_directives(dotconfig: &str) -> Vec<String> {
 /// for a derived-identical pair (`NROS_SERVICE_INBOX_BYTES` ↔
 /// `CONFIG_NROS_SERVICE_INBOX_BYTES`) states nothing [`kconfig_key_for`] does
 /// not already compute, and its absence is then indistinguishable from the
-/// 1490 defect it is meant to prevent. Nine of the twenty-five rows the two
+/// 1490 defect it is meant to prevent. EIGHT of the twenty-five rows the two
 /// old tables carried were exactly that; two of the three LIVE splits issue
 /// 1490 measured — the `NROS_PARAM_SERVICE_INBOX_{BYTES,DEPTH}` pair — were
 /// derived-identical and are now unwritable rather than merely written.
+/// 25 rows became 19: 8 dropped, and 2 added for knobs that had a row in
+/// NEITHER old table (see `ZPICO_MAX_LARGE_SUBSCRIBERS` below).
 ///
 /// The pairings are declared on the producing side by `_nros_resolve_knob()` /
 /// `_nros_resolve_derivable_knob()` in `zephyr/cmake/nros_cargo_build.cmake`,
