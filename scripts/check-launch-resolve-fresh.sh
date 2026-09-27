@@ -108,7 +108,16 @@ if nros_launch_resolve_stale "."; then
     # shas for a sources-only change reads as a contradiction ("built from X,
     # tree at X, therefore stale?") and sends the reader after the submodule
     # instead of after their own edit.
-    if [ -n "$pin" ] && [ "$pin" != "$head" ]; then
+    if [ ! -f "$BIN.nros-source-stamp" ]; then
+        # A THIRD cause, and the one a lane hits: the binary exists with no
+        # stamp beside it, so nothing records what it was built from. That is a
+        # binary this checkout did not build — restored from a cache, or built
+        # before the stamp existed — and calling it a source difference sends
+        # the reader after an edit they did not make.
+        echo "        no stamp beside the binary — nothing records what it was built from" >&2
+        echo "        (a binary this checkout did not build: restored from a cache," >&2
+        echo "         or built before the stamp mechanism existed)" >&2
+    elif [ -n "$pin" ] && [ "$pin" != "$head" ]; then
         echo "        binary built from play_launch ${pin}" >&2
         echo "        tree now checked out at       ${head}" >&2
         echo "        (a pin move — \`git submodule update\` advanced play_launch)" >&2
