@@ -381,6 +381,41 @@ road can, or whether this field stays refused with a narrower reason.
 Acceptance: either the field is stated on all three roads, or its refusal names
 something more specific than 1393.
 
+### W4 — answered: the refusal SPLITS, and two thirds of it gets narrower than 1393
+
+W4 asks whether the cmake road can resolve `[target]` per image, or whether
+`storage_bytes` stays refused with a narrower reason. **Both, in different parts** —
+the field is one name over three independent inputs, and they have three
+different answers. Measured against the code, 2026-09-28:
+
+| input | cmake road | reason |
+| --- | --- | --- |
+| `pointer_bytes`, `max_align` | **CAN be stated** | the triple is resolvable in a cmake configure — `_nros_resolve_rust_target()` in `NanoRosCodegenCore.cmake` — and `abi_for_triple` maps it. This is the "small and independent" plumbing issue 1393 predicted. |
+| `heap_budget_bytes` | **stays refused, narrower** | the CLI seam already exists (`--from-model` takes `[board.knobs.memory] heap_bytes` "when the caller knows it"), but **nothing on the cmake road resolves a board heap knob at all**: `heap_bytes` and `knobs.memory` appear nowhere in `cmake/` or `zephyr/cmake/`. The blocker is a missing board-knob resolution on that road, NOT the bound inventory of 1393. |
+| `storage_bytes` | **stays refused, narrower** | it needs `pointer_bytes` (this wave) **and** `wire_bound_bytes` (W2). Once the triple is plumbed it refuses on the BOUND, which is W2's own issue, rather than on `[target]`. |
+
+`NanoRosSizingDescriptor.cmake` already documents the first row against itself:
+
+> It does not pass a target triple. A cross cmake entry therefore gets a REFUSED
+> `[target]`, naming the board rule (RFC-0100 D1) …
+
+So the gap was known and explained; W4's contribution is deciding to close the
+part that can be closed, and giving the other two parts reasons a reader can act
+on.
+
+**Decision.** Plumb the triple through `nros_sizing_descriptor_from_model()` so a
+CROSS cmake entry states `pointer_bytes` and `max_align`. Leave
+`heap_budget_bytes` refused, with a reason naming the missing board-knob
+resolution on that road and NOT issue 1393. Leave `storage_bytes` refused, with a
+reason naming W2's bound. The phase's "zero refusals naming 1393" criterion is
+then met for `[target]` by making the two surviving refusals name something
+truer — which is what that criterion asks for.
+
+**Do NOT** read the width in the CLI as a fallback for a cross entry. A build
+script's `size_of` answers for the HOST (phase-118-E), and `target_facts` already
+refuses rather than guesses for exactly that reason: a guessed pointer width
+under-sizes a ring's length array.
+
 ## Acceptance for the phase
 
 Not "it builds". The measurable form, stated by issue 1393:
