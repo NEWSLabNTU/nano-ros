@@ -2,6 +2,7 @@ mod action;
 pub(crate) mod common;
 pub mod cpp;
 mod msg;
+pub mod naming;
 mod srv;
 
 pub use action::{

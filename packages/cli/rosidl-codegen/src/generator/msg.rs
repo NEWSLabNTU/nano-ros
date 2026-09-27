@@ -1,6 +1,9 @@
-use super::common::{
-    GeneratorError, SchemaCaps, build_c_fields, build_idiomatic_fields, build_nros_fields,
-    build_nros_message_schema, build_rmw_fields,
+use super::{
+    common::{
+        GeneratorError, SchemaCaps, build_c_fields, build_idiomatic_fields, build_nros_fields,
+        build_nros_message_schema, build_rmw_fields,
+    },
+    naming::{Kind, Surface, artifact_names},
 };
 use crate::{
     config::CapacityResolver,
@@ -344,22 +347,16 @@ pub fn generate_c_message_package_with_lookup(
     lookup: &crate::schema_value::MsgLookup<'_>,
 ) -> Result<GeneratedCPackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
-    let msg_snake = to_snake_case(message_name);
 
-    // Build struct and guard names
-    let struct_name = format!("{}_msg_{}", c_pkg_name, msg_snake);
-    let guard_name = format!(
-        "{}_MSG_{}_H",
-        c_pkg_name.to_uppercase(),
-        msg_snake.to_uppercase()
-    );
-    let constant_prefix = format!(
-        "{}_MSG_{}",
-        c_pkg_name.to_uppercase(),
-        msg_snake.to_uppercase()
-    );
-    let header_name = format!("{}_msg_{}.h", c_pkg_name, msg_snake);
-    let source_name = format!("{}_msg_{}.c", c_pkg_name, msg_snake);
+    // Every name derives from one stem — see `generator::naming`.
+    let names = artifact_names(Surface::C, Kind::Msg, package_name, message_name);
+    let struct_name = names.stem.clone();
+    let guard_name = names.include_guard;
+    let constant_prefix = names.constant_prefix;
+    let header_name = names.header;
+    let source_name = names
+        .source
+        .expect("the C surface emits a translation unit beside its header");
 
     // Extract dependencies — both cross-package (umbrella includes) and
     // intra-package (per-type includes for types in the same package).
@@ -382,8 +379,7 @@ pub fn generate_c_message_package_with_lookup(
         if let Some(FieldType::NamespacedType { package, name }) = field_type {
             let pkg = package.as_deref().unwrap_or(package_name);
             let dep = to_c_package_name(pkg);
-            let header_filename =
-                format!("{}_msg_{}.h", to_c_package_name(pkg), to_snake_case(name));
+            let header_filename = artifact_names(Surface::C, Kind::Msg, pkg, name).header;
             let type_header = if dep != c_pkg_name {
                 // Cross-package: include with subdirectory path
                 if !dependencies.contains(&dep) {
