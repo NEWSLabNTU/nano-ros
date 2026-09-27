@@ -469,6 +469,23 @@ pub struct EntityDecl {
     /// sizing descriptor) publishes the prose to whoever sizes a buffer from
     /// this endpoint, rather than to a build log nobody kept.
     pub contract_refusal: Option<String>,
+    /// phase-457 W3 -- can THIS endpoint's registration dispatch out of the
+    /// backend's own receive slot? `None` = nobody observed it.
+    ///
+    /// The per-ENDPOINT half of `registration_path` (RFC-0100 D1, issues
+    /// 1319 / 1340). `Some` only on the metadata-PROBE road, and only for a
+    /// subscription: the probe runs the registration, and
+    /// `Executor::open_subscription` -- the one site in the tree that reads
+    /// `supports_process_in_place` -- reports what the call site answered.
+    ///
+    /// **`None` on every other producer, and that is a REFUSAL.** The `ENTITIES`
+    /// grammar and `from_model` describe what an image CREATES; which of the
+    /// executor's eleven registration entry points its code calls is a property
+    /// of the SOURCE, and no declaration can carry it. Reading `None` as `false`
+    /// would state a path nobody measured, and the direction that costs is the
+    /// other one: an endpoint credited with in-place dispatch is priced at no
+    /// receive region at all.
+    pub in_place_capable: Option<bool>,
 }
 
 impl EntityDecl {
@@ -494,6 +511,9 @@ impl EntityDecl {
             drain_rate: None,
             source_topic: None,
             contract_refusal: None,
+            // phase-457 W3 -- "nobody observed this". Only the probe road sets
+            // it, and only for a subscription.
+            in_place_capable: None,
         }
     }
 

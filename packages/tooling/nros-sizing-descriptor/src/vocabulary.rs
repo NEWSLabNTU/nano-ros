@@ -192,8 +192,12 @@ vocabulary! {
     /// | --- | --- | --- |
     /// | is the type's bound known? | yes / no | the CALL SITE, via the hint |
     /// | does the backend dispatch in place? | yes / no | `supports_process_in_place()` |
+    /// | can THIS SHAPE use that? | yes / no | the CALL SITE (`in_place_capable`) |
     /// | is the schema reachable? | yes / no | the backend's descriptor support |
     /// | *who called* | *Rust / C* | *nothing about the subscription* |
+    ///
+    /// The third row is phase-457 W3's: the in-place question is TWO axes, not
+    /// one, and until W3 only the backend's was asked.
     ///
     /// `c_typed_hint` and `rust_typed_descriptors` described the SAME
     /// registration and differed only in the fourth; they are
@@ -202,16 +206,26 @@ vocabulary! {
     /// `rust_typed_in_place` loses the language word it never earned and
     /// becomes [`Self::InPlace`].
     ///
-    /// The language has NOT stopped being EVIDENCE — the descriptor writer
-    /// cannot see a call site, so it still infers "did this site state a bound"
-    /// from what the entry's language makes reachable, and phase-456 W7 is what
-    /// makes that inference sound for C++. What it has stopped being is a NAME
-    /// in this vocabulary, and therefore a thing a reader can mistake for a
-    /// fact about the runtime.
+    /// The language has NOT stopped being EVIDENCE for the BOUND — the
+    /// descriptor writer cannot see a call site, so it still infers "did this
+    /// site state a bound" from what the entry's language makes reachable, and
+    /// phase-456 W7 is what makes that inference sound for C++. What it has
+    /// stopped being is a NAME in this vocabulary, and therefore a thing a
+    /// reader can mistake for a fact about the runtime.
     ///
-    /// The field stays REQUIRED: the `unbounded` row is 1,848 bytes per
-    /// subscription the model does not hold on the reference island at depth 1,
-    /// in the UNDER direction, which is the one that ships `BufferTooSmall`.
+    /// **phase-457 W3 took it away from the IN-PLACE row entirely**, because
+    /// there the inference is simply wrong: nine of the executor's eleven
+    /// subscription entry points cannot use an in-place dispatch, and which one
+    /// an endpoint calls is not a function of the language. That half is
+    /// OBSERVED per endpoint instead (issue 1522), which is also what let a
+    /// MODEL-only producer — an image of several packages with no one entry
+    /// language — state this row at all.
+    ///
+    /// The field stays REQUIRED, and now in BOTH directions: the `unbounded`
+    /// row is 1,848 bytes per subscription the model does not hold on the
+    /// reference island at depth 1 (UNDER, ships `BufferTooSmall`), and the
+    /// `in_place` row claims no region at all, so crediting it wrongly is the
+    /// same failure by a different route.
     RegistrationPath {
         /// The backend dispatches the sample IN PLACE — zenoh and XRCE, whose
         /// `supports_process_in_place` is an unconditional `true` — so **no
@@ -232,9 +246,25 @@ vocabulary! {
         /// every language reaches it, which is why this row no longer carries a
         /// `rust_` prefix.
         ///
-        /// This row is still priced at the type's bound rather than at zero —
-        /// an OVER-statement, deliberately left where it was. Lowering it is
-        /// worth ~9.7 KiB a subscription and is issue 1340.
+        /// **phase-457 W3 prices this row at NO RECEIVE REGION** —
+        /// [`Endpoint::claims_no_receive_region`](crate::Endpoint::claims_no_receive_region),
+        /// issue 1340, measured at 10,840 bytes a subscription on
+        /// `examples/native/rust/listener` at `KEEP_LAST(10)`. It used to be
+        /// priced at the type's bound, an over-statement W5 left alone on
+        /// purpose.
+        ///
+        /// **What changed is not the price, it is who may carry the row.** The
+        /// in-place question has TWO halves — does the backend dispatch in
+        /// place, and can THIS delivery shape use that — and until W3 only the
+        /// first was asked, so every endpoint of a zenoh or XRCE image was
+        /// credited with the row while nine of the executor's eleven
+        /// subscription entry points cannot use the capability at all. Free at
+        /// the type's bound; an UNDER-size at zero. The second half is now
+        /// OBSERVED per endpoint (`Executor::open_subscription` reports it to
+        /// the metadata probe, which records it as the sidecar's `in_place`),
+        /// and a row nothing observed is REFUSED rather than credited — issue
+        /// 1522. So this row is only ever written about an endpoint somebody
+        /// measured.
         InPlace => "in_place",
         /// The site stated a bound and the backend BUFFERS, so the receive
         /// region is sized from the type's own bound.

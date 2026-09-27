@@ -409,6 +409,33 @@ impl Endpoint {
         }
     }
 
+    /// Does this row's registration claim NO receive region at all?
+    ///
+    /// **phase-457 W3, taking issue 1340's saving.** The `in_place` row means the
+    /// backend hands the sample to the callback out of its own ring:
+    /// `Executor::open_subscription` tests the capability BEFORE it computes a
+    /// slot size and returns through an entry with no trailing region, so the
+    /// registration claims the entry struct and nothing else — measured at 672
+    /// bytes on `contract-monitor-sub` against a 9,768-byte budgeted region.
+    ///
+    /// So a caller that sums receive regions asks THIS first, and only then
+    /// [`claimed_slot_bytes`](Self::claimed_slot_bytes). The two are not
+    /// redundant: the slot size is what a region WOULD cost, and this says
+    /// whether one is allocated.
+    ///
+    /// `true` only for a STATED `in_place`, which since W3 requires a per-endpoint
+    /// OBSERVATION of the registration — a refused or absent path is `false`, so
+    /// the region is budgeted. That asymmetry is the whole safety argument: this
+    /// is the one predicate here whose `true` REMOVES bytes, and it is reachable
+    /// only from a fact somebody measured.
+    pub fn claims_no_receive_region(&self) -> bool {
+        self.kind.receives_topic_sample()
+            && matches!(
+                self.registration_path(),
+                Fact::Stated(RegistrationPath::InPlace)
+            )
+    }
+
     /// Can this row's registration claim the CLOSURE buffer?
     ///
     /// `true` for the two paths that do — and for a path this row does not
@@ -1189,6 +1216,47 @@ mod slot_table_tests {
                 path.tag()
             );
         }
+    }
+
+    /// phase-457 W3 / **issue 1340** — which rows claim NO receive region, and
+    /// the asymmetry that makes taking the saving safe.
+    ///
+    /// Only a STATED `in_place` does. A refused path and an absent one both
+    /// budget the region, so the one predicate here whose `true` REMOVES bytes is
+    /// reachable only from a fact somebody measured — and since W3 that fact is a
+    /// per-endpoint observation of the registration, not an inference from the
+    /// backend.
+    #[test]
+    fn only_a_stated_in_place_row_claims_no_receive_region() {
+        for (path, expected) in [
+            (Some(RegistrationPath::InPlace), true),
+            (Some(RegistrationPath::TypedBound), false),
+            (Some(RegistrationPath::Unbounded), false),
+        ] {
+            let ep = sub(path, Some(700));
+            assert_eq!(
+                ep.claims_no_receive_region(),
+                expected,
+                "{path:?} claims the wrong region"
+            );
+        }
+        // A REFUSED path budgets the region. This is the direction that cannot
+        // ship `NodeError::BufferTooSmall`, and it is the negative control for
+        // the whole saving.
+        let mut refused = sub(None, Some(700));
+        refused.refuse("registration_path", "nothing observed this endpoint");
+        assert!(
+            !refused.claims_no_receive_region(),
+            "a refused path must budget the region"
+        );
+        // And so does an ABSENT one.
+        assert!(!sub(None, Some(700)).claims_no_receive_region());
+        // A kind that takes no topic sample claims no region either -- and never
+        // could have had one, which is a different statement the caller does not
+        // have to distinguish here.
+        let mut pubr = Endpoint::new(EndpointKind::Publisher, "std_msgs/msg/String", "/t");
+        pubr.set_registration_path(Some(RegistrationPath::InPlace));
+        assert!(!pubr.claims_no_receive_region());
     }
 
     /// The gap, priced. An unbounded row and a bound-stating row over the SAME

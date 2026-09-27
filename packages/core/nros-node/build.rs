@@ -110,6 +110,14 @@ struct SubEndpoint {
     /// Can this row claim `RX_BUF`? True for a path that does AND for one the
     /// descriptor could not state, which price the same way.
     may_claim_closure: bool,
+    /// phase-457 W3 (issue 1340) — does this row claim NO receive region at all?
+    ///
+    /// The `in_place` row: the backend dispatches out of its own ring, so the
+    /// registration allocates the entry struct and nothing more. `true` only from
+    /// a STATED path, which since W3 requires a per-endpoint observation of the
+    /// registration — a refused path budgets the region, which is the direction
+    /// that cannot ship `NodeError::BufferTooSmall`.
+    claims_no_region: bool,
 }
 
 /// The subscription rows this image's descriptor states, or `None` when they
@@ -148,6 +156,7 @@ fn descriptor_subscriptions(
                 depth: ep.depth().get(),
                 slot: ep.claimed_slot_bytes(rx_buf_size, rx_recv_size),
                 may_claim_closure: ep.may_claim_closure_buffer(),
+                claims_no_region: ep.claims_no_receive_region(),
             })
             .collect(),
     )
@@ -324,10 +333,21 @@ fn subs_arena(
 /// gets the buffer it will actually ask for.
 ///
 /// Phase-454 W5 MEASURED the table and found a fifth row: zenoh and XRCE
-/// dispatch IN PLACE, so a Rust typed registration on them allocates no region
-/// at all (672 bytes of arena on `contract-monitor-sub`, against a 9,768-byte
-/// budgeted region). That is the OVER direction, it is priced here exactly as
-/// it was before, and issue 1340 records why the saving is a separate decision.
+/// dispatch IN PLACE, so such a registration allocates no region at all (672
+/// bytes of arena on `contract-monitor-sub`, against a 9,768-byte budgeted
+/// region).
+///
+/// **phase-457 W3 takes that saving, and what made it safe is not this term.**
+/// W5 left the row priced at the type's bound because the descriptor could not
+/// say WHICH endpoints take it: the in-place row was credited to every endpoint
+/// of an image on a zenoh or XRCE backend, while nine of the executor's eleven
+/// registration entry points cannot use the capability at all. Pricing that at
+/// zero would have under-sized every generic, `_info`, `_safety`, borrowed and
+/// C-typed subscription — `NodeError::BufferTooSmall` at a registration the
+/// oracle passed. The row is now stated only from a per-endpoint OBSERVATION of
+/// the registration (`Endpoint::claims_no_receive_region`), so a row that claims
+/// no region is a row somebody measured, and a row nobody measured is refused
+/// and keeps its region.
 ///
 /// `None` — keep the env road — when the table cannot answer for every
 /// subscription this image declares:
@@ -354,7 +374,27 @@ fn subs_arena_from_descriptor(
     }
     let mut total = 0usize;
     for row in rows {
+        // phase-457 W3 (issue 1340) — an `in_place` row claims the entry struct
+        // and NO trailing region: `open_subscription` returns through an in-place
+        // entry before any slot size is computed. Worth ~9.7 KiB a subscription
+        // at the default depth, and it is the one term here whose reduction rests
+        // on a stated fact rather than on a bound — hence the predicate, and hence
+        // the descriptor stating it only from an OBSERVED registration.
+        //
+        // The DEPTH is still required, before the branch: a row with no depth
+        // describes an endpoint this table cannot price at all, and letting an
+        // in-place row through without one would make the guard depend on which
+        // path the row happens to state.
         let depth = row.depth?;
+        if row.claims_no_region {
+            // Still the buffered entry struct, which OVER-states the in-place
+            // entry (`SubInplaceEntry` is smaller than `SubBufferedEntry`).
+            // Deliberate: one struct size for both keeps this term's fallback
+            // arms consistent, and the over-statement is bytes rather than a
+            // failed registration.
+            total += entry_struct;
+            continue;
+        }
         total += buffered_region(
             depth as usize,
             row_slot_bytes(row, rx_buf_size),
