@@ -18,6 +18,13 @@
 #
 # (no `-b` — the board comes from nano_ros_use_board; `just zephyr
 #  build-fvp-ws-entry` drives this.)
+#
+# `nros build fvp` is the OTHER driver and it does pass `-b`, from
+# `[image.fvp] board` in the demo_bringup `system.toml`. Those two must name the
+# same board: `nano_ros_use_board` does NOT refuse a mismatch, it warns
+# ("BOARD=… overrides the board crate's ZEPHYR_ID=…") and builds what `-b` said.
+# The row read `native_sim/native/64` until issue 1517 measured that, so keep the
+# two in step until issue 1288 generates this file from the row.
 
 cmake_minimum_required(VERSION 3.20.0)
 

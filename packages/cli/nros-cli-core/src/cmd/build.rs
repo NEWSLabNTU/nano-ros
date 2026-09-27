@@ -935,11 +935,13 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                         .map_err(|e| eyre::eyre!("{e}"))?;
 
                 // The board id WEST knows, which is not always the name the
-                // image authored — see `BoardDescriptor::west_board`.
-                let west_board = descriptor
-                    .west_board
-                    .clone()
-                    .unwrap_or_else(|| board.clone());
+                // image authored — one rule, on the descriptor
+                // (`BoardDescriptor::west_build_board`, issue 1517). It used to
+                // be spelled here and read only the OUTER `west_board`, which
+                // no in-tree descriptor declares, so `nros build fvp` emitted
+                // `-b fvp-aemv8r-smp` for a descriptor that states
+                // `fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`.
+                let west_board = descriptor.west_build_board(&board);
                 let mut a = vec!["build".to_string(), "-b".to_string(), west_board];
                 if overlays.sysbuild {
                     a.push("--sysbuild".to_string());
@@ -2767,11 +2769,22 @@ fn cmake_coordinate(platform: &str, image: &crate::orchestration::image::ImageBl
 /// and the first thing to notice was a conf fragment "not found" in two paths
 /// that were the same path twice.
 ///
-/// Ambiguity is an ERROR, not a first match. `realtime-cpp` has `zephyr_entry`
-/// and `fvp_entry`, both `DEPLOY zephyr`, both on `native_sim/native/64`, for
-/// two images that differ in payload rather than board. Whichever one a scan
-/// returns first is right half the time and silently wrong the other half, so
-/// the image names it (`entry = "fvp_entry"`) and this refuses until it does.
+/// Ambiguity is an ERROR, not a first match: whichever one a scan returns
+/// first is right half the time and silently wrong the other half, so this
+/// refuses until the image names its application (`entry = "..."`).
+///
+/// Two packages collide here whenever they declare the same `DEPLOY` token,
+/// because a token resolves to a BOARD and that is all this compares. Note
+/// what that means for a Zephyr entry, measured under issue 1517: `DEPLOY`
+/// names the PLATFORM (`zephyr`) — `NanoRosEntry.cmake`'s link gate compares
+/// it against `NANO_ROS_PLATFORM` — while the board the application really
+/// targets is chosen by `nano_ros_use_board(<board>)` inside its own
+/// CMakeLists, which this does not read. So for a Zephyr image on any board
+/// but the `zephyr` descriptor's own, the derivation finds ZERO candidates
+/// rather than too many, and the image must still name its entry.
+/// `realtime-cpp`'s `[image.fvp]` is that case; it USED to be the ambiguity
+/// case, because its `board` misread as `native_sim/native/64` made
+/// `fvp_entry` and `zephyr_entry` both match.
 fn west_application_dir(
     image_id: &str,
     image: &crate::orchestration::image::ImageBlock,

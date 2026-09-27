@@ -468,3 +468,65 @@ fn the_framework_agrees_with_the_descriptors_entry_kind() {
          nothing that matters"
     );
 }
+
+/// Issue 1517 — the string `west build -b` receives comes from the descriptor,
+/// not from whatever the image happened to author.
+///
+/// `[image.*] board` is a nano-ros board id (`ImageBlock::board`: "NEVER a
+/// framework's own board string"), and `nros build` used to hand it to west
+/// verbatim unless the board declared the OUTER `west_board` — which nothing
+/// in-tree does. Every board that states `[board.zephyr] west_board` was
+/// therefore mis-projected: `[image.fvp] board = "fvp-aemv8r-smp"` reached
+/// `west build -b fvp-aemv8r-smp`, a board west has never heard of. The row
+/// only looked fine because it had misread as `native_sim/native/64`, where
+/// the authored string IS the Zephyr id — which is the whole reason the
+/// fall-through went unnoticed.
+///
+/// Asserted over every zephyr descriptor in the real catalog, in both
+/// directions: a stated `west_board` is USED, and a board that states none
+/// falls back to the authored id.
+#[test]
+fn a_zephyr_boards_west_b_comes_from_its_descriptor() {
+    use nros_cli_core::orchestration::board_descriptor::BoardCatalog;
+
+    let catalog = BoardCatalog::load_with_extra(&repo_root(), &[]).expect("in-tree board catalog");
+
+    let mut stated = 0;
+    let mut fell_back = 0;
+    for d in catalog.descriptors() {
+        if d.platform.kebab() != "zephyr" {
+            continue;
+        }
+        // Every name a bringup could author for this board must project to the
+        // same `-b`: the projection is a property of the BOARD, not of which
+        // of its names someone wrote down.
+        for authored in &d.names {
+            let got = d.west_build_board(authored);
+            match d.zephyr.as_ref().map(|z| z.west_board.as_str()) {
+                Some(want) => {
+                    assert_eq!(
+                        got, want,
+                        "`{authored}`: the descriptor states west_board = `{want}`, but the \
+                         projection gives `{got}` — an image authoring the nano-ros board id \
+                         would reach `west build -b {got}`"
+                    );
+                    stated += 1;
+                }
+                None => {
+                    assert_eq!(
+                        got, *authored,
+                        "`{authored}`: no `[board.zephyr] west_board`, so the authored id is \
+                         all there is to pass"
+                    );
+                    fell_back += 1;
+                }
+            }
+        }
+    }
+    // Floors, so neither arm can go vacuous. Measured 2026-09-27: the
+    // `fvp-aemv8r-smp`, `mps2-an385-zephyr` and `qemu-cortex-a53` descriptors
+    // state a `west_board`; the `zephyr` descriptor states none and smuggles
+    // `native_sim/native/64` into `names` instead.
+    assert!(stated >= 3, "only {stated} stated west_board(s) checked");
+    assert!(fell_back >= 2, "only {fell_back} fall-back name(s) checked");
+}

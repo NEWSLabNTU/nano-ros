@@ -236,12 +236,18 @@ GENERATED from the image and needs no package of its own (RFC-0065 D3).
 ```
 
 One Zephyr entry covers every Zephyr board — Zephyr owns its board
-abstraction, so the board comes from the image's `board` key (which becomes
-`west build -b`). Set the image's `entry` key only when *several* packages
-claim one board: `examples/workspaces/realtime-cpp` has `zephyr_entry` and
-`fvp_entry`, both `DEPLOY zephyr`, on the same board, for two images that
-differ in payload. Deriving there is a coin flip, so `nros build` refuses and
-names the candidates.
+abstraction, so the board comes from the image's `board` key — a nano-ros board
+id, which the descriptor it resolves to turns into the string `west build -b`
+receives.
+
+Set the image's `entry` key when the derivation cannot answer. Either
+*several* packages claim one board (a coin flip, so `nros build` refuses and
+names the candidates; reachable for C/C++ entries, matched by their `DEPLOY`
+token) or *none* does, which falls back to the Bringup directory and surfaces
+as a conf fragment "not found" in the wrong path.
+`examples/workspaces/realtime-cpp`'s `[image.fvp]` is the second case:
+`fvp_entry` takes its board from `nano_ros_use_board(...)` in its own
+`CMakeLists.txt`, which the `DEPLOY` scan does not read (issue 1517).
 
 **Migrating off a hand-written entry is a deletion.** `nros build` keeps
 `src/<image_id>_entry/` when it carries a `Cargo.toml` or `CMakeLists.txt`;
