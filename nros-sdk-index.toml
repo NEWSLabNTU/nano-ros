@@ -1648,27 +1648,28 @@ approx_mb = 17
 lines = ["3.7", "4.4"]
 
 [zephyr_module.hal_espressif]
-# HELD BACK DELIBERATELY, and the honest statement is that it has no measured
-# consumer. phase-447 F1 measured questions (1) and (2) of issue 1275 and both
-# came back empty: nothing in this tree builds an esp32 image THROUGH Zephyr
-# (all four `platform = "esp32"` fixture rows are cargo/esp-hal bare-metal
-# riscv32; the ESP-IDF coordinates go through `idf.py`), no `prj.conf`,
-# overlay, board crate, CI job or `west build -b` names an Espressif board,
-# and the Zephyr SDK we provision installs no `xtensa-espressif_*` toolchain
-# at all — so a Zephyr esp32 build could not link today even if one existed.
+# DROPPED 2026-09-27, by a decision rather than by a measurement running out.
+# phase-447 F1 measured it empty — nothing in this tree builds an esp32 image
+# THROUGH Zephyr (every `platform = "esp32"` fixture row is cargo/esp-hal
+# bare-metal riscv32), no `prj.conf`, overlay, board crate, CI job or
+# `west build -b` names an Espressif board, and `scripts/zephyr/setup.sh`
+# installs no `xtensa-espressif_*` toolchain, so a Zephyr esp32 image could not
+# link today even if a board named one. F1 HELD IT BACK anyway, because the
+# open question was a strategy one and deleting the line would have settled it
+# by accident.
 #
-# It stays anyway. RFC-0099 D10 and phase-447 F1 both say so: whether Zephyr's
-# own espressif support makes our separate ESP-IDF provisioning a duplicate is
-# a platform-strategy question with real costs on both sides, and DELETING
-# this line would settle it by accident in the direction of "we do not do
-# Zephyr esp32". That question is issue 1282; when it is answered this entry
-# either gains a `needed_by` or gets `lines = []`.
+# That question (issue 1282, now resolved) has been settled deliberately:
+# **bare-metal esp-hal is the esp32 path for now, and Zephyr esp32 is not
+# supported.** So the line goes, and 275 MB of issue 1275's 2.5 GB with it.
 #
-# So 275 MB of issue 1275's 2.5 GB is knowingly still paid.
-why = "Espressif HAL — NO measured consumer; retained pending issue 1282"
+# Reversible: re-adding needs this `lines`, a board, and an
+# `xtensa-espressif_*` toolchain in `scripts/zephyr/setup.sh` — none of which
+# exists today. Stated here so the removal is a decision a reader can find
+# rather than a line that vanished.
+why = "Espressif HAL — no consumer; Zephyr esp32 unsupported, see issue 1282"
 needed_by = []
 approx_mb = 275
-lines = ["3.7", "4.4"]
+lines = []
 
 [zephyr_module.hal_nxp]
 # The one entry with a real, NAMED consumer that is not in this tree.
