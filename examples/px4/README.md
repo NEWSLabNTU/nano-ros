@@ -41,6 +41,11 @@ host cargo bins with a `package.xml` and no `system.toml`, so
 directory level that records the transport case, to buy uniformity with leaves
 that do not share PX4's constraints. Not worth it.
 
+Measured in
+[issue 1516](../../docs/issues/archived/1516-px4-is-a-foreign-build-integration.md);
+written down by
+[phase-470](../../docs/roadmap/phase-470-example-layout-unification.md) W4.
+
 ## Prerequisites
 
 ```sh

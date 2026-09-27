@@ -97,6 +97,8 @@ Embedded targets additionally need their SDK env vars (`*_DIR`, `FREERTOS_PORT`,
 An example's layout is decided by **two** questions, and only the second has
 ever been written down. That is why the first keeps getting re-derived from
 whichever tree shows it most vividly, and re-attributed to that tree's platform.
+(Survey and work items:
+[phase-470](../docs/roadmap/phase-470-example-layout-unification.md).)
 
 ### Question 1 — who owns the link?
 
@@ -188,7 +190,9 @@ rather than left unnamed for the next survey to invent:
   feature wiring, and it dissolves into classes 3 and 4. (The
   [Intentionally empty cells](#intentionally-empty-cells) row for
   `mps2-an385-baremetal/{c,cpp}` still states the old cause and is being
-  corrected separately — believe the seam, not the row.)
+  corrected under
+  [issue 1512](../docs/issues/1512-c-api-does-not-reach-bare-metal.md), which
+  measured all of this — believe the seam, not the row.)
 
 ### `examples/px4/` — class X, a foreign-build integration
 
@@ -220,7 +224,9 @@ decision so it stops being a recurring question: they stay.** The move would
 delete the one directory level that records the transport case, to buy
 uniformity with leaves that do not share PX4's constraints.
 
-Detail and prerequisites: [`px4/README.md`](px4/README.md).
+Detail and prerequisites: [`px4/README.md`](px4/README.md). The measurement
+behind this section is
+[issue 1516](../docs/issues/archived/1516-px4-is-a-foreign-build-integration.md).
 
 ## Coverage matrix
 

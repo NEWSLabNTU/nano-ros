@@ -10,6 +10,8 @@ The whole-tree taxonomy lives in
 [`examples/README.md` § Layout classes](../README.md#layout-classes) — two
 questions (*who owns the link?* and *leaf or workspace?*), six classes, and the
 two that deliberately do not exist. This file owns the **workspace** half of it.
+Survey and work items:
+[phase-470](../../docs/roadmap/phase-470-example-layout-unification.md).
 
 Three classes reach this directory, and **the class is a property of an IMAGE,
 not of a directory**:

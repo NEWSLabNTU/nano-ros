@@ -2,12 +2,14 @@
 id: 1516
 title: "`examples/px4/` is a foreign-build integration, not an example layout —
   the exception is real and undocumented"
-status: open
+status: resolved
+resolved_in: phase-470 W4 — the layout taxonomy, with PX4 as its class X
 type: tech-debt
 area: examples, docs
 severity: low
 found: 2026-09-27
-related: [rfc-0026, rfc-0098, issue-0356]
+resolved: 2026-09-27
+related: [rfc-0026, rfc-0098, issue-0356, phase-470]
 ---
 
 ## What this is
@@ -74,3 +76,27 @@ Documentation only:
 - A survey following the layout taxonomy reaches `examples/px4/` and is told why
   it is excluded, without reading this issue.
 - No files under `examples/px4/` move.
+
+## Resolution — phase-470 W4 (2026-09-27)
+
+All three met. PX4 is **class X, foreign-build integration** in the taxonomy
+`examples/README.md` now carries, with a section of its own
+(`### examples/px4/ — class X, a foreign-build integration`) stating all three
+departures and their causes, and a matching section at the head of
+`examples/px4/README.md` for a reader who arrives there first. The
+`rust/companion/*` trade is written down as a **decision** in both places, so it
+reads as settled rather than pending. **No file under `examples/px4/` moved.**
+
+Two things the measurement corrected while writing it:
+
+- **The trees are `cpp/firmware/` and `cpp/bridge/`**, and each is its own
+  `EXTERNAL_MODULES_LOCATION` root because PX4 takes exactly one per build
+  (`just px4 build-sitl-example` / `build-bridge-example`). `examples/px4/README.md`'s
+  own "Cases" table still listed `cpp/uorb/nros-register-check/` — a path that
+  moved to `packages/testing/nros-px4-register-check/` in phase-316 W3.1 — so the
+  one table a PX4 reader consults named neither tree PX4 actually consumes.
+  Corrected here.
+- **The class is defined by what the tree lacks, not by the vendor.** The
+  predicate in the taxonomy is "no `system.toml`, nothing for `nros build` to
+  generate, a foreign build consumes the tree" — so a future non-PX4 foreign
+  integration lands in class X by the rule rather than by analogy to this issue.
