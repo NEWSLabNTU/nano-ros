@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Issue 1467 — a PROPAGATED runtime-umbrella link must go through the resolver.
 
-Two rules about `NanoRos::NanoRosCpp` / `NanoRos::NanoRos` used to be spelled
-nine times each across `cmake/`:
+Two rules about `NanoRos::NanoRosCpp` / `NanoRos::NanoRos`. The first was spelled
+by hand at all 21 link sites under `cmake/`; the second was spelled nowhere, and
+the nine PROPAGATED sites of the first are where its absence is a bug:
 
   1. WHICH umbrella (issue 0425 — prefer the C++ one, it bundles nros-c, so a
      mixed workspace keeps exactly ONE Rust staticlib per binary); and
