@@ -162,6 +162,15 @@ workspace-root-build-files:
 example-workspace-members:
     @python3 scripts/check-example-workspace-members.py
 
+# issue 1515 (phase-470 W3) — the POSITIVE half of the two above. They forbid a
+# root build file; something still has to SAY the directory is a workspace root,
+# or `detect_workspace_root` falls through to its `.git` rung and answers with
+# the nano-ros checkout (and a copied-out tree, having no `.git`, gets a refusal).
+# Subject: every tracked `system.toml` with no package manifest beside it — a
+# BRINGUP by `leaf_system::is_package_dir` — repo-wide, not a path list.
+bringup-workspace-root:
+    @python3 scripts/check-bringup-workspace-root.py
+
 # issue 0820 — a cmake custom command that RUNS cargo must carry a `DEPFILE`.
 #
 # `add_custom_command(OUTPUT ...)` rebuilds only when an input it NAMES is newer

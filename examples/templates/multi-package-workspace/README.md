@@ -31,6 +31,31 @@ There is no `.cargo/config.toml` in the Rust package and no workspace-root
 `Cargo.toml` (RFC-0098 D1/D9): `nros sync` writes what the board choice implies
 into `build/<image>/`, and the build reads it from there.
 
+### …and no `.colcon_workspace`, deliberately (issue 1515)
+
+Every other multi-package tree under `examples/` carries a tracked
+`.colcon_workspace` at its root — the marker `detect_workspace_root` answers with
+before it ever looks at a `Cargo.toml`. This one does not, because **it has no
+bringup.** The three packages here are three INDEPENDENT single-package projects
+that share one nano-ros checkout: each carries its own root build file, and
+`pkg_rust_publisher` carries its own `[workspace]` table and its own
+`system.toml` (Form-1 self-bringup). There is no `src/demo_bringup/` whose
+`[image.*]` composes them into one program, which is the thing a workspace root
+exists to be found from.
+
+Measured 2026-09-27, with no marker: `nros ws list` and `nros sync` resolve this
+directory, `nros build --dry-run` plans all three packages, and a bare
+`cargo check` in `src/pkg_rust_publisher` expands `nros::main!` cleanly — because
+that package's own `[workspace]` is the root, which is the right answer. Adding a
+marker here changed none of those, and
+`scripts/check-template-copy-out.sh multi-package-workspace` builds the tree from
+a copy with no `.git` above it (3 artifacts). So the marker would state something
+untrue about the shape and buy nothing.
+
+`check-bringup-workspace-root` is the gate that keeps this honest in both
+directions: it requires the declaration of every tree that DOES have a bringup,
+and asks nothing of a tree like this one.
+
 In a real Pattern A workspace, `src/nano-ros/` is the nano-ros checkout
 (or symlink) alongside the user packages. This in-repo demo
 references the parent checkout via relative paths
