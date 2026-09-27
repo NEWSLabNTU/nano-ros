@@ -1208,6 +1208,24 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   archive: that reorders ld's single pass and breaks the whole-archive group (`undefined reference to
   ddsrt_*`). Verify with `ninja -C <build-dir> -t query <exe>`: the `.a` must appear under `|`, and a
   `touch` of a backend source must relink.
+- **A PROPAGATED usage requirement's condition must be a property of the CONSUMER, never of
+  the build tree (issues 0425 + 1467).** `if(TARGET NanoRos::NanoRosCpp)` asks what the tree
+  DEFINES, and every leaf `add_subdirectory("${NANO_ROS_ROOT}" nano_ros)`, so it is ALWAYS
+  true — which is right for a C/C++ binary (0425: prefer the umbrella that bundles the other,
+  so a mixed workspace links ONE Rust staticlib) and wrong for a leaf whose app IS a Rust
+  staticlib, where the same preference puts a SECOND archive of the same C ABI on the line:
+  228 `rust-lld: error: duplicate symbol` across all twelve `threadx_riscv64` leaves, from
+  the generated `<pkg>__nano_ros_c`'s PUBLIC link. One home, `cmake/NanoRosRuntimeUmbrella.cmake`
+  — `nros_link_runtime_umbrella(<t> <scope>)`, which for PUBLIC/INTERFACE wraps the pick in
+  `$<$<NOT:$<BOOL:$<TARGET_PROPERTY:NROS_CARRIES_RUST_RUNTIME>>>:…>`, evaluated against the
+  HEAD target, because a library codegen'd before the executable exists cannot know its
+  consumers (and in a workspace has several with different answers). **PRIVATE stays a
+  LITERAL name**: the consumer IS the target, and the NuttX boards compare that executable's
+  `LINK_LIBRARIES` entries as STRINGS to ferry the umbrella's include dirs into the cargo
+  cross-build — a genex there is not a name they match, and the failure reads as a missing
+  header, not a bad link. Gate: `check-runtime-umbrella-link-sites` (ruled-PRIVATE ledger,
+  both directions; a scope held in a VARIABLE is a failure, since that was the spelling the
+  reported site carried).
 - **Every cargo command cmake emits passes `--target`, HOST INCLUDED (phase-340 W3)** —
   `--target <host-triple>` and no `--target` are different `-C metadata` identities that
   share nothing, not even sccache entries (measured 0 hits / 62 misses). Corrosion hardcodes
