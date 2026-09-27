@@ -160,8 +160,14 @@ declared_pairings() {
 
 # `<ENV> <CONFIG_SYM>` for every `KCONFIG_PAIRS` row. rustfmt splits a long pair
 # across four lines, so flatten first. stdin: the resolver's source.
+#
+# SCOPED TO THE CONST, not grepped over the file. A `("X", "CONFIG_Y")` tuple in
+# a doc example or a test vector is not a row, and reading one as a row is this
+# gate's own failure mode one level in: it would report a pairing the resolver
+# does not have, i.e. pass while the delivery is broken.
 pairing_rows() {
     tr '\n' ' ' \
+        | sed -E 's/.*const KCONFIG_PAIRS[^=]*=[[:space:]]*&\[//; s/\];.*//' \
         | grep -oE '"[A-Z0-9_]+"[[:space:]]*,[[:space:]]*"CONFIG_[A-Z0-9_]+"' \
         | sed -E 's/"//g; s/[[:space:]]*,[[:space:]]*/ /' \
         | sort -u
@@ -233,6 +239,15 @@ _nros_resolve_derivable_knob(NROS_PLAIN "${CONFIG_NROS_PLAIN}")'
     check_pairings '_nros_resolve_knob(NROS_PLAIN "${CONFIG_NROS_PLAIN}")' "$rows_empty" \
         2>/dev/null \
         || { echo "[FAIL] selftest: a derived-identical knob demanded a row" >&2; return 1; }
+    # A tuple OUTSIDE the const must not be read as a row. Otherwise the gate
+    # reports a pairing the resolver does not have — passing while delivery is
+    # broken, which is the one way a pairing gate can be worse than none.
+    if check_pairings "$cmake_ok" \
+        "$rows_empty"' fn t() { assert_eq!(f("ZPICO_RING"), "CONFIG_NROS_RING"); }' \
+        2>/dev/null; then
+        echo "[FAIL] selftest: a tuple outside KCONFIG_PAIRS was read as a row" >&2
+        return 1
+    fi
     # And the harvest itself must be able to come up empty loudly.
     cmake_bad='# nothing here forwards anything'
     if check_pairings "$cmake_bad" "$rows_ok" 2>/dev/null; then
