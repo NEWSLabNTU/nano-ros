@@ -17,8 +17,10 @@ WHAT IT ASSERTS, AND WHY NOT EQUALITY
 Equality is the invariant the prose claimed, and it is NOT what this checks.
 The two are legitimately unequal today: issue 0897 W2b/W3 moved pyo3 out of the
 `play_launch_parser` crate, so at the gitlink the standalone CLI has no Python
-backend at all — `.launch.py` hard-errors and, worse, `$(eval …)` exits 0 with
-the substitution UNEXPANDED. An equality gate would have been red the day it
+backend at all — `.launch.py` and a DIRECT `$(eval …)` both exit 1 with a named
+diagnostic, and a `$(eval …)` inside an `<arg default=…>` exits 0 with the
+substitution UNEXPANDED (re-measured 2026-09-27; that last, silent arm is the
+one that keeps the ref behind the gitlink). An equality gate would have been red the day it
 landed and would have to be disabled by the first person to bump either side,
 which is the one thing a gate must never be.
 

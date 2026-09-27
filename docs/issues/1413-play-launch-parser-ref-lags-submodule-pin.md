@@ -60,7 +60,13 @@ pyo3 OUT of the `play_launch_parser` crate inside the drift window: the Python
 half is now `pyexec` (a cdylib) loaded at runtime by `pyload`, and `pyload` is
 depended on by `resolve/`, NOT by the standalone CLI's `main.rs`.
 
-Built both ways on this host and run against the same two launch files:
+Built both ways on this host and run against the same two launch files.
+
+*(As filed, and the `$(eval)` row is WRONG as stated — it is true only of the
+`<arg default=…>` shape, not of a direct substitution, which has exited 1 with
+a named diagnostic since upstream `caab6fbc`. See
+"Re-measured 2026-09-27" below; the conclusion survives, the reasoning did
+not.)*
 
 | | `838ce948` (the published `0.1.0-nros1` asset) | `07f0461e` (the submodule pin) |
 | --- | --- | --- |
@@ -178,11 +184,82 @@ build fell back to the offline `Placeholder` stub). Its fixture was rebuilt
 against the `27b6749b` parser and it passes. Total: **11/11** — 1 nav2_compat,
 6 `record.json` consumers, 4 L.6/L.7.
 
+## Re-measured 2026-09-27: the `$(eval)` blocker is HALF the shape this issue drew
+
+The gitlink has moved since this was filed (`07f0461e` -> **`67dc7691`**), so
+the table above was re-run rather than carried. Built here with `cargo install
+--path src/ros-launch-resolve/parser/crates/play_launch_parser --locked` at the
+gitlink, and beside the published `0.1.0-nros2` binary already in the store:
+
+| launch shape | published nros2 dist | `67dc7691`, the gitlink |
+| --- | --- | --- |
+| `DT_NEEDED` | `libpython3.10.so.1.0`, libgcc_s, libc, ld | libgcc_s, libc, ld — **no libpython** |
+| `.launch.py` | `/from_python`, exit 0 | **exit 1**, named diagnostic |
+| `$(eval '1 + 1')` **direct** in a node attribute | `/from_eval_2`, exit 0 | **exit 1**, named diagnostic |
+| `$(eval '1 + 1')` in `<arg default=…>`, read with `$(var …)` | `/from_eval_2`, exit 0 | **`/from_eval_$(eval '1 + 1')`, exit 0, SILENT** |
+
+**Two of this issue's own claims were wrong, in opposite directions.**
+
+The DIRECT `$(eval)` path is not silent and has not been since upstream
+`caab6fbc` (2026-08-30 11:02), which is an ANCESTOR of `07f0461e` — the very
+commit the original table was measured at. Built at `07f0461e` here and
+re-run: exit 1, same diagnostic. So "*the `$(eval …)` arm exits 0 and emits an
+UNEXPANDED substitution*" was already false when it was written, and the
+remedy this issue listed third — *"make the capability loss LOUD rather than
+silent"* — had been taken upstream three weeks before the issue was filed.
+
+And the blocker is nonetheless REAL, because `$(eval …)` has two paths and
+`caab6fbc` only reached one. A substitution written into an `<arg default=…>`
+and read back with `$(var …)` is still emitted verbatim, exit 0, no
+diagnostic, at `07f0461e` and at the gitlink alike. Arg defaults are where
+real launch files put eval, so the arm that stayed silent is the arm that
+matters, and the conclusion of this issue is unchanged while its reasoning is
+now correct.
+
+## The gitlink cannot become the index's source — measured, not preferred
+
+The structural repair this issue invites — delete `source.ref`, name the
+submodule, derive the commit from the gitlink — was measured on 2026-09-27 and
+does not work, for a reason upstream of the pyexec regression:
+
+* **The consumer has no repository to read.** `nros setup --tool` fetches this
+  index over HTTPS
+  (`raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/nros-sdk-index.toml`,
+  `setup.rs`) and source-builds by cloning `source.git` into the SDK store
+  (`sdk_store.rs`: `clone` + `fetch --depth 1 origin <ref>` + `checkout <ref>`).
+  It runs on a user's host with no nano-ros checkout, so a
+  `source.submodule = "packages/cli/third-party/play_launch"` field names a
+  directory that is not there and `git ls-tree HEAD <path>` has nothing to read.
+  The index is the only thing that crosses that boundary and it carries no
+  repository with it. The same boundary stops `nano-ros-sdk`'s
+  `build-play_launch_parser.sh` one layer up, so the answer is NO at both ends
+  for one reason.
+* **They are not two spellings of one fact.** Issue 1454 measured that the
+  store binary runs ZERO times in any build path (29,828 and 37,244 `execve`
+  calls traced); what parses is `nros-launch-resolve`, which statically links
+  the parser crate out of the submodule, and its commit is already stamped into
+  `.compile-ok` by `scripts/build/launch-resolver-identity.sh`. So the gitlink
+  is ALREADY the sole, measured spelling of which parser the BUILD consumes.
+  `source.ref` names a different artifact — a standalone user-facing CLI — under
+  a different constraint (at or before `f7f6d2cf^`). Collapsing them would not
+  delete a duplicate; it would erase a distinction and ship the Python-less
+  binary in the table above.
+
+`upstream` therefore stays beside `source.ref`. It is not this tool's private
+duplicate: 25 tools declare it, `nano-ros-sdk`'s `build-tool.yml` reads it for
+all of them, and `tool_pin_status` reads it here — deleting it for this one row
+would make it the exception to a repo-wide convention rather than removing a
+spelling. The gate's "both spellings agree" clause is what holds the two
+together, and it is the right size for that job.
+
 ## Why this stays OPEN
 
-The remaining 54 commits to the gitlink are the blocked half. Past `f7f6d2cf`
-the standalone CLI has no Python backend, so the measured regression in the
-table above still applies to the gitlink itself. Closing it needs an install
+The commits between `source.ref` and the gitlink are the blocked half (count it
+with `git rev-list --count`, in a checkout that has the submodule — the two
+counts previously written into this file and the index were both stale within
+days). Past `f7f6d2cf` the standalone CLI has no Python backend, so the
+measured regression in the table above still applies to the gitlink itself.
+Closing it needs an install
 target that builds `pyexec` + `pyload` and stages
 `libplay_launch_parser_pyexec.so` beside the binary — the pair shape
 `nros-launch-resolve` already ships and `launch_py_resolves_as_shipped` already
