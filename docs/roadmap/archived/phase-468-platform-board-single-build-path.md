@@ -1,8 +1,15 @@
 # Phase 468 — one build path for every platform and board
 
-**Status (2026-09-25). Opened from a review of all 14 platform and 22 board
-entries. **W1 has landed** (2026-09-25) — read its section, not this line, for
-what it measured. The review's first finding was that the system
+**Status: COMPLETE (2026-09-27), archived.** W1-W4 all landed and every
+acceptance bullet is met; each carries the date and the measurement that closed
+it. The two follow-ons filed rather than folded in are issue **1505** (the
+knob-forwarding gate's coverage arm cannot see `_nros_resolve_derivable_knob`)
+and issue **1282** (`hal_espressif`, re-measured and deliberately left open —
+retiring the ESP-IDF port did not change its arithmetic, only the name of its
+rival).
+
+Opened from a review of all 14 platform and 22 board
+entries. The review's first finding was that the system
 this phase asks for mostly EXISTS — RFC-0049's knob ladder and RFC-0064 R5 D4's
 "a board states its facts once" — so three of the four work items are about
 closing its last asymmetries rather than building it. W4 is the exception and
@@ -438,9 +445,19 @@ instruction followed honestly".
   none. Measured through the live path, not off the files: all 8 board-declared
   names build with 0 `cargo:warning` fall-through lines, and an unanswered name
   is a panic rather than a warning.
-* `nros-platform-esp-idf` and its tooling are gone, and esp32 QEMU still builds.
-* Every board `build.rs` that compiles C routes through `nros-board-common` or
-  states why not.
+* **MET (W2, 2026-09-25).** `nros-platform-esp-idf` and its tooling are gone,
+  and esp32 QEMU still builds. The port, `integrations/nano-ros/`, the cmake
+  module and the six `esp_idf` vocabulary alternatives went; the cmake change
+  is asserted BOTH directions (`posix` still configures, `esp_idf` is now
+  refused). The `NROS_ESP_IDF_*` exports went with them, keeping the one
+  reader outside the port (`nros-platform-freertos`'s `$ENV{IDF_PATH}` behind
+  `IDF_TARGET`, which our export could never reach).
+* **MET (W3, 2026-09-27).** Every board `build.rs` that compiles C routes
+  through `nros-board-common` or states why not — 13 scripts, 6 compile C, all
+  six routed, held by `check-board-build-wiring` on a merge-gating lane. There
+  are ZERO exemptions: the gate scopes on a MEASURED property (does this
+  script call `cc::Build`), so the linker-script three are out of scope rather
+  than exempted. Exempt by shape, never by name.
 * **MET (W4, 2026-09-27), with two exceptions named.** A knob has one reader:
   `nros_zephyr_build::knob()`, the tree's only ladder, with the Kconfig pairing
   beside it in `KCONFIG_PAIRS` instead of once per reading crate. Nine call

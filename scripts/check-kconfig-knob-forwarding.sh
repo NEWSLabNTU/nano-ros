@@ -62,11 +62,31 @@
 # `_nros_zpico_*` counts, the two tx flags cmake passes as a literal "1"/"0",
 # and three the cmake module does not forward at all.
 #
-# And arm 1's harvest still reads `_nros_resolve_knob(` only, while 27 knobs are
-# forwarded by `_nros_resolve_derivable_knob(` — issue 1505, and `_knob(` is not
-# a substring of `_derivable_knob(`, so the miss is silent. Arm 2 reads BOTH,
-# because a pairing check needs no reader to exist; widening arm 1 needs a
-# reader or a written exemption for each of those 27 and is that issue's work.
+# # Arm 1 reads BOTH forwarding helpers (issue 1505, FIXED)
+#
+# `zephyr/cmake/nros_cargo_build.cmake` has two: `_nros_resolve_knob()` and
+# `_nros_resolve_derivable_knob()` ("plus rungs 3 and 4", for a knob whose
+# Kconfig option documents `-1` as *derive*). `_nros_resolve_knob(` is **not** a
+# substring of `_nros_resolve_derivable_knob(`, so a harvest that reads the
+# first spelling misses every knob forwarded by the second, silently — and this
+# one did, for 27 of the 74 knobs the module forwards. Its own success line read
+# "47 forwarded knob(s)".
+#
+# That is issue 0196's shape, a REACH narrower than the rule, and it let two
+# live splits sit unreported: `ZPICO_MAX_LARGE_SUBSCRIBERS` and
+# `ZPICO_SUBSCRIBER_LARGE_SIZE` had a row in neither per-crate table, so a
+# Zephyr Rust image read both env-only — and they are two of the three factors
+# of the largest pool the tree has.
+#
+# Widening it was not a one-line change, because 8 of the 27 have no direct
+# reader and the reasons are NOT the same. Measured, per knob:
+#
+#   * The four XRCE ones are read through the `xrce-config.txt` MANIFEST, which
+#     arm 1 already models — they need nothing.
+#   * The four zenoh `NROS_MAX_*` ones are a RESOLUTION name, not a delivery
+#     name: cmake resolves `NROS_RESOLVED_NROS_MAX_<X>` and re-exports it as
+#     `ZPICO_MAX_<X>`, and THAT is the name the Rust lane reads. They are in
+#     NO_RUST_READER below, each with its re-export line.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -139,13 +159,67 @@ NO_RUST_READER=(
     # was deleted in phase-321 W1.d and the surviving build script uses the
     # `XRCE_TRANSPORT_MTU_DEFAULT` const. C-lane only today.
     XRCE_TRANSPORT_MTU
+
+    # issue 1505 — these four are a RESOLUTION name, never a delivery name, and
+    # the distinction is the whole reason they read as unread. cmake resolves
+    # each into `NROS_RESOLVED_NROS_MAX_<X>` and then re-exports that value
+    # under the `ZPICO_` spelling, which IS what the Rust lane reads and IS
+    # checked by this gate under that name. Re-export lines measured
+    # 2026-09-28 in `zephyr/cmake/nros_cargo_build.cmake`:
+    #
+    #   735  ZPICO_MAX_PUBLISHERS      815  ZPICO_MAX_LIVELINESS
+    #   739  ZPICO_MAX_QUERYABLES           ZPICO_MAX_SUBSCRIBERS
+    #
+    # Exempting the `NROS_` spelling is therefore not a hole: the value it
+    # carries is gated one name over. Were the re-export to disappear, the
+    # `ZPICO_` name would leave the forwarded set and take its own coverage
+    # check with it — which is the failure this list cannot catch, and is why
+    # each entry names the line rather than asserting the shape.
+    NROS_MAX_LIVELINESS
+    NROS_MAX_PUBLISHERS
+    NROS_MAX_QUERYABLES
+    NROS_MAX_SUBSCRIBERS
 )
 
 # --- pure harvests, so the self-test can drive them on synthetic text --------
 
-# ENV names of every `_nros_resolve_knob(<NAME>` call. stdin: cmake text.
+# ENV names of every forwarded knob, BOTH helpers. stdin: cmake text.
+#
+# issue 1505 — the optional `_derivable` segment is what this used to miss.
+#
+# A THIRD helper spelled `_nros_resolve_<x>_knob(` would be missed exactly as
+# `_derivable_` was, so the alternation is not left to be trusted:
+# `check_helper_spellings` below asserts that the set of helpers DEFINED in the
+# cmake module is the set this pattern covers. The rule is "every forwarder is
+# harvested", and without that assertion the reach is only ever as wide as
+# whoever last edited this regex.
 forwarded_knobs() {
-    grep -oE '_nros_resolve_knob\(([A-Z0-9_]+)' | sed 's/^_nros_resolve_knob(//' | sort -u
+    grep -oE '_nros_resolve(_derivable)?_knob\(([A-Z0-9_]+)' \
+        | sed -E 's/^_nros_resolve(_derivable)?_knob\(//' | sort -u
+}
+
+# The helper names `forwarded_knobs` covers, and the ones the module DEFINES.
+# stdin: cmake text. Prints any definition the harvest pattern cannot reach.
+HARVESTED_HELPERS='_nros_resolve_knob _nros_resolve_derivable_knob'
+check_helper_spellings() {
+    local defined missed=""
+    # `|| true`: "no definitions found" is this check's own negative control,
+    # and grep reports it as exit 1 — which under `set -e` would kill the
+    # script AT THE ASSIGNMENT, making the emptiness test below dead code that
+    # reads as coverage (issue 1249). Same idiom the knob harvest uses.
+    defined="$(grep -oE '^function\(_nros_resolve[A-Za-z0-9_]*_knob' <<<"$1" \
+        | sed 's/^function(//' | sort -u || true)"
+    [ -n "$defined" ] || { echo "no forwarder definitions found"; return 1; }
+    local h
+    while read -r h; do
+        [ -n "$h" ] || continue
+        case " $HARVESTED_HELPERS " in
+            *" $h "*) ;;
+            *) missed="$missed $h" ;;
+        esac
+    done <<<"$defined"
+    [ -z "$missed" ] || { echo "$missed"; return 1; }
+    return 0
 }
 
 # `<ENV> <CONFIG_SYM>` for every call whose VALUE is a bare `"${CONFIG_...}"`
@@ -254,6 +328,51 @@ _nros_resolve_derivable_knob(NROS_PLAIN "${CONFIG_NROS_PLAIN}")'
         echo "[FAIL] selftest: an EMPTY cmake harvest was accepted" >&2
         return 1
     fi
+
+    # --- issue 1505: arm 1's harvest reaches BOTH helpers ------------------
+    #
+    # Asserted on `forwarded_knobs` directly, because the miss it is about was
+    # SILENT: the gate reported 47 knobs over a module forwarding 74 and said
+    # nothing was wrong. A control that only ran the whole gate would have
+    # passed throughout.
+    local harvest
+    harvest="$(printf '%s\n' \
+        '_nros_resolve_knob(NROS_PLAIN "${CONFIG_NROS_PLAIN}")' \
+        '_nros_resolve_derivable_knob(NROS_DERIV "${CONFIG_NROS_DERIV}")' \
+        | forwarded_knobs | tr '\n' ' ')"
+    if [ "$harvest" != "NROS_DERIV NROS_PLAIN " ]; then
+        echo "[FAIL] selftest: the harvest missed a helper spelling — got '$harvest'" >&2
+        echo '       _nros_resolve_knob( is not a substring of' >&2
+        echo '       _nros_resolve_derivable_knob(, which is issue 1505.' >&2
+        return 1
+    fi
+    # The positive control's twin: a harvest that read ONLY the plain spelling
+    # must be visibly different, or the assertion above proves nothing.
+    local narrow
+    narrow="$(printf '%s\n' \
+        '_nros_resolve_derivable_knob(NROS_DERIV "${CONFIG_NROS_DERIV}")' \
+        | grep -oE '_nros_resolve_knob\(([A-Z0-9_]+)' | wc -l)"
+    if [ "$narrow" != "0" ]; then
+        echo "[FAIL] selftest: the OLD narrow pattern matched a derivable call," >&2
+        echo "       so this control cannot distinguish the two harvests." >&2
+        return 1
+    fi
+    # The helper-spelling assertion, both directions.
+    if ! check_helper_spellings 'function(_nros_resolve_knob a b)
+function(_nros_resolve_derivable_knob a b c)' >/dev/null; then
+        echo "[FAIL] selftest: the two real helpers were reported as missed" >&2
+        return 1
+    fi
+    if check_helper_spellings 'function(_nros_resolve_knob a b)
+function(_nros_resolve_lazy_knob a b)' >/dev/null 2>&1; then
+        echo "[FAIL] selftest: a THIRD forwarder spelling was accepted — the" >&2
+        echo "       harvest would skip its knobs silently (issue 1505)." >&2
+        return 1
+    fi
+    if check_helper_spellings 'nothing here defines a forwarder' >/dev/null 2>&1; then
+        echo "[FAIL] selftest: NO forwarder definitions was accepted" >&2
+        return 1
+    fi
     return 0
 }
 
@@ -271,6 +390,17 @@ check_pairings "$(cat "$CMAKE")" "$(cat "$RESOLVER")" || fail=1
 # `|| true`: "no calls found" is this gate's own negative control, and grep
 # reports it as exit 1 — which under pipefail would kill the gate before it
 # could say so, turning a loud [FAIL] into a bare status (issue 1249).
+# issue 1505 — before trusting the harvest, prove it reaches every forwarder
+# the module DEFINES. A regex is only as wide as its last edit.
+if ! _missed="$(check_helper_spellings "$(cat "$CMAKE")")"; then
+    echo "[FAIL] $CMAKE defines forwarder(s) the harvest cannot reach:$_missed" >&2
+    echo '       forwarded_knobs() would silently skip every knob passed to' >&2
+    echo "       them, which is issue 1505 exactly — that miss cost 27 of 74" >&2
+    echo "       knobs and the gate reported success throughout." >&2
+    echo "       Widen the alternation AND add the name to HARVESTED_HELPERS." >&2
+    exit 1
+fi
+
 knobs="$(forwarded_knobs < "$CMAKE" || true)"
 [ -n "$knobs" ] || { echo "[FAIL] no _nros_resolve_knob() calls found in $CMAKE" >&2; exit 1; }
 
