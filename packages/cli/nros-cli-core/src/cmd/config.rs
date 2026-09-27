@@ -334,10 +334,13 @@ fn explain(args: ExplainArgs) -> Result<()> {
     // phase-400 W6 — the RMW static-pool tenant. Defaults mirror
     // `packages/rmw/cffi/build.rs`, which stays the authority on them.
     // `NROS_RMW_SUBSCRIBER_SLOTS` is absent on purpose: phase-412 W1 derives it.
+    // Its slot WIDTH is present, because that half cannot be derived — RFC-0100
+    // D5, issue 1322.
     let rmw_defaults: &[(&str, usize)] = &[
         ("max_backends", 8),
         ("max_nodes", 4),
         ("message_info_slots", 64),
+        ("subscriber_slot_bytes", 1024),
     ];
     for (name, r) in tree
         .resolve_rmw(

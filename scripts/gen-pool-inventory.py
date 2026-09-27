@@ -46,10 +46,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "book", "src", "reference", "static-pool-inventory.md")
 
 # The spellings a knob is read by. Each yields (NAME, default-literal).
+#
+# `_C` is "the closing paren, with rustfmt's trailing comma allowed" (issue 1322).
+# Every pattern below used to end `\s*\)`, which is the shape a call that fits on
+# ONE LINE has. rustfmt wraps a call whose arguments exceed `fn_call_width` (60 by
+# default) and adds a trailing comma when it does, so a knob whose NAME is merely
+# long became unreadable here — measured on `NROS_RMW_SUBSCRIBER_SLOT_BYTES`,
+# whose arguments are 67 characters: the `SLOTS` pool's byte figure went from
+# "8,192" to "not priceable statically", which is issue 0271's enumeration failure
+# reached by a formatting rule rather than by a new wrapper. The `\s*` between
+# tokens already spanned newlines; only the comma was missing.
+_C = r"\s*,?\s*\)"
 KNOB_PATTERNS = [
-    re.compile(r'\benv_usize\(\s*"([A-Z0-9_]+)"\s*,\s*([0-9_]+)\s*\)'),
-    re.compile(r'\benv_usize_compat\(\s*"([A-Z0-9_]+)"\s*,\s*"[A-Z0-9_]+"\s*,\s*([0-9_]+)\s*\)'),
-    re.compile(r'\bknob_usize\([^,]+,\s*"([A-Z0-9_]+)"\s*,\s*([0-9_]+)\s*\)'),
+    re.compile(r'\benv_usize\(\s*"([A-Z0-9_]+)"\s*,\s*([0-9_]+)' + _C),
+    re.compile(r'\benv_usize_compat\(\s*"([A-Z0-9_]+)"\s*,\s*"[A-Z0-9_]+"\s*,\s*([0-9_]+)' + _C),
+    re.compile(r'\bknob_usize\([^,]+,\s*"([A-Z0-9_]+)"\s*,\s*([0-9_]+)' + _C),
     re.compile(
         r'std::env::var\(\s*"([A-Z0-9_]+)"\s*\)[\s\S]{0,120}?unwrap_or_else\(\s*\|_\|\s*"([0-9_]+)"'
     ),
@@ -60,7 +71,7 @@ KNOB_PATTERNS = [
     # which is exactly the enumeration failure issue 0271 cost ~145 KB to. A
     # wrapper is the natural thing to write when several knobs share a
     # resolution rule, so match the shape rather than asking each crate not to.
-    re.compile(r'\bknob\(\s*"([A-Z0-9_]+)"\s*,\s*([0-9_]+)\s*\)'),
+    re.compile(r'\bknob\(\s*"([A-Z0-9_]+)"\s*,\s*([0-9_]+)' + _C),
     # `env_usize_min("NAME", default, floor)` — a knob whose reader REFUSES a
     # value below a floor instead of silently rounding it up (issue 0827). The
     # reported figure is the DEFAULT, exactly as for every other spelling: the
@@ -70,7 +81,7 @@ KNOB_PATTERNS = [
     # `ZPICO_MAX_LARGE_SUBSCRIBERS` invisible here, and with them the byte
     # figures for BOTH payload pools -- the `SLOTS` regression this list already
     # records, one wrapper later.
-    re.compile(r'\benv_usize_min\(\s*"([A-Z0-9_]+)"\s*,\s*([0-9_]+)\s*,\s*[0-9_]+\s*\)'),
+    re.compile(r'\benv_usize_min\(\s*"([A-Z0-9_]+)"\s*,\s*([0-9_]+)\s*,\s*[0-9_]+' + _C),
     # `knob("NAME", rung, 32)` — the LADDER shape (phase-400 W6): env, then
     # Kconfig, then the platform/board rung, then the builtin LAST. So the
     # figure this table wants is the third argument, where every other spelling
@@ -82,9 +93,7 @@ KNOB_PATTERNS = [
     # missing. The params tenant's five knobs rendered as "computed — see
     # build.rs:25" -- a line number in a generated table, churning on every
     # edit, in place of the default it exists to publish.
-    re.compile(
-        r'\bknob\(\s*"([A-Z0-9_]+)"\s*,\s*[A-Za-z0-9_.]+\s*,\s*([0-9_]+)\s*\)'
-    ),
+    re.compile(r'\bknob\(\s*"([A-Z0-9_]+)"\s*,\s*[A-Za-z0-9_.]+\s*,\s*([0-9_]+)' + _C),
 ]
 
 # `// nros-pool: NAME = KNOB * KNOB * 4` — products of knobs and integers only.

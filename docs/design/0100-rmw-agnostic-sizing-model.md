@@ -481,18 +481,31 @@ maintainer of that backend reads it.
 | uORB | distinct topic count; subscription count | `REGISTRY_CAPACITY`, `PX4_MAX_CALLBACKS` | **both derived, phase-454 W6.d** |
 | cffi | subscription count; node count; backend count | `RMW_SUBSCRIBER_SLOTS`, `MAX_NODES`, `MAX_BACKENDS` | **all three derived, phase-454 W6.e** |
 
-**Not a derivation, and must not be modelled as one:** cffi's `SLOT_SIZE` is a
-hard 1024, and `insert::<T>()` returns `None` both when every slot is claimed and
-when `size_of::<T>() > 1024`. The caller maps both to `NROS_RMW_RET_BAD_ALLOC`,
-so a backend whose per-subscription state outgrows the slot reports the same
-code as a full pool — and only one of those has a knob. Raising
-`NROS_RMW_SUBSCRIBER_SLOTS` against the size cause buys nothing and costs 1 KiB
-a slot on the platform with the least RAM.
+**Not a derivation, and must not be modelled as one:** the cffi subscriber pool's
+slot WIDTH. No user fact answers "how big is a backend's private state struct",
+so it is not a sizing input — and `size_of::<T>()` is a compile-time quantity, so
+it wants a `const` assertion rather than a runtime return.
 
-No user fact answers "how big is a backend's private state struct", so this is
-**not** a sizing input. `size_of::<T>()` is a compile-time quantity, so it wants
-a `const` assertion rather than a runtime return. Tracked as
-[issue 1322](../issues/1322-cffi-slot-size-overflow-reads-as-pool-exhaustion.md).
+**Settled, issue 1322 (archived).** It was a hard `1024`, and `insert::<T>()`
+returned `None` both when every slot was claimed and when `size_of::<T>()`
+exceeded it, with the caller mapping both to `NROS_RMW_RET_BAD_ALLOC` — one cause
+answerable by `NROS_RMW_SUBSCRIBER_SLOTS` and one answerable by no knob at all,
+so against half the failures the only lever the message named was the wrong one,
+applied in the expensive direction. Two quantities had one lever; they are two
+knobs now:
+
+* the COUNT stays DERIVED (`[image] subscriber_count`, the row above), and
+  `None` from `insert` now means exhaustion and nothing else, said out loud with
+  that knob named and its per-slot cost;
+* the WIDTH is `NROS_RMW_SUBSCRIBER_SLOT_BYTES`, AUTHORED over the RFC-0049
+  ladder (env → `$DOTCONFIG` → `[knobs.rmw] subscriber_slot_bytes` → builtin
+  1024). Its FLOOR is D7's shape and lives at the pool, as a `const` block in
+  `insert::<T>()` — the only place that can see `T`. A short value is a BUILD
+  error naming the type and both numbers; measured on `thumbv7m-none-eabi`,
+  `ZenohSubscriber` is 112 bytes, `64` fails and `112` links.
+
+The two halves therefore resolve by different mechanisms on purpose, which is the
+point of separating them rather than raising the literal.
 
 ## D6 — refusal is per-fact, never global
 
