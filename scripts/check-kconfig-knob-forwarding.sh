@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# issue 0460 — every knob Kconfig forwards must be READ by the Rust lane too.
+# issue 0460 — every knob Kconfig forwards must be READ by the Rust lane too,
+# and it must be read from the RIGHT Kconfig symbol.
 #
 # # The failure this prevents
 #
@@ -18,94 +19,98 @@
 # the cargo-compiled one, which kept the default of 8 while the entries
 # registered eleven capability services.
 #
-# The fix is a `$DOTCONFIG` fallback in each reading build script
-# (`nros_zephyr_build::knob_usize` / `::dotconfig_usize` — one spelling). This
-# gate is what keeps the two lists from drifting apart again: a knob added to
-# the cmake side and not to a reader is one more silently-defaulted image, and
-# nothing else in the build would say so.
+# # What this gate asks NOW, and why it is smaller than it was (phase-468 W4)
 #
-# # What it checks
+# Until W4 there were EIGHT knob ladders, hand-assembled in eight crates out of
+# `knob_usize` / `dotconfig_usize` / a bare `env::var`, and two per-crate
+# `KCONFIG_KNOBS` tables. Most of this gate was about holding those eight
+# shapes to one another: does this file have a table, does that file call the
+# shared helper, is a TABULATING reader's mention of a knob actually a row
+# (issue 1490). There is one ladder now — `nros_zephyr_build::knob()` — and one
+# pairing table beside it, so those arms are asking about a shape nobody can
+# write any more, and they are gone.
 #
-# Every `_nros_resolve_knob(<ENV_NAME> ...)` in the cmake module is either
-# * named in a reader's `KCONFIG_KNOBS` table, or
-# * read through a derived `CONFIG_<ENV_NAME>` lookup (nros-node, xrce-cffi),
-# * or listed in NO_RUST_READER below with a reason.
+# What is KEPT is what the reader cannot express, whatever its shape:
 #
-# # Issue 1490 — a MENTION is not a ROW
+# 1. **Coverage.** A `knob("X")` call site is evidence about `X` and says
+#    nothing about the knob NOBODY named. The 47 forwarded knobs live in a
+#    cmake file no Rust code reads, so only a gate can compare the two lists.
 #
-# For a DERIVED reader, "does this file name the knob" is the right question:
-# those files build the Kconfig name from the env name (`CONFIG_{name}`), so a
-# knob they name is a knob they resolve.
+# 2. **The pairing.** `Knob` derives `CONFIG_<env name>` and consults
+#    `KCONFIG_PAIRS` where the two vocabularies differ
+#    (`ZPICO_SUBSCRIBER_RING_DEPTH` <-> `CONFIG_NROS_SUBSCRIBER_RING_DEPTH`).
+#    Which of those is right for a given knob is the PRODUCER's decision, and
+#    the producer writes it down: most `_nros_resolve_knob()` calls pass a
+#    literal `"${CONFIG_<SYM>}"`. So the pairing is HARVESTED from cmake and
+#    the table is held to it, in both directions — a missing row and a wrong
+#    row are equally the 0460 failure, and the reader cannot know either.
 #
-# For a TABULATING reader it is the wrong question, and was the wrong question
-# for three live knobs. `nros-rmw-zenoh/build.rs` resolves through an AUTHORED
-# table precisely because its env names and its Kconfig names are DIFFERENT
-# WORDS (`ZPICO_SUBSCRIBER_RING_DEPTH` <-> `CONFIG_NROS_SUBSCRIBER_RING_DEPTH`),
-# which no derivation can bridge. So a knob appears in the file — in a
-# `rerun-if-env-changed` line, at the call site — while having no row, and the
-# per-knob arm below was satisfied by the mention.
+# 3. **No bare `env::var("<FORWARDED KNOB>")`** (issue 0751). Still writable,
+#    still yields the crate default on a Zephyr Rust image, still silent.
 #
-# Measured: `CONFIG_NROS_SUBSCRIBER_RING_DEPTH=7` reached a native_sim build's
-# `.config` and the Rust half compiled `4`. Issue 0460, in a tree where the
-# gate for issue 0460 was green.
+# Issue 1490 is why arm 2 reads the producer rather than asking each reader for
+# a row. Its whole finding was "the name APPEARING is not the name being
+# resolved", and the per-crate tables meant one knob could be paired in one
+# crate and unpaired in another — `NROS_EXECUTOR_MAX_NODES` was, which is issue
+# 1233. A pairing is a property of the KNOB.
 #
-# This is issue 0751's finding one arm over — its whole point was "the name
-# APPEARING is not the name being resolved", and its fix hardened the DERIVED
-# arm. Its `env::var("<KNOB>")` probe cannot reach a tabulating reader either:
-# `env_usize` calls `std::env::var(name)` with a VARIABLE, so the literal the
-# probe greps for is never written.
+# # What arm 2 does NOT reach, stated rather than left to be discovered
 #
-# So: a forwarded knob that a tabulating reader mentions, and for which a
-# Kconfig symbol EXISTS, must be a row in that reader's table. A knob with no
-# Kconfig symbol is exempt BY SHAPE — `NROS_DECLARED_*` and `NROS_ENTITY_*` are
-# facts cmake DERIVED for this image, and there is no `$DOTCONFIG` rung for a
-# number cmake computed. Never exempt by name.
+# A knob whose cmake value is a computed variable (`ZPICO_MAX_PUBLISHERS
+# "${_nros_zpico_pubs}"`) declares no symbol at the call site, so its row is
+# authored and unchecked here — 4 of the 16 rows.
+#
+# And arm 1's harvest still reads `_nros_resolve_knob(` only, while 27 knobs are
+# forwarded by `_nros_resolve_derivable_knob(` — issue 1505, and `_knob(` is not
+# a substring of `_derivable_knob(`, so the miss is silent. Arm 2 reads BOTH,
+# because a pairing check needs no reader to exist; widening arm 1 needs a
+# reader or a written exemption for each of those 27 and is that issue's work.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# issue 0726 — the three reader-shape checks below are the `if ! grep -q` shape,
-# whose failure mode is a grep that could not START being reported as "$f has no
-# KCONFIG_KNOBS table": a confident, specific, false claim, and only under load.
+# issue 0726 — the reader-shape check below is the `if ! grep -q` shape, whose
+# failure mode is a grep that could not START being reported as "$f never calls
+# the resolver": a confident, specific, false claim, and only under load.
 # `nros_grep_q` exits 2 on a tool failure instead of returning "no match".
 # shellcheck source=scripts/lib/grep-q.sh
 source scripts/lib/grep-q.sh
 
 CMAKE=zephyr/cmake/nros_cargo_build.cmake
-# Every Kconfig file that can DECLARE one of these symbols. Issue 1490's row
-# test asks "does a symbol exist for this knob"; reading one of the two and
-# not the other would answer "no symbol" for a knob that has one, i.e. would
-# exempt exactly the knobs it exists to catch.
-KCONFIG_FILES=(
-    zephyr/Kconfig
-    packages/rmw/zenoh/zpico-zephyr/Kconfig
-)
+# The crate that owns the ladder AND the pairing table. One file, because there
+# is one of each.
+RESOLVER=packages/tooling/nros-zephyr-build/src/lib.rs
+# Every build script that resolves a forwarded knob. ONE list since phase-468
+# W4: the DERIVED/TABULATING split was a property of the two per-crate tables,
+# and both are gone.
 READERS=(
-    packages/rmw/zenoh/nros-zpico-build/src/runner.rs
-    packages/rmw/zenoh/nros-rmw-zenoh/build.rs
-)
-# Readers that derive the Kconfig name (`CONFIG_` + the env name) instead of
-# tabulating pairs. Their knobs are matched by the env name appearing in the
-# file at all.
-DERIVED_READERS=(
+    packages/api/nros/build.rs
     packages/core/nros-node/build.rs
-    packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs
-    # The five parameter-store knobs (NROS_MAX_PARAMETERS,
-    # NROS_MAX_PARAM_NAME_LEN, ...). Added when #0749 taught the cmake side to
-    # forward NROS_MAX_PARAMETERS and this gate found its only reader still on
-    # a plain env::var — which on a Zephyr Rust image reads the crate default
-    # whatever Kconfig says (issue 0460).
     packages/core/nros-params/build.rs
-    # The three RMW sizing knobs (NROS_RMW_MAX_BACKENDS,
-    # NROS_RMW_SUBSCRIBER_SLOTS, NROS_RMW_MESSAGE_INFO_SLOTS). Added when
-    # #0752 forwarded SUBSCRIBER_SLOTS and this file was still env-only.
-    packages/rmw/cffi/build.rs
-    # phase-8 — NROS_ZEPHYR_HEAP_SIZE, the rlsf arena behind the Zephyr
-    # allocation funnel. Resolved here rather than with `option_env!` in source
-    # for both reasons this gate exists: a bare environment read misses
-    # `$DOTCONFIG` on the Rust lane, and with no build script cargo never
-    # invalidates on a change to the knob.
     packages/platform/nros-platform/build.rs
+    packages/rmw/cffi/build.rs
+    packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs
+    packages/rmw/zenoh/nros-rmw-zenoh/build.rs
+    packages/rmw/zenoh/nros-zpico-build/src/runner.rs
+)
+
+# A reader whose env front-end is INJECTED by one of the readers above.
+#
+# `nros-platform-config` resolves the zenoh tx and wire tenants over the
+# RFC-0049 ladder and takes its environment as a parameter
+# (`env: &dyn Fn(&str) -> Option<String>`), because it must serve `nros config
+# explain` as well as a build. `nros-zpico-build`'s runner hands it
+# `Knob::stated_str`, so those seven knobs DO reach `$DOTCONFIG` — but the
+# literals live here, one crate away from the call that resolves them.
+#
+# Each row is `<path>|<token a caller must name>`: the injected reader only
+# counts once a listed READER reaches it, exactly as a MANIFEST_READER only
+# counts once something parses it. Before phase-468 W4 these seven were covered
+# by their rows in the zpico runner's own `KCONFIG_KNOBS` table — which is
+# issue 1490's mention test wearing a pairing, and is why the shape is written
+# down now rather than re-satisfied by a row.
+INJECTED_READERS=(
+    "packages/tooling/nros-platform-config/src/platform_config.rs|platform_config::"
 )
 
 # phase-420 W9 — a reader may name its knobs in a shared MANIFEST rather than in
@@ -116,11 +121,11 @@ DERIVED_READERS=(
 #
 # The names appear UNQUOTED there (a whitespace-separated column), so this list
 # is matched with a word-boundary grep rather than the `"NAME"` literal the
-# source readers use. A manifest only counts once something reads it: each entry
-# names the readers that must appear in DERIVED_READERS above, and those are
-# already held to the `nros_zephyr_build` requirement, so the `$DOTCONFIG` rung
-# issue 0751 is about is still proved — by the file that resolves the knob, not
-# by the file that lists it.
+# source readers use. A manifest only counts once something reads it: the
+# consumption check at the bottom proves a READER parses it, and every reader is
+# held to the resolver requirement, so the `$DOTCONFIG` rung issue 0751 is about
+# is still proved — by the file that resolves the knob, not the file that lists
+# it.
 MANIFEST_READERS=(
     packages/rmw/xrce/xrce-config.txt
 )
@@ -134,88 +139,134 @@ NO_RUST_READER=(
     XRCE_TRANSPORT_MTU
 )
 
-[ -f "$CMAKE" ] || { echo "[FAIL] missing $CMAKE" >&2; exit 1; }
+# --- pure harvests, so the self-test can drive them on synthetic text --------
 
-# `|| true`: "no calls found" is this gate's own negative control, and grep
-# reports it as exit 1 — which under pipefail would kill the gate before it
-# could say so, turning a loud [FAIL] into a bare status (issue 1249).
-knobs="$(grep -oE '_nros_resolve_knob\(([A-Z0-9_]+)' "$CMAKE" \
-    | sed 's/^_nros_resolve_knob(//' | sort -u || true)"
-[ -n "$knobs" ] || { echo "[FAIL] no _nros_resolve_knob() calls found in $CMAKE" >&2; exit 1; }
-
-# --- issue 1490 -------------------------------------------------------------
-# The Kconfig symbols that EXIST, and each tabulating reader's table ROWS.
-# Harvested once; both are inputs to the per-knob row test below.
-declared_symbols=""
-for kf in "${KCONFIG_FILES[@]}"; do
-    [ -f "$kf" ] || { echo "[FAIL] KCONFIG_FILES names missing $kf" >&2; exit 1; }
-    declared_symbols="$declared_symbols
-$(sed -n 's/^config \([A-Z0-9_]*\).*/CONFIG_\1/p' "$kf")"
-done
-[ -n "$(echo "$declared_symbols" | tr -d '[:space:]')" ] || {
-    echo "[FAIL] no 'config <SYMBOL>' lines found in ${KCONFIG_FILES[*]}" >&2
-    echo "       — with no symbols harvested the row test below exempts" >&2
-    echo "       every knob, which is how this gate would pass while saying" >&2
-    echo "       nothing (issue 1490)." >&2
-    exit 1
+# ENV names of every `_nros_resolve_knob(<NAME>` call. stdin: cmake text.
+forwarded_knobs() {
+    grep -oE '_nros_resolve_knob\(([A-Z0-9_]+)' | sed 's/^_nros_resolve_knob(//' | sort -u
 }
 
-# The Kconfig symbol a knob would use, or empty when none exists. Both
-# spellings the tree uses: the env name verbatim, and the `NROS_`-prefixed
-# form the RMW knobs take (`ZPICO_X` -> `CONFIG_NROS_X`).
-kconfig_symbol_for() {
-    local knob=$1 base=${1#ZPICO_} cand
-    base=${base#NROS_}; base=${base#XRCE_}
-    for cand in "CONFIG_$knob" "CONFIG_NROS_$base"; do
-        # Here-string, never a pipe: under `set -o pipefail` an early-exiting
-        # matcher SIGPIPEs the writer and 141 becomes the status, so a MATCH
-        # reads as a miss (issue 1077) — which here would silently exempt the
-        # knob whose symbol it just found.
-        if nros_grep_q -x -- "$cand" <<<"$declared_symbols"; then
-            printf '%s' "$cand"
-            return 0
+# `<ENV> <CONFIG_SYM>` for every call whose VALUE is a bare `"${CONFIG_...}"`
+# reference — the producer writing the pairing down. Both spellings of the
+# helper, because this arm needs no reader to exist. stdin: cmake text.
+declared_pairings() {
+    tr '\n' ' ' \
+        | grep -oE '_nros_resolve(_derivable)?_knob\([A-Z0-9_]+[[:space:]]+"\$\{CONFIG_[A-Z0-9_]+\}"' \
+        | sed -E 's/^_nros_resolve(_derivable)?_knob\(//; s/[[:space:]]+"\$\{/ /; s/\}"$//' \
+        | sort -u
+}
+
+# `<ENV> <CONFIG_SYM>` for every `KCONFIG_PAIRS` row. rustfmt splits a long pair
+# across four lines, so flatten first. stdin: the resolver's source.
+pairing_rows() {
+    tr '\n' ' ' \
+        | grep -oE '"[A-Z0-9_]+"[[:space:]]*,[[:space:]]*"CONFIG_[A-Z0-9_]+"' \
+        | sed -E 's/"//g; s/[[:space:]]*,[[:space:]]*/ /' \
+        | sort -u
+}
+
+# The Kconfig symbol `Knob` will use for $1, given the rows in $2. This mirrors
+# `nros_zephyr_build::kconfig_key_for` and must keep mirroring it.
+reader_key_for() {
+    local knob=$1 rows=$2 hit
+    hit="$(awk -v k="$knob" '$1 == k { print $2; exit }' <<<"$rows")"
+    if [ -n "$hit" ]; then printf '%s' "$hit"; else printf 'CONFIG_%s' "$knob"; fi
+}
+
+# Arm 2. $1: cmake text, $2: resolver text. Prints failures; returns 1 on any.
+check_pairings() {
+    local cmake_text=$1 resolver_text=$2
+    local pairings rows bad=0 knob sym want
+    pairings="$(declared_pairings <<<"$cmake_text")"
+    rows="$(pairing_rows <<<"$resolver_text")"
+    if [ -z "$pairings" ]; then
+        echo "[FAIL] no '_nros_resolve_knob(<NAME> \"\${CONFIG_...}\")' pairings" >&2
+        echo "       harvested — with none, this arm checks nothing while" >&2
+        echo "       printing a number (issue 1490's shape, one level up)." >&2
+        return 1
+    fi
+    while read -r knob sym; do
+        [ -n "$knob" ] || continue
+        want="$(reader_key_for "$knob" "$rows")"
+        if [ "$want" != "$sym" ]; then
+            echo "[FAIL] $CMAKE forwards $knob from $sym, and the Rust lane" >&2
+            echo "       resolves it from $want." >&2
+            echo "       On a Zephyr Rust image that reads the crate default" >&2
+            echo "       whatever Kconfig says (issues 0460, 1490)." >&2
+            echo "       Fix the row in $RESOLVER's KCONFIG_PAIRS:" >&2
+            echo "         (\"$knob\", \"$sym\")," >&2
+            bad=1
         fi
-    done
+    done <<<"$pairings"
+    return "$bad"
+}
+
+self_test() {
+    # Negative controls for arm 2, on synthetic text. A pairing gate that
+    # cannot fail is the thing issue 1490 found: green, specific and silent.
+    local cmake_ok cmake_bad rows_ok rows_empty
+    cmake_ok='_nros_resolve_knob(ZPICO_RING "${CONFIG_NROS_RING}")
+_nros_resolve_derivable_knob(NROS_PLAIN "${CONFIG_NROS_PLAIN}")'
+    rows_ok='const KCONFIG_PAIRS: &[(&str, &str)] = &[("ZPICO_RING", "CONFIG_NROS_RING")];'
+    rows_empty='const KCONFIG_PAIRS: &[(&str, &str)] = &[];'
+
+    check_pairings "$cmake_ok" "$rows_ok" 2>/dev/null \
+        || { echo "[FAIL] selftest: a correct pairing was rejected" >&2; return 1; }
+    # A knob whose two names are DIFFERENT WORDS and has no row: issue 1490's
+    # exact defect, which the mention test passed over.
+    if check_pairings "$cmake_ok" "$rows_empty" 2>/dev/null; then
+        echo "[FAIL] selftest: a MISSING pairing row was accepted" >&2
+        return 1
+    fi
+    # A row pointing at the wrong symbol — the failure a per-reader row test
+    # could never see, because a row EXISTED.
+    if check_pairings "$cmake_ok" \
+        'const KCONFIG_PAIRS: &[(&str, &str)] = &[("ZPICO_RING", "CONFIG_NROS_WRONG")];' \
+        2>/dev/null; then
+        echo "[FAIL] selftest: a WRONG pairing row was accepted" >&2
+        return 1
+    fi
+    # A derived-identical knob must need no row, or every reader is forced to
+    # author 33 rows that state what the derivation already computes.
+    check_pairings '_nros_resolve_knob(NROS_PLAIN "${CONFIG_NROS_PLAIN}")' "$rows_empty" \
+        2>/dev/null \
+        || { echo "[FAIL] selftest: a derived-identical knob demanded a row" >&2; return 1; }
+    # And the harvest itself must be able to come up empty loudly.
+    cmake_bad='# nothing here forwards anything'
+    if check_pairings "$cmake_bad" "$rows_ok" 2>/dev/null; then
+        echo "[FAIL] selftest: an EMPTY cmake harvest was accepted" >&2
+        return 1
+    fi
     return 0
 }
 
-# A reader's KCONFIG_KNOBS rows: the ENV name of each `("<ENV>", "CONFIG_...")`
-# pair, whitespace and line breaks between the two allowed (rustfmt splits a
-# long pair across four lines).
-table_rows_of() {
-    local flat
-    flat="$(tr '\n' ' ' < "$1")"
-    grep -oE '"[A-Z0-9_]+"[[:space:]]*,[[:space:]]*"CONFIG_[A-Z0-9_]+"' <<<"$flat" \
-        | sed 's/^"//; s/".*//'
-}
+[ -f "$CMAKE" ] || { echo "[FAIL] missing $CMAKE" >&2; exit 1; }
+[ -f "$RESOLVER" ] || { echo "[FAIL] missing $RESOLVER" >&2; exit 1; }
+
+self_test || exit 1
 
 fail=0
+
+# --- arm 2: the pairing the reader cannot know ------------------------------
+check_pairings "$(cat "$CMAKE")" "$(cat "$RESOLVER")" || fail=1
+
+# --- arm 1: coverage of the cmake list --------------------------------------
+# `|| true`: "no calls found" is this gate's own negative control, and grep
+# reports it as exit 1 — which under pipefail would kill the gate before it
+# could say so, turning a loud [FAIL] into a bare status (issue 1249).
+knobs="$(forwarded_knobs < "$CMAKE" || true)"
+[ -n "$knobs" ] || { echo "[FAIL] no _nros_resolve_knob() calls found in $CMAKE" >&2; exit 1; }
+
 checked=0
 for knob in $knobs; do
     checked=$((checked + 1))
     found=0
-    for f in "${READERS[@]}" "${DERIVED_READERS[@]}"; do
+    injected_paths=()
+    for row in "${INJECTED_READERS[@]}"; do injected_paths+=("${row%%|*}"); done
+    for f in "${READERS[@]}" "${injected_paths[@]}"; do
         [ -f "$f" ] || continue
         if nros_grep_q -F "\"$knob\"" "$f"; then
             found=1
-            # issue 1490 — for a TABULATING reader the mention above proves
-            # nothing. Demand the row, whenever a Kconfig symbol exists for
-            # this knob to carry.
-            readers_list="$(printf '%s\n' "${READERS[@]}")"
-            if nros_grep_q -xF -- "$f" <<<"$readers_list"; then
-                sym="$(kconfig_symbol_for "$knob")"
-                rows="$(table_rows_of "$f")"
-                if [ -n "$sym" ] && ! nros_grep_q -x -- "$knob" <<<"$rows"; then
-                    echo "[FAIL] $f names forwarded knob $knob but has no" >&2
-                    echo "       KCONFIG_KNOBS row for it, while $sym EXISTS." >&2
-                    echo "       This reader tabulates because its env names and its" >&2
-                    echo "       Kconfig names are different words, so a mention" >&2
-                    echo "       resolves nothing: on a Zephyr Rust image the crate" >&2
-                    echo "       default wins whatever Kconfig says (issues 0460, 1490)." >&2
-                    echo "       Add:  (\"$knob\", \"$sym\")," >&2
-                    fail=1
-                fi
-            fi
             # issue 0751 — the name APPEARING is not the name being resolved
             # through `$DOTCONFIG`. A forwarded knob read with a bare
             # `env::var("<KNOB>")` yields the crate DEFAULT on a Zephyr Rust
@@ -229,7 +280,7 @@ for knob in $knobs; do
                 echo "[FAIL] $f reads forwarded knob $knob with a bare env::var" >&2
                 echo "       On a Zephyr Rust image that yields the crate default" >&2
                 echo "       whatever Kconfig says (issue 0460). Resolve it with" >&2
-                echo "       nros_zephyr_build::knob_usize() instead." >&2
+                echo "       nros_zephyr_build::knob() instead." >&2
                 fail=1
             fi
             break
@@ -256,30 +307,37 @@ for knob in $knobs; do
     fi
 done
 
-# The tabulating readers must route their rows through the shared helper — a
-# table nobody consults is the same silence with extra steps.
+# --- arm 3: a listed reader must reach the ONE ladder -----------------------
+# Every reader used to be held to `nros_zephyr_build::(knob_usize|dotconfig_usize)`,
+# an alternation that could grow a third member and did. One spelling now.
 for f in "${READERS[@]}"; do
-    [ -f "$f" ] || continue
-    nros_grep_q 'KCONFIG_KNOBS' "$f" || {
-        echo "[FAIL] $f has no KCONFIG_KNOBS table" >&2; fail=1; continue
-    }
-    nros_grep_q 'nros_zephyr_build::\(knob_usize\|dotconfig_usize\)' "$f" || {
-        echo "[FAIL] $f never calls the shared \`nros_zephyr_build\` fallback" >&2; fail=1
+    [ -f "$f" ] || { echo "[FAIL] READERS names missing $f" >&2; fail=1; continue; }
+    nros_grep_q -F 'nros_zephyr_build::knob(' "$f" || {
+        echo "[FAIL] $f is listed as a knob reader but never calls" >&2
+        echo "       nros_zephyr_build::knob() — so nothing it names is actually" >&2
+        echo "       resolved from \$DOTCONFIG (issues 0751, 0460)." >&2
+        fail=1
     }
 done
 
-# Derived readers must route through the shared helper too. The tabulating
-# readers above are already held to this; the derived arm was not, which is the
-# asymmetry issue 0751 records — its whole check is "the name appears", and a
-# file can satisfy that while resolving nothing from `$DOTCONFIG`.
-for f in "${DERIVED_READERS[@]}"; do
-    [ -f "$f" ] || continue
-    nros_grep_q 'nros_zephyr_build::\(knob_usize\|dotconfig_usize\)' "$f" || {
-        echo "[FAIL] $f is listed as a derived reader but never calls the" >&2
-        echo "       shared nros_zephyr_build fallback — so nothing it names" >&2
-        echo "       is actually resolved from \$DOTCONFIG (issue 0751)." >&2
+# An injected reader is only a reader if a listed READER hands it the ladder.
+# Naming the file without that is a knob resolved by an accessor nobody supplied.
+for row in "${INJECTED_READERS[@]}"; do
+    f="${row%%|*}"; token="${row##*|}"
+    [ -f "$f" ] || { echo "[FAIL] INJECTED_READERS names missing $f" >&2; fail=1; continue; }
+    reached=0
+    for r in "${READERS[@]}"; do
+        [ -f "$r" ] || continue
+        # COMMENTS STRIPPED — every reader also discusses this crate in prose.
+        stripped="$(sed 's|//.*||' "$r")"
+        nros_grep_q -F -- "$token" <<<"$stripped" && { reached=1; break; }
+    done
+    if [ "$reached" = 0 ]; then
+        echo "[FAIL] $f is listed as an injected knob reader but no READER" >&2
+        echo "       names \`$token\` — so nothing hands it the ladder and the" >&2
+        echo "       knobs it states are resolved from the environment only." >&2
         fail=1
-    }
+    fi
 done
 
 # A manifest reader is only a reader if a lane actually consumes it. Listing a
@@ -288,7 +346,7 @@ done
 for f in "${MANIFEST_READERS[@]}"; do
     [ -f "$f" ] || { echo "[FAIL] MANIFEST_READERS names missing $f" >&2; fail=1; continue; }
     consumed=0
-    for r in "${READERS[@]}" "${DERIVED_READERS[@]}"; do
+    for r in "${READERS[@]}"; do
         [ -f "$r" ] || continue
         # COMMENTS STRIPPED, and the full repo-relative path, not the basename.
         # Every one of these readers also NAMES the manifest in prose, so a
@@ -308,9 +366,12 @@ done
 if [ "$fail" != 0 ]; then
     echo "" >&2
     echo "  A Zephyr RUST image inherits none of cmake's set(ENV{...}) knob" >&2
-    echo "  exports (issue 0460). Add the knob to a reader's KCONFIG_KNOBS" >&2
-    echo "  table and resolve it with nros_zephyr_build::knob_usize()." >&2
+    echo "  exports (issue 0460). Resolve the knob with" >&2
+    echo "  nros_zephyr_build::knob(\"<ENV NAME>\"), and give it a" >&2
+    echo "  KCONFIG_PAIRS row only if its Kconfig symbol is not CONFIG_<ENV NAME>." >&2
     exit 1
 fi
 
-echo "kconfig-knob-forwarding OK — $checked forwarded knob(s), each read by the Rust lane."
+pairings_checked="$(declared_pairings < "$CMAKE" | wc -l)"
+echo "kconfig-knob-forwarding OK — $checked forwarded knob(s) each read by the Rust" \
+     "lane, $pairings_checked cmake-declared pairing(s) matched against KCONFIG_PAIRS."
