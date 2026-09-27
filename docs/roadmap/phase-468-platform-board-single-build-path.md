@@ -247,15 +247,35 @@ which of the two it is affecting, in those words.
 Boards have largely converged already, so this item is mostly about keeping
 that true rather than making it true.
 
-- [ ] A gate: a `packages/boards/*/build.rs` that compiles C or resolves a
+- [x] A gate: a `packages/boards/*/build.rs` that compiles C or resolves a
       vendored source tree routes through `nros-board-common`, or states why
-      not. The linker-script three are the exemptions and each carries a
-      reason.
-- [ ] The per-family modules are reachable from where they claim to be
+      not. **Landed in `5fb6f4bed` (`scripts/check-board-build-wiring.py`);
+      the boxes went unticked for two days, which is the shape this campaign
+      keeps finding one level up — a record that says "not done" about work
+      that is.** Re-verified 2026-09-27: 13 board build scripts, 6 compile C,
+      all six routed, and the gate sits in `just/check/platform.just` where
+      `check-default-gates-run-somewhere` confirms a merge-gating event
+      reaches it.
+
+      **The sentence above about "the linker-script three are the exemptions"
+      was a PREDICTION, and it is refuted — there are ZERO exemptions.** The
+      gate scopes on a MEASURED property (does this script call `cc::Build`),
+      not on a name list, so `mps2-an385-pac`, `nros-board-mps2-an385` and
+      `nros-board-nuttx` are simply out of scope: they emit a linker script
+      and compile no C. Exempt BY SHAPE, never by name — the same rule
+      `check-workspace-root-build-files` uses for a single-package template,
+      and strictly stronger than the authored list this box expected, because
+      a new board that starts compiling C enters scope without anyone
+      remembering to remove it from a list. The `// nros-board-common-exempt:
+      <reason>` marker exists and is self-tested in both directions (a reason
+      counts, an empty one does not); nothing in the tree needs it.
+- [x] The per-family modules are reachable from where they claim to be
       (`policy` is reached only by `nros-zpico-build`, `threadx_config` only
       through a `pub use` re-export — both legitimate, both invisible to a
       `nros_board_common::<mod>` grep, which is how a review nearly reported
-      them dead).
+      them dead). Re-verified: `policy` from `nros-zpico-build`'s `lib.rs` and
+      `runner.rs`, `threadx_config` at `nros-board-common/src/lib.rs:44-45`
+      (`pub mod` + `pub use threadx_config::ThreadxConfig`).
 
 ## W4 — knob READING, the one that is not mostly done
 
