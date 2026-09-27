@@ -39,17 +39,33 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBootstrap.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRuntimeUmbrella.cmake")
 
 # ---------------------------------------------------------------------------
-# _nros_infer_lang(<out_var> <sources…>)
-#   CPP if any source has a C++ extension, else C. Mirrors the inference
-#   `nano_ros_entry` does so the verb and the entry agree on LANG.
+# _nros_infer_lang(<out_var> <sources…>)                    (phase-469 S3)
+#   Which language these sources are, ASKED — `nros_language_of_sources()` in
+#   NanoRosCodegenCore.cmake, the one producer, shared with `nano_ros_entry()`
+#   and `nano_ros_node_register()`.
+#
+#   This used to match `\\.(cpp|cxx|cc|C)$` here and fall through to `c`, one of
+#   three copies of that inference in this tree. "Mirrors the inference
+#   nano_ros_entry does" is what the old comment claimed, and it was a claim
+#   nothing checked: the third copy, in `nano_ros_node_register()`, fell through
+#   the OTHER way (anything not exactly `.c` became CPP), so an unmapped
+#   spelling was C here and C++ there.
+#
+#   THE DEFAULT IS STATED, NOT INHERITED: an unresolved list — no sources, or
+#   only files that carry no language — reads `c` here, which is what the old
+#   fallthrough produced for exactly these inputs. Every verb in this file
+#   creates a C-family target, so `c` is the conservative answer: it sets
+#   LINKER_LANGUAGE C and skips the C++ umbrella rather than dragging a second
+#   Rust staticlib in.
 # ---------------------------------------------------------------------------
 function(_nros_infer_lang out_var)
-    set(_lang c)
-    foreach(_src ${ARGN})
-        if(_src MATCHES "\\.(cpp|cxx|cc|C)$")
-            set(_lang cpp)
-        endif()
-    endforeach()
+    nros_language_of_sources(_lang
+        CONTEXT "${PROJECT_NAME}"
+        SOURCES ${ARGN})
+    if(NOT _lang)
+        set(_lang c)
+    endif()
+    message(VERBOSE "nano-ros: ${PROJECT_NAME}: verb language ${_lang}")
     set(${out_var} "${_lang}" PARENT_SCOPE)
 endfunction()
 

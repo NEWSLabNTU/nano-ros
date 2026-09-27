@@ -94,6 +94,213 @@ impl Language {
     }
 }
 
+/// What one source file's SPELLING says about the language that compiles it.
+///
+/// Three answers, not two, because a file list legitimately contains files
+/// that decide nothing — and collapsing "decides nothing" into a language is
+/// the whole defect (issue 1062, and the three cmake copies phase-469 S3
+/// removes).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceVerdict {
+    /// The extension names a translation unit in this language.
+    Decides(Language),
+    /// A legitimate source entry that names no language. A `.h` is C or C++
+    /// and the file cannot say which; an assembly TU is neither; a cmake
+    /// generator expression is not a filename at all.
+    Abstains,
+}
+
+/// Extensions that DECIDE, as data. Lower-cased before lookup except where the
+/// case is the distinction: `.C` is a C++ TU to every C++ compiler while `.c`
+/// is a C one, so that pair is matched before folding case.
+const DECIDING: &[(&str, Language)] = &[
+    ("c", Language::C),
+    ("cpp", Language::Cpp),
+    ("cxx", Language::Cpp),
+    ("cc", Language::Cpp),
+    ("c++", Language::Cpp),
+    ("rs", Language::Rust),
+];
+
+/// Extensions that ABSTAIN. Headers are not translation units and a `.h` does
+/// not know its own language; `.s`/`.S` are assembly. Listing them is what
+/// makes the refusal below meaningful — without an abstain set, "not a source
+/// language" and "a spelling nobody taught us" would be one answer.
+const ABSTAINING: &[&str] = &["h", "hpp", "hh", "hxx", "h++", "inc", "ipp", "def", "s"];
+
+impl Language {
+    /// Which language compiles this source path — the ONE producer of that
+    /// answer (RFC-0091 §3; phase-469 S3).
+    ///
+    /// # Why it can refuse
+    ///
+    /// Before this existed the answer was inferred in five places — three cmake
+    /// sites, `orchestration::workspace`, and `cmd::build` — and every one of
+    /// them was TOTAL: each mapped an unrecognised spelling onto a language
+    /// rather than saying it did not know. Two mapped it to `c` (any source
+    /// without a C++ extension) and one to `cpp` (any source whose extension
+    /// was not exactly `.c`), so the same `Cargo.toml` in a `SOURCES` list was
+    /// C to one reader and C++ to another. Neither answer is right, and the
+    /// wrong one lands as a link error against symbols the other ABI never
+    /// emitted, or as a TU handed to the wrong compiler.
+    ///
+    /// So an unknown spelling is an ERROR naming what was seen, and a spelling
+    /// that is a real source but names no language is `Abstains` — which the
+    /// caller resolves with a default it states OUT LOUD, rather than one
+    /// hidden in a fallthrough.
+    pub fn of_source(path: &str) -> Result<SourceVerdict, UnknownSourceExtension> {
+        // A cmake generator expression is not a path. It can carry `.` and a
+        // trailing `>`, so extension-splitting it produces nonsense; it names
+        // object files whose own language is decided elsewhere.
+        if path.contains("$<") {
+            return Ok(SourceVerdict::Abstains);
+        }
+        // The extension is what follows the last `.` in the last path
+        // component. A dot in a DIRECTORY name (`build-1.2/main.c`, and the
+        // extensionless `src/Makefile` beside it) must not be read as one.
+        let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
+        let Some((_, ext)) = name.rsplit_once('.') else {
+            return Err(UnknownSourceExtension {
+                path: String::from(path),
+            });
+        };
+        if ext.is_empty() {
+            return Err(UnknownSourceExtension {
+                path: String::from(path),
+            });
+        }
+        // `.C` vs `.c` is the one place case IS the fact.
+        if ext == "C" {
+            return Ok(SourceVerdict::Decides(Language::Cpp));
+        }
+        let mut lowered = String::new();
+        for ch in ext.chars() {
+            for lc in ch.to_lowercase() {
+                lowered.push(lc);
+            }
+        }
+        for (candidate, lang) in DECIDING {
+            if *candidate == lowered.as_str() {
+                return Ok(SourceVerdict::Decides(*lang));
+            }
+        }
+        for candidate in ABSTAINING {
+            if *candidate == lowered.as_str() {
+                return Ok(SourceVerdict::Abstains);
+            }
+        }
+        Err(UnknownSourceExtension {
+            path: String::from(path),
+        })
+    }
+
+    /// Fold a source list into the one language that compiles the target, or
+    /// `None` when the list settles nothing.
+    ///
+    /// C++ WINS over C, which is not a tie-break but the linker's rule: a
+    /// target holding one C++ TU needs the C++ driver and the C++ runtime
+    /// umbrella. Rust cannot be mixed in — a Rust source beside a C-family one
+    /// is a target with two link roots, which is a caller error rather than a
+    /// language to pick.
+    ///
+    /// `None` is the issue-1062 answer, kept deliberately distinct from `C`:
+    /// "every source is a C file" and "this list told me nothing" had one
+    /// spelling, and the second is common — a `SOURCES ${var}` that expands to
+    /// nothing, or a list of headers.
+    pub fn of_sources<'a, I>(sources: I) -> Result<Option<Language>, SourceLanguageError>
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        let mut c_family: Option<Language> = None;
+        let mut rust = false;
+        for src in sources {
+            match Language::of_source(src)? {
+                SourceVerdict::Abstains => {}
+                SourceVerdict::Decides(Language::Rust) => rust = true,
+                SourceVerdict::Decides(Language::Cpp) => c_family = Some(Language::Cpp),
+                SourceVerdict::Decides(Language::C) => {
+                    if c_family.is_none() {
+                        c_family = Some(Language::C);
+                    }
+                }
+            }
+        }
+        match (rust, c_family) {
+            (true, Some(other)) => Err(SourceLanguageError::Mixed(other)),
+            (true, None) => Ok(Some(Language::Rust)),
+            (false, answer) => Ok(answer),
+        }
+    }
+}
+
+/// Why a source list produced no language.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SourceLanguageError {
+    /// A spelling this table does not know.
+    Unknown(UnknownSourceExtension),
+    /// Rust sources beside C-family ones: two link roots in one target.
+    Mixed(Language),
+}
+
+impl From<UnknownSourceExtension> for SourceLanguageError {
+    fn from(e: UnknownSourceExtension) -> Self {
+        SourceLanguageError::Unknown(e)
+    }
+}
+
+impl fmt::Display for SourceLanguageError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SourceLanguageError::Unknown(e) => e.fmt(f),
+            SourceLanguageError::Mixed(other) => write!(
+                f,
+                "sources mix rust with {other}: a target has one link root, so \
+                 state the language rather than inferring it"
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for SourceLanguageError {}
+
+/// `Language::of_source` was given a spelling the table does not know.
+///
+/// It names the PATH rather than the extension: a build script's list is
+/// usually variable-expanded, so the extension alone does not say which entry
+/// to edit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnknownSourceExtension {
+    pub path: String,
+}
+
+impl fmt::Display for UnknownSourceExtension {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "source `{}` has no known language extension (deciding: ",
+            self.path
+        )?;
+        for (i, (ext, _)) in DECIDING.iter().enumerate() {
+            if i > 0 {
+                f.write_str(", ")?;
+            }
+            write!(f, ".{ext}")?;
+        }
+        f.write_str("; .C is C++; carrying no language: ")?;
+        for (i, ext) in ABSTAINING.iter().enumerate() {
+            if i > 0 {
+                f.write_str(", ")?;
+            }
+            write!(f, ".{ext}")?;
+        }
+        f.write_str(")")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for UnknownSourceExtension {}
+
 impl fmt::Display for Language {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
@@ -170,6 +377,119 @@ mod tests {
         let err = Language::parse("zig").expect_err("not a language yet");
         assert_eq!(err.input, "zig");
         assert!(err.to_string().contains("zig"), "{err}");
+    }
+
+    /// The table decides what the tree actually passes, in the casing the
+    /// compilers care about. `.C` is C++ and `.c` is C: folding case first
+    /// would make one of them wrong, silently, in a file list.
+    #[test]
+    fn deciding_extensions_decide() {
+        for (path, lang) in [
+            ("src/main.c", Language::C),
+            ("src/main.cpp", Language::Cpp),
+            ("src/main.cxx", Language::Cpp),
+            ("src/main.cc", Language::Cpp),
+            ("src/main.C", Language::Cpp),
+            ("src/lib.rs", Language::Rust),
+            ("/abs/CAPS.CPP", Language::Cpp),
+        ] {
+            assert_eq!(
+                Language::of_source(path).expect(path),
+                SourceVerdict::Decides(lang),
+                "{path}"
+            );
+        }
+    }
+
+    /// A header is not a translation unit and a `.h` does not know its own
+    /// language. Abstaining is what lets the refusal below mean something.
+    #[test]
+    fn headers_and_genexes_abstain() {
+        for path in [
+            "include/x.h",
+            "include/x.hpp",
+            "boot.s",
+            "$<TARGET_OBJECTS:o>",
+        ] {
+            assert_eq!(
+                Language::of_source(path).expect(path),
+                SourceVerdict::Abstains,
+                "{path}"
+            );
+        }
+    }
+
+    /// The refusal direction. Each of these was silently a language before:
+    /// `Cargo.toml` read as C++ in `nano_ros_node_register` (anything not
+    /// `.c`) and as C in `nano_ros_add_node` (anything without a C++
+    /// extension). The message must name the path, because a build script's
+    /// list is usually variable-expanded.
+    #[test]
+    fn an_unknown_spelling_is_refused_and_named() {
+        for path in ["Cargo.toml", "src/main.zig", "Makefile", "src/weird."] {
+            let err = Language::of_source(path).expect_err(path);
+            assert_eq!(err.path, path);
+            assert!(err.to_string().contains(path), "{err}");
+        }
+    }
+
+    /// A dot in a DIRECTORY name is not an extension.
+    #[test]
+    fn only_the_last_component_carries_the_extension() {
+        assert_eq!(
+            Language::of_source("build-1.2/main.c").expect("path"),
+            SourceVerdict::Decides(Language::C)
+        );
+        assert!(Language::of_source("build-1.2/Makefile").is_err());
+    }
+
+    /// The fold: C++ wins over C (the linker's rule, not a tie-break), an
+    /// all-abstaining or empty list settles nothing, and `None` stays distinct
+    /// from `C` — that collapse is issue 1062.
+    #[test]
+    fn the_fold_lets_cpp_win_and_keeps_unresolved_distinct() {
+        let empty: [&str; 0] = [];
+        assert_eq!(Language::of_sources(empty).expect("empty"), None);
+        assert_eq!(
+            Language::of_sources(["a.h", "b.hpp"]).expect("headers"),
+            None
+        );
+        assert_eq!(Language::of_sources(["a.c"]).expect("c"), Some(Language::C));
+        assert_eq!(
+            Language::of_sources(["a.c", "b.cpp"]).expect("mixed c family"),
+            Some(Language::Cpp)
+        );
+        assert_eq!(
+            Language::of_sources(["b.cpp", "a.c"]).expect("order must not matter"),
+            Some(Language::Cpp)
+        );
+        assert_eq!(
+            Language::of_sources(["lib.rs"]).expect("rust"),
+            Some(Language::Rust)
+        );
+    }
+
+    /// Rust beside a C-family TU is two link roots in one target, so it is
+    /// refused rather than resolved to either.
+    #[test]
+    fn rust_beside_c_family_is_refused() {
+        let err = Language::of_sources(["lib.rs", "shim.c"]).expect_err("two link roots");
+        assert_eq!(err, SourceLanguageError::Mixed(Language::C));
+        assert!(err.to_string().contains("rust"), "{err}");
+    }
+
+    /// Every deciding extension folds to a `Language` that is in `ALL`, and no
+    /// extension is in both tables — a spelling that both decides and abstains
+    /// would make the answer depend on lookup order.
+    #[test]
+    fn the_two_extension_tables_are_disjoint_and_land_in_all() {
+        for (ext, lang) in DECIDING {
+            assert!(Language::ALL.contains(lang), ".{ext} names {lang:?}");
+            assert!(
+                !ABSTAINING.contains(ext),
+                ".{ext} is in both tables; the answer would depend on lookup order"
+            );
+        }
     }
 
     /// `ALL` must stay exhaustive. A variant added without extending it makes

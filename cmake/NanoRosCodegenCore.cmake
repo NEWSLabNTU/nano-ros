@@ -907,6 +907,107 @@ function(_nros_generated_header_dir _out)
     endif()
 endfunction()
 
+# ---------------------------------------------------------------------------
+# nros_language_of_sources(<out_var> CONTEXT <who> SOURCES <files…>)
+#                                                        (phase-469 S3)
+#
+# WHICH LANGUAGE COMPILES THIS SOURCE LIST — asked, not re-derived.
+#
+# The answer is `c`, `cpp`, `rust`, or EMPTY when the list settles nothing (no
+# sources, or only files that carry no language: headers, assembly, a generator
+# expression). The caller owns the default it applies to the empty answer, and
+# must state it out loud — see the three call sites, which do not agree on it
+# and never did.
+#
+# ## Why this is a CLI query and not a cmake table
+#
+# There were THREE independent copies of this inference — `_nros_infer_lang()`
+# here in the verbs, an inline loop in `nano_ros_entry()`, and a third in
+# `nano_ros_node_register()` — plus two more in Rust
+# (`orchestration::workspace::language_from_sources`, `cmd::build`'s `has_cpp`).
+# A cmake helper would have collapsed the three and left the Rust readers
+# deriving the same answer from their own tables, which is the shape issue 1062
+# already shipped once: two language readers disagreeing, "and the loser is a
+# silent C". `nros_lang::Language::of_sources` is the one producer, reachable by
+# both sides.
+#
+# The three copies did NOT agree, which is the concrete argument:
+#
+#   * `_nros_infer_lang` / `nano_ros_entry`: any C++ extension wins, else `c`.
+#     A `.zig`, a `Cargo.toml`, a `.h` — all silently `c`.
+#   * `nano_ros_node_register`: anything whose extension is not exactly `.c`
+#     wins as `CPP`. The same three tokens — silently `cpp`.
+#
+# So one unmapped spelling was C to two readers and C++ to the third. The query
+# REFUSES it instead, naming the path.
+#
+# ## Why the tool becomes a configure dependency
+#
+# Issue 1018's rule, and it applies for `rmw-dispatch`'s reason rather than for
+# a generated file's: this query emits no file, but its answer is BAKED INTO
+# `build.ninja` — the target's `LINKER_LANGUAGE`, which runtime umbrella it
+# links, which entry pack renders its TU. That outlives the configure exactly
+# the way generated code does, so `nros_codegen_tool_reconfigure()` is called
+# here, ONCE, for every caller. `check-codegen-tool-reconfigure` sees the
+# `codegen` verb in this file and demands it.
+# ---------------------------------------------------------------------------
+function(nros_language_of_sources _out)
+    cmake_parse_arguments(_NLS "" "CONTEXT" "SOURCES" ${ARGN})
+    if(NOT _NLS_CONTEXT)
+        set(_NLS_CONTEXT "nano-ros")
+    endif()
+    # No sources settles nothing, and it needs no process to say so. The
+    # callers' historical defaults for this case differ, so the answer must be
+    # the EMPTY one rather than either of them.
+    if(NOT _NLS_SOURCES)
+        message(VERBOSE
+            "nano-ros: ${_NLS_CONTEXT}: source language unresolved (no sources)")
+        set(${_out} "" PARENT_SCOPE)
+        return()
+    endif()
+    nros_resolve_cli(_nls_cli CONTEXT "${_NLS_CONTEXT}")
+    set(_nls_args codegen source-language)
+    foreach(_src IN LISTS _NLS_SOURCES)
+        list(APPEND _nls_args --source "${_src}")
+    endforeach()
+    execute_process(
+        COMMAND "${_nls_cli}" ${_nls_args}
+        RESULT_VARIABLE _nls_rc
+        OUTPUT_VARIABLE _nls_out
+        ERROR_VARIABLE _nls_err
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    # The refusal direction. An unmapped spelling used to become `c` or `cpp`
+    # depending on which copy read it; it is a configure FATAL_ERROR now.
+    if(NOT _nls_rc EQUAL 0)
+        message(FATAL_ERROR
+            "${_NLS_CONTEXT}: `nros codegen source-language` could not name the "
+            "language of these sources (rc=${_nls_rc}).\n"
+            "  sources: ${_NLS_SOURCES}\n"
+            "  ${_nls_err}\n"
+            "State the language explicitly (LANG / LANGUAGE) if the list is "
+            "correct.")
+    endif()
+    if(NOT _nls_out MATCHES "language=([A-Za-z0-9_]+)")
+        message(FATAL_ERROR
+            "${_NLS_CONTEXT}: `nros codegen source-language` reported no "
+            "language:\n${_nls_out}")
+    endif()
+    # Reported at VERBOSE because "which language did this verb pick, and did it
+    # read the list or fall back?" had no answer at all before — three copies,
+    # none of which said anything. `cmake --log-level=VERBOSE` prints it; a
+    # normal configure is unchanged.
+    message(VERBOSE
+        "nano-ros: ${_NLS_CONTEXT}: source language ${CMAKE_MATCH_1}")
+    if(CMAKE_MATCH_1 STREQUAL "unresolved")
+        set(${_out} "" PARENT_SCOPE)
+    else()
+        set(${_out} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+    endif()
+    # Issue 1018 — the answer is baked into build.ninja, so a rebuilt `nros`
+    # must re-run the configure that asked. One spelling, at the one call site.
+    nros_codegen_tool_reconfigure("${_nls_cli}")
+endfunction()
+
 function(nros_resolve_cli _out)
     cmake_parse_arguments(_RC "OPTIONAL" "CONTEXT" "" ${ARGN})
     if(NOT _RC_CONTEXT)
