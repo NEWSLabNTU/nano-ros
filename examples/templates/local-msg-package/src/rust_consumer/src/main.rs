@@ -8,15 +8,8 @@
 //! `nros::node!` export) and spins. The application logic — importing
 //! msgs from both the workspace and AMENT — lives in `src/lib.rs`.
 //!
-//! Build:
-//!
-//!   $ cd <fixture>
-//!   $ NROS_REPO_DIR=<nano-ros-root> nros sync
-//!   $ cd src/rust_consumer && cargo build      # plain cargo, no wrapper
-//!
-//! Run (zenoh router must be up):
-//!
-//!   $ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
-//!   $ ./target/debug/rust_consumer
+//! How to build and run it — including whether a router has to be up, which
+//! depends on the `rmw` this workspace declares and not on this source — is in
+//! the template's README, under "Build — Rust".
 
 nros::main!();

@@ -5,12 +5,13 @@ domain_id = 0
 locator = "tcp/127.0.0.1:7447"
 default_launch = "system.launch.xml"
 
-# phase-263 B3 — cross-RMW bridge showcase. The talker publishes /chatter on the
-# primary (zenoh) session; the [[bridge]] below forwards every declared topic
-# (here /chatter) zenoh→cyclonedds, so a stock rmw_cyclonedds_cpp peer
-# (`ros2 topic echo /chatter`) receives it. `nros codegen system` reads the
-# [[bridge]]/[[domain]] blocks and the (issue #99) planner emits the
-# build.transports + plan.bridges the relay codegen consumes.
+# phase-263 B3 — cross-RMW bridge showcase. `talker_pkg` is a plain talker: it
+# publishes /chatter and names no session and no backend. THIS FILE decides both.
+# The [[domain]] rows below put it on the primary (zenoh) session, and the
+# [[bridge]] forwards every declared topic (here /chatter) zenoh→cyclonedds, so a
+# stock rmw_cyclonedds_cpp peer (`ros2 topic echo /chatter`) receives it.
+# `nros codegen system` reads the [[bridge]]/[[domain]] blocks and the (issue #99)
+# planner emits the build.transports + plan.bridges the relay codegen consumes.
 [[component]]
 pkg = "talker_pkg"
 class = "talker_pkg::Talker"

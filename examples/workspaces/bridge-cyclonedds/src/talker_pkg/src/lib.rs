@@ -1,10 +1,9 @@
 //! Talker Node pkg — publishes `std_msgs/Int32` on `/chatter` (phase-263 B3).
 //!
-//! The bridge's source: this talker runs on the primary (zenoh) session; the
-//! declarative `[[bridge]]` forwards `/chatter` zenoh→cyclonedds, so a stock
-//! `rmw_cyclonedds_cpp` peer (`ros2 topic echo /chatter`) sees it. The node is
-//! plain — the cross-RMW forwarding is the subject, declared in `system.toml`
-//! and emitted by `nros codegen system`, not written here.
+//! It is the bridge's source, and it is a plain talker: which session it
+//! publishes on, and where `/chatter` is forwarded to, are declared by the
+//! bringup's `[[domain]]` / `[[bridge]]` rows and emitted by
+//! `nros codegen system`. See `demo_bringup/system.toml`.
 
 #![no_std]
 

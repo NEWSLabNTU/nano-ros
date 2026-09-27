@@ -22,8 +22,17 @@ features = ["safety"]
 ```
 
 and lowers to `NANO_ROS_SAFETY_E2E` for the C/C++ build and the `safety-e2e`
-cargo feature for the runtime. It is zenoh-only — the CRC path lives in that
-backend.
+cargo feature for the runtime. With it on, the runtime attaches a CRC-32 +
+sequence number to every publish and validates it on receive; the listener reads
+the per-sample verdict (CRC ok, sequence gap, duplicate) alongside the payload.
+The protocol is RFC-0028.
+
+**None of that is written in a node package.** The talkers here are plain
+talkers and the listeners declare a validated subscription and read a verdict;
+neither names a backend. The capability is zenoh-only today — the CRC path lives
+in that backend — which is why the bringup also sets `rmw = "zenoh"`. That is a
+fact about which backends have implemented the feature, not about the nodes, so
+it is stated beside the declaration that causes it and nowhere else.
 
 ## Layout
 
