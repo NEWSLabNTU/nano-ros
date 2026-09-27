@@ -116,10 +116,29 @@ pub struct SizingDescriptorArgs {
     #[arg(long, value_name = "BYTES")]
     pub heap_budget_bytes: Option<usize>,
 
-    /// `--from-model`: the road, in prose, for every refusal written.
-    #[arg(long, value_name = "PROSE", default_value = "a cmake entry")]
-    pub road: String,
+    /// The road, in prose, for every refusal written.
+    ///
+    /// phase-457 W0.b — `Option`, with the default resolved PER MODE
+    /// ([`DEFAULT_MODEL_ROAD`] / [`DEFAULT_LEAF_ROAD`]) rather than by clap. A
+    /// single `default_value` is a claim about which producer is running, and it
+    /// was wrong for the one added later: `--from-leaf` with no `--road` wrote
+    /// "a cmake entry" into every refusal on a road that has no entry at all.
+    /// A refusal's job is to name what is missing and where, so prose that names
+    /// the wrong road is the defect this whole schema exists to prevent.
+    #[arg(long, value_name = "PROSE")]
+    pub road: Option<String>,
 }
+
+/// `--road`'s default for `--from-model`.
+///
+/// The cmake entry road is the one that reaches this producer in a build
+/// (`nros_sizing_descriptor_from_model` passes it explicitly); a workspace cargo
+/// image passes its own. Named so the two defaults sit beside each other and a
+/// reader can see that they differ on purpose.
+pub const DEFAULT_MODEL_ROAD: &str = "a cmake entry";
+
+/// `--road`'s default for `--from-leaf`.
+pub const DEFAULT_LEAF_ROAD: &str = "a standalone cmake leaf";
 
 pub fn run(args: SizingDescriptorArgs) -> Result<()> {
     if let Some(model) = &args.from_model {
@@ -252,7 +271,9 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
             host_build: args.host_build,
             heap_budget_bytes: args.heap_budget_bytes,
             rmw: args.rmw.clone(),
-            horizon: crate::sizing_descriptor::ModelHorizon::new(&args.road),
+            horizon: crate::sizing_descriptor::ModelHorizon::new(
+                args.road.as_deref().unwrap_or(DEFAULT_MODEL_ROAD),
+            ),
         })?;
     println!("{}", written.path.display());
     Ok(())
@@ -387,7 +408,9 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
             // The leaf states its own backend; `--rmw` still wins, for a caller
             // that resolved it more specifically (a cmake `-D`).
             rmw: args.rmw.clone().or_else(|| system.rmw.clone()),
-            horizon: crate::sizing_descriptor::ModelHorizon::for_leaf_declaration(&args.road),
+            horizon: crate::sizing_descriptor::ModelHorizon::for_leaf_declaration(
+                args.road.as_deref().unwrap_or(DEFAULT_LEAF_ROAD),
+            ),
         })?;
     println!("{}", written.path.display());
     Ok(())
@@ -555,7 +578,9 @@ mod tests {
             target_triple: None,
             host_build: false,
             heap_budget_bytes: None,
-            road: "a cmake entry".into(),
+            // phase-457 W0.b — `None`, so every case exercises the PER-MODE default
+            // the cmake callers rely on rather than overriding it.
+            road: None,
             from_leaf: None,
         }
     }
@@ -836,7 +861,7 @@ board = "qemu-armv7a-nuttx"
             build_dir: Some(build_dir.clone()),
             entry: Some("c_action_server".into()),
             host_build: true,
-            road: "a standalone cmake leaf".into(),
+
             ..args()
         })
         .expect("a leaf that declares its entities gets a descriptor");
@@ -890,7 +915,7 @@ board = "qemu-armv7a-nuttx"
             build_dir: Some(build_dir.clone()),
             entry: Some("e".into()),
             host_build: true,
-            road: "a standalone cmake leaf".into(),
+
             ..args()
         })
         .unwrap();
@@ -930,6 +955,20 @@ board = "qemu-armv7a-nuttx"
         assert!(
             !reg.contains("several packages"),
             "a standalone leaf is ONE package; that clause belongs to the model road: {reg}"
+        );
+
+        // And `--road`'s DEFAULT is this mode's, not the model mode's. Passing no
+        // `--road` here is deliberate: the bug this pins was a single clap
+        // `default_value`, so a test that supplied the road explicitly could
+        // never see it. Found by running the verb by hand and reading the file —
+        // every refusal said "a cmake entry" on a road with no entry at all.
+        assert!(
+            why.contains(DEFAULT_LEAF_ROAD),
+            "the leaf mode's default road must be `{DEFAULT_LEAF_ROAD}`: {why}"
+        );
+        assert!(
+            !why.contains(DEFAULT_MODEL_ROAD),
+            "the MODEL mode's road must not leak into a leaf refusal: {why}"
         );
     }
 
