@@ -50,9 +50,42 @@ signature = "#[nros_board_mps2_an385::entry]\nfn main() -> !"
 crate_root_extra = "use panic_semihosting as _;"
 crate_root_deps = ["panic-semihosting = \"0.6\""]
 
-# RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT). Pure bare-metal:
-# no heap (static only). A heap-capable bare-metal board sets heap = true.
+# RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
+#
+# issue 1512 — `heap` was `false`, commented "Pure bare-metal: no heap (static
+# only)", and that was never true of this board: `nros-platform-mps2-an385`
+# holds a `zpico_alloc::FreeListHeap<HEAP_SIZE>` static in `.bss` (128 KB
+# default, `NROS_HEAP_SIZE` override), reaches it through `impl PlatformAlloc
+# for Mps2An385Platform`, and its DEFAULT features (`libc-stubs`, `libc-heap`)
+# define `malloc`/`free`/`realloc`/`calloc` as C symbols. This crate's own
+# `nros-platform` dep selects `global-allocator`, so the Rust
+# `#[global_allocator]` routes there too. RFC-0034 D6's table names this exact
+# platform with `global-alloc` ON. It was the ONLY board in the tree declaring
+# `heap = false`; the other fourteen, including the other bare-metal board
+# (`nros-board-esp32-qemu`) and the bare-metal-with-CFFI-heap
+# `nros-board-threadx-qemu-riscv64`, all say true.
+#
+# Why it cost nothing until now: this row is read by
+# `nros_board_capability_defines()`, whose only output is the C/C++
+# `-DNROS_PLATFORM_HAS_MALLOC`, and the family has been Rust-only — Rust images
+# never consult it. It was ALSO masked a second way, which is worth recording
+# because fixing the mask alone would have broken the build: nothing defined
+# `NROS_PLATFORM_BAREMETAL` on this platform either, so `<nros/platform.h>`
+# took its hosted default arm and handed a C/C++ TU here a heap regardless of
+# what this file said. Two wrong facts that cancelled. Both move together
+# (`cmake/platform/nano-ros-baremetal.cmake` now declares the platform, this
+# declares the heap), so the issue-0038 compile gate finally answers about this
+# board rather than about the absence of a define.
+#
+# The alternative — keep `heap = false` and ship a permanently alloc-free C
+# profile — is a coherent position and stays available where it belongs, at the
+# IMAGE: `packages/testing/nros-tests/bins/heap-free-poc-mps2` already builds
+# on this silicon with `nros-platform-mps2-an385`'s `default-features = false`,
+# dropping the arena and the four libc symbols, and
+# `check-no-alloc-image --tier heap-free` gates it. That is an image dropping a
+# capability the board offers, which is not the same statement as the board not
+# having one.
 [board.capabilities]
-heap = false
+heap = true
 atomics = true
 threads = false

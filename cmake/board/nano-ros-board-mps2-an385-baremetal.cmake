@@ -29,7 +29,26 @@ set(_NROS_BOARD_MPS2_AN385_INCLUDED TRUE)
 set(_NROS_BOARD_MPS2_AN385_LINKER
     "${CMAKE_CURRENT_LIST_DIR}/../../packages/boards/nros-board-mps2-an385/mps2-an385.x")
 
+# issue 1512 — lower this board's declared `[board.capabilities]` (RFC-0042 D2 /
+# phase-241 wave C) into the matching `NROS_PLATFORM_HAS_*` defines. `heap = true`
+# here yields `NROS_PLATFORM_HAS_MALLOC`, which is what lets an `nros-cpp`
+# HeapString / HeapSequence TU — i.e. any generated message type with an unbounded
+# field — compile on this board now that
+# `cmake/platform/nano-ros-baremetal.cmake` declares the platform bare metal and
+# `<nros/platform.h>` stops defaulting the heap on.
+#
+# `nano-ros-board-rv-virt-threadx.cmake` is the precedent and says the same thing
+# about the same class of board; this overlay was the one bare-metal board that
+# never made the call, which cost nothing while it had no C/C++ consumer.
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosCapabilities.cmake")
+nros_board_capability_defines(
+    "${CMAKE_CURRENT_LIST_DIR}/../../packages/boards/nros-board-mps2-an385"
+    _NROS_BOARD_MPS2_AN385_CAP_DEFINES)
+set(_NROS_BOARD_MPS2_AN385_CAP_DEFINES "${_NROS_BOARD_MPS2_AN385_CAP_DEFINES}"
+    CACHE INTERNAL "issue 1512 — nros-board-mps2-an385 capability defines")
+
 function(nros_board_link_app target)
+    target_compile_definitions(${target} PRIVATE ${_NROS_BOARD_MPS2_AN385_CAP_DEFINES})
     if(NOT EXISTS "${_NROS_BOARD_MPS2_AN385_LINKER}")
         message(FATAL_ERROR
             "nros-board-mps2-an385: linker script not found at "

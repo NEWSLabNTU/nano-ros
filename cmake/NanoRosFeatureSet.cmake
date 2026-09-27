@@ -23,6 +23,10 @@ include_guard(GLOBAL)
 # per-backend `nros-rmw.toml` descriptors (RFC-0071).
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
+# issue 1512 — `NANO_ROS_BOARD` -> the bare-metal platform feature. Bare metal is
+# the one platform whose `nros-platform/platform-*` name is board-specific, so
+# the ladder below resolves it rather than spelling it.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBareMetalPlatform.cmake")
 
 # nros_platform_hosted_cxx_runtime(<out> <platform>)
 #
@@ -82,10 +86,14 @@ endfunction()
 #     CRATE        <c|cpp>               which crate's feature vocabulary
 #     EDITION      <humble|iron|jazzy>   default: NANO_ROS_ROS_EDITION, else humble
 #     RMW          <zenoh|xrce|cyclonedds|uorb|none>
-#     PLATFORM     <posix|freertos|nuttx|threadx|…>
+#     PLATFORM     <posix|freertos|nuttx|threadx|baremetal|…>
 #                                        (the threadx tier now derives from
 #                                        CMAKE_CROSSCOMPILING, not board identity);
 #                                        kept so callers need not change
+#     [BOARD       <cmake board token>]  only the bare-metal arm reads it, because
+#                                        only there is the cargo feature
+#                                        board-specific (issue 1512); defaults to
+#                                        the ambient NANO_ROS_BOARD
 #     CAPABILITIES <param_services;lifecycle;safety;…>
 #     [NO_STD_CROSS]                     force the embedded tier regardless of
 #                                        CMAKE_CROSSCOMPILING (native_sim is a
@@ -94,12 +102,24 @@ endfunction()
 #
 # Writes the cargo feature list into <out> in the caller's scope.
 function(nros_feature_set out_var)
-    # phase-405 W1 — BOARD is GONE, not merely unused. It was "accepted but
-    # UNUSED since phase-338 W5.a" and referenced zero times in this body, so
-    # every caller passing it was writing a line that did nothing. Dropping it
-    # from the parse makes such a call an UNPARSED_ARGUMENTS error instead of a
-    # silent no-op.
-    cmake_parse_arguments(_FS "NO_STD_CROSS" "CRATE;EDITION;RMW;PLATFORM" "CAPABILITIES" ${ARGN})
+    # phase-405 W1 removed BOARD from this parse, correctly: it was "accepted but
+    # UNUSED since phase-338 W5.a" and referenced zero times in the body, so every
+    # caller passing it wrote a line that did nothing.
+    #
+    # issue 1512 is the condition changing, not a revert of that reasoning. Bare
+    # metal is the one platform where the cargo feature IS board-specific
+    # (`platform-mps2-an385` vs `platform-esp32-qemu`; see
+    # NanoRosBareMetalPlatform.cmake), so the board is load-bearing again for
+    # exactly one arm of the ladder. It is OPTIONAL: the two direct callers
+    # (nros-c / nros-cpp) already pass `BOARD "${NANO_ROS_BOARD}"` and those lines
+    # become live again, while the workspace umbrella
+    # (`nros_synth_runtime_umbrella`) has no BOARD argument at all and falls back
+    # to the ambient variable — the same one the direct callers forward.
+    cmake_parse_arguments(_FS "NO_STD_CROSS" "CRATE;EDITION;RMW;PLATFORM;BOARD" "CAPABILITIES" ${ARGN})
+    set(_fs_board "${_FS_BOARD}")
+    if(_fs_board STREQUAL "")
+        set(_fs_board "${NANO_ROS_BOARD}")
+    endif()
 
     # ---- edition -----------------------------------------------------------
     # RFC-0056: the edition drives the runtime keyexpr format, which must match
@@ -218,6 +238,33 @@ function(nros_feature_set out_var)
         else()
             list(APPEND _feats std platform-threadx)
         endif()
+    elseif(_FS_PLATFORM STREQUAL "baremetal" OR _FS_PLATFORM STREQUAL "bare-metal")
+        # issue 1512 — the arm this ladder never had. Without it a bare-metal call
+        # fell into the `elseif(_cross)` catch-all below and asked cargo for
+        # `platform-${_FS_PLATFORM}`, i.e. `platform-baremetal` — a feature no crate
+        # in the tree has. That failed HARD rather than building something wrong,
+        # which is why nobody was hurt, but it meant the C road to bare metal could
+        # not be driven at all.
+        #
+        # BOTH spellings are accepted, and that is not hedging. The two are
+        # different NAMESPACES that meet at `PlatformKind::cmake_deploy()`, the same
+        # boundary that already translates `Posix` -> `native` and both ThreadX
+        # kinds -> `threadx`: `baremetal` is the CMake platform-MODULE token
+        # (`cmake/platform/nano-ros-baremetal.cmake`, `NANO_ROS_PLATFORM`, and the
+        # `-baremetal` stack suffix in every board name RFC-0093 R2 governs), while
+        # `bare-metal` is the cargo-feature / descriptor spelling
+        # (`config/bare-metal/`, `platform = "bare-metal"`, `PlatformKind::kebab`,
+        # `nros-rmw-zenoh/platform-bare-metal`). Measured before choosing: 1759
+        # occurrences of the first and 2242 of the second, so converging the tree on
+        # one is a rename of ~4000 sites across every series of docs — and the
+        # descriptor for this very board already lists BOTH in its `names`. What was
+        # actually broken is that this ladder recognised NEITHER; accepting both is
+        # what makes the two roads meet instead of merely agreeing on a word.
+        #
+        # No std/alloc derivation, unlike freertos and threadx: bare metal has no
+        # hosted tier to derive. There is no libc to be hosted BY.
+        nros_baremetal_platform_feature(_fs_bm_feature "${_fs_board}" "nros_feature_set")
+        list(APPEND _feats alloc "${_fs_bm_feature}")
     elseif(_cross)
         # Unknown embedded cross target: no_std + alloc, matching the board tier
         # so nros-serdes / nros-params never pull `std`.
@@ -226,7 +273,7 @@ function(nros_feature_set out_var)
         message(FATAL_ERROR
             "nros_feature_set: unknown PLATFORM '${_FS_PLATFORM}' (expected: posix, "
             "freertos, freertos_armcm3, nuttx, nuttx_armv7a, threadx, threadx_linux, "
-            "threadx_riscv64)")
+            "threadx_riscv64, baremetal/bare-metal)")
     endif()
 
     # ---- analysis (phase-463 W2) -------------------------------------------

@@ -383,6 +383,18 @@ kconfig-knob-forwarding:
 kconfig-overridden-values:
     @python3 scripts/check-kconfig-overridden-values.py
 
+# issue 1512 — bare metal is the one platform whose `nros-platform/platform-*`
+# feature is BOARD-specific, so one platform needs THREE arms plus a CMake row
+# instead of one name in each file. Nobody was checking, and the measured state
+# was that `nros-c`/`nros-cpp` had no bare-metal arm at all while
+# `nros_feature_set()`'s ladder had no bare-metal branch — a C leaf fell into the
+# `_cross` catch-all and asked cargo for `platform-baremetal`, a feature no crate
+# has. Derived from `nros-platform`'s own manifest, so a fourth bare-metal board
+# is asked for without editing the gate.
+[group("checks")]
+baremetal-platform-arms:
+    @python3 scripts/check-baremetal-platform-arms.py
+
 # issue 1122 — the OTHER road a derived number takes into cargo. `NROS_DERIVED_*`
 # is the Zephyr one (`nros_resolve_knobs()` -> `NROS_RESOLVED_*`, gated by
 # `check-knob-delivery`); `NROS_DECLARED_*` is the lane-independent one, carried

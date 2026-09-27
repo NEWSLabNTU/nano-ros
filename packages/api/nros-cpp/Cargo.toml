@@ -173,6 +173,19 @@ platform-nuttx = [
 platform-threadx = [
     "nros-c/platform-threadx",
 ]
+# Bare metal — one arm per board, for the reason `nros-c`'s own block gives at
+# length (issue 1512): `nros-platform` has no single `platform-bare-metal`, and
+# `nros-c`/`nros-cpp` are cargo ROOTS, so feature unification cannot supply the
+# board the way it does on the Rust road. Pure forwards, like every arm above.
+platform-mps2-an385 = [
+    "nros-c/platform-mps2-an385",
+]
+platform-stm32f4 = [
+    "nros-c/platform-stm32f4",
+]
+platform-esp32-qemu = [
+    "nros-c/platform-esp32-qemu",
+]
 
 # ROS edition (orthogonal to RMW and platform)
 ros-humble = [

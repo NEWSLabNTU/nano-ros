@@ -1,6 +1,37 @@
 fn main() {
     nros_build_helpers::c::run();
     generate_c_surface_anchor();
+    emit_include_dirs();
+}
+
+/// Publish this crate's two C include directories on the `links = "nros_c"`
+/// channel (issue 1512), as `DEP_NROS_C_INCLUDE` and
+/// `DEP_NROS_C_CONFIG_INCLUDE`.
+///
+/// For the cmake road these are already known — the root `CMakeLists.txt` puts
+/// `include/` and the mirrored per-build header on `nros_c-static`'s INTERFACE.
+/// The consumer this is for is a build SCRIPT: an image whose application is C
+/// but whose link root is Rust, which is the only shape a pure bare-metal board
+/// can take (no C startup, no C-reachable board init — see
+/// `examples/mps2-an385-baremetal/c/talker/README.md`).
+///
+/// `CONFIG_INCLUDE` is the OUT_DIR copy, not the shared
+/// `$CARGO_TARGET_DIR/nros-c-generated/` one, on purpose: the OUT_DIR copy is
+/// written by THIS unit, so it cannot be another feature set's header arriving
+/// first. That collision is real and already diagnosed — issue 1354 warns about
+/// exactly it on the shared path.
+fn emit_include_dirs() {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
+    println!("cargo:include={manifest_dir}/include");
+    println!("cargo:config_include={out_dir}/nros-c-generated");
+    // `<nros/platform.h>` and the rest of the platform ABI, which the generated
+    // message `.c` files include. Published from HERE, not from a `links` key on
+    // `nros-platform-api`, because that is what the cmake road does: the repo
+    // root puts `packages/platform/nros-platform-api/include` on
+    // `nros_c-static`'s INTERFACE beside this crate's own two. One consumer-
+    // facing include set, whichever build system asks for it.
+    println!("cargo:platform_include={manifest_dir}/../../platform/nros-platform-api/include");
 }
 
 /// Is cargo feature `feat` enabled for this build? cargo exports `CARGO_FEATURE_<NAME>`
