@@ -45,7 +45,6 @@ scripts/check-image-panic-policy.py
 scripts/check-image-paths-apply-policy.sh
 scripts/check-interface-glob-configure-depends.py
 scripts/check-issue-index.sh
-scripts/check-kconfig-knob-forwarding.sh
 scripts/check-lane-scope-consumers.py
 scripts/check-manifests-parse.py
 scripts/check-msg-dep-is-path.sh

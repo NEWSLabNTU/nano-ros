@@ -618,6 +618,9 @@ READ_CALLEES = {
 # Not reads. Named rather than ignored by default, so the failure below stays
 # meaningful.
 NON_READ_CALLEES = {
+    # phase-468 W4 -- maps an env NAME to its Kconfig symbol. It touches no
+    # environment; `knob()` (already a read above) is what resolves through it.
+    "kconfig_key_for",
     "define",          # emits a C preprocessor macro
     "set_var", "remove_var", "with_env",  # WRITES an environment
     "push", "insert",  # builds a list / a fact map
@@ -723,6 +726,7 @@ def self_test() -> None:
         'let n = env_usize("NROS_EXECUTOR_MAX_CBS", 4);',
         'std::env::var("NROS_THING").ok()',
         'nros_zephyr_build::knob_usize("NROS_OTHER", &k, 1)',
+        'nros_zephyr_build::knob("NROS_LADDERED").resolve(4)',
     ):
         assert _env_names_in(src, "NROS"), f"selftest: missed a read in {src!r}"
     # ...and must not count a name it merely MENTIONS, or another prefix.
