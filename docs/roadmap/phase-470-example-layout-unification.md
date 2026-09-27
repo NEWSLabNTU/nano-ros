@@ -29,7 +29,16 @@ whole of what looked like "the Zephyr layout":
 | | Rust leaf files | platforms |
 | --- | --- | --- |
 | cargo owns the link | `Cargo.toml`, `src/{lib,main}.rs` | native, mps2-an385-{baremetal,freertos}, esp32-c3-baremetal, qemu-armv7a-nuttx, threadx-linux |
-| cmake owns the link | `CMakeLists.txt`, `src/{lib,app_main}.rs`; cargo emits a staticlib exporting `app_main()` | `zephyr/rust/*`, `rv-virt-threadx/rust/*` |
+| cmake owns the link | `CMakeLists.txt`, `src/{lib,app_main}.rs`; cargo emits a staticlib whose exported entry symbol cmake calls | `zephyr/rust/*`, `rv-virt-threadx/rust/*` |
+
+**The two cmake-owned families do NOT share the exported symbol, and reading one
+into the other is exactly the re-derivation this section exists to stop.**
+Measured: `nros::zephyr_component_main!` emits
+`#[unsafe(no_mangle)] pub extern "C" fn rust_main()`, the zephyr-lang-rust
+convention `rust_cargo_application()` consumes; the ThreadX RV64 board's
+`app_main!` emits `pub extern "C" fn app_main() -> !`. Same class, two
+conventions, because the class is about WHO LINKS, not about one symbol name.
+(An earlier draft of this table said both export `app_main()`.)
 
 `rv-virt-threadx/rust/*` is the finding: it carries the shape people call "the
 Zephyr shape" and has **no `prj.conf` at all**. Its cause is unrelated — ThreadX
@@ -38,6 +47,13 @@ goes through `nros_threadx_rv64_rust_app`. Zephyr is *this* class plus
 `prj-<rmw>.conf`. And `threadx-linux/rust/*` is in the other class: same platform
 family, different answer, correctly so.
 
+It is a stronger finding than "one family looks like another": **both of its RMWs
+build through cmake** — `builder = "cmake"` on its zenoh *and* its cyclonedds
+`fixtures.toml` rows, since phase-369 W2 retired the cargo row and W3 deleted
+`src/main.rs`. Its own `Cargo.toml` still says the `rlib` "keeps the existing
+pure-cargo binary path intact"; phase-369 W3 falsified that comment, and it is
+worth deleting the next time someone is in that file.
+
 **Is it a leaf or a workspace?** A leaf is `<platform>/<lang>/<example>`
 (RFC-0026). A workspace has `src/<pkg>/` and a bringup, and its entry is
 generated (RFC-0098 D9) — except in 10 workspaces where it is hand-written, all
@@ -45,14 +61,26 @@ Zephyr (issue 1288).
 
 ## The taxonomy this phase lands
 
-| class | shape | today |
+**Classes 1 and 1z are properties of an IMAGE, not of a directory** — the first
+draft of this table counted directories and the count was not reproducible.
+`examples/workspaces/rust/` alone declares 17 `[image.*]` rows, 15 of them class
+1 and two (`zephyr`, `zephyr_robot1`) class 1z. So a workspace is generally class
+1 *and* 1z at once, and the membership below is stated as a predicate rather than
+a number, for the reason W1 landed: a count is a fact every reader re-verifies
+and every maintainer re-measures.
+
+| class | shape | how to enumerate it |
 | --- | --- | --- |
-| **1** | workspace, generated entry | 12 |
-| **1z** | workspace, Zephyr image | 15 packages serving **16** image rows |
-| **1b** | workspace with no bringup (RFC-0098 D9 as amended by phase-445 W5) | `templates/workspace-shadowing` |
-| **3** | leaf, cargo owns the link | the majority |
-| **4** | leaf, cmake owns the link (`+ prj*.conf` on Zephyr) | `zephyr/rust/*`, `rv-virt-threadx/rust/*` |
+| **1** | workspace image with a generated entry | an `[image.*]` row with no `entry =` |
+| **1z** | workspace image whose entry is a hand-written Zephyr west application | an `[image.*]` row whose `entry =` names a package calling `find_package(Zephyr)` — 16 such rows, served by 15 packages (issue 1288) |
+| **1b** | workspace with no bringup (RFC-0098 D9 as amended by phase-445 W5) | `templates/workspace-shadowing` (no `system.toml` at all) and `templates/local-msg-package` (a `system.toml` beside a *package* — package mode). The amendment names both |
+| **3** | leaf, cargo owns the link | a `<platform>/<lang>/<example>/Cargo.toml` with no `CMakeLists.txt` beside it |
+| **4** | leaf, cmake owns the link (`+ prj*.conf` on Zephyr) | the same with a `CMakeLists.txt`: `zephyr/rust/*`, `rv-virt-threadx/rust/*` |
 | **X** | foreign-build integration | `examples/px4/` (issue 1516) |
+
+The 16 in class 1z is the one count kept, because W5 is sized by it and because
+15-packages-for-16-rows is itself the finding (`realtime-c`'s single
+`zephyr_entry` serves two bringups).
 
 Two classes named in the survey's first draft do not survive, and saying why is
 part of the deliverable:
