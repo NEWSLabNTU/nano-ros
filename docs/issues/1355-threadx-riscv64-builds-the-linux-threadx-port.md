@@ -157,3 +157,17 @@ why the forced `THREADX_PORT` does not reach that lane's environment": that
 question is answered by the build. What is left here is to confirm, once 1467
 unblocks the link, that the riscv port keeps being selected on a cold workspace
 as well as this one — and then to close on the cells.
+
+## 1467 is RESOLVED (2026-09-27) — the link-line half is done, the cells are not
+
+Issue 1467 landed: the generated C interface library no longer propagates the C++
+umbrella to a binary that carries its own Rust staticlib, and
+`riscv64_threadx_rust_listener`'s generated `LINK_LIBRARIES` no longer contains
+`libnros_cpp.a` (measured, `-DNROS_RMW=zenoh`, riscv-none-elf-gcc 14.2.0 — see
+`docs/issues/archived/1467-rust-leaf-links-cpp-umbrella-duplicate-symbols.md`).
+
+That configure is also a data point for THIS issue's own question, on a warm
+workspace: `nros_resolve_threadx_port` selected the bare-metal riscv port, no port
+skip was printed, and the kernel and NetX Duo targets generated cleanly. What is
+still unconfirmed is the same thing as before — the cold-workspace selection — and
+the lane actually reaching its cells, which only the nightly can answer.
