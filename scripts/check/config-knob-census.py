@@ -196,6 +196,14 @@ KNOB_CLASS = {
     # goldens it rewrites are compared byte-for-byte on every other run.
     "NROS_UPDATE_GOLDEN": ("infra", "test-only golden regeneration"),
     "NROS_CARGO_FLAGS": ("infra", "the --locked shim"),
+    # issue 1512 — the first BUILD SCRIPT to read it. `nros_cli_bin()` in
+    # `scripts/build/cargo.sh` has documented it as rung 1 of "which nros binary"
+    # for as long as it has existed; what is new is a `build.rs` that needs the
+    # CLI, because a cargo-rooted C image generates its own C message bindings
+    # (`examples/mps2-an385-baremetal/c/talker`). The decision the census forces:
+    # it is a PATH to a tool, sizes nothing, and has no rung — a rung gives a
+    # global a per-platform default, and which binary to exec is per-CHECKOUT.
+    "NROS_CLI": ("infra", "path to the nros binary; rung 1 of nros_cli_bin()"),
     # phase-443 W1 (RFC-0097 D5) — the SDK index is FETCHED and cached in the
     # store rather than read out of the release asset, so an index that moves 70
     # times per 60 days stops forcing a CLI release. Both are infrastructure:

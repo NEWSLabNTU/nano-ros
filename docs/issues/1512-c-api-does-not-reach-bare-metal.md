@@ -261,3 +261,198 @@ wave C's capability lowering, `nros-baremetal-common`, phase-391 W5's
 At that point the "Rust-only leaf" class dissolves into the ordinary
 standalone-leaf class of RFC-0026, and the C API's platform list stops needing
 an asterisk.
+
+---
+
+## What landed (phase-470 W6, 2026-09-27) — and where this issue's analysis was wrong
+
+**A C leaf on `mps2-an385-baremetal` now builds and boots.** Measured:
+
+```text
+$ nros sync examples/mps2-an385-baremetal/c/talker
+$ (cd examples/mps2-an385-baremetal/c/talker && cargo build --release)
+    Finished `release` profile [optimized] target(s)
+$ arm-none-eabi-size …/baremetal-c-talker
+   text    data     bss     dec     hex
+ 380576    4980  544080  929636   e2f64
+$ qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -icount shift=auto \
+    -semihosting-config enable=on,target=native -kernel …/baremetal-c-talker
+  nros QEMU Platform
+Initializing LAN9118 Ethernet…   MAC: 02:00:00:00:00:00
+Creating network interface…      IP: 192.0.3.10
+Ethernet ready.
+[ERROR] nros: [2.702035] zpico Session -> ConnectionFailed
+nros: application complete
+```
+
+The board comes up, the C `nros_support_init` runs, the zenoh backend registers,
+and the session open fails because nothing is listening at the backend's default
+locator — which is the one thing still missing, below.
+
+### Correction 1 — for the C ROAD specifically, this WAS partly a port
+
+The headline said "this is not a port. It is wiring, plus one declared fact that
+is wrong." That is exactly right for the RUST half, and it is now proven: with
+the new arm, `nros-c` AND `nros-cpp` build clean staticlibs for
+`thumbv7m-none-eabi` with no source change anywhere.
+
+It is **not** right for a C-ROOTED image, and the reason is structural rather
+than a missing file. Every other platform's C road works because the RTOS
+supplies three things in C — a startup, a `main`, and a C platform port
+(`packages/platform/nros-platform-freertos/src/{platform,net,timer}.c` plus the
+board's `board_mps2.c` / `network_glue.c`). Bare metal has **none of them in C**:
+`packages/platform/nros-platform-mps2-an385/` contains zero `.c` files, its
+`nros_platform_*` symbols come from `nros_platform_export!` in Rust, and the
+LAN9118 + smoltcp bring-up that must run before any of them work is
+`nros_board_mps2_an385::init_hardware`, reachable only from Rust.
+
+So the CMake road is further from usable than "built and never driven" suggests,
+and the board overlay's own linker line is the clearest evidence:
+`nros_board_link_app()` passes
+`-T…/packages/boards/nros-board-mps2-an385/mps2-an385.x`, and that file is a
+`MEMORY { … }` fragment with symbol assignments and **no `SECTIONS`, no `ENTRY`**
+— it is the `memory.x` the board's `build.rs` copies into `OUT_DIR` for
+`cortex-m-rt`'s `link.x` to `INCLUDE`. Passing it as the whole script, with
+`-nostartfiles`, produces an image with no vector table. A C-rooted bare-metal
+road needs a `SECTIONS` script, a reset/vector startup, and a C-callable board
+init — three pieces, none of which exist, and the third cannot live in `nros-c`
+without the staticlib root naming a board (the inversion RFC-0064 forbids).
+
+The leaf therefore takes the only shape such a board admits: the LINK ROOT is
+Rust and the C application is compiled into it. `src/main.rs` owns
+`#[cortex_m_rt::entry]` and `run_bare`, `build.rs` compiles `src/talker.c` with
+`cc`, and `NROS_APP_MAIN_REGISTER()` emits the `void app_main(void)` that
+`<nros/app_main.h>` has always documented for this platform ("per-platform
+startup chains call this after platform init").
+
+### Correction 2 — the `heap = false` consequence was the OPPOSITE way round
+
+The issue said `heap = false` makes the issue-0038 guard reject an `nros-cpp`
+heap-container TU on a board that has a heap. That is what it *would* do, and it
+was not what it did, because a second declared fact was also missing: **nothing
+defined `NROS_PLATFORM_BAREMETAL`** for `NANO_ROS_PLATFORM=baremetal`. Neither
+`cmake/platform/nano-ros-baremetal.cmake` nor either board overlay set it, so
+`<nros/platform.h>` took its hosted default arm and defined
+`NROS_PLATFORM_HAS_MALLOC` unconditionally — for the one platform the macro
+exists to name. Two wrong facts that cancelled. Fixing the heap row alone is
+safe; fixing the platform row alone would have produced the failure the issue
+described. Both moved together, in that order.
+
+### What landed
+
+1. **`platform-mps2-an385` / `platform-stm32f4` / `platform-esp32-qemu` arms on
+   `nros-c` and `nros-cpp`** — shape **(a)**, per board. Shape (b) (one
+   `platform-bare-metal` arm omitting the `nros-platform/platform-X` line) was
+   MEASURED and does not compile: `nros-platform` gates `ConcretePlatform` on
+   having some `platform-*`, and the Rust road only gets away with omitting it
+   because the entry crate, the board crate and `nros-platform` sit in ONE cargo
+   resolve. `nros-c` is imported by Corrosion as its own cargo ROOT; the board
+   crate is not in it and cannot be, so the selection is spelled there or
+   nowhere. The two roads differ because their LINK ROOTS differ, not because
+   one of them is wrong.
+2. **A bare-metal arm in `nros_feature_set()`'s PLATFORM ladder**, resolving the
+   board-specific feature through `cmake/NanoRosBareMetalPlatform.cmake`. It
+   accepts BOTH `baremetal` and `bare-metal`. `BOARD` is back in the parse (as an
+   optional argument, falling back to the ambient `NANO_ROS_BOARD`): phase-405 W1
+   removed it correctly when nothing used it, and bare metal is the condition
+   changing rather than a revert of that reasoning.
+
+   No leaf exercises this arm (the leaf below is cargo-rooted), so it was
+   measured directly, in `cmake -P` script mode over a throwaway file that
+   includes the module and calls the function:
+
+   ```text
+   -- baremetal/c:    ros-humble;rmw-cffi;alloc;platform-mps2-an385
+   -- baremetal/cpp:  ros-humble;rmw-cffi;alloc;platform-mps2-an385
+   -- bare-metal/c:   ros-humble;rmw-cffi;alloc;platform-mps2-an385
+   -- bare-metal/cpp: ros-humble;rmw-cffi;alloc;platform-mps2-an385
+   -- baremetal/c on esp32-c3-baremetal:
+                      ros-humble;rmw-cffi;alloc;platform-esp32-qemu
+   ```
+
+   and both refusals fire and name the remedy — an unset `NANO_ROS_BOARD`
+   ("Known: mps2-an385-baremetal, esp32-c3-baremetal") and an unknown one ("Add
+   the row to cmake/NanoRosBareMetalPlatform.cmake together with the matching
+   `platform-*` arm"). Every emitted feature is one both crates declare, which
+   `check-baremetal-platform-arms` is what keeps true.
+3. **The spelling question is answered as a namespace boundary, not a rename.**
+   Measured: 1759 occurrences of `baremetal` and 2242 of `bare-metal`, so
+   converging the tree is a ~4000-site rename across every doc series — and
+   `baremetal` is load-bearing as the `-baremetal` stack suffix RFC-0093 R2 puts
+   in every board NAME (`mps2-an385-baremetal`, `esp32-c3-baremetal`), while
+   `bare-metal` is the cargo-feature / descriptor spelling. `cmake_deploy()` is
+   where they meet, and it already translates two others of the same kind
+   (`Posix` -> `native`, both ThreadX kinds -> `threadx`). Written down at
+   `cmake_deploy()`, at the ladder arm, and in the new module.
+4. **`nros-board-mps2-an385` declares `heap = true`**, with the reasoning for
+   preferring that over a permanently-subset alloc-free profile: the declaration
+   is about what the BOARD provides, and dropping the capability is an IMAGE
+   decision that is already expressible and already exercised
+   (`packages/testing/nros-tests/bins/heap-free-poc-mps2` +
+   `check-no-alloc-image --tier heap-free`, which reaches the platform crate with
+   `default-features = false` and never consults this file). It was the only
+   board of fifteen declaring `heap = false`. The bare-metal platform module now
+   also declares `NROS_PLATFORM_BAREMETAL`, and the board overlay lowers its
+   capabilities through `nros_board_capability_defines()` — the call
+   `nano-ros-board-rv-virt-threadx.cmake` has made for this same class of board
+   since phase-241 wave C.
+5. **`links = "nros_c"` on `nros-c`**, publishing `DEP_NROS_C_INCLUDE` /
+   `_CONFIG_INCLUDE` / `_PLATFORM_INCLUDE`. The paths are the smaller half: the
+   `links` key is what makes cargo run a consumer's build script AFTER the one
+   that writes `nros_config_generated.h`, instead of racing it — the 0088/0268
+   ordering class, which cmake solves with a ninja edge and cargo solves with
+   this. (Include ORDER is load-bearing too: the committed
+   `nros-c/include/nros/nros_config_generated.h` is a stub that defines nothing,
+   so the per-build dir must come first or every generated message header hits
+   its own fail-closed `#error` — whose text names the wrong cause.)
+6. **`nros-c` / `nros-cpp` in `nros sync`'s crate-path table.** A cargo-rooted C
+   image names `nros-c = { version = "*" }` the way every Rust leaf names `nros`;
+   without the row sync skipped it as an unknown runtime crate and cargo then
+   said `no matching package named 'nros-c' found` — two messages neither of
+   which names the table.
+7. **Gate `check-baremetal-platform-arms`** (fast line), both directions over
+   four rules, with the bare-metal feature SET derived from `nros-platform`'s own
+   manifest (a `platform-*` arm naming a `dep:nros-platform-<board>` other than
+   the shared `-cffi`/`-api` crates), so a fourth bare-metal board is asked for
+   without editing the gate.
+8. **`example_portability.rs`'s glue/logic classifier asks the rule, not a
+   proxy.** `main.rs` was glue iff a `lib.rs` existed beside it; it is glue iff
+   the node logic is in another file, in any language that walk reads. Measured:
+   zero existing packages change classification, and the 11 pre-existing
+   `rust/{talker,listener,service-client}` divergences are unchanged in number
+   and identity.
+
+### What remains (why this issue stays open)
+
+* **The entry locator.** The C TU dials `NROS_ENTRY_LOCATOR`, whose bare-metal
+  bottom rung is `""`, so the backend substitutes its own default instead of the
+  `[image.mps2-an385-baremetal] locator` in the leaf's `system.toml`. The leaf
+  must NOT re-derive it — `<nros/entry_config.h>` is the one producer of that
+  ladder (issue 0946) — so this is an entry-codegen job: something has to bake
+  the resolved locator into the C compile for a cargo-rooted image. Without it
+  there is no runtime lane, which is why the matrix tier would be `BuildOnly`.
+* **No `[[fixture]]` row, hence no `matrix::CELLS` cell.** This would be the
+  tree's first `lang = "c"` row wanting `builder = "cargo"`, and
+  `scripts/build/fixtures-build.sh` still selects the CARGO lane with a
+  `case "$lang" in c | cpp) ;;` proxy — the caller-side half of the same
+  builder-vs-lang proxy phase-344 W2 fixed on the manifest side, where
+  `row_builder()` already answers correctly. Fixing it in both directions plus
+  adding the cell is its own change. The leaf is covered today by
+  `just qemu build-examples`, whose loop globs every tracked
+  `examples/mps2-an385-baremetal/**/Cargo.toml` and which `nightly.yml` reaches;
+  it is listed in `examples_fixture_coverage.rs`'s `TEST_DRIVEN_BUILDERS` with
+  that pairing recorded.
+* **`cpp/` and the other five roles.** The `nros-cpp` staticlib builds for this
+  target, so this is example-writing rather than wiring.
+* **The C-ROOTED CMake road**, if anyone wants `nano_ros_add_executable` to work
+  on a no-RTOS board: a `SECTIONS` linker script, a C reset/vector startup, and a
+  C-callable board init — which needs a new staticlib crate for the board seam,
+  because `nros-c` cannot depend on a board.
+* **One bare-metal C limitation found by writing the leaf**: the `NROS_LOG_*`
+  printf-style macros do not SUBSTITUTE here. `nros-baremetal-common`'s
+  `vsnprintf` copies its format string verbatim (a deliberate choice — see its
+  doc comment: an unsubstituted message still names the failure, where an empty
+  buffer is silence), so `NROS_LOG_INFO(logger, "n=%d", n)` prints `n=%d`. The
+  leaf builds its text and calls `nros_log_emit_at`. Whether the C log surface
+  should offer a real bounded formatter on freestanding targets is a separate
+  question nobody has posed.

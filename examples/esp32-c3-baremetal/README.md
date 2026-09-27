@@ -39,3 +39,25 @@ Test lanes: `just esp32 test`, `test-basic`, `test-all`.
 
 `rust/dds/` is build support, not a case. See the
 [coverage matrix](../README.md) for the platform's intentionally-empty cells.
+
+### Why C/C++ is absent, written down (issue 1512)
+
+It is an AUTHORED decision, not a missing port, and it is enforced in code:
+`PlatformKind::Esp32::cmake_deploy()` returns `None`, so `nros ws leaf-system`
+derives no `NANO_ROS_PLATFORM` for a C/C++ leaf in this tree and one cannot
+configure. The reason is the tree's identity — this is the **no-IDF** path
+(`esp-hal`, pure Rust HAL); C/C++ on the same silicon is the ESP-IDF component
+road (phase-139), which would belong under a sibling `esp32-idf/` dir.
+
+Two things exist that look like the opposite and are not:
+`cmake/platform/nano-ros-baremetal.cmake` serves this board's platform axis, and
+`cmake/board/nano-ros-board-esp32-c3-baremetal.cmake` exists — its own header
+says it is "the in-tree shim for non-IDF parents (rare — kept for symmetry with
+the other board overlays)". Those are for a C parent build that states its own
+platform, not for a leaf here.
+
+The sibling bare-metal family took the other answer:
+`examples/mps2-an385-baremetal/c/talker/` is a C application rooted in a cargo
+image, because on THAT board the Rust port is the only startup there is. Nothing
+about it is esp32-specific; what blocks the same shape here is the authored
+decision above, not the toolchain.

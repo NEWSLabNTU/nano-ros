@@ -35,14 +35,30 @@ RTIC service/action runners: `just qemu rtic-service-server`,
 `rtic-service-client`, `rtic-action-server`, `rtic-action-client`.
 Test lanes: `just qemu test`, `test-basic`, `test-zenoh`, `test-all`.
 
-## Cases (rust only — no bare-metal C/C++ harness exists)
+## Cases
 
-| Role | variants |
-| --- | --- |
-| talker / listener | plain, `-rtic`, `-rtic-mixed`, `serial-*` (UART transport) |
-| service-server / service-client | `-rtic` |
-| action-server / action-client | `-rtic` |
-| talker-xrce | XRCE-DDS transport variant |
+| Lang | Role | variants |
+| --- | --- | --- |
+| rust | talker / listener | plain, `-rtic`, `-rtic-mixed`, `serial-*` (UART transport) |
+| rust | service-server / service-client | `-rtic` |
+| rust | action-server / action-client | `-rtic` |
+| rust | talker-xrce | XRCE-DDS transport variant |
+| c | talker | plain (issue 1512 — the first C leaf here) |
+
+**The C leaf's SHAPE differs from every other C example in the tree, and the
+reason is the board rather than the C API** — read
+[`c/talker/README.md`](c/talker/README.md) before copying it. On an RTOS a C
+example is a C program: the RTOS supplies `main`, a C startup and a C platform
+port, and `libnros_c.a` is linked *in*. This board has no RTOS, so the reset
+vector (`cortex-m-rt`), the clock (CMSDK Timer0) and the network (LAN9118 +
+smoltcp) are all Rust with no C entry point. The leaf is therefore rooted in
+cargo: `src/main.rs` boots the board and calls `app_main()`, and `build.rs`
+compiles `src/talker.c` into the image. `nano_ros_add_executable` is not
+available on this platform.
+
+Status: build-only. It boots in QEMU and reaches session open, but it dials
+`NROS_ENTRY_LOCATOR`'s empty bottom rung rather than the `[image.*] locator` in
+its `system.toml`, so there is no runtime lane yet — see issue 1512.
 
 `rust/dds/` is build support, not a case. Test-only e2e fixtures
 (`rtic-run-plan-e2e`, `qemu-baremetal-main-e2e`) live under
