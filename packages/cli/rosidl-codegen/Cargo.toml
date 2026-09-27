@@ -42,6 +42,13 @@ nros-lang.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 
+[build-dependencies]
+# phase-469 W1 — the build script reads every `packs/*/pack.toml` and generates
+# the template registry plus the artifact-naming surfaces from it. `toml` is
+# already a normal dependency of this crate, so `Cargo.lock` does not move: a
+# lock entry is the UNION of a package's dependency kinds.
+toml.workspace = true
+
 [dev-dependencies]
 # phase-432 W2.5b — `machinery::tokenize` is minijinja's OWN lexer. The filter
 # closure check must tell a `|` that is a filter call from a `|item|` closure in

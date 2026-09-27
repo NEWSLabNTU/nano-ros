@@ -1,0 +1,17 @@
+# The idiomatic (rclrs-style) Rust message pack.
+#
+# The directory is `rust` and the registry keys say `idiomatic`, because the
+# directory names the LANGUAGE and the key names the SURFACE — three Rust packs
+# would otherwise want the same keys. The mapping is declared below rather than
+# derived from the directory name for exactly that reason.
+language = "rust"
+
+# See `../shared/pack.toml` for what `registry_order` is and why it exists.
+registry_order = 50
+
+# No naming fields: not an artifact-naming surface (no C-family header).
+templates = [
+    { key = "message_idiomatic.rs", file = "message.rs.jinja" },
+    { key = "service_idiomatic.rs", file = "service.rs.jinja" },
+    { key = "action_idiomatic.rs", file = "action.rs.jinja" },
+]

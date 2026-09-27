@@ -1,0 +1,19 @@
+# The RMW Rust message pack — the RRR-compatible layer.
+#
+# One of FOUR Rust message packs (`rmw`, `nros`, `rust`, `scaffold`). A pack is a
+# (language x surface) pair, not a language — RFC-0091 §6 — so several packs
+# legitimately declare the same `language`, and the registry keys are what keep
+# their templates apart (`message_rmw.rs` vs `message_nros.rs`).
+language = "rust"
+
+# See `../shared/pack.toml` for what `registry_order` is and why it exists.
+registry_order = 30
+
+# No naming fields: this pack emits no C-family header, so it is not an
+# artifact-naming surface. Its output file names come from
+# `ArtifactNames::stem` and the crate scaffolding, not from a header extension.
+templates = [
+    { key = "message_rmw.rs", file = "message.rs.jinja" },
+    { key = "service_rmw.rs", file = "service.rs.jinja" },
+    { key = "action_rmw.rs", file = "action.rs.jinja" },
+]

@@ -1,0 +1,29 @@
+# Not a language pack — the partial every C and C++ header includes.
+#
+# phase-469 W1. The codegen-version stamp (RFC-0090 / phase-429 W1) is about the
+# C ABI that BOTH the `c` and `cpp` packs emit into, so it belongs to neither.
+# It used to sit loose at `packs/_codegen_version.jinja`, which made it the one
+# registry row discovery could not find — a single authored `include_str!` is
+# still an authored list. A `shared` pack is the same answer the entry side
+# already gives (`codegen/entry/packs/entry/shared/`), so there is now one
+# convention for "a partial more than one pack includes" rather than two.
+shared = true
+
+# Position in the bundled registry. It exists ONLY because
+# `codegen_fingerprint` (RFC-0061 / phase-335 W4.a) hashes the registry as a
+# SEQUENCE: reordering it re-stales every fixture in the tree for a change that
+# emits identical bytes. The numbers are the order the authored list in
+# `render.rs` had and carry no other meaning. Gaps are deliberate, so a pack can
+# be inserted without renumbering its neighbours.
+registry_order = 10
+
+# `key` is the stable name a `render(key, …)` call or an `{% import %}` uses;
+# `file` is the template beside this manifest. Order inside a pack is registry
+# order too, for the same reason as above.
+#
+# No `language`, `extension` or naming fields: this pack renders no artifact of
+# its own. The conformance gate requires those of a LANGUAGE pack and forbids
+# them here, so the two kinds cannot be confused.
+templates = [
+    { key = "_codegen_version.jinja", file = "_codegen_version.jinja" },
+]

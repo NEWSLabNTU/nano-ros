@@ -1,0 +1,44 @@
+# The C message pack — headers plus the translation unit beside each one.
+#
+# phase-469 W1. This file is the SSoT for two things `render.rs` and
+# `generator::naming` used to author in Rust:
+#
+#  * WHICH templates this pack contributes to the bundled registry, so a new
+#    pack is DISCOVERED rather than added to a 28-row `include_str!` list;
+#  * WHAT the artifacts it emits are CALLED — the header extension, the include
+#    guard suffix and the translation-unit extension. `generator::naming`
+#    reduced six authored copies of the naming rule to one derivation over a
+#    `Surface` x `Kind` table (2026-09-27); these three fields are that table's
+#    C row, so a surface declares its own suffixes instead of adding a Rust
+#    variant.
+#
+# What is NOT here: the kind word (`msg` / `srv` / `action`). That is a property
+# of the ROS interface, identical on every surface, so putting it in a pack
+# would give each pack its own copy of one fact — the defect this phase removes,
+# one level down. It stays in `generator::naming::Kind`.
+
+# The `nros_lang::Language` whose packs call this pack's filters.
+language = "c"
+
+# See `../shared/pack.toml` for what `registry_order` is and why it exists.
+registry_order = 20
+
+# The artifact-naming row. `header_extension` + `guard_suffix` make this pack an
+# artifact-naming SURFACE (a `Surface` variant is generated for exactly the packs
+# that declare them); `source_extension` is the translation unit this surface
+# compiles, omitted by a header-only one.
+header_extension = "h"
+guard_suffix = "_H"
+source_extension = "c"
+
+# `key` is the stable name a `render(key, …)` call uses; a PARTIAL keeps its
+# `.jinja` suffix so the two kinds cannot be confused at a call site.
+templates = [
+    { key = "_field.jinja", file = "_field.jinja" },
+    { key = "message.h", file = "message.h.jinja" },
+    { key = "message.c", file = "message.c.jinja" },
+    { key = "service.h", file = "service.h.jinja" },
+    { key = "service.c", file = "service.c.jinja" },
+    { key = "action.h", file = "action.h.jinja" },
+    { key = "action.c", file = "action.c.jinja" },
+]
