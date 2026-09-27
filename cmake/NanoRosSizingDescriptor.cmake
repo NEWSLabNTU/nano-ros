@@ -93,7 +93,7 @@ endfunction()
 #   configure is not cross-compiling, which is the one case a host answer IS the
 #   target's answer.
 function(nros_sizing_descriptor_from_model _out_var)
-    cmake_parse_arguments(_nsw "" "CLI;MODEL;ENTRY;BUILD_DIR;RMW" "" ${ARGN})
+    cmake_parse_arguments(_nsw "" "CLI;MODEL;ENTRY;BUILD_DIR;RMW;METADATA" "" ${ARGN})
     set(${_out_var} "" PARENT_SCOPE)
 
     if(NOT _nsw_ENTRY OR NOT _nsw_MODEL OR NOT EXISTS "${_nsw_MODEL}")
@@ -122,13 +122,39 @@ function(nros_sizing_descriptor_from_model _out_var)
         set(_rmw_arg --rmw "${_nsw_RMW}")
     endif()
 
+    # phase-457 W0 (issue 1407) — the COMPONENT METADATA, composed with the
+    # contract by the same `merged_per_kind_max` `nros ws entity-inventory`
+    # uses. Without it this producer derived over the contract's nodes alone,
+    # while the `NROS_DECLARED_*` carriers beside it derived over every
+    # REGISTERED component — two numbers for one image, the descriptor's the
+    # smaller, and a short `NROS_EXECUTOR_MAX_NODES` is `NodeTableFull` at boot.
+    #
+    # The path comes from the function that owns it, never spelled here: the
+    # emitter (`_nros_metadata_emit`) and every reader must agree on one
+    # location. ABSENT is a normal state — a configure where nothing called
+    # `nano_ros_node_register()` has no such file, and the contract's set is
+    # then the whole truth — so the flag is only passed when the file exists.
+    # Passing a path that is not there would make the CLI fail the configure for
+    # the most ordinary shape in the tree.
+    set(_meta_arg "")
+    set(_meta "${_nsw_METADATA}")
+    if(NOT _meta AND COMMAND nros_entity_inventory_metadata_file)
+        nros_entity_inventory_metadata_file(_meta)
+    endif()
+    if(_meta AND EXISTS "${_meta}")
+        set(_meta_arg --metadata "${_meta}")
+        # Issue 1018 again: a configure-time emitter's inputs reduce to "does a
+        # configure happen", and this is now one of them.
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_meta}")
+    endif()
+
     execute_process(
         COMMAND "${_nsw_CLI}" ws sizing-descriptor
                 --from-model "${_nsw_MODEL}"
                 --build-dir "${_build_dir}"
                 --entry "${_nsw_ENTRY}"
                 --road "a cmake entry"
-                ${_host_arg} ${_rmw_arg}
+                ${_host_arg} ${_rmw_arg} ${_meta_arg}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
@@ -146,6 +172,96 @@ function(nros_sizing_descriptor_from_model _out_var)
     endif()
     set(${_out_var} "${_out}" PARENT_SCOPE)
     set_property(GLOBAL APPEND PROPERTY NROS_SIZING_DESCRIPTOR_PATHS "${_out}")
+endfunction()
+
+# nros_sizing_descriptor_from_leaf(<out_var>) — phase-457 W0.b, issues 1407/1378
+#
+# WRITE a descriptor for a STANDALONE LEAF, from its own `system.toml`
+# `[[component]] entities`.
+#
+# ## The road this exists for
+#
+# A copy-out cmake project has no bringup, no launch file and no SystemModel, so
+# `nros_sizing_descriptor_from_model` above can never reach it — and it is the
+# road issue 1378 measured FAILING. `examples/qemu-armv7a-nuttx/{c,cpp}/action-server`
+# declare one action server; the queryable table was sized to its three services
+# and the action server's own TRANSIENT_LOCAL `/status` publisher was the FOURTH
+# slot, so `nros_executor_add_action_server` returned -1 at boot. The cargo-leaf
+# road never saw it because `nros sync` writes that road a descriptor whose
+# `action_server` row is counted.
+#
+# So this is the third producer, and it states what a DECLARATION can: the
+# counts, the endpoint table, and every QoS policy the declaration spells. The
+# payload class stays REFUSED — a C or C++ leaf has no `generated/` bound table
+# either — and the refusal names the leaf's own `system.toml` rather than a
+# SystemModel this road does not have.
+#
+# ## Soft on every absence, exactly like `nros_record_leaf_entity_facts`
+#
+# No `system.toml`, no CLI, a leaf that declares nothing, a leaf that is a CARGO
+# leaf (whose descriptor is `nros sync`'s, with strictly more inputs) — each
+# means "this configure has no leaf descriptor to carry", which is the state
+# every standalone leaf was already in. None is a configuration error, so none
+# is fatal.
+function(nros_sizing_descriptor_from_leaf _out_var)
+    cmake_parse_arguments(_nsl "" "CLI;LEAF;ENTRY;BUILD_DIR" "" ${ARGN})
+    set(${_out_var} "" PARENT_SCOPE)
+
+    if(NOT _nsl_LEAF OR NOT EXISTS "${_nsl_LEAF}/system.toml")
+        return()
+    endif()
+    if(NOT _nsl_ENTRY OR NOT _nsl_CLI OR NOT EXISTS "${_nsl_CLI}")
+        return()
+    endif()
+    set(_build_dir "${_nsl_BUILD_DIR}")
+    if(NOT _build_dir)
+        set(_build_dir "${CMAKE_BINARY_DIR}")
+    endif()
+
+    # Issue 1018 — a configure-time emitter has no `DEPENDS`, so the freshness of
+    # what it writes reduces to "does a configure happen". The declaration is the
+    # input; the CLI half is registered by `nros_sizing_descriptor_read()`.
+    set_property(DIRECTORY APPEND PROPERTY
+        CMAKE_CONFIGURE_DEPENDS "${_nsl_LEAF}/system.toml")
+
+    set(_host_arg "")
+    if(NOT CMAKE_CROSSCOMPILING)
+        set(_host_arg --host-build)
+    endif()
+
+    execute_process(
+        COMMAND "${_nsl_CLI}" ws sizing-descriptor
+                --from-leaf "${_nsl_LEAF}"
+                --build-dir "${_build_dir}"
+                --entry "${_nsl_ENTRY}"
+                --road "a standalone cmake leaf"
+                ${_host_arg}
+        OUTPUT_VARIABLE _out
+        ERROR_VARIABLE _err
+        RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rc EQUAL 0)
+        string(REGEX REPLACE "\n+" " " _why "${_err}")
+        string(SUBSTRING "${_why}" 0 200 _why)
+        message(STATUS
+            "nano-ros: no sizing descriptor written for leaf `${_nsl_LEAF}` -- ${_why}. "
+            "Every consumer keeps its own default sizes (RFC-0100 D6).")
+        return()
+    endif()
+    if(_out STREQUAL "")
+        # The leaf declares nothing, or is a cargo leaf. The CLI said which.
+        return()
+    endif()
+    set(${_out_var} "${_out}" PARENT_SCOPE)
+    # A property of its OWN, not `NROS_SIZING_DESCRIPTOR_PATHS`. The entry road's
+    # "exactly one or none" rule is a DECISION about a shared staticlib
+    # (phase-457 W0.c re-affirmed it), and appending a leaf path to that list
+    # would turn a leaf that also declares an entry into "two descriptors,
+    # therefore none" — silently withdrawing a fact the carrier still delivers.
+    # Measured 2026-09-27: no `nano_ros_entry(` call site in the tree has a
+    # `system.toml` at all, so the collision does not occur today; keeping the
+    # lists apart makes that a property of the code rather than of the survey.
+    set_property(GLOBAL APPEND PROPERTY NROS_SIZING_DESCRIPTOR_LEAF_PATHS "${_out}")
 endfunction()
 
 # nros_sizing_descriptor_cargo_env(<out_var>) — phase-454 W14, issue 0460
@@ -169,6 +285,14 @@ endfunction()
 function(nros_sizing_descriptor_cargo_env _out_var)
     set(${_out_var} "" PARENT_SCOPE)
     get_property(_paths GLOBAL PROPERTY NROS_SIZING_DESCRIPTOR_PATHS)
+    if(NOT _paths)
+        # phase-457 W0.b — the STANDALONE LEAF road, BELOW the entry road and
+        # never beside it. An entry's descriptor is derived from the resolved
+        # model of the image about to be built; a leaf declaration is what
+        # answers when there is no entry at all. Ranked rather than merged, so
+        # the entry road's one-or-none rule keeps deciding on its own terms.
+        get_property(_paths GLOBAL PROPERTY NROS_SIZING_DESCRIPTOR_LEAF_PATHS)
+    endif()
     if(NOT _paths)
         return()
     endif()

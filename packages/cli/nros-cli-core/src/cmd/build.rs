@@ -552,7 +552,9 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                             host_build: descriptor.target.is_none(),
                             heap_budget_bytes: board_heap_budget(descriptor, &board),
                             rmw: image.rmw.clone(),
-                            road: "a workspace cargo image",
+                            horizon: crate::sizing_descriptor::ModelHorizon::new(
+                                "a workspace cargo image",
+                            ),
                         },
                     ) {
                         Ok(written) => {

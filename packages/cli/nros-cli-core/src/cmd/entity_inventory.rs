@@ -207,16 +207,28 @@ fn inventory_from_metadata(source: &str, doc: &MetadataDoc) -> Result<EntityInve
     Ok(inv)
 }
 
+/// Read one `nros-metadata.json` off disk and build its inventory.
+///
+/// phase-457 W0 (issue 1407) — the SECOND caller is
+/// [`crate::cmd::sizing_descriptor`]'s model-road producer, which must derive
+/// over the same component population this verb does. Lifted to a function
+/// rather than copied there: a second read of one artifact is how two producers
+/// of one schema come to describe different images (issue 1228's shape), and
+/// the IO half is exactly what [`inventory_from_metadata`] was written without.
+pub fn inventory_from_metadata_file(path: &std::path::Path) -> Result<EntityInventory> {
+    let raw = std::fs::read_to_string(path)
+        .wrap_err_with(|| format!("read metadata `{}`", path.display()))?;
+    let doc: MetadataDoc = serde_json::from_str(&raw)
+        .wrap_err_with(|| format!("parse metadata `{}`", path.display()))?;
+    inventory_from_metadata(&path.display().to_string(), &doc)
+}
+
 pub fn run(args: EntityInventoryArgs) -> Result<()> {
     let metadata = args
         .metadata
         .clone()
         .unwrap_or_else(|| PathBuf::from("nros-metadata.json"));
-    let raw = std::fs::read_to_string(&metadata)
-        .wrap_err_with(|| format!("read metadata `{}`", metadata.display()))?;
-    let doc: MetadataDoc = serde_json::from_str(&raw)
-        .wrap_err_with(|| format!("parse metadata `{}`", metadata.display()))?;
-    let mut inv = inventory_from_metadata(&metadata.display().to_string(), &doc)?;
+    let mut inv = inventory_from_metadata_file(&metadata)?;
 
     // phase-412 -- fold in the model's wiring when a contract authored it.
     //

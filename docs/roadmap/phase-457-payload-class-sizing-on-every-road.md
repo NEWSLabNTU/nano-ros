@@ -106,7 +106,7 @@ own structural reason (timers and guard conditions dropped by `endpoint_kind`;
 the schedule; per-component attribution). Those are ledgered separately and are
 NOT in this phase's scope — do not quietly absorb them.
 
-### W0 — one inventory behind both producers
+### W0 — one inventory behind both producers — **LANDED**
 
 Give `--from-model` the composition the inventory verb already has: take
 `--metadata` beside `--model` and run `merged_per_kind_max`, so the two producers
@@ -117,7 +117,36 @@ makes the model-written descriptor REFUSE, exactly as `entity-inventory` refuses
 today — with a reproduction that fails first, since the current behaviour is to
 state a number from a poorer set without noticing.
 
-### W0.b — a descriptor for a leaf with no model
+**The composition landed as specified. The acceptance as WRITTEN was wrong
+against the code, and the correction matters more than the wave.** "A component
+in the metadata and absent from the contract" does not refuse on EITHER producer
+today, so there was no refusal to share:
+
+* **issue 1402** (fixed after 1407 was filed) reclassifies exactly that shape to
+  `Declaration::NotLaunched`, and `derive` deliberately does not filter on it —
+  "no model row" is its proxy for "this image does not launch it". So once the
+  model describes wiring, composing metadata in can no longer introduce a
+  `derive()` refusal at all.
+* **phase-454 W9** retired the `"entities"` key of `nros-metadata.json`, so every
+  metadata row is `Declaration::Absent` to begin with.
+
+What the poorer component set actually cost is an **UNDER-COUNT**, which is the
+same mechanism in the direction that ships a failure: `max_nodes` IS
+`components().len()`, so the model-only producer stated `[image] node_count = 1`
+for an image whose configure registered three components — and a short
+`NROS_EXECUTOR_MAX_NODES` is `NodeError::NodeTableFull` at boot. That is the
+reproduction, and it was **watched failing** (`Stated(1)`, wanted `Some(3)`)
+before the composition existed:
+`cmd::sizing_descriptor::tests::a_component_the_contract_does_not_describe_still_counts_toward_the_node_table`.
+
+The sharing is bound by
+`the_descriptor_states_what_the_inventory_verb_derives`, which compares the
+written descriptor against `merged_per_kind_max(...).derive()` over the same two
+inputs — so whatever either producer derives from the component set is held
+equal, without the test enumerating the fields. If 1402's proxy for "launched"
+ever changes, that is where the refusal reappears on both roads at once.
+
+### W0.b — a descriptor for a leaf with no model — **LANDED, carriers KEPT**
 
 A standalone leaf declaring `[[component]] entities` in `system.toml` has no
 model, so it can never have a model-written descriptor — and that is the road
@@ -125,6 +154,42 @@ issue 1378 measured failing. `facts_from_leaf` already reads exactly that
 declaration through the same `EntityDecl` grammar.
 
 Acceptance: such a leaf gets a descriptor, and its queryable carriers retire.
+
+**The descriptor landed; the carriers did NOT retire, and that is the measured
+answer rather than unfinished work.** `nros ws sizing-descriptor --from-leaf`
+writes one from the same `EntityDecl` grammar, reached from
+`nros_record_leaf_entity_facts`; `sizing_descriptor_leaf_road.rs` runs it over
+both leaves issue 1378 was filed against and requires the descriptor's
+`transient_local_publishers` to EQUAL the carrier's
+`NROS_DECLARED_TL_PUBLISHERS` (and `node_count` to equal `NROS_DECLARED_NODES`).
+Mutation-tested: stating the declaration as `None` reports `descriptor Absent,
+carrier 1`.
+
+Two roads still reach neither producer, so retiring would re-open 1378 on
+exactly the images that describe themselves (phase-454 W9's lesson):
+
+* a **multi-entry cmake configure** names no descriptor to cargo — and W0.c below
+  re-affirmed that refusal as the PERMANENT answer, so this is not a gap waiting
+  on a wave;
+* a **standalone Zephyr leaf** reaches neither, because `nano_rosConfig.cmake`'s
+  Zephyr arm returns before the leaf-facts call by design (the Kconfig derive
+  sentinel is that road's own front-end, RFC-0049).
+
+Both are recorded per row in `check-knob-single-reader`'s KEPT ledger against the
+still-open 1407. One more finding worth keeping: `NROS_DECLARED_SERVICE_SERVERS`
+is blocked by something else entirely — **no consumer reads that count off the
+descriptor at all** (`queryable_floor_from` takes it from the carrier alone), so
+the descriptor stating it buys nothing until a consumer ranks it first the way
+`transient_local_publishers` already does.
+
+Two structural notes for whoever extends this road. A `system.toml` with no
+package manifest beside it is a workspace BRINGUP, not a leaf
+(`leaf_system::is_package_dir`), so the producer is "a `system.toml` beside a
+`CMakeLists.txt`". And it **stands down for a cargo leaf**, decided from the
+`[package]` manifest rather than from whether a file is on disk: twelve leaves in
+the tree carry both a `CMakeLists.txt` and a `[package]` manifest, and for those
+the two producers can resolve one path — overwriting `nros sync`'s richer file
+with one that refuses the whole payload class is an UNDER-statement.
 
 ### W0.c — per-entry descriptors in a multi-entry configure
 

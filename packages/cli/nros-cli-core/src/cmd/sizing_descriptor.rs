@@ -55,14 +55,47 @@ pub struct SizingDescriptorArgs {
     #[arg(long, value_name = "PATH", requires = "build_dir", requires = "entry")]
     pub from_model: Option<PathBuf>,
 
-    /// `--from-model`: the image's build dir. The descriptor lands at
-    /// `<build-dir>/nros/sizing/<entry>.toml`.
+    /// phase-457 W0.b (issues 1407 / 1378) — WRITE a descriptor for a STANDALONE
+    /// LEAF, from its own `system.toml` `[[component]] entities`.
+    ///
+    /// The road `nros ws entity-facts --leaf` already answers and the one issue
+    /// 1378 measured FAILING: a copy-out cmake project has no bringup and no
+    /// SystemModel, so `--from-model` can never reach it, and until this mode
+    /// existed the four `NROS_DECLARED_*` queryable facts were the only thing
+    /// that described such an image. Same `EntityDecl` grammar, same counting
+    /// rules, same refusals as the model road — only the input differs.
+    #[arg(
+        long,
+        value_name = "DIR",
+        conflicts_with = "descriptor",
+        conflicts_with = "from_model",
+        requires = "build_dir",
+        requires = "entry"
+    )]
+    pub from_leaf: Option<PathBuf>,
+
+    /// `--from-model` / `--from-leaf`: the image's build dir. The descriptor
+    /// lands at `<build-dir>/nros/sizing/<entry>.toml`.
     #[arg(long, value_name = "DIR")]
     pub build_dir: Option<PathBuf>,
 
     /// `--from-model`: the entry name, which becomes `[meta] entry`.
     #[arg(long, value_name = "NAME")]
     pub entry: Option<String>,
+
+    /// phase-457 W0 (issue 1407) — the `nros-metadata.json` this configure
+    /// wrote, composed with `--from-model`'s contract exactly as `nros ws
+    /// entity-inventory` composes it.
+    ///
+    /// The two producers of one descriptor schema must read ONE inventory. The
+    /// model names the nodes a CONTRACT describes; the metadata names every
+    /// component `nano_ros_node_register()` put in the image, which is the
+    /// population a node table has to hold. Deriving over the contract's set
+    /// alone publishes a count smaller than the image needs — see
+    /// [`crate::entity_inventory::EntityInventory::merged_per_kind_max`] for
+    /// why this is a per-kind MAX and not a replacement.
+    #[arg(long, value_name = "PATH")]
+    pub metadata: Option<PathBuf>,
 
     /// `--from-model`: the backend this image links, when it names one.
     #[arg(long, value_name = "NAME")]
@@ -92,9 +125,13 @@ pub fn run(args: SizingDescriptorArgs) -> Result<()> {
     if let Some(model) = &args.from_model {
         return write_from_model(&args, model);
     }
+    if let Some(leaf) = &args.from_leaf {
+        return write_from_leaf(&args, leaf);
+    }
     let Some(descriptor) = &args.descriptor else {
         eyre::bail!(
-            "pass either `--descriptor <path>` to read one or `--from-model <path>` to write one"
+            "pass `--descriptor <path>` to read one, or `--from-model <path>` / \
+             `--from-leaf <dir>` to write one"
         );
     };
     // A MISSING descriptor is an error here and not a shrug. The caller named a
@@ -150,16 +187,46 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
     crate::cmd::entity_inventory::reject_unknown_qos_values(&model)?;
     crate::cmd::entity_inventory::reject_qos_override_divergence(&model)?;
 
+    // phase-457 W0 (issue 1407) — read the metadata BEFORE the contract's own
+    // predicate is consulted, so a metadata file the caller named and this
+    // process cannot read is an ERROR rather than a silently poorer inventory.
+    // That is the whole defect this wave closes, one level up: an absent half
+    // that nothing announces reads exactly like a half that was empty.
+    let mut metadata_inventory = match &args.metadata {
+        Some(path) => Some(crate::cmd::entity_inventory::inventory_from_metadata_file(
+            path,
+        )?),
+        None => None,
+    };
+
     let inventory = crate::entity_inventory::EntityInventory::from_model(
         model_path.display().to_string(),
         &model,
     )
+    // phase-457 W0 (issue 1407) — COMPOSE the metadata's component population
+    // with the contract's, exactly as `nros ws entity-inventory` does and in
+    // the same direction (metadata on the left, model on the right), so the two
+    // producers of this schema derive over ONE inventory.
+    //
+    // Inside the `Some` arm and nowhere else: "no contract, no descriptor" is
+    // W12's control and a metadata file must never resurrect a file for an
+    // image that declared nothing — `merged_per_kind_max` is also documented as
+    // safe only under this guard (issue 1402's `NotLaunched` rests on a model
+    // with wiring existing).
+    .map(|model_inv| match metadata_inventory.take() {
+        Some(decl) => decl.merged_per_kind_max(&model_inv),
+        None => model_inv,
+    })
     // phase-454 (issue 1408) — the contract's `params:` ride along, exactly as
     // the configure-time producer and `nros build`'s seed attach them
     // (`cmd::entity_inventory`, `cmd::build::resolve_image`). Three composers
     // of one inventory must attach the same things, or the descriptor this
     // verb writes and the one a build writes describe different images
     // (issue 1228's shape).
+    //
+    // AFTER the merge, which is the order `cmd::entity_inventory::run` uses:
+    // the declarations exist only in the model, so attaching them to the merged
+    // result is the one placement that cannot depend on which side won.
     .map(|mut inv| {
         inv.set_param_declarations(crate::entity_inventory::ParamDeclarations::from_model(
             &model,
@@ -185,10 +252,158 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
             host_build: args.host_build,
             heap_budget_bytes: args.heap_budget_bytes,
             rmw: args.rmw.clone(),
-            road: &args.road,
+            horizon: crate::sizing_descriptor::ModelHorizon::new(&args.road),
         })?;
     println!("{}", written.path.display());
     Ok(())
+}
+
+/// phase-457 W0.b — the STANDALONE LEAF write (issues 1407 / 1378).
+///
+/// A copy-out cmake project states what it creates in its own `system.toml`
+/// `[[component]] entities` and has no bringup, no launch file and no
+/// SystemModel — so [`write_from_model`] can never reach it, and it is the road
+/// issue 1378 measured failing: `examples/qemu-armv7a-nuttx/{c,cpp}/action-server`
+/// sized `ZPICO_MAX_QUERYABLES` to its three declared action services and died at
+/// boot on the `/status` cache queryable that is the fourth.
+///
+/// ONE ROW PER `[[component]]`, not one row for the leaf. The counting rules read
+/// the component set — `max_nodes` IS `components().len()` — and collapsing a
+/// three-component leaf into one row would state a node table two slots short,
+/// which is the same under-count W0 just closed on the model road.
+///
+/// **It stands down for a CARGO leaf**, and that is a property of the leaf rather
+/// than of any file's state: such a leaf's descriptor is `nros sync`'s
+/// (`write_for_leaf`), which has all three inventories and STATES the payload
+/// class this producer must refuse. Twelve leaves in the tree carry both a
+/// `CMakeLists.txt` and a `[package]` manifest, and for those the two producers
+/// resolve the same path whenever the cmake build dir is the leaf's own `build/`
+/// — overwriting the richer file with a poorer one is an UNDER-statement, the one
+/// direction RFC-0100 D6 exists to keep out of this artifact.
+fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Result<()> {
+    use crate::entity_inventory::{ComponentEntities, Declaration, EntityDecl, EntityInventory};
+
+    let (Some(build_dir), Some(entry)) = (&args.build_dir, &args.entry) else {
+        eyre::bail!("`--from-leaf` needs `--build-dir` and `--entry`");
+    };
+    let dir = leaf
+        .canonicalize()
+        .wrap_err_with(|| format!("leaf dir `{}`", leaf.display()))?;
+
+    // A cargo leaf has a richer producer. Detected from the MANIFEST rather than
+    // from whether a descriptor happens to be on disk: a file-state test is not
+    // idempotent (our own output looks like somebody else's on the next
+    // configure) and cannot distinguish the two producers at all.
+    if is_cargo_leaf(&dir) {
+        eprintln!(
+            "nros ws sizing-descriptor: `{}` is a cargo leaf, so its sizing descriptor comes \
+             from `nros sync` (which has the message-bound inventory this road does not). \
+             Nothing written.",
+            dir.display()
+        );
+        return Ok(());
+    }
+
+    let system = nros_orchestration_ir::leaf_system::read(&dir)
+        .map_err(|e| eyre::eyre!(e))?
+        .ok_or_else(|| {
+            eyre::eyre!(
+                "{}: declares no deployment -- write {} (RFC-0098 D3)",
+                dir.display(),
+                dir.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+                    .display()
+            )
+        })?;
+
+    // The DECLARATION is the opt-in, exactly as in `cmd::entity_facts::facts_from_leaf`.
+    // A leaf nobody described gets NO descriptor: an all-refused file would move
+    // the `[meta] basis` every consumer guards on in order to say nothing, which
+    // is phase-454 W12's control and holds on this road too.
+    let origin = system.origin_path().display().to_string();
+    let mut rows = Vec::new();
+    let mut any_declared = false;
+    for (i, c) in system.components.iter().enumerate() {
+        let declaration = match &c.entities {
+            None => Declaration::Absent,
+            Some(specs) => {
+                any_declared = true;
+                let mut decls = Vec::new();
+                for spec in specs {
+                    decls.extend(
+                        EntityDecl::parse(spec)
+                            .map_err(|e| eyre::eyre!("{origin}: entities entry `{spec}`: {e}"))?,
+                    );
+                }
+                if decls.is_empty() {
+                    Declaration::None
+                } else {
+                    Declaration::Stated(decls)
+                }
+            }
+        };
+        let name = c
+            .name
+            .clone()
+            .or_else(|| c.class.clone())
+            .unwrap_or_else(|| format!("component{i}"));
+        rows.push(ComponentEntities {
+            pkg: c.pkg.clone().unwrap_or_default(),
+            component: name.clone(),
+            class: c.class.clone().unwrap_or(name),
+            declaration,
+        });
+    }
+    if !any_declared {
+        eprintln!(
+            "nros ws sizing-descriptor: {origin} declares no entities, so no sizing descriptor \
+             is written and every consumer keeps its own defaults. Add `entities = [...]` to its \
+             `[[component]]` (RFC-0098 D8); the runtime's own service families are \
+             `[system] features`."
+        );
+        return Ok(());
+    }
+
+    let mut inventory = EntityInventory::new(origin);
+    for row in rows {
+        inventory.insert(row);
+    }
+    // Issue 1270 — the runtime's own service families, from the SAME key a
+    // bringup states them in. `InfraServices::from_features` is what
+    // `facts_from_leaf` reads, so the two roads cannot come to disagree about
+    // which spelling turns a family on.
+    inventory.set_infra(crate::entity_inventory::InfraServices::from_features(
+        &system.features,
+        system.components.len(),
+    ));
+
+    let written =
+        crate::sizing_descriptor::write_for_model(&crate::sizing_descriptor::ModelImage {
+            build_dir,
+            entry,
+            inventory: &inventory,
+            target_triple: args.target_triple.clone(),
+            host_build: args.host_build,
+            heap_budget_bytes: args.heap_budget_bytes,
+            // The leaf states its own backend; `--rmw` still wins, for a caller
+            // that resolved it more specifically (a cmake `-D`).
+            rmw: args.rmw.clone().or_else(|| system.rmw.clone()),
+            horizon: crate::sizing_descriptor::ModelHorizon::for_leaf_declaration(&args.road),
+        })?;
+    println!("{}", written.path.display());
+    Ok(())
+}
+
+/// Does this leaf have a `[package]` cargo manifest?
+///
+/// The discriminator for "`nros sync` writes this leaf's descriptor". A
+/// `Cargo.toml` with only `[workspace]` is not a leaf's own package, so the
+/// section is what is read rather than the file's existence.
+fn is_cargo_leaf(dir: &std::path::Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+        return false;
+    };
+    text.lines()
+        .any(|l| l.trim_start().starts_with("[package]"))
 }
 
 /// The human report. One line per fact, and a refusal prints its reason.
@@ -335,11 +550,13 @@ mod tests {
             from_model: None,
             build_dir: None,
             entry: None,
+            metadata: None,
             rmw: None,
             target_triple: None,
             host_build: false,
             heap_budget_bytes: None,
             road: "a cmake entry".into(),
+            from_leaf: None,
         }
     }
 
@@ -387,6 +604,463 @@ mod tests {
         assert!(
             !nros_sizing_descriptor::descriptor_path(&build_dir, "nobody").exists(),
             "an image with nothing to declare must get no descriptor at all"
+        );
+    }
+
+    /// A model that publishes `/chatter` from node `/talker`, so
+    /// `EntityInventory::from_model` describes exactly ONE component.
+    fn model_with_one_contracted_node() -> ros_launch_manifest_model::SystemModel {
+        use ros_launch_manifest_model::{SystemModel, TopicWiring};
+        let mut m = SystemModel::default();
+        m.structure.topics.insert(
+            "/chatter".to_string(),
+            TopicWiring {
+                msg_type: "std_msgs/msg/String".to_string(),
+                publishers: vec!["/talker/pub_out".to_string()],
+                subscribers: vec![],
+            },
+        );
+        m
+    }
+
+    /// phase-457 W0 (issue 1407) — the model-written descriptor must derive over
+    /// the SAME component set `nros ws entity-inventory` derives over.
+    ///
+    /// **The reproduction, and it fails before the composition exists.** The
+    /// contract describes one node; `nano_ros_node_register()` put THREE
+    /// components in `nros-metadata.json`, which is the population the node
+    /// table has to hold. Deriving over the contract's set alone states
+    /// `node_count = 1` for an image that creates three nodes, and a short
+    /// `NROS_EXECUTOR_MAX_NODES` is `NodeError::NodeTableFull` at boot — the
+    /// direction RFC-0100 D6 exists to keep a descriptor out of.
+    ///
+    /// The metadata carries no `entities` key (that producer retired in
+    /// phase-412 and the field with it in phase-454 W9), so this is the LIVE
+    /// shape of a cmake configure: rows whose declaration is `Absent` and whose
+    /// only contribution is that they EXIST.
+    #[test]
+    fn a_component_the_contract_does_not_describe_still_counts_toward_the_node_table() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("system_model.yaml");
+        std::fs::write(
+            &model,
+            serde_yaml_ng::to_string(&model_with_one_contracted_node()).unwrap(),
+        )
+        .unwrap();
+        let metadata = dir.path().join("nros-metadata.json");
+        std::fs::write(
+            &metadata,
+            r#"{"components":[
+                 {"name":"talker","pkg":"talker_pkg","class":"talker_pkg::Talker"},
+                 {"name":"worker","pkg":"worker_pkg","class":"worker_pkg::Worker"},
+                 {"name":"relay","pkg":"relay_pkg","class":"relay_pkg::Relay"}
+               ]}"#,
+        )
+        .unwrap();
+        let build_dir = dir.path().join("build");
+        run(SizingDescriptorArgs {
+            from_model: Some(model),
+            metadata: Some(metadata),
+            build_dir: Some(build_dir.clone()),
+            entry: Some("island".into()),
+            host_build: true,
+            rmw: Some("zenoh".into()),
+            ..args()
+        })
+        .expect("a contract was authored, so a descriptor is written");
+        let desc = nros_sizing_descriptor::read(&nros_sizing_descriptor::descriptor_path(
+            &build_dir, "island",
+        ))
+        .expect("the descriptor was written");
+        assert_eq!(
+            desc.image.node_count().stated().copied(),
+            Some(3),
+            "the node table holds every REGISTERED component, not only the \
+             contracted ones -- {:?}",
+            desc.image.node_count()
+        );
+    }
+
+    /// phase-457 W0 — the two producers derive over ONE inventory, checked by
+    /// comparing the descriptor against the verb's own derivation.
+    ///
+    /// This is the invariant, not the node count: 1407's mechanism 1 is that the
+    /// SETS differ, and any field either producer derives from the set inherits
+    /// the difference. Comparing the composed `Derivation` with what the file
+    /// says binds them without this test having to enumerate the fields.
+    ///
+    /// **What it cannot assert, measured here rather than assumed.** 1407's
+    /// acceptance was written as "a component the metadata names and the
+    /// contract does not makes the descriptor REFUSE". That shape no longer
+    /// refuses on EITHER producer: issue 1402 reclassifies exactly it to
+    /// `Declaration::NotLaunched`, which `derive` deliberately does not filter
+    /// on, and phase-454 W9 retired the metadata `entities` key so every
+    /// metadata row is `Absent` to begin with. So the composed refusal the two
+    /// producers now share is unreachable from this input, and what the sharing
+    /// actually buys is the COUNT below. If 1402's proxy for "launched" ever
+    /// changes, this assertion is where the refusal reappears on both roads at
+    /// once — which is the property the wave was for.
+    #[test]
+    fn the_descriptor_states_what_the_inventory_verb_derives() {
+        let dir = tempfile::tempdir().unwrap();
+        let m = model_with_one_contracted_node();
+        let model = dir.path().join("system_model.yaml");
+        std::fs::write(&model, serde_yaml_ng::to_string(&m).unwrap()).unwrap();
+        let metadata = dir.path().join("nros-metadata.json");
+        std::fs::write(
+            &metadata,
+            r#"{"components":[
+                 {"name":"talker","pkg":"talker_pkg","class":"talker_pkg::Talker"},
+                 {"name":"worker","pkg":"worker_pkg","class":"worker_pkg::Worker"}
+               ]}"#,
+        )
+        .unwrap();
+
+        // The verb's own composition, through the same two functions it calls.
+        let decl = crate::cmd::entity_inventory::inventory_from_metadata_file(&metadata).unwrap();
+        let model_inv =
+            crate::entity_inventory::EntityInventory::from_model("m", &m).expect("wiring");
+        let composed = decl.merged_per_kind_max(&model_inv);
+        let knobs = composed.derive();
+        let knobs = knobs.knobs().expect("the composed inventory derives");
+
+        let build_dir = dir.path().join("build");
+        run(SizingDescriptorArgs {
+            from_model: Some(model),
+            metadata: Some(metadata),
+            build_dir: Some(build_dir.clone()),
+            entry: Some("island".into()),
+            host_build: true,
+            ..args()
+        })
+        .unwrap();
+        let desc = nros_sizing_descriptor::read(&nros_sizing_descriptor::descriptor_path(
+            &build_dir, "island",
+        ))
+        .unwrap();
+        assert_eq!(
+            desc.image.node_count().stated().copied(),
+            Some(knobs.max_nodes),
+            "the descriptor and `ws entity-inventory` must derive over one set"
+        );
+        assert_eq!(
+            desc.image.subscriber_count().stated().copied(),
+            Some(knobs.max_subscribers),
+        );
+    }
+
+    /// The control: with no `--metadata`, the model stands alone and nothing
+    /// changes. A configure that registered nothing has no metadata file, and
+    /// the contract's set is then the whole truth.
+    #[test]
+    fn with_no_metadata_the_contract_alone_still_answers() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("system_model.yaml");
+        std::fs::write(
+            &model,
+            serde_yaml_ng::to_string(&model_with_one_contracted_node()).unwrap(),
+        )
+        .unwrap();
+        let build_dir = dir.path().join("build");
+        run(SizingDescriptorArgs {
+            from_model: Some(model),
+            build_dir: Some(build_dir.clone()),
+            entry: Some("island".into()),
+            host_build: true,
+            ..args()
+        })
+        .expect("written");
+        let desc = nros_sizing_descriptor::read(&nros_sizing_descriptor::descriptor_path(
+            &build_dir, "island",
+        ))
+        .unwrap();
+        assert_eq!(desc.image.node_count().stated().copied(), Some(1));
+    }
+
+    // --- W0.b: the standalone-leaf road (issues 1407 / 1378) ----------------
+
+    /// Write a leaf whose `system.toml` declares `body`, and return the dir.
+    ///
+    /// The `CMakeLists.txt` is not decoration: `leaf_system::is_package_dir` is
+    /// what separates a LEAF from a workspace BRINGUP, and a `system.toml` with
+    /// no package manifest beside it is the latter — its images are chosen by the
+    /// workspace builder, not by this reader. So a standalone cmake leaf is
+    /// exactly "a `system.toml` beside a `CMakeLists.txt`", and that is the shape
+    /// under test.
+    fn leaf_with(dir: &std::path::Path, body: &str) -> std::path::PathBuf {
+        let leaf = dir.join("action-server");
+        std::fs::create_dir_all(&leaf).unwrap();
+        std::fs::write(leaf.join("system.toml"), body).unwrap();
+        std::fs::write(
+            leaf.join("CMakeLists.txt"),
+            "cmake_minimum_required(VERSION 3.22)\nproject(leaf LANGUAGES C)\n",
+        )
+        .unwrap();
+        leaf
+    }
+
+    /// phase-457 W0.b — the road issue 1378 measured FAILING now gets a
+    /// descriptor, and the fact it failed on is in it.
+    ///
+    /// `examples/qemu-armv7a-nuttx/{c,cpp}/action-server`'s shape: one component,
+    /// one declared action server, no bringup and no SystemModel. The action
+    /// server's `/status` publisher is `TRANSIENT_LOCAL` whatever anything
+    /// declares, so it owes a cache queryable — the FOURTH slot on an image sized
+    /// to three, which is the boot failure. `transient_local_publishers` is the
+    /// ONE rule that counts it, and the point of this wave is that the rule can
+    /// now be fed from a descriptor on this road instead of only from an env
+    /// carrier.
+    #[test]
+    fn a_standalone_leaf_declaration_gets_a_descriptor() {
+        let dir = tempfile::tempdir().unwrap();
+        let leaf = leaf_with(
+            dir.path(),
+            r#"
+[system]
+name = "nuttx_c_action_server"
+rmw = "zenoh"
+
+[[component]]
+pkg = "nuttx_c_action_server"
+class = "nuttx_c_action_server::ActionServer"
+name = "fibonacci_action_server"
+entities = ["action_server:example_interfaces/action/Fibonacci:/fibonacci"]
+
+[image.qemu-armv7a-nuttx]
+board = "qemu-armv7a-nuttx"
+"#,
+        );
+        let build_dir = dir.path().join("build");
+        run(SizingDescriptorArgs {
+            from_leaf: Some(leaf),
+            build_dir: Some(build_dir.clone()),
+            entry: Some("c_action_server".into()),
+            host_build: true,
+            road: "a standalone cmake leaf".into(),
+            ..args()
+        })
+        .expect("a leaf that declares its entities gets a descriptor");
+
+        let desc = nros_sizing_descriptor::read(&nros_sizing_descriptor::descriptor_path(
+            &build_dir,
+            "c_action_server",
+        ))
+        .expect("the descriptor was written");
+        assert_eq!(desc.endpoints.len(), 1, "{:?}", desc.endpoints);
+        assert_eq!(desc.endpoints[0].kind, EndpointKind::ActionServer);
+        assert_eq!(desc.endpoints[0].topic, "/fibonacci");
+        // Issue 1378's fact, through the one rule that owns it.
+        assert_eq!(
+            nros_sizing_descriptor::transient_local_publishers(&desc).stated(),
+            Some(&1),
+            "an action server owes one cache queryable for its `/status`"
+        );
+        assert_eq!(desc.image.node_count().stated().copied(), Some(1));
+    }
+
+    /// The payload class stays REFUSED, and the refusal names the LEAF's input
+    /// rather than a SystemModel this road does not have.
+    ///
+    /// A C or C++ leaf has no `generated/` bound table, so `wire_bound_bytes` is
+    /// as unavailable here as on the model road — but telling its author that
+    /// "the resolved SystemModel carries no message-bound inventory" points at an
+    /// artifact that does not exist on their road, which is the diagnostic
+    /// failure issue 1033 records one layer down.
+    #[test]
+    fn the_leaf_roads_refusal_names_the_declaration_not_a_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let leaf = leaf_with(
+            dir.path(),
+            r#"
+[system]
+name = "leaf"
+rmw = "zenoh"
+
+[[component]]
+name = "n"
+entities = ["subscription:std_msgs/msg/String:/chatter"]
+
+[image.i]
+board = "qemu-armv7a-nuttx"
+"#,
+        );
+        let build_dir = dir.path().join("build");
+        run(SizingDescriptorArgs {
+            from_leaf: Some(leaf),
+            build_dir: Some(build_dir.clone()),
+            entry: Some("e".into()),
+            host_build: true,
+            road: "a standalone cmake leaf".into(),
+            ..args()
+        })
+        .unwrap();
+        let desc =
+            nros_sizing_descriptor::read(&nros_sizing_descriptor::descriptor_path(&build_dir, "e"))
+                .unwrap();
+        let why = desc.endpoints[0]
+            .wire_bound_bytes()
+            .refusal()
+            .expect("the payload class is refused on this road")
+            .to_string();
+        assert!(why.contains("system.toml"), "{why}");
+        assert!(why.contains("a standalone cmake leaf"), "{why}");
+        assert!(
+            !why.contains("resolved SystemModel"),
+            "this road has no model, so its refusal must not name one: {why}"
+        );
+        // Still tracked, and by the same issue: the missing input is the bound
+        // inventory either way.
+        assert!(
+            why.contains(crate::sizing_descriptor::MODEL_ONLY_ISSUE),
+            "{why}"
+        );
+
+        // `registration_path` is refused on BOTH roads and for DIFFERENT reasons,
+        // so the prose must not be shared. A model image has no one entry
+        // language because it is several packages; a leaf is ONE package whose
+        // language is perfectly well known, and what it cannot state is the CALL
+        // SITE. Saying the model's reason here would name a fact that is not
+        // missing, which is how a refusal stops being actionable.
+        let reg = desc.endpoints[0]
+            .registration_path()
+            .refusal()
+            .expect("the registration path is refused on this road")
+            .to_string();
+        assert!(reg.contains("CALL SITE"), "{reg}");
+        assert!(
+            !reg.contains("several packages"),
+            "a standalone leaf is ONE package; that clause belongs to the model road: {reg}"
+        );
+    }
+
+    /// EVERY `[[component]]` is a row, because `max_nodes` IS the component
+    /// count. Collapsing a three-component leaf into one row would state a node
+    /// table two slots short — the same under-count W0 closed on the model road.
+    #[test]
+    fn each_leaf_component_is_its_own_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let leaf = leaf_with(
+            dir.path(),
+            r#"
+[system]
+name = "leaf"
+rmw = "zenoh"
+
+[[component]]
+name = "a"
+entities = ["publisher:std_msgs/msg/String:/a"]
+
+[[component]]
+name = "b"
+entities = ["subscription:std_msgs/msg/String:/b"]
+
+[[component]]
+name = "c"
+entities = ["timer"]
+
+[image.i]
+board = "qemu-armv7a-nuttx"
+"#,
+        );
+        let build_dir = dir.path().join("build");
+        run(SizingDescriptorArgs {
+            from_leaf: Some(leaf),
+            build_dir: Some(build_dir.clone()),
+            entry: Some("e".into()),
+            host_build: true,
+            ..args()
+        })
+        .unwrap();
+        let desc =
+            nros_sizing_descriptor::read(&nros_sizing_descriptor::descriptor_path(&build_dir, "e"))
+                .unwrap();
+        assert_eq!(desc.image.node_count().stated().copied(), Some(3));
+        // The timer is a component row and NOT an endpoint: it carries no type
+        // and no topic, so no endpoint table can key on it.
+        assert_eq!(desc.endpoints.len(), 2, "{:?}", desc.endpoints);
+    }
+
+    /// The control W12 owns: a leaf that declares NOTHING gets NO file.
+    ///
+    /// An all-refused descriptor would move the `[meta] basis` every consumer
+    /// guards on in order to say nothing, and `entity-facts --leaf` abstains on
+    /// exactly this input — the two roads must agree about when there is no
+    /// answer, not only about what the answer is.
+    #[test]
+    fn a_leaf_that_declares_no_entities_gets_no_descriptor() {
+        let dir = tempfile::tempdir().unwrap();
+        let leaf = leaf_with(
+            dir.path(),
+            r#"
+[system]
+name = "leaf"
+rmw = "zenoh"
+
+[[component]]
+name = "n"
+
+[image.i]
+board = "qemu-armv7a-nuttx"
+"#,
+        );
+        let build_dir = dir.path().join("build");
+        run(SizingDescriptorArgs {
+            from_leaf: Some(leaf),
+            build_dir: Some(build_dir.clone()),
+            entry: Some("e".into()),
+            host_build: true,
+            ..args()
+        })
+        .expect("declaring nothing is a normal state, not a broken configure");
+        assert!(
+            !nros_sizing_descriptor::descriptor_path(&build_dir, "e").exists(),
+            "an image with nothing to declare must get no descriptor at all"
+        );
+    }
+
+    /// A CARGO leaf keeps `nros sync`'s descriptor, which states strictly more.
+    ///
+    /// Twelve leaves in the tree carry both a `CMakeLists.txt` and a `[package]`
+    /// manifest, and for those the two producers can resolve the SAME path.
+    /// Overwriting the richer file with one that refuses the whole payload class
+    /// is an UNDER-statement — the direction RFC-0100 D6 exists to keep out of
+    /// this artifact. Decided from the MANIFEST, not from whether a file happens
+    /// to be on disk: a file-state test is not idempotent across configures.
+    #[test]
+    fn a_cargo_leaf_keeps_the_descriptor_sync_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let leaf = leaf_with(
+            dir.path(),
+            r#"
+[system]
+name = "leaf"
+rmw = "zenoh"
+
+[[component]]
+name = "n"
+entities = ["publisher:std_msgs/msg/String:/a"]
+
+[image.i]
+board = "qemu-armv7a-nuttx"
+"#,
+        );
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"leaf\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+        )
+        .unwrap();
+        let build_dir = dir.path().join("build");
+        run(SizingDescriptorArgs {
+            from_leaf: Some(leaf),
+            build_dir: Some(build_dir.clone()),
+            entry: Some("e".into()),
+            host_build: true,
+            ..args()
+        })
+        .expect("standing down is not a failure");
+        assert!(
+            !nros_sizing_descriptor::descriptor_path(&build_dir, "e").exists(),
+            "the cargo road's producer has every input this one lacks"
         );
     }
 

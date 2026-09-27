@@ -41,6 +41,13 @@
 include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntityFacts.cmake")
+# phase-457 W0.b — `nros_sizing_descriptor_from_leaf`. Included at FILE scope and
+# not inside the function: `CMAKE_CURRENT_LIST_DIR` inside a function frame is a
+# footgun this tree has already paid for (a plain `set(_X_DIR
+# ${CMAKE_CURRENT_LIST_DIR})` in a function broke every freertos workspace
+# member's `configure_file`), and the sibling include one line up is the pattern
+# that works. Both modules are `include_guard(GLOBAL)`, so this costs nothing.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSizingDescriptor.cmake")
 
 # nros_record_leaf_entity_facts(<leaf-dir>)
 #
@@ -120,6 +127,37 @@ function(nros_record_leaf_entity_facts _dir)
     endif()
 
     nros_fold_entity_facts("${_out}")
+
+    # phase-457 W0.b (issues 1407 / 1378) — and the SIZING DESCRIPTOR for the
+    # same declaration, on the road that had none.
+    #
+    # The four `NROS_DECLARED_*` facts above are this road's carriers, and issue
+    # 1407 records why they could not retire when phase-454 W14 gave the other
+    # two roads a producer: a standalone leaf has no SystemModel, so
+    # `--from-model` can never reach it. It is also the road that FAILED (1378).
+    # This closes that half — the declaration now reaches the descriptor schema
+    # too, so a consumer that reads the descriptor gets the same answer here as
+    # on the cargo-leaf road instead of nothing.
+    #
+    # AFTER the fold, not instead of it: the descriptor and the carriers are read
+    # by different consumers at different rungs, and the consumers that rank the
+    # descriptor first already do so (`transient_local_publishers`, which falls
+    # back to the carrier on `Fact::Absent`). Writing both is what makes the
+    # ranking observable rather than a claim.
+    #
+    # `PROJECT_NAME` is the entry name: a standalone leaf's `project()` runs
+    # before its `find_package(nano_ros)`, so this is the name every other
+    # per-entry artifact in this build dir is keyed by.
+    nros_sizing_descriptor_from_leaf(_nros_leaf_descriptor
+        CLI       "${_nros}"
+        LEAF      "${_dir}"
+        ENTRY     "${PROJECT_NAME}"
+        BUILD_DIR "${CMAKE_BINARY_DIR}")
+    if(_nros_leaf_descriptor)
+        message(STATUS
+            "nano-ros: sizing descriptor written from ${_dir}/system.toml — "
+            "${_nros_leaf_descriptor} (phase-457 W0.b, issue 1378)")
+    endif()
     # A configure re-runs when the declaration changes. `nano_ros_read_leaf_system`
     # already registers this file, but that is its dependency and not ours: a
     # module that stops being included must take its own edge with it.

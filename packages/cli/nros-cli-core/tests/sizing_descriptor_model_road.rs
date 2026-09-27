@@ -25,7 +25,7 @@ use std::{
 
 use nros_cli_core::{
     entity_inventory::EntityInventory,
-    sizing_descriptor::{MODEL_ONLY_ISSUE, ModelImage, write_for_model},
+    sizing_descriptor::{MODEL_ONLY_ISSUE, ModelHorizon, ModelImage, write_for_model},
 };
 use nros_sizing_descriptor::{Basis, EndpointKind, History, Reliability, Status};
 use ros_launch_manifest_model::SystemModel;
@@ -45,7 +45,7 @@ fn a_contract_reaches_the_model_road_and_the_leaf_facts_refuse_by_name() {
         host_build: false,
         heap_budget_bytes: Some(65_536),
         rmw: Some("zenoh".into()),
-        road: "a workspace cargo image",
+        horizon: ModelHorizon::new("a workspace cargo image"),
     })
     .expect("the descriptor is written");
     let desc = &written.desc;
@@ -106,7 +106,26 @@ fn a_contract_reaches_the_model_road_and_the_leaf_facts_refuse_by_name() {
             reason.contains(MODEL_ONLY_ISSUE),
             "`{what}`'s refusal must name {MODEL_ONLY_ISSUE}: {reason}"
         );
+        // phase-457 W0.b — and it must name THIS road's input. The horizon gained
+        // a second source (a standalone leaf's own declaration), and a refusal
+        // that names the wrong one sends its reader after an artifact that does
+        // not exist on their road. The leaf half is asserted in
+        // `cmd::sizing_descriptor`'s `the_leaf_roads_refusal_names_the_declaration_not_a_model`.
+        assert!(
+            reason.contains("resolved SystemModel"),
+            "`{what}`'s refusal on the MODEL road must name the model: {reason}"
+        );
     }
+    // The clause that is this road's alone: an image resolved from a model is
+    // several packages, so there is no single entry language to read the
+    // registration spelling off. A LEAF is one package and refuses for a
+    // different reason, so the two must not share prose.
+    assert!(
+        path.refusal()
+            .is_some_and(|r| r.contains("several packages")),
+        "{:?}",
+        path.refusal()
+    );
 
     // And the file says all of it: the refusals travel to the consumer, not to
     // a build log nobody kept (RFC-0100 D6).
@@ -143,7 +162,7 @@ fn a_model_road_descriptor_carries_no_path_from_this_checkout() {
         host_build: true,
         heap_budget_bytes: None,
         rmw: Some("zenoh".into()),
-        road: "a workspace cargo image",
+        horizon: ModelHorizon::new("a workspace cargo image"),
     })
     .expect("the descriptor is written");
     let body = fs::read_to_string(&written.path).expect("read the descriptor");
@@ -173,7 +192,7 @@ fn keep_all_still_refuses_its_depth_on_the_model_road() {
         host_build: true,
         heap_budget_bytes: None,
         rmw: Some("zenoh".into()),
-        road: "a cmake entry",
+        horizon: ModelHorizon::new("a cmake entry"),
     })
     .expect("the descriptor is written");
     let sub = written

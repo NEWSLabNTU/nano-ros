@@ -425,6 +425,119 @@ decided' must not look alike in a log (issue 0973's rule) -- $OUT"
 fi
 
 # ---------------------------------------------------------------------------
+# H. the STANDALONE LEAF writer (phase-457 W0.b, issues 1407/1378).
+#
+# `nros_sizing_descriptor_from_leaf` is the third producer: a copy-out cmake
+# project has no bringup and no SystemModel, so `from_model` can never reach it,
+# and it is the road issue 1378 measured failing at boot.
+#
+#   H1. a leaf descriptor reaches cargo when there is no ENTRY descriptor -- the
+#       whole point, since that road previously named nothing;
+#   H2. an ENTRY descriptor WINS when both exist. The two lists are kept apart
+#       precisely so a leaf path cannot turn a one-entry configure into "two
+#       descriptors, therefore none" (G3) and silently withdraw a fact the
+#       carrier still delivers. This is H1's negative control: a function that
+#       merged the lists would pass H1 and emit NOTHING here.
+# ---------------------------------------------------------------------------
+LEAF_DIR="$TEST_TMPDIR/leafproj"
+mkdir -p "$LEAF_DIR"
+echo '[system]' > "$LEAF_DIR/system.toml"
+
+LEAF_STUB="$TEST_TMPDIR/nros-leaf-stub"
+cat > "$LEAF_STUB" <<'STUB_EOF'
+#!/bin/bash
+# Mimics `nros ws sizing-descriptor --from-leaf`: writes at the path rule and
+# echoes it. Refuses to be mistaken for the model writer -- if the caller did
+# not pass --from-leaf, that is the bug this stub exists to catch.
+build_dir="" entry="" prev="" saw_leaf=""
+for a in "$@"; do
+    case "$a" in --from-leaf) saw_leaf=1 ;; esac
+    case "$prev" in
+        --build-dir) build_dir="$a" ;;
+        --entry) entry="$a" ;;
+    esac
+    prev="$a"
+done
+if [ -z "$saw_leaf" ]; then echo "stub: no --from-leaf" >&2; exit 2; fi
+mkdir -p "$build_dir/nros/sizing"
+echo 'schema_version = 1' > "$build_dir/nros/sizing/$entry.toml"
+echo "$build_dir/nros/sizing/$entry.toml"
+STUB_EOF
+chmod +x "$LEAF_STUB"
+
+LEAF_DRIVER="$TEST_TMPDIR/leaf-driver.cmake"
+cat > "$LEAF_DRIVER" <<'EOF'
+include("$ENV{NROS_TEST_MODULE}")
+# NOT `if(DEFINED ENV{...})`: an environment variable set to the EMPTY STRING is
+# DEFINED in CMake, so that spelling made the no-entry case run the entry block
+# and H1 silently measured H2 instead.
+if(NOT "$ENV{NROS_TEST_ENTRY_FIRST}" STREQUAL "")
+    nros_sizing_descriptor_from_model(_entry
+        CLI       "$ENV{NROS_TEST_CLI}"
+        MODEL     "$ENV{NROS_TEST_MODEL}"
+        ENTRY     "entry"
+        BUILD_DIR "${CMAKE_BINARY_DIR}"
+        RMW       "zenoh")
+    message(STATUS "WROTE_ENTRY=${_entry}")
+endif()
+nros_sizing_descriptor_from_leaf(_leaf
+    CLI       "$ENV{NROS_TEST_LEAF_CLI}"
+    LEAF      "$ENV{NROS_TEST_LEAF}"
+    ENTRY     "leafentry"
+    BUILD_DIR "${CMAKE_BINARY_DIR}")
+message(STATUS "WROTE_LEAF=${_leaf}")
+nros_sizing_descriptor_cargo_env(_row)
+message(STATUS "LEAF_CARGO_ROW=${_row}")
+EOF
+
+cat > "$WPROJ/CMakeLists.txt" <<'EOF'
+cmake_minimum_required(VERSION 3.20)
+project(nros_sizing_descriptor_writer_test NONE)
+include("$ENV{NROS_TEST_DRIVER}")
+EOF
+
+# run_leaf <entry_first> -> stdout+stderr
+run_leaf() {
+    rm -rf "$WPROJ/build"
+    NROS_TEST_MODULE="$MODULE_ENV" \
+    NROS_TEST_DRIVER="$LEAF_DRIVER" \
+    NROS_TEST_CLI="$WRITER_STUB" \
+    NROS_TEST_LEAF_CLI="$LEAF_STUB" \
+    NROS_TEST_MODEL="$MODEL" \
+    NROS_TEST_LEAF="$LEAF_DIR" \
+    NROS_TEST_ENTRY_FIRST="$1" \
+        cmake -S "$WPROJ" -B "$WPROJ/build" 2>&1
+}
+
+log_info "H1. a standalone leaf's descriptor reaches cargo (issues 1407/1378)"
+OUT="$(NROS_TEST_ENTRY_FIRST= run_leaf "")"
+RC=$?
+check
+if [ "$RC" -ne 0 ]; then
+    fail "H1: the leaf writer failed the configure -- a leaf with no descriptor must \
+configure exactly as before (RFC-0100 D6) -- $OUT"
+fi
+check
+if ! nros_grep_q "WROTE_LEAF=.*/nros/sizing/leafentry.toml" <<<"$OUT"; then
+    fail "H1: the leaf writer did not report the path it wrote -- $OUT"
+fi
+check
+if ! nros_grep_q "LEAF_CARGO_ROW=NROS_SIZING_DESCRIPTOR=.*/nros/sizing/leafentry.toml" <<<"$OUT"; then
+    fail "H1: no cargo env row, so the standalone-leaf road still names nothing and \
+issue 1378's queryable count reaches the backend only through the env carrier -- $OUT"
+fi
+
+log_info "H2. an ENTRY descriptor outranks a leaf one, and both still yield a row"
+OUT="$(run_leaf 1)"
+check
+if ! nros_grep_q "LEAF_CARGO_ROW=NROS_SIZING_DESCRIPTOR=.*/nros/sizing/entry.toml" <<<"$OUT"; then
+    fail "H2: with an entry AND a leaf descriptor in scope the ENTRY's must win. \
+Emitting nothing here would mean the two lists were merged, so a leaf path turned a \
+ONE-entry configure into G3's 'two descriptors, therefore none' -- withdrawing a fact \
+the NROS_DECLARED_* carrier still delivers -- $OUT"
+fi
+
+# ---------------------------------------------------------------------------
 echo
 if [ "$FAILURES" -eq 0 ]; then
     log_success "cmake sizing-descriptor reader: $CHECKS checks passed"

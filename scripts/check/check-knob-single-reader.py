@@ -304,17 +304,50 @@ class Kept:
 _PAYLOAD = "the descriptor REFUSES the bound this sizes from on 2 roads of 3"
 
 # Issue 1407 -- the count class. Three independent mechanisms, none of which
-# 1393's remedy touches: the descriptor's producer reads a POORER inventory
-# (model only, where the carrier's is metadata + model, and only the carrier's
-# can refuse on a component that declared nothing); no model means no
-# descriptor, which is every standalone leaf; and a multi-entry configure names
-# no descriptor to cargo at all while the facts still travel by MAX.
-_COUNTS = "the descriptor's producer sees a poorer inventory on this road"
+# 1393's remedy touches.
+#
+# **phase-457 W0 CLOSED THE FIRST ONE**: `nros ws sizing-descriptor --from-model`
+# now takes `--metadata` and composes it with the contract through the same
+# `merged_per_kind_max` the inventory verb uses, so the two producers derive over
+# ONE component population. The reproduction was an UNDER-COUNT, not the refusal
+# 1407 predicted: issue 1402 reclassifies "in the metadata, absent from the
+# contract" to `Declaration::NotLaunched`, which `derive` deliberately does not
+# refuse on, and phase-454 W9 retired the metadata `entities` key -- so what the
+# poorer set cost was `[image] node_count`, measured stating 1 for an image
+# registering 3 (`NodeError::NodeTableFull` at boot).
+#
+# What still keeps these rows is the SECOND and THIRD mechanisms -- the roads
+# that have no descriptor at all -- plus, for most of them, a per-carrier
+# structural reason the schema cannot answer whatever the roads do.
+_COUNTS = "the descriptor's producer does not run on every road this carrier reaches"
 
-# Issue 1407 -- the queryable raw inputs, whose live road is the STANDALONE
-# LEAF (`facts_from_leaf`). That road has no SystemModel, so it can never have
-# a model-written descriptor; it is also the road issue 1378 measured failing.
-_LEAF_ROAD = "carried for a standalone leaf, which has no model and so no descriptor"
+# Issue 1407 -- the queryable raw inputs.
+#
+# **phase-457 W0.b gave the STANDALONE LEAF a producer** (`ws sizing-descriptor
+# --from-leaf`, reached from `nros_record_leaf_entity_facts`), so the road issue
+# 1378 measured FAILING now has a descriptor and it is MEASURED to agree with
+# these carriers (`sizing_descriptor_leaf_road.rs`, over both
+# `examples/qemu-armv7a-nuttx/{c,cpp}/action-server`).
+#
+# They still do not retire, and the reason MOVED rather than going away. Two
+# roads remain, and neither is 1393's:
+#
+#   * a MULTI-ENTRY cmake configure names no descriptor to cargo, and phase-457
+#     W0.c re-affirmed that refusal as the permanent answer (a descriptor is a
+#     whole per-endpoint table and has no MAX; the entity facts do have one and
+#     still travel). So this is not a gap waiting on a wave -- it is a road where
+#     the carrier is structurally the only answer.
+#   * a STANDALONE ZEPHYR leaf reaches neither producer: `nano_rosConfig.cmake`'s
+#     Zephyr arm returns before `nros_record_leaf_entity_facts` by design, because
+#     that road has the Kconfig derive sentinel as its own front-end (RFC-0049).
+#
+# Retiring on "the descriptor states the fact" would re-open 1378 on exactly the
+# images that describe themselves, which is phase-454 W9's lesson.
+_LEAF_ROAD = (
+    "the standalone-leaf road has a descriptor since phase-457 W0.b; a "
+    "multi-entry configure and a standalone Zephyr leaf still reach neither "
+    "producer"
+)
 
 # Issue 1408 -- the parameter store. The gap that KEPT these has CLOSED at both
 # ends: `[params]` exists in the D4 schema and the shared composer fills it on
@@ -405,7 +438,15 @@ KEPT = {
     "NROS_DECLARED_MAX_SUBSCRIBERS": Kept(1407, _COUNTS),
     "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS": Kept(1407, _COUNTS),
     # ---- the queryable raw inputs (issue 1407) --------------------------
-    "NROS_DECLARED_SERVICE_SERVERS": Kept(1407, _LEAF_ROAD),
+    # phase-457 W0.b: all four now have a descriptor on the standalone-leaf road.
+    # What each still needs is recorded per row, because the four differ.
+    "NROS_DECLARED_SERVICE_SERVERS": Kept(
+        1407,
+        _LEAF_ROAD + "; and no consumer reads the application service-server "
+        "count OFF the descriptor yet -- `queryable_floor_from` takes it from "
+        "this carrier alone, so the descriptor stating it buys nothing until a "
+        "consumer ranks it first the way `transient_local_publishers` does",
+    ),
     "NROS_DECLARED_TL_PUBLISHERS": Kept(1407, _LEAF_ROAD),
     "NROS_DECLARED_NODES": Kept(
         1407,
