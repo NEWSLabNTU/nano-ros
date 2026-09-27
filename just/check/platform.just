@@ -919,3 +919,9 @@ zephyr-workspace-foreign-checkout:
 [private]
 board-build-wiring:
     @python3 scripts/check-board-build-wiring.py
+
+# Every `Driver` variant is a road the build-wiring map knows, both directions
+# (issue-0196 shape: an authored structure beside a live enum drifts, and this
+# repo has measured that drift three times in the safe-looking direction).
+build-wiring-roads:
+    @python3 scripts/check-build-wiring-roads.py
