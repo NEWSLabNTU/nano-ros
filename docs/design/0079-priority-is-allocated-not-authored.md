@@ -235,6 +235,36 @@ SystemModel build artifact (already a build artifact — RFC-0063) and is
 inspectable with `nros ws model-dims`. Insufficient distinct slots is a build
 error naming the pool, not a silent squeeze.
 
+**Amended 2026-09-27 (issue 1427) — "insufficient slots" is TWO states, and
+only one of them is an error.** The sentence above collapses them, and the first
+implementation collapsed them the other way, clamping both:
+
+* **Fewer slots than ranks, but at least one.** COMPRESS: the ranks past the
+  pool's width share its least urgent address, and the realizer records a
+  `Degradation` naming the pool. Every number it hands out is still a pool
+  address, so nothing preempts anything it was not allowed to; what weakens is
+  the ORDER, which is a real schedule and is reported as a weaker one. Refusing
+  here would make the derivation unusable on exactly the boards it is for — a
+  FreeRTOS `pool.app` is three wide, and a four-segment ranking is ordinary.
+* **No slots at all.** REFUSE: no tier is derived for those nodes, and the
+  degradation says so and names the band that ate the pool. There is no legal
+  address, so the only alternatives are to fabricate one or to decline, and
+  fabricating one is what §6 reserves for an AUTHORED tier that NAMES the band
+  it crosses. Measured on the pre-0852 Zephyr image, where `transport` resolves
+  to `[0, 14]` and `pool.app` to `[15, 14]`: the clamp produced k_thread **14**
+  for both derived tiers — the transport's own priority — with a stderr warning
+  as the only trace. `PriorityPlan::least_urgent_app_priority` returns
+  `Option` for this reason: on an empty pool `app.hi` is not a pool address at
+  all, it is the last priority the band BELOW owns.
+
+The refusal is a refusal to ALLOCATE, not a build abort, and that is
+deliberate: it reaches all three derivation roads (the `nros sync` bake, the
+C/C++ codegen entry, `nros::main!`) through the degradation record they already
+print, and it leaves the image running whatever its authored configuration says
+rather than replacing an author's schedule with a fabricated one. An operator
+who wants the derivation must widen the pool, which on Zephyr means the image's
+transport-priority Kconfig — the input the band is computed from.
+
 **Implemented 2026-09-23 (phase-459 W4, issue 1427).** `realize_rtos` takes a
 `PriorityPlan` beside its `SchedCaps`
 (`packages/core/nros-orchestration-ir/src/priority_plan.rs`): dense rank 0 is
@@ -242,10 +272,19 @@ the most urgent priority `pool.app` holds, rank *k* the *k*-th, in the plan's
 direction. Before it, `rank_to_priority` allocated from the kernel's whole
 range - on Zephyr rank 0 became priority 0, above the transport threads that
 feed the application, which is the inversion this RFC exists to prevent. Ranks
-past the pool's width are CLAMPED to its least urgent priority and the
-realizer records a `Degradation` naming the pool; the phase's spread-with-
-headroom half is not implemented, so consecutive ranks are consecutive
-priorities.
+past the pool's width are COMPRESSED onto its least urgent priority and the
+realizer records a `Degradation` naming the pool; a pool with no priorities at
+all is REFUSED (the amendment below). The phase's spread-with-headroom half is
+not implemented, so consecutive ranks are consecutive priorities.
+
+The end-to-end half of the acceptance is
+`derived_tiers_bake::the_derived_table_lands_below_the_transport_band`
+(`packages/cli/nros-cli-core/tests/`): a bake of the W0 fixture through the real
+road — launch file, resolved model, callback groups,
+`derive_tiers_from_contracts` — yields 5 for the 30 Hz pair and 6 for the 10 Hz
+pair, inside the pool the island's `.config` resolves and below the `[0, 4]` its
+transport threads occupy. Reverted to the pre-W4 whole-range plan, that same
+test measures 0 and 1, which is issue 1427's report reproduced end to end.
 
 ### 6. Crossing into a reserved band requires naming it
 
