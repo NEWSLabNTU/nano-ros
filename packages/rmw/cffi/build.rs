@@ -109,17 +109,18 @@ fn derived_rung(fact: &Fact<usize>, what: &str, builtin: usize) -> Option<usize>
 /// Kconfig says: that lane inherits none of cmake's `set(ENV{...})` exports,
 /// while the C lane re-bakes them into its own command — so the two halves
 /// disagree about a compile-time constant, silently (issues 0460, 0135).
-/// `knob_usize` reads `$DOTCONFIG` for `CONFIG_<name>` and lets explicit env
-/// win, which is what `nros-node` and `nros-params` already do.
+/// `nros_zephyr_build::Knob` is the tree's one knob ladder (phase-468 W4): it
+/// reads `$DOTCONFIG` for this knob's Kconfig symbol and lets explicit env win,
+/// which is what every other reader now does through the same call.
 ///
-/// Note this drops the previous "not a valid usize" panic: `knob_usize` treats
-/// an unparseable value as absent and falls through to the default. The RANGE
-/// checks below are kept, since they are the ones that catch a plausible-looking
-/// wrong number.
+/// Note this drops the previous "not a valid usize" panic: the ladder treats an
+/// unparseable env value as absent and falls through, unless a caller asks for
+/// `strict_env`. The RANGE checks below are kept, since they are the ones that
+/// catch a plausible-looking wrong number.
 /// phase-400 W6 — `rung` is the platform/board answer from `[knobs.rmw]`, and
-/// it sits between the Kconfig rung and the crate builtin. Passing it as
-/// `knob_usize`'s default is what places it there: env and `$DOTCONFIG` still
-/// win above it, and the builtin only applies when no descriptor said anything.
+/// it sits between the Kconfig rung and the crate builtin. `Knob::rung` is what
+/// places it there: env and `$DOTCONFIG` still win above it, and the builtin
+/// only applies when no descriptor said anything.
 // issue 1199 — see the note in `nros-zpico-build`'s `watch_declared_facts`:
 // spelled literally so the wire is greppable, alongside the dynamic emission.
 fn watch_declared_facts() {
@@ -127,7 +128,7 @@ fn watch_declared_facts() {
 }
 
 fn knob(name: &str, rung: Option<usize>, default: usize) -> usize {
-    nros_zephyr_build::knob_usize(name, &format!("CONFIG_{name}"), rung.unwrap_or(default))
+    nros_zephyr_build::knob(name).rung(rung).resolve(default)
 }
 
 /// issue 1199 — a `NROS_DECLARED_*` count cmake derived for THIS image.

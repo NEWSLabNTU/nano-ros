@@ -652,7 +652,41 @@ impl BuildRungs {
         }
     }
 
+    /// The `[knobs.memory]` RUNGS for this build — platform merged with board,
+    /// board winning — with no env rung, no Kconfig rung and no defaults.
+    ///
+    /// issue 1504. The memory tenant had only the full-ladder [`Self::memory`],
+    /// and its one build-script consumer needed a Kconfig rung the ladder does
+    /// not have — so `nros-platform/build.rs` had to pick ONE of them, wrote
+    /// `memory_value(..).unwrap_or_else(|| knob_usize(..))`, and on every build
+    /// where a platform name is exported the `knob_usize` arm is unreachable:
+    /// `CONFIG_NROS_ZEPHYR_HEAP_SIZE` reached the C lane and not the Rust one,
+    /// which is issue 0460 in the knob whose whole job is the Zephyr heap.
+    ///
+    /// Same shape as [`Self::executor_rungs`], and for the reason its doc
+    /// already gave: what a build script needs shared is the ENV-POINTER DANCE,
+    /// not the composition, and "pretending otherwise would have quietly
+    /// dropped its Kconfig rung".
+    pub fn memory_rungs(&self) -> MemoryKnobs {
+        let plat = self.tree.platform_memory_rungs(&self.platform);
+        let plat = self.require_rungs("memory", plat);
+        let b = self
+            .board
+            .as_ref()
+            .map(|f| f.knobs.memory.clone())
+            .unwrap_or_default();
+        MemoryKnobs {
+            heap_bytes: b.heap_bytes.or(plat.heap_bytes),
+            app_stack_bytes: b.app_stack_bytes.or(plat.app_stack_bytes),
+        }
+    }
+
     /// The memory tenant for this build, over the full ladder.
+    ///
+    /// NOTE there is no Kconfig rung here, deliberately: reading `$DOTCONFIG`
+    /// belongs to the crate that owns the knob (the same rule
+    /// [`executor_rung_opt`] states). A build script that has one must compose
+    /// it, from [`Self::memory_rungs`] and `nros_zephyr_build::Knob`.
     pub fn memory(&self, defaults: &[(&'static str, usize)]) -> Vec<(&'static str, ResolvedUsize)> {
         let plat = self.tree.platform_memory_rungs(&self.platform);
         let plat = self.require_rungs("memory", plat);

@@ -203,16 +203,12 @@ fn main() {
 /// The front-end keeps winning. Migrating a knob into the ladder must not take
 /// an operator's override away, which is half of this wave's own gate. A
 /// Kconfig `-1` is the tree's DERIVE sentinel and reads as no value here
-/// (`dotconfig_usize` parses a `usize`).
+/// (the ladder parses a `usize`).
+///
+/// phase-468 W4 — the three rungs used to be written out here; they are
+/// `nros_zephyr_build::Knob`'s, and it is the tree's only knob ladder now.
 fn stated(name: &str, rung: Option<usize>) -> Option<usize> {
-    println!("cargo:rerun-if-env-changed={name}");
-    if let Some(v) = env::var(name).ok().and_then(|v| v.trim().parse().ok()) {
-        return Some(v);
-    }
-    if let Some(v) = nros_zephyr_build::dotconfig_usize(&format!("CONFIG_{name}")) {
-        return Some(v);
-    }
-    rung
+    nros_zephyr_build::knob(name).rung(rung).stated()
 }
 
 /// One count knob: the stated rungs, then what the contract declared, then
