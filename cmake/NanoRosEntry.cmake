@@ -399,26 +399,40 @@ function(nano_ros_entry)
     # two of those paths had hand-copied HALF of it.
     nros_apply_panic_policy("${_NRA_PANIC}" "nano_ros_entry(${_NRA_NAME})")
 
-    # Phase 241.D3-rev — infer LANG from the source extensions when not given.
+    # Phase 241.D3-rev — infer LANG from the sources when not given.
     # The C and C++ umbrellas are now DISTINCT staticlibs (`libnros_c.a` vs
     # `libnros_cpp.a`, one `std` each), so a C binary must link NanoRos (nros_c)
     # and a C++ binary NanoRosCpp (nros_cpp) — NEVER both, or `std`/compiler-builtins
     # collide. LANG used to default to `cpp`; harmless when NanoRosCpp was an ALIAS of
     # NanoRos, but post-single-runtime that dragged a second Rust staticlib into every
-    # C example. A `.cpp`/`.cxx`/`.cc`/`.C` source ⇒ cpp; otherwise c. LAUNCH-only
-    # (no SOURCES) keeps the historical `cpp` default.
+    # C example.
+    #
+    # phase-469 S3 — the inference is ASKED, not spelled here. This block was
+    # one of THREE copies of `\\.(cpp|cxx|cc|C)$` ⇒ cpp, else c; the third
+    # (`nano_ros_node_register`) fell through the other way, so an unmapped
+    # spelling was C to this site and C++ to that one. `nros codegen
+    # source-language` is the one producer, and it REFUSES a spelling it does
+    # not know instead of picking a side.
+    #
+    # THE TWO DEFAULTS BELOW ARE THIS SITE'S, AND THEY DIFFER FROM THE VERBS':
+    #   * no SOURCES at all — a LAUNCH/MODEL-generated entry — keeps the
+    #     historical `cpp`, because the generated carrier TU is C++ and there is
+    #     nothing to read a language from.
+    #   * SOURCES that settle nothing (headers only) reads `c`, which is what
+    #     the old fallthrough produced for exactly that input.
     if(NOT _NRA_LANG)
         if(_NRA_SOURCES)
-            set(_NRA_LANG c)
-            foreach(_src ${_NRA_SOURCES})
-                if(_src MATCHES "\\.(cpp|cxx|cc|C)$")
-                    set(_NRA_LANG cpp)
-                    break()
-                endif()
-            endforeach()
+            nros_language_of_sources(_NRA_LANG
+                CONTEXT "nano_ros_entry(${_NRA_NAME})"
+                SOURCES ${_NRA_SOURCES})
+            if(NOT _NRA_LANG)
+                set(_NRA_LANG c)
+            endif()
         else()
             set(_NRA_LANG cpp)
         endif()
+        message(VERBOSE
+            "nano-ros: nano_ros_entry(${_NRA_NAME}): entry language ${_NRA_LANG}")
     endif()
 
     # Phase 219.D — LAUNCH-aware fast path: shell `nros codegen entry`
@@ -1097,8 +1111,20 @@ function(_nros_entry_invoke_codegen)
     # made them agree, and the failure if they ever stopped would be a C++ TU
     # written into a `.c` file, or the reverse.
     #
-    # The answer now has one producer, and `check-entry-extension-ssot` refuses
-    # a second one.
+    # The answer now has one producer. This line used to add "and
+    # `check-entry-extension-ssot` refuses a second one" — THERE IS NO SUCH
+    # GATE, in this tree or its history (phase-469 S3 measured it: the name
+    # appeared exactly once, here). What actually holds the producer single is
+    # `check-entry-pack-conformance` on the pack side (a language variant with
+    # no pack, a pack missing `extension`/`c_family`) and the unit tests in
+    # `codegen/entry/pack.rs`; nothing textual refuses a second derivation, so
+    # a reviewer is what stands between this and one.
+    #
+    # NOTE THIS IS THE OPPOSITE DIRECTION from `nros codegen source-language`
+    # (phase-469 S3), and the two are not inverses: this asks "what extension
+    # does LANGUAGE get on BOARD" — a C entry gets `.cpp` on a board with no C
+    # runner — while that one asks "which language is this SOURCE". Collapsing
+    # them would make the routing rule unexpressible.
     set(_ext "")
     execute_process(
         COMMAND "${_nros_bin}" codegen entry-pack

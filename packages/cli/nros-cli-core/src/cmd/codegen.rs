@@ -103,6 +103,17 @@ pub enum Sub {
     /// CMake reports as a FATAL_ERROR at configure.
     #[command(name = "entry-pack")]
     EntryPack(EntryPackArgs),
+
+    /// phase-469 S3 — report which language compiles a source list.
+    ///
+    /// The SIBLING of `entry-pack`, and deliberately not the same query:
+    /// `entry-pack` asks "what extension does this LANGUAGE get on this
+    /// board", which is the opposite direction and not even an inverse of
+    /// this one (a C entry gets a `.cpp` TU on a board with no C runner). This
+    /// asks "which language is this SOURCE", which three cmake sites each
+    /// answered themselves, each defaulting rather than refusing.
+    #[command(name = "source-language")]
+    SourceLanguage(SourceLanguageArgs),
 }
 
 /// phase-432 W3.2 — the query CMake asks before it names an output path.
@@ -115,6 +126,19 @@ pub struct EntryPackArgs {
     /// to the C++ pack.
     #[arg(long)]
     pub board: String,
+    /// Emit the answer as JSON instead of `key=value` lines.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// phase-469 S3 — the query CMake asks instead of matching extensions itself.
+#[derive(Debug, ClapArgs)]
+pub struct SourceLanguageArgs {
+    /// One source entry, repeatable. Paths are NOT opened — the question is
+    /// about the spelling, so this answers for a file codegen has not written
+    /// yet, which is the case every caller has.
+    #[arg(long = "source", value_name = "PATH")]
+    pub sources: Vec<String>,
     /// Emit the answer as JSON instead of `key=value` lines.
     #[arg(long)]
     pub json: bool,
@@ -272,6 +296,7 @@ pub fn run(args: Args) -> Result<()> {
         Some(Sub::Entry(sub_args)) => run_entry(sub_args),
         Some(Sub::EntryNode(sub_args)) => run_entry_node(sub_args),
         Some(Sub::EntryPack(sub_args)) => run_entry_pack(sub_args),
+        Some(Sub::SourceLanguage(sub_args)) => run_source_language(sub_args),
         None => {
             let Some(args_file) = args.args_file else {
                 bail!("nros codegen: --args-file is required (or use a subcommand)");
@@ -556,6 +581,36 @@ fn run_entry_pack(args: EntryPackArgs) -> Result<()> {
         println!("extension={}", info.extension);
         println!("c_family={}", if info.c_family { 1 } else { 0 });
         println!("routed={}", if info.routed { 1 } else { 0 });
+    }
+    Ok(())
+}
+
+/// `nros codegen source-language` — phase-469 S3.
+///
+/// Prints `key=value` lines in the same shape `entry-pack` uses, because CMake
+/// is the caller this exists for and it has no JSON parser.
+///
+/// `language=unresolved` is a real answer, not a failure: an empty list, or one
+/// made only of headers, settles nothing, and the caller owns the default it
+/// then applies. Keeping that distinct from `language=c` is the point — the
+/// three cmake copies this replaces each folded "I do not know" into a
+/// language, and two of them folded it into a different one than the third.
+fn run_source_language(args: SourceLanguageArgs) -> Result<()> {
+    let refs: Vec<&str> = args.sources.iter().map(String::as_str).collect();
+    let answer = nros_lang::Language::of_sources(refs.iter().copied())
+        .map_err(|e| eyre!("codegen source-language: {e}"))?;
+    let spelling = answer.map_or("unresolved", nros_lang::Language::as_str);
+    if args.json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "language": answer.map(nros_lang::Language::as_str),
+                "resolved": answer.is_some(),
+            })
+        );
+    } else {
+        println!("language={spelling}");
+        println!("resolved={}", if answer.is_some() { 1 } else { 0 });
     }
     Ok(())
 }

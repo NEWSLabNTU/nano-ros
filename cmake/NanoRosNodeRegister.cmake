@@ -488,16 +488,39 @@ function(nano_ros_node_register)
     if(_NRC_LANGUAGE)
         string(TOUPPER "${_NRC_LANGUAGE}" _nrc_lang)
     else()
-        # Back-compat: old C examples omitted LANGUAGE. If every source is a C
-        # TU, record/link it as C; otherwise preserve the historical C++ default.
-        set(_nrc_lang C)
-        foreach(_src IN LISTS _NRC_SOURCES)
-            get_filename_component(_ext "${_src}" EXT)
-            string(TOLOWER "${_ext}" _ext_lc)
-            if(NOT _ext_lc STREQUAL ".c")
-                set(_nrc_lang CPP)
-            endif()
-        endforeach()
+        # Back-compat: old C examples omitted LANGUAGE.
+        #
+        # phase-469 S3 — the inference is ASKED, not spelled here. This was the
+        # THIRD copy of extension→language in cmake and the one that disagreed:
+        # it read "extension is not exactly `.c`" ⇒ CPP, while
+        # `_nros_infer_lang()` and `nano_ros_entry()` read "no C++ extension"
+        # ⇒ c. So a `Cargo.toml` or a `.h` in SOURCES was C++ here and C there,
+        # and neither reader knew it was guessing. `nros codegen
+        # source-language` REFUSES a spelling it does not know.
+        #
+        # THE DEFAULT IS STATED: an unresolved list — no sources, or only files
+        # that carry no language — reads C, which is what this site produced for
+        # an EMPTY list. The behaviour that changes is a headers-only SOURCES
+        # list, which used to read CPP by falling through the "not `.c`" test;
+        # no in-tree caller has one (measured across every `nano_ros_add_node` /
+        # `nano_ros_entry` / `nano_ros_node_register` call: only `.c`, `.cpp`,
+        # `Cargo.toml` beside an explicit `LANGUAGE RUST`, and variables).
+        #
+        # The internal vocabulary here is UPPERCASE — ~30 comparisons and the
+        # `NROS_COMPONENT_LANG` property this file writes — so the query's
+        # canonical lowercase answer is upper-cased right here, at the boundary,
+        # rather than a second spelling travelling inward.
+        nros_language_of_sources(_nrc_lang_lower
+            CONTEXT "nano_ros_node_register(${_NRC_NAME})"
+            SOURCES ${_NRC_SOURCES})
+        if(_nrc_lang_lower)
+            string(TOUPPER "${_nrc_lang_lower}" _nrc_lang)
+        else()
+            set(_nrc_lang C)
+        endif()
+        message(VERBOSE
+            "nano-ros: nano_ros_node_register(${_NRC_NAME}): "
+            "component language ${_nrc_lang}")
     endif()
     if(_nrc_lang STREQUAL "CXX")
         set(_nrc_lang CPP)
