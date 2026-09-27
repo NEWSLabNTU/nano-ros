@@ -133,6 +133,70 @@ entries. 1407 notes this is "really a question about the shared staticlib rather
 than about the descriptor" — so **answer that question before building
 anything**, and record the answer.
 
+## Design answers, recorded before building (2026-09-27)
+
+W0.c and W2 each say to answer a question *before* building anything. Both are
+answered here, from the code rather than from the plan.
+
+### W0.c — keep the refusal; the condition does not occur
+
+The question ("per-entry descriptors in a multi-entry configure") is already
+decided in `cmake/NanoRosSizingDescriptor.cmake`, with the reason at the code:
+
+> **EXACTLY ONE OR NONE.** A configure that declared several entries has several
+> descriptors and one shared staticlib, and `NROS_SIZING_DESCRIPTOR` names a
+> single file: handing cargo one of N would size the shared archive from one
+> image and call it derived. The entity facts take a MAX across models for the
+> same collision; a descriptor is a whole per-endpoint table and has no max, so
+> this refuses instead and says so.
+
+**Measured: no configure in this tree declares more than one entry.** All nine
+`nano_ros_entry(` call sites are one per project — `examples/templates/{cpp-port-minimal-publisher,rclcpp-compat-smoke}`,
+`examples/workspaces/{c,realtime-c,realtime-cpp}/src/zephyr_entry`,
+`packages/testing/nros-tests/fixtures/{cmake_add_subdirectory_smoke,multi_pkg_workspace_cpp/src/demo_entry}`,
+and `zephyr/` (the `multi_pkg_workspace_cpp` root match is a comment, not a
+call). So the refusal path is unreachable by any in-tree build and costs no
+image its knobs today.
+
+**Decision: no work. Revisit when a multi-entry configure exists**, and the thing
+to measure then is named: a conservative ENVELOPE over the entries' endpoint
+tables (union the rows; where two entries state the same `(kind, type, name)`
+at different depths, take the larger) is constructible and is the safe
+direction — but it sizes every image in the configure for the worst case of all
+of them, and whether that beats each image keeping crate defaults is empirical.
+It cannot be measured without such a configure, so building it now would be
+speculative generality for a shape nobody has.
+
+### W2 — EXPORT, not re-derive; and both halves already exist
+
+The question was whether the cmake entry's interface closure is re-derived or
+exported from codegen. **Exported** — re-deriving is a second opinion about a
+bound, issue 0196's class and the one this campaign kept finding. That is not a
+new decision: the tree already made it, twice over.
+
+* codegen emits a cmake projection beside the JSON —
+  `rosidl_codegen::bounds::INVENTORY_CMAKE_NAME` (`nros_message_bounds.cmake`),
+  the sibling of `INVENTORY_JSON_NAME` the leaf road reads;
+* `cmake/NanoRosMessageBounds.cmake` already AGGREGATES those per-package
+  fragments into an image-wide closure —
+  `nros_message_bounds_register_fragment` appending to the
+  `NROS_MESSAGE_BOUNDS_FRAGMENTS` global property, called by both generator
+  lanes so there is one place to look, with refusal handling and a lifetime
+  argument (a global property, not the cache, so a package removed from the
+  closure cannot keep pricing a type nothing links).
+
+**So W2 is not "decide and build a mechanism". The mechanism is there and the
+descriptor producer has no input for it:** `git grep -n bounds
+packages/cli/nros-cli-core/src/cmd/sizing_descriptor.rs` returns NOTHING, and
+`write_for_model` passes `bounds: Vec::new()` with a `bounds_error` that carries
+issue 1393's reason.
+
+**Decision: give `--from-model` a bounds input fed from
+`NROS_MESSAGE_BOUNDS_FRAGMENTS`, and read it through the existing composer.**
+Do not add a second aggregator, and do not teach the descriptor producer to walk
+types itself. The wave's acceptance is unchanged; what changes is that its first
+step is a seam, not a design.
+
 ## Work items
 
 ### W1 — bounds for service and action member messages, on every road
