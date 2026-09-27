@@ -101,7 +101,19 @@ def lanes_run_by_gating_jobs() -> set[str]:
                 continue
             if not wf_events & set(GATING_EVENTS):
                 continue
-            for lane in re.findall(r"just\s+check\s+([a-z0-9-]+)", block):
+            # COMMENT LINES ARE NOT INVOCATIONS. Issue 1514 added a header
+            # comment naming `just check build` to say the compile tier does NOT
+            # run on a pull request -- and this scan read the sentence as a
+            # gating invocation of that lane, so every compile-tier gate became
+            # "reachable from a gating lane" and the ratchet demanded its
+            # baseline shrink. Over-approximating is this function's stated and
+            # deliberate bias, but reading PROSE as a call is not
+            # approximation: it is the mistake 1514 is about, one level over --
+            # a claim in a comment outranking what the file does.
+            body = "\n".join(
+                ln for ln in block.splitlines() if not ln.lstrip().startswith("#")
+            )
+            for lane in re.findall(r"just\s+check\s+([a-z0-9-]+)", body):
                 gated.add(lane)
     return gated
 
