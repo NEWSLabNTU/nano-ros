@@ -37,11 +37,13 @@ something that no longer exists (issue 0314 — a stale `cpp/xrce` reference sat
 in `just zephyr build-xrce` for months, and the abandoned directories lingered
 on disk as untracked `generated/` output that read like real examples).
 
-Two `<rmw>/` paths remain (phase-316 retired the px4 pair — see below):
-
-| path | why it is not an RMW split |
-| --- | --- |
-| `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` | a **board** variant (aemv8r) that happens to sit under a backend name |
+**No `<rmw>/` path remains.** The last one was
+`zephyr/{rust,cpp}/cyclonedds/talker-aemv8r`, a *board* variant (aemv8r) that
+happened to sit under a backend name; it left with the FVP code nothing ran
+(issue 0537, phase-350 W3), and that board's coverage is now an `[image.fvp]`
+row in `workspaces/realtime-cpp/`. Verify with
+`git ls-files ':(glob)examples/*/*/{zenoh,xrce,cyclonedds,uorb}/*'` — it returns
+nothing.
 
 px4 had two, and neither named an RMW at all. `px4/rust/xrce/` is now
 `px4/rust/companion/` — the axis is **where the code runs** (beside PX4, not in
@@ -89,6 +91,131 @@ Each example is a standalone Cargo + CMake package — no walk-up in the manifes
 - Prefer vendoring the checkout into your own workspace instead? See [`templates/multi-package-workspace/`](templates/multi-package-workspace/), which documents the path-dep Pattern A layout.
 
 Embedded targets additionally need their SDK env vars (`*_DIR`, `FREERTOS_PORT`, …) — `source activate.sh` in the nano-ros checkout provides them. The RMW is part of the deployment, so it is stated with the rest of it: `[system] rmw = "<backend>"` in the leaf's (or bringup's) `system.toml`, in one place for every language. Supported backend names are `zenoh`, `xrce`, `cyclonedds`, and `uorb`; the legacy dust-DDS `dds` backend was retired in Phase 169. Zephyr keeps its own front-end on top — the `prj-<backend>.conf` Kconfig overlay a west build selects.
+
+## Layout classes
+
+An example's layout is decided by **two** questions, and only the second has
+ever been written down. That is why the first keeps getting re-derived from
+whichever tree shows it most vividly, and re-attributed to that tree's platform.
+
+### Question 1 — who owns the link?
+
+For **C and C++** the answer is always cmake, because cmake is the only C build
+here. For **Rust it varies by platform**, and that variation is the whole of
+what gets called "the Zephyr layout":
+
+| | Rust leaf files | trees |
+| --- | --- | --- |
+| **cargo owns the link** | `Cargo.toml` + `src/main.rs` (plus `src/lib.rs` where the node logic is shared) | `native`, `bridges`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `esp32-c3-baremetal`, `qemu-armv7a-nuttx`, `threadx-linux` |
+| **cmake owns the link** | `CMakeLists.txt` + `src/lib.rs` + `src/app_main.rs`; cargo emits a **staticlib**, and cmake links it into an image whose startup is C | `zephyr/rust/*`, `rv-virt-threadx/rust/*` |
+
+The predicate is mechanical, so recount rather than trusting the lists above —
+a Rust leaf holding a `CMakeLists.txt` is in the second row:
+
+```sh
+git ls-files ':(glob)examples/*/rust/*/CMakeLists.txt' | xargs -n1 dirname
+```
+
+**`rv-virt-threadx/rust/*` is why this is written down.** It carries the shape
+everyone calls Zephyr's, for an unrelated cause — ThreadX RISC-V64 uses the C
+startup path and Cyclone needs cmake-time C descriptors, so the link goes
+through `nros_threadx_rv64_rust_app` — and it has **no `prj.conf` at all**. Both
+its RMWs build that way (`builder = "cmake"` on its zenoh *and* its cyclonedds
+`fixtures.toml` rows since phase-369 W2, which retired the cargo row and
+`src/main.rs` with it). Meanwhile `threadx-linux/rust/*` sits in the *other*
+row: same platform family, opposite answer, correctly so. **Zephyr is this row
+plus `prj.conf` + `prj-<rmw>.conf`** — the conf files are what make it Zephyr,
+not the staticlib.
+
+Do not read one family's boot glue into the other's, either: the exported symbol
+differs. `nros::zephyr_component_main!` exports `rust_main()`, the
+zephyr-lang-rust convention that `rust_cargo_application()` consumes; the
+ThreadX RV64 board's `app_main!` exports `app_main()`.
+
+### Question 2 — is it a leaf or a workspace?
+
+A **leaf** is `<platform>/<language>/<example>/` — one standalone copy-out
+package (RFC-0026), its deployment in its own `system.toml`. A **workspace** is
+a directory of packages with no root build file: `src/<pkg>/` plus a bringup
+that declares the `[image.*]` rows, and the entry package for each image is
+**generated** ([RFC-0098](../docs/design/0098-generated-leaf-build-config.md) D9,
+as amended by phase-445 W5).
+
+### The classes
+
+| class | shape | how to recognise it | members |
+| --- | --- | --- | --- |
+| **1** | workspace, generated entry | `.colcon_workspace` + `src/*_bringup/system.toml`; no `*_entry` package claims the image | every workspace under `workspaces/`, for every non-Zephyr `[image.*]` row |
+| **1z** | workspace, Zephyr image | the image row is served by a hand-written `src/*_entry` package calling `find_package(Zephyr)` | **15** entry packages serving **16** Zephyr image rows across 10 workspaces — [issue 1288](../docs/issues/1288-zephyr-rust-workspace-entries-not-generated.md) |
+| **1b** | workspace with **no bringup** | `.colcon_workspace`, no `*_bringup` — builds every package in dependency order, colcon's default | `templates/local-msg-package` (a `system.toml` beside a *package*) and `templates/workspace-shadowing` (none at all) |
+| **3** | leaf, cargo owns the link | leaf has `Cargo.toml`, no `CMakeLists.txt` | the majority of Rust leaves — question 1, first row |
+| **4** | leaf, cmake owns the link | leaf has `CMakeLists.txt` (`+ prj*.conf` on Zephyr) | every C and C++ leaf, necessarily; plus `zephyr/rust/*` and `rv-virt-threadx/rust/*` |
+| **X** | foreign-build integration | no `system.toml` and nothing for `nros build` to generate; a *foreign* build consumes the tree | `examples/px4/` — see below |
+
+**1 and 1z are properties of an IMAGE, not of a directory.** The same workspace
+is usually both: `workspaces/rust/` declares 17 `[image.*]` rows, 15 of them
+class 1 and two — `zephyr`, `zephyr_robot1` — class 1z. So "which class is this
+workspace?" has no answer; "which class is this image?" does.
+
+Count the Zephyr half with:
+
+```sh
+git ls-files ':(glob)examples/workspaces/*/src/*entry*/CMakeLists.txt'   # the 1z packages
+grep -rn 'entry *=' examples/workspaces/*/src/*_bringup/system.toml      # the rows that name one
+```
+
+### Two classes that deliberately do NOT exist
+
+A name makes a shape look intentional, so these two are recorded as *absent*
+rather than left unnamed for the next survey to invent:
+
+- **"class 2", hand-written entries.** Not a class — it is class 1z before
+  issue 1288. Every one of the 15 hand-written entry packages is a Zephyr west
+  application, and the only reason it is hand-written is that the generator does
+  not reach west yet. A shape that exists because a generator is missing must
+  not get a number that makes it look like a design.
+- **"class 3r", Rust-only leaf families.** Not a class either. It looks like a
+  missing platform port on `mps2-an385-baremetal` and `esp32-c3-baremetal`, and
+  it is not: the bare-metal heap has existed since RFC-0034 D6 landed, and the
+  C/C++ cmake seam (`cmake/platform/nano-ros-baremetal.cmake`,
+  `cmake/board/nano-ros-board-mps2-an385-baremetal.cmake`) is complete — with
+  **zero live consumers**. The C road was built and never driven, so this is
+  feature wiring, and it dissolves into classes 3 and 4. (The
+  [Intentionally empty cells](#intentionally-empty-cells) row for
+  `mps2-an385-baremetal/{c,cpp}` still states the old cause and is being
+  corrected separately — believe the seam, not the row.)
+
+### `examples/px4/` — class X, a foreign-build integration
+
+PX4 matches neither canonical shape, and it is **not** an outlier awaiting
+migration. Unifying it would produce a firmware tree PX4's build cannot find.
+Three departures, each with a cause:
+
+1. **`src/modules/<name>/{CMakeLists.txt,Kconfig}` is PX4's layout, not ours.**
+   PX4 consumes `examples/px4/cpp/firmware/` and `examples/px4/cpp/bridge/` via
+   `EXTERNAL_MODULES_LOCATION` (`just px4 build-sitl-example`,
+   `just px4 build-bridge-example`), which mandates that directory shape and the
+   `Kconfig` beside the module. They are copy-**into**-PX4 sources, not nano-ros
+   applications: no `system.toml`, and nothing for `nros build` to generate.
+2. **The sub-directory axis is the TRANSPORT CASE, not the language.** PX4 is
+   integrated on its two native messaging surfaces — in-firmware uORB modules
+   (C++) and an XRCE-DDS companion (Rust) — so `cpp/` and `rust/` name *which
+   surface*, and the language follows from that rather than the other way round.
+   A reader expecting the usual language level will go looking for a `cpp/`
+   companion and a `rust/` firmware module; **neither can exist.**
+3. **No RMW axis at all.** In-firmware is uORB-only (the Rust uORB backend was
+   retired in phase-115.K.4); the companion speaks XRCE-DDS to
+   `uxrce_dds_client`. The `<rmw>` coordinate every other example carries is not
+   a free choice here.
+
+`rust/companion/{offboard-companion,px4-probe,px4-stub}/` are the three that
+*could* move — ordinary host cargo bins with a `package.xml` and no
+`system.toml`, so `px4/rust/<example>` would be well-formed. **Recorded as a
+decision so it stops being a recurring question: they stay.** The move would
+delete the one directory level that records the transport case, to buy
+uniformity with leaves that do not share PX4's constraints.
+
+Detail and prerequisites: [`px4/README.md`](px4/README.md).
 
 ## Coverage matrix
 
@@ -206,7 +333,8 @@ gateway is a host process), never the language one.
 
 ### `workspaces/` — product-shaped multi-package workspaces
 
-Workspaces that follow the book's Node package + Bringup package workflow. A
+Workspaces that follow the book's Node package + Bringup package workflow —
+[class 1](#the-classes), with the Zephyr rows of ten of them still class 1z. A
 workspace is a directory of packages — no root `Cargo.toml`, no root
 `CMakeLists.txt`, and no entry package to write: the entry is generated per
 `[image.*]` (RFC-0098 D9). Build one with
@@ -220,56 +348,41 @@ nros build              # every [image.*]; or: nros build <image-id>
 Everything generated lands under `build/`, `dist/` and `log/`. Zephyr stays the
 carve-out: `west build` is still its build verb, with `nros sync` before it.
 
-- `workspaces/rust/` — Rust Node packages and a Rust native Entry package
-- `workspaces/c/` — C Node packages and a C native Entry package
-- `workspaces/cpp/` — C++ Node packages and a C++ native Entry package
-- `workspaces/mixed/` — mixed C / C++ Node packages and a C++ native Entry package
+**A FEATURE is a node package and a CONFIGURATION is a fixture axis — never a
+new directory** (RFC-0066, phase-331). The per-capability `ws-<topic>-<lang>`
+directories this list used to enumerate are **gone**: QoS, params, lifecycle,
+custom-msg and remap folded into `features/`, and the three `ws-safety-*` into
+`safety/`. Don't reintroduce one. Naming rules and the workspace classes →
+[`workspaces/README-layout.md`](workspaces/README-layout.md).
 
-Beyond those four layer-shape references, `examples/workspaces/` also holds 28
-`ws-<topic>-<lang>` capability workspaces — small single-capability demos, one
-per (topic, language) combination, following the same Node + Bringup + Entry
-two-layer scheme. Every workspace has its own README; one line each:
+Every workspace has its own README; one line each. Recount with
+`ls -d examples/workspaces/*/` rather than trusting this list:
 
 | Workspace | What it shows |
 | --- | --- |
-| `rust/` | base starter: Rust Node pkgs + Rust native Entry (plus FreeRTOS/ThreadX/ESP32/Zephyr entries) |
-| `c/` | base starter: C Node pkgs + C native Entry |
-| `cpp/` | base starter: C++ Node pkgs + C++ native Entry |
-| `mixed/` | base starter: mixed-language Node pkgs + C++ native Entry |
-| `bridge-cyclonedds` | declarative `[[bridge]]`: `/chatter` zenoh → cyclonedds in one process, no user bridge code |
-| `bridge-xrce` | same declarative bridge, XRCE variant (zenoh → XRCE agent → DDS) |
-| `ws-custom-msg-c` | in-workspace `custom_msgs/Reading` interface pkg, raw-CDR pub/sub on `/reading` |
-| `ws-custom-msg-cpp` | C++ projection of the custom-msg demo (`create_wall_timer<C, &C::m>` / `bind_subscription_raw`) |
-| `ws-custom-msg-mixed` | C custom-msg node pkgs (verbatim from `-c`) under a C++ TYPED entry carrier |
-| `ws-custom-msg-rust` | custom interface pkg used via the typed pub/sub path |
-| `launch` | advanced launch composition — topology lives in the launch XML (launch v1) |
-| `ws-lifecycle-c` | `[lifecycle] autostart="active"` bakes REP-2002 services + Configure→Activate at boot |
-| `ws-lifecycle-cpp` | both flavors: baked autostart (`demo_bringup`) and self-managed `LifecycleNode` wrapper (`managed_bringup`) |
-| `ws-lifecycle-rust` | `nros::main!` REP-2002 autostart=active; inspect via `ros2 lifecycle get` |
-| `ws-params-c` | baked `publish_period_ms` + live re-read via `nros_cpp_get_param_integer` + param services |
-| `ws-params-cpp` | live param re-read through the saved executor handle |
-| `ws-params-rust` | baked initial (timer rate) vs live re-read (published value) vs param services |
-| `ws-qos-c` | per-entity QoS contract in code: reliable + transient-local + keep-last-10 on `/chatter` |
-| `ws-qos-cpp` | same QoS contract via the `nros::QoS` fluent builder |
-| `ws-qos-mixed` | C QoS node pkgs (verbatim) under a C++ TYPED entry carrier |
-| `ws-qos-rust` | QoS-override showcase via the declarative `*_with_qos` API |
-| `realtime-c` | two nodes on two scheduling tiers (`/ctrl` 10 ms high, `/telem` 100 ms low) from config |
-| `realtime-cpp` | C++ base of the two-tier demo (configure-shape components) |
-| `realtime-cpp` | the same demo cross-compiled to FreeRTOS/QEMU MPS2 (`freertos_entry`, no native entry) |
-| `realtime-cpp` | same tiers, rclcpp-shape `ComponentNode` IS-A-node subclasses (RFC-0047) |
-| `realtime-cpp` | ONE node, two callback groups mapped to two tiers |
-| `realtime-cpp` | identical SubNode under tiers renamed `fast`/`bulk` — tier names are deployment-owned |
-| `realtime-rust` | scheduling-tiers differentiator in Rust (control + telemetry priorities via config) |
-| `ws-remap-rust` | model `<remap>` + `~` private name: `~/out` under `/island` hits the wire as `/remapped_out` |
-| `safety` | E2E safety: auto CRC-32 + seq on `/chatter`, validated subscription reports faults on `/safe_ok` |
-| `safetypp` | typed safety API `create_subscription_with_safety<Int32>()` with integrity status |
-| `safety` | E2E-safety declared once in `system.toml`, lowered to the Rust nodes |
+| `rust/` | base starter: Rust Node pkgs + the Node / Bringup / Entry split in pure Rust |
+| `c/` | base starter: C Node pkgs |
+| `cpp/` | base starter: C++ Node pkgs |
+| `mixed/` | the language SEAM: one entry, components from C, C++ and Rust |
+| `features/` | the capability demos in one workspace — params, lifecycle, QoS, custom messages, remap — native only |
+| `safety/` | E2E message integrity in one workspace (auto CRC-32 + seq, validated subscription reports faults) |
+| `bridge-cyclonedds/` | declarative `[[bridge]]`: `/chatter` zenoh → cyclonedds in one process, no user bridge code |
+| `bridge-xrce/` | the same declarative bridge, XRCE variant (zenoh → XRCE Agent → DDS) |
+| `launch/` | advanced launch composition — topology lives in the launch XML (launch v1) |
+| `managed/` | the lifecycle shape `features/` cannot hold: a C++ node that manages ITSELF |
+| `realtime-c/` | two nodes on two scheduling tiers (`/ctrl` 10 ms high, `/telem` 100 ms low) from config |
+| `realtime-cpp/` | the C++ base of the same two-tier scheduling differentiator (RFC-0015 §4.2) |
+| `realtime-cpp-subnode-portable/` | the identical `SubNode` under tiers renamed `fast`/`bulk` — tier names are deployment-owned |
+| `realtime-rust/` | the Rust projection of the scheduling-tiers differentiator |
+| `derived-tiers-cpp/` | four C++ components and **no authored tiers** — the Safety-Island-shaped sizing fixture |
+| `sizing/` | a node the SystemModel cannot count (six timers, no subscription) — the executor-sizing showcase |
 
 ### `templates/` — multi-platform copy-out recipes
 
 Patterns that span platforms (multi-package workspace layouts, mixed C / C++ / Rust packages sharing one nano-ros install, etc.).
 
-- `templates/multi-package-workspace/` — Pattern A workspace (C talker, C++ listener, Rust publisher under one nano-ros install)
+- `templates/multi-package-workspace/` — Pattern A workspace (C talker, C++ listener, Rust publisher under one nano-ros install). It declares **no** workspace root by either tracked spelling and has no bringup: it is the path-dep pattern, not a colcon workspace, so it is outside the classes above.
+- `templates/local-msg-package/` and `templates/workspace-shadowing/` are the two **[class 1b](#the-classes)** trees — a `.colcon_workspace` with no bringup. `nros build` builds every package in dependency order, colcon's default (RFC-0098 D9 as amended by phase-445 W5). `workspace-shadowing` carries no `system.toml` at all; `local-msg-package` carries one beside a *package*.
 
 ## Where else to look
 
