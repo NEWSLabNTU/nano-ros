@@ -135,11 +135,16 @@ ThreadX RV64 board's `app_main!` exports `app_main()`.
 ### Question 2 — is it a leaf or a workspace?
 
 A **leaf** is `<platform>/<language>/<example>/` — one standalone copy-out
-package (RFC-0026), its deployment in its own `system.toml`. A **workspace** is
-a directory of packages with no root build file: `src/<pkg>/` plus a bringup
-that declares the `[image.*]` rows, and the entry package for each image is
-**generated** ([RFC-0098](../docs/design/0098-generated-leaf-build-config.md) D9,
-as amended by phase-445 W5).
+package ([RFC-0026](../docs/design/0026-example-directory-layout.md)), its
+deployment in its own `system.toml`. `bridges/<language>/<name>/` is a leaf too:
+it drops the *platform* level because a gateway is a host process, and keeps
+everything else, so it answers question 1 like any other leaf.
+
+A **workspace** is a directory of packages with no root build file: `src/<pkg>/`
+plus a bringup that declares the `[image.*]` rows, and the entry package for
+each image is **generated**
+([RFC-0098](../docs/design/0098-generated-leaf-build-config.md) D9, as amended
+by phase-445 W5).
 
 ### The classes
 
