@@ -296,3 +296,37 @@ design diagram, and the "storage, plainness, serialized size" row of Amendment 1
 table (storage stands; plainness is gone from this IR; serialized size was never a
 field of it — `rosidl-codegen`'s `bounds.rs` derives bounds by calling
 `nros_serdes::size::max_serialized_size`, the runtime's own rule).
+
+### Amendment 4 (2026-09-28, phase-469 W1) — Stage 3's `pack.toml` landed, and Amendment 2's list is now exact
+
+Stage 3's layout block above names three pack files: `spelling.toml`, `pack.toml`
+and the `*.jinja`. Only the templates had ever existed on the message path.
+**`pack.toml` exists now** — one per `packs/<dir>/`, declaring the pack's language,
+its `registry_order`, its templates as `{ key, file }` rows and, for a pack that
+names C-family artifacts, the `header_extension` / `guard_suffix` /
+`source_extension` that `generator::naming` derives every artifact name from. The
+build script reads every manifest and generates the registry, so a pack directory
+is a pack because it exists and describes itself.
+
+**`spelling.toml` is still declined**, and phase-469 records why rather than
+leaving it as an unbuilt item: one spelling function takes eight inputs, so the
+table would be a small language, and a wrong spelling fails silently in generated
+code — it compiles somewhere else, later, as a type error with no path back to the
+row. A correctness property belongs in Rust. RFC-0091 §6b's filter set, keyed by
+the pack that calls it, is the shape that survived.
+
+**Amendment 2's two-item list was understated, and is now exact.** It named a
+filter set and a generator per kind. A message language ALSO needed its rows in
+`render.rs`'s 28-row `include_str!` registry and — for a C-family surface — a
+`Surface` variant plus rows in three `match` tables in `generator/naming.rs`. Both
+are gone: they are manifest fields. What remains Rust on the message path is the
+filter set, the generator per kind and its `nros generate` arm, plus the ROS kind
+word (`msg`/`srv`/`action`), which is identical on every surface and so is not a
+per-pack parameter.
+
+One correction to the body text while it is being read: default packs are bundled
+with `include_str!`, not `include_dir!`, and since phase-469 W1 the list of them is
+generated rather than authored. The `--template-dir` / `NROS_TEMPLATE_DIR` override
+is unchanged and still replaces a registry key's body with no rebuild; it still
+cannot ADD a language, because the loader is only asked for names a generator
+requests.
