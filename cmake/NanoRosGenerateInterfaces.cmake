@@ -435,7 +435,14 @@ function(nros_generate_interfaces target)
     OUTPUT ${_generated_headers} ${_generated_sources} ${_generated_rs_files}
            "${_bounds_json}" "${_bounds_cmake}"
     COMMAND "${_NANO_ROS_CODEGEN_TOOL}" codegen --language "${_lang_flag}" --args-file "${_args_file}"
+    # issue 1470 — the caps that BOUND these types are an input to them, so
+    # every `nros-codegen.toml` that reaches this generation is named here
+    # (`_nros_write_codegen_args_json` composes the set). The args file names
+    # them, and its CONTENT changes only when a config appears or moves, so
+    # without the files themselves an edit to a cap leaves every generated
+    # header a museum copy of the previous bound.
     DEPENDS ${_interface_files} "${_args_file}" "${_NANO_ROS_CODEGEN_TOOL}"
+            ${_NROS_CODEGEN_CONFIG_CHAIN}
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     COMMENT "Generating nros ${_ARG_LANGUAGE} interfaces for ${target}"
     VERBATIM

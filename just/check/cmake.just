@@ -311,6 +311,55 @@ probe-shared-types:
     fi
     ./tests/cmake-probe-shared-types-tests.sh
 
+# issue 1470 -- the probe and the real build must agree about whether a type is
+# BOUNDED.
+#
+# Field caps (`nros-codegen.toml`) are how a consumer bounds a message it does
+# not own, and the CMake lane discovered them by walking up from the codegen
+# OUTPUT dir -- inside the build tree -- so RFC-0033's WORKSPACE scope was
+# unreachable from CMake at all. The metadata probe compiles the USER's sources,
+# so the node's own TU then refused on the poison template and every component
+# in the workspace went `unprobeable`.
+#
+# It COMPILES, and it is on the fast line anyway -- the same placement its
+# sibling `probe-shared-types` has, for the same reason: in a pristine worktree
+# it SKIPS for want of the in-tree CLI rather than failing, which is what
+# `.config/ungated-gates.txt` requires of a build-tier gate and this one cannot
+# claim. A build-tier home would also mean NO pull_request or merge_group job
+# ever runs it (`check-gate-visibility`, issue 0981), and that ratchet may only
+# shrink.
+#
+# The compile is not optional: the poison is a `static_assert` inside a class
+# TEMPLATE, evaluated where a size is asked for, so only a compiler can say
+# whether it fires — the argument `check-c-array-guard-probe` makes for asking
+# the compiler about a guard (issue 1167). Priced: 1 m 49 s warm, nearly all of
+# it the two `pkg_a_lib` compiles, against `api-parity`'s 217 s on this same
+# lane — so at -P32 it sits under the wall time the lane already has and adds
+# nothing to it. If that ever stops being true, the split is the next step: the
+# codegen half alone is seconds and asserts on the header's TEXT rather than on
+# its effect. Preconditions SKIP through the ledger (no CLI, no cmake, no
+# compiler); everything past them is a hard failure.
+probe-workspace-caps:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    for _t in cmake c++; do
+        command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
+    done
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip probe-workspace-caps "missing host tool(s):$_missing"
+        exit 0
+    fi
+    if [ ! -x packages/cli/target/release/nros ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip probe-workspace-caps "no in-tree CLI -- run \`just setup-cli\`"
+        exit 0
+    fi
+    ./tests/cmake-probe-workspace-caps-tests.sh
+
 reconfigure-on-change:
     #!/usr/bin/env bash
     set -euo pipefail

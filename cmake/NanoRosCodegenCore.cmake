@@ -488,8 +488,59 @@ function(nros_codegen_version_assert_fresh _tool)
         "workspace belongs to this checkout at all.")
 endfunction()
 
+# _nros_codegen_config_chain(<start_dir> <out_var>) -- issue 1470.
+#
+# The `nros-codegen.toml` files that apply to a generation driven from
+# `<start_dir>`: every one from `<start_dir>` up to the filesystem root,
+# ROOT-MOST FIRST, which is the order they are deep-merged in (an ancestor is
+# the workspace scope, a descendant overrides it -- RFC-0033 "Config
+# discovery").
+#
+# WHY THIS EXISTS AT ALL. RFC-0033 defines two scopes, a WORKSPACE file at the
+# workspace root and an APP file beside the consumer, and says discovery walks
+# "up to the workspace root". The Rust lane does exactly that: it starts from
+# the package's SOURCE directory (`generate_from_package_xml`). The CMake lane
+# passed the codegen OUTPUT directory, which lives in the BUILD tree -- so the
+# walk went up through `build/`, and a workspace-scope config was unreachable
+# from a CMake build in principle, whatever the build was for. Two lanes, one
+# question, two answers.
+#
+# Issue 1470 is where that cost something: the metadata probe compiles the
+# USER'S sources, so a type the board build bounds through a workspace config
+# read as UNBOUNDED in the probe, the node's own TU refused on the poison
+# template (`NROS_UNBOUNDED__<type>__field_<member>`), and every node in the
+# workspace went `unprobeable`. The probe needs no special case -- it adds the
+# real package directories, so asking the question from the SOURCE side makes
+# it ask the same question the board build asks.
+#
+# The WORKSPACE scope is also the only scope that is order-free for a SHARED
+# type: under `NANO_ROS_GEN_CACHE_DIR` a stock package like `std_msgs` is
+# generated ONCE for the whole project, so caps attached to whichever consumer
+# reached it first would depend on configure order, while an ancestor of every
+# consumer cannot. That is the reason the decision in issue 1470 is "the
+# workspace root", not "any package that declares caps".
+function(_nros_codegen_config_chain _start_dir _out_var)
+    set(_chain "")
+    if(NOT _start_dir STREQUAL "")
+        get_filename_component(_dir "${_start_dir}" ABSOLUTE)
+        while(TRUE)
+            if(EXISTS "${_dir}/nros-codegen.toml")
+                list(PREPEND _chain "${_dir}/nros-codegen.toml")
+            endif()
+            get_filename_component(_parent "${_dir}" DIRECTORY)
+            # `/` is its own parent, and a relative remnant resolves to empty:
+            # either is the fixpoint that terminates the walk.
+            if(_parent STREQUAL "" OR _parent STREQUAL _dir)
+                break()
+            endif()
+            set(_dir "${_parent}")
+        endwhile()
+    endif()
+    set(${_out_var} "${_chain}" PARENT_SCOPE)
+endfunction()
+
 # _nros_write_codegen_args_json(ARGS_FILE <path> PACKAGE <name> OUTPUT_DIR <dir>
-#     ROS_EDITION <edition> [CODEGEN_CONFIG <path>]
+#     ROS_EDITION <edition> [CODEGEN_CONFIG <path>] [CONFIG_SEARCH_DIR <dir>]
 #     INTERFACE_FILES <files...> DEPS <pkgs...>)
 #
 # Build the `nros codegen --args-file` JSON and write it ONLY when the content
@@ -497,10 +548,36 @@ endfunction()
 # add_custom_command / mtime check sees its outputs already up to date,
 # essential for the workspace-shared codegen cache). `CODEGEN_CONFIG` is the
 # optional RFC-0033 per-field capacity config; omit it to emit no such field.
+#
+# `CONFIG_SEARCH_DIR` is where DISCOVERY starts (issue 1470), defaulting to the
+# calling directory scope's source dir -- which is the package or app whose
+# CMakeLists drives this generation, for every caller, because a CMake function
+# does not open a directory scope. The discovered chain is emitted as
+# `codegen_config_chain` and, together with an explicit `CODEGEN_CONFIG` that
+# exists, exported to the caller as `_NROS_CODEGEN_CONFIG_CHAIN`, so the
+# generator can put those files in its build-graph inputs: a cap edit must
+# re-emit, and only the caller has the edge to hang that on.
 function(_nros_write_codegen_args_json)
     cmake_parse_arguments(_J ""
-        "ARGS_FILE;PACKAGE;OUTPUT_DIR;ROS_EDITION;CODEGEN_CONFIG"
+        "ARGS_FILE;PACKAGE;OUTPUT_DIR;ROS_EDITION;CODEGEN_CONFIG;CONFIG_SEARCH_DIR"
         "INTERFACE_FILES;DEPS" ${ARGN})
+    if(NOT DEFINED _J_CONFIG_SEARCH_DIR OR _J_CONFIG_SEARCH_DIR STREQUAL "")
+        set(_J_CONFIG_SEARCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
+    _nros_codegen_config_chain("${_J_CONFIG_SEARCH_DIR}" _config_chain)
+    # The freshness inputs the caller may hang an edge on: the discovered chain
+    # (every entry EXISTS by construction) plus an explicit `CODEGEN_CONFIG`
+    # only if it does. A path that does not exist must stay codegen's error to
+    # report ("failed to read codegen config '<path>'", naming it) — as a build
+    # dependency it would become `No rule to make target` on one lane and a
+    # permanently-stale `IS_NEWER_THAN` on the other, neither of which says
+    # what is wrong.
+    set(_chain_deps ${_config_chain})
+    if(DEFINED _J_CODEGEN_CONFIG AND NOT _J_CODEGEN_CONFIG STREQUAL ""
+       AND EXISTS "${_J_CODEGEN_CONFIG}")
+        list(APPEND _chain_deps "${_J_CODEGEN_CONFIG}")
+    endif()
+    set(_NROS_CODEGEN_CONFIG_CHAIN "${_chain_deps}" PARENT_SCOPE)
     set(_files_json "")
     set(_first TRUE)
     foreach(_f ${_J_INTERFACE_FILES})
@@ -523,6 +600,23 @@ function(_nros_write_codegen_args_json)
     if(DEFINED _J_CODEGEN_CONFIG AND NOT _J_CODEGEN_CONFIG STREQUAL "")
         set(_cfg_json ",\n  \"codegen_config\": \"${_J_CODEGEN_CONFIG}\"")
     endif()
+    # issue 1470 — the discovered chain, root-most first. Emitted only when
+    # non-empty so a tree with no config writes byte-for-byte what it wrote
+    # before (the content compare below is what keeps the shared codegen cache
+    # from re-running on every configure).
+    set(_chain_json "")
+    if(_config_chain)
+        set(_chain_json ",\n  \"codegen_config_chain\": [")
+        set(_first TRUE)
+        foreach(_c ${_config_chain})
+            if(NOT _first)
+                string(APPEND _chain_json ",")
+            endif()
+            set(_first FALSE)
+            string(APPEND _chain_json "\n    \"${_c}\"")
+        endforeach()
+        string(APPEND _chain_json "\n  ]")
+    endif()
     set(_content "{
   \"package_name\": \"${_J_PACKAGE}\",
   \"output_dir\": \"${_J_OUTPUT_DIR}\",
@@ -530,7 +624,7 @@ function(_nros_write_codegen_args_json)
   ],
   \"dependencies\": [${_deps_json}
   ],
-  \"ros_edition\": \"${_J_ROS_EDITION}\"${_cfg_json}
+  \"ros_edition\": \"${_J_ROS_EDITION}\"${_cfg_json}${_chain_json}
 }
 ")
     set(_write TRUE)

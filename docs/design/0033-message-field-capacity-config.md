@@ -367,10 +367,29 @@ In priority order:
    `CODEGEN_CONFIG` argument on the CMake `nano_ros_generate_interfaces(...)` function
    (so C/C++ builds pass it identically). Cross-links RFC-0023
    (codegen-workspace-discovery).
-2. Auto-discovery of `nros-codegen.toml` in the codegen output's package/app dir,
-   walking up to the workspace root, deep-merging ancestor → descendant.
+2. Auto-discovery of `nros-codegen.toml` in the **source** dir of the package or app
+   whose build drives the generation, walking up to the filesystem root,
+   deep-merging ancestor → descendant.
 
 Absent any file, the resolver uses built-in defaults — no behavior change.
+
+**Both lanes ask (2) of the SOURCE tree, and only one of them did until issue 1470.**
+The Rust lane starts from the manifest's directory (`generate_from_package_xml`). The
+CMake lane started from the codegen OUTPUT directory, which is inside the build tree —
+so its walk went up through `build/` and the **workspace scope above was unreachable
+from any CMake build**, whatever the build was for. `_nros_codegen_config_chain` in
+`cmake/NanoRosCodegenCore.cmake` now performs the walk (root-most first) and
+`codegen_config_chain` in the codegen args JSON carries it; the discovered files are
+build-graph inputs, so editing a cap re-emits.
+
+The practical consequence for a workspace author: **caps that must apply to every
+member belong at the workspace root.** A file beside a package's `package.xml` still
+applies to what that package generates and still wins over an ancestor, but it is not a
+place from which to bound a type another package may generate first — under
+`NANO_ROS_GEN_CACHE_DIR` a stock package such as `std_msgs` is generated ONCE for the
+whole project, so caps attached to a consumer belong to whichever consumer the configure
+reached first. An ancestor of every consumer cannot have that ambiguity, which is the
+reason issue 1470 chose the workspace root over "any package that declares caps".
 
 ## Alternatives considered
 
