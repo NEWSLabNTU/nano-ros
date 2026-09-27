@@ -86,3 +86,7 @@ pub fn isolate_model_discovery() {
         }
     });
 }
+
+/// issue 1426 — the `examples/workspaces/derived-tiers-cpp` fixture harness,
+/// one spelling for every test that drives it.
+pub mod derived_tiers;

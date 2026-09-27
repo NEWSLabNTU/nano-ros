@@ -36,7 +36,7 @@
 
 mod common;
 
-use std::{collections::BTreeMap, fs};
+use std::{collections::BTreeMap, fs, path::Path};
 
 use common::derived_tiers::{FAST, Fixture, SLOW, resolve_model};
 use nros_cli_core::orchestration::{
