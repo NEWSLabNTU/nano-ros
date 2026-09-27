@@ -266,6 +266,21 @@ order, not the name); `[tiers.ctrl] derived = true` plus
 `[tiers.ctrl.zephyr] priority = 5` is refused naming both lines; a binding to
 `ctrll` is still refused as undeclared.
 
+**What issue 1426's resolution changed about W3.** W3 is still the spelling this
+phase wants, and it is no longer the only route to what it was FOR. Issue 1426
+made precedence per FACT rather than per TABLE
+(`derive::placement_is_unauthored`), and its rule 2 reads **a tier declared with
+no platform sub-table at all** as the allocation request. So
+`[tiers.ctrl]` + `group_tiers = { main = "ctrl" }` already derives, with no new
+key and therefore no pin move — which matters, because rlm's
+`sched/src/types.rs::TierDef` is `#[serde(deny_unknown_fields)]`, so
+`derived = true` is a hard parse error at RESOLVE time until the pin carries a
+reader. What W3 still buys over rule 2: an EXPLICIT request (rule 2 infers it
+from an absence), the exclusivity refusal against a sub-table beside the marker,
+and W3's "one named tier SPLIT by rank" — rule 2 gives a named tier ONE
+priority, the most urgent rank among its members, and records a `Degradation`
+when the members disagree rather than inventing `ctrl-0`/`ctrl-1`.
+
 Claim: phase-459-W3. Depends on: phase-457-W1; an rlm PR adding the derived key to model/src/system_config.rs, tagged. Owns: TierDef in packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs; the binding refusals in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the tiers.is_empty() test in packages/cli/nros-cli-core/src/cmd/codegen_system.rs; derived-tier naming in packages/core/nros-orchestration-ir/src/derive.rs; the four Cargo.toml pin lines and Cargo.lock (second bump); packages/cli/nros-cli-core/tests/derived_tier_marker.rs (new). Gate: cargo test -p nros-cli-core --test derived_tier_marker. Status: not started.
 
 **W4 - the allocation honours the board's plan.** `realize_rtos` takes a

@@ -1199,17 +1199,22 @@ pub fn board_to_rtos(board: &str) -> Result<&'static str, nros_entry_lower::Unkn
 ///
 /// Engages only when every one of these holds:
 ///
-/// * the model authored NO tiers and no `[[node_overrides]]` - declared tiers
-///   always win, the same rule `codegen_system.rs` applies;
-/// * some node carries callback groups (from cmake metadata, via
-///   [`metadata::enrich_plan`]) - a node with none has nothing for the gating
-///   executor to bind, and inventing a group would place code on a tier
-///   nobody asked for;
+/// * some node carries callback groups (from cmake metadata via
+///   [`metadata::enrich_plan`], or from the model's bindings) - a node with
+///   none has nothing for the gating executor to bind, and inventing a group
+///   would place code on a tier nobody asked for;
 /// * the plan came from a resolved SystemModel, which is the only input that
-///   carries a contract layer to derive FROM.
+///   carries a contract layer to derive FROM;
+/// * [`nros_orchestration_ir::derive::placement_is_unauthored`] holds - i.e.
+///   some group's tier has no authored placement for THIS target. That
+///   predicate replaced "the model authored NO tiers and no
+///   `[[node_overrides]]`" (issue 1426): declared tiers still always win, but
+///   per FACT, so one node's authored priority no longer decides for the rest
+///   of the image.
 ///
-/// Returns the number of derived tiers (0 = nothing derived; the caller then
-/// resolves exactly as before).
+/// Returns the number of tiers this call gave a priority to - derived
+/// `derived-<node>` tiers plus authored tiers whose placement it allocated
+/// (0 = nothing derived; the caller then resolves exactly as before).
 ///
 /// # Why here and not in [`plan_from_model`]
 ///

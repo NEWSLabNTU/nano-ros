@@ -946,6 +946,22 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   choosing by accident is not. Boot prints `report_tiers_above_transport` when a tier meets
   the band floor (`min(read, lease, poll)`). Same defect phase-364 W5 fixed one layer down
   in the platform ABI.
+- **AUTHORED-vs-DERIVED precedence is per FACT, never per TABLE, and it has ONE
+  predicate** — `nros_orchestration_ir::derive::placement_is_unauthored`, asked by
+  `codegen-system`, `codegen entry` and `nros::main!` (issue 1426). Three sites spelled
+  it themselves as `model.execution.tiers.is_empty()`, which asks about the whole
+  `[tiers.*]` table where the rule is about one tier's placement for one target: so one
+  component binding to one authored `[tiers.ctrl.zephyr]` disabled the derivation for
+  every OTHER node, and three nodes with 30/10 Hz contracts sat on the synthesised
+  default tier at Zephyr priority **0**, above the transport that feeds them (1427's
+  inversion through the guard, not the allocator), silently. Rules: an authored
+  `[tiers.<n>.<rtos>]` wins and is REPORTED when it displaces a rank
+  (`DerivedSchedule::shadowed` → stderr + `nros-plan.json`); a tier with **no platform
+  sub-table at all** is an ALLOCATION REQUEST (RFC-0079 — that is also how a
+  `group_tiers` binding gets a name to reference without a new `[tiers.*]` key, which
+  rlm's `deny_unknown_fields` `TierDef` would refuse); sub-tables for OTHER boards and
+  not this one stay a refusal; an unbound group gets `derived-<node>`. A named tier gets
+  ONE priority (most urgent member) plus a `Degradation` when members disagree.
 - **Zephyr POSIX:** raise `CONFIG_MAX_PTHREAD_MUTEX_COUNT` (zenoh-pico needs ~8+; default 5 fails
   with -80). → platform-implementation-notes.md.
 - **Zephyr's pthread mutex/cond pools are per-OBJECT, so a mutex-per-entity library makes them a

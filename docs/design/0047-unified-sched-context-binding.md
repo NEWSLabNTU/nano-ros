@@ -95,6 +95,28 @@ A group named in code but absent from `group_tiers` runs on the default tier —
 a topic with no QoS override. A typo'd name in `system.toml` simply never matches — same failure mode
 (and same discipline) as topic-name overrides.
 
+**A tier may state its NAME and leave its priority to be allocated** (issue 1426; RFC-0079 is the
+rule that a priority is allocated rather than authored). The example above writes each priority by
+hand; the form that does not is a tier with **no platform sub-table at all**:
+
+```toml
+group_tiers = { main = "ctrl" }      # the binding still needs a NAME to reference
+
+[tiers.ctrl]  class = "real_time"    # no [tiers.ctrl.posix], no [tiers.ctrl.zephyr]:
+                                     # the priority is ALLOCATED from the contract's rates,
+                                     # inside the board's application pool
+```
+
+Precedence is per FACT — one tier's placement for one target RTOS — and has exactly one
+implementation, `nros_orchestration_ir::derive::placement_is_unauthored`, which states its four
+rules. What matters at this layer: an authored `[tiers.<n>.<rtos>]` always wins and is never
+overwritten, but it is REPORTED when it displaces an allocation, so a hand-written number cannot
+quietly outrank the rate its own contract declares; a tier with sub-tables for other boards and not
+this one stays a refusal, because that is a mistake rather than a request; and a tier bound by
+several nodes at different ranks gets ONE priority (the most urgent) plus a recorded degradation,
+because one tier is one thread. Whether the allocation should instead SPLIT such a tier by rank is
+phase-459 W3's open question.
+
 ### The executor: a `group → sched_context` table, bound at registration
 - The entry (deployment) resolves `system.toml`'s `group_tiers` + `[tiers.*]` to a
   `group_name → sched_context` mapping and **seeds it on the executor** before entities register —

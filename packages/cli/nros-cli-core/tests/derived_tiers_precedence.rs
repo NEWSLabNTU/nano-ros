@@ -245,6 +245,58 @@ fn a_declared_tier_with_no_placement_has_its_priority_allocated() {
     );
 }
 
+/// The negative control for rule 2, and the measurement of what the
+/// table-shaped guard did with this exact input: with no allocation,
+/// `[tiers.ctrl]` has no `[tiers.ctrl.<rtos>]` and `resolve_tiers` REFUSES.
+///
+/// So before this fix the acceptance image was not "built with the wrong
+/// priority" - it could not be built at all. `codegen entry` saw a non-empty
+/// `model.execution.tiers`, skipped the derivation, and handed `resolve_tiers` a
+/// tier with a binding and no placement.
+#[test]
+fn without_the_allocation_an_unplaced_tier_cannot_resolve() {
+    use std::collections::BTreeSet;
+
+    use nros_orchestration_ir::{TierResolveError, resolve_tiers, tier_from_model};
+
+    let fixture = Fixture::copy("prec-unplaced-refused");
+    fixture.configure(&["main"]);
+    let all: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
+    fixture.author("ctrl", &all, "[tiers.ctrl]\n");
+
+    let model = resolve_model(&fixture.bringup(), true);
+    let system = system_toml(&fixture);
+    let cfg = NrosConfig::from_workspace(&fixture.bake_workspace()).expect("workspace");
+    // The groups as the bake sees them, with each one bound to `ctrl` by
+    // `group_tiers` - i.e. exactly what `resolve_tiers` is given, minus the
+    // allocation.
+    let mut groups = collect_callback_groups(&cfg, &system.components);
+    for decls in groups.values_mut() {
+        for d in decls.iter_mut() {
+            d.tier = "ctrl".to_string();
+        }
+    }
+    let tiers = model
+        .execution
+        .tiers
+        .iter()
+        .map(|(name, t)| (name.clone(), tier_from_model(t, TARGET_RTOS)))
+        .collect();
+    let names: BTreeSet<&str> = all.iter().copied().collect();
+    let err = resolve_tiers(&tiers, &[], &names, &groups, TARGET_RTOS)
+        .expect_err("an unplaced tier cannot resolve without an allocation");
+    assert!(
+        matches!(err, TierResolveError::MissingRtosSpec { .. }),
+        "the refusal is the missing sub-table, not something else: {err}"
+    );
+    let text = err.to_string();
+    assert!(
+        text.contains("allocated from the contract"),
+        "and it must name the other way out, or the author has no route from \
+         here: {text}"
+    );
+}
+
 /// The same shape, through the ENTRY - which is where issue 1426 says a fix has
 /// to land, because a derived tier that reaches only `nros-plan.json` reaches no
 /// image. The generated C++ must end in `run_tiers` over the allocated table.

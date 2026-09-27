@@ -3,12 +3,13 @@ id: 1426
 title: "For a cmake image the tier derivation is unreachable twice: codegen-system
   collects callback groups from cargo metadata only, and codegen entry never
   derives at all - derived tiers reach nros-plan.json and no image"
-status: open
+status: resolved
 type: bug
 area: [cli, codegen, cmake]
 severity: high
 found: 2026-09-21
-related: [issue-1371, issue-1372, issue-1312, issue-1397, phase-459, rfc-0032, rfc-0047, rfc-0052]
+related: [issue-1371, issue-1372, issue-1312, issue-1397, issue-1427, phase-459, rfc-0032, rfc-0047, rfc-0052, rfc-0079]
+resolved_in: "fix(#1426): the derivation gate asks about a TABLE where the rule is a FACT"
 ---
 
 ## What was observed
