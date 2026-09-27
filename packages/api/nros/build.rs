@@ -13,11 +13,12 @@
 //! twin `node_metadata` has ZERO `extern "C"` sites and uses const generics
 //! freely — the tree already draws this line, W5 just states it.
 //!
-//! # Why `knob_usize` and not `env::var`
+//! # Why `nros_zephyr_build::Knob` and not `env::var`
 //!
 //! Issue 0460: a Zephyr RUST image inherits none of the cmake `set(ENV{...})`
 //! knob exports, so an `env::var` read compiles the crate default whatever
-//! Kconfig said. `knob_usize` falls back to `$DOTCONFIG`.
+//! Kconfig said. `Knob` is the tree's one knob ladder (phase-468 W4) and its
+//! second rung is `$DOTCONFIG`.
 use std::{env, path::Path};
 
 fn main() {
@@ -126,9 +127,11 @@ fn main() {
 }
 
 /// phase-400 W6 — `rung` is the platform/board answer from `[knobs.runtime]`,
-/// and it sits between the Kconfig rung and the crate builtin. Passing it as
-/// `knob_usize`'s default is what places it there: env and `$DOTCONFIG` still
-/// win above it, and the builtin applies only where no descriptor spoke.
+/// and it sits between the Kconfig rung and the crate builtin. `Knob::rung`
+/// is what places it there: env and `$DOTCONFIG` still win above it, and the
+/// builtin applies only where no descriptor spoke. (phase-468 W4 — it used to
+/// be passed as the ladder's DEFAULT, which put it in the same place and said
+/// so nowhere.)
 fn env_usize(name: &str, rung: Option<usize>, default: usize) -> usize {
-    nros_zephyr_build::knob_usize(name, &format!("CONFIG_{name}"), rung.unwrap_or(default))
+    nros_zephyr_build::knob(name).rung(rung).resolve(default)
 }

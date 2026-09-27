@@ -13,9 +13,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=ZPICO_MULTICAST_TRANSPORT");
     println!("cargo:rerun-if-env-changed=NROS_SUBSCRIBER_BUFFER_SIZE");
     println!("cargo:rerun-if-env-changed=ZPICO_SERVICE_BUFFER_SIZE");
-    // phase-461 W1 - the per-family service inboxes (the four `KCONFIG_KNOBS`
-    // rows also print this line; stating it here keeps the watch list in one
-    // place with its siblings).
+    // phase-461 W1 - the per-family service inboxes (`Knob::stated` prints
+    // this line too; stating it here keeps the watch list in one place with
+    // its siblings).
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_INBOX_BYTES");
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_INBOX_DEPTH");
     println!("cargo:rerun-if-env-changed=NROS_ACTION_INBOX_BYTES");
@@ -801,8 +801,8 @@ fn resolve_max_tl_publishers(demand: Option<usize>) -> usize {
                  `<action>/_action/status` is one of these, and every action_server \
                  row counts one whether or not it states a durability.\n  \
                  Raise ZPICO_MAX_TL_PUBLISHERS, or stop declaring the endpoint. \
-                 It has no Kconfig row yet, so a Zephyr image sets the env var \
-                 like every other unmapped knob in KCONFIG_KNOBS.\n  \
+                 It has no Kconfig symbol yet, so a Zephyr image sets the env \
+                 var rather than a CONFIG_ line.\n  \
                  Each slot costs ZPICO_TL_RETAIN_BYTES plus the keyexpr and \
                  attachment it replies with."
             );
@@ -920,68 +920,6 @@ fn declared_service_request_bytes(
     Some(max)
 }
 
-/// The Kconfig option each knob is resolved from on Zephyr. Only the two the
-/// cmake side forwards (`_nros_resolve_knob` in `nros_cargo_build.cmake`) have
-/// a row; the rest are env-or-default as before. See issue 0460 and the twin
-/// table in `nros-zpico-build`'s runner — a Zephyr RUST image never inherits
-/// the cmake `set(ENV{...})` exports, so without this a Kconfig'd buffer size
-/// reached the C lane and silently did not reach this crate.
-const KCONFIG_KNOBS: &[(&str, &str)] = &[
-    (
-        "NROS_SUBSCRIBER_BUFFER_SIZE",
-        "CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE",
-    ),
-    (
-        "ZPICO_SERVICE_BUFFER_SIZE",
-        "CONFIG_NROS_SERVICE_BUFFER_SIZE",
-    ),
-    // phase-461 W1 -- the per-family inbox pairs, RMW-agnostic names on the
-    // Kconfig side (phase-403's rule) and resolved under those names by
-    // `nros_resolve_knobs()`, so W3's `NROS_DERIVED_*` twin has its
-    // `NROS_RESOLVED_NROS_*` counterpart waiting.
-    (
-        "NROS_SERVICE_INBOX_BYTES",
-        "CONFIG_NROS_SERVICE_INBOX_BYTES",
-    ),
-    (
-        "NROS_SERVICE_INBOX_DEPTH",
-        "CONFIG_NROS_SERVICE_INBOX_DEPTH",
-    ),
-    ("NROS_ACTION_INBOX_BYTES", "CONFIG_NROS_ACTION_INBOX_BYTES"),
-    ("NROS_ACTION_INBOX_DEPTH", "CONFIG_NROS_ACTION_INBOX_DEPTH"),
-    // issue 1490 -- three knobs this table forwarded to nothing.
-    //
-    // MEASURED, not inferred: `CONFIG_NROS_SUBSCRIBER_RING_DEPTH=7` in
-    // `examples/zephyr/rust/talker/prj.conf` reached the build's `.config` and
-    // the Rust half still compiled `SUBSCRIBER_RING_DEPTH: usize = 4`. The
-    // baseline could not have shown it -- unset, the Kconfig default and the
-    // crate default are both 4, so "delivered" and "fell back to the same
-    // number" are one observation. Issue 0460, in the crate that resolves
-    // through this table.
-    //
-    // They were invisible to `check-kconfig-knob-forwarding` because its
-    // per-knob arm asked whether a reader MENTIONS the name, and all three are
-    // mentioned here -- in the `rerun-if-env-changed` list above, and at the
-    // call site. That is issue 0751's finding one arm over; the gate now asks
-    // a tabulating reader for a ROW.
-    (
-        "ZPICO_SUBSCRIBER_RING_DEPTH",
-        "CONFIG_NROS_SUBSCRIBER_RING_DEPTH",
-    ),
-    // The param-service inbox pair is issue 1233's shape rather than plain
-    // 0460: `nros-node` reads the same two knobs through the DERIVED spelling
-    // and so takes the Kconfig value, while this crate took the default -- two
-    // crates sizing ONE geometry from two numbers.
-    (
-        "NROS_PARAM_SERVICE_INBOX_BYTES",
-        "CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES",
-    ),
-    (
-        "NROS_PARAM_SERVICE_INBOX_DEPTH",
-        "CONFIG_NROS_PARAM_SERVICE_INBOX_DEPTH",
-    ),
-];
-
 /// issue 0827 — a floored knob must REFUSE a value below its floor, never
 /// round it up.
 ///
@@ -1034,24 +972,30 @@ const PARAM_INBOX_ZERO_REFUSAL: &str = "NROS_PARAM_SERVICE_INBOX_BYTES=0: 0 is n
      default -1 derives the size from the contract's declared parameters), \
      or state the size you mean.";
 
+/// One sizing knob: env, then Kconfig via `$DOTCONFIG`, then the builtin.
+///
+/// phase-468 W4 — this crate used to hold its own `KCONFIG_KNOBS` table and
+/// consult it here, so a knob with no row was read ENV-ONLY. That is the
+/// issue-1490 trap, and issue 1233's other half: `NROS_EXECUTOR_MAX_NODES` is
+/// read by `nros-node` through the derived spelling and had no row in this
+/// table, so one Kconfig symbol sized one crate and not the other while the
+/// comment beside it said "keep them in sync". The pairing is a property of
+/// the KNOB, so it lives with the resolver (`nros_zephyr_build::KCONFIG_PAIRS`)
+/// and a knob whose two names agree needs no row at all.
 fn env_usize(name: &str, default: usize) -> usize {
-    match KCONFIG_KNOBS.iter().find(|(env, _)| *env == name) {
-        Some((_, kconfig)) => nros_zephyr_build::knob_usize(name, kconfig, default),
-        None => std::env::var(name)
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(default),
-    }
+    nros_zephyr_build::knob(name).resolve(default)
 }
 
-/// phase-400 W6 — env, then the platform/board rung, then the builtin.
+/// phase-400 W6 — env, then Kconfig, then the platform/board rung, then the
+/// builtin.
 ///
-/// A thin sibling of `env_usize` rather than a change to it: the other callers
-/// of that helper are knobs with no tenant, and giving them a rung parameter
-/// they always pass `None` for would say the ladder reaches further than it
-/// does.
+/// Still a thin sibling of `env_usize` rather than a change to it, and the
+/// original reasoning holds with a better mechanism behind it: the other
+/// callers are knobs with no tenant, and a rung parameter they always pass
+/// `None` for would say the ladder reaches further than it does. `Knob::rung`
+/// is the builder step that makes "no rung" the absence of a call.
 fn env_usize_rung(name: &str, rung: Option<usize>, default: usize) -> usize {
-    env_usize(name, rung.unwrap_or(default))
+    nros_zephyr_build::knob(name).rung(rung).resolve(default)
 }
 
 /// issue 1122 / 1199 — a `NROS_DECLARED_*` fact cmake derived for THIS image.
