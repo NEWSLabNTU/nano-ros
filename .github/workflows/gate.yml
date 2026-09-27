@@ -6,9 +6,19 @@
 # path-filter job gates the narrow lanes so they only run when their paths move
 # (on a PR); on push/schedule/dispatch every job runs.
 #
-#   - check          : `just check fast` (push) / `just check` + check-no-std
-#                      (PR/nightly). The buildless gate survives the rapid push
-#                      cadence; the compile tier runs on PR + nightly only.
+#   - check          : `just check fast` on every event, plus the PR-only source
+#                      gates (compile-smoke, rustdoc-links, rustdoc-workspace).
+#                      The buildless gate survives the rapid push cadence.
+#                      `just check build` -- the FULL compile tier -- runs on
+#                      `schedule`/`workflow_dispatch` ONLY, never on a pull
+#                      request. A PR gets a compile SMOKE, not the tier.
+#                      Both this line and the job name below used to assert that
+#                      tier ran on a pull request -- coverage advertised and not
+#                      delivered, which cost two sessions a day chasing reds the
+#                      PR lane would never have shown them (issue 1514). The old
+#                      wording is not quoted here on purpose:
+#                      `check-lane-coverage-labels` matches the CLAIM as prose
+#                      and cannot tell a quotation from an assertion.
 #   - scaffold-journey : `just scaffold-journey` (RFC-0040 resolve-only journey).
 #   - colcon-parity  : `just colcon-parity` (local-msg-package builds under colcon).
 #   - sdk-index      : verify-index.py + qemu-configure drift (sdk-index bumps).
@@ -237,7 +247,7 @@ jobs:
 
   # ----- fast gate (always) -----
   check:
-    name: check (fast on push; full on PR/nightly)
+    name: check (fast + PR source gates; full compile tier on nightly/manual)
     # `always()` is load-bearing: `changes` is skipped on a merge group, and a
     # skipped dependency skips its dependents — without it, `check` would not
     # run in the queue, which is the one place it matters most.

@@ -84,6 +84,18 @@ ci-cli-from-source:
 ci-doc-workflow-refs:
     @python3 scripts/check-ci-doc-workflow-refs.py
 
+# issue 1514 — a lane's LABEL must not claim an event its step does not run on.
+#
+# `just check build` is `schedule`/`workflow_dispatch` only, and the job it lives
+# in was named "full on PR" while the header said the compile tier ran on pull
+# requests. Issue 1226's rule in its REPORTING form: two sessions in one day
+# chased `check::build` reds the PR lane would never have shown them, and the
+# label is how a contributor decides whether a red is theirs. Events are MEASURED
+# from the step's own `if:` and the claim is read from the file, so there is no
+# table to drift. Buildless; self-tests both verdicts on the normal path.
+lane-coverage-labels:
+    @python3 scripts/check-lane-coverage-labels.py
+
 # The zephyr CI image must install every Python module its own checker demands
 # (issue 0878). It did not, so all 21 Zephyr nightly cells failed at
 # `just zephyr setup` before any build — and a uniformly red lane cannot report
