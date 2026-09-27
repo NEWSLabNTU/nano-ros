@@ -36,7 +36,9 @@ separate `nros-msg-to-idl` `.em` mechanism, outside this migration.
 
 **W4 landed** — external packs via `set_template_dir` + `NROS_TEMPLATE_DIR`, the fingerprint
 hashes bundled pack content, a smoke test proves override+fallback, and the internals doc
-(`codegen-packs.md`) covers changing/overriding/adding a pack.
+(`codegen-packs.md`) covers changing/overriding/adding a pack. **What landed is OVERRIDE, not
+ADDITION**: the loader resolves a name the Rust generators ask for, so an external file under a
+NEW name is never read. Adding a language still needs Rust — RFC-0068 Amendment 2.
 
 **W6 close-out landed** — RFC-0068 `Draft → Stable`; #402 flipped `resolved` and moved to
 `docs/issues/archived/`; RFC-0023 now points at the four-stage pipeline. No dead per-language
@@ -155,8 +157,11 @@ allowed to change bytes is a deliberate, reviewed formatting normalization, call
       fixtures stale (a pack is a codegen input).
 - [x] **W4.b** `--template-dir` override: an external pack dir loads with no rebuild; bundled
       packs stay the default.
-- [x] **W4.c** A CI smoke pack (a trivial toy language) proving a brand-new pack renders with zero
-      Rust change — the executable form of the goal.
+- [x] **W4.c** A CI smoke pack proving an external pack file renders with zero Rust change
+      (`tests/external_pack_smoke.rs`). **It is override + fallback on an EXISTING registry key,
+      not "a brand-new pack" and not a toy language** — the test writes over the bundled
+      `build.rs.jinja`, and no name a Rust generator does not already request is ever loaded. The
+      goal it was the executable form of is retracted in RFC-0068 Amendment 2.
 - [x] **W4.d** Book/docs page: "adding a codegen language = a pack" (spelling.toml + templates).
 - **Acceptance:** the smoke pack renders in CI; stale detection fires on a pack edit; docs land.
 

@@ -17,9 +17,17 @@ superseded-by: null
 >
 > **The generator is a four-stage pipeline (RFC-0068 / phase-335, Stable).** This RFC's discovery +
 > CMake call shape feed **parse → resolve → lower → render**: parse the ROS interface, resolve the
-> dependency graph + RIHS hashes once, lower to a target-parameterized IR, then render each language
-> from runtime `minijinja` data packs. Adding a target language is dropping a pack, not editing Rust
-> — see `book/src/internals/codegen-packs.md`.
+> dependency graph + RIHS hashes once, lower to a language-neutral IR, then render each language
+> from runtime `minijinja` data packs.
+>
+> **Two claims this paragraph used to make are RETRACTED, and both were retracted where the
+> design lives rather than here.** The IR is not *target-parameterized*: `TargetProfile` is
+> retired and target layout is the compiler's (RFC-0068 **Amendment 1**). And *"adding a target
+> language is dropping a pack, not editing Rust"* describes the goal, not the result — measured,
+> a MESSAGE language's Rust is a filter set (`rosidl_codegen::filters`) plus a generator per kind
+> (RFC-0068 **Amendment 2**), and an ENTRY language needs a Rust emitter of its own
+> (RFC-0091 §8). What a pack can and cannot see is RFC-0091 **§6b**; the procedure for adding one
+> is `book/src/internals/codegen-packs.md`.
 
 **Goal.** A msg package authored against the ROS 2 convention (verbatim
 `package.xml` + `msg/*.msg` + the standard `rosidl_generate_interfaces(...)`
