@@ -465,16 +465,103 @@ pub fn service_reply_type(service_type: &str) -> String {
     format!("{service_type}_Response")
 }
 
-/// phase-461 W3 -- the name an ACTION's largest request is priced under.
+/// Both wire types of one SERVICE, in the spellings codegen prices them under.
 ///
-/// `pkg/action/Name` -> `pkg/action/Name_SendGoal_Request`. An action server's
-/// three queryables receive `SendGoal_Request`, `action_msgs/srv/CancelGoal`'s
-/// request (a fixed 32 bytes of goal-info, owned by that package) and
-/// `GetResult_Request` (a bare UUID). SendGoal is the only one that carries the
-/// user's own goal struct, so it is the one that can exceed the other two and
-/// the one an inbox slot has to hold.
+/// phase-457 W1 -- a service server registers a descriptor for BOTH halves
+/// (its request and its reply are two types with two schemas), so a consumer
+/// asking "what does this endpoint put in the image" needs the pair and not
+/// just [`service_request_type`]. The two questions are different and both are
+/// asked: what a RECEIVE pool must hold is the request alone, what the image
+/// REGISTERS is the pair.
+pub fn service_member_types(service_type: &str) -> [String; 2] {
+    [
+        service_request_type(service_type),
+        service_reply_type(service_type),
+    ]
+}
+
+/// phase-461 W3 -- the name an ACTION's SendGoal request is priced under.
+///
+/// `pkg/action/Name` -> `pkg/action/Name_SendGoal_Request`, the one of an action
+/// server's three request types that carries the user's own goal struct.
+///
+/// **It is not by itself a bound on the inbox** (issue 1506, measured). The
+/// three queryables share one ring, and `action_msgs/srv/CancelGoal_Request`
+/// carries a whole `GoalInfo` -- 44 bytes rx on the in-tree `action_msgs`,
+/// against 36 for `example_interfaces/action/Fibonacci_SendGoal_Request`. A
+/// goal struct smaller than a `GoalInfo` is the ordinary case, not a corner
+/// one, so a slot sized from SendGoal alone is an UNDER-size on most actions.
+/// [`action_received_types`] is the set an inbox slot has to cover.
 pub fn action_request_type(action_type: &str) -> String {
-    format!("{action_type}_SendGoal_Request")
+    format!("{action_type}{SUFFIX_SEND_GOAL_REQUEST}")
+}
+
+const SUFFIX_SEND_GOAL_REQUEST: &str = "_SendGoal_Request";
+const SUFFIX_SEND_GOAL_RESPONSE: &str = "_SendGoal_Response";
+const SUFFIX_GET_RESULT_REQUEST: &str = "_GetResult_Request";
+const SUFFIX_GET_RESULT_RESPONSE: &str = "_GetResult_Response";
+const SUFFIX_FEEDBACK_MESSAGE: &str = "_FeedbackMessage";
+const SUFFIX_GOAL: &str = "_Goal";
+const SUFFIX_RESULT: &str = "_Result";
+const SUFFIX_FEEDBACK: &str = "_Feedback";
+
+/// The `action_msgs` service an action server's cancel queryable receives.
+///
+/// phase-457 W1 -- named here, beside the action spellings, because it is part
+/// of every action's wire surface and belongs to no action's package. The
+/// runtime half of the same fact is
+/// `nros_core::action::RosAction::register_protocol_types`, whose generated
+/// override registers exactly this service's two halves and
+/// [`ACTION_STATUS_TYPE`] with the backend.
+pub const ACTION_CANCEL_SERVICE: &str = "action_msgs/srv/CancelGoal";
+
+/// The type an action server's transient-local `~/_action/status` publisher
+/// carries (issue 1378 -- the publisher nothing declares).
+pub const ACTION_STATUS_TYPE: &str = "action_msgs/msg/GoalStatusArray";
+
+/// Every type of ONE action that codegen prices under that action's name.
+///
+/// phase-457 W1 -- eight, not five. The five envelopes cross a wire, and the
+/// three HALVES (`_Goal`, `_Result`, `_Feedback`) are registered with the
+/// backend in their own right: `RosAction`'s `register_type::<A::Goal>()`
+/// family does it for every action server, so an image holds a descriptor for
+/// each. A consumer that priced only the envelopes had no schema shape for
+/// three types the image registers, and a maximum that omits a registered type
+/// is an under-size in the direction that fails registration.
+///
+/// This is the ONE spelling of the eight suffixes; [`BoundInventory::record_action`]
+/// builds its messages against the same list, so a ninth consumer cannot spell
+/// `_FeedbackMessage` a second way.
+pub fn action_member_types(action_type: &str) -> [String; 8] {
+    [
+        SUFFIX_SEND_GOAL_REQUEST,
+        SUFFIX_SEND_GOAL_RESPONSE,
+        SUFFIX_GET_RESULT_REQUEST,
+        SUFFIX_GET_RESULT_RESPONSE,
+        SUFFIX_FEEDBACK_MESSAGE,
+        SUFFIX_GOAL,
+        SUFFIX_RESULT,
+        SUFFIX_FEEDBACK,
+    ]
+    .map(|s| format!("{action_type}{s}"))
+}
+
+/// The three request types an action server's three queryables receive.
+///
+/// phase-457 W1 (issue 1506) -- `send_goal`, `cancel_goal` and `get_result` draw
+/// slots from ONE ring (`nros-rmw-zenoh`'s `ACTION_INBOX`, selected by the
+/// `/_action/` infix), so the slot has to hold the largest of the three and not
+/// the largest of one. `cancel_goal`'s is [`ACTION_CANCEL_SERVICE`]'s request,
+/// which belongs to `action_msgs` and is therefore priced in that package's
+/// inventory rather than this action's -- so a consumer joining on this list
+/// must reach a bound inventory that covers `action_msgs` too, and REFUSE
+/// rather than skip when it does not.
+pub fn action_received_types(action_type: &str) -> [String; 3] {
+    [
+        action_request_type(action_type),
+        service_request_type(ACTION_CANCEL_SERVICE),
+        format!("{action_type}{SUFFIX_GET_RESULT_REQUEST}"),
+    ]
 }
 
 /// The `unique_identifier_msgs/UUID goal_id` every action envelope opens with.
@@ -734,9 +821,17 @@ impl BoundInventory {
     /// `nros-codegen.toml` cap on the goal reaches the generated header and
     /// this bound alike.
     ///
-    /// `cancel_goal` is `action_msgs/srv/CancelGoal`, a service of another
-    /// package priced there by [`Self::record_service`]; it is not this
-    /// action's type and is deliberately not recorded under this action's name.
+    /// `cancel_goal` is [`ACTION_CANCEL_SERVICE`], a service of another package
+    /// priced there by [`Self::record_service`]; it is not this action's type
+    /// and is deliberately not recorded under this action's name. A consumer
+    /// that needs the inbox bound therefore has to join BOTH inventories --
+    /// [`action_received_types`] names the three and issue 1506 measured what
+    /// pricing one of them cost.
+    ///
+    /// phase-457 W1 -- the three HALVES are recorded too, so this is eight rows
+    /// and not five. `RosAction` registers `A::Goal`, `A::Result` and
+    /// `A::Feedback` with the backend as types of their own, so a schema shape
+    /// taken over the envelopes alone omitted three descriptors the image holds.
     ///
     /// `goal_id` makes every envelope nest `unique_identifier_msgs/UUID` too,
     /// so an action in a package whose lookup cannot reach it is `Unresolved`
@@ -749,9 +844,9 @@ impl BoundInventory {
         caps: &crate::CapacityResolver,
         lookup: &crate::schema_value::MsgLookup<'_>,
     ) {
-        let goal_fqn = format!("{type_name}_Goal");
-        let result_fqn = format!("{type_name}_Result");
-        let feedback_fqn = format!("{type_name}_Feedback");
+        let goal_fqn = format!("{type_name}{SUFFIX_GOAL}");
+        let result_fqn = format!("{type_name}{SUFFIX_RESULT}");
+        let feedback_fqn = format!("{type_name}{SUFFIX_FEEDBACK}");
         let spec = &action.spec;
         let with_halves = |t: &str| -> Option<rosidl_parser::Message> {
             if t == goal_fqn {
@@ -779,23 +874,33 @@ impl BoundInventory {
             name: field.to_string(),
             default_value: None,
         };
-        let envelopes = [
+        // phase-457 W1 -- the five envelopes AND the three halves, which is the
+        // set [`action_member_types`] names. The halves were missing: they are
+        // registered with the backend in their own right, so an image carried a
+        // descriptor for three types nothing had priced, and a maximum over the
+        // envelopes alone was a maximum over a subset of what the image holds.
+        // They are recorded from `spec` directly rather than through
+        // `with_halves`, because they ARE what `with_halves` resolves.
+        let members = [
             (
-                "_SendGoal_Request",
-                message_of(vec![goal_id_field(), half("goal", "_Goal")]),
+                SUFFIX_SEND_GOAL_REQUEST,
+                message_of(vec![goal_id_field(), half("goal", SUFFIX_GOAL)]),
             ),
-            ("_SendGoal_Response", send_goal_response()),
-            ("_GetResult_Request", message_of(vec![goal_id_field()])),
+            (SUFFIX_SEND_GOAL_RESPONSE, send_goal_response()),
+            (SUFFIX_GET_RESULT_REQUEST, message_of(vec![goal_id_field()])),
             (
-                "_GetResult_Response",
-                message_of(vec![status_field(), half("result", "_Result")]),
+                SUFFIX_GET_RESULT_RESPONSE,
+                message_of(vec![status_field(), half("result", SUFFIX_RESULT)]),
             ),
             (
-                "_FeedbackMessage",
-                message_of(vec![goal_id_field(), half("feedback", "_Feedback")]),
+                SUFFIX_FEEDBACK_MESSAGE,
+                message_of(vec![goal_id_field(), half("feedback", SUFFIX_FEEDBACK)]),
             ),
+            (SUFFIX_GOAL, spec.goal.clone()),
+            (SUFFIX_RESULT, spec.result.clone()),
+            (SUFFIX_FEEDBACK, spec.feedback.clone()),
         ];
-        for (suffix, msg) in envelopes {
+        for (suffix, msg) in members {
             self.record_message(&format!("{type_name}{suffix}"), &msg, caps, &with_halves);
         }
     }
@@ -1856,8 +1961,8 @@ mod tests {
     }
 
     /// An action server receives ENVELOPES, not the goal struct, so the five
-    /// wire types are what get rows -- and `SendGoal_Request` is the one an
-    /// inbox slot has to hold.
+    /// wire types get rows -- and phase-457 W1 gives the three HALVES rows too,
+    /// because `RosAction` registers them with the backend in their own right.
     #[test]
     fn an_action_is_priced_through_its_five_envelopes() {
         let action = rosidl_parser::parse_action(
@@ -1871,14 +1976,11 @@ mod tests {
             &CapacityResolver::empty(),
             &island_lookup,
         );
-        for suffix in [
-            "_SendGoal_Request",
-            "_SendGoal_Response",
-            "_GetResult_Request",
-            "_GetResult_Response",
-            "_FeedbackMessage",
-        ] {
-            let name = format!("test_msgs/action/Fib{suffix}");
+        // phase-457 W1 -- EIGHT rows, and `action_member_types` is what says so.
+        // The halves were the gap: a consumer joining a schema shape on them
+        // found nothing, although every action image registers all three.
+        assert_eq!(i.len(), 8, "{:?}", i.entries());
+        for name in action_member_types("test_msgs/action/Fib") {
             let e = i
                 .entries()
                 .into_iter()

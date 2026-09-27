@@ -659,41 +659,56 @@ fn set_wire_bound(
     // and what a server's inbox slot has to hold, is the REQUEST
     // (`pkg/srv/Name_Request`); codegen prices that one since W3 and priced
     // neither before it, which is why W6.a's own header records this join
-    // refusing on every in-tree image. The spelling is
-    // `rosidl_codegen::service_request_type` and not a `format!` here, because
-    // three consumers join on it.
-    let ty = &wire_type_of(kind, ty);
-    let ty = ty.as_str();
-    let bound = match lookup_bound(&inputs.bounds, ty) {
-        Some(BoundState::Bounded { rx, .. }) => Some(*rx),
-        Some(BoundState::Unbounded { reason }) => {
-            ep.refuse(
-                "wire_bound_bytes",
-                format!("`{ty}` has no static bound: {reason}"),
-            );
-            None
+    // refusing on every in-tree image.
+    //
+    // phase-457 W1 (issue 1506) -- a SET, because an action server's three
+    // queryables share one ring and receive three different request types. The
+    // spellings come from `rosidl_codegen` and never from a `format!` here,
+    // because several consumers join on them.
+    //
+    // ONE unpriced member refuses the whole row, exactly as
+    // `declared_service_request_bytes` refuses a whole family: the slot is
+    // shared, so a maximum over the members that answered is not a bound on the
+    // ones that did not.
+    let mut bound: Option<usize> = None;
+    for member in received_types_of(kind, ty) {
+        let member = member.as_str();
+        match lookup_bound(&inputs.bounds, member) {
+            Some(BoundState::Bounded { rx, .. }) => {
+                bound = Some(bound.unwrap_or(0).max(*rx));
+            }
+            Some(BoundState::Unbounded { reason }) => {
+                ep.refuse(
+                    "wire_bound_bytes",
+                    format!("`{member}` has no static bound: {reason}"),
+                );
+                bound = None;
+                break;
+            }
+            Some(BoundState::Unresolved { reason }) => {
+                ep.refuse(
+                    "wire_bound_bytes",
+                    format!("`{member}` was not priced: {reason}"),
+                );
+                bound = None;
+                break;
+            }
+            None => {
+                ep.refuse(
+                    "wire_bound_bytes",
+                    match &inputs.bounds_error {
+                        Some(e) => format!("no bound inventory for this entry: {e}"),
+                        None => format!(
+                            "`{member}` is in no `nros_message_bounds.json` beside this entry -- \
+                             run `nros sync` so codegen prices it"
+                        ),
+                    },
+                );
+                bound = None;
+                break;
+            }
         }
-        Some(BoundState::Unresolved { reason }) => {
-            ep.refuse(
-                "wire_bound_bytes",
-                format!("`{ty}` was not priced: {reason}"),
-            );
-            None
-        }
-        None => {
-            ep.refuse(
-                "wire_bound_bytes",
-                match &inputs.bounds_error {
-                    Some(e) => format!("no bound inventory for this entry: {e}"),
-                    None => format!(
-                        "`{ty}` is in no `nros_message_bounds.json` beside this entry -- run \
-                         `nros sync` so codegen prices it"
-                    ),
-                },
-            );
-            None
-        }
-    };
+    }
     ep.set_wire_bound_bytes(bound);
     bound
 }
@@ -809,29 +824,73 @@ fn buffered_region(depth: usize, slot: usize, pointer_bytes: usize) -> usize {
     }
 }
 
-/// phase-461 W3 -- the type whose bound sizes THIS endpoint's receive side.
+/// phase-461 W3 -- every type whose bound sizes THIS endpoint's receive side.
 ///
 /// A topic endpoint receives its own type. A service or action endpoint does
-/// not: it receives a REQUEST or a reply, and those are separate generated
-/// types with separate bounds. The server side is what every pool in this tree
-/// is sized from -- an inbox slot, a request buffer -- so the request is the
-/// one named here for all four kinds. A client's reply buffer is the other
-/// half and has no pool of its own yet; when it gets one it takes
-/// `service_reply_type`, beside this.
+/// not: it receives a REQUEST, and those are separate generated types with
+/// separate bounds. The server side is what every pool in this tree is sized
+/// from -- an inbox slot, a request buffer -- so the request is what is named
+/// here for all four kinds, a client included. A client's reply buffer is the
+/// other half and has no pool of its own yet; when it gets one it takes
+/// `service_reply_type` and the response envelopes beside it.
 ///
-/// An action's three queryables receive `SendGoal_Request`,
-/// `action_msgs/srv/CancelGoal`'s request and `GetResult_Request`; only
-/// SendGoal carries the user's goal, so it is the one that can exceed the other
-/// two (see `rosidl_codegen::action_request_type`).
-fn wire_type_of(kind: EndpointKind, ty: &str) -> String {
+/// # phase-457 W1 (issue 1506) -- an action's set is THREE, and one of them is
+/// somebody else's type
+///
+/// An action server's `send_goal`, `cancel_goal` and `get_result` queryables all
+/// draw from one ring (`nros-rmw-zenoh`'s `ACTION_INBOX`, selected by the
+/// `/_action/` infix), so the slot has to hold the largest of the three. Naming
+/// only `SendGoal_Request` was an UNDER-size and not a corner case: measured on
+/// `examples/native/rust/action-server`, `CancelGoal_Request` is 44 bytes rx
+/// against SendGoal's 36, because `GoalInfo` is bigger than a small goal
+/// struct. `rosidl_codegen::action_received_types` names the three.
+fn received_types_of(kind: EndpointKind, ty: &str) -> Vec<String> {
     match kind {
         EndpointKind::ServiceServer | EndpointKind::ServiceClient => {
-            rosidl_codegen::service_request_type(ty)
+            vec![rosidl_codegen::service_request_type(ty)]
         }
         EndpointKind::ActionServer | EndpointKind::ActionClient => {
-            rosidl_codegen::action_request_type(ty)
+            rosidl_codegen::action_received_types(ty).to_vec()
         }
-        _ => ty.to_string(),
+        _ => vec![ty.to_string()],
+    }
+}
+
+/// phase-457 W1 -- every type this endpoint's registration puts a DESCRIPTOR in
+/// the image for, which is a wider set than [`received_types_of`].
+///
+/// `[types]`'s three maxima size the descriptor BUILDER's stack arrays
+/// (`nros-rmw-cyclonedds`'s `MAX_FIELDS` / `MAX_KINDS` / `MAX_NESTED_DEPTH`),
+/// and that builder runs once per REGISTERED type — not once per received one.
+/// So the question here is "what schemas does this endpoint bring", and the
+/// answer for an interface endpoint is never its interface name: `pkg/srv/Name`
+/// and `pkg/action/Name` are not message types, codegen prices neither, and a
+/// join on them refused both maxima on every service and action image while
+/// telling the reader to run `nros sync` — a remedy that could not work,
+/// because no amount of codegen produces a shape for a type codegen does not
+/// emit.
+///
+/// A service brings its request AND its reply. An action brings its eight own
+/// members plus the `action_msgs` protocol types `RosAction::register_protocol_types`
+/// registers for it: `CancelGoal`'s two halves and the `GoalStatusArray` its
+/// transient-local `~/_action/status` publisher carries (issue 1378). Omitting
+/// those three would be the same under-size one level up — measured, they are
+/// the DEEPEST schemas an action image holds (`CancelGoal_Response` kinds 11,
+/// `GoalStatusArray` nested_depth 6, against 7 and 3 for the envelopes).
+fn registered_types_of(kind: EndpointKind, ty: &str) -> Vec<String> {
+    match kind {
+        EndpointKind::ServiceServer | EndpointKind::ServiceClient => {
+            rosidl_codegen::service_member_types(ty).to_vec()
+        }
+        EndpointKind::ActionServer | EndpointKind::ActionClient => {
+            let mut v = rosidl_codegen::action_member_types(ty).to_vec();
+            v.extend(rosidl_codegen::service_member_types(
+                rosidl_codegen::ACTION_CANCEL_SERVICE,
+            ));
+            v.push(rosidl_codegen::ACTION_STATUS_TYPE.to_string());
+            v
+        }
+        _ => vec![ty.to_string()],
     }
 }
 
@@ -1121,6 +1180,13 @@ fn type_facts(inputs: &DescriptorInputs<'_>, endpoints: &[Endpoint]) -> Types {
         return t;
     };
 
+    // `distinct_count` counts the DECLARED interfaces, one per distinct
+    // `[[endpoint]] type`, and deliberately not the registered message types
+    // `schemas` walks below. The registered COUNT has its own producer —
+    // `nros_orchestration_ir::cyclonedds_type_sizing`, which resolves
+    // `NROS_CYCLONEDDS_MAX_TYPES` from the SystemModel (a srv is 2, an action
+    // 8 + 3) — and a second answer to that question here is what the
+    // single-writer rule beside `cyclonedds_env` exists to refuse.
     let mut names: Vec<&str> = endpoints.iter().map(|e| e.type_name.as_str()).collect();
     names.sort_unstable();
     names.dedup();
@@ -1129,9 +1195,20 @@ fn type_facts(inputs: &DescriptorInputs<'_>, endpoints: &[Endpoint]) -> Types {
     // types, and zero is the answer rather than a number to round up.
     let distinct_count = names.len();
 
+    // phase-457 W1 -- the SHAPE is joined on the types the image REGISTERS, not
+    // on the interfaces it declares. See `registered_types_of`: an interface
+    // name has no schema and never will, so before this the maxima were refused
+    // on every service and action image.
+    let mut schemas: Vec<String> = endpoints
+        .iter()
+        .flat_map(|e| registered_types_of(e.kind, &e.type_name))
+        .collect();
+    schemas.sort_unstable();
+    schemas.dedup();
+
     let mut shape = rosidl_codegen::schema_value::SchemaShape::default();
     let mut unshaped: Vec<&str> = Vec::new();
-    for ty in &names {
+    for ty in &schemas {
         match inputs
             .schema_shapes
             .iter()
@@ -1139,7 +1216,7 @@ fn type_facts(inputs: &DescriptorInputs<'_>, endpoints: &[Endpoint]) -> Types {
             .and_then(|(_, s)| *s)
         {
             Some(s) => shape = shape.max(s),
-            None => unshaped.push(ty),
+            None => unshaped.push(ty.as_str()),
         }
     }
 
@@ -1161,9 +1238,12 @@ fn type_facts(inputs: &DescriptorInputs<'_>, endpoints: &[Endpoint]) -> Types {
             ),
             None => format!(
                 "no CycloneDDS schema shape recorded for {} -- either codegen could not \
-                 resolve a nested type, or the `generated/` tree predates this field. Run \
-                 `nros sync` so codegen walks them; a maximum over the types that DO have \
-                 one would under-size the descriptor builder's stack arrays silently",
+                 resolve a nested type, or the `generated/` tree predates this field. These \
+                 are the MESSAGE types this entry's endpoints register (a service's two \
+                 halves, an action's eight members plus the `action_msgs` protocol types), \
+                 not the interface names the `[[endpoint]]` rows carry. Run `nros sync` so \
+                 codegen walks them; a maximum over the types that DO have one would \
+                 under-size the descriptor builder's stack arrays silently",
                 unshaped.join(", ")
             ),
         };
@@ -1879,7 +1959,12 @@ mod tests {
             // the join and not about an empty table.
             bounded("tier4_system_msgs/srv/OperateMrm", 9999),
             bounded("tier4_system_msgs/srv/OperateMrm_Request", 24),
+            // phase-457 W1 (issue 1506) -- an action row is a MAXIMUM over the
+            // three requests its queryables share one ring for, and the biggest
+            // of them here is somebody else's type. Before W1 the row read 28.
             bounded("example_interfaces/action/Fibonacci_SendGoal_Request", 28),
+            bounded("action_msgs/srv/CancelGoal_Request", 44),
+            bounded("example_interfaces/action/Fibonacci_GetResult_Request", 20),
         ];
         let desc = build(&inputs);
         let row = |topic: &str| {
@@ -1890,7 +1975,44 @@ mod tests {
                 .wire_bound_bytes()
         };
         assert_eq!(row("/operate_mrm"), Fact::Stated(24));
-        assert_eq!(row("/fibonacci"), Fact::Stated(28));
+        assert_eq!(
+            row("/fibonacci"),
+            Fact::Stated(44),
+            "the cancel queryable draws from the same ring, so the slot holds its request"
+        );
+    }
+
+    /// phase-457 W1 (issue 1506) -- the reproduction that fails first: an action
+    /// row whose `CancelGoal_Request` is unpriced REFUSES, rather than stating a
+    /// maximum over the two members that answered.
+    ///
+    /// The direction matters. A maximum over a subset of a SHARED pool's
+    /// population is an under-size, and an under-sized zenoh inbox slot drops
+    /// the request as `TransportError::MessageTooLarge` — so the refusal is the
+    /// only answer, and it names the member the reader has to price.
+    #[test]
+    fn an_action_row_refuses_when_one_of_its_three_requests_is_unpriced() {
+        let inv = inventory(vec![EntityDecl::bare(
+            EntityKind::ActionServer,
+            Some("p/action/A".into()),
+            Some("/a".into()),
+        )]);
+        let mut inputs = base(&inv);
+        inputs.bounds = vec![
+            bounded("p/action/A_SendGoal_Request", 36),
+            bounded("p/action/A_GetResult_Request", 28),
+            // `action_msgs/srv/CancelGoal_Request` deliberately absent.
+        ];
+        let desc = build(&inputs);
+        let reason = desc.endpoints[0]
+            .wire_bound_bytes()
+            .refusal()
+            .expect("an unpriced cancel request refuses the whole row")
+            .to_string();
+        assert!(
+            reason.contains("action_msgs/srv/CancelGoal_Request"),
+            "{reason}"
+        );
     }
 
     /// A service whose REQUEST is unpriced still refuses, and the refusal names
@@ -2179,6 +2301,105 @@ mod tests {
                 "the wave is landed; name the type: {why}"
             );
         }
+    }
+
+    /// phase-457 W1 -- a SERVICE row's schema shape comes from its two member
+    /// messages, never from its interface name.
+    ///
+    /// The reproduction that fails first: before this wave the join used
+    /// `pkg/srv/Name`, which codegen prices under no circumstances, so all three
+    /// maxima were refused on every service image — with a reason that told the
+    /// reader to run `nros sync`, a remedy that could not work.
+    #[test]
+    fn a_service_row_takes_its_shape_from_both_member_messages() {
+        let inv = inventory(vec![EntityDecl::bare(
+            EntityKind::ServiceServer,
+            Some("p/srv/S".into()),
+            Some("/s".into()),
+        )]);
+        let mut i = base(&inv);
+        i.bounds = vec![bounded("p/srv/S_Request", 24)];
+        i.schema_shapes = vec![
+            // The interface name, which nothing should read.
+            shaped("p/srv/S", 99, 99, 99),
+            shaped("p/srv/S_Request", 4, 4, 1),
+            // The REPLY is registered too, and here it is the deeper of the two.
+            shaped("p/srv/S_Response", 3, 6, 3),
+        ];
+        let d = build(&i);
+        assert_eq!(d.types.max_fields().stated(), Some(&4), "from the request");
+        assert_eq!(d.types.max_kinds().stated(), Some(&6), "from the reply");
+        assert_eq!(
+            d.types.max_nested_depth().stated(),
+            Some(&3),
+            "from the reply"
+        );
+    }
+
+    /// phase-457 W1 -- an ACTION row's shape covers the eleven types its
+    /// registration puts a descriptor in the image for.
+    ///
+    /// Measured on `examples/native/rust/action-server`, the DEEPEST of those is
+    /// never one of the action's own: `action_msgs/srv/CancelGoal_Response` has
+    /// 11 kinds and `GoalStatusArray` nests 6 deep, against 7 and 3 for the
+    /// envelopes. So a maximum over the action's own members alone is an
+    /// under-size, in the direction that fails type registration at boot.
+    #[test]
+    fn an_action_row_takes_its_shape_from_the_protocol_types_too() {
+        let inv = inventory(vec![EntityDecl::bare(
+            EntityKind::ActionServer,
+            Some("p/action/A".into()),
+            Some("/a".into()),
+        )]);
+        let mut i = base(&inv);
+        i.bounds = vec![
+            bounded("p/action/A_SendGoal_Request", 36),
+            bounded("p/action/A_GetResult_Request", 28),
+            bounded("action_msgs/srv/CancelGoal_Request", 44),
+        ];
+        let own = [
+            "_SendGoal_Request",
+            "_SendGoal_Response",
+            "_GetResult_Request",
+            "_GetResult_Response",
+            "_FeedbackMessage",
+            "_Goal",
+            "_Result",
+            "_Feedback",
+        ];
+        i.schema_shapes = own
+            .iter()
+            .map(|s| shaped(&format!("p/action/A{s}"), 4, 7, 3))
+            .chain([
+                shaped("action_msgs/srv/CancelGoal_Request", 3, 9, 4),
+                shaped("action_msgs/srv/CancelGoal_Response", 4, 11, 5),
+                shaped("action_msgs/msg/GoalStatusArray", 1, 10, 6),
+            ])
+            .collect();
+        let d = build(&i);
+        assert_eq!(d.types.max_fields().stated(), Some(&4));
+        assert_eq!(
+            d.types.max_kinds().stated(),
+            Some(&11),
+            "from CancelGoal_Response, which no envelope reaches"
+        );
+        assert_eq!(
+            d.types.max_nested_depth().stated(),
+            Some(&6),
+            "from GoalStatusArray, the status publisher's type (issue 1378)"
+        );
+
+        // And a missing protocol shape refuses rather than quietly reporting the
+        // envelopes' maximum.
+        i.schema_shapes
+            .retain(|(n, _)| n != "action_msgs/msg/GoalStatusArray");
+        let why = build(&i)
+            .types
+            .max_nested_depth()
+            .refusal()
+            .expect("an unshaped registered type refuses")
+            .to_string();
+        assert!(why.contains("action_msgs/msg/GoalStatusArray"), "{why}");
     }
 
     /// The `[env]` projection carries only what the descriptor STATES.
