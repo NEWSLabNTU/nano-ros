@@ -1,6 +1,8 @@
 # Phase 470 — example layout unification
 
-**Status (2026-09-27). All work items open.** Gives `examples/` a named,
+**Status (2026-09-27). W1–W4 LANDED; W5–W7 open.** W5 is unblocked: W2 answered
+the board question it waited on, and answered it differently than either this
+phase or issue 1517 predicted (see W2). Gives `examples/` a named,
 measured taxonomy; collapses the shapes that differ for no reason; and documents
 the ones that differ for a reason. Implements no new RFC — it finishes
 [RFC-0026](../design/0026-example-directory-layout.md) (standalone copy-out leaves)
@@ -18,6 +20,15 @@ while measuring: 1517, 1518, and the `aux_pkg` priority restatement already
 fixed.
 
 ## What the survey measured
+
+**Read the caveat first: the survey that opened this phase ran on a checkout 882
+commits behind `main`.** That is the sole cause of W3's false premise — three of
+the four template workspaces it reported as having no root marker had carried one
+since phase-445 W5, sixteen days before the issue was filed. Every other claim
+below was re-verified against `main` afterwards and held, but the lesson is the
+one issues 0859–0862 already paid for: a measurement is only about the tree it
+was taken on, and a survey is a measurement. Check out `main` before surveying,
+and state which tree a finding came from.
 
 An example's layout is decided by two questions, and only the second has ever
 been written down.
@@ -137,6 +148,51 @@ generates an application for the wrong board.
 comment says something true, or `entry =` goes away because the derivation now
 works — decided by running the derivation, not by the paragraph above.
 
+**DONE (2026-09-27), and the paragraph above was wrong.** `board` is
+`fvp-aemv8r-smp`, from the descriptor's `names`; the west spelling also resolves
+and was ruled out by `ImageBlock::board`'s own doc-comment ("NEVER a framework's
+own board string"). But **correcting the board does not make the application
+derivable — the derivation goes from two candidates to ZERO.** The resolver
+matches a package by the board its `DEPLOY` token resolves to, and a Zephyr
+entry's `DEPLOY` names the PLATFORM (`zephyr`), because that is what
+`NanoRosEntry.cmake`'s link gate compares against; the board the application
+targets lives inside its own `CMakeLists.txt`, which the token scan never reads.
+So `entry =` stays, with a comment that states the measured reason. Changing the
+entry's `DEPLOY` to the board id would make it derivable and was rejected: the
+link gate would stop matching and the image would link no nodes.
+
+Two defects found on the way, **each of which would have made the correct value
+worse than the wrong one** — which is the reason this item had to precede W5
+rather than merely being tidy:
+
+- `nros build` handed the authored board id straight to `west -b`, reading the
+  OUTER `BoardDescriptor::west_board` that **no in-tree descriptor declares**. One
+  rule now, `BoardDescriptor::west_build_board`.
+- `check-deploy-board-resolves` FAILED on the correct value: it globbed
+  `packages/boards/*/nros-board.toml` while the authority it speaks for descends,
+  and the FVP descriptor is a level deeper. Issue 0196's shape, and an active
+  obstacle — writing the right value turned the fast line red.
+
+No gate for row-vs-application agreement: 10 `entry =` rows and exactly ONE
+application declaring its own board, so the rule's population is one and W5
+removes even that. The Zephyr `-b` projection was pinned by a test instead.
+
+The manufactured ambiguity claim lived in **six** places, and after fixing them
+the tree has **no measured example of the ambiguity arm at all** — so RFC-0085's
+count carries a dated correction rather than a silent re-count. Follow-ups filed:
+**1519** (23 rows write `board = "zephyr"` and reach `-b zephyr`, which west does
+not know; 10 more work BECAUSE they author the forbidden framework string) and
+**1520** (the prose class; 8 of 10 `entry =` rows still unclassified).
+
+**What W5 inherits:** the row is trustworthy for the board IDENTITY, which is
+what the generator needs. Two caveats — resolve the `-b`/`nano_ros_use_board`
+argument through `BoardDescriptor::west_build_board`, never the authored string;
+and `entry =` must stay named until the generator exists, because nothing in the
+row reaches the derivation's `DEPLOY`-token matcher. Not verified: the FVP image
+does not build here (Zephyr 3.7 workspace, `aarch64-zephyr-elf`, Arm FVP), so
+"the row agrees with what its application builds" rests on the `-b` string and
+the board crate's projected `NROS_BOARD_ZEPHYR_ID`, not on an image.
+
 ### W3 — four template workspaces declare no root — **LANDED, and the premise was false**
 
 Issue 1515 (resolved, archived). The item as written said all four trees have
@@ -190,6 +246,23 @@ re-discovers the outlier.
 **Acceptance:** a reader following the taxonomy reaches every tree under
 `examples/` and is told which class it is and why, without reading an issue.
 
+**DONE (2026-09-27).** Landed in `examples/README.md` (a new `## Layout classes`
+section), `examples/workspaces/README-layout.md` (the workspace half, at the
+head, ahead of the existing naming rules) and `examples/px4/README.md`. Every
+class predicate is a **runnable command**, not a frozen count — W1's lesson,
+applied without being asked for.
+
+It also corrected the stale enumerations it had to walk past, which is the
+argument for predicates over counts stated as evidence rather than as opinion:
+`examples/README.md` listed 28 `ws-<topic>-<lang>` workspaces phase-331 W2/W4
+had folded away (`realtime-cpp` five times over), and two remaining `<rmw>/`
+paths where zero remain (the `aemv8r` pair left with the FVP code nothing ran,
+issue 0537); `README-layout.md`'s coverage table named four generated
+`[image.*]` rows as PACKAGES, sending readers after directories that cannot
+exist, and missed four real gaps; `examples/px4/README.md`'s own "Cases" table
+named neither of the two trees PX4 actually builds (phase-316 W3.1 moved the one
+it named). All re-derived from the tree.
+
 ### W5 — generate the Zephyr workspace entries
 
 Issue 1288, the large item. 15 hand-written packages serve 16 image rows
@@ -228,8 +301,13 @@ feature no `[[component]]` row expresses. It is the only non-default node dep
 across all seven manifests. Either `[[component]]` gains a features field or
 `safety` keeps a hand-written entry with that reason recorded.
 
-**Blocked on:** W2 (a wrong board generates a wrong application). **Blocks:**
-issue 1511 (no worked example of entry customisation — deferred behind this).
+**UNBLOCKED (2026-09-27)** — W2 landed the board identity. Inherit its two
+caveats: resolve the `-b`/`nano_ros_use_board` argument through
+`BoardDescriptor::west_build_board`, never the authored string; and expect the
+`DEPLOY`-token matcher to be no help, because a Zephyr entry's `DEPLOY` names the
+platform, so the generator cannot lean on the existing derivation to find its own
+application. **Blocks:** issue 1511 (no worked example of entry customisation —
+deferred behind this).
 
 **Acceptance:** each migrated workspace loses its `*_entry` package and gains
 per-image Kconfig and board declarations; `nros build` generates the west
@@ -292,8 +370,9 @@ generated, because then there is exactly one place a platform may be named.
 
 ## Order
 
-W1, W3, W4 are independent. W2 precedes W5. W6 is independent of all of them.
-W7 lands last — after W5, its rule has one home.
+W1, W3, W4 are independent and have LANDED. W2 preceded W5 and has landed, so
+W5 is open and ready. W6 is independent of all of them. W7 lands last — after W5
+its rule has one home.
 
 ## What this phase does not do
 
