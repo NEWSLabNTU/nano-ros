@@ -34,6 +34,10 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPackageXml.cmake")
 # are usable if a caller pulls this module directly.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBootstrap.cmake")
 
+# issue 1467 — `nros_link_runtime_umbrella()`: the ONE decision about which
+# runtime umbrella a target links, and whether the consumer wants one.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRuntimeUmbrella.cmake")
+
 # ---------------------------------------------------------------------------
 # _nros_infer_lang(<out_var> <sources…>)
 #   CPP if any source has a C++ extension, else C. Mirrors the inference
@@ -364,8 +368,9 @@ function(nano_ros_auto_add_library name)
     # Runtime lib: C++ always links the umbrella; a C component's choice
     # depends on TYPED (declarative C keeps NanoRos), which is a
     # register-time fact — nros_components_register_node adds it.
-    if(NOT _lang STREQUAL "C" AND TARGET NanoRos::NanoRosCpp)
-        target_link_libraries(${name} PUBLIC NanoRos::NanoRosCpp)
+    # issue 1467 — PUBLIC, so guarded on the consumer by the shared resolver.
+    if(NOT _lang STREQUAL "C")
+        nros_link_runtime_umbrella(${name} PUBLIC CANDIDATES NanoRos::NanoRosCpp)
     endif()
     target_include_directories(${name} PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
@@ -464,11 +469,9 @@ function(nros_components_register_node target)
         # non-typed C node is what made a MIXED workspace link both archives and
         # die on ~96 duplicate C-ABI symbols. A pure-C workspace instantiates no
         # `NanoRosCpp` target and is unaffected.
-        if(TARGET NanoRos::NanoRosCpp)
-            target_link_libraries(${target} PUBLIC NanoRos::NanoRosCpp)
-        elseif(TARGET NanoRos::NanoRos)
-            target_link_libraries(${target} PUBLIC NanoRos::NanoRos)
-        endif()
+        #
+        # issue 1467 — PUBLIC, so guarded on the consumer by the shared resolver.
+        nros_link_runtime_umbrella(${target} PUBLIC)
     endif()
     set(_extra "")
     if(_NCR_HEADER)
