@@ -71,8 +71,22 @@ REPO = Path(__file__).resolve().parents[2]
 # tracked-file listing below (submodule contents are not this repo's files).
 SCAN_ROOTS = ("packages",)
 
+# `CARGO` read at COMPILE time rather than at run time. `env!("CARGO")` expands
+# to the same path `env::var("CARGO")` returns — cargo sets the variable for
+# everything it spawns, including a test binary — so it bypasses the PATH shim
+# identically. It is also the IDIOMATIC spelling in a test, which is why issue
+# 1392 found every real site using it and none of them visible here: the
+# detector below read only the runtime forms, and a site that fails the bypass
+# test is `continue`d before it is even counted.
+#
+# `CARGO` exactly, and not a prefix: `env!("CARGO_BIN_EXE_<name>")` is a test
+# binary's own path and `env!("CARGO_MANIFEST_DIR")` is a directory. Neither is
+# a cargo, and both appear in the same files.
+CARGO_ENV_MACRO = r"""(?:option_env|env)!\(\s*"CARGO"\s*\)"""
 # A function whose cargo program did not come from the PATH name `cargo`.
-BYPASS_SOURCE = re.compile(r"""env::var(?:_os)?\(\s*"CARGO"\s*\)|\bvar(?:_os)?\(\s*"CARGO"\s*\)""")
+BYPASS_SOURCE = re.compile(
+    r"""env::var(?:_os)?\(\s*"CARGO"\s*\)|\bvar(?:_os)?\(\s*"CARGO"\s*\)|\b""" + CARGO_ENV_MACRO
+)
 # ... or that was handed one by a caller.
 CARGO_PARAM = re.compile(r"\bcargo\s*:\s*&?\s*(?:std::ffi::)?(?:OsStr|OsString|Path|str|String)")
 
@@ -80,13 +94,42 @@ CARGO_PARAM = re.compile(r"\bcargo\s*:\s*&?\s*(?:std::ffi::)?(?:OsStr|OsString|P
 # `Command::new("cargo")` does not match this — it resolves through PATH, so the
 # shim already reaches it.
 COMMAND_NEW = re.compile(r"Command::new\(\s*&?\s*([A-Za-z_][A-Za-z0-9_.:]*)\s*\)")
+# `Command::new(env!("CARGO"))` — the program is the macro expansion itself, so
+# there is no identifier for `COMMAND_NEW` to read. Issue 1392's THIRD hole, and
+# the load-bearing one: `names_cargo` runs BEFORE the bypass test, so widening
+# `BYPASS_SOURCE` alone would still have found nothing.
+COMMAND_NEW_MACRO = re.compile(r"Command::new\(\s*&?\s*" + CARGO_ENV_MACRO)
 
 
 def names_cargo(text: str) -> bool:
-    """Does any `Command::new(<ident>)` in `text` name a cargo binary?"""
+    """Does any `Command::new(…)` in `text` name a cargo binary?"""
+    if COMMAND_NEW_MACRO.search(text):
+        return True
     return any("cargo" in ident.lower() for ident in COMMAND_NEW.findall(text))
 
+
 ARG_LITERAL = re.compile(r"""\.arg\(\s*"([^"]+)"\s*\)""")
+# `.args(["build", "-p", …])` / `.args(&[…])` / `.args(vec![…])`. Every real
+# site uses a list (issue 1392), so reading only `.arg("…")` left the argument
+# set EMPTY and the verdict `['(unknown)']` — the check still fired, but named
+# nothing, at exactly the moment someone needs the subcommand.
+ARGS_LIST = re.compile(r"\.args\(\s*(?:&\s*)?(?:vec!)?\[(.*?)\]\s*\)", re.S)
+STRING_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"')
+
+
+def literal_args(body: str) -> set[str]:
+    """Every string literal handed to the command as an argument.
+
+    Non-literal list elements (`TARGET`, a `format!`) simply do not appear —
+    this is the set of arguments the SOURCE states, which is what the verdict
+    below is allowed to reason about.
+    """
+    args = set(ARG_LITERAL.findall(body))
+    for inner in ARGS_LIST.findall(body):
+        args.update(STRING_LITERAL.findall(inner))
+    return args
+
+
 SUBCOMMANDS = {
     "build",
     "b",
@@ -279,7 +322,7 @@ def offenders(paths: list[Path]) -> tuple[list[tuple[str, int, str, str]], int]:
             if not bypasses:
                 continue
             sites += 1
-            args = set(ARG_LITERAL.findall(body))
+            args = literal_args(body)
             subs = args & SUBCOMMANDS
             if not subs and (args & NON_RESOLVING):
                 continue
@@ -367,6 +410,56 @@ fn through_the_shim() -> Result<(), ()> {
 '''
 
 
+# Issue 1392's own shape, and the negative control for all THREE holes the
+# detector had at once:
+#
+#   * `env!("CARGO")` / `option_env!("CARGO")` — the compile-time spellings,
+#     which `BYPASS_SOURCE` did not read;
+#   * `Command::new(env!("CARGO"))` — no identifier for `COMMAND_NEW`, so
+#     `names_cargo` rejected the body BEFORE the bypass test ran. This is why
+#     widening `BYPASS_SOURCE` on its own would have changed nothing;
+#   * `.args([…])` — the list form, which `ARG_LITERAL` did not read, so the
+#     verdict named `['(unknown)']` instead of the subcommand.
+#
+# Every nested cargo that actually existed in this tree used all three. The
+# sample therefore carries an offender in each macro spelling, a DISCIPLINED
+# macro site that must stay green, and a `CARGO_`-PREFIXED variable that is not
+# a cargo at all.
+SELF_TEST_MACRO = '''
+fn probe() -> Result<(), ()> {
+    let out = Command::new(env!("CARGO"))
+        .current_dir("/tmp")
+        .args(["build", "-p", "nros", "--no-default-features"])
+        .output()
+        .unwrap();
+    drop(out);
+    Ok(())
+}
+
+fn optional_probe() -> Result<(), ()> {
+    let cargo = option_env!("CARGO").unwrap_or("cargo");
+    Command::new(cargo).args(&["check", "--quiet"]).output().unwrap();
+    Ok(())
+}
+
+fn redirected() -> Result<(), ()> {
+    let cfg = format!("resolver.lockfile-path=\\"{}\\"", "/tmp/x/Cargo.lock");
+    Command::new(env!("CARGO"))
+        .args(["check", "--quiet", "--config", cfg.as_str()])
+        .output()
+        .unwrap();
+    Ok(())
+}
+
+fn manifest_dir_is_not_a_cargo() -> Result<(), ()> {
+    let exe = env!("CARGO_BIN_EXE_helper");
+    let dir = env!("CARGO_MANIFEST_DIR");
+    Command::new(exe).args(["--root", dir]).output().unwrap();
+    Ok(())
+}
+'''
+
+
 SELF_TEST_NO_CARGO = '''
 //! A source with no cargo invocation, an unterminated raw string in a comment
 //! r#"{ , and identifiers that start with `r`.
@@ -438,6 +531,64 @@ def self_test() -> None:
                 f"function absorbed its neighbour (sites={seen}, found={names})"
             )
 
+        # Issue 1392's negative control. THE gate had been reporting OK over a
+        # set that excluded every site anyone would actually write, so this is
+        # the case that must stay red for the whole class to stay visible.
+        macro_file = Path(tmp) / "macro.rs"
+        macro_file.write_text(SELF_TEST_MACRO, encoding="utf-8")
+        found, seen = offenders([macro_file])
+        names = sorted(sig for _, _, sig, _ in found)
+        if seen != 3 or len(found) != 2:
+            raise SystemExit(
+                "check-nested-cargo-lock-discipline: SELF-TEST FAILED — issue "
+                "1392: expected 3 shim-bypassing sites and 2 offenders in the "
+                f"compile-time-macro sample, saw {seen} site(s) / {len(found)} "
+                f"({names}). `Command::new(env!(\"CARGO\"))` and "
+                "`option_env!(\"CARGO\")` bypass the PATH shim exactly as "
+                "`env::var(\"CARGO\")` does, and a `CARGO_`-prefixed variable "
+                "(`CARGO_BIN_EXE_*`, `CARGO_MANIFEST_DIR`) is not a cargo."
+            )
+        if "fn optional_probe" not in names[0] or "fn probe" not in names[1]:
+            raise SystemExit(
+                "check-nested-cargo-lock-discipline: SELF-TEST FAILED — issue "
+                f"1392: the two offenders are the wrong functions: {names}"
+            )
+        whys = sorted(why for _, _, _, why in found)
+        if "['build']" not in whys[0] or "['check']" not in whys[1]:
+            raise SystemExit(
+                "check-nested-cargo-lock-discipline: SELF-TEST FAILED — issue "
+                "1392: `.args([…])` was not read, so the reason names no "
+                f"subcommand: {whys}"
+            )
+
+        # The bypass spellings, asserted on the regex directly: the sample above
+        # reaches `manifest_dir_is_not_a_cargo` only through `names_cargo`, which
+        # bails first, so a `CARGO_`-prefix false positive would hide there.
+        for spelling in (
+            'env::var("CARGO")',
+            'env::var_os("CARGO")',
+            'env!("CARGO")',
+            'option_env!("CARGO")',
+        ):
+            if not BYPASS_SOURCE.search(spelling):
+                raise SystemExit(
+                    "check-nested-cargo-lock-discipline: SELF-TEST FAILED — "
+                    f"`{spelling}` reads $CARGO and is not recognised as a "
+                    "shim bypass (issue 1392)"
+                )
+        for spelling in (
+            'env!("CARGO_MANIFEST_DIR")',
+            'env!("CARGO_BIN_EXE_helper")',
+            'env!("CARGO_PKG_VERSION")',
+        ):
+            if BYPASS_SOURCE.search(spelling):
+                raise SystemExit(
+                    "check-nested-cargo-lock-discipline: SELF-TEST FAILED — "
+                    f"`{spelling}` is not a cargo binary, so treating it as a "
+                    "shim bypass would report a site that cannot resolve "
+                    "anything (issue 1392)"
+                )
+
 
 def inventory(paths: list[Path]) -> list[tuple[str, int, str, str, str]]:
     """Every shim-bypassing site and how it is accounted for — the sweep,
@@ -456,7 +607,7 @@ def inventory(paths: list[Path]) -> list[tuple[str, int, str, str, str]]:
                 continue
             if not (BYPASS_SOURCE.search(body) or CARGO_PARAM.search(sig)):
                 continue
-            args = set(ARG_LITERAL.findall(body))
+            args = literal_args(body)
             subs = sorted(args & SUBCOMMANDS) or sorted(args & NON_RESOLVING)
             if LOCK_DISCIPLINE.search(body):
                 verdict = "lock discipline"
