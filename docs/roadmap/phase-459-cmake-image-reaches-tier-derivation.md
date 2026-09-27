@@ -71,7 +71,7 @@ phase 78:
   `phase-459-W4` only.
 
 Owns [issue 1426](../issues/1426-cmake-callback-groups-never-reach-codegen-system-and-the-entry-never-derives.md)
-and [issue 1427](../issues/1427-realizer-allocates-rank-zero-above-the-transport-band.md).
+and [issue 1427](../issues/archived/1427-realizer-allocates-rank-zero-above-the-transport-band.md).
 Closes the reachability half of
 [issue 1371](../issues/1371-tier-derivation-silent-on-empty-callback-groups.md)
 (the silence half stays 1371's) and takes item 2 of
@@ -139,7 +139,10 @@ Two more facts change what "reaching it" has to mean:
   `scripts/lib/priority_plan.py:resolve_zephyr_plan`, judged by
   `scripts/check-tier-priority-plan-image.py`), and nothing in
   `nros-orchestration-ir` reads it: `grep priority_plan packages/core` is
-  empty. Issue 1427.
+  empty. Issue 1427. (**Pre-W4 state.** W4 landed the plan module, so that grep
+  now answers 15 hits and rank 0 allocates 5; issue 1427 is resolved and
+  archived. What the wave did NOT close is the plan a BAKE passes — the Kconfig
+  DEFAULTS projection, not the image's own — which is issue 1508.)
 * **Equal periods collapse to one rank.** The pinned ranker
   (`ros-launch-manifest-sched` v0.1.35, `chain_aware_mapper.rs:364-375`)
   gives every fact with the same `(criticality, budget_ms)` one `fine_group`,
