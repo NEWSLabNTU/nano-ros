@@ -1,0 +1,26 @@
+# The C++ message pack — a header, plus the Rust `repr(C)` FFI glue beside it.
+#
+# RFC-0091 §6: this pack EMITS RUST as well as C++, which is why its registry
+# holds `message_cpp_types.rs` / `message_cpp_exports.rs`. It declares
+# `language = "cpp"` all the same, because a filter set is keyed by the pack that
+# CALLS the filter, not by the syntax the filter emits (`crate::filters`).
+language = "cpp"
+
+# See `../shared/pack.toml` for what `registry_order` is and why it exists.
+registry_order = 60
+
+# The artifact-naming row — `generator::naming`'s C++ surface. No
+# `source_extension`: the C++ surface is header-only, so it names no translation
+# unit. The Rust FFI halves are named from `ArtifactNames::stem` by the FFI
+# renderer, which is a different question than "what extension does this
+# surface's header carry".
+header_extension = "hpp"
+guard_suffix = "_HPP"
+
+templates = [
+    { key = "message_cpp.hpp", file = "message.hpp.jinja" },
+    { key = "message_cpp_types.rs", file = "message_types.rs.jinja" },
+    { key = "message_cpp_exports.rs", file = "message_exports.rs.jinja" },
+    { key = "service_cpp.hpp", file = "service.hpp.jinja" },
+    { key = "action_cpp.hpp", file = "action.hpp.jinja" },
+]

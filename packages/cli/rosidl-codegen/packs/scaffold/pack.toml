@@ -1,0 +1,24 @@
+# The per-package scaffolding pack — `Cargo.toml` / `lib.rs` / `build.rs` for a
+# generated message crate.
+#
+# `language = "rust"` because the surface it serves is Rust PACKAGING (RFC-0091
+# §6 lists packaging as a surface of its own): what it emits is the crate that
+# carries the other three Rust packs' output. `cargo.toml` is TOML rather than
+# Rust, which is a fact about a file and not about the surface.
+#
+# It is a language pack, not a `shared` one: it renders whole artifacts, whereas
+# `shared` means "partials other packs include".
+language = "rust"
+
+# See `../shared/pack.toml` for what `registry_order` is and why it exists.
+registry_order = 70
+
+# No naming fields: not an artifact-naming surface. These artifacts are named by
+# cargo's own conventions, not by the `<package>_<kind>_<type>` stem.
+templates = [
+    { key = "cargo.toml", file = "cargo.toml.jinja" },
+    { key = "cargo_nros.toml", file = "cargo_nros.toml.jinja" },
+    { key = "build.rs", file = "build.rs.jinja" },
+    { key = "lib.rs", file = "lib.rs.jinja" },
+    { key = "lib_nros.rs", file = "lib_nros.rs.jinja" },
+]

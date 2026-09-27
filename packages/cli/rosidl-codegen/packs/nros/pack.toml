@@ -1,0 +1,15 @@
+# The embedded (`no_std`) Rust message pack.
+#
+# See `../rmw/pack.toml` for why four packs declare `language = "rust"`.
+language = "rust"
+
+# See `../shared/pack.toml` for what `registry_order` is and why it exists.
+registry_order = 40
+
+# No naming fields: not an artifact-naming surface (no C-family header).
+templates = [
+    { key = "nros_field.jinja", file = "nros_field.jinja" },
+    { key = "message_nros.rs", file = "message.rs.jinja" },
+    { key = "service_nros.rs", file = "service.rs.jinja" },
+    { key = "action_nros.rs", file = "action.rs.jinja" },
+]

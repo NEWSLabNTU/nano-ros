@@ -2,10 +2,23 @@
 //!
 //! A runtime (`minijinja`) template engine over data packs: a pack is a set of
 //! `.jinja` templates rendered from a `serde`-serializable data context, so the
-//! TEMPLATES are data and not Rust. A LANGUAGE is more than its templates —
-//! `PACKS` below states the rest (a filter set and a generator per kind), and
-//! RFC-0068 Amendment 2 measured it. Templates are bundled at build time via
+//! TEMPLATES are data and not Rust. A LANGUAGE is more than its templates — a
+//! filter set (`crate::filters`) and a generator per kind — and RFC-0068
+//! Amendment 2 measured it. Templates are bundled at build time via
 //! `include_str!` (fast, no I/O) and rendered from a view struct.
+//!
+//! ## The registry is DISCOVERED (phase-469 W1)
+//!
+//! This module used to carry 28 authored `(key, include_str!(path))` rows, so a
+//! new pack directory rendered nothing until someone remembered to add its rows
+//! here. Each `packs/<dir>/pack.toml` now declares them — see `build.rs`, which
+//! reads every manifest and generates [`PACKS`] from it. A pack directory is a
+//! pack because it exists and describes itself; there is no list to join.
+//!
+//! The generated rows keep the ORDER the authored list had, from each manifest's
+//! `registry_order`. That is not cosmetic: [`bundled_packs`] feeds
+//! `codegen_fingerprint`, which hashes it as a SEQUENCE and stales every fixture
+//! in the tree when it moves (RFC-0061 / phase-335 W4.a).
 //!
 //! Every backend AND the per-package scaffolding (Cargo/lib/build) render through
 //! this one `Environment` now — askama is fully removed (phase-335 W6). Type
@@ -19,107 +32,30 @@ use std::sync::LazyLock;
 
 use minijinja::Environment;
 
-/// Every bundled pack template, keyed by the stable name a `render(name, …)`
-/// call and any `{% import %}` use. A new language adds rows here plus its
-/// `.jinja` files; its other Rust is a filter set (`crate::filters`) and a
-/// generator per kind (`crate::generator`). `include_str!` bundles them at
-/// build time.
-const PACKS: &[(&str, &str)] = &[
-    // RFC-0090 / phase-429 W1 — shared by the C and C++ packs, because the
-    // codegen-version stamp is about the C ABI both of them emit into. Not
-    // inside either pack dir for that reason.
-    (
-        "_codegen_version.jinja",
-        include_str!("../packs/_codegen_version.jinja"),
-    ),
-    // C pack (packs/c)
-    ("_field.jinja", include_str!("../packs/c/_field.jinja")),
-    ("message.h", include_str!("../packs/c/message.h.jinja")),
-    ("message.c", include_str!("../packs/c/message.c.jinja")),
-    ("service.h", include_str!("../packs/c/service.h.jinja")),
-    ("service.c", include_str!("../packs/c/service.c.jinja")),
-    ("action.h", include_str!("../packs/c/action.h.jinja")),
-    ("action.c", include_str!("../packs/c/action.c.jinja")),
-    // rmw Rust pack (packs/rmw)
-    (
-        "message_rmw.rs",
-        include_str!("../packs/rmw/message.rs.jinja"),
-    ),
-    (
-        "service_rmw.rs",
-        include_str!("../packs/rmw/service.rs.jinja"),
-    ),
-    (
-        "action_rmw.rs",
-        include_str!("../packs/rmw/action.rs.jinja"),
-    ),
-    // nros embedded Rust pack (packs/nros)
-    (
-        "nros_field.jinja",
-        include_str!("../packs/nros/nros_field.jinja"),
-    ),
-    (
-        "message_nros.rs",
-        include_str!("../packs/nros/message.rs.jinja"),
-    ),
-    (
-        "service_nros.rs",
-        include_str!("../packs/nros/service.rs.jinja"),
-    ),
-    (
-        "action_nros.rs",
-        include_str!("../packs/nros/action.rs.jinja"),
-    ),
-    // idiomatic Rust pack (packs/rust)
-    (
-        "message_idiomatic.rs",
-        include_str!("../packs/rust/message.rs.jinja"),
-    ),
-    (
-        "service_idiomatic.rs",
-        include_str!("../packs/rust/service.rs.jinja"),
-    ),
-    (
-        "action_idiomatic.rs",
-        include_str!("../packs/rust/action.rs.jinja"),
-    ),
-    // C++ pack (packs/cpp)
-    (
-        "message_cpp.hpp",
-        include_str!("../packs/cpp/message.hpp.jinja"),
-    ),
-    (
-        "message_cpp_types.rs",
-        include_str!("../packs/cpp/message_types.rs.jinja"),
-    ),
-    (
-        "message_cpp_exports.rs",
-        include_str!("../packs/cpp/message_exports.rs.jinja"),
-    ),
-    (
-        "service_cpp.hpp",
-        include_str!("../packs/cpp/service.hpp.jinja"),
-    ),
-    (
-        "action_cpp.hpp",
-        include_str!("../packs/cpp/action.hpp.jinja"),
-    ),
-    // scaffolding pack (packs/scaffold)
-    (
-        "cargo.toml",
-        include_str!("../packs/scaffold/cargo.toml.jinja"),
-    ),
-    (
-        "cargo_nros.toml",
-        include_str!("../packs/scaffold/cargo_nros.toml.jinja"),
-    ),
-    ("build.rs", include_str!("../packs/scaffold/build.rs.jinja")),
-    ("lib.rs", include_str!("../packs/scaffold/lib.rs.jinja")),
-    (
-        "lib_nros.rs",
-        include_str!("../packs/scaffold/lib_nros.rs.jinja"),
-    ),
-];
+// `PACKS` — every bundled pack template, keyed by the stable name a
+// `render(name, …)` call and any `{% import %}` use.
+//
+// GENERATED: `build.rs` writes it from every `packs/<dir>/pack.toml`, doc
+// comment included (a `///` here would attach to the `include!` invocation and
+// document nothing, which `-D warnings` says out loud). A new language adds a
+// pack DIRECTORY with a manifest and its `.jinja` files; its other Rust is a
+// filter set (`crate::filters`) and a generator per kind (`crate::generator`).
+// Nothing in this file names a template.
+//
+// Read the expansion at
+// `packages/cli/target/**/build/rosidl-codegen-*/out/pack_registry.rs`.
+include!(concat!(env!("OUT_DIR"), "/pack_registry.rs"));
+
+/// What every discovered pack declares about itself.
+///
+/// GENERATED beside [`PACKS`] from the same manifests, so a test or a
+/// diagnostic can ask which packs exist, which language each serves and which
+/// registry keys it contributes without re-spelling a `pack.toml`.
+mod info {
+    include!(concat!(env!("OUT_DIR"), "/pack_info.rs"));
+}
+
+pub use info::{PACK_INFO, PackInfo};
 
 /// Optional external pack directory (W4). When set (before the first render), a
 /// file `<dir>/<name>` or `<dir>/<name>.jinja` OVERRIDES the bundled pack of that
