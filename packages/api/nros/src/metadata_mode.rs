@@ -108,6 +108,13 @@ pub fn reset() {
 /// does not point at must be made loud by other means.
 #[must_use]
 pub fn begin_node(name: &str, namespace: &str, domain_id: u32) -> bool {
+    // phase-457 W3 — arm the registration observer HERE rather than asking every
+    // probe entry point to remember. Opening a node is the first thing any
+    // adapter does and no entity can be recorded before it, so this is the
+    // earliest point that cannot be skipped; a probe that forgot an explicit
+    // call would emit rows with the fact silently missing, which reads exactly
+    // like the road that legitimately has none.
+    listen_for_registrations();
     state().with(|st| {
         let id = String::from(name);
         if st
@@ -260,6 +267,62 @@ pub fn record_parameter(name: &str, value: &crate::ParameterValue) -> bool {
         entity.parameter_type = Some(value.param_type());
         entity.parameter_default = Some(default);
         st.recorder.push_entity(entity).is_ok()
+    })
+}
+
+/// phase-457 W3 — start hearing what each subscription REGISTRATION says about
+/// its own delivery shape.
+///
+/// Called once by a probe before the component's declaration path runs.
+/// Idempotent, and safe to call in a process that registers nothing.
+///
+/// # Why this is an observation and not a second opinion
+///
+/// The fact is [`SubscriptionRequest::in_place_capable`][cap] — stated at each
+/// of the eleven registration entry points, consumed at the one site that reads
+/// `supports_process_in_place`. Nothing outside the executor can derive it: the
+/// sizing descriptor used to infer it from the entry's LANGUAGE, which is wrong
+/// for nine of the eleven and is issue 0196's class. So the probe RUNS the
+/// registration and the registration says.
+///
+/// A row that nothing observed keeps `None`, and every consumer refuses on it.
+/// That is the honest state of the Rust producer's own road, which declares
+/// against a recording `NodeContext` and opens no executor at all.
+///
+/// [cap]: https://docs.rs/nros-node
+pub fn listen_for_registrations() {
+    nros_node::executor::registration_observer::set_observer(|reg| {
+        // A dropped `false` here is a fact silently lost, which is the shape
+        // every other recorder entry point is `#[must_use]` against. It is NOT
+        // fatal: a registration with no recorded row is a subscription the
+        // backend did not record (a second executor, a test harness), and the
+        // consumer's refusal is the right outcome — so this reports and carries
+        // on rather than panicking inside a registration.
+        if !record_subscription_registration(reg.topic, reg.type_name, reg.in_place_capable) {
+            nros_log::log_warn!(
+                nros_log::get_logger("nros::metadata_mode"),
+                "registration of `{}` ({}) matched no recorded subscription row; its \
+                 registration path stays refused",
+                reg.topic,
+                reg.type_name
+            );
+        }
+    });
+}
+
+/// Attach one observed registration fact to the subscription row it belongs to.
+///
+/// See [`MetadataRecorder::observe_subscription_registration`] for the join and
+/// its refusal contract.
+#[must_use]
+pub fn record_subscription_registration(
+    source_name: &str,
+    type_name: &str,
+    in_place_capable: bool,
+) -> bool {
+    state().with(|st| {
+        st.recorder
+            .observe_subscription_registration(source_name, type_name, in_place_capable)
     })
 }
 
@@ -439,7 +502,18 @@ mod tests {
 
         let export = SourceMetadataExport::new("fixture_pkg", "fixture").language("cpp");
         let json = to_json(&export).expect("serialize");
-        assert!(json.contains("\"version\":2"), "got: {json}");
+        // READ, not restated -- phase-457 W3 moved the version to 3 and this
+        // literal is what noticed. The schema is ADDITIVE, so a v2 fact reaching
+        // the sidecar is a claim about the CURRENT version, not about the number
+        // 2; pinning the number here would make every additive bump edit a test
+        // whose subject did not move.
+        assert!(
+            json.contains(&alloc::format!(
+                "\"version\":{}",
+                crate::node_metadata::SOURCE_METADATA_SCHEMA_VERSION
+            )),
+            "got: {json}"
+        );
 
         let subs = &json[json.find("\"subscribers\":").expect("array")..];
         let subs = &subs[..subs.find(']').unwrap()];
@@ -509,6 +583,118 @@ mod tests {
             Some(10)
         ));
         assert_eq!(entity_count(), 0);
+        reset();
+    }
+
+    /// phase-457 W3 — a subscription nothing observed carries NO registration
+    /// fact, and the sidecar says so by omitting the key.
+    ///
+    /// The whole point: an absent `in_place` is a refusal, and a consumer that
+    /// read it as `false` would state a registration path nobody measured. This
+    /// is also the state of every row the RUST producer writes, which declares
+    /// against a recording `NodeContext` and opens no executor.
+    #[test]
+    fn an_unobserved_subscription_carries_no_registration_fact() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset();
+        assert!(begin_node("fixture", "/", 0));
+        assert!(record(EntityRecord {
+            callback_id: Some("on_chatter"),
+            ..EntityRecord::new(EntityKind::Subscription, "/chatter", "std_msgs/msg/String",)
+        }));
+        let export = SourceMetadataExport::new("fixture_pkg", "fixture").language("rust");
+        let json = to_json(&export).expect("serialize");
+        assert!(
+            !json.contains("\"in_place\""),
+            "an unobserved row must omit the key, not state a false: {json}"
+        );
+        reset();
+    }
+
+    /// The observation lands on the row that registered it, and the two
+    /// directions are both carried.
+    ///
+    /// Two subscriptions of the same type on different topics, one from a
+    /// borrowed-bytes delivery shape and one from a shape that needs more — the
+    /// exact pair that makes an image-wide answer wrong.
+    #[test]
+    fn an_observed_registration_lands_on_its_own_row() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset();
+        assert!(begin_node("fixture", "/", 0));
+        for topic in ["/plain", "/with_info"] {
+            assert!(record(EntityRecord {
+                callback_id: Some("cb"),
+                ..EntityRecord::new(EntityKind::Subscription, topic, "std_msgs/msg/String")
+            }));
+        }
+        assert!(record_subscription_registration(
+            "/plain",
+            "std_msgs/msg/String",
+            true
+        ));
+        assert!(record_subscription_registration(
+            "/with_info",
+            "std_msgs/msg/String",
+            false
+        ));
+        let export = SourceMetadataExport::new("fixture_pkg", "fixture").language("cpp");
+        let json = to_json(&export).expect("serialize");
+        let plain = json.find("/plain").expect("row");
+        let info = json.find("/with_info").expect("row");
+        assert!(
+            json[plain..info].contains("\"in_place\":true"),
+            "got: {json}"
+        );
+        assert!(json[info..].contains("\"in_place\":false"), "got: {json}");
+        reset();
+    }
+
+    /// A second observation does NOT restate the first: it lands on the next
+    /// unset row, and an observation matching no waiting row is REFUSED.
+    ///
+    /// Two subscriptions indistinguishable at this seam — same topic, same type
+    /// — are attributed in registration order, which is the only attribution
+    /// available. Overwriting would make two disagreeing rows read as one, and
+    /// disagreement is the case the field exists for.
+    #[test]
+    fn observations_fill_rows_in_order_and_refuse_when_none_waits() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset();
+        assert!(begin_node("fixture", "/", 0));
+        for _ in 0..2 {
+            assert!(record(EntityRecord {
+                callback_id: Some("cb"),
+                ..EntityRecord::new(EntityKind::Subscription, "/dup", "std_msgs/msg/String")
+            }));
+        }
+        assert!(record_subscription_registration(
+            "/dup",
+            "std_msgs/msg/String",
+            true
+        ));
+        assert!(record_subscription_registration(
+            "/dup",
+            "std_msgs/msg/String",
+            false
+        ));
+        // A third has no row left to land on.
+        assert!(!record_subscription_registration(
+            "/dup",
+            "std_msgs/msg/String",
+            true
+        ));
+        // And a topic nobody recorded is refused rather than attributed to a
+        // neighbour.
+        assert!(!record_subscription_registration(
+            "/never",
+            "std_msgs/msg/String",
+            true
+        ));
+        let export = SourceMetadataExport::new("fixture_pkg", "fixture").language("cpp");
+        let json = to_json(&export).expect("serialize");
+        assert!(json.contains("\"in_place\":true"), "got: {json}");
+        assert!(json.contains("\"in_place\":false"), "got: {json}");
         reset();
     }
 }

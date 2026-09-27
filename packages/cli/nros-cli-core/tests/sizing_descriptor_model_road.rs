@@ -132,9 +132,20 @@ fn a_contract_reaches_the_model_road_and_the_leaf_facts_refuse_by_name() {
     let body = fs::read_to_string(&written.path).expect("read the descriptor");
     assert_eq!(
         body.matches(MODEL_ONLY_ISSUE).count(),
-        // Per row: registration_path + wire_bound_bytes on all four, plus
-        // storage_bytes on the two subscriptions; plus the three `[types]`.
-        4 * 2 + 2 + 3,
+        // Per row: `wire_bound_bytes` on all four, `registration_path` on the
+        // two SUBSCRIPTIONS, `storage_bytes` on the same two; plus the three
+        // `[types]`.
+        //
+        // phase-457 W3 — 13 -> 11, and the two that left are the two PUBLISHERS'
+        // `registration_path`. That field is no longer refused wholesale on this
+        // road: its in-place row needs the BACKEND plus the endpoint's own
+        // observed capability, and a publisher has no receive slot of any shape
+        // to get wrong (`claimed_slot_bytes` is `Absent` for it), so the composed
+        // answer stands. The subscriptions still refuse — nothing observed their
+        // registrations, because a model row is a launch declaration — and their
+        // reason still names this road. The fixture's endpoints are 2 publishers
+        // and 2 subscriptions, so the arithmetic is `4 + 2 + 2 + 3`.
+        4 + 2 + 2 + 3,
         "every refusal this road writes names the follow-up:\n{body}"
     );
     let _ = fs::remove_dir_all(&dir);

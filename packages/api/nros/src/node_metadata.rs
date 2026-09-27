@@ -34,9 +34,19 @@ use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 ///   counting one slot each while a census can tell the two apart;
 /// * a `parameters[]` row carries `type`.
 ///
+/// phase-457 W3 -- `2 -> 3`, additive again, and every reader defaults the new
+/// field:
+///
+/// * a `subscribers[]` row may carry `in_place` -- whether THAT registration's
+///   delivery shape can dispatch out of the backend's own receive slot
+///   ([`EntityMetadata::in_place_capable`]). **An absent key is a refusal**, not
+///   a `false`: it is what a probe that declares without registering leaves
+///   behind, and a consumer that read it as `false` would state a registration
+///   path nobody observed.
+///
 /// Serialised in exactly one place (this module), as phase-308's layer rule
 /// requires: the adapters that feed the recorder contain no JSON.
-pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 2;
+pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 3;
 
 /// Maximum nodes recorded by the built-in metadata recorder.
 pub const DEFAULT_MAX_METADATA_NODES: usize = 8;
@@ -433,6 +443,24 @@ pub struct EntityMetadata {
     /// `safety-e2e`, so when the capability is off the flag is simply ignored
     /// (the subscription registers as a basic one). `false` for every other entity.
     pub safety: bool,
+    /// phase-457 W3 — can THIS subscription's registration dispatch out of the
+    /// backend's own receive slot?
+    ///
+    /// The CALL SITE's half of a subscription's `registration_path` (RFC-0100
+    /// D1, issues 1319 / 1340), reported by
+    /// `nros_node::executor::registration_observer` from
+    /// `Executor::open_subscription` — the one site in the tree that reads it.
+    /// **Not** conjoined with the backend's own answer: a probe links the
+    /// RECORDING backend, so the conjunction would describe the probe rather
+    /// than the image, and the consumer knows the shipped backend from the
+    /// image's `rmw` name.
+    ///
+    /// `None` is **"nobody observed this"** and is a REFUSAL at every consumer,
+    /// never a `false`. It is the state of every row on a road whose probe
+    /// declares without registering — the Rust producer runs `register()`
+    /// against a recording `NodeContext` and opens no executor — and of every
+    /// non-subscription row, which claims no receive slot at all.
+    pub in_place_capable: Option<bool>,
     pub source: SourceLocationMetadata,
 }
 
@@ -602,6 +630,45 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
     /// Recorded optional callback effects in declaration order.
     pub fn callback_effects(&self) -> &[CallbackEffectMetadata] {
         &self.callback_effects
+    }
+
+    /// phase-457 W3 — attach an OBSERVED registration fact to the subscription
+    /// row that registered it.
+    ///
+    /// A subscription is recorded when the backend creates it and observed when
+    /// the executor registers it, which are two moments in one call — the RMW
+    /// seam runs inside `Executor::open_subscription`. So the row exists and the
+    /// fact arrives afterwards; this is the join.
+    ///
+    /// Keyed on `(source_name, type_name)` and taking the LAST unset match,
+    /// which is the row that was just created: two subscriptions on one topic of
+    /// one type are indistinguishable at this seam, and taking them in order is
+    /// the only attribution available. Returns `false` when no such row is
+    /// waiting — a caller that drops that has silently lost a fact, which is why
+    /// this is `#[must_use]` like every other recorder entry point.
+    ///
+    /// **Refuses to overwrite.** A row whose fact is already set is not a match,
+    /// so a second observation lands on the next unset row rather than
+    /// re-stating the first — the difference matters exactly when two rows
+    /// disagree, which is the case this whole field exists for.
+    #[must_use]
+    pub fn observe_subscription_registration(
+        &mut self,
+        source_name: &str,
+        type_name: &str,
+        in_place_capable: bool,
+    ) -> bool {
+        for entity in self.entities.iter_mut() {
+            if entity.kind == EntityKind::Subscription
+                && entity.in_place_capable.is_none()
+                && entity.source_name.as_str() == source_name
+                && entity.type_name == type_name
+            {
+                entity.in_place_capable = Some(in_place_capable);
+                return true;
+            }
+        }
+        false
     }
 
     /// Emit source metadata JSON ([`SOURCE_METADATA_SCHEMA_VERSION`]) without
@@ -1191,6 +1258,9 @@ pub fn entity_metadata(spec: EntityMetadataSpec<'_>) -> Result<EntityMetadata, N
         parameter_default: None,
         parameter_read_only: false,
         safety: false,
+        // phase-457 W3 -- "nobody observed this". Set later, and only for a
+        // subscription, by `metadata_mode::record_subscription_registration`.
+        in_place_capable: None,
         source: SourceLocationMetadata::empty(),
     })
 }
@@ -1244,6 +1314,13 @@ fn write_subscriber_json(
     )?;
     if let Some(callback_slot) = entity.callback_slot {
         write!(out, ",\"callback_slot\":{}", callback_slot.index())?;
+    }
+    // phase-457 W3 (schema v3) -- the CALL SITE's half of this subscription's
+    // registration path, when something observed it. Written only when known:
+    // an absent key is "nobody observed this", which every consumer must read
+    // as a refusal rather than as `false` (see `in_place_capable`).
+    if let Some(in_place) = entity.in_place_capable {
+        write!(out, ",\"in_place\":{in_place}")?;
     }
     write!(out, "}}")
 }
@@ -2087,9 +2164,12 @@ mod tests {
             )
             .unwrap();
 
+        // READ, not restated: the schema is ADDITIVE, so the shape this asserts
+        // is a claim about the CURRENT version. phase-457 W3 moved it to 3 and
+        // this literal is what noticed.
         assert!(
-            json.contains("\"version\":2"),
-            "phase-463 W1: schema v2, got {json}"
+            json.contains(&format!("\"version\":{SOURCE_METADATA_SCHEMA_VERSION}")),
+            "the current schema version, got {json}"
         );
         assert!(json.contains("\"language\":\"rust\""));
         assert!(json.contains("\"unresolved_name\":{\"value\":\"talker\",\"kind\":\"relative\"}"));

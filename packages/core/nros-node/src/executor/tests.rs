@@ -648,6 +648,124 @@ fn a_schemaless_subscription_outgrows_an_arena_priced_at_its_types_bound() {
         );
 }
 
+/// phase-457 W3 / **issue 1340** — an in-place BACKEND is not an in-place
+/// REGISTRATION, and pricing a subscription on the backend alone under-sizes the
+/// arena.
+///
+/// This is the reproduction for the direction that ships a failure. Issue 1340's
+/// saving is ~9.7 KiB a subscription and it is taken from the `in_place` row of
+/// the sizing descriptor; the question W3 had to answer is which endpoints may
+/// carry that row. Before W3 the answer was "every endpoint of an image whose
+/// backend dispatches in place", composed from the `rmw` name — and this test is
+/// what that costs:
+///
+/// * the backend advertises in-place dispatch for every subscription it creates
+///   (`MockSession::with_in_place_dispatch`, which is what zenoh and XRCE give a
+///   real image);
+/// * one registration IS in-place capable (the typed Rust path, `FnMut(&M)`) and
+///   claims no receive region at all;
+/// * the other is NOT (the GENERIC path, `.generic(type, hash)`, which is what a
+///   declarative component and the cross-RMW bridge both lower to) and claims a
+///   full `buffered_region(depth, RX_BUF)` on the very same backend.
+///
+/// So an arena priced at the first cannot hold the second, and the symptom is
+/// `NodeError::BufferTooSmall` at a registration the oracle passed — the same
+/// shape issue 1319 predicted one row over, in the same direction.
+///
+/// **The saving is still taken**, and the last assertion is that: priced at what
+/// the in-place registration claims, the in-place registration fits. What W3
+/// changed is that the descriptor may only state `in_place` for an endpoint whose
+/// registration somebody OBSERVED, so the row that would have under-sized this
+/// image is refused and keeps its region.
+#[test]
+fn a_generic_subscription_on_an_in_place_backend_still_claims_a_full_region() {
+    let qos = qos_with_depth(1);
+
+    // --- what each registration CLAIMS, on an arena large enough for both ---
+    let mut wide = executor_with_arena(
+        MockSession::with_in_place_dispatch(),
+        crate::config::ARENA_SIZE,
+    );
+    let nid = wide.node_builder("island").build().unwrap();
+    let node_overhead = wide.arena_used();
+
+    let in_place_claim = {
+        let before = wide.arena_used();
+        wide.node_mut(nid)
+            .subscription("/typed")
+            .qos(qos)
+            .typed::<TestMsg>()
+            .build(|_: &TestMsg| {})
+            .unwrap();
+        wide.arena_used() - before
+    };
+    let generic_claim = {
+        let before = wide.arena_used();
+        wide.node_mut(nid)
+            .subscription("/generic")
+            .qos(qos)
+            .generic(<TestMsg as nros_core::RosMessage>::TYPE_NAME, "")
+            .build(|_: &[u8]| {})
+            .unwrap();
+        wide.arena_used() - before
+    };
+
+    assert!(
+        generic_claim > in_place_claim,
+        "the fixture did not reproduce the gap: on a backend that dispatches in \
+         place, a generic registration claimed {generic_claim} bytes and a typed \
+         one {in_place_claim}. If these are equal, the generic path now consults \
+         the in-place capability too (issue 1340's first candidate fix) and this \
+         test has outlived the defect it reproduces -- check \
+         `register_subscription_buffered_raw_on`'s `in_place_capable`"
+    );
+
+    // --- FAILS FIRST: the arena a build that priced from the BACKEND derives --
+    //
+    // One subscription's worth, at the in-place price. That is exactly what
+    // `subs_arena_from_descriptor` sums for a row stating `in_place`.
+    let mut short = executor_with_arena(
+        MockSession::with_in_place_dispatch(),
+        node_overhead + in_place_claim,
+    );
+    let nid = short.node_builder("island").build().unwrap();
+    let err = short
+        .node_mut(nid)
+        .subscription("/generic")
+        .qos(qos)
+        .generic(<TestMsg as nros_core::RosMessage>::TYPE_NAME, "")
+        .build(|_: &[u8]| {})
+        .expect_err(
+            "issue 1340's under-size is that a GENERIC registration does not fit \
+             an arena priced at what an in-place one claims -- the two differ \
+             only in the delivery shape, which no image-level fact can tell apart",
+        );
+    assert_eq!(
+        err,
+        NodeError::BufferTooSmall,
+        "the shortfall must surface as BufferTooSmall at registration -- that is \
+         what an image sees, and it is why the descriptor refuses the in-place \
+         row for an endpoint nobody observed"
+    );
+
+    // --- and the saving IS taken where the registration really is in place ---
+    let mut sized = executor_with_arena(
+        MockSession::with_in_place_dispatch(),
+        node_overhead + in_place_claim,
+    );
+    let nid = sized.node_builder("island").build().unwrap();
+    sized
+        .node_mut(nid)
+        .subscription("/typed")
+        .qos(qos)
+        .typed::<TestMsg>()
+        .build(|_: &TestMsg| {})
+        .expect(
+            "an in-place registration fits an arena priced at what it claims -- \
+             which is issue 1340's saving, and the whole point of taking it",
+        );
+}
+
 /// phase-392 W3c -- `.rx_buffer::<N>()` is the OPT-OUT, and it is exact.
 ///
 /// The consumer named a number, so the derivation is skipped and every slot

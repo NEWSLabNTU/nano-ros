@@ -223,6 +223,7 @@ pub unsafe extern "C" fn nros_cpp_metadata_dump(
     feature = "rmw-cffi"
 ))]
 mod census_fixture_tests {
+    use alloc::format;
     use core::{ffi::c_void, mem::MaybeUninit};
 
     use crate::{
@@ -232,7 +233,10 @@ mod census_fixture_tests {
         nros_cpp_node_t, nros_cpp_qos_t,
         params_shim::{nros_cpp_node_declare_param_bool, nros_cpp_node_declare_param_double},
         publisher::nros_cpp_publisher_create,
-        subscription::nros_cpp_subscription_create,
+        subscription::{
+            nros_cpp_subscription_create, nros_cpp_subscription_options_t,
+            nros_cpp_subscription_register, nros_cpp_subscription_register_with_info,
+        },
         timer::nros_cpp_timer_create,
     };
 
@@ -241,6 +245,23 @@ mod census_fixture_tests {
     struct ExecutorStorage([u64; crate::CPP_EXECUTOR_OPAQUE_U64S]);
 
     unsafe extern "C" fn noop(_context: *mut c_void) {}
+
+    /// phase-457 W3 — a borrowed-bytes callback, which is the shape
+    /// `process_raw_in_place` can serve.
+    unsafe extern "C" fn raw_noop(_data: *const u8, _len: usize, _context: *mut c_void) {}
+
+    /// And one that also wants the sample's wire ATTACHMENT, which an in-place
+    /// dispatch does not carry — so this shape buffers however capable the
+    /// backend is. The pair is the whole reason the registration fact cannot be
+    /// an image-level answer.
+    unsafe extern "C" fn raw_info_noop(
+        _data: *const u8,
+        _len: usize,
+        _attachment: *const u8,
+        _attachment_len: usize,
+        _context: *mut c_void,
+    ) {
+    }
 
     /// The app-level registration hook `nros_cpp_init*` calls. On a real link
     /// path it is the GENERATED strong C stub (phase-249 P2b) that invokes the
@@ -362,6 +383,45 @@ mod census_fixture_tests {
             unsafe { nros_cpp_node_declare_param_bool(node, c"use_pull_over".as_ptr(), false) };
         assert_eq!(rc, NROS_CPP_RET_OK);
 
+        // phase-457 W3 — the two REGISTRATION shapes, so the sidecar carries what
+        // each call site answered about in-place dispatch.
+        //
+        // Through the arena-registering ABI (`nros_cpp_subscription_register*`),
+        // not the poll-style create above, and that is the point: the fact is
+        // reported from `Executor::open_subscription`, which the create path never
+        // reaches. Same backend, same image, one capable shape and one not.
+        let sub_opts = nros_cpp_subscription_options_t::default();
+        let mut raw_handle = 0usize;
+        let rc = unsafe {
+            nros_cpp_subscription_register(
+                node,
+                c"/in_place_capable".as_ptr(),
+                c"std_msgs::msg::dds_::String_".as_ptr(),
+                c"".as_ptr(),
+                qos_depth(1),
+                raw_noop,
+                core::ptr::null_mut(),
+                &mut raw_handle,
+                &sub_opts,
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+        let mut info_handle = 0usize;
+        let rc = unsafe {
+            nros_cpp_subscription_register_with_info(
+                node,
+                c"/buffers_anyway".as_ptr(),
+                c"std_msgs::msg::dds_::String_".as_ptr(),
+                c"".as_ptr(),
+                qos_depth(1),
+                raw_info_noop,
+                core::ptr::null_mut(),
+                &mut info_handle,
+                &sub_opts,
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+
         let export =
             nros::node_metadata::SourceMetadataExport::new("fixture_pkg", "census_fixture")
                 .executable("census_fixture")
@@ -370,18 +430,60 @@ mod census_fixture_tests {
         let rc = unsafe { nros_cpp_fini(exec) };
         assert_eq!(rc, NROS_CPP_RET_OK);
 
-        assert!(json.contains("\"version\":2"), "schema v2: {json}");
+        // READ, not restated. The schema is ADDITIVE, so what this asserts is the
+        // CURRENT version, not the number whichever wave last touched the file
+        // happened to write — phase-457 W3 moved it to 3 and a literal here is
+        // what noticed.
+        assert!(
+            json.contains(&format!(
+                "\"version\":{}",
+                nros::node_metadata::SOURCE_METADATA_SCHEMA_VERSION
+            )),
+            "the current schema version: {json}"
+        );
 
         let subs = array_between(&json, "\"subscribers\":");
         assert_eq!(
             subs.matches("\"id\":").count(),
-            1,
-            "one subscription: {subs}"
+            3,
+            "one poll-style subscription plus the two REGISTERED shapes: {subs}"
         );
         assert!(subs.contains("/control/command/control_cmd"), "{subs}");
         assert!(
             subs.contains("\"depth\":1,"),
             "the QoS the code passed, not a default: {subs}"
+        );
+        // phase-457 W3 — each registration's own answer reached its OWN row.
+        //
+        // The end-to-end: the C++ ABI registers, the executor's one consulting
+        // site reports what the CALL SITE answered, the recorder joins it onto the
+        // row the backend created at `create_subscription`, and the emitter writes
+        // it. Rows are split on the array's own row separator so a needle cannot
+        // wander into a neighbour.
+        let row = |topic: &str| {
+            subs.split(",{\"id\":")
+                .find(|r| r.contains(topic))
+                .unwrap_or_else(|| panic!("no row for {topic} in {subs}"))
+        };
+        assert!(
+            row("/in_place_capable").contains("\"in_place\":true"),
+            "a borrowed-bytes registration reports that it CAN dispatch in \
+             place: {}",
+            row("/in_place_capable")
+        );
+        assert!(
+            row("/buffers_anyway").contains("\"in_place\":false"),
+            "and one that wants the wire attachment reports that it cannot -- \
+             SAME backend, same image, different row, which is why issue 1340's \
+             saving cannot be taken from an image-level fact: {}",
+            row("/buffers_anyway")
+        );
+        assert!(
+            !row("/control/command/control_cmd").contains("\"in_place\""),
+            "a subscription nothing REGISTERED carries no registration fact at \
+             all -- the third state, which every consumer reads as a refusal and \
+             never as a `false`: {}",
+            row("/control/command/control_cmd")
         );
 
         let pubs = array_between(&json, "\"publishers\":");
@@ -423,7 +525,13 @@ mod census_fixture_tests {
 
         // Nothing else: a hook that records twice is as wrong as one that
         // records nothing.
-        assert_eq!(nros::metadata_mode::entity_count(), 6);
+        //
+        // phase-457 W3 — 6 -> 8: the two REGISTERED subscriptions are entities in
+        // their own right (each creates a backend subscriber, which is what the
+        // recording RMW records), and the registration fact rides those rows
+        // rather than adding any. A count that moved by more than two would mean
+        // the observation had started recording as well as annotating.
+        assert_eq!(nros::metadata_mode::entity_count(), 8);
         nros::metadata_mode::reset();
     }
 }

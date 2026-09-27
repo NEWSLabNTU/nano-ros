@@ -50,6 +50,16 @@ layout-size-markers = []
 # unmigrated files rather than a nudge. Turn it on to find your call sites.
 deprecate-node-name-setter = []
 
+# phase-457 W3 — let a metadata probe hear what each subscription registration
+# says about its own delivery shape (`executor::registration_observer`).
+#
+# OFF by default and turned on only by `nros/metadata-mode`, for the same reason
+# `layout-size-markers` is: it exists to be MEASURED. A shipped image carries
+# neither the global nor the call, so the observation costs a firmware build
+# nothing at all. `sync-spin` is what makes the global `Sync` in a `no_std`
+# crate — the same dep `metadata-mode` itself names.
+registration-observer = ["nros-rmw/sync-spin"]
+
 std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-cffi?/std", "log"]
 alloc = ["nros-core/alloc", "nros-rmw/alloc", "dep:portable-atomic-util", "nros-platform-api/alloc"]
 

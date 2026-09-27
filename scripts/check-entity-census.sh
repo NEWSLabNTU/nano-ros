@@ -39,6 +39,29 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$repo_root" || exit 2
 
+# phase-457 W3 — the recorder's schema version, READ rather than restated.
+#
+# The stub probe below emits a census document, and the freshness check compares
+# its `version` against `RECORDER_SCHEMA_VERSION`. A literal here goes stale the
+# next time the recorder gains a field: v2 -> v3 turned this gate red for a
+# reason that was about the fixture rather than about the census. Same SSoT and
+# the same grep as `the_recorder_schema_version_matches_the_recorder` one layer
+# over, and a version this cannot read is fatal — a fixture that claimed the
+# wrong schema would assert the opposite of what it exists to assert.
+recorder_schema="$(sed -n \
+    's/^pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = \([0-9]*\);/\1/p' \
+    packages/api/nros/src/node_metadata.rs)"
+if [ -z "$recorder_schema" ]; then
+    echo "check-entity-census: cannot read SOURCE_METADATA_SCHEMA_VERSION out of" \
+        "packages/api/nros/src/node_metadata.rs" >&2
+    exit 2
+fi
+# EXPORTED, because the stub probe below is written by a QUOTED heredoc (so the
+# name survives verbatim into it) and expands it in its own environment when the
+# census run spawns it. Substituting at write time instead would make the stub's
+# source lie about where the number came from.
+export recorder_schema
+
 # issue 0726 / issue 1077. Every assertion below is a `grep`, and a gate is the
 # one place where "the tool did not run" must never be read as "the thing is
 # not there": `grep` exits 1 for a non-match and >=2 for an error, and under a
@@ -226,7 +249,7 @@ while read -r _ _ topic type; do
 done < <(grep '^// SUB:' "$src")
 cat > "$NROS_CENSUS_OUT" <<JSON
 {
-  "version": 2,
+  "version": $recorder_schema,
   "nodes": [
     {
       "id": "fixture_node",

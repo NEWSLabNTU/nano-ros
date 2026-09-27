@@ -99,6 +99,18 @@ struct ProbeEntity {
     /// output of `examples/native/rust/{service,action}-*`, not assumed).
     #[serde(default)]
     unresolved_name: Option<ProbeUnresolvedName>,
+    /// phase-457 W3 (sidecar schema v3) -- the CALL SITE's half of this
+    /// subscription's registration path, when the probe OBSERVED the
+    /// registration.
+    ///
+    /// **Absent is a refusal, never a `false`.** A probe that declares without
+    /// registering -- which is the Rust producer's whole road -- leaves the key
+    /// off, and a reader that defaulted it to `false` would state a registration
+    /// path nobody measured. `#[serde(default)]` on an `Option<bool>` is exactly
+    /// that distinction: `None` for absent, `Some(false)` for an observed
+    /// buffering shape.
+    #[serde(default)]
+    in_place: Option<bool>,
 }
 
 impl ProbeEntity {
@@ -176,8 +188,16 @@ pub fn declaration_from_probe(doc_json: &str) -> Result<(String, String, Declara
                 // endpoint without either inventory changing what its own
                 // fields mean.
                 let source_topic = ent.source_name();
+                // phase-457 W3 -- and so does the registration fact, for a
+                // subscription the probe observed registering. Carried on the ROW
+                // rather than folded into an image-wide answer because nine of
+                // the executor's eleven registration entry points answer it
+                // differently, and two components of one image can differ
+                // (issue 1340).
+                let in_place_capable = ent.in_place;
                 decls.push(EntityDecl {
                     source_topic,
+                    in_place_capable,
                     ..EntityDecl::bare(
                         *kind,
                         ent.interface.as_ref().and_then(qualified_type),

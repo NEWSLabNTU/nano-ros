@@ -106,20 +106,38 @@ Measured on `contract-monitor-sub` over zenoh, a `std_msgs/Header` subscription
 claims **672 bytes** of arena against the 9,768-byte region the model budgets it
 at `KEEP_LAST(10)`.
 
-So `rust_typed_in_place` is its own row, and the two directions are not
-symmetric:
+So `in_place` is its own row, and the two directions are not symmetric:
 
 | direction | rows | what the model does |
 | --- | --- | --- |
-| UNDER — ships `BufferTooSmall` | `rust_typed_schemaless`, `c_raw_no_hint` | fixed in W5.b: each row is priced at what its path claims |
-| OVER — wastes RAM | `rust_typed_in_place` | left where it was, deliberately |
+| UNDER — ships `BufferTooSmall` | `unbounded` | fixed in W5.b: each row is priced at what its path claims |
+| OVER — wastes RAM | `in_place` | **phase-457 W3 takes the saving** — see below |
 
-The over-statement is left alone because the Rust **generic**
-(`.generic(ty, hash)`) registration on the same backend does NOT reach that
-capability test and does claim `RX_BUF` — and an endpoint row cannot say which
-of the two an image writes. Taking the ~9.7 KiB a subscription is a separate
-decision with its own evidence; the row exists so that decision has somewhere to
-land.
+(Row names as of phase-456 W8, which collapsed the five to three and took the
+caller's LANGUAGE out of their names: it was never a property of the
+registration.)
+
+**The over-statement was left alone because the row could not be attributed per
+endpoint, and W3 is what fixed that.** The Rust **generic**
+(`.generic(ty, hash)`) registration on the same backend does NOT reach the
+capability test and does claim `RX_BUF` — and nine of the executor's eleven
+subscription entry points are in the same position, so a row composed from the
+`rmw` name alone credited every endpoint of a zenoh or XRCE image with a
+capability most of them do not have. Free while the row was priced at the type's
+bound; an UNDER-size the moment it is priced at nothing.
+
+W3's answer is that the endpoint's own half is **observed**, never inferred:
+`Executor::open_subscription` — the one site that reads the capability — reports
+what the CALL SITE answered, the metadata probe records it per row, and a row
+nothing observed is REFUSED
+([issue 1522](../issues/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md)).
+Only a STATED `in_place` claims no region
+(`Endpoint::claims_no_receive_region`), so the one predicate whose `true` removes
+bytes is reachable only from a fact somebody measured. Measured on
+`examples/native/rust/listener` with a four-subscription `KEEP_LAST(10)`
+contract: `ARENA_SIZE` 51,552 → 8,192 B, static RAM 195,402 → 152,042 B
+(**−10,840 B per subscription**), and byte-identical to the baseline when the
+rows are observed NOT capable or not observed at all.
 
 Target facts are separate because **build scripts run for the host**
 (phase-118-E), so `DEP_NROS_NODE_*` carry host sizes on a cross build. Storage
@@ -300,7 +318,7 @@ history = "keep_last"
 depth = 10
 reliability = "reliable"
 durability = "volatile"
-registration_path = "rust_typed_schemaless"
+registration_path = "unbounded"  # phase-456 W8: three tags, none named for a caller
 storage_bytes = 12914
 wire_bound_bytes = 1170
 
@@ -415,11 +433,16 @@ leaf has three: the resolved SystemModel. So the decision W11 left open —
 | `wire_bound_bytes` | **Refused** | needs the bound inventory, which codegen writes beside a LEAF |
 | `storage_bytes` | **Refused** | that bound, plus the board descriptor resolved for THIS image |
 | `[types]` `max_fields` / `max_kinds` / `max_nested_depth` | **Refused** | needs codegen's own per-type schema walk |
-| `registration_path` | **Refused** | a model image is SEVERAL PACKAGES, so "the entry's language" has no one answer — and the two schemaless rows are 1,848 bytes per subscription in the UNDER direction (issue 1319), so a guess is the failure |
+| `registration_path` | **Per row** (phase-457 W3) | the `in_place` row needs only the BACKEND (a function of `rmw`, which this road has) and the endpoint's OWN observed answer, so a row the probe saw registering is STATED here. The two buffered rows still need the entry's language, which a model image of SEVERAL PACKAGES has no one answer for, and are refused. A row nothing observed is refused naming [issue 1522](../issues/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md) — the closure buffer is 1,848 bytes per subscription over the type's bound (issue 1319) and the in-place row claims NO region at all (issue 1340), so a guess is a failure in both directions |
 
-Every refusal names [issue 1393](../issues/1393-cmake-road-has-no-bound-inventory.md),
-so the artifact itself says what is missing and why, and the day that closes,
-the refusals in a written descriptor are the checklist.
+Every refusal names [issue 1393](../issues/1393-cmake-road-has-no-bound-inventory.md)
+— except `registration_path`'s, which names
+[issue 1522](../issues/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md)
+because the input it lacks is a different KIND of thing: 1393's remedy is an
+artifact some road can produce, while a registration spelling can only be
+reported by a probe that actually registers. So the artifact itself says what is
+missing and why, and the day either closes, the refusals in a written descriptor
+are the checklist.
 
 **This is D6 doing the work it exists for.** A partial descriptor is safe to
 publish precisely because `Fact::stated()` is the only accessor that yields a

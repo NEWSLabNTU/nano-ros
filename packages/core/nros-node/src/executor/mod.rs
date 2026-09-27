@@ -86,6 +86,10 @@ pub mod port_park;
 // third caller. Reached through a `use` below rather than a module here.
 #[cfg(any(has_rmw, test))]
 pub(crate) mod ready_set;
+// phase-457 W3 — the per-endpoint half of `registration_path`, reported by the
+// one site that knows it. Behind a feature only a metadata probe turns on.
+#[cfg(feature = "registration-observer")]
+pub mod registration_observer;
 pub mod sched_context;
 #[cfg(any(has_rmw, test))]
 mod spin;

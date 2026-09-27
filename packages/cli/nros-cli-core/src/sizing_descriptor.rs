@@ -651,18 +651,24 @@ fn endpoint_row(
     // degrades another consumer's facts.
     let bound = set_wire_bound(&mut ep, kind, ty, inputs);
 
-    // phase-454 W14 — a model-only producer refuses the path OUTRIGHT, with its
-    // own reason. It does not fall through the composer below: that one reports
-    // which HALF it is missing, and on this road neither half is the answer.
-    match &inputs.horizon {
-        Some(h) => {
-            ep.refuse("registration_path", h.registration_path());
+    // phase-457 W3 — ONE composer, on every road, because the path is no longer
+    // one answer per image.
+    //
+    // phase-454 W14 had the model road refuse the field OUTRIGHT here: with the
+    // in-place row inferred from the entry's LANGUAGE, a road with no single
+    // language could say nothing at all. Now that the row is OBSERVED per
+    // endpoint the model road can state it — the two halves it needs are the
+    // backend (from `rmw`, which it has) and the observation (from the probe's
+    // metadata, which W0 composed in) — while the two buffered rows still need
+    // the language and still refuse with the horizon's own prose. So the
+    // road-specific refusal moved INSIDE the composer, where the arm that
+    // actually runs out of inputs is the one that reports.
+    match registration_path(kind, inputs, d.in_place_capable) {
+        Ok(path) => {
+            ep.set_registration_path(Some(path));
         }
-        None => {
-            ep.set_registration_path(registration_path(kind, inputs));
-            if ep.registration_path().stated().is_none() {
-                ep.refuse("registration_path", registration_path_refusal(inputs));
-            }
+        Err(why) => {
+            ep.refuse("registration_path", why);
         }
     }
 
@@ -949,43 +955,111 @@ fn lookup_bound<'a>(bounds: &'a [(String, BoundState)], ty: &str) -> Option<&'a 
     bounds.iter().find(|(n, _)| n == ty).map(|(_, b)| b)
 }
 
-/// Which of issue 1319's paths this endpoint's registration takes — three
-/// since phase-456 W8, and none of them named for a caller.
+/// Which of issue 1319's paths this endpoint's registration takes — three since
+/// phase-456 W8, and none of them named for a caller.
 ///
-/// An IMAGE fact, composed from halves the build script cannot see: whether the
-/// linked backend dispatches in place, whether it carries type descriptors, and
-/// — because this writer cannot see a call site — the entry's LANGUAGE as
-/// EVIDENCE for whether the site stated a bound. `None` when any half is
-/// missing: refused, not guessed, because the unbounded row is 1,848 bytes per
-/// subscription in the UNDER direction.
+/// # Two halves, and only one of them is an image fact
 ///
-/// The language is still read and it is still only evidence. What W8 removed is
-/// the language from the ANSWER: a row called `c_typed_hint` invited a reader to
-/// think the runtime did something different for C, and it never did — the
-/// difference was always "did the site supply a bound".
+/// | half | who answers it |
+/// | --- | --- |
+/// | does the linked backend dispatch a sample IN PLACE? | the image — its `rmw` name |
+/// | does the backend carry type descriptors? | the image — the same name |
+/// | can THIS registration use an in-place dispatch? | the CALL SITE |
+/// | did this site state the type's bound? | the call site, with the entry's LANGUAGE as evidence |
+///
+/// **phase-457 W3 made the third row a per-ENDPOINT fact, and it was the one
+/// that was wrong.** Until this wave the in-place row was credited to every
+/// endpoint of an image whose backend dispatches in place — the third question
+/// was never asked. Measured against the executor, that is wrong for nine of its
+/// eleven registration entry points: a Rust GENERIC subscription, a
+/// `.message_info()` one, a `.safety()` one, a borrowed view, and four of the
+/// five C/C++ entries all buffer. The over-statement was free while the row was
+/// priced at the type's bound (issue 1319's fix); pricing it at what it actually
+/// claims — nothing — makes it an UNDER-size, which is what issue 1340 was
+/// waiting on.
+///
+/// So the third row is [`EntityDecl::in_place_capable`], OBSERVED by the probe
+/// at `Executor::open_subscription`, and `None` REFUSES. It is never inferred
+/// from the language: that inference is what this wave removes.
+///
+/// # What the language still buys, and where it runs out
+///
+/// The two BUFFERED rows are unchanged — the language remains evidence for
+/// whether the site stated a bound, per phase-456 W7/W8. So a model-only
+/// producer, which has no single entry language, can now state the in-place row
+/// (it needs only the backend and the observation) and still refuses the other
+/// two. That asymmetry is why the horizon is consulted HERE rather than
+/// short-circuiting the whole field one layer up.
+///
+/// # The kinds this gate applies to
+///
+/// Every kind that RECEIVES, which is every kind but a publisher. Only a
+/// subscription is PRICED from the row today (`Endpoint::claimed_slot_bytes` is
+/// `Absent` for the rest), so gating subscriptions alone would cost nothing
+/// measurable — and would be a reach narrower than the rule, which is the shape
+/// issue 0196 keeps finding. A service server's request buffer is the same
+/// question one kind over and has NO observation site, so those rows refuse too;
+/// that is issue 1522's second half, and it is better said out loud than left as
+/// a stated value nobody checked. A publisher serializes into a per-call
+/// transmit buffer and claims no receive slot at all, so it has no registration
+/// path to get wrong.
 fn registration_path(
     kind: EndpointKind,
     inputs: &DescriptorInputs<'_>,
-) -> Option<RegistrationPath> {
-    // Only a subscription's slot size turns on this today. The field is written
-    // for every kind anyway: a service server's request buffer takes the same
-    // paths, and W6.b prices it.
-    let _ = kind;
-    match (
-        inputs.language?,
-        inputs.backend_schema?,
-        inputs.backend_dispatch?,
-    ) {
-        // phase-454 W5 -- in-place wins over every other question, because the
-        // capability test happens BEFORE any slot size is computed and returns
-        // through an entry that carries no receive region.
-        //
-        // **phase-456 W8 made this arm reach the C family too.** Before W8 the
-        // C registration path never consulted the capability, so this writer
-        // had to exclude C from the in-place row and say so; the executor now
-        // consults it in exactly one place, for every language, so the arm is
-        // unconditional in the language.
-        (_, _, BackendDispatch::InPlace) => Some(RegistrationPath::InPlace),
+    observed_in_place_capable: Option<bool>,
+) -> Result<RegistrationPath, String> {
+    let Some(dispatch) = inputs.backend_dispatch else {
+        return Err(registration_path_refusal(inputs));
+    };
+    // phase-454 W5 -- in-place wins over every other question, because the
+    // capability test happens BEFORE any slot size is computed and returns
+    // through an entry that carries no receive region.
+    //
+    // phase-457 W3 -- and it is now asked of the ENDPOINT. `Some(false)` falls
+    // through to the buffered rows below, which is the whole point: a
+    // registration that cannot dispatch in place on an in-place backend takes an
+    // ordinary buffered region, and on a schemaless backend that is the
+    // `unbounded` row at `RX_BUF` -- 1,848 bytes per subscription MORE than the
+    // in-place row is priced at.
+    if dispatch == BackendDispatch::InPlace {
+        if kind == EndpointKind::Publisher {
+            // The ONE kind with nothing to get wrong: a publisher serializes
+            // into a per-call transmit buffer and claims no receive slot of any
+            // shape, which is why `claimed_slot_bytes` is `Absent` for it. The
+            // composed answer stands, so a publisher row reads the same on both
+            // roads as it did before this wave.
+            return Ok(RegistrationPath::InPlace);
+        }
+        match observed_in_place_capable {
+            Some(true) => return Ok(RegistrationPath::InPlace),
+            Some(false) => {}
+            // Nobody observed it. A producer with a HORIZON says so in its own
+            // words -- it already names the road and what that road reads, which
+            // is the more useful diagnosis than "nothing observed it" for a
+            // reader holding the file. Only the full probe road, which HAS an
+            // observation channel and did not get an answer down it, falls to
+            // the fact-specific reason.
+            None => {
+                return Err(match &inputs.horizon {
+                    Some(h) => h.registration_path(),
+                    None => unobserved_registration_refusal(inputs),
+                });
+            }
+        }
+    }
+    let Some(schema) = inputs.backend_schema else {
+        return Err(registration_path_refusal(inputs));
+    };
+    let Some(language) = inputs.language else {
+        // The model road: several packages, no one entry language. Its own
+        // reason, because "the language is unknown" aims the reader at a fact
+        // nobody can supply on that road.
+        return Err(match &inputs.horizon {
+            Some(h) => h.registration_path(),
+            None => registration_path_refusal(inputs),
+        });
+    };
+    Ok(match (language, schema) {
         // A C/C++ entry that registers typed supplies `rx_size_bound<M>`, so it
         // is credited with a stated bound. That credit is an ASSUMPTION about
         // call sites this writer cannot see, and phase-456 W7 narrowed how far
@@ -998,22 +1072,37 @@ fn registration_path(
         // hint. What remains untrue is CONSUMER code passing `options = NULL`
         // with the type in scope -- seven C example listeners do, which is
         // issue 1376.
-        (EntryLanguage::CFamily, _, BackendDispatch::Buffered) => {
-            Some(RegistrationPath::TypedBound)
-        }
+        (EntryLanguage::CFamily, _) => RegistrationPath::TypedBound,
         // Rust against a descriptor-carrying backend: the bound is reachable
         // from `MessageForRmw`, so the registration is priced at the type.
-        (EntryLanguage::Rust, BackendSchema::Descriptors, BackendDispatch::Buffered) => {
-            Some(RegistrationPath::TypedBound)
-        }
-        // Rust against a schemaless BUFFERING backend: no schema, so no bound
-        // exists to state at the type-erased site, and the registration takes
-        // `RX_BUF`. Not a configuration the tree currently ships -- both
-        // schemaless backends dispatch in place -- but one it admits.
-        (EntryLanguage::Rust, BackendSchema::Schemaless, BackendDispatch::Buffered) => {
-            Some(RegistrationPath::Unbounded)
-        }
-    }
+        (EntryLanguage::Rust, BackendSchema::Descriptors) => RegistrationPath::TypedBound,
+        // Rust against a schemaless backend where this registration does NOT
+        // dispatch in place: no schema, so no bound exists to state at the
+        // type-erased site, and the registration takes `RX_BUF`.
+        (EntryLanguage::Rust, BackendSchema::Schemaless) => RegistrationPath::Unbounded,
+    })
+}
+
+/// phase-457 W3 — the refusal when the backend dispatches in place and NOTHING
+/// OBSERVED this endpoint's registration.
+///
+/// Separate prose from [`registration_path_refusal`] because the missing input is
+/// a different kind of thing: the halves that one reports are facts about the
+/// IMAGE that some road can supply, while this one is a fact about the SOURCE
+/// that only a probe which actually registers can report. Telling a reader "the
+/// backend is unknown" when the backend is perfectly well known would aim them
+/// at the wrong artifact.
+fn unobserved_registration_refusal(inputs: &DescriptorInputs<'_>) -> String {
+    let rmw = inputs.rmw.as_deref().unwrap_or("this image's backend");
+    format!(
+        "backend `{rmw}` dispatches a received sample IN PLACE, but nothing observed whether THIS \
+         endpoint's registration can use that -- nine of the executor's eleven subscription entry \
+         points cannot, and which one an endpoint calls is a property of the source that no \
+         declaration carries. The fact is reported by the metadata probe at \
+         `Executor::open_subscription`; a road whose probe DECLARES without registering leaves it \
+         unobserved. Refused rather than assumed, because an endpoint credited with in-place \
+         dispatch is priced at NO receive region at all (issue 1340). Tracked by issue 1522"
+    )
 }
 
 fn registration_path_refusal(inputs: &DescriptorInputs<'_>) -> String {
@@ -1577,12 +1666,21 @@ pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> 
         // (`resolve_image` / `write_from_model` both attach it) — see
         // `DescriptorInputs::params` for why the leaf road cannot do that.
         params: Some(img.inventory.param_declarations()),
-        // Refused through the horizon, not through these. See
-        // `ModelHorizon::registration_path` for why naming a missing half here
-        // would be the wrong diagnosis.
+        // The LANGUAGE is refused through the horizon, not named as a missing
+        // half. See `ModelHorizon::registration_path`: this road is several
+        // packages, so there is no one entry language, and saying "unknown"
+        // would aim the reader at a fact nobody can supply.
         language: None,
-        backend_schema: None,
-        backend_dispatch: None,
+        // phase-457 W3 — the BACKEND halves are supplied, and they always could
+        // have been: they are a function of `rmw` alone, which this road has.
+        // Withholding them was W14 being conservative about a field whose
+        // in-place row was inferred from the language; now that the row is
+        // OBSERVED per endpoint, the backend plus the observation is the whole
+        // answer, so a model image states `in_place` for exactly the endpoints
+        // its probe saw registering — and still refuses the two buffered rows,
+        // which do need the language.
+        backend_schema: backend_schema(img.rmw.as_deref().unwrap_or_default()),
+        backend_dispatch: backend_dispatch(img.rmw.as_deref().unwrap_or_default()),
         rmw: img.rmw.clone(),
         horizon: Some(horizon),
     };
@@ -1912,7 +2010,27 @@ mod tests {
         inv
     }
 
+    /// A subscription row whose registration WAS observed, and was in-place
+    /// capable.
+    ///
+    /// phase-457 W3 -- the default is `Some(true)` rather than `None` because
+    /// almost every test in this file is about some OTHER fact and wants the
+    /// `in_place` row it has always asserted. `Some(true)` is the honest shape of
+    /// a probed image whose subscription takes the typed Rust path or the C++
+    /// plain one; a test about the OBSERVATION itself states its own value
+    /// through [`sub_observed`].
     fn sub(ty: &str, topic: &str, depth: Option<u32>) -> EntityDecl {
+        sub_observed(ty, topic, depth, Some(true))
+    }
+
+    /// phase-457 W3 -- a subscription row with its registration fact stated
+    /// explicitly. `None` is "nobody observed it", which REFUSES the path.
+    fn sub_observed(
+        ty: &str,
+        topic: &str,
+        depth: Option<u32>,
+        in_place_capable: Option<bool>,
+    ) -> EntityDecl {
         let mut d = EntityDecl::bare(
             EntityKind::Subscription,
             Some(ty.into()),
@@ -1920,6 +2038,7 @@ mod tests {
         );
         d.depth = depth;
         d.history = Some(QoSHistoryPolicy::KeepLast);
+        d.in_place_capable = in_place_capable;
         d
     }
 
@@ -2145,8 +2264,10 @@ mod tests {
             schema_shapes: Vec::new(),
             bounds_error: Some(horizon.bound_inventory()),
             language: None,
-            backend_schema: None,
-            backend_dispatch: None,
+            // phase-457 W3 -- the BACKEND halves are NOT subtracted, because
+            // `write_for_model` supplies them: they are a function of `rmw`
+            // alone, which that road has. The two producers now differ by the
+            // LANGUAGE and the leaf's three inventories, and nothing else.
             horizon: Some(horizon),
             ..base(inv)
         }
@@ -2581,7 +2702,15 @@ mod tests {
         // not get a path.
         let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
         let mut i = base(&inv);
+        // BOTH halves, which is what an unknown `rmw` really gives: they are two
+        // reads of one name (`backend_schema` / `backend_dispatch`), so a
+        // configuration with one and not the other is not an input any producer
+        // can hand this code. phase-457 W3 made that matter -- clearing only the
+        // SCHEMA leaves the in-place row perfectly answerable, because that row
+        // is the dispatch axis plus the endpoint's own observation and the schema
+        // takes no part in it.
         i.backend_schema = None;
+        i.backend_dispatch = None;
         let d = build(&i);
         let path = d.endpoints[0].registration_path();
         let r = path.refusal().unwrap();
@@ -2768,6 +2897,159 @@ mod tests {
         );
     }
 
+    // --- phase-457 W3: the registration path, per ENDPOINT ------------------
+
+    /// **The reproduction, and it FAILS FIRST.** Two subscriptions, one image,
+    /// one backend that dispatches in place — and they do NOT take the same
+    /// registration path.
+    ///
+    /// Before W3 the in-place row was composed from the `rmw` name alone, so both
+    /// rows read `in_place` and both would be priced at NO receive region.
+    /// `executor::tests::a_generic_subscription_on_an_in_place_backend_still_claims_a_full_region`
+    /// is what the second one costs at run time: `NodeError::BufferTooSmall` at a
+    /// registration the arena oracle passed. Mutation-tested by restoring the
+    /// pre-W3 arm (`(_, _, InPlace) => InPlace`), which reds on `/generic`.
+    ///
+    /// The observed `false` does not become a refusal: it FALLS THROUGH to the
+    /// buffered rows, and on a schemaless backend that is `unbounded` at `RX_BUF`
+    /// — 1,848 bytes per subscription MORE than the in-place row is priced at.
+    /// Refusing it would have been the safe direction too and a worse answer,
+    /// because a consumer can size from a stated row and cannot size from a
+    /// refused one.
+    #[test]
+    fn two_subscriptions_on_one_in_place_backend_take_different_paths() {
+        let inv = inventory(vec![
+            sub_observed("std_msgs/msg/String", "/typed", Some(1), Some(true)),
+            sub_observed("std_msgs/msg/String", "/generic", Some(1), Some(false)),
+        ]);
+        let d = build(&base(&inv));
+        let by_topic = |t: &str| {
+            d.endpoints
+                .iter()
+                .find(|e| e.topic == t)
+                .unwrap_or_else(|| panic!("no row for {t}"))
+        };
+        assert_eq!(
+            by_topic("/typed").registration_path().stated(),
+            Some(&RegistrationPath::InPlace),
+            "an OBSERVED in-place-capable registration on an in-place backend is \
+             the in-place row"
+        );
+        assert_eq!(
+            by_topic("/generic").registration_path().stated(),
+            Some(&RegistrationPath::Unbounded),
+            "the same backend, a shape that cannot dispatch in place, and a site \
+             that states no bound: `RX_BUF`. NOT `in_place`, which is the \
+             under-size issue 1340 was blocked on"
+        );
+        // And the pricing follows, which is where the bytes are.
+        assert!(
+            by_topic("/typed").claims_no_receive_region(),
+            "the in-place row claims no receive region -- issue 1340's saving"
+        );
+        assert!(
+            !by_topic("/generic").claims_no_receive_region(),
+            "and the generic row keeps its region, which is what stops the \
+             saving from being an under-size"
+        );
+    }
+
+    /// An endpoint NOBODY OBSERVED is refused, not credited.
+    ///
+    /// The direction that matters: `None` must never read as "in place". It is the
+    /// state of every row on a road whose probe declares without registering, and
+    /// of every row the `ENTITIES` grammar or a launch declaration produced.
+    #[test]
+    fn an_unobserved_endpoint_refuses_the_path_rather_than_claiming_in_place() {
+        let inv = inventory(vec![sub_observed(
+            "std_msgs/msg/String",
+            "/chatter",
+            Some(1),
+            None,
+        )]);
+        let d = build(&base(&inv));
+        let ep = &d.endpoints[0];
+        let path = ep.registration_path();
+        let why = path
+            .refusal()
+            .expect("an unobserved endpoint on an in-place backend must REFUSE");
+        assert!(why.contains("issue 1522"), "{why}");
+        assert!(
+            !ep.claims_no_receive_region(),
+            "a refused path must budget the region -- the one direction that \
+             cannot ship BufferTooSmall"
+        );
+        // The safe direction, loudly: the slot falls to the closure buffer.
+        assert!(ep.may_claim_closure_buffer());
+    }
+
+    /// The BUFFERED backend arm is untouched by the observation.
+    ///
+    /// A backend that buffers buffers whatever the delivery shape, so the two
+    /// non-in-place rows are decided exactly as phase-456 W8 left them. Asserted
+    /// over all three observation states so a future reader cannot mistake the
+    /// new input for a fourth axis on every row.
+    #[test]
+    fn a_buffering_backend_ignores_the_observation() {
+        for observed in [Some(true), Some(false), None] {
+            let inv = inventory(vec![sub_observed(
+                "std_msgs/msg/String",
+                "/chatter",
+                Some(1),
+                observed,
+            )]);
+            let mut i = base(&inv);
+            i.backend_dispatch = Some(BackendDispatch::Buffered);
+            let d = build(&i);
+            assert_eq!(
+                d.endpoints[0].registration_path().stated(),
+                Some(&RegistrationPath::Unbounded),
+                "Rust + schemaless + buffering is the `unbounded` row whatever \
+                 the observation says ({observed:?})"
+            );
+        }
+    }
+
+    /// **The W3 unlock.** A MODEL-only producer can now state the in-place row,
+    /// and it needs no entry language to do it.
+    ///
+    /// phase-454 W14 refused `registration_path` outright on this road because the
+    /// in-place row was inferred from the entry's LANGUAGE and a model image is
+    /// several packages. The row is an OBSERVATION now, so the two halves that
+    /// remain are the backend (a function of `rmw`, which this road has) and the
+    /// endpoint's own fact (from the probe's metadata, which phase-457 W0
+    /// composed in). The two BUFFERED rows still need the language and still
+    /// refuse with the horizon's own prose — `a_buffering_backend_ignores_the_observation`
+    /// pins the leaf road's answer for the same pair.
+    ///
+    /// This is what makes issue 1340's saving reachable at all: the arena's
+    /// per-endpoint sum runs only where every `NROS_ENTITY_COUNT_*` arrives, which
+    /// is the cmake/Zephyr road — and that road's descriptor is written by this
+    /// producer.
+    #[test]
+    fn an_observed_row_lets_the_model_road_state_the_in_place_path() {
+        let inv = inventory(vec![
+            sub_observed("std_msgs/msg/String", "/typed", Some(1), Some(true)),
+            sub_observed("std_msgs/msg/String", "/generic", Some(1), Some(false)),
+        ]);
+        let d = build(&model_only(&inv));
+        let by_topic = |t: &str| d.endpoints.iter().find(|e| e.topic == t).expect(t);
+        assert_eq!(
+            by_topic("/typed").registration_path().stated(),
+            Some(&RegistrationPath::InPlace),
+            "the observation plus the backend is the whole of the in-place row, \
+             and this road has both"
+        );
+        // The other row needs the LANGUAGE, which this road does not have, so it
+        // refuses -- with the horizon's reason, naming the road and issue 1393.
+        let path = by_topic("/generic").registration_path();
+        let why = path
+            .refusal()
+            .expect("a buffered row still needs the entry language on this road");
+        assert!(why.contains(MODEL_ONLY_ISSUE), "{why}");
+        assert!(why.contains("a workspace cargo image"), "{why}");
+    }
+
     // --- phase-454 W14: the model-only producer -----------------------------
 
     /// THE RULING, as one assertion: emit what the SystemModel knows, refuse
@@ -2776,9 +3058,21 @@ mod tests {
     /// The five refused fields are enumerated rather than counted. A count
     /// would pass if a refusal moved from one field to another, which is the
     /// shape of every silent mis-description this model exists to remove.
+    ///
+    /// phase-457 W3 -- the row is deliberately UNOBSERVED (`None`), which is what
+    /// a row composed from the MODEL side of `merged_per_kind_max` carries: a
+    /// launch declaration says an endpoint exists and nothing about which of the
+    /// executor's eleven registration entry points its code calls. A row from the
+    /// METADATA side does carry the observation, and
+    /// `an_observed_row_lets_the_model_road_state_the_in_place_path` is that case.
     #[test]
     fn a_model_only_descriptor_states_the_declaration_and_refuses_the_five_leaf_facts() {
-        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(3))]);
+        let inv = inventory(vec![sub_observed(
+            "std_msgs/msg/String",
+            "/chatter",
+            Some(3),
+            None,
+        )]);
         let d = build(&model_only(&inv));
         let ep = &d.endpoints[0];
 
@@ -2825,7 +3119,16 @@ mod tests {
     /// holding the artifact has no other way to tell which one wrote it.
     #[test]
     fn a_model_only_refusal_names_the_road_it_was_written_on() {
-        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(3))]);
+        // Unobserved, for the reason the test above states: the road's own prose
+        // is what a reader holding the artifact needs, and phase-457 W3 keeps the
+        // horizon's wording for an unobserved row rather than replacing it with
+        // the fact-specific one.
+        let inv = inventory(vec![sub_observed(
+            "std_msgs/msg/String",
+            "/chatter",
+            Some(3),
+            None,
+        )]);
         let mut i = model_only(&inv);
         let horizon = ModelHorizon::new("a cmake entry");
         i.bounds_error = Some(horizon.bound_inventory());

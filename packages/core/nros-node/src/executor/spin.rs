@@ -5393,6 +5393,26 @@ impl<'s> Executor<'s> {
             use nros_rmw::Subscription as _;
             handle.supports_process_in_place()
         };
+        // phase-457 W3 — tell a metadata probe what this CALL SITE answered.
+        //
+        // `req.in_place_capable` and NOT `in_place`: the conjunction above
+        // includes the backend a probe links, which is the RECORDING backend and
+        // not the one the image ships. The sizing descriptor knows the shipped
+        // backend from the image's `rmw` name and composes the two halves
+        // itself; what it cannot see is this half, which is why nine of the
+        // eleven registration entry points were previously credited with a
+        // capability they do not have (issue 1340).
+        //
+        // AFTER the backend call, so a registration that failed reports
+        // nothing — a row for a subscription that does not exist would raise the
+        // probe's count, and an over-count of subscriptions is a real cost in
+        // every pool that derives from it.
+        #[cfg(feature = "registration-observer")]
+        super::registration_observer::observe(super::registration_observer::ObservedRegistration {
+            topic: topic.name,
+            type_name: topic.type_name,
+            in_place_capable: req.in_place_capable,
+        });
         Ok(SubscriptionOpen {
             slot,
             handle,

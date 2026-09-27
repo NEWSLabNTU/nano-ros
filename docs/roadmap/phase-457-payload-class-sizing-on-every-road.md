@@ -355,7 +355,7 @@ with the reason recorded, not by whichever is easier to reach.
 Acceptance: a cmake or Zephyr image with a contract derives the same
 payload-class knobs a cargo leaf with the same contract derives.
 
-### W3 — `registration_path`, settled once for both halves
+### W3 — `registration_path`, settled once for both halves — LANDED 2026-09-28
 
 Phase-454 W5 measured five rows, not the four issue 1319 assumed, and left the
 over-stating row alone deliberately:
@@ -372,6 +372,114 @@ Acceptance: issue 1340's ~9 KiB/subscription is taken on an image that provably
 registers in place, and NOT taken on one that registers generically — with a
 reproduction that fails first in the second case, since taking it there is an
 UNDER-size.
+
+**The premise was narrower than the defect.** The brief frames it as generic vs
+in-place; measured against the executor, **nine of its eleven subscription entry
+points cannot use an in-place dispatch** — the generic path, `.message_info()`,
+`.safety()`, a borrowed view, and four of the five C/C++ entries — and until this
+wave `registration_path` credited EVERY endpoint of a zenoh or XRCE image with
+the in-place row, composed from the `rmw` name alone. The C/C++ half was also
+already settled for the BOUND (phase-456 W7 made every nros-cpp registration site
+state `rx_size_bound<M>`, gated), so what was open on both sides was the same
+single thing: the in-place capability, per endpoint.
+
+**Where the fact comes from: the PROBE, and it is an observation rather than a
+derivation.** `SubscriptionRequest::in_place_capable` is stated at each entry
+point and read at exactly one site — `Executor::open_subscription`, phase-456
+W8's single prologue. That site now REPORTS it
+(`nros_node::executor::registration_observer`, behind a feature only
+`nros/metadata-mode` turns on), the recorder joins it onto the subscription row
+the backend created in the same call
+(`MetadataRecorder::observe_subscription_registration`), and the sidecar carries
+it as `in_place` (schema v2 → v3, additive). What travels is the CALL SITE's half
+alone and never the conjunction the executor computed: a probe links the
+RECORDING backend, so reporting `SubscriptionOpen::in_place` would describe the
+probe rather than the image. The consumer composes the two halves itself.
+
+The three candidate sources, and why this one:
+
+* the **contract** cannot state it — `system.contract.yaml` says what an image
+  KEEPS, and which of eleven overloads its code calls is a property of the code;
+* a **second opinion** derived in the CLI is what was already there and already
+  wrong, and is issue 0196's class;
+* the **probe** runs the code, so the one site that knows can simply say.
+
+**The unlock nobody asked for, and it is what made the acceptance reachable.**
+The MODEL road can now state the in-place row, which phase-454 W14 refused
+outright. The in-place row needs the backend (a function of `rmw`, which that
+road has) plus the endpoint's own observed answer; only the two BUFFERED rows
+need the entry language, and those still refuse with the horizon's own prose. So
+`write_for_model` supplies `backend_schema` / `backend_dispatch` and the
+road-specific refusal moved INSIDE the composer, where the arm that runs out of
+inputs is the one that reports. That matters because the arena's per-endpoint sum
+runs only where all five `NROS_ENTITY_COUNT_*` arrive — the cmake/Zephyr road —
+and that road's descriptor is written by this producer.
+
+**The reproduction, watched failing.**
+`executor::tests::a_generic_subscription_on_an_in_place_backend_still_claims_a_full_region`
+is the runtime cost: on `MockSession::with_in_place_dispatch()` a typed
+registration claims 2,304 bytes of arena and a GENERIC one 5,416, so an arena
+priced at the first refuses the second with `NodeError::BufferTooSmall` — at a registration
+`arena_oracle` passed. The descriptor-level pair is
+`two_subscriptions_on_one_in_place_backend_take_different_paths` and
+`an_unobserved_endpoint_refuses_the_path_rather_than_claiming_in_place`.
+Mutation-tested both ways: restoring the pre-W3 arm (the in-place row from the
+backend alone) reds 6 tests including both reproductions; making
+`claims_no_receive_region` true for a REFUSED path reds the unobserved one.
+
+**Measured, both directions, on `examples/native/rust/listener`.** The counts and
+the descriptor delivered through the environment, which is how the cmake road
+delivers both to cargo. One `KEEP_LAST(1)` subscription:
+
+| the row says | `arena_model::REQUIRED` |
+| --- | --- |
+| observed in-place-capable | 3,072 |
+| observed NOT capable (`unbounded`) | 6,144 |
+| unobserved (refused) | 6,144 |
+
+`ARENA_SIZE` does not move there: `FLOOR` is 8,192 and both numbers are below it,
+which is how a one-subscription image absorbs the gap and why issue 1340 sat.
+With a four-subscription `KEEP_LAST(10)` contract on the same leaf the floor
+stops absorbing it:
+
+| the row says | `ARENA_SIZE` | static RAM | `EXECUTOR_BACKING` |
+| --- | --- | --- | --- |
+| observed in-place-capable | 8,192 | **152,042** | 17,824 |
+| observed NOT capable | 51,552 | 195,402 | 61,184 |
+| unobserved (refused) | 51,552 | 195,402 | 61,184 |
+
+**−43,360 bytes, 10,840 per subscription**, all of it one symbol; and
+byte-identical in both directions where the saving must not be taken. That last
+row is the acceptance's second half: an unobserved endpoint costs exactly what it
+cost before the wave.
+
+**End to end through the real toolchain**, not only through unit fixtures: the
+C++ census fixture registers one borrowed-bytes and one `_with_info`
+subscription through the real ABI and the sidecar carries `"in_place": true` and
+`"in_place": false` on their own rows, with no key at all on the poll-style
+subscription nothing registered. And `nros sync` over
+`examples/templates/multi-node-workspace-cpp` writes `"in_place": true` for the
+C++ listener's registration.
+
+**What stays refused, and it is the honest half:**
+[issue 1522](../issues/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md).
+A **Rust** component's rows are unobserved, because `record_node_metadata::<C>`
+runs `register()` against a recording `NodeContext` and opens no executor at all;
+so are rows from the `ENTITIES` grammar, rows from a launch declaration, and
+every service endpoint (`open_subscription` has no service sibling). Each is
+priced at the buffering row — the number every image was built against — and the
+issue records that closing the Rust half would state `unbounded`, not unlock the
+saving, because both declarative arms answer `false` today. Taking it there is
+issue 1340's own first candidate, which
+`register_subscription_buffered_raw_on`'s `in_place_capable: false` already
+writes down as deliberate and unfinished.
+
+**No new `check-*` gate, deliberately.** The invariant is "only an OBSERVED row
+may claim no region", and it is structural rather than textual: `in_place_capable`
+is a non-defaulted struct field on `SubscriptionRequest`, so a twelfth entry point
+cannot forget it and compile, and `open_subscription` is the only prologue that
+reaches the capability. A script re-deriving "which shapes should be capable"
+would be the second opinion this wave removed.
 
 ### W4 — `storage_bytes`, which needs the board per image
 
