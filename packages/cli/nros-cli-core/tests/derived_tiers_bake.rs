@@ -224,8 +224,8 @@ const ISLAND_TRANSPORT_BANDS: [i64; 2] = [200, 255];
 #[test]
 fn the_derived_table_lands_below_the_transport_band() {
     let fixture = Fixture::copy("band");
-    fixture.configure();
-    let model = resolve_model(&fixture.bringup());
+    fixture.configure(&["main"]);
+    let model = resolve_model(&fixture.bringup(), false);
     let system = system_toml(&fixture.bringup());
     let derived = derive(&fixture, &model, &system);
     let prio = priorities(&derived);
