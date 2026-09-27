@@ -4,7 +4,7 @@ title: "A mixed C+C++ workspace links BOTH umbrella staticlibs and dies on ~96 d
 status: resolved
 type: bug
 area: cmake
-related: [phase-241, phase-337, issue-0160]
+related: [phase-241, phase-337, issue-0160, 1467]
 resolved_in: "phase-337 session"
 ---
 
@@ -105,3 +105,24 @@ just setup-cli && just build-test-fixtures lane=native
 
 Confirmed on `c3fcdd7bf` with a clean `build-workspace-fixtures*` wipe, so it is
 not stale build state.
+
+## AMENDED by issue 1467 (2026-09-27) — the rule is right, its CONDITION was not
+
+The rule this issue landed — *prefer the umbrella that bundles the other, so a
+binary links exactly ONE Rust staticlib* — still holds, and the mixed-workspace
+case it was written for is unchanged.
+
+What it got wrong is the condition it was spelled with. `if(TARGET
+NanoRos::NanoRosCpp)` asks what the build tree DEFINES, and every leaf does
+`add_subdirectory("${NANO_ROS_ROOT}" nano_ros)`, so it is always true. That is
+fine for a C or C++ binary and wrong for a THIRD umbrella this issue did not
+model: a leaf whose app is itself a Rust staticlib
+(`nros_threadx_rv64_rust_app`) already carries `nros` / `nros-platform` /
+`nros-rmw-cffi`, so the preference that keeps a C/C++ binary down to one archive
+puts a SECOND one on a Rust binary — 228 `rust-lld: error: duplicate symbol`
+lines across the twelve `threadx_riscv64` leaves, the same defect this issue
+describes, one umbrella over.
+
+The condition is now a property of the CONSUMER, resolved once in
+`cmake/NanoRosRuntimeUmbrella.cmake` and read at generate time off the head
+target. See `docs/issues/archived/1467-rust-leaf-links-cpp-umbrella-duplicate-symbols.md`.
