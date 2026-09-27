@@ -999,9 +999,16 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   re-bakes them into its command (`cmake -E env`), zephyr-lang-rust's `rust_cargo_application`
   builds its own and inherits nothing. So every Zephyr Rust image compiled crate DEFAULTS
   whatever Kconfig said — and when the two halves disagree it is also an 0135 ABI split
-  (`MAX_QUERYABLES` 16 in the cmake TU, 8 in the cargo one). Build scripts resolve knobs with
-  `nros_zephyr_build::knob_usize(env, CONFIG_key, default)` (reads `$DOTCONFIG`); gate:
-  `check-kconfig-knob-forwarding`. → issue 0460.
+  (`MAX_QUERYABLES` 16 in the cmake TU, 8 in the cargo one). **ONE ladder, and the sources are
+  INPUTS to it** (phase-468 W4): `nros_zephyr_build::knob("<ENV>")` + `.rung()` / `.strict_env()`
+  / `.resolve(builtin)`; the env↔Kconfig pairing is `KCONFIG_PAIRS` beside it, with a row ONLY
+  where the two names are different words — a derived-identical row states nothing and its
+  absence then reads like the 1490 defect. Per-crate `KCONFIG_KNOBS` tables are gone, and with
+  them 1233's "keep them in sync". The gate NARROWED to what a reader cannot express: coverage of
+  the cmake list, and the pairing HARVESTED from `_nros_resolve_knob(<ENV> "${CONFIG_<SYM>}")`
+  (51 of them, both directions — a wrong row was as invisible as a missing one). Its coverage
+  harvest still cannot see `_nros_resolve_derivable_knob(` → issue 1505. A knob read through a
+  rival composition instead of a rung is the same bug one level up → issue 1504. → issue 0460.
 - **A pool's FLOOR belongs to the consumer that names the knob, never to the shared
   derivation** (issues 1015 + 1033, both measured). A derived count is the image's
   DEMAND and zero is a legitimate demand; whether zero is a legal SIZE is a property
