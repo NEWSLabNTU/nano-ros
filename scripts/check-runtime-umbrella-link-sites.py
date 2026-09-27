@@ -231,7 +231,7 @@ SELF_TEST_CASES: list[tuple[str, str, int, int]] = [
 ]
 
 
-def self_test() -> int:
+def self_test(quiet: bool = False) -> int:
     failures = []
     for name, text, want_v, want_p in SELF_TEST_CASES:
         got_v, got_p = scan_text("selftest.cmake", text)
@@ -245,16 +245,23 @@ def self_test() -> int:
         for f in failures:
             print(f, file=sys.stderr)
         return 1
-    print(
-        f"check-runtime-umbrella-link-sites --self-test: OK "
-        f"({len(SELF_TEST_CASES)} controls)"
-    )
+    if not quiet:
+        print(
+            f"check-runtime-umbrella-link-sites --self-test: OK "
+            f"({len(SELF_TEST_CASES)} controls)"
+        )
     return 0
 
 
 def main() -> int:
     if "--self-test" in sys.argv[1:]:
         return self_test()
+    # ALWAYS, not only behind the flag: a negative control nobody runs decays
+    # into a comment, and this rule's whole job is to fire. (`check-gate-selftests`
+    # enforces exactly this, and caught the flag-only shape here.)
+    rc = self_test(quiet=True)
+    if rc != 0:
+        return rc
 
     listing = subprocess.run(
         ["git", "ls-files", "cmake", "CMakeLists.txt", "nano_rosConfig.cmake"],
