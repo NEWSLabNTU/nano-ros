@@ -13,6 +13,8 @@ use rosidl_codegen::{CapacityResolver, generate_cpp_message_package};
 use rosidl_parser::parse_message;
 use std::{fs, path::PathBuf, process::Command};
 
+mod common;
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -80,8 +82,16 @@ include!("ffi_gen.rs");
 "#,
     )
     .unwrap();
+    // Issue 1392 — `env!("CARGO")` skips the `--locked` PATH shim. This resolves
+    // the generated crate above, whose lock is a throwaway in the tempdir, never
+    // the committed root lock; `resolver.lockfile-path` is that statement,
+    // enforced. Reasoning + measurements: `common::throwaway_lock_path`.
+    let lock_cfg = format!(
+        "resolver.lockfile-path=\"{}\"",
+        common::throwaway_lock_path(tmp.path()).display()
+    );
     let out = Command::new(env!("CARGO"))
-        .args(["check", "--quiet"])
+        .args(["check", "--quiet", "--config", lock_cfg.as_str()])
         .current_dir(tmp.path())
         .output()
         .expect("spawn cargo check");
@@ -244,8 +254,15 @@ fn main() {
     )
     .unwrap();
 
+    // Issue 1392 — see `common::throwaway_lock_path`: `cargo run` resolves this
+    // generated crate, so its lock is an artifact in the tempdir and
+    // `resolver.lockfile-path` is what says so.
+    let lock_cfg = format!(
+        "resolver.lockfile-path=\"{}\"",
+        common::throwaway_lock_path(tmp.path()).display()
+    );
     let out = Command::new(env!("CARGO"))
-        .args(["run", "--quiet"])
+        .args(["run", "--quiet", "--config", lock_cfg.as_str()])
         .current_dir(tmp.path())
         .output()
         .expect("spawn cargo run");

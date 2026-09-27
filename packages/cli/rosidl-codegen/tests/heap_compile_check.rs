@@ -10,6 +10,8 @@ use rosidl_codegen::{
 use rosidl_parser::{parse_message, parse_service};
 use std::{collections::HashSet, fs, path::PathBuf, process::Command};
 
+mod common;
+
 /// Issue 0693 follow-up — `cc` is a PRECONDITION of a compile check, not an
 /// optional extra.
 ///
@@ -88,8 +90,17 @@ heapless = "0.8"
     .unwrap();
     fs::write(root.join("src/msg/frame.rs"), &pkg.message_rs).unwrap();
 
+    // Issue 1392 — `env!("CARGO")` skips the `--locked` PATH shim, so this
+    // invocation must say what it does to a lockfile. It resolves the throwaway
+    // crate above, never the committed root lock; `resolver.lockfile-path` is
+    // that statement, enforced. Reasoning + measurements:
+    // `common::throwaway_lock_path`.
+    let lock_cfg = format!(
+        "resolver.lockfile-path=\"{}\"",
+        common::throwaway_lock_path(root).display()
+    );
     let out = Command::new(env!("CARGO"))
-        .args(["check", "--quiet"])
+        .args(["check", "--quiet", "--config", lock_cfg.as_str()])
         .current_dir(root)
         .output()
         .expect("spawn cargo check");
@@ -156,8 +167,15 @@ heapless = "0.8"
     .unwrap();
     fs::write(root.join("src/srv/add_two_ints.rs"), &pkg.service_rs).unwrap();
 
+    // Issue 1392 — see `common::throwaway_lock_path`: the nested cargo resolves
+    // this generated crate, so its lock is an artifact in the tempdir and
+    // `resolver.lockfile-path` is what says so.
+    let lock_cfg = format!(
+        "resolver.lockfile-path=\"{}\"",
+        common::throwaway_lock_path(root).display()
+    );
     let out = Command::new(env!("CARGO"))
-        .args(["check", "--quiet"])
+        .args(["check", "--quiet", "--config", lock_cfg.as_str()])
         .current_dir(root)
         .output()
         .expect("spawn cargo check");

@@ -25,9 +25,22 @@ fn extract_sizes_recovers_sizes_from_fat_lto_bitcode() {
         .to_path_buf();
     let target = std::env::temp_dir().join(format!("nros-sizes-fatlto-{}", std::process::id()));
 
+    // `--locked` because this build RESOLVES THE TRACKED ROOT LOCK (issue 1392).
+    //
+    // `env!("CARGO")` is the real cargo, so the `scripts/bin/cargo` shim's
+    // project-wide `--locked` never reached this command (issues 0359/0378).
+    // `CARGO_TARGET_DIR` below redirects the TARGET dir, which is not the
+    // lockfile: `current_dir` is the repo and the lock this resolves is the
+    // committed one. No `[patch]` is injected — that is what separates this from
+    // issue 1307's size probe, which had to redirect with
+    // `resolver.lockfile-path` because its patched `libc` could not be recorded
+    // in the root lock at all. Here the lock can record the resolution, so
+    // `--locked` is both sufficient and the right verdict: a resolution change
+    // becomes an error rather than a dirty tracked file.
     let status = Command::new(env!("CARGO"))
         .args([
             "build",
+            "--locked",
             "--release",
             "-p",
             "nros",

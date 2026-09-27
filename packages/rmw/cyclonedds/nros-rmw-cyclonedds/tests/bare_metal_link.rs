@@ -59,11 +59,21 @@ fn target_installed() -> bool {
 /// `nros-rmw-cyclonedds` crate dir) up to the workspace root that
 /// owns the unified target directory `cargo build` will populate.
 fn workspace_root() -> PathBuf {
-    // CARGO_MANIFEST_DIR = packages/rmw/cyclonedds/nros-rmw-cyclonedds
+    // CARGO_MANIFEST_DIR = packages/rmw/cyclonedds/nros-rmw-cyclonedds, so the
+    // root is FOUR ancestors up: nros-rmw-cyclonedds → cyclonedds → rmw →
+    // packages → <root>. `nth(3)` landed on `packages/`, which is invisible in
+    // the cargo invocation — cargo walks UP from `current_dir` and finds the
+    // real workspace anyway — and then makes the rlib assertion look for
+    // `packages/target/…`, so the test failed AFTER a successful build with
+    // `expected libnros_rmw_cyclonedds*.rlib under …/packages/target/…`.
+    // `alloc_free_audit.sh` already computes it correctly (its comment says
+    // "up 5" from `tests/`); phase-321 W2.d moved the group one level deeper and
+    // only the shell half was updated. Found while ruling issue 1392 — see issue
+    // 1507 for the rest of this file's family of unrun `#[ignore]`d tests.
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     crate_dir
         .ancestors()
-        .nth(3)
+        .nth(4)
         .expect("workspace root above packages/rmw/cyclonedds/nros-rmw-cyclonedds")
         .to_path_buf()
 }
@@ -89,10 +99,23 @@ fn bare_metal_no_std_clean() {
     require_bare_metal_target();
 
     let root = workspace_root();
+    // `--locked` because this build RESOLVES THE TRACKED ROOT LOCK (issue 1392).
+    //
+    // `env!("CARGO")` is the real cargo the outer test run exported, not the
+    // `scripts/bin/cargo` PATH shim, so the project-wide `--locked`
+    // (`NROS_CARGO_FLAGS`, issues 0359/0378) never reached this command — and
+    // `current_dir` is the workspace root with the default target dir, so the
+    // file it may rewrite is the committed one. A `check::build` lane running
+    // this `#[ignore]`d test rewrote `Cargo.lock` during phase-454 and nothing
+    // failed. Unlike issue 1307's size probe this injects no `[patch]`, so
+    // there is nothing the tracked lock cannot record: `--locked` is the whole
+    // fix, and it makes a resolution change a loud error instead of a dirty
+    // tracked file. Measured 2026-09-27: the build succeeds under it.
     let out = Command::new(env!("CARGO"))
         .current_dir(&root)
         .args([
             "build",
+            "--locked",
             "-p",
             "nros-rmw-cyclonedds",
             "--no-default-features",
