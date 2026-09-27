@@ -41,7 +41,7 @@ point where a knob is actually read.
 | descriptors in the TREE | **7** — the five above plus `config/{bare-metal,generic}`; W1 made it 7 answering 11 names |
 | board entries | 22 — 19 Rust crates, 2 announcement-only packages, 1 PAC |
 | board `build.rs` routed through `nros-board-common` | 8 of 11 |
-| build scripts calling `nros_zephyr_build::knob_usize` | **1** |
+| build scripts calling `nros_zephyr_build::knob_usize` | **1** — ~~REFUTED~~, it was 8 across 8 crates (issue 1490, W4's first box); the survey counted one spelling of three. W4 made it true by making the spelling singular: 9 call sites, all `nros_zephyr_build::knob()` |
 
 The three board `build.rs` that bypass `nros-board-common` —
 `mps2-an385-pac`, `nros-board-mps2-an385`, `nros-board-threadx-qemu-riscv64` —
@@ -331,10 +331,103 @@ instruction followed honestly".
         0751's finding one arm over: 0751 hardened the DERIVED arm against
         exactly this ("the name APPEARING is not the name being resolved") and
         the tabulating arm kept the mention test. The gate asks for a ROW now.
-- [ ] One resolution function, with the Kconfig and env sources as INPUTS to it
-      rather than as separate call paths.
-- [ ] `check-kconfig-knob-forwarding` either becomes unnecessary or narrows to
-      what the new reader cannot express — stated either way.
+- [x] One resolution function, with the Kconfig and env sources as INPUTS to it
+      rather than as separate call paths. **`nros_zephyr_build::knob(<env
+      name>)`**, a builder: `.rung(Option<usize>)` splices the platform/board
+      answer in below `$DOTCONFIG`, `.strict_env()` picks the one env-parse
+      policy the readers disagreed about, and `.resolve(builtin)` / `.stated()`
+      read it. `knob_usize`, `dotconfig_usize`, `dotconfig` and `KnobSource`
+      are PRIVATE now, so a second ladder cannot be assembled out of the parts.
+
+      Three things the population had not shown, each measured:
+
+      * **The pairing was per-READER, and that is what made 1490 possible.**
+        Two `KCONFIG_KNOBS` tables, one per tabulating crate, so one knob could
+        be paired in one crate and unpaired in another — `NROS_EXECUTOR_MAX_NODES`
+        was, which is issue 1233, with "keep them in sync" written beside it and
+        nothing enforcing it. A pairing is a property of the KNOB, so the table
+        is `nros_zephyr_build::KCONFIG_PAIRS`, beside the function that consumes
+        it, and a row is only legal where the two names are DIFFERENT WORDS
+        (gated by a unit test). 25 rows became 16: nine were derived-identical,
+        and two of 1490's three live splits — the
+        `NROS_PARAM_SERVICE_INBOX_{BYTES,DEPTH}` pair — were of exactly that
+        shape and are now **unwritable** rather than merely written. The third,
+        `ZPICO_SUBSCRIBER_RING_DEPTH`, still needs a row, and that residue is
+        what the gate keeps.
+      * **The table was missing two.** `ZPICO_MAX_LARGE_SUBSCRIBERS` and
+        `ZPICO_SUBSCRIBER_LARGE_SIZE` are forwarded from `CONFIG_NROS_*` symbols
+        and had no row in either crate, so a Zephyr Rust image read both
+        env-only. They are two of the three factors of the tree's largest pool.
+      * **A ninth site the population's eight-row table did not have**, and it
+        is the sharpest case for the box: `nros-platform/build.rs` wrote
+        `memory_value(..).unwrap_or_else(|| knob_usize(..))`, and
+        `BuildRungs::memory()` has NO Kconfig rung — so on every build that
+        exports `NROS_PLATFORM_NAME`, which is every build the `nros` road
+        drives, the `knob_usize` arm was unreachable. Measured:
+        `CONFIG_NROS_ZEPHYR_HEAP_SIZE=98304` compiled **65536**. Issue 1504
+        (RESOLVED here); `memory_rungs()` is the missing sibling of
+        `executor_rungs()`, whose own doc had already written down why the full
+        ladder must not stand in for a rung.
+
+      Also collapsed: `kconfig_fallback_str` (the tx trio's string reader, now
+      `Knob::stated_str`), and `nros-node`'s two hand-rolled ladders. Nine call
+      sites across eight crates are one-liners over `knob()`.
+
+      `nros-orchestration-ir`'s `dotconfig_ints` / `dotconfig_has` are
+      **legitimately separate and stay**: they take a `.config` TEXT as an
+      argument, resolve no ladder, run in a library rather than a build script,
+      and answer a different question (which Zephyr priority band an island
+      gets). Nothing about them can drift against a knob's value.
+
+      Probed with NON-DEFAULT values at each shape (the method 1490 established
+      — unset, a Kconfig default and a crate default are the same number):
+      derived `CONFIG_NROS_EXECUTOR_MAX_CBS=11` -> `MAX_CBS: usize = 11`;
+      tabulated `CONFIG_NROS_SUBSCRIBER_RING_DEPTH=7` -> `SUBSCRIBER_RING_DEPTH:
+      usize = 7`; rung, the heap table above. **Not a west build** — this
+      worktree has no Zephyr workspace and the host's only one belongs to
+      another checkout, so `$DOTCONFIG` was supplied by hand, which is exactly
+      what the west lane contributes. The west lane itself is unchanged.
+- [x] `check-kconfig-knob-forwarding` **NARROWS**, and the statement is in its
+      own header.
+
+      What it KEEPS is what no reader can express, whatever its shape:
+
+      1. **Coverage** — a `knob("X")` call site is evidence about `X` and says
+         nothing about the knob NOBODY named. The forwarded knobs live in a
+         cmake file no Rust code reads.
+      2. **The pairing, harvested from the PRODUCER** — most
+         `_nros_resolve_knob()` calls pass a literal `"${CONFIG_<SYM>}"`, so
+         which symbol a knob resolves from is written down where it is decided.
+         51 such pairings are now matched against `KCONFIG_PAIRS` in both
+         directions; before this, zero were, and a WRONG row was as invisible
+         as a missing one.
+      3. **No bare `env::var("<forwarded knob>")`** (issue 0751) — still
+         writable, still silent.
+
+      What GOES is everything that existed because eight ladders and two tables
+      could disagree: the DERIVED/TABULATING reader split, "does this file have
+      a `KCONFIG_KNOBS` table", "is this reader's MENTION of a knob really a
+      row", and the `knob_usize|dotconfig_usize` alternation (one spelling now).
+      One new shape is MODELLED rather than papered over: `nros-platform-config`
+      states seven knob names and takes its environment as a parameter, so it is
+      an `INJECTED_READERS` row that only counts once a listed reader hands it
+      the ladder — previously those seven were "covered" by their rows in the
+      zpico runner's table, which is 1490's mention test wearing a pairing.
+
+      The gate now runs a SELF-TEST on the normal path (it left
+      `gate-selftest-baseline.txt`): a missing row, a wrong row, a
+      derived-identical knob that must need no row, and an empty harvest. The
+      negative control also fires on the REAL tree — deleting the
+      `ZPICO_SUBSCRIBER_RING_DEPTH` row makes it name that knob and print the
+      row to add.
+
+      Reach still narrower than the rule, and now written down rather than
+      discovered: the coverage harvest reads `_nros_resolve_knob(` only, while
+      27 knobs — `NROS_EXECUTOR_MAX_CBS` and `NROS_MAX_QUERYABLES` among them —
+      are forwarded by `_nros_resolve_derivable_knob(`, of which `_knob(` is not
+      a substring. **Issue 1505.** The pairing arm reads both spellings, because
+      it needs no reader to exist; widening the coverage arm needs a reader or a
+      measured exemption for each of the 27 and is that issue's work.
 
 ## Acceptance for the phase
 
@@ -346,7 +439,31 @@ instruction followed honestly".
 * `nros-platform-esp-idf` and its tooling are gone, and esp32 QEMU still builds.
 * Every board `build.rs` that compiles C routes through `nros-board-common` or
   states why not.
-* A knob has one reader, or the exceptions are named.
+* **MET (W4, 2026-09-27), with two exceptions named.** A knob has one reader:
+  `nros_zephyr_build::knob()`, the tree's only ladder, with the Kconfig pairing
+  beside it in `KCONFIG_PAIRS` instead of once per reading crate. Nine call
+  sites across eight crates delegate to it; `knob_usize`, `dotconfig_usize`,
+  `dotconfig` and `KnobSource` are private, so the parts a second ladder would
+  be built from are not reachable.
+
+  The exceptions:
+
+  * **`nros-orchestration-ir`'s `dotconfig_ints` / `dotconfig_has`** parse a
+    `.config` text handed to them, in a library, to pick a Zephyr priority
+    band. No ladder, no environment, no knob value — a different question that
+    happens to read the same file format.
+  * **`nros-platform-config`'s tenant resolvers** (`resolve_tx`,
+    `resolve_memory_from`, `executor_env_only`, …) read the env through an
+    INJECTED accessor, because they serve `nros config explain` as well as a
+    build. On the build road the accessor they are handed IS `knob()`
+    (`Knob::stated_str`); off it there is deliberately no Kconfig rung, since
+    reading `$DOTCONFIG` belongs to the crate that owns the knob. The gate
+    models this as `INJECTED_READERS` rather than treating those seven knob
+    names as unread.
+
+  Not met by this wave, and tracked: the gate's coverage harvest still misses
+  the 27 knobs forwarded by `_nros_resolve_derivable_knob()` (issue 1505), so
+  "every forwarded knob has a reader" is proved for 47 of 74.
 
 ## Non-goals
 
