@@ -19,6 +19,15 @@ Every backend renders through one `minijinja` environment
 | `packs/nros/` | embedded (`no_std`) Rust |
 | `packs/cpp/` | C++ headers + the Rust FFI glue |
 | `packs/scaffold/` | per-package `Cargo.toml` / `lib.rs` / `build.rs` |
+| `packs/shared/` | partials more than one pack includes (the codegen-version stamp) |
+
+Each pack directory carries a **`pack.toml`** that declares it: its language, its
+`registry_order`, its templates as `{ key, file }` rows, and — for a pack that
+names C-family artifacts — the `header_extension` / `guard_suffix` /
+`source_extension` that `generator::naming` derives every artifact name from.
+`build.rs` reads every manifest and generates the template registry and the
+`Surface` enum, so **a pack directory is a pack because it exists and describes
+itself** (phase-469 W1). Nothing in `render.rs` names a template.
 
 A pack is just `.jinja` templates. The Rust side hands each template a
 **`serde`-serialized view struct** (the render context) and never spells a type
@@ -54,9 +63,10 @@ nros generate-rust …          # uses the override, no recompile
 (Equivalently, `rosidl_codegen::render::set_template_dir(dir)` from Rust, called
 once before the first render.)
 
-The stable template names are the keys of `PACKS` in `render.rs` (e.g.
-`message.h`, `message_nros.rs`, `cargo.toml`, `_field.jinja`). `tests/
-external_pack_smoke.rs` proves the override + fallback.
+The stable template names are the `templates` keys in each `packs/<dir>/pack.toml`
+(e.g. `message.h`, `message_nros.rs`, `cargo.toml`, `_field.jinja`); `nros`'s own
+copy of the generated registry is at `target/**/build/rosidl-codegen-*/out/
+pack_registry.rs`. `tests/external_pack_smoke.rs` proves the override + fallback.
 
 > **Do not set `NROS_TEMPLATE_DIR` during fixture or CI builds.** The fingerprint
 > hashes the *bundled* packs; an external override would silently produce output
@@ -86,7 +96,12 @@ seam, and nothing else.
 
 ### Step 1 — the message pack
 
-1. add its `.jinja` templates (a new `packs/<lang>/`) and its rows in `PACKS`;
+1. add its `.jinja` templates (a new `packs/<lang>/`) **and a `pack.toml`
+   declaring them**. No Rust edit: the registry is discovered from the manifest,
+   and a pack directory with no manifest — or a `.jinja` no manifest claims —
+   fails the build naming the file. If the pack names C-family artifacts, its
+   three naming fields make it a `generator::naming` surface and the `Surface`
+   variant is generated for it;
 2. if it needs type spelling the existing filters don't cover, add a **filter
    set** for the language (`rosidl_codegen::filters::FILTER_SETS`) wrapping a
    `*_spelling` function in `types.rs`. The filter set is all the Rust that
@@ -127,10 +142,13 @@ its own harness `Lang` and one emit arm per language), run
 `NROS_UPDATE_GOLDEN=1 cargo test -p nros-cli-core --lib codegen::entry::golden`,
 and **read the diff**. The generated source is a file, not a claim.
 
-`just check entry-pack-conformance` refuses a half-wired pack: a directory with
-no manifest, a language pack missing the fields CMake needs, a `Language`
-variant nothing renders, or a language whose bytes are recorded in no golden.
-Run it before you believe the pack works.
+`just check entry-pack-conformance` refuses a half-wired pack in EITHER family —
+entry and message; the name is historical (see the recipe comment). A directory
+with no manifest, a language pack missing the fields its consumer needs, a
+registry key or `registry_order` claimed twice, a template file that does not
+exist, a `.jinja` no manifest claims, a `Language` variant nothing renders, or a
+language whose bytes are recorded in no golden. Run it before you believe the pack
+works.
 
 ### What this does NOT make cheap
 
@@ -139,6 +157,9 @@ The **toolchain story** — how CMake compiles the language, how it links
 pack; the build-integration cost does not. Budget for it separately.
 
 No per-language TYPE SPELLING lives in the message builders — the packs and
-their filters own it. The builders still hold per-language Rust (file and guard
-names, the context each surface needs), and an entry language brings its own
-emitter. Implemented by phase-335 (RFC-0068) and phase-432 (RFC-0091).
+their filters own it, and since phase-469 W1 so do the artifact-naming suffixes
+(file and guard names). The builders still hold the per-language Rust that is a
+RULE rather than a parameter — which generator builds which context, and the ROS
+kind word, which is identical on every surface — and an entry language brings its
+own emitter. Implemented by phase-335 (RFC-0068), phase-432 (RFC-0091) and
+phase-469.

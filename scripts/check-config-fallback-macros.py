@@ -4,7 +4,7 @@ artifact reads — issue 1115.
 
 THE PREMISE THAT WAS FALSE
 --------------------------
-`rosidl-codegen/packs/_codegen_version.jinja` stamps every generated C and C++
+`rosidl-codegen/packs/shared/_codegen_version.jinja` stamps every generated C and C++
 header with `NROS_EMITTED_CODEGEN_VERSION` and compares it, with the
 preprocessor, against `NROS_CODEGEN_VERSION_MIN..NROS_CODEGEN_VERSION`. Its own
 rationale says of those two numbers:
