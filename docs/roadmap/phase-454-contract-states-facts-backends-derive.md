@@ -1200,10 +1200,11 @@ whether the build was told what it registers.
 * **cffi's `SLOT_SIZE`.** A hard 1024 where a size overflow and a full pool both
   return `NROS_RMW_RET_BAD_ALLOC`, and only one of the two has a knob. No user
   fact answers "how big is a backend's private state struct", so it is not a
-  sizing input; it wants a `const` assertion. Filed as
-  [issue 1322](../issues/1322-cffi-slot-size-overflow-reads-as-pool-exhaustion.md).
-  Worth landing in the same window as W3, since adding per-endpoint QoS to a
-  handle is exactly what would grow that struct past 1 KiB.
+  sizing input; it wants a `const` assertion. Filed as issue 1322, and **landed
+  separately from this phase** (archived): the width became the authored ladder
+  knob `NROS_RMW_SUBSCRIBER_SLOT_BYTES` with a `const` floor at the pool, the
+  count stayed derived here, and the default image is byte-identical in RAM. See
+  RFC-0100 D5 for the settled shape.
 * **A static pool for Cyclone.** D11 gives it a heap budget and a boot
   assertion; inventing a pool would touch the vendored fork's ddsrt allocator.
 * **`lifespan`, `deadline`, `liveliness`.** They bound occupancy or liveness, not

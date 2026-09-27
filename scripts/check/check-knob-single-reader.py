@@ -120,6 +120,10 @@ OWNERS: dict[str, str] = {
     "NROS_RMW_MAX_BACKENDS": "packages/rmw/cffi/build.rs",
     "NROS_RMW_MAX_NODES": "packages/rmw/cffi/build.rs",
     "NROS_RMW_MESSAGE_INFO_SLOTS": "packages/rmw/cffi/build.rs",
+    # issue 1322 — the subscriber pool's slot WIDTH, split off the COUNT. The
+    # count stays derived and out of this table; the width can never be (RFC-0100
+    # D5), so it is an authored ladder knob with exactly one reader.
+    "NROS_RMW_SUBSCRIBER_SLOT_BYTES": "packages/rmw/cffi/build.rs",
     # The smoltcp net tenant (phase-400 W6). The driver reads the ladder from
     # the LEAF crate; it cannot see `nros-board-common` without a cycle.
     "NROS_SMOLTCP_MAX_SOCKETS": "packages/drivers/net/nros-smoltcp/build.rs",

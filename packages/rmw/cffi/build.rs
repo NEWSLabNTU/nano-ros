@@ -1,4 +1,4 @@
-//! Build script. Three responsibilities:
+//! Build script. Four responsibilities:
 //!
 //! 1. Phase 104.B.1 — read `NROS_RMW_MAX_BACKENDS` (env var, default
 //!    8) and re-emit it as a `cargo:rustc-env` so the crate's source
@@ -21,12 +21,21 @@
 //!    `NROS_RMW_MESSAGE_INFO_SLOTS` is NOT among them and must not be:
 //!    `MessageInfoSlot`'s width is cfg-dependent (`alloc` + `safety-e2e` add
 //!    three fields), which is why it carries a documented deliberate
-//!    non-annotation in `lib.rs` rather than a formula. Neither is
-//!    `SLOT_SIZE` — a hard 1024 where a size overflow and a full pool return
-//!    the same code (issue 1322), and D5 rules it out by name: no user fact
-//!    answers "how big is a backend's private state struct".
+//!    non-annotation in `lib.rs` rather than a formula. Neither is the
+//!    subscriber pool's slot WIDTH, and D5 rules that one out by name: no user
+//!    fact answers "how big is a backend's private state struct". It is an
+//!    AUTHORED ladder knob instead — `NROS_RMW_SUBSCRIBER_SLOT_BYTES`, item 4
+//!    below (issue 1322).
 //!
-//! 3. Phase 115.G.4 — compile `tests/c_stubs/c_stub_transport.c`
+//! 3. issue 1322 — `NROS_RMW_SUBSCRIBER_SLOT_BYTES`, the subscriber pool's slot
+//!    WIDTH, which used to be a bare `1024` in `rust_adapter.rs`. It is a
+//!    different quantity from `NROS_RMW_SUBSCRIBER_SLOTS` (how MANY slots) and
+//!    sharing one lever between them made a handle that did not fit answerable
+//!    only by the knob that cannot fix it. AUTHORED over the RFC-0049 ladder,
+//!    never derived (item 2 above); the FLOOR is a `const` guard beside the pool,
+//!    the only place that can see the handle type.
+//!
+//! 4. Phase 115.G.4 — compile `tests/c_stubs/c_stub_transport.c`
 //!    into a small static lib for the second-language smoke test.
 //!    Gated behind the `c-stub-test` Cargo feature so consumers of
 //!    `nros-rmw-cffi` that vendor it without a C toolchain on the
@@ -51,6 +60,7 @@ fn main() {
 
     emit_max_backends(&rungs, sizing.as_ref());
     emit_subscriber_slots(sizing.as_ref());
+    emit_subscriber_slot_bytes(&rungs);
     emit_message_info_slots(&rungs);
     maybe_build_c_stub();
 }
@@ -250,6 +260,75 @@ fn emit_subscriber_slots(sizing: Option<&SizingDescriptor>) {
     }
 
     println!("cargo:rustc-env=NROS_RMW_SUBSCRIBER_SLOTS={parsed}");
+}
+
+/// issue 1322 — the WIDTH of one slot in that same pool.
+///
+/// Two quantities shared one lever until now: `NROS_RMW_SUBSCRIBER_SLOTS` said
+/// how many slots, and a bare `1024` in `rust_adapter.rs` said how wide. So
+/// `insert::<T>()` returned `None` — and the caller `NROS_RMW_RET_BAD_ALLOC` —
+/// both when every slot was claimed and when `size_of::<T>()` exceeded the
+/// width, and only the first has a knob. Raising the COUNT against the WIDTH
+/// cause buys nothing and costs a further slot of `.bss`.
+///
+/// **Authored, not derived.** RFC-0100 D5 names this as not a sizing input: no
+/// user fact answers "how big is a backend's private state struct", so there is
+/// nothing for the descriptor to state and a `derived_rung` here would be
+/// inventing a number. It takes the RFC-0049 ladder instead — env,
+/// `CONFIG_NROS_RMW_SUBSCRIBER_SLOT_BYTES`, `[knobs.rmw] subscriber_slot_bytes`,
+/// then this builtin. `NROS_RUNTIME_COMPONENT_SLOT_BYTES` is the same quantity
+/// one layer up (the component pool) and resolves exactly this way.
+///
+/// **No floor here, deliberately** (RFC-0100 D7, issues 1015/1033). The only
+/// true floor is `size_of::<R::Subscription>()`, which this script cannot see —
+/// it does not know which backend the image links, let alone that handle's
+/// target layout (`repr(C)` enums are 1 byte under ARM EABI short-enums and 4 on
+/// x86_64, so no host-side number would even be the right one). The floor
+/// therefore lives at the pool, as a `const` guard that fails the BUILD naming
+/// the type and both numbers. Clamping to some authored minimum here is what
+/// issue 0827 forbids: it would reserve memory while reading as though the knob
+/// had been honoured, and it could still be short for the backend that matters.
+///
+/// **The range's lower bound of 1 is a different kind of floor, and it is the one
+/// this script CAN answer.** It is not a guess at the backend's size; it is a
+/// property of the storage, which is what 1015/1033 say a floor must come from —
+/// and ruling this knob separately rather than by analogy is why it comes out the
+/// other way from `NROS_RMW_SUBSCRIBER_SLOTS`, where zero is right and worth real
+/// memory. At width 0, `Slot` is zero-sized, so every element of `SLOTS` has the
+/// SAME address, and `take::<T>()` identifies a slot by pointer equality — it
+/// would drop and free slot 0 whatever was handed to it. Zero also reclaims
+/// nothing a count of 0 does not already reclaim, so unlike 1033 there is no
+/// saving on the other side of the hazard. (At width 1 the `repr(align(16))` pads
+/// `Slot` back to 16 bytes, so the addresses are distinct again.)
+fn emit_subscriber_slot_bytes(rungs: &RmwKnobs) {
+    // rustfmt WRAPS this call — its arguments are 67 characters against a
+    // `fn_call_width` of 60 — and the first draft of that took the `SLOTS` pool's
+    // byte figure off the published page: `gen-pool-inventory.py` recovered a
+    // knob's default with a pattern ending `\s*\)`, which a wrapped call does not
+    // match because rustfmt adds a trailing comma. Measured, here, on a knob that
+    // is merely long-named. The fix is in the SCANNER (it tolerates the comma now),
+    // not a formatting rule nobody can see the reason for — but if `SLOTS` ever
+    // reads "not priceable statically" again, that regex is where to look.
+    let parsed = knob(
+        "NROS_RMW_SUBSCRIBER_SLOT_BYTES",
+        rungs.subscriber_slot_bytes,
+        1024,
+    );
+
+    if !(1..=65_536).contains(&parsed) {
+        panic!(
+            "NROS_RMW_SUBSCRIBER_SLOT_BYTES={parsed} out of range [1, 65536]. \
+             Zero is refused because a zero-sized slot makes every element of \
+             `SLOTS` share one address and `take()` identifies a slot by pointer \
+             equality; set NROS_RMW_SUBSCRIBER_SLOTS=0 instead, which is legal and \
+             removes the pool. The pool costs this many bytes TIMES that count, so \
+             raise the upper bound only with the memory budget in hand — and note \
+             that the value only has to reach the linked backend's per-subscription \
+             `size_of`, which the pool's own const guard names if it is short."
+        );
+    }
+
+    println!("cargo:rustc-env=NROS_RMW_SUBSCRIBER_SLOT_BYTES={parsed}");
 }
 
 /// Issue 0271 — size the `MESSAGE_INFO_TABLE` pool.

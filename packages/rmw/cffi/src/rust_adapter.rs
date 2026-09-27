@@ -83,7 +83,22 @@ mod static_subscriber_storage {
         env!("NROS_RMW_SUBSCRIBER_SLOTS"),
         "NROS_RMW_SUBSCRIBER_SLOTS must be a decimal integer",
     );
-    const SLOT_SIZE: usize = 1024;
+    // issue 1322 — the slot WIDTH, which is a different quantity from the slot
+    // COUNT above and now has its own knob. It was a bare `1024`, so the only
+    // lever the tree offered against a handle that did not fit was
+    // `NROS_RMW_SUBSCRIBER_SLOTS` — which buys more slots of the same too-small
+    // width, at `SLOT_SIZE` bytes each, on the platform with the least RAM.
+    //
+    // AUTHORED, never derived: RFC-0100 D5 rules this out as a sizing input by
+    // name, because no user fact answers "how big is a backend's private state
+    // struct". So it takes the RFC-0049 ladder (env -> `$DOTCONFIG` ->
+    // `[knobs.rmw] subscriber_slot_bytes` -> builtin 1024) and NOT the sizing
+    // descriptor — the same shape as `NROS_RUNTIME_COMPONENT_SLOT_BYTES`, which
+    // is this quantity one layer up in the component pool.
+    const SLOT_SIZE: usize = crate::parse_env_usize(
+        env!("NROS_RMW_SUBSCRIBER_SLOT_BYTES"),
+        "NROS_RMW_SUBSCRIBER_SLOT_BYTES must be a decimal integer",
+    );
     const SLOT_ALIGN: usize = 16;
 
     #[repr(align(16))]
@@ -107,15 +122,69 @@ mod static_subscriber_storage {
 
     // issue 0739 — declare the arithmetic so the pool inventory can price it.
     // 0271 measured this pool at 8,192 bytes on an image that had never heard of
-    // the knob; `SLOT_SIZE` is the literal above, so the figure is derivable.
-    // nros-pool: SLOTS = NROS_RMW_SUBSCRIBER_SLOTS * 1024
+    // the knob. issue 1322 — both factors are knobs now, so the figure stays
+    // derivable and the page names the width instead of hiding it in a literal.
+    // nros-pool: SLOTS = NROS_RMW_SUBSCRIBER_SLOTS * NROS_RMW_SUBSCRIBER_SLOT_BYTES
     static USED: [AtomicBool; SLOT_COUNT] = [const { AtomicBool::new(false) }; SLOT_COUNT];
     static SLOTS: [Slot; SLOT_COUNT] = [const { Slot::new() }; SLOT_COUNT];
 
+    /// Park `value` in a free slot. `None` means the pool is EXHAUSTED — and
+    /// since issue 1322, nothing else.
+    ///
+    /// It used to mean two unrelated things, and the caller mapped both to
+    /// `NROS_RMW_RET_BAD_ALLOC`: every slot claimed (raise
+    /// `NROS_RMW_SUBSCRIBER_SLOTS`) *or* `size_of::<T>() > SLOT_SIZE`, which no
+    /// value of that knob can fix. So the one remedy the failure pointed at was
+    /// the wrong lever for half the failures, and the expensive one.
+    ///
+    /// The size cause is gone from this return because it was never a runtime
+    /// fact. `size_of::<T>()` is known at compile time, so a given build either
+    /// fits or never fits; the check is the `const` block below, i.e. a BUILD
+    /// error naming the type instead of an image that links, boots, and then
+    /// refuses to register a subscription.
+    ///
+    /// Be precise about WHEN that error arrives: an inline `const` in a generic
+    /// fn is evaluated at MONOMORPHISATION, which `cargo check` does not reach
+    /// (it emits metadata and never collects instantiations — measured). Any
+    /// `cargo build` of a bare-metal image that creates a subscription does.
+    /// That is weaker than a source gate and strictly stronger than the
+    /// boot-time return it replaces.
     pub unsafe fn insert<T>(value: T) -> Option<*mut T> {
-        if mem::size_of::<T>() > SLOT_SIZE || mem::align_of::<T>() > SLOT_ALIGN {
-            return None;
-        }
+        const {
+            // FIT GUARD — issue 1322. RFC-0100 D7's shape: the knob publishes a
+            // WIDTH and the FLOOR lives at the pool, which is the only place
+            // that can see `T`.
+            //
+            // Written as a SUBTRACTION rather than an `assert!` because a const
+            // panic message cannot be FORMATTED. An assertion can say what to do
+            // and never what the numbers are; the underflow diagnostic says both,
+            // and the instantiation note names the backend handle. Measured, at
+            // `NROS_RMW_SUBSCRIBER_SLOT_BYTES=1` on `thumbv7m-none-eabi`:
+            //
+            //     error[E0080]: attempt to compute `1_usize - 112_usize`,
+            //                   which would overflow
+            //     note: ... while instantiating
+            //           `fn insert::<ZenohSubscriber>`
+            //
+            // The BINDING NAMES below are load-bearing, and this is the correction
+            // to a first draft that put the remedy in these comments: rustc echoes
+            // the offending SOURCE LINE, and it COLLAPSES the rest of the const
+            // block to `...` — so a comment here reaches whoever opens the file and
+            // never reaches the error text. The name does both.
+            //
+            // REMEDY: raise `NROS_RMW_SUBSCRIBER_SLOT_BYTES` to at least the second
+            // operand — env, `CONFIG_NROS_RMW_SUBSCRIBER_SLOT_BYTES`, or
+            // `[knobs.rmw] subscriber_slot_bytes` on the platform or board.
+            // `NROS_RMW_SUBSCRIBER_SLOTS` is NOT the lever: it multiplies the same
+            // too-small width, at `SLOT_SIZE` bytes of `.bss` a slot.
+            let _raise_nros_rmw_subscriber_slot_bytes = SLOT_SIZE - mem::size_of::<T>();
+            // The align arm, same reasoning. `SLOT_ALIGN` is what `Slot`'s
+            // `repr(align)` gives every element of `SLOTS`, so an over-aligned
+            // handle would be written to a misaligned address. No knob raises this
+            // one — `repr(align)` cannot take a const — so the name says what a
+            // reader has to do instead.
+            let _over_aligned_for_the_cffi_subscriber_slot = SLOT_ALIGN - mem::align_of::<T>();
+        };
 
         for index in 0..SLOT_COUNT {
             if USED[index]
@@ -130,6 +199,20 @@ mod static_subscriber_storage {
             return Some(ptr);
         }
 
+        // issue 1322 — the ONE cause left, said out loud beside the `None` with
+        // the lever that answers it and what raising it costs. Before this the
+        // caller's `BAD_ALLOC` was the whole diagnostic, and it could not
+        // distinguish this from a fit failure. issue 0589 — `nros_log`, never
+        // std stdio.
+        nros_log::log_error!(
+            nros_log::get_logger("nros_rmw_cffi"),
+            "subscription pool exhausted: all {} static slot(s) are in use. \
+             Raise NROS_RMW_SUBSCRIBER_SLOTS (each slot costs \
+             NROS_RMW_SUBSCRIBER_SLOT_BYTES = {} bytes of .bss). A handle that \
+             did not FIT cannot reach this path — that is a build error",
+            SLOT_COUNT,
+            SLOT_SIZE
+        );
         None
     }
 

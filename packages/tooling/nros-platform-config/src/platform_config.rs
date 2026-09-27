@@ -649,6 +649,7 @@ impl BuildRungs {
             max_backends: b.max_backends.or(plat.max_backends),
             max_nodes: b.max_nodes.or(plat.max_nodes),
             message_info_slots: b.message_info_slots.or(plat.message_info_slots),
+            subscriber_slot_bytes: b.subscriber_slot_bytes.or(plat.subscriber_slot_bytes),
         }
     }
 
@@ -822,6 +823,14 @@ pub struct ParamKnobs {
 /// build script and looks identical, but phase-412 W1 derives it from the
 /// entity inventory (`COUNT_SUBSCRIPTION`), and a knob two campaigns resolve is
 /// the drift issue 0938 cost. Checked before writing this rather than after.
+///
+/// `subscriber_slot_bytes` IS here, and is the other half of that same pool
+/// (issue 1322): the COUNT is derived from what the image declares, the WIDTH
+/// cannot be — RFC-0100 D5 rules it out by name, because no user fact answers
+/// "how big is a backend's private state struct". So the two halves resolve by
+/// different mechanisms on purpose, which is why they are two knobs. It is a
+/// PLATFORM fact in the same sense as the three above: a board knows which
+/// backend its images link, and that is what fixes the width.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RmwKnobs {
@@ -831,6 +840,8 @@ pub struct RmwKnobs {
     pub max_nodes: Option<usize>,
     #[serde(default)]
     pub message_info_slots: Option<usize>,
+    #[serde(default)]
+    pub subscriber_slot_bytes: Option<usize>,
 }
 
 /// phase-400 W6 — the smoltcp (bare-metal net) tenant.
@@ -944,7 +955,12 @@ pub fn net_env_key(knob: &str) -> &'static str {
 }
 
 /// Every RMW knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
-pub const RMW_KNOBS: &[&str] = &["max_backends", "max_nodes", "message_info_slots"];
+pub const RMW_KNOBS: &[&str] = &[
+    "max_backends",
+    "max_nodes",
+    "message_info_slots",
+    "subscriber_slot_bytes",
+];
 
 /// The env front-end for an RMW knob — the EXISTING names, verbatim.
 pub fn rmw_env_key(knob: &str) -> &'static str {
@@ -952,6 +968,7 @@ pub fn rmw_env_key(knob: &str) -> &'static str {
         "max_backends" => "NROS_RMW_MAX_BACKENDS",
         "max_nodes" => "NROS_RMW_MAX_NODES",
         "message_info_slots" => "NROS_RMW_MESSAGE_INFO_SLOTS",
+        "subscriber_slot_bytes" => "NROS_RMW_SUBSCRIBER_SLOT_BYTES",
         other => panic!("unknown rmw knob `{other}`"),
     }
 }
@@ -2005,6 +2022,7 @@ impl PlatformsTree {
                 (&mut out.max_backends, r.max_backends),
                 (&mut out.max_nodes, r.max_nodes),
                 (&mut out.message_info_slots, r.message_info_slots),
+                (&mut out.subscriber_slot_bytes, r.subscriber_slot_bytes),
             ] {
                 if src.is_some() {
                     *dst = src;
@@ -2299,6 +2317,7 @@ impl PlatformsTree {
             "max_backends" => k.max_backends,
             "max_nodes" => k.max_nodes,
             "message_info_slots" => k.message_info_slots,
+            "subscriber_slot_bytes" => k.subscriber_slot_bytes,
             _ => None,
         };
         let mut out = Vec::new();
