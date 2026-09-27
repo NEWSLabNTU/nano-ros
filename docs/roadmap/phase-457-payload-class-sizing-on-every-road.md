@@ -66,6 +66,12 @@ and correctly declined to fix it inside a backend wave.
 So "give the other roads a bound inventory" is two things, and the first is owed
 everywhere.
 
+**Superseded 2026-09-27.** phase-461 W3 landed the pricing (`record_service` /
+`record_action`) before this phase started, so a service row on the leaf road
+already states its bound. W1 verified that by measurement and fixed what the
+paragraph above did not see: the member SET was wrong for an action and for
+every `[types]` maximum — see W1 below and issue 1506.
+
 
 ## phase-454 W9 widened this phase, and the widening is not more of the same
 
@@ -199,14 +205,77 @@ step is a seam, not a design.
 
 ## Work items
 
-### W1 — bounds for service and action member messages, on every road
+### W1 — bounds for service and action member messages, on every road — LANDED 2026-09-27
 
-`record_message` covers `.msg` only. A service's `_Request`/`_Response` and an
-action's three pairs are messages with bounds; nothing records them.
+**The premise above was stale, and what was actually missing was worse.**
+`record_message` covering `.msg` only stopped being true when **phase-461 W3**
+landed `record_service` / `record_action` and `sizing_descriptor::wire_type_of`.
+Verified end to end rather than read off the plan: on
+`examples/native/rust/service-server` a `service_server` row states
+`wire_bound_bytes = 24` from `example_interfaces/srv/AddTwoInts_Request`, and
+`nros-rmw-zenoh`'s `SERVICE_BUFFER_SIZE` / `SERVICE_INBOX_BYTES` compile to
+**24** instead of the builtin **1,024**. Built twice (once with
+`NROS_SERVICE_INBOX_BYTES=1024` to reproduce the pre-W3 state) and diffed:
+static RAM **188,890 → 156,890 B (−32,000 B, −16.9 %)**, all of it
+`nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX` at 33,536 → 1,536 B. So the
+stated acceptance was already met.
 
-Acceptance: a service endpoint on the LEAF road gets a `wire_bound_bytes`, and
-zenoh's `ZPICO_SERVICE_BUFFER_SIZE` derives from it rather than keeping its
-builtin. Measured delta on a named image.
+**What W1 actually fixed is [issue 1506](../issues/archived/1506-action-inbox-sized-from-send-goal-only.md):
+two UNDER-sizes, both from pricing a shared pool over one member of its
+population.**
+
+1. An action row's `wire_bound_bytes` was `<A>_SendGoal_Request` alone, on both
+   producers (the descriptor's `wire_type_of`, and the cmake carrier's
+   `action_request_types()`). The three queryables share ONE ring, and
+   `action_msgs/srv/CancelGoal_Request` is **44 B rx against SendGoal's 36** on
+   the in-tree Fibonacci, because a `GoalInfo` outweighs a small goal struct — so
+   `ACTION_INBOX_BYTES` was 8 B short and every cancel request would have landed
+   as `TransportError::MessageTooLarge`. `rosidl_codegen::action_received_types`
+   names the three; both producers max over the set and the descriptor REFUSES
+   the whole row when one member is unpriced. Measured on
+   `examples/native/rust/action-server`: `ACTION_INBOX_BYTES` 36 → 44, static
+   RAM 172,698 → 172,794 B (**+96 B** — the fix COSTS bytes, which is the
+   direction).
+2. `[types]`'s three maxima joined the schema shape on the endpoint's INTERFACE
+   name, so `max_fields` / `max_kinds` / `max_nested_depth` were refused on every
+   service and action image — and the refusal told the reader to run `nros sync`,
+   a remedy that could not work, because codegen emits no shape for
+   `pkg/srv/Name`. They now join on `registered_types_of`: a service's two
+   halves, an action's eight members plus the `action_msgs` protocol types
+   `RosAction::register_protocol_types` registers. Those last three were not
+   optional — measured, they carry the DEEPEST schemas an action image holds
+   (`CancelGoal_Response` 11 kinds, `GoalStatusArray` nested_depth 6, against 7
+   and 3 for the envelopes). Emitted knob delta on the same image, built twice
+   and diffed:
+
+   ```
+   + NROS_CYCLONEDDS_MAX_FIELDS = "4"          (was: no row, consumer kept 64)
+   + NROS_CYCLONEDDS_MAX_KINDS = "11"          (was: no row, consumer kept 256)
+   + NROS_CYCLONEDDS_MAX_NESTED_DEPTH = "6"    (was: no row, consumer kept 8)
+   ```
+
+   `dynamic_type.rs`'s own arithmetic for the builder's name arrays is
+   `MAX_FIELDS × 64 + MAX_KINDS × 64`: 20,480 B → 960 B of stack frame.
+
+`record_action` also prices the three HALVES now (`_Goal`, `_Result`,
+`_Feedback`) — **eight rows, not five** — because `RosAction` registers them with
+the backend in their own right, so a shape join on them previously found nothing
+about a descriptor the image holds.
+
+**What W2 inherits.** Every spelling it needs is exported from
+`rosidl_codegen` and has exactly one producer:
+`service_member_types`, `action_member_types` (the eight suffixes, read by
+`record_action` itself), `action_received_types` (the three requests),
+`ACTION_CANCEL_SERVICE` and `ACTION_STATUS_TYPE`. The cmake road's carrier
+already publishes the widened action list, so once `--from-model` gets the
+bounds input W2 decided on, a model image joins the same sets a leaf does with
+no second opinion about any of them.
+
+**Not changed, deliberately:** `[types] distinct_count` still counts declared
+interfaces, because the registered-type COUNT has its own producer
+(`cyclonedds_type_sizing` → `NROS_CYCLONEDDS_MAX_TYPES`) and a second answer
+here is what the single-writer rule beside `cyclonedds_env` refuses. The
+divergence inside one section is recorded in a comment at `type_facts`.
 
 ### W2 — a per-image bound inventory and schema shape off the leaf road
 
