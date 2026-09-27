@@ -50,7 +50,7 @@ fn args() -> SizingDescriptorArgs {
         target_triple: None,
         host_build: false,
         heap_budget_bytes: None,
-        road: "a standalone cmake leaf".into(),
+        road: None,
     }
 }
 
