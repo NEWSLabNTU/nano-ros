@@ -449,7 +449,10 @@ cmake-verb-reachable:
 # PRIVATE links stay literal and are RULED with a reason, because the NuttX
 # boards match that name as a STRING to route the umbrella's include dirs into
 # their cargo cross-build.
+#
+# The nine negative controls run on the NORMAL path (inside the script), not as a
+# second invocation here — `check-gate-selftests` requires it, and it is right:
+# a control nobody runs decays into a comment.
 [private]
 runtime-umbrella-link-sites:
-    @python3 scripts/check-runtime-umbrella-link-sites.py --self-test
     @python3 scripts/check-runtime-umbrella-link-sites.py

@@ -192,11 +192,40 @@ manifest; it is still BUILT (the root `add_subdirectory` builds it regardless of
 who links it), which is why the remaining textual hits are its own
 `CUSTOM_COMMAND` copy rules.
 
-**What was NOT run here, stated plainly:** no leaf was LINKED. This is the
-generated link line, which is the claim the issue makes, and the 228
-`duplicate symbol` errors are `lld` reading exactly these two archives. Acceptance
-for the lane — `threadx_riscv64` linking its twelve leaves and reaching its
-cells — is a CI measurement and remains open on the nightly.
+### And the direction that must NOT break — same configure, same library
+
+A before/after pair proves the umbrella left. It does not prove it still ARRIVES
+where it is wanted, and a fix that silently dropped it everywhere would read
+identically. So both consumers were put in ONE configure of the same leaf, sharing
+the one generated `std_msgs__nano_ros_c`: the Rust carrier, plus a plain
+`add_executable` + `target_link_libraries(... PRIVATE std_msgs__nano_ros_c)` —
+which is exactly how a C/C++ leaf reaches that library.
+
+```
+build riscv64_threadx_rust_listener: C_EXECUTABLE_LINKER__riscv64_threadx_rust_listener_Release …
+  LINK_LIBRARIES = libstd_msgs__nano_ros_c.a  librv_virt_threadx_listener.a  nano_ros/libthreadx_glue.a  nano_ros/libvirtio_net_netx.a  -lc  nano_ros/nros_platform_threadx/libnros_platform_threadx.a  nano_ros/libnetxduo.a  nano_ros/libthreadx_kernel.a  …
+
+build probe_c_consumer: C_EXECUTABLE_LINKER__probe_c_consumer_Release …
+  LINK_LIBRARIES = libstd_msgs__nano_ros_c.a  nano_ros/packages/api/nros-cpp/libnros_cpp.a  nano_ros/libthreadx_glue.a  nano_ros/libvirtio_net_netx.a  -lc  nano_ros/nros_platform_threadx/libnros_platform_threadx.a  nano_ros/libnetxduo.a  nano_ros/libthreadx_kernel.a  …
+```
+
+Two consumers of one library, opposite answers, and `probe_c_consumer` keeps the
+umbrella **after** the message archive — the Phase 150.B order the `_ffi_lib`
+ordering hook exists to record. The probe target was appended to the leaf's
+`CMakeLists.txt` for the measurement and reverted; it is not in the tree.
+
+**What was NOT run here, stated plainly:** no leaf was LINKED, and no C/C++ leaf
+was configured in its own right. The measurement is the generated link line, which
+is the claim this issue makes — the 228 `duplicate symbol` errors are `lld` reading
+exactly these two archives — and the C-direction evidence is a synthetic consumer
+of the real library rather than `examples/rv-virt-threadx/c/listener`. That leaf's
+configure was attempted and abandoned after ~25 min: it goes through
+`cmake/bootstrap.cmake`, whose `git -C <repo-root> submodule status` ran against the
+PARENT checkout (an inherited absolute root, issue 1280's class) on a box with five
+concurrent agents and `State: D` disk-sleep throughout — and a configure that
+resolves the parent's tree would have measured the wrong `cmake/` anyway. Acceptance
+for the lane — `threadx_riscv64` linking its twelve leaves and reaching its cells —
+is a CI measurement and remains open on the nightly.
 
 ### Sweep
 
@@ -231,8 +260,11 @@ reported site actually carried (`${_link_type}`), so a scope the gate cannot rea
 is a failure rather than a default. PRIVATE links are RULED per file with a reason,
 checked in both directions, so a tenth site is a decision and not a copy.
 
-Nine negative controls (`--self-test`), plus the strongest one available: run
-against `origin/main`'s cmake tree it reports **16 violations**, naming
+Nine negative controls, run on the NORMAL path rather than behind the flag —
+`check-gate-selftests` requires that and CAUGHT this gate in the flag-only shape on
+its first `check-fast` run, which is the rule working on the gate that was written
+to make another rule work. Plus the strongest control available: run against
+`origin/main`'s cmake tree it reports **16 violations**, naming
 `cmake/NanoRosGenerateInterfaces.cmake:768` — the site this issue diagnosed.
 Against this branch, **0**.
 
