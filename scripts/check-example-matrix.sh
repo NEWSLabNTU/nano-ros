@@ -86,10 +86,16 @@ fi
 
 # ---------------------------------------------------------------------------
 # README tier lint (phase-277 W7, RFC-0026 "README tiers"): every platform
-# root, every workspaces/ws-* + base workspace, every bridges/* and every
-# templates/* must carry a README.md. Canonical per-role examples
+# root, every workspaces/ws-* + base workspace, every bridges/<lang>/<name> and
+# every templates/* must carry a README.md. Canonical per-role examples
 # (<plat>/<lang>/<case>) deliberately do NOT need one — the platform README
 # covers them.
+#
+# `bridges/` gained the LANGUAGE level on 2026-09-27, so its leaf sits one
+# directory deeper than a workspace's or a template's and the shared depth-3
+# walk below would have demanded a README at `examples/bridges/rust/` — a
+# language level, which carries none anywhere else in the tree. It gets its own
+# depth-4 walk rather than a README nobody would read.
 # ---------------------------------------------------------------------------
 readme_failures=()
 
@@ -106,11 +112,18 @@ while IFS= read -r dir; do
   require_readme "$dir"
 done < <(git ls-files examples | awk -F/ 'NF>=3 { print $1"/"$2 }' | sort -u)
 
-# Tier 3: every workspace (base <lang> + ws-*), bridge and template.
+# Tier 3: every workspace (base <lang> + ws-*) and template.
 while IFS= read -r dir; do
   require_readme "$dir"
-done < <(git ls-files examples/workspaces examples/bridges examples/templates \
+done < <(git ls-files examples/workspaces examples/templates \
            | awk -F/ 'NF>=4 { print $1"/"$2"/"$3 }' | sort -u)
+
+# Tier 3 (bridges): `examples/bridges/<lang>/<name>/` — one level deeper, since
+# bridges took the canonical language level on 2026-09-27.
+while IFS= read -r dir; do
+  require_readme "$dir"
+done < <(git ls-files examples/bridges \
+           | awk -F/ 'NF>=5 { print $1"/"$2"/"$3"/"$4 }' | sort -u)
 
 if (( ${#readme_failures[@]} > 0 )); then
   echo "Missing README.md (RFC-0026 README tiers):" >&2

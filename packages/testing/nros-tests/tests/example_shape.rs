@@ -217,8 +217,18 @@ const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
     // canonical-shape. Carve-out retired.
     // `examples/native/rust/bridge/` UNMIGRATED entry retired 2026-06-02:
     // the sole occupant (`tt-zenoh-to-xrce`) moved to `examples/bridges/`
-    // per §212.L sibling-category rule. `examples/bridges/` carries no
-    // `package.xml`, so discovery skips it without an explicit prefix.
+    // per §212.L sibling-category rule, and on 2026-09-27 under the `rust/`
+    // language level (`examples/bridges/rust/tt-zenoh-to-xrce/`).
+    //
+    // No `examples/bridges/` entry is needed HERE, but not for the reason this
+    // comment gave until 2026-09-27: it claimed the category "carries no
+    // `package.xml`, so discovery skips it". Both bridge leaves have carried one
+    // since they were written — `discover_example_leaves()` finds them. What
+    // skips them is the absence of an `examples/bridges/` prefix from
+    // `MIGRATED_PREFIXES`, which reports a `[SKIPPED]` reason. Two mechanisms
+    // with the same visible effect, and the wrong one was named; a reader
+    // trusting it would have concluded that adding a `package.xml` to a bridge
+    // brings it under the shape gate, which it does not.
     (
         "examples/templates/",
         "sibling category (Phase 131) — not a migrated example surface",

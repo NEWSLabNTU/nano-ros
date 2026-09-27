@@ -76,8 +76,9 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     info!("=== Phase 110.G.bridge: zenoh → XRCE under TT schedule ===");
 
-    // Backend registration. See `examples/bridges/native-rust-zenoh-to-dds`
-    // for why both `register()` calls are required even though
+    // Backend registration. See the book's "RMW Backends" internals page
+    // (`book/src/internals/rmw-backends.md`, "Explicit user call") for why both
+    // `register()` calls are required even though
     // each backend has a `#[used]` linkme distributed-slice entry
     // (the rlib's CGU isn't linked until something references its
     // public symbols).

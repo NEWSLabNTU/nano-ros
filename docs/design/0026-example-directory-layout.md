@@ -145,7 +145,14 @@ locks — the leaf may create its first lock and re-resolve after a later
 ## Sibling categories
 
 - `examples/<plat>/<lang>/<example>/` — the canonical per-platform examples.
-- `examples/bridges/<name>/` — cross-RMW gateways (link ≥2 backends).
+- `examples/bridges/<lang>/<name>/` — cross-RMW gateways (link ≥2 backends).
+  The language level is the CANONICAL one, not a bridge invention: `bridges/` is
+  a sibling category because the RMW axis does not describe it (a bridge holds
+  two backends open at once, so no build-time choice names it), and that says
+  nothing about the language axis, which applies to a bridge exactly as it does
+  to a per-platform example. Both current bridges are Rust, so they sit under
+  `bridges/rust/` (2026-09-27). What `bridges/` replaces is the PLATFORM level,
+  and only that: a gateway is a host process, so there is no platform to name.
 - `examples/templates/<name>/` — multi-platform copy-out recipes (Pattern A workspaces, etc.).
 - `examples/workspaces/…` — multi-node workspace examples (Node pkg + Bringup
   pkg + Entry pkg; see RFC-0024/0025), in a **two-layer scheme**:
@@ -176,8 +183,9 @@ Three README tiers, linted by `scripts/check-example-matrix.sh`:
 1. `examples/README.md` — the authoritative coverage matrix + copy-out contract.
 2. `examples/<platform>/README.md` — per-platform: prerequisites, RMW knob,
    build/run one example, case table. Required for every platform dir.
-3. Per-example `README.md` — **only** for variants, `bridges/*`, `ws-*` and
-   `templates/*` (dirs whose purpose isn't obvious from the role name).
+3. Per-example `README.md` — **only** for variants, `bridges/<lang>/*`, `ws-*`
+   and `templates/*` (dirs whose purpose isn't obvious from the role name).
+   `bridges/<lang>/` itself carries none: a language level never does.
    Canonical role examples (`talker`, `listener`, …) deliberately carry no
    per-example README — the platform README covers them.
 
@@ -213,6 +221,15 @@ under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`, not `examples
 
 ## Changelog
 
+- 2026-09-27 — `examples/bridges/` took the language level:
+  `bridges/tt-zenoh-to-{xrce,cyclonedds}` → `bridges/rust/tt-zenoh-to-{xrce,cyclonedds}`.
+  It was the one example category with no language axis, which read as a
+  deliberate exemption and was not one — `bridges/` exists to drop the PLATFORM
+  level, not the language one. `check-example-matrix.sh`'s README tier-3 walk
+  gained a bridges-specific depth-4 pass; the `bridges` carve-outs in
+  `examples_fixture_coverage.rs`, `example_shape.rs` and
+  `scripts/docs/gen-example-readmes.py` key on the top-level name and are
+  unaffected.
 - 2026-07 — Phase-277 refresh: workspaces two-layer scheme (base 4 +
   `ws-<topic>-<lang>`); `-DNROS_RMW` documented as the user knob with the
   `NANO_ROS_RMW` root variable published by the workspace helpers; tested
