@@ -12,6 +12,24 @@ authors.workspace = true
 homepage.workspace = true
 documentation.workspace = true
 readme = "README.md"
+# issue 1512 — the cargo channel this crate's own headers travel on, for a
+# consumer that compiles C in a BUILD SCRIPT rather than under cmake.
+#
+# It buys two things, and the second is the load-bearing one:
+#
+#  * `DEP_NROS_C_INCLUDE` / `DEP_NROS_C_CONFIG_INCLUDE` — the public `include/`
+#    and the per-build `nros_config_generated.h` directory, so a consumer never
+#    has to guess a path from `NROS_REPO_DIR` or walk up out of `OUT_DIR`.
+#  * ORDERING. Cargo guarantees that a dependent's build script runs AFTER the
+#    build script of every dependency carrying a `links` key. Without that, a
+#    consumer compiling C against `nros_config_generated.h` is racing the
+#    script that writes it, and the loser silently reads the committed
+#    `#error` stub or a museum copy — issue 0088/0268's class, which cmake
+#    solves with an explicit ninja edge and cargo solves with this.
+#
+# Same channel and spelling `nros-node` already uses (`links = "nros_node"` ->
+# `DEP_NROS_NODE_RX_BUF_SIZE`, which THIS crate's build script reads).
+links = "nros_c"
 
 [lib]
 crate-type = ["staticlib", "cdylib", "lib"]
@@ -205,6 +223,81 @@ platform-threadx = [
     "global-allocator",
     "nros-platform/platform-threadx",
     "nros-rmw-zenoh?/platform-threadx",
+]
+
+# ---- Bare metal: one arm PER BOARD, and that is not a slip (issue 1512) ----
+#
+# Every other platform above names a single `nros-platform/platform-X`. Bare
+# metal has no such X: `nros-platform` carries THREE board-specific ones
+# (`platform-mps2-an385`, `platform-stm32f4`, `platform-esp32-qemu`), because a
+# no-RTOS port IS the board — its clock is that board's timer, its net is that
+# board's MAC, and it has no kernel in between to abstract them. The RMW half
+# does have one name (`nros-rmw-zenoh/platform-bare-metal`), because zenoh-pico
+# only needs to know "freestanding", and that asymmetry is what makes this look
+# like an omission.
+#
+# Issue 1512 put two shapes on the table and said it picked neither. This is
+# shape (a). Shape (b) — ONE `platform-bare-metal` arm that omits the
+# `nros-platform/platform-X` line and leaves the concrete platform to whoever
+# brings the board crate, which is what the Rust road and
+# `nros-cli-core/src/builder/entry.rs` do — was MEASURED and does not compile:
+#
+#   cargo check -p nros-c --no-default-features --target thumbv7m-none-eabi \
+#     --features panic-halt,alloc,rmw-zenoh,ros-humble,global-allocator,\
+#   nros-log/platform-clock,nros-rmw-zenoh/platform-bare-metal
+#   error[E0432]: unresolved import `crate::ConcretePlatform`
+#     --> packages/platform/nros-platform/src/lib.rs:187:9
+#     note: found an item that was configured out … gated here
+#           #[cfg(any(feature = "platform-posix", … "platform-mps2-an385", …))]
+#
+# The reason the Rust road gets away with it is feature UNIFICATION inside one
+# cargo graph: a Rust image's entry crate, its board crate and `nros-platform`
+# are all members of the same resolve, so the board's unconditional
+# `platform-mps2-an385` reaches `nros-platform` no matter who else is silent.
+# `nros-c` has no such graph — Corrosion imports THIS manifest as its own cargo
+# root (`corrosion_import_crate(MANIFEST_PATH .../nros-c/Cargo.toml)`), the
+# board crate is not in it and cannot be (it is an rlib, and `nros-c` depending
+# on a board is the inversion RFC-0064 forbids), so the platform selection has
+# to be spelled here or it is spelled nowhere.
+#
+# So the two roads differ because their LINK ROOTS differ, not because one of
+# them is wrong. What this costs is that the C staticlib root names a board —
+# which is exactly what `nros_feature_set()`'s new bare-metal arm resolves from
+# `NANO_ROS_BOARD`, so no caller spells one of these by hand.
+#
+# BUILD-VERIFIED: `platform-mps2-an385` only (thumbv7m-none-eabi, staticlib).
+# The other two are the same four lines over the sibling `nros-platform`
+# features; `platform-stm32f4` has no in-tree board and `platform-esp32-qemu`'s
+# C/C++ road is the ESP-IDF component (see `PlatformKind::cmake_deploy`). They
+# are listed anyway because a PARTIAL set is how a fourth spelling gets
+# invented: `check-baremetal-platform-arms` holds these three against
+# `nros-platform`'s three, both directions.
+#
+# `nros-platform/critical-section` rather than this crate's own
+# `critical-section`: on a Cortex-M the impl is `cortex-m`'s PRIMASK
+# single-core one, reached through `nros-platform-mps2-an385`, and that is the
+# same impl the board crate registers for a Rust image — one per board. Taking
+# the vtable route here instead would put a second `critical_section::Impl` in
+# the tree for this board, which is the double-registration
+# `nros-platform`'s own feature comment warns about.
+platform-mps2-an385 = [
+    "nros-log/platform-clock",
+    "global-allocator",
+    "nros-platform/platform-mps2-an385",
+    "nros-platform/critical-section",
+    "nros-rmw-zenoh?/platform-bare-metal",
+]
+platform-stm32f4 = [
+    "nros-log/platform-clock",
+    "global-allocator",
+    "nros-platform/platform-stm32f4",
+    "nros-rmw-zenoh?/platform-bare-metal",
+]
+platform-esp32-qemu = [
+    "nros-log/platform-clock",
+    "global-allocator",
+    "nros-platform/platform-esp32-qemu",
+    "nros-rmw-zenoh?/platform-bare-metal",
 ]
 
 # ROS edition (orthogonal to RMW and platform)

@@ -114,7 +114,28 @@ impl PlatformKind {
     ///
     /// phase-445 W3: a C/C++ leaf that states its board in `system.toml`
     /// no longer states this token at all; `nros ws leaf-system` derives it
-    /// here. `None` for a platform with no C/C++ platform module.
+    /// here.
+    ///
+    /// This is also the boundary where `bare-metal` becomes `baremetal`, and the
+    /// two are deliberately different NAMESPACES rather than a drift to converge
+    /// (issue 1512): `baremetal` is the CMake platform-MODULE token
+    /// (`cmake/platform/nano-ros-baremetal.cmake`, `NANO_ROS_PLATFORM`, and the
+    /// `-baremetal` stack suffix RFC-0093 R2 puts in every board NAME), while
+    /// `bare-metal` is the cargo-feature / descriptor spelling (`config/bare-metal/`,
+    /// `platform = "bare-metal"`, [`kebab`](Self::kebab),
+    /// `nros-rmw-zenoh/platform-bare-metal`). This function already translates two
+    /// others of the same kind — `Posix` -> `native`, both ThreadX kinds ->
+    /// `threadx` — so a per-namespace spelling is what it is FOR.
+    /// `nros_feature_set()`'s bare-metal arm accepts both.
+    ///
+    /// `None` means "a leaf on this platform does not derive a
+    /// `NANO_ROS_PLATFORM` from its board". For `Esp32` that is an AUTHORED
+    /// decision and NOT the absence of a module: the module is `baremetal` and
+    /// `cmake/board/nano-ros-board-esp32-c3-baremetal.cmake` exists. What does not
+    /// exist is a C/C++ example road on that tree — `examples/esp32-c3-baremetal/`
+    /// is the no-IDF `esp-hal` path, and C/C++ on the same silicon is the ESP-IDF
+    /// component (phase-139). The overlay is for a non-IDF C parent build, which
+    /// states its own platform. `Stm32`/`OrinSpe` have no in-tree board at all.
     pub fn cmake_deploy(self) -> Option<&'static str> {
         Some(match self {
             PlatformKind::Posix => "native",

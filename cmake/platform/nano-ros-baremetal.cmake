@@ -29,6 +29,26 @@ if(NOT TARGET NanoRos::Platform)
     add_library(NanoRos::Platform ALIAS nros_platform_baremetal_iface)
 endif()
 
+# issue 1512 — say out loud that this platform is bare metal.
+#
+# `<nros/platform.h>` classifies a target by `NROS_PLATFORM_BAREMETAL`: with it
+# undefined the header takes its hosted arm and defines `NROS_PLATFORM_HAS_MALLOC`
+# unconditionally, "mirroring the retired nros-c dispatch, where any non-bare-metal
+# platform fell through to posix.h's unconditional malloc". Nothing in this module
+# or either board overlay defined it, so every C/C++ TU built for
+# NANO_ROS_PLATFORM=baremetal was classified HOSTED — the one platform the macro
+# exists to name. It never showed because the family had no C/C++ leaf to classify.
+#
+# Its only effect in the header is that malloc gate, so this is behaviour-neutral
+# only because `nros-board-mps2-an385` now declares the heap it has (see that
+# board's `nros-board.toml`). The two move together, and in this order: declaring
+# the platform without declaring the heap is what would have turned issue 0038's
+# compile gate on a board that HAS one.
+#
+# On the INTERFACE, so it reaches every target linking `NanoRos::Platform` rather
+# than only the one that reaches `nros_platform_link_app` below.
+target_compile_definitions(nros_platform_baremetal_iface INTERFACE NROS_PLATFORM_BAREMETAL)
+
 function(nros_platform_link_app target)
     if(NOT DEFINED NANO_ROS_BOARD)
         message(FATAL_ERROR

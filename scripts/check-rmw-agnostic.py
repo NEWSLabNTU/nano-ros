@@ -106,8 +106,14 @@ EXEMPT = {
 # (issue 1218).
 BASELINE: dict[str, tuple[int, str, str]] = {
     # Issue 1297 — the API crates select and register backends BY NAME.
+    # issue 1512 raised this 16 -> 19: the three bare-metal platform arms each
+    # forward `nros-rmw-zenoh?/platform-bare-metal`, exactly as the five arms
+    # already baselined here forward their own platform. Bare metal is the one
+    # platform where `nros-platform`'s feature is board-specific, so it needs
+    # three arms where every other needs one — the same debt, three times, not a
+    # new kind of it.
     "packages/api/nros-c/Cargo.toml":
-        (16, "1297", "per-backend features, cffi aliases, `?/` forwarding, optional deps"),
+        (19, "1297", "per-backend features, cffi aliases, `?/` forwarding, optional deps"),
     "packages/api/nros-cpp/Cargo.toml":
         (8, "1297", "the twin of nros-c's feature table"),
     "packages/api/nros-c/src/rmw_backend.rs":
