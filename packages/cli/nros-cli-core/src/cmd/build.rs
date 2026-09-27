@@ -896,18 +896,70 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // The application is resolved FIRST: its directory is where a
                 // Zephyr app keeps its own `prj-*.conf`, so the overlay search
                 // needs it (issue 0892).
-                let app = west_application_dir(
-                    &image_id,
+                //
+                // phase-470 W5.a (issue 1288) — GENERATE it where we can, and
+                // fall back to LOCATING a hand-written one where we cannot.
+                // Which of the two is not a heuristic:
+                //
+                // * `[image.<id>] entry = "<pkg>"` names a package, and a name
+                //   is the answer to the ambiguity `west_application_dir`
+                //   exists to resolve. It must keep working until W5.b retires
+                //   the last hand-written application, and it is checked FIRST
+                //   because `entry` may name a package whose name is NOT
+                //   `<id>_entry` — `[image.zephyr_robot1] entry =
+                //   "zephyr_entry_robot1"` is exactly that, so generation would
+                //   otherwise kick in beside a package it never looked at.
+                // * otherwise `generate_entry` writes one, unless a
+                //   hand-written `src/<id>_entry` suppresses it (D13's
+                //   migration is a DELETION — that check lives there).
+                //
+                // The generated application is found BY CONSTRUCTION. It cannot
+                // be found by the `DEPLOY`-token scan below: a Zephyr entry's
+                // `DEPLOY` names the PLATFORM, so that scan answers a question
+                // about the board it never reads (issue 1517).
+                let generated = if image.entry.is_some() {
+                    GeneratedEntry::default()
+                } else {
+                    generate_entry(
+                        &root,
+                        &bringup_dir,
+                        &bringup,
+                        &image_id,
+                        &image,
+                        descriptor,
+                        &platform,
+                        nano_ros_root.as_deref(),
+                    )?
+                };
+                let app = match &generated.dir {
+                    Some(d) => {
+                        eprintln!("nros build:   west application → {}", d.display());
+                        d.clone()
+                    }
+                    None => west_application_dir(
+                        &image_id,
+                        &image,
+                        descriptor,
+                        &found,
+                        &catalog,
+                        &bringup_dirs,
+                    )?
+                    .unwrap_or_else(|| bringup_dir.clone()),
+                };
+                // The board id WEST knows, not the one the image authored —
+                // `<bringup>/boards/<board>/` is the directory Zephyr's own
+                // `boards/<board>.conf` discovery runs under, and Zephyr knows
+                // the west spelling. `[image.zephyr] board = "zephyr"` and
+                // `board = "native_sim/native/64"` are the same board, so they
+                // must reach the same directory.
+                let west_board = descriptor.west_build_board(&board);
+                let overlays = crate::builder::zephyr::resolve_in(
+                    &bringup_dir,
+                    Some(&app),
+                    &west_board,
                     &image,
-                    descriptor,
-                    &found,
-                    &catalog,
-                    &bringup_dirs,
-                )?
-                .unwrap_or_else(|| bringup_dir.clone());
-                let overlays =
-                    crate::builder::zephyr::resolve_in(&bringup_dir, Some(&app), &board, &image)
-                        .map_err(|e| eyre::eyre!("{e}"))?;
+                )
+                .map_err(|e| eyre::eyre!("{e}"))?;
                 // issue 0892 — Zephyr is not like the other drivers, and the
                 // handoff has to say so.
                 //
@@ -934,14 +986,13 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     crate::builder::zephyr::split_native_args(&args.native_args)
                         .map_err(|e| eyre::eyre!("{e}"))?;
 
-                // The board id WEST knows, which is not always the name the
-                // image authored — one rule, on the descriptor
+                // `west_board` is resolved above, beside the overlay directory
+                // it also names — one rule, on the descriptor
                 // (`BoardDescriptor::west_build_board`, issue 1517). It used to
                 // be spelled here and read only the OUTER `west_board`, which
                 // no in-tree descriptor declares, so `nros build fvp` emitted
                 // `-b fvp-aemv8r-smp` for a descriptor that states
                 // `fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`.
-                let west_board = descriptor.west_build_board(&board);
                 let mut a = vec!["build".to_string(), "-b".to_string(), west_board];
                 if overlays.sysbuild {
                     a.push("--sysbuild".to_string());
@@ -1918,6 +1969,10 @@ fn generate_entry(
         .join(coordinate(platform, image))
         .join(crate::builder::entry::package_name(image_id));
 
+    // Snapshotted before the spec takes `nodes`: the Zephyr arm below seeds its
+    // `[patch]` walk from them (`registry_patches_from`).
+    let spec_nodes_dirs: Vec<PathBuf> = nodes.iter().map(|(_, d)| d.clone()).collect();
+
     let mut spec = EntrySpec {
         image_id: image_id.to_string(),
         launch,
@@ -1956,11 +2011,38 @@ fn generate_entry(
             );
             v
         },
+        // phase-470 W5.a — the WEST APPLICATION half. A Zephyr staticlib entry
+        // IS the west application's directory (`rust_cargo_application()` runs
+        // cargo from `CMAKE_CURRENT_SOURCE_DIR` with no `--manifest-path`), so
+        // its manifest has to carry what no settings file can reach it with.
+        west: match descriptor.entry_kind {
+            crate::orchestration::board_descriptor::EntryKind::ZephyrStaticlib => Some(
+                crate::builder::west_app::resolve(
+                    root,
+                    &entry_dir_for_deps,
+                    nros_root,
+                    image_id,
+                    image.rmw.as_deref(),
+                    &descriptor.platform_feature,
+                    // Seeded from the NODE packages, because the entry manifest
+                    // these rows go into has not been written yet.
+                    &registry_patches_from(root, nros_root, &spec_nodes_dirs),
+                )
+                .map_err(|e| eyre::eyre!("{e}"))?,
+            ),
+            _ => None,
+        },
     };
     let facts = BoardFacts::from_descriptor_for(descriptor, &candidates);
     let parent = root.join("build").join(coordinate(platform, image));
     let dir = crate::builder::entry::write(&spec, &facts, &parent)
         .map_err(|e| eyre::eyre!("generating the entry for `{image_id}`: {e}"))?;
+    // The shell around it. AFTER the entry, because `is_materialized` guards
+    // both and a user who took ownership owns the `CMakeLists.txt` too.
+    if let Some(west) = &spec.west {
+        crate::builder::west_app::write(west, &dir)
+            .map_err(|e| eyre::eyre!("generating the west application for `{image_id}`: {e}"))?;
+    }
 
     // NOW refuse — the entry package exists, so `nros sync` can produce the
     // facade this build needed. Raising it earlier deadlocks a clone: sync
@@ -2144,9 +2226,25 @@ pub(crate) fn registry_patches(
     nano_ros_root: &std::path::Path,
     entry_dir: &std::path::Path,
 ) -> std::collections::BTreeMap<String, PathBuf> {
+    registry_patches_from(ws_root, nano_ros_root, &[entry_dir.to_path_buf()])
+}
+
+/// [`registry_patches`], seeded from several packages instead of one entry.
+///
+/// The Zephyr road needs this: its rows go INTO the entry manifest
+/// (`builder::west_app` — the west driver has no settings file to put them
+/// in), so they have to be derived BEFORE that manifest exists. Seeding from
+/// the node packages the launch file names reaches the same closure, because
+/// everything the entry contributes beyond them is a path dep outside the
+/// workspace, which this walk does not follow anyway.
+pub(crate) fn registry_patches_from(
+    ws_root: &std::path::Path,
+    nano_ros_root: &std::path::Path,
+    seeds: &[PathBuf],
+) -> std::collections::BTreeMap<String, PathBuf> {
     let mut out = std::collections::BTreeMap::new();
     let mut seen = std::collections::BTreeSet::new();
-    let mut queue = vec![entry_dir.to_path_buf()];
+    let mut queue: Vec<PathBuf> = seeds.to_vec();
     while let Some(dir) = queue.pop() {
         let dir = dir.canonicalize().unwrap_or(dir);
         if !seen.insert(dir.clone()) {

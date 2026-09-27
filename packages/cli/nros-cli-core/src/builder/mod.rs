@@ -31,4 +31,5 @@ pub mod materialize;
 pub mod paths;
 pub mod plan;
 pub mod preflight;
+pub mod west_app;
 pub mod zephyr;

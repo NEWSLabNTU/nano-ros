@@ -1116,6 +1116,72 @@ def _strip_cmake_comments(text):
     return "\n".join(out)
 
 
+def zephyr_application_is_generated(entry):
+    """Does `nros build` GENERATE this row's west application?
+
+    phase-470 W5.a / issue 1288. ONE predicate, two readers — the validator
+    below and the `west-leaves` emitter — because they ask the same question
+    and a second copy would drift the first time a workspace migrated.
+
+    It is `cmd::build`'s own discriminator, in its own order:
+
+    * an `[image.<id>] entry` names a PACKAGE, and that outranks everything —
+      it is the answer to the ambiguity the derivation cannot resolve, and it
+      may name a package whose name is not `<id>_entry`;
+    * otherwise a `src/<id>_entry` carrying a build file is a hand-written
+      application that suppresses generation (RFC-0065 D13's migration is a
+      DELETION);
+    * neither ⇒ generated, under `build/<coord>/`.
+
+    A row that names no `image` at all is an unmigrated row and never
+    generated.
+    """
+    image = entry.get("image")
+    if not image:
+        return False
+    if (_image_block(entry, image) or {}).get("entry"):
+        return False
+    pkg_dir = Path(entry.get("dir") or "") / "src" / entry_name(entry)
+    return not (
+        (pkg_dir / "CMakeLists.txt").is_file() or (pkg_dir / "Cargo.toml").is_file()
+    )
+
+
+def _validate_generated_zephyr_application(entry, bringup_dir):
+    """The existence contract for a row whose west application is GENERATED.
+
+    phase-470 W5.a / issue 1288. There is no `src/<pkg>` to look at — the
+    application is written under `build/<coord>/` by `nros build`, which is
+    build output and is not in a fresh clone. What IS authored, and what the
+    build cannot proceed without, is the image's Kconfig: `prj.conf` in
+    `<bringup>/boards/<board>/` (Zephyr REQUIREs it there once that directory
+    is `APPLICATION_CONFIG_DIR`), plus every fragment the image's `conf` names.
+
+    The board is the ROW's, sanitized the way `builder::zephyr::sanitize_board`
+    sanitizes it: a Zephyr board id carries slashes and cannot be one directory
+    component. A zephyr row is already required to carry `board` above, and a
+    row's `board` is the west spelling — the same string `-b` receives.
+    """
+    board_dir = bringup_dir / "boards" / entry["board"].replace("/", "_")
+    _require_dir(
+        entry,
+        board_dir,
+        "generated-application config dir (RFC-0065 D4: the image's Kconfig "
+        "lives beside the bringup, since there is no application package to "
+        "hold it)",
+    )
+    _require_file(entry, board_dir / "prj.conf", "application prj.conf")
+    for name in (_image_block(entry, entry["image"]) or {}).get("conf", []):
+        # `resolve_in`'s rungs, minus the application one this row has no
+        # application for.
+        if not ((board_dir / name).is_file() or (bringup_dir / name).is_file()):
+            _fail(
+                entry,
+                f"`[image.{entry['image']}] conf` names {name!r}, which is in "
+                f"neither {board_dir} nor {bringup_dir}",
+            )
+
+
 def _validate_zephyr_workspace(entry, root, entry_dir):
     # A Zephyr west app is neither a cargo member nor a plain
     # add_executable/add_library target — it is driven by
@@ -1256,13 +1322,26 @@ def validate_workspace_fixture(entry):
     if entry.get("image"):
         _require_image(entry, system_toml, entry["image"])
         _require_image_rmw(entry, system_toml, entry["image"])
-        # ...unless it is a WEST row, where the application is hand-written and
-        # west builds it in place (RFC-0085 D2/D4). Nothing is generated there,
-        # so the package under `src/` is exactly as real as an unmigrated row's
-        # — the difference is only that the IMAGE names it instead of the row.
-        # Checking it here keeps the migrated west row under the same existence
-        # contract it had before, which is the whole reason the `entry` key
-        # could be dropped rather than merely stopped being read.
+        # ...unless it is a WEST row whose application is still HAND-WRITTEN
+        # (RFC-0085 D2/D4): west builds that one in place, so the package under
+        # `src/` is exactly as real as an unmigrated row's — the difference is
+        # only that the IMAGE names it instead of the row. Checking it here
+        # keeps such a row under the same existence contract it had before,
+        # which is the whole reason the `entry` key could be dropped rather
+        # than merely stopped being read.
+        #
+        # phase-470 W5.a (issue 1288) — a west application can now be GENERATED,
+        # and then there is nothing under `src/` to check. The discriminator is
+        # not the row: it is the same one `cmd::build` uses, in the same order —
+        # an `[image.<id>] entry` names a package (so it must exist), and
+        # otherwise a `src/<id>_entry` carrying a build file is a hand-written
+        # application that suppresses generation (RFC-0065 D13's migration is a
+        # DELETION). Neither ⇒ generated.
+        #
+        # The existence contract does not disappear, it MOVES: what a generated
+        # application cannot build without is its Kconfig, which lives in
+        # `<bringup>/boards/<board>/` and is what `builder::zephyr::resolve_in`
+        # passes as `-DAPPLICATION_CONFIG_DIR`.
         if platform in ("zephyr", "zephyr-cortex-m"):
             pkg = image_entry_package(entry)
             if not pkg:
@@ -1273,9 +1352,12 @@ def validate_workspace_fixture(entry):
                     f"the application package west must build (RFC-0085 D4)",
                 )
             entry_dir = root / "src" / pkg
-            _require_dir(entry, entry_dir, "entry dir")
-            _require_file(entry, entry_dir / "package.xml", "entry package.xml")
-            _validate_zephyr_workspace(entry, root, entry_dir)
+            if zephyr_application_is_generated(entry):
+                _validate_generated_zephyr_application(entry, bringup_dir)
+            else:
+                _require_dir(entry, entry_dir, "entry dir")
+                _require_file(entry, entry_dir / "package.xml", "entry package.xml")
+                _validate_zephyr_workspace(entry, root, entry_dir)
         return
 
     entry_dir = root / "src" / entry["entry"]
@@ -1484,7 +1566,15 @@ def main():
             # workspace, not from the app, so a migrated row needs both and the
             # rewrite destroys one of them.
             e["ws_dir"] = e["dir"].rstrip("/")
-            e["dir"] = f"{e['dir'].rstrip('/')}/src/{image_entry_package(e)}"
+            # phase-470 W5.a — a GENERATED application has no `src/<pkg>`, so
+            # `src`/`src_dir` name the WORKSPACE instead. Nothing in the west
+            # lane builds from that path for such a row (`nros build` is
+            # addressed from the workspace and resolves the application
+            # itself); what the record must not carry is a directory that does
+            # not exist, which is what a filter, a log line or a future reader
+            # would take for the application.
+            if not zephyr_application_is_generated(e):
+                e["dir"] = f"{e['dir'].rstrip('/')}/src/{image_entry_package(e)}"
             e.setdefault("west_role", "entry")
             west_rows.append(e)
 

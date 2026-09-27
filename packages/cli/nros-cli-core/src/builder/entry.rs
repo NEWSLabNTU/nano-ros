@@ -89,6 +89,15 @@ pub struct EntrySpec {
     /// `crate_root_deps`: a dependency spec is already a small language and
     /// re-modelling it here would be a second grammar to keep in step.
     pub bringup_deps: Vec<String>,
+    /// The WEST APPLICATION half, for a Zephyr staticlib entry (phase-470
+    /// W5.a). `None` on every other road.
+    ///
+    /// Zephyr is the one driver that hands cargo no settings file: the command
+    /// line belongs to zephyr-lang-rust's `rust_cargo_application()`, so the
+    /// facts every other image carries in `nros-cargo.toml` have to reach
+    /// cargo through this manifest instead. [`super::west_app`] derives them
+    /// and explains each one.
+    pub west: Option<super::west_app::WestApp>,
 }
 
 /// Board facts the emitter needs, lifted out of [`BoardDescriptor`] so callers
@@ -264,6 +273,23 @@ pub fn render_manifest(
     // through `leaf_system::for_entry`, the one reader `nros::main!` asks.
     out.push_str("[package.metadata.nros.entry]\n\n");
 
+    // The Zephyr RMW feature (phase-470 W5.a). ONE row and it is the DEFAULT,
+    // because a generated application serves one image and the image declares
+    // its `rmw`. The hand-written entries carry three rows and let Kconfig
+    // choose between them through `EXTRA_CARGO_ARGS`, which is the shape a
+    // single package serving every backend needs; per-image, the choice is
+    // already made one level up.
+    //
+    // It is not decoration: `nros::main!`'s Zephyr arm gates
+    // `::<backend>::register()` on exactly this feature, and nothing else
+    // registers a backend on `target_os = "none"` (issue #129). See
+    // `builder::west_app`.
+    if let Some((feature, krate)) = spec.west.as_ref().and_then(|w| w.rmw_feature.as_ref()) {
+        out.push_str("[features]\n");
+        out.push_str(&format!("default = [\"{feature}\"]\n"));
+        out.push_str(&format!("{feature} = [\"dep:{krate}\"]\n\n"));
+    }
+
     out.push_str("[dependencies]\n");
 
     // The selection facade carries the RMW, edition and capability features so
@@ -369,6 +395,38 @@ pub fn render_manifest(
         out.push_str(&format!(
             "{name} = {{ path = \"{rel}\", default-features = false }}\n"
         ));
+    }
+
+    // ---- the west application's manifest half (phase-470 W5.a) -------------
+    //
+    // Everything below is here because the Zephyr road has no `--config` seam:
+    // `rust_cargo_application()` composes the cargo command line and we never
+    // see it, so four facts every other image carries in `nros-cargo.toml`
+    // reach cargo through this file instead (`builder::west_app`).
+    if let Some(west) = &spec.west {
+        for dep in &west.deps {
+            out.push_str(dep);
+            out.push('\n');
+        }
+        if !west.build_deps.is_empty() {
+            out.push_str("\n[build-dependencies]\n");
+            for dep in &west.build_deps {
+                out.push_str(dep);
+                out.push('\n');
+            }
+        }
+        // The profile all seven hand-written Zephyr entries carry. A west
+        // build is `--release` unless `CONFIG_DEBUG`, and an unsized
+        // `opt-level = 3` staticlib is what overflowed the first embedded
+        // images this shape was written for.
+        out.push_str("\n[profile.release]\nopt-level = \"s\"\nlto = true\ndebug = false\n");
+        if !west.patches.is_empty() {
+            out.push_str("\n[patch.crates-io]\n");
+            for row in &west.patches {
+                out.push_str(row);
+                out.push('\n');
+            }
+        }
     }
     Ok(out)
 }
@@ -508,6 +566,7 @@ mod tests {
             nano_ros_root: PathBuf::from("/nros"),
             facade_dir: Some(PathBuf::from("/ws/build/nros/nros-selection/native_entry")),
             bringup_deps: Vec::new(),
+            west: None,
         }
     }
 

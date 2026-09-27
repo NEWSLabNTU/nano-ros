@@ -369,3 +369,239 @@ Measured on branch point `fix(ci): verify-fvp-runtime is not a named platform
 lane — FVP is license-gated`, 2026-09-27. `realtime-cpp/src/demo_bringup/system.toml`
 was being edited concurrently by another session; its `[image.fvp]` and
 `[image.zephyr]` rows are quoted as they stood at that branch point.
+
+---
+
+## 2026-09-28 — W5.a: the generator exists, and ONE image is migrated and BUILDS
+
+phase-470 W5.a. Scope was deliberately "the generator plus one migrated image
+that actually builds", not the sweep. **14 packages and 15 rows remain; that is
+W5.b.** This issue stays OPEN.
+
+### What was built
+
+**`packages/cli/nros-cli-core/src/builder/west_app.rs`** (new) — the west
+application shell, emitted beside the entry package `builder::entry` already
+generated:
+
+| file | content |
+| --- | --- |
+| `CMakeLists.txt` | `cmake_minimum_required` + `find_package(Zephyr)` + `project(<derived>)` + `rust_cargo_application()`. Four lines. It names **no board and no `prj.conf`** — those are `[image.<id>] board` and the bringup's, passed as `-b` / `-DAPPLICATION_CONFIG_DIR` / `-DEXTRA_CONF_FILE`. |
+| `build.rs` | the byte-identical `export_kconfig_bool_options()` + `bake_nros_config()` pair all seven hand-written Rust entries carry. |
+
+**The application directory IS the entry directory, and that is not a choice.**
+`rust_cargo_application()` runs its cargo command with `WORKING_DIRECTORY
+${CMAKE_CURRENT_SOURCE_DIR}` and passes no `--manifest-path`, so the manifest
+cargo builds is whatever sits beside the `CMakeLists.txt` west was pointed at.
+Both land in `build/<coord>/<id>_entry/`.
+
+**`builder::entry` grew a `west: Option<WestApp>` field**, because Zephyr is the
+one driver that hands cargo **no settings file** — the command line belongs to
+zephyr-lang-rust and we never see it, so four facts that every other image
+carries in `nros-cargo.toml` (RFC-0098 D1) have to reach cargo through the
+MANIFEST instead: the `zephyr`/`zephyr-build` pair, `nros-zephyr-build`, the
+RMW feature + backend dep, and `[patch.crates-io]`.
+
+**The RMW feature is the part that would have shipped broken and silent.**
+`nros::main!`'s Zephyr arm emits `#[cfg(feature = "rmw-zenoh")] { let _ =
+::nros_rmw_zenoh::register(); }`, and on `target_os = "none"` nothing else
+registers a backend (issue #129). The selection facade cannot supply it — a
+`#[cfg(feature = ...)]` is evaluated on the entry crate and `::nros_rmw_zenoh::`
+has to be a name in the entry crate's scope. Without both, the image compiles
+cleanly and fails at run time with `Transport(ConnectionFailed)`. Which crate
+that is comes from `[rmw.link] rlib_dep` in the backend's own `nros-rmw.toml` —
+the table that already answers "is this backend a Rust crate?", and which says
+`""` for cyclonedds and uorb (C/C++ libraries the Zephyr C port links, where the
+macro's `#[cfg]` is then correctly OFF rather than missing).
+
+**The `zephyr` board descriptor gained `[board.entry]`** — `crate_root_extra =
+"extern crate zephyr;"` plus `crate_root_deps = ["zephyr", "log"]`. `log` is in
+that list although no line of `crate_root_extra` names it, and that was MEASURED
+rather than reasoned: the first generated entry failed with
+`error[E0433]: cannot find 'log' in the crate root` pointing at the
+`nros::main!` invocation, because the macro's Zephyr arm emits `::log::error!` /
+`::log::info!` at five call sites. All seven hand-written Zephyr entries carry
+`log = "0.4"` and none of them uses `log` in its own source.
+
+### A live defect found on the way: `-b zephyr`
+
+`west_build_board` fell through to the AUTHORED board string, which is right
+only for an image that spells a Zephyr board — the thing `ImageBlock::board`
+says never to author. **21 in-tree images author `board = "zephyr"`** (16 single
+leaves under `examples/zephyr/`, plus `safety`, `features` x3 and
+`realtime-rust`), and every one of them emitted `west build -b zephyr`, a board
+Zephyr does not have. Measured with `--dry-run` before the fix, and again after.
+
+Fixed at the DESCRIPTOR, not at 21 image rows: `[board.zephyr] west_board =
+"native_sim/native/64"` on `packages/boards/zephyr/nros-board.toml`. Both of
+that descriptor's `names` are the same board, so both must reach the same `-b`,
+and the value is identical to what an image authoring the Zephyr id already got
+— so no image that was already right changed. This is issue 1517's class one
+door over, and `west_build_board`'s own doc-comment had called the second
+`names` entry "smuggling" for exactly this reason.
+
+The same `west_build_board` result is now what `builder::zephyr::resolve_in`
+gets for the `<bringup>/boards/<board>/` directory, so `board = "zephyr"` and
+`board = "native_sim/native/64"` reach the same Kconfig directory instead of two.
+
+### The migrated image, and why that one
+
+**`examples/workspaces/rust` `[image.zephyr]`.** The brief steered toward
+`realtime-rust` (one Zephyr image in the workspace); measurement says otherwise
+and this section states the disagreement:
+
+- `realtime-rust`'s entry is the ONE of seven that names board-crate features —
+  `nros-board-zephyr = { features = ["tiers", "zephyr-edf"] }`. Nothing derives
+  those: `[board.*] board_features` is authored by no in-tree descriptor, and
+  the facade omits the board dep entirely when it has no features to carry
+  (`nros-board-zephyr` declares no `default`). So that image is blocked by a
+  second undeclared fact, in the same class as `safety-e2e` below and NOT
+  mentioned in the W5 brief.
+- `rust`'s `[image.zephyr]` already authored the right board, its entry names
+  `nros-board-zephyr` with no features (6 of 7 do), and its node set is the
+  plainest (talker + listener).
+- Its sibling `[image.zephyr_robot1]` is an ASSET, not a cost: it keeps
+  `entry = "zephyr_entry_robot1"`, a package whose name is **not** `<id>_entry`,
+  so the locate path and the generate path are exercised side by side in one
+  workspace. That is the strongest available acceptance for "do not break
+  `entry =`".
+
+Its three-RMW `if(CONFIG_NROS_RMW_*)` ladder is not a loss: that shape exists
+because one package served every backend and Kconfig was the only thing that
+could choose. Per IMAGE the choice is already made, so the generated manifest
+carries exactly one `[features] default`, and no `EXTRA_CARGO_ARGS` at all. Its
+cyclonedds arm additionally called `nros_rmw_cyclonedds_generate_from_msg()` —
+**W5.b inherits that**: a Zephyr cyclonedds image needs the generator to emit
+that block, and no image in this workspace declares cyclonedds today.
+
+### Where the Kconfig went
+
+`src/zephyr_entry/{prj.conf,prj-zenoh.conf,prj-xrce.conf,prj-cyclonedds.conf}`
+and `boards/native_sim_native_64.conf` moved verbatim to
+
+```
+src/demo_bringup/boards/native_sim_native_64/
+  prj.conf  prj-zenoh.conf  prj-xrce.conf  prj-cyclonedds.conf
+  boards/native_sim_native_64.conf
+```
+
+which is D4's destination and the rung `resolve_in` searches FIRST — the one
+that `git ls-files 'examples/**/*_bringup/boards/*'` reported empty. The nested
+`boards/` is Zephyr's own layout, not ours: once that directory is
+`APPLICATION_CONFIG_DIR`, `configuration_files.cmake` discovers `prj.conf` there
+and qualifies `<dir>/boards/<board>.conf` beneath it.
+
+`zephyr_entry_robot1` now resolves its `conf` at rung 1 too, and its
+`APPLICATION_CONFIG_DIR` is the shared directory. Safe because the two entries'
+`prj.conf`, `prj-zenoh.conf` and `boards/*.conf` were **byte-identical** —
+verified with `diff` before the move, and its built `.config` is byte-identical
+to the migrated image's afterwards.
+
+### ACCEPTANCE — it is a build, and it also RAN
+
+```
+$ nros build zephyr --workspace examples/workspaces/rust -- -d <dir>
+nros build:   west application -> .../examples/workspaces/rust/build/zephyr-zenoh/zephyr_entry
+nros build: demo_bringup:zephyr -> board native_sim/native/64 (platform zephyr), driver west
+... [13/14] Running utility command for native_runner_executable
+rc=0
+```
+
+- **The merged Kconfig is byte-identical** to the hand-written application's:
+  `diff <baseline>/zephyr/.config <generated>/zephyr/.config` -> empty, over 2028
+  lines. The baseline was built in this same worktree from the hand-written
+  package before deleting it.
+- **It runs.** Against an `rmw_zenohd` on `tcp/127.0.0.1:7433`:
+  `nros: zephyr workspace entry up (2 nodes)` followed by
+  `talker_pkg: talker publishing chatter seq=0..16`. That is the proof the
+  backend `register()` reached the image — a missing feature would have been a
+  clean compile and `Transport(ConnectionFailed)`.
+- **`[image.zephyr_robot1]` still builds through the locate path**, `rc=0`, and
+  its `.config` matches too.
+- **The real fixture lane builds it too**, not just a hand-run `nros build`:
+  `NROS_ZEPHYR_FIXTURE_FILTER=build-ws-rs-entry-zenoh just zephyr build-fixtures`
+  -> `rc=0`, `zephyr-workspace/build-ws-rs-entry-zenoh/zephyr/zephyr.exe`
+  produced, and `check-tier-priority-plan-image` judged the image it built
+  (`transport [4, 4], pool [5, 14] — 8 pin(s)`). Its `.config` differs from the
+  hand-written baseline's in exactly two lines: the row's own locator slot, and
+  the spelling of the module path (`-DZEPHYR_EXTRA_MODULES` names the checkout
+  directly where the west manifest names it through the `nano-ros` symlink) —
+  the same tree either way, and no Kconfig VALUE differs.
+- `just check fast`: 363 gates green.
+
+Built in an agent worktree whose `zephyr-workspace/` is a `cp -al` of the main
+checkout's non-`build-*` directories with `nano-ros` re-pointed at THIS
+worktree, which is the documented way around issue 1253 (never a symlinked
+`zephyr/`: Zephyr resolves the west topdir from `ZEPHYR_BASE`'s real path).
+
+### What W5.b inherits
+
+1. **The remaining 14 packages / 15 rows.** All eight C/C++ shapes are
+   untouched — `LANG c`, `PANIC platform`, `mixed`'s `NROS_WS_RUST_NODE_DIRS` +
+   `nano_ros_workspace_pkg_guard` stub, `realtime-c`'s `if(CONFIG_SMP)` bringup
+   switch, `fvp_entry`'s `nano_ros_use_board` + `EXTRA_CONF_FILE`. `west_app.rs`
+   is designed with them in view (the `WestApp` struct is manifest LINES plus a
+   project name, so a C/C++ arm adds fields rather than a second emitter) and
+   implements none of them.
+2. **`just/zephyr-ci.just` still has FIVE guards keyed on an entry PACKAGE**
+   (`features` x3, `safety`, `realtime-rust`). Two were corrected here and one
+   of them was load-bearing in a way worth repeating: `if [ -d
+   examples/workspaces/rust/src/zephyr_entry ]` decided
+   `--include-workspace-entry` for **every** workspace-entry leaf in the zephyr
+   lane, so deleting one migrated package would have dropped six leaves from the
+   sweep with no message at all. Re-point each guard at the WORKSPACE before
+   deleting its package.
+3. **A migrated fixture row must drop `conf_files`.** It reaches west as
+   `-DCONF_FILE=...`, which is a second spelling of `[image.<id>] conf` AND
+   suppresses `APPLICATION_CONFIG_DIR` discovery outright; its relative names
+   also resolve against `APPLICATION_SOURCE_DIR` (measured in
+   `zephyr/cmake/modules/kconfig.cmake`: `WORKING_DIRECTORY
+   ${APPLICATION_SOURCE_DIR}`), which a generated application does not hold.
+4. **An existing test asserted the OLD `-b` behaviour and caught this**, which
+   is worth knowing before W5.b moves another descriptor:
+   `board_key_table.rs::a_zephyr_boards_west_b_comes_from_its_descriptor`
+   floored its FALL-BACK arm at two names, and the `zephyr` descriptor was the
+   only subject that arm had. Giving it a `west_board` emptied the arm rather
+   than breaking the rule, so the arm moved to a synthetic out-of-tree
+   descriptor (which needs a `package.xml` announcing the board — the loader
+   refuses an unannounced descriptor by design) and the in-tree half now
+   asserts `fell_back == 0` with a message saying what to do if that stops
+   being true.
+5. **`fixtures-manifest.py` now has ONE predicate for this**,
+   `zephyr_application_is_generated`, read by both the validator and the
+   `west-leaves` emitter. It mirrors `cmd::build`'s discriminator in the same
+   order: `[image.<id>] entry` wins, else a `src/<id>_entry` carrying a build
+   file suppresses generation, else generated. A generated row's existence
+   contract MOVED rather than vanished — `_validate_generated_zephyr_application`
+   requires `<bringup>/boards/<board>/prj.conf` and every fragment the image's
+   `conf` names.
+6. **Two genuinely undeclared facts**, both "a per-dep cargo feature the entry
+   names", both blocking one workspace each:
+   - `safety`: `rust_safety_listener_pkg = { ..., features = ["safety-e2e"] }` —
+     a per-NODE feature no `[[component]]` row expresses.
+   - `realtime-rust`: `nros-board-zephyr = { features = ["tiers", "zephyr-edf"] }`
+     — a per-BOARD-CRATE feature no image row expresses.
+
+   Options, decided by neither W5.a nor this issue:
+   **(a)** `[[component]] features = [...]` for the node case and
+   `[image.<id>] board_features = [...]` for the board case — two new
+   declarations, each honest about what it is about;
+   **(b)** DERIVE the board one — `tiers` is implied by the bringup declaring
+   `[tiers.*]` and `zephyr-edf` by a `[tiers.*.zephyr] deadline`, which is a real
+   derivation and not a guess, leaving only the node-feature case to declare;
+   **(c)** those two workspaces keep a hand-written entry with the reason
+   recorded, and 1288 closes at 13 of 15.
+   (b) plus (a-for-nodes) is the shape that closes the issue completely; (b)
+   alone halves the remaining problem and needs no new schema.
+7. **A doc-comment sweep.** `west_application_dir`'s header still describes
+   itself as the only way an application is found; it is now the fallback.
+8. **An inherited property, stated so nobody reports it as a W5.a regression.**
+   `nros sync` builds its facade candidate list from the ament scan plus
+   `cargo_workspace_members(ws_root)`, and since RFC-0098 D9 there is no
+   workspace root — so a GENERATED entry under `build/` is invisible to sync on
+   every platform, and its facade is maintained by `generate_entry`'s heal,
+   which fires only when the facade is MISSING. Migrating an image moves it from
+   "sync maintains the facade" into that established class; it does not create
+   the class. A `[system] ros_edition` change would therefore leave a generated
+   entry's facade stale until it is deleted, for `native_entry` exactly as for
+   `zephyr_entry`. Worth fixing once, for all roads, not inside 1288.

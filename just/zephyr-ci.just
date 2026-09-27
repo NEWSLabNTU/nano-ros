@@ -314,7 +314,11 @@ build-fixtures:
     # `nros sync` is the platform-agnostic codegen step; `codegen-system`
     # materializes the demo_bringup glue. The west build of the Entry leaf
     # (emitted below via --include-workspace-entry) consumes these.
-    if [ -d examples/workspaces/rust/src/zephyr_entry ]; then
+    # phase-470 W5.a (issue 1288) — guarded on the WORKSPACE, not on the entry
+    # package. `examples/workspaces/rust`'s `[image.zephyr]` application is
+    # GENERATED now, so `src/zephyr_entry` is gone and a guard naming it would
+    # silently stop preparing a workspace that still has two Zephyr images.
+    if [ -d examples/workspaces/rust ]; then
         echo "  → workspace-entry prep (nros sync + codegen-system)"
         ( cd examples/workspaces/rust
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null
@@ -365,7 +369,12 @@ build-fixtures:
         --sccache-disable "$sccache_disable"
         --pristine "$pristine"
     )
-    if [ -d examples/workspaces/rust/src/zephyr_entry ]; then
+    # Same correction, and this one was the expensive half: a guard on
+    # `src/zephyr_entry` decides `--include-workspace-entry` for EVERY
+    # workspace-entry leaf in the lane — realtime-rust, features x3, safety,
+    # robot1 — so deleting one migrated package would have dropped six leaves
+    # from the sweep with no message.
+    if [ -d examples/workspaces/rust ]; then
         zephyr_leaf_args+=(--include-workspace-entry)
     fi
     if [ -n "$fixture_filter" ]; then

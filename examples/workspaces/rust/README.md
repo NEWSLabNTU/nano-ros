@@ -9,9 +9,17 @@ rust/
 └── src/
     ├── talker_pkg/       # Node pkg: publishes std_msgs/Int32 on /chatter
     ├── listener_pkg/     # Node pkg: subscribes std_msgs/Int32 on /chatter
-    ├── demo_bringup/     # Bringup pkg: package.xml + system.toml + launch/
-    └── zephyr_entry/     # the ONE entry pkg — west needs a real app dir
+    ├── demo_bringup/     # Bringup pkg: package.xml + system.toml + launch/,
+    │   └── boards/       #   plus the per-board Kconfig each Zephyr image names
+    └── zephyr_entry_robot1/   # the last hand-written west app (issue 1288)
 ```
+
+Every `[image.*]` here is generated except `zephyr_robot1`. `[image.zephyr]`'s
+west application — `CMakeLists.txt`, `build.rs`, the staticlib manifest and
+`src/lib.rs` — is emitted by `nros build` into `build/zephyr-zenoh/zephyr_entry/`
+(phase-470 W5.a); its Kconfig is authored once, in
+`src/demo_bringup/boards/native_sim_native_64/`, which is what `nros build`
+passes as `APPLICATION_CONFIG_DIR`.
 
 The Node packages use generated `std_msgs::msg::Int32` directly.
 

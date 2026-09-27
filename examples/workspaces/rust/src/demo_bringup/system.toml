@@ -164,17 +164,29 @@ panic = "platform"
 [image.threadx]
 board = "threadx-linux"
 
-# The two Zephyr entries stay hand-written west applications (their Kconfig
-# overlays are not derivable, RFC-0065 D5), but their deployment is the
-# image's: `nros::main!` finds the image that names the entry
-# (`leaf_system::for_entry`, phase-445 W5). The locators were the entries'
-# `[package.metadata.nros.deploy.zephyr]` tables.
+# phase-470 W5.a (issue 1288) — MIGRATED. `src/zephyr_entry` is gone; `nros
+# build zephyr` generates the whole west application (`CMakeLists.txt`,
+# `build.rs`, the staticlib manifest and `src/lib.rs`) under
+# `build/zephyr-zenoh/zephyr_entry/`. This row is now the only place the image
+# is described, which is why it names no `entry`: the application is found by
+# CONSTRUCTION — the builder emits it, so it knows where it is — and the
+# `DEPLOY`-token scan that used to need `entry =` is not consulted.
+#
+# Its Kconfig moved WITH it, to `<bringup>/boards/native_sim_native_64/`
+# (RFC-0065 D4). That directory is `-DAPPLICATION_CONFIG_DIR`, so Zephyr takes
+# `prj.conf` and `boards/native_sim_native_64.conf` from there by its own
+# discovery, and `conf` below adds the RMW fragment through EXTRA_CONF_FILE.
+# `prj-xrce.conf` / `prj-cyclonedds.conf` moved too and are inert until an
+# image names one — a fragment is only applied when `conf` lists it.
 [image.zephyr]
 board = "native_sim/native/64"
-entry = "zephyr_entry"
 conf = ["prj-zenoh.conf"]
 locator = "tcp/10.0.2.2:7430"
 
+# NOT migrated (W5.b). It keeps its hand-written application, and `entry =` is
+# what points west at it — deliberately still exercised beside the generated
+# one above, because `entry` names a package whose name is NOT `<id>_entry` and
+# that is the case the locate path has to keep answering.
 [image.zephyr_robot1]
 board = "native_sim/native/64"
 entry = "zephyr_entry_robot1"

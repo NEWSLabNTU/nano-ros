@@ -129,9 +129,16 @@ fn collect_overlays(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
 fn zephyr_prjconf_meets_backend_requirements() {
     let root = nros_tests::project_root();
     let mut overlays = Vec::new();
+    // phase-470 W5.a (issue 1288) — the workspace overlays MOVED; they did not
+    // go away. `examples/workspaces/rust`'s application is generated now, so its
+    // `prj-<rmw>.conf` set lives in the bringup's board dir (RFC-0065 D4).
+    // Following the move keeps this gate's reach exactly what it was: a path
+    // left naming the old directory would collect nothing there, the overall
+    // `!overlays.is_empty()` assert would still pass on `examples/zephyr` alone,
+    // and the coverage would be gone with no red — issue 0196's shape.
     for base in [
         "examples/zephyr",
-        "examples/workspaces/rust/src/zephyr_entry",
+        "examples/workspaces/rust/src/demo_bringup/boards",
     ] {
         collect_overlays(&root.join(base), &mut overlays);
     }

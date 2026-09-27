@@ -22,18 +22,25 @@ not of a directory**:
 | **1z** | a **hand-written** `src/*_entry` package ([RFC-0085](../../docs/design/0085-zephyr-workspace-and-west-handoff.md) D4 — a Zephyr image NAMES its entry) | the row carries `entry = "<pkg>"`, or the derived spelling lands on a package that exists; every one of them calls `find_package(Zephyr)` |
 | **1b** | none — no bringup at all | `.colcon_workspace` with no `*_bringup`; `nros build` builds every package in dependency order, colcon's default. Both members live in `examples/templates/`, not here |
 
-So `rust/` is not "a class": it declares 17 `[image.*]` rows, 15 of them class 1
-and two — `zephyr`, `zephyr_robot1` — class 1z.
+So `rust/` is not "a class": it declares 17 `[image.*]` rows, 16 of them class 1
+and one — `zephyr_robot1` — class 1z. `[image.zephyr]` was the seventeenth until
+phase-470 W5.a taught `nros build` to generate a west application; it is class 1
+now, and it is the first Zephyr row that is.
 
 **1z is the only hand-written entry shape left, and it is Zephyr by
-construction**, not by coincidence: the entry itself is derivable, but the west
-application around it is not generated yet
+construction**, not by coincidence: the entry itself is derivable, and until
+phase-470 W5.a the west application around it was not
 ([issue 1288](../../docs/issues/1288-zephyr-rust-workspace-entries-not-generated.md)).
 Measured 2026-09-27: **15** entry packages serving **16** Zephyr image rows
 across 10 workspaces — 7 Rust, 8 C/C++, all 15 calling `find_package(Zephyr)`,
 `fvp_entry` included. `realtime-c`'s single `zephyr_entry` serves the
 `[image.zephyr]` row of both `demo_bringup` and `smp_bringup`, which is why the
 two counts differ by one.
+
+W5.a landed the generator and migrated ONE of them — `rust`'s `[image.zephyr]`,
+whose package is deleted — so the live count is **14 packages / 15 rows**, and
+W5.b is the remaining 14. Recount with the commands below rather than reading a
+number here.
 
 This is **not** a class called "hand-written entries". A shape that exists only
 because a generator is missing must not get a name that makes it look
