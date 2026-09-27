@@ -63,6 +63,18 @@ default: tier1
 gate:
     #!/usr/bin/env bash
     set -uo pipefail
+    # Issue 1513 — report every unmet provisioning precondition BEFORE the lane,
+    # not one per run. In the recipe body rather than in `steps` on purpose: a
+    # non-`check::` step must be reached by a workflow `run:` block
+    # (`check-default-gates-run-somewhere`, issue 1226), and no workflow should
+    # run a provisioning preflight — CI provisions explicitly and is not a
+    # worktree. Same position `check tier-preconditions` takes at the head of
+    # `just ci`, and it fails where that one reports, because every item here is
+    # one this lane needs.
+    if ! just _require-worktree-provisioning; then
+        echo "ci gate: NOT RUN — provisioning first (issue 1513)." >&2
+        exit 1
+    fi
     steps=(check::cli-fresh check::launch-resolve-fresh check::fast check::build check::api-parity test-unit test-lane-contracts)
     declare -a verdict=()
     failed_at=-1
