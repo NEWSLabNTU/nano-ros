@@ -70,8 +70,9 @@ phase 78:
 - `docs/design/0079-priority-is-allocated-not-authored.md`:
   `phase-459-W4` only.
 
-Owns [issue 1426](../issues/1426-cmake-callback-groups-never-reach-codegen-system-and-the-entry-never-derives.md)
-and [issue 1427](../issues/archived/1427-realizer-allocates-rank-zero-above-the-transport-band.md).
+Owns [issue 1426](../issues/archived/1426-cmake-callback-groups-never-reach-codegen-system-and-the-entry-never-derives.md)
+and [issue 1427](../issues/archived/1427-realizer-allocates-rank-zero-above-the-transport-band.md),
+both resolved and archived.
 Closes the reachability half of
 [issue 1371](../issues/1371-tier-derivation-silent-on-empty-callback-groups.md)
 (the silence half stays 1371's) and takes item 2 of
