@@ -1,8 +1,10 @@
 # Phase 470 — example layout unification
 
-**Status (2026-09-27). W1–W4 LANDED; W5–W7 open.** W5 is unblocked: W2 answered
-the board question it waited on, and answered it differently than either this
-phase or issue 1517 predicted (see W2). Gives `examples/` a named,
+**Status (2026-09-27). W1–W4 and W6 LANDED; W5 and W7 open.** W5 is unblocked:
+W2 answered the board question it waited on, and answered it differently than
+either this phase or issue 1517 predicted (see W2). W6 shipped a bare-metal C
+leaf that builds and boots, and in doing so falsified this phase's own
+link-ownership rule (see below). Gives `examples/` a named,
 measured taxonomy; collapses the shapes that differ for no reason; and documents
 the ones that differ for a reason. Implements no new RFC — it finishes
 [RFC-0026](../design/0026-example-directory-layout.md) (standalone copy-out leaves)
@@ -33,13 +35,22 @@ and state which tree a finding came from.
 An example's layout is decided by two questions, and only the second has ever
 been written down.
 
-**Who owns the link?** For C and C++ the answer is always cmake, because cmake
-is the only C build. For Rust it varies by platform, and that variation is the
-whole of what looked like "the Zephyr layout":
+**Who owns the link?** **The link belongs to whoever owns the STARTUP** — which
+is not the same as "whoever owns the language", and an earlier draft of this
+section said it was ("for C and C++ the answer is always cmake, because cmake is
+the only C build"). W6 falsified that by building a **cargo-rooted C leaf**:
+`examples/mps2-an385-baremetal/c/talker` has `src/main.rs` boot and call
+`app_main()`, with `build.rs` compiling `src/talker.c`, because on that platform
+the startup is `cortex-m-rt`'s and the board's `memory.x` — so cargo owns the
+link even though the application is C. It builds cold in 23 s and boots under
+QEMU.
 
-| | Rust leaf files | platforms |
+So the axis is startup ownership, and for Rust leaves it varies by platform,
+which is the whole of what looked like "the Zephyr layout":
+
+| | leaf files | platforms |
 | --- | --- | --- |
-| cargo owns the link | `Cargo.toml`, `src/{lib,main}.rs` | native, mps2-an385-{baremetal,freertos}, esp32-c3-baremetal, qemu-armv7a-nuttx, threadx-linux |
+| cargo owns the link | `Cargo.toml`, `src/{lib,main}.rs` (+ a `build.rs`-compiled `.c` where the application is C) | native, mps2-an385-{baremetal,freertos}, esp32-c3-baremetal, qemu-armv7a-nuttx, threadx-linux |
 | cmake owns the link | `CMakeLists.txt`, `src/{lib,app_main}.rs`; cargo emits a staticlib whose exported entry symbol cmake calls | `zephyr/rust/*`, `rv-virt-threadx/rust/*` |
 
 **The two cmake-owned families do NOT share the exported symbol, and reading one
@@ -105,6 +116,17 @@ part of the deliverable:
   is complete, and the board cmake module's own header says it survives as the
   C/C++ seam — with zero live consumers. The C road was built and never driven.
   3r is feature wiring, and it dissolves into class 3.
+
+  **W6 qualified this, and the qualification is the interesting part.** "Feature
+  wiring, not a platform port" is exactly right for the RUST half — both
+  staticlibs now link for `thumbv7m` with no source change. It is NOT right for a
+  **C-ROOTED** image: `packages/platform/nros-platform-mps2-an385/` holds zero
+  `.c` files where every RTOS port holds a `platform.c`, its `nros_platform_*`
+  come from `nros_platform_export!` in Rust, and the board overlay's link line
+  passes a `MEMORY{}`-only fragment with no `SECTIONS` and no `ENTRY` — the
+  `memory.x` `cortex-m-rt`'s `link.x` includes. So the leaf that proves the class
+  dissolved is cargo-rooted, and the C-rooted cmake road remains unbuilt
+  (recorded as residue on issue 1512, which stays open).
 
 ## Work items
 
@@ -353,6 +375,48 @@ not need doing.
 **Acceptance:** a C or C++ leaf builds under `examples/mps2-an385-baremetal/`;
 one spelling of the platform; `examples/README.md`'s gaps row true.
 
+**DONE (2026-09-27).** `examples/mps2-an385-baremetal/c/talker` builds (cold, 23 s,
+no warnings) and **boots** under QEMU through LAN9118 bring-up to a zenoh session
+attempt. Three answers, each decided by measurement rather than by preference:
+
+- **Feature shape (a), one arm per board.** Shape (b) — omit the platform line and
+  defer to the board crate — was tried and does **not compile**
+  (`unresolved import crate::ConcretePlatform`). The reason the Rust road gets
+  away with it is feature unification inside ONE cargo graph: an image's entry, its
+  board crate and `nros-platform` are one resolve. `nros-c` has no such graph —
+  Corrosion imports its manifest as its own cargo ROOT, and `nros-c` depending on
+  a board is the inversion RFC-0064 forbids. **The two roads differ because their
+  LINK ROOTS differ, not because one is wrong**, and that reason is written into
+  the manifest.
+- **One spelling by a namespace BOUNDARY, not a rename.** Measured first: 1759
+  occurrences of `baremetal`, 2242 of `bare-metal`, so a rename is ~4000 sites —
+  and `baremetal` is load-bearing as RFC-0093 R2's stack suffix in every board
+  name. `cmake_deploy()` already translates two other pairs of this kind, so the
+  boundary goes there and accepts both. The real defect was that the ladder
+  recognised **neither**, falling into `elseif(_cross)` and asking cargo for
+  `platform-baremetal`, a feature no crate has.
+- **`heap = true`.** It was the only board of fifteen saying `false`, over a
+  128 KB arena with the global allocator on. The subset alternative stays
+  available **at the IMAGE**, which is where it belongs — an image declining a
+  capability is not the board lacking one.
+
+**And the issue's consequence was wrong in a way that mattered.** 1512 said
+`heap = false` makes the 0038 guard reject an `nros-cpp` heap TU. It would have —
+and it did not, because a second declared fact was also missing: nothing defined
+`NROS_PLATFORM_BAREMETAL`, so `<nros/platform.h>` took its HOSTED arm and defined
+`NROS_PLATFORM_HAS_MALLOC` anyway, for the one platform the macro exists to name.
+**Two wrong facts that cancelled**, so fixing the board row alone would have
+CREATED the failure. Both moved together, in that order.
+
+Gate: `check-baremetal-platform-arms` (fast line), its feature set derived from
+`nros-platform`'s manifest rather than authored. Issue 1512 stays **open** with
+residue recorded: no `[[fixture]]` row (this would be the tree's first
+`lang = "c"` row wanting `builder = "cargo"`, and the build script still selects
+the lane by a `case "$lang"` proxy), `cpp/` and five more roles, and the C-rooted
+cmake road. One new limitation found by writing the leaf: the `NROS_LOG_*` printf
+macros do not substitute on bare metal — `nros-baremetal-common`'s `vsnprintf`
+copies the format verbatim, deliberately — so `"n=%d"` prints literally.
+
 ### W7 — the node-package invariance gate
 
 Issue 1509, filed and deferred. A node package documents what it DOES, not which
@@ -371,8 +435,8 @@ generated, because then there is exactly one place a platform may be named.
 ## Order
 
 W1, W3, W4 are independent and have LANDED. W2 preceded W5 and has landed, so
-W5 is open and ready. W6 is independent of all of them. W7 lands last — after W5
-its rule has one home.
+W5 is open and ready. W6 was independent of all of them and has LANDED. W7 lands
+last — after W5 its rule has one home.
 
 ## What this phase does not do
 
