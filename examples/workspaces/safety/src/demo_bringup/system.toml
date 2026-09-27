@@ -1,12 +1,21 @@
 # Phase 269 W3 — E2E-safety C workspace.
 #
 # `[system].features = ["safety"]` is the declarative axis (NanoRosCapabilities.cmake:64):
-# it lowers to `NANO_ROS_SAFETY_E2E=ON` in the CMake build.
-# - The C talker component attaches a CRC on every /chatter publish (automatic when
-#   compiled with `safety-e2e`).
-# - The C listener component registers a validated subscription via
-#   `nros_cpp_subscription_register_validated` and republishes the running count of
-#   CRC-valid samples on `/safe_ok`.
+# it lowers to `NANO_ROS_SAFETY_E2E=ON` in the CMake build and to the `safety-e2e`
+# cargo feature for the Rust runtime. This line, not any node package, is what turns
+# message integrity on:
+# - Every talker component attaches a CRC-32 + sequence number on every /chatter
+#   publish. No talker source declares or implements this — it is automatic once the
+#   feature is compiled in, which is why the talkers here read as plain talkers.
+# - Every listener component registers a validated subscription (C/C++:
+#   `nros_cpp_subscription_register_validated`; Rust:
+#   `create_subscription_for_callback_name_with_safety`) and reads the per-sample
+#   verdict — CRC ok, sequence gap, or duplicate. The C listener republishes the
+#   running count of CRC-valid samples on `/safe_ok`.
+# - IMPLEMENTED BY THE ZENOH BACKEND ONLY, today. That is a property of which backends
+#   have the CRC path, NOT of the feature or of any node: `rmw = "zenoh"` below is what
+#   makes the declaration above have an effect. A node package stays agnostic; pointing
+#   another `rmw` at this bringup is what would change the answer. Protocol: RFC-0028.
 #
 # In-process delivery does not happen (same zenoh session; issue 0096), so the demo
 # is split into two entries: `native_safety_talker_entry` + `native_safety_listener_entry`.

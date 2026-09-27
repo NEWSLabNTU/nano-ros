@@ -2,12 +2,14 @@
 //!
 //! This pkg IS the safety-CRC listener, so `safety-e2e` is unconditional (see
 //! Cargo.toml — phase-277 W3.c). It declares a SAFETY subscription via
-//! `create_subscription_for_callback_name_with_safety`. When the system
-//! declares `[system].features = ["safety"]`, the zenoh backend attaches a
-//! CRC + sequence number on publish, the runtime validates it on receive, and the
-//! callback reads the per-message `CallbackCtx::integrity()` — CRC ok, sequence
-//! gap, or duplicate — alongside the payload. The first WORKSPACE example of the
-//! E2E-safety differentiator (phase-263 B1; the protocol itself is RFC-0028).
+//! `create_subscription_for_callback_name_with_safety`, and its callback reads
+//! the per-message `CallbackCtx::integrity()` — CRC ok, sequence gap, or
+//! duplicate — alongside the payload.
+//!
+//! What produces that verdict is not declared here: the bringup's
+//! `[system].features = ["safety"]` turns integrity on for the whole system,
+//! and the runtime validates each sample on receive. See
+//! `demo_bringup/system.toml`. The protocol itself is RFC-0028.
 
 #![no_std]
 

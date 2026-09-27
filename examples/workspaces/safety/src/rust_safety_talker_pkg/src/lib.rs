@@ -1,10 +1,11 @@
 //! Talker Node pkg — publishes `std_msgs/Int32` on `/chatter`.
 //!
-//! Board-agnostic Node pkg. The sibling Entry pkg (`native_entry`)
-//! wires it onto a board via `[package.metadata.nros.entry]` + the
+//! Board-agnostic Node pkg. An Entry pkg wires it onto a board via
+//! `[package.metadata.nros.entry]` + the
 //! `nros::main!(launch = "demo_bringup:...")` macro, which emits one
 //! `rust_safety_talker_pkg::register(runtime)?;` call per `<node>` entry in the
-//! launch file.
+//! launch file. Which boards this workspace builds for is declared in
+//! `demo_bringup/system.toml` (`[image.*]`), not here.
 //!
 //! `register()` declares the node + a 1 Hz publisher + timer; the
 //! `ExecutableNode::on_callback("on_tick")` body bumps a counter and

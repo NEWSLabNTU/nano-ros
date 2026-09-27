@@ -7,9 +7,11 @@
 
 namespace cpp_safety_talker_pkg {
 
-/// SafetyTalker — Phase 269 W3: counter publisher on /chatter.
-/// When built with NANO_ROS_SAFETY_E2E=ON the zenoh backend automatically
-/// attaches a CRC-32 + sequence number on every publish — no code change needed.
+/// SafetyTalker — counter publisher on /chatter (std_msgs/Int32).
+/// Message integrity is not declared here: the bringup's
+/// `[system].features = ["safety"]` turns it on for the whole system, and the
+/// runtime attaches the per-sample CRC on publish. See
+/// `demo_bringup/system.toml`.
 class SafetyTalker {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
     ::nros::Timer timer_;

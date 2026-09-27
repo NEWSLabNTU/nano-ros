@@ -3,12 +3,12 @@
 ///
 /// Publishes a monotonic counter on /chatter (std_msgs/Int32) every 1 s using
 /// the generated C serializer (std_msgs_msg_int32_serialize).
-/// When built with NANO_ROS_SAFETY_E2E=ON (lowered from
-/// `[system].features = ["safety"]` via NanoRosCapabilities.cmake), the
-/// zenoh backend automatically attaches a CRC-32 + sequence number on every
-/// publish — no code change required here. The paired C safe_listener
-/// (`c_safety_listener_pkg`) validates this CRC via
-/// `nros_cpp_subscription_register_validated`.
+///
+/// Nothing here declares or implements message integrity. The per-sample CRC
+/// that the paired listener (`c_safety_listener_pkg`) validates is attached by
+/// the runtime because the bringup declares `[system].features = ["safety"]` —
+/// see `demo_bringup/system.toml`, which is where that declaration and its
+/// consequences are documented.
 
 #include <stddef.h>
 #include <stdint.h>

@@ -56,8 +56,29 @@ NROS_REPO_DIR=/path/to/nano-ros nros sync
 # 2) Plain cargo build — no wrapper, no build.rs hack.
 cd src/rust_consumer
 cargo build
-./target/debug/rust_consumer          # publishes on /greetings via zenoh
+./target/debug/rust_consumer          # publishes on /greetings, /echoes, /points, /imu
 ```
+
+### Running it — which RMW, and whether you need a router
+
+**This template declares `rmw = "zenoh"`** in
+`src/rust_consumer/system.toml`. That one line, not anything in the node source,
+is what decides the transport — so read it before following the commands below,
+and re-read it if you change it.
+
+zenoh needs a router to be up first:
+
+```sh
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' \
+  ros2 run rmw_zenoh_cpp rmw_zenohd &
+./target/debug/rust_consumer
+```
+
+Change `rmw` in `system.toml` and the run step changes with it — **`cyclonedds`
+needs no router at all**, just `./target/debug/rust_consumer`. Note that
+`nros new --workspace` defaults to `--rmw cyclonedds`, so a workspace you
+scaffold yourself will *not* need the router line above; this template is the
+zenoh case.
 
 `nros sync` writes a delimited `[patch.crates-io]` block into the
 patch authority Cargo.toml (this fixture has `[workspace]` empty marker
