@@ -24,6 +24,12 @@ group_tiers = { ctrl = "high" }
 # mid -> low — so mid is spawned BY a spawned tier, which is the tier<->tier
 # declare race the chained-spawn fix closes. `realtime_tiers_e2e`'s
 # `freertos_cpp` cell asserts SerialTicks(ctrl, aux, telem) on exactly this.
+# issue 1509 — `group_tiers` below is the WHOLE binding, and it is declared only
+# here. aux_pkg's own comments used to restate it as a FreeRTOS task priority;
+# that restatement had already drifted — it said 3, which is the `high` tier's
+# number, not this node's. The node now names the tier and nothing else, which
+# is also what makes it true off FreeRTOS: the same `mid` lands on
+# `[tiers.mid.posix]` when this bringup is built for a posix image.
 [[component]]
 pkg = "aux_pkg"
 class = "aux_pkg::Aux"
@@ -88,6 +94,10 @@ spin_period = "50000us"
 [tiers.mid.posix]
 priority = 40
 [tiers.mid.freertos]
+# `[tiers.*.freertos]` flips the C++ codegen onto FreertosBoard::run_tiers
+# (RFC-0015 Model 1), one FreeRTOS task per tier — so the `priority` below is
+# what `aux_node` runs at on the mps2 image. Stated once, here (issue 1509):
+# read it, do not copy it into a node.
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
 # reserved transport band. A tier that outranks the link cannot be drained
 # or refilled by it (issue 0623, measured again in 0736); a tier that needs
