@@ -73,8 +73,8 @@ part of the deliverable:
 
 Issue 1518. RFC-0098 line 242 says "the eight Rust west entries"; there are
 seven, and there were seven when 1288 was filed. 1288's title has been corrected;
-the RFC citing it has not, so the wrong number has one live carrier and reads as
-corroboration. Also: `related: [1108]` resolves to nothing — 1108 is archived.
+the RFC citing it has not, so the wrong number reads as corroboration. Also:
+`related: [1108]` resolves to nothing — 1108 is archived.
 
 Do the sweep, not the site: look for other carriers of the count, and prefer
 dropping the number to correcting it. A sentence that says "the Rust west
@@ -82,6 +82,16 @@ entries" cannot drift.
 
 **Acceptance:** RFC-0098 right or silent on the count; 1288 reaches 1108; the
 sweep command recorded.
+
+**DONE (2026-09-27).** The number was DROPPED at every carrier, not corrected.
+The sweep found **five** live carriers, not the one this item assumed: RFC-0098
+line 242, three prose lines inside 1288 itself (the opening sentence, the
+acceptance and the fix — so the table 1288's own re-measurement credited as "the
+only thing that had counted" disagreed with the whole file, not just the title),
+`docs/issues/1511-*.md`, and `docs/roadmap/phase-445-*.md`. `related: [1108]`
+needed no change: the bare id IS the convention (86 open issues cite an archived
+id that way and `just issues --id 1108` resolves it), and 1288 already spells the
+archived path in prose. Recorded in `docs/issues/archived/1518-*.md`.
 
 ### W2 — `[image.fvp]` declares a board its application contradicts
 

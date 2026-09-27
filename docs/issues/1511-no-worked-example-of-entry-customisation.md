@@ -114,5 +114,5 @@ sentence can be true.
   section is also the argument a tutorial has to reproduce: the macro keeps the
   derivation live, so materialising freezes it.
 - `nros materialize` (RFC-0065 D5) — the escape hatch this issue is about.
-- Issue 1288 — the eight Rust Zephyr entries (fifteen packages in all) still
-  hand-written; the migration this defers behind.
+- Issue 1288 — the hand-written Zephyr west entries (fifteen packages, of which
+  seven are Rust) still hand-written; the migration this defers behind.

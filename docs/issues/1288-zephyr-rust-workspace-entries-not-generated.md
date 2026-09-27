@@ -14,7 +14,7 @@ related: [1108, 1253, 1509, 1511, rfc-0065, rfc-0098, phase-445]
 phase-445 W5 turned every hand-written CARGO workspace entry into a generated
 one (`examples/workspaces/rust/src/esp32_entry` was the last) and moved every
 workspace entry's deployment out of its manifest into the bringup image that
-claims it (`leaf_system::for_entry`). Eight entries are still hand-written
+claims it (`leaf_system::for_entry`). These entries are still hand-written
 packages, all Rust west applications:
 
 | workspace | entry | image |
@@ -56,7 +56,7 @@ that hosts it is not, and nothing yet splits the two.
 - **None of it was BUILT.** The west workspace's `nano-ros` module is a symlink
   to another checkout (issue 1253's shape), so a west build from the phase-445
   worktree compiles that checkout, not this one. The acceptance for this issue
-  is a west build of each of the eight.
+  is a west build of each of them.
 
 ## Fix
 
@@ -65,7 +65,7 @@ Generate the application too: move each entry's `prj*.conf` / `boards/` into
 application shell (`CMakeLists.txt` + `sample.yaml` + `build.rs`) around the
 generated staticlib entry under `build/<coord>/`, pointing `west build` there
 with `APPLICATION_CONFIG_DIR` at the bringup's board dir (`builder::zephyr`
-already resolves those overlays). Then delete the eight packages.
+already resolves those overlays). Then delete the hand-written packages.
 
 ---
 
@@ -99,16 +99,22 @@ Seven. The same query against the tree of the commit that FILED this issue
 since, and there is no eighth hiding in `examples/templates/` (the only
 template that is a west application, `zephyr-byo`, has no `src/` and is not a
 colcon workspace at all). **The issue's own table below the title already listed
-seven** (`rust` x2, `realtime-rust` x1, `features` x3, `safety` x1); only the
-title said eight. The one Rust entry that DID disappear that day is
+seven** (`rust` x2, `realtime-rust` x1, `features` x3, `safety` x1), and
+disagreed with every prose statement above and below it: the title, the opening
+sentence, the acceptance line and the fix all said eight, so the table was the
+only thing in the file that had counted. (Issue 1518 dropped the number from
+those three prose lines rather than correcting it; this section, which is ABOUT
+the number, keeps it.) The one Rust entry that DID disappear that day is
 `examples/workspaces/rust/src/esp32_entry`, deleted in phase-445 W5's own
 commit because it became generated — it was never a Zephyr west application, so
 it cannot have been the eighth either.
 
-The wrong number propagated: **RFC-0098's phase-445 W5 amendment also says "the
-eight Rust west entries"**, citing this issue. Not corrected here (this change
-is scoped to this file); a one-line follow-up should fix it, and until then the
-RFC is the second copy of a claim that was never measured.
+The wrong number propagated: **RFC-0098's phase-445 W5 amendment also said "the
+eight Rust west entries"**, citing this issue — the second copy of a claim that
+was never measured, reading as corroboration of the first. Filed as issue 1518
+and fixed there, along with two carriers neither file knew about
+(`docs/issues/1511-*.md` and `docs/roadmap/phase-445-*.md`); the sweep command
+is recorded in that issue.
 
 ### All 15 hand-written entries are Zephyr west applications
 
@@ -352,7 +358,7 @@ the time you read this, trust the file.
 
 | studied | measured |
 | --- | --- |
-| "eight Rust entries" (title) | **seven**, and seven on the filing commit too |
+| "eight Rust entries" (title, and three prose lines in the body) | **seven**, and seven on the filing commit too |
 | `nros::main!` invocations split between `model =` and `launch =` | **all seven use `launch =`**; `model =` survives only in two stale doc comments |
 | C/C++ entries differ only in project name + `add_subdirectory` list | also in `LANG`, `PANIC`, `mixed`'s runtime-umbrella preamble, `realtime-c`'s `CONFIG_SMP` bringup switch, and `fvp_entry`'s board glue — five shapes |
 | the bringup is "the natural home" for board + Kconfig | the image row **already declares both** (`board =`, `conf =`) for all 16 rows; only the fragment CONTENT has no home, and `resolve_in` already searches the destination |

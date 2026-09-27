@@ -239,8 +239,8 @@ hand-written entries and the manifest fallback that served them:
   its own driver into `build/<pkg>/` (a generated cmake root per C/C++ package;
   cargo from the package's own directory).
 - **D6 does not hold on Zephyr yet.** "No user manifest names a board crate"
-  is still false for the eight Rust west entries: the entry is derivable, the
-  west application around it is not generated (issue 1288). And the phase's
+  is still false for the hand-written Rust west entries: the entry is derivable,
+  the west application around it is not generated (issue 1288). And the phase's
   acceptance `rg '^\[package\.metadata\.nros\.(deploy|entry|node|component)'
   examples` cannot return nothing while the selection facade keys on the entry
   table's presence and workspace node packages declare their class in the

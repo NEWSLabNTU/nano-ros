@@ -271,7 +271,7 @@ esp32 stack budgets.
     refused by the reader, `nros check` (`entry-deploy-retired`) and
     `check-leaf-deployment-spelling`, which stopped skipping workspace
     manifests (their node/component tables are counted — issue 1289).
-  - The eight Rust Zephyr entries and every nros-tests workspace fixture lost
+  - The hand-written Rust Zephyr entries and every nros-tests workspace fixture lost
     their manifest deployment keys (bringup images, or a leaf `system.toml`
     where the fixture has no bringup or tests a Form-1 `nros::main!()`); the
     Zephyr entries stay hand-written west apps (issue 1288) and were NOT built
