@@ -12,17 +12,25 @@ cell. (The retired `<plat>/<lang>/<rmw>/<example>` form this file used to cite
 was deleted for Zephyr by phase 168.6.C and finished off by phase-316 — see
 RFC-0026.)
 
+**What this category replaces is the PLATFORM level, and only that.** A gateway
+is a host process, so there is no platform to name; the LANGUAGE level applies
+to a bridge exactly as it does anywhere else, so the shape here is
+`bridges/<lang>/<name>/`. Both current bridges are Rust
+(`bridges/rust/`, 2026-09-27). Until then this directory had no language level
+at all, which read as a second exemption the category had never argued for.
+
 Bridge examples that *also* exercise a platform/language-specific
 feature may still live under the normal example tree; the canonical
 home for plain cross-RMW gateways is this sibling category.
 
 ## Contents
 
-- `tt-zenoh-to-xrce/` — POSIX Rust binary; Zenoh subscriber, XRCE
+- `rust/tt-zenoh-to-xrce/` — POSIX Rust binary; Zenoh subscriber, XRCE
   publisher. Demonstrates the multi-RMW registry plus the Phase 110.G
   time-triggered scheduling path. Relocated 2026-06-02 from
-  `examples/native/rust/bridge/` per §212.L sibling-category rule.
-- `tt-zenoh-to-cyclonedds/` — POSIX Rust binary; Zenoh subscriber,
+  `examples/native/rust/bridge/` per §212.L sibling-category rule, and
+  2026-09-27 under the `rust/` language level.
+- `rust/tt-zenoh-to-cyclonedds/` — POSIX Rust binary; Zenoh subscriber,
   Cyclone DDS publisher (issue #53). Same time-triggered frame as the
   XRCE sibling, plus the Cyclone `dds_topic_descriptor_t` staging step
   (`register_type_descriptor`) a raw Cyclone publisher requires.

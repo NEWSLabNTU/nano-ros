@@ -222,7 +222,7 @@ Two things that ARE proven and remove risk:
 
 - **`publish_raw` / `subscription_take` are already public** on both the C and C++
   APIs. The direct example needs no new data-plane machinery.
-- **Two live backends in one image works.** `examples/bridges/tt-zenoh-to-cyclonedds`
+- **Two live backends in one image works.** `examples/bridges/rust/tt-zenoh-to-cyclonedds`
   does `nros_rmw_zenoh::register()` + `nros_rmw_cyclonedds_sys::register()` then
   `Executor::open_with_rmw("zenoh", &cfg)` and opens a second session.
   `open_with_rmw` takes the backend by **name**, so build-time selection needs
@@ -828,7 +828,7 @@ reach. Conflating them would overclaim.
 ### W4 — the existing bridges: DECIDED, do NOT collapse (2026-07-31)
 
 The observation that opened this item was mine, filed during phase-316:
-`examples/bridges/tt-zenoh-to-cyclonedds` and `tt-zenoh-to-xrce` "differ only in
+`examples/bridges/rust/tt-zenoh-to-cyclonedds` and `tt-zenoh-to-xrce` "differ only in
 an outward backend the build could have chosen", which looked like the per-RMW
 axis phase-316 removed from paths, surviving in a name.
 
@@ -889,7 +889,7 @@ listing and are not in the source.
 | W1 | PX4 SITL module links `libnros_cpp.a`; `nm` shows resolved nano-ros symbols; module starts from pxh |
 | W2 | a stock PX4 consumer (`listener <topic>`) prints a message published by the nano-ros node, asserted by a test |
 | W3 | a real ROS 2 subscriber receives a stock PX4 module's uORB topic through the bridge; same source builds against a second backend |
-| W4 | decision recorded here before any edit to `examples/bridges/tt-zenoh-to-*` |
+| W4 | decision recorded here before any edit to `examples/bridges/rust/tt-zenoh-to-*` |
 
 ## Provenance
 

@@ -198,8 +198,11 @@ Phase 118.I blocks untriaged retired RMW roots.
 
 Examples that bridge two RMW backends; span the transport slot so they don't fit one platform cell. See [`book/src/user-guide/cross-backend-bridges.md`](../book/src/user-guide/cross-backend-bridges.md) for the model + build-knob walkthrough.
 
-- `bridges/tt-zenoh-to-xrce/` — Rust bridge, zenoh ↔ XRCE-DDS
-- `bridges/tt-zenoh-to-cyclonedds/` — Rust bridge, zenoh ↔ Cyclone DDS
+The shape is `bridges/<lang>/<name>/` — the category drops the PLATFORM level (a
+gateway is a host process), never the language one.
+
+- `bridges/rust/tt-zenoh-to-xrce/` — Rust bridge, zenoh ↔ XRCE-DDS
+- `bridges/rust/tt-zenoh-to-cyclonedds/` — Rust bridge, zenoh ↔ Cyclone DDS
 
 ### `workspaces/` — product-shaped multi-package workspaces
 

@@ -221,7 +221,7 @@ mechanisms, layered:
    the canonical path on every RTOS where `linkme` can't survive.
 5. **Explicit user call** (Rust no_std bridges): `nros_rmw_<name>::register()`
    from `main()` — drags the rlib's CGU into the binary so the
-   linkme entry is reachable. See `examples/bridges/native-rust-zenoh-to-dds/`.
+   linkme entry is reachable. See `examples/bridges/rust/tt-zenoh-to-xrce/`.
 
 Bare-metal + RTOS targets that don't run `.init_array` rely on
 (4). Pure-Rust no_std binaries with multiple backends rely on (5).
@@ -250,7 +250,7 @@ Use the named entry points:
   `nros::NodeBuilder::rmw(...)` mirror the Rust API (Phase
   104.C.9).
 
-The `examples/bridges/native-rust-zenoh-to-cyclonedds/` demo shows
+The `examples/bridges/rust/tt-zenoh-to-cyclonedds/` demo shows
 the pattern end-to-end: both Zenoh and Cyclone DDS backend ctors fire
 at lib-load (so the registry has both `"zenoh"` and `"cyclonedds"`
 slots populated), and `open_with_rmw("zenoh", ...)` plus

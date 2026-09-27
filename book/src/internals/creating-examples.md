@@ -12,7 +12,7 @@ Every example is a **self-contained, copy-out project** under one of:
 | Path | Used for |
 |---|---|
 | `examples/<plat>/<lang>/<example>/` | The standard cell. RMW is selected at **build time** (Cargo features / `-DNANO_ROS_RMW=` / Kconfig overlay), not encoded in the path. A single-package "app" example here is the canonical **starter** shape; the multi-package workspace shape (Node + Bringup + Entry pkgs) kicks in at ≥2 nodes — see [Multi-Node Projects](../getting-started/workspace-from-app-node.md). |
-| `examples/bridges/<name>/` | Cross-RMW gateway examples (one binary, multiple backends). |
+| `examples/bridges/<lang>/<name>/` | Cross-RMW gateway examples (one binary, multiple backends). The category drops the `<plat>` level — a gateway is a host process — and keeps `<lang>`. |
 | `examples/templates/<name>/` | Multi-platform copy-out recipes (e.g. `multi-package-workspace`). |
 
 The `<plat>` × `<lang>` coverage matrix (RMW chosen at build time) is authoritative in

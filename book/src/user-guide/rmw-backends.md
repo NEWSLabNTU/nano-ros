@@ -157,11 +157,12 @@ open additional sessions on other backends. Both backends must be
 in the binary's link line (Cargo manifest deps + `register()` call
 each).
 
-A worked example lives at
-[`examples/bridges/native-rust-zenoh-to-dds/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/bridges/native-rust-zenoh-to-dds);
-the time-triggered variant under
-[`examples/bridges/tt-zenoh-to-xrce/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/bridges/tt-zenoh-to-xrce)
-shows the same pattern under an ARINC-653-style cyclic schedule.
+Two worked examples live under
+[`examples/bridges/rust/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/bridges/rust):
+[`tt-zenoh-to-xrce/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/bridges/rust/tt-zenoh-to-xrce)
+and
+[`tt-zenoh-to-cyclonedds/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/bridges/rust/tt-zenoh-to-cyclonedds),
+each showing the pattern under an ARINC-653-style cyclic schedule.
 
 Full walkthrough: [Cross-backend Bridges](./cross-backend-bridges.md).
 

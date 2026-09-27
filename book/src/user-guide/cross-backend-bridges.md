@@ -225,7 +225,7 @@ block the fast one.
 
 ## Shipped examples
 
-### `examples/bridges/tt-zenoh-to-xrce/`
+### `examples/bridges/rust/tt-zenoh-to-xrce/`
 
 Pure-Rust bridge. Zenoh ingress → XRCE-DDS egress under an
 ARINC-653-style time-triggered cyclic schedule. Read this
@@ -241,7 +241,7 @@ XRCE_LOCATOR=127.0.0.1:8888 \
     cargo run -p native-rs-bridge-tt-zenoh-to-xrce
 ```
 
-### `examples/bridges/tt-zenoh-to-cyclonedds/`
+### `examples/bridges/rust/tt-zenoh-to-cyclonedds/`
 
 The stock-Cyclone-DDS sibling: same TT schedule, but the egress is
 `.rmw("cyclonedds")`, forwarding onto the DDS databus where a stock
@@ -277,7 +277,7 @@ ROS_DOMAIN_ID=0 cargo run -p native-rs-bridge-tt-zenoh-to-cyclonedds
 ## Coverage matrix
 
 Bridge examples live under
-`examples/bridges/<name>/` (cross-platform, transport-
+`examples/bridges/<lang>/<name>/` (cross-platform, transport-
 spanning) or under their canonical
 `examples/<plat>/<lang>/bridge/<name>/` cell when the bridge
 is platform-specific. The
