@@ -1609,7 +1609,8 @@ fn test_native_talker_to_zephyr_cpp_listener() {
 // (`(ZephyrNativeSim, Rust, Zenoh, EntryPubsub)` observes via an external
 // native listener), not an example cell.
 //
-// The workspace Entry (`examples/workspaces/rust/src/zephyr_entry`) is the
+// The workspace Entry (`examples/workspaces/rust`'s `[image.zephyr]`, whose
+// west application `nros build` GENERATES since phase-470 W5.a) is the
 // Zephyr sibling of the native / FreeRTOS / ThreadX workspace Entries: a
 // SINGLE Zephyr application that hosts the whole launch-defined node set —
 // talker AND listener — in one process via

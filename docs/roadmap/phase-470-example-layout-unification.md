@@ -1,7 +1,9 @@
 # Phase 470 — example layout unification
 
-**Status (2026-09-27). W1–W4 and W6 LANDED; W5 and W7 open.** W5 is unblocked:
-W2 answered the board question it waited on, and answered it differently than
+**Status (2026-09-28). W1–W4, W6 and W5.a LANDED; W5.b and W7 open.** W5 was
+unblocked and its first half is done: the generator exists and one image is
+migrated and builds (see W5). The remaining 14 entry packages are W5.b.
+W2 had answered the board question W5 waited on, and answered it differently than
 either this phase or issue 1517 predicted (see W2). W6 shipped a bare-metal C
 leaf that builds and boots, and in doing so falsified this phase's own
 link-ownership rule (see below). Gives `examples/` a named,
@@ -336,6 +338,53 @@ per-image Kconfig and board declarations; `nros build` generates the west
 application the way it generates the cmake root today; the images build.
 `templates/workspace-shadowing` is class 1b and out of scope.
 
+**DONE (2026-09-28) — W5.a ONLY. W5.b is the remaining 14 packages / 15 rows.**
+
+W5.a landed the generator and migrated exactly one image, which was its whole
+scope. `nros build` now emits a west application —
+`builder::west_app` writes `CMakeLists.txt` (`find_package(Zephyr)` +
+`project()` + `rust_cargo_application()`) and the shared `build.rs` beside the
+entry package `builder::entry` was already generating, in the same directory,
+because `rust_cargo_application()` runs cargo from `CMAKE_CURRENT_SOURCE_DIR`
+with no `--manifest-path` and so the two cannot be separated. `builder::entry`
+gained a `west` field for the four facts that reach cargo through the MANIFEST
+on this road, since west is the one driver that takes no `--config` settings
+file: `zephyr`/`zephyr-build`, `nros-zephyr-build`, `[patch.crates-io]`, and the
+`[features] rmw-<x>` + optional backend dep that `nros::main!`'s Zephyr arm
+`#[cfg]`s its `register()` call on (the crate comes from `[rmw.link] rlib_dep`,
+which answers `""` for the two C/C++ backends and correctly emits nothing).
+
+**Migrated: `examples/workspaces/rust` `[image.zephyr]`** — `src/zephyr_entry`
+deleted, its Kconfig moved to `src/demo_bringup/boards/native_sim_native_64/`.
+Acceptance is a BUILD and it also RAN: `nros build zephyr` → `rc=0`, a `.config`
+**byte-identical** to the hand-written application's over 2028 lines, and the
+image up against a router publishing `/chatter`. Its sibling
+`[image.zephyr_robot1]` keeps `entry = "zephyr_entry_robot1"` and still builds,
+which is what proves the locate path survived beside the generate path — a
+package whose name is not `<id>_entry`, so it is the case that would have broken.
+
+**Chosen over `realtime-rust`, and the reason is a measurement this phase doc did
+not have:** `realtime-rust`'s entry is the one of seven that names board-crate
+features (`nros-board-zephyr = { features = ["tiers", "zephyr-edf"] }`), which no
+descriptor, image row or facade derives. So there are TWO undeclared per-dep
+features blocking W5.b, not one — the node-level `safety-e2e` this phase already
+names, and this board-level pair. Both are written up with options in issue 1288.
+
+**A live defect fixed on the way, wider than W5:** `west_build_board` fell
+through to the authored board string, so all **21** in-tree images that author
+`board = "zephyr"` emitted `west build -b zephyr`, a board Zephyr does not have.
+Fixed once, on the descriptor (`[board.zephyr] west_board`), not at 21 rows;
+`builder::zephyr::resolve_in` takes the same resolved id, so the two spellings of
+that board now reach one Kconfig directory. Issue 1517's class, one door over.
+
+Detail, and the full W5.b inheritance list (the five `just/zephyr-ci.just` guards
+still keyed on an entry package — one of which gates `--include-workspace-entry`
+for the whole zephyr lane — the `conf_files` row key that must go, and the
+`zephyr_application_is_generated` predicate the fixture manifest now shares with
+the builder) → [issue 1288](../issues/1288-zephyr-rust-workspace-entries-not-generated.md),
+section "2026-09-28".
+
+
 ### W6 — the bare-metal C/C++ arm
 
 Issue 1512, which dissolves class 3r. Three parts:
@@ -434,9 +483,9 @@ generated, because then there is exactly one place a platform may be named.
 
 ## Order
 
-W1, W3, W4 are independent and have LANDED. W2 preceded W5 and has landed, so
-W5 is open and ready. W6 was independent of all of them and has LANDED. W7 lands
-last — after W5 its rule has one home.
+W1, W3, W4 are independent and have LANDED. W2 preceded W5 and has landed; W5.a
+has landed on top of it. W6 was independent of all of them and has LANDED. W7
+lands last — after W5.b its rule has one home, so W5.b still precedes it.
 
 ## What this phase does not do
 

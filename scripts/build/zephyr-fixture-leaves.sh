@@ -503,8 +503,10 @@ done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaves "${
 
 # Phase 225.P.6 — workspace-Entry leaf (Approach A). Constructed directly,
 # bypassing variant_offset_for_role (role="entry" is unknown to it). The
-# proven zephyr-fixture-run-one.sh west path builds it unchanged from the
-# Zephyr application dir at examples/workspaces/rust/src/zephyr_entry. The
+# proven zephyr-fixture-run-one.sh west path builds it unchanged — through
+# `nros build demo_bringup:zephyr` since phase-383 W9.b, and since phase-470
+# W5.a (issue 1288) over an application `nros build` GENERATES under
+# examples/workspaces/rust/build/<coord>/ rather than a hand-written one. The
 # Entry is the (zephyr, rust, EntryPubsub) workspace cell: since the
 # phase-295 W4 re-bake it bakes the allocator's EntryPubsub slot (port
 # 7430 = alloc::port_of(ZephyrNativeSim, Rust, EntryPubsub)) — DISTINCT

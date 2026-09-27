@@ -300,15 +300,24 @@ dir = "examples/workspaces/rust"
 bringup = "src/demo_bringup"
 # phase-383 W9.b — RETARGETED. The west lane builds this leaf with
 # `nros build demo_bringup:zephyr` instead of assembling `west build` itself;
-# `nros build` resolves the application from `[image.zephyr] entry` and applies
-# the image's `conf` overlay (RFC-0085 D4/D5). The three `west_*` keys below
-# stay ROW keys and reach west as native args (`-d`, and the `-D` defines) —
-# they are this ROW's isolation (a private build dir, a private router port),
-# not properties of the image, and two rows may build one image.
+# `nros build` resolves the application and applies the image's `conf` overlay
+# (RFC-0085 D4/D5). The three `west_*` keys below stay ROW keys and reach west
+# as native args (`-d`, and the `-D` defines) — they are this ROW's isolation
+# (a private build dir, a private router port), not properties of the image,
+# and two rows may build one image.
+#
+# phase-470 W5.a (issue 1288) — `conf_files` is GONE from this row, and its
+# absence is the point. It reached west as `-DCONF_FILE=prj.conf;prj-zenoh.conf;
+# <nsos>`, which is a second spelling of `[image.zephyr] conf` AND suppresses
+# Zephyr's own `APPLICATION_CONFIG_DIR` discovery outright (see
+# `builder/zephyr.rs`'s header). With the application generated there is no
+# app-relative `prj.conf` for those names to resolve against anyway: the
+# fragments live in `<bringup>/boards/native_sim_native_64/`, which the image
+# names and `nros build` passes. The merged set is unchanged — measured, the
+# `.config` is byte-identical to the hand-written application's.
 image = "zephyr"
 codegen_out = "build-fixtures/demo_bringup"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
 west_build_name = "build-ws-rs-entry-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7430"

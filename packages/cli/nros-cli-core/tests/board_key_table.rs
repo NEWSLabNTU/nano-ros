@@ -523,10 +523,77 @@ fn a_zephyr_boards_west_b_comes_from_its_descriptor() {
             }
         }
     }
-    // Floors, so neither arm can go vacuous. Measured 2026-09-27: the
-    // `fvp-aemv8r-smp`, `mps2-an385-zephyr` and `qemu-cortex-a53` descriptors
-    // state a `west_board`; the `zephyr` descriptor states none and smuggles
-    // `native_sim/native/64` into `names` instead.
-    assert!(stated >= 3, "only {stated} stated west_board(s) checked");
-    assert!(fell_back >= 2, "only {fell_back} fall-back name(s) checked");
+    // A floor, so the stated arm cannot go vacuous. Measured 2026-09-28: the
+    // `fvp-aemv8r-smp`, `mps2-an385-zephyr`, `qemu-cortex-a53` AND `zephyr`
+    // descriptors state a `west_board`.
+    assert!(stated >= 4, "only {stated} stated west_board(s) checked");
+
+    // The fall-back arm has NO in-tree subject any more, and that is a result
+    // rather than a gap — phase-470 W5.a / issue 1288. The `zephyr` descriptor
+    // was the only one falling back, and it was the WRONG answer: 21 in-tree
+    // images author `board = "zephyr"`, so all 21 emitted `west build -b
+    // zephyr`, a board Zephyr does not have. Giving it a `west_board` fixed
+    // that and emptied this arm.
+    //
+    // So the arm moves to a SYNTHETIC descriptor rather than being deleted or
+    // floored at zero. The fall-back is still live code
+    // (`west_build_board`'s `unwrap_or_else`) and still the right behaviour for
+    // an out-of-tree board that states no `[board.zephyr]`; an arm asserted over
+    // a catalog that no longer contains a subject is a test that silently checks
+    // nothing, which is the shape the floors above exist to refuse.
+    assert_eq!(
+        fell_back, 0,
+        "an in-tree zephyr descriptor states no `[board.zephyr] west_board`. \
+         Either add it to that descriptor, or raise the `stated` floor and \
+         delete this assertion — but do not leave the fall-back live in-tree: \
+         issue 1288 measured what that costs"
+    );
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let dir = tmp.path().join("nros-board-out-of-tree");
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    std::fs::write(
+        dir.join("nros-board.toml"),
+        "[[board]]\n\
+         names = [\"acme-zephyr-board\"]\n\
+         platform = \"zephyr\"\n\
+         toolchain = \"stable\"\n\
+         entry_kind = \"zephyr-staticlib\"\n\
+         supported_netstacks = []\n",
+    )
+    .expect("write descriptor");
+    // A descriptor is only loaded when its package ANNOUNCES the board
+    // (`check-provider-announcements.py`'s other half): the loader refuses an
+    // unannounced one by design, so the synthetic package needs both files.
+    std::fs::write(
+        dir.join("package.xml"),
+        "<?xml version=\"1.0\"?>\n\
+         <package format=\"3\">\n\
+         <name>nros_board_acme</name>\n\
+         <version>0.0.0</version>\n\
+         <description>synthetic out-of-tree zephyr board</description>\n\
+         <maintainer email=\"dev@example.com\">Developer</maintainer>\n\
+         <license>Apache-2.0</license>\n\
+         <export>\n\
+         <build_type>nros_cmake</build_type>\n\
+         <nano_ros_provides kind=\"board\" name=\"acme-zephyr-board\"/>\n\
+         </export>\n\
+         </package>\n",
+    )
+    .expect("write package.xml");
+    let extra = BoardCatalog::load_with_extra(&repo_root(), &[tmp.path().to_path_buf()])
+        .expect("catalog with an out-of-tree board");
+    let acme = extra
+        .descriptors()
+        .iter()
+        .find(|d| d.names.iter().any(|n| n == "acme-zephyr-board"))
+        .expect("the synthetic descriptor loaded");
+    assert!(
+        acme.zephyr.is_none(),
+        "the synthetic board states no [board.zephyr]"
+    );
+    assert_eq!(
+        acme.west_build_board("acme-zephyr-board"),
+        "acme-zephyr-board",
+        "with no stated west_board the authored id is all there is to pass"
+    );
 }
