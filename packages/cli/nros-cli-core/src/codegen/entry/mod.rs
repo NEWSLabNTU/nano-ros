@@ -1263,11 +1263,8 @@ fn derive_entry_tiers(
     // question about the TABLE. The rule is about a FACT, and it is stated once:
     // `placement_is_unauthored` (rules 1-4). Authored placements still win and
     // are never overwritten below.
-    if !nros_orchestration_ir::derive::placement_is_unauthored(
-        &model,
-        target_rtos,
-        callback_groups,
-    ) {
+    if !nros_orchestration_ir::derive::placement_is_unauthored(&model, target_rtos, callback_groups)
+    {
         return Ok(0);
     }
 

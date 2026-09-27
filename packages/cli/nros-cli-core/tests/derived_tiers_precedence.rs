@@ -455,7 +455,11 @@ fn a_fully_authored_workspace_derives_nothing() {
     let fixture = Fixture::copy("prec-fully-authored");
     fixture.configure(&["main"]);
     let all: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
-    fixture.author("ctrl", &all, "[tiers.ctrl]\n[tiers.ctrl.zephyr]\npriority = 8\n");
+    fixture.author(
+        "ctrl",
+        &all,
+        "[tiers.ctrl]\n[tiers.ctrl.zephyr]\npriority = 8\n",
+    );
 
     let (derived, wanted) = bake(&fixture, true);
     assert!(
