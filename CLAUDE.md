@@ -636,7 +636,8 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   asserts both directions, and `nros setup zephyr --dry-run` prices the set. Edit the index,
   then mirror. The manifests stay COMMITTED (a `west init -m <url>` reads `west.yml` from a
   bare clone, before any `nros` exists). `hal_nxp`/`hal_stm32`/`hal_nordic` left the allowlist
-  — ~2.29 GB no fresh workspace fetches; `hal_espressif` (275 MB) is knowingly kept, see 1282.
+  — ~2.29 GB no fresh workspace fetches; `hal_espressif` (275 MB) followed (issue 1282): no
+  measured consumer, and Zephyr esp32 is UNSUPPORTED for now — bare-metal esp-hal is the path.
   Two things measured rather than assumed: **`west update` NEVER PRUNES**, so this reclaims
   nothing in an existing workspace and a reader who measures one sees no change; and a source
   grep finds no consumer for `mcuboot` either, but **sysbuild** resolves it

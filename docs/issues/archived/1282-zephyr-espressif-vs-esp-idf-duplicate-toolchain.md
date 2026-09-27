@@ -2,12 +2,14 @@
 id: 1282
 title: "`hal_espressif` has no measured consumer and is retained anyway — is our
   separate ESP-IDF provisioning a duplicate of Zephyr's own espressif support?"
-status: open
+status: resolved
 type: tech-debt
 area: build, esp32
 severity: low
 found: 2026-09-11
 related: [issue-1275, issue-0500, phase-468]
+resolved: 2026-09-27
+resolved_by: maintainer decision — bare-metal esp-hal is the esp32 path
 ---
 
 ## What this is
@@ -130,3 +132,65 @@ a populated `zephyr-workspace`; the consumer sweep covered `examples/`,
 `cmake/`, `packages/`, `just/`, `.github/workflows/`, `scripts/`, `zephyr/` and
 every `prj.conf`/`*.overlay`/`Kconfig*` in the tree, excluding `third-party/`
 and `zephyr-workspace*`.
+
+## Resolution — 2026-09-27: the DECISION, taken deliberately
+
+**The user settled the open question: bare-metal esp-hal is the esp32 path for
+now, and we do not support Zephyr-hosted esp32.** `hal_espressif` is therefore
+dropped, and this issue closes.
+
+What matters here is that this is a decision and not a measurement running out.
+Everything measurable had already come back empty twice — phase-447 F1 on
+2026-09-11 and phase-468 W2 on 2026-09-25 — and both times the module was KEPT,
+because a deletion would have answered a strategy question as a side effect of
+tidying a manifest. That reasoning was right, and it is exactly why it no longer
+applies: the question was put to the person whose call it is, and answered.
+
+**Re-measured before deleting, the same way F1 did.** A tree-wide grep for
+`hal_espressif` returns exactly three non-prose hits — the
+`[zephyr_module.hal_espressif]` entry in `nros-sdk-index.toml` and the two west
+allowlists — and everything else is documentation prose. No `prj.conf`,
+overlay, board crate, fixture row, CI job or `west build -b` names an Espressif
+board. The premise held, so the decision was taken on current facts.
+
+### What landed
+
+* `[zephyr_module.hal_espressif]` keeps its entry with `lines = []`, the shape
+  `hal_nxp` / `hal_stm32` / `hal_nordic` already use. The entry is the record of
+  the decision; deleting it outright would make the removal a line that vanished
+  rather than a decision a reader can find.
+* Removed from both west allowlists (`west.yml`, `west-4.4.yml`), which
+  `check-zephyr-module-allowlist` asserts in both directions.
+* The dead `elseif(CONFIG_SOC_SERIES_ESP32C3)` Rust-target branch in
+  `zephyr/cmake/nros_cargo_build.cmake` is deleted. Removal is clean:
+  `CONFIG_SOC_SERIES_ESP32C3` occurred exactly once in the tree, and the
+  function's `else()` arm already handles an unmodeled SoC by naming the host
+  triple with a warning. The triple it set, `riscv32imc-unknown-none-elf`, is
+  still declared by the bare-metal esp-hal leaves, so
+  `check-rust-targets-covered` still wants its row.
+* `CLAUDE.md`'s "knowingly kept" line corrected — it had become false.
+
+### Reversing this
+
+Re-adding the module is not sufficient on its own, and that is the honest cost
+of the decision rather than an argument against reversing it. A Zephyr esp32
+image needs three things, none of which exists today:
+
+1. `lines = ["3.7", "4.4"]` back on `[zephyr_module.hal_espressif]`, mirrored
+   into both allowlists;
+2. a board — no board dir, crate, conf or fixture row names an Espressif board;
+3. an `xtensa-espressif_*` toolchain in `scripts/zephyr/setup.sh`, which today
+   installs only `x86_64-zephyr-elf` and `arm-zephyr-eabi` (plus
+   `aarch64-zephyr-elf` behind a flag). Without it the image could not link even
+   with the module present — which is why the branch deleted above was
+   unreachable rather than merely unused.
+
+A Rust-target branch would come back with the board, from the same evidence.
+
+### What this does NOT reclaim
+
+`west update` NEVER PRUNES. An existing `zephyr-workspace` keeps its 275 MB
+until it is re-fetched, so a reader who measures one sees no change; the saving
+is on a FRESH workspace fetch. This is the same caveat issue 1275 recorded for
+the other 2.29 GB, and it is worth restating because the natural way to check
+this change is the one way that cannot show it.

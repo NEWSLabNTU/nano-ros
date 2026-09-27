@@ -81,8 +81,6 @@ function(nros_detect_rust_target)
         else()
             set(NROS_RUST_TARGET "thumbv8m.main-none-eabi" PARENT_SCOPE)
         endif()
-    elseif(CONFIG_SOC_SERIES_ESP32C3)
-        set(NROS_RUST_TARGET "riscv32imc-unknown-none-elf" PARENT_SCOPE)
     elseif(CONFIG_CPU_AARCH32_CORTEX_R OR CONFIG_CPU_CORTEX_R52 OR CONFIG_CPU_CORTEX_R5)
         # AArch32 Cortex-R (ARMv7-R / ARMv8-R) — Phase 117.11's
         # NXP S32Z R52. zephyr-lang-rust learns the matching

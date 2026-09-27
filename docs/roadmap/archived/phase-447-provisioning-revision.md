@@ -601,7 +601,7 @@ at all, and a `just queue-triage` window measured in runs rather than minutes.
   subdir` to state an upstream tarball's own top-level directory, `smoke` probes
   on both SDK rows, and `check-smoke-or-reason` to refuse a `post_install` with
   no probe.
-- **[issue 1282](../../issues/1282-zephyr-espressif-vs-esp-idf-duplicate-toolchain.md)**
+- **[issue 1282](../../issues/archived/1282-zephyr-espressif-vs-esp-idf-duplicate-toolchain.md)**
   — whether Zephyr's own espressif support makes our ESP-IDF provisioning a
   duplicate. F1 held `hal_espressif` back deliberately rather than settle a
   platform-strategy question by deleting a line; 275 MB of the 2.5 GB is
