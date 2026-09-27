@@ -1,0 +1,21 @@
+# The submodules a `just ci gate` run reads, and WHICH GATE reads each.
+#
+# ONE LIST, read by both `just setup-worktree` (which checks them out) and
+# `_require-worktree-provisioning` (which reports the missing ones before the
+# lane starts). It was an authored list inside `setup-worktree` alone, described
+# there as "the submodules the fast gate tier reads" with a note that a fourth
+# "belongs in this list" — and `check::build` then grew dependencies on two more
+# that nobody added, so the lane found them one run at a time (issue 1513).
+#
+# Format: `<path>  # <gate(s) that read it>`. A path that names no submodule of
+# this checkout is reported, not skipped — that is how a renamed submodule is
+# caught rather than silently dropping its gate's dependency.
+#
+# NOT every submodule: no lane checks out all 20 (issue 1043), and the Zephyr
+# `hal_*` modules alone are gigabytes. This is the set the gate tiers actually
+# read, which is why each row carries its reader.
+packages/rmw/zenoh/zpico-sys/zenoh-pico           # check::fast — capability-conditionals, zpico-config-keys
+packages/rmw/xrce/xrce-sys/micro-cdr              # check::fast — xrce-vendored-versions
+packages/rmw/xrce/xrce-sys/micro-xrce-dds-client  # check::fast — xrce-vendored-versions
+third-party/dds/cyclonedds                        # check::build — test-targets, workspace-all, workspace-features
+packages/cli/third-party/play_launch               # check::build — cli-tests; and the launch resolver is built from it

@@ -763,13 +763,12 @@ setup-hooks:
 setup-worktree:
     #!/usr/bin/env bash
     set -euo pipefail
-    # The submodules the fast gate tier reads, and which gate reads each. When a
-    # gate grows a dependency on a fourth one, it belongs in this list.
-    paths=(
-        packages/rmw/zenoh/zpico-sys/zenoh-pico           # capability-conditionals, zpico-config-keys
-        packages/rmw/xrce/xrce-sys/micro-cdr              # xrce-vendored-versions
-        packages/rmw/xrce/xrce-sys/micro-xrce-dds-client  # xrce-vendored-versions
-    )
+    # Issue 1513 — the list is DATA, shared with the preflight, not an array
+    # here. It was an array here, described as "the submodules the fast gate tier
+    # reads" with a note that a fourth "belongs in this list", and `check::build`
+    # then grew dependencies on two more that nobody added.
+    mapfile -t paths < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' \
+        -e 's/[[:space:]]*$//' .config/worktree-provisioning.txt)
     want=()
     for p in "${paths[@]}"; do
         # `git submodule status --cached` marks an uninitialised submodule with a
@@ -799,8 +798,73 @@ setup-worktree:
         git submodule update --init "${want[@]}"
     fi
     echo ""
-    echo "setup-worktree: done. The fast gate tier can run now:"
-    echo "    just check fast"
+    # No backticks in these strings: `just` treats a backtick in a recipe line
+    # as command substitution, so an earlier draft of this message EXECUTED
+    # `just ci gate` while printing itself.
+    echo "setup-worktree: done -- every gate-tier submodule is checked out."
+    echo "The two BINARIES are separate, and the gate lane needs both:"
+    echo "    just setup-cli             # then"
+    echo "    just setup-launch-resolve  # a pin move stales BOTH (issue 1487)"
+    echo ""
+    echo "just ci gate reports anything still missing before it starts."
+
+# _require-worktree-provisioning — issue 1513
+#
+# Report EVERY unmet provisioning precondition at once, before a lane spends
+# twenty minutes finding one of them.
+#
+# The shape this replaces, measured across four agent sessions in one day: run
+# `just ci gate` in a fresh worktree, wait, get a red naming ONE uninitialised
+# submodule; provision it; re-run; get another, from a different gate, with a
+# different message. Three lane runs to learn three facts that were all knowable
+# in a second. `just setup-worktree` already existed and nothing pointed a new
+# session at it before the first run.
+#
+# It FAILS rather than warns, and the distinction is not stylistic: every item
+# here is one the lane needs, so a warning only moves the same failure later.
+# That is the opposite of `check-tier-preconditions`, which reports and continues
+# because it covers items a given lane may not need.
+#
+# Not worktree-specific despite the name of its remedy: a fresh CLONE reaches the
+# same state, and the check is "is it provisioned", never "am I a worktree".
+[private]
+_require-worktree-provisioning:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    missing=()
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        line="$(git submodule status --cached -- "$p" 2>/dev/null || true)"
+        case "$line" in
+            -*) missing+=("submodule  $p") ;;
+            "") missing+=("NOT A SUBMODULE of this checkout: $p (renamed? fix .config/worktree-provisioning.txt)") ;;
+        esac
+    done < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' -e 's/[[:space:]]*$//' \
+        .config/worktree-provisioning.txt)
+    # The two binaries the lane builds nothing without. `check::cli-fresh` and
+    # `check::launch-resolve-fresh` run first and SKIP when a binary is absent —
+    # correct for a fresh clone, and the reason an absent one otherwise surfaces
+    # as a `check::build` failure much later instead.
+    [ -x packages/cli/target/release/nros ] \
+        || missing+=("binary     packages/cli/target/release/nros        -> just setup-cli")
+    [ -x packages/cli/nros-launch-resolve/target/release/nros-launch-resolve ] \
+        || missing+=("binary     nros-launch-resolve                     -> just setup-launch-resolve")
+    if [ "${#missing[@]}" -eq 0 ]; then
+        echo "worktree-provisioning: OK (every gate-tier submodule and both binaries present)."
+        exit 0
+    fi
+    echo "" >&2
+    echo "[FAIL] ${#missing[@]} unmet provisioning precondition(s) — the lane cannot pass:" >&2
+    for m in "${missing[@]}"; do echo "    $m" >&2; done
+    echo "" >&2
+    echo "  Provision them ALL, then re-run:" >&2
+    echo "      just setup-worktree        # the submodules above" >&2
+    echo "      just setup-cli             # then the CLI" >&2
+    echo "      just setup-launch-resolve  # then the resolver (a pin move stales BOTH)" >&2
+    echo "" >&2
+    echo "  Reported together on purpose (issue 1513): finding these one lane run" >&2
+    echo "  at a time cost four agent sessions three runs each." >&2
+    exit 1
 
 # Repair build dirs whose generated `build.ninja` no longer LOADS.
 #
