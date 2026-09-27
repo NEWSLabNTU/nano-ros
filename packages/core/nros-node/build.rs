@@ -650,8 +650,9 @@ fn main() {
     // Defaults to `max_cbs`, which reproduces the old `max_cbs * worst_case`
     // arithmetic byte for byte, so no existing image moves. It is a COUNT and
     // not a "which entity is heaviest" enum because Kconfig knobs are ints and
-    // `knob_usize` is the one spelling that reaches the Zephyr Rust lane
-    // (issue 0460); an enum would need a second reader shape for no gain.
+    // `nros_zephyr_build::Knob` is the one spelling that reaches the Zephyr
+    // Rust lane (issue 0460); an enum would need a second reader shape for no
+    // gain.
     //
     // Setting it to 0 on a pub/sub-only image is the whole point: 74,240 bytes
     // becomes 16,384 at the defaults.
@@ -985,7 +986,7 @@ fn main() {
     // `nros_cargo_build.cmake` already knows the sentinel and deliberately does
     // not forward a literal 0 — "forwarding a literal 0 would hand it a
     // zero-byte arena rather than the derivation". That guard became INERT when
-    // issue 0460 made `knob_usize` read `$DOTCONFIG` directly so knobs could
+    // issue 0460 made the knob ladder read `$DOTCONFIG` directly so knobs could
     // reach the Rust lane at all: build.rs now finds `CONFIG_..._ARENA_SIZE=0`
     // in `.config` whether or not cmake exported it, and took it literally.
     //
@@ -1343,11 +1344,7 @@ fn env_opt_string(name: &str) -> Option<String> {
 }
 
 fn env_opt_usize(name: &str) -> Option<usize> {
-    println!("cargo:rerun-if-env-changed={name}");
-    if let Some(v) = std::env::var(name).ok().and_then(|v| v.trim().parse().ok()) {
-        return Some(v);
-    }
-    nros_zephyr_build::dotconfig_usize(&format!("CONFIG_{name}"))
+    nros_zephyr_build::knob(name).stated()
 }
 
 /// [`env_opt_usize`] with the board/platform rungs spliced in BELOW Kconfig.
@@ -1360,13 +1357,9 @@ fn env_opt_usize(name: &str) -> Option<usize> {
 /// passing a sentinel that would then have to be told apart from a stated `0`,
 /// which is this knob's documented opt-out.
 fn env_opt_usize_laddered(name: &str) -> Option<usize> {
-    if let Some(v) = env_opt_usize(name) {
-        return Some(v);
-    }
-    static RUNGS: std::sync::OnceLock<nros_board_common::platform_config::ExecutorKnobs> =
-        std::sync::OnceLock::new();
-    let rungs = RUNGS.get_or_init(executor_rungs);
-    knob_for_env(name).and_then(|k| rung_value(rungs, k))
+    nros_zephyr_build::knob(name)
+        .rung(descriptor_rung(name))
+        .stated()
 }
 
 /// One executor knob: env → Kconfig → board → platform → built-in default.
@@ -1403,19 +1396,29 @@ const PARAM_INBOX_ZERO_REFUSAL: &str = "NROS_PARAM_SERVICE_INBOX_BYTES=0: 0 is n
      or state the size you mean.";
 
 fn env_usize(name: &str, default: usize) -> usize {
-    println!("cargo:rerun-if-env-changed={name}");
-    if let Some(v) = std::env::var(name).ok().and_then(|v| v.trim().parse().ok()) {
-        return v;
-    }
-    if let Some(v) = nros_zephyr_build::dotconfig_usize(&format!("CONFIG_{name}")) {
-        return v;
-    }
+    nros_zephyr_build::knob(name)
+        .rung(descriptor_rung(name))
+        .resolve(default)
+}
+
+/// The `[knobs.executor]` rung for one env name, or `None`.
+///
+/// phase-468 W4 — split out because the rung is now an INPUT to the one ladder
+/// rather than a step two functions each re-walked.
+///
+/// It is therefore evaluated EAGERLY, where the old ladders reached it only
+/// after env and Kconfig had both missed, so the name lookup comes FIRST: a
+/// knob with no executor tenant answers `None` without loading a platform
+/// tree. For a knob that has one the tree is loaded whatever the higher rungs
+/// say — which costs nothing per build, because the `OnceLock` is shared and
+/// `NROS_EXECUTOR_BACKING_U64S` forces the load in every nros-node build
+/// anyway; and where it does change something, it is phase-468 W1's refusal
+/// of an unanswered `NROS_PLATFORM_NAME` firing rather than being skipped.
+fn descriptor_rung(name: &str) -> Option<usize> {
+    let knob = knob_for_env(name)?;
     static RUNGS: std::sync::OnceLock<nros_board_common::platform_config::ExecutorKnobs> =
         std::sync::OnceLock::new();
-    let rungs = RUNGS.get_or_init(executor_rungs);
-    knob_for_env(name)
-        .and_then(|k| rung_value(rungs, k))
-        .unwrap_or(default)
+    rung_value(RUNGS.get_or_init(executor_rungs), knob)
 }
 
 /// issue 1199 — [`env_usize`] with the DECLARED rung spliced in.

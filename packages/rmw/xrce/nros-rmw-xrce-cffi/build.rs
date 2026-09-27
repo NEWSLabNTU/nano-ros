@@ -611,9 +611,10 @@ fn generate_config(
 /// the C lane's re-baked command and NOT the Rust lane's: zephyr-lang-rust's
 /// `rust_cargo_application` builds its own cargo invocation and inherits
 /// nothing, so a Zephyr Rust image read every one of them as unset whatever
-/// Kconfig said. The env name is the Kconfig name minus `CONFIG_`, so the pair
-/// is DERIVED rather than tabulated; `check-kconfig-knob-forwarding` proves the
-/// cmake list and the readers agree.
+/// Kconfig said. The env name is the Kconfig name minus `CONFIG_`, so
+/// `nros_zephyr_build::kconfig_key_for` DERIVES the pair rather than this file
+/// tabulating it; `check-kconfig-knob-forwarding` proves the cmake list and the
+/// one pairing table agree.
 ///
 /// Rung 3 is the one asymmetry between the lanes, and it is stated in
 /// `xrce-config.txt` rather than left for a reader to discover: reading a
@@ -651,14 +652,14 @@ impl KnobResolver {
     /// `-1` is the documented DERIVE sentinel (phase-403 W8), and a knob left
     /// on it means "nothing stated", not "malformed".
     fn stated(&self, env_name: &str, min: usize, config_path: &std::path::Path) -> Option<usize> {
-        println!("cargo:rerun-if-env-changed={env_name}");
-        let stated = match env::var(env_name) {
-            Ok(raw) if !raw.is_empty() => Some(raw.parse::<usize>().unwrap_or_else(|_| {
-                panic!("nros-rmw-xrce-cffi: {env_name}='{raw}' is not a number")
-            })),
-            _ => nros_zephyr_build::dotconfig_usize(&format!("CONFIG_{env_name}"))
-                .or_else(|| self.rung(env_name)),
-        };
+        // phase-468 W4 — the three rungs are `nros_zephyr_build::Knob`'s, the
+        // tree's one knob ladder. `strict_env` is what keeps THIS reader's
+        // refusal of a non-numeric environment value: it is an input to the
+        // ladder rather than a second copy of it.
+        let stated = nros_zephyr_build::knob(env_name)
+            .strict_env()
+            .rung(self.rung(env_name))
+            .stated();
         if let Some(n) = stated {
             if n < min {
                 panic!(
