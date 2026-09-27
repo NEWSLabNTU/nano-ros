@@ -40,7 +40,20 @@ the size of the Zephyr heap — and `NROS_PLATFORM_NAME` is exported by every
 build the `nros` road drives (`nros ws board-facts`), so row 1 is the normal
 case and row 2 is the accident.
 
-Reproduce with `tmp/probe-heap-rung.sh` on the phase-468 W4 branch.
+Reproduce (a separate target dir per run, so the answer cannot come from a
+cached build-script output — that caching is what makes this easy to measure
+wrong):
+
+```sh
+printf 'CONFIG_NROS_ZEPHYR_HEAP_SIZE=98304\n' > /tmp/p/.config
+DOTCONFIG=/tmp/p/.config NROS_PLATFORM_NAME=zephyr \
+  NROS_PLATFORMS_DIR="$PWD/config:$PWD/packages/platform" \
+  cargo build -p nros-platform --target-dir /tmp/p/t
+grep -rh 'rustc-env=NROS_ZEPHYR_HEAP_SIZE=' /tmp/p/t/debug/build/nros-platform-*/output
+```
+
+Drop `NROS_PLATFORM_NAME` (and the platforms dir) for row 2; drop the
+`CONFIG_` line for row 3.
 
 ## Why
 
