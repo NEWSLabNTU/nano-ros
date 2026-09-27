@@ -61,7 +61,12 @@ LOW="packages/cli/cargo-nano-ros/src"
 #   <file>:<fn name>
 GUARDED=(
     "$CORE/orchestration/metadata_refresh.rs:stamp_provenance"
-    "$CORE/orchestration/metadata_refresh.rs:mark_unprobeable"
+    # issue 1469 renamed this: the marker now carries the failure REASON
+    # after its key line, so the writer takes the reason too. Still one
+    # writer, still atomic — `is_known_unprobeable` compares the marker's
+    # FIRST LINE, so a torn read is a false "not unprobeable" exactly as
+    # before.
+    "$CORE/orchestration/metadata_refresh.rs:mark_unprobeable_with_reason"
     "$CORE/orchestration/metadata_build.rs:relativise_source_artifacts"
     # issue 0562 — the probe directory IS a cmake project, so these writers
     # restamping their output costs a probe reconfigure on every sync, not just

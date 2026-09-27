@@ -4,7 +4,8 @@ title: "The metadata probe generates a shared message type's bindings once per
   consuming package and then `include!`s every copy into one crate, so any
   workspace with two C++ node packages that share a message dependency fails to
   compile and every node goes `unprobeable`"
-status: open
+status: resolved
+resolved_in: 2026-09-27
 type: bug
 area: codegen, cmake, metadata
 severity: high
@@ -164,3 +165,96 @@ should do; the island is simply the one at hand.
   their sources actually declare rather than one callback each.
 - A probe failure records its reason where a later reader will find it, and
   `nros sync -v` prints it rather than only that the source is unchanged.
+
+## Resolution — 2026-09-27
+
+Two halves, landed apart, and the issue stayed open for the second one.
+
+### The duplicate — `94b094336`, 2026-09-24
+
+One generation SITE per message type for the whole probe: the probe project sets
+`NANO_ROS_GEN_CACHE_DIR` inside its own build dir (Phase 123.A.7's mechanism), so
+every package emits into one dir keyed by (language, package) and a type has
+exactly one path whichever package reaches it — the board build's shape, not a
+third one. `_nros_collect_rs_closure` additionally de-dups by TYPE
+(`<pkg>/<kind>/<stem>.rs`), which is the invariant `include!` actually needs;
+the pre-existing `list(REMOVE_DUPLICATES)` de-duped by PATH and could not see
+two sites for one type.
+
+Gate: `just check probe-shared-types`
+(`tests/cmake-probe-shared-types-tests.sh`), fast line. Re-measured on this
+branch, and the negative control taken again by reverting BOTH halves — the
+`NANO_ROS_GEN_CACHE_DIR` line the probe emits and the type de-dup:
+
+```
+=== A. two C++ node packages sharing one message dependency ===
+[FAIL] after [pkg_a]: pkg_a/nano_ros_cpp_ffi_std_msgs/src/lib.rs includes a type more than once:
+        nano_ros_cpp/builtin_interfaces/msg/builtin_interfaces_msg_duration_types.rs
+        nano_ros_cpp/builtin_interfaces/msg/builtin_interfaces_msg_time_types.rs
+[FAIL] after [pkg_b]: nros-ws-combo_msgs/nano_ros_cpp_ffi_combo_msgs/src/lib.rs includes a type more than once:
+        …the same pair…
+=== C. a shared type is generated once, not once per consumer ===
+[FAIL] expected ONE builtin_interfaces FFI crate for the probe, found 2
+[FAIL] a shared type is emitted at 2 sites -- the probe is back to one copy per consumer
+[FAIL] 5 of 19 checks failed
+```
+
+and with the halves restored, `all 17 checks passed`. The reported pair is the
+island's own (`builtin_interfaces/msg/{Time,Duration}`), and case B — a
+hand-written `lib.rs` carrying that pair, which the detector must report —
+passes in both runs, so the green is not "the grep found nothing".
+
+### The marker that recorded no reason — this commit
+
+The failure cached as two digests and nothing else, `nros sync` then said
+"probe failed at this source last sync; unchanged" for ever and never
+re-attempted, so **the compiler error was unreachable from any number of
+syncs**. Recovering the eight `E0428`s took deleting the marker by hand. That is
+an ABSORBING skip: the cache entry suppressed a diagnosis it did not record.
+
+The marker's FIRST LINE is now the key and the rest is the recorded reason — the
+first line that names an error, capped at 300 characters, falling back to the
+failure's own first line. `is_known_unprobeable` compares the key, so an older
+single-line marker still matches and the skip behaves exactly as before. All
+three recording sites carry it (the batched C/C++ probe, the whole-project
+configure failure, and the deploy-bound Rust branch, which had the same shape
+one lane over), and both cached-skip reports print it.
+
+Measured end to end, on a workspace with one C++ node whose probe genuinely
+fails to compile. Sync #1 — the one that HITS it — is unchanged and dumps the
+whole build log. Sync #2, and every later one:
+
+```
+sync: metadata pkg_a::node_a — skipped; recorded failure in /…/src/pkg_a/metadata/node_a.json.unprobeable
+sync: source metadata — 0 rebuilt, 0 already current
+sync: source metadata — no producer for pkg_a::node_a (probe failed at this source last sync; unchanged; last error: /…/island_msgs_msg_report.hpp:96:93: error: static assertion failed: NROS_UNBOUNDED__island_msgs_msg_report__field_header_frame_i…)
+```
+
+against the line this issue was filed with, which named the node and nothing
+else:
+
+```
+sync: source metadata - no producer for autoware_mrm_handler::mrm_handler (probe failed at this source last sync; unchanged)
+```
+
+The marker on disk:
+
+```
+fnv1a64:50d0560dfb4e1ad6:2643b2d9df3e3ee1
+/…/island_msgs_msg_report.hpp:96:93: error: static assertion failed: NROS_UNBOUNDED__island_msgs_msg_report__field_header_frame_i…
+```
+
+The `-v` line names the file, so the reason survives even where the summary line
+is trimmed by whatever reads it.
+
+Unit-pinned by `a_marker_records_why_and_still_keys_on_the_digest` (a reason
+must not change what the marker is FOR; a key-only marker still matches and
+honestly reports no reason) and
+`the_recorded_line_is_the_error_or_the_first_line`.
+
+### On the island's four nodes
+
+Not verifiable here — that workspace is not on this host. What is verified is
+the shape: with 1470's fix beside this one, the same reconstructed workspace
+probes and writes a sidecar carrying the subscription its source declares
+(`1 rebuilt`), where before it produced no metadata at all.
