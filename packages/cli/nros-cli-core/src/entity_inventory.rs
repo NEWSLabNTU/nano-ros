@@ -2695,33 +2695,42 @@ impl EntityInventory {
     pub fn service_request_types(&self) -> ReceivedTypes {
         self.wire_request_types(
             |k| matches!(k, EntityKind::ServiceServer | EntityKind::ServiceClient),
-            rosidl_codegen::service_request_type,
+            |t| vec![rosidl_codegen::service_request_type(t)],
             "service request",
         )
     }
 
     /// phase-461 W3 -- [`Self::service_request_types`] for the ACTION family.
     ///
-    /// An action server is three queryables. They receive the SendGoal
-    /// envelope, `action_msgs/srv/CancelGoal`'s request (32 fixed bytes, owned
-    /// by that package) and `GetResult_Request` (a bare UUID); only SendGoal
-    /// carries the user's own goal, so it is the one that can exceed the other
-    /// two and the one `rosidl_codegen::action_request_type` names.
+    /// An action server is three queryables, and phase-457 W1 (issue 1506)
+    /// publishes all THREE of their request types rather than SendGoal's alone.
+    /// The three draw slots from ONE ring, so the slot must hold the largest of
+    /// them — and `action_msgs/srv/CancelGoal_Request` carries a whole
+    /// `GoalInfo`, 44 bytes rx against SendGoal's 36 on the in-tree Fibonacci.
+    /// A goal smaller than a `GoalInfo` is the ordinary case, so naming SendGoal
+    /// alone under-sized the ring on most actions; the carrier takes the maximum
+    /// over the list, so widening the list is the whole fix.
+    /// `rosidl_codegen::action_received_types` names the three.
     pub fn action_request_types(&self) -> ReceivedTypes {
         self.wire_request_types(
             |k| matches!(k, EntityKind::ActionServer | EntityKind::ActionClient),
-            rosidl_codegen::action_request_type,
+            |t| rosidl_codegen::action_received_types(t).to_vec(),
             "action request",
         )
     }
 
     /// The one implementation behind the two views above: the same composition
     /// rule and the same two refusals as [`Self::types_received_by`], with the
-    /// declared interface name mapped to the wire type before it is counted.
+    /// declared interface name mapped to the wire types before they are counted.
+    ///
+    /// `wire` fans ONE interface out to the types its endpoints receive —
+    /// one for a service, three for an action (phase-457 W1). Each carries the
+    /// interface's own count, because an action server registers one queryable
+    /// per request type, not three on one.
     fn wire_request_types(
         &self,
         matches: fn(EntityKind) -> bool,
-        wire: fn(&str) -> String,
+        wire: fn(&str) -> Vec<String>,
         what: &str,
     ) -> ReceivedTypes {
         match self.types_received_by(matches, what) {
@@ -2729,7 +2738,9 @@ impl EntityInventory {
             ReceivedTypes::Resolved(v) => {
                 let mut counts: BTreeMap<String, usize> = BTreeMap::new();
                 for (t, n) in v {
-                    *counts.entry(wire(&t)).or_insert(0) += n;
+                    for w in wire(&t) {
+                        *counts.entry(w).or_insert(0) += n;
+                    }
                 }
                 ReceivedTypes::Resolved(counts.into_iter().collect())
             }
@@ -3933,10 +3944,12 @@ impl EntityInventory {
         ));
         s.push_str(&render_received(
             "ACTION_REQUEST",
-            "the same, for the ACTION family: `pkg/action/Name_SendGoal_Request`, the
-             # largest of the three requests an action server's queryables receive.
-             # A separate family because it keeps depth 4 where a service keeps its own,
-             # so one maximum over both would give each the other's worst case.",
+            "the same, for the ACTION family: all THREE requests an action server's
+             # queryables receive (SendGoal, action_msgs/srv/CancelGoal, GetResult), since
+             # the three share one ring and CancelGoal's `GoalInfo` outweighs a small goal
+             # struct -- issue 1506. A separate family because it keeps depth 4 where a
+             # service keeps its own, so one maximum over both would give each the other's
+             # worst case.",
             &self.action_request_types(),
         ));
         // phase-403 step 2 -- the QoS DEPTHS. The arena's per-subscription cost
@@ -5371,9 +5384,18 @@ mod tests {
             names(inv.service_request_types()),
             vec!["tier4_system_msgs/srv/OperateMrm_Request".to_string()],
         );
+        // phase-457 W1 (issue 1506) -- ALL THREE requests an action server's
+        // queryables receive, because the three share one ring. Sorted, so
+        // `action_msgs` comes first.
         assert_eq!(
             names(inv.action_request_types()),
-            vec!["example_interfaces/action/Fibonacci_SendGoal_Request".to_string()],
+            vec![
+                "action_msgs/srv/CancelGoal_Request".to_string(),
+                "example_interfaces/action/Fibonacci_GetResult_Request".to_string(),
+                "example_interfaces/action/Fibonacci_SendGoal_Request".to_string(),
+            ],
+            "naming SendGoal alone under-sizes the ring: CancelGoal_Request carries a whole \
+             GoalInfo and outweighs a small goal struct"
         );
         // Priced APART: a service is in neither of the action family's rows and
         // the reverse, so one family never inherits the other's worst case.
@@ -5397,7 +5419,7 @@ mod tests {
         );
         assert!(
             c.contains(
-                "set(NROS_ENTITY_ACTION_REQUEST_TYPES \"example_interfaces/action/Fibonacci_SendGoal_Request\")"
+                "set(NROS_ENTITY_ACTION_REQUEST_TYPES \"action_msgs/srv/CancelGoal_Request;example_interfaces/action/Fibonacci_GetResult_Request;example_interfaces/action/Fibonacci_SendGoal_Request\")"
             ),
             "{c}"
         );
