@@ -408,11 +408,25 @@ impl PriorityPlan {
 
     /// The LEAST urgent priority in `pool.app` - where a rank past the pool's
     /// width is clamped (loudly: the realizer records a `Degradation`).
-    pub fn least_urgent_app_priority(&self) -> i64 {
-        match self.direction {
+    ///
+    /// `None` when the pool is EMPTY, and that is the whole point of the
+    /// `Option` (issue 1427). It used to return `self.app.hi` unconditionally,
+    /// and on an empty pool `hi < lo`, so `hi` is not a pool address at all -
+    /// it is the last priority the band BELOW the pool owns. On the pre-0852
+    /// Zephyr image that band is the transport's (`transport = [0, 14]`,
+    /// `app = [15, 14]`), so the clamp handed a derived tier k_thread **14**:
+    /// a number inside the reserved band, which is the inversion this plan
+    /// exists to prevent, arrived at by the code that exists to prevent it.
+    /// An empty pool has no address to give, and the caller must say so rather
+    /// than be handed one.
+    pub fn least_urgent_app_priority(&self) -> Option<i64> {
+        if self.app.width() == 0 {
+            return None;
+        }
+        Some(match self.direction {
             Direction::SmallerIsUrgent => self.app.hi,
             Direction::BiggerIsUrgent => self.app.lo,
-        }
+        })
     }
 
     /// The reserved band a priority lands on, if any - for a diagnostic that
@@ -502,6 +516,14 @@ mod tests {
             plan.app
         );
         assert_eq!(plan.nth_app_priority(0), None);
+        // issue 1427 - and there is no least urgent one either. `app.hi` is 14
+        // here, which belongs to the TRANSPORT band; returning it is how the
+        // clamp handed a derived tier the transport's own priority.
+        assert_eq!(plan.least_urgent_app_priority(), None);
+        assert_eq!(
+            plan.reserved_band_of(plan.app.hi).map(|(n, _)| n),
+            Some("transport")
+        );
     }
 
     /// An image whose Kconfig gates are off applies no band at all: the
@@ -527,11 +549,11 @@ mod tests {
         assert_eq!(posix.direction, Direction::BiggerIsUrgent);
         assert_eq!(posix.nth_app_priority(0), Some(89));
         assert_eq!(posix.nth_app_priority(1), Some(88));
-        assert_eq!(posix.least_urgent_app_priority(), 1);
+        assert_eq!(posix.least_urgent_app_priority(), Some(1));
 
         let threadx = PriorityPlan::for_target("threadx");
         assert_eq!(threadx.nth_app_priority(0), Some(15));
-        assert_eq!(threadx.least_urgent_app_priority(), 31);
+        assert_eq!(threadx.least_urgent_app_priority(), Some(31));
 
         // A key with no RTOS family gets no plan and no pool to allocate from.
         assert_eq!(PriorityPlan::for_target("").app.width(), 1);
@@ -556,6 +578,64 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// issue 1427 - the FreeRTOS pool agrees with the BOOT-TIME report, which
+    /// is the only place in the tree where both numbers meet at run time.
+    ///
+    /// `report_tiers_above_transport` (`nros-board-freertos/src/entry.rs`,
+    /// issue 0623) prints a warning for every tier whose priority meets the
+    /// transport floor `min(read, lease, poll)`, in RAW FreeRTOS units - the
+    /// same units a derived priority is allocated in here. So "a derived tier
+    /// never preempts its own transport" is checkable against the shipped
+    /// defaults rather than asserted: every priority `pool.app` can hand out
+    /// must be strictly below that floor, or the image the derivation produces
+    /// would warn about itself at boot.
+    ///
+    /// The floor is READ from `FreertosScheduling::default()`, not restated: a
+    /// core crate cannot depend on a board crate, and a second copy of the
+    /// number is what this whole module exists to avoid. A missing pattern
+    /// FAILS - the defaults moving into a shape this cannot read is exactly
+    /// when the check matters most.
+    #[test]
+    fn the_freertos_pool_stays_below_the_boot_report_floor() {
+        let src = std::fs::read_to_string(
+            repo_root().join("packages/boards/nros-board-common/src/freertos_config.rs"),
+        )
+        .expect("the FreeRTOS scheduling defaults are readable");
+        let field = |name: &str| -> i64 {
+            let needle = format!("{name}:");
+            src.lines()
+                .filter_map(|l| l.trim().strip_prefix(&needle))
+                .find_map(|rest| rest.trim().trim_end_matches(',').parse::<i64>().ok())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "no `{name}: <int>,` line in freertos_config.rs - the boot \
+                         report's floor cannot be read, so this check cannot hold. \
+                         Re-point it at wherever `FreertosScheduling::default()` now \
+                         states the transport priorities."
+                    )
+                })
+        };
+        let floor = field("zenoh_read_priority")
+            .min(field("zenoh_lease_priority"))
+            .min(field("poll_priority"));
+        let plan = PriorityPlan::for_target("freertos");
+        assert_eq!(plan.direction, Direction::BiggerIsUrgent);
+        for k in 0..plan.app.width() {
+            let p = plan.nth_app_priority(k).expect("inside the pool");
+            assert!(
+                p < floor,
+                "pool.app {:?} can allocate {p}, which meets the transport floor \
+                 {floor} that `report_tiers_above_transport` compares against - a \
+                 derived tier would preempt its own transport and the image would \
+                 warn about itself at boot (issues 0623, 1427)",
+                plan.app
+            );
+        }
+        // And the app task's own priority is inside the pool, so a derived tier
+        // is allocated from the same band the default task already runs in.
+        assert!(plan.app.contains(field("app_priority")));
     }
 
     // ---- the descriptors are the source; this file is a projection --------
