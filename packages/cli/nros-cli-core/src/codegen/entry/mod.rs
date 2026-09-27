@@ -35,7 +35,7 @@ use std::{
 
 use eyre::{Result, WrapErr, bail};
 use nros_orchestration_ir::{
-    CallbackGroupDecl, DEFAULT_TIER, ResolvedTierTable, TierResolveError, resolve_tiers,
+    CallbackGroupDecl, ResolvedTierTable, TierResolveError, resolve_tiers,
 };
 
 use crate::orchestration::cargo_metadata_schema::{NodeOverride, TierDef};
@@ -1223,13 +1223,27 @@ pub fn board_to_rtos(board: &str) -> Result<&'static str, nros_entry_lower::Unkn
 /// the duplicate-reader failure W1 removed one layer down. The model is
 /// re-read from `plan.launch_file` here instead: one extra parse of a file
 /// this bake has already validated, against two readers of one fact.
+/// issue 1426 — `callback_groups` is the map [`resolve_plan_sched`] built for
+/// the resolver, so this reads the SAME bindings `resolve_tiers` will: a group
+/// bound by `group_tiers` names its tier, and one that only the cmake keyword
+/// declares names [`DEFAULT_TIER`]. Building a private map here (which is what
+/// this did) made every `group_tiers`-bound group look unbound to the
+/// derivation while the resolver saw the binding — two readings of one fact.
+///
+/// Issue 1537 follow-up — that shared map is also what gives a RUST node, which
+/// states its groups only through `[[component]] group_tiers` (the one group
+/// input `nros::main!` reads), a derivation here: cmake groups first, else the
+/// group ids `group_tiers` names, in the resolver's own order. A group bound to
+/// a tier the model does not declare reaches the derivation as rule 4 (see
+/// `placement_is_unauthored`), exactly as it did when this map bound every
+/// such group to [`DEFAULT_TIER`].
 fn derive_entry_tiers(
     plan: &mut Plan,
     target_rtos: &str,
-    has_groups: bool,
+    callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
     priority_plan: Option<&nros_orchestration_ir::priority_plan::PriorityPlan>,
 ) -> Result<usize> {
-    if !plan.tiers.is_empty() || !plan.node_overrides.is_empty() || !has_groups {
+    if callback_groups.is_empty() {
         return Ok(0);
     }
     // `plan_from_model` records the model path as the plan's `launch_file` and
@@ -1240,48 +1254,16 @@ fn derive_entry_tiers(
         return Ok(0);
     }
     let model = crate::orchestration::model_ingest::load_model(&plan.launch_file)?;
-    if !model.execution.tiers.is_empty() {
-        // The plan's tier table is built from this one, so this is unreachable
-        // by construction; kept as the guard the rule is stated in.
+    // issue 1426 — the guard was `!model.execution.tiers.is_empty()`, i.e. a
+    // question about the TABLE. The rule is about a FACT, and it is stated once:
+    // `placement_is_unauthored` (rules 1-4). Authored placements still win and
+    // are never overwritten below.
+    if !nros_orchestration_ir::derive::placement_is_unauthored(
+        &model,
+        target_rtos,
+        callback_groups,
+    ) {
         return Ok(0);
-    }
-
-    // The same input shape `codegen-system` hands the derivation: bare node
-    // name -> its declared groups, each bound to DEFAULT_TIER, because the
-    // keyword states WHICH groups the code has and never where they run.
-    //
-    // Issue 1537 follow-up - a RUST node states its groups through the
-    // bringup's `[[component]] group_tiers` (the model's `execution.bindings`),
-    // which is the ONLY group input `nros::main!` reads. Keying this on the
-    // cmake metadata alone made the two disagree on a Rust Zephyr image with a
-    // contract and no `[tiers.*]`: the macro derived a multi-tier table and
-    // emitted `ZephyrBoard::run_tiers`, while this derived nothing, so
-    // `schedule_board_features` withheld the `tiers` feature that gates it and
-    // the generated entry could not compile. Same fallback, and the same order,
-    // as `resolve_plan_sched_in`'s own group map below: cmake groups first,
-    // else the group ids `group_tiers` names.
-    let mut callback_groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
-    for n in &plan.nodes {
-        let groups: Vec<&String> = if !n.callback_groups.is_empty() {
-            n.callback_groups.iter().collect()
-        } else {
-            n.group_tiers.keys().collect()
-        };
-        if groups.is_empty() {
-            continue;
-        }
-        let name = n.name.as_deref().unwrap_or(n.exec.as_str()).to_string();
-        callback_groups.insert(
-            name,
-            groups
-                .into_iter()
-                .map(|g| CallbackGroupDecl {
-                    id: g.clone(),
-                    r#type: "MutuallyExclusive".to_string(),
-                    tier: DEFAULT_TIER.to_string(),
-                })
-                .collect(),
-        );
     }
 
     // Issue 1508 - the image's own plan when the caller read its `.config`
@@ -1290,18 +1272,15 @@ fn derive_entry_tiers(
         Some(pp) => nros_orchestration_ir::derive::derive_tiers_in_plan(
             &model,
             target_rtos,
-            &callback_groups,
+            callback_groups,
             pp,
         ),
         None => nros_orchestration_ir::derive::derive_tiers_from_contracts(
             &model,
             target_rtos,
-            &callback_groups,
+            callback_groups,
         ),
     };
-    if derived.tiers.is_empty() {
-        return Ok(0);
-    }
     // Fail-loud, exactly as the bake does (`derive_execution_from_contracts`):
     // a weakened guarantee and a node left on the default tier are both things
     // the person running this build has to be able to see.
@@ -1317,9 +1296,28 @@ fn derive_entry_tiers(
              callback groups; it stays on the default tier"
         );
     }
-    let n = derived.tiers.len();
-    plan.tiers = derived.tiers;
-    plan.node_overrides = derived.overrides;
+    // issue 1426 — an authored number may not shadow a derived one silently.
+    for s in &derived.shadowed {
+        eprintln!(
+            "codegen entry: authored priority wins - {} [priority]: \
+             `[tiers.{}]` authors priority {} for this board, so it wins; the \
+             contract's rank would have allocated {}. Remove every platform \
+             sub-table from that tier to have the priority allocated instead \
+             (RFC-0079).",
+            s.node, s.tier, s.authored, s.allocated
+        );
+    }
+    let n = derived.tiers.len() + derived.placements.len();
+    // MERGE, never assign: a `derived-<node>` name is one no author writes, and
+    // a placement lands on the authored tier that asked for one, so neither can
+    // clobber an authored row.
+    plan.tiers.extend(derived.tiers);
+    for (tier, spec) in derived.placements {
+        if let Some(def) = plan.tiers.get_mut(&tier) {
+            nros_orchestration_ir::install_placement(def, target_rtos, spec);
+        }
+    }
+    plan.node_overrides.extend(derived.overrides);
     Ok(n)
 }
 
@@ -1359,38 +1357,28 @@ pub fn resolve_plan_sched_in(
     if plan.tiers.is_empty() && plan.node_overrides.is_empty() && !has_groups {
         return Ok(());
     }
-    derive_entry_tiers(plan, target_rtos, has_groups, priority_plan)?;
-
-    // Component instance names from the launch (match [[node_overrides]].name).
-    let component_names: BTreeSet<&str> = plan
-        .nodes
-        .iter()
-        .map(|n| n.name.as_deref().unwrap_or(n.exec.as_str()))
-        .collect();
 
     // Per-node callback group declarations. Phase 273 (W2): when the node carries
     // `group_tiers` from system.toml [[component]], use those tiers directly instead
     // of defaulting to "default" (which required [[node_overrides]] to reassign).
     // Fallback: group ID with DEFAULT_TIER (old path, [[node_overrides]] still work).
     // If callback_groups is empty but group_tiers is set, synthesize from group_tiers.
+    //
+    // issue 1426 — built BEFORE the derivation, and handed to it, so the
+    // derivation and `resolve_tiers` read one map. `groups_at_default_tier` is
+    // the shared spelling of the unbound case.
     let mut callback_groups_map: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
     for n in &plan.nodes {
         let node_name = n.name.as_deref().unwrap_or(n.exec.as_str()).to_string();
         let decls: Vec<CallbackGroupDecl> = if !n.callback_groups.is_empty() {
             // cmake-declared groups (via enrich_plan): look up tier from group_tiers.
-            n.callback_groups
-                .iter()
-                .map(|g| {
-                    let tier = n
-                        .group_tiers
-                        .get(g)
-                        .map(|t| t.as_str())
-                        .unwrap_or(DEFAULT_TIER);
-                    CallbackGroupDecl {
-                        id: g.clone(),
-                        r#type: "MutuallyExclusive".to_string(),
-                        tier: tier.to_string(),
+            nros_orchestration_ir::groups_at_default_tier(&n.callback_groups)
+                .into_iter()
+                .map(|mut d| {
+                    if let Some(tier) = n.group_tiers.get(&d.id) {
+                        d.tier = tier.clone();
                     }
+                    d
                 })
                 .collect()
         } else if !n.group_tiers.is_empty() {
@@ -1410,6 +1398,16 @@ pub fn resolve_plan_sched_in(
             callback_groups_map.insert(node_name, decls);
         }
     }
+
+    derive_entry_tiers(plan, target_rtos, &callback_groups_map, priority_plan)?;
+
+    // Component instance names from the launch (match [[node_overrides]].name).
+    // AFTER the derivation, which takes `plan` mutably.
+    let component_names: BTreeSet<&str> = plan
+        .nodes
+        .iter()
+        .map(|n| n.name.as_deref().unwrap_or(n.exec.as_str()))
+        .collect();
 
     let table = resolve_tiers(
         &plan.tiers,

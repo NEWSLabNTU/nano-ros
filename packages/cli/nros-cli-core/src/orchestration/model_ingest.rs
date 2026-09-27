@@ -236,16 +236,25 @@ pub fn apply_model_execution(
 /// platform-agnostic core + the RTOS realizer, and synthesize them into the
 /// bringup as ordinary `[tiers.*]` + `[[node_overrides]]` rows so the ENTIRE
 /// existing pipeline (resolve_system_tiers → validation → plan → run_tiers)
-/// consumes them unchanged. Declared tiers always win — this only engages on
-/// an empty tier table.
+/// consumes them unchanged.
+///
+/// issue 1426 — AUTHORED still wins, per FACT rather than per TABLE. This used
+/// to run only when `model.execution.tiers` was empty and to ASSIGN over
+/// whatever was there; it now runs whenever
+/// [`nros_orchestration_ir::derive::placement_is_unauthored`] holds and MERGES:
+/// derived `derived-<node>` tiers are added, allocated placements are installed
+/// on the authored tiers that asked for one, and an authored placement that
+/// beat a rank is printed. With an empty authored table `extend` is `assign`,
+/// so the no-tier road is unchanged.
 ///
 /// The board capability (`SchedCaps`) honors the per-deploy `edf` knob
 /// (`Deploy.extra["edf"]`, RFC-0052 §"CAPS provenance"): entries carrying the
 /// knob must agree, else the bake fails loud. Every degradation the realizer
 /// records is printed — a guarantee weakening is never silent.
 ///
-/// Returns the number of derived tiers (0 = nothing schedulable; the bake
-/// proceeds tier-less exactly as before).
+/// Returns the number of tiers this call ALLOCATED a priority for — derived
+/// tiers plus authored tiers whose placement it filled (0 = nothing schedulable;
+/// the bake proceeds exactly as before).
 pub fn derive_execution_from_contracts(
     system: &mut SystemToml,
     model: &SystemModel,
@@ -306,9 +315,39 @@ pub fn derive_execution_in_plan(
             name
         );
     }
-    let n = derived.tiers.len();
-    system.tiers = derived.tiers;
-    system.node_overrides = derived.overrides;
+    // issue 1426 — "authored wins" may not win silently. Same channel as a
+    // degradation, and into the plan for the same reason (issue 0259): the
+    // person who wrote the number is the one who needs to see what it beat.
+    for s in &derived.shadowed {
+        let reason = format!(
+            "`[tiers.{}]` authors priority {} for this board, so it wins; the \
+             contract's rank would have allocated {}. Remove every platform \
+             sub-table from that tier to have the priority allocated instead \
+             (RFC-0079).",
+            s.tier, s.authored, s.allocated
+        );
+        eprintln!(
+            "codegen-system: authored priority wins — {} [{}]: {reason}",
+            s.node, "priority"
+        );
+        warnings.push(crate::orchestration::plan::PlanSchedWarning {
+            node: s.node.clone(),
+            dim: "priority".to_string(),
+            reason,
+        });
+    }
+    let n = derived.tiers.len() + derived.placements.len();
+    // MERGE, never assign (issue 1426). A derived tier is named
+    // `derived-<node>`, which no author writes, so `extend` cannot clobber an
+    // authored row; a placement is installed on the authored tier that asked
+    // for it, leaving its head facts alone.
+    system.tiers.extend(derived.tiers);
+    for (tier, spec) in derived.placements {
+        if let Some(def) = system.tiers.get_mut(&tier) {
+            nros_orchestration_ir::install_placement(def, target_rtos, spec);
+        }
+    }
+    system.node_overrides.extend(derived.overrides);
     Ok((n, warnings))
 }
 

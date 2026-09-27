@@ -17,16 +17,8 @@
 //! third source - the `nros-metadata.json` a configure writes from the cmake
 //! keyword - and this asserts the before and the after on one fixture.
 //!
-//! # Why the metadata is written here rather than configured
-//!
-//! Producing it for real means a `cmake configure` of four C++ packages
-//! against a provisioned toolchain, and this repo does not compile inside
-//! tests. The document below is the one `_nros_metadata_emit()`
-//! (`cmake/NanoRosNodeRegister.cmake`) writes, field for field; the island's
-//! own `build-board/nros-metadata.json` is byte-compatible with it, and W0's
-//! coverage case pins the other half - that each `CMakeLists.txt` really does
-//! carry `CALLBACK_GROUPS main`, so the rows this test writes are the rows a
-//! configure would.
+//! The fixture and its `nros-metadata.json` writer live in
+//! `common::derived_tiers` (issue 1426 folded three copies into one).
 //!
 //! # What is asserted
 //!
@@ -44,13 +36,9 @@
 
 mod common;
 
-use std::{
-    collections::BTreeMap,
-    fs,
-    path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{collections::BTreeMap, fs};
 
+use common::derived_tiers::{FAST, Fixture, SLOW, resolve_model};
 use nros_cli_core::orchestration::{
     cargo_metadata_schema::SystemToml, model_ingest, nros_config::NrosConfig,
     tier_resolver::collect_callback_groups,
@@ -61,145 +49,9 @@ use nros_orchestration_ir::{
 };
 use ros_launch_manifest_model::SystemModel;
 
-/// The two 30 Hz components, in the island's naming.
-const FAST: [&str; 2] = ["mrm_emergency_stop_operator", "stop_mode_operator"];
-/// The two 10 Hz components.
-const SLOW: [&str; 2] = ["mrm_comfortable_stop_operator", "mrm_handler"];
-
 /// The board this bake is for. The fixture's `[image.zephyr]` names
 /// `native_sim/native/64`, whose descriptor's platform gives this tier key.
 const TARGET_RTOS: &str = "zephyr";
-
-fn repo_root() -> PathBuf {
-    // <repo>/packages/cli/nros-cli-core/tests/ -> <repo>
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("repo root")
-        .to_path_buf()
-}
-
-/// A private copy of the W0 fixture, so a test may write a build tree into it.
-///
-/// Repo rule: temp trees live under `$project/tmp/`, not the system temp dir.
-/// The copy is per-process and per-test, because two tests here disagree about
-/// whether the workspace has a `nros-metadata.json` at all.
-struct Fixture {
-    root: PathBuf,
-}
-
-impl Fixture {
-    fn copy(tag: &str) -> Self {
-        let repo = repo_root();
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos();
-        let root = repo.join("tmp").join(format!(
-            "derived-tiers-bake-{tag}-{}-{stamp}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&root).expect("create the fixture copy");
-        copy_tree(&repo.join("examples/workspaces/derived-tiers-cpp"), &root);
-        Self { root }
-    }
-
-    /// The workspace `nros_system_generate()` would pass: the PARENT of the
-    /// bringup package, which for this fixture is `<root>/src`. Baking with
-    /// `<root>` instead would be the easier test and the wrong one - the
-    /// Zephyr road never passes the workspace root, and the reader has to
-    /// reach a build tree one level above what it is handed.
-    fn bake_workspace(&self) -> PathBuf {
-        self.root.join("src")
-    }
-
-    fn bringup(&self) -> PathBuf {
-        self.root.join("src/demo_bringup")
-    }
-
-    /// Write the document a `cmake -B build-board` configure of this workspace
-    /// writes, with `CALLBACK_GROUPS main` on all four registrations.
-    fn configure(&self) {
-        let rows: Vec<String> = [
-            (
-                "emergency_stop_pkg",
-                "mrm_emergency_stop_operator",
-                "MrmEmergencyStopOperator",
-            ),
-            ("stop_mode_pkg", "stop_mode_operator", "StopModeOperator"),
-            (
-                "comfortable_stop_pkg",
-                "mrm_comfortable_stop_operator",
-                "MrmComfortableStopOperator",
-            ),
-            ("mrm_handler_pkg", "mrm_handler", "MrmHandler"),
-        ]
-        .iter()
-        .map(|(pkg, name, class)| {
-            format!(
-                "    {{\"name\": \"{name}\", \"pkg\": \"{pkg}\", \"class\": \"{pkg}::{class}\", \
-                 \"class_header\": \"{pkg}/{class}.hpp\", \"shape\": \"rclcpp\", \
-                 \"sources\": [\"src/{class}.cpp\"], \"deploy\": [], \
-                 \"pkg_dir\": \"{}/src/{pkg}\", \"lang\": \"cpp\", \
-                 \"callback_groups\": [\"main\"]}}",
-                self.root.display()
-            )
-        })
-        .collect();
-        let doc = format!(
-            "{{\n  \"components\": [\n{}\n  ],\n  \"applications\": [\n  ]\n}}\n",
-            rows.join(",\n")
-        );
-        let dir = self.root.join("build-board");
-        fs::create_dir_all(&dir).expect("create the build tree");
-        fs::write(dir.join("nros-metadata.json"), doc).expect("write nros-metadata.json");
-    }
-}
-
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
-    }
-}
-
-fn copy_tree(from: &Path, to: &Path) {
-    fs::create_dir_all(to).expect("mkdir");
-    for entry in fs::read_dir(from).expect("read the fixture") {
-        let entry = entry.expect("dir entry");
-        let dst = to.join(entry.file_name());
-        if entry.file_type().expect("file type").is_dir() {
-            copy_tree(&entry.path(), &dst);
-        } else {
-            fs::copy(entry.path(), &dst).expect("copy");
-        }
-    }
-}
-
-/// The fixture's launch file + its contract sidecar, through the pinned
-/// resolver. The same helper `example_metadata_coverage` uses, and the same
-/// reason: the model is a build artifact, so the test makes one.
-fn resolve_model(bringup: &Path) -> SystemModel {
-    let resolver = common::pinned_launch_resolver();
-    let out = bringup.join("model-out");
-    fs::create_dir_all(&out).expect("create the model out dir");
-    let model = out.join("system_model.yaml");
-    let output = std::process::Command::new(&resolver)
-        .arg(bringup.join("launch/system.launch.xml"))
-        .arg("--bringup-root")
-        .arg(bringup)
-        .arg("-o")
-        .arg(&model)
-        .output()
-        .expect("spawn nros-launch-resolve");
-    assert!(
-        output.status.success(),
-        "nros-launch-resolve failed:\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let text = fs::read_to_string(&model).expect("read the resolved model");
-    SystemModel::from_yaml_str(&text).expect("the resolved model parses")
-}
 
 /// The fixture's own `system.toml`, as the bake loads it.
 fn system_toml(bringup: &Path) -> SystemToml {
@@ -243,9 +95,9 @@ fn priorities(derived: &DerivedSchedule) -> BTreeMap<String, i64> {
 /// placed, and the placement is rate-monotonic.
 #[test]
 fn the_cmake_keyword_makes_the_fixture_derive_a_schedule() {
-    let fixture = Fixture::copy("keyword");
-    fixture.configure();
-    let model = resolve_model(&fixture.bringup());
+    let fixture = Fixture::copy("bake-keyword");
+    fixture.configure(&["main"]);
+    let model = resolve_model(&fixture.bringup(), false);
     let system = system_toml(&fixture.bringup());
     let derived = derive(&fixture, &model, &system);
 
@@ -307,9 +159,9 @@ fn the_cmake_keyword_makes_the_fixture_derive_a_schedule() {
 /// an operator sees, and the mutation the rest of the pipeline consumes.
 #[test]
 fn the_bake_reports_the_derived_tiers_and_binds_every_node() {
-    let fixture = Fixture::copy("bake");
-    fixture.configure();
-    let model = resolve_model(&fixture.bringup());
+    let fixture = Fixture::copy("bake-count");
+    fixture.configure(&["main"]);
+    let model = resolve_model(&fixture.bringup(), false);
     let mut system = system_toml(&fixture.bringup());
     assert!(
         system.tiers.is_empty(),
@@ -435,8 +287,8 @@ fn the_derived_table_lands_below_the_transport_band() {
 /// nobody asked for.
 #[test]
 fn without_the_keyword_every_node_is_groupless_and_nothing_derives() {
-    let fixture = Fixture::copy("no-keyword");
-    let model = resolve_model(&fixture.bringup());
+    let fixture = Fixture::copy("bake-no-keyword");
+    let model = resolve_model(&fixture.bringup(), false);
     let system = system_toml(&fixture.bringup());
     let derived = derive(&fixture, &model, &system);
 

@@ -1028,40 +1028,34 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
         // Tiers: convert the model's execution tiers for this RTOS and resolve
         // the table via the SHARED nros-orchestration-ir path.
-        if !model.execution.tiers.is_empty() {
-            let tiers: BTreeMap<String, nros_orchestration_ir::TierDef> = model
-                .execution
-                .tiers
-                .iter()
-                .map(|(name, t)| {
-                    (
-                        name.clone(),
-                        nros_orchestration_ir::tier_from_model(t, &rtos),
-                    )
-                })
-                .collect();
-            let component_names: BTreeSet<&str> =
-                node_instances.iter().map(String::as_str).collect();
-            let table =
-                resolve_tiers(&tiers, &[], &component_names, &node_groups, &rtos).map_err(|e| {
-                    syn::Error::new(
-                        model_lit.span(),
-                        format!("nros::main!: tier resolution: {e}"),
-                    )
-                })?;
-            nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
-                .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
-            // issue 0438 — remember that tiers were AUTHORED, so a collapse to
-            // the degenerate default below can be reported instead of taken.
-            authored_tier_names = model.execution.tiers.keys().cloned().collect();
-            resolved_tiers = Some(table);
-        } else {
-            // phase-296 W5.13 follow-up — NO authored tiers: DERIVE the schedule
+        // issue 1426 — the AUTHORED half and the DERIVED half are one table,
+        // not an if/else. This was the third site spelling the precedence as
+        // `model.execution.tiers.is_empty()`, and the third site to get the
+        // same thing wrong: a model that authored one tier derived nothing for
+        // any other node, however much contract those nodes carried. Rules and
+        // the shared predicate: `derive::placement_is_unauthored`.
+        let mut tiers: BTreeMap<String, nros_orchestration_ir::TierDef> = model
+            .execution
+            .tiers
+            .iter()
+            .map(|(name, t)| {
+                (
+                    name.clone(),
+                    nros_orchestration_ir::tier_from_model(t, &rtos),
+                )
+            })
+            .collect();
+        // issue 0438 — remember that tiers were AUTHORED, so a collapse to the
+        // degenerate default below can be reported instead of taken.
+        authored_tier_names = model.execution.tiers.keys().cloned().collect();
+        let mut overrides: Vec<nros_orchestration_ir::NodeOverride> = Vec::new();
+
+        if nros_orchestration_ir::derive::placement_is_unauthored(&model, &rtos, &node_groups) {
+            // phase-296 W5.13 follow-up — an UNAUTHORED placement is DERIVED
             // from the contract layer via the SAME shared core the CLI's
             // codegen-system uses (`nros-orchestration-ir::derive`), so a
-            // pure-cargo Rust entry gets an identical `derived-<node>` table.
-            // A tier-less, contract-less model derives nothing and stays
-            // tier-less (byte-identical to before).
+            // pure-cargo Rust entry gets an identical table. A contract-less
+            // model derives nothing and stays as it was.
             let mut derived = nros_orchestration_ir::derive::derive_tiers_from_contracts(
                 &model,
                 &rtos,
@@ -1073,10 +1067,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // above or inside its own transport (issue 0623's inversion), so a
             // Zephyr expansion that can see the image's `.config` re-allocates
             // out of THAT image's plan - the same classification the CMake
-            // roads use (issue 1508). Only when something was derived: an
-            // image that derives nothing must not start failing on its
-            // `.config`.
-            if !derived.tiers.is_empty() {
+            // roads use (issue 1508). Only when something was ALLOCATED - a
+            // `derived-<node>` tier (rule 4) or a placement for a named,
+            // unplaced tier (issue 1426 rule 2): an image that allocates
+            // nothing must not start failing on its `.config`.
+            if !derived.tiers.is_empty() || !derived.placements.is_empty() {
                 if let Some(plan) = zephyr_image_plan_from_env(
                     &rtos,
                     model_lit.span(),
@@ -1091,40 +1086,52 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     );
                 }
             }
-            if !derived.tiers.is_empty() {
-                // Fail-loud: surface every recorded weakening at expansion time
-                // (build stderr) — the macro has no runtime channel for these.
-                for d in &derived.degradations {
-                    eprintln!(
-                        "nros::main!: derived-schedule degradation — {} [{}]: {}",
-                        d.node, d.dim, d.reason
-                    );
+            // Fail-loud: surface every recorded weakening at expansion time
+            // (build stderr) — the macro has no runtime channel for these.
+            for d in &derived.degradations {
+                eprintln!(
+                    "nros::main!: derived-schedule degradation — {} [{}]: {}",
+                    d.node, d.dim, d.reason
+                );
+            }
+            for name in &derived.groupless_notes {
+                eprintln!(
+                    "nros::main!: derived-schedule note — node '{name}' declares no \
+                     callback groups; it stays on the default tier"
+                );
+            }
+            for s in &derived.shadowed {
+                eprintln!(
+                    "nros::main!: authored priority wins — {} [priority]: \
+                     `[tiers.{}]` authors priority {} for this board, so it wins; the \
+                     contract's rank would have allocated {}. Remove every platform \
+                     sub-table from that tier to have the priority allocated instead \
+                     (RFC-0079).",
+                    s.node, s.tier, s.authored, s.allocated
+                );
+            }
+            tiers.extend(derived.tiers);
+            for (tier, spec) in derived.placements {
+                if let Some(def) = tiers.get_mut(&tier) {
+                    nros_orchestration_ir::install_placement(def, &rtos, spec);
                 }
-                for name in &derived.groupless_notes {
-                    eprintln!(
-                        "nros::main!: derived-schedule note — node '{name}' declares no \
-                         callback groups; it stays on the default tier"
-                    );
-                }
-                let component_names: BTreeSet<&str> =
-                    node_instances.iter().map(String::as_str).collect();
-                let table = resolve_tiers(
-                    &derived.tiers,
-                    &derived.overrides,
-                    &component_names,
-                    &node_groups,
-                    &rtos,
-                )
+            }
+            overrides = derived.overrides;
+        }
+
+        if !tiers.is_empty() {
+            let component_names: BTreeSet<&str> =
+                node_instances.iter().map(String::as_str).collect();
+            let table = resolve_tiers(&tiers, &overrides, &component_names, &node_groups, &rtos)
                 .map_err(|e| {
                     syn::Error::new(
                         model_lit.span(),
-                        format!("nros::main!: derived tier resolution: {e}"),
+                        format!("nros::main!: tier resolution: {e}"),
                     )
                 })?;
-                nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
-                    .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
-                resolved_tiers = Some(table);
-            }
+            nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
+                .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+            resolved_tiers = Some(table);
         }
 
         // Lifecycle autostart + param-services capability from the model.

@@ -31,21 +31,12 @@
 
 mod common;
 
-use std::{
-    collections::BTreeMap,
-    fs,
-    path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::collections::BTreeMap;
 
+use common::derived_tiers::{FAST, Fixture, SLOW, resolve_model_path};
 use nros_cli_core::codegen::entry::{
     Plan, emit_cpp, metadata, plan_from_model, resolve_plan_sched,
 };
-
-/// The two 30 Hz components, in the island's naming.
-const FAST: [&str; 2] = ["mrm_emergency_stop_operator", "stop_mode_operator"];
-/// The two 10 Hz components.
-const SLOW: [&str; 2] = ["mrm_comfortable_stop_operator", "mrm_handler"];
 
 /// The board key the entry bakes for. The fixture's `[image.zephyr]` names
 /// `native_sim/native/64`; `codegen entry` is given the FAMILY key, which is
@@ -57,147 +48,10 @@ const BOARD: &str = "zephyr";
 /// owns [5, 14]. phase-459 W4 records it; `priority_plan.rs` derives it.
 const POOL: (i64, i64) = (5, 14);
 
-fn repo_root() -> PathBuf {
-    // <repo>/packages/cli/nros-cli-core/tests/ -> <repo>
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("repo root")
-        .to_path_buf()
-}
-
-/// A private copy of the W0 fixture, so a test may write a build tree into it.
-/// Repo rule: temp trees live under `$project/tmp/`, not the system temp dir.
-struct Fixture {
-    root: PathBuf,
-}
-
-impl Fixture {
-    fn copy(tag: &str) -> Self {
-        let repo = repo_root();
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos();
-        let root = repo.join("tmp").join(format!(
-            "derived-tiers-entry-{tag}-{}-{stamp}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&root).expect("create the fixture copy");
-        copy_tree(&repo.join("examples/workspaces/derived-tiers-cpp"), &root);
-        Self { root }
-    }
-
-    fn bringup(&self) -> PathBuf {
-        self.root.join("src/demo_bringup")
-    }
-
-    /// The `nros-metadata.json` a `cmake -B build-board` configure of this
-    /// workspace writes - the file `nano_ros_add_executable` hands the entry
-    /// bake as `--metadata`. `groups` is what `CALLBACK_GROUPS` put in it.
-    fn configure(&self, groups: &[&str]) -> PathBuf {
-        let ids = groups
-            .iter()
-            .map(|g| format!("\"{g}\""))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let rows: Vec<String> = [
-            (
-                "emergency_stop_pkg",
-                "mrm_emergency_stop_operator",
-                "MrmEmergencyStopOperator",
-            ),
-            ("stop_mode_pkg", "stop_mode_operator", "StopModeOperator"),
-            (
-                "comfortable_stop_pkg",
-                "mrm_comfortable_stop_operator",
-                "MrmComfortableStopOperator",
-            ),
-            ("mrm_handler_pkg", "mrm_handler", "MrmHandler"),
-        ]
-        .iter()
-        .map(|(pkg, name, class)| {
-            format!(
-                "    {{\"name\": \"{name}\", \"pkg\": \"{pkg}\", \"class\": \"{pkg}::{class}\", \
-                 \"class_header\": \"{pkg}/{class}.hpp\", \"shape\": \"rclcpp\", \
-                 \"sources\": [\"src/{class}.cpp\"], \"deploy\": [], \
-                 \"pkg_dir\": \"{}/src/{pkg}\", \"lang\": \"cpp\", \
-                 \"callback_groups\": [{ids}]}}",
-                self.root.display()
-            )
-        })
-        .collect();
-        let doc = format!(
-            "{{\n  \"components\": [\n{}\n  ],\n  \"applications\": [\n  ]\n}}\n",
-            rows.join(",\n")
-        );
-        let dir = self.root.join("build-board");
-        fs::create_dir_all(&dir).expect("create the build tree");
-        let path = dir.join("nros-metadata.json");
-        fs::write(&path, doc).expect("write nros-metadata.json");
-        path
-    }
-}
-
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
-    }
-}
-
-fn copy_tree(from: &Path, to: &Path) {
-    fs::create_dir_all(to).expect("mkdir");
-    for entry in fs::read_dir(from).expect("read the fixture") {
-        let entry = entry.expect("dir entry");
-        let dst = to.join(entry.file_name());
-        if entry.file_type().expect("file type").is_dir() {
-            copy_tree(&entry.path(), &dst);
-        } else {
-            fs::copy(entry.path(), &dst).expect("copy");
-        }
-    }
-}
-
-/// The fixture's launch file + its contract sidecar, through the pinned
-/// resolver, written where a bake would write it. The model is a build
-/// artifact, so the test makes one.
-fn resolve_model(bringup: &Path) -> PathBuf {
-    resolve_model_with(bringup, false)
-}
-
-/// `with_system` folds the bringup's `system.toml` into the model, which is
-/// what carries an AUTHORED `[tiers.*]` across. The derived road deliberately
-/// does not need it: its `system.toml` states no tier at all.
-fn resolve_model_with(bringup: &Path, with_system: bool) -> PathBuf {
-    let resolver = common::pinned_launch_resolver();
-    let out = bringup.join("model-out");
-    fs::create_dir_all(&out).expect("create the model out dir");
-    let model = out.join("system_model.yaml");
-    let mut cmd = std::process::Command::new(&resolver);
-    cmd.arg(bringup.join("launch/system.launch.xml"))
-        .arg("--bringup-root")
-        .arg(bringup);
-    if with_system {
-        cmd.arg("--system").arg(bringup.join("system.toml"));
-    }
-    let output = cmd
-        .arg("-o")
-        .arg(&model)
-        .output()
-        .expect("spawn nros-launch-resolve");
-    assert!(
-        output.status.success(),
-        "nros-launch-resolve failed:\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    model
-}
-
 /// `cmd::codegen::run_entry`'s own sequence for a typed C++ Zephyr entry.
 fn entry_plan(fixture: &Fixture, groups: &[&str]) -> Plan {
     let meta = fixture.configure(groups);
-    let model = resolve_model(&fixture.bringup());
+    let model = resolve_model_path(&fixture.bringup(), false);
     let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan from the model");
     let index = metadata::ComponentIndex::load(&meta).expect("the cmake metadata loads");
     metadata::enrich_plan(&mut plan, &index).expect("enrich from the cmake metadata");
@@ -224,7 +78,7 @@ fn priorities(plan: &Plan) -> BTreeMap<String, i64> {
 /// `run_tiers` over the derived table.
 #[test]
 fn the_entry_derives_its_tiers_and_emits_run_tiers() {
-    let fixture = Fixture::copy("derives");
+    let fixture = Fixture::copy("entry-derives");
     let plan = entry_plan(&fixture, &["main"]);
 
     assert!(
@@ -300,7 +154,7 @@ fn the_entry_derives_its_tiers_and_emits_run_tiers() {
 /// derived and the entry stays exactly what it was - one executor, no tiers.
 #[test]
 fn without_the_keyword_the_entry_derives_nothing_and_keeps_run_components() {
-    let fixture = Fixture::copy("no-keyword");
+    let fixture = Fixture::copy("entry-no-keyword");
     let plan = entry_plan(&fixture, &[]);
 
     assert!(
@@ -325,32 +179,39 @@ fn without_the_keyword_the_entry_derives_nothing_and_keeps_run_components() {
     );
 }
 
-/// An AUTHORED tier still wins. The derivation engages only on an empty tier
-/// table - the same rule `codegen-system` applies - so a workspace that writes
-/// its own `[tiers.*]` is untouched by this wave.
+/// An AUTHORED placement still wins, and it wins for the NODE THAT AUTHORED IT
+/// and no other.
+///
+/// This test used to assert `plan.tiers.keys() == ["ctrl"]` - "the authored
+/// table is the whole table; nothing was derived beside it" - which is the
+/// defect issue 1426 names in its second bullet, written down as an
+/// expectation. One component binding to one `[tiers.ctrl.zephyr]` disabled the
+/// derivation for the other three, so three nodes with 30/10 Hz contracts and a
+/// declared group landed on the synthesised default tier at Zephyr priority 0,
+/// i.e. ABOVE the transport threads that feed them (issue 1427's inversion,
+/// reached through the guard rather than through the allocator).
+///
+/// The rule now: precedence is per FACT.
+/// `derive::placement_is_unauthored` rule 1 keeps `mrm_handler` at 7, rule 4
+/// allocates a pool address for each of the other three, and the authored
+/// number is recorded as having shadowed a rank rather than silently beating it.
 #[test]
-fn an_authored_tier_table_is_not_replaced_by_the_derivation() {
-    let fixture = Fixture::copy("authored");
+fn an_authored_placement_wins_only_for_the_node_that_authored_it() {
+    let fixture = Fixture::copy("entry-authored");
     let meta = fixture.configure(&["main"]);
     let bringup = fixture.bringup();
-    let system = bringup.join("system.toml");
-    let raw = fs::read_to_string(&system).expect("read system.toml");
     // The authored form RFC-0079 retires, written the way it is written today:
     // the tier, its per-RTOS priority, and the binding on the component.
-    let raw = raw.replace(
-        "name = \"mrm_handler\"",
-        "name = \"mrm_handler\"\ngroup_tiers = { main = \"ctrl\" }",
+    fixture.author(
+        "ctrl",
+        &["mrm_handler"],
+        "[tiers.ctrl]\n[tiers.ctrl.zephyr]\npriority = 7\n",
     );
-    fs::write(
-        &system,
-        format!("{raw}\n[tiers.ctrl]\n[tiers.ctrl.zephyr]\npriority = 7\n"),
-    )
-    .expect("author a tier");
 
-    let model = resolve_model_with(&bringup, true);
+    let model = resolve_model_path(&bringup, true);
     let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan from the model");
     assert!(
-        !plan.tiers.is_empty(),
+        plan.tiers.contains_key("ctrl"),
         "the authored tier reaches the plan: {:?}",
         plan.tiers.keys().collect::<Vec<_>>()
     );
@@ -358,15 +219,48 @@ fn an_authored_tier_table_is_not_replaced_by_the_derivation() {
     metadata::enrich_plan(&mut plan, &index).expect("enrich");
     resolve_plan_sched(&mut plan, BOARD).expect("resolve");
 
-    assert_eq!(
-        plan.tiers.keys().collect::<Vec<_>>(),
-        vec!["ctrl"],
-        "the authored table is the whole table; nothing was derived beside it"
-    );
     let prio = priorities(&plan);
     assert_eq!(
         prio["mrm_handler"], 7,
-        "the authored priority is honoured verbatim: {prio:?}"
+        "rule 1: the authored priority is honoured verbatim: {prio:?}"
+    );
+    assert!(
+        plan.tiers.contains_key("ctrl"),
+        "the authored tier survives the merge: {:?}",
+        plan.tiers.keys().collect::<Vec<_>>()
+    );
+    // Rule 4 for the three nodes nobody wrote anything about: each gets its own
+    // allocated tier, inside the pool, and NOT the default tier's 0.
+    let mut derived_members: Vec<&str> = prio
+        .keys()
+        .map(String::as_str)
+        .filter(|n| *n != "mrm_handler")
+        .collect();
+    derived_members.sort_unstable();
+    let mut want: Vec<&str> = FAST
+        .iter()
+        .chain(SLOW.iter())
+        .copied()
+        .filter(|n| *n != "mrm_handler")
+        .collect();
+    want.sort_unstable();
+    assert_eq!(
+        derived_members, want,
+        "every node the author said nothing about is allocated a tier: {prio:?}"
+    );
+    for node in &derived_members {
+        let p = prio[*node];
+        assert!(
+            POOL.0 <= p && p <= POOL.1,
+            "{node} at {p} must be inside the board's application pool {POOL:?}, \
+             not on the default tier above the transport: {prio:?}"
+        );
+    }
+    // The rate-monotonic order still holds among them: the 30 Hz node outranks
+    // the 10 Hz one (Zephyr counts down).
+    assert!(
+        prio["mrm_emergency_stop_operator"] < prio["mrm_comfortable_stop_operator"],
+        "rate-monotonic among the allocated tiers: {prio:?}"
     );
 }
 

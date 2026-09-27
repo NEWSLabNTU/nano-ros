@@ -582,6 +582,59 @@ pub struct CallbackGroupOverride {
 /// declared at all). It needs no `[tiers.default]` table.
 pub const DEFAULT_TIER: &str = "default";
 
+/// issue 1426 — install an ALLOCATED `[tiers.<name>.<rtos>]` on a tier whose
+/// head the AUTHOR wrote.
+///
+/// One spelling for all three roads that patch a tier table
+/// (`codegen-system`, `codegen entry`, `nros::main!`), because the only reason
+/// this is a separate step from [`tier_from_model`] is that the head facts stay
+/// authored while the address is allocated.
+///
+/// Never overwrites. `derive::placement_is_unauthored` rule 2 only produces a
+/// placement for a tier that authors NONE, so an occupied slot here would mean
+/// the precedence was computed against a different table than the one being
+/// patched — and the authored value has to survive that bug rather than be
+/// replaced by it.
+pub fn install_placement(def: &mut TierDef, target_rtos: &str, spec: TierRtosSpec) {
+    let slot = match target_rtos {
+        "zephyr" => &mut def.zephyr,
+        "freertos" => &mut def.freertos,
+        "threadx" => &mut def.threadx,
+        "nuttx" => &mut def.nuttx,
+        "posix" | "native" => &mut def.posix,
+        _ => return,
+    };
+    if slot.is_none() {
+        *slot = Some(spec);
+    }
+}
+
+/// issue 1426 — the derivation's input shape from a bare list of group ids, in
+/// ONE spelling.
+///
+/// A source that states WHICH groups a node has and nothing about where they
+/// run — the cmake `CALLBACK_GROUPS` keyword, on either road — arrives as ids.
+/// Every id binds to [`DEFAULT_TIER`], which is the shape
+/// [`derive::derive_tiers_from_contracts`] keys on (its rule 4). Both roads
+/// built this map by hand, four lines each and identical:
+/// `orchestration::tier_resolver::collect_callback_groups` for the bake and
+/// `codegen::entry::derive_entry_tiers` for the entry. The second copy arrived
+/// one wave after the first, which is how a class recurs (CLAUDE.md: one shared
+/// helper, never a second spelling).
+pub fn groups_at_default_tier<I>(ids: I) -> Vec<CallbackGroupDecl>
+where
+    I: IntoIterator,
+    I::Item: AsRef<str>,
+{
+    ids.into_iter()
+        .map(|id| CallbackGroupDecl {
+            id: id.as_ref().to_string(),
+            r#type: default_cbg_type(),
+            tier: DEFAULT_TIER.to_string(),
+        })
+        .collect()
+}
+
 /// One resolved tier: a concrete RTOS task to emit.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedTier {
@@ -661,7 +714,19 @@ pub enum TierResolveError {
         group: String,
         tier: String,
     },
-    #[error("tier `{tier}` has no `[tiers.{tier}.{rtos}]` sub-table for the target RTOS")]
+    /// issue 1426 — a tier that names NO platform at all is not this error: it
+    /// is an allocation request, and [`derive::placement_is_unauthored`] rule 2
+    /// fills its placement from the contract. This variant is reached when the
+    /// tier DOES author placement, for other targets, and the author has to say
+    /// which of the two they meant.
+    #[error(
+        "tier `{tier}` has no `[tiers.{tier}.{rtos}]` sub-table for the target RTOS. \
+         It does carry a sub-table for another platform, so its priority is AUTHORED \
+         and this target was left out - add `[tiers.{tier}.{rtos}]`, or remove every \
+         platform sub-table to have the priority allocated from the contract instead \
+         (RFC-0079). (If no member of this tier carries a rate in the contract, there \
+         is nothing to allocate from either.)"
+    )]
     MissingRtosSpec { tier: String, rtos: String },
     /// Issue 1285 follow-up. The target board has no RTOS family (tier key
     /// `""`, `nros_entry_lower::NO_RTOS_TIER_KEY`). This is its own variant
