@@ -333,24 +333,56 @@ fn dense_node_ranks(ranked: &RankedPlan) -> (BTreeMap<&str, usize>, usize) {
     (node_rank, next.max(1))
 }
 
+/// What a plan can offer one dense rank (issue 1427).
+///
+/// Three outcomes, not two, because "the pool is narrower than the ranking"
+/// and "the pool is empty" are different states and only one of them has an
+/// answer. Collapsing them is what let a derived tier land ON the transport
+/// band: see [`Allocation::Refused`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Allocation {
+    /// An address of this rank's own, inside `pool.app`.
+    Exact(i64),
+    /// The pool's LEAST urgent address, shared with the rank above it: the
+    /// pool is narrower than the ranking. Still a legal pool address - what
+    /// weakens is the ORDER, and the realizer records that.
+    Compressed(i64),
+    /// The pool is EMPTY, so there is no address to give and none is invented.
+    ///
+    /// Every candidate belongs to a reserved band or is outside the kernel's
+    /// range, and handing one over is exactly issue 0623's inversion: measured
+    /// on the pre-0852 Zephyr image, the clamp produced k_thread 14 with
+    /// `transport = [0, 14]`, i.e. a derived control tier at the transport's
+    /// own priority, reported as a warning in build scrollback. RFC-0079 §6
+    /// says crossing into a reserved band requires NAMING the band; nothing
+    /// derived can name it, so the derivation declines instead.
+    Refused,
+}
+
 /// phase-459 W4 (issue 1427) - map a dense rank (0 = most urgent) to a board
 /// priority ALLOCATED OUT OF THE PLAN's application pool (RFC-0079).
 ///
 /// Rank 0 takes the most urgent priority `pool.app` holds, rank 1 the next,
-/// and so on in the plan's direction. A rank past the pool's width is CLAMPED
-/// to its least urgent priority and the caller records a `Degradation` naming
-/// the pool - the two nodes then share a priority, which is a weakening of the
-/// derived order and never silent.
+/// and so on in the plan's direction. A rank past the pool's width is
+/// COMPRESSED onto its least urgent priority and the caller records a
+/// `Degradation` naming the pool - the two nodes then share a priority, which
+/// is a weakening of the derived order and never silent. A pool with no
+/// priorities at all is REFUSED.
 ///
 /// This used to be `rank_to_priority(rank, rank_count, caps)`, which allocated
 /// from the kernel's whole range: on Zephyr dense rank 0 became priority 0,
 /// above the transport threads that feed the application. `caps` no longer
 /// decides a number; it still describes which DIMENSIONS the kernel realizes
 /// natively, which is a different question.
-fn rank_to_priority(rank: usize, plan: &PriorityPlan) -> (i64, bool) {
+fn rank_to_priority(rank: usize, plan: &PriorityPlan) -> Allocation {
     match plan.nth_app_priority(rank) {
-        Some(p) => (p, false),
-        None => (plan.least_urgent_app_priority(), true),
+        Some(p) => Allocation::Exact(p),
+        // `least_urgent_app_priority` is `None` exactly when the pool is
+        // empty, so the two arms below cannot be confused for one another.
+        None => match plan.least_urgent_app_priority() {
+            Some(p) => Allocation::Compressed(p),
+            None => Allocation::Refused,
+        },
     }
 }
 
@@ -374,37 +406,57 @@ pub fn realize_rtos(
 
     for (name, rank) in &node_rank {
         let f = facts.get(name);
-        let (priority, clamped) = rank_to_priority(*rank, plan);
-        if clamped {
-            let pool = format!(
+        let pool = || {
+            format!(
                 "[{}, {}] ({} priorities, from {})",
                 plan.app.lo,
                 plan.app.hi,
                 plan.app.width(),
                 plan.source
-            );
-            let reason = if plan.app.width() == 0 {
-                format!(
-                    "the board's application pool {pool} is EMPTY - the reserved \
-                     bands {:?} leave the application nothing to be allocated from, \
-                     so priority {priority} is not a pool address and this image \
-                     cannot honour a derived tier (RFC-0079, issue 1427).",
-                    plan.reserved
-                )
-            } else {
-                format!(
-                    "rank {rank} is past the board's application pool {pool}, so this \
-                     node shares the pool's least urgent priority {priority} with the \
-                     rank above it. The derived ORDER is weaker than the ranking \
-                     asked for (RFC-0079)."
-                )
-            };
-            degradations.push(Degradation {
-                node: (*name).to_string(),
-                dim: "priority",
-                reason,
-            });
-        }
+            )
+        };
+        let priority = match rank_to_priority(*rank, plan) {
+            Allocation::Exact(p) => p,
+            Allocation::Compressed(p) => {
+                degradations.push(Degradation {
+                    node: (*name).to_string(),
+                    dim: "priority",
+                    reason: format!(
+                        "rank {rank} is past the board's application pool {}, so this \
+                         node shares the pool's least urgent priority {p} with the \
+                         rank above it. The derived ORDER is weaker than the ranking \
+                         asked for (RFC-0079).",
+                        pool()
+                    ),
+                });
+                p
+            }
+            // issue 1427 - REFUSE rather than clamp. No tier is derived for
+            // this node, so nothing downstream receives a number that belongs
+            // to a reserved band; the image keeps whatever its authored
+            // configuration says, and the reason travels every road the
+            // degradation record does (bake stderr + the plan's warnings,
+            // codegen entry stderr, `nros::main!` expansion stderr).
+            Allocation::Refused => {
+                degradations.push(Degradation {
+                    node: (*name).to_string(),
+                    dim: "priority",
+                    reason: format!(
+                        "the board's application pool {} is EMPTY - the reserved bands \
+                         {:?} leave the application nothing to be allocated from, so \
+                         NO derived tier is allocated for this node (RFC-0079, issue \
+                         1427). Deriving one would mean handing it a priority the \
+                         transport owns, and RFC-0079 §6 lets only an AUTHORED tier \
+                         name a reserved band. Widen the pool - on Zephyr that means \
+                         the image's transport-priority Kconfig, which is what the \
+                         band is computed from.",
+                        pool(),
+                        plan.reserved
+                    ),
+                });
+                continue;
+            }
+        };
         let period_us = f
             .and_then(|f| f.period_ms)
             .map(|ms| (ms * 1000.0).round().max(0.0) as u64);
@@ -1056,7 +1108,121 @@ mod tests {
         );
     }
 
-    /// A rank past the pool's width is CLAMPED, and says so. A one-wide pool
+    /// The island's `.config`, the one every plan case here resolves from.
+    fn island_dotconfig() -> &'static str {
+        "CONFIG_NUM_PREEMPT_PRIORITIES=15\n\
+         CONFIG_NUM_COOP_PRIORITIES=16\n\
+         CONFIG_POSIX_PRIORITY_SCHEDULING=y\n\
+         CONFIG_PREEMPT_ENABLED=y\n"
+    }
+
+    /// issue 1427 - an EMPTY application pool is REFUSED, never clamped into
+    /// the band below it.
+    ///
+    /// The pre-0852 transport band (`READ_PRIORITY=16` on the 0..255 scale)
+    /// resolves `transport = [0, 14]` on the island's image, which leaves
+    /// `app = [15, 14]` - no priority at all. The clamp used to hand both
+    /// nodes k_thread **14**, measured: a derived tier at the transport's own
+    /// priority, with a stderr warning as the only trace. There is no legal
+    /// address here, so no tier is derived and the reason says which band ate
+    /// the pool.
+    #[test]
+    fn an_empty_application_pool_derives_no_tier_rather_than_a_reserved_one() {
+        let input = input_two();
+        let ranked = chain_aware_rank(&input);
+        let caps = sched_caps_for("zephyr");
+        let plan = PriorityPlan::from_zephyr_dotconfig(island_dotconfig(), &[16, 255])
+            .expect("the stale-band .config still resolves");
+        assert_eq!(plan.app.width(), 0, "the premise: {:?}", plan.app);
+
+        let realized = realize_rtos(&ranked, &input, &caps, &plan);
+        assert!(
+            realized.nodes.is_empty(),
+            "no node may be realized out of an empty pool: {:?}",
+            realized
+                .nodes
+                .iter()
+                .map(|n| (&n.name, n.priority))
+                .collect::<Vec<_>>()
+        );
+        let refused: Vec<&Degradation> = realized
+            .degradations
+            .iter()
+            .filter(|d| d.dim == "priority")
+            .collect();
+        assert_eq!(refused.len(), 2, "one per ranked node: {refused:?}");
+        for d in &refused {
+            assert!(
+                d.reason.contains("EMPTY") && d.reason.contains("NO derived tier"),
+                "the reason says nothing was allocated: {}",
+                d.reason
+            );
+            assert!(
+                d.reason.contains("transport"),
+                "and names the band that ate the pool: {}",
+                d.reason
+            );
+        }
+        // The tier table the rest of the pipeline consumes is empty too, so a
+        // consumer that reads only `nodes` cannot pick the refused number up.
+        assert!(rtos_plan_to_tier_table(&realized, true).tiers.is_empty());
+    }
+
+    /// issue 1427, the class rather than the case: over every plan this tree
+    /// can resolve, a realized priority is inside `pool.app` and on no
+    /// reserved band. The property the clamp broke, stated where any future
+    /// allocation rule has to pass it.
+    #[test]
+    fn a_realized_priority_is_always_a_pool_address() {
+        let input = input_two();
+        let ranked = chain_aware_rank(&input);
+        let caps = sched_caps_for("zephyr");
+        let from_cfg = |bands: &[i64]| {
+            PriorityPlan::from_zephyr_dotconfig(island_dotconfig(), bands).expect("resolves")
+        };
+        let cases: Vec<(&str, PriorityPlan)> = vec![
+            ("island 200/255", from_cfg(&[200, 255])),
+            ("Kconfig defaults 200/200", from_cfg(&[200, 200])),
+            ("a lowered read band 100/200", from_cfg(&[100, 200])),
+            ("the pre-0852 stale band 16/255", from_cfg(&[16, 255])),
+            (
+                "the defaults projection",
+                PriorityPlan::for_target("zephyr"),
+            ),
+            ("freertos", PriorityPlan::for_target("freertos")),
+            ("threadx", PriorityPlan::for_target("threadx")),
+            ("nuttx", PriorityPlan::for_target("nuttx")),
+            ("posix", PriorityPlan::for_target("posix")),
+            (
+                "a one-wide pool",
+                PriorityPlan {
+                    app: crate::priority_plan::Band::new(9, 9),
+                    ..PriorityPlan::for_target("zephyr")
+                },
+            ),
+        ];
+        for (label, plan) in &cases {
+            let realized = realize_rtos(&ranked, &input, &caps, plan);
+            for n in &realized.nodes {
+                assert!(
+                    plan.app.contains(n.priority),
+                    "{label}: {} at {} is outside pool.app {:?}",
+                    n.name,
+                    n.priority,
+                    plan.app
+                );
+                assert!(
+                    plan.reserved_band_of(n.priority).is_none(),
+                    "{label}: {} at {} lands on a reserved band: {:?}",
+                    n.name,
+                    n.priority,
+                    plan.reserved
+                );
+            }
+        }
+    }
+
+    /// A rank past the pool's width is COMPRESSED, and says so. A one-wide pool
     /// cannot express two ranks; the second shares the first's priority and
     /// the realizer records the weakening rather than inventing a number
     /// outside the pool.

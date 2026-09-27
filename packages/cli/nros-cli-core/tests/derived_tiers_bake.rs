@@ -28,14 +28,19 @@
 //! carry `CALLBACK_GROUPS main`, so the rows this test writes are the rows a
 //! configure would.
 //!
-//! # What is asserted, and what is deliberately not
+//! # What is asserted
 //!
-//! RANKS and MEMBERSHIP, never a kernel priority number. `rank_to_priority`
-//! currently maps dense rank 0 to Zephyr priority 0, which outranks the
-//! transport threads that feed it; phase-459 W4 moves the whole table into the
-//! board's application pool. A test that pinned 0 and 1 here would have to be
-//! rewritten by the wave that fixes the defect, and would meanwhile read as if
-//! 0 were the intended answer.
+//! RANKS, MEMBERSHIP, and - since phase-459 W4 landed (issue 1427) - the
+//! PRIORITY NUMBERS, against the plan the island's own Kconfig resolves rather
+//! than as literals. This header used to say the opposite, and its reason was
+//! good while it held: `rank_to_priority` mapped dense rank 0 to Zephyr
+//! priority 0, above the transport threads that feed the application, so a
+//! test pinning 0 and 1 would have read as if 0 were the intended answer.
+//! W4 made the allocation come out of the board's application pool, and
+//! `the_derived_table_lands_below_the_transport_band` is the end-to-end half of
+//! that: the unit tests prove the realizer allocates inside a pool, this proves
+//! the numbers a BAKE of the W0 fixture produces are in the pool the island's
+//! `.config` implies, and below the band its transport threads sit in.
 
 mod common;
 
@@ -50,7 +55,10 @@ use nros_cli_core::orchestration::{
     cargo_metadata_schema::SystemToml, model_ingest, nros_config::NrosConfig,
     tier_resolver::collect_callback_groups,
 };
-use nros_orchestration_ir::derive::{DerivedSchedule, derive_tiers_from_contracts};
+use nros_orchestration_ir::{
+    derive::{DerivedSchedule, derive_tiers_from_contracts},
+    priority_plan::{Band, PriorityPlan},
+};
 use ros_launch_manifest_model::SystemModel;
 
 /// The two 30 Hz components, in the island's naming.
@@ -332,6 +340,88 @@ fn the_bake_reports_the_derived_tiers_and_binds_every_node() {
         );
         assert_eq!(ov.callback_groups[0].id, "main");
     }
+}
+
+/// The island's Zephyr `.config`, as the fixture mirrors it: 15 preemptive
+/// priorities, both Kconfig gates on. The two transport bands are the ones the
+/// image creates its zenoh read and lease tasks at - Kconfig's default 200, and
+/// the 255 the island raises the lease to.
+///
+/// Written out here rather than read from a build tree on purpose: this repo
+/// does not compile inside tests, so there is no `.config` to read, and the
+/// checker that DOES read one (`scripts/check-tier-priority-plan-image.py`,
+/// run by `just zephyr build-fixtures`) is the half that judges a built image.
+/// Two implementations of one arithmetic, one of them a test - RFC-0079 §4.1.
+const ISLAND_DOTCONFIG: &str = "CONFIG_NUM_PREEMPT_PRIORITIES=15\n\
+     CONFIG_NUM_COOP_PRIORITIES=16\n\
+     CONFIG_POSIX_PRIORITY_SCHEDULING=y\n\
+     CONFIG_PREEMPT_ENABLED=y\n";
+const ISLAND_TRANSPORT_BANDS: [i64; 2] = [200, 255];
+
+/// issue 1427, end to end: the numbers a bake of the W0 fixture produces sit
+/// INSIDE the application pool the island's image resolves, and therefore below
+/// the k_thread priorities its transport threads run at.
+///
+/// The two unit-test halves (`priority_plan_allocates_inside_the_application_pool`,
+/// `an_empty_application_pool_derives_no_tier_rather_than_a_reserved_one`) prove
+/// the realizer's rule. This proves the rule survives the whole road the
+/// operator drives - launch file -> resolved model -> callback groups ->
+/// `derive_tiers_from_contracts` -> `[tiers.*.zephyr] priority` - which is where
+/// issue 1427 was measured, and where a green unit test would not have caught
+/// a bake that passed a different plan.
+#[test]
+fn the_derived_table_lands_below_the_transport_band() {
+    let fixture = Fixture::copy("band");
+    fixture.configure();
+    let model = resolve_model(&fixture.bringup());
+    let system = system_toml(&fixture.bringup());
+    let derived = derive(&fixture, &model, &system);
+    let prio = priorities(&derived);
+
+    // The plan the island's image resolves, by the same arithmetic the bake
+    // projects from Kconfig's defaults.
+    let plan = PriorityPlan::from_zephyr_dotconfig(ISLAND_DOTCONFIG, &ISLAND_TRANSPORT_BANDS)
+        .expect("the island's .config resolves a plan");
+    let transport = plan.reserved["transport"];
+    assert_eq!(transport, Band::new(0, 4), "the measured island band");
+    assert_eq!(plan.app, Band::new(5, 14), "the measured island pool");
+
+    for (node, p) in &prio {
+        assert!(
+            plan.app.contains(*p),
+            "{node} derived priority {p} is outside the island's pool.app {:?} \
+             (transport {transport:?}) - this is issue 1427's inversion: {prio:?}",
+            plan.app
+        );
+        // Zephyr counts DOWN, so "below the transport band" is a LARGER number.
+        assert!(
+            *p > transport.hi,
+            "{node} at {p} is at least as urgent as the transport's least urgent \
+             thread ({}) - a derived tier must never preempt the link it publishes \
+             over (issues 0623, 1427)",
+            transport.hi
+        );
+    }
+    // The measured allocation, for the record and for the next reader: the two
+    // 30 Hz components take the pool's most urgent address, the two 10 Hz ones
+    // the next. Not 0 and 1, which is what this bake produced before W4.
+    let fast: Vec<i64> = FAST.iter().map(|n| prio[*n]).collect();
+    let slow: Vec<i64> = SLOW.iter().map(|n| prio[*n]).collect();
+    assert_eq!(
+        fast,
+        vec![5, 5],
+        "30 Hz rank -> pool.app's urgent end: {prio:?}"
+    );
+    assert_eq!(
+        slow,
+        vec![6, 6],
+        "10 Hz rank -> the next one down: {prio:?}"
+    );
+    assert!(
+        !derived.degradations.iter().any(|d| d.dim == "priority"),
+        "two ranks fit a ten-wide pool with nothing compressed: {:?}",
+        derived.degradations
+    );
 }
 
 /// The negative control: the same fixture with the keyword removed - which,
