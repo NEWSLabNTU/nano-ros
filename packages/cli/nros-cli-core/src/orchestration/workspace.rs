@@ -966,6 +966,14 @@ fn language_from_sources_or_class(
     if let Some(lang) = language_from_sources(sources) {
         return lang;
     }
+    // ONE derivation of the guess, named once and both RETURNED and REPORTED.
+    // The message used to re-derive it through a match ending `_ => "cpp"`,
+    // which the 2026-09-27 codegen audit measured as a fail-open (its S2 item):
+    // a fourth language would have been ANNOUNCED as C++ while the return value
+    // said otherwise, and no compiler could see the disagreement. There is no
+    // per-variant decision left to make here — the language's own canonical
+    // spelling is what the message wants, so `as_str()` is the whole answer.
+    let guess = infer_language_from_class(class).unwrap_or(ComponentLanguage::Cpp);
     // No sources at all is not a mystery to report — there is nothing the
     // author could have written differently. An unreadable list is.
     if !sources.is_empty() {
@@ -975,14 +983,10 @@ fn language_from_sources_or_class(
              for this scanner. Guessing `{}` from the class shape; pass \
              `LANGUAGE C` or `LANGUAGE CPP` to state it (issue 1062).",
             sources.join(" "),
-            match infer_language_from_class(class) {
-                Some(ComponentLanguage::C) => "c",
-                Some(ComponentLanguage::Rust) => "rust",
-                _ => "cpp",
-            }
+            guess.as_str(),
         );
     }
-    infer_language_from_class(class).unwrap_or(ComponentLanguage::Cpp)
+    guess
 }
 
 /// Strip `#` line comments from a CMake source while preserving line
