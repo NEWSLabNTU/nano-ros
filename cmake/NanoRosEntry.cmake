@@ -1260,13 +1260,22 @@ function(_nros_entry_invoke_codegen)
     # BOTH the descriptor and the CLI in `CMAKE_CONFIGURE_DEPENDS` (issue 1018)
     # even when no file exists, so an image that has none today picks one up on
     # the sync or re-resolve that creates one.
+    #
+    # phase-457 W0 (issue 1407) — and the METADATA, the same file the entity
+    # inventory composed twenty lines up. The two producers of this schema read
+    # ONE component population or they describe two different images: the
+    # contract names the nodes somebody authored a sidecar for, the metadata
+    # names every component `nano_ros_node_register()` compiled in, and the node
+    # table has to hold the second.
     include("${_NROS_ENTRY_DIR}/NanoRosSizingDescriptor.cmake")
     _nros_entry_resolve_rmw(_nrx_rmw)
+    nros_entity_inventory_metadata_file(_nrx_metadata)
     nros_sizing_descriptor_from_model(_nrx_sizing_descriptor
         CLI       "${_nros_bin}"
         MODEL     "${_NRX_MODEL}"
         ENTRY     "${_NRX_NAME}"
         BUILD_DIR "${CMAKE_BINARY_DIR}"
+        METADATA  "${_nrx_metadata}"
         RMW       "${_nrx_rmw}")
     nros_sizing_descriptor_path(_nrx_sizing_path "${CMAKE_BINARY_DIR}" "${_NRX_NAME}")
     nros_sizing_descriptor_read("${_nrx_sizing_path}")

@@ -175,13 +175,61 @@ pub const MODEL_ONLY_ISSUE: &str = "issue 1393";
 #[derive(Debug, Clone)]
 pub struct ModelHorizon {
     road: String,
+    from: &'static str,
+    reg_unknown: &'static str,
 }
+
+/// What a model-only producer reads, in the words its refusals use.
+///
+/// phase-457 W0.b — the horizon gained a SECOND source, and the prose is not
+/// interchangeable. A standalone leaf has no resolved SystemModel at all; a
+/// refusal telling its author that "the resolved SystemModel carries no
+/// message-bound inventory" aims them at an artifact that does not exist on
+/// their road, which is the diagnostic failure issue 1033 records one layer
+/// down ("a diagnostic that survives the mechanism it describes aims the next
+/// reader at a wall").
+const FROM_MODEL: &str = "the resolved SystemModel alone";
+const FROM_LEAF_DECLARATION: &str =
+    "the leaf's own `system.toml` `[[component]] entities` declaration alone";
+
+/// Why `registration_path` is unanswerable, per SOURCE.
+///
+/// The two roads refuse the same field for genuinely different reasons, and
+/// saying either one on the other road aims the reader at a fact that is not
+/// missing. A model image is several packages, so "the entry's language" has no
+/// single answer; a standalone LEAF is one package whose language is perfectly
+/// well known — what it does not state is which SUBSCRIBE SPELLING the code
+/// writes, which is a property of the call site and of nothing a declaration can
+/// carry.
+const MODEL_HAS_NO_ONE_LANGUAGE: &str =
+    "and such an image is several packages, so there is no one entry language to read it off";
+const A_DECLARATION_IS_NOT_A_CALL_SITE: &str = "and a declaration names the entity, never the CALL SITE that registers it -- whether a \
+     given subscription passes a typed size hint is visible only in the source";
 
 impl ModelHorizon {
     /// `road` names the producer in prose — "a workspace cargo image",
     /// "a cmake entry". It appears verbatim in every refusal.
     pub fn new(road: impl Into<String>) -> Self {
-        Self { road: road.into() }
+        Self {
+            road: road.into(),
+            from: FROM_MODEL,
+            reg_unknown: MODEL_HAS_NO_ONE_LANGUAGE,
+        }
+    }
+
+    /// phase-457 W0.b (issues 1407 / 1378) — the STANDALONE LEAF road.
+    ///
+    /// Same horizon, different input: a copy-out cmake project has no bringup
+    /// and no SystemModel, so `EntityDecl::parse` over its `system.toml` is the
+    /// whole of what it declares. The fields refused are identical — a C or C++
+    /// leaf has no `generated/` bound table either — so only the first clause
+    /// of each reason moves.
+    pub fn for_leaf_declaration(road: impl Into<String>) -> Self {
+        Self {
+            road: road.into(),
+            from: FROM_LEAF_DECLARATION,
+            reg_unknown: A_DECLARATION_IS_NOT_A_CALL_SITE,
+        }
     }
 
     /// The `bounds_error` a model-only producer supplies.
@@ -193,9 +241,10 @@ impl ModelHorizon {
     /// only thing this adds is WHY there is none, and what tracks fixing it.
     pub fn bound_inventory(&self) -> String {
         format!(
-            "this descriptor was written from the resolved SystemModel alone ({road}), which \
+            "this descriptor was written from {from} ({road}), which \
              carries no message-bound inventory -- codegen writes one beside a LEAF, and the \
              per-type schema walk that prices it with it. Tracked by {MODEL_ONLY_ISSUE}",
+            from = self.from,
             road = self.road
         )
     }
@@ -210,12 +259,13 @@ impl ModelHorizon {
     /// can supply.
     pub fn registration_path(&self) -> String {
         format!(
-            "this descriptor was written from the resolved SystemModel alone ({road}), which \
-             does not say which subscribe spelling each node writes -- and a model image is \
-             several packages, so there is no one entry language to read it off. A Rust typed \
+            "this descriptor was written from {from} ({road}), which \
+             does not say which subscribe spelling each node writes -- {why}. A Rust typed \
              registration on a schemaless backend claims the closure buffer rather than the \
              type's bound (issue 1319), so the path is refused rather than assumed. Tracked by \
              {MODEL_ONLY_ISSUE}",
+            from = self.from,
+            why = self.reg_unknown,
             road = self.road
         )
     }
@@ -229,10 +279,11 @@ impl ModelHorizon {
     /// region needs both halves and this producer has neither.
     pub fn storage_bytes(&self) -> String {
         format!(
-            "this descriptor was written from the resolved SystemModel alone ({road}), so a \
+            "this descriptor was written from {from} ({road}), so a \
              receive region has neither of its two sizes: the type's wire bound (no message-bound \
              inventory) nor the board descriptor resolved for THIS image, whose pointer width \
              sizes the per-slot length word. Tracked by {MODEL_ONLY_ISSUE}",
+            from = self.from,
             road = self.road
         )
     }
@@ -1478,8 +1529,14 @@ pub struct ModelImage<'a> {
     pub heap_budget_bytes: Option<usize>,
     /// The backend this image links, when the image names one.
     pub rmw: Option<String>,
-    /// The road, in prose, for every refusal this producer writes.
-    pub road: &'a str,
+    /// This producer's HORIZON — which input it read, and the road, in prose,
+    /// for every refusal it writes.
+    ///
+    /// phase-457 W0.b — a field rather than a `road: &str` the function turns
+    /// into a horizon, because there are now TWO inputs a road can have and only
+    /// the caller knows which it holds. A `bool` beside the road would leave the
+    /// two spellings one negation apart at every call site.
+    pub horizon: ModelHorizon,
 }
 
 /// Build the descriptor a MODEL-only road can honestly write, and write it.
@@ -1497,7 +1554,7 @@ pub struct ModelImage<'a> {
 /// cmake consumer registers the result in `CMAKE_CONFIGURE_DEPENDS` (issue 1018)
 /// and identical bytes must keep their mtime.
 pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> {
-    let horizon = ModelHorizon::new(img.road);
+    let horizon = img.horizon.clone();
     let inputs = DescriptorInputs {
         entry: img.entry.to_string(),
         inventory: Some(img.inventory),
