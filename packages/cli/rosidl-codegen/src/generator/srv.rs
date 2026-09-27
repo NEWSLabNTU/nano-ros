@@ -1,7 +1,10 @@
-use super::common::{
-    GeneratorError, PayloadLang, SchemaCaps, build_c_fields, build_idiomatic_fields,
-    build_nros_fields, build_nros_schema_for_struct, build_rmw_fields,
-    ensure_supported_storage_for_payload,
+use super::{
+    common::{
+        GeneratorError, PayloadLang, SchemaCaps, build_c_fields, build_idiomatic_fields,
+        build_nros_fields, build_nros_schema_for_struct, build_rmw_fields,
+        ensure_supported_storage_for_payload,
+    },
+    naming::{Kind, Surface, artifact_names},
 };
 use crate::{
     config::CapacityResolver,
@@ -14,7 +17,7 @@ use crate::{
         NrosCodegenMode, c_type_for_constant, constant_value_to_rust, nros_type_for_constant,
         rust_type_for_constant, to_c_package_name,
     },
-    utils::{extract_dependencies, needs_big_array, to_snake_case},
+    utils::{extract_dependencies, needs_big_array},
 };
 use rosidl_parser::{FieldType, Message, Service};
 use std::collections::HashSet;
@@ -440,24 +443,18 @@ pub fn generate_c_service_package(
     resolver: &CapacityResolver,
 ) -> Result<GeneratedCServicePackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
-    let srv_snake = to_snake_case(service_name);
 
-    // Build struct and guard names
-    let service_struct_name = format!("{}_srv_{}", c_pkg_name, srv_snake);
-    let request_struct_name = format!("{}_srv_{}_request", c_pkg_name, srv_snake);
-    let response_struct_name = format!("{}_srv_{}_response", c_pkg_name, srv_snake);
-    let guard_name = format!(
-        "{}_SRV_{}_H",
-        c_pkg_name.to_uppercase(),
-        srv_snake.to_uppercase()
-    );
-    let constant_prefix = format!(
-        "{}_SRV_{}",
-        c_pkg_name.to_uppercase(),
-        srv_snake.to_uppercase()
-    );
-    let header_name = format!("{}_srv_{}.h", c_pkg_name, srv_snake);
-    let source_name = format!("{}_srv_{}.c", c_pkg_name, srv_snake);
+    // Every name derives from one stem — see `generator::naming`.
+    let names = artifact_names(Surface::C, Kind::Srv, package_name, service_name);
+    let service_struct_name = names.stem.clone();
+    let request_struct_name = format!("{}_request", names.stem);
+    let response_struct_name = format!("{}_response", names.stem);
+    let guard_name = names.include_guard;
+    let constant_prefix = names.constant_prefix;
+    let header_name = names.header;
+    let source_name = names
+        .source
+        .expect("the C surface emits a translation unit beside its header");
 
     // Extract dependencies from both request and response.
     // Mirrors the logic in msg.rs: produce one `type_includes` entry per
@@ -487,8 +484,7 @@ pub fn generate_c_service_package(
         if let Some(FieldType::NamespacedType { package, name }) = field_type {
             let pkg = package.as_deref().unwrap_or(package_name);
             let dep = to_c_package_name(pkg);
-            let header_filename =
-                format!("{}_msg_{}.h", to_c_package_name(pkg), to_snake_case(name));
+            let header_filename = artifact_names(Surface::C, Kind::Msg, pkg, name).header;
             let type_header = if dep != c_pkg_name {
                 // Cross-package: include with subdirectory path.
                 if !dependencies.contains(&dep) {

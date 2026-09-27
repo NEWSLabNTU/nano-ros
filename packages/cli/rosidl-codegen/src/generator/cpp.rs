@@ -1,4 +1,7 @@
-use super::common::{GeneratorError, build_cpp_ffi_field, build_cpp_field, resolve_cap_override};
+use super::{
+    common::{GeneratorError, build_cpp_ffi_field, build_cpp_field, resolve_cap_override},
+    naming::{Kind, Surface, artifact_names},
+};
 use crate::{
     config::CapacityResolver,
     templates::{
@@ -157,15 +160,9 @@ fn extract_intra_package_includes(
     fields: &[rosidl_parser::Field],
     package_name: &str,
 ) -> Vec<String> {
-    let c_pkg = to_c_package_name(package_name);
     let mut includes = Vec::new();
     for field in fields {
-        collect_field_type_intra_pkg_includes(
-            &field.field_type,
-            package_name,
-            &c_pkg,
-            &mut includes,
-        );
+        collect_field_type_intra_pkg_includes(&field.field_type, package_name, &mut includes);
     }
     includes.sort();
     includes
@@ -174,30 +171,21 @@ fn extract_intra_package_includes(
 fn collect_field_type_intra_pkg_includes(
     ft: &FieldType,
     package_name: &str,
-    c_pkg: &str,
     includes: &mut Vec<String>,
 ) {
     match ft {
-        // Unqualified type (`Foo[]`) — always same-pkg.
-        FieldType::NamespacedType {
-            package: None,
-            name,
-        } => {
-            let path = format!("msg/{}_msg_{}.hpp", c_pkg, to_snake_case(name));
-            if !includes.contains(&path) {
-                includes.push(path);
-            }
-        }
-        // Explicitly-qualified type (`autoware_planning_msgs/Foo[]`) where
-        // the package matches our own. ROS `.msg` files often spell intra-
-        // package refs with the full package prefix (e.g. Path.msg uses
-        // `autoware_planning_msgs/PathPoint[]`), so they need the same
-        // include-injection treatment as unqualified types.
-        FieldType::NamespacedType {
-            package: Some(pkg),
-            name,
-        } if pkg == package_name => {
-            let path = format!("msg/{}_msg_{}.hpp", c_pkg, to_snake_case(name));
+        // Same-package reference, spelled either way: unqualified (`Foo[]`),
+        // or explicitly qualified with our own package. ROS `.msg` files often
+        // spell intra-package refs with the full package prefix (e.g. Path.msg
+        // uses `autoware_planning_msgs/PathPoint[]`), so both spellings need
+        // the same include-injection treatment.
+        FieldType::NamespacedType { package, name }
+            if package.as_deref().is_none_or(|pkg| pkg == package_name) =>
+        {
+            let path = format!(
+                "msg/{}",
+                artifact_names(Surface::Cpp, Kind::Msg, package_name, name).header
+            );
             if !includes.contains(&path) {
                 includes.push(path);
             }
@@ -205,7 +193,7 @@ fn collect_field_type_intra_pkg_includes(
         FieldType::Array { element_type, .. }
         | FieldType::Sequence { element_type }
         | FieldType::BoundedSequence { element_type, .. } => {
-            collect_field_type_intra_pkg_includes(element_type, package_name, c_pkg, includes);
+            collect_field_type_intra_pkg_includes(element_type, package_name, includes);
         }
         _ => {}
     }
@@ -354,20 +342,18 @@ pub fn generate_cpp_message_package_with_lookup(
     let c_pkg_name = to_c_package_name(package_name);
     let msg_snake = to_snake_case(message_name);
 
-    let struct_name = format!("{}_msg_{}_t", c_pkg_name, msg_snake);
-    let guard_name = format!(
-        "{}_MSG_{}_HPP",
-        c_pkg_name.to_uppercase(),
-        msg_snake.to_uppercase()
-    );
+    // Every name derives from one stem — see `generator::naming`.
+    let names = artifact_names(Surface::Cpp, Kind::Msg, package_name, message_name);
+    let struct_name = format!("{}_t", names.stem);
+    let guard_name = names.include_guard;
     let ffi_publish_fn = format!("nros_cpp_publish_{}_msg_{}", c_pkg_name, msg_snake);
     let ffi_serialize_fn = format!("nros_cpp_serialize_{}_msg_{}", c_pkg_name, msg_snake);
     let ffi_deserialize_fn = format!("nros_cpp_deserialize_{}_msg_{}", c_pkg_name, msg_snake);
     let serialize_fn = format!("serialize_{}_msg_{}_fields", c_pkg_name, msg_snake);
     let deserialize_fn = format!("deserialize_{}_msg_{}_fields", c_pkg_name, msg_snake);
 
-    let header_name = format!("{}_msg_{}.hpp", c_pkg_name, msg_snake);
-    let file_stem = format!("{}_msg_{}", c_pkg_name, msg_snake);
+    let header_name = names.header;
+    let file_stem = names.stem;
 
     let (cpp_fields, ffi_fields, seq_structs) = build_fields(
         &message.fields,
@@ -461,12 +447,10 @@ pub fn generate_cpp_service_package(
     let c_pkg_name = to_c_package_name(package_name);
     let srv_snake = to_snake_case(service_name);
 
-    let guard_name = format!(
-        "{}_SRV_{}_HPP",
-        c_pkg_name.to_uppercase(),
-        srv_snake.to_uppercase()
-    );
-    let header_name = format!("{}_srv_{}.hpp", c_pkg_name, srv_snake);
+    // Every name derives from one stem — see `generator::naming`.
+    let names = artifact_names(Surface::Cpp, Kind::Srv, package_name, service_name);
+    let guard_name = names.include_guard;
+    let header_name = names.header;
 
     // Request
     let req_struct = format!("{}_srv_{}_request_t", c_pkg_name, srv_snake);
@@ -618,12 +602,10 @@ pub fn generate_cpp_action_package(
     let c_pkg_name = to_c_package_name(package_name);
     let act_snake = to_snake_case(action_name);
 
-    let guard_name = format!(
-        "{}_ACTION_{}_HPP",
-        c_pkg_name.to_uppercase(),
-        act_snake.to_uppercase()
-    );
-    let header_name = format!("{}_action_{}.hpp", c_pkg_name, act_snake);
+    // Every name derives from one stem — see `generator::naming`.
+    let names = artifact_names(Surface::Cpp, Kind::Action, package_name, action_name);
+    let guard_name = names.include_guard;
+    let header_name = names.header;
 
     // Helper struct for action sub-message parts
     struct ActionPart {

@@ -1,7 +1,10 @@
-use super::common::{
-    GeneratorError, PayloadLang, SchemaCaps, build_action_envelope_schemas, build_c_fields,
-    build_idiomatic_fields, build_nros_fields, build_nros_schema_for_struct, build_rmw_fields,
-    ensure_supported_storage_for_payload,
+use super::{
+    common::{
+        GeneratorError, PayloadLang, SchemaCaps, build_action_envelope_schemas, build_c_fields,
+        build_idiomatic_fields, build_nros_fields, build_nros_schema_for_struct, build_rmw_fields,
+        ensure_supported_storage_for_payload,
+    },
+    naming::{Kind, Surface, artifact_names},
 };
 use crate::{
     config::CapacityResolver,
@@ -14,7 +17,7 @@ use crate::{
         NrosCodegenMode, c_type_for_constant, constant_value_to_rust, nros_type_for_constant,
         rust_type_for_constant, to_c_package_name,
     },
-    utils::{extract_dependencies, needs_big_array, to_snake_case},
+    utils::{extract_dependencies, needs_big_array},
 };
 use rosidl_parser::{Action, FieldType, Message};
 use std::collections::HashSet;
@@ -616,25 +619,19 @@ pub fn generate_c_action_package(
     resolver: &CapacityResolver,
 ) -> Result<GeneratedCActionPackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
-    let action_snake = to_snake_case(action_name);
 
-    // Build struct and guard names
-    let action_struct_name = format!("{}_action_{}", c_pkg_name, action_snake);
-    let goal_struct_name = format!("{}_action_{}_goal", c_pkg_name, action_snake);
-    let result_struct_name = format!("{}_action_{}_result", c_pkg_name, action_snake);
-    let feedback_struct_name = format!("{}_action_{}_feedback", c_pkg_name, action_snake);
-    let guard_name = format!(
-        "{}_ACTION_{}_H",
-        c_pkg_name.to_uppercase(),
-        action_snake.to_uppercase()
-    );
-    let constant_prefix = format!(
-        "{}_ACTION_{}",
-        c_pkg_name.to_uppercase(),
-        action_snake.to_uppercase()
-    );
-    let header_name = format!("{}_action_{}.h", c_pkg_name, action_snake);
-    let source_name = format!("{}_action_{}.c", c_pkg_name, action_snake);
+    // Every name derives from one stem — see `generator::naming`.
+    let names = artifact_names(Surface::C, Kind::Action, package_name, action_name);
+    let action_struct_name = names.stem.clone();
+    let goal_struct_name = format!("{}_goal", names.stem);
+    let result_struct_name = format!("{}_result", names.stem);
+    let feedback_struct_name = format!("{}_feedback", names.stem);
+    let guard_name = names.include_guard;
+    let constant_prefix = names.constant_prefix;
+    let header_name = names.header;
+    let source_name = names
+        .source
+        .expect("the C surface emits a translation unit beside its header");
 
     // Extract dependencies from goal, result, and feedback.
     // Same pattern as msg.rs: per-type `type_includes` with correct paths,
@@ -665,8 +662,7 @@ pub fn generate_c_action_package(
         if let Some(FieldType::NamespacedType { package, name }) = field_type {
             let pkg = package.as_deref().unwrap_or(package_name);
             let dep = to_c_package_name(pkg);
-            let header_filename =
-                format!("{}_msg_{}.h", to_c_package_name(pkg), to_snake_case(name));
+            let header_filename = artifact_names(Surface::C, Kind::Msg, pkg, name).header;
             let type_header = if dep != c_pkg_name {
                 // Cross-package: include with subdirectory path.
                 if !dependencies.contains(&dep) {
