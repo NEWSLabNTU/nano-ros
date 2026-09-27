@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>baremetal_c_talker</name>
+  <version>0.1.0</version>
+  <description>nano-ros C talker on the pure bare-metal MPS2-AN385 (no RTOS) — issue 1512</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <!-- `nros_cargo`, not `nros_cmake`, and that is the whole point of this leaf
+         — see README.md. The application is C; the LINK ROOT is Rust, because
+         on this board the reset vector, the clock and the LAN9118/smoltcp
+         bring-up are all Rust. -->
+    <build_type>nros_cargo</build_type>
+  </export>
+</package>

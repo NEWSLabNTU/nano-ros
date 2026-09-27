@@ -4379,6 +4379,22 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
     &[
         // Core runtime
         ("nros", "packages/api/nros"),
+        // issue 1512 — the two LANGUAGE-SURFACE crates. They were missing, and
+        // for as long as every C/C++ image was a cmake image that was invisible:
+        // cmake imports them by MANIFEST PATH through Corrosion and never asks
+        // for a patch row. A pure bare-metal board has no C startup and no
+        // C-reachable board init, so its C image is rooted in cargo instead
+        // (`examples/mps2-an385-baremetal/c/talker`), and a cargo consumer names
+        // `nros-c = { version = "*" }` like it names `nros`. Without the row,
+        // `nros sync` skipped it as an unknown runtime crate and the leaf failed
+        // to resolve with `no matching package named \`nros-c\` found`.
+        //
+        // `nros-cpp` rides along deliberately rather than being left for the
+        // C++ sibling to discover: the two crates are one surface with two
+        // spellings, and a table that knows one of them is the shape that made
+        // this invisible in the first place.
+        ("nros-c", "packages/api/nros-c"),
+        ("nros-cpp", "packages/api/nros-cpp"),
         ("nros-core", "packages/core/nros-core"),
         ("nros-serdes", "packages/core/nros-serdes"),
         ("nros-platform", "packages/platform/nros-platform"),
@@ -6016,6 +6032,32 @@ nros-rmw-zenoh = { path = "../../../packages/rmw/zenoh/nros-rmw-zenoh" }
 "#;
         let got = extract_consumer_registry_nros_deps(body);
         assert!(got.is_empty(), "expected no registry deps, got: {got:?}");
+    }
+
+    /// issue 1512 — the two language-surface crates resolve to a patch row.
+    ///
+    /// A cargo-rooted C image (`examples/mps2-an385-baremetal/c/talker`, the
+    /// only shape a board with no C startup can take) names `nros-c` the way
+    /// every Rust leaf names `nros`. Before this they were absent from the
+    /// table, which `nros sync` reports as an unknown runtime crate and cargo
+    /// then reports as `no matching package named 'nros-c' found` — two messages
+    /// neither of which names the table.
+    #[test]
+    fn lookup_table_covers_language_surface_crates() {
+        for (name, subpath) in [
+            ("nros-c", "packages/api/nros-c"),
+            ("nros-cpp", "packages/api/nros-cpp"),
+        ] {
+            assert!(
+                is_managed_runtime_crate_name(name),
+                "lookup table missing `{name}`"
+            );
+            assert_eq!(
+                nros_crate_subpath(name),
+                Some(subpath.to_string()),
+                "`{name}` resolved to an unexpected subpath"
+            );
+        }
     }
 
     /// The lookup table covers every name the Phase 220 brief enumerates.

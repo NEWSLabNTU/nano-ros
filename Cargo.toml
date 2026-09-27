@@ -298,6 +298,12 @@ exclude = [
     "examples/mps2-an385-baremetal/rust/listener-rtic-mixed",
     "examples/mps2-an385-baremetal/rust/serial-talker",
     "examples/mps2-an385-baremetal/rust/serial-listener",
+    # issue 1512 — the first C leaf whose link root is CARGO. It is under `c/`
+    # rather than `rust/` and it is still a cargo package, because a board with
+    # no RTOS has no C startup to root the image in; see its README. Listed for
+    # the same reason as its `rust/` siblings above, which also carry their own
+    # `[workspace]` table: both halves, per the CLAUDE.md rule.
+    "examples/mps2-an385-baremetal/c/talker",
     # Phase 169.2 — Rust DDS examples deleted (no Rust→Cyclone
     # path yet; see Phase 169 doc work item .9).
     # Phase 169.2 — mps2-an385-freertos rust/dds deleted.

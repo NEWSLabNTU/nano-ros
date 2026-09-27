@@ -222,20 +222,36 @@ enum FileKind {
     Glue,
 }
 
-/// Rust separates the two by filename: `main.rs` is the glue file **when a
-/// `lib.rs` exists beside it**, which is the split shape Option B standardizes.
+/// Rust separates the two by filename: `main.rs` is the glue file **when the
+/// node logic lives in another file beside it**, which is the split shape
+/// Option B standardizes.
 ///
-/// The `has_lib` condition is what keeps the rule honest for a package that has
-/// not been split yet — native's `talker/src/main.rs` is 91 lines of logic *and*
-/// glue fused, and calling that "glue" would silently drop the only file it has
-/// from the comparison. Un-split packages are therefore compared whole, and
-/// their divergence shows up as the W3 work it is.
+/// That condition is what keeps the rule honest for a package that has not been
+/// split yet — native's `talker/src/main.rs` is 91 lines of logic *and* glue
+/// fused, and calling that "glue" would silently drop the only file it has from
+/// the comparison. Un-split packages are therefore compared whole, and their
+/// divergence shows up as the W3 work it is.
+///
+/// issue 1512 — the condition used to be spelled `has_lib`, i.e. "is there a
+/// `src/lib.rs`", which is a PROXY for the rule and not the rule. It held while
+/// every split package split into two RUST files. It stops holding for a leaf
+/// whose node logic is C and whose `main.rs` is nothing but the boot chain
+/// (`examples/mps2-an385-baremetal/c/talker`, the only shape a board with no C
+/// startup can take): there the glue file is glue by construction, and the proxy
+/// called it logic and then failed it for containing `#![no_main]`.
+///
+/// The generalisation is MEASURED, not assumed: across every tracked
+/// `examples/*/*/*/src/` in the tree, the number of packages holding a
+/// `main.rs`, no `lib.rs`, and any other authored source is **zero**. So no
+/// existing package changes classification, and the fused-file case the
+/// paragraph above protects keeps its protection — a lone `main.rs` has no
+/// logic elsewhere and stays Logic.
 ///
 /// C and C++ have no separate glue file — `main.c` *is* the program the user
 /// writes — so every file is logic there.
-fn classify(lang_ext: &str, rel: &str, has_lib: bool) -> FileKind {
+fn classify(lang_ext: &str, rel: &str, logic_elsewhere: bool) -> FileKind {
     match lang_ext {
-        "rs" if rel == "main.rs" && has_lib => FileKind::Glue,
+        "rs" if rel == "main.rs" && logic_elsewhere => FileKind::Glue,
         // A named glue MODULE, for glue that cannot live in the `main.rs` bin
         // target: the ThreadX RV64 CycloneDDS path links the *staticlib*, so its
         // `#[no_mangle] app_main` must be reachable from `lib.rs`'s module tree.
@@ -260,7 +276,27 @@ fn is_build_output(name: &str) -> bool {
 
 /// Every source file under `src/`, normalized and tagged, in filename order.
 fn classified_files(src: &Path) -> Option<Vec<(String, String, FileKind)>> {
-    let has_lib = src.join("lib.rs").is_file();
+    // issue 1512 — "is there node logic in another file", the rule `classify`
+    // states, rather than `lib.rs.is_file()`, the proxy it used to ask. Any
+    // authored source beside `main.rs` counts, in any of the languages this walk
+    // reads: a C application with a Rust boot chain is the case the proxy got
+    // wrong. Computed with a shallow read rather than off `files` below, because
+    // the classification is needed WHILE building that list.
+    let logic_elsewhere = fs::read_dir(src).ok().is_some_and(|entries| {
+        entries.flatten().any(|e| {
+            let p = e.path();
+            let name = p
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            p.is_file()
+                && name != "main.rs"
+                && p.extension()
+                    .and_then(|x| x.to_str())
+                    .is_some_and(|x| matches!(x, "rs" | "c" | "h" | "cpp" | "hpp" | "cc"))
+        })
+    });
     let mut files: Vec<(String, String, FileKind)> = Vec::new();
     let mut stack = vec![src.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -289,7 +325,7 @@ fn classified_files(src: &Path) -> Option<Vec<(String, String, FileKind)>> {
                 .to_string_lossy()
                 .to_string();
             let text = fs::read_to_string(&path).ok()?;
-            let kind = classify(ext, &rel, has_lib);
+            let kind = classify(ext, &rel, logic_elsewhere);
             files.push((rel, normalize(&text), kind));
         }
     }
