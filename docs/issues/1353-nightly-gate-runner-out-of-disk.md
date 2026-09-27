@@ -1181,3 +1181,61 @@ or move the lane to a bigger disk, is arithmetic that does not close.
 Issue **1492** (the wedge this evidence used to arrive through) is resolved as of
 this run; tier-1 jobs now finish and report, so this issue's transcripts will keep
 arriving.
+
+## The `gate` numbers exist now, and they are not the numbers this issue argued from (2026-09-27)
+
+The transcript uploads added on 2026-09-24 worked. Scheduled `gate` run
+**36287553068** (02:06 UTC), job **108531095406**, produced
+`disk-transcript-before-check-build` and `disk-transcript-after-check-build`,
+and they are the first disk figures any scheduled `gate` has ever emitted.
+
+The step table reproduced the 2026-09-23 shape exactly — 23 report, 24 reclaim,
+25 upload, **26 `just check build` failure**, 27 after-report success, 28 upload,
+**29 `just check no-std` in_progress, where the runner died** — so nothing about
+the failure moved. What moved is that it is now readable.
+
+| moment | df | biggest three |
+| --- | --- | --- |
+| 02:47, before the tier | **86% used, 21G free** | `packages/cli/target` **30G**; `examples` 19G; `build` 3.5G |
+| after `reclaim-disk.sh` | ~27.3G free | freed **6,703 MB** (`/__t` 5.2G + `build/metadata-probe` 1.5G) |
+| 03:32, after the tier | **100% used, 272K free** | `packages/cli/target` 31G; `examples` 19G; `target` **15G** |
+
+So the compile tier's own spend, measured on `gate` rather than inferred from
+`host-tests`, is about **24G**: `target` 1.1G → 15G, `build` 3.5G → 8.8G, plus
+~4.6G of eight `target-check-*` directories that did not exist before the step
+(`target-embedded` 956M, `target-check-cpp-cyclone-embedded` 816M,
+`target-check-c` 753M, `target-check-census-hooks` 687M, `target-check-cpp`
+589M, `target-check-cpp-clippy-zenoh` 471M, `target-excluded-tests` 331M).
+Against 27.3G available that does not fit with any margin, and the disk was
+**full inside step 26** — which is what makes step 26's failure attributable to
+the disk rather than to a gate verdict, for the first time.
+
+Two corrections to what the sections above assume:
+
+- **The 42G/22G split is a `host-tests` shape and does not describe `gate`.**
+  Here `examples` is 19G, not 42G, and the single biggest consumer on the disk
+  is **`packages/cli/target` at 30G**, already present at 02:47 — i.e. spent by
+  earlier steps of this same job, not by the tier. Whatever prunes usefully
+  here, it is not first of all `examples/workspaces` (14G).
+- **The job log cannot be read at all.** The annotation on job 108531095406 is
+  the runner's own crash:
+
+  ```
+  Unhandled exception. System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20260927-020659-utc.log'
+  ```
+
+  The worker process died writing its diagnostic log, so it never uploaded the
+  step log and `actions/jobs/108531095406/logs` returns `BlobNotFound`. For this
+  failure mode the annotations and the two transcript artifacts are the only
+  evidence there is; that is why the uploads are placed per-step rather than
+  behind one `always()` at the end.
+
+Note when reading the artifacts: the transcript is **cumulative**, so the
+`after` artifact contains the `before` report and reclaim as well. The two
+uploads are two snapshots of one growing file, not two independent measurements.
+
+Acceptance is unchanged — a scheduled run reaching a VERDICT on `check build`
+and `check no-std`, three nights running — and the remedy list is unchanged,
+but it can now be priced: the tier needs ~24G and the reclaim currently hands it
+~27.3G on a disk that arrives 86% full.
