@@ -5,7 +5,7 @@ title: "The whole zero-copy surface sits behind `feature = \"lending\"`, which o
 status: open
 type: test-gap
 area: rmw
-related: [issue-0812, issue-0813, issue-0781, issue-1400, phase-391, rfc-0010, rfc-0089]
+related: [issue-0812, issue-0813, issue-0781, issue-1400, issue-1369, issue-1422, phase-391, rfc-0010, rfc-0089]
 ---
 
 ## Problem
@@ -353,6 +353,17 @@ Concretely, in the order the evidence supports:
    when a typed loan is ever built. Until then, leave RFC-0010 D7 amended rather than
    acted on: record that the length objection now holds only for *unbounded* types,
    and that a bounded type's bound is a compile-time constant.
+
+   **This step is now cited BY NAME from the definition** (issues 1369 + 1422,
+   both resolved 2026-09-27). Those two asked whether a predicate nothing reads
+   should exist at all, and the answer taken was: keep it, say so, and name the
+   consumer — so `SizeBound::plain`, `Message::IS_PLAIN` and `is_loan_eligible`
+   each carry a doc comment saying no slot reads them and that **0814 step 5** is
+   the wiring. If that wiring never lands, whoever closes 0814 should delete the
+   three of them rather than leaving a named consumer that never arrived. The
+   older text at `size.rs:56-58` claimed phase-380 W5 had already done this
+   wiring; it is gone. A SECOND, disagreeing "plain" in the codegen IR is gone
+   too — it meant POD-blit where this one means fixed wire length.
 6. **Amend RFC-0010's per-backend matrix**, which is stale in three rows: XRCE has no
    `lending` feature at all (`packages/rmw/xrce/nros-rmw-xrce/` declares none) though
    the matrix says "landed"; zenoh's native receive is behind a non-default

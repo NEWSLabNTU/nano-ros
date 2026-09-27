@@ -166,7 +166,16 @@ pub trait Message: Sized {
     /// is loan-eligible (phase-380 W5).
     ///
     /// Encoding-independent — "has a `String` or an unbounded sequence" does not
-    /// depend on how it is packed — so unlike the sizes there is only one.
+    /// depend on how it is packed — so unlike the sizes there is only one. Note
+    /// the FLAG is encoding-independent, not the size it qualifies: a plain
+    /// type's bound still differs per encoding, because XCDR2 adds a
+    /// fixed-width DHEADER.
+    ///
+    /// **Diagnostic today: no dispatch reads it** (issues 1422 / 1369). It exists
+    /// so that "fixed layout" has exactly one definition in the tree, reachable
+    /// as [`crate::size::is_loan_eligible`]; issue 0814 step 5 is the wiring that
+    /// would consume it, and 0814 argues for not building it yet. See
+    /// [`crate::size::SizeBound::plain`] for the full note.
     const IS_PLAIN: bool =
         crate::size::size_bound(Self::FIELDS, crate::cdr::EncodingVersion::Xcdr1, 0).plain;
 }

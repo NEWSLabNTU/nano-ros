@@ -459,6 +459,19 @@ consumed inside `lower()`; W1.1's `NESTED_ALIGN_STANDIN` comment already says
 `align` exists only to answer plainness. They stay unread per-field on purpose,
 and the struct now says so.
 
+> **Correction, 2026-09-27 (issue 1422, RFC-0068 Amendment 3).** All four
+> spellings — `LoweredField::{align,plain}` and `LoweredType::{align,plain}` —
+> are now DELETED, so they were dropped facts after all; this passage read the
+> chain correctly and stopped one link short of asking what read the end of it.
+> `LoweredType::plain` had no consumer anywhere: no renderer, no inventory
+> carrier, no cmake variable, no gate. The argument that decided it is the one
+> this RFC cares about — a second answer kept alive: the runtime already has a
+> fixed-layout predicate (`nros_serdes::size::SizeBound::plain`) and, measured,
+> the two disagreed on `bool`, on a nested all-`float64` struct and on
+> `{uint8, uint32}`, because one meant "blittable memory image" and the other
+> means "fixed WIRE length". Two predicates under one name is the same defect as
+> `pre_storage: Option<FieldStorage>`, one workspace over.
+
 One thing the wave found that §6b does not mention: `element_cap` (phase-403
 W7) was folded into the field type by each storage surface separately, and
 folding it in the IR would have been wrong. It narrows STORAGE and leaves CDR

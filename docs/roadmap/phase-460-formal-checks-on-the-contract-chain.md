@@ -21,7 +21,7 @@ new.
 | --- | --- | --- | --- | --- |
 | `phase-460-W1` | none | `packages/cli/nros-cli-core/src/cmd/ws.rs` (the `run_sync` refusal path; `model_provenance_stale` moves out), `packages/cli/nros-cli-core/src/cmd/model_path.rs`, `packages/cli/nros-cli-core/src/model_gate.rs` (new), one gate call each in `packages/cli/nros-cli-core/src/cmd/entity_inventory.rs`, `cmd/codegen_system.rs` and `cmd/codegen.rs`, `packages/api/nros/src/lib.rs` (`load_for_build_script`), `docs/design/0063-system-model-is-a-build-artifact.md` | the refused-resolve fixture test in `packages/cli/nros-cli-core`, run by `just ci-l1` | yes |
 | `phase-460-W2` | none | `cmake/NanoRosEntityFacts.cmake` (the `refused` branch at :622), `packages/core/nros-params/build.rs` (the `default` fallback at :169-170), `tests/cmake-entity-inventory-tests.sh` (one case per status) | `tests/cmake-entity-inventory-tests.sh`: `refused` fails the configure naming the node; `absent` and `declared` pass | yes (one day) |
-| `phase-460-W3` | none | `zephyr/Kconfig` (the `NROS_FRAG_MAX_SIZE` entry and its `-1` sentinel), `zephyr/cmake/nros_cargo_build.cmake` (the rx-ceiling block, :780-870), `packages/cli/rosidl-lower/src/lowered.rs`, `packages/core/nros-serdes/src/size.rs`, `packages/cli/nros-cli-core/src/entity_inventory.rs` (the `NROS_ENTITY_PLAIN_TYPES` carrier), `packages/core/nros-node/src/executor/arena.rs` (the borrowed-view dispatch selection) | issue 1368's acceptance plus the unit test that a nested unbounded member is not listed, in `just ci-l1` | yes |
+| `phase-460-W3` | none | FIRST HALF ONLY (issue 1368): `zephyr/Kconfig` (the `NROS_FRAG_MAX_SIZE` entry and its `-1` sentinel), `zephyr/cmake/nros_cargo_build.cmake` (the rx-ceiling block, :780-870). The second half is DONE and owns nothing further — `packages/cli/rosidl-lower/src/lowered.rs` and `packages/core/nros-serdes/src/{size,schema}.rs` landed 2026-09-27; `entity_inventory.rs`'s `NROS_ENTITY_PLAIN_TYPES` and `executor/arena.rs` were never written and are not to be | issue 1368's acceptance, in `just ci gate`. The plain-list unit test is retired with the list | yes |
 | `phase-460-W4` | none | `zephyr/cmake/nros_system_generate.cmake` (the compare after the bake in `nros_system_generate`), `docs/design/0049-hierarchical-platform-board-config.md`; it reads `NROS_RESOLVED_*` and adds no block to `nros_cargo_build.cmake` | `tests/cmake-domain-agreement-tests.sh` (new): `CONFIG_NROS_DOMAIN_ID=2` against a bringup declaring 10 fails the configure; equal passes | yes (one day) |
 | `phase-460-W5` | none | `packages/core/nros-node/src/boot_report.rs` (`heap_peak_bytes`, `heap_capacity_bytes`), `scripts/check-boot-report-layout.py`, `scripts/read-boot-report.py`, `packages/platform/nros-platform-zephyr/src/platform.c` (the stage transitions, the report write on the exhaustion path, the stale `heap-stats` comment at :256), `just/check/tools.just` (the new recipe beside `mem-report`), `docs/design/0077-image-runtime-is-the-images-choice.md` | `just check boot-report-layout` plus the new heap-headroom recipe on a fixture dump: peak 0 refused, headroom below 24576 refused, a dump with headroom passes | yes |
 | `phase-460-W6` | none | a new host test for `zephyr/nros_platform_zephyr_shims.c` under `tests/zephyr/`; the shims file itself only if a test seam is needed | the N+2 create/join test, in `just ci-l1` | yes (one day) |
@@ -58,7 +58,7 @@ Phases 457 and 462 share no file with this phase.
 Owns these issues, one per wave:
 [1420](../issues/archived/1420-refused-resolve-leaves-the-previous-model-for-every-consumer.md),
 [1421](../issues/archived/1421-partial-params-declaration-falls-to-crate-defaults-silently.md),
-[1422](../issues/1422-plain-blit-eligibility-is-computed-and-read-by-nothing.md),
+[1422](../issues/archived/1422-plain-blit-eligibility-is-computed-and-read-by-nothing.md),
 [1423](../issues/archived/1423-system-toml-domain-id-and-kconfig-domain-id-are-never-compared.md),
 [1424](../issues/1424-zephyr-heap-size-is-a-guess-with-a-peak-reporter-nothing-reads.md),
 [1425](../issues/1425-heap-exhaustion-and-buffer-too-small-reach-no-fault-hook-on-a-consoleless-board.md).
@@ -82,7 +82,7 @@ The rows are independent; the phase exists so they are fixed as one class
 | --- | --- | --- | --- |
 | 1 | the `system_model.yaml` on disk is the current one | E7b: resolve refused, the E6b model stayed, and `entity-inventory` / `codegen-system` / `codegen entry` derived from it (`NROS_DERIVED_MAX_PARAMETERS 26`) | 1420 |
 | 2 | a partial `params:` declaration is loud | E6a: one node's block removed flips the store to `refused` and the crate defaults 32/64/256/32/256 replace 25/35/0/0/0 with no build-time line | 1421 |
-| 3 | `NROS_FRAG_MAX_SIZE` and the `plain` flag mean something | 2048 hand-set, derived receive bound 1496, no comparison; `plain` computed on every bound, read by a test and a const | 1368, 1422 |
+| 3 | `NROS_FRAG_MAX_SIZE` and the `plain` flag mean something | 2048 hand-set, derived receive bound 1496, no comparison; `plain` computed on every bound, read by a test and a const | 1368, 1422 (**1422 resolved** — TWO `plain` flags, disagreeing; the codegen IR's deleted, the runtime's kept and its doc corrected) |
 | 4 | the image's domain is the system's domain | `system.toml` writes `NROS_SYSTEM_DOMAIN_ID` into `system_config.h`; no file outside the CLI reads it; the image bakes `CONFIG_NROS_DOMAIN_ID` | 1423 |
 | 5 | `CONFIG_NROS_ZEPHYR_HEAP_SIZE=94208` fits | chosen, not measured; the high-water reporter exists, is always compiled on Zephyr, and nothing reads it off the board or gates the knob against it | 1424 |
 | 6 | task slots are released | RESOLVED: `zephyr/nros_platform_zephyr_shims.c:421-480` claims and releases on join (issue 0839). No issue; W6 is a gate only |
@@ -158,7 +158,7 @@ inventory with `refused` fails the configure naming the node; `absent` and
 
 Claim: phase-460-W2. Depends on: none. Owns: cmake/NanoRosEntityFacts.cmake, packages/core/nros-params/build.rs, tests/cmake-entity-inventory-tests.sh. Gate: tests/cmake-entity-inventory-tests.sh. Status: landed in PR #1166 (a9c3f6636); cmake-entity-inventory 77 assertions held; issue 1421 archived. Follow-up: the Zephyr road forwards the five numbers, not the status, so a refusal still falls to crate defaults there until nros_cargo_build.cmake resolves NROS_PARAM_DECLARATION_STATUS beside :1208 (after 461 W1).
 
-### W3 - a stated ceiling is compared to the derived bound; a computed flag has a reader (issues 1368, 1422)
+### W3 - a stated ceiling is compared to the derived bound; a computed flag has a reader (issues 1368, 1422 - SECOND HALF LANDED)
 
 First half is issue 1368 as filed: a configure-time comparison of
 `NROS_FRAG_MAX_SIZE` (`zephyr/Kconfig:867-872`, default 2048, no sentinel)
@@ -176,7 +176,37 @@ flag is deleted, and this wave records the measurement either way. Gate:
 1368's acceptance, plus a unit test that a type with a nested unbounded
 member is not listed.
 
-Claim: phase-460-W3. Depends on: none. Owns: zephyr/Kconfig (NROS_FRAG_MAX_SIZE), zephyr/cmake/nros_cargo_build.cmake (rx-ceiling block), packages/cli/rosidl-lower/src/lowered.rs, packages/core/nros-serdes/src/size.rs, packages/cli/nros-cli-core/src/entity_inventory.rs (NROS_ENTITY_PLAIN_TYPES), packages/core/nros-node/src/executor/arena.rs. Gate: issue 1368's acceptance plus the plain-list unit test in just ci-l1. Status: not started.
+**Second half LANDED 2026-09-27, and the consumer chosen above was the wrong
+one.** Full record in
+[issue 1422](../issues/archived/1422-plain-blit-eligibility-is-computed-and-read-by-nothing.md);
+three things this plan had wrong, each measured:
+
+* **The borrowed-view dispatch is not a candidate.** It exists FOR types with
+  unbounded sequence/string members — the complement of "plain" — and its mode is
+  authored by the user's codegen (`borrowed`), not chosen by a runtime probe. The
+  probe this plan meant is `supports_process_in_place()`, which is a per-BACKEND
+  property, and the path behind it hands the callback raw CDR to deserialize, so
+  it needs no fixed layout. Gating it on plainness would remove the in-place path
+  from every type with a `String` — a pessimisation, not a fast path.
+* **There were TWO flags under one name, and they disagree.** `rosidl-lower`'s
+  meant "the memory image may be blitted"; `nros-serdes`' means "the wire length
+  is EXACT". Measured, they differ on `bool`, on a nested all-`float64` struct and
+  on `{uint8, uint32}`. So "give it one consumer" had no single subject.
+* **The wiring is already owned elsewhere, on purpose.** phase-380 W5 shipped the
+  definition and deferred the slots; **issue 0814 step 5** holds that wiring and
+  0814 argues against building it now (the loan surface it would join is measured
+  worse than `publish_raw` on three of four backends).
+
+Outcome: the codegen IR's copy is deleted (RFC-0068 Amendment 3), the runtime's is
+kept with its doc comment corrected to say no slot reads it and to name 0814 step
+5, and the exactness / version-independence properties are asserted in
+`nros-serdes`. `NROS_ENTITY_PLAIN_TYPES` was never written and should not be.
+Cost, for the record this wave asked for: the `plain` term is **0.31 ns** per walk
+on `builtin_interfaces/Time`, **45.9 ns (16 %)** on a 1090-element schema, and
+**zero in any shipped image** (const-evaluated everywhere but the host CLI's
+codegen).
+
+Claim: phase-460-W3. Depends on: none. Owns: zephyr/Kconfig (NROS_FRAG_MAX_SIZE), zephyr/cmake/nros_cargo_build.cmake (rx-ceiling block). Gate: issue 1368's acceptance, in just ci gate. Status: SECOND HALF LANDED 2026-09-27 (issue 1422 resolved, issue 1369 resolved with it; RFC-0068 Amendment 3) — rosidl-lower's plain/align deleted, nros-serdes' plain kept and its doc corrected, NROS_ENTITY_PLAIN_TYPES and the arena dispatch declined with a measurement and no longer owned by this claim. FIRST HALF (issue 1368, the NROS_FRAG_MAX_SIZE comparison) not started.
 
 ### W4 - `system.toml` domain and Kconfig domain agree, or the configure says which wins (issue 1423)
 
@@ -284,7 +314,7 @@ Claim: phase-460-W7. Depends on: phase-460-W5. Owns: packages/platform/nros-plat
 | --- | --- | --- |
 | W1 | four consumers refuse after a refused resolve | revert, sync, four pass |
 | W2 | `refused` fails the configure naming the node | `absent` / `declared` pass |
-| W3 | ceiling below bound refused; plain list excludes nested unbounded | ceiling at bound passes |
+| W3 | ceiling below bound refused (the plain-list half is retired with the list — see the wave) | ceiling at bound passes |
 | W4 | Kconfig 2 vs system 10 fails | equal passes |
 | W5 | report reader refuses peak 0 or headroom below 24576 | a dump with headroom passes |
 | W6 | N+2 create/join cycles succeed | a detached task exhausts the pool |
