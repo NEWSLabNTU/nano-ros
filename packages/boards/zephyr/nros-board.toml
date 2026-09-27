@@ -29,18 +29,24 @@ threads = true
 # than of anyone's diligence (issue 0766).
 #
 # Tiers here are RAW `k_thread` priorities passed straight to
-# `k_thread_create`. The transport is NOT: zenoh-pico's Zephyr platform creates
-# its read/lease tasks with `pthread_create`, so their priority goes through a
-# normalised 0-31 band, then Zephyr's POSIX layer, before it lands anywhere a
-# tier can be compared against:
+# `k_thread_create`. The transport is NOT: its read/lease tasks are created
+# through Zephyr's POSIX layer, so the priority travels a chain — a normalised
+# band, then SCHED_RR, then k_thread — before it lands anywhere a tier can be
+# compared against.
 #
-#   CONFIG_NROS_ZENOH_{READ,LEASE}_PRIORITY  (Kconfig, default 16)
-#     -> ZPICO_{READ,LEASE}_TASK_PRIORITY    band 0..31
-#     -> POSIX  lo + (span*n*2 + 31)/62,  hi = CONFIG_NUM_PREEMPT_PRIORITIES - 1
-#     -> k_thread  NUM_PREEMPT - posix - 1  (SCHED_RR; pthread.c
-#                                            POSIX_TO_ZEPHYR_PRIORITY)
+# THE CHAIN IS WRITTEN ONCE, IN RFC-0079 §4.1, AND IS NOT RESTATED HERE.
+# It used to be, and the copy went stale: this file carried "Kconfig, default
+# 16", a private 0-31 band and `zpico_posix_set_priority`'s
+# `lo + (span*n*2 + 31)/62` for a month after phase-364 W5 / issue 0852 moved
+# the band to the platform ABI's 0..255 with a default of 200 and the map to
+# `nros_zephyr_native_priority`. The RFC's own copy was corrected by phase-459
+# W4 and this one was not, which is the failure the section immediately below
+# describes, committed by the file describing it (issue 1427). The two live
+# spellings of the arithmetic are `scripts/lib/priority_plan.py:
+# resolve_zephyr_plan` and `nros-orchestration-ir`'s `priority_plan::
+# zephyr_plan`, and they check each other; prose cannot join that pair.
 #
-# BOTH ends of that are per-IMAGE Kconfig — the band itself, and
+# BOTH ends of the chain are per-IMAGE Kconfig — the band itself, and
 # NUM_PREEMPT_PRIORITIES, which is per-board. So a literal `reserved.transport`
 # would be true for exactly one image and quietly wrong for the next: the very
 # failure this plan exists to prevent, one level up. The numbers therefore live
