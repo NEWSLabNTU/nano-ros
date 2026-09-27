@@ -1065,6 +1065,34 @@ struct GenerateCArgs {
     /// When absent, discovered by walking up from the output directory.
     #[serde(default)]
     codegen_config: Option<PathBuf>,
+    /// The `nros-codegen.toml` files CMake discovered by walking up from the
+    /// SOURCE directory of the package driving this generation, root-most
+    /// first (issue 1470, `_nros_codegen_config_chain`).
+    ///
+    /// The Rust lane has always discovered from the source tree
+    /// ([`generate_from_package_xml`]); the CMake lane could only walk up from
+    /// `output_dir`, which is in the BUILD tree, so RFC-0033's WORKSPACE scope
+    /// was unreachable from CMake however the build was driven. This carries
+    /// the same answer across.
+    #[serde(default)]
+    codegen_config_chain: Vec<PathBuf>,
+}
+
+/// RFC-0033 resolution for the CMake lane, in precedence order: whatever walking
+/// up from the output dir finds (unchanged — a Zephyr output dir can be nested
+/// in the consumer's tree), then the SOURCE-side chain ancestor → descendant,
+/// then the explicit `CODEGEN_CONFIG`. Later merges win, so the app file beats
+/// the workspace file and an explicit path beats both.
+fn resolve_caps_for_args(args: &GenerateCArgs) -> Result<rosidl_codegen::CapacityResolver> {
+    let mut resolver = rosidl_codegen::CapacityResolver::discover(&args.output_dir, None)?;
+    for path in &args.codegen_config_chain {
+        resolver = resolver.merged_with(rosidl_codegen::CapacityResolver::from_file(path)?);
+    }
+    if let Some(path) = &args.codegen_config {
+        resolver = resolver.merged_with(rosidl_codegen::CapacityResolver::from_file(path)?);
+    }
+    resolver.report_deprecations();
+    Ok(resolver)
 }
 
 fn default_ros_edition() -> String {
@@ -1086,14 +1114,8 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
     let edition = parse_ros_edition(&args.ros_edition)?;
     let type_hash = edition.type_hash();
 
-    // Per-field capacity config (RFC-0033): explicit CMake CODEGEN_CONFIG, else
-    // discover by walking up from the output dir (nested in the consumer tree).
-    let resolver = rosidl_codegen::CapacityResolver::resolve_for(
-        args.codegen_config.as_deref(),
-        &args.output_dir,
-        None,
-    )?;
-    resolver.report_deprecations();
+    // Per-field capacity config (RFC-0033) — one spelling for both languages.
+    let resolver = resolve_caps_for_args(&args)?;
 
     if config.verbose {
         println!("Generating C bindings for package: {}", args.package_name);
@@ -1793,14 +1815,8 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
     let edition = parse_ros_edition(&args.ros_edition)?;
     let type_hash = edition.type_hash();
 
-    // Per-field capacity config (RFC-0033): explicit CMake CODEGEN_CONFIG, else
-    // discover by walking up from the output dir.
-    let resolver = rosidl_codegen::CapacityResolver::resolve_for(
-        args.codegen_config.as_deref(),
-        &args.output_dir,
-        None,
-    )?;
-    resolver.report_deprecations();
+    // Per-field capacity config (RFC-0033) — one spelling for both languages.
+    let resolver = resolve_caps_for_args(&args)?;
 
     if config.verbose {
         println!("Generating C++ bindings for package: {}", args.package_name);

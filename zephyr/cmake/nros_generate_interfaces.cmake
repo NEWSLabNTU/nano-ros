@@ -292,7 +292,13 @@ function(nros_generate_interfaces target)
       set(_codegen_needed TRUE)
     endif()
   endforeach()
-  foreach(_dep ${_interface_files} "${_args_file}" "${_NROS_ZEPHYR_CODEGEN_TOOL}")
+  # issue 1470 — every `nros-codegen.toml` that reaches this generation (the
+  # discovered chain plus an explicit CODEGEN_CONFIG that exists) is an input to
+  # the BOUNDS in every generated header, and the args file changes only when a
+  # config appears or moves. Same set the canonical lane hangs on
+  # `add_custom_command`'s DEPENDS; `_nros_write_codegen_args_json` composes it.
+  foreach(_dep ${_interface_files} "${_args_file}" "${_NROS_ZEPHYR_CODEGEN_TOOL}"
+          ${_NROS_CODEGEN_CONFIG_CHAIN})
     foreach(_out ${_expected_outputs})
       if(EXISTS "${_out}" AND "${_dep}" IS_NEWER_THAN "${_out}")
         set(_codegen_needed TRUE)
