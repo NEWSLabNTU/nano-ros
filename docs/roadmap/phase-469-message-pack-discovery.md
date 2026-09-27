@@ -1,6 +1,6 @@
 # Phase 469 — give the message path the entry path's `pack.toml`
 
-**Status (2026-09-27). NOT STARTED — a record, not work in flight.** Opened from
+**Status (2026-09-28). W1 LANDED; the later waves are still a record.** Opened from
 the 2026-09-27 codegen-path audit to carry its **S4** item, which is phase-sized
 and was deliberately left out of the two conflict-free fixes that landed with it
 (the one artifact-naming derivation, `generator::naming`, and three retracted doc
@@ -31,7 +31,7 @@ RFC-0068 Amendment 2 and RFC-0091 §6b are the honest statement of where the
 "adding a language = dropping a pack" goal actually stands; read those before
 planning against this phase.
 
-## W1 — `pack.toml` on the message path
+## W1 — `pack.toml` on the message path. **DONE (2026-09-28).**
 
 Give each `packs/<lang>/` a `pack.toml` the way an entry pack has one, so:
 
@@ -47,6 +47,67 @@ Give each `packs/<lang>/` a `pack.toml` the way an entry pack has one, so:
 was: `tests/codegen_golden.rs` + `tests/rust_surface_golden.rs` green with
 `NROS_UPDATE_GOLDEN` unset, plus a control over what the goldens do not cover
 (C++ srv/action, artifact NAMES, srv/action intra-package includes).
+
+### What landed
+
+`build.rs` reads every `packs/<dir>/pack.toml` and generates three things into
+`OUT_DIR`: the template registry `render.rs` used to author as 28 `include_str!`
+rows, the `Surface` enum plus its four lookups that `generator/naming.rs` used to
+author as three `match`es, and a `PACK_INFO` table of what each manifest declares.
+A build script rather than a run-time directory read, for the reason
+`codegen/entry/pack.rs` already gives: `nros` runs from CMake and from build
+scripts in trees that do not contain this checkout.
+
+`packs/_codegen_version.jinja` moved to `packs/shared/`, so the message side has
+the `shared` pack the entry side has. It was the one row discovery could not find,
+and one authored `include_str!` is still an authored list. Bytes and registry key
+unchanged, which is why the fingerprint did not move.
+
+**Both traps held.**
+
+1. `codegen_fingerprint` is unchanged —
+   `a5b0c79b4cfc06a878a66b8cb85bd823cd7e0779cd313f09679892971cfa6346` before and
+   after, 28 rows in the same order, measured by running the emitters in a
+   throwaway test in both trees. That is what `registry_order` in each manifest
+   buys: the fingerprint hashes `bundled_packs()` as a SEQUENCE, so deriving the
+   order from directory order (`c, cpp, nros, rmw, rust, scaffold` alphabetically
+   against the authored `c, rmw, nros, rust, cpp, scaffold`) would have re-staled
+   the whole tree for byte-identical output. The numbers are the order the
+   authored list had and carry no other meaning; the gate and the build script
+   both refuse a duplicate.
+2. `check-entry-pack-conformance` GREW a message root (`PackRoot`), and the two
+   roots differ in what a manifest holds rather than being forced into one loop.
+   The name still says `entry` deliberately: it is a name the growth-only
+   `.config/gate-registry-baseline.txt` ratchet carries, and regenerating that is
+   reserved for a RETIREMENT (issue 1071).
+
+**What deliberately stayed in Rust**, and why:
+
+* `Kind` — the ROS kind word (`msg` / `srv` / `action`) is identical on every
+  surface and is not a pack author's choice, so a per-pack copy would be this
+  phase's own defect one level down.
+* which generator builds which context and calls which key. That is a rule with
+  a reason, and RFC-0091 / `entry/pack.rs` draw the same line for routing.
+* the filter sets (`crate::filters`). Unchanged by W1; RFC-0091 §6b already keys
+  them by the pack that calls them.
+
+**Measured.** `codegen_golden` 5/5, `rust_surface_golden` 2/2, lib 171/171,
+`clippy --all-targets -D warnings` clean, `Cargo.lock` unchanged (`toml` was
+already a normal dependency, and a lock entry is the union of dependency kinds).
+The control over the uncovered surfaces — every artifact NAME plus the C++
+srv/action bodies and the srv/action intra-package includes, over 4 packages x 5
+type spellings (including `Weird_Pkg` and `camelCase`) x 4/3/3 msg/srv/action
+shapes, 1,888 sections, zero generator errors — is **13,543,799 bytes
+byte-identical**, same sha256. Discovery was proven by adding a throwaway
+`packs/zz_probe/`: 28 -> 29 registry rows, it rendered, and it added a
+`Surface::ZzProbe` variant, with no edit to `render.rs` or `naming.rs`. Both the
+build script's refusals and the gate's new arm were mutation-tested rather than
+assumed.
+
+**One finding the probe produced**: a pack directory whose name has an underscore
+generated a `non_camel_case_types` variant — a warning, i.e. an error under the
+`-D warnings` every check lane runs. A new pack's directory name must not be able
+to break a crate its author never opened, so `variant()` upper-camels per word.
 
 ### Traps — both found by the audit, both about how this fails quietly
 
@@ -94,10 +155,12 @@ keys the filter set by the pack that calls it, which is the shape that survived.
 
 ## Acceptance
 
-* `pack.toml` discovery replaces the authored `include_str!` list; a new pack
+All four met by W1 (2026-09-28) — see *What landed* for the measurements.
+
+* [x] `pack.toml` discovery replaces the authored `include_str!` list; a new pack
   directory is found without a `render.rs` edit.
-* Every golden byte-identical, `NROS_UPDATE_GOLDEN` never set; the uncovered
-  surfaces checked by a control diff.
-* `codegen_fingerprint` unchanged by W1 (or moved in its own commit, with the
-  whole-tree re-stale stated up front).
-* `check-entry-pack-conformance` covers the message side, in the same gate.
+* [x] Every golden byte-identical, `NROS_UPDATE_GOLDEN` never set; the uncovered
+  surfaces checked by a control diff (13,543,799 bytes identical).
+* [x] `codegen_fingerprint` unchanged by W1 — same digest, same 28 rows, same
+  order. No re-stale was bought.
+* [x] `check-entry-pack-conformance` covers the message side, in the same gate.
