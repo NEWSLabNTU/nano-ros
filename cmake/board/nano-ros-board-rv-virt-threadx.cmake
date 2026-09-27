@@ -82,6 +82,9 @@ set(_NROS_BOARD_ROOT  "${CMAKE_CURRENT_LIST_DIR}/../..")
 # include() inside the app function would pop with its frame).
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosCargoProfile.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBoardFacts.cmake")
+# issue 1467 — `nros_declare_rust_runtime_carrier()`, the consumer half of the
+# umbrella decision (see `nros_threadx_rv64_rust_app` below).
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosRuntimeUmbrella.cmake")
 set(_NROS_BOARD_DIR
     "${_NROS_BOARD_ROOT}/packages/boards/nros-board-threadx-qemu-riscv64")
 set(_NROS_BOARD_CONFIG_DIR "${_NROS_BOARD_DIR}/config")
@@ -671,6 +674,24 @@ nros_riscv64_rustflags_env(${_crate_target}-static)
         "nros_threadx_rv64_rust_app(${target})")
 
     add_executable(${target} "${_anchor}")
+    # issue 1467 — say so ONCE, where the fact lives: this executable's app is a
+    # Rust staticlib, so `nros`, `nros-platform` and `nros-rmw-cffi` — the whole
+    # `#[no_mangle]` C ABI plus the `__NROS_SIZE_*` constants — are already
+    # inside `lib${_crate_target}.a`. Any runtime umbrella reaching this link
+    # line is a SECOND definition of all of it.
+    #
+    # The 0666 note below is the half that could be enforced locally: this seam
+    # does not link an umbrella itself. It was not enough, because an umbrella
+    # also arrives as a PROPAGATED requirement of `${_A_LINK}` — the generated
+    # `<pkg>__nano_ros_c` library, which preferred `NanoRos::NanoRosCpp`
+    # whenever the target merely EXISTED, and it always exists under
+    # `add_subdirectory("${NANO_ROS_ROOT}" nano_ros)`. That is what put
+    # `libnros_cpp.a` beside this leaf's own archive and killed all twelve
+    # `threadx_riscv64` leaves on 228 `rust-lld: error: duplicate symbol` lines.
+    # The property is read at generate time by the resolver in
+    # `cmake/NanoRosRuntimeUmbrella.cmake`, so it reaches every hop of the
+    # transitive walk without this seam knowing which libraries are in it.
+    nros_declare_rust_runtime_carrier(${target})
     # issue 0666 — NO `NanoRos::NanoRos` here. That umbrella pulls in
     # `nros_c-static`, the C API, which a RUST app never calls: this leaf's
     # cargo graph does not mention `nros-c` at all, and the zenoh half of the

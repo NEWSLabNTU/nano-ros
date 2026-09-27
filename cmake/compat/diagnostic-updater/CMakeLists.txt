@@ -16,9 +16,10 @@ target_include_directories(nros-diagnostic-updater INTERFACE
 )
 # issue 1118 — at or above the floor nros-cpp declares (`cxx_std_17`).
 target_compile_features(nros-diagnostic-updater INTERFACE cxx_std_17)
-if(TARGET NanoRos::NanoRosCpp)
-    target_link_libraries(nros-diagnostic-updater INTERFACE NanoRos::NanoRosCpp)
-endif()
+# issue 1467 — one home for the umbrella choice; see the note in Findrclcpp.cmake.
+include("${CMAKE_CURRENT_LIST_DIR}/../../NanoRosRuntimeUmbrella.cmake")
+nros_link_runtime_umbrella(nros-diagnostic-updater INTERFACE
+    CANDIDATES NanoRos::NanoRosCpp)
 
 # Canonical aliases consumers can link against:
 #   diagnostic_updater::diagnostic_updater (matches upstream package name)

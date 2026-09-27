@@ -12,11 +12,16 @@
 # ament_auto_* shims still apply the same hookup via _nros_compat_apply_
 # force_includes; this stub is the second entry point that catches
 # upstream-style call sites.
+# issue 1467 — the umbrella choice has ONE home, and an INTERFACE forward is a
+# requirement propagated to a consumer this stub cannot see, so it is guarded
+# there. An rclcpp-shaped consumer is C++ and will not be a Rust-staticlib
+# carrier, so the guard is expected to stay open here; it is applied anyway
+# because a per-site exemption is how the rule grows a tenth spelling.
+include("${CMAKE_CURRENT_LIST_DIR}/../../NanoRosRuntimeUmbrella.cmake")
 if(NOT TARGET rclcpp::rclcpp)
     add_library(rclcpp::rclcpp INTERFACE IMPORTED)
-    if(TARGET NanoRos::NanoRosCpp)
-        target_link_libraries(rclcpp::rclcpp INTERFACE NanoRos::NanoRosCpp)
-    endif()
+    nros_link_runtime_umbrella(rclcpp::rclcpp INTERFACE
+        CANDIDATES NanoRos::NanoRosCpp)
     # NrosRclcppCompat lives at `../include/` relative to this stub dir.
     get_filename_component(_nros_compat_inc_dir "${CMAKE_CURRENT_LIST_DIR}/../include" ABSOLUTE)
     target_include_directories(rclcpp::rclcpp INTERFACE "${_nros_compat_inc_dir}")

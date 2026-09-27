@@ -68,6 +68,10 @@ endif()
 # consumer's `find_package(<workspace_pkg>)` runs, defeating it.
 include("${_nros_compat_dir}/stubs/_NrosFindRosMsgPackage.cmake")
 
+# issue 1467 — `nros_link_runtime_umbrella()`: the ONE decision about which
+# runtime umbrella a target links, and whether the consumer wants one.
+include("${_nros_compat_dir}/../NanoRosRuntimeUmbrella.cmake")
+
 # --- Sanity: nros-cpp must be loaded -----------------------------------------
 # Two consumption shapes for `NanoRos::NanoRosCpp`:
 #  1. Native / `add_subdirectory(<nano-ros>)` — the root CMakeLists.txt
@@ -176,7 +180,11 @@ function(ament_auto_add_library target kind)
         # treat the first arg as a source path.
         add_library(${target} STATIC ${kind} ${_srcs})
     endif()
-    target_link_libraries(${target} PUBLIC NanoRos::NanoRosCpp)
+    # issue 1467 — PUBLIC, so the umbrella propagates to an unknown consumer and
+    # goes through the guarded resolver. The sibling `ament_auto_add_executable`
+    # below stays a literal PRIVATE link: there the consumer IS the target, and
+    # the NuttX boards match that name as a string.
+    nros_link_runtime_umbrella(${target} PUBLIC CANDIDATES NanoRos::NanoRosCpp)
     _nros_compat_apply_force_includes(${target})
 endfunction()
 

@@ -435,3 +435,21 @@ deferred-call-args:
 [private]
 cmake-verb-reachable:
     @python3 scripts/check-cmake-verb-reachable.py
+
+# issue 1467 — a PROPAGATED runtime-umbrella link must go through the resolver.
+#
+# `if(TARGET NanoRos::NanoRosCpp)` asks what the build tree DEFINES, not what
+# the consuming binary's other archives already contain — and every leaf does
+# `add_subdirectory("${NANO_ROS_ROOT}" nano_ros)`, so it is always true. The
+# generated C message library therefore put `libnros_cpp.a` beside the Rust
+# staticlib of a pure-Rust leaf, and all twelve `threadx_riscv64` leaves died on
+# 228 `rust-lld: error: duplicate symbol` lines. Nine sites spelled the same
+# ladder; the guard could only be added at all of them or forgotten at one.
+#
+# PRIVATE links stay literal and are RULED with a reason, because the NuttX
+# boards match that name as a STRING to route the umbrella's include dirs into
+# their cargo cross-build.
+[private]
+runtime-umbrella-link-sites:
+    @python3 scripts/check-runtime-umbrella-link-sites.py --self-test
+    @python3 scripts/check-runtime-umbrella-link-sites.py

@@ -83,6 +83,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 # `dev → debug` special case.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCargoProfile.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
+# issue 1467 — the ONE decision about which runtime umbrella a target links,
+# and whether the consuming binary wants one at all.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRuntimeUmbrella.cmake")
 nros_resolve_cargo_profile()
 set(NROS_CODEGEN_CARGO_PROFILE "${NROS_CARGO_PROFILE}" CACHE STRING
     "Cargo profile whose target directory is searched for nros-codegen" FORCE)
@@ -678,21 +681,22 @@ function(nros_generate_interfaces target)
       # link time. Declaring the dep both registers ordering AND
       # forwards NanoRosCpp's transitive deps (nros_c, nros_platform,
       # rmw staticlib) to consumers of the ffi lib.
-      if(TARGET NanoRos::NanoRosCpp)
+      # issue 1467 — GUARDED, and through the shared resolver. This is an
+      # INTERFACE requirement on an IMPORTED archive, so the consumer is
+      # whatever binary ends up linking it; a Rust-staticlib carrier drops it.
+      # `set_property` rather than `target_link_libraries` because CMake refuses
+      # the latter on an IMPORTED STATIC target.
+      nros_runtime_umbrella_expr(_nrgi_umbrella GUARDED
+        CANDIDATES NanoRos::NanoRosCpp nros_cpp::nros_cpp)
+      if(_nrgi_umbrella)
         set_property(TARGET ${_lib_target}_ffi_lib APPEND PROPERTY
-          INTERFACE_LINK_LIBRARIES NanoRos::NanoRosCpp)
-      elseif(TARGET nros_cpp::nros_cpp)
-        set_property(TARGET ${_lib_target}_ffi_lib APPEND PROPERTY
-          INTERFACE_LINK_LIBRARIES nros_cpp::nros_cpp)
+          INTERFACE_LINK_LIBRARIES "${_nrgi_umbrella}")
       endif()
     endif()
 
     # Link to nros C++ library (prefer installed target, fall back to build-time Corrosion target)
-    if(TARGET NanoRos::NanoRosCpp)
-      target_link_libraries(${_lib_target} INTERFACE NanoRos::NanoRosCpp)
-    elseif(TARGET nros_cpp::nros_cpp)
-      target_link_libraries(${_lib_target} INTERFACE nros_cpp::nros_cpp)
-    endif()
+    nros_link_runtime_umbrella(${_lib_target} INTERFACE
+      CANDIDATES NanoRos::NanoRosCpp nros_cpp::nros_cpp)
 
     # Link dependency libraries
     foreach(_dep ${_ARG_DEPENDENCIES})
@@ -760,25 +764,21 @@ function(nros_generate_interfaces target)
     # and the latter BUNDLES nros-c, so the two archives define the same C ABI
     # twice. Preferring the bundling umbrella keeps ONE Rust staticlib per
     # binary; a pure-C workspace has no `NanoRosCpp` target and is unchanged.
-    if(TARGET NanoRos::NanoRosCpp)
-      set(_link_type PUBLIC)
-      if(NOT _generated_sources)
-        set(_link_type INTERFACE)
-      endif()
-      target_link_libraries(${_lib_target} ${_link_type} NanoRos::NanoRosCpp)
-    elseif(TARGET NanoRos::NanoRos)
-      set(_link_type PUBLIC)
-      if(NOT _generated_sources)
-        set(_link_type INTERFACE)
-      endif()
-      target_link_libraries(${_lib_target} ${_link_type} NanoRos::NanoRos)
-    elseif(TARGET nros_c::nros_c)
-      set(_link_type PUBLIC)
-      if(NOT _generated_sources)
-        set(_link_type INTERFACE)
-      endif()
-      target_link_libraries(${_lib_target} ${_link_type} nros_c::nros_c)
+    #
+    # issue 1467 — and a PURE-RUST leaf is the third umbrella 0425 did not
+    # model. `nros_threadx_rv64_rust_app` links this library beside a leaf
+    # staticlib that ALREADY carries `nros` / `nros-platform` /
+    # `nros-rmw-cffi`, so the target that keeps a C/C++ binary down to one
+    # archive put a SECOND one on a Rust binary — 228 duplicate-symbol errors
+    # across the twelve `threadx_riscv64` leaves. The resolver's guard drops the
+    # umbrella for a consumer that declared itself the runtime carrier; the
+    # C/C++ direction is byte-for-byte unchanged.
+    set(_link_type PUBLIC)
+    if(NOT _generated_sources)
+      set(_link_type INTERFACE)
     endif()
+    nros_link_runtime_umbrella(${_lib_target} ${_link_type}
+      CANDIDATES NanoRos::NanoRosCpp NanoRos::NanoRos nros_c::nros_c)
 
     # Link dependency libraries
     foreach(_dep ${_ARG_DEPENDENCIES})

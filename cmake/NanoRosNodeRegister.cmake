@@ -58,6 +58,10 @@
 # issue 0326 — `_nros_is_zephyr()` lives here.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 
+# issue 1467 — `nros_link_runtime_umbrella()`: the ONE decision about which
+# runtime umbrella a target links, and whether the consumer wants one.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRuntimeUmbrella.cmake")
+
 # issue 0342-adjacent — the SPLIT spelling's other half.
 #
 # `nros_components_register_node` (below) attaches metadata to a library the
@@ -697,11 +701,12 @@ function(nano_ros_node_register)
             # nros-c, so a C node's `nros_*` calls still resolve and the binary
             # links ONE Rust staticlib. A pure-C workspace instantiates no
             # `NanoRosCpp` target and so keeps `NanoRos`, unchanged.
-            if(TARGET NanoRos::NanoRosCpp)
-                target_link_libraries(${_lib} PUBLIC NanoRos::NanoRosCpp)
-            elseif(TARGET NanoRos::NanoRos)
-                target_link_libraries(${_lib} PUBLIC NanoRos::NanoRos)
-            endif()
+            #
+            # issue 1467 — PUBLIC, so the umbrella is a requirement propagated
+            # to whatever binary links this component. The shared resolver
+            # guards that propagation on the consumer, which is the half 0425
+            # could not see from here.
+            nros_link_runtime_umbrella(${_lib} PUBLIC)
             target_include_directories(${_lib} PUBLIC
                 "${CMAKE_CURRENT_SOURCE_DIR}/include"
                 "${CMAKE_CURRENT_SOURCE_DIR}/src")
