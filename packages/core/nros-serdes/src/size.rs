@@ -51,11 +51,34 @@ pub struct SizeBound {
     /// `bytes` is then a FLOOR, not a bound, and callers must not size a buffer
     /// from it.
     pub bounded: bool,
-    /// No variable-length member anywhere, so the layout is fixed: `bytes` is
-    /// EXACT rather than an upper bound, and the type is loan-eligible
-    /// (phase-380 W5 wires this to `borrow_loaned_message` /
-    /// `subscription_supports_in_place` rather than letting a second notion of
-    /// "fixed layout" grow).
+    /// No variable-length member anywhere, so the WIRE length is fixed: `bytes`
+    /// is EXACT rather than an upper bound.
+    ///
+    /// **Nothing dispatches on this, by decision** (issues 1369 and 1422). It is
+    /// the walk's exactness property, asserted as such by
+    /// `plain_struct_bound_is_exact` here and by
+    /// `bound_holds_against_the_writer_for_every_generated_type` over the whole
+    /// generated corpus, and it is surfaced as
+    /// [`crate::schema::Message::IS_PLAIN`] / [`is_loan_eligible`] so there is
+    /// ONE definition of "fixed layout" for whoever finally needs one.
+    ///
+    /// The earlier text here said phase-380 W5 "wires this to
+    /// `borrow_loaned_message` / `subscription_supports_in_place`". It does not:
+    /// W5 shipped the definition and left the wiring to whoever owns those slots
+    /// (`docs/roadmap/archived/phase-380-serialized-size-bound.md:228-232`), and
+    /// **issue 0814 step 5 is where the wiring now waits** — deliberately, since
+    /// 0814 measures the loan surface as a cost on three of four backends and
+    /// the natural consumer of this predicate is Cyclone-with-iceoryx, which no
+    /// target we ship can reach. Do not gate the in-place path on it: that path
+    /// hands the callback raw CDR to deserialize, which needs no fixed layout, so
+    /// the flag would only take it away from every type with a `String`.
+    ///
+    /// It is NOT "POD-blit eligible", and a second flag under that name in the
+    /// codegen IR was deleted by issue 1422 for disagreeing with this one on
+    /// `bool`, on nested all-`float64` structs and on mixed alignment. Nor does
+    /// it make the bound version-INDEPENDENT: XCDR2's DHEADER is fixed-width, so
+    /// a plain type stays plain while its bound still differs per encoding
+    /// (`Time` measures 12 under XCDR1 and 16 under XCDR2).
     pub plain: bool,
 }
 
@@ -566,6 +589,17 @@ pub const fn bound_fits<M: crate::schema::Message>(rx_buf: usize) -> bool {
 /// which is the drift `borrow_loaned_message` and
 /// `subscription_supports_in_place` would otherwise each grow their own version
 /// of.
+///
+/// **It has no non-test caller, and that is the decision rather than an
+/// oversight** (issue 1422; the same finding as issue 1369). Its natural
+/// consumer is a TYPED loan, and issue 0814 recommends not building one now:
+/// the byte-span loan surface it would sit beside is measured as strictly worse
+/// than `publish_raw` on three of four backends, and the one place `IS_PLAIN`
+/// matches a real gate is Cyclone's own `fixed_size` check, which loans only
+/// under iceoryx. **0814 step 5 is the consumer**, if and when it exists. The
+/// function is kept — not inlined into that future caller — because its whole
+/// job is to be the one place the predicate is spelled; two spellings is the
+/// defect issue 1422 deleted from the codegen IR.
 pub const fn is_loan_eligible<M: crate::schema::Message>() -> bool {
     M::IS_PLAIN
 }
@@ -985,6 +1019,36 @@ mod tests {
     fn plain_struct_bound_is_exact() {
         both(TIME);
         assert!(size_bound(TIME, EncodingVersion::Xcdr1, 0).plain);
+    }
+
+    /// Issue 1422 — the FLAG is version-independent; the bound it qualifies is
+    /// NOT, and conflating the two is how "plain" gets read as "one number
+    /// serves both encodings".
+    ///
+    /// `plain` answers "is there a variable-length member", which no encoding
+    /// changes, so [`crate::schema::Message::IS_PLAIN`] is one const rather than
+    /// two. XCDR2 still adds a fixed-width DHEADER per struct, so the exact size
+    /// differs — and both of those facts have to hold for `plain` to mean
+    /// "`bytes` is exact" rather than "`bytes` is the same everywhere". Written
+    /// as a test because the issue that asked for a consumer for this flag
+    /// described its one pinning assertion as version-INDEPENDENCE of the bound,
+    /// which is not a property this walk has.
+    #[test]
+    fn plainness_is_version_independent_and_the_exact_size_is_not() {
+        let x1 = size_bound(TIME, EncodingVersion::Xcdr1, 0);
+        let x2 = size_bound(TIME, EncodingVersion::Xcdr2, 0);
+        assert_eq!(
+            x1.plain, x2.plain,
+            "plainness cannot depend on the encoding"
+        );
+        assert!(x1.plain);
+        assert_eq!(x1.bytes, 8, "two 4-byte scalars");
+        assert_eq!(x2.bytes, 12, "same, plus the 4-byte DHEADER");
+        assert_ne!(
+            x1.bytes, x2.bytes,
+            "a plain type still has two bounds — one constant would be wrong \
+             for one encoding (issue 0776)"
+        );
     }
 
     /// The defect issue 0776 calls out first: a message containing an `int64`

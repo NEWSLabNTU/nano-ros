@@ -3,7 +3,7 @@ rfc: 0068
 title: "Language-neutral codegen IR — parse → resolve → lower → render"
 status: Stable
 since: 2026-08
-last-reviewed: 2026-09-11
+last-reviewed: 2026-09-27
 implements-tracked-by: [phase-335]
 supersedes: []
 superseded-by: null
@@ -82,6 +82,11 @@ language-neutral Rust stages, then make emission a data-driven consumer of those
 *[Amendment 1]* Stage 2 no longer takes a `TargetProfile`, and `LoweredType` is
 target-AGNOSTIC: the diagram's "⊗ TargetProfile", "TARGET-specific" and "every
 embedded/target fact lives HERE" are superseded.
+
+*[Amendment 3]* `LoweredType` states no LAYOUT fact: the diagram's `plain`,
+`align`, `repr_c_field_order` and `serialized_size_max` are superseded. The
+tree's one fixed-layout predicate is `nros_serdes::size::SizeBound::plain`, over
+the runtime schema.
 
 ### Stage 0 — Parse (keep as-is)
 `rosidl-parser` already emits a faithful, `serde`-serializable, recursively-typed AST. It is a
@@ -212,11 +217,11 @@ being built. What shipped (phase-335 W1.b(ii), `b20ed2edb`) was
 
 | Fact | Now |
 | --- | --- |
-| `ptr_width` (nested-field align) | `NESTED_ALIGN_STANDIN` in `rosidl-lower/src/lowered.rs`, a named constant whose doc says its value cannot matter. `a_nested_field_is_never_plain_so_its_align_cannot_matter` fails if that stops being true |
+| `ptr_width` (nested-field align) | `NESTED_ALIGN_STANDIN` in `rosidl-lower/src/lowered.rs`, a named constant whose doc says its value cannot matter. `a_nested_field_is_never_plain_so_its_align_cannot_matter` fails if that stops being true — *[Amendment 3]* both the constant and that test are gone with `align` itself; the successor is `a_nested_field_carries_no_target_fact` |
 | `enum_width` / short enums | not needed: no pack emits an `enum`. If one ever does, its representation is PINNED in the source (`uint8_t` against `#[repr(u8)]`) |
 | `repr(C)` field order, alignment | the COMPILER, per target. That the two `repr(C)` surfaces (`packs/rmw`, `packs/cpp`) agree with the C header is MEASURED by `just check repr-memory-agreement`, which cross-compiles both for a non-host target and compares symbol sizes |
 | `LoweredType.target` | deleted |
-| storage, plainness, serialized size | unchanged: CDR and capacity-config facts, never target facts |
+| storage, plainness, serialized size | unchanged: CDR and capacity-config facts, never target facts — *[Amendment 3]* plainness left this IR (issue 1422); serialized size was never a field of it |
 
 The principle that replaces the profile: generated code is target-agnostic,
 the compiler resolves the target, and a representation two languages share is
@@ -250,3 +255,44 @@ Rust emitter that builds its view (RFC-0091 §8). The Escape hatch above is
 closer to how entries work today than Stage 3 is. No code changed with this
 amendment; it corrects the claim. The procedure is in
 `book/src/internals/codegen-packs.md`.
+
+### Amendment 3 (2026-09-27, issue 1422) — `LoweredType` states no layout fact
+
+Stage 2's `LoweredType` is listed above as carrying
+`plain : bool (POD blit candidate)` and `align, repr_c_field_order,
+serialized_size_max` beside `storage` and `cdr_op`. Of those, only `storage` and
+`cdr_op` ever shipped as read facts. `repr_c_field_order` and
+`serialized_size_max` were never fields; `plain` and `align` were, per field and
+per struct, and issue 1422 deleted all four spellings.
+
+**Why, measured at `4d439a115`.** `LoweredField::plain` and `LoweredField::align`
+were consumed at exactly one site — `lower()`, to compute `LoweredType::plain` —
+and `LoweredType::plain` was consumed by nothing at all: no renderer, no
+`NROS_ENTITY_*` inventory carrier, no cmake variable, no gate, no arena dispatch.
+Amendment 1 had already recorded that `align`'s nested-struct contribution was a
+stand-in whose value could not matter, which is a field no surface could have
+used even if it wanted one.
+
+The deciding argument is not deadness but duplication. The runtime has a
+fixed-layout predicate of its own, `nros_serdes::size::SizeBound::plain` (phase-380
+W1/W5), shipped precisely so a second notion of "fixed layout" would not grow —
+and this was that second notion, under the same name, disagreeing with it on
+three of the commonest shapes: `bool` (excluded here as a constrained CDR `u8`,
+plain there), a nested all-`float64` struct such as `geometry_msgs/Pose` (never
+plain here because a nested field was hardcoded non-plain, plain there), and
+`{uint8, uint32}` (not plain here because `repr(C)` pads between them, plain
+there because the WIRE length is still fixed). A consumer wired to "the plain
+flag" would have got a different answer depending on which producer it asked.
+
+**Where the fact lives now.** One predicate, on the runtime schema:
+`nros_serdes::size::SizeBound::plain`, surfaced as `Message::IS_PLAIN` /
+`size::is_loan_eligible::<M>()`. It means "no variable-length member, so the wire
+length is EXACT" — not "the memory image may be blitted" — and nothing dispatches
+on it yet; issue 0814 step 5 is the wiring that would. A Stage 2 surface that one
+day needs a real per-target alignment must compute one, not read a stand-in.
+
+**Superseded here:** the `plain` and `align` lines of the Stage 2 block in the
+design diagram, and the "storage, plainness, serialized size" row of Amendment 1's
+table (storage stands; plainness is gone from this IR; serialized size was never a
+field of it — `rosidl-codegen`'s `bounds.rs` derives bounds by calling
+`nros_serdes::size::max_serialized_size`, the runtime's own rule).

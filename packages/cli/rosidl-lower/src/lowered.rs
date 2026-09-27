@@ -2,9 +2,13 @@
 //!
 //! `lower()` takes a [`ResolvedMessage`], the capacity [`CapacityResolver`]
 //! (CodegenConfig), and computes the per-field facts a
-//! renderer must not re-derive: storage decision, plainness, alignment, the CDR
-//! op, and the field order. Language spelling is NOT here — a template maps the
+//! renderer must not re-derive: storage decision, the CDR op, and the field
+//! order. Language spelling is NOT here — a template maps the
 //! neutral facts to `u32`/`uint32_t`/`write_u32`/… (RFC-0068 Stage 3).
+//!
+//! It states no LAYOUT fact: "plainness" and "alignment" were here until issue
+//! 1422 and had no reader. The tree's one fixed-layout predicate is
+//! `nros_serdes::size::SizeBound::plain`, over the runtime schema.
 
 use std::borrow::Cow;
 
@@ -12,15 +16,6 @@ use rosidl_parser::ast::{ConstantValue, FieldType, PrimitiveType};
 use rosidl_resolve::ResolvedMessage;
 
 use crate::config::{CapacityResolver, FieldKind, FieldStorage, StorageMode, with_element_bound};
-
-/// Stand-in alignment for a nested struct field.
-///
-/// phase-432 W1.1 — this used to be `TargetProfile::ptr_width`, which is why
-/// that profile read as target-critical. It is not: `align` is consumed only
-/// to decide `plain`, and a nested field is never plain, so no value here can
-/// change an outcome. Written down as a constant so the next reader does not
-/// have to re-derive that.
-const NESTED_ALIGN_STANDIN: usize = 8;
 
 /// Neutral CDR read/write op for a scalar. A renderer maps this to its own
 /// method name (`write_u32` / `z_serialize_uint32` / …) — the op itself is
@@ -60,37 +55,6 @@ impl CdrOp {
             PrimitiveType::Float32 => CdrOp::F32,
             PrimitiveType::Float64 => CdrOp::F64,
         }
-    }
-
-    /// CDR wire size (bytes) of the scalar, which equals its natural alignment.
-    fn cdr_size(self) -> usize {
-        match self {
-            CdrOp::Bool | CdrOp::U8 | CdrOp::I8 => 1,
-            CdrOp::U16 | CdrOp::I16 => 2,
-            CdrOp::U32 | CdrOp::I32 | CdrOp::F32 => 4,
-            CdrOp::U64 | CdrOp::I64 | CdrOp::F64 => 8,
-            // String / Nested are not fixed-size scalars.
-            CdrOp::String | CdrOp::Nested => 0,
-        }
-    }
-
-    /// Whether the scalar can participate in a POD blit fast path — the numeric
-    /// integer/float ops only. `bool` is excluded (CDR bool is a constrained
-    /// `u8`, not an arbitrary byte), as are the non-scalar `String`/`Nested`.
-    fn is_plain_scalar(self) -> bool {
-        matches!(
-            self,
-            CdrOp::U8
-                | CdrOp::I8
-                | CdrOp::U16
-                | CdrOp::I16
-                | CdrOp::U32
-                | CdrOp::I32
-                | CdrOp::U64
-                | CdrOp::I64
-                | CdrOp::F32
-                | CdrOp::F64
-        )
     }
 }
 
@@ -195,20 +159,14 @@ pub struct LoweredField {
     /// `None` for a single nested struct. Read it through [`Self::scalar_op`] /
     /// [`Self::element_op`], which say which of the two a caller means.
     pub cdr_op: Option<CdrOp>,
-    /// Alignment of the field's payload, bytes.
-    ///
-    /// The one field no message surface reads, and legitimately so (phase-432
-    /// W2.5a): it exists solely to answer [`LoweredType::plain`] inside
-    /// [`lower`], and `NESTED_ALIGN_STANDIN` above records that its VALUE
-    /// cannot change an outcome anywhere else. If a surface ever needs a
-    /// field's alignment, it needs a real per-target answer, not this.
-    pub align: usize,
-    /// Whether this field is POD-blit eligible.
-    ///
-    /// Also unread per-field: like `align`, it is an input to
-    /// [`LoweredType::plain`], which is a property of the STRUCT (every field
-    /// plain AND one shared alignment) and is what a blit fast path would ask.
-    pub plain: bool,
+    // No `align` and no `plain` here, deliberately (issue 1422). Both existed
+    // only to feed `LoweredType::plain`, "POD-blit eligible", which no renderer,
+    // inventory carrier, cmake variable or gate ever read; `align` was a
+    // `NESTED_ALIGN_STANDIN` for every nested field, so it was not a per-target
+    // answer anyone could have used. A surface that needs a real alignment needs
+    // a real per-target one. The tree's ONE fixed-layout predicate is
+    // `nros_serdes::size::SizeBound::plain` — see that field's note for why a
+    // second one here disagreed with it on three of the commonest shapes.
     /// The `.msg` default, as parsed. A language spells it (`constant_value_to_rust`
     /// and friends); the value itself is neutral.
     pub default_value: Option<ConstantValue>,
@@ -316,11 +274,22 @@ pub struct LoweredType {
     /// this is the parsed order — carried explicitly so the fact is a fact, not
     /// an assumption a renderer re-derives.
     pub fields: Vec<LoweredField>,
-    /// Struct alignment = max field alignment (min 1).
-    pub align: usize,
-    /// POD-blit eligible: every field plain AND all fields share one alignment
-    /// (else `repr(C)` inserts inter-field padding and the blit is unsound).
-    pub plain: bool,
+    // `align` ("max field alignment") and `plain` ("POD-blit eligible: every
+    // field plain AND all fields share one alignment") were removed by issue
+    // 1422. Neither had a reader: no renderer, no `NROS_ENTITY_*` carrier, no
+    // cmake variable, no gate, and no arena dispatch. `align` could not have had
+    // one either, because a nested field's contribution was a hardcoded stand-in
+    // rather than a per-target fact.
+    //
+    // The point is not that they were unused but that they were a SECOND
+    // definition of "fixed layout", which is the growth phase-380 W5 shipped
+    // `nros_serdes::size::SizeBound::plain` to prevent. Measured, the two
+    // disagreed on three of the commonest shapes: `bool` (excluded here as a
+    // constrained CDR `u8`, plain there), a nested all-`float64` struct like
+    // `geometry_msgs/Pose` (never plain here, plain there), and `{uint8, uint32}`
+    // (not plain here because `repr(C)` pads, plain there because the WIRE length
+    // is still fixed). A consumer wired to "the plain flag" would have got a
+    // different answer depending on which producer it asked.
 }
 
 /// Lower a resolved message under the capacity `config`.
@@ -334,21 +303,10 @@ pub fn lower(resolved: &ResolvedMessage, config: &CapacityResolver) -> LoweredTy
     let (package, message) = split_type_name(&resolved.type_name);
     let fields = lower_fields(package, message, &resolved.parsed.fields, config);
 
-    let align = fields.iter().map(|f| f.align).max().unwrap_or(1).max(1);
-    // Plain iff every field is plain AND all fields share one alignment (uniform
-    // alignment ⇒ no inter-field or trailing padding under repr(C)).
-    let uniform_align = fields
-        .iter()
-        .map(|f| f.align)
-        .collect::<std::collections::BTreeSet<_>>();
-    let plain = !fields.is_empty() && fields.iter().all(|f| f.plain) && uniform_align.len() == 1;
-
     LoweredType {
         type_name: resolved.type_name.clone(),
         type_hash: resolved.type_hash.clone(),
         fields,
-        align,
-        plain,
     }
 }
 
@@ -375,17 +333,12 @@ fn lower_field(
 ) -> LoweredField {
     let name = field.name.as_str();
     let ft = &field.field_type;
-    let (shape, storage, cdr_op, align, plain) = match ft {
-        FieldType::Primitive(p) => {
-            let op = CdrOp::from_primitive(*p);
-            (
-                FieldShape::Scalar,
-                LoweredStorage::Inline,
-                Some(op),
-                op.cdr_size().max(1),
-                op.is_plain_scalar(),
-            )
-        }
+    let (shape, storage, cdr_op) = match ft {
+        FieldType::Primitive(p) => (
+            FieldShape::Scalar,
+            LoweredStorage::Inline,
+            Some(CdrOp::from_primitive(*p)),
+        ),
         FieldType::String | FieldType::WString => {
             let s = config.resolve(package, message, name, FieldKind::String);
             let storage = match s.mode {
@@ -393,62 +346,36 @@ fn lower_field(
                 StorageMode::Heap => LoweredStorage::Heap,
                 StorageMode::View => LoweredStorage::Borrowed { cap: s.cap },
             };
-            (FieldShape::Str, storage, Some(CdrOp::String), 4, false)
+            (FieldShape::Str, storage, Some(CdrOp::String))
         }
         FieldType::BoundedString(n) | FieldType::BoundedWString(n) => (
             FieldShape::Str,
             LoweredStorage::Fixed { cap: *n },
             Some(CdrOp::String),
-            4,
-            false,
         ),
-        FieldType::Array { element_type, size } => {
-            let (op, elem_align, elem_plain) = element_facts(element_type);
-            (
-                FieldShape::Array { len: *size },
-                LoweredStorage::Inline,
-                op,
-                elem_align,
-                // A fixed array of a plain element is itself plain.
-                elem_plain,
-            )
-        }
+        FieldType::Array { element_type, size } => (
+            FieldShape::Array { len: *size },
+            LoweredStorage::Inline,
+            element_op_of(element_type),
+        ),
         FieldType::Sequence { element_type } => {
-            let (op, elem_align, _) = element_facts(element_type);
             let s = config.resolve(package, message, name, FieldKind::Sequence);
             let storage = match s.mode {
                 StorageMode::Inline => LoweredStorage::Bounded { cap: s.cap },
                 StorageMode::Heap => LoweredStorage::Heap,
                 StorageMode::View => LoweredStorage::Borrowed { cap: s.cap },
             };
-            (FieldShape::Sequence, storage, op, elem_align.max(4), false)
+            (FieldShape::Sequence, storage, element_op_of(element_type))
         }
         FieldType::BoundedSequence {
             element_type,
             max_size,
-        } => {
-            let (op, elem_align, _) = element_facts(element_type);
-            (
-                FieldShape::Sequence,
-                LoweredStorage::Bounded { cap: *max_size },
-                op,
-                elem_align.max(4),
-                false,
-            )
-        }
-        FieldType::NamespacedType { .. } => (
-            FieldShape::Nested,
-            LoweredStorage::Inline,
-            None,
-            // A nested struct's alignment is unknown without its own
-            // lowering, so this is a conservative stand-in — and its VALUE
-            // cannot matter: `plain` is false for every nested field (the
-            // `false` below), and `align` is only ever read to decide
-            // plainness. It was `TargetProfile::ptr_width` until phase-432
-            // W1.1, which is the whole reason that profile looked load-bearing.
-            NESTED_ALIGN_STANDIN,
-            false,
+        } => (
+            FieldShape::Sequence,
+            LoweredStorage::Bounded { cap: *max_size },
+            element_op_of(element_type),
         ),
+        FieldType::NamespacedType { .. } => (FieldShape::Nested, LoweredStorage::Inline, None),
     };
 
     // The two configurable shapes, named once. `configurable` is the same
@@ -467,29 +394,27 @@ fn lower_field(
         shape,
         storage,
         cdr_op,
-        align,
-        plain,
         default_value: field.default_value.clone(),
     }
 }
 
-/// Facts about an array/sequence element: its CDR op (None if nested), its
-/// alignment, and whether it is plain.
-fn element_facts(elem: &FieldType) -> (Option<CdrOp>, usize, bool) {
+/// The CDR op of an array/sequence element, or `None` when the element is a
+/// nested struct (which has no single op).
+///
+/// Was `element_facts`, returning an alignment and a plainness flag beside the
+/// op; issue 1422 removed both from the IR, so the op is all that is left.
+fn element_op_of(elem: &FieldType) -> Option<CdrOp> {
     match elem {
-        FieldType::Primitive(p) => {
-            let op = CdrOp::from_primitive(*p);
-            (Some(op), op.cdr_size().max(1), op.is_plain_scalar())
-        }
+        FieldType::Primitive(p) => Some(CdrOp::from_primitive(*p)),
         FieldType::String
         | FieldType::WString
         | FieldType::BoundedString(_)
-        | FieldType::BoundedWString(_) => (Some(CdrOp::String), 4, false),
-        FieldType::NamespacedType { .. } => (None, NESTED_ALIGN_STANDIN, false),
+        | FieldType::BoundedWString(_) => Some(CdrOp::String),
+        FieldType::NamespacedType { .. } => None,
         // Nested arrays/sequences of arrays are not a ROS .msg shape.
         FieldType::Array { element_type, .. }
         | FieldType::Sequence { element_type }
-        | FieldType::BoundedSequence { element_type, .. } => element_facts(element_type),
+        | FieldType::BoundedSequence { element_type, .. } => element_op_of(element_type),
     }
 }
 
@@ -538,11 +463,8 @@ string<=8    str_bounded
         assert_eq!(u.shape, FieldShape::Scalar);
         assert_eq!(u.storage, LoweredStorage::Inline);
         assert_eq!(u.cdr_op, Some(CdrOp::U32));
-        assert_eq!(u.align, 4);
-        assert!(u.plain);
-        // bool is not plain (constrained CDR u8).
-        assert!(!field(&t, "flag").plain);
-        assert_eq!(field(&t, "f64_v").align, 8);
+        assert_eq!(field(&t, "flag").cdr_op, Some(CdrOp::Bool));
+        assert_eq!(field(&t, "f64_v").cdr_op, Some(CdrOp::F64));
     }
 
     #[test]
@@ -581,21 +503,23 @@ string<=8    str_bounded
         );
     }
 
-    /// phase-432 W1.1 — the negative control for deleting `TargetProfile`.
+    /// phase-432 W1.1 — the negative control for deleting `TargetProfile`,
+    /// narrowed by issue 1422 to what is left to hold.
     ///
-    /// This replaces `same_resolved_message_lowers_differently_per_target`,
-    /// which asserted that a nested field's `align` was 8 on host and 4 on
-    /// arm-eabi. That was true, and it was the reason the profile READ as
-    /// target-critical — but the same test also asserted `!plain` for both,
-    /// which is the fact that made the difference unobservable: `align` is
-    /// consumed only to decide plainness, and a nested field is never plain.
+    /// Its ancestor `same_resolved_message_lowers_differently_per_target`
+    /// asserted that a nested field's `align` was 8 on host and 4 on arm-eabi,
+    /// which is why that profile READ as target-critical; W1.1 replaced it with
+    /// "align cannot change an outcome here", because `align` fed only
+    /// `plain`. Issue 1422 deleted both fields, so the invariant is now
+    /// structural rather than asserted: `LoweredType` carries NO layout fact at
+    /// all, and a renderer that needs one has to compute a real per-target
+    /// answer rather than reading a stand-in.
     ///
-    /// So the invariant worth holding is not "align tracks the target" but
-    /// "align cannot change an outcome here". If a future change makes a
-    /// nested field plain, or makes `align` reachable by anything else, this
-    /// fails and the deletion has to be revisited.
+    /// What still needs asserting is that lowering a nested field is otherwise
+    /// target-free: the shape, the storage, the absent CDR op, and a hash that
+    /// came from Resolve.
     #[test]
-    fn a_nested_field_is_never_plain_so_its_align_cannot_matter() {
+    fn a_nested_field_carries_no_target_fact() {
         let inner = parse_message("int32 a\n").unwrap();
         let outer = parse_message("test_msgs/Inner child\nint32 tag\n").unwrap();
         let resolve = |fqn: &str| -> Option<rosidl_parser::Message> {
@@ -610,11 +534,12 @@ string<=8    str_bounded
 
         // The hash is a Resolve fact and never a lowering one.
         assert!(!lowered.type_hash.is_empty());
-        // A nested field is not plain, and neither is the struct holding it.
-        assert!(!field(&lowered, "child").plain);
-        assert!(!lowered.plain);
-        // Its align is the stand-in, and nothing downstream reads it.
-        assert_eq!(field(&lowered, "child").align, NESTED_ALIGN_STANDIN);
+        let child = field(&lowered, "child");
+        assert_eq!(child.shape, FieldShape::Nested);
+        assert_eq!(child.storage, LoweredStorage::Inline);
+        // No single CDR op, and no alignment to read: a nested struct's layout
+        // belongs to the target compiler.
+        assert_eq!(child.cdr_op, None);
     }
 
     /// phase-432 W2.5a — the accessors the five message surfaces now project
@@ -753,22 +678,36 @@ string<=8    str_bounded
         );
     }
 
+    /// Issue 1422 — `lower` carries the fields and the Resolve facts, and no
+    /// layout claim of its own.
+    ///
+    /// This replaces `struct_not_plain_when_mixed_alignment_or_strings`, which
+    /// asserted `LoweredType::plain` over three shapes. That flag and the
+    /// per-field `align`/`plain` it was computed from had no reader anywhere —
+    /// and, measured against the tree's ONE fixed-layout predicate
+    /// (`nros_serdes::size::SizeBound::plain`), disagreed with it on `bool`, on
+    /// a nested all-`float64` struct and on `{uint8, uint32}`. Two predicates
+    /// under one name is the growth phase-380 W5 shipped that one to prevent,
+    /// so this asserts the absence instead.
     #[test]
-    fn struct_not_plain_when_mixed_alignment_or_strings() {
-        // Shapes has strings/sequences → not plain.
-        assert!(!lower_shapes().plain);
-
-        // A uniform-alignment all-scalar struct IS plain.
-        let msg = parse_message("uint32 a\nint32 b\nfloat32 c\n").unwrap();
-        let r = ResolvedMessage::resolve("m/msg/AllU32", &msg, no_deps).unwrap();
+    fn lowering_states_the_fields_and_no_layout_claim() {
+        let msg = parse_message("uint8 a\nuint32 b\n").unwrap();
+        let r = ResolvedMessage::resolve("m/msg/Mixed", &msg, no_deps).unwrap();
         let t = lower(&r, &CapacityResolver::empty());
-        assert!(t.plain, "all-4-byte-scalar struct should be plain");
-        assert_eq!(t.align, 4);
 
-        // Mixed alignment (u8 + u32) → padding → not plain.
-        let msg2 = parse_message("uint8 a\nuint32 b\n").unwrap();
-        let r2 = ResolvedMessage::resolve("m/msg/Mixed", &msg2, no_deps).unwrap();
-        let t2 = lower(&r2, &CapacityResolver::empty());
-        assert!(!t2.plain, "mixed-alignment struct must not be plain");
+        assert_eq!(t.type_name, "m/msg/Mixed");
+        assert!(!t.type_hash.is_empty());
+        assert_eq!(
+            t.fields.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+            ["a", "b"],
+            "fields in .msg declaration order, which IS repr(C) order"
+        );
+        // Every field is a scalar with a CDR op and nothing else to read: the
+        // renderer decides layout, the IR does not claim it.
+        assert!(
+            t.fields
+                .iter()
+                .all(|f| f.shape == FieldShape::Scalar && f.cdr_op.is_some())
+        );
     }
 }

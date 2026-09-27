@@ -3,13 +3,50 @@ id: 1369
 title: "`SizeBound::plain` is computed on every bound walk and read by nothing
   but its own tests, and the comment beside it names a wiring that phase-380 W5
   explicitly declined to do"
-status: open
+status: resolved
 type: tech-debt
 area: [core, rmw]
 severity: low
 found: 2026-09-18
-related: [issue-0814, issue-0781, issue-0776, phase-380, rfc-0038]
+resolved: 2026-09-27
+resolved_in: "issue 1422 — option 2 landed, and the second producer this file did not know about was deleted"
+related: [issue-1422, issue-0814, issue-0781, issue-0776, phase-380, phase-460, rfc-0038, rfc-0068]
 ---
+
+> **RESOLVED 2026-09-27 by the work recorded in
+> [issue 1422](1422-plain-blit-eligibility-is-computed-and-read-by-nothing.md).**
+> Same surface, and this file is the better-argued half of it: everything measured
+> here re-resolved at `4d439a115`, including the zero non-test callers of
+> `is_loan_eligible`, the single non-test reader of `IS_PLAIN`, the discard at
+> `size.rs:423`, and the corrections about phase-403's unrelated W5.
+>
+> **Option 2 is what landed**, in the words this file asked for: `plain` is kept —
+> it does pin a real property of the walk — and the doc comment at `size.rs:56-58`
+> no longer asserts a wiring nobody did. It names issue 0814 step 5 as the consumer
+> that would consume it, says in as many words that no slot reads it, and warns
+> against the tightening option 1 described (gating the in-place path on
+> `IS_PLAIN` takes it away from every type with a `String`, and that path
+> deserializes from raw CDR, which needs no fixed layout).
+>
+> **Option 1 was declined with a measurement**, recorded in 1422: phase-460 W3's
+> nominated consumer — the arena's borrowed-view dispatch — serves the OPPOSITE
+> population (types with unbounded members) and its mode is authored by codegen
+> rather than probed.
+>
+> **What 1422 added that this file did not have.** A SECOND producer:
+> `rosidl-lower`'s `LoweredField::{align,plain}` and `LoweredType::{align,plain}`,
+> "POD-blit eligible", also read by nothing — and a DIFFERENT predicate. Measured,
+> the two disagreed on `bool`, on a nested all-`float64` struct and on
+> `{uint8, uint32}`. This file's own framing turns out to be the reason that
+> mattered: the growth W5 existed to prevent had already happened, one workspace
+> over. That copy is deleted (RFC-0068 Amendment 3).
+>
+> One thing this file's cost paragraph left open, now measured: the `plain` term
+> costs **0.31 ns** per walk on `builtin_interfaces/Time` and **45.9 ns (16 %)** on
+> a 1090-element schema, and **zero in any shipped image** — every non-test
+> consumer in a shipped crate is const-evaluated, so the only place the walk runs
+> as ordinary code is the host CLI at codegen time. "The cost is small" was right;
+> it is now a number.
 
 ## What the comment promises
 

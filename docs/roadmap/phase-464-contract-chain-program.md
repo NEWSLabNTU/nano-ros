@@ -130,7 +130,7 @@ Track A, the census, is independent of track B and of everything in M2.
 | island-W4 | first execution on silicon (MCU-Link probe), heap high-water read | boot log, `nros_zephyr_heap_peak` | island-W3, hardware |
 | phase-460-W5 | the heap knob is gated against the measurement (1424) | gate | island-W4 |
 | phase-460-W7 | a fault reaches a hook a console-less board can read (1425) | test | now |
-| phase-460-W3, W6 | ceilings compared to derived bounds (1368, 1422); slot release gate | gates | now |
+| phase-460-W3, W6 | ceilings compared to derived bounds (1368; **1422 done** 2026-09-27 — the flag had two producers and no consumer, one deleted, the other kept with its doc corrected); slot release gate | gates | now |
 
 ### M4 - the safety vocabulary on target (after M2)
 
