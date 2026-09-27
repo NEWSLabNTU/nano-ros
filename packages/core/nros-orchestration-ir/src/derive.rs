@@ -121,6 +121,15 @@ pub fn placement_is_unauthored(
         })
 }
 
+/// issue 1426 rule 2 — one member's bid for the single priority an authored,
+/// unplaced tier gets: `(node FQN, allocated priority, preempt threshold)`.
+///
+/// A tier is one thread, so several of these compete and the most urgent wins
+/// (see the loop at the end of [`derive_tiers_from_contracts`]). Named because
+/// the tuple is the whole reason clippy calls the map's type complex, and a
+/// name is the answer it asks for.
+type AllocationCandidate<'a> = (&'a str, i64, Option<i64>);
+
 /// Has this tier a platform sub-table for ANY target? The discriminator between
 /// rules 2 and 3 above — see [`placement_is_unauthored`].
 fn authors_any_placement(t: &ros_launch_manifest_sched::TierDef) -> bool {
@@ -220,7 +229,7 @@ pub fn derive_tiers_in_plan(
 
     // issue 1426 rule 2 — authored tier name -> the members whose ranks are
     // candidates for the one priority that tier's single thread gets.
-    let mut unplaced: BTreeMap<String, Vec<(&str, i64, Option<i64>)>> = BTreeMap::new();
+    let mut unplaced: BTreeMap<String, Vec<AllocationCandidate<'_>>> = BTreeMap::new();
 
     for n in &plan.nodes {
         let node = bare(&n.name).to_string();
