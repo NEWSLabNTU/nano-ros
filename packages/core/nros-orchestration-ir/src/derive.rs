@@ -27,10 +27,21 @@ use crate::{
 /// The outcome of deriving a schedule from the contract layer.
 #[derive(Debug, Default)]
 pub struct DerivedSchedule {
-    /// `derived-<node>` tier definitions, keyed by tier name.
+    /// `derived-<node>` tier definitions, keyed by tier name. These are NEW
+    /// tiers, for nodes whose groups name no tier at all; the caller MERGES
+    /// them into whatever the model authored (see [`ADDS`](DerivedSchedule)).
     pub tiers: BTreeMap<String, TierDef>,
     /// One override per derived node, binding its callback groups to its tier.
     pub overrides: Vec<NodeOverride>,
+    /// issue 1426 — placements ALLOCATED for tiers the author NAMED and left
+    /// unplaced, keyed by the authored tier name.
+    ///
+    /// The caller installs each on the `[tiers.<name>]` it already built from
+    /// the model, so the head facts (`class`, `period_us`, `deadline_us`, …)
+    /// stay AUTHORED and only the address is allocated. It is a separate field
+    /// from [`Self::tiers`] for exactly that reason: a whole `TierDef` here
+    /// would be this function re-deciding facts it was not asked about.
+    pub placements: BTreeMap<String, TierRtosSpec>,
     /// Every guarantee weakening the realizer recorded (fail-loud — the caller
     /// MUST surface these).
     pub degradations: Vec<Degradation>,
@@ -38,6 +49,86 @@ pub struct DerivedSchedule {
     /// default tier (advisory-derived, not authored). One human-readable note
     /// per node; the caller surfaces them.
     pub groupless_notes: Vec<String>,
+    /// issue 1426 — every authored placement that WON over one the contract
+    /// implied. Authored wins, and it may not win silently.
+    pub shadowed: Vec<ShadowedPlacement>,
+}
+
+/// issue 1426 — an authored priority that took precedence over an allocated one.
+///
+/// Not a [`Degradation`]: nothing was weakened, a decision was made. But
+/// "authored wins" is only a defensible rule while the person who authored the
+/// number can see what it beat, so every caller prints one line per row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShadowedPlacement {
+    /// The node whose rank was not used.
+    pub node: String,
+    /// The authored tier it is bound to.
+    pub tier: String,
+    /// What `[tiers.<tier>.<rtos>] priority` says.
+    pub authored: i64,
+    /// What the contract's rank would have allocated for it.
+    pub allocated: i64,
+}
+
+/// issue 1426 — does any node carrying callback groups lack an authored
+/// placement for this target? THE predicate that decides whether a derivation
+/// runs, in one spelling.
+///
+/// Before this, three sites asked `model.execution.tiers.is_empty()` instead —
+/// `cmd::codegen_system`, `codegen::entry::derive_entry_tiers` and the
+/// `nros::main!` macro — and that question is about the TABLE where the rule is
+/// about a FACT. Precedence, stated once and per fact:
+///
+/// 1. `[tiers.<name>.<rtos>]` authored for this target ⇒ **AUTHORED**. Never
+///    overwritten; a rank it beat is recorded in
+///    [`DerivedSchedule::shadowed`].
+/// 2. `[tiers.<name>]` authored with **no** platform sub-table at all ⇒
+///    **ALLOCATED** for that tier ([`DerivedSchedule::placements`]). Naming a
+///    tier is how a binding gets written (`group_tiers = { main = "ctrl" }`);
+///    it says nothing about a priority, and RFC-0079 is that a priority is
+///    allocated rather than authored. So an unplaced tier is a REQUEST, which
+///    is also why this needs no new key in the `[tiers.*]` schema.
+/// 3. `[tiers.<name>]` authored with sub-tables for OTHER targets and not this
+///    one ⇒ neither. The author did place it, for a different board, and
+///    `resolve_tiers` raises `MissingRtosSpec` exactly as before. Reading that
+///    as a request would silence a real mistake.
+/// 4. the group names no tier (`DEFAULT_TIER`) ⇒ **ALLOCATED** as a new
+///    `derived-<node>` tier ([`DerivedSchedule::tiers`]).
+///
+/// Rule 4 is what the old table-shaped guard got wrong. A group at
+/// `DEFAULT_TIER` is a node the author wrote nothing about, and whether it gets
+/// a derived placement cannot depend on whether some OTHER node's tier was
+/// authored — which is what `tiers.is_empty()` made it depend on. Measured on
+/// the phase-459 W0 fixture: one component binding to one authored
+/// `[tiers.ctrl.zephyr]` left the other three on the synthesised default tier
+/// at Zephyr priority 0, i.e. ABOVE the transport that feeds them, with their
+/// rate contracts unread and nothing printed.
+pub fn placement_is_unauthored(
+    model: &SystemModel,
+    target_rtos: &str,
+    callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
+) -> bool {
+    callback_groups
+        .values()
+        .flatten()
+        .any(|g| match model.execution.tiers.get(&g.tier) {
+            // Rule 4 (and an undeclared name, which `apply_model_execution`
+            // refuses before this ever matters).
+            None => true,
+            // Rules 1-3.
+            Some(t) => t.platform(target_rtos).is_none() && !authors_any_placement(t),
+        })
+}
+
+/// Has this tier a platform sub-table for ANY target? The discriminator between
+/// rules 2 and 3 above — see [`placement_is_unauthored`].
+fn authors_any_placement(t: &ros_launch_manifest_sched::TierDef) -> bool {
+    t.posix.is_some()
+        || t.freertos.is_some()
+        || t.zephyr.is_some()
+        || t.threadx.is_some()
+        || t.nuttx.is_some()
 }
 
 /// Bare node name from a model FQN (`/ns/node` → `node`).
@@ -50,6 +141,12 @@ fn bare(fqn: &str) -> &str {
 /// then bakes tier-less exactly as before. `callback_groups` maps a bare node
 /// name to its declared groups (from cargo/cmake metadata); a node with none
 /// stays on the default tier.
+///
+/// issue 1426 — this runs WHENEVER [`placement_is_unauthored`] holds, not only
+/// on an empty tier table, and it never overwrites an authored fact. Read that
+/// function's doc for the precedence; the three outputs it decides between are
+/// [`DerivedSchedule::tiers`] (rule 4), [`DerivedSchedule::placements`]
+/// (rule 2) and [`DerivedSchedule::shadowed`] (rule 1).
 pub fn derive_tiers_from_contracts(
     model: &SystemModel,
     target_rtos: &str,
@@ -121,6 +218,10 @@ pub fn derive_tiers_in_plan(
         ..Default::default()
     };
 
+    // issue 1426 rule 2 — authored tier name -> the members whose ranks are
+    // candidates for the one priority that tier's single thread gets.
+    let mut unplaced: BTreeMap<String, Vec<(&str, i64, Option<i64>)>> = BTreeMap::new();
+
     for n in &plan.nodes {
         let node = bare(&n.name).to_string();
         // A ranked node with no declared callback groups has nothing for the
@@ -129,6 +230,44 @@ pub fn derive_tiers_in_plan(
             out.groupless_notes.push(n.name.clone());
             continue;
         };
+
+        // issue 1426 — split this node's groups by what the author said about
+        // the tier each one NAMES. The four rules are stated once, on
+        // `placement_is_unauthored`; this is where they are applied.
+        let mut unbound: Vec<&CallbackGroupDecl> = Vec::new();
+        for g in groups.iter() {
+            match model.execution.tiers.get(&g.tier) {
+                // Rule 4 — the group names no tier (`DEFAULT_TIER`), or names
+                // one `apply_model_execution` will refuse as undeclared.
+                None => unbound.push(g),
+                Some(t) => {
+                    if let Some(authored) = t.platform(target_rtos) {
+                        // Rule 1 — AUTHORED wins, and says what it beat.
+                        out.shadowed.push(ShadowedPlacement {
+                            node: node.clone(),
+                            tier: g.tier.clone(),
+                            authored: authored.priority,
+                            allocated: n.priority,
+                        });
+                    } else if authors_any_placement(t) {
+                        // Rule 3 — placed, for another board. `resolve_tiers`
+                        // raises `MissingRtosSpec`; silencing it here would
+                        // turn a real mistake into a derived number.
+                    } else {
+                        // Rule 2 — NAMED and unplaced: an allocation request.
+                        unplaced.entry(g.tier.clone()).or_default().push((
+                            n.name.as_str(),
+                            n.priority,
+                            n.preempt_threshold,
+                        ));
+                    }
+                }
+            }
+        }
+        if unbound.is_empty() {
+            continue;
+        }
+        let groups = &unbound;
         let tier_name = format!("derived{}", n.name.replace('/', "-"));
         let spec = TierRtosSpec {
             priority: n.priority,
@@ -205,7 +344,89 @@ pub fn derive_tiers_in_plan(
                 .collect(),
         });
     }
+
+    // issue 1426 rule 2 — one priority per NAMED, unplaced tier.
+    //
+    // A tier is one thread, so it has one address however many nodes bind to
+    // it: it takes the MOST URGENT rank among its members, because the
+    // alternative is running an urgent node at a relaxed node's priority. When
+    // the members do not agree, the author collapsed two ranks into one tier
+    // and lost the rate-monotonic split between them — that is a weakened
+    // guarantee, so it is a recorded `Degradation` and not a comment here.
+    for (tier, mut members) in unplaced {
+        // Most urgent first, in the BOARD's direction. `RealizedNode::priority`
+        // is already flipped for `low_number_is_high`, so the comparison has to
+        // ask the caps rather than assume a direction.
+        members.sort_by(|a, b| {
+            if caps.low_number_is_high {
+                a.1.cmp(&b.1)
+            } else {
+                b.1.cmp(&a.1)
+            }
+        });
+        let (leader, priority, preempt_threshold) = members[0];
+        if let Some((other, relaxed, _)) = members
+            .iter()
+            .copied()
+            .find(|(_, p, _)| *p != priority)
+            .filter(|_| members.len() > 1)
+        {
+            out.degradations.push(Degradation {
+                node: other.to_string(),
+                dim: "tier",
+                reason: format!(
+                    "`[tiers.{tier}]` states no priority for this board, so one is \
+                     allocated from the contract - but its members do not share a \
+                     rank: `{leader}` would take {priority} and this node {relaxed}. \
+                     One tier is one thread at one priority, so the tier takes the \
+                     more urgent of the two and the rate-monotonic split between \
+                     them is lost. Name a second tier to keep it."
+                ),
+            });
+        }
+        if !rtos_slot_exists(target_rtos) {
+            out.degradations.push(Degradation {
+                node: leader.to_string(),
+                dim: "tier",
+                reason: format!(
+                    "the target (tier key {target_rtos:?}) has no RTOS family, so the \
+                     unplaced `[tiers.{tier}]` has no `[tiers.{tier}.<rtos>]` sub-table \
+                     to allocate a priority into; `resolve_tiers` will refuse it"
+                ),
+            });
+            continue;
+        }
+        out.placements.insert(
+            tier,
+            TierRtosSpec {
+                priority,
+                preempt_threshold,
+                // Everything else stays AUTHORED on the `[tiers.<name>]`
+                // head — see `DerivedSchedule::placements`. Spelled out rather
+                // than `..Default::default()`, because a defaulted `priority`
+                // would be a silent 0 and 0 is a legal Zephyr priority.
+                stack_bytes: None,
+                time_slice_us: None,
+                sched_class: None,
+                core: None,
+                deadline_us: None,
+                budget_us: None,
+                period_us: None,
+            },
+        );
+    }
     out
+}
+
+/// Does `target_rtos` name an RTOS family with a `[tiers.<name>.<rtos>]`
+/// sub-table to install a placement into? The same question the `slot` match
+/// above answers for rule 4; a board with no family (tier key `""`) gets
+/// neither, and the realizer's degradation record says so.
+fn rtos_slot_exists(target_rtos: &str) -> bool {
+    matches!(
+        target_rtos,
+        "zephyr" | "freertos" | "threadx" | "nuttx" | "posix" | "native"
+    )
 }
 
 #[cfg(test)]

@@ -599,11 +599,22 @@ pub fn run(args: Args) -> Result<()> {
             model.execution.tiers.len(),
             model.execution.bindings.len(),
         );
-        // phase-296 W5.5 follow-up — no declared tiers ⇒ derive the schedule
-        // from the contract layer via the RFC-0052 realizer (declared tiers
-        // always win; an uncontracted model derives nothing and bakes
-        // tier-less exactly as before).
-        if model.execution.tiers.is_empty() {
+        // phase-296 W5.5 follow-up — an UNAUTHORED placement is derived from
+        // the contract layer via the RFC-0052 realizer.
+        //
+        // issue 1426 — this asked `model.execution.tiers.is_empty()`, which is
+        // a question about the TABLE where the rule is about a FACT: one
+        // component binding to one authored `[tiers.ctrl.zephyr]` disabled the
+        // derivation for every OTHER node in the image, leaving each on the
+        // synthesised default tier with its rate contract unread. Authored
+        // still wins, per fact, and says so — the precedence is stated once, on
+        // `placement_is_unauthored`, and all three sites that used to spell it
+        // themselves now ask it.
+        if nros_orchestration_ir::derive::placement_is_unauthored(
+            &model,
+            &target_rtos,
+            &callback_groups,
+        ) {
             // phase-457 W2 (rlm design issue #52) - a node path the model
             // carries no `trigger` for is Unclassified in the shared
             // derivation: it is never guessed to be a timer, so it ranks
@@ -637,7 +648,8 @@ pub fn run(args: Args) -> Result<()> {
             if derived > 0 {
                 eprintln!(
                     "codegen-system: derived {derived} scheduling tier(s) from model \
-                     contracts (RFC-0052 realizer; no declared tiers)"
+                     contracts (RFC-0052 realizer; every one of them a placement no \
+                     `[tiers.*.{target_rtos}]` authored)"
                 );
             }
         }

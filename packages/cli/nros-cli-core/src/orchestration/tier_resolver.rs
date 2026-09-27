@@ -115,13 +115,7 @@ pub fn collect_callback_groups(
         if let Some(ids) = from_metadata.get(&c.name) {
             map.insert(
                 c.name.clone(),
-                ids.iter()
-                    .map(|id| CallbackGroupDecl {
-                        id: id.clone(),
-                        r#type: "MutuallyExclusive".to_string(),
-                        tier: DEFAULT_TIER.to_string(),
-                    })
-                    .collect(),
+                nros_orchestration_ir::groups_at_default_tier(ids),
             );
         }
     }
