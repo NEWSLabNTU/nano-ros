@@ -109,25 +109,38 @@ generates an application for the wrong board.
 comment says something true, or `entry =` goes away because the derivation now
 works — decided by running the derivation, not by the paragraph above.
 
-### W3 — four template workspaces declare no root
+### W3 — four template workspaces declare no root — **LANDED, and the premise was false**
 
-Issue 1515. A workspace root has two tracked spellings and
-`detect_workspace_root` resolves them in order: `.colcon_workspace`, else a root
-`Cargo.toml` with `[workspace]`. `c-and-cpp-mixed-workspace`,
-`multi-node-workspace-cpp`, `pure-c-workspace` and `multi-package-workspace`
-have **neither** — all four are C/C++-led, so the second rung cannot fire for
-them even in principle. Three have a bringup.
+Issue 1515 (resolved, archived). The item as written said all four trees have
+NEITHER tracked spelling. Measured: **three of them carry `.colcon_workspace`,
+tracked, since phase-445 W5** — sixteen days before the survey — and the fourth
+is measurably not a workspace root. One of the three could not have been missing
+at all: `cargo-nano-ros`'s scaffold `include_str!`s
+`multi-node-workspace-cpp/.colcon_workspace`, so its absence is a CLI compile
+error.
 
-**Measure before fixing.** The survey was static; no build was run. If a
-consumer resolves these today the finding is a gate, and if it does not, the
-failure text is what the gate should name. `multi-package-workspace` may
-legitimately not be a workspace root at all, in which case the answer is a note,
-not a marker.
+So "measure before fixing" is what this item bought. Adding four files would have
+added three no-ops and one false statement.
 
-**Acceptance:** a recorded build or consumer invocation per tree; each resolved
-on that evidence; one gate over `examples/` whose predicate is the rule ("a tree
-with a bringup declares a root by one of the two spellings"), not the four sites
-— the issue-0196 rule.
+The measurement also corrected what the marker is FOR. `nros build` and
+`nros sync` never ask `detect_workspace_root` for the tree — `--workspace`
+defaults to the CWD and the generated entry is handed `NROS_WORKSPACE_ROOT` by
+`builder::cargo_config` — so removing a marker leaves their output
+byte-identical, on a C/C++ tree and on a Rust one. Rung 2 is load-bearing for a
+BARE `cargo` on the generated entry, whose own `[workspace]` table stops rung 3
+at the entry directory: without it, `nros::main!` reports
+`pkg \`demo_bringup\` not found in workspace …/native_entry. Known pkgs: []`.
+That is a contributor iterating with `cargo check`, rust-analyzer, and every
+copied-out tree (where rung 4 has no `.git` to fall back to).
+
+**Landed:** no marker added; `multi-package-workspace/README.md` states why it is
+not a workspace root (no bringup, three independent single-package projects, and
+it builds copied out with 3 artifacts); gate
+`check-bringup-workspace-root` on the fast line, whose subject is every tracked
+`system.toml` with no package manifest beside it — 33 bringups repo-wide, not the
+four sites and not `examples/` alone — with the walk bounded strictly below the
+repository root, because the repo's own `[workspace]` would otherwise make the
+gate unfailable.
 
 ### W4 — the taxonomy, and PX4's exception
 
