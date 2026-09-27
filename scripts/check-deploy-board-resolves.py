@@ -18,7 +18,6 @@ three layers down.
 Buildless: reads the descriptors and every `system.toml` / entry `Cargo.toml`.
 """
 
-import glob
 import os
 import sys
 import sys as _sys
@@ -35,10 +34,43 @@ except ModuleNotFoundError:  # 3.10 backport, as the sibling gates spell it
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def descriptor_paths():
+    """Every descriptor under `packages/boards/`, at ANY depth.
+
+    Issue 1517 — this globbed `packages/boards/*/nros-board.toml`, i.e. the
+    IMMEDIATE subdirectories, while the authority it speaks for
+    (`BoardCatalog::collect_board_dirs`) descends until it finds a directory
+    carrying an `nros-board.toml`. So a nested descriptor was invisible here
+    and resolvable everywhere else, and this gate FAILED any image row naming
+    one — `fvp-aemv8r-smp` lives at
+    `packages/boards/nros-board-zephyr/boards/fvp-aemv8r-smp/`, so writing the
+    FVP image's board CORRECTLY turned the fast line red, which is part of why
+    the wrong value survived. 0196's shape: a reach narrower than the rule.
+
+    Index lookup rather than a recursive glob, for issue 0721's reason —
+    `packages/` holds build output, and `packages/boards/**` would descend
+    every `target/` on the way to the 14 tracked descriptors.
+    """
+    return sorted(
+        p
+        for p in tracked("packages/boards", name="nros-board.toml")
+        # A `nros-board.toml` inside a board's own build output is not a
+        # descriptor; the index cannot hold one, so this is belt-and-braces
+        # for a staging copy someone checked in.
+        if "target" not in p.parts and "build" not in p.parts
+    )
+
+
 def descriptors():
-    """`alias -> {directory}`, from `names` plus the directory itself."""
+    """`alias -> {directory}`, from `names` plus the directory itself.
+
+    The alias mirrors `BoardDescriptor::directory_alias`: the containing
+    directory's name with any `nros-board-` prefix stripped. A nested
+    descriptor's directory carries no prefix (`boards/fvp-aemv8r-smp/`), so it
+    is the name itself — which is what makes it addressable at all.
+    """
     out = {}
-    for path in sorted(glob.glob(os.path.join(ROOT, "packages/boards/*/nros-board.toml"))):
+    for path in descriptor_paths():
         with open(path, "rb") as fh:
             doc = tomllib.load(fh)
         dir_name = os.path.basename(os.path.dirname(path))

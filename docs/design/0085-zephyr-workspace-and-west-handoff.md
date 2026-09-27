@@ -271,14 +271,22 @@ to the fallback — the bringup directory. That is a real directory, so nothing
 errored; west was simply pointed at the wrong tree, and the first symptom was a
 conf fragment reported "not found" in two paths that were the same path twice.
 
-**Ambiguity is refused, not resolved by order.** Six of the fourteen Zephyr
-images match more than one entry package: `realtime-cpp` has `zephyr_entry` and
-`fvp_entry` (both `DEPLOY zephyr`, same board, different payloads),
-`examples/workspaces/rust` has `zephyr_entry` and `zephyr_entry_robot1`, and
-`features` has three. A first-match scan returns a right-looking answer in every
-one of those cases and a WRONG one in some — `[image.zephyr_robot1]` would have
-built `zephyr_entry`. So the resolver lists the candidates and stops, and the
-image says which:
+**Ambiguity is refused, not resolved by order.** A first-match scan returns a
+right-looking answer and a WRONG one often enough that the resolver lists the
+candidates and stops, and the image says which:
+
+> **Correction, 2026-09-27 (issue 1520).** The count and the examples that stood
+> here — "six of the fourteen Zephyr images match more than one entry package",
+> `realtime-cpp`'s `zephyr_entry`/`fvp_entry` "same board", and
+> `[image.zephyr_robot1]` "would have built `zephyr_entry`" — do not survive
+> measurement. `realtime-cpp`'s pair was an artefact of `[image.fvp] board`
+> misreading as `native_sim/native/64` (issue 1517); and a RUST entry is matched
+> on the image its own `system.toml` names, not on its board, so
+> `examples/workspaces/rust` is not an ambiguity either — `[image.zephyr]`
+> derives `zephyr_entry` correctly with no `entry =` at all. The refusal below
+> is still right, and the arm the tree actually hits is the OTHER one: no
+> package claims the board, so the resolver falls back to the Bringup directory.
+> Both arms and the unclassified `entry =` rows are issue 1520.
 
 ```toml
 [image.zephyr_robot1]

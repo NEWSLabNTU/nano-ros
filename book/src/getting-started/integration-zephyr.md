@@ -446,11 +446,17 @@ conf  = ["prj-zenoh.conf"]      # the RMW overlay this app requires
 * **`entry`** names the application package. Normally leave it out: an entry
   declares the deploy target it serves — its own `system.toml` in Rust,
   `nano_ros_add_executable(... DEPLOY zephyr)` in `CMakeLists.txt` — and one
-  package usually claims a given board. Set it when
-  several do (`realtime-cpp` has `zephyr_entry` and `fvp_entry`, both
-  `DEPLOY zephyr`, on the same board, for two images that differ in payload).
-  Deriving there is a coin flip, so `nros build` refuses and lists the
-  candidates rather than picking one.
+  package usually claims a given board. Set it when the derivation cannot
+  answer, which happens two ways and says which:
+  * **several packages claim the board** — deriving would be a coin flip, so
+    `nros build` lists the candidates rather than picking one. Reachable for
+    C/C++ entries, which are matched by their `DEPLOY` token;
+  * **none does** — `nros build` falls back to the Bringup directory, and you
+    see a conf fragment "not found" in a path that is not your application's.
+    `examples/workspaces/realtime-cpp`'s `[image.fvp]` is this one: its
+    `fvp_entry` takes its board from `nano_ros_use_board(fvp-aemv8r-smp)`
+    inside its own `CMakeLists.txt`, which the `DEPLOY` scan does not read
+    (issue 1517).
 
 #### If you live in west: `west nros`
 

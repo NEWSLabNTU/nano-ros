@@ -326,12 +326,19 @@ application reads its deployment — board, RMW, locator, domain — off the ima
 that claims it, and a `[package.metadata.nros.entry] deploy` left in a
 `Cargo.toml` is now an error naming the file to write instead.
 
-Two images claiming one entry is refused rather than resolved by first match:
-`examples/workspaces/realtime-cpp` has `zephyr_entry` and `fvp_entry`, both
-`DEPLOY zephyr`, both on the same board, for two images that differ in payload
-— which image's locator the entry bakes is not a coin toss, so `nros build`
-names the candidates instead of picking one. Everywhere else, leave `entry`
-out and let the name match.
+Two images claiming one entry is refused rather than resolved by first match —
+which image's locator the entry bakes is not a coin toss, so `nros build` names
+the candidates instead of picking one. That arm is reachable for C/C++ entries,
+which are matched by their `DEPLOY` token; a Rust entry names its image in its
+own `system.toml`, so it is never a candidate for a sibling image.
+
+The other reason to set `entry` is that NO package claims the board — then
+`nros build` falls back to the Bringup directory and you see a conf fragment
+"not found" in a path that is not your application's.
+`examples/workspaces/realtime-cpp`'s `[image.fvp]` is that case: `fvp_entry`
+takes its board from `nano_ros_use_board(...)` in its own `CMakeLists.txt`,
+which the `DEPLOY` scan does not read (issue 1517). Everywhere else, leave
+`entry` out and let the name match.
 
 The full Zephyr path — west workspaces, freestanding applications, `west nros`,
 sysbuild — is [Zephyr (west module)](./integration-zephyr.md).

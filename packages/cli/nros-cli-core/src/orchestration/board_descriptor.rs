@@ -699,6 +699,30 @@ impl BoardDescriptor {
             || self.zephyr.as_ref().is_some_and(|z| z.west_board == key)
     }
 
+    /// The string `west build -b` receives for this board, given the id the
+    /// image AUTHORED.
+    ///
+    /// Issue 1517 — one fact, and it had two fields. [`Self::west_board`] is
+    /// the board-agnostic override and NO in-tree descriptor declares it;
+    /// [`BoardZephyr::west_board`] is where three of them do, and its own
+    /// doc-comment calls it "the one irreducible fact". `nros build` read only
+    /// the first, so `-b` fell through to the authored id — which is right
+    /// exactly when the image authors a Zephyr board string, the thing
+    /// [`crate::orchestration::image::ImageBlock::board`] says never to author.
+    ///
+    /// The authored id remains the last resort, because the `zephyr`
+    /// descriptor states no `[board.zephyr]` at all and instead carries
+    /// `native_sim/native/64` as a second NAME — the smuggling the field was
+    /// added to retire. Retiring it changes `-b` for every image that spells
+    /// that board, so it is tracked separately, not done here.
+    #[must_use]
+    pub fn west_build_board(&self, authored: &str) -> String {
+        self.west_board
+            .clone()
+            .or_else(|| self.zephyr.as_ref().map(|z| z.west_board.clone()))
+            .unwrap_or_else(|| authored.to_string())
+    }
+
     /// Board-crate path relative to the workspace root, applying the
     /// `packages/boards/<board_crate>` default.
     pub fn crate_path_rel(&self) -> Option<String> {
