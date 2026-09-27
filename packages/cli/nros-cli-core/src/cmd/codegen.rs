@@ -570,26 +570,33 @@ fn run_entry_node(args: EntryNodeArgs) -> Result<()> {
     // Validate the language against the one parser, rather than testing the
     // string here — a second spelling of "which languages exist" is exactly
     // what phase-432 is deleting.
-    match entry_codegen::Lang::parse(&args.lang)? {
-        entry_codegen::Lang::C | entry_codegen::Lang::Cpp => {}
+    //
+    // The C-vs-C++ decision is TAKEN FROM this match, and this match has NO
+    // wildcard and must never get one. It read `let is_cpp = args.lang != "c"`
+    // on a line of its own until the 2026-09-27 codegen audit (its S2 item):
+    // correct for three languages and FAIL-OPEN for a fourth, which would have
+    // been routed to the C++ component-object shape silently, because a string
+    // comparison is invisible to the compiler. `class_name` is what selects
+    // that shape in the emitter, so a C node that supplied one would emit a
+    // C++ body against a struct with no `configure` member. Refuse rather than
+    // emit — and make a new `Language` variant a build error here.
+    let language = entry_codegen::Lang::parse(&args.lang)?;
+    let is_cpp = match language {
+        entry_codegen::Lang::Cpp => true,
+        entry_codegen::Lang::C => false,
         entry_codegen::Lang::Rust => bail!(
             "codegen entry-node: --lang rust is not this verb's shape — a Rust \
              component registers through `nano_ros_node_register(LANGUAGE RUST)` \
              against its Cargo.toml and boots via `nros::main!`, which is the \
              in-process emitter"
         ),
-    }
+    };
 
-    // A C++ component needs its class and header, and a C one must not carry
-    // them: `class_name` is what selects the component-object shape in the
-    // emitter, so a C node that supplied one would silently emit a C++ body
-    // against a struct that has no `configure` member. Refuse rather than emit.
-    let is_cpp = args.lang != "c";
     if is_cpp && (args.class.is_none() || args.header.is_none()) {
         bail!(
             "codegen entry-node --lang {}: --class and --header are required \
              (the entry constructs the component object by name)",
-            args.lang
+            language.as_str()
         );
     }
     if !is_cpp && (args.class.is_some() || args.header.is_some()) {
@@ -604,7 +611,11 @@ fn run_entry_node(args: EntryNodeArgs) -> Result<()> {
         board: args.board,
         node_name: args.node_name,
         pkg_sym: args.pkg_sym,
-        language: args.lang,
+        // The CANONICAL spelling, from the parsed language — `--lang c++` and
+        // `--lang cxx` are aliases the parser accepts, and forwarding the raw
+        // argument would put one of them in the plan a downstream reader
+        // string-compares.
+        language: language.as_str().to_string(),
         class: args.class,
         header: args.header,
         shape: args.shape,
