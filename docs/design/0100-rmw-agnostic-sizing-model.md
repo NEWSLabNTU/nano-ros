@@ -130,7 +130,7 @@ W3's answer is that the endpoint's own half is **observed**, never inferred:
 `Executor::open_subscription` — the one site that reads the capability — reports
 what the CALL SITE answered, the metadata probe records it per row, and a row
 nothing observed is REFUSED
-([issue 1522](../issues/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md)).
+([issue 1522](../issues/archived/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md)).
 Only a STATED `in_place` claims no region
 (`Endpoint::claims_no_receive_region`), so the one predicate whose `true` removes
 bytes is reachable only from a fact somebody measured. Measured on
@@ -433,11 +433,11 @@ leaf has three: the resolved SystemModel. So the decision W11 left open —
 | `wire_bound_bytes` | **Refused** | needs the bound inventory, which codegen writes beside a LEAF |
 | `storage_bytes` | **Refused** | that bound, plus the board descriptor resolved for THIS image |
 | `[types]` `max_fields` / `max_kinds` / `max_nested_depth` | **Refused** | needs codegen's own per-type schema walk |
-| `registration_path` | **Per row** (phase-457 W3) | the `in_place` row needs only the BACKEND (a function of `rmw`, which this road has) and the endpoint's OWN observed answer, so a row the probe saw registering is STATED here. The two buffered rows still need the entry's language, which a model image of SEVERAL PACKAGES has no one answer for, and are refused. A row nothing observed is refused naming [issue 1522](../issues/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md) — the closure buffer is 1,848 bytes per subscription over the type's bound (issue 1319) and the in-place row claims NO region at all (issue 1340), so a guess is a failure in both directions |
+| `registration_path` | **Per row** (phase-457 W3) | the `in_place` row needs only the BACKEND (a function of `rmw`, which this road has) and the endpoint's OWN observed answer, so a row the probe saw registering is STATED here. The two buffered rows still need the entry's language, which a model image of SEVERAL PACKAGES has no one answer for, and are refused. A row nothing observed is refused naming [issue 1522](../issues/archived/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md) — the closure buffer is 1,848 bytes per subscription over the type's bound (issue 1319) and the in-place row claims NO region at all (issue 1340), so a guess is a failure in both directions |
 
 Every refusal names [issue 1393](../issues/1393-cmake-road-has-no-bound-inventory.md)
 — except `registration_path`'s, which names
-[issue 1522](../issues/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md)
+[issue 1522](../issues/archived/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md)
 because the input it lacks is a different KIND of thing: 1393's remedy is an
 artifact some road can produce, while a registration spelling can only be
 reported by a probe that actually registers. So the artifact itself says what is
