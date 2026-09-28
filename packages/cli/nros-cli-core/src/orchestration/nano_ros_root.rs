@@ -85,12 +85,32 @@ pub struct Rungs<'a> {
 pub fn resolve_from(rungs: Rungs<'_>) -> Option<PathBuf> {
     rungs
         .explicit
-        .or(rungs.repo_dir)
+        // The WALK-UP outranks the ambient variable — issue 1510.
+        //
+        // `$NROS_REPO_DIR` is exported by `activate.sh` and INHERITED by every
+        // linked worktree, so it names the parent checkout in a session working
+        // in a child. Above the walk it made a direct `nros sync` there resolve
+        // the PARENT: patch paths written into a tree nobody was editing, and a
+        // build of the parent's crates.
+        //
+        // `abi_guard::runtime_root` had already settled the same question the
+        // other way and written down why — "`NROS_REPO_DIR` is ambient after
+        // `source activate.sh`, so a contributor with two checkouts open would
+        // otherwise have every consumer in the second one measured against the
+        // first". Two ladders in one binary disagreeing about one hazard is the
+        // defect; they answer DIFFERENT questions (that one is "which tree does
+        // this consumer link", this one is "where is the SDK root a build
+        // reads") and stay separate, but they agree here.
+        //
+        // `explicit` is untouched above, and is now the only way to point a
+        // build at another checkout — which is the right shape: it distinguishes
+        // intent from inheritance, and an exported variable cannot.
         .or_else(|| {
             rungs
                 .workspace
                 .and_then(crate::cmd::ws::autodetect_nano_ros_path)
         })
+        .or(rungs.repo_dir)
         // LAST. See the module header — earlier would redirect a contributor to
         // a store copy of the tree they are editing.
         .or_else(|| rungs.exe.as_deref().and_then(shipped_beside))
@@ -212,6 +232,53 @@ mod tests {
             got,
             Some(checkout),
             "--nano-ros-path must outrank everything"
+        );
+    }
+
+    /// Issue 1510 — the WORKSPACE's own checkout outranks an ambient
+    /// `$NROS_REPO_DIR` naming a different one.
+    ///
+    /// `NROS_REPO_DIR` is exported by `activate.sh` and INHERITED by every
+    /// linked worktree, so a session working in a worktree carries the parent
+    /// checkout's path in its environment. With the variable above the walk-up,
+    /// a direct `nros sync` there resolved the PARENT: it wrote patch paths into
+    /// a tree the user was not editing, and the build compiled the parent's
+    /// crates. `abi_guard::runtime_root` had already settled the same question
+    /// the other way, and said why — "a contributor with two checkouts open
+    /// would otherwise have every consumer in the second one measured against
+    /// the first".
+    ///
+    /// The deliberate escape hatch is `explicit` (rung 1, asserted above): a
+    /// genuine cross-checkout build names the path on the command line instead
+    /// of relying on an exported variable that cannot distinguish intent from
+    /// inheritance.
+    #[test]
+    fn the_workspace_checkout_outranks_an_inherited_repo_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Two real checkouts, the child NESTED inside the parent exactly as an
+        // agent worktree is (`<main>/.claude/worktrees/<id>`) — the shape that
+        // makes a lexical prefix test useless, issue 1391.
+        let parent = tmp.path().join("parent");
+        std::fs::create_dir_all(parent.join("packages/core/nros-core")).unwrap();
+        std::fs::write(parent.join(MARKER), "").unwrap();
+
+        let worktree = parent.join(".claude/worktrees/agent-x");
+        std::fs::create_dir_all(worktree.join("packages/core/nros-core")).unwrap();
+        std::fs::write(worktree.join(MARKER), "").unwrap();
+
+        let got = resolve_from(Rungs {
+            // What `activate.sh` left in the environment of the parent shell.
+            repo_dir: Some(parent.clone()),
+            // Where the user actually is.
+            workspace: Some(&worktree),
+            ..Rungs::default()
+        });
+        assert_eq!(
+            got,
+            Some(worktree),
+            "an inherited $NROS_REPO_DIR must not outrank the checkout the \
+             workspace is inside (issue 1510)"
         );
     }
 
