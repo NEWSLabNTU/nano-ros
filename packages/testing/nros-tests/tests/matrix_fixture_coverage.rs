@@ -290,7 +290,8 @@ fn fixture_token_mapping_round_trips() {
 #[test]
 fn every_just_module_is_declared_by_the_justfile() {
     let Ok(justfile) = std::fs::read_to_string(nros_tests::project_root().join("justfile")) else {
-        return; // packaged crate — not a failure
+        // A SKIP, not a `return`: a return from a test is a PASS over nothing.
+        nros_tests::skip_class!(capability, "no root justfile (out-of-tree checkout)");
     };
     for &p in PlatformId::ALL {
         let m = p.just_module();
@@ -420,7 +421,8 @@ fn producible_tokens(module: &str, file: &std::path::Path) -> BTreeSet<String> {
 #[test]
 fn every_fixture_token_is_producible_by_the_module_that_owns_it() {
     let Ok(justfile) = std::fs::read_to_string(nros_tests::project_root().join("justfile")) else {
-        return; // packaged crate — not a failure
+        // A SKIP, not a `return`: a return from a test is a PASS over nothing.
+        nros_tests::skip_class!(capability, "no root justfile (out-of-tree checkout)");
     };
     // module -> just/<file>, read from the `mod` lines rather than hardcoded, so
     // a renamed module file fails as a missing edge, not as a silent pass.
