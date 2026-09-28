@@ -4,7 +4,7 @@ title: "One CLI, two repo-root ladders, opposite precedence — `abi_guard` puts
   tree above the consumer FIRST and writes down why, and the planner puts
   ambient `NROS_REPO_DIR` first, so a direct `nros` in a worktree resolves the
   parent checkout"
-status: open
+status: resolved
 type: bug
 area: [cli, build, tooling]
 severity: medium
@@ -123,3 +123,86 @@ A direct `nros sync` run inside a linked worktree with an inherited
 `NROS_REPO_DIR` naming the parent checkout must resolve the WORKTREE, with a
 reproduction that fails first. Extend 1280's gate to the fourth road — a direct
 CLI invocation — so the reach matches the rule.
+
+
+---
+
+# RESOLVED — option A, and the recommendation this issue shipped with was WRONG
+
+## What landed
+
+Two lines in `orchestration::nano_ros_root::resolve_from`: the workspace walk-up
+now outranks `$NROS_REPO_DIR`.
+
+```rust
+ rungs.explicit
+-  .or(rungs.repo_dir)
+-  .or_else(|| rungs.workspace.and_then(autodetect_nano_ros_path))
++  .or_else(|| rungs.workspace.and_then(autodetect_nano_ros_path))
++  .or(rungs.repo_dir)
+   .or_else(|| rungs.exe.as_deref().and_then(shipped_beside))
+```
+
+`explicit` (`--nano-ros-path` / `-DNANO_ROS_ROOT`) is untouched at rung 1 and is
+now the only way to aim a build at another checkout — which is the right shape,
+because it distinguishes INTENT from INHERITANCE and an exported variable cannot.
+
+## The recommendation above is wrong, and reading the code is what showed it
+
+This issue recommended **D — "one shared ladder, decide once"**, on the reading
+that two ladders were two copies of one thing. They are not:
+
+* `abi_guard::runtime_root(start)` answers **"which nano-ros tree does this
+  CONSUMER link?"** — for the ABI / codegen-version guard. Rungs: tree above the
+  consumer, `$NROS_REPO_DIR`, tree above THIS BINARY.
+* `nano_ros_root::resolve_from(rungs)` answers **"where is the SDK root a BUILD
+  reads from?"** — `cmake/`, `config/`, `packages/`. Rungs: explicit,
+  `$NROS_REPO_DIR`, a walk from the workspace, `<prefix>/share/nano-ros`.
+
+Different questions, different rung SETS, and the second is **already the
+consolidation D was asking for**: phase-447 A2 moved it here out of five
+hand-written copies, and its header says so — *"One ladder, spelled once … Five
+call sites carried the three-rung chain by hand."* Eight sites ask it today.
+
+So D would have undone a deliberate consolidation and forced a parameterised
+function over two concepts. The real defect was never duplication; it was **one
+rung of precedence**, and A fixes exactly that while leaving both ladders whole.
+
+The other two options stay rejected for the reasons given above, and one gets
+worse on inspection: **C (refuse on disagreement)** punishes the normal setup,
+because every contributor has `$NROS_REPO_DIR` from `activate.sh` and agent
+sessions work in worktrees by default — the common case would become a hard
+error demanding a flag.
+
+## Verified, with a real negative control
+
+`the_workspace_checkout_outranks_an_inherited_repo_dir` builds two checkouts with
+the child NESTED inside the parent exactly as an agent worktree is
+(`<main>/.claude/worktrees/<id>` — the shape that makes a lexical prefix test
+useless, issue 1391), and asserts the walk wins.
+
+On the OLD rung order it fails with the right diagnosis:
+
+```
+left:  Some(".../parent")
+right: Some(".../parent/.claude/worktrees/agent-x")
+```
+
+**The first version of that test was broken and "failed" for the wrong reason** —
+`MONOREPO_MARKER` is `packages/core/nros-core/Cargo.toml`, a nested path, so
+writing it without creating the directory raised `NotFound`. A failing test is
+not a reproduction until you have read WHY it failed; the fixture was corrected
+and the control re-run before the swap was trusted.
+
+`resolve_from` takes its rungs as a struct, so none of this touches the
+filesystem beyond the two fixtures — the reproduction is a unit test, not a
+build.
+
+Also green: `nros-cli-core` 1,436 lib tests, clippy `-D warnings`, `check fast`
+363 gates.
+
+## What did NOT change
+
+`abi_guard::runtime_root` is untouched. Its order was already right and its
+comment is still the best statement of the hazard in the tree — it is what this
+fix was argued from.
