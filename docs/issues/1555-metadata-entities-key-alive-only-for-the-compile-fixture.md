@@ -118,3 +118,88 @@ different reason (`self.components` is the REGISTERED component population issue
 1407 needs for the node table), but the entity terms come from the model alone.
 Noted at the field in `cmd/entity_inventory.rs` so the next reader does not
 trust the older comment.
+
+## Which question the compile check answers — and the EXPIRY on this block (2026-09-29)
+
+The verdict above ("do not remove, a fixture needs it") is a block, and a block
+with no expiry is the shape this repo already regrets elsewhere — a reason
+nobody re-examines. So: **what those two lanes assert, what they do not, and
+what would change it.**
+
+Two readings were on the table. The check is either *about the reader* (a
+dead-but-tested code path, in which case `check c` / `check cpp` assert nothing
+about any shipping image) or *about declared depth reaching a header* (in which
+case the fixture sits on a retired input and should migrate to the live one).
+**The first is what holds today. The second is not the reason.**
+
+The emitter, the X-macro table, the C11 query form and the
+mismatch-fails-the-build property are all SHARED with the live `--model` road,
+and the production call site in `cmake/NanoRosNodeRegister.cmake` already passes
+`--model` beside `--metadata`. Only the INPUT ADAPTER is dead. So migrating the
+fixture to a contract sidecar would not by itself make the lane measure a road
+anybody walks, because of this:
+
+**No C++ image in this tree declares a QoS depth.** Of the **7** contract
+sidecars under `examples/`, exactly one declares a `qos: depth:` —
+`examples/native/rust/listener/system.contract.yaml` — and it is a RUST leaf.
+The six C++ contracts (`workspaces/cpp` ×5, `workspaces/derived-tiers-cpp` ×1)
+declare none. The `_Static_assert` header emitter is reached from
+`nano_ros_node_register`, i.e. the C/C++ road (RFC-0100 D10 already notes the
+declared-QoS check is C++-only today). **So the one declared depth in the tree
+is in the language with no check, and the images with the check declare
+nothing.**
+
+Stated as one sentence: `check c` / `check cpp` demonstrate that the
+declared-depth machinery **works**, without demonstrating that any shipping
+image **uses** it.
+
+That is not a defect in the machinery, and it is deliberately not filed as one:
+`nros/declared_qos.hpp` makes "undeclared ⇒ nothing to disagree with" an
+explicit, documented policy (`declared_depth_or`, *"an image that has not opted
+in is not in error"*; `NROS_ASSERT_DECLARED_DEPTH` opens with an
+`== DECLARED_DEPTH_UNDECLARED ||` short-circuit; and `COUNT` exists separately
+from the array's length precisely so *"the table holds nothing"* is a different
+claim from *"declared depth zero"*). An opt-in check with a documented opt-out
+is a policy; disagreeing with it would be an RFC question, not a bug.
+
+### EXPIRY — when this block lifts
+
+**When one C++ image declares a depth in its contract.** Then the fixture can be
+a build-step artifact of that image (`examples/fixtures.toml`, per "no
+compilation inside tests"), the header comes from `--model` as it does in
+production, `ComponentMeta::entities` retires for free, and the lane starts
+asserting something about a shipping binary. Until then the metadata reader
+stays, and this issue is the record of why — not a permanent exemption.
+
+### Measurement caution for whoever re-checks these numbers
+
+The fixture-vs-production half of this issue is **build state, not a property of
+the tree**, and it cannot be re-derived from a clean clone. Measured on THIS
+checkout: there is **no generated production declared-QoS header at all** —
+`find . -name 'nros_declared_qos_generated.h' -not -path './.claude/worktrees/*'`
+returns only the committed fixture's. An earlier draft of this issue reported
+"2 production headers, both refused"; both were in fact inside
+`.claude/worktrees/agent-*/`, i.e. another agent's build output in a shared
+checkout, reported as this tree's.
+
+The same tool caused a second wrong number here, in the other direction: a
+`find` for `*.contract.yaml` returns 44, because it walks through the gitlink
+into `packages/cli/third-party/play_launch` — a different repository, whose 27
+contract fixtures say nothing about nano-ros. **nano-ros tracks 17**, of which
+**10** are CLI test fixtures under `packages/cli/nros-cli-core/tests/fixtures/`
+and **7** are the example contracts this issue reasons about. Re-derive the gap
+with:
+
+```
+comm -13 <(git ls-files '*.contract.yaml' | sed 's|^|./|' | sort) \
+         <(find . -name '*.contract.yaml' -not -path './.claude/*' | sort)
+```
+
+Every line comes back under `play_launch`. The practice, for a claim about THIS
+tree: count with `git ls-files`, and treat a `find` count as answering a
+different question — it sees other agents' worktrees and other repositories.
+(This is the correctness sibling of `scripts/check-no-tracked-file-find.sh`,
+whose rule is the same and whose stated rationale is performance. Nothing here
+asks for that gate's allowlist to be widened: a `.contract.yaml` can legitimately
+be untracked build output, since `nros sync` synthesises one into a generated
+dir.)
