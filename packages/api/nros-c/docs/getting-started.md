@@ -5,8 +5,9 @@
 - A C11 compiler (GCC, Clang, or arm-none-eabi-gcc)
 - [CMake](https://cmake.org/) >= 3.15
 - [Rust](https://rustup.rs/) nightly toolchain (needed to build `libnros_c.a`)
-- zenohd router (build from submodule with `just build-zenohd`,
-  or install a matching version from [zenoh releases](https://github.com/eclipse-zenoh/zenoh/releases))
+- the zenoh router ROS ships, `rmw_zenohd` (`ros2 run rmw_zenoh_cpp rmw_zenohd`;
+  from the nano-ros source tree, `just native zenohd` starts the same router).
+  nano-ros vendors none (RFC-0075).
 
 ## 1. Create a CMake Project
 

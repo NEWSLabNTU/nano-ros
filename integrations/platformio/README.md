@@ -3,7 +3,7 @@
 > **STATUS: NOT A SUPPORTED INTEGRATION (2026-08-20).**
 >
 > Nobody is maintaining this, and as of issue 0704 nothing tests it: the e2e
-> bringup suite, its workspace fixture and the `just platformio` recipes were
+> bringup suite, its workspace fixture and the `platformio` recipes were
 > removed rather than left as an opt-in nobody runs. "Present but untested"
 > is a holding position, and this tree keeps deleting the shape where a test
 > could not fail.

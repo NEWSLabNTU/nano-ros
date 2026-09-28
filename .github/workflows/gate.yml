@@ -690,7 +690,7 @@ jobs:
           source ./activate.sh
           just check compile-smoke
 
-      # issue 1110 — rustdoc, on a lane a PR actually runs.
+      # phase-431 W6 — rustdoc, on a lane a PR actually runs.
       #
       # The broken-link lint is deny-level here and NOTHING on a merge-gating
       # path ran rustdoc, so `just book` and every docs deploy were red for
@@ -1205,8 +1205,8 @@ jobs:
           source ./activate.sh
           just test-lane-contracts
 
-      # Issue 1080 / #1102 follow-up — the FEATURE-COMBINATION gap, closed on
-      # the batch lane.
+      # The 2026-09-05 no-alloc break (b9450327dd, 92849933d9) / #1102 follow-up —
+      # the FEATURE-COMBINATION gap, closed on the batch lane.
       #
       # `compile-smoke` says so itself twenty lines up: "no feature
       # combinations, so a break that only appears under

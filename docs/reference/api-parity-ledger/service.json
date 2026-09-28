@@ -834,7 +834,7 @@
       "to": "send_response",
       "status": "landed",
       "category": "A",
-      "residue": "the residual difference is the correlation token (`int64_t` vs `rmw_request_id_t`), which is the divergence this row now carries. The RMW-ABI layer's own prose still says `send_reply` in `nros-rmw-abi/docs/mainpage.md`, `rmw_entity.h`, `rmw_vtable.h` and the `docs/design/0035` slot table -- pre-existing phase-376 W3.b drift (the vtable SLOT has been `send_response` since then), left alone here because touching `rmw_entity.h` forces a bindgen regeneration of `nros-rmw-cffi/src/generated.rs`."
+      "residue": "the residual difference is the correlation token (`int64_t` vs `rmw_request_id_t`), which is the divergence this row now carries. The RMW-ABI layer's own prose still says `send_reply` in `packages/core/nros-rmw-abi/docs/mainpage.md`, `rmw_entity.h`, `rmw_vtable.h` and the `docs/design/0035` slot table -- pre-existing phase-376 W3.b drift (the vtable SLOT has been `send_response` since then), left alone here because touching `rmw_entity.h` forces a bindgen regeneration of `packages/rmw/cffi/src/generated.rs`."
     },
     "provides": [
       "nros::PollService::send_response"

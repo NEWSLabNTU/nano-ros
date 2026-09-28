@@ -201,4 +201,4 @@ riscv-nuttx boot/connect sequencing — a design decision, not a quick patch.
 `tcp::1234`. `-d exec` will NOT reproduce (changes the race). Tracked under
 [phase-285](../roadmap/phase-285-riscv-nuttx-run-tiers-boot-harness.md) W2.b.
 
-[0135]: archived/0135-native-zenoh-service-query-path-broken.md
+[0135]: 0135-native-zenoh-service-query-path-broken.md

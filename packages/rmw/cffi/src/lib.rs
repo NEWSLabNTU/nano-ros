@@ -4584,7 +4584,7 @@ impl nros_rmw::SlotBorrowing for CffiSubscription {
     }
 }
 
-/// A take reported more bytes than the buffer it was handed — issue 0771.
+/// A take reported more bytes than the buffer it was handed — issue 0773.
 ///
 /// Every copying take passes the vtable BOTH a pointer and the capacity, so an
 /// `out_len` above that capacity is an ABI violation by the backend: it was

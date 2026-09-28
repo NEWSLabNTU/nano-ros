@@ -22,6 +22,13 @@ WHAT IS CHECKED, two spellings of a citation:
   qos.hpp`, `rmw/rmw.h`, `rclrs/src/context.rs`) is an UPSTREAM include path
   and is out of scope. That is the convention this gate relies on: cite an
   upstream file WITH its directory, and a bare name is always ours.
+* `nros-crate/src/file.rs` — a CRATE-relative path (issue 1545). Its first
+  segment is a hyphenated package name of ours, or any `nros-*` name, so it is ours:
+  the file must exist under that package's directory, found by its
+  `Cargo.toml` `name` (not the directory name — `nros-rmw-cffi` lives at
+  `packages/rmw/cffi`). An `nros-*` segment no package carries is a deleted
+  crate, and is reported too. The first version read every such path as
+  upstream, so two dead ones sat green.
 * `file.ext` — a bare basename must match at least one tracked file of that
   name (`git ls-files`), UNLESS the same sentence says the file is gone. The
   allow-list is exactly three words, `deleted` / `removed` / `retired`, and
@@ -69,9 +76,54 @@ GONE_RE = re.compile(r"\b(?:%s)\b" % "|".join(GONE_WORDS), re.IGNORECASE)
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 
 
-def tracked_basenames():
+def tracked_paths():
     out = subprocess.check_output(["git", "-C", str(ROOT), "ls-files", "-z"])
-    return {p.rsplit("/", 1)[-1] for p in out.decode().split("\0") if p}
+    return [p for p in out.decode().split("\0") if p]
+
+
+def tracked_basenames():
+    return {p.rsplit("/", 1)[-1] for p in tracked_paths()}
+
+
+PKG_NAME_RE = re.compile(r'^\s*name\s*=\s*"([^"]+)"', re.M)
+
+
+def crate_dirs():
+    """{crate name: repo-relative dir} for every tracked OWN Cargo package.
+
+    Issue 1545: a CRATE-RELATIVE citation (`nros-core/src/error.rs`) has a
+    directory prefix, so the first version filed it as an upstream include
+    path and never looked — and the crate name is not the directory name
+    (`nros-rmw-cffi` lives at `packages/rmw/cffi`), so it cannot be joined to
+    a repo root either. The package name is the only key that resolves it.
+    """
+    out = {}
+    for p in tracked_paths():
+        if not p.endswith("Cargo.toml") or "third-party/" in p:
+            continue
+        try:
+            text = (ROOT / p).read_text(errors="replace")
+        except OSError:
+            continue
+        pkg = text.split("[package]", 1)
+        if len(pkg) != 2:
+            continue
+        m = PKG_NAME_RE.search(pkg[1].split("\n[", 1)[0])
+        if m:
+            out.setdefault(m.group(1), p.rsplit("/", 1)[0] if "/" in p else "")
+    return out
+
+
+def is_own_crate_segment(seg, crates):
+    """Is `seg/...` a crate-relative path of OURS?
+
+    An `nros-*` segment is ours even when no crate carries it any more -- that
+    is exactly the deleted-crate citation this must report. Another package
+    name counts only when it is hyphenated: the Rust facade crate is named
+    `nros`, and `nros/parameter.h` is the public INCLUDE path (resolved
+    against an include dir, not a crate root), cited ~90 times in the ledger.
+    """
+    return seg.startswith("nros-") or (seg in crates and "-" in seg)
 
 
 def strings_of(value):
@@ -86,15 +138,22 @@ def strings_of(value):
             yield from strings_of(v)
 
 
-def orphans_in(text, basenames):
+def orphans_in(text, basenames, crates):
     """Yield (kind, citation) for every citation in `text` that resolves to nothing."""
     for sentence in SENTENCE_RE.split(text):
         for m in CITE_RE.finditer(sentence):
             prefix, name = m.group(1), m.group(2)
             if prefix:
                 path = prefix + name
-                if path.startswith(REPO_ROOTS) and not (ROOT / path).exists():
-                    yield ("path", path)
+                if path.startswith(REPO_ROOTS):
+                    if not (ROOT / path).exists():
+                        yield ("path", path)
+                    continue
+                seg, _, rest = path.partition("/")
+                if is_own_crate_segment(seg, crates):
+                    d = crates.get(seg)
+                    if d is None or not (ROOT / d / rest).exists():
+                        yield ("crate", path)
                 continue
             if LABEL_RE.match(name.rsplit(".", 1)[0]):
                 continue
@@ -103,7 +162,7 @@ def orphans_in(text, basenames):
             yield ("bare", name)
 
 
-def scan(files, basenames):
+def scan(files, basenames, crates):
     bad = []
     for f in files:
         rows = json.loads(f.read_text())
@@ -111,12 +170,12 @@ def scan(files, basenames):
             if not isinstance(val, dict):
                 continue
             blob = " ".join(strings_of(val))
-            for kind, cite in orphans_in(blob, basenames):
+            for kind, cite in orphans_in(blob, basenames, crates):
                 bad.append((f.name, key, kind, cite))
     return bad
 
 
-def self_test(basenames):
+def self_test(basenames, crates):
     """Negative controls, on the NORMAL path.
 
     `check-gate-selftests` requires this and it is right to: a control nobody
@@ -132,6 +191,8 @@ def self_test(basenames):
     dead = "rclcpp_compat.hpp"
     assert dead not in basenames, "self-test: %s came back; pick a different planted orphan" % dead
     assert "qos.hpp" in basenames and "init.rs" in basenames, "self-test: the live controls moved"
+    assert crates.get("nros-rmw-cffi") == "packages/rmw/cffi", "self-test: the crate-relative control moved"
+    assert "nros-gone-crate" not in crates, "self-test: the planted dead crate exists"
 
     d = pathlib.Path(tempfile.mkdtemp())
     (d / "planted.json").write_text(
@@ -146,15 +207,22 @@ def self_test(basenames):
                 "cpp:bare-live": {"why": "`qos.hpp:40` mirrors `init.rs:126-140` exactly."},
                 "cpp:label": {"why": "phase-417 W4.c added it; Q1.b measured it."},
                 "cpp:nested": {"why": "x", "rename": {"resolution": "was in `%s`." % dead}},
+                # Issue 1545: crate-relative, keyed by PACKAGE name, not directory.
+                "cpp:crate-live": {"why": "regenerates nros-rmw-cffi/src/generated.rs."},
+                "cpp:crate-orphan": {"why": "we had it in nros-core/src/error.rs then."},
+                "cpp:crate-gone-crate": {"why": "see nros-gone-crate/src/lib.rs for it."},
                 "cpp:other-sentence": {
                     "why": "`%s` still holds the profile. The shim was deleted." % dead
                 },
             }
         )
     )
-    hits = scan([d / "planted.json"], basenames)
+    hits = scan([d / "planted.json"], basenames, crates)
     caught = {k for _, k, _, _ in hits}
-    want = {"cpp:orphan", "cpp:bare-orphan", "cpp:bare-range", "cpp:nested", "cpp:other-sentence"}
+    want = {
+        "cpp:orphan", "cpp:bare-orphan", "cpp:bare-range", "cpp:nested", "cpp:other-sentence",
+        "cpp:crate-orphan", "cpp:crate-gone-crate",
+    }
     missed = want - caught
     assert not missed, "self-test: planted dead reference(s) not caught: %s" % sorted(missed)
     spurious = caught - want
@@ -163,23 +231,26 @@ def self_test(basenames):
     )
     kinds = {k: kind for _, k, kind, _ in hits}
     assert kinds["cpp:orphan"] == "path" and kinds["cpp:bare-orphan"] == "bare", kinds
-    print("check-ledger-orphan-refs --self-test: %d case(s) OK" % (len(want) + 5))
+    assert kinds["cpp:crate-orphan"] == "crate", kinds
+    print("check-ledger-orphan-refs --self-test: %d case(s) OK" % (len(want) + 6))
 
 
 def main():
     basenames = tracked_basenames()
-    self_test(basenames)
+    crates = crate_dirs()
+    self_test(basenames, crates)
 
     files = sorted(LEDGER.glob("*.json"))
     if not files:
         print("check-ledger-orphan-refs: no ledger shards found at %s" % LEDGER, file=sys.stderr)
         return 1
-    bad = scan(files, basenames)
+    bad = scan(files, basenames, crates)
     if bad:
         print(
             "FAIL: %d ledger row(s) cite a file that does not exist.\n"
             "      A reason naming a deleted file is a reason nobody can check.\n"
             "      `path`: a repo-relative path with no file behind it.\n"
+            "      `crate`: a crate-relative path (`nros-core/src/x.rs`) whose crate or file is gone.\n"
             "      `bare`: a basename no tracked file carries, in a sentence that does not\n"
             "      say it was %s. An UPSTREAM file is cited with its directory\n"
             "      (`rmw/rmw.h`), which puts it out of scope.\n"

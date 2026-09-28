@@ -92,7 +92,7 @@ source ./activate.sh
 nros setup native --rmw zenoh           # host toolchains + the zenoh router
 ```
 
-No install step — Phase 140 removed `just install-local`. The
+No install step — Phase 140 removed the `install-local` recipe. The
 source tree IS the consumption surface.
 
 ## Build the three packages

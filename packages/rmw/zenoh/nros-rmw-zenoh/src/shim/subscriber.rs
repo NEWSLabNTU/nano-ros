@@ -387,7 +387,7 @@ pub struct SubscriberAllocReport {
 /// the magic is looking at a fully populated record. Not a doc LINK: the writer
 /// is private, and rustdoc rejects a public item linking to one (which is how
 /// this line's previous target, a `record_alloc_ceilings` that no longer
-/// exists, went unnoticed -- see issue 1110).
+/// exists, went unnoticed -- see phase-431 W6, the rustdoc red).
 pub const SUBSCRIBER_ALLOC_MAGIC: u32 = 0x53554241;
 /// Layout version for [`SubscriberAllocReport`].
 pub const SUBSCRIBER_ALLOC_VERSION: u32 = 7;

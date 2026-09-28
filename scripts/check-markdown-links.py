@@ -61,6 +61,14 @@ EXEMPT = {
 }
 
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+# A reference-style DEFINITION, `[label]: target`. Issue 1545: the first
+# version read inline links only, so RFC-0034's `[issue 0006]: ../issues/0006-…`
+# kept pointing at where the issue was before it was archived, and every
+# `[issue 0006]` use of that label 404'd on a green gate — issue 1085's shape
+# one spelling over. The definition is where the target lives, so it is the
+# one line to check. Up to three spaces of indent, per CommonMark; `<t>` form
+# unwrapped.
+REFDEF = re.compile(r"^ {0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>]+)>?", re.M)
 
 
 def strip_code(text):
@@ -107,7 +115,7 @@ def dead_links(root, files, tracked, dirs):
                 text = strip_code(fh.read())
         except OSError:
             continue
-        for m in LINK.finditer(text):
+        for m in [*LINK.finditer(text), *REFDEF.finditer(text)]:
             target = m.group(1).split("#")[0]
             if not target or target.startswith(("http://", "https://", "mailto:", "<")):
                 continue
@@ -198,12 +206,21 @@ def self_test(quiet=False):
         got = check("[x](https://example.invalid/a.md)\n")
         assert got == [], f"an http link must not fire; got {got}"
 
+        # A reference-style DEFINITION is a link too (issue 1545): the moved
+        # target fires, the retargeted one does not.
+        got = check("see [#0835].\n\n[#0835]: ../issues/0835-a.md\n")
+        assert len(got) == 1, f"a dead reference definition must fire; got {got}"
+        got = check("see [#0835].\n\n[#0835]: ../issues/archived/0835-a.md\n")
+        assert got == [], f"a resolving reference definition must not fire; got {got}"
+        got = check("[t]: <../issues/0835-a.md>\n")
+        assert len(got) == 1, f"an angle-bracketed dead definition must fire; got {got}"
+
         # A link to a tracked DIRECTORY resolves.
         got = check("[dir](../issues/archived)\n")
         assert got == [], f"a directory link must not fire; got {got}"
 
     if not quiet:
-        print("check-markdown-links self-test: OK (8 case(s))")
+        print("check-markdown-links self-test: OK (11 case(s))")
     return 0
 
 

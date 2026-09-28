@@ -79,8 +79,15 @@ REF = re.compile(r"issues?[-\s]#?(\d{4})(?!-\d)\b", re.I)
 # a dangling reference to issue 2026. Found by running the audit on this tree.
 TAIL = re.compile(r"\s*[/,]\s*#?(\d{4})(?!-\d)\b")
 
-SEARCH_ROOTS = ("docs", "book/src", "cmake", "scripts", "just")
-SEARCH_FILES = ("CLAUDE.md", "AGENTS.md", "README.md")
+SEARCH_ROOTS = ("docs", "book/src", "cmake", "scripts", "just", ".github")
+SEARCH_FILES = ("CLAUDE.md", "AGENTS.md", "README.md", "justfile")
+SEARCH_EXTS = (".md", ".sh", ".py", ".cmake", ".just", ".txt", ".yml", ".yaml")
+# Issue 1545 — a code COMMENT is prose too, and the scope above stopped short of
+# it: 11 citations of 6 ids with no file sat in the root `justfile`, the
+# workflows, `.rs` and `.hpp` sources. Source trees are read from the INDEX, not
+# walked: they hold `target/` and build dirs, and the walk's reason (a new
+# issue and the DOC citing it land in one commit) is about documents.
+CODE_EXTS = (".rs", ".h", ".hpp", ".c", ".cpp")
 EXEMPT_DIRS = (os.path.join("docs", "issues", "archived"),)
 # This gate's own source. Its docstring must name the ids that motivated it,
 # and a gate that flags itself for documenting its own cases is unusable —
@@ -122,9 +129,23 @@ def candidate_files():
                 continue
             dirnames[:] = [d for d in dirnames if d != ".git"]
             for name in filenames:
-                if name.endswith((".md", ".sh", ".py", ".cmake", ".just", ".txt")):
+                if name.endswith(SEARCH_EXTS):
                     out.append(os.path.relpath(os.path.join(dirpath, name), ROOT))
+    out.extend(tracked_code_files())
     return sorted(_drop_ignored(set(out)))
+
+
+def tracked_code_files():
+    """Tracked source files, repo-relative, outside vendored `third-party/`."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", ROOT, "ls-files", "-z", "--", *("*" + e for e in CODE_EXTS)],
+            capture_output=True, text=True, check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return []
+    return [p for p in r.stdout.split("\0")
+            if p and "third-party" not in p.split("/")]
 
 
 def _drop_ignored(paths):

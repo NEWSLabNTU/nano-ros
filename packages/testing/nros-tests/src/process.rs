@@ -1515,7 +1515,7 @@ pub fn require_zenohd() -> bool {
 
 /// Why the zenoh router is unusable here, or `None` if it is usable.
 ///
-/// The reason-returning half of [`require_zenohd`], added for issue 0982: a
+/// The reason-returning half of [`require_zenohd`], added by 5ae49d068f: a
 /// caller that turns "unavailable" into a SKIP must be able to put the cause in
 /// the skip message. `require_zenohd`'s `eprintln!` goes to stderr, which
 /// nextest suppresses under `--failure-output never` — so the CI log recorded

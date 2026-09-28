@@ -307,10 +307,32 @@ def doc_groups():
     # code.
     cli_docs = {p for p in tracked("packages/cli", suffix=".md")
                 if "third-party" not in p.relative_to(REPO).parts}
-    return [
-        (REPO / "justfile", sorted(root_docs)),
-        (cli_root / "justfile", sorted(cli_docs)),
-    ]
+
+    # Issue 1545 — EVERY other tracked document too. The scope above was
+    # `docs/`, `book/src/` and three root files, and 24 dead references sat
+    # just outside it: 13 in `tests/README.md`, and the retired `build-zenohd`
+    # — the recipe whose dead callers are why this gate exists — in the
+    # `nros-c` / `nros-cpp` getting-started pages a new user reads first.
+    # A document a reader copies from is one wherever it lives. A document
+    # under a directory with its OWN justfile (`tests/simple-workspace/`, an
+    # example leaf) resolves against that file plus the root, the same union
+    # the CLI group uses and for the same reason.
+    groups = {REPO / "justfile": root_docs, cli_root / "justfile": cli_docs}
+    local_justfiles = {
+        p.parent for p in tracked(".", name="justfile")
+        if p.parent != REPO
+        and "third-party" not in p.relative_to(REPO).parts
+        and not p.is_relative_to(cli_root)
+    }
+    for p in tracked(".", suffix=".md"):
+        rel = p.relative_to(REPO).parts
+        if "archived" in rel or "third-party" in rel or p.is_relative_to(cli_root):
+            continue
+        if p in root_docs:
+            continue
+        home = next((d for d in p.parents if d in local_justfiles), None)
+        groups.setdefault(home / "justfile" if home else REPO / "justfile", set()).add(p)
+    return [(jf, sorted(docs)) for jf, docs in groups.items()]
 
 
 def offenders():

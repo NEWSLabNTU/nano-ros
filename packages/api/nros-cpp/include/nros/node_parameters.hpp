@@ -81,7 +81,7 @@
 #define NROS_NODE_PARAM_STRING_BUF 256
 #endif
 // AFTER the `#endif`, deliberately, and not inside the block above. Both other
-// placements are broken and neither is obvious (issues 0637, 1015):
+// placements are broken and neither is obvious (issues 1167, 1015):
 //
 //   * BEFORE the `#define`, the preprocessor reads an undefined macro as 0, so
 //     `< 1` is true on every build that does not `-D` it — the guard fires

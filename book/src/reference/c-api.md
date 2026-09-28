@@ -62,14 +62,14 @@ goals, requesting results, and cancelling:
   until the reply lands (or 15 s / 30 s timeout). They take the
   `nros_executor_t*` explicitly because the action client stores its
   handle as an opaque slot inside the executor (registered via
-  `nros_executor_register_action_client()`). The same applies to
+  `nros_executor_add_action_client()`). The same applies to
   `nros_action_client_wait_for_action_server()` and
   `nros_action_client_action_server_is_ready()`. Calling any of them
   from inside a dispatch callback returns `NROS_RET_REENTRANT`.
 
 The equivalent service client helper `nros_client_call()` does **not**
 take an explicit executor — the client stashes the executor pointer
-during `nros_executor_register_client()` and recovers it internally —
+during `nros_executor_add_client()` and recovers it internally —
 but it follows the same async-then-spin contract.
 
 Canonical pattern: declare the executor, register the client, then
