@@ -36,6 +36,7 @@ Run: python3 scripts/check-cpp-destroy-shape.py
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -243,6 +244,32 @@ def self_test() -> None:
     )
 
 
+def tracked_rust_sources() -> list[Path]:
+    """Every tracked `.rs` file under `SRC`, by index lookup.
+
+    `git ls-files`, not `rglob` — issue 0844's rule, which
+    `check-no-tracked-file-find` enforces: an index lookup instead of a walk,
+    measured at 7m36s -> 0.8s for the same 232 paths, and pruning does not help
+    because a walk still stats every directory it considers pruning. It also
+    keeps build output and untracked scratch files out of the subject, which for
+    this gate matters: an untracked copy of a destroy FFI would be classified
+    against a table that has no reason to name it.
+    """
+    r = subprocess.run(
+        ["git", "-C", str(REPO), "ls-files", "--", SRC.relative_to(REPO).as_posix()],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if r.returncode != 0:
+        sys.exit(f"{GATE}: `git ls-files` failed:\n  {r.stderr.strip()}")
+    return sorted(
+        REPO / rel
+        for rel in (x.strip() for x in r.stdout.splitlines())
+        if rel.endswith(".rs")
+    )
+
+
 def main() -> int:
     self_test()
 
@@ -258,7 +285,7 @@ def main() -> int:
 
     sources = {
         p.name: p.read_text(encoding="utf-8")
-        for p in sorted(SRC.rglob("*.rs"))
+        for p in tracked_rust_sources()
         if p.name != TABLE.name
     }
     found = problems(sources, TABLE.read_text(encoding="utf-8"))
