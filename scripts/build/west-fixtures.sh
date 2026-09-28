@@ -227,19 +227,54 @@ while IFS= read -r record; do
     # failure was the configure's "no SystemModel was found", one tool and one
     # step away from the refusal that explains it.
     #
+    # issue 1488 — and then STOP. Saying why is not enough: a failed sync was
+    # still followed by the west build it feeds, so the lane's verdict came from
+    # the configure's "declares system semantics but no SystemModel was found",
+    # five lines about a build artifact standing in for one line about a refused
+    # tool. That is the 0510 masking shape the comment above already cites; the
+    # `|| echo` only moved one step down when the output started being printed.
+    #
+    # A sync failure is THIS ROW's failure, counted and reported like any other,
+    # through the `failed` tally the loop already keeps — so the exit check at
+    # the foot of the file makes it fatal, with or without `set -e` (only
+    # `set -u` is in force here). The west build is SKIPPED rather than run and
+    # discarded: every dir this loop syncs is a bringup whose model the row's own
+    # configure reads (measured over the four west fixture source dirs the five
+    # rows share — `board_import_fvp` has none, the other three have exactly one
+    # each, and none has a bringup some other row owns), so a configure past a failed
+    # sync is a guaranteed refusal for a reason already printed, and paying for
+    # it only buries the cause further up the log.
+    #
     # `set -e` is not in force here, but the issue-1249 shape still applies:
     # capture the status at the command, never at a later assignment.
     _wf_cli="${NROS_CLI_BIN:-$repo_root/packages/cli/target/release/nros}"
-    if [ -x "$_wf_cli" ]; then
-        for _bringup in "$repo_root/$src"/*/; do
-            [ -f "$_bringup/system.toml" ] || continue
-            _wf_sync_rc=0
-            _wf_sync_out="$( cd "$_bringup" && "$_wf_cli" sync 2>&1 )" || _wf_sync_rc=$?
-            if [ "$_wf_sync_rc" -ne 0 ]; then
-                echo "   nros sync FAILED in $(basename "$_bringup") (rc=$_wf_sync_rc) — the configure below will refuse for want of a SystemModel:" >&2
-                printf '%s\n' "$_wf_sync_out" | sed 's/^/     /' >&2
-            fi
-        done
+    _wf_sync_failed=0
+    _wf_bringups=0
+    for _bringup in "$repo_root/$src"/*/; do
+        [ -f "$_bringup/system.toml" ] || continue
+        _wf_bringups=$((_wf_bringups + 1))
+        # A row WITH a bringup cannot configure without the tool that resolves
+        # it, so an absent CLI is this row's failure too — it used to skip the
+        # whole block silently and hand the configure the same missing model.
+        if [ ! -x "$_wf_cli" ]; then
+            echo "   nros CLI not executable: $_wf_cli" >&2
+            echo "   $(basename "$_bringup") declares system semantics, so its SystemModel cannot be resolved." >&2
+            echo "   Remedy: just setup-cli   (before fixtures — the fixture stamps key on the CLI, issue 0466)" >&2
+            _wf_sync_failed=$((_wf_sync_failed + 1))
+            continue
+        fi
+        _wf_sync_rc=0
+        _wf_sync_out="$( cd "$_bringup" && "$_wf_cli" sync 2>&1 )" || _wf_sync_rc=$?
+        if [ "$_wf_sync_rc" -ne 0 ]; then
+            echo "   nros sync FAILED in $(basename "$_bringup") (rc=$_wf_sync_rc) — this row needs its SystemModel, so the build is SKIPPED rather than left to refuse for want of one:" >&2
+            printf '%s\n' "$_wf_sync_out" | sed 's/^/     /' >&2
+            _wf_sync_failed=$((_wf_sync_failed + 1))
+        fi
+    done
+    if [ "$_wf_sync_failed" -ne 0 ]; then
+        echo "   SKIPPED $id — $_wf_sync_failed of $_wf_bringups bringup(s) did not sync (see above)." >&2
+        failed=$((failed + 1))
+        continue
     fi
     args=(build -d "$bld")
     [ "$builder" = "west-configure" ] && args+=(--cmake-only)
