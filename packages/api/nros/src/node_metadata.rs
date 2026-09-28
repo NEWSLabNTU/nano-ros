@@ -464,6 +464,38 @@ pub struct EntityMetadata {
     pub source: SourceLocationMetadata,
 }
 
+impl EntityMetadata {
+    /// phase-457 W5 (issue 1522) — which registration entry point this
+    /// DECLARED subscription will reach.
+    ///
+    /// **THE classifier**, in the sense
+    /// [`DeclaredSubscriptionShape`](nros_node::executor::declared_shape::DeclaredSubscriptionShape)'s
+    /// module docs give it: the declarative registrar
+    /// (`node_runtime`'s `EntityKind::Subscription` arm) dispatches on this
+    /// answer, and the metadata recorder states
+    /// [`in_place_capable`](Self::in_place_capable) from the same answer. Two
+    /// readers of one function is not a second opinion; two functions would
+    /// be, which is the drift phase-457 W3 removed from the CLI.
+    ///
+    /// The `safety-e2e` mask lives HERE and nowhere else. With the capability
+    /// off the runtime ignores [`safety`](Self::safety) and registers the
+    /// basic path (see that field's doc), so a probe built the same way must
+    /// say the same thing — and a second `#[cfg]` at either reader is the
+    /// disagreement this function exists to prevent.
+    ///
+    /// Meaningful only for [`EntityKind::Subscription`]; no other kind reaches
+    /// a subscription entry point, and no caller asks.
+    pub fn declared_subscription_shape(
+        &self,
+    ) -> nros_node::executor::declared_shape::DeclaredSubscriptionShape {
+        #[cfg(feature = "safety-e2e")]
+        let safety = self.safety;
+        #[cfg(not(feature = "safety-e2e"))]
+        let safety = false;
+        nros_node::executor::declared_shape::DeclaredSubscriptionShape::of_declaration(safety)
+    }
+}
+
 /// Recorded optional callback effect.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallbackEffectMetadata {
