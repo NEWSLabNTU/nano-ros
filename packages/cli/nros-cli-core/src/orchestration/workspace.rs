@@ -1503,11 +1503,14 @@ fn summary_to_synthetic_json(summary: &CargoComponentSummary) -> JsonValue {
 }
 
 fn cmake_summary_to_synthetic_json(summary: &CmakeNodeSummary) -> JsonValue {
-    let language = match &summary.language {
-        ComponentLanguage::C => "c",
-        ComponentLanguage::Cpp => "cpp",
-        ComponentLanguage::Rust => "rust",
-    };
+    // phase-469 — `as_str()`, not a second copy of its table. This match spelled
+    // the same three strings `nros_lang::Language::as_str` does, so the sidecar's
+    // `language` field had two producers that happened to agree; the serde repr
+    // pins those strings as the on-disk contract, and this one was pinned by
+    // nothing. (`entry::pack` keeps ITS match: it names a PACK directory, and its
+    // first arm routes `C` with no C runner to the `cpp` pack, so the two tables
+    // coincide rather than being the same fact.)
+    let language = summary.language.as_str();
     let mut obj = json!({
         "version": 1,
         "package": summary.package,
