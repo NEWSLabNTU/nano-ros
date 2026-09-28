@@ -56,6 +56,53 @@ function(nros_sizing_descriptor_path _out_var _build_dir _entry)
     set(${_out_var} "${_build_dir}/nros/sizing/${_entry}.toml" PARENT_SCOPE)
 endfunction()
 
+# _nros_sizing_target_args(<out_var>) — phase-457 W4
+#
+# The `[target]` arguments for a `ws sizing-descriptor` invocation: either
+# `--host-build`, or `--target-triple <t>`, or nothing.
+#
+# ONE SPELLING, called by both producers. `from_model` and `from_leaf` each built
+# `--host-build` themselves, identically, and each omitted the triple — so a
+# CROSS cmake image got a REFUSED `pointer_bytes`/`max_align` on both roads, and
+# `storage_bytes` with them (a receive region is sized from the pointer width).
+# Fixing one would have left the other, which is issue 1513's shape and #282's
+# before it: a second copy of a rule is how a class fix stops being one.
+#
+# `--host-build` answers only the NATIVE case — the target IS this process, which
+# is RFC-0100 D1's single exemption to "build scripts run for the host"
+# (phase-118-E). For a cross configure the triple is resolvable right here, and
+# `_nros_resolve_rust_target()` is the one way to ask: never `Rust_CARGO_TARGET`,
+# a normal var that does not survive `add_subdirectory()` (phase-155's wrong-arch
+# link).
+#
+# Emits NOTHING when cross-compiling and the resolver has no answer, so the
+# writer REFUSES rather than guessing. A guessed pointer width under-sizes a
+# ring's length array, and the CLI's own `size_of` would answer for the host.
+function(_nros_sizing_target_args _out_var)
+    set(_args "")
+    if(NOT CMAKE_CROSSCOMPILING)
+        set(_args --host-build)
+    elseif(COMMAND _nros_resolve_rust_target)
+        _nros_resolve_rust_target(_nsta_triple)
+        if(_nsta_triple)
+            set(_args --target-triple "${_nsta_triple}")
+        endif()
+    endif()
+    # SAY which branch was taken. A silent no-op here is the "green that never
+    # ran" shape: the `COMMAND` guard above means a configure that never included
+    # `NanoRosCodegenCore` would quietly keep refusing `[target]` and look exactly
+    # like one that resolved it. The printed line is the only evidence, the same
+    # reason the Corrosion resolver prints its origin (issue 0500).
+    if(_args)
+        message(STATUS "nano-ros: sizing descriptor [target] via ${_args}")
+    else()
+        message(STATUS
+            "nano-ros: sizing descriptor [target] REFUSED -- cross-compiling and "
+            "no rustc triple resolvable here, so `pointer_bytes` is not guessed")
+    endif()
+    set(${_out_var} "${_args}" PARENT_SCOPE)
+endfunction()
+
 # nros_sizing_descriptor_from_model(<out_var>) — phase-454 W14
 #
 # WRITE a descriptor for this entry from its resolved SystemModel, and remember
@@ -113,10 +160,7 @@ function(nros_sizing_descriptor_from_model _out_var)
     # this function calls next.
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_nsw_MODEL}")
 
-    set(_host_arg "")
-    if(NOT CMAKE_CROSSCOMPILING)
-        set(_host_arg --host-build)
-    endif()
+    _nros_sizing_target_args(_host_arg)
     set(_rmw_arg "")
     if(_nsw_RMW)
         set(_rmw_arg --rmw "${_nsw_RMW}")
@@ -224,10 +268,7 @@ function(nros_sizing_descriptor_from_leaf _out_var)
     set_property(DIRECTORY APPEND PROPERTY
         CMAKE_CONFIGURE_DEPENDS "${_nsl_LEAF}/system.toml")
 
-    set(_host_arg "")
-    if(NOT CMAKE_CROSSCOMPILING)
-        set(_host_arg --host-build)
-    endif()
+    _nros_sizing_target_args(_host_arg)
 
     execute_process(
         COMMAND "${_nsl_CLI}" ws sizing-descriptor
