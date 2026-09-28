@@ -604,7 +604,12 @@ mod tests {
         // not in a module.
         let justfile = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../justfile");
         let Ok(text) = std::fs::read_to_string(justfile) else {
-            return; // out-of-tree checkout; nothing to gate
+            // A SKIP, not a `return`: a return from a test is a PASS, and this
+            // one would pass having gated nothing.
+            crate::skip_class!(
+                capability,
+                "no root justfile at {justfile} (out-of-tree checkout)"
+            );
         };
         // The canonical ordered list — the one the make graph filters.
         let line = text
@@ -1006,7 +1011,13 @@ _tier-build:
             ))
             .arg("native")
             .output();
-        let Ok(out) = out else { return }; // script unavailable (packaged crate) — not a failure
+        // A SKIP, not a `return` — a return from a test is a PASS over nothing.
+        let Ok(out) = out else {
+            crate::skip_class!(
+                capability,
+                "cannot run scripts/test/lane-filter.sh (out-of-tree checkout)"
+            );
+        };
         if !out.status.success() {
             panic!(
                 "lane-filter.sh native failed: {}",
@@ -1133,7 +1144,12 @@ _tier-build:
             ))
             .arg("native")
             .output();
-        let Ok(out) = out else { return };
+        let Ok(out) = out else {
+            crate::skip_class!(
+                capability,
+                "cannot run scripts/test/lane-filter.sh (out-of-tree checkout)"
+            );
+        };
         if !out.status.success() {
             panic!(
                 "lane-filter.sh native failed: {}",

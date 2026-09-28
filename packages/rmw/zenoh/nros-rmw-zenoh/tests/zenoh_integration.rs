@@ -14,7 +14,7 @@ use nros_rmw_zenoh::{
     keyexpr::{ServiceKeyExpr, TopicKeyExpr},
     normalize_locator,
 };
-use nros_tests::fixtures::ZenohRouter;
+use nros_tests::fixtures::{ZenohRouter, or_skip};
 use std::{thread, time::Duration};
 
 /// Start a private zenohd on an EPHEMERAL port for one test (issue 0328).
@@ -30,14 +30,17 @@ use std::{thread, time::Duration};
 /// images compile a locator in. Its own docs say native host tests should take
 /// runtime-ephemeral ports instead, which are parallel-safe by construction.
 ///
-/// Returns `None` when zenohd is absent so the test can skip rather than fail
-/// on a machine that never provisioned it.
-fn router() -> Option<ZenohRouter> {
+/// SKIPS (a `capability` skip, via `nros_tests::skip_class!`) when zenohd is
+/// absent, and FAILS when a router that is present will not start. It owns
+/// that verdict rather than handing the caller an `Option`: it used to return
+/// `None` after an `eprintln!`, and all five callers spelled the `None` arm
+/// `else { return }` — which is a PASS, so each of them reported green having
+/// run nothing on every host without zenohd.
+fn router() -> ZenohRouter {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
-        eprintln!("[SKIP] {why}");
-        return None;
+        nros_tests::skip_class!(capability, "{why}");
     }
-    Some(ZenohRouter::start_unique().expect("failed to start zenohd"))
+    or_skip(ZenohRouter::start_unique())
 }
 
 /// Test that we can open and close a session in peer mode
@@ -121,7 +124,7 @@ fn test_cdr_int32_format() {
 /// This test requires a zenoh router running: ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 #[test]
 fn test_pubsub_loopback() {
-    let Some(_router) = router() else { return };
+    let _router = router();
     let router_locator = _router.locator();
     // Connect to router as client
     let config = TransportConfig {
@@ -238,7 +241,7 @@ fn test_pubsub_loopback() {
 /// rather than failing — rebuild with `ZPICO_MAX_SESSIONS=2` to exercise it.
 #[test]
 fn two_sessions_deliver_cross_session_through_router() {
-    let Some(_router) = router() else { return };
+    let _router = router();
     let router_locator = _router.locator();
     let config = TransportConfig {
         locator: Some(router_locator.as_str()),
@@ -337,7 +340,7 @@ fn two_sessions_deliver_cross_session_through_router() {
 /// Test multiple publishers on same session
 #[test]
 fn test_multiple_publishers() {
-    let Some(_router) = router() else { return };
+    let _router = router();
     let router_locator = _router.locator();
     let config = TransportConfig {
         locator: Some(router_locator.as_str()),
@@ -373,7 +376,7 @@ fn test_multiple_publishers() {
 /// Test multiple subscribers on same session
 #[test]
 fn test_multiple_subscribers() {
-    let Some(_router) = router() else { return };
+    let _router = router();
     let router_locator = _router.locator();
     let config = TransportConfig {
         locator: Some(router_locator.as_str()),
@@ -521,7 +524,7 @@ fn test_session_explicit_props_override_env() {
 /// because we explicitly provide the router locator.
 #[test]
 fn test_pubsub_loopback_with_scouting_disabled() {
-    let Some(_router) = router() else { return };
+    let _router = router();
     let router_locator = _router.locator();
     let config = TransportConfig {
         locator: Some(router_locator.as_str()),
@@ -705,7 +708,7 @@ fn client_session_with_absent_locator_dials_backend_default() {
         std::env::remove_var("ZENOH_LOCATOR");
     }
 
-    let _router = ZenohRouter::start(port).expect("failed to start zenohd on the default port");
+    let _router = or_skip(ZenohRouter::start(port));
 
     let config = TransportConfig {
         // Nothing supplied. The backend — and ONLY the backend — decides.
@@ -809,14 +812,14 @@ const PROBE_QUERY_TIMEOUT_MS: u32 = 200;
 /// never makes the server reply at all.
 #[test]
 fn a_declined_query_hands_its_reply_slot_back() {
-    // `skip!`, not this file's older `Option`-and-return `router()`: a bare
+    // `skip!`, not the `Option`-and-return `router()` this file once had: a bare
     // return reports PASS, and a probe whose whole purpose is to be a negative
     // control must never be able to pass by not running (CLAUDE.md; issue 0584
     // for the class).
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
         nros_tests::skip_class!(capability, "{why}");
     }
-    let _router = ZenohRouter::start_unique().expect("failed to start zenohd");
+    let _router = or_skip(ZenohRouter::start_unique());
     let router_locator = _router.locator();
 
     let config = TransportConfig {
@@ -1046,7 +1049,7 @@ fn a_parameter_named_queryable_and_its_look_alike_both_register_and_receive() {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
         nros_tests::skip_class!(capability, "{why}");
     }
-    let _router = ZenohRouter::start_unique().expect("failed to start zenohd");
+    let _router = or_skip(ZenohRouter::start_unique());
     let router_locator = _router.locator();
 
     let config = TransportConfig {
@@ -1128,7 +1131,7 @@ fn a_service_server_receives_through_the_ring_the_caller_supplied() {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
         nros_tests::skip_class!(capability, "{why}");
     }
-    let _router = ZenohRouter::start_unique().expect("failed to start zenohd");
+    let _router = or_skip(ZenohRouter::start_unique());
     let router_locator = _router.locator();
 
     let config = TransportConfig {
