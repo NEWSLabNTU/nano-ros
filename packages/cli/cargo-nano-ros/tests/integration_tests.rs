@@ -737,7 +737,7 @@ mod component_scaffold {
         let result = scaffold_component(&ComponentScaffoldConfig {
             name: "my-comp".to_string(),
             use_case: "talker".to_string(),
-            lang: "rust".to_string(),
+            lang: nros_lang::Language::Rust,
             force: false,
         });
         std::env::set_current_dir(&prev).unwrap();
@@ -800,7 +800,7 @@ mod component_scaffold {
         let result = scaffold_component(&ComponentScaffoldConfig {
             name: "svc".to_string(),
             use_case: "service".to_string(),
-            lang: "rust".to_string(),
+            lang: nros_lang::Language::Rust,
             force: false,
         });
         std::env::set_current_dir(&prev).unwrap();
@@ -823,7 +823,7 @@ mod component_scaffold {
         let result = scaffold_component(&ComponentScaffoldConfig {
             name: "c-talker".to_string(),
             use_case: "talker".to_string(),
-            lang: "c".to_string(),
+            lang: nros_lang::Language::C,
             force: false,
         });
         std::env::set_current_dir(&prev).unwrap();
@@ -858,7 +858,7 @@ mod component_scaffold {
         let result = scaffold_component(&ComponentScaffoldConfig {
             name: "cpp-talker".to_string(),
             use_case: "talker".to_string(),
-            lang: "cpp".to_string(),
+            lang: nros_lang::Language::Cpp,
             force: false,
         });
         std::env::set_current_dir(&prev).unwrap();

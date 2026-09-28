@@ -19,6 +19,7 @@
 //! type-descriptor feature) this verb exists to close.
 
 use eyre::{Result, bail};
+use nros_lang::Language;
 
 /// (relative path, contents) — the C++ workspace template, verbatim.
 const CPP_FILES: &[(&str, &str)] = &[
@@ -216,8 +217,13 @@ const RUST_FILES: &[(&str, &str)] = &[
 pub struct WorkspaceScaffold {
     /// Workspace directory to create.
     pub dir: std::path::PathBuf,
-    /// "cpp" | "rust" (the C node-pkg walkthrough shares the cpp shape).
-    pub lang: String,
+    /// Which workspace template to emit. phase-469 — the enum.
+    ///
+    /// [`Language::C`] is a REAL refusal here and stays one: the C node-pkg
+    /// walkthrough joins an existing workspace rather than having a workspace
+    /// template of its own. It is now an arm of an exhaustive match, so it
+    /// reads as a scope decision rather than as an unparsed string.
+    pub lang: Language,
     /// "cyclonedds" | "zenoh" | "xrce".
     pub rmw: String,
     pub force: bool,
@@ -237,7 +243,7 @@ fn rewrite_once(file: &str, text: String, needle: &str, to: &str) -> Result<Stri
 
 /// Apply the RMW choice to one file's text. The ONE anchor is the bringup's
 /// `[system] rmw` — both trees generate their root and entry from it.
-fn parameterize(_lang: &str, rmw: &str, rel: &str, text: &str) -> Result<String> {
+fn parameterize(_lang: Language, rmw: &str, rel: &str, text: &str) -> Result<String> {
     let mut out = text.to_string();
     // Both trees: the bringup's declared rmw follows the choice. It is the ONLY
     // anchor:
@@ -256,11 +262,11 @@ fn parameterize(_lang: &str, rmw: &str, rel: &str, text: &str) -> Result<String>
 }
 
 pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
-    let files: &[(&str, &str)] = match cfg.lang.as_str() {
-        "cpp" => CPP_FILES,
-        "rust" => RUST_FILES,
-        other => bail!(
-            "`nros new <name> --workspace --lang {other}` is not supported yet — \
+    let files: &[(&str, &str)] = match cfg.lang {
+        Language::Cpp => CPP_FILES,
+        Language::Rust => RUST_FILES,
+        Language::C => bail!(
+            "`nros new <name> --workspace --lang c` is not supported yet — \
              use `cpp` (the default) or `rust`. C node pkgs join an existing \
              workspace via `nros new --component --lang c`."
         ),
@@ -276,7 +282,7 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
         );
     }
     for (rel, raw) in files {
-        let text = parameterize(&cfg.lang, &cfg.rmw, rel, raw)?;
+        let text = parameterize(cfg.lang, &cfg.rmw, rel, raw)?;
         let dest = cfg.dir.join(rel);
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
@@ -290,8 +296,10 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
         cfg.lang,
         cfg.rmw,
     );
-    let next = match cfg.lang.as_str() {
-        "cpp" => format!(
+    // Not exhaustive on purpose: `Language::C` cannot reach here (the refusal
+    // above returned), and the cargo road's hint serves any non-cmake language.
+    let next = match cfg.lang {
+        Language::Cpp => format!(
             // Issue 1304 — an installed toolchain has no `NROS_REPO_DIR` to
             // export and no checkout to name: `nros` resolves its own
             // `share/nano-ros` (RFC-0099 D3, the ladder in
@@ -320,11 +328,11 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
 mod tests {
     use super::*;
 
-    fn scaffold(lang: &str, rmw: &str) -> tempfile::TempDir {
+    fn scaffold(lang: Language, rmw: &str) -> tempfile::TempDir {
         let tmp = tempfile::tempdir().expect("tempdir");
         scaffold_workspace(&WorkspaceScaffold {
             dir: tmp.path().join("ws"),
-            lang: lang.into(),
+            lang,
             rmw: rmw.into(),
             force: false,
         })
@@ -337,12 +345,12 @@ mod tests {
         // The cmake root and the entry are generated, so `system.toml`'s `rmw`
         // is the only place the choice is written (phase-445 W5).
         for rmw in ["cyclonedds", "zenoh"] {
-            let tmp = scaffold("cpp", rmw);
+            let tmp = scaffold(Language::Cpp, rmw);
             let sys = std::fs::read_to_string(tmp.path().join("ws/src/demo_bringup/system.toml"))
                 .unwrap();
             assert!(sys.contains(&format!("rmw = \"{rmw}\"")), "{rmw}: {sys}");
         }
-        let tmp = scaffold("cpp", "cyclonedds");
+        let tmp = scaffold(Language::Cpp, "cyclonedds");
         let sys =
             std::fs::read_to_string(tmp.path().join("ws/src/demo_bringup/system.toml")).unwrap();
         assert!(!sys.contains("rmw = \"zenoh\""));
@@ -351,7 +359,7 @@ mod tests {
     #[test]
     fn a_cpp_workspace_has_no_root_build_file_and_no_entry_package() {
         // RFC-0098 D9 / RFC-0065 D4 — the C++ twin of the Rust test below.
-        let tmp = scaffold("cpp", "zenoh");
+        let tmp = scaffold(Language::Cpp, "zenoh");
         let ws = tmp.path().join("ws");
         assert!(!ws.join("CMakeLists.txt").exists(), "no root build file");
         assert!(ws.join(".colcon_workspace").is_file(), "the root marker");
@@ -367,7 +375,7 @@ mod tests {
     fn rust_cyclonedds_lands_in_the_one_place_that_names_it() {
         // The entry is generated, so `system.toml`'s `rmw` is the ONLY place
         // the choice is written — no hand-written entry to keep in step.
-        let tmp = scaffold("rust", "cyclonedds");
+        let tmp = scaffold(Language::Rust, "cyclonedds");
         let sys =
             std::fs::read_to_string(tmp.path().join("ws/src/demo_bringup/system.toml")).unwrap();
         assert!(sys.contains("rmw = \"cyclonedds\""));
@@ -377,7 +385,7 @@ mod tests {
     #[test]
     fn a_rust_workspace_has_no_root_build_file_and_no_entry_package() {
         // RFC-0098 D9 / RFC-0065 D4: a marker, node packages and a bringup.
-        let tmp = scaffold("rust", "zenoh");
+        let tmp = scaffold(Language::Rust, "zenoh");
         let ws = tmp.path().join("ws");
         assert!(!ws.join("Cargo.toml").exists(), "no root build file");
         assert!(ws.join(".colcon_workspace").is_file(), "the root marker");
@@ -394,7 +402,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let err = scaffold_workspace(&WorkspaceScaffold {
             dir,
-            lang: "cpp".into(),
+            lang: Language::Cpp,
             rmw: "cyclonedds".into(),
             force: false,
         })
