@@ -208,6 +208,21 @@ schema-reader-provenance:
 derived-descriptor-fields:
     @python3 scripts/check-derived-descriptor-fields.py
 
+# A key the source-metadata emitter writes must be DECLARED by the reader.
+#
+# `SourceSubscriber` & co. are `deny_unknown_fields`, so an undeclared key is
+# not ignored -- every parse of that sidecar fails outright, four frames from
+# the writer and naming neither it nor the schema version. Twice now: issue
+# 0518's `period_us`, and phase-457 W3's `in_place`, which reached
+# `leaf_entity_env` and not this reader and went undetected for a fortnight
+# because no producer that gets here emitted the key until issue 1522. The
+# writer<->struct pairing is DERIVED from the writer's own name, and the reach
+# (keys written directly, not through a shared helper) is stated in the
+# script. Buildless, milliseconds, self-testing.
+[private]
+sidecar-endpoint-keys:
+    @python3 scripts/check-sidecar-endpoint-keys.py
+
 # Tool-emitted messages must not prescribe a bare `just` recipe — users do
 # not have it; the front door covers both binaries. Found live: the exact
 # error a fresh user hits first said `just setup-launch-resolve`, and a
