@@ -1365,3 +1365,75 @@ with one job dying at the agent and one failing on a named gate reports a single
 
 Acceptance for this arm: a `live-peer` run whose step 9 reaches a conclusion,
 with a disk figure recorded after it.
+
+## Correction: `host-tests` DID upload its transcripts, and tier 1 needs >56 G (2026-09-28)
+
+The section above ends "What is still missing is a `host-tests` disk
+transcript: that lane uploads none, so its four deaths have a warning and no
+figures behind them. Pairing them against `gate`'s numbers is inference, stated
+as such."
+
+**That was wrong when it was written.** All four runs in that table — 36322794885,
+36331789788, 36354992627, 36359825546 — carry `disk-transcript-before-tier1`
+**and** `disk-transcript-after-tier1` as artifacts, and the job also emits the
+figures as check-run annotation notices. The numbers this issue said it did not
+have were in the runs it was citing. What follows is what they say, plus a fifth
+death, run **36419496642** (12:04 UTC), job **108918531568**, step 15
+`just ci tier1`, 2 h 07 m.
+
+| | 36359825546 (2026-09-27) | 36419496642 (2026-09-28) |
+| --- | --- | --- |
+| before the tier | 89% used, 18G free | 84% used, 25G free |
+| `examples` / `build` / `packages/cli/target` | 42G / 14G / **447M** | 35G / 14G / **447M** |
+| reclaim frees | 33,286 MB | 33,286 MB |
+| post-reclaim headroom | **~49.6G** | **~56.6G** |
+| after the tier | 100% used, 264K free | 100% used, 260K free |
+| after: `examples` / `build` / `target` | 42G / 19G / 16G | **42G** / **22G** / **16G** |
+
+Three things follow, and none of them carries over from the `gate` sections.
+
+**The host-tooling road is live and it is where the 33 G comes from.** The
+reclaim on this lane deletes `/__host-reclaim/android` (11G),
+`/__host-reclaim/dotnet` (5.8G), `ghcup` (3.7G), `swift` (3.5G), `powershell`
+(1.4G) alongside `/__t` (5.2G) — that is the 2026-09-25 "a `container:` job CAN
+delete the host's preinstalled tooling" section in production, and it frees five
+times what `gate`'s fixed 6.7 G does.
+
+**Tier 1 still exhausts it, so its appetite is >56 G, not the ~24 G the `gate`
+sections price.** Both runs end at 100% with a quarter of a megabyte left. Any
+remedy sized against the `gate` figure is sized against the wrong lane.
+
+**The consumers are the exact inverse of `gate`'s.** Within run 36419496642:
+`examples` 35G → **42G** (`examples/workspaces` 30G → 36G), `build` 14G → 22G,
+`target` → 16G of which 13G is `target/debug` — while `packages/cli/target`
+stays **447M**. On `gate`, `packages/cli/target` is 41-42G and `examples` is 19G
+and static. So "prune `packages/cli/target`", the direction the 2026-09-27 and
+2026-09-28 `gate` sections derived, reclaims **nothing** here, and the 42G
+`examples`/36G `workspaces` figure the earliest sections argued from is this
+lane's, not `gate`'s. Two lanes, two different directories, one issue.
+
+### The decisive error, which no host-tests section had
+
+Earlier host-tests deaths were a `Free space left: N MB` warning and a log
+truncated mid-line. This one names the write that failed:
+
+```
+rustc-LLVM ERROR: IO failure on output stream: No space left on device
+error: failed to write to `/__w/nano-ros/nano-ros/examples/mps2-an385-freertos/rust/talker/
+  target-link-check/nros-minsizerel/deps/rmetamUfMmZ/full.rmeta`: No space left on device (os error 28)
+error: recipe `rust-rtos-link-check` failed with exit code 101
+error: recipe `tier1` failed with exit code 101
+```
+
+So the step that tips tier 1 over is **`rust-rtos-link-check`**, writing a
+per-leaf `target-link-check/` directory under `examples/` — which is part of the
+same `examples` figure that grew 7 G during this run. That is a specific
+candidate the four warning-only deaths could not have identified, and it is
+where a tier-1 prune should be priced first.
+
+What this is NOT: not issue 1492. That issue's envelope for a clean tier-1
+finish is ~2 h 20 m and this died at 2 h 07 m with an ENOSPC verdict, not a
+timeout.
+
+Acceptance for this arm: a `host-tests` push run reaching a tier-1 verdict, with
+the after-report below 100%.
