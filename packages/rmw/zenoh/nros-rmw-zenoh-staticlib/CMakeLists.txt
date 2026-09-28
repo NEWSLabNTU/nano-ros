@@ -46,13 +46,19 @@ endif()
 
 # phase-336 — explicit profile + its definition; see NanoRosCargoProfile.cmake.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosCargoProfile.cmake")
+# Issue 1547 — the edition feature from the one resolver, not a literal:
+# explicit > NANO_ROS_ROS_EDITION (the root CMakeLists' cache option) > the
+# default. A literal here built this archive for the default edition whatever
+# the consumer selected.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosRosEdition.cmake")
+_nros_resolve_ros_edition("" _nros_ros_edition)
 nros_resolve_cargo_profile()
 corrosion_import_crate(
     MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"
     CRATES        nros-rmw-zenoh-staticlib
     CRATE_TYPES   staticlib
     NO_DEFAULT_FEATURES
-    FEATURES      ros-humble ${_platform_features}
+    FEATURES      ros-${_nros_ros_edition} ${_platform_features}
     PROFILE       ${NROS_CARGO_PROFILE}
     LOCKED
 )

@@ -104,12 +104,27 @@ nros_edition_selftest
 #    could turn green — which is how a gate gets switched off. Both integrations
 #    now derive one `CONFIG_NROS_ROS_EDITION` string from a Kconfig choice and
 #    both lanes read it, so the glob covers them.
+#
+#    `zephyr/` and every `packages/**` cmake file were OUT until issue 1547
+#    closed, and for the same reason: nine `ros-humble` feature strings in
+#    `zephyr/CMakeLists.txt`, a `"humble"` fallback in the Zephyr interface
+#    generator and one in the zenoh staticlib all bypassed the resolver, so a
+#    `-DNANO_ROS_ROS_EDITION=jazzy` Zephyr image compiled nros-c/nros-cpp as
+#    humble while its codegen baked jazzy (measured on native_sim configures).
+#    They were routed through `_nros_resolve_ros_edition()` in the same commit
+#    that widened this glob — the phase-472 W5 reach sweep.
+#
+#    The reach is the cmake LANGUAGE under zephyr/, not `zephyr/**`: the one
+#    remaining zephyr/ hit is Kconfig help text naming the Debian package
+#    `ros-humble-cyclonedds` as the Cyclone version reference, which selects
+#    nothing. A Zephyr edition CHOICE, if one is ever added, is a Kconfig
+#    mapping and should join the `integrations/` treatment above.
 # Comment lines are excluded: the conversion sites legitimately REFERENCE the
 # old hardcode when explaining why they no longer do it.
 edition_hits=$(git grep -nE "$NROS_EDITION_RE" -- \
     'cmake/*.cmake' 'cmake/*/*.cmake' 'CMakeLists.txt' \
-    'packages/api/nros-c/CMakeLists.txt' \
-    'packages/api/nros-cpp/CMakeLists.txt' \
+    'packages/**/CMakeLists.txt' 'packages/**/*.cmake' \
+    'zephyr/CMakeLists.txt' 'zephyr/**/CMakeLists.txt' 'zephyr/**/*.cmake' \
     'integrations/' 2>/dev/null \
     | grep -v '^cmake/NanoRosRosEdition.cmake:' \
     | grep -vE "$NROS_EDITION_KCONFIG_MAP" \
