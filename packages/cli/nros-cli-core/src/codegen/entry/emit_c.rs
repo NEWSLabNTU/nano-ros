@@ -86,6 +86,11 @@ struct CBootView {
     run_components_fn: Option<&'static str>,
     run_tiers_fn: Option<&'static str>,
     tiers: bool,
+    /// Issue 1551 — the runner takes the tiers' executor storage from the
+    /// entry, which emits it as a file-scope static
+    /// (`CAbiRunners::tiers_take_static_storage`). Only ever true with
+    /// `tiers`.
+    tier_storage: bool,
     n_tiers: usize,
 }
 
@@ -317,6 +322,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                 run_components_fn: runners.run_components,
                 run_tiers_fn: runners.run_tiers,
                 tiers: tiers_view.is_some(),
+                tier_storage: tiers_view.is_some() && runners.tiers_take_static_storage(),
                 n_tiers: tiers_view.as_ref().map(|t| t.n).unwrap_or(0),
             }
         },

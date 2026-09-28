@@ -455,6 +455,11 @@ struct CppBootView {
     shape: &'static str,
     board_path: &'static str,
     tiers: bool,
+    /// Issue 1551 — the runner takes the tiers' executor storage from the
+    /// entry, which emits it as a file-scope static
+    /// (`CAbiRunners::tiers_take_static_storage`). Only ever true with
+    /// `tiers`.
+    tier_storage: bool,
     n_tiers: usize,
 }
 
@@ -733,6 +738,10 @@ pub fn emit_typed_with_tail_monitored(
                 shape: boot_shape_str(boot_shape(&plan.board)),
                 board_path: board_cpp_path(&plan.board),
                 tiers: use_run_tiers,
+                tier_storage: use_run_tiers
+                    && family(&plan.board)
+                        .c_abi_runners()
+                        .is_some_and(|r| r.tiers_take_static_storage()),
                 n_tiers: plan
                     .resolved_tiers
                     .as_ref()
