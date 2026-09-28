@@ -369,3 +369,53 @@ fn an_authored_tier_table_is_not_replaced_by_the_derivation() {
         "the authored priority is honoured verbatim: {prio:?}"
     );
 }
+
+/// Issue 1537 follow-up - the RUST shape of a derived image: no cmake metadata
+/// at all, the groups stated only through `[[component]] group_tiers` (the
+/// model's `execution.bindings`, the one group input `nros::main!` reads), and
+/// still no `[tiers.*]`.
+///
+/// Before the fix the entry derived NOTHING here - `derive_entry_tiers` keyed
+/// on cmake groups alone - so resolution failed on the bindings' tier names,
+/// `schedule_board_features` withheld `tiers`, and a generated Rust Zephyr
+/// entry whose macro DID derive a table could not compile
+/// (`no associated function run_tiers`). Measured on
+/// `realtime-rust/src/derived_bringup`'s image.
+#[test]
+fn a_group_tiers_only_image_derives_like_the_macro_does() {
+    let fixture = Fixture::copy("group-tiers");
+    let bringup = fixture.bringup();
+    let system = bringup.join("system.toml");
+    let mut raw = fs::read_to_string(&system).expect("read system.toml");
+    for name in FAST.iter().chain(SLOW.iter()) {
+        raw = raw.replace(
+            &format!("name = \"{name}\""),
+            &format!("name = \"{name}\"\ngroup_tiers = {{ main = \"bound\" }}"),
+        );
+    }
+    fs::write(&system, raw).expect("bind each component's group");
+
+    let model = resolve_model_with(&bringup, true);
+    let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan from the model");
+    assert!(
+        plan.tiers.is_empty(),
+        "nothing is authored, so nothing reaches the plan's tier table"
+    );
+    // No `enrich_plan`: a Rust image has no cmake metadata to enrich from.
+    resolve_plan_sched(&mut plan, BOARD).expect("resolve (and derive)");
+
+    assert!(
+        plan.is_multi_tier(),
+        "a group_tiers-only image derives a multi-tier table: {:?}",
+        plan.resolved_tiers
+    );
+    let prio = priorities(&plan);
+    for fast in FAST {
+        for slow in SLOW {
+            assert!(
+                prio[fast] < prio[slow],
+                "30 Hz `{fast}` is more urgent than 10 Hz `{slow}`: {prio:?}"
+            );
+        }
+    }
+}
