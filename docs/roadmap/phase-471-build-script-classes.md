@@ -250,7 +250,40 @@ covers the FreeRTOS coordinates. Extend `check-board-build-wiring` afterwards:
 it currently asks whether a C-compiling board *reaches* `nros-board-common`,
 which every one of these already did while carrying the whole recipe.
 
-### W3 — a gate for the build-script half of issue 1280
+### W3 — a gate for the build-script half of issue 1280 (LANDED)
+
+**`check-build-script-path-resolution`**, on the fast line, reached by a
+merge-gating event. It reports 6 build scripts naming a path-valued SDK
+variable, all routed, over the 21 variables read from `just/sdk-env.just`.
+
+**It ENFORCES the census's number rather than computing a rival one.** The gate
+imports `scripts/nros-build-wiring.py` and fails on its `unprotected` rows, so
+"what counts as a path variable" has one answer that moves both halves of 1280
+at once. Re-deriving would have been the defect one level up: issue 1280's own
+census was an authored 19-name copy and was already short by five when written.
+
+**It also widens the private-helper rule the census states.** The census finds
+those bodies by NAME (`^fn env_path\w*`), which is narrower than the rule this
+phase wrote down — *the rule is about the helper's BODY* — so a helper called
+`sdk_dir()` was invisible to it. The gate asks the body: any local fn with a
+`&str` parameter that does `env::var` of that parameter and never reaches
+`nros_build_paths`. Both measured hazards are self-tested, and the self-test
+runs on the NORMAL path, not only under `--self-test`.
+
+Negative controls, run live against a real board crate and reverted:
+
+* reverting one site to a raw `env::var` — `rc=1`, naming the variable;
+* replacing it with a **differently-named** private helper — `rc=1`, naming the
+  helper. This is the arm the census's name rule would have passed over, which
+  is why it is the control worth having rather than a second copy of the first.
+
+Exemptions are `// nros-build-paths-exempt: <reason>`, with a reason, as
+phase-468's are. Nothing in the tree needs one today — which is the W6 question,
+below, not an absence of cases.
+
+<details>
+<summary>The original work item, for what it asked</summary>
+
 
 `check-inherited-checkout-paths` contains zero references to `build.rs`,
 `nros_build_paths` or `env::var`: its reach is narrower than the rule it
@@ -270,6 +303,8 @@ phase:
 
 Exemptions at the site (`// nros-build-paths-exempt: <reason>`), like
 phase-468's, with a reason read by whoever changes the thing it excuses.
+
+</details>
 
 ### W4 — one `linker-script` helper
 
