@@ -177,7 +177,16 @@ run_one() {
     if [ "$brc" -ne 0 ]; then
         echo "  $tmpl: FAIL — the copy does not build" >&2
         if [ -s "$log" ]; then
-            sed -n '1,12p' "$log" | sed 's/^/      /' >&2
+            # The TAIL, not the head. This printed `sed -n '1,12p'` until
+            # issue 1453's 2026-09-28 section: the first lines of a copy's build
+            # are `nros sync`'s progress (`sync: codegen std_msgs`, `sync:
+            # resolved …`), so the twelve lines shown were always preamble and
+            # the error — which cargo, cmake and the CLI's own refusals all put
+            # LAST — was never among them. Two CI runs reported this template as
+            # failing with no visible reason, and the reason was in the log the
+            # whole time, below the cut.
+            echo "      last 40 line(s) of the copy's build log:" >&2
+            tail -n 40 "$log" | sed 's/^/      /' >&2
             echo "      full log: $log" >&2
         fi
         return 1

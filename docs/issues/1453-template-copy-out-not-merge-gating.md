@@ -212,14 +212,69 @@ pressure of issue 1353 in the same job.
 died on archived issue 1429's `NROS_DECLARED_TL_PUBLISHERS=""` carrier and now
 pass. `multi-package-workspace` is a new red with a different shape.
 
-**What is NOT yet known**: the underlying build error. The gate prints only a
-short tail of the copy's build, and in both runs that tail ends mid-line at
-`sync: wrote [patch.crates-io] → …/multi-package-workspace/src/pkg_rust_p`,
-truncated by the log writer rather than by the build. So "the copy does not
-build" is all either run states. Reproducing it needs
-`just check template-copy-out` locally, or the gate widened to print the copy's
-build log on failure — the second is the cheaper fix and makes the next
-occurrence self-describing.
+**The cause, reproduced locally.** The sentence that stood here said the log was
+"truncated by the log writer rather than by the build" and that the cause was
+unknown. The truncation was neither — it was **this gate**, on purpose:
+
+```sh
+sed -n '1,12p' "$log" | sed 's/^/      /' >&2
+```
+
+The first twelve lines of a copy's build are `nros sync`'s progress, so the
+twelve shown were always preamble and the error — which cargo, cmake and the
+CLI's own refusals all put LAST — was never among them. Both CI runs carried
+their reason below the cut. This commit prints the last 40 lines instead.
+
+With the tail visible, `multi-package-workspace` fails at dependency resolution:
+
+```
+Error: 2 <depend> name(s) resolve to nothing:
+  cmake — declared by …/src/pkg_c_talker/package.xml, …
+  nros  — declared by …/src/pkg_c_talker/package.xml, …
+```
+
+and the mechanism is the copy-out itself. `[prereq.nros]` **does** exist in
+`nros-sdk-index.toml` with `role = "package"`, which the refusal's own rule says
+is sufficient, and `[prereq.cmake]` exists with `role = "buildtool"`. Neither is
+found because the index is discovered by **walking ancestors** of the workspace
+(`store::lock_path_for` over `PIN_FILE_NAMES`), and the copy is
+`/tmp/nros-template-copy-out.*/copy/examples/templates/<tmpl>` — no ancestor of
+it holds an `nros-sdk-index.toml`. Verified: the copy's root contains `examples`
+and nothing else.
+
+`store.rs` names this blind spot twice in its own doc comments — *"in-tree every
+ancestor of a test's cwd is this checkout, which HAS an `nros-sdk-index.toml`, so
+a cwd-keyed derivation could never observe the fallback here."* Copying out is
+the one place in the tree where that stops being true, which is exactly what this
+gate exists for.
+
+Why the other five templates pass: they declare only `std_msgs` (plus
+`ament_cmake`/`rclcpp`/msg packages in `local-msg-package`), all of which resolve
+as message packages `nros sync` generates or from the ambient ROS install.
+`multi-package-workspace` is the only template that exercises prereq resolution
+at all.
+
+**Two defensible fixes, and this commit chooses neither.** Either the template
+should not declare `nros`/`cmake` — the five that work declare neither, including
+`c-and-cpp-mixed-workspace`, which also builds C and C++ — or an `nros` invoked
+outside any checkout should carry its own index, in which case `[prereq.nros]`
+having `role = "package"` is the intent and the discovery walk is too narrow. A
+real user copying the template out has no index above it either way, so the gate
+is reporting a genuine user-facing breakage rather than an artefact of being
+copied. Deciding between them is a design call for whoever owns RFC-0098 D3's
+`<depend>` contract.
+
+**A precondition here reads as a template defect, three times over.** Getting to
+that error took three local runs, each stopped by a different missing tool and
+each reported identically as `multi-package-workspace: FAIL — the copy does not
+build`: no `nros-launch-resolve` beside the CLI; then a stale in-tree CLI,
+because initialising the `play_launch` submodule moved a pin that is a CLI build
+input (issue 0409/1018). The gate already special-cases a missing `nros` with a
+named remedy and a comment saying why that distinction matters — *"the first
+spelling reported 'the copy does not build' … which blames the template for a
+missing tool"* — and the same class reaches it through two more doors. The tail
+now makes each self-describing, which is the cheap half; a precondition arm for
+the resolver would be the thorough half and is not in this commit.
 
 **What this is NOT**: not issue 1353. Both runs also end with the disk at 100 %,
 and that is what misled the first reading (retracted in 1353's own text): tier 1
