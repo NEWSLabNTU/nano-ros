@@ -14,17 +14,21 @@
 // and `nros_cpp_param_callback_t` are part of that always-present signature
 // vocabulary, and a type the entry points name cannot be gated more narrowly
 // than they are.
+// issue 1529 -- the STORE entry points gate on `param-store`, not on
+// `param-services`: a C++ image carries the store whether or not its bringup
+// serves it, and only `nros_cpp_register_parameter_services` needs the
+// services. `param-services` implies `param-store` (Cargo.toml).
 use core::ffi::{c_char, c_void};
 
 use crate::nros_cpp_ret_t;
 
-#[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+#[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
 use crate::NROS_CPP_RET_UNSUPPORTED;
 
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 use nros_node::ParameterValue;
 
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 use crate::{
     NROS_CPP_RET_ALREADY_EXISTS, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL,
     NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_NOT_ALLOWED, NROS_CPP_RET_NOT_FOUND,
@@ -73,7 +77,7 @@ pub unsafe extern "C" fn nros_cpp_register_parameter_services(
 /// # Safety
 /// `executor` must be a valid, live `CppContext*`. `name` and `value` must be
 /// valid null-terminated UTF-8 strings.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_declare_param(
     executor: *mut c_void,
@@ -127,7 +131,7 @@ pub unsafe extern "C" fn nros_cpp_declare_param(
 /// # Safety
 /// `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
 /// UTF-8. `out_value` must be valid and writable.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_get_param_integer(
     executor: *mut c_void,
@@ -162,7 +166,7 @@ pub unsafe extern "C" fn nros_cpp_get_param_integer(
 /// # Safety
 /// `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
 /// UTF-8. `out_value` must be valid and writable.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_get_param_double(
     executor: *mut c_void,
@@ -204,7 +208,7 @@ pub unsafe extern "C" fn nros_cpp_get_param_double(
 /// # Safety
 /// `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
 /// UTF-8. `out_value` must be valid and writable.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_get_param_bool(
     executor: *mut c_void,
@@ -243,7 +247,7 @@ pub unsafe extern "C" fn nros_cpp_get_param_bool(
 /// # Safety
 /// `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
 /// UTF-8. `out_buf` must be valid for `buf_len` bytes.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_get_param_string(
     executor: *mut c_void,
@@ -323,6 +327,13 @@ pub unsafe extern "C" fn nros_cpp_get_param_string(
 // `NROS_CPP_RET_UNSUPPORTED` when the store was not compiled in — a code the
 // facades surface (`ComponentNode` makes it boot-fatal through `set_error`),
 // never a silent default.
+//
+// issue 1529 -- "not compiled in" now means "no `param-store`", which is a
+// narrower set than "no `param_services` declared": the Zephyr module builds
+// every C++ image with the store, so a bringup with `features = []` declares
+// and reads its parameters (and applies its launch seeds) against the same
+// store, with no queryable and no `ros2 param`. The UNSUPPORTED arm stays for
+// a build that names neither feature.
 
 /// Resolve a C++ node handle to its executor context and its executor `NodeId`.
 ///
@@ -330,7 +341,7 @@ pub unsafe extern "C" fn nros_cpp_get_param_string(
 /// (the issue 0436 tag check), or a handle carrying no registered node — a
 /// zero-initialised `rclcpp::Node` that was never opened. Guessing
 /// `NodeId::PRIMARY` for the last case would write another node's parameters.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 unsafe fn node_param_target<'a>(
     node: *const crate::nros_cpp_node_t,
 ) -> Option<(&'a mut crate::CppContext, nros_node::executor::NodeId)> {
@@ -352,7 +363,7 @@ unsafe fn node_param_target<'a>(
 /// both "taken" and "full" (`rust:ParameterServer::declare` has the gap
 /// ledgered) — so the distinction is made here, once, instead of in each
 /// facade.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 fn declare_on_node(
     ctx: &mut crate::CppContext,
     id: nros_node::executor::NodeId,
@@ -377,7 +388,7 @@ fn declare_on_node(
 /// that parameter" from "that parameter does not exist".
 ///
 /// [`ParameterServer::apply`]: nros_node::ParameterServer::apply
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 fn set_result_to_ret(result: nros_node::SetParameterResult) -> nros_cpp_ret_t {
     use nros_node::SetParameterResult as R;
     match result {
@@ -401,7 +412,7 @@ fn set_result_to_ret(result: nros_node::SetParameterResult) -> nros_cpp_ret_t {
 /// macros (the same reason `nros-c`'s `paste!`-generated array FFI has to be
 /// re-declared by hand in `parameter.hpp`). So the signature stays literal and
 /// only the PROLOGUE is shared.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 macro_rules! node_param_prologue {
     ($node:expr, $name:expr) => {{
         let Some((ctx, id)) = (unsafe { node_param_target($node) }) else {
@@ -425,7 +436,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool(
     name: *const c_char,
     value: bool,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         // phase-463 W1 -- the census hook. Unconditional call, `#[cfg]` body:
@@ -435,7 +446,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool(
         crate::metadata_hooks::on_param_declare(name, &ParameterValue::from_bool(value));
         declare_on_node(ctx, id, name, ParameterValue::from_bool(value))
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, value);
         NROS_CPP_RET_UNSUPPORTED
@@ -453,7 +464,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer(
     name: *const c_char,
     value: i64,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         // phase-463 W1 -- the census hook. Unconditional call, `#[cfg]` body:
@@ -463,7 +474,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer(
         crate::metadata_hooks::on_param_declare(name, &ParameterValue::from_integer(value));
         declare_on_node(ctx, id, name, ParameterValue::from_integer(value))
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, value);
         NROS_CPP_RET_UNSUPPORTED
@@ -481,7 +492,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double(
     name: *const c_char,
     value: f64,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         // phase-463 W1 -- the census hook. Unconditional call, `#[cfg]` body:
@@ -491,7 +502,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double(
         crate::metadata_hooks::on_param_declare(name, &ParameterValue::from_double(value));
         declare_on_node(ctx, id, name, ParameterValue::from_double(value))
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, value);
         NROS_CPP_RET_UNSUPPORTED
@@ -511,7 +522,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_string(
     name: *const c_char,
     value: *const c_char,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         let Some(value) = (unsafe { cstr_to_str(value) }) else {
@@ -524,7 +535,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_string(
         crate::metadata_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, value);
         NROS_CPP_RET_UNSUPPORTED
@@ -545,7 +556,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_bool(
     name: *const c_char,
     out_value: *mut bool,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         if out_value.is_null() {
             return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -563,7 +574,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_bool(
             None => NROS_CPP_RET_NOT_FOUND,
         }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, out_value);
         NROS_CPP_RET_UNSUPPORTED
@@ -581,7 +592,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_integer(
     name: *const c_char,
     out_value: *mut i64,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         if out_value.is_null() {
             return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -599,7 +610,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_integer(
             None => NROS_CPP_RET_NOT_FOUND,
         }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, out_value);
         NROS_CPP_RET_UNSUPPORTED
@@ -617,7 +628,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_double(
     name: *const c_char,
     out_value: *mut f64,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         if out_value.is_null() {
             return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -635,7 +646,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_double(
             None => NROS_CPP_RET_NOT_FOUND,
         }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, out_value);
         NROS_CPP_RET_UNSUPPORTED
@@ -658,7 +669,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_string(
     out_buf: *mut c_char,
     buf_len: usize,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         if out_buf.is_null() || buf_len == 0 {
             return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -683,7 +694,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_string(
             NROS_CPP_RET_OK
         }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, out_buf, buf_len);
         NROS_CPP_RET_UNSUPPORTED
@@ -705,7 +716,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_bool(
     name: *const c_char,
     value: bool,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         set_result_to_ret(
@@ -713,7 +724,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_bool(
                 .set_parameter_on(id, name, ParameterValue::from_bool(value)),
         )
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, value);
         NROS_CPP_RET_UNSUPPORTED
@@ -731,7 +742,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_integer(
     name: *const c_char,
     value: i64,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         set_result_to_ret(ctx.executor.set_parameter_on(
@@ -740,7 +751,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_integer(
             ParameterValue::from_integer(value),
         ))
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, value);
         NROS_CPP_RET_UNSUPPORTED
@@ -758,7 +769,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_double(
     name: *const c_char,
     value: f64,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         set_result_to_ret(ctx.executor.set_parameter_on(
@@ -767,7 +778,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_double(
             ParameterValue::from_double(value),
         ))
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, value);
         NROS_CPP_RET_UNSUPPORTED
@@ -785,7 +796,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_string(
     name: *const c_char,
     value: *const c_char,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         let Some(value) = (unsafe { cstr_to_str(value) }) else {
@@ -796,7 +807,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_string(
         };
         set_result_to_ret(ctx.executor.set_parameter_on(id, name, pv))
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, value);
         NROS_CPP_RET_UNSUPPORTED
@@ -817,7 +828,7 @@ pub unsafe extern "C" fn nros_cpp_node_has_param(
     node: *const crate::nros_cpp_node_t,
     name: *const c_char,
 ) -> bool {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let Some((ctx, id)) = (unsafe { node_param_target(node) }) else {
             return false;
@@ -827,7 +838,7 @@ pub unsafe extern "C" fn nros_cpp_node_has_param(
         };
         ctx.executor.get_parameter_on(id, name).is_some()
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name);
         false
@@ -862,7 +873,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double_array(
     data: *const f64,
     len: usize,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
@@ -875,7 +886,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double_array(
         crate::metadata_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, data, len);
         NROS_CPP_RET_UNSUPPORTED
@@ -894,7 +905,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer_array(
     data: *const i64,
     len: usize,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
@@ -907,7 +918,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer_array(
         crate::metadata_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, data, len);
         NROS_CPP_RET_UNSUPPORTED
@@ -926,7 +937,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool_array(
     data: *const bool,
     len: usize,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
@@ -939,7 +950,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool_array(
         crate::metadata_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, data, len);
         NROS_CPP_RET_UNSUPPORTED
@@ -965,7 +976,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_double_array(
     capacity: usize,
     out_len: *mut usize,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         if out_len.is_null() {
             return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -980,7 +991,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_double_array(
         };
         unsafe { copy_array_out(src, out, capacity, out_len) }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, out, capacity, out_len);
         NROS_CPP_RET_UNSUPPORTED
@@ -1000,7 +1011,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_integer_array(
     capacity: usize,
     out_len: *mut usize,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         if out_len.is_null() {
             return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -1015,7 +1026,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_integer_array(
         };
         unsafe { copy_array_out(src, out, capacity, out_len) }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, out, capacity, out_len);
         NROS_CPP_RET_UNSUPPORTED
@@ -1035,7 +1046,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_bool_array(
     capacity: usize,
     out_len: *mut usize,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         if out_len.is_null() {
             return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -1050,7 +1061,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_bool_array(
         };
         unsafe { copy_array_out(src, out, capacity, out_len) }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, out, capacity, out_len);
         NROS_CPP_RET_UNSUPPORTED
@@ -1083,7 +1094,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_double_array(
     data: *const f64,
     len: usize,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
@@ -1094,7 +1105,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_double_array(
         };
         set_result_to_ret(ctx.executor.set_parameter_on(id, name, pv))
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, data, len);
         NROS_CPP_RET_UNSUPPORTED
@@ -1113,7 +1124,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_integer_array(
     data: *const i64,
     len: usize,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
@@ -1124,7 +1135,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_integer_array(
         };
         set_result_to_ret(ctx.executor.set_parameter_on(id, name, pv))
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, data, len);
         NROS_CPP_RET_UNSUPPORTED
@@ -1143,7 +1154,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_bool_array(
     data: *const bool,
     len: usize,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
@@ -1154,7 +1165,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_bool_array(
         };
         set_result_to_ret(ctx.executor.set_parameter_on(id, name, pv))
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, data, len);
         NROS_CPP_RET_UNSUPPORTED
@@ -1169,7 +1180,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_bool_array(
 ///
 /// # Safety
 /// `data` must be valid for `len` elements when `len != 0`.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 unsafe fn slice_or_empty<'a, T>(data: *const T, len: usize) -> Option<&'a [T]> {
     if len == 0 {
         return Some(&[]);
@@ -1185,7 +1196,7 @@ unsafe fn slice_or_empty<'a, T>(data: *const T, len: usize) -> Option<&'a [T]> {
 ///
 /// # Safety
 /// `out` must be valid for `capacity` elements; `out_len` must be writable.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 unsafe fn copy_array_out<T: Copy>(
     src: &[T],
     out: *mut T,
@@ -1210,7 +1221,7 @@ unsafe fn copy_array_out<T: Copy>(
 /// Rust `nros::main!` W4b inference in `nros/src/node_runtime.rs::infer_param_value`.
 ///
 /// Precedence: bool ("true"/"false") → integer → float → string (truncated if too long).
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 fn infer_param_value(raw: &str) -> ParameterValue {
     match raw {
         "true" | "True" | "TRUE" => return ParameterValue::from_bool(true),
@@ -1287,7 +1298,7 @@ pub type nros_cpp_param_callback_t = Option<
     unsafe extern "C" fn(write: *const nros_cpp_param_write_t, context: *mut c_void) -> bool,
 >;
 
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 fn param_type_code(t: nros_node::ParameterType) -> i32 {
     use nros_node::ParameterType as P;
     match t {
@@ -1308,7 +1319,7 @@ fn param_type_code(t: nros_node::ParameterType) -> i32 {
 ///
 /// Descriptor PROSE truncates where a string VALUE refuses: a prefix of a
 /// description is still usable, and `NROS_CPP_RET_FULL` says it is a prefix.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 unsafe fn str_out_truncating(src: &str, dst: *mut c_char, max_len: usize) -> nros_cpp_ret_t {
     if dst.is_null() || max_len == 0 {
         return NROS_CPP_RET_FULL;
@@ -1344,7 +1355,7 @@ pub unsafe extern "C" fn nros_cpp_node_add_param_description(
     description: *const c_char,
     additional_constraints: *const c_char,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         let d = if description.is_null() {
@@ -1366,7 +1377,7 @@ pub unsafe extern "C" fn nros_cpp_node_add_param_description(
             NROS_CPP_RET_NOT_FOUND
         }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, description, additional_constraints);
         NROS_CPP_RET_UNSUPPORTED
@@ -1384,7 +1395,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_read_only(
     name: *const c_char,
     read_only: bool,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         if ctx.executor.set_parameter_read_only_on(id, name, read_only) {
@@ -1393,7 +1404,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_read_only(
             NROS_CPP_RET_NOT_FOUND
         }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, read_only);
         NROS_CPP_RET_UNSUPPORTED
@@ -1415,7 +1426,7 @@ pub unsafe extern "C" fn nros_cpp_node_add_param_constraint_integer(
     to_value: i64,
     step: i64,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         if ctx
@@ -1427,7 +1438,7 @@ pub unsafe extern "C" fn nros_cpp_node_add_param_constraint_integer(
             NROS_CPP_RET_INVALID_ARGUMENT
         }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, from_value, to_value, step);
         NROS_CPP_RET_UNSUPPORTED
@@ -1448,7 +1459,7 @@ pub unsafe extern "C" fn nros_cpp_node_add_param_constraint_double(
     to_value: f64,
     step: f64,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         if ctx
@@ -1460,7 +1471,7 @@ pub unsafe extern "C" fn nros_cpp_node_add_param_constraint_double(
             NROS_CPP_RET_INVALID_ARGUMENT
         }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, from_value, to_value, step);
         NROS_CPP_RET_UNSUPPORTED
@@ -1477,7 +1488,7 @@ pub unsafe extern "C" fn nros_cpp_node_undeclare_param(
     node: *const crate::nros_cpp_node_t,
     name: *const c_char,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         if ctx.executor.undeclare_parameter_on(id, name) {
@@ -1486,7 +1497,7 @@ pub unsafe extern "C" fn nros_cpp_node_undeclare_param(
             NROS_CPP_RET_NOT_FOUND
         }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name);
         NROS_CPP_RET_UNSUPPORTED
@@ -1504,7 +1515,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_type(
     name: *const c_char,
     out_type: *mut i32,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         if out_type.is_null() {
@@ -1518,7 +1529,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_type(
             None => NROS_CPP_RET_NOT_FOUND,
         }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, out_type);
         NROS_CPP_RET_UNSUPPORTED
@@ -1547,7 +1558,7 @@ pub unsafe extern "C" fn nros_cpp_node_describe_param(
     out_read_only: *mut bool,
     out_type: *mut i32,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         let Some(stored_type) = ctx.executor.get_parameter_type_on(id, name) else {
@@ -1588,7 +1599,7 @@ pub unsafe extern "C" fn nros_cpp_node_describe_param(
         }
         ret
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (
             node,
@@ -1620,7 +1631,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_integer_range(
     out_to: *mut i64,
     out_step: *mut i64,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         let Some(nros_node::ParameterRange::Integer(r)) = ctx
@@ -1643,7 +1654,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_integer_range(
         }
         NROS_CPP_RET_OK
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, out_from, out_to, out_step);
         NROS_CPP_RET_UNSUPPORTED
@@ -1663,7 +1674,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_double_range(
     out_to: *mut f64,
     out_step: *mut f64,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
         let Some(nros_node::ParameterRange::FloatingPoint(r)) = ctx
@@ -1686,7 +1697,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_param_double_range(
         }
         NROS_CPP_RET_OK
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, name, out_from, out_to, out_step);
         NROS_CPP_RET_UNSUPPORTED
@@ -1713,7 +1724,7 @@ pub unsafe extern "C" fn nros_cpp_node_list_params(
     max_names: usize,
     out_count: *mut usize,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let Some((ctx, id)) = (unsafe { node_param_target(node) }) else {
             return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -1748,7 +1759,7 @@ pub unsafe extern "C" fn nros_cpp_node_list_params(
         }
         ret
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, prefix, out_names, name_stride, max_names, out_count);
         NROS_CPP_RET_UNSUPPORTED
@@ -1758,7 +1769,7 @@ pub unsafe extern "C" fn nros_cpp_node_list_params(
 /// The Rust-side hook the store calls, which unpacks `OnSetContext` back into
 /// the C++ function pointer and the user's `void*` and builds the
 /// [`nros_cpp_param_write_t`] on the STACK for the synchronous call.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 fn cpp_on_set_trampoline(
     _node: nros_node::ParameterNodeKey,
     name: &str,
@@ -1816,7 +1827,7 @@ fn cpp_on_set_trampoline(
 /// value reaches the hook TRUNCATED; the hook is an accept/reject vote on a
 /// VALUE the store has already type- and range-checked, and the untruncated
 /// value is one `get_parameter` away.
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 const NROS_CPP_PARAM_TEXT_BUF: usize = 256;
 
 /// Register an accept/reject hook for writes to this node — rclcpp's
@@ -1840,7 +1851,7 @@ pub unsafe extern "C" fn nros_cpp_node_add_on_set_params_callback(
     context: *mut c_void,
     out_handle: *mut u16,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let Some((ctx, id)) = (unsafe { node_param_target(node) }) else {
             return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -1862,7 +1873,7 @@ pub unsafe extern "C" fn nros_cpp_node_add_on_set_params_callback(
             None => NROS_CPP_RET_FULL,
         }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, callback, context, out_handle);
         NROS_CPP_RET_UNSUPPORTED
@@ -1878,7 +1889,7 @@ pub unsafe extern "C" fn nros_cpp_node_remove_on_set_params_callback(
     node: *const crate::nros_cpp_node_t,
     handle: u16,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let Some((ctx, _id)) = (unsafe { node_param_target(node) }) else {
             return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -1892,7 +1903,7 @@ pub unsafe extern "C" fn nros_cpp_node_remove_on_set_params_callback(
             NROS_CPP_RET_NOT_FOUND
         }
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, handle);
         NROS_CPP_RET_UNSUPPORTED
@@ -1919,7 +1930,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_params_atomically(
     writes: *const nros_cpp_param_write_t,
     count: usize,
 ) -> nros_cpp_ret_t {
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let Some((ctx, id)) = (unsafe { node_param_target(node) }) else {
             return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -1958,7 +1969,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_params_atomically(
         );
         set_result_to_ret(verdict)
     }
-    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
         let _ = (node, writes, count);
         NROS_CPP_RET_UNSUPPORTED
@@ -1966,7 +1977,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_params_atomically(
 }
 
 #[cfg(test)]
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 mod tests {
     use core::ptr;
 
@@ -1978,7 +1989,7 @@ mod tests {
     /// of them is `binary operation == cannot be applied`.
     ///
     /// They went unnoticed because no lane builds them: the whole module is
-    /// behind `param-services + rmw-cffi`, and `just test-unit` runs
+    /// behind `param-store + rmw-cffi`, and `just test-unit` runs
     /// `cargo nextest --workspace` with NO features, so `nros-cpp`'s lib test
     /// target is compiled with the cfg OFF. A test nothing compiles is the
     /// `check-no-vacuous-tests` class one level down — it reads as coverage and

@@ -116,7 +116,27 @@ trace-callbacks = ["nros/trace-callbacks", "nros-c/trace-callbacks"]
 # (nros_executor_register_parameter_services, nros_executor_lifecycle_*, …); a C++
 # binary that uses them needs the umbrella built with these features so those symbols
 # are compiled into libnros_cpp.a. Forward to nros-c (which pulls nros/nros-node).
-param-services = ["rmw-cffi", "nros-c/param-services"]
+#
+# The parameter STORE is split from the six SERVICES here, in the API crate
+# only (issue 1529). `param-store` compiles the store entry points in
+# `params_shim.rs` (launch seeds through `nros_cpp_declare_param`, the
+# node-scoped declare/get/set the C++ facades call) and nothing that registers
+# a server; `param-services` adds `nros_cpp_register_parameter_services`, which
+# the entry calls only for a bringup that declares `param_services`. Both
+# forward to `nros-c/param-services`, because nros-node has not split the two
+# yet: the store and the service code sit in one module there, and the six
+# servers go up only when an entry REQUESTS them. phase-461 W6 splits nros-node
+# and adds the `params` axis; until then this is the store without the server,
+# at the cost of the dormant service code in flash.
+#
+# `nros/param-services` is spelled although `nros-c/param-services` already
+# turns it on: the sizes probe forwards what THIS table names on `nros`
+# (issue 0665), not what a dependency's table implies, and without it the
+# probe sized the executor without the store while the linked nros-c had it
+# (`EXECUTOR_OPAQUE_U64S` 11308 against 11313, measured). `param-services`
+# was forwarded by name, which `param-store` cannot be.
+param-store = ["rmw-cffi", "nros/param-services", "nros-c/param-services"]
+param-services = ["param-store"]
 lifecycle-services = ["rmw-cffi", "nros-c/lifecycle-services"]
 
 # Zenoh transport refinements (require rmw-zenoh-cffi)

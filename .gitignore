@@ -95,6 +95,8 @@ tools/*
 # its own target dir, because two shapes resolve two different executor layouts
 # and a shared sizes-header mirror can only hold one of them.
 /target-param-services/
+# Issue 1529 -- the third shape: nros-cpp with the parameter store alone.
+/target-param-store/
 
 # Issue 1472 — `just check test-targets` runs the tests of workspace-excluded
 # crates in its own target dir. Issue 1491: this line was the one scoped dir
