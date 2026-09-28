@@ -682,37 +682,54 @@ clothes, which is precisely what this decision refuses to let `buffer:` itself
 be. The contract does carry `paths.<p>.max_jitter` and `paths.<p>.miss`; when
 those travel, a jitter-aware margin can be DERIVED and the constant retired.
 
-### MEASURED: two of the three inputs do not reach the build (issue 1339)
+### MEASURED: all three inputs reach the build (issue 1339, CLOSED)
 
 phase-454 W8 implemented this and measured what a contract actually delivers,
 resolving `packages/cli/nros-cli-core/tests/fixtures/queue_buffer/` through the
 pinned `nros-launch-resolve`. The retraction above was about what `buffer:`
-MEANS; this is about where it GOES, and it is the more immediate constraint:
+MEANS; this is about where it GOES, and for two waves it was the more immediate
+constraint:
 
 | fact | contract key | in the SystemModel? |
 | --- | --- | --- |
 | publish rate | `topics.<t>.rate_hz` | yes — `TopicContract::rate_hz` |
 | publish rate | `<n>.pub.<ep>.min_rate_hz` | yes — `PubContract::min_rate_hz` |
-| drain rate | `<n>.paths.<p>.trigger.timer.rate_hz` | **no** — `PathContract` has no trigger |
-| discipline | `<n>.sub.<ep>.buffer` | **no** — `SubContract` has no `buffer` |
+| drain rate | `<n>.paths.<p>.trigger.timer.rate_hz` | yes — `PathContract::trigger`, since rlm v0.1.37 |
+| discipline | `<n>.sub.<ep>.buffer` | yes — `SubContract::buffer`, since rlm v0.1.37 |
 
-Both gaps are the MODEL SCHEMA's, not nano-ros's. The resolver parses both,
-validates `buffer` (outside `state: true` it is a parse-time error), and
-performs this decision's own division to emit a `[queue-drain-rate]` warning —
-then writes a `sub_endpoints` entry with no discipline and a `node_paths` entry
-carrying `output` alone. So the derivation ships ARMED and inert: no contract in
-this tree can produce a `queue` endpoint, and therefore no image's sizing moves.
+The two lower rows were **no** when W8 landed, and both gaps were the MODEL
+SCHEMA's rather than nano-ros's: the resolver parsed both, validated `buffer`
+(outside `state: true` it is a parse-time error), and performed this decision's
+own division to emit a `[queue-drain-rate]` warning — then wrote a
+`sub_endpoints` entry with no discipline and a `node_paths` entry carrying
+`output` alone. So the derivation shipped ARMED and inert. rlm v0.1.37 (design
+issue #52) added `SubContract::buffer` and `PathContract::trigger`, the resolver
+lowers both, and issue 1339's consumer half reads them: a contract stating all
+three now derives a depth end to end
+(`contract_queue_buffer_reaches_the_model.rs`).
 
-Two consequences this RFC should be read with. First, the drain rate nano-ros
-can see is a SUBSTITUTE — the `min_rate_hz` of what a node's timer paths
-publish, the convention `mapper_input::pub_rate_hz` already uses — absent for a
-drain timer that publishes nothing, and the resolver's own `[derivable-min-rate]`
-advice is to delete it. Second, a derived depth is not interchangeable with a
-stated one: `DeclaredDepth` carries a `DepthSource`, the arena reads both and the
-compile-time `NROS_ASSERT_DECLARED_DEPTH` table reads only `Stated`. A default
-that became a `static_assert` would oblige every call site to spell this CLI's
-arithmetic, and moving the margin by one slot would break every image at once —
-the ladder inverted.
+Three consequences this RFC should be read with.
+
+First, **the drain rate is the AUTHORED one now, not a substitute.** It used to
+be the `min_rate_hz` of what a node's timer paths publish — the convention
+`mapper_input::pub_rate_hz` used — which is absent for a drain timer that
+publishes nothing, and which the resolver's own `[derivable-min-rate]` advice is
+to delete. That reader is retired: a path with no `trigger` is `Unclassified`,
+yields no drain rate, and reports `NoDefault::NoDrainRate` rather than a depth
+derived from a number nobody stated.
+
+Second, **the inertness is now a property of the CONTRACTS, not of the schema.**
+No image in this tree writes `buffer:`, so no image's sizing moves — but that is
+a measurement to re-run (`no_shipping_contract_derives_a_depth`) rather than
+something the model boundary guarantees. The first contract that states
+`buffer: queue` will change bytes, deliberately.
+
+Third, a derived depth is not interchangeable with a stated one: `DeclaredDepth`
+carries a `DepthSource`, the arena reads both and the compile-time
+`NROS_ASSERT_DECLARED_DEPTH` table reads only `Stated`. A default that became a
+`static_assert` would oblige every call site to spell this CLI's arithmetic, and
+moving the margin by one slot would break every image at once — the ladder
+inverted.
 
 ## D10 — single-source the ROS QoS defaults first
 

@@ -436,10 +436,11 @@ pub struct EntityDecl {
     /// phase-454 W8 -- how fast the consuming timer drains it.
     ///
     /// The denominator. Authored as `paths.<p>.trigger: { timer: { rate_hz } }`
-    /// and NOT carried by the SystemModel (issue 1339); what reaches this
-    /// reader today is the `min_rate_hz` of what the node's timer paths
-    /// publish, which is the model's own convention for a periodic path's rate
-    /// (`nros_orchestration_ir::mapper_input::pub_rate_hz`).
+    /// and read from exactly there -- `contracts.node_paths.<p>.trigger`, which
+    /// the SystemModel has carried since rlm v0.1.37 (issue 1339). A model
+    /// older than that carries no trigger, so this is `None` and the endpoint
+    /// gets [`crate::queue_depth::NoDefault::NoDrainRate`] rather than a depth
+    /// derived from a rate nobody stated.
     pub drain_rate: Option<RateMilliHz>,
     /// phase-454 W12 -- the topic / service name AS THE SOURCE WRITES IT.
     ///
@@ -2038,6 +2039,21 @@ impl EntityInventory {
                 .get(ep)
                 .and_then(|c| c.qos.as_ref())
         };
+        // phase-454 W8 / issue 1339 -- the `buffer:` discipline of a
+        // `state: true` subscription. ONE translation from the model's
+        // vocabulary into this crate's, beside the QoS ones, so the mapping
+        // has a single spelling.
+        let sub_buffer_of = |ep: &str| -> Option<BufferDiscipline> {
+            model
+                .contracts
+                .sub_endpoints
+                .get(ep)
+                .and_then(|c| c.buffer)
+                .map(|b| match b {
+                    ros_launch_manifest_model::BufferContract::Latest => BufferDiscipline::Latest,
+                    ros_launch_manifest_model::BufferContract::Queue => BufferDiscipline::Queue,
+                })
+        };
         fn policies(
             q: Option<&ros_launch_manifest_model::Qos>,
         ) -> (
@@ -2066,11 +2082,13 @@ impl EntityInventory {
         // channel rate: over-stating the arrival rate over-sizes the queue,
         // and under-stating it is the direction that ships a backlog.
         //
-        // DRAIN rate: see `drain_rate_of` below. The model does not carry a
-        // path's trigger (issue 1339), so this is a derivation from what the
-        // node's timer paths PUBLISH, which is the same convention
-        // `nros_orchestration_ir::mapper_input::pub_rate_hz` already uses to
-        // give a periodic path its fire rate.
+        // DRAIN rate: the timer path's OWN rate, read from
+        // `contracts.node_paths.<p>.trigger` (issue 1339, closed). Until rlm
+        // v0.1.37 the model had no field for it and this reader recovered a
+        // substitute from the `min_rate_hz` of whatever the path publishes --
+        // which rlm's own doc calls guessing, because it is absent for a timer
+        // that publishes nothing and the resolver advises deleting the very
+        // promise it reads.
         let min_rate_of = |ep: &str| -> Option<f64> {
             model
                 .contracts
@@ -2096,16 +2114,24 @@ impl EntityInventory {
                     .filter_map(RateMilliHz::from_hz)
                     .max()
             };
-        // A node's DRAIN rate: the rate of the timer paths it runs.
+        // A node's DRAIN rate: the rate of the TIMER paths it runs, as the
+        // author wrote it.
         //
-        // A `node_paths` entry with an EMPTY `input` IS the periodic callback
-        // -- the model's own definition, and the same test `from_model` already
-        // uses to count a timer entity. Its RATE is not carried, so it is taken
-        // from what the path publishes, exactly as `mapper_input` takes it.
+        // `PathContract::trigger` is the checker's own `effective_trigger()`
+        // (an explicit `trigger:` wins, a legacy non-empty `input:` derives
+        // `Input`, anything else is `Unclassified`), so a `Timer` here is a
+        // timer and nothing else is treated as one. `None` on the wire is a
+        // model written before rlm v0.1.37; it reads as `Unclassified` and
+        // yields NO drain rate, which is the direction that says
+        // `NoDefault::NoDrainRate` loudly rather than deriving a depth from a
+        // number nobody stated. That is the whole of issue 1339's consumer
+        // half: the old reader took the `min_rate_hz` of what the path
+        // PUBLISHES, which is absent for a drain timer that publishes nothing
+        // and is the promise the resolver itself advises deleting.
         //
         // `min` over a node's timer paths, and the direction is the opposite of
-        // the one above for the same reason: the SLOWEST drain is the one that
-        // lets the most backlog accumulate, so it is the conservative
+        // the publish rate above for the same reason: the SLOWEST drain is the
+        // one that lets the most backlog accumulate, so it is the conservative
         // denominator. A node with one timer -- which is the shape the contract
         // describes when it says "drained batch-wise by the consuming timer" --
         // has one answer either way.
@@ -2117,16 +2143,12 @@ impl EntityInventory {
         let mut drain_rate_by_node: std::collections::BTreeMap<String, RateMilliHz> =
             std::collections::BTreeMap::new();
         for (path_key, path) in &model.contracts.node_paths {
-            if !path.input.is_empty() {
-                continue;
-            }
-            let Some(rate) = path
-                .output
-                .iter()
-                .filter_map(|ep| min_rate_of(ep))
-                .filter_map(RateMilliHz::from_hz)
-                .min()
+            let Some(ros_launch_manifest_sched::EffectiveTrigger::Timer { rate_hz }) =
+                path.trigger.as_ref()
             else {
+                continue;
+            };
+            let Some(rate) = RateMilliHz::from_hz(*rate_hz) else {
                 continue;
             };
             drain_rate_by_node
@@ -2144,24 +2166,17 @@ impl EntityInventory {
                     reliability,
                     durability,
                     history,
-                    // phase-454 W8 -- `buffer:` is NOT read here, because there
-                    // is nothing to read. `SubContract` in the pinned
-                    // `ros-launch-manifest` (v0.1.35) has no `buffer` field:
-                    // the contract states it, the parser validates it, the
-                    // resolver REASONS about it -- it emits a
-                    // `[queue-drain-rate]` warning comparing exactly the two
-                    // rates above -- and then writes a `sub_endpoints` entry
-                    // without it. Issue 1339; the tripwire that goes red the
-                    // day it lands is
-                    // `tests/contract_queue_buffer_reaches_the_model.rs`.
+                    // phase-454 W8 / issue 1339 -- the discipline the author
+                    // wrote, from `contracts.sub_endpoints.<ep>.buffer`.
                     //
-                    // Left explicitly `None` and NOT defaulted to `Latest`
-                    // even though `latest` is the schema's default for an
-                    // absent key: "the author wrote latest" and "this reader
-                    // cannot see what the author wrote" are different claims,
-                    // and defaulting here would make the second one silently
-                    // print as the first in every diagnostic below.
-                    buffer: None,
+                    // An ABSENT key stays `None` and is NOT defaulted to
+                    // `Latest`, even though `latest` is the schema's default
+                    // for an absent key: "the author wrote `latest`" and "the
+                    // author wrote nothing" license different actions here (see
+                    // `queue_depth::BufferDiscipline`), and collapsing them
+                    // would make silence print as a statement in every
+                    // diagnostic below.
+                    buffer: sub_buffer_of(ep),
                     publish_rate,
                     drain_rate: drain_rate_by_node.get(&node_of(ep)).copied(),
                     ..EntityDecl::bare(
@@ -2229,6 +2244,16 @@ impl EntityInventory {
         // nothing. The NAME is kept because it is the only thing that
         // distinguishes two timers on one node, and a consumer rendering the
         // inventory should be able to say which path it is.
+        //
+        // `input.is_empty()` and NOT `trigger == Timer`, deliberately, even
+        // though the trigger is now readable (issue 1339) and the drain rate
+        // twenty lines up reads it. This is a COUNT that sizes a pool: a
+        // `once`, a `spontaneous` and an `Unclassified` path all land here, so
+        // it OVER-counts, which is the safe direction. Narrowing it to
+        // `Timer` would shrink the count for exactly those paths -- an
+        // UNDER-size if the runtime does create a callback for one -- so it is
+        // a change that needs its own measurement rather than a change that
+        // falls out of this one.
         for (path_key, path) in &model.contracts.node_paths {
             if !path.input.is_empty() {
                 continue;
@@ -3051,9 +3076,10 @@ impl EntityInventory {
     /// would be the build deciding an application question.
     ///
     /// Empty for every image that states no `buffer:` -- which is every image
-    /// in this tree today, because the SystemModel does not carry the key
-    /// (issue 1339). That is why nothing in the warning stream moves and why
-    /// the byte-identical proof holds.
+    /// in this tree today: the key now travels (issue 1339), and no shipping
+    /// contract writes one. That is why nothing in the warning stream moves and
+    /// why the byte-identical proof holds -- it rests on what the contracts say
+    /// now, not on what the schema could carry.
     pub fn buffer_diagnostics(&self) -> Vec<BufferDiagnostic> {
         let mut out = Vec::new();
         for c in self.components() {
@@ -7567,15 +7593,14 @@ structure:
 
     /// An image of one subscription, stated field by field.
     ///
-    /// Built by hand rather than resolved, and that is a STATEMENT about what
-    /// can be resolved: `SubContract` in the pinned `ros-launch-manifest` has no
-    /// `buffer` field, so no contract on earth produces a `queue` endpoint in a
-    /// SystemModel today (issue 1339, and
-    /// `tests/contract_queue_buffer_reaches_the_model.rs` measures it against
-    /// the real resolver). These tests exercise the ladder, the arithmetic and
-    /// both diagnostics over the rows the reader WILL build the day the field
-    /// travels; the rate halves of the same rows are resolved for real, from a
-    /// contract, in `the_model_supplies_both_rates_a_queue_default_would_divide`
+    /// Built by hand rather than resolved, because these tests are about the
+    /// LADDER, the arithmetic and both diagnostics rather than about what a
+    /// contract can express: one row per combination is cheaper here than one
+    /// resolver run per combination. That a real contract produces such a row
+    /// end to end is measured elsewhere, against the real resolver
+    /// (`tests/contract_queue_buffer_reaches_the_model.rs`, issue 1339); the
+    /// model-read half is
+    /// `the_model_supplies_the_discipline_and_both_rates_a_queue_default_divides`
     /// below.
     fn queue_image(
         buffer: Option<BufferDiscipline>,
@@ -7927,16 +7952,18 @@ structure:
         assert!(h.contains(", 6)"), "{h}");
     }
 
-    /// The two rates the MODEL does carry reach the endpoint row.
+    /// All THREE facts reach the endpoint row from the model -- issue 1339.
     ///
-    /// Not the whole derivation -- `buffer` cannot arrive (issue 1339) -- but
-    /// the two halves that can, read by the model's own conventions: the
-    /// channel's `contracts.topics.<t>.rate_hz` for the publish rate, and the
-    /// `min_rate_hz` of what the node's timer path publishes for the drain
-    /// rate. Without this, every `NoDefault` in this wave would read
-    /// `NoPublishRate` forever -- a reason that is true and useless.
+    /// Each from the key the author writes and from no substitute: the
+    /// channel's `contracts.topics.<t>.rate_hz` for the publish rate, the
+    /// consuming path's `trigger.timer.rate_hz` for the drain rate, and
+    /// `sub_endpoints.<ep>.buffer` for the discipline. The drain rate is the
+    /// one that MOVED: it used to be recovered from the `min_rate_hz` of what
+    /// the timer publishes, which this model deliberately still states so that
+    /// the assertion below distinguishes the two sources rather than agreeing
+    /// with both.
     #[test]
-    fn the_model_supplies_both_rates_a_queue_default_would_divide() {
+    fn the_model_supplies_the_discipline_and_both_rates_a_queue_default_divides() {
         let m = model_from_yaml(
             r#"
 meta: { version: 1 }
@@ -7963,9 +7990,11 @@ contracts:
   sub_endpoints:
     /listener/chatter:
       state: true
+      buffer: queue
   node_paths:
     /listener/drain:
       output: [/listener/status]
+      trigger: { kind: timer, value: { rate_hz: 25.0 } }
   topics:
     /chatter:
       rate_hz: 50.0
@@ -7984,25 +8013,98 @@ contracts:
             RateMilliHz::from_hz(50.0),
             "the channel rate is the publish rate"
         );
+        // 25, not 10: the AUTHORED trigger rate, not the `min_rate_hz` promise
+        // on what the path publishes. The model states both, and they disagree
+        // on purpose -- this is the assertion that distinguishes the source.
         assert_eq!(
             sub.drain_rate,
-            RateMilliHz::from_hz(10.0),
-            "the node's timer path publishes at 10 Hz, so that is its drain rate"
+            RateMilliHz::from_hz(25.0),
+            "the drain rate is the path's own `trigger.timer.rate_hz`, not its output's promise"
         );
-        // And the discipline is the half that did NOT arrive, which is the
-        // whole of issue 1339. Asserted here so that the day it does arrive,
-        // this test says where to wire it.
         assert_eq!(
-            sub.buffer, None,
-            "SubContract carries no `buffer` -- see issue 1339"
+            sub.buffer,
+            Some(BufferDiscipline::Queue),
+            "`sub_endpoints.<ep>.buffer` reaches the row -- issue 1339"
         );
-        // So there is no default, and the REASON names the discipline rather
-        // than a rate, because both rates are present.
+        // ...so all three facts are present and the ladder derives:
+        // ceil(50 / 25) + 1 = 3.
         let row = inv
             .queue_depth_defaults()
             .into_iter()
             .find(|r| r.topic == "/chatter")
             .expect("the subscription is reported");
-        assert_eq!(row.outcome, Err(NoDefault::NotAQueue));
+        assert_eq!(row.outcome, Ok(3), "{}", row.line());
+    }
+
+    /// The NEGATIVE control for the drain rate's source: a model written before
+    /// rlm v0.1.37 carries no `trigger`, and this reader says so instead of
+    /// reconstructing one.
+    ///
+    /// Identical to the model above but for the missing `trigger` -- so the
+    /// `min_rate_hz: 10` on the path's output is still there, still the number
+    /// the retired convention would have taken, and still not taken. An
+    /// `Unclassified` path is not a timer, and a depth derived from a rate
+    /// nobody stated is the guess issue 1339 removed.
+    #[test]
+    fn a_model_older_than_the_trigger_field_yields_no_drain_rate() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: s.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+      sub: [/listener/chatter]
+    /status:
+      type: std_msgs/msg/Int32
+      pub: [/listener/status]
+      sub: []
+contracts:
+  pub_endpoints:
+    /listener/status:
+      min_rate_hz: 10.0
+  sub_endpoints:
+    /listener/chatter:
+      state: true
+      buffer: queue
+  node_paths:
+    /listener/drain:
+      output: [/listener/status]
+  topics:
+    /chatter:
+      rate_hz: 50.0
+"#,
+        );
+        let inv = EntityInventory::from_model("test", &m).expect("model describes wiring");
+        let sub = inv
+            .components()
+            .iter()
+            .flat_map(|c| c.declaration.entities())
+            .find(|e| e.kind == EntityKind::Subscription)
+            .expect("the listener subscribes")
+            .clone();
+        assert_eq!(sub.publish_rate, RateMilliHz::from_hz(50.0));
+        assert_eq!(
+            sub.drain_rate, None,
+            "no trigger means no drain rate, not the output's 10 Hz promise"
+        );
+        let row = inv
+            .queue_depth_defaults()
+            .into_iter()
+            .find(|r| r.topic == "/chatter")
+            .expect("the subscription is reported");
+        assert_eq!(
+            row.outcome,
+            Err(NoDefault::NoDrainRate),
+            "the refusal names the fact that is missing: {}",
+            row.line()
+        );
     }
 }
