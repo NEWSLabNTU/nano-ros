@@ -258,8 +258,20 @@ census-hooks-complete:
     python3 scripts/check-census-hooks-complete.py
     cargo test -p nros --lib --features std,metadata-mode --quiet -- metadata_mode
     cargo test -p nros-rmw-metadata --quiet
+    # issue 1532 — `census`, not `census_fixture`. The narrower filter left
+    # `census_funnel_tests` out of the only lane that builds this feature set, so
+    # a test asserting the schema version drifted against the emitter and sat red
+    # on `main` with nothing asking. The funnel IS this gate's subject: it decides
+    # whether the comparison is ever reached with a document worth comparing.
+    # `--test-threads=1` is not a flake workaround, it is this group's contract:
+    # the MetadataRecorder is process-global by design (see `nros::metadata_mode`)
+    # and the funnel tests drive the switch through `env::set_var`, which is
+    # process-global too. Run concurrently they exhaust the recorder's capacity
+    # and fail as `recorder rejected node` — measured, the first time the widened
+    # filter put the funnel beside the fixture in one process.
     cargo test -p nros-cpp --lib --no-default-features \
-        --features std,rmw-cffi,metadata-mode,param-services --quiet -- census_fixture
+        --features std,rmw-cffi,metadata-mode,param-services --quiet \
+        -- census --test-threads=1
 
 # phase-463 W4 (issue 1419) -- the census RUNS where it can still refuse, and
 # it goes stale BY CONTENT.

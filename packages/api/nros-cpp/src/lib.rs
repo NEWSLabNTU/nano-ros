@@ -5655,7 +5655,15 @@ mod census_funnel_tests {
         let json = fs::read_to_string(&out).expect("the census file");
         let _ = fs::remove_file(&out);
 
-        assert!(json.contains("\"version\":2"), "schema v2: {json}");
+        // issue 1532 — assert against the CONSTANT, never a literal. This read
+        // `"version":2` while the emitter had been on 3 since phase-457 W3
+        // (`7376f12f7`), so the test was a second producer of a number only the
+        // emitter gets to decide, and it drifted the moment the emitter moved.
+        let want = alloc::format!(
+            "\"version\":{}",
+            nros::node_metadata::SOURCE_METADATA_SCHEMA_VERSION
+        );
+        assert!(json.contains(&want), "schema {want}: {json}");
 
         let subs = array_between(&json, "\"subscribers\":");
         assert_eq!(
