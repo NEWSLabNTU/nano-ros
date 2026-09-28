@@ -4,7 +4,7 @@ title: "The metadata probe cannot run for a cross-only leaf, so esp32 and mps2 e
 status: open
 type: tech-debt
 area: [tooling, build]
-related: [1061, 1142, 0827, 0939, rfc-0098, phase-445]
+related: [1061, 1142, 1555, 1556, 0827, 0939, rfc-0098, phase-445]
 ---
 
 ## What
@@ -21,9 +21,47 @@ shapes cause it (`leaf_entity_env.rs`):
   (`riscv32imc-unknown-none-elf`, `build-std = ["core", "alloc"]`);
 - a board crate with no host build — the mps2-an385 bare-metal leaves.
 
-For those, issue 1061's fix has the leaf DECLARE its entities
-(`[package.metadata.nros.component] entities = [...]`, same grammar as
-`nano_ros_node_register(... ENTITIES ...)`).
+For those, issue 1061's fix has the leaf DECLARE its entities — today on its
+`system.toml` `[[component]]` row (`entities = [...]`, RFC-0098 D8), same
+grammar as `nano_ros_node_register(... ENTITIES ...)`.
+
+(This paragraph used to give the home as `[package.metadata.nros.component]
+entities`. That moved in phase-445 W3 and phase-454 W9 made the manifest key a
+hard REFUSAL, so the spelling this issue named no longer parses. Corrected
+2026-09-29.)
+
+## Scope: the three ENTITIES populations (measured 2026-09-29)
+
+`ENTITIES` is not one thing, and this issue owns one third of it. Retiring "the
+declaration" means retiring three surfaces with three different blockers:
+
+| # | Surface | State | Blocker | Owner |
+| --- | --- | --- | --- | --- |
+| 1 | the cmake `ENTITIES` keyword on `nano_ros_node_register()` | **RETIRED** (phase-412). Still parsed only to raise a migration `FATAL_ERROR` naming the contract sidecar; the metadata splice point went in phase-454 W9 | none — the guard is the last of it | phase-412 / phase-454 W9 |
+| 2 | the `"entities"` key of `nros-metadata.json` | **no production producer.** 255 built metadata files scanned, 0 carry the key, so the reader yields `Declaration::Absent` on every real road | the reader survives because the declared-QoS C/C++ compile fixture is a committed metadata document, and the only other input (`--model`) cannot be committed — `check-no-tracked-models` | **issue 1555** |
+| 3 | `system.toml` `[[component]] entities` | **LIVE**, 14 leaves | splits 2 / 12 by reason — see below | **this issue** (2) + **issue 1556** (12) |
+
+Population 3 splits, and the split is the reason this issue does not cover all
+of it:
+
+* **2 leaves — `examples/esp32-c3-baremetal/rust/{talker,listener}`.** The probe
+  EXISTS for them and cannot run. That is this issue.
+* **12 leaves — `examples/qemu-armv7a-nuttx/{c,cpp}/*`.** Nothing REACHES them:
+  the C/C++ probe is workspace-scoped and these are standalone cmake leaves with
+  no `Cargo.toml`, no `metadata/` dir and no `.unprobeable` marker, and having
+  no bringup they have no SystemModel either. Issue 1142 (resolved, phase-412
+  W5) gave them the declaration and measured it worth −31,136 B of
+  `SERVICE_BUFFERS` on one leaf. This issue's fix direction — read the entities
+  from the cross-compiled artifact — does not help them, because the problem is
+  not that the host build fails. **Issue 1556.**
+
+Also corrected here: the title and the shape list below say "mps2" leaves must
+declare. **No mps2 leaf declares `entities` today** — the declaring set is
+exactly the 2 esp32-c3 and the 12 NuttX leaves above. Whether the mps2
+bare-metal leaves are correspondingly under-sized, or are served by the kept
+`NROS_DECLARED_*` carriers, is unmeasured; the same open question applies to the
+six `examples/zephyr/rust/*` leaves, which are `.unprobeable` and declare
+nothing. Recorded in 1556's "A gap this measurement turned up".
 
 ## Why it is a workaround, not a fix
 

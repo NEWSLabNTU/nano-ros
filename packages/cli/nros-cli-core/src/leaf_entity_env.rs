@@ -25,16 +25,25 @@
 //! `[build] target` with `[unstable] build-std` nor a board crate with no host
 //! build allows that. Issue 1061.
 //!
-//! For those, the leaf DECLARES instead, in its own manifest:
+//! For those, the leaf DECLARES instead, on its `system.toml` `[[component]]`
+//! row (RFC-0098 D8):
 //!
 //! ```toml
-//! [package.metadata.nros.component]
+//! [[component]]
+//! name = "talker"
 //! entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]
 //! ```
 //!
 //! Same grammar as `nano_ros_node_register(... ENTITIES ...)`, parsed by the
 //! same [`EntityDecl::parse`], because a second spelling of one declaration is
 //! how the two drift. Nothing is compiled to read it.
+//!
+//! **This paragraph used to show `[package.metadata.nros.component] entities`,
+//! and had been wrong since phase-445 W5 deleted the manifest fallback** —
+//! phase-454 W9 then turned that key into a REFUSAL, so the example this module
+//! opened with was a surface the tree rejects. [`declared_entities`] forty
+//! lines below already said "ONE surface, since phase-454 W9"; two halves of
+//! one file disagreeing is how the next reader gets aimed at the wrong one.
 //!
 //! **A declaration is CROSS-CHECKED against the probe wherever the probe can
 //! run.** That is what keeps a hand-written list from quietly going stale: on a
