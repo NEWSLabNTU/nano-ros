@@ -462,7 +462,7 @@ subscription nothing registered. And `nros sync` over
 C++ listener's registration.
 
 **What stays refused, and it is the honest half:**
-[issue 1522](../issues/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md).
+[issue 1522](../issues/archived/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md).
 A **Rust** component's rows are unobserved, because `record_node_metadata::<C>`
 runs `register()` against a recording `NodeContext` and opens no executor at all;
 so are rows from the `ENTITIES` grammar, rows from a launch declaration, and
@@ -480,6 +480,66 @@ is a non-defaulted struct field on `SubscriptionRequest`, so a twelfth entry poi
 cannot forget it and compile, and `open_subscription` is the only prologue that
 reaches the capability. A script re-deriving "which shapes should be capable"
 would be the second opinion this wave removed.
+
+### W5 — the Rust probe states what it never registers — LANDED 2026-09-28
+
+W3 left four populations unobserved and
+[issue 1522](../issues/archived/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md)
+recorded them. This closes the first: a **Rust** component's subscription rows.
+
+The route is the issue's second one — **one classifier**, not "teach the probe
+to register". It is available here and nowhere else in the four because the
+Rust declarative registrar is ONE function, `node_runtime`'s
+`EntityKind::Subscription` arm, lowering to one of two entry points; the shape
+is therefore a function of the DECLARATION, computed in one place.
+`nros_node::executor::declared_shape::DeclaredSubscriptionShape` is that
+function's codomain, and `MetadataRecorder::create_entity` — the one
+`NodeRuntime` seam a Rust declaration crosses — states `in_place_capable` from
+it. The C/C++ adapters reach the recorder through `push_entity`, so W3's
+observation still wins on their road and this cannot overwrite it.
+
+**W3 said "no new gate, deliberately", and this does not contradict it.** W3's
+argument was that a script re-deriving *which shapes should be capable* would
+be the second opinion the wave removed. `check-declared-subscription-shape`
+re-derives nothing of the sort; it holds that the ONE derivation is spelled
+once — the registrar branches on the classifier rather than on
+`metadata.safety`, the `safety-e2e` mask has a single home, and each entry
+point's `in_place_capable` is `DeclaredSubscriptionShape::<V>.in_place_capable()`
+rather than a literal. That last clause is what keeps the classifier from being
+a COPY of the entry point's answer, and it is why issue 1340's candidate is now
+a one-line change that moves the executor and the probe together. Every
+expectation is harvested from the enum's own variants and doc comments.
+
+**Measured, both directions.** As issue 1522 predicted, this buys correctness
+and not bytes: both declarative arms answer `false`, so a Rust subscription
+moves from REFUSED to a stated `unbounded` row — the same price, since
+`claims_no_receive_region` is false for both and `may_claim_closure_buffer` is
+true for both. On `examples/native/rust/listener`, the only in-tree leaf with a
+`system.contract.yaml` on a cargo road:
+
+| | before | after |
+| --- | --- | --- |
+| RAM (`.bss` + `.data`), by section | 181,434 | 181,434 |
+| RAM attributed to symbols | 157,554 | 157,554 |
+
+No image changed size. An image on a backend that does not dispatch in place
+never reaches the test, and an image with no contract has no descriptor, so
+those two populations cannot move by construction.
+
+**A defect W3 left, found by emitting the key from a second road.**
+`SourceSubscriber` in `nros-cli-core/src/orchestration/source_metadata.rs` is
+`deny_unknown_fields` and never declared `in_place`;
+`metadata_refresh::stamp_provenance` parses EVERY producer's sidecar through
+those structs, so the key fails the whole document rather than being ignored.
+Invisible for a fortnight because no producer that reaches that reader emitted
+it. Second occurrence of the class (issue 0518's `period_us` is the first), so
+it is gated: `check-sidecar-endpoint-keys`.
+
+**What stays refused**, and it is still the honest half: rows from the
+`ENTITIES` grammar and from a launch declaration — neither has a registrar to
+be consistent WITH, so a classifier there would be the parallel table issue
+1522 forbids — and every service / action endpoint, which is 1522's second
+piece and waits on phase-454 W6.b's pricing reading a service row at all.
 
 ### W4 — `storage_bytes`, which needs the board per image
 
