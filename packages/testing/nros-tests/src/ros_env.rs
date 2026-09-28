@@ -1003,7 +1003,7 @@ pub fn nano_node_cmd_rmw(
 
 /// Locate the host relocatable **micro-XRCE Agent** launcher — the phase-311
 /// XRCE lane's DDS↔XRCE bridge. Provisioned into the nros SDK store by
-/// `nros setup … --rmw xrce` at `~/.nros/sdk/xrce-agent/<ver>/bin/MicroXRCEAgent`
+/// `nros setup … --rmw xrce` at `~/.nros/sdk/xrce-agent/<pinned ver>/bin/MicroXRCEAgent`
 /// (a launcher that resolves its bundled Fast-DDS/fastcdr `.so`s next to itself,
 /// so it runs on the host with no system Fast-DDS). `None` → the lane `skip!`s.
 pub fn host_xrce_agent_bin() -> Option<std::path::PathBuf> {
@@ -1015,18 +1015,13 @@ pub fn host_xrce_agent_bin() -> Option<std::path::PathBuf> {
                 .ok()
                 .map(|h| std::path::PathBuf::from(h).join(".nros"))
         })?;
-    let store = home.join("sdk/xrce-agent");
-    let mut versions: Vec<_> = std::fs::read_dir(&store)
-        .ok()?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .collect();
-    versions.sort();
-    versions
-        .into_iter()
-        .rev()
-        .map(|v| v.join("bin/MicroXRCEAgent"))
-        .find(|p| p.is_file())
+    // The PINNED version, constructed — never the newest in the store (issue
+    // 1546): the store is shared between checkouts, and a sibling's newer
+    // Agent is not the one this tree's XRCE lane was pinned against.
+    let p = crate::sdk_pin("xrce-agent")?
+        .dir_under(&home.join("sdk"), "xrce-agent")
+        .join("bin/MicroXRCEAgent");
+    p.is_file().then_some(p)
 }
 
 /// Spawn the micro-XRCE Agent on the host as a UDP4 bridge on `port`, with its

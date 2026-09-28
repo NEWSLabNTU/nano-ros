@@ -500,6 +500,98 @@ pub fn nuttx_include_root(nuttx_dir: &std::path::Path) -> PathBuf {
     shared
 }
 
+/// The version `nros-sdk-index.toml` PINS for `[tool.<tool>]` — issue 1546.
+///
+/// A provisioned tool lives at `<store>/<tool>/<version>` because `nros setup`
+/// read `<version>` from the index; a consumer CONSTRUCTS that path from the
+/// same two inputs and never lists the store to pick one. The store is shared
+/// between checkouts and accumulates (issue 0500), while the pin is
+/// per-checkout, so "the newest version present" is as often a sibling
+/// checkout's answer as ours.
+///
+/// `None` when there is no index to read (an out-of-tree consumer with no
+/// checkout above it) or no such section — a caller then has no store rung.
+///
+/// Twins, because the build systems cannot call each other:
+/// `nros_sdk_pin()` in `cmake/NanoRosSdkPin.cmake` and
+/// `nros_sdk_pinned_version` in `scripts/lib/sdk-pin.sh`.
+pub fn sdk_pinned_version(tool: &str) -> Option<String> {
+    let index = try_repo_root()?.join("nros-sdk-index.toml");
+    let text = std::fs::read_to_string(index).ok()?;
+    pinned_version_in(&text, tool)
+}
+
+/// [`sdk_pinned_version`]'s parser, over index TEXT so it is testable without
+/// a checkout. The section runs from `[tool.<tool>]` to the next line that
+/// STARTS a table — the bound the cmake and shell twins use, so an inline
+/// array such as `smoke = [` does not end it. No `toml` dependency: this crate
+/// has none, and adding one moves `Cargo.lock` for a single key.
+fn pinned_version_in(text: &str, tool: &str) -> Option<String> {
+    let header = format!("[tool.{tool}]");
+    let mut inside = false;
+    for line in text.lines() {
+        if line == header {
+            inside = true;
+            continue;
+        }
+        if line.starts_with('[') {
+            inside = false;
+            continue;
+        }
+        if !inside {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("version") else {
+            continue;
+        };
+        let Some(rest) = rest.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let rest = rest.trim_start().strip_prefix('"')?;
+        let v = &rest[..rest.find('"')?];
+        return (!v.is_empty()).then(|| v.to_string());
+    }
+    None
+}
+
+#[cfg(test)]
+mod pinned_version_tests {
+    use super::pinned_version_in;
+
+    const INDEX: &str = "\
+[tool.corrosion]
+version = \"0.6.1-nros1\"
+
+[tool.riscv-none-elf-gcc]
+smoke = [
+    { run = \"bin/riscv-none-elf-gcc --version\" },
+]
+version = \"14.2-nros1\"
+
+[tool.riscv-none-elf-gcc.dist.linux-x86_64]
+version = \"not-this-one\"
+";
+
+    #[test]
+    fn reads_the_named_section_only() {
+        assert_eq!(
+            pinned_version_in(INDEX, "riscv-none-elf-gcc").as_deref(),
+            Some("14.2-nros1")
+        );
+        assert_eq!(
+            pinned_version_in(INDEX, "corrosion").as_deref(),
+            Some("0.6.1-nros1")
+        );
+    }
+
+    #[test]
+    fn a_missing_section_is_none_not_a_neighbours_version() {
+        assert_eq!(pinned_version_in(INDEX, "arm-none-eabi-gcc"), None);
+        // A subtable header is not the section it extends.
+        assert_eq!(pinned_version_in(INDEX, "riscv-none-elf-gcc.dist"), None);
+    }
+}
+
 /// The riscv64 bare-metal toolchain, resolved rather than spelled — issue 0657.
 ///
 /// `[board.rv-virt-threadx]` provisions xPack's `riscv-none-elf-gcc`, and
@@ -531,24 +623,40 @@ pub mod riscv64 {
         PathBuf::from(home).join(".nros/sdk")
     }
 
-    /// The store's newest `riscv-none-elf-gcc`, if provisioned.
+    /// The store's `riscv-none-elf-gcc` at the PINNED version, if provisioned.
     ///
-    /// Newest-first for the reason issue 0500 records: the store ACCUMULATES,
-    /// and a stale version shadowing the pinned one is the failure that rule
-    /// exists to prevent.
+    /// CONSTRUCTED as `<store>/riscv-none-elf-gcc/<pin>/bin`, never found by
+    /// listing the store (issue 1546). This used to take the newest version
+    /// present, citing issue 0500 — but the store is shared between checkouts,
+    /// so "newest" let a sibling checkout's newer install shadow this tree's
+    /// pin, which is 0500 with the sign flipped. Other versions are never used;
+    /// when only others are present, a `cargo:warning` names them.
     fn store_bin() -> Option<PathBuf> {
-        let dir = sdk_store().join("riscv-none-elf-gcc");
-        let mut versions: Vec<_> = std::fs::read_dir(&dir)
-            .ok()?
+        const TOOL: &str = "riscv-none-elf-gcc";
+        let dir = sdk_store().join(TOOL);
+        let pin = super::sdk_pinned_version(TOOL)?;
+        let bin = dir.join(&pin).join("bin");
+        if bin.join(TOOL).is_file() {
+            return Some(bin);
+        }
+        // Name what IS there, for a human — nothing is chosen from it, which is
+        // why it is not sorted.
+        let others: Vec<String> = std::fs::read_dir(&dir)
+            .into_iter()
+            .flatten()
             .filter_map(|e| e.ok())
             .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|v| v.starts_with(|c: char| c.is_ascii_digit()) && *v != pin)
             .collect();
-        versions.sort();
-        versions.reverse();
-        versions
-            .into_iter()
-            .map(|v| dir.join(v).join("bin"))
-            .find(|b| b.join("riscv-none-elf-gcc").is_file())
+        if !others.is_empty() {
+            println!(
+                "cargo:warning=the SDK store has {TOOL} {} but NOT the pinned {pin} — not used \
+                 (issue 1546: only <store>/{TOOL}/<pin> counts). Provision the pin: \
+                 nros setup --tool {TOOL}",
+                others.join(", ")
+            );
+        }
+        None
     }
 
     /// `<prefix>-<suffix>` as an absolute path when the toolchain came from the

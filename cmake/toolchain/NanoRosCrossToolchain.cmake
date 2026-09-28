@@ -35,8 +35,13 @@
 #     Resolving the store directly makes provisioning take effect immediately
 #     and makes the pin win over an unpinned distro copy. `riscv64-threadx
 #     .cmake` already did this for riscv; it is now the shared behaviour.
-#  2. Newest version first within the store, because the store ACCUMULATES
-#     (issue 0500) and a stale copy must not shadow the pinned one.
+#  2. Within the store, the PINNED version and nothing else. The store
+#     ACCUMULATES (issue 0500) and is SHARED between checkouts, while the pin is
+#     per-checkout, so the path is CONSTRUCTED as `<store>/<tool>/<pin>` from
+#     `nros-sdk-index.toml` — never found by listing the store. This used to
+#     take the newest version present, which let a sibling checkout's NEWER
+#     install shadow this tree's pin exactly as a stale one once did (issue
+#     1546; the rule is phase-365's, `check-sdk-store-not-enumerated`).
 #
 # HOW A USER CHOOSES A TOOLCHAIN
 #
@@ -48,8 +53,10 @@
 #      This is the explicit knob; before issue 1117 the only such knob in the
 #      tree was `NROS_RISCV64_PREFIX`, undocumented outside its own file.
 #   2. The SDK store — `$NROS_SDK_STORE`, else `$NROS_HOME/sdk`, else
-#      `~/.nros/sdk` — under `<tool>/<version>/bin/`, newest version first.
-#      Filled by `nros setup --tool <tool>`.
+#      `~/.nros/sdk` — at `<tool>/<pinned version>/bin/`, the version read from
+#      `nros-sdk-index.toml`. Filled by `nros setup --tool <tool>`. Any OTHER
+#      version in the store is never used; if only others are there, the
+#      configure says so, names them, and falls through to rung 3.
 #   3. `PATH`, via `find_program` (the documented distro fallback).
 #
 # THE FLOOR, and why it is fatal rather than a warning
@@ -114,35 +121,10 @@ function(_nros_ct_store_root out_var)
     endif()
 endfunction()
 
-# The `[tool.<name>]` pin from nros-sdk-index.toml — `version` (the repackaged
-# id) and `upstream` (the vendor release the pin repackages).
-#
-# Read from the index rather than restated here on purpose: an AUTHORED copy of
-# a pinned version is a map that drifts from the territory, which is the failure
-# `check-rmw-api-parity` records at length. There is nothing to keep in sync
-# because there is no second copy.
-function(_nros_ct_pinned tool out_version out_upstream)
-    set(${out_version} "" PARENT_SCOPE)
-    set(${out_upstream} "" PARENT_SCOPE)
-    set(_index "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../nros-sdk-index.toml")
-    if(NOT EXISTS "${_index}")
-        return()
-    endif()
-    file(READ "${_index}" _txt)
-    # The section runs from its header to the next line that STARTS a table.
-    # `[^\[]*` would stop at the `smoke = [` array inside the section.
-    string(REPLACE "." "\\." _tool_re "${tool}")
-    string(REGEX MATCH "\n\\[tool\\.${_tool_re}\\]\n(([^\n\\[][^\n]*)?\n)*" _sec "\n${_txt}")
-    if(NOT _sec)
-        return()
-    endif()
-    if(_sec MATCHES "\nversion[ \t]*=[ \t]*\"([^\"]*)\"")
-        set(${out_version} "${CMAKE_MATCH_1}" PARENT_SCOPE)
-    endif()
-    if(_sec MATCHES "\nupstream[ \t]*=[ \t]*\"([^\"]*)\"")
-        set(${out_upstream} "${CMAKE_MATCH_1}" PARENT_SCOPE)
-    endif()
-endfunction()
+# The `[tool.<name>]` pin — `nros_sdk_pin()`, shared with every cmake consumer
+# that constructs a store path (issue 1546). Moved out of this file so there is
+# one cmake reader of the index, not one per module that needs a pin.
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosSdkPin.cmake")
 
 # ---------------------------------------------------------------------------
 # nros_cross_toolchain_resolve(
@@ -172,23 +154,32 @@ function(nros_cross_toolchain_resolve)
         return()
     endif()
 
-    # 2. The SDK store, newest version first — the store ACCUMULATES (issue
-    #    0500), and `find_package`-style "first that resolves" over an
-    #    ascending sort is how a stale copy shadows the pin.
+    # 2. The SDK store, at the PINNED version only — CONSTRUCTED, never
+    #    enumerated (issue 1546). The store ACCUMULATES (issue 0500) and is
+    #    shared between checkouts, so "the newest one there" answers a question
+    #    nobody asked: it let a sibling tree's newer install shadow this tree's
+    #    pin, the mirror image of 0500's stale copy.
     _nros_ct_store_root(_store_root)
     set(_store "${_store_root}/${_A_TOOL}")
-    if(IS_DIRECTORY "${_store}")
-        file(GLOB _vers RELATIVE "${_store}" "${_store}/*")
-        list(SORT _vers COMPARE NATURAL ORDER DESCENDING)
-        foreach(_v IN LISTS _vers)
-            foreach(_p IN LISTS _A_PREFIXES)
-                if(EXISTS "${_store}/${_v}/bin/${_p}-gcc")
-                    set(${_A_OUT_PREFIX} "${_store}/${_v}/bin/${_p}" PARENT_SCOPE)
-                    set(${_A_OUT_ORIGIN} "SDK store" PARENT_SCOPE)
-                    return()
-                endif()
-            endforeach()
+    nros_sdk_pin("${_A_TOOL}" _pin_ver _pin_upstream)
+    set_property(GLOBAL PROPERTY "_NROS_CT_STRANDED_${_A_TOOL}" "")
+    if(NOT "${_pin_ver}" STREQUAL "")
+        foreach(_p IN LISTS _A_PREFIXES)
+            if(EXISTS "${_store}/${_pin_ver}/bin/${_p}-gcc")
+                set(${_A_OUT_PREFIX} "${_store}/${_pin_ver}/bin/${_p}" PARENT_SCOPE)
+                set(${_A_OUT_ORIGIN} "SDK store" PARENT_SCOPE)
+                return()
+            endif()
         endforeach()
+        # The pin is absent. Record what IS there — for the report to NAME,
+        # never to pick from — so "not provisioned" and "provisioned at a
+        # different version" stop reading alike. Deliberately unsorted: the
+        # order carries no meaning here, because nothing is chosen from it.
+        if(IS_DIRECTORY "${_store}")
+            file(GLOB _others RELATIVE "${_store}" LIST_DIRECTORIES true "${_store}/*")
+            list(FILTER _others INCLUDE REGEX "^[0-9]")
+            set_property(GLOBAL PROPERTY "_NROS_CT_STRANDED_${_A_TOOL}" "${_others}")
+        endif()
     endif()
 
     # 3. PATH — the documented distro fallback (activate.sh, near the SDK store
@@ -260,7 +251,7 @@ function(nros_cross_toolchain_report)
         endif()
     endif()
 
-    _nros_ct_pinned("${_A_TOOL}" _pin_ver _pin_upstream)
+    nros_sdk_pin("${_A_TOOL}" _pin_ver _pin_upstream)
     set(_pin_text "unknown — no [tool.${_A_TOOL}] in nros-sdk-index.toml")
     if(NOT "${_pin_upstream}" STREQUAL "")
         set(_pin_text "${_pin_upstream}, store package ${_pin_ver}")
@@ -272,6 +263,20 @@ function(nros_cross_toolchain_report)
     # 0500 remedy, one layer down.
     message(STATUS
         "nano-ros: ${_A_TOOL} ${_ver} via ${_A_ORIGIN} — ${_gcc} (pin ${_pin_text})")
+
+    # Issue 1546 — the store holds this tool, but not at the pin. Those copies
+    # are NOT used (the store rung is pinned-only), and saying so is the
+    # difference between "you have no toolchain" and "you have the wrong one".
+    get_property(_stranded GLOBAL PROPERTY "_NROS_CT_STRANDED_${_A_TOOL}")
+    if(NOT "${_stranded}" STREQUAL "")
+        string(REPLACE ";" ", " _stranded_text "${_stranded}")
+        message(NOTICE
+            "nano-ros: the SDK store has ${_A_TOOL} ${_stranded_text} but NOT the pinned "
+            "${_pin_ver} — those are not used.\n"
+            "          The store is shared between checkouts and the pin is per-checkout, so\n"
+            "          only <store>/${_A_TOOL}/<pin> counts (issue 1546). Provision the pin:\n"
+            "              nros setup --tool ${_A_TOOL}")
+    endif()
 
     # ---------------------------------------------------------------------
     # A BUILD TREE ALREADY LOCKED TO A DIFFERENT COMPILER.

@@ -70,7 +70,6 @@ scripts/check-roadmap-status.sh
 scripts/check-rust-stdio-on-zephyr.py
 scripts/check-rust-targets-covered.py
 scripts/check-sched-dim-arms-compile.sh
-scripts/check-sdk-store-not-enumerated.py
 scripts/check-single-rust-staticlib.py
 scripts/check-site-config.py
 scripts/check-sizes-header-mirrors.sh

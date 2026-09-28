@@ -131,7 +131,7 @@ function(_nros_idlc_runs _path _out_why _out_env)
     set(${_out_env} "" PARENT_SCOPE)
 endfunction()
 
-# Issue 0601 — `$NROS_HOME/sdk/cyclonedds/<version>/bin`, NEWEST VERSION FIRST.
+# Issue 0601 — `$NROS_HOME/sdk/cyclonedds/<pinned version>/bin`.
 #
 # The SDK store is what `nros setup --tool cyclonedds` provisions, and it is the
 # copy THIS BUILD controls. Without it on the hint list, `find_program` takes the
@@ -140,14 +140,23 @@ endfunction()
 # unless ROS's `setup.bash` reached the build's environment. Selection was by
 # EXISTENCE where the property that matters is RUNNABILITY.
 #
-# NEWEST-first for the same reason issue 0500 orders the Corrosion prefixes: the
-# store ACCUMULATES, `find_program` takes the first hit, and a provisioning run
-# that installs a new version while an old one still wins is the worst shape a
-# setup step can have — it reports success and changes nothing.
+# The PINNED version, CONSTRUCTED from `nros-sdk-index.toml` — never found by
+# listing the store (issue 1546). This used to glob `cyclonedds/*` and sort
+# newest-first, citing issue 0500; but the store is SHARED between checkouts
+# and the pin is per-checkout, so "newest" let a sibling checkout's newer
+# Cyclone — a different wire, for this pin (issue 0507) — shadow ours.
+#
+# The flat `<store>/cyclonedds/bin` layout stays LAST: it is residue from before
+# versioned installs, the same second constructed candidate
+# `sdk_store::tool_dir_candidates` keeps (issue 0628). Two constructed paths,
+# no search.
 #
 # HINTS, not PATHS: HINTS are searched BEFORE the system PATH and PATHS after
 # (CLAUDE.md's `find_program` note). Preferring the provisioned tool is the
 # entire point, so it has to be HINTS.
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../../../../cmake/NanoRosSdkPin.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/../../../../../cmake/NanoRosSdkPin.cmake")
+endif()
 function(_nros_cyclonedds_sdk_bins _out)
     if(DEFINED ENV{NROS_HOME})
         set(_store "$ENV{NROS_HOME}/sdk")
@@ -155,15 +164,27 @@ function(_nros_cyclonedds_sdk_bins _out)
         set(_store "$ENV{HOME}/.nros/sdk")
     endif()
     set(_dirs "")
-    file(GLOB _versioned LIST_DIRECTORIES true "${_store}/cyclonedds/*")
-    foreach(_d IN LISTS _versioned)
-        if(IS_DIRECTORY "${_d}/bin")
-            list(APPEND _dirs "${_d}/bin")
+    set(_pin "")
+    if(COMMAND nros_sdk_pin)
+        nros_sdk_pin(cyclonedds _pin _pin_upstream)
+    endif()
+    if(NOT "${_pin}" STREQUAL "")
+        if(IS_DIRECTORY "${_store}/cyclonedds/${_pin}/bin")
+            list(APPEND _dirs "${_store}/cyclonedds/${_pin}/bin")
+        elseif(IS_DIRECTORY "${_store}/cyclonedds")
+            # Name what IS there, for a human — nothing is chosen from it,
+            # which is why it is not sorted.
+            file(GLOB _others RELATIVE "${_store}/cyclonedds" LIST_DIRECTORIES true
+                 "${_store}/cyclonedds/[0-9]*")
+            if(_others)
+                string(REPLACE ";" ", " _others "${_others}")
+                message(STATUS
+                    "nano-ros: the SDK store has cyclonedds ${_others} but NOT the pinned "
+                    "${_pin} — not used for idlc (issue 1546). Provision the pin: "
+                    "nros setup --tool cyclonedds")
+            endif()
         endif()
-    endforeach()
-    list(SORT _dirs COMPARE NATURAL ORDER DESCENDING)
-    # The flat layout stays LAST — it is the fallback, and a versioned entry is
-    # what a provisioning run just wrote (same rule as the Corrosion prefixes).
+    endif()
     if(IS_DIRECTORY "${_store}/cyclonedds/bin")
         list(APPEND _dirs "${_store}/cyclonedds/bin")
     endif()

@@ -26,8 +26,9 @@ set(CMAKE_SYSTEM_PROCESSOR  riscv64)
 # (scripts/build/riscv64-toolchain.sh) and the Rust one
 # (`nros_build_helpers::riscv64`).
 #
-# issue 1117 — the resolution ORDER this file already had (override, then store
-# newest-first, then PATH) is now the shared one, and it reports what it picked.
+# issue 1117 — the resolution ORDER this file already had (override, then store,
+# then PATH) is now the shared one, and it reports what it picked. The store
+# rung takes the PINNED version only (issue 1546), not the newest present.
 # This file was the only one of the five in this directory that resolved at all;
 # the other four took a bare name off PATH. Even here the STATUS line named the
 # prefix and neither the VERSION nor the ORIGIN, so "provisioned pin" and

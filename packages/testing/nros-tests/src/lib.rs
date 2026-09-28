@@ -802,6 +802,86 @@ pub fn project_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
+/// A `[tool.<name>]` pin from `nros-sdk-index.toml` — issue 1546.
+///
+/// The test-side reader of the pin a store path is CONSTRUCTED from:
+/// `<store>/<tool>/<version>[/<subdir>]`. A test never lists the store to pick
+/// a version — the store is shared between checkouts and accumulates (issue
+/// 0500), the pin is per-checkout, so "the newest there" is as often a sibling
+/// checkout's install as ours (`check-sdk-store-not-enumerated`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SdkPin {
+    /// `version` — the store directory name.
+    pub version: String,
+    /// `subdir` with `{version}` expanded — the tarball's own top-level
+    /// directory inside `<store>/<tool>/<version>`, when the tool has one.
+    pub subdir: Option<String>,
+}
+
+impl SdkPin {
+    /// `<store>/<tool>/<version>[/<subdir>]` under an SDK store root (the
+    /// directory that holds `<tool>/`, e.g. `~/.nros/sdk`).
+    pub fn dir_under(&self, sdk_store: &std::path::Path, tool: &str) -> std::path::PathBuf {
+        let base = sdk_store.join(tool).join(&self.version);
+        match &self.subdir {
+            Some(sub) => base.join(sub),
+            None => base,
+        }
+    }
+}
+
+/// [`SdkPin`] for `tool`, or `None` when the index or the section is absent.
+pub fn sdk_pin(tool: &str) -> Option<SdkPin> {
+    let text = std::fs::read_to_string(project_root().join("nros-sdk-index.toml")).ok()?;
+    sdk_pin_in(&text, tool)
+}
+
+fn sdk_pin_in(index_text: &str, tool: &str) -> Option<SdkPin> {
+    let index: toml::Table = toml::from_str(index_text).ok()?;
+    let entry = index.get("tool")?.get(tool)?;
+    let version = entry.get("version")?.as_str()?.to_string();
+    let subdir = entry
+        .get("subdir")
+        .and_then(|v| v.as_str())
+        .map(|s| s.replace("{version}", &version));
+    Some(SdkPin { version, subdir })
+}
+
+#[cfg(test)]
+mod sdk_pin_tests {
+    use super::*;
+
+    #[test]
+    fn the_real_index_pins_the_tools_tests_construct_paths_for() {
+        for tool in [
+            "riscv-none-elf-gcc",
+            "xrce-agent",
+            "zephyr-sdk",
+            "zephyr-sdk-1-0-1",
+        ] {
+            let pin = sdk_pin(tool).unwrap_or_else(|| panic!("no [tool.{tool}] pin"));
+            assert!(!pin.version.is_empty(), "{tool}: empty version");
+        }
+        let z = sdk_pin("zephyr-sdk").unwrap();
+        assert_eq!(
+            z.subdir.as_deref(),
+            Some(&*format!("zephyr-sdk-{}", z.version))
+        );
+    }
+
+    #[test]
+    fn a_missing_tool_is_none() {
+        assert_eq!(sdk_pin_in("[tool.a]\nversion = \"1\"\n", "b"), None);
+        assert_eq!(
+            sdk_pin_in("[tool.a]\nversion = \"1\"\n", "a"),
+            Some(SdkPin {
+                version: "1".into(),
+                subdir: None
+            })
+        );
+    }
+}
+
 /// RFC-0070 R5 — the build-cache KIND vocabulary, one definition each.
 ///
 /// A kind used to be a bare string literal at every call site. That is why
