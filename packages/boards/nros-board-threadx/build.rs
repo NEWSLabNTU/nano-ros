@@ -327,6 +327,12 @@ fn configure(build: &mut cc::Build) {
         .map(|t| t.starts_with("riscv64"))
         .unwrap_or(false)
     {
+        // nros-board-arch-flags-exempt: issue 1562 — these four flags and the
+        // `get_picolibc_sysroot` probe below are a byte-identical copy of
+        // `nros_board_common::threadx_qemu_riscv64_build`'s, which is the
+        // phase-471 W2 class one family over. Acceptance for moving them is a
+        // RISC-V64 ThreadX BUILD, not a gate, so it is filed rather than done
+        // in the commit that landed the rule.
         build
             .compiler(nros_build_paths::riscv64::tool_or_legacy("gcc"))
             .archiver(nros_build_paths::riscv64::tool_or_legacy("ar"))
