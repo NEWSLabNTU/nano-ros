@@ -35,7 +35,10 @@ nros_cargo_fetch_standalone_manifests
 echo "build-all: resolving host nros codegen tool"
 nros_cargo_ensure_codegen_c
 
-exec env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
+# issue 1403 — stall watchdog; see scripts/build/make-stall-watchdog.py.
+exec python3 scripts/build/make-stall-watchdog.py \
+    --label build-all --diag-dir "$log_dir" -- \
+    env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
     NROS_JOBSERVER=1 NROS_BUILD_JOBS="$n" NROS_BUILD_LOG_DIR="$log_dir" \
     NROS_CODEGEN_C_PREBUILT=1 CARGO_NET_OFFLINE=true \
     "$make_bin" -j"$n" --jobserver-style=fifo -f build-all.mk

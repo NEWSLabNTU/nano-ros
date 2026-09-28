@@ -275,7 +275,12 @@ if command -v flock >/dev/null 2>&1; then
     echo "zephyr-fixture-make-driver: acquired build lock $lockfile"
 fi
 
-env -u MAKEFLAGS -u CARGO_MAKEFLAGS "$make_bin" "${make_args[@]}" -f "$makefile"
+# issue 1403 — a jobserver make that sits idle with no child is killed by
+# the watchdog and reported as NO VERDICT (rc 75) with a diagnostic, instead of
+# hanging until a CI timeout. Knob: NROS_JOBSERVER_STALL_SECS (0 disables).
+python3 "$script_dir/make-stall-watchdog.py" \
+    --label zephyr-fixture-make-driver --diag-dir "$log_dir" -- \
+    env -u MAKEFLAGS -u CARGO_MAKEFLAGS "$make_bin" "${make_args[@]}" -f "$makefile"
 
 echo "zephyr-fixture-make-driver: joblog=$joblog"
 

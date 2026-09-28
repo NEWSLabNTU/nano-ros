@@ -200,7 +200,12 @@ run_with_make() {
         make_bin="$(nros sdk-path make)/bin/make"
     fi
 
-    "$make_bin" -j"$jobs" -f "$makefile"
+    # issue 1403 — THIS make is the one observed stalled (`threadx_linux
+    # build-examples`, 14 rows, zero children). The watchdog turns a repeat
+    # into a diagnostic + NO VERDICT (rc 75) instead of a hang.
+    python3 scripts/build/make-stall-watchdog.py \
+        --label "fixtures-build $platform $lang${rmw:+ $rmw}" --diag-dir "$work_root" -- \
+        "$make_bin" -j"$jobs" -f "$makefile"
     rm -f "$makefile"
 }
 
