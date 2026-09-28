@@ -32,11 +32,18 @@
 //! day the model carries the field. phase-457 W1 moved the pins to rlm
 //! v0.1.37 and play_launch 0.12.0 (design issue #52), and both went red as
 //! designed: `SubContract.buffer` and `PathContract.trigger` now reach the
-//! model. The two tests now assert the ARRIVAL, so the model side of issue
-//! 1339 stays measured; the consumer side - `EntityInventory::from_model`
-//! reading the drain rate from the trigger and the discipline from `buffer`
-//! instead of `buffer: None` and the output promise - is issue 1339's
-//! remaining half and lands with it, not with a pin bump.
+//! model. They assert the ARRIVAL now, so the model side of issue 1339 stays
+//! measured.
+//!
+//! A THIRD tripwire stood one layer in - the endpoint reported
+//! `Err(NotAQueue)` because `from_model` read `buffer: None` and recovered the
+//! drain rate from what the timer PUBLISHES. That was issue 1339's consumer
+//! half; it is wired, the test asserts the derived depth instead, and the flip
+//! was watched (`Err(NotAQueue)` -> `Ok(6)`, `depth 6 derived from 50 Hz in /
+//! 10 Hz drained`). The no-op proof it also carried - "no image's sizing can
+//! move" - was a claim about the SCHEMA, which no longer holds; it is a
+//! measurement over the tree's contracts now
+//! (`no_shipping_contract_derives_a_depth`).
 //!
 //! Run with:
 //! `cargo test --manifest-path packages/cli/Cargo.toml --test contract_queue_buffer_reaches_the_model`
@@ -51,7 +58,7 @@ use std::{
 
 use nros_cli_core::{
     entity_inventory::{EntityInventory, EntityKind},
-    queue_depth::{NoDefault, RateMilliHz},
+    queue_depth::{BufferDiscipline, RateMilliHz},
 };
 use ros_launch_manifest_model::SystemModel;
 
@@ -224,21 +231,33 @@ fn both_rates_reach_the_endpoint_row_through_the_real_resolver() {
     assert_eq!(
         sub.drain_rate,
         RateMilliHz::from_hz(10.0),
-        "the node's timer path publishes /status at min_rate_hz 10, so 10 Hz is the \
-         drain rate this reader can see"
+        "the drain path states `trigger.timer.rate_hz: 10`, and that is where the \
+         drain rate is read from"
+    );
+    assert_eq!(
+        sub.buffer,
+        Some(BufferDiscipline::Queue),
+        "and the discipline arrives beside them -- issue 1339's consumer half"
     );
 }
 
-/// ...and therefore the endpoint reports NO DEFAULT for the one fact that is
-/// missing, naming it — RFC-0100 D9, acceptance 3.
+/// ...and therefore the endpoint gets its DEPTH, end to end — RFC-0100 D9,
+/// acceptance 3.
 ///
-/// The outcome is `NotAQueue` and NOT `NoPublishRate` or `NoDrainRate`, which
-/// is the whole value of the test: with both rates live, the reason an author
-/// reads points at the ONE thing that did not arrive rather than at a rate they
-/// already stated. It also pins the derivation's inertness on today's toolchain
-/// — a `queue` endpoint cannot exist, so no image's sizing can move.
+/// This is the case the wave's unit tests could only exercise over hand-built
+/// rows: a contract stating `buffer: queue`, a publish rate and a drain rate,
+/// resolved by the real resolver, deriving `ceil(50 / 10) + 1 = 6`. Until issue
+/// 1339's consumer half landed the outcome here was `Err(NotAQueue)` — both
+/// rates live and the discipline unreadable — and that assertion was the
+/// tripwire this one replaces.
+///
+/// The `to_cmake` half is the reason the flip costs no image a byte: the
+/// derived list is non-empty for THIS fixture and stays empty for every image
+/// in the tree, because no shipping contract writes `buffer:` at all. The
+/// inertness was never a property of the schema, only of what the contracts
+/// say — which is what makes it something to re-measure rather than assume.
 #[test]
-fn the_reason_names_the_discipline_because_both_rates_did_arrive() {
+fn the_endpoint_gets_its_depth_because_all_three_facts_arrived() {
     let (_text, model) = resolve("queue");
     let inv = EntityInventory::from_model("fixture", &model).expect("the model describes wiring");
     let row = inv
@@ -247,26 +266,83 @@ fn the_reason_names_the_discipline_because_both_rates_did_arrive() {
         .find(|r| r.topic == "/chatter")
         .expect("the subscription is reported");
     assert_eq!(
+        row.buffer,
+        Some(BufferDiscipline::Queue),
+        "the discipline the author stated: {}",
+        row.line()
+    );
+    assert_eq!(
         row.outcome,
-        Err(NoDefault::NotAQueue),
-        "both rates arrived, so the missing fact is the discipline: {}",
+        Ok(6),
+        "ceil(50 Hz / 10 Hz) + 1 slot for the straggler: {}",
         row.line()
     );
     assert!(row.publish_rate.is_some() && row.drain_rate.is_some());
 
-    // No derived depth reaches the fragment, so no image's sizing moves.
+    // The derived depth reaches the fragment, keyed by type and topic.
     let cmake = inv.to_cmake();
     assert!(
-        cmake.contains("set(NROS_ENTITY_DERIVED_DEPTHS \"\")\n"),
-        "the derived list is published and EMPTY: {cmake}"
+        cmake.contains("set(NROS_ENTITY_DERIVED_DEPTH_COUNT 1)\n"),
+        "exactly one endpoint was defaulted: {cmake}"
     );
     assert!(
-        cmake.contains("set(NROS_ENTITY_DERIVED_DEPTH_COUNT 0)\n"),
+        cmake.contains("/chatter") && cmake.contains("NROS_ENTITY_DERIVED_DEPTHS"),
         "{cmake}"
     );
-    // ...and the diagnostics are silent, because no endpoint states a
-    // discipline to contradict.
+    // ...and the diagnostics are silent: `queue` contradicts no stated depth
+    // here, because this endpoint states none.
     assert!(inv.buffer_diagnostics().is_empty());
+}
+
+/// The NO-OP PROOF, restated as a measurement rather than as a schema fact.
+///
+/// Every contract in this tree but the fixture above is resolved and asked for
+/// its derived depths; all of them must be empty. Before issue 1339 this held
+/// because `SubContract` had no `buffer` field at all, so it held for every
+/// contract that could ever exist. It holds now because none of them writes
+/// one — a weaker claim, and therefore one worth checking instead of asserting.
+#[test]
+fn no_shipping_contract_derives_a_depth() {
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("repo root");
+    let contracts = shipping_contracts(&repo.join("examples"));
+    assert!(
+        !contracts.is_empty(),
+        "the sweep must find the tree's contracts, or it proves nothing"
+    );
+    for c in &contracts {
+        let text = fs::read_to_string(c).expect("read the contract");
+        assert!(
+            !text.contains("buffer:"),
+            "{} states a `buffer:`, so the byte-identical claim needs re-measuring \
+             against a build rather than restating",
+            c.display()
+        );
+    }
+}
+
+/// Every `*.contract.yaml` under a directory, recursively.
+fn shipping_contracts(root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let Ok(entries) = fs::read_dir(root) else {
+        return out;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            out.extend(shipping_contracts(&p));
+        } else if p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with(".contract.yaml"))
+        {
+            out.push(p);
+        }
+    }
+    out.sort();
+    out
 }
 
 /// Resolve `launch/<stem>.launch.xml` (with its `<stem>.contract.yaml`

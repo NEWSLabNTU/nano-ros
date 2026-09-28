@@ -576,6 +576,22 @@ carries the table. Consequences:
 * `tests/contract_queue_buffer_reaches_the_model.rs` holds two tripwires that go
   red the day 1339 closes, each naming the one line to wire.
 
+**Issue 1339 is CLOSED, and the finding above is now history — read it with
+this.** rlm v0.1.37 (design issue #52) added `SubContract::buffer` and
+`PathContract::trigger`, the resolver lowers both, phase-457 W1 moved the pins,
+and issue 1339's consumer half wired the two reads. All three facts reach the
+build; the fixture derives `ceil(50 / 10) + 1 = 6` end to end. Two of the
+bullets above invert:
+
+* **Acceptance 5 is no longer structural.** The inertness is a property of what
+  the tree's contracts SAY — none of them writes `buffer:` — rather than of what
+  the schema can carry. It is measured (`no_shipping_contract_derives_a_depth`)
+  instead of assumed, and the first contract stating `buffer: queue` will move
+  bytes on purpose.
+* **The substitute is retired, not merely superseded.** A path with no `trigger`
+  is `Unclassified` and yields NO drain rate, so an old model gets
+  `NoDefault::NoDrainRate` rather than a depth built on the output's promise.
+
 ### W9 — retirement
 
 Per `check-knob-single-reader.py`'s own rule:

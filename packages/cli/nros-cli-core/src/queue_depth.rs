@@ -34,36 +34,40 @@
 //! RFC-0049 ladder — a stated `depth` still wins — for exactly the endpoints
 //! where a hand-typed depth is most likely to be wrong.
 //!
-//! # What the SystemModel actually carries today (MEASURED, issue 1339)
+//! # What the SystemModel carries (MEASURED, issue 1339 — CLOSED)
 //!
-//! The three facts this module needs are authored in the contract and reach
-//! nano-ros unevenly, and the measurement is the reason this wave lands armed
-//! rather than firing. Resolved with the pinned `nros-launch-resolve` over a
-//! contract stating all three (`tests/fixtures/queue_buffer/`):
+//! The three facts this module needs are authored in the contract, and all
+//! three now reach nano-ros. Resolved with the pinned `nros-launch-resolve`
+//! over a contract stating all three (`tests/fixtures/queue_buffer/`):
 //!
 //! | fact | contract key | in the SystemModel? |
 //! | --- | --- | --- |
 //! | publish rate | `topics.<t>.rate_hz` | **yes** — `TopicContract::rate_hz` |
 //! | publish rate | `<node>.pub.<ep>.min_rate_hz` | **yes** — `PubContract::min_rate_hz` |
-//! | drain rate | `<node>.paths.<p>.trigger.timer.rate_hz` | **NO** — `PathContract` has no trigger |
-//! | discipline | `<node>.sub.<ep>.buffer` | **NO** — `SubContract` has no `buffer` |
+//! | drain rate | `<node>.paths.<p>.trigger.timer.rate_hz` | **yes** — `PathContract::trigger`, since rlm v0.1.37 |
+//! | discipline | `<node>.sub.<ep>.buffer` | **yes** — `SubContract::buffer`, since rlm v0.1.37 |
 //!
-//! Both missing halves are dropped by the MODEL SCHEMA, not by nano-ros: the
-//! resolver reads them, reasons about them, and emits neither. It emits a
-//! diagnostic proving it computed exactly the division below —
+//! The two lower rows were **NO** when this module was written (rlm v0.1.35),
+//! and dropped by the MODEL SCHEMA rather than by nano-ros: the resolver read
+//! them, reasoned about them, and emitted neither. It emitted a diagnostic
+//! proving it had computed exactly the division below —
 //!
 //! > `[queue-drain-rate] warning: node 'listener' timer path 'drain' rate_hz
 //! > (10) is less than the sum of its 'buffer: queue' subscriptions' producer
 //! > rates (50, from ["chatter"]) — the queue will accumulate backlog every
 //! > period`
 //!
-//! — and then writes a `node_paths` entry carrying `output` alone. That is
+//! — and then wrote a `node_paths` entry carrying `output` alone. That was
 //! issue 1256's shape one layer upstream of where W3 found it: a declaration
 //! legal to write, legal to resolve, and dropped before any consumer can read
-//! it. Issue 1339 carries it; `contract_queue_buffer_reaches_the_model.rs` is
-//! the tripwire that goes red the day it closes.
+//! it. rlm v0.1.37 (design issue #52) added both fields and the resolver lowers
+//! them; issue 1339's consumer half reads them here, and
+//! `contract_queue_buffer_reaches_the_model.rs` measures the whole chain
+//! against the real resolver.
 //!
-//! Which is why nothing here guesses. An endpoint whose discipline or whose
+//! Nothing here guesses, and that did not change with the fields' arrival: a
+//! model older than v0.1.37 carries no trigger, and such a path is
+//! `Unclassified` rather than a timer. An endpoint whose discipline or whose
 //! rates did not arrive gets NO DEFAULT and a reason saying which one is
 //! missing ([`NoDefault`]), because RFC-0100 D6's rule holds here as everywhere
 //! else: *"a refused fact never silently widens its basis."*
@@ -222,9 +226,10 @@ impl fmt::Display for RateMilliHz {
 /// contract that reaches here. A margin chosen to cover them would be a guess
 /// wearing arithmetic's clothes, which is precisely what D9 refuses to let
 /// `buffer:` itself be. The contract does carry `paths.<p>.max_jitter` and
-/// `paths.<p>.miss`; when those reach the model (issue 1339 is the same gap),
-/// a jitter-aware margin can be DERIVED here and this constant retired. Until
-/// then the honest margin is the one the phase relationship alone forces.
+/// `paths.<p>.miss`, and the model carries both now — so a jitter-aware margin
+/// can be DERIVED here and this constant retired, which is work this wave does
+/// not do. Until it is done, the honest margin is the one the phase
+/// relationship alone forces.
 pub const QUEUE_DEPTH_MARGIN: u32 = 1;
 
 /// The depth at which a `buffer: latest` endpoint stops being read-latest.
@@ -277,13 +282,14 @@ impl NoDefault {
                                          arriving in a drain period is unknown and a guessed \
                                          depth is a guessed buffer size"
                 .to_string(),
-            NoDefault::NoDrainRate => "no drain rate reached this endpoint. It is authored as \
+            NoDefault::NoDrainRate => "no drain rate reached this endpoint. State \
                                        `paths.<path>.trigger: { timer: { rate_hz: N } }` on the \
-                                       consuming node, and the SystemModel does not carry a \
-                                       path's trigger today (issue 1339) -- the resolver reads \
-                                       it, warns on it, and emits only the path's `output`. \
-                                       Until it travels, state `min_rate_hz` on what that timer \
-                                       publishes, which is the rate this reader can see"
+                                       consuming node -- the rate lives THERE and nowhere else, \
+                                       and a `min_rate_hz` on what the timer publishes is not a \
+                                       substitute for it (it is absent for a timer that \
+                                       publishes nothing, and the resolver advises deleting it). \
+                                       A path with no trigger is `Unclassified`, and this \
+                                       derivation never assumes a timer"
                 .to_string(),
         }
     }
@@ -517,8 +523,17 @@ mod tests {
             .expect_err("no drain rate means no default");
         assert_eq!(no_drain, NoDefault::NoDrainRate);
         assert!(
-            no_drain.reason().contains("trigger") && no_drain.reason().contains("1339"),
-            "the reason must name the key AND the issue that keeps it from arriving: {}",
+            no_drain.reason().contains("trigger") && no_drain.reason().contains("rate_hz"),
+            "the reason must name the key that would supply it: {}",
+            no_drain.reason()
+        );
+        // ...and it must NOT point at the substitute issue 1339 retired. A
+        // reason that tells an author to state `min_rate_hz` on the timer's
+        // output is advice for a reader that no longer exists, and following it
+        // would leave the drain rate as absent as before.
+        assert!(
+            !no_drain.reason().contains("state `min_rate_hz`"),
+            "the retired substitute must not be prescribed: {}",
             no_drain.reason()
         );
 
