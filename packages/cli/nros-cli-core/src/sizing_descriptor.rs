@@ -101,6 +101,23 @@ use crate::entity_inventory::{
 ///
 /// The language half of the answer. The backend half is [`BackendSchema`]; the
 /// two together select the path, and neither alone can.
+///
+/// # Why this is not [`nros_lang::Language`] (phase-469)
+///
+/// It is a NARROWING, in the sense RFC-0091 §1 and `nros-lang`'s own module
+/// docs give the word: two values where the enumeration has three, because
+/// C and C++ give the SAME answer to this question and saying so is
+/// information. Replacing it with `Language` would make
+/// [`registration_path`]'s table spell `(Language::C, _)` and
+/// `(Language::Cpp, _)` as two arms that must agree, and nothing would then
+/// state that they must.
+///
+/// What it was MISSING is the derivation — a narrowing is supposed to derive
+/// from the enumeration rather than exist beside it, and this one had no
+/// relationship to `Language` at all. [`From<nros_lang::Language>`] is that
+/// relationship, and it is what makes a fourth language a compile error here:
+/// whoever adds one has to answer "does it register like Rust or like C?"
+/// rather than have the question not come up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryLanguage {
     Rust,
@@ -108,6 +125,15 @@ pub enum EntryLanguage {
     /// (`nros::rx_size_bound<M>` / `rx_buffer_hint`), and both fall to the raw
     /// no-hint row when they do not supply one.
     CFamily,
+}
+
+impl From<nros_lang::Language> for EntryLanguage {
+    fn from(lang: nros_lang::Language) -> Self {
+        match lang {
+            nros_lang::Language::Rust => EntryLanguage::Rust,
+            nros_lang::Language::C | nros_lang::Language::Cpp => EntryLanguage::CFamily,
+        }
+    }
 }
 
 /// Does the linked backend carry type descriptors?
@@ -2226,6 +2252,38 @@ mod tests {
                 nested_depth,
             }),
         )
+    }
+
+    /// The narrowing, asserted (phase-469).
+    ///
+    /// Both halves matter. Rust must stay its own answer, and C and C++ must
+    /// land on ONE — that collapse is the information [`EntryLanguage`]
+    /// carries over [`nros_lang::Language`], and a `From` that spread them
+    /// apart would be a silently different registration table.
+    #[test]
+    fn the_registration_narrowing_folds_c_and_cpp_and_keeps_rust_apart() {
+        assert_eq!(
+            EntryLanguage::from(nros_lang::Language::Rust),
+            EntryLanguage::Rust
+        );
+        assert_eq!(
+            EntryLanguage::from(nros_lang::Language::C),
+            EntryLanguage::CFamily
+        );
+        assert_eq!(
+            EntryLanguage::from(nros_lang::Language::Cpp),
+            EntryLanguage::CFamily
+        );
+        // Every language in the enumeration has an answer — the `From` is
+        // total, so a new variant is a compile error there rather than a
+        // registration path nobody chose.
+        assert_eq!(
+            nros_lang::Language::ALL
+                .iter()
+                .filter(|l| EntryLanguage::from(**l) == EntryLanguage::CFamily)
+                .count(),
+            2
+        );
     }
 
     fn base<'a>(inv: &'a EntityInventory) -> DescriptorInputs<'a> {
