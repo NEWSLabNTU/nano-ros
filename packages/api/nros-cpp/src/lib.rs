@@ -802,6 +802,11 @@ pub unsafe extern "C" fn nros_cpp_init_rmw(
     // telling them apart took a walk through the disassembly to prove the call
     // chain existed. That is the manual work the record exists to remove.
     nros_node::boot_report::init();
+    // Issue 1551 — install the platform log sink before the runtime can raise
+    // its first Rust-side record; no C++ board funnel does it, so without this
+    // every such record was held and never printed (`nros_c`'s
+    // `ensure_default_sinks` says what it cost).
+    nros_c::__ensure_default_log_sinks();
 
     if node_name.is_null() || storage.is_null() {
         nros_node::boot_report::note_cpp_init_ret(NROS_CPP_RET_INVALID_ARGUMENT);
@@ -1301,6 +1306,8 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
     specs_len: usize,
     storage: *mut c_void,
 ) -> nros_cpp_ret_t {
+    // Issue 1551 — as in `nros_cpp_init_rmw`.
+    nros_c::__ensure_default_log_sinks();
     if specs.is_null() || specs_len == 0 || storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
