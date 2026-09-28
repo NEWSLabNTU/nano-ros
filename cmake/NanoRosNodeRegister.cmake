@@ -12,7 +12,11 @@
 #         L.4 prefix rule is retired — pkg is explicit metadata).
 #
 #     `ENTITIES` was phase-403 W9's way of saying WHICH entities a component's
-#     constructor creates. It is RETIRED (phase-412) and now fails loud.
+#     constructor creates. It is RETIRED (phase-412), and as of this wave it is
+#     out of the GRAMMAR entirely — not a keyword of this verb or of
+#     `nros_components_register_node`, which is what makes the latter a
+#     keyword-for-keyword analog of `rclcpp_components_register_node` again.
+#     A stale caller still fails loud, via `_nros_entities_retired`.
 #
 #     The reasoning that put it here still holds and is worth keeping: RFC-0043
 #     /0044 components wire themselves in CONSTRUCTORS, at runtime, so anything
@@ -422,8 +426,59 @@ macro(_nros_rtos_entry_family _fam)
     set(NROS_ENTRY_BOARD_CPP "::nros::board::${_nros_fam_head}${_nros_fam_tail}Board")
 endmacro()
 
+# ---------------------------------------------------------------------------
+# _nros_entities_retired(<call> <args…>)
+#
+# The `ENTITIES` tombstone, shared by every verb that used to accept it
+# (`nano_ros_node_register` and `nros_components_register_node`).
+#
+# phase-412 retired the keyword and phase-454 W9 removed the last producer it
+# fed. This wave takes it out of the GRAMMAR — it is no longer a
+# `cmake_parse_arguments` multi-value keyword anywhere — which is what restores
+# exact keyword parity between `nros_components_register_node` and upstream's
+# `rclcpp_components_register_node`.
+#
+# What stays is this refusal, and it reads ARGN rather than a parse result
+# precisely BECAUSE the keyword is gone from the grammar. With no keyword there
+# are two ways a stale caller can fail and both are bad: `ENTITIES` written
+# after a multi-value keyword is swallowed INTO it (`SOURCES a.cpp ENTITIES
+# sub:…` compiles a source file called `ENTITIES`), and written anywhere else
+# it lands in `_NRC_UNPARSED_ARGUMENTS`, which nothing reads — a SILENT drop of
+# the declaration the caller believes is sizing its pools. An `IN_LIST ARGN`
+# test catches both, so this is strictly stronger than the parse-result test it
+# replaces.
+#
+# It is a tombstone, not a feature: it can go once copy-out projects predating
+# 2026-09-05 are not a concern. Until then a loud refusal beats either failure
+# above.
+# ---------------------------------------------------------------------------
+function(_nros_entities_retired _call)
+    if(NOT "ENTITIES" IN_LIST ARGN)
+        return()
+    endif()
+    message(FATAL_ERROR
+        "${_call}: ENTITIES was retired (phase-412).\n"
+        "  What this component creates is now stated ONCE PER SYSTEM, in a contract\n"
+        "  sidecar beside the launch file that runs it:\n"
+        "\n"
+        "      <bringup>/launch/<stem>.contract.yaml   (beside <stem>.launch.xml)\n"
+        "\n"
+        "  nodes: names each node's `pub` / `sub` / `srv` / `cli` endpoints and its\n"
+        "  `paths:` (a path whose trigger is `{ timer: { rate_hz: N } }` IS a timer);\n"
+        "  topics: / services: / actions: wire those endpoints to absolute names.\n"
+        "  The resolver folds it into the SystemModel and `nano_ros_entry` passes\n"
+        "  that model to `nros ws entity-inventory`, so the pools size themselves.\n"
+        "\n"
+        "  A STANDALONE leaf has no bringup and no model. It states the same facts\n"
+        "  on its own `system.toml` `[[component]] entities` rows (RFC-0098 D8).\n"
+        "\n"
+        "  Delete the ENTITIES argument. A system with no contract yet keeps its\n"
+        "  configured NROS_EXECUTOR_MAX_CBS, exactly as it did before phase-403.")
+endfunction()
+
 function(nano_ros_node_register)
-    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE;EXISTING_TARGET" "SOURCES;DEPLOY;CALLBACK_GROUPS;ENTITIES" ${ARGN})
+    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE;EXISTING_TARGET" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
+    _nros_entities_retired("nano_ros_node_register(${_NRC_NAME})" ${ARGN})
 
     # Issue 1017 — the entry's session name is DERIVED here, once, from the
     # node's own name, and every entry shape below reads it.
@@ -1305,43 +1360,18 @@ function(nano_ros_node_register)
     _nros_json_strlist(_deploy_json  ${_NRC_DEPLOY})
     _nros_json_strlist(_cbgs_json    ${_NRC_CALLBACK_GROUPS})
 
-    # phase-412 — `ENTITIES` is RETIRED. It stays PARSED (and
-    # `KEYWORDS_MISSING_VALUES` still catches the valueless form) purely so an
-    # existing caller fails HERE, naming its replacement, instead of having the
-    # keyword and its specs silently join SOURCES via UNPARSED_ARGUMENTS and
-    # become source files nobody can find. Same shape as the HOST removal in
-    # `nano_ros_entry`.
+    # phase-454 W9 removed the `_entities_field` that used to be interpolated
+    # into the JSON below; there is no metadata `"entities"` key any more.
+    # Registered in `scripts/check/check-knob-single-reader.py`: no cmake file
+    # may write one again.
     #
-    # There is no metadata `"entities"` key any more. The three-valued rule it
-    # existed for — "did not say" vs "creates none" vs the specs — is not gone,
-    # it MOVED: a component the model describes is stated, a component the model
-    # does not describe is "did not say" and still makes the image refuse rather
-    # than derive a total that is short.
+    # The three-valued rule it existed for — "did not say" vs "creates none" vs
+    # the specs — is not gone, it MOVED: a component the model describes is
+    # stated, a component the model does not describe is "did not say" and still
+    # makes the image refuse rather than derive a total that is short.
     #
-    # phase-454 W9 — and the `_entities_field` that used to be interpolated into
-    # the JSON below is gone with it. It had been the empty string on every path
-    # since phase-412, so it emitted nothing; keeping a splice point for a key
-    # that can never be written is a producer this retirement would otherwise
-    # still have to account for. Registered in
-    # `scripts/check/check-knob-single-reader.py`: no cmake file may write an
-    # `entities` key into `nros-metadata.json` again.
-    if(DEFINED _NRC_ENTITIES OR "ENTITIES" IN_LIST _NRC_KEYWORDS_MISSING_VALUES)
-        message(FATAL_ERROR
-            "nano_ros_node_register(${_NRC_NAME}): ENTITIES was retired (phase-412).\n"
-            "  What this component creates is now stated ONCE PER SYSTEM, in a contract\n"
-            "  sidecar beside the launch file that runs it:\n"
-            "\n"
-            "      <bringup>/launch/<stem>.contract.yaml   (beside <stem>.launch.xml)\n"
-            "\n"
-            "  nodes: names each node's `pub` / `sub` / `srv` / `cli` endpoints and its\n"
-            "  `paths:` (a path whose trigger is `{ timer: { rate_hz: N } }` IS a timer);\n"
-            "  topics: / services: / actions: wire those endpoints to absolute names.\n"
-            "  The resolver folds it into the SystemModel and `nano_ros_entry` passes\n"
-            "  that model to `nros ws entity-inventory`, so the pools size themselves.\n"
-            "\n"
-            "  Delete the ENTITIES argument. A system with no contract yet keeps its\n"
-            "  configured NROS_EXECUTOR_MAX_CBS, exactly as it did before phase-403.")
-    endif()
+    # The refusal for a stale caller is `_nros_entities_retired`, raised at the
+    # top of this function so it fires before any target is created.
 
     get_property(_acc GLOBAL PROPERTY NROS_COMPONENTS_JSON)
     if(_acc)

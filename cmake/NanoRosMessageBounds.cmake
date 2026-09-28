@@ -740,9 +740,10 @@ function(nros_derive_message_bound_knobs)
                     "nros:   payload classes are an UPPER BOUND -- this image "
                     "declares no entities, so they derive over the whole "
                     "linked closure and are sized for the largest type it "
-                    "COULD receive. Declare "
-                    "`nano_ros_node_register(... ENTITIES sub:<pkg>/msg/<Name> "
-                    "...)` to narrow them to what it does.")
+                    "COULD receive. Name each subscription's type -- in "
+                    "`<bringup>/launch/<stem>.contract.yaml` for a bringup, or "
+                    "in `system.toml` `[[component]] entities` for a standalone "
+                    "leaf -- to narrow them to what it does.")
             endif()
         endif()
     endif()
@@ -1215,16 +1216,17 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
             if(NROS_MESSAGE_BOUNDS_BASIS STREQUAL "subscribed")
                 string(APPEND _c
                     "# Derived over the ${NROS_MESSAGE_BOUNDS_SUBSCRIPTION_COUNT} SUBSCRIPTIONS this image declares\n"
-                    "# (`nano_ros_node_register(... ENTITIES ...)`), not over the\n"
+                    "# (a launch contract sidecar, or `system.toml` `[[component]] entities`),\n"
+                    "# not over the\n"
                     "# ${NROS_MESSAGE_BOUNDS_TYPE_COUNT}-type linked closure. A type the image links and never\n"
                     "# receives cannot set a class here.\n")
             else()
                 string(APPEND _c
                     "# UPPER BOUND: this image declares no entities, so the classes are derived\n"
                     "# over the whole ${NROS_MESSAGE_BOUNDS_TYPE_COUNT}-type linked closure and are sized for the largest\n"
-                    "# type it COULD receive, not the largest it does. Declare\n"
-                    "# `nano_ros_node_register(... ENTITIES sub:<pkg>/msg/<Name> ...)` on every\n"
-                    "# component to narrow them.\n")
+                    "# type it COULD receive, not the largest it does. Name each subscription's\n"
+                    "# type -- in `<bringup>/launch/<stem>.contract.yaml`, or in `system.toml`\n"
+                    "# `[[component]] entities` for a standalone leaf -- to narrow them.\n")
             endif()
         endif()
         if(NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS STREQUAL "derived")
