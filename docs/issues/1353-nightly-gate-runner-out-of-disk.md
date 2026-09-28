@@ -1460,19 +1460,37 @@ on two of three runs and the headroom is ~7 G lower than the best case. The
 death time tracks it — **1 h 59 m is earlier than the 2 h 06 m–2 h 39 m band**
 the earlier sections recorded, so that band is not a floor.
 
-### This one names no ENOSPC, and the attribution rests on the annotation
+### RETRACTED: that run is not this issue — it is `check-template-copy-out`
 
-Unlike the 2026-09-28 run the section above quotes, this log contains **no**
-`No space left`, no `os error 28` and no `FAILED:` — 1309 lines, ending at
-`sync: wrote [patch.crates-io] → /tmp/nros-template-copy-out.rLvJR2/copy/examples/templates/multi-package-workspace`
-and then `error: recipe 'tier1' failed with exit code 1`. Exit **1**, not the
-101 the `rust-rtos-link-check` deaths report, and a different last step.
+The paragraph that stood here said the log contained no failing write and that
+the attribution rested on the disk annotation plus the truncation. **Both claims
+were wrong, and the second was wrong because of the first.** The failing gate is
+in the log, twenty lines above the tail I grepped:
 
-So the attribution to this issue comes from the disk annotation
-(`100% used, 232K free — 42G examples; 19G build; 16G target`) plus the
-truncation, which are two of this issue's three named signatures — **not** from
-an error line, because there is none. Stated that way deliberately: a run that
-died at 100 % with its log cut is this issue's shape, and a reader who wants the
-failing write for THIS run will not find one.
+```
+===== FAIL (template-copy-out, rc=1, 1555109ms) =====
+  multi-package-workspace: FAIL — the copy does not build
+```
+
+Run **36466773816** (18:39 push, integration job 18:51:07 → 21:15:08) is the
+same failure, `template-copy-out rc=1` with `multi-package-workspace: FAIL`, so
+it is two consecutive `host-tests` runs at one named gate on one template, not a
+disk death. That belongs to **issue 1453**, where it is now recorded.
+
+What went wrong in the reading: the disk annotation said `100% used, 232K free`,
+which is true and is this issue's signature, so I stopped there. But tier 1
+builds the world, so reaching 100 % is what a tier-1 run DOES on this runner —
+it is a consequence of having run, not evidence of what failed. The grep that
+missed it looked for `FAILED:` and `error:`; this gate prints `===== FAIL (` and
+`FAIL —`. Two of this issue's three signatures were present and the cause was
+still something else, which is the whole point of reading past the step name.
+
+The `1 h 59 m` timing claim in the table above also does not support what I drew
+from it. Run 36466773816 arrived in the SAME state (89 % used, 42 G `examples`,
+17 G free — marginally worse) and lasted **2 h 24 m**, back inside the
+2 h 06 m–2 h 39 m band. So arrival state does not predict death time, and the
+sentence claiming the death time tracks it is withdrawn. What survives is the
+narrower fact: the reclaim is a constant ~33.3 G, so the headroom the tier gets
+is set by the arrival state, and `examples` now arrives at 42 G.
 
 Acceptance unchanged.

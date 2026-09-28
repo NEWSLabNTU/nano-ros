@@ -175,3 +175,52 @@ that nobody reads and a merge gate that everyone waits on are the two ends of
 the same trade, and there is a middle (a `schedule` lane whose red is surfaced
 the way `just queue-triage` surfaces an ejection) that costs no build time at
 all.
+
+
+## A second, different template is red — and the lane DOES run on push now (2026-09-28)
+
+`multi-package-workspace` fails, on two consecutive `host-tests` runs of the
+PUSH event, inside `just ci tier1`:
+
+| run | integration job | elapsed | gate |
+| --- | --- | --- | --- |
+| 36451336301 | 108974046015's lane, 16:51:39 → 18:51:04 | 1 h 59 m | `FAIL (template-copy-out, rc=1, 1555109ms)` |
+| 36466773816 | 109078713781, 18:51:07 → 21:15:08 | 2 h 24 m | `FAIL (template-copy-out, rc=1, 1767314ms)` |
+
+Both print the same one-line verdict, with the other five templates passing:
+
+```
+check-template-copy-out: building 6 template(s) from a copy of the tracked file set
+  c-and-cpp-mixed-workspace: OK — 2 artifact(s) ...
+  local-msg-package: OK — 2 artifact(s) ...
+  multi-node-workspace: OK — 1 artifact(s) ...
+  multi-node-workspace-cpp: OK — 1 artifact(s) ...
+  multi-package-workspace: FAIL — the copy does not build
+```
+
+Two things this changes about this issue as filed.
+
+**The reachability premise moved.** This issue says the gate "runs on `schedule`
+only", which is why it sat red unseen. It is now reached from `just ci tier1` on
+the **push** event, via `host-tests.yml` — which is how these two were found. So
+the lane is no longer invisible; what it is not is FAST (the gate alone took
+1,555 s and 1,767 s, inside a job that runs ~2 h), and it sits behind the disk
+pressure of issue 1353 in the same job.
+
+**The template set that fails is different.** The three this issue measured
+(`pure-c-workspace`, `c-and-cpp-mixed-workspace`, `multi-node-workspace-cpp`)
+died on archived issue 1429's `NROS_DECLARED_TL_PUBLISHERS=""` carrier and now
+pass. `multi-package-workspace` is a new red with a different shape.
+
+**What is NOT yet known**: the underlying build error. The gate prints only a
+short tail of the copy's build, and in both runs that tail ends mid-line at
+`sync: wrote [patch.crates-io] → …/multi-package-workspace/src/pkg_rust_p`,
+truncated by the log writer rather than by the build. So "the copy does not
+build" is all either run states. Reproducing it needs
+`just check template-copy-out` locally, or the gate widened to print the copy's
+build log on failure — the second is the cheaper fix and makes the next
+occurrence self-describing.
+
+**What this is NOT**: not issue 1353. Both runs also end with the disk at 100 %,
+and that is what misled the first reading (retracted in 1353's own text): tier 1
+builds the world, so 100 % is what the run DOES, not what failed.
