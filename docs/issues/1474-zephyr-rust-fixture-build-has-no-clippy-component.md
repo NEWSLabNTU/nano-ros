@@ -73,3 +73,72 @@ is declared rather than about clippy:
 
 Acceptance is `live-peer`'s off-runner job reaching its cells — a verdict on
 the interop rows, green or red, rather than stopping in the build.
+
+## Remedy 1 is already in the tree, it RUNS, and it is a no-op (2026-09-28)
+
+"What would close it" above offers `rustup component add clippy` as the first
+shape. A step that does exactly that already exists — **`Unblock rustup
+clippy-preview conflict`**, in both `.github/workflows/live-peer.yml` (~line
+430) and `.github/workflows/nightly.yml` (~line 788) — and it ran in the
+`live-peer` run that failed this morning. So the first remedy has been tried;
+what follows is why it does not take.
+
+`live-peer regression` run **36377215634** (schedule, 04:19), job
+**108785696260** (`rows whose board is NOT this runner`). The step's own
+comment states its intent:
+
+```
+# The image bakes bin/cargo-clippy from a non-rustup-owner layer; `rustup
+# target add` trips on the clippy-preview conflict. Delete the orphan files
+# then re-install clippy on every toolchain.
+```
+
+and its body deletes and re-adds:
+
+```
+find "$rustup_home/toolchains" -maxdepth 3 -type f \
+    \( -name cargo-clippy -o -name clippy-driver \) -delete 2>/dev/null || true
+rustup toolchain list … | while read -r tc; do
+    rustup component add clippy --toolchain "$tc" || echo "  (clippy add failed …)"
+done
+```
+
+Its entire output in that run is one line:
+
+```
+info: component clippy is up to date
+```
+
+Thirty minutes later the same job dies in the fixture build on the error this
+issue is about:
+
+```
+error: the 'cargo-clippy' binary, normally provided by the 'clippy' component,
+       is not applicable to the 'stable-x86_64-unknown-linux-gnu' toolchain
+```
+
+**Measured:** the files are deleted, `component add` reports *up to date* rather
+than installing anything, and the binary is still missing when the build asks
+for it. The step cannot fail — its `|| echo … non-fatal` and the `|| true` on
+the `find` mean it reports success whatever happens — so this sequence has been
+running green and achieving nothing.
+
+**Inference, stated as such:** deleting the files does not tell rustup they are
+gone. Its manifest still records `clippy` as installed for that toolchain, so
+`component add` short-circuits with "up to date" and never re-downloads what the
+`find` removed. I have not instrumented rustup to prove that; what is proven is
+the three facts above, and any explanation has to account for "deleted, then
+*up to date*, then absent".
+
+If that reading is right the step needs `rustup component remove clippy` before
+the add (or `--force`, or simply not deleting the files), and the `|| echo`
+should not swallow a failure the build later depends on. That is a change to a
+workflow, so it belongs to whoever owns the runner image decision in remedy 1 —
+this appendix only removes the assumption that remedy 1 is untried.
+
+**What this does NOT change.** Remedy 2 (do not lint in a fixture build) is
+untouched, and acceptance is unchanged: `live-peer`'s off-runner job reaching
+its cells. The sibling job in the same run, `rows whose board IS this runner`,
+failed on **issue 1353** (annotation `No space left on device : '…/_diag/
+Worker_20260928-041930-utc.log'`, log `BlobNotFound`) — two jobs, two causes, as
+this lane usually splits.
