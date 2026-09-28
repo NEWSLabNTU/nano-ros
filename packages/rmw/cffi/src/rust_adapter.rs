@@ -15,7 +15,7 @@
 //!
 //! # Storage discipline
 //!
-//! - Session: `Box::into_raw(Box::new(session))` is stashed in
+//! - Session: boxed (fallibly, via `box_handle` — issue 1551) and stashed in
 //!   `NrosRmwSession::backend_data`. `close` reclaims via
 //!   `Box::from_raw` (drops the box, runs `Drop`, frees the alloc).
 //! - Publisher / Subscription / Service / Client: same
@@ -50,11 +50,11 @@ use nros_rmw::{
 };
 
 use crate::{
-    EMPTY_VTABLE, MAX_SESSION_PROPERTIES, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK,
-    NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwGid,
-    NrosRmwNode, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession,
-    NrosRmwSessionOptions, NrosRmwSubscription, NrosRmwVtable, event_kind_from_c, ret_from_error,
-    rmw_publisher_options_t, rmw_subscription_options_t,
+    EMPTY_VTABLE, MAX_SESSION_PROPERTIES, NROS_RMW_RET_BAD_ALLOC, NROS_RMW_RET_INVALID_ARGUMENT,
+    NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback,
+    NrosRmwEventKind, NrosRmwGid, NrosRmwNode, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
+    NrosRmwService, NrosRmwSession, NrosRmwSessionOptions, NrosRmwSubscription, NrosRmwVtable,
+    event_kind_from_c, ret_from_error, rmw_publisher_options_t, rmw_subscription_options_t,
 };
 // phase-381 W3 — the endpoint-info slots marshal the generated ABI types
 // directly. Imported from `generated` rather than re-exported through the crate
@@ -742,13 +742,21 @@ unsafe extern "C" fn create_session_trampoline<R: RustBackend>(
     };
     let factory = R::factory();
     match factory.open(&cfg) {
-        Ok(session) => {
-            let boxed = Box::into_raw(Box::new(session));
-            unsafe {
-                (*out).backend_data = boxed as *mut c_void;
+        Ok(session) => match box_handle("session", session) {
+            Ok(boxed) => {
+                unsafe {
+                    (*out).backend_data = boxed;
+                }
+                NROS_RMW_RET_OK
             }
-            NROS_RMW_RET_OK
-        }
+            // An unboxable session must not stay open with nobody holding it:
+            // close then drop, the order `destroy_session_trampoline` uses.
+            Err(mut session) => {
+                let _ = Session::close(&mut session);
+                drop(session);
+                NROS_RMW_RET_BAD_ALLOC
+            }
+        },
         Err(e) => ret_from_error(&e),
     }
 }
@@ -834,13 +842,19 @@ unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_publisher(s, &topic, qos_settings) {
-        Ok(pub_handle) => {
-            let boxed = Box::into_raw(Box::new(pub_handle));
-            unsafe {
-                (*out).backend_data = boxed as *mut c_void;
+        Ok(pub_handle) => match box_handle("publisher", pub_handle) {
+            Ok(boxed) => {
+                unsafe {
+                    (*out).backend_data = boxed;
+                }
+                NROS_RMW_RET_OK
             }
-            NROS_RMW_RET_OK
-        }
+            // Dropping the handle undeclares the entity the backend just made.
+            Err(pub_handle) => {
+                drop(pub_handle);
+                NROS_RMW_RET_BAD_ALLOC
+            }
+        },
         Err(e) => ret_from_error(&e),
     }
 }
@@ -939,11 +953,20 @@ unsafe extern "C" fn create_subscription_trampoline<R: RustBackend>(
             }
             #[cfg(not(all(target_os = "none", not(feature = "std"))))]
             {
-                let boxed = Box::into_raw(Box::new(sub_handle));
-                unsafe {
-                    (*out).backend_data = boxed as *mut c_void;
+                match box_handle("subscription", sub_handle) {
+                    Ok(boxed) => {
+                        unsafe {
+                            (*out).backend_data = boxed;
+                        }
+                        NROS_RMW_RET_OK
+                    }
+                    // Dropping the handle undeclares the entity the backend
+                    // just made.
+                    Err(sub_handle) => {
+                        drop(sub_handle);
+                        NROS_RMW_RET_BAD_ALLOC
+                    }
                 }
-                NROS_RMW_RET_OK
             }
         }
         Err(e) => ret_from_error(&e),
@@ -1155,13 +1178,19 @@ unsafe extern "C" fn create_service_trampoline<R: RustBackend>(
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_service(s, &info, qos_settings) {
-        Ok(server) => {
-            let boxed = Box::into_raw(Box::new(server));
-            unsafe {
-                (*out).backend_data = boxed as *mut c_void;
+        Ok(server) => match box_handle("service server", server) {
+            Ok(boxed) => {
+                unsafe {
+                    (*out).backend_data = boxed;
+                }
+                NROS_RMW_RET_OK
             }
-            NROS_RMW_RET_OK
-        }
+            // Dropping the handle undeclares the entity the backend just made.
+            Err(server) => {
+                drop(server);
+                NROS_RMW_RET_BAD_ALLOC
+            }
+        },
         Err(e) => ret_from_error(&e),
     }
 }
@@ -1313,13 +1342,19 @@ unsafe extern "C" fn create_client_trampoline<R: RustBackend>(
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_client(s, &info, qos_settings) {
-        Ok(client) => {
-            let boxed = Box::into_raw(Box::new(client));
-            unsafe {
-                (*out).backend_data = boxed as *mut c_void;
+        Ok(client) => match box_handle("service client", client) {
+            Ok(boxed) => {
+                unsafe {
+                    (*out).backend_data = boxed;
+                }
+                NROS_RMW_RET_OK
             }
-            NROS_RMW_RET_OK
-        }
+            // Dropping the handle undeclares the entity the backend just made.
+            Err(client) => {
+                drop(client);
+                NROS_RMW_RET_BAD_ALLOC
+            }
+        },
         Err(e) => ret_from_error(&e),
     }
 }
@@ -2317,7 +2352,7 @@ unsafe extern "C" fn take_sequence_trampoline<R: RustBackend>(
 //   - The C-side wrappers (`CffiSession`, `CffiPublisher`, …) hand
 //     each trampoline an entity-struct pointer whose `backend_data`
 //     was last written by *this* adapter's create-trampoline. That
-//     write is `Box::into_raw(Box::new(handle))` of `R::Session` /
+//     write is `box_handle(handle)` (a fallible `Box`) of `R::Session` /
 //     `R::Publisher` / … so the pointer aliases a valid Box<T>.
 //   - `_mut` variants give `&mut T`; the runtime serialises access
 //     per the executor's single-thread invariant.
@@ -2450,6 +2485,40 @@ unsafe fn client_mut<'a, T>(client: *const NrosRmwClient) -> Option<&'a mut T> {
         None
     } else {
         Some(unsafe { &mut *p })
+    }
+}
+
+/// Issue 1551 (defect 2) — box a handle the backend just created, FALLIBLY.
+///
+/// This used to be `Box::into_raw(Box::new(handle))` at five sites. `Box::new`
+/// cannot fail: on an exhausted heap it calls `handle_alloc_error`, and in a
+/// `std` build libstd's OOM hook writes to fd 2 — which on Zephyr
+/// `native_sim` is issue 0589's `zvfs_write` recursion, so the image died
+/// with SIGSEGV (exit 139, ~104,735 frames deep) and the hook's own message
+/// never appeared. Every C caller of these trampolines already handles
+/// `NROS_RMW_RET_BAD_ALLOC`; the allocation simply never gave it the chance.
+///
+/// On `Err` the handle comes BACK to the caller, which disposes of it (for an
+/// entity, dropping it undeclares what the backend declared; a session is
+/// closed first, as `destroy_session_trampoline` does). The diagnostic goes
+/// through `nros_log` (issue 0589: never std stdio), whose formatting is a
+/// fixed stack buffer, so reporting an exhausted heap does not itself need
+/// the heap.
+fn box_handle<T>(kind: &str, value: T) -> Result<*mut c_void, T> {
+    match nros_rmw::fallible::try_box(value) {
+        Ok(boxed) => Ok(Box::into_raw(boxed) as *mut c_void),
+        Err(value) => {
+            nros_log::log_error!(
+                nros_log::get_logger("nros_rmw_cffi"),
+                "heap exhausted: could not allocate {} bytes for a {} handle; \
+                 the {} is NOT created (NROS_RMW_RET_BAD_ALLOC). Raise the \
+                 platform heap (Zephyr: CONFIG_NROS_ZEPHYR_HEAP_SIZE)",
+                core::mem::size_of::<T>(),
+                kind,
+                kind
+            );
+            Err(value)
+        }
     }
 }
 

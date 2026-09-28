@@ -530,7 +530,12 @@ where
     if regs.is_full() {
         return Err(NodeError::Transport(TransportError::Unsupported));
     }
-    let state = alloc::boxed::Box::new(EventClosureState { user_cb, dispatch });
+    // issue 1551 — fallible: this runs from a C/C++ `*_event_init` that has an
+    // error return, and an infallible `Box::new` on an exhausted heap is
+    // libstd's OOM hook (0589's stdio recursion on Zephyr native_sim).
+    let Ok(state) = nros_rmw::fallible::try_box(EventClosureState { user_cb, dispatch }) else {
+        return Err(NodeError::Transport(TransportError::BadAlloc));
+    };
     let user_ctx = alloc::boxed::Box::into_raw(state) as *mut core::ffi::c_void;
     // SAFETY: trampoline downcasts `user_ctx` back to the boxed
     // EventClosureState. Box ownership is recorded in `regs`; entity
@@ -612,7 +617,12 @@ where
     if regs.is_full() {
         return Err(NodeError::Transport(TransportError::Unsupported));
     }
-    let state = alloc::boxed::Box::new(EventClosureState { user_cb, dispatch });
+    // issue 1551 — fallible: this runs from a C/C++ `*_event_init` that has an
+    // error return, and an infallible `Box::new` on an exhausted heap is
+    // libstd's OOM hook (0589's stdio recursion on Zephyr native_sim).
+    let Ok(state) = nros_rmw::fallible::try_box(EventClosureState { user_cb, dispatch }) else {
+        return Err(NodeError::Transport(TransportError::BadAlloc));
+    };
     let user_ctx = alloc::boxed::Box::into_raw(state) as *mut core::ffi::c_void;
     let res = unsafe {
         handle.register_event_callback(kind, deadline_ms, event_trampoline::<F, D>, user_ctx)
@@ -649,7 +659,12 @@ where
     if regs.is_full() {
         return Err(NodeError::Transport(TransportError::Unsupported));
     }
-    let state = alloc::boxed::Box::new(LivelinessClosureState { user_cb });
+    // issue 1551 — fallible: this runs from a C/C++ `*_event_init` that has an
+    // error return, and an infallible `Box::new` on an exhausted heap is
+    // libstd's OOM hook (0589's stdio recursion on Zephyr native_sim).
+    let Ok(state) = nros_rmw::fallible::try_box(LivelinessClosureState { user_cb }) else {
+        return Err(NodeError::Transport(TransportError::BadAlloc));
+    };
     let user_ctx = alloc::boxed::Box::into_raw(state) as *mut core::ffi::c_void;
     let res = unsafe {
         handle.register_event_callback(

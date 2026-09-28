@@ -38,6 +38,10 @@ extern crate alloc;
 
 pub mod custom_transport;
 pub mod event;
+// issue 1551 — the one spelling of a fallible `Box::new` (`Box::try_new` is
+// unstable) for entity-creation paths that have an error return.
+#[cfg(feature = "alloc")]
+pub mod fallible;
 pub mod service_inbox;
 pub mod sync;
 pub mod traits;
