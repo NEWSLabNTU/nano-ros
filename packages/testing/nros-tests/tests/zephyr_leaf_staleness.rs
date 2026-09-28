@@ -125,9 +125,15 @@ fn a_shared_cmake_input_marks_the_image_stale() {
 
 #[test]
 fn rust_entry_sees_a_prj_conf_edit() {
+    // phase-470 W5.b2 (issue 1288) — the leaf is the BRINGUP's board directory
+    // now, not `src/zephyr_entry`: that package is deleted and its west
+    // application is generated under `build/<coord>/`, so the authored Kconfig
+    // this probe exists to watch lives at RFC-0065 D4's address. Watching the
+    // old path would have made this test skip forever (`built_leaf` returns
+    // `None` on a missing dir) — quietly, which is the shape issue 0466 is about.
     assert_conf_edit_is_seen(
         "build-ws-rs-realtime-entry-zenoh",
-        "examples/workspaces/realtime-rust/src/zephyr_entry",
+        "examples/workspaces/realtime-rust/src/demo_bringup/boards/native_sim_native_64",
         build_zephyr_workspace_rust_realtime_entry,
     );
 }

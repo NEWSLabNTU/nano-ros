@@ -7,12 +7,24 @@ declared in config, no node-code change to retune.
 ```
 src/ctrl_pkg/      — Node pkg, 10 ms control loop, callback group `ctrl` → tier `high`.
 src/telem_pkg/     — Node pkg, 100 ms telemetry,  callback group `telem` → tier `low`.
-src/demo_bringup/  — Bringup: system.toml declares [tiers.high] / [tiers.low].
-src/zephyr_entry/  — the one hand-written entry (a west application).
+src/demo_bringup/  — Bringup: system.toml declares [tiers.high] / [tiers.low],
+                     and boards/native_sim_native_64/ holds the Zephyr image's
+                     Kconfig (RFC-0065 D4).
 ```
 
-Every other image's entry is generated from its `[image.*]`, so `src/` holds no
-`native_entry` to read.
+**Every** image's entry is generated from its `[image.*]`, so `src/` holds no
+entry at all — not `native_entry`, and since phase-470 W5.b2 (issue 1288) not
+`zephyr_entry` either: `nros build` writes the west application around the
+generated staticlib under `build/<coord>/`.
+
+The Zephyr image is also where the `[tiers.*]` block below stops being only a
+runtime schedule and becomes a BUILD input. `nros-board-zephyr` keeps
+`ZephyrBoard::run_tiers` behind a `tiers` cargo feature and the kernel-EDF call
+behind `zephyr-edf`; the deleted entry named both by hand, and the generated one
+derives them from this file — `tiers` from the table not collapsing to the single
+`default` tier, `zephyr-edf` from `[tiers.high]` being `class = "real_time"` with
+a `[tiers.high.zephyr] deadline`. Same predicates their consumers key on, so
+there is nothing to keep in step.
 
 ## How tiers are declared
 

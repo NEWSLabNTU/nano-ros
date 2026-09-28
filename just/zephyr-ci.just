@@ -342,13 +342,17 @@ build-fixtures:
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
     # phase-276 W4 — the E2E-safety (CRC) workspace's Zephyr Entry (nros sync only).
-    if [ -d examples/workspaces/safety/src/zephyr_rust_safety_entry ]; then
+    # phase-470 W5.b2 — keyed on the WORKSPACE, not on `src/zephyr_rust_safety_entry`:
+    # that package is GONE (its west application is generated), and a guard on a
+    # deleted package drops its prep silently. W5.a's note 2.
+    if [ -d examples/workspaces/safety ]; then
         echo "  → safety workspace-entry prep (nros sync)"
         ( cd examples/workspaces/safety
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
     # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry (nros sync only).
-    if [ -d examples/workspaces/realtime-rust/src/zephyr_entry ]; then
+    # phase-470 W5.b2 — same correction, same reason: `src/zephyr_entry` is gone here too.
+    if [ -d examples/workspaces/realtime-rust ]; then
         echo "  → ws-realtime workspace-entry prep (nros sync)"
         ( cd examples/workspaces/realtime-rust
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )

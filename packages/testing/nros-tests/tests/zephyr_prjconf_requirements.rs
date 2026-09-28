@@ -144,10 +144,19 @@ fn zephyr_prjconf_meets_backend_requirements() {
     // reached further than the list did. Migrating them put that overlay in the
     // very shape the line above already collects, so there is no reason left to
     // leave it out.
+    //
+    // phase-470 W5.b2 — `realtime-rust` and `safety` join on the same footing,
+    // and for the same reason: their `prj-zenoh.conf` was never in this gate's
+    // reach although the rule always covered it, and migrating the image put
+    // the file where the line above already looks. All four Rust workspaces
+    // with a Zephyr image are now collected, so a fifth is the only way this
+    // list can go stale again.
     for base in [
         "examples/zephyr",
         "examples/workspaces/rust/src/demo_bringup/boards",
         "examples/workspaces/features/src/demo_bringup/boards",
+        "examples/workspaces/realtime-rust/src/demo_bringup/boards",
+        "examples/workspaces/safety/src/demo_bringup/boards",
     ] {
         collect_overlays(&root.join(base), &mut overlays);
     }

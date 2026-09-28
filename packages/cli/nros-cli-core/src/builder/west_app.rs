@@ -98,17 +98,16 @@ fn backend_dir(nros_root: &Path, krate: &str) -> Option<PathBuf> {
 
 /// Does the crate at `dir` declare `feature`?
 ///
-/// Named before it is emitted, for the reason `facade::crate_declares_feature`
-/// gives: a missing feature is a build the user can fix, a bogus one fails
-/// resolution outright.
+/// Named before it is emitted, because a missing feature is a build the user can
+/// fix and a bogus one fails cargo resolution outright.
+///
+/// ONE spelling (phase-470 W5.b2): this was a byte-identical copy of
+/// [`crate::orchestration::facade::crate_declares_feature`], and W5.b2 wanted a
+/// third for the derived board features. Three copies of a four-line predicate
+/// is how a rule ends up true in two places and not the third, so the two that
+/// existed were collapsed onto the original rather than joined by a sibling.
 fn declares_feature(dir: &Path, feature: &str) -> bool {
-    let Ok(raw) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
-        return false;
-    };
-    toml::from_str::<toml::Value>(&raw)
-        .ok()
-        .and_then(|v| v.get("features").and_then(|f| f.as_table()).cloned())
-        .is_some_and(|t| t.contains_key(feature))
+    crate::orchestration::facade::crate_declares_feature(dir, feature)
 }
 
 /// A cmake `project()` identifier for this image.

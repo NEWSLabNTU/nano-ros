@@ -119,9 +119,21 @@ launch = "rust_safety_listener.launch.xml"
 board = "native"
 launch = "rust_safety_talker.launch.xml"
 
-# Claims the hand-written west entry `zephyr_rust_safety_entry` by its
-# `<id>_entry` name; its locator was that entry's
-# `[package.metadata.nros.deploy.zephyr]` table (phase-445 W5).
+# phase-470 W5.b2 (issue 1288) — its entry and the west application around it
+# are GENERATED, under `build/<coord>/zephyr_rust_safety_entry/`. Deleting the
+# hand-written `src/zephyr_rust_safety_entry` IS the migration (RFC-0065 D13);
+# `conf` below names fragments in `boards/native_sim_native_64/`, which is
+# `APPLICATION_CONFIG_DIR` for this image (D4). The locator was the deleted
+# package's `[package.metadata.nros.deploy.zephyr]` table (phase-445 W5).
+#
+# The entry that was deleted named `rust_safety_listener_pkg`'s `safety-e2e`
+# feature, which a generated entry does not. That is not a loss and it was
+# MEASURED, not assumed: the feature is `safety-e2e = []`, an empty table with no
+# `#[cfg(feature = …)]` anywhere in this workspace, kept only so older consumers
+# resolve. What actually turns integrity on is `[system] features = ["safety"]`
+# above, which reaches the image through the generated selection facade as
+# `nros/safety-e2e` + `nros-rmw-zenoh/safety-e2e`, and the listener package's own
+# `nros` dep names `safety-e2e` unconditionally.
 [image.zephyr_rust_safety]
 board = "zephyr"
 conf = ["prj-zenoh.conf"]
