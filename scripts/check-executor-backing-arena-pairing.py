@@ -298,6 +298,10 @@ NOT_SIZING = {
     "NROS_RMW_LOCAL_QUERYABLE":
         "issue 1549: a 0/1 feature flag the boot record reports; it compiles "
         "zenoh-pico's same-session query path in or out and sizes nothing here",
+    "NROS_DOMAIN_ID":
+        "issue 1550: build.rs reads only the RUNG the configure recorded for "
+        "it (`NROS_KNOB_SOURCE_NROS_DOMAIN_ID`), for the boot record; a "
+        "domain id sizes nothing",
 }
 # Not knobs, but inputs that move a knob's resolution in build.rs: the Kconfig
 # reader and the board/platform descriptor rung (`BuildRungs::from_build_env`).

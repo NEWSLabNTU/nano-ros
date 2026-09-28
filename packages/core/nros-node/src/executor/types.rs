@@ -663,6 +663,7 @@ impl<'a> ExecutorConfig<'a> {
             if domain_id > DOMAIN_ID_MAX {
                 return Err(BootConfigError::DomainIdRange);
             }
+            crate::boot_report::note_domain(domain_id, baked_domain_source(baked.domain_id));
             return Ok(ExecutorConfig {
                 locator: baked.locator.unwrap_or(""),
                 mode: nros_rmw::SessionMode::Client,
@@ -683,6 +684,14 @@ impl<'a> ExecutorConfig<'a> {
         if domain_id > DOMAIN_ID_MAX {
             return Err(BootConfigError::DomainIdRange);
         }
+        crate::boot_report::note_domain(
+            domain_id,
+            if env.domain_id.is_some() {
+                crate::boot_report::KnobSource::Environment
+            } else {
+                baked_domain_source(baked.domain_id)
+            },
+        );
 
         Ok(ExecutorConfig {
             locator: env
@@ -713,6 +722,21 @@ impl<'a> ExecutorConfig<'a> {
             // on any hosted build even when the environment said nothing.
             rmw: env.rmw.or(baked.rmw),
         })
+    }
+}
+
+/// Issue 1550 -- who stated a BAKED domain, for the boot record.
+///
+/// The configure records which Kconfig fragment set `CONFIG_NROS_DOMAIN_ID`
+/// (`BOOT_DOMAIN_SOURCE`), and on the road that records it that fragment is
+/// where the baked value came from, whether or not the C ABI's unset sentinel
+/// turned an explicit 0 into `None` on the way. With no record, an absent
+/// baked value is the compiled default and a present one has no known author.
+fn baked_domain_source(baked: Option<u32>) -> crate::boot_report::KnobSource {
+    use crate::boot_report::KnobSource;
+    match KnobSource::from_code(crate::config::BOOT_DOMAIN_SOURCE) {
+        KnobSource::NotRecorded if baked.is_none() => KnobSource::Default,
+        other => other,
     }
 }
 

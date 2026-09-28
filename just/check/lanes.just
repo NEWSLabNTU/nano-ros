@@ -2504,7 +2504,10 @@ node-std-tests:
         out="$("$@" 2>&1)" || { printf '%s\n' "$out"; return 1; }
         printf '%s\n' "$out"
         case "$out" in
-            *"0 passed"*|*"running 0 tests"*)
+            # `test result: ok. 0 passed;`, not `*"0 passed"*`: the bare
+            # pattern also matches "10 passed" (issue 1550 took
+            # boot_report::tests from 9 to 10 and this read it as zero).
+            *"test result: ok. 0 passed;"*|*"running 0 tests"*)
                 printf '%s\n' \
                     "node-std-tests: $label ran 0 tests." \
                     "  The filter matched nothing, so it was renamed or its cfg is off." \

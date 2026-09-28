@@ -41,6 +41,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCodegenCore.cmake")
 # file's normal vars with the frame (the `_NROS_ENTRY_DIR` class), and a
 # module included once per call is a module re-read once per call.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosRmwUserConfig.cmake")
+# Issue 1550 -- the fragment/snippet half of the domain agreement, shared with
+# the entry road. Functions only, include_guard'd.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosDomainAgreement.cmake")
 
 # Issue 1312 / 1263 — the checkout THIS file belongs to, for `--nano-ros-path`.
 # Resolved at FILE scope: inside the function `CMAKE_CURRENT_LIST_DIR` names the
@@ -197,6 +200,13 @@ function(nros_system_check_domain_agreement _config_h _bringup_dir)
     message(STATUS
         "nros_system_generate: domain ${_baked} agrees "
         "(system.toml, CONFIG_NROS_DOMAIN_ID, CONFIG_NROS_CYCLONE_DOMAIN_ID=${_cyclone})")
+    # Issue 1550 -- and every merged Kconfig fragment that states the domain,
+    # the transport snippet above all: the same comparison the entry road
+    # makes, so both roads refuse the same disagreements.
+    nros_check_domain_agreement(
+        SYSTEM_DOMAIN "${_baked}"
+        SYSTEM_FILE "${_bringup_dir}/system.toml"
+        CONTEXT "nros_system_generate")
 endfunction()
 
 # Public function: bake the system, wire the generated sources into the
