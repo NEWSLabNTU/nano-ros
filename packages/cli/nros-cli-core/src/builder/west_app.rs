@@ -81,6 +81,73 @@ pub struct WestApp {
     pub build_deps: Vec<String>,
     /// `[patch.crates-io]` rows, `name = { path = "…" }`.
     pub patches: Vec<String>,
+    /// The C/C++ half (phase-470 W5.b3). `Some` when the image's node graph
+    /// crosses out of Rust, which is the same predicate that routes a NATIVE
+    /// image to the cmake driver — see [`CmakeApp`].
+    ///
+    /// When it is `Some`, every field above is unused: a C/C++ west
+    /// application has no `Cargo.toml` at all, so there is no manifest for the
+    /// RMW feature, the deps or the patches to reach.
+    pub cmake: Option<CmakeApp>,
+}
+
+/// The C/C++ half of a west application (phase-470 W5.b3, issue 1288).
+///
+/// ## Why this is a field on [`WestApp`] and not a second module
+///
+/// W5.a predicted "a C/C++ arm adds FIELDS rather than a second emitter", and
+/// that is **half** right, which is worth stating plainly because the half that
+/// is wrong is the one a reader would rely on. The *resolution* half really
+/// does collapse: one `write`, one `is_materialized` guard, one `project_name`,
+/// one directory (`build/<coord>/<id>_entry/`). The *rendering* half does not —
+/// `rust_cargo_application()` and `nano_ros_add_executable()` share the four
+/// lines above them and nothing below, so [`render_cmakelists`] has two arms.
+///
+/// ## What a C/C++ Zephyr application is
+///
+/// Measured across the eight hand-written ones: `find_package(Zephyr)`,
+/// `project()`, `find_package(nano_ros)`, one `add_subdirectory` per node
+/// package the launch file names, and ONE `nano_ros_add_executable` call. Every
+/// difference between them is a declaration the image already carries or can:
+///
+/// | axis | where it comes from |
+/// | --- | --- |
+/// | `LANG c` | the node packages' own sources — `c` unless one is C++ |
+/// | `PANIC platform` | `[image.<id>] panic` |
+/// | `BRINGUP` | the bringup being built, which is what makes `realtime-c`'s `if(CONFIG_SMP)` switch disappear: two bringups are two images |
+/// | `NROS_WS_RUST_NODE_DIRS` | a node package that is a cargo crate |
+/// | `nano_ros_use_board(...)` + `EXTRA_CONF_FILE` | NOT derived — see [`resolve_cmake`] |
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CmakeApp {
+    /// `(source dir relative to the application, binary dir name)` for each
+    /// node package the launch file names.
+    pub subdirs: Vec<(String, String)>,
+    /// Target name — `<id>_entry`, the same derivation the Rust side uses.
+    pub target: String,
+    /// `BRINGUP` — relative to the application.
+    pub bringup: String,
+    /// `LAUNCH` — a launch file name, or `default` for the bringup's own.
+    pub launch: String,
+    /// `LAUNCH_ARGS k=v`.
+    pub args: Vec<(String, String)>,
+    /// `LANG` — `c` or `cpp`.
+    pub lang: String,
+    /// `BOARD` / `DEPLOY` — the board FAMILY token (`zephyr`), which is the
+    /// platform. NOT the image's board string: `board_family()` matches exact
+    /// tokens and an unknown one falls through to the HOST default, which emits
+    /// `int main(int, char**)` where the Zephyr kernel declares
+    /// `extern int main(void)`. The hand-written files all say `zephyr` and
+    /// `zephyr_cyclonedds_entry`'s header records the measurement.
+    pub deploy: String,
+    /// `PANIC` — RFC-0077 policy, when the image declares one.
+    pub panic: Option<String>,
+    /// `NROS_WS_RUST_NODE_DIRS` — node packages that are cargo crates, relative
+    /// to the application. Set BEFORE `find_package(Zephyr)`, which is the one
+    /// ordering constraint here: the nano-ros Zephyr module reads it DURING
+    /// find_package to decide whether to build the `nros_ws_runtime` umbrella
+    /// (nros-cpp + the node) in place of plain nros-cpp — the single-runtime
+    /// invariant, one Rust staticlib and one `nros-rmw-cffi` registry.
+    pub rust_node_dirs: Vec<String>,
 }
 
 /// Where a backend crate lives, given its name.
@@ -217,6 +284,73 @@ pub fn resolve(
     Ok(app)
 }
 
+/// Is this node package a cargo crate?
+///
+/// The `NROS_WS_RUST_NODE_DIRS` question, asked of the package rather than of a
+/// registry: a Rust node in a cmake workspace carries BOTH a `Cargo.toml` and a
+/// `CMakeLists.txt` (the latter registering it with `LANGUAGE RUST`), so the
+/// manifest is the discriminator and the build file is not.
+fn is_cargo_node(dir: &Path) -> bool {
+    dir.join("Cargo.toml").is_file()
+}
+
+/// Derive the C/C++ west-application facts for one image.
+///
+/// `nodes` is the launch file's node packages, in the order the emitter should
+/// `add_subdirectory` them — which is to say SORTED, so the file is
+/// byte-identical across machines (W3.c) and the build order comes from each
+/// package's own `<depend>` tags rather than from this list.
+///
+/// **What this deliberately does NOT derive: `fvp_entry`'s
+/// `nano_ros_use_board(fvp-aemv8r-smp)` + `EXTRA_CONF_FILE` preamble.** That
+/// application states its own board, which is the state this whole item exists
+/// to end — `[image.fvp] board` says it now (issue 1517) and `nros build`
+/// passes it as `-b`. Reproducing the preamble would re-create the second
+/// source rather than remove it.
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_cmake(
+    workspace: &Path,
+    entry_dir: &Path,
+    bringup_dir: &Path,
+    image_id: &str,
+    launch: Option<&str>,
+    args: &std::collections::BTreeMap<String, String>,
+    panic: Option<&str>,
+    platform: &str,
+    nodes: &[(String, PathBuf)],
+) -> Result<WestApp, String> {
+    let mut subdirs = Vec::new();
+    let mut rust_node_dirs = Vec::new();
+    let mut lang = "c";
+    for (name, dir) in nodes {
+        subdirs.push((relative_or_err(entry_dir, dir)?, name.clone()));
+        if is_cargo_node(dir) {
+            rust_node_dirs.push(relative_or_err(entry_dir, dir)?);
+        }
+        if super::discover::holds_cpp_source(dir) {
+            lang = "cpp";
+        }
+    }
+    subdirs.sort();
+    rust_node_dirs.sort();
+
+    Ok(WestApp {
+        project: project_name(workspace, image_id),
+        cmake: Some(CmakeApp {
+            subdirs,
+            target: super::entry::package_name(image_id),
+            bringup: relative_or_err(entry_dir, bringup_dir)?,
+            launch: launch.unwrap_or("default").to_string(),
+            args: args.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            lang: lang.to_string(),
+            deploy: platform.to_string(),
+            panic: panic.map(str::to_string),
+            rust_node_dirs,
+        }),
+        ..Default::default()
+    })
+}
+
 /// Render the application's `CMakeLists.txt`.
 ///
 /// Deliberately four lines of cmake. The hand-written applications carry an
@@ -227,6 +361,9 @@ pub fn resolve(
 /// manifest's `[features] default`, which needs no `EXTRA_CARGO_ARGS` at all.
 #[must_use]
 pub fn render_cmakelists(app: &WestApp) -> String {
+    if let Some(c) = &app.cmake {
+        return render_cmake_app(&app.project, c);
+    }
     format!(
         "# GENERATED by `nros build` (phase-470 W5.a) — DO NOT EDIT.\n\
          #\n\
@@ -246,6 +383,124 @@ pub fn render_cmakelists(app: &WestApp) -> String {
          rust_cargo_application()\n",
         app.project
     )
+}
+
+/// Render a C/C++ west application's `CMakeLists.txt` (phase-470 W5.b3).
+///
+/// The ordering is the hand-written files' own and two rungs of it are
+/// load-bearing:
+///
+/// * `NROS_WS_RUST_NODE_DIRS` **before** `find_package(Zephyr)` — the nano-ros
+///   Zephyr module reads it while find_package runs, to decide whether to build
+///   the `nros_ws_runtime` umbrella instead of plain nros-cpp.
+/// * the `nano_ros_workspace_pkg_guard` stub **after**
+///   `find_package(nano_ros)` and **before** the `add_subdirectory` calls — a
+///   Rust node package opens with that guard and would otherwise bootstrap a
+///   SECOND nano-ros import, which on Zephyr means `add_subdirectory`-ing the
+///   checkout with `NANO_ROS_PLATFORM=zephyr`, which `nros-c` rejects.
+///   (W5.b3's brief said this stub goes before `find_package`; measured against
+///   `examples/workspaces/mixed/src/zephyr_entry`, it does not — only
+///   `NROS_WS_RUST_NODE_DIRS` does, and the two are separate lines with
+///   separate reasons.)
+#[must_use]
+fn render_cmake_app(project: &str, c: &CmakeApp) -> String {
+    let mut out = String::new();
+    out.push_str(
+        "# GENERATED by `nros build` (phase-470 W5.b3) — DO NOT EDIT.\n\
+         #\n\
+         # The west application for one C/C++ `[image.*]`. It has no Rust half:\n\
+         # `nano_ros_add_executable(... BRINGUP ...)` generates the entry TU\n\
+         # that carries `main`, which is why no `SOURCES` appear below.\n\
+         #\n\
+         # The image's Kconfig is NOT here: `nros build` passes it as\n\
+         # `-DAPPLICATION_CONFIG_DIR` + `-DEXTRA_CONF_FILE` from the bringup\n\
+         # (RFC-0065 D4), so this file states no `prj.conf` and no board.\n\
+         #\n\
+         # Paths are RELATIVE and the subdir list is SORTED, so this file is\n\
+         # byte-identical across machines (phase-383 W3.c).\n\
+         #\n\
+         # `nros materialize <image>` takes ownership of this directory.\n\n\
+         cmake_minimum_required(VERSION 3.20.0)\n\n",
+    );
+    if !c.rust_node_dirs.is_empty() {
+        out.push_str(
+            "# The workspace's Rust node packages, bundled into the single\n\
+             # `nros_ws_runtime` umbrella staticlib (ONE Rust staticlib, ONE\n\
+             # `nros-rmw-cffi` registry). MUST be set before\n\
+             # `find_package(Zephyr)`: the nano-ros Zephyr module reads it\n\
+             # DURING find_package to decide whether to build and link the\n\
+             # umbrella in place of plain nros-cpp.\n",
+        );
+        for (i, d) in c.rust_node_dirs.iter().enumerate() {
+            out.push_str(&format!(
+                "get_filename_component(_nros_rust_node_{i}\n    \
+                 \"${{CMAKE_CURRENT_SOURCE_DIR}}/{d}\" ABSOLUTE)\n"
+            ));
+        }
+        let refs: Vec<String> = (0..c.rust_node_dirs.len())
+            .map(|i| format!("${{_nros_rust_node_{i}}}"))
+            .collect();
+        out.push_str(&format!(
+            "set(NROS_WS_RUST_NODE_DIRS \"{}\")\n\n",
+            refs.join(";")
+        ));
+    }
+    out.push_str(&format!(
+        "find_package(Zephyr REQUIRED HINTS $ENV{{ZEPHYR_BASE}})\nproject({project})\n\n"
+    ));
+    out.push_str(
+        "# RFC-0048 ament shape (287-W6): on Zephyr `find_package(nano_ros)`\n\
+         # supplies the verbs + entry/register machinery WITHOUT re-importing\n\
+         # the runtime — the nano-ros west module (loaded by\n\
+         # `find_package(Zephyr)`) already provides NanoRos::*.\n\
+         find_package(nano_ros REQUIRED)\n\n",
+    );
+    if !c.rust_node_dirs.is_empty() {
+        out.push_str(
+            "# A Rust node package opens with the workspace guard (LANGUAGE RUST\n\
+             # is outside the C/C++ verb surface). Stub it so it does NOT\n\
+             # bootstrap a second nano-ros import: on Zephyr the west module\n\
+             # owns the runtime, and an import here would `add_subdirectory` the\n\
+             # checkout with `NANO_ROS_PLATFORM=zephyr`, which `nros-c` rejects.\n\
+             if(NOT COMMAND nano_ros_workspace_pkg_guard)\n    \
+             function(nano_ros_workspace_pkg_guard)\n    \
+             endfunction()\nendif()\n\n",
+        );
+    }
+    out.push_str(
+        "# The node packages the launch file names. Their registration carries\n\
+         # no DEPLOY, so they stay component-only; the entry's auto-link sidecar\n\
+         # pulls them into `app`.\n",
+    );
+    for (dir, name) in &c.subdirs {
+        out.push_str(&format!(
+            "add_subdirectory(\"${{CMAKE_CURRENT_SOURCE_DIR}}/{dir}\" {name})\n"
+        ));
+    }
+    out.push_str(
+        "\n# BOARD and DEPLOY are the board FAMILY token, which on this road is\n\
+         # the PLATFORM. Not the image's board string: `board_family()` matches\n\
+         # exact tokens and an unknown one falls through to the HOST default,\n\
+         # which emits `int main(int, char**)` where the Zephyr kernel declares\n\
+         # `extern int main(void)`.\n",
+    );
+    out.push_str(&format!("nano_ros_add_executable({}\n", c.target));
+    out.push_str(&format!("    BOARD   {}\n", c.deploy));
+    out.push_str(&format!(
+        "    BRINGUP \"${{CMAKE_CURRENT_SOURCE_DIR}}/{}\"\n",
+        c.bringup
+    ));
+    out.push_str(&format!("    LAUNCH  {}\n", c.launch));
+    for (k, v) in &c.args {
+        out.push_str(&format!("    LAUNCH_ARGS {k}={v}\n"));
+    }
+    out.push_str(&format!("    LANG    {}\n", c.lang));
+    if let Some(p) = &c.panic {
+        out.push_str(&format!("    PANIC   {p}\n"));
+    }
+    out.push_str("    TYPED\n");
+    out.push_str(&format!("    DEPLOY  {})\n", c.deploy));
+    out
 }
 
 /// Render the application's `build.rs`.
@@ -276,7 +531,13 @@ pub fn write(app: &WestApp, dir: &Path) -> Result<(), String> {
     if super::materialize::is_materialized(dir) {
         return Ok(());
     }
+    std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
     write_if_changed(&dir.join("CMakeLists.txt"), &render_cmakelists(app))?;
+    // A C/C++ application has no cargo half, so no `build.rs`: that file exists
+    // to bridge Kconfig into RUSTC, and there is no rustc on this road.
+    if app.cmake.is_some() {
+        return Ok(());
+    }
     write_if_changed(&dir.join("build.rs"), &render_build_rs())
 }
 
@@ -413,5 +674,198 @@ mod tests {
             "{s}"
         );
         assert!(s.contains("nros_zephyr_build::bake_nros_config()"), "{s}");
+    }
+
+    // ---- the C/C++ arm (phase-470 W5.b3, issue 1288) ---------------------
+
+    /// A workspace whose launch names `<pkgs>`; each entry is
+    /// `(name, holds a C++ source, is a cargo crate)`.
+    fn cmake_workspace(root: &Path, pkgs: &[(&str, bool, bool)]) -> Vec<(String, PathBuf)> {
+        let mut out = Vec::new();
+        for (name, cpp, cargo) in pkgs {
+            let dir = root.join("src").join(name);
+            std::fs::create_dir_all(dir.join("src")).unwrap();
+            std::fs::write(dir.join("CMakeLists.txt"), "").unwrap();
+            if *cpp {
+                std::fs::write(dir.join("src").join("Node.cpp"), "").unwrap();
+            } else {
+                std::fs::write(dir.join("src").join("node.c"), "").unwrap();
+            }
+            if *cargo {
+                std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"n\"\n").unwrap();
+            }
+            out.push(((*name).to_string(), dir));
+        }
+        out
+    }
+
+    fn cmake_app(root: &Path, nodes: &[(String, PathBuf)], panic: Option<&str>) -> WestApp {
+        let entry = root.join("build/zephyr-zenoh/zephyr_entry");
+        std::fs::create_dir_all(&entry).unwrap();
+        resolve_cmake(
+            root,
+            &entry,
+            &root.join("src/demo_bringup"),
+            "zephyr",
+            None,
+            &std::collections::BTreeMap::new(),
+            panic,
+            "zephyr",
+            nodes,
+        )
+        .expect("resolves")
+    }
+
+    /// `LANG` is the workspace's own answer, and the scan reaches `<pkg>/src/`.
+    ///
+    /// A top-level-only scan called the pure-C++ `cpp` workspace `c`, which is
+    /// why the shared `discover::holds_cpp_source` looks one level down. One
+    /// C++ node is enough: the generated carrier TU is C++ and has to compile
+    /// against what it links.
+    #[test]
+    fn lang_is_cpp_when_any_node_holds_a_cpp_source() {
+        let td = tempfile::tempdir().unwrap();
+        let c_only = cmake_workspace(td.path(), &[("talker_pkg", false, false)]);
+        let c = cmake_app(td.path(), &c_only, None);
+        assert_eq!(c.cmake.as_ref().unwrap().lang, "c");
+
+        let td2 = tempfile::tempdir().unwrap();
+        let mixed = cmake_workspace(
+            td2.path(),
+            &[
+                ("c_talker_pkg", false, false),
+                ("cpp_listener_pkg", true, false),
+            ],
+        );
+        let m = cmake_app(td2.path(), &mixed, None);
+        assert_eq!(m.cmake.as_ref().unwrap().lang, "cpp");
+    }
+
+    /// `PANIC` is emitted only when the image declares one, and `LANG c` only
+    /// when the workspace is C — the two axes four of the eight hand-written
+    /// applications differed by.
+    #[test]
+    fn panic_reaches_the_call_only_when_the_image_declares_it() {
+        let td = tempfile::tempdir().unwrap();
+        let nodes = cmake_workspace(td.path(), &[("ctrl_pkg", false, false)]);
+        let plain = render_cmakelists(&cmake_app(td.path(), &nodes, None));
+        assert!(plain.contains("LANG    c\n"), "{plain}");
+        assert!(!plain.contains("PANIC"), "{plain}");
+
+        let with = render_cmakelists(&cmake_app(td.path(), &nodes, Some("platform")));
+        assert!(with.contains("PANIC   platform"), "{with}");
+    }
+
+    /// The two lines `mixed` needs, in the order that makes them work.
+    ///
+    /// `NROS_WS_RUST_NODE_DIRS` must precede `find_package(Zephyr)` — the
+    /// nano-ros Zephyr module reads it DURING find_package to decide whether to
+    /// build the `nros_ws_runtime` umbrella instead of plain nros-cpp. The
+    /// `nano_ros_workspace_pkg_guard` stub is a SECOND line with a second
+    /// reason and must come AFTER `find_package(nano_ros)` and before the
+    /// `add_subdirectory` calls, so the Rust node package's own guard finds it
+    /// already defined and does not bootstrap a second nano-ros import.
+    /// Comments cannot hold an ordering; this can.
+    #[test]
+    fn a_rust_node_orders_the_bundle_var_and_the_guard_stub() {
+        let td = tempfile::tempdir().unwrap();
+        let nodes = cmake_workspace(
+            td.path(),
+            &[
+                ("c_talker_pkg", false, false),
+                ("cpp_listener_pkg", true, false),
+                ("rust_heartbeat_pkg", false, true),
+            ],
+        );
+        let app = cmake_app(td.path(), &nodes, None);
+        assert_eq!(
+            app.cmake.as_ref().unwrap().rust_node_dirs,
+            vec!["../../../src/rust_heartbeat_pkg".to_string()],
+            "only the cargo crate"
+        );
+
+        // Over CODE, not prose — the sibling test above learned this the same
+        // way, and so did this one: the bundle variable's own comment SAYS
+        // "MUST be set before `find_package(Zephyr)`" two lines above the
+        // `set(`, so a whole-file search found the ordering claim ahead of the
+        // thing it is a claim about, and the assertion failed on the
+        // explanation rather than on the file.
+        let code: String = render_cmakelists(&app)
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let at = |needle: &str| {
+            code.find(needle)
+                .unwrap_or_else(|| panic!("missing {needle}:\n{code}"))
+        };
+        assert!(at("set(NROS_WS_RUST_NODE_DIRS") < at("find_package(Zephyr"));
+        assert!(
+            at("find_package(nano_ros REQUIRED)") < at("function(nano_ros_workspace_pkg_guard)")
+        );
+        assert!(at("function(nano_ros_workspace_pkg_guard)") < at("add_subdirectory("));
+    }
+
+    /// A workspace with no cargo node emits neither line — an empty
+    /// `NROS_WS_RUST_NODE_DIRS` would switch the runtime umbrella on for an
+    /// image that has no Rust in it.
+    #[test]
+    fn a_pure_cmake_workspace_emits_no_rust_bundle_lines() {
+        let td = tempfile::tempdir().unwrap();
+        let nodes = cmake_workspace(td.path(), &[("talker_pkg", true, false)]);
+        let s = render_cmakelists(&cmake_app(td.path(), &nodes, None));
+        assert!(!s.contains("NROS_WS_RUST_NODE_DIRS"), "{s}");
+        assert!(!s.contains("nano_ros_workspace_pkg_guard"), "{s}");
+    }
+
+    /// A C/C++ application has no cargo half, so `write` emits no `build.rs`.
+    ///
+    /// That file exists to bridge Kconfig into rustc, and there is no rustc on
+    /// this road. Writing one would put a manifest-less `build.rs` beside a
+    /// `CMakeLists.txt`, which reads as a cargo root that is not there.
+    #[test]
+    fn a_cmake_application_gets_no_build_rs() {
+        let td = tempfile::tempdir().unwrap();
+        let nodes = cmake_workspace(td.path(), &[("talker_pkg", false, false)]);
+        let app = cmake_app(td.path(), &nodes, None);
+        let dir = td.path().join("build/zephyr-zenoh/zephyr_entry");
+        write(&app, &dir).expect("writes");
+        assert!(dir.join("CMakeLists.txt").is_file());
+        assert!(
+            !dir.join("build.rs").exists(),
+            "a C/C++ application has no cargo half"
+        );
+    }
+
+    /// The subdir list is SORTED and RELATIVE, so the file is byte-identical
+    /// across machines (phase-383 W3.c). Build ORDER comes from each package's
+    /// own `<depend>` tags, never from this list.
+    #[test]
+    fn the_subdir_list_is_sorted_and_relative() {
+        let td = tempfile::tempdir().unwrap();
+        let nodes = cmake_workspace(
+            td.path(),
+            &[("talker_pkg", false, false), ("listener_pkg", false, false)],
+        );
+        let app = cmake_app(td.path(), &nodes, None);
+        let subdirs = &app.cmake.as_ref().unwrap().subdirs;
+        assert_eq!(
+            subdirs,
+            &[
+                (
+                    "../../../src/listener_pkg".to_string(),
+                    "listener_pkg".to_string()
+                ),
+                (
+                    "../../../src/talker_pkg".to_string(),
+                    "talker_pkg".to_string()
+                ),
+            ]
+        );
+        let s = render_cmakelists(&app);
+        assert!(
+            !s.contains(td.path().to_str().unwrap()),
+            "no absolute path: {s}"
+        );
     }
 }

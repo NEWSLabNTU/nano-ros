@@ -76,7 +76,11 @@ def self_test():
         # Package manifests, one level deeper — the common case, and the one a
         # sloppier pattern would sweep up with the roots.
         "examples/workspaces/rust/src/talker_pkg/Cargo.toml",
-        "examples/workspaces/c/src/zephyr_entry/CMakeLists.txt",
+        # phase-470 W5.b3 — was `src/zephyr_entry/CMakeLists.txt`, a package
+        # issue 1288 deleted (its application is generated now). The fixture is
+        # synthetic, so it never broke; a name nothing can check is still worth
+        # keeping true.
+        "examples/workspaces/c/src/talker_pkg/CMakeLists.txt",
         "examples/templates/local-msg-package/src/consumer/CMakeLists.txt",
         # The tracked marker that says this dir IS a workspace root.
         f"examples/workspaces/rust/{MARKER}",

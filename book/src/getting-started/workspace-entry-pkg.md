@@ -242,30 +242,34 @@ A Zephyr app *is* the `app` target that `find_package(Zephyr)` creates, and it
 carries authored Kconfig that nothing can derive: `prj.conf`, the per-RMW
 `prj-<rmw>.conf` fragments, `boards/*.overlay`. RFC-0065 D5 draws the line
 there — *"west and ESP-IDF apps keep their own files because those are Kconfig
-overlays — user intent, not derivable."* So `nros build` generates no entry for
-a Zephyr image; it resolves your application, applies the image's overlays, and
-runs `west build`.
+overlays — user intent, not derivable."*
 
-`examples/workspaces/c/src/zephyr_entry/` is the whole package — four files, no
-sources:
+**The Kconfig is the exception; the application is not** (issue 1288). `nros
+build` writes the west application too — `build/<coord>/<image>_entry/
+CMakeLists.txt`, with `find_package(Zephyr)`, `project()`, one
+`add_subdirectory` per node package your launch file names, and the single
+`nano_ros_add_executable(...)` (or `rust_cargo_application()` for a Rust image)
+— and then runs `west build` against it. What you author is the Kconfig, and it
+lives with the bringup:
 
 ```text
-src/zephyr_entry/
-├── CMakeLists.txt      # find_package(Zephyr) + nano_ros_add_executable(... DEPLOY zephyr)
-├── package.xml
-├── prj.conf
-└── prj-zenoh.conf
+src/demo_bringup/boards/native_sim_native_64/
+├── prj.conf                            # APPLICATION_CONFIG_DIR
+├── prj-zenoh.conf                      # named by [image.<id>] conf
+└── boards/
+    └── native_sim_native_64.conf       # Zephyr's own per-board discovery
 ```
 
-and its `CMakeLists.txt` states the reason in its own words:
+That directory is what `[image.<id>] board` selects, and switching boards
+selects a different one rather than editing a package. Every Zephyr image in
+`examples/workspaces/{rust,c,cpp,mixed,derived-tiers-cpp,realtime-cpp}` is
+built this way; `realtime-c` still carries a hand-written `src/zephyr_entry`,
+because its one package serves an `[image.zephyr]` in *two* bringups and the
+generated directory is keyed on (platform, RMW) alone.
 
-```cmake
-# Unlike the FreeRTOS/NuttX/ThreadX entries (cmake-lane, add_executable +
-# nros_platform_link_app), a Zephyr app IS the `app` target that find_package(Zephyr)
-# creates — so this entry CMakeLists is itself a Zephyr application, built by west
-```
-
-For a Rust workspace you do not have to write it by hand:
+For a Rust workspace whose image needs a hand-written application after all —
+Kconfig `nros build` cannot express, a `nano_ros_use_board()` preamble — the
+scaffold is still there:
 
 ```sh
 nros new entry zephyr_entry --platform zephyr
@@ -273,8 +277,9 @@ nros new entry zephyr_entry --platform zephyr
 
 That writes `Cargo.toml`, `CMakeLists.txt` and `prj.conf`, **and** the
 `[image.*]` row — the two halves are one declaration, and every Zephyr build
-failure worth having is the two disagreeing. (The C and C++ Zephyr entries in
-`examples/workspaces/{c,cpp}` are authored; the shape above is all of it.)
+failure worth having is the two disagreeing. A package written this way
+SUPPRESSES generation for the image that would carry its name, which is what
+makes the migration in either direction a file operation rather than a flag.
 Zephyr is the only platform the verb accepts, which is the rule stated by the
 tool itself:
 
@@ -306,16 +311,21 @@ convenience that applies an image's overlays for you, never a required layer
 between you and west:
 
 ```sh
-west build -b native_sim/native/64 src/zephyr_entry \
-    -- -DCONF_FILE="prj.conf;prj-zenoh.conf"
+west build -b native_sim/native/64 build/zephyr-zenoh/zephyr_entry \
+    -- -DAPPLICATION_CONFIG_DIR=src/demo_bringup/boards/native_sim_native_64
 west build -t run                      # native_sim; `west flash` for hardware
 ```
 
-**One Zephyr entry package covers every Zephyr board.** Zephyr owns its board
-abstraction, so the board is chosen by the image's `board` key (which becomes
-`west build -b`), not baked into the package. Swap
-`native_sim/native/64` for `nrf52840dk/nrf52840` and `prj-zenoh.conf` for
-`prj-xrce.conf`, and nothing in `src/` changes.
+(`nros build demo_bringup:zephyr --dry-run` prints that command for your image,
+which is the reliable way to get it: the application path carries the
+coordinate, and `--dry-run` reads it off the image rather than asking you to
+spell it.)
+
+**One workspace covers every Zephyr board.** Zephyr owns its board abstraction,
+so the board is chosen by the image's `board` key (which becomes `west build
+-b`) and never baked into a package. Swap `native_sim/native/64` for
+`nrf52840dk/nrf52840` and `prj-zenoh.conf` for `prj-xrce.conf`: what changes is
+which `boards/<board>/` directory is read, and nothing in `src/` at all.
 
 The `entry` key exists for the case where *several* packages could answer to
 one image. An application package no longer declares the board it serves —

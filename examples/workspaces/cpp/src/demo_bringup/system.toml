@@ -144,20 +144,13 @@ board = "threadx-linux"
 [image.zephyr]
 board = "native_sim/native/64"
 conf = ["prj-zenoh.conf"]
-# RFC-0085 D4, the same rule `[image.zephyr_cyclonedds]` below already follows:
-# a Zephyr image NAMES its hand-written entry package. This block did not, and
-# was fine while it was the only one — derivation had a single candidate. Adding
-# `zephyr_cyclonedds_entry` beside it made the derivation ambiguous and the
-# build stopped with
-#
-#   Error: [image.zephyr] matches 2 entry packages, so the application cannot
-#   be derived: .../zephyr_cyclonedds_entry .../zephyr_entry
-#
-# so `just zephyr build-fixtures` could not complete. The sibling's own comment
-# predicted exactly this ("sharing makes that lookup ambiguous"); what neither
-# saw is that the AMBIGUITY lands on the block that stayed implicit, not on the
-# one that was added. Naming it is the fix, and it is what the error asks for.
-entry = "zephyr_entry"
+# phase-470 W5.b3 (issue 1288) — `entry = "zephyr_entry"` is GONE, and with it
+# the ambiguity it was added to resolve. That line existed because two images
+# shared one bringup and `west_application_dir` had to DERIVE which of two
+# hand-written packages each meant; a GENERATED application is found by
+# construction at `build/<coord>/<image>_entry/`, so the two never contend.
+# The derived names are what the packages were already called, which is why
+# nothing else in the tree had to move.
 
 # phase-206 W2, final item — the RTOS image that LINKS Cyclone and carries a
 # bringup config. `[image.zephyr]` above is zenoh, and the bringup ships
@@ -173,15 +166,12 @@ entry = "zephyr_entry"
 board = "native_sim/native/64"
 rmw = "cyclonedds"
 conf = ["prj-cyclonedds.conf"]
-# RFC-0085 D4 — a Zephyr image NAMES its hand-written entry package. This one
-# has its OWN (`zephyr_cyclonedds_entry`, the derived spelling) rather than
-# sharing `zephyr_entry` with `[image.zephyr]`, because the image is resolved
-# ENTRY PACKAGE -> IMAGE by `nros image-facts --for-entry`: sharing makes that
-# lookup ambiguous, and a first-match scan picks the wrong one. Measured, not
-# assumed — sharing built with this image's cyclone overlay while `image-facts`
-# still answered `demo_bringup:zephyr` (rmw=zenoh), and
-# `nros_check_image_agreement` refused it.
-entry = "zephyr_cyclonedds_entry"
+# phase-470 W5.b3 (issue 1288) — GENERATED, so no `entry =`. The two images
+# still get separate applications, for a better reason than a declaration: the
+# coordinate carries the RMW, so this one lands in
+# `build/zephyr-cyclonedds/zephyr_cyclonedds_entry/` and its zenoh sibling in
+# `build/zephyr-zenoh/zephyr_entry/`. `nros image-facts --for-entry` still
+# answers one image per package name, which is what it always needed.
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

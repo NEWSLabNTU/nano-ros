@@ -37,10 +37,20 @@ across 10 workspaces — 7 Rust, 8 C/C++, all 15 calling `find_package(Zephyr)`,
 `[image.zephyr]` row of both `demo_bringup` and `smp_bringup`, which is why the
 two counts differ by one.
 
-W5.a landed the generator and migrated ONE of them — `rust`'s `[image.zephyr]`,
-whose package is deleted — so the live count is **14 packages / 15 rows**, and
-W5.b is the remaining 14. Recount with the commands below rather than reading a
-number here.
+W5.a landed the generator and migrated ONE of them — `rust`'s `[image.zephyr]`.
+W5.b3 extended it to the C/C++ shape and migrated six more: `c`, `cpp` (both
+its Zephyr images), `derived-tiers-cpp`, `mixed`, `realtime-cpp`. **Recount with
+the commands below rather than reading a number here** — W5.b is landing in
+parallel waves and any figure written down is stale by the next one.
+
+Two C/C++ packages are deliberately NOT migrated, and both reasons are about
+the generated application's ADDRESS rather than its content. `realtime-c`'s one
+package serves an `[image.zephyr]` in two bringups, and the generated directory
+is keyed on `coordinate(platform, image)` — (platform, rmw), not the bringup —
+so both images resolve to one path and the second write wins (measured,
+phase-470 W5.b3). `realtime-cpp/src/fvp_entry` states its own board through
+`nano_ros_use_board(fvp-aemv8r-smp)` and needs a Zephyr 3.7 workspace plus the
+Arm FVP to build, and acceptance for a migration here is a build.
 
 This is **not** a class called "hand-written entries". A shape that exists only
 because a generator is missing must not get a name that makes it look
