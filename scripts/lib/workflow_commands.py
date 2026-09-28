@@ -71,11 +71,51 @@ def command_lines(run: str):
     return out
 
 
-def load_workflows():
-    """Every `.github/workflows/*.yml`, as `(repo-relative path, parsed doc)`."""
+ACTIONS = REPO / ".github" / "actions"
+
+# The pseudo-job a composite action's steps are filed under, so a gate that
+# walks `doc["jobs"][*]["steps"]` reads an action with no second code path.
+COMPOSITE_JOB = "(composite action)"
+
+
+def load_composite_actions():
+    """Every local composite action, shaped like a one-job workflow.
+
+    Issue 1548. A `run:` step in `.github/actions/*/action.yml` is a CI shell
+    exactly like one in a workflow, and `setup-qemu-patched` sat outside both
+    `check-workflow-repo-env` and `check-workflow-indexed-apt` because each read
+    `.github/workflows/` only — while `check-workflow-just-provisioning`, a
+    sibling over the same class, already read actions. The reach of a gate is
+    the rule's, not the directory the first offender happened to live in.
+
+    A non-composite action (docker / node) has no `run:` steps and is skipped.
+    """
+    import yaml
+
+    docs = []
+    for p in sorted(list(ACTIONS.glob("*/action.yml")) + list(ACTIONS.glob("*/action.yaml"))):
+        doc = yaml.safe_load(p.read_text()) or {}
+        runs = doc.get("runs") or {}
+        if runs.get("using") != "composite":
+            continue
+        docs.append((p.relative_to(REPO), {"jobs": {COMPOSITE_JOB: {"steps": runs.get("steps") or []}}}))
+    return docs
+
+
+def load_workflows(include_actions=False):
+    """Every `.github/workflows/*.yml`, as `(repo-relative path, parsed doc)`.
+
+    `include_actions=True` appends every local composite action (see
+    `load_composite_actions`). A PER-STEP gate wants that. A per-JOB gate that
+    already expands `uses: ./.github/actions/<x>` in place
+    (`check-workflow-just-provisioning`) must NOT take it: it would audit an
+    action out of the context of the job that provides its prerequisites.
+    """
     import yaml
 
     docs = []
     for p in sorted(WORKFLOWS.glob("*.yml")):
         docs.append((p.relative_to(REPO), yaml.safe_load(p.read_text())))
+    if include_actions:
+        docs.extend(load_composite_actions())
     return docs

@@ -99,17 +99,29 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        sudo apt-get update -y
         # Minimum deps for the `--target-list=arm-softmmu --disable-docs
         # --disable-tools --disable-{gtk,vnc,sdl,spice} --enable-slirp`
         # configure that `just qemu setup-qemu` runs.
+        #
+        # ninja, glib and pixman are declared by the index (`[prereq.ninja]`,
+        # `[prereq.libglib2-dev]`, `[prereq.libpixman-dev]`), so their apt
+        # spellings are RESOLVED from it rather than restated here (issue
+        # 1548, `check-workflow-indexed-apt`). The rest are not indexed, so
+        # they stay literal. The script reads the same file `nros setup
+        # --system` reads; this action builds no CLI, so it cannot use that.
+        # Capture the status: a `$(…)` in argument position throws it away
+        # and `apt-get install` with no packages exits 0 (issue 1466).
+        if ! pkgs="$(python3 scripts/sdk/prereq-packages.py --manager apt ninja libglib2-dev libpixman-dev)"; then
+          echo "::error::prereq-packages.py could not resolve ninja/libglib2-dev/libpixman-dev from nros-sdk-index.toml"
+          exit 1
+        fi
+        sudo apt-get update -y
+        # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
         sudo apt-get install -y --no-install-recommends \
-          ninja-build \
+          $pkgs \
           python3 \
           pkg-config \
           libslirp-dev \
-          libglib2.0-dev \
-          libpixman-1-dev \
           flex \
           bison \
           meson
@@ -135,6 +147,11 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        # The repo environment first, as every `just` step does (issue 0933,
+        # `check-workflow-repo-env`; this action escaped it until issue 1548
+        # because the gate read only `.github/workflows/`). It only PREPENDS
+        # to PATH, so the `just` install dir below still resolves.
+        source ./activate.sh
         export PATH="$HOME/.local/bin:$PATH"
         just qemu setup-qemu
 

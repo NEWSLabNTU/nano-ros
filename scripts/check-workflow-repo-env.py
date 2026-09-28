@@ -51,6 +51,7 @@ Run: python3 scripts/check-workflow-repo-env.py [--self-test]
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -69,10 +70,28 @@ from workflow_commands import (  # noqa: E402
     load_workflows,
 )
 
-ACTIVATIONS = ("activate.sh", "./setup.bash")
+# A real ACTIVATION COMMAND: `source` or `.` in command position, naming the
+# repo's `activate.sh` (any path spelling) or the legacy `./setup.bash` shim.
+#
+# Issue 1548: this used to be `"activate.sh" in run` — a substring test over
+# the whole body, comments included, so a step whose COMMENT said "unlike the
+# others this does not source activate.sh" was exempt. The same prose-vs-command
+# distinction this file's header insists on for `just`, applied to the
+# exemption as well as the detection. A ROS `…/setup.bash` does not count: it
+# exports no `nano_ros_ROOT`, which is the whole point (issue 0933).
+ACTIVATION = re.compile(
+    r"(?:^|&&\s*|\|\|\s*|;\s*|\bthen\s+)\s*"
+    r"(?:source|\.)\s+"
+    r"""(?:["']?\S*/)?(?:activate\.sh|(?<![\w/])\./setup\.bash)["']?(?:\s|;|&|$)"""
+)
 
 
 def offenders(docs):
+    """A step whose first just/nros/west invocation precedes any activation.
+
+    ORDER matters, not just presence: `just x; source ./activate.sh` ran `just`
+    in the bare shell.
+    """
     bad = []
     for path, doc in docs:
         for job_name, job in (doc.get("jobs") or {}).items():
@@ -80,13 +99,15 @@ def offenders(docs):
                 run = step.get("run") or ""
                 if not run:
                     continue
-                if any(a in run for a in ACTIVATIONS):
-                    continue
-                hits = [l for l in command_lines(run) if INVOKE.search(l)]
-                if hits:
-                    bad.append(
-                        (path, job_name, step.get("name") or "(unnamed)", hits[0].strip())
-                    )
+                for line in command_lines(run):
+                    act, inv = ACTIVATION.search(line), INVOKE.search(line)
+                    if act and (not inv or act.start() <= inv.start()):
+                        break
+                    if inv:
+                        bad.append(
+                            (path, job_name, step.get("name") or "(unnamed)", line.strip())
+                        )
+                        break
     return bad
 
 
@@ -114,6 +135,15 @@ def self_test():
         # A heredoc must not swallow the rest of the file: a real invocation
         # after the terminator still counts.
         ("invocation after heredoc", "cat <<EOF\njust ci l1\nEOF\njust check fast\n", True),
+        # Issue 1548 — the exemption must be a COMMAND, not a word.
+        ("activate.sh only in a comment", "# unlike the rest, no activate.sh here\njust check fast\n", True),
+        ("activate.sh only in an echo", "echo 'run source ./activate.sh'\njust check fast\n", True),
+        ("sourced AFTER the invocation", "just check fast\nsource ./activate.sh\n", True),
+        ("ROS setup is not the repo env", "source /opt/ros/humble/setup.bash\njust check fast\n", True),
+        ("dot-sourced", ". ./activate.sh\njust check fast\n", False),
+        ("sourced by absolute path", 'source "$GITHUB_WORKSPACE/activate.sh"\njust check fast\n', False),
+        ("sourced in a chain", "cd x && source ../activate.sh && just check fast\n", False),
+        ("strict-mode prologue", "set -euo pipefail\nsource ./activate.sh\njust qemu setup-qemu\n", False),
     ]
     failures = 0
     for name, run, expect in cases:
@@ -140,7 +170,9 @@ def main():
     if self_test() != 0:
         return 1
 
-    docs = load_workflows()
+    # Composite actions too (issue 1548): `setup-qemu-patched` ran
+    # `just qemu setup-qemu` unsourced, outside this gate's old reach.
+    docs = load_workflows(include_actions=True)
     bad = offenders(docs)
     if bad:
         print("check-workflow-repo-env: step(s) invoking just/nros/west without the repo environment:")
@@ -161,7 +193,7 @@ def main():
 
     steps = sum(len(j.get("steps", []) or []) for _, d in docs for j in (d.get("jobs") or {}).values())
     print(
-        f"check-workflow-repo-env: OK — {len(docs)} workflow(s), {steps} step(s); "
+        f"check-workflow-repo-env: OK — {len(docs)} workflow(s)/composite action(s), {steps} step(s); "
         "every just/nros/west invocation sources the repo environment."
     )
     return 0

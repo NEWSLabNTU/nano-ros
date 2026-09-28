@@ -90,8 +90,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 import index_packages  # noqa: E402 — phase-447 D2: the one manager-field reader
+import workflow_commands  # noqa: E402 — the one workflow + composite-action loader
 
-WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
 INDEX = os.path.join(ROOT, "nros-sdk-index.toml")
 
 INSTALL = re.compile(r"\bapt(?:-get)?\s+install\b([^\n]*)")
@@ -113,6 +113,7 @@ SAFE_CAPTURE = re.compile(r"^\s*if\s+!\s+[A-Za-z_][A-Za-z0-9_]*=\"\$\(")
 # this tree are prose about the shell idiom.
 CALLER_GLOBS = (
     ".github/workflows/*.yml",
+    ".github/actions/*/action.yml",  # issue 1548: an action is a caller too
     "just/*.just",
     "justfile",
     "scripts/*.sh",
@@ -221,16 +222,14 @@ def named_packages(run):
 
 
 def load_workflows():
-    import yaml
+    """Every workflow AND every local composite action (issue 1548).
 
-    docs = []
-    for name in sorted(os.listdir(WORKFLOWS)):
-        if not name.endswith(".yml"):
-            continue
-        path = os.path.join(WORKFLOWS, name)
-        with open(path) as fh:
-            docs.append((name, yaml.safe_load(fh)))
-    return docs
+    This gate used to carry its own loader over `.github/workflows/` only, so
+    `.github/actions/setup-qemu-patched` apt-installed `ninja-build`,
+    `libglib2.0-dev` and `libpixman-1-dev` — all three indexed — unseen. The
+    shared loader is the one reach every per-step workflow gate agrees on.
+    """
+    return workflow_commands.load_workflows(include_actions=True)
 
 
 def caller_files():
@@ -378,7 +377,7 @@ def main():
     bad = offenders(docs, indexed)
     if bad:
         failed = True
-        print("check-workflow-indexed-apt: workflow(s) install a package the index declares:")
+        print("check-workflow-indexed-apt: workflow(s)/action(s) install a package the index declares:")
         for name, job, pkg, key, line in bad:
             print(f"  {name}  [{job}]  {pkg}  — declared by [prereq.{key}]")
             print(f"      {line[:100]}")
@@ -411,7 +410,7 @@ def main():
         return 1
 
     print(
-        f"check-workflow-indexed-apt: OK — {len(docs)} workflow(s), "
+        f"check-workflow-indexed-apt: OK — {len(docs)} workflow(s)/composite action(s), "
         f"{len(indexed)} indexed apt package(s), none restated; "
         f"{len(files)} caller file(s), every prereq-packages.py status captured."
     )
