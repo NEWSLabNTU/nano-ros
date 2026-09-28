@@ -331,6 +331,29 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t 
                                                    const nros_native_tier_spec_t* tiers,
                                                    size_t n_tiers);
 
+/* Issue 1551 — the same runner over CALLER-SUPPLIED executor storage, and the
+ * one a generated tiered Zephyr entry calls.
+ *
+ * `executor_storage` is `n_tiers` consecutive blocks of `storage_stride`
+ * bytes, 8-byte aligned; block `i` is tier `i`'s executor. The generated entry
+ * passes a file-scope static sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE` and
+ * the tier count it emits, so the storage is `.bss` the linker places and
+ * `mem-report` names, instead of `n_tiers` heap blocks out of the
+ * `CONFIG_NROS_ZEPHYR_HEAP_SIZE` arena that nothing priced (the issue: four
+ * tiers of storage alone exceeded the 64 KiB default, and the image died in
+ * tier 1 of 4). A `storage_stride` below this build's executor size is refused
+ * with a message rather than overrun.
+ *
+ * `_ns` above stays for an entry TU generated before this existed: it takes
+ * the same storage from the heap in ONE block, so it fails before any tier
+ * opens rather than part-way through the chain. */
+NROS_PUBLIC int32_t nros_board_zephyr_run_tiers_in(const char* locator, uint8_t domain_id,
+                                                   const char* session_name,
+                                                   const char* node_namespace,
+                                                   const nros_native_tier_spec_t* tiers,
+                                                   size_t n_tiers, void* executor_storage,
+                                                   size_t storage_stride);
+
 /* phase-281 W3 (nuttx) (RFC-0015 Model 1) — run a multi-tier embedded C/C++
  * entry on NuttX: open ONE RMW session on the caller's thread (the NuttX
  * `app_main` thread), spawn one `pthread` per non-boot tier (NuttX is POSIX —

@@ -43,13 +43,29 @@
   What travels is the SESSION's namespace. Each tier's own nodes carry their
   own `(node name, node namespace, group)` triples in the tier-spec array
   (issue 1172) and are unaffected either way.
+
+  Issue 1551 — when the runner takes the tiers' executor storage
+  (`boot.tier_storage`, i.e. `CAbiRunners::tiers_take_static_storage`), the
+  wrapper emits it here as a file-scope static and passes it with its per-tier
+  stride. The runner then allocates no executor from the platform heap.
 -#}
+{%- if boot.tier_storage -%}
+/* Issue 1551 — every tier's executor storage, one block per tier, as a
+ * file-scope static the linker places and `mem-report` names. The runner used
+ * to take each block out of the platform heap (CONFIG_NROS_ZEPHYR_HEAP_SIZE),
+ * and nothing multiplied the storage by the tier count against it. The size is
+ * this build's own NROS_CPP_EXECUTOR_STORAGE_SIZE, so the include is mandatory:
+ * without the per-build header there is no honest size to write. */
+#include <nros/nros_cpp_config_generated.h>
+static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
+
+{% endif -%}
 {%- set call -%}
 {%- if boot.tiers -%}
 {%- if boot.shape == "host" -%}
 {{ boot.run_tiers_fn }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u)
 {%- else -%}
-{{ boot.run_tiers_fn }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u)
+{{ boot.run_tiers_fn }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u{% if boot.tier_storage %}, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]){% endif %})
 {%- endif -%}
 {%- elif boot.shape == "host" -%}
 {{ boot.run_components_fn }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)

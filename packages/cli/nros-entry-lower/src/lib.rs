@@ -135,8 +135,12 @@ impl BoardFamily {
     ///   because the single-executor path differs only in a per-tick yield.
     ///   `run_tiers` is per-board: a FreeRTOS task, a Zephyr `k_thread` and a
     ///   NuttX pthread are three different things. The three are
-    ///   `nros_board_{freertos,zephyr,nuttx}_run_tiers_ns`, in each board
-    ///   crate's `c/<rtos>_run_tiers.c`.
+    ///   `nros_board_{freertos,nuttx}_run_tiers_ns` and
+    ///   `nros_board_zephyr_run_tiers_in`, in each board crate's
+    ///   `c/<rtos>_run_tiers.c`. Zephyr's is the `_in` twin (issue 1551): it
+    ///   takes the tiers' executor storage from the entry rather than the
+    ///   heap — see [`CAbiRunners::run_tiers_takes_storage`]. Its `_ns`
+    ///   spelling stays defined for a TU generated before that.
     /// - `Threadx` — the same shared `nros_board_rtos_run_components_ns`, and NO
     ///   `run_tiers` (issue 1286). ThreadX's C++ `run_components` is the
     ///   FreeRTOS one line for line, and the shared runner already has no
@@ -160,22 +164,29 @@ impl BoardFamily {
             BoardFamily::Native => Some(CAbiRunners {
                 run_components: Some("nros_board_native_run_components_named_ns"),
                 run_tiers: Some("nros_board_native_run_tiers_ns"),
+                run_tiers_takes_storage: false,
             }),
             BoardFamily::Freertos => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_ns"),
                 run_tiers: Some("nros_board_freertos_run_tiers_ns"),
+                run_tiers_takes_storage: false,
             }),
             BoardFamily::Zephyr => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_ns"),
-                run_tiers: Some("nros_board_zephyr_run_tiers_ns"),
+                // Issue 1551 — the `_in` twin: the entry hands it the tiers'
+                // executor storage as a file-scope static.
+                run_tiers: Some("nros_board_zephyr_run_tiers_in"),
+                run_tiers_takes_storage: true,
             }),
             BoardFamily::Nuttx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_ns"),
                 run_tiers: Some("nros_board_nuttx_run_tiers_ns"),
+                run_tiers_takes_storage: false,
             }),
             BoardFamily::Threadx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_ns"),
                 run_tiers: None,
+                run_tiers_takes_storage: false,
             }),
         }
     }
@@ -250,8 +261,29 @@ impl BoardFamily {
 pub struct CAbiRunners {
     /// The single-executor runner: `(…, setup) -> int32_t`.
     pub run_components: Option<&'static str>,
-    /// The one-task-per-tier runner: `(…, tiers, n_tiers) -> int32_t`.
+    /// The one-task-per-tier runner: `(…, tiers, n_tiers) -> int32_t`, or
+    /// `(…, tiers, n_tiers, storage, stride) -> int32_t` when
+    /// [`run_tiers_takes_storage`](Self::run_tiers_takes_storage).
     pub run_tiers: Option<&'static str>,
+    /// Issue 1551 — the `run_tiers` runner takes every tier's executor
+    /// storage from the CALLER, and the entry emits it as a file-scope static
+    /// (`n_tiers` blocks of `NROS_CPP_EXECUTOR_STORAGE_SIZE`, rounded to 8).
+    ///
+    /// The runners that do not still take one executor's storage out of the
+    /// platform heap PER TIER. On Zephyr that heap is the 64 KiB
+    /// `CONFIG_NROS_ZEPHYR_HEAP_SIZE` arena, which four tiers of storage alone
+    /// overran while nothing at build time multiplied the two; as `.bss` the
+    /// same bytes are placed by the linker and named by `mem-report`.
+    pub run_tiers_takes_storage: bool,
+}
+
+impl CAbiRunners {
+    /// Whether a tiered entry must emit the tiers' executor storage for its
+    /// runner — `run_tiers` exists and takes it. The one reading of the pair
+    /// both entry packs use.
+    pub fn tiers_take_static_storage(&self) -> bool {
+        self.run_tiers.is_some() && self.run_tiers_takes_storage
+    }
 }
 
 /// Every board key the entry pipeline knows, and the family it names. This is
@@ -500,6 +532,7 @@ mod tests {
             Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_ns"),
                 run_tiers: None,
+                run_tiers_takes_storage: false,
             })
         );
         assert!(BoardFamily::Threadx.has_c_run_components());

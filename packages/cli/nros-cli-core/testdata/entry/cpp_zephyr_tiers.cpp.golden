@@ -106,6 +106,15 @@ __attribute__((section(".nros_boot_config"), used))
 .rmw        = "",
 };
 
+/* Issue 1551 — every tier's executor storage, one block per tier, as a
+ * file-scope static the linker places and `mem-report` names. The runner used
+ * to take each block out of the platform heap (CONFIG_NROS_ZEPHYR_HEAP_SIZE),
+ * and nothing multiplied the storage by the tier count against it. The size is
+ * this build's own NROS_CPP_EXECUTOR_STORAGE_SIZE, so the include is mandatory:
+ * without the per-build header there is no honest size to write. */
+#include <nros/nros_cpp_config_generated.h>
+static uint64_t __nros_tier_executor_storage[2][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
+
 int main(void) {
-    return static_cast<int>(::nros::board::ZephyrBoard::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u));
+    return static_cast<int>(::nros::board::ZephyrBoard::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0])));
 }

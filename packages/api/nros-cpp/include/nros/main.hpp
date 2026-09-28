@@ -441,6 +441,23 @@ class ZephyrBoard {
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers);
     }
+
+    /// Issue 1551 — [`run_tiers`] over CALLER-SUPPLIED executor storage.
+    ///
+    /// `executor_storage` is `n_tiers` blocks of `storage_stride` bytes,
+    /// 8-byte aligned; block `i` is tier `i`'s executor. The generated entry
+    /// passes a file-scope static sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE`
+    /// and its own tier count, so the storage is linker-placed `.bss` rather
+    /// than `n_tiers` heap blocks out of `CONFIG_NROS_ZEPHYR_HEAP_SIZE`. See
+    /// `nros_board_zephyr_run_tiers_in` in `<nros/main.h>`.
+    static int32_t run_tiers(const char* session_name, const char* node_namespace,
+                             const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
+                             size_t storage_stride) {
+        return ::nros_board_zephyr_run_tiers_in(
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers,
+            executor_storage, storage_stride);
+    }
 };
 
 /// Phase 238 — embedded NuttX board adapter, sibling to `ZephyrBoard`.

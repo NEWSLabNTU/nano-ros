@@ -300,7 +300,8 @@ typedef struct {
  *
  * Heap-allocated by the spawning thread before nros_zephyr_tier_task_create;
  * lives for the firmware lifetime (the spawned task never returns).
- * executor_storage is a separate heap block passed to
+ * executor_storage is this tier's block of the CALLER's storage (issue 1551 —
+ * a file-scope static in the generated entry, not a heap block), passed to
  * nros_cpp_executor_open_over_session. */
 typedef struct {
     void* session_handle;
@@ -315,6 +316,10 @@ typedef struct {
      * setup returns, so no two setups overlap on the shared session. */
     const nros_tier_spec_t* rest;
     size_t n_rest;
+    /* issue 1551 — the storage for rest[0] (rest[k] is at k * storage_stride),
+     * carried down the chain beside the specs it belongs to. */
+    unsigned char* rest_storage;
+    size_t storage_stride;
     /* phase-296 W5.5/W5.7 — tier name + declared CPU pin (+1; 0 = unpinned)
      * + generic real-time policy, carried so the tier task can self-apply
      * its kernel placement/deadline. */
@@ -327,7 +332,8 @@ typedef struct {
 /* Forward decl — zephyr_tier_task and zephyr_spawn_next_tier are mutually
  * recursive (each tier's task spawns the next tier via this helper). */
 static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
-                                  const nros_tier_spec_t* remaining, size_t n_remaining);
+                                  const nros_tier_spec_t* remaining, size_t n_remaining,
+                                  unsigned char* storage, size_t storage_stride);
 
 /* Minimum spin delay: 1 ms. */
 #define SPIN_PERIOD_FLOOR_MS 1u
@@ -432,7 +438,7 @@ static void* zephyr_tier_task(void* arg) {
      * DOWNSTREAM spawn must NOT stop this tier spinning its own work, so ignore
      * the return (zephyr_spawn_next_tier frees what it allocated on failure). */
     (void)zephyr_spawn_next_tier(ctx->session_handle, (uint8_t)ctx->domain_id, ctx->rest,
-                                 ctx->n_rest);
+                                 ctx->n_rest, ctx->rest_storage, ctx->storage_stride);
 
     /* Spin loop. Pass the tier period as the spin_once timeout — a BLOCKING
      * read drives the shared session's TX/handshake from the spin path and
@@ -468,27 +474,29 @@ static void* zephyr_tier_task(void* arg) {
  * concurrently on the shared zenoh-pico session — the interest-handshake race
  * that silently closes a losing publisher's write filter.
  *
+ * `storage` is remaining[0]'s executor block and remaining[k]'s is at
+ * `k * storage_stride` (issue 1551: the caller's static, never a heap block —
+ * this function used to take one executor's storage out of the platform heap
+ * PER TIER, and nothing anywhere multiplied that by the tier count).
+ *
  * On any alloc/create failure, frees what IT allocated and returns -1. It does
  * NOT touch the caller's storage. */
 static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
-                                  const nros_tier_spec_t* remaining, size_t n_remaining) {
+                                  const nros_tier_spec_t* remaining, size_t n_remaining,
+                                  unsigned char* storage, size_t storage_stride) {
     if (n_remaining == 0u) {
         return 0;
     }
     const nros_tier_spec_t* t = &remaining[0];
 
-    /* Allocate executor storage for this tier. */
-    void* tier_exec = nros_platform_alloc(NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
-    if (tier_exec == NULL) {
-        return -1;
-    }
-    memset(tier_exec, 0, NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
+    void* tier_exec = storage;
+    memset(tier_exec, 0, storage_stride);
 
-    /* Allocate the tier task context (lives for firmware lifetime). */
+    /* Allocate the tier task context (lives for firmware lifetime). About a
+     * hundred bytes, the one per-tier heap cost left on this path. */
     nros_zephyr_tier_ctx_t* ctx =
         (nros_zephyr_tier_ctx_t*)nros_platform_alloc(sizeof(nros_zephyr_tier_ctx_t));
     if (ctx == NULL) {
-        nros_platform_dealloc(tier_exec);
         return -1;
     }
 
@@ -502,6 +510,8 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
     /* Chain tail: this task will spawn remaining[1] after its own setup. */
     ctx->rest = remaining + 1;
     ctx->n_rest = n_remaining - 1u;
+    ctx->rest_storage = storage + storage_stride;
+    ctx->storage_stride = storage_stride;
     ctx->name = t->name;
     ctx->core_plus1 = t->core_plus1;
     ctx->tier_class = t->tier_class;
@@ -529,7 +539,6 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
                                           (size_t)t->stack_bytes, t->core_plus1, &pin_rc);
     if (rc != 0) {
         nros_platform_dealloc(ctx);
-        nros_platform_dealloc(tier_exec);
         return -1;
     }
     if (t->core_plus1 != 0u) {
@@ -564,6 +573,10 @@ int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
 int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
                                        const char* session_name, const char* node_namespace,
                                        const nros_tier_spec_t* tiers, size_t n_tiers);
+int32_t nros_board_zephyr_run_tiers_in(const char* locator, uint8_t domain_id,
+                                       const char* session_name, const char* node_namespace,
+                                       const nros_tier_spec_t* tiers, size_t n_tiers,
+                                       void* executor_storage, size_t storage_stride);
 
 int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
                                     const char* session_name, const nros_tier_spec_t* tiers,
@@ -594,6 +607,14 @@ int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
  * What it names is the SESSION. Each tier's own nodes carry their own
  * `(name, namespace, group)` triples in the spec array (issue 1172) and are
  * untouched.
+ *
+ * Issue 1551 — this spelling takes the tiers' executor storage from the
+ * platform heap, and is kept only for an entry TU generated before
+ * `nros_board_zephyr_run_tiers_in` existed. It takes all of it in ONE block,
+ * up front: the old per-tier allocations let the boot tier open, declare and
+ * spawn before a later tier found the arena empty, which is how the
+ * derived-tiers-cpp image died in tier 1 of 4. One block fails before any
+ * session opens, with the whole request in the HEAP EXHAUSTED line.
  */
 int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
                                        const char* session_name, const char* node_namespace,
@@ -601,6 +622,50 @@ int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
     if (tiers == NULL || n_tiers == 0) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
+    void* storage = nros_platform_alloc(n_tiers * NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
+    if (storage == NULL) {
+        printk("nros: zephyr run_tiers: %u tiers x %u bytes of executor storage do not fit "
+               "the platform heap; regenerate the entry (nros_board_zephyr_run_tiers_in "
+               "takes them as a static) or raise CONFIG_NROS_ZEPHYR_HEAP_SIZE\n",
+               (unsigned)n_tiers, (unsigned)NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
+        return -1; /* NROS_CPP_RET_ERROR */
+    }
+    int32_t rc =
+        nros_board_zephyr_run_tiers_in(locator, domain_id, session_name, node_namespace, tiers,
+                                       n_tiers, storage, NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
+    nros_platform_dealloc(storage);
+    return rc;
+}
+
+/*
+ * Issue 1551 — the runner, over caller-supplied executor storage.
+ *
+ * `executor_storage` holds `n_tiers` blocks of `storage_stride` bytes; block
+ * `i` is tier `i`'s executor and block 0 is the boot tier's. A generated entry
+ * passes a file-scope static it sized from the same
+ * `NROS_CPP_EXECUTOR_STORAGE_SIZE` this file reads, so the check below is a
+ * backstop for a caller that did not (a hand-written entry, or a TU built
+ * against a different per-build header), not a path a generated image takes.
+ *
+ * Ownership stays with the caller: nothing here frees the storage.
+ */
+int32_t nros_board_zephyr_run_tiers_in(const char* locator, uint8_t domain_id,
+                                       const char* session_name, const char* node_namespace,
+                                       const nros_tier_spec_t* tiers, size_t n_tiers,
+                                       void* executor_storage, size_t storage_stride) {
+    if (tiers == NULL || n_tiers == 0 || executor_storage == NULL) {
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    if (storage_stride < NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES || (storage_stride % 8u) != 0u ||
+        ((uintptr_t)executor_storage % 8u) != 0u) {
+        printk("nros: zephyr run_tiers: executor storage stride %u (misalign %u) is not a "
+               "multiple of 8 of at least this build's %u bytes; the caller sized it from a "
+               "different NROS_CPP_EXECUTOR_STORAGE_SIZE\n",
+               (unsigned)storage_stride, (unsigned)((uintptr_t)executor_storage % 8u),
+               (unsigned)NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    unsigned char* storage = (unsigned char*)executor_storage;
 
     /* Weak network-readiness gate (no-op on the canonical Zephyr
      * auto-init path; a board/app may provide a strong override). */
@@ -633,16 +698,12 @@ int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
      * session name gets one line up. */
     const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;
 
-    /* Allocate executor storage from the Zephyr heap (8-byte aligned). */
-    void* boot_storage = nros_platform_alloc(NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
-    if (boot_storage == NULL) {
-        return -1; /* NROS_CPP_RET_ERROR */
-    }
-    memset(boot_storage, 0, NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
+    /* Block 0 of the caller's storage is the boot tier's executor. */
+    void* boot_storage = storage;
+    memset(boot_storage, 0, storage_stride);
 
     int rc = nros_cpp_init(locator, domain_id, sn, ns, boot_storage);
     if (rc != 0) {
-        nros_platform_dealloc(boot_storage);
         return (int32_t)rc;
     }
 
@@ -697,7 +758,6 @@ int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
         rc = boot->setup(boot_storage);
         if (rc != 0) {
             nros_cpp_fini(boot_storage);
-            nros_platform_dealloc(boot_storage);
             return (int32_t)rc;
         }
     }
@@ -706,10 +766,10 @@ int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
     /* A boot-side spawn failure is fatal: tear down boot_storage (which the
      * helper never touches) and return error. Downstream tier tasks handle
      * their own spawn failures by parking + continuing to spin. */
-    int src = zephyr_spawn_next_tier(session_handle, domain_id, &tiers[1], n_tiers - 1u);
+    int src = zephyr_spawn_next_tier(session_handle, domain_id, &tiers[1], n_tiers - 1u,
+                                     storage + storage_stride, storage_stride);
     if (src != 0) {
         nros_cpp_fini(boot_storage);
-        nros_platform_dealloc(boot_storage);
         return -1;
     }
 
@@ -754,6 +814,5 @@ int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
 
     /* Unreachable — satisfies the compiler. */
     nros_cpp_fini(boot_storage);
-    nros_platform_dealloc(boot_storage);
     return 0;
 }
