@@ -30,8 +30,7 @@
 //! `build.rs`, so this overlay does not need to override it.
 
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -166,9 +165,16 @@ fn main() {
 
 /// A path variable with an in-repo default, canonicalised so every consumer
 /// spells it the same way (issue 0491). Never fingerprinted as a string.
+///
+/// issue 1527 — `canonical(env::var(..))` canonicalises and does NOT apply
+/// issue 1280's three-valued rule, so an inherited `THREADX_DIR` / `NETX_DIR`
+/// from another checkout outranked this one. Being private and taking the name
+/// as an ARGUMENT is what kept that invisible: no literal-matching probe can
+/// tell which variables a helper like this resolves.
+/// `nros_build_paths::env_path` canonicalises too, so nothing 0491 wanted is
+/// traded away — it only adds the rule this was missing.
 fn env_path_or(name: &str, default: PathBuf) -> PathBuf {
-    let raw = env::var(name).map(PathBuf::from).unwrap_or(default);
-    nros_build_paths::canonical(&raw)
+    nros_build_paths::env_path(name).unwrap_or_else(|| nros_build_paths::canonical(&default))
 }
 
 /// Phase 212.M-F.10.3 — Path C: emit the `NROS_APP_CONFIG` definition

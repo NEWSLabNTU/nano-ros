@@ -98,10 +98,12 @@ fn main() {
     // `nros-board-threadx` carries the same shape untouched — a set-variable
     // guard and an `assert!` that panics — and has not failed only because no
     // lane compiles it. That is 1309 again, one crate over.
-    let freertos_probe = nros_build_paths::canonical(&PathBuf::from(
-        env::var("FREERTOS_DIR").expect("checked above"),
-    ))
-    .join("tasks.c");
+    // issue 1527 — the SAME resolution the compile below uses. This probe read
+    // the variable raw while the compile went through the re-rooting resolver,
+    // so in a linked worktree the guard measured one checkout's `tasks.c` and
+    // the build compiled another's. A probe blind to an input the build has is
+    // issue 0196's shape, and here it is the probe's whole job.
+    let freertos_probe = env_path("FREERTOS_DIR").join("tasks.c");
     if !freertos_probe.exists() {
         println!(
             "cargo:warning=nros-board-freertos: FREERTOS_DIR is set but its \
@@ -390,12 +392,19 @@ fn main() {
 /// A REQUIRED path variable, canonicalised (issue 0491) — never fingerprinted
 /// as a string. The three callers below sit behind the `FREERTOS_DIR` guard,
 /// so "unset" is already handled as "not a FreeRTOS build".
+///
+/// issue 1527 — this used to be `canonical(env::var(name))`, which
+/// canonicalises and does NOT apply issue 1280's three-valued rule. A private
+/// helper NAMED like the shared one is the worst shape for that: it reads as
+/// the sanctioned resolver at every call site, and because it takes the
+/// variable name as an ARGUMENT no literal-matching probe can see which
+/// variables lost the rule. `nros_build_paths::env_path` canonicalises too, so
+/// 0491's reason for this helper is kept, not traded away.
 fn env_path(name: &str) -> PathBuf {
-    let raw = PathBuf::from(env::var(name).unwrap_or_else(|_| {
+    nros_build_paths::env_path(name).unwrap_or_else(|| {
         panic!(
             "{name} not set — overlays should set it via \
              `.cargo/config.toml [env]` or the user must export it"
         )
-    }));
-    nros_build_paths::canonical(&raw)
+    })
 }
