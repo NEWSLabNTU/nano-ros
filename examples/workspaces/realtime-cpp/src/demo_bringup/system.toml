@@ -216,8 +216,15 @@ board = "rv-virt-nuttx"
 
 [image.zephyr]
 board = "native_sim/native/64"
-entry = "zephyr_entry"
 conf = ["prj-zenoh.conf"]
+# phase-470 W5.b3 (issue 1288) — the west application is GENERATED, so no
+# `entry =`: a generated application is found by construction at
+# `build/<coord>/<image>_entry/`, which is the ambiguity `entry =` existed to
+# resolve. `panic` is the one fact the deleted `CMakeLists.txt` stated that no
+# other declaration carried (`nano_ros_add_executable(... PANIC platform)`);
+# `LANG`, `BRINGUP` and the `add_subdirectory` list are derived from the
+# packages the launch names.
+panic = "platform"
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

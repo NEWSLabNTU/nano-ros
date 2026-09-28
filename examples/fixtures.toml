@@ -5090,8 +5090,10 @@ west_id = "zephyr/native_sim/native/64/workspace-realtime-derived-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7491"
 skip_probe = true
 
-# phase-281 W3b — the RT-TIERS C++ workspace Entry
-# (examples/workspaces/realtime-cpp/src/zephyr_entry): the FIRST full west
+# phase-281 W3b — the RT-TIERS C++ workspace Entry (`[image.zephyr]` of
+# examples/workspaces/realtime-cpp; its application is GENERATED since
+# phase-470 W5.b3, issue 1288, and carries `PANIC platform` from the image):
+# the FIRST full west
 # link + runtime proof of the W3a ZephyrBoard::run_tiers seam. The C++
 # sibling of the rust realtime entry above; demo_bringup/system.toml
 # declares two [tiers.*] with [tiers.*.zephyr] priorities, so the C++
@@ -5111,7 +5113,14 @@ bringup = "src/demo_bringup"
 # phase-383 W9.b — RETARGETED (see `workspace-rust-zephyr` for the rationale).
 image = "zephyr"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+# phase-470 W5.b3 (issue 1288) — `conf_files` is GONE from this row, and its
+# absence is the point. It reached west as `-DCONF_FILE=prj.conf;prj-<rmw>.conf;
+# <nsos>`, which is a second spelling of `[image.<id>] conf` AND suppresses
+# Zephyr's own `APPLICATION_CONFIG_DIR` discovery outright. With the application
+# GENERATED there is no app-relative `prj.conf` for those names to resolve
+# against anyway: the fragments live in
+# `<bringup>/boards/native_sim_native_64/`, which the image names and `nros
+# build` passes.
 west_build_name = "build-ws-cpp-realtime-entry-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-realtime-entry-cpp"
 west_zenoh_locator = "tcp/127.0.0.1:7691"
@@ -5218,10 +5227,12 @@ west_zenoh_locator = "tcp/10.0.2.2:7591"
 skip_probe = true
 
 # phase-263 C2d — the C WORKSPACE entry (Approach A). Same native_sim/NSOS
-# west path as the Rust workspace entry above, but the Zephyr application
-# dir is examples/workspaces/c/src/zephyr_entry (find_package(Zephyr) +
-# nano_ros_entry(BOARD zephyr …) — the C/C++ analog of
-# rust_cargo_application()). It dials a DISTINCT zenohd port (7530), so it
+# west path as the Rust workspace entry above. phase-470 W5.b3 (issue 1288)
+# GENERATES that application — `build/zephyr-zenoh/zephyr_entry/`,
+# find_package(Zephyr) + nano_ros_add_executable(BOARD zephyr LANG c …), the
+# C/C++ analog of rust_cargo_application() — so there is no
+# `src/zephyr_entry` any more and the Kconfig lives with the bringup.
+# It dials a DISTINCT zenohd port (7530), so it
 # does NOT serialize with the rust workspace/single-node pubsub fixtures.
 # Consumed by tests/entry_e2e.rs (zephyr_c cell).
 [[workspace_fixture]]
@@ -5234,7 +5245,14 @@ bringup = "src/demo_bringup"
 # phase-383 W9.b — RETARGETED (see `workspace-rust-zephyr` for the rationale).
 image = "zephyr"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+# phase-470 W5.b3 (issue 1288) — `conf_files` is GONE from this row, and its
+# absence is the point. It reached west as `-DCONF_FILE=prj.conf;prj-<rmw>.conf;
+# <nsos>`, which is a second spelling of `[image.<id>] conf` AND suppresses
+# Zephyr's own `APPLICATION_CONFIG_DIR` discovery outright. With the application
+# GENERATED there is no app-relative `prj.conf` for those names to resolve
+# against anyway: the fragments live in
+# `<bringup>/boards/native_sim_native_64/`, which the image names and `nros
+# build` passes.
 west_build_name = "build-ws-c-entry-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-entry-c"
 west_zenoh_locator = "tcp/127.0.0.1:7530"
@@ -5242,8 +5260,10 @@ skip_probe = true
 
 # phase-263 C2c — the C++ WORKSPACE entry (typed std_msgs). Same
 # native_sim/NSOS west path as the C workspace entry; the Zephyr application
-# dir is examples/workspaces/cpp/src/zephyr_entry. Distinct zenohd port
-# (7630). Consumed by tests/entry_e2e.rs (zephyr_cpp cell).
+# is GENERATED at `build/zephyr-zenoh/zephyr_entry/` since phase-470 W5.b3
+# (issue 1288), with `LANG cpp` derived from the node packages' own sources.
+# Distinct zenohd port (7630). Consumed by tests/entry_e2e.rs (zephyr_cpp
+# cell).
 [[workspace_fixture]]
 id = "workspace-zephyr-cpp"
 platform = "zephyr"
@@ -5254,7 +5274,14 @@ bringup = "src/demo_bringup"
 # phase-383 W9.b — RETARGETED (see `workspace-rust-zephyr` for the rationale).
 image = "zephyr"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+# phase-470 W5.b3 (issue 1288) — `conf_files` is GONE from this row, and its
+# absence is the point. It reached west as `-DCONF_FILE=prj.conf;prj-<rmw>.conf;
+# <nsos>`, which is a second spelling of `[image.<id>] conf` AND suppresses
+# Zephyr's own `APPLICATION_CONFIG_DIR` discovery outright. With the application
+# GENERATED there is no app-relative `prj.conf` for those names to resolve
+# against anyway: the fragments live in
+# `<bringup>/boards/native_sim_native_64/`, which the image names and `nros
+# build` passes.
 west_build_name = "build-ws-cpp-entry-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-entry-cpp"
 west_zenoh_locator = "tcp/127.0.0.1:7630"
@@ -5287,7 +5314,14 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "zephyr_cyclonedds"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+# phase-470 W5.b3 (issue 1288) — `conf_files` is GONE from this row, and its
+# absence is the point. It reached west as `-DCONF_FILE=prj.conf;prj-<rmw>.conf;
+# <nsos>`, which is a second spelling of `[image.<id>] conf` AND suppresses
+# Zephyr's own `APPLICATION_CONFIG_DIR` discovery outright. With the application
+# GENERATED there is no app-relative `prj.conf` for those names to resolve
+# against anyway: the fragments live in
+# `<bringup>/boards/native_sim_native_64/`, which the image names and `nros
+# build` passes.
 west_build_name = "build-ws-cpp-entry-cyclonedds"
 west_id = "zephyr/native_sim/native/64/workspace-entry-cpp-cyclonedds"
 # The row AUTHORS its isolation value, as every west leaf does. Not decoration:
@@ -5309,9 +5343,13 @@ skip_probe = true
 
 # phase-263 C2c-zephyr — the MIXED WORKSPACE entry (C talker + C++ listener
 # + Rust heartbeat). Same native_sim/NSOS west path as the cpp entry; the
-# Zephyr application dir is examples/workspaces/mixed/src/zephyr_entry. The
-# entry sets NROS_WS_RUST_NODE_DIRS so the nano-ros module bundles the Rust
-# node into the nros_ws_runtime umbrella staticlib (single Rust runtime).
+# Zephyr application is GENERATED at `build/zephyr-zenoh/zephyr_entry/` since
+# phase-470 W5.b3 (issue 1288), and it is the image that proves the generator
+# derives the two lines this shape needs: NROS_WS_RUST_NODE_DIRS (from the
+# node package that carries a `Cargo.toml`) before find_package(Zephyr), so
+# the nano-ros module bundles the Rust node into the nros_ws_runtime umbrella
+# staticlib (single Rust runtime), and the nano_ros_workspace_pkg_guard stub
+# after find_package(nano_ros).
 # Distinct zenohd port (7730). Consumed by tests/entry_e2e.rs (zephyr_mixed
 # cell).
 [[workspace_fixture]]
@@ -5324,7 +5362,14 @@ bringup = "src/demo_bringup"
 # phase-383 W9.b — RETARGETED (see `workspace-rust-zephyr` for the rationale).
 image = "zephyr"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+# phase-470 W5.b3 (issue 1288) — `conf_files` is GONE from this row, and its
+# absence is the point. It reached west as `-DCONF_FILE=prj.conf;prj-<rmw>.conf;
+# <nsos>`, which is a second spelling of `[image.<id>] conf` AND suppresses
+# Zephyr's own `APPLICATION_CONFIG_DIR` discovery outright. With the application
+# GENERATED there is no app-relative `prj.conf` for those names to resolve
+# against anyway: the fragments live in
+# `<bringup>/boards/native_sim_native_64/`, which the image names and `nros
+# build` passes.
 west_build_name = "build-ws-mixed-entry-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-entry-mixed"
 west_zenoh_locator = "tcp/127.0.0.1:7730"

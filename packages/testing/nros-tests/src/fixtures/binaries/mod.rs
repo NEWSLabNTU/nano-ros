@@ -4718,7 +4718,13 @@ pub fn build_zephyr_workspace_c_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-c-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
-        ZephyrLeafSource::zenoh("examples/workspaces/c/src/zephyr_entry", "c"),
+        // phase-470 W5.b3 (issue 1288) — the WHOLE workspace, not
+        // `src/zephyr_entry`: that package is deleted and the application is
+        // generated under `build/`, so the watched tree is the one the image is
+        // actually built from. Same shape as the Rust workspace entry
+        // (`zephyr.rs`'s `ZEPHYR_WORKSPACE_ENTRY_SRC_KEY`), and it does not
+        // under-watch — the entry pulls in sibling node packages either way.
+        ZephyrLeafSource::zenoh("examples/workspaces/c", "c"),
     )
 }
 
@@ -4730,7 +4736,8 @@ pub fn build_zephyr_workspace_cpp_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-cpp-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
-        ZephyrLeafSource::zenoh("examples/workspaces/cpp/src/zephyr_entry", "cpp"),
+        // phase-470 W5.b3 (issue 1288) — the WHOLE workspace; see the C entry above.
+        ZephyrLeafSource::zenoh("examples/workspaces/cpp", "cpp"),
     )
 }
 
@@ -4746,7 +4753,7 @@ pub fn build_zephyr_workspace_mixed_entry() -> TestResult<PathBuf> {
         // The mixed entry links C, C++ AND Rust nodes, so `lang: None` —
         // no language API crate may be dropped from the watch set.
         ZephyrLeafSource {
-            dir: "examples/workspaces/mixed/src/zephyr_entry",
+            dir: "examples/workspaces/mixed",
             lang: None,
             rmw: Some("zenoh"),
             conf_files: None,
@@ -4904,7 +4911,8 @@ pub fn build_zephyr_workspace_cpp_realtime_entry() -> TestResult<PathBuf> {
         zephyr_build_root().join("build-ws-cpp-realtime-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
-        ZephyrLeafSource::zenoh("examples/workspaces/realtime-cpp/src/zephyr_entry", "cpp"),
+        // phase-470 W5.b3 (issue 1288) — the WHOLE workspace; see the C entry above.
+        ZephyrLeafSource::zenoh("examples/workspaces/realtime-cpp", "cpp"),
     )
 }
 

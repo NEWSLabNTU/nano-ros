@@ -153,6 +153,12 @@ board = "threadx-linux"
 [image.zephyr]
 board = "native_sim/native/64"
 conf = ["prj-zenoh.conf"]
+# phase-470 W5.b3 (issue 1288) — the west application is GENERATED, and this is
+# the one fact its hand-written predecessor stated that no other declaration
+# carried: `nano_ros_add_executable(... PANIC platform)`. `LANG c` and the
+# `add_subdirectory` list are derived from the packages the launch names; the
+# panic policy is a choice, so it is declared.
+panic = "platform"
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

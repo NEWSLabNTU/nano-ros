@@ -290,6 +290,36 @@ impl Selection {
     }
 }
 
+/// Does this node package hold a C++ source?
+///
+/// ONE spelling of a question two emitters ask about the same packages: the
+/// cmake root's `LANG` (`cmd::build`'s `Driver::CMake` arm) and the west
+/// application's (`west_app::resolve_cmake`, phase-470 W5.b3). They differ only
+/// in SCOPE — the cmake root asks it of the whole workspace, the west
+/// application of the node packages ONE image's launch file names — and that
+/// difference is deliberate, so what is shared is the file scan and not the
+/// scope.
+///
+/// Sources live in `<pkg>/src/` here, not at the package top: a top-level-only
+/// scan called the pure-C++ `cpp` workspace `c`, and `nros codegen entry`
+/// refused with the right complaint from the wrong layer ("node pkg
+/// `talker_pkg` exec `talker` is lang `cpp`, not `c`"). The model knows each
+/// exec's language; until an emitter reads it, look where the sources are.
+#[must_use]
+pub fn holds_cpp_source(dir: &Path) -> bool {
+    [dir.to_path_buf(), dir.join("src")].iter().any(|d| {
+        d.read_dir()
+            .map(|rd| {
+                rd.flatten().any(|e| {
+                    let n = e.file_name();
+                    let n = n.to_string_lossy();
+                    n.ends_with(".cpp") || n.ends_with(".cc") || n.ends_with(".cxx")
+                })
+            })
+            .unwrap_or(false)
+    })
+}
+
 /// Apply `sel` to what stage 1 discovered.
 ///
 /// ## Where this matches colcon and where it deliberately does not

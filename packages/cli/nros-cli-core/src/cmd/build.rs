@@ -476,6 +476,11 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     descriptor,
                     &platform,
                     nano_ros_root.as_deref(),
+                    // The cargo driver is chosen only when the graph does NOT
+                    // cross languages (`driver_for`), so this is `false` by
+                    // construction here — passed as the predicate rather than
+                    // as a literal so the two cannot drift apart.
+                    image_has_non_rust(&image, &bringup_dir),
                 )?;
                 if let Some(d) = &generated.dir {
                     eprintln!("nros build:   entry → {}", d.display());
@@ -750,27 +755,16 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // that name would collide. Delete the package and the next
                 // build emits its call (D13, incremental).
                 let coord = cmake_coordinate(&platform, &image);
-                // A C++ source ANYWHERE in a package, not just at its top.
-                //
-                // These packages keep sources in `src/` — `talker_pkg/src/Talker.cpp` —
-                // so a top-level scan called the pure-C++ workspace `c`, and
-                // `nros codegen entry` refused with the right complaint from the
-                // wrong layer: "node pkg `talker_pkg` exec `talker` is lang
-                // `cpp`, not `c`". The model knows each exec's language; until
-                // the emitter reads it, look where the sources actually are.
-                let has_cpp = found.packages.iter().any(|p| {
-                    [p.dir.clone(), p.dir.join("src")].iter().any(|d| {
-                        d.read_dir()
-                            .map(|rd| {
-                                rd.flatten().any(|e| {
-                                    let n = e.file_name();
-                                    let n = n.to_string_lossy();
-                                    n.ends_with(".cpp") || n.ends_with(".cc") || n.ends_with(".cxx")
-                                })
-                            })
-                            .unwrap_or(false)
-                    })
-                });
+                // A C++ source ANYWHERE in a package, not just at its top —
+                // `builder::discover::holds_cpp_source`, the one spelling the
+                // west application's `LANG` also reads (phase-470 W5.b3). The
+                // SCOPE differs and stays here: this root serves the whole
+                // workspace, a west application only the node packages one
+                // image's launch file names.
+                let has_cpp = found
+                    .packages
+                    .iter()
+                    .any(|p| crate::builder::discover::holds_cpp_source(&p.dir));
                 let cmake_entries = plan::all_images(&bringups)
                     .into_iter()
                     .filter(|(b, bd, _, img)| {
@@ -966,6 +960,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                         descriptor,
                         &platform,
                         nano_ros_root.as_deref(),
+                        image_has_non_rust(&image, &bringup_dir),
                     )?
                 };
                 let app = match &generated.dir {
@@ -1735,6 +1730,13 @@ fn generate_entry(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
     platform: &str,
     nano_ros_root: Option<&std::path::Path>,
+    // phase-470 W5.b3 — does THIS image's node graph cross out of Rust? The
+    // caller's `image_has_non_rust`, passed rather than re-derived: it reads the
+    // discovered package set, which this function does not hold, and a second
+    // derivation of "which language is this image" is exactly the drift class
+    // that made `has_cpp` answer for the workspace when the question was about
+    // the image.
+    has_non_rust: bool,
 ) -> Result<GeneratedEntry> {
     use crate::{
         builder::entry::{BoardFacts, EntrySpec},
@@ -1835,6 +1837,53 @@ fn generate_entry(
         if dir.is_dir() {
             nodes.push((n.pkg.clone(), dir));
         }
+    }
+
+    // Where the entry will be written — needed to make its dependency paths
+    // relative, and computed before the spec because the spec carries them.
+    // Also before the C/C++ branch below, which writes into it and nothing
+    // else.
+    let entry_dir_for_deps = root
+        .join("build")
+        .join(coordinate(platform, image))
+        .join(crate::builder::entry::package_name(image_id));
+
+    // ---- phase-470 W5.b3 (issue 1288) — the C/C++ west application --------
+    //
+    // A Zephyr image whose node graph crosses out of Rust gets an application
+    // and NO cargo entry: `nano_ros_add_executable(... BRINGUP ...)` generates
+    // the TU that carries `main`, so there is no `Cargo.toml`, no `src/lib.rs`
+    // and no `build.rs` to write.
+    //
+    // Branching HERE, before the facade block, is the point: the selection
+    // facade is a Rust crate that a Rust entry depends on, and it is emitted
+    // per ENTRY PACKAGE. A C/C++ image has no entry crate to carry it, so
+    // reaching that block would refuse a build over a facade nothing could
+    // use. (The eight hand-written C/C++ applications never met it either —
+    // they returned at the `hand_written` check above.)
+    //
+    // `has_non_rust` is the caller's `image_has_non_rust`, the same predicate
+    // that routes a NATIVE image to the cmake driver. One predicate, so the
+    // language a workspace is built in cannot differ by platform.
+    if has_non_rust {
+        let app = crate::builder::west_app::resolve_cmake(
+            root,
+            &entry_dir_for_deps,
+            bringup_dir,
+            image_id,
+            image.launch.as_deref(),
+            &image.args,
+            image.panic.as_deref(),
+            platform,
+            &nodes,
+        )
+        .map_err(|e| eyre::eyre!("generating the west application for `{image_id}`: {e}"))?;
+        crate::builder::west_app::write(&app, &entry_dir_for_deps)
+            .map_err(|e| eyre::eyre!("generating the west application for `{image_id}`: {e}"))?;
+        return Ok(GeneratedEntry {
+            dir: Some(entry_dir_for_deps),
+            entity_facts,
+        });
     }
 
     let launch = match image.launch.as_deref() {
@@ -3974,9 +4023,12 @@ nano_ros_add_executable(zephyr_entry
 
     /// `DEPLOY` in prose is not a declaration.
     ///
-    /// `examples/workspaces/cpp/src/zephyr_entry/CMakeLists.txt` contains the
+    /// `examples/workspaces/cpp/src/zephyr_entry/CMakeLists.txt` carried the
     /// comment "nano_ros_node_register has no DEPLOY → component-only", one
-    /// line above the real call. A file-wide regex reads that as the answer;
+    /// line above the real call. (phase-470 W5.b3 deleted that package — the
+    /// application is generated now, and the generated file carries the same
+    /// comment, so the hazard is unchanged and the case is kept.) A file-wide
+    /// regex reads the comment as the answer;
     /// scoping to the call arguments is what makes the difference, so it is
     /// what gets tested.
     #[test]
