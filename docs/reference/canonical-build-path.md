@@ -199,6 +199,7 @@ The classes, the outlier verdicts and the migration order are
 | build caches: one root, one vocabulary | RFC-0070 |
 | platform and build determinism | RFC-0042 |
 | the backend descriptor | RFC-0071 |
+| where a build script gets a vendored tree's ROOT | RFC-0101 |
 
 ## The recurring failure, stated once
 
