@@ -327,8 +327,8 @@ pub fn derive_execution_in_plan(
             s.tier, s.authored, s.allocated
         );
         eprintln!(
-            "codegen-system: authored priority wins — {} [{}]: {reason}",
-            s.node, "priority"
+            "codegen-system: authored priority wins — {} [priority]: {reason}",
+            s.node
         );
         warnings.push(crate::orchestration::plan::PlanSchedWarning {
             node: s.node.clone(),
