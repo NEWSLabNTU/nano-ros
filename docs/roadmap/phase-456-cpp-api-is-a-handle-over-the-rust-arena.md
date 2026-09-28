@@ -835,9 +835,12 @@ Four things follow, and each is a simplification rather than a trade:
   the service comes out the OTHER WAY from the subscription.** W2b had to leave
   `get_actual_qos` off the dispatch `Subscription<M>`: it holds only
   `sched_handle_id_`, so reaching the arena would have meant inventing a
-  signature that takes an executor, and that refusal is ledgered at
+  signature that takes an executor, and that refusal was ledgered at
   `cpp:Subscription::get_actual_qos` precisely so nobody invents one inside a
-  merge. A service has no such problem, and the difference is one member: issue
+  merge. (CLOSED 2026-09-25 by phase-467 Row 13, and the refusal HELD: the
+  dispatch subscription carries `executor_` beside `sched_handle_id_` now and the
+  signature never moved, so the ledger row is gone with the gap.) A service has
+  no such problem, and the difference is one member: issue
   1437 already gave the dispatch service `executor_` beside `handle_id_`, and
   `nros_cpp_service_server_get_actual_qos` serves BOTH roads by construction —
   `storage` non-NULL for the owner, `(executor, handle_id)` for the arena entry.
@@ -1249,6 +1252,65 @@ one. The default is the defect.
   parameter on the C++ signature instead was refused for the reason that row
   refuses it.
 
+  > **CLOSED 2026-09-28, after this phase's main body landed.** Both ledger gaps
+  > W9 left open are shut, and neither cost a C++ signature — which is the whole
+  > point of having recorded them instead of inventing one. The paragraph above
+  > stays as written because the *cost* it states was real for ten days and the
+  > argument it makes is what the remedy had to satisfy.
+  >
+  > **The client half (this item's own gap).**
+  > `nros_cpp_service_client_server_available` and
+  > `nros_cpp_service_client_wait_for_service` now take
+  > `(storage, executor, handle_id, …)`: `storage` non-NULL is the future-style
+  > client that owns its `RmwServiceClient`, otherwise the arena index is
+  > resolved through `Executor::service_client_handle` — exactly the shape
+  > `nros_cpp_service_client_get_actual_qos` has had since issue 1437, which is
+  > why the paragraph below called that accessor the contrast worth keeping. So
+  > `rclcpp::Client<S>` **and** `nros::ClientHandle<S>` answer
+  > `service_is_ready()` and `wait_for_service(ms)` on upstream's own argument
+  > list, and **no member was added to either type**: `{executor_, handle_id_}`
+  > was already there for `async_send_request`. `nros::PollClient<S>` passes its
+  > `storage_` unchanged. Ledger: `cpp:Client::wait_for_service` goes
+  > `gap`/`adopt` -> **`divergence`/`refuse-loud`**, which is the verdict it
+  > carried *before* W9 and for the same reason — the capability is back and
+  > what remains different is the budget; `cpp:Client::service_is_ready` has a
+  > subject again; two rows are added for the upstream names now on the handle
+  > (`cpp:ClientHandle::{service_is_ready,wait_for_service}`), the shape W9 used
+  > for `cpp:PollClient::*` rather than letting them inherit a type row's verdict
+  > silently.
+  >
+  > **The refusal moved with the verb, which is the half a reader would miss.**
+  > `NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT` (phase-417 stage 3) is not a property of
+  > `PollClient` — it is a property of *driving the executor cooperatively*
+  > (RFC-0021) — so the no-argument form is a `static_assert` on all three types
+  > now, each held by its OWN expected-failure TU on the `just check cpp` loop
+  > (`ros2_refuse_unbounded_wait{,_dispatch,_handle}_probe.cpp`). One TU per
+  > refusal, for the reason phase-417 gave when it split the service and action
+  > halves: an expected-failure compile proves only that a file does not build.
+  >
+  > **`server_available` was deliberately NOT resurrected.** The deprecated `int`
+  > forwarder exists so an out-of-tree caller who wrote the old spelling keeps
+  > compiling with a diagnostic naming its replacement. Nobody ever wrote it on
+  > the post-split dispatch class, so putting it there would be inventing a new
+  > deprecated API rather than preserving one.
+  >
+  > **The subscription half was closed first, elsewhere.** phase-467's design
+  > study (Row 13) priced the three options, measured that option (b) — resolve
+  > the arena entry from the `sched_handle_id_` alone — CANNOT work (a `HandleId`
+  > is executor-scoped and RFC-0002 puts one executor on one RTOS task, so it
+  > would need a global executor registry), and took option (a) on 2026-09-25:
+  > the dispatch `Subscription<M>` stores `executor_` beside `sched_handle_id_`
+  > and `get_actual_qos()` answers on upstream's no-argument spelling. Its ledger
+  > row was DELETED rather than re-verdicted, because the shape then corresponds
+  > exactly and its twin `cpp:Publisher::get_actual_qos` has never had a row. So
+  > a reader looking for `cpp:Subscription::get_actual_qos` in the ledger will
+  > not find it, and that is the closure rather than an omission.
+  >
+  > Verified 2026-09-28: `just check cpp` (every compile probe and all nine
+  > refusals), `just check c`, `just check api-parity`,
+  > `just check api-parity-ledger`, `just check rmw-api-parity`,
+  > `just check fast`.
+
   *And the client comes out the way the SERVICE did on the QoS pair, which is the
   contrast worth keeping.* `cpp:Subscription::get_actual_qos` is a gap because a
   dispatch subscription holds only `sched_handle_id_`; a dispatch client holds
@@ -1256,6 +1318,13 @@ one. The default is the defect.
   `nros_cpp_service_client_get_actual_qos` serves both roads by construction. So
   both granted-QoS accessors and `get_service_name` answer on BOTH halves, on
   upstream's no-argument spelling, and **no gap row is owed for those three**.
+
+  > *2026-09-28: the contrast has become the PATTERN.* Both gaps this paragraph
+  > contrasts were closed by making the other side look like this accessor — the
+  > subscription carrying its executor (phase-467, 2026-09-25) and the two client
+  > discovery verbs getting the same two-road FFI (above). Nothing was closed by
+  > changing a C++ signature. Read this paragraph as the worked example rather
+  > than as a live asymmetry.
 
   *`NROS_CPP_HAS_SHARED_PTR`: 12 -> 10, measured the way W6's table measures it
   (occurrences, `grep -roh … | wc -l` over `packages/api/nros-cpp/include`).*
