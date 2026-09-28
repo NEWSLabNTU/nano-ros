@@ -100,8 +100,26 @@ lands in a git clone, because there is nothing to find.
 
 `nros setup --tool corrosion` provisioned in the CI image, so `find_package`
 resolves at the pinned prefix and no gate reaches `FetchContent` at all.
-Acceptance: a `check fast` log on `gate.yml` containing no
-`falling through to FetchContent` line.
+
+**Acceptance is `probe-workspace-caps` passing in CI on PR #1354** — the gate
+that is actually blocked.
+
+The first version of this section said "a `check fast` log containing no
+`falling through to FetchContent` line", and that criterion **cannot be
+observed**: both probe tests write their configure output to a per-case log
+(`$TEST_TMPDIR/configure*.log`) and only `tail` it when the configure FAILS. So
+a green run prints nothing about Corrosion either way, and an absent line says
+only that nothing failed — it is the same shape as a gate that cannot fail on
+the case it names. Measured on 2026-09-28: the check job of merge_group run
+36462943336, which is green, contains **zero** lines matching either
+`FetchContent` or `Corrosion`, on an image where nothing had provisioned the
+store. An absence there proves nothing.
+
+If a direct read of the image is wanted instead of a gate verdict, it has to come
+from something that prints unconditionally — `scripts/ci/runner-doctor.sh`
+reporting the pinned prefix, or a configure that names its resolution the way
+`nano-ros: Corrosion <ver> via <origin>` does (issue 0500: read that line, never
+infer the version from having run the installer).
 
 Per issues 1457/1482 that is a change to the Dockerfile
 `scripts/ci/runner-container.sh` generates, not a host `apt install` — the
