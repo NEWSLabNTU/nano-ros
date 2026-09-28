@@ -1,249 +1,111 @@
 //! Build script for nros-board-mps2-an385-freertos
 //!
-//! phase-337 W5 — the overlay's build script is now per-board WIRING only:
-//! linker scripts into `OUT_DIR`, the LAN9118 netif driver, the board's own C
-//! translation unit, the `NROS_APP_CONFIG` symbol, and libc/libgcc discovery.
-//! Everything generic (cflag resolution, FreeRTOS/lwIP include dirs, the
-//! `NROS_APP_CONFIG` emitter) comes from
-//! `nros_board_common::freertos_build`; the FreeRTOS kernel, lwIP,
-//! `nros-platform-freertos` and the generic C glue are compiled by
-//! `nros-board-freertos/build.rs` and propagate transitively.
+//! Per-board wiring only. phase-471 W2 — the recipe itself is
+//! `nros_board_common::freertos_build::run_overlay`, the runner the FreeRTOS
+//! family gained to match the one NuttX and ThreadX-RISCV have had since
+//! phase-337; this file states only what is true of THIS board. Everything
+//! generic (cflag resolution, FreeRTOS/lwIP include dirs, the
+//! `NROS_APP_CONFIG` emitter, newlib discovery for the right multilib) lives
+//! there; the FreeRTOS kernel, lwIP, `nros-platform-freertos` and the generic
+//! C glue are compiled by `nros-board-freertos/build.rs` and propagate
+//! transitively.
+//!
+//! What is genuinely this board's, and is therefore still here: the LAN9118
+//! lwIP netif driver, and the opt-in Tonbandgeraet trace library. phase-471 W0
+//! ruled the `cargo:rustc-cfg=nros_trace` this board emits LEGITIMATELY
+//! DIFFERENT rather than duplication — it is the only board with tband wiring,
+//! so it is the only board that can emit that cfg, and absorbing it into the
+//! runner would put one board's optional feature in every board's recipe. It
+//! stays in the leaf, beside the compile that earns it.
 //!
 //! Environment: see `nros-board-freertos/build.rs` for `FREERTOS_DIR` /
 //! `FREERTOS_PORT` / `LWIP_DIR` / `FREERTOS_CONFIG_DIR` / `FREERTOS_CFLAGS`.
 
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
+use std::env;
+
+use nros_board_common::freertos_build::{
+    Overlay, OverlayEnv, add_freertos_includes, add_lwip_includes, configure_cflags, run_overlay,
 };
 
-use nros_board_common::{
-    BaseConfig, FreertosScheduling,
-    freertos_build::{
-        add_freertos_includes, add_lwip_includes, app_stack_bytes_from_build_env, configure_cflags,
-        emit_app_config_tu,
-    },
-};
-
-fn main() {
-    // issue 0288 — skip the ARM cross-compile when host tooling builds this
-    // crate (the source-metadata probe). Without it the host `cc` is handed
-    // `-mthumb -mcpu=cortex-m3` and dies before rustc runs.
-    if nros_board_common::host_probe::skip_cross_build(
-        "nros-board-mps2-an385-freertos",
-        &["thumb", "arm"],
-    ) {
-        return;
-    }
-
-    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let config_dir = manifest_dir.join("config");
-    // phase-337 W5.a/W5.e — the shared config headers + section layout live in
-    // the family crate; the board keeps only the numbers.
-    let shared_config_dir = manifest_dir
-        .parent()
-        .expect("workspace layout")
-        .join("nros-board-freertos/config");
-
-    // --- Linker scripts ---
-    // The board script `INCLUDE`s the shared one, and `INCLUDE` resolves
-    // against the linker's search path — so BOTH land in OUT_DIR, which the
-    // `rustc-link-search` below puts on that path. The binary's
-    // `.cargo/config.toml` names `-Tmps2_an385.ld` in rustflags.
-    for (src, name) in [
-        (config_dir.join("mps2_an385.ld"), "mps2_an385.ld"),
-        (
-            shared_config_dir.join("nros-freertos-cortex-m.ld"),
-            "nros-freertos-cortex-m.ld",
-        ),
-    ] {
-        fs::copy(&src, out_dir.join(name))
-            .unwrap_or_else(|e| panic!("copying {} into OUT_DIR: {e}", src.display()));
-        println!("cargo:rerun-if-changed={}", src.display());
-    }
-    println!("cargo:rustc-link-search={}", out_dir.display());
-
-    // --- Environment variables ---
-    // Phase 208.B Track A — paths come from `nros-build-paths`
-    // (walks up to `nros-sdk-index.toml`); env vars stay as overrides.
-    let freertos_dir = nros_build_paths::freertos_dir();
-    let freertos_port = env::var("FREERTOS_PORT").unwrap_or_else(|_| "GCC/ARM_CM3".to_string());
-    let lwip_dir = nros_build_paths::lwip_dir();
-    // issue 1527 — through `env_path`, like the two lines above it. A raw
-    // `env::var` here skipped issue 1280's three-valued rule while its
-    // siblings applied it, so a build in a linked worktree resolved the
-    // kernel and lwIP HERE and the config dir in the OTHER checkout. The
-    // default stays this board's own `config/`, which is why this cannot be
-    // `nros_build_paths::freertos_config_dir()` (that one defaults to the
-    // mps2 board's directory for every caller).
-    let freertos_config_dir =
-        nros_build_paths::env_path("FREERTOS_CONFIG_DIR").unwrap_or_else(|| config_dir.clone());
-
-    let port_dir = freertos_dir.join("portable").join(&freertos_port);
-    let lan9118_dir = nros_build_paths::nros_lan9118_lwip_dir();
-
-    // --- Trace opt-in (NROS_TRACE=1) ---
-    let nros_trace = env::var("NROS_TRACE").unwrap_or_default() == "1";
-    println!("cargo:rerun-if-env-changed=NROS_TRACE");
-
-    // Phase 152.1.B.4 — FreeRTOS kernel + lwIP + nros-platform-freertos
-    // are now compiled by `nros-board-freertos/build.rs` (the generic
-    // crate this overlay depends on). Its `cargo:rustc-link-lib=static=...`
-    // lines propagate transitively into this binary's link. Overlay
-    // only needs the per-board pieces below.
-
-    // --- Build LAN9118 lwIP netif driver ---
-    let mut lan9118 = cc::Build::new();
-    configure_cflags(&mut lan9118);
-    add_freertos_includes(&mut lan9118, &freertos_dir, &port_dir, &freertos_config_dir);
-    add_lwip_includes(&mut lan9118, &lwip_dir);
-    lan9118.include(lan9118_dir.join("include"));
-    lan9118.file(lan9118_dir.join("src/lan9118_lwip.c"));
-    // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
-    // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
-    // through neither shared helper, so the policy has to be named here.
-    nros_cc_flags::gcc_safe_frame_pointer(&mut lan9118);
-    lan9118.compile("lan9118_lwip");
-
-    // --- Tonbandgeraet trace library (opt-in via NROS_TRACE=1) ---
-    if nros_trace {
-        let tband_dir = nros_build_paths::tband_dir();
-        let trace_config_dir = manifest_dir.join("trace");
-
-        let mut tband = cc::Build::new();
-        configure_cflags(&mut tband);
-        add_freertos_includes(&mut tband, &freertos_dir, &port_dir, &freertos_config_dir);
-        tband.include(tband_dir.join("inc"));
-        tband.include(&trace_config_dir);
-        tband.define("NROS_TRACE", "1");
-        tband.file(tband_dir.join("src/tband.c"));
-        tband.file(tband_dir.join("src/tband_freertos.c"));
-        tband.file(tband_dir.join("src/tband_backend.c"));
-        // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
-        // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
-        // through neither shared helper, so the policy has to be named here.
-        nros_cc_flags::gcc_safe_frame_pointer(&mut tband);
-        tband.compile("tband");
-        println!("cargo:rustc-link-lib=static=tband");
-        println!("cargo:rustc-cfg=nros_trace");
-    }
-
-    // --- Build startup/glue C code ---
-    let mut glue = cc::Build::new();
-    configure_cflags(&mut glue);
-    add_freertos_includes(&mut glue, &freertos_dir, &port_dir, &freertos_config_dir);
-    add_lwip_includes(&mut glue, &lwip_dir);
-    glue.include(lan9118_dir.join("include"));
-    // Phase 212.M-F.10.3 — the emitted TU `#include`s <nros/app_config.h>
-    // (the canonical-path wrapper from M-F.10.1 `c8aafd6ff`).
-    // Issue 0365 — nros-c moved to `packages/api/nros-c` in phase-321 W2.e; this
-    // join was left at the old `core/nros-c`, so the TU could not find the header.
-    // Assert existence so a future move fails loud here, not deep in `cc`.
-    let nros_c_include = manifest_dir
-        .parent() // packages/boards/
-        .and_then(|p| p.parent()) // packages/
-        .expect("workspace layout")
-        .join("api/nros-c/include");
-    assert!(
-        nros_c_include.join("nros/app_config.h").exists(),
-        "nros-c header not at {} — did nros-c move again? (issue 0365)",
-        nros_c_include.display()
-    );
-    glue.include(nros_c_include);
-    if nros_trace {
-        let tband_dir = nros_build_paths::tband_dir();
-        let trace_config_dir = manifest_dir.join("trace");
-        glue.include(tband_dir.join("inc"));
-        glue.include(&trace_config_dir);
-        glue.define("NROS_TRACE", "1");
-    }
-
-    // Phase 152.1.B.4 — overlay glue carries only board-specific C:
-    // MPS2-AN385 vector table + Reset_Handler + the LAN9118 netif
-    // registration + trace_dump (always compiled; stubs when NROS_TRACE off).
-    // Generic FreeRTOS / lwIP / nros-platform-freertos pieces moved to
-    // `nros-board-freertos/build.rs`.
-    glue.file(manifest_dir.join("c/board_mps2.c"));
-    glue.file(manifest_dir.join("trace/trace_dump.c"));
-
-    // phase-337 W5.d — the `NROS_APP_CONFIG` symbol, emitted from the board's
-    // `BaseConfig` + `FreertosScheduling` rather than the 57-line hand-written
-    // C-string mirror this replaced (which had drifted 128 KiB on the app
-    // stack). The C/C++ application entry reads it for network bring-up and
-    // task sizing; on the pure-Rust path `Config` carries the same values.
-    let sched = FreertosScheduling {
-        app_stack_bytes: app_stack_bytes_from_build_env(),
-        ..FreertosScheduling::default()
-    };
-    glue.file(emit_app_config_tu(&out_dir, &BaseConfig::default(), &sched));
-
-    // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
-    // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
-    // through neither shared helper, so the policy has to be named here.
-    nros_cc_flags::gcc_safe_frame_pointer(&mut glue);
-    glue.compile("startup");
-
-    // --- Link order ---
-    // Only the per-board archives compiled in THIS build script
-    // get explicit link-lib lines. The four archives produced by
-    // `nros-board-freertos` (nros_platform_freertos, freertos_glue,
-    // lwip, freertos) propagate via cargo's normal dep chain — its
-    // `cc::Build::compile()` already emitted matching link-lib
-    // directives. Re-emitting them here causes cargo to bundle the
-    // same `.a` into BOTH rlibs (Phase 166.A duplicate-symbol root
-    // cause).
-    println!("cargo:rustc-link-lib=static=startup");
-    println!("cargo:rustc-link-lib=static=lan9118_lwip");
-
-    // --- Newlib (libc + nosys stubs for bare-metal) ---
-    // zenoh-pico and lwIP use standard C library functions (atoi, strtoul, snprintf, etc.)
-    // Use --print-file-name to discover multilib-correct paths (--print-sysroot is empty
-    // on some distros).
-    let libc_path = gcc_print_file("libc.a");
-    let libc_dir = Path::new(&libc_path).parent().unwrap();
-    println!("cargo:rustc-link-search={}", libc_dir.display());
-    // GCC's own library (libgcc.a) for ARM intrinsics
-    let libgcc_path = gcc_print_file("libgcc.a");
-    let libgcc_dir = Path::new(&libgcc_path).parent().unwrap();
-    println!("cargo:rustc-link-search={}", libgcc_dir.display());
-    println!("cargo:rustc-link-lib=static=c");
-    println!("cargo:rustc-link-lib=static=nosys");
-    println!("cargo:rustc-link-lib=static=gcc");
-
-    // --- Rerun triggers ---
-    println!("cargo:rerun-if-changed=config/FreeRTOSConfig.h");
-    println!("cargo:rerun-if-changed=config/lwipopts.h");
-    println!("cargo:rerun-if-changed=config/arch/cc.h");
-    println!("cargo:rerun-if-changed=c/board_mps2.c");
-    println!("cargo:rerun-if-changed=build.rs");
-    // issue 0491 — the PATH variables above (`FREERTOS_DIR`, `LWIP_DIR`,
-    // `NROS_LAN9118_LWIP_DIR`, `TBAND_DIR`, `FREERTOS_CONFIG_DIR`) are not
-    // fingerprinted as strings: cargo compares an env value textually and one
-    // directory has a different spelling per leaf, per `just`, and unset. The
-    // first-party trees are watched by content below; the vendored SDK roots
-    // are read-only source and their per-file inputs are already declared.
-    println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
-    println!("cargo:rerun-if-env-changed=FREERTOS_CFLAGS");
-    nros_build_paths::watch_path(&lan9118_dir);
-    nros_build_paths::watch_path(&freertos_config_dir);
+/// The Tonbandgeraet opt-in. One spelling, read by both hooks below — the
+/// value decides an archive in one and include dirs + a define in the other,
+/// and two reads of one variable is how those two halves drift apart.
+fn trace_enabled() -> bool {
+    env::var("NROS_TRACE").unwrap_or_default() == "1"
 }
 
-fn gcc_print_file(name: &str) -> String {
-    let out = std::process::Command::new("arm-none-eabi-gcc")
-        .args([
-            "-mcpu=cortex-m3",
-            "-mthumb",
-            &format!("--print-file-name={name}"),
-        ])
-        .output()
-        .expect("arm-none-eabi-gcc not found");
-    let path = String::from_utf8(out.stdout).unwrap();
-    let path = path.trim().to_string();
-    // If GCC can't resolve the file it echoes the bare name back
-    assert!(
-        Path::new(&path).is_absolute(),
-        "arm-none-eabi-gcc could not locate {name}"
-    );
-    path
+fn main() {
+    run_overlay(&Overlay {
+        // Compiled before the board glue, against the runner's resolved paths.
+        extra_archives: Some(&|env: &OverlayEnv| {
+            println!("cargo:rerun-if-env-changed=NROS_TRACE");
+
+            // --- LAN9118 lwIP netif driver ---
+            let lan9118_dir = nros_build_paths::nros_lan9118_lwip_dir();
+            let mut lan9118 = cc::Build::new();
+            configure_cflags(&mut lan9118);
+            add_freertos_includes(
+                &mut lan9118,
+                &env.freertos_dir,
+                &env.port_dir,
+                &env.freertos_config_dir,
+            );
+            add_lwip_includes(&mut lan9118, &env.lwip_dir);
+            lan9118.include(lan9118_dir.join("include"));
+            lan9118.file(lan9118_dir.join("src/lan9118_lwip.c"));
+            // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
+            // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS.
+            nros_cc_flags::gcc_safe_frame_pointer(&mut lan9118);
+            lan9118.compile("lan9118_lwip");
+            // issue 0491 — the driver tree is first-party, so it is watched by
+            // CONTENT rather than fingerprinted as an env string.
+            nros_build_paths::watch_path(&lan9118_dir);
+
+            // --- Tonbandgeraet trace library (opt-in via NROS_TRACE=1) ---
+            if trace_enabled() {
+                let tband_dir = nros_build_paths::tband_dir();
+                let mut tband = cc::Build::new();
+                configure_cflags(&mut tband);
+                add_freertos_includes(
+                    &mut tband,
+                    &env.freertos_dir,
+                    &env.port_dir,
+                    &env.freertos_config_dir,
+                );
+                tband.include(tband_dir.join("inc"));
+                tband.include(env.manifest_dir.join("trace"));
+                tband.define("NROS_TRACE", "1");
+                tband.file(tband_dir.join("src/tband.c"));
+                tband.file(tband_dir.join("src/tband_freertos.c"));
+                tband.file(tband_dir.join("src/tband_backend.c"));
+                nros_cc_flags::gcc_safe_frame_pointer(&mut tband);
+                tband.compile("tband");
+                println!("cargo:rustc-link-lib=static=tband");
+                println!("cargo:rustc-cfg=nros_trace");
+            }
+        }),
+        // The board glue reaches the netif header for its strong overrides, and
+        // `trace/trace_dump.c` compiles either way — stubs when tband is off.
+        configure_glue: Some(&|env: &OverlayEnv, build: &mut cc::Build| {
+            build.include(nros_build_paths::nros_lan9118_lwip_dir().join("include"));
+            if trace_enabled() {
+                build.include(nros_build_paths::tband_dir().join("inc"));
+                build.include(env.manifest_dir.join("trace"));
+                build.define("NROS_TRACE", "1");
+            }
+        }),
+        // Phase 166.A — only the archives compiled in THIS build script get an
+        // explicit link-lib line. The four from `nros-board-freertos` propagate
+        // via cargo's dep chain; re-emitting them bundles the same `.a` into
+        // both rlibs.
+        extra_link_libs: &["lan9118_lwip"],
+        ..Overlay::new(
+            "nros-board-mps2-an385-freertos",
+            "mps2_an385.ld",
+            "GCC/ARM_CM3",
+            // MPS2-AN385 vector table + Reset_Handler + the LAN9118 netif
+            // registration, then `trace_dump` (always compiled).
+            &["c/board_mps2.c", "trace/trace_dump.c"],
+        )
+    });
 }

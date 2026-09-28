@@ -9,6 +9,11 @@ defect the study measured (issue 1527). Everything structural is W2 onward,
 because the study's first finding is that **the converged shape already exists**
 and the work is migration, not design.
 
+**W2 LANDED 2026-09-29** (steps 1–2; step 3 refused with a measurement, see
+below). It found and fixed issue 1561 — `nros-board-mps3-an536-freertos` could
+not compile its own board C file from cargo at all — and filed issue 1562, the
+same duplication class one family over.
+
 **Prior:** phase-468 W3 (`check-board-build-wiring`, the shared build crate as a
 rule), issue 1280 (an inherited path outranks the checkout being built), issue
 0491 (watch the CONTENT, never the spelling), RFC-0049 (the knob ladder),
@@ -227,28 +232,164 @@ says which a new backend should use. → **W5**
 
 ## Work items
 
-### W2 — give FreeRTOS a RUNNER, like NuttX and ThreadX-RISCV have
+### W2 — give FreeRTOS a RUNNER, like NuttX and ThreadX-RISCV have (LANDED, steps 1–2; step 3 REFUSED with a reason)
 
-Add `nros_board_common::freertos_build::run_overlay(...)` taking what actually
-differs between the three overlays: the board name, the linker scripts, the
-board C file, and the arch flags for `gcc_print_file`. Fold the three copies of
-`gcc_print_file` into it (the `-mcpu` list becomes a parameter, or comes from
-the `[arch.*]` profile `configure_cflags` already reads).
+`nros_board_common::freertos_build::run_overlay(&Overlay { … })` exists. The
+signature is a struct, not a positional list, because seven things differ and
+five of them are `&str`:
 
-Migrate in this order, smallest blast radius first:
+| field | why it is a field |
+| --- | --- |
+| `crate_name` | `skip_cross_build`'s message (issue 0288) |
+| `board_linker_script` | one of the 5 differing lines W0 measured |
+| `default_port` | `GCC/ARM_CM3` vs `GCC/ARM_CRx_No_GIC` |
+| `board_c_files` | another of the 5 |
+| `extra_link_libs` | MPS2 names `lan9118_lwip` a second time on ld's pass |
+| `extra_archives` | MPS2's LAN9118 driver and its opt-in tband library |
+| `configure_glue` | includes/defines those two add to the board glue TU set |
 
-1. `nros-board-s32z270-freertos` and `nros-board-mps3-an536-freertos` — 131 of
-   149 lines identical, so the runner is shaken out against the pair that proves
-   it before it meets a third caller.
-2. `nros-board-mps2-an385-freertos` — carries the tband/LAN9118 extras, which
-   become explicit arguments or stay in the leaf beside the `run_overlay` call.
-3. `nros-board-threadx-linux` — same shape one family over.
+Two hooks rather than one because MPS2's extras land on both sides of the glue
+compile, and `Overlay::new(..)` + `..` covers the two boards that need neither.
 
-**Acceptance is a BUILD, never a gate.** Each board's fixture must link and the
-image must be byte-comparable where the sources did not change; `just ci matrix`
-covers the FreeRTOS coordinates. Extend `check-board-build-wiring` afterwards:
-it currently asks whether a C-compiling board *reaches* `nros-board-common`,
-which every one of these already did while carrying the whole recipe.
+**The `-mcpu` list is NOT a parameter, and the question the brief left open has
+a measured answer: the `[arch.*]` profile already IS the source.**
+`[arch.cortex-m3] cflags = ["-mcpu=cortex-m3", "-mthumb"]` and
+`[arch.cortex-r52] cflags = ["-mcpu=cortex-r52", "-mfpu=neon-fp-armv8",
+"-mfloat-abi=hard"]` are, verbatim, what the MPS2 copy and the other two copies
+of `gcc_print_file` passed. So the three hardcoded lists were hand-mirrors of a
+file the compile beside them already read, and `gcc_print_file` now calls the
+same `resolve_cflags()` `configure_cflags` does. That also closes a latent
+mismatch the copies had: `FREERTOS_CFLAGS` is the RFC-0049 rung-1 override and
+wins for the COMPILE, and a hardcoded list cannot see it — so a board pointed at
+another CPU through that variable compiled its C for the new one and linked the
+old one's newlib.
+
+**What each overlay lost**
+
+| crate | before | after |
+| --- | --- | --- |
+| `nros-board-s32z270-freertos` | 151 | **29** |
+| `nros-board-mps3-an536-freertos` | 151 | **41** |
+| `nros-board-mps2-an385-freertos` | 249 | **111** |
+
+370 lines out of the overlays; `freertos_build.rs` took 171 lines of code and
+158 of comment/blank. So this is not a line saving and is not claimed as one —
+it is three copies of one recipe becoming one copy, which is the thing that had
+already drifted (issue 1527, and now 1561).
+
+`nros-board-mps2-an385-freertos` keeps its `cargo:rustc-cfg=nros_trace` in the
+leaf, beside the compile that earns it, exactly as verdict 2 above rules. It is
+the only board with tband wiring; absorbing it would put one board's optional
+feature in every board's recipe.
+
+#### Acceptance — what was BUILT
+
+`just ci matrix` was not used: issue 1158's 31 runs with 0 verdicts is the wrong
+instrument for a build-script refactor even when it works, because a green cell
+does not say whether the artifact CHANGED. The three board crates are
+workspace-`exclude`d and cross-only, so each was built directly with `cargo
+build --target <triple>`, at HEAD and after, **into the same `--target-dir`** so
+`OUT_DIR` is the same string and the comparison is about the code:
+
+| crate | target | build-script `output` | archives |
+| --- | --- | --- | --- |
+| `nros-board-s32z270-freertos` | `armv8r-none-eabihf` | byte-identical | `libstartup.a` byte-identical |
+| `nros-board-mps2-an385-freertos` | `thumbv7m-none-eabi` | 3 set-valued lines differ (below) | `libstartup.a`, `liblan9118_lwip.a` byte-identical |
+| `nros-board-mps2-an385-freertos`, `NROS_TRACE=1` | `thumbv7m-none-eabi` | same 3 lines | `libstartup.a`, `liblan9118_lwip.a`, `libtband.a` byte-identical |
+| `nros-board-mps3-an536-freertos` | `armv8r-none-eabihf` | **no "before"** — see issue 1561 | — |
+
+The three MPS2 lines are all `cargo:rerun-if-changed`, which cargo reads as a
+SET: the LAN9118 watch moved earlier, and `trace/trace_dump.c` was ADDED. That
+file was compiled with no rerun trigger before, so editing it did not rebuild —
+a missing edge the migration closed rather than a difference it introduced.
+Nothing was removed.
+
+The include-order question the hooks raise was measured rather than argued: the
+MPS2 glue used to take `nros-c` between the LAN9118 include and the tband ones,
+and now takes it after both. The header name sets are disjoint, so resolution is
+unchanged — and `libstartup.a` is byte-identical on both the trace and non-trace
+paths, which is the evidence.
+
+**Issue 1561 is what priming the negative control bought.**
+`nros-board-mps3-an536-freertos` did not build at HEAD, from cargo, at all:
+`board_an536.c` includes `lan9118_lwip.h` for its strong netif overrides, the
+overlay was copied from the S32Z270 one whose netif is consumer-side, and only
+`cmake/board/nano-ros-board-mps3-an536-freertos.cmake` carried the include. The
+crate is workspace-`exclude`d and no fixture row cargo-builds it (the AN536 row
+is a C++ entry), so no lane on any event had ever asked. It builds now; there is
+no before/after image for it, because there was no "before".
+
+#### What this did to W3's reach — stated, not discovered later
+
+The migration MOVED three path reads — `FREERTOS_DIR`, `LWIP_DIR`,
+`FREERTOS_CONFIG_DIR` — out of the three board `build.rs` files and into
+`freertos_build.rs`, which is a build-script LIBRARY.
+`check-build-script-path-resolution` reads `build.rs` files, so those reads left
+its reach. **Measured, once W3's gate landed on `main` at `d2eacf1c7`**: it
+reports **6** build scripts naming a path-valued SDK variable against the
+pre-change overlays and **3** after, and W2 is the whole difference.
+
+Nothing was laundered. Every one of the three still goes through
+`nros_build_paths`; the only remaining `env::var` in the runner is
+`FREERTOS_PORT`, a port NAME, plus cargo's own `OUT_DIR` / `CARGO_MANIFEST_DIR`
+/ `TARGET`; and the gate is GREEN on this branch. The surface it must cover went
+from three copies to one — and that one is in the crate **W6** is already
+deciding about, for its three raw `NUTTX_DIR` reads. This is the second site
+waiting on that answer, and it is recorded in `OverlayEnv`'s doc comment as well
+as here, so extending the gate to `nros-board-common` reaches both at once.
+
+#### Step 3 — `nros-board-threadx-linux` — REFUSED, and this is the reason
+
+It is not "the same shape one family over". Of the six things `run_overlay`
+does, it wants **none**: no linker scripts into `OUT_DIR` (it is a host build),
+no FreeRTOS/lwIP include set (ThreadX + NetX Duo), no `[arch.*]` cflags for a
+FreeRTOS platform, no `arm-none-eabi-gcc --print-file-name` multilib discovery,
+and its `NROS_APP_CONFIG` is a hand-written C string with values that
+DELIBERATELY differ from `BaseConfig::default()` (locator `tcp/127.0.0.1:7555`,
+scheduling all zero) rather than `emit_app_config_tu`'s. Making the runner fit
+it means making every step optional, which is "widen a rule until it matches" —
+the thing this phase's own last section forbids.
+
+What it shares with the FreeRTOS overlays is real and is a DIFFERENT work item:
+a hand-written `emit_app_config_def` mirroring a Rust default by eye is the
+exact defect phase-337 W5.d fixed for FreeRTOS, and it had drifted by 128 KiB
+there. It is not fixed here because the drift is deliberate and changing it
+changes the image.
+
+#### `check-board-build-wiring` — the stronger question
+
+It asked whether a C-compiling board *reaches* `nros-board-common`. All three
+overlays answered yes while carrying the whole recipe, so the gate could not
+tell reaching from delegating.
+
+The stronger question that is still a PROPERTY and not a proxy for length:
+**does this board choose a compiler target?** An ISA/ABI flag (`-mcpu=`,
+`-march=`, `-mabi=`, `-mfpu=`, `-mfloat-abi=`, `-mcmodel=`, `-mthumb`) written
+in a board `build.rs` is a SECOND answer to "what is this compiling for", and it
+cannot see the first — neither the `[arch.*]` profile nor the rung-1 env
+override. It is falsifiable at a line; a board with a 300-line build script and
+no arch flag passes, and a one-line one that names `-mcpu=` does not.
+
+Comments are stripped before the scan, with a small string-aware scanner:
+naming a flag while EXPLAINING one is what five board scripts legitimately do
+(issue 0478's note is in four places in `nros-board-freertos` alone), and
+reporting those is 0196's shape the other way round — a reach wider than the
+rule. Negative control: run against HEAD's `nros-board-s32z270-freertos` the
+gate reports `-mcpu, -mfloat-abi, -mfpu`, i.e. it catches exactly the defect W2
+removed.
+
+It found **one** other site, which is filed rather than fixed:
+`nros-board-threadx`'s RISC-V64 flags and picolibc probe duplicate
+`threadx_qemu_riscv64_build`'s, byte for byte → **issue 1562**, exempted at the
+site with that id, because acceptance there is a RISC-V64 ThreadX BUILD and not
+a gate.
+
+One census note for whoever owns `nros-build-wiring.py`: `s32z270` is now a
+`delegating-shim`, but `mps3-an536` still reads `c-compiler` — its only mention
+of `cc::Build` is the type annotation on its `configure_glue` closure, and it
+constructs none. That is W0's own "a capability letter is a grep for a TOOL"
+trap surviving in the role rule; keying on `cc::Build::new(` / `.compile(`
+rather than the bare type would answer it.
 
 ### W3 — a gate for the build-script half of issue 1280 (LANDED)
 

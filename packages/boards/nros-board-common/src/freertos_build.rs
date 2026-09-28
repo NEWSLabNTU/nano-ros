@@ -14,10 +14,22 @@
 //! mirroring `nros_board_freertos::Config::default()` by eye. It now takes a
 //! [`BaseConfig`] and a [`FreertosScheduling`] and writes the same TU from
 //! them.
+//!
+//! phase-471 W2 — [`run_overlay`] is the RUNNER the helpers above never added
+//! up to. The study that opened phase-471 measured what "helpers only" cost:
+//! `nros-board-mps3-an536-freertos/build.rs` and
+//! `nros-board-s32z270-freertos/build.rs`, past their doc comments, were **131
+//! shared lines with 5 differing ones** — the crate name, a linker-script name,
+//! a board C file name — and `gcc_print_file` was copied verbatim into three
+//! board scripts, hardcoded `-mcpu` flags and all. NuttX and ThreadX-RISCV had
+//! had runners since phase-337 (`nuttx_ffi_build::run_nuttx`,
+//! `threadx_qemu_riscv64_build::run`), and their board scripts are 3 to 17
+//! lines. This module is the FreeRTOS family catching up; the overlays that
+//! call it keep only what differs.
 
 use std::{
     env,
-    fs::File,
+    fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
 };
@@ -241,6 +253,341 @@ const nros_app_config_t NROS_APP_CONFIG = {{
         .write_all(body.as_bytes())
         .expect("failed to write nros_app_config_def.c");
     out_path
+}
+
+// ---------------------------------------------------------------------------
+// The overlay runner (phase-471 W2)
+// ---------------------------------------------------------------------------
+
+/// The shared section layout every FreeRTOS board's own linker script
+/// `INCLUDE`s. It lives in the family crate, and `INCLUDE` resolves against the
+/// linker's search path — so both scripts land in `OUT_DIR` and the
+/// `rustc-link-search` [`run_overlay`] prints is what puts that on the path.
+const SHARED_LINKER_SCRIPT: &str = "nros-freertos-cortex-m.ld";
+
+/// Everything [`run_overlay`] resolved, handed to an overlay's hooks so a board
+/// with extra archives compiles them against the SAME paths rather than
+/// resolving a second time.
+///
+/// Every path-valued field here is read through `nros_build_paths`, which is
+/// what applies issue 1280's three-valued rule (outside any checkout → keep, a
+/// DIFFERENT checkout → re-root here, this one → keep). Folding the resolution
+/// into the runner is what keeps that rule at one site for the whole family
+/// instead of three copies of `env::var` — issue 1527 was two of those three
+/// copies drifting apart.
+///
+/// **This MOVED three reads (`FREERTOS_DIR`, `LWIP_DIR`, `FREERTOS_CONFIG_DIR`)
+/// out of the board `build.rs` files and into this one, which is a build-script
+/// LIBRARY.** phase-471 W3's `check-build-script-path-resolution` reads
+/// `build.rs` files, so the reads left its reach — measured, not predicted: it
+/// counts 6 build scripts naming a path-valued SDK variable before W2 and 3
+/// after. Nothing was laundered: all three still go through `nros_build_paths`,
+/// the gate is green, and the surface it has to cover went from three copies to
+/// one. Extending it to this crate is W6's open question (its three raw
+/// `NUTTX_DIR` reads live next door), and this is the second site waiting on
+/// that answer. `FREERTOS_PORT` is a port NAME, not a path, and stays a plain
+/// `env::var`.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct OverlayEnv {
+    /// `OUT_DIR` — where the linker scripts and the emitted `NROS_APP_CONFIG`
+    /// TU land.
+    pub out_dir: PathBuf,
+    /// The overlay crate's own directory.
+    pub manifest_dir: PathBuf,
+    /// `<manifest_dir>/config` — this board's `FreeRTOSConfig.h` / `lwipopts.h`
+    /// / linker script.
+    pub config_dir: PathBuf,
+    /// `nros-board-freertos/config` — the family's shared headers and section
+    /// layout.
+    pub shared_config_dir: PathBuf,
+    /// The FreeRTOS kernel root.
+    pub freertos_dir: PathBuf,
+    /// `<freertos_dir>/portable/<port>`, with `<port>` from `FREERTOS_PORT` or
+    /// the overlay's [`Overlay::default_port`].
+    pub port_dir: PathBuf,
+    /// The lwIP root.
+    pub lwip_dir: PathBuf,
+    /// The directory holding `FreeRTOSConfig.h` — `FREERTOS_CONFIG_DIR` when
+    /// set, otherwise this board's own `config/`.
+    ///
+    /// It cannot be `nros_build_paths::freertos_config_dir()`: that one
+    /// defaults to the MPS2 board's directory for every caller, which is the
+    /// wrong default for every other board.
+    pub freertos_config_dir: PathBuf,
+    /// `packages/api/nros-c/include`, already asserted to hold
+    /// `nros/app_config.h` (issue 0365).
+    pub nros_c_include: PathBuf,
+}
+
+/// An overlay's hook for archives it compiles ITSELF, before the board glue
+/// and against the runner's resolved paths.
+pub type ExtraArchives<'a> = &'a dyn Fn(&OverlayEnv);
+
+/// An overlay's hook for includes and defines only its own board glue needs.
+pub type ConfigureGlue<'a> = &'a dyn Fn(&OverlayEnv, &mut cc::Build);
+
+/// What differs between the FreeRTOS board overlays, and nothing else.
+///
+/// A field here earned its place by being one of the 5 lines that differed
+/// between the two overlays phase-471 W0 measured, or by being an extra the
+/// MPS2 overlay carries that the other two do not.
+///
+/// Deliberately NOT `#[non_exhaustive]`: an overlay with extras builds this
+/// with `..Overlay::new(..)`, which is a struct expression and therefore
+/// forbidden outside the defining crate for a non-exhaustive type. Every caller
+/// is an in-tree board crate, so a new field is a compile error in three files
+/// rather than a silent default nobody chose.
+pub struct Overlay<'a> {
+    /// The crate name, for `skip_cross_build`'s message (issue 0288).
+    pub crate_name: &'a str,
+    /// This board's linker script, by name, in `config/`. The shared section
+    /// layout is added by the runner.
+    pub board_linker_script: &'a str,
+    /// The `portable/<...>` port used when `FREERTOS_PORT` is unset.
+    pub default_port: &'a str,
+    /// The board's own C translation units, relative to the crate root.
+    pub board_c_files: &'a [&'a str],
+    /// Archives this overlay compiles ITSELF that the runner must name on the
+    /// link line — an archive `cc::Build::compile` already emitted a link-lib
+    /// line for still gets re-named here by the overlays that did so before,
+    /// because a second position on ld's single pass is load-bearing for
+    /// whole-archive-free member selection.
+    pub extra_link_libs: &'a [&'a str],
+    /// Extra archives, compiled before the board glue and against the same
+    /// resolved paths. This is where the MPS2 overlay's LAN9118 netif driver
+    /// and its opt-in Tonbandgeraet trace library live.
+    pub extra_archives: Option<ExtraArchives<'a>>,
+    /// Extra includes / defines on the board glue TU set, before the runner
+    /// adds `nros-c`'s include and the board C files.
+    pub configure_glue: Option<ConfigureGlue<'a>>,
+}
+
+impl<'a> Overlay<'a> {
+    /// The common case: a board with a linker script, one C file, a port, and
+    /// no extras. `s32z270` and `mps3-an536` are exactly this.
+    pub fn new(
+        crate_name: &'a str,
+        board_linker_script: &'a str,
+        default_port: &'a str,
+        board_c_files: &'a [&'a str],
+    ) -> Self {
+        Self {
+            crate_name,
+            board_linker_script,
+            default_port,
+            board_c_files,
+            extra_link_libs: &[],
+            extra_archives: None,
+            configure_glue: None,
+        }
+    }
+}
+
+/// Run a FreeRTOS + lwIP board overlay's whole build script.
+///
+/// Returns immediately when this is not a cross build (issue 0288 — the
+/// source-metadata probe runs these scripts host-side, where handing the host
+/// `cc` an `-mcpu=cortex-m3` kills it before rustc runs).
+///
+/// What it does, in the order the overlays it replaces did it: copy the board's
+/// linker script and the family's shared one into `OUT_DIR` and put `OUT_DIR`
+/// on the link search path; run [`Overlay::extra_archives`]; compile the board
+/// glue (cflags from the `[arch.*]` profile, FreeRTOS + lwIP + `nros-c`
+/// includes, the board C files, the emitted `NROS_APP_CONFIG` TU); discover
+/// newlib and libgcc for the RIGHT multilib; print the rerun triggers.
+///
+/// # Panics
+/// When a linker script cannot be copied, when `nros-c`'s header is not where
+/// the workspace layout says it is (issue 0365), or when `arm-none-eabi-gcc`
+/// cannot be run or cannot resolve a multilib file.
+pub fn run_overlay(overlay: &Overlay<'_>) {
+    // issue 0288 — skip the ARM cross-compile when host tooling builds this
+    // crate (the source-metadata probe).
+    if crate::host_probe::skip_cross_build(overlay.crate_name, &["thumb", "arm"]) {
+        return;
+    }
+
+    let env = resolve_overlay_env(overlay.default_port);
+
+    // --- Linker scripts ---
+    // The board script `INCLUDE`s the shared section layout; both land in
+    // OUT_DIR on the linker search path. The image's cargo config names
+    // `-T<board_linker_script>` in rustflags.
+    for (src, name) in [
+        (
+            env.config_dir.join(overlay.board_linker_script),
+            overlay.board_linker_script,
+        ),
+        (
+            env.shared_config_dir.join(SHARED_LINKER_SCRIPT),
+            SHARED_LINKER_SCRIPT,
+        ),
+    ] {
+        fs::copy(&src, env.out_dir.join(name))
+            .unwrap_or_else(|e| panic!("copying {} into OUT_DIR: {e}", src.display()));
+        println!("cargo:rerun-if-changed={}", src.display());
+    }
+    println!("cargo:rustc-link-search={}", env.out_dir.display());
+
+    if let Some(extra) = overlay.extra_archives {
+        extra(&env);
+    }
+
+    // --- Board C: startup + weak netif/tick hooks ---
+    let mut glue = cc::Build::new();
+    configure_cflags(&mut glue);
+    add_freertos_includes(
+        &mut glue,
+        &env.freertos_dir,
+        &env.port_dir,
+        &env.freertos_config_dir,
+    );
+    add_lwip_includes(&mut glue, &env.lwip_dir);
+    if let Some(configure) = overlay.configure_glue {
+        configure(&env, &mut glue);
+    }
+    glue.include(&env.nros_c_include);
+    for rel in overlay.board_c_files {
+        glue.file(env.manifest_dir.join(rel));
+    }
+
+    let sched = FreertosScheduling {
+        app_stack_bytes: app_stack_bytes_from_build_env(),
+        ..FreertosScheduling::default()
+    };
+    glue.file(emit_app_config_tu(
+        &env.out_dir,
+        &BaseConfig::default(),
+        &sched,
+    ));
+
+    // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
+    // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS.
+    nros_cc_flags::gcc_safe_frame_pointer(&mut glue);
+    glue.compile("startup");
+
+    println!("cargo:rustc-link-lib=static=startup");
+    for lib in overlay.extra_link_libs {
+        println!("cargo:rustc-link-lib=static={lib}");
+    }
+
+    // --- Newlib (libc + nosys stubs) — multilib-correct discovery ---
+    // zenoh-pico and lwIP call standard C functions; `--print-file-name` finds
+    // the multilib-correct paths (`--print-sysroot` is empty on some distros).
+    for file in ["libc.a", "libgcc.a"] {
+        let path = gcc_print_file(file);
+        let dir = Path::new(&path)
+            .parent()
+            .unwrap_or_else(|| panic!("arm-none-eabi-gcc returned a parentless path for {file}"));
+        println!("cargo:rustc-link-search={}", dir.display());
+    }
+    println!("cargo:rustc-link-lib=static=c");
+    println!("cargo:rustc-link-lib=static=nosys");
+    println!("cargo:rustc-link-lib=static=gcc");
+
+    // --- Rerun triggers ---
+    println!("cargo:rerun-if-changed=config/FreeRTOSConfig.h");
+    println!("cargo:rerun-if-changed=config/lwipopts.h");
+    println!("cargo:rerun-if-changed=config/arch/cc.h");
+    for rel in overlay.board_c_files {
+        println!("cargo:rerun-if-changed={rel}");
+    }
+    println!("cargo:rerun-if-changed=build.rs");
+    // issue 0491 — the PATH variables resolved above (`FREERTOS_DIR`,
+    // `LWIP_DIR`, `FREERTOS_CONFIG_DIR`, and whatever an overlay's extras
+    // read) are NOT fingerprinted as strings: cargo compares an env value as
+    // TEXT and one directory has a different spelling per leaf, per `just`,
+    // and unset. The first-party trees are watched by CONTENT; the vendored
+    // SDK roots are read-only source whose per-file inputs are declared above.
+    println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
+    println!("cargo:rerun-if-env-changed=FREERTOS_CFLAGS");
+    nros_build_paths::watch_path(&env.freertos_config_dir);
+}
+
+fn resolve_overlay_env(default_port: &str) -> OverlayEnv {
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let config_dir = manifest_dir.join("config");
+    // phase-337 W5.a/W5.e — the shared config headers + section layout live in
+    // the family crate; the board keeps only the numbers.
+    let shared_config_dir = manifest_dir
+        .parent()
+        .expect("workspace layout")
+        .join("nros-board-freertos/config");
+
+    let freertos_dir = nros_build_paths::freertos_dir();
+    let freertos_port = env::var("FREERTOS_PORT").unwrap_or_else(|_| default_port.to_string());
+    let port_dir = freertos_dir.join("portable").join(&freertos_port);
+    let lwip_dir = nros_build_paths::lwip_dir();
+    // issue 1527 — through `env_path`, like the two lines above it: a raw
+    // `env::var` skips issue 1280's three-valued rule, so a worktree build
+    // resolved the kernel HERE and the config dir in the OTHER checkout.
+    let freertos_config_dir =
+        nros_build_paths::env_path("FREERTOS_CONFIG_DIR").unwrap_or_else(|| config_dir.clone());
+
+    // Issue 0365 — nros-c moved to `packages/api/nros-c` in phase-321 W2.e and
+    // this join was left at the old `core/nros-c`, so the emitted TU could not
+    // find `<nros/app_config.h>`. Assert existence so a future move fails loud
+    // here rather than deep inside `cc`.
+    let nros_c_include = manifest_dir
+        .parent() // packages/boards/
+        .and_then(|p| p.parent()) // packages/
+        .expect("workspace layout")
+        .join("api/nros-c/include");
+    assert!(
+        nros_c_include.join("nros/app_config.h").exists(),
+        "nros-c header not at {} — did nros-c move again? (issue 0365)",
+        nros_c_include.display()
+    );
+
+    OverlayEnv {
+        out_dir,
+        manifest_dir,
+        config_dir,
+        shared_config_dir,
+        freertos_dir,
+        port_dir,
+        lwip_dir,
+        freertos_config_dir,
+        nros_c_include,
+    }
+}
+
+/// Ask `arm-none-eabi-gcc` where `name` is for THIS board's multilib.
+///
+/// phase-471 W2 — three board scripts carried a byte-identical copy of this,
+/// each with its own hardcoded `-mcpu` list. The flags are not a parameter: the
+/// `[arch.*]` profile [`configure_cflags`] already reads IS the source, and the
+/// three hardcoded copies were hand-mirrors of it —
+/// `[arch.cortex-m3] cflags = ["-mcpu=cortex-m3", "-mthumb"]` and
+/// `[arch.cortex-r52] cflags = ["-mcpu=cortex-r52", "-mfpu=neon-fp-armv8",
+/// "-mfloat-abi=hard"]`, which is what the MPS2 copy and the other two passed
+/// respectively. So this reads them from the same place the compile does.
+///
+/// That also closes a latent mismatch the copies had: `FREERTOS_CFLAGS` is the
+/// RFC-0049 rung-1 override and wins over the profile for the actual compile,
+/// but the hardcoded lists could not see it — a board pointed at a different
+/// CPU through that variable compiled its C for the new one and then linked the
+/// OLD one's newlib. The two answers now come from one function.
+fn gcc_print_file(name: &str) -> String {
+    let flags = resolve_cflags();
+    let mut args: Vec<String> = flags.split_whitespace().map(str::to_string).collect();
+    args.push(format!("--print-file-name={name}"));
+    let out = std::process::Command::new("arm-none-eabi-gcc")
+        .args(&args)
+        .output()
+        .expect("arm-none-eabi-gcc not found");
+    let path = String::from_utf8(out.stdout)
+        .expect("arm-none-eabi-gcc printed non-UTF-8")
+        .trim()
+        .to_string();
+    // If gcc cannot resolve the file it echoes the bare name back.
+    assert!(
+        Path::new(&path).is_absolute(),
+        "arm-none-eabi-gcc could not locate {name} for the multilib selected by `{flags}`"
+    );
+    path
 }
 
 #[cfg(test)]
