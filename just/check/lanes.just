@@ -831,6 +831,14 @@ compile-smoke:
     # which the sanctioned helper always produces: issue 1383.)
     CARGO_TARGET_DIR="$(nros_scoped_target_dir param-services)" \
         cargo check -p nros-c -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
+    # Issue 1529 -- and nros-cpp with the parameter STORE and not the services,
+    # the shape every Zephyr C++ image whose bringup declares no
+    # `param_services` is now built in. The shim's store entry points gate on
+    # `param-store` and `nros_cpp_register_parameter_services` alone on
+    # `param-services`; no other lane compiles the first without the second.
+    # Its own target dir, for issue 1382's reason above.
+    CARGO_TARGET_DIR="$(nros_scoped_target_dir param-store)" \
+        cargo check -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}},param-store" --quiet
     # Issue 1468 -- and `nros-node` with each MODULE-GATING feature ALONE.
     # The workspace check above unifies features, so it builds that crate with
     # `param-services` AND `lifecycle-services` on and can never see a module
@@ -841,7 +849,8 @@ compile-smoke:
     bash scripts/check-feature-gated-modules.sh
     echo "compile smoke: workspace + all targets check clean (no lints; see check-build);"
     echo "  nros-c + nros-cpp check clean in the shipped shape ({{C_API_SHIPPED_FEATURES}}),"
-    echo "  with param-services (issue 1260), and nros-node per module-gating"
+    echo "  with param-services (issue 1260), nros-cpp with param-store alone"
+    echo "  (issue 1529), and nros-node per module-gating"
     echo "  feature alone (issue 1468)."
 
 # Check C++ headers: formatting + freestanding syntax + nros-cpp clippy. The

@@ -495,6 +495,19 @@ through `set_error`. So `features = []` halts boot not because there is no
 store but because the C++ entry points to it were compiled out with the
 server.
 
+Interim, issue 1529 (the Zephyr road only; this wave is still not started).
+The sentence above that the store is unconditional in nros-node does not
+hold on the main 1529 was filed against: the declaration API in
+`executor/spin.rs` is `#[cfg(feature = "param-services")]` and `ParamState`
+lives in the `parameter_services` module. What holds is that the six
+servers go up only on request. So 1529 split the feature in nros-cpp alone
+(`param-store`, forwarding `nros-c/param-services`; `param-services` implies
+it) and builds every Zephyr C++ image with the store, the services only when
+declared. A `features = []` island image then links its launch seeds and
+declares against the store with 7 queryables, the service code linked and
+dormant. Item 1 below (the nros-node split) and the `params` axis remain
+this wave's, as does the hosted road (`NanoRosFeatureSet.cmake`).
+
 What a `features = []` image needs to declare parameters against a store with
 0 queryables:
 

@@ -310,6 +310,38 @@ if(CONFIG_NROS_TRACE_CALLBACKS)
     set(_nros_trace_suffix ",trace-callbacks")
 endif()
 
+# issue 1529 -- the C++ parameter STORE, split from the six SERVICES.
+#
+# The C++ node facades (`rclcpp::Node::declare_parameter`,
+# `nros::ComponentNode`) and the entry's launch seeds
+# (`nros_cpp_declare_param`) are unconditional in every C++ image, and before
+# this their store came only with `param-services`. A bringup with
+# `features = []` therefore did not LINK when its launch file carried a
+# `<param>` (the seed's symbol was compiled out), and did not BOOT when it did
+# not (every `declare_parameter` answered -16 and `ComponentNode` halts on it).
+# So a C++ image always carries the store (`param-store`); the services join
+# only when the bringup declares `param_services`, which is also the only case
+# the entity inventory counts their six queryables per node for.
+#
+# nros-cpp's `param-store` forwards `nros-c/param-services` (nros-node has not
+# split the store from the service code; phase-461 W6 does), so the nros-c
+# strings below name `param-services` in BOTH cases: the two cargo units must
+# agree (issue 1100). One variable per crate, set once, for the reason
+# `_nros_trace_suffix` above is one variable.
+#
+# `alloc` rides with it: the store allocates (nros-node `compile_error!`,
+# issue 1260: a capability names its requirement where it is added).
+set(_nros_cpp_param_suffix "")
+set(_nros_c_param_suffix "")
+if(CONFIG_NROS_CPP_API)
+    if("param_services" IN_LIST NANO_ROS_FEATURES)
+        set(_nros_cpp_param_suffix ",alloc,param-services")
+    else()
+        set(_nros_cpp_param_suffix ",alloc,param-store")
+    endif()
+    set(_nros_c_param_suffix ",alloc,param-services")
+endif()
+
 # =============================================================================
 # C API path: build nros-c via Cargo and link it
 # =============================================================================
@@ -396,12 +428,11 @@ if(CONFIG_NROS_C_API)
     # links for nothing. Where both are on, the image already contains the
     # alloc-enabled nros-node through nros-cpp — unifying removes a duplicate
     # rather than adding a capability.
-    if(CONFIG_NROS_CPP_API)
-        string(APPEND _nros_features ",alloc")
-        if("param_services" IN_LIST NANO_ROS_FEATURES)
-            string(APPEND _nros_features ",param-services")
-        endif()
-    endif()
+    #
+    # issue 1529 -- and `param-services` whether or not the bringup declared
+    # it: the C++ half always carries the parameter store, which nros-cpp
+    # builds from `nros-c/param-services` (see `_nros_c_param_suffix`).
+    string(APPEND _nros_features "${_nros_c_param_suffix}")
 
     # Build nros-c static library via Cargo
     nros_cargo_build(
@@ -670,8 +701,12 @@ if(CONFIG_NROS_CPP_API)
     # nros-c string copies `alloc` only when THIS string spells it, so nros-c's
     # size probe built `nros` with param-services and no alloc. Spell it where
     # the capability is added.
+    #
+    # issue 1529 -- the store is on for every C++ image and the services only
+    # when declared; `_nros_cpp_param_suffix` (above) carries which. The define
+    # still names only the declared capability.
+    string(APPEND _nros_cpp_features "${_nros_cpp_param_suffix}")
     if("param_services" IN_LIST NANO_ROS_FEATURES)
-        string(APPEND _nros_cpp_features ",alloc,param-services")
         add_compile_definitions(NROS_SYSTEM_PARAM_SERVICES)
     endif()
 
@@ -748,7 +783,8 @@ if(CONFIG_NROS_CPP_API)
         if(_nros_cpp_features MATCHES "(^|,)alloc(,|$)")
             string(APPEND _nros_c_for_cpp_features ",alloc")
         endif()
-        if(_nros_cpp_features MATCHES "(^|,)param-services(,|$)")
+        # issue 1529 -- `param-store` forwards `nros-c/param-services` too.
+        if(_nros_cpp_features MATCHES "(^|,)param-(services|store)(,|$)")
             string(APPEND _nros_c_for_cpp_features ",param-services")
         endif()
         nros_cargo_build(
