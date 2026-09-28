@@ -22,7 +22,6 @@ scripts/check-cargo-config-tracked.sh
 scripts/check-cargo-locked.sh
 scripts/check-cargo-profile-mirror.sh
 scripts/check-cbindgen-pin.sh
-scripts/check-cc-build-policy.sh
 scripts/check-cli-fresh.sh
 scripts/check-cmake-find-program-shadowed.py
 scripts/check-cpp-ffi-error-mapping.py
