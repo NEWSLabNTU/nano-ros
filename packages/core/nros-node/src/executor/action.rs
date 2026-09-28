@@ -1016,8 +1016,8 @@ impl<'s> Executor<'s> {
     /// `context`, and the two callbacks that dereference it.
     ///
     /// After this call the entry answers a late `send_goal` with a REJECT and a
-    /// late `cancel_goal` with an ACCEPT ([`detached_goal_callback`] /
-    /// [`detached_cancel_callback`]), and the post-accept hook is cleared.
+    /// late `cancel_goal` with an ACCEPT (`detached_goal_callback` /
+    /// `detached_cancel_callback`), and the post-accept hook is cleared.
     /// Nothing reads `context` again, so the owner's storage may die.
     ///
     /// Returns `false` when `entry_index` holds no live entry or the entry is
