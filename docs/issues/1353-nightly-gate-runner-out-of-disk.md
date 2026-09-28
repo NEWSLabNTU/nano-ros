@@ -1437,3 +1437,42 @@ timeout.
 
 Acceptance for this arm: a `host-tests` push run reaching a tier-1 verdict, with
 the after-report below 100%.
+
+## Third `host-tests` point: the arrival state is degrading and the death is earlier (2026-09-28)
+
+Run **36451336301**, job **108974046015**'s successor in the same lane (job id
+from `actions/runs/36451336301/jobs`), step `just ci tier1`, integration job
+**16:51:39 → 18:51:04 = 1 h 59 m 25 s**. Three points now, all `host-tests` on
+the push event:
+
+| | 36359825546 | 36419496642 | 36451336301 |
+| --- | --- | --- | --- |
+| before the tier | 89% used, 18G free | 84% used, **25G** free | 89% used, **18G** free |
+| `examples` at arrival | 42G | **35G** | **42G** |
+| reclaim frees | 33,286 MB | 33,286 MB | 33,288 MB |
+| post-reclaim headroom | ~49.6G | ~56.6G | **~49.5G** |
+| died after | — | 2 h 07 m | **1 h 59 m** |
+| after the tier | 100%, 264K free | 100%, 260K free | 100%, **232K** free |
+
+The reclaim is a constant 33.3 G, so the headroom the tier gets is decided
+entirely by the arrival state, and that is what moves: `examples` arrives at 42 G
+on two of three runs and the headroom is ~7 G lower than the best case. The
+death time tracks it — **1 h 59 m is earlier than the 2 h 06 m–2 h 39 m band**
+the earlier sections recorded, so that band is not a floor.
+
+### This one names no ENOSPC, and the attribution rests on the annotation
+
+Unlike the 2026-09-28 run the section above quotes, this log contains **no**
+`No space left`, no `os error 28` and no `FAILED:` — 1309 lines, ending at
+`sync: wrote [patch.crates-io] → /tmp/nros-template-copy-out.rLvJR2/copy/examples/templates/multi-package-workspace`
+and then `error: recipe 'tier1' failed with exit code 1`. Exit **1**, not the
+101 the `rust-rtos-link-check` deaths report, and a different last step.
+
+So the attribution to this issue comes from the disk annotation
+(`100% used, 232K free — 42G examples; 19G build; 16G target`) plus the
+truncation, which are two of this issue's three named signatures — **not** from
+an error line, because there is none. Stated that way deliberately: a run that
+died at 100 % with its log cut is this issue's shape, and a reader who wants the
+failing write for THIS run will not find one.
+
+Acceptance unchanged.
