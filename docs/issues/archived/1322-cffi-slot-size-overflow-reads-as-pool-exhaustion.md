@@ -271,3 +271,69 @@ scanner, so both consumers were fixed by the one edit.
 * `scripts/gen-pool-inventory.py` — the trailing-comma fix above.
 * RFC-0100 D5 and phase-454's "explicitly not in this phase" now record the
   settled shape instead of the open defect.
+
+
+---
+
+# The measurement the fix landed without (2026-09-28)
+
+PR #1346 shipped this split with its acceptance — a before/after RAM delta —
+**not taken**: the agent that wrote it was terminated by a session limit one step
+before measuring, and the PR said so rather than implying otherwise. Taken now.
+
+## What the lever does, measured
+
+The knob moves, through the RFC-0049 env rung, read off the build script's own
+output:
+
+```
+$ touch packages/rmw/cffi/build.rs && cargo build -p nros-rmw-cffi
+NROS_RMW_SUBSCRIBER_SLOT_BYTES=1024          # builtin
+
+$ touch packages/rmw/cffi/build.rs \
+    && NROS_RMW_SUBSCRIBER_SLOT_BYTES=256 cargo build -p nros-rmw-cffi
+NROS_RMW_SUBSCRIBER_SLOT_BYTES=256
+```
+
+The `touch` is not ceremony: the build script is cached, and the first attempt at
+this measurement read a stale `output` file predating the split and concluded the
+knob was never emitted.
+
+## What that is worth, and why the arithmetic IS the byte count
+
+The pool is a fixed-size array:
+
+```rust
+static SLOTS: [Slot; SLOT_COUNT] = [const { Slot::new() }; SLOT_COUNT];
+// nros-pool: SLOTS = NROS_RMW_SUBSCRIBER_SLOTS * NROS_RMW_SUBSCRIBER_SLOT_BYTES
+```
+
+so its size is exactly `COUNT x WIDTH` — not an estimate, and the published
+inventory already prices it (`static-pool-inventory.md`: `SLOTS | 8,192`).
+
+| `SLOT_BYTES` | pool | vs builtin |
+| --- | --- | --- |
+| 1024 (builtin) | 8 x 1024 = **8,192 B** | — |
+| 256 | 8 x 256 = **2,048 B** | **-6,144 B** |
+
+**The default is unchanged**, which is the other half of the result: an image
+that does not set the knob is byte-identical across this fix. The split cost
+nothing and bought a lever.
+
+## Why the lever is the point, not the 6 KiB
+
+Before it, `SLOT_SIZE` was a bare `1024` serving two quantities, so the only
+response to a handle that did not FIT was raising `NROS_RMW_SUBSCRIBER_SLOTS` —
+which buys more slots **of the same too-small width**, at 1024 bytes each, on the
+platform with the least RAM. That is not a fix in any direction: the handle still
+does not fit and the image is larger. Widening was unreachable and narrowing was
+unreachable; both are one knob away now.
+
+## Honest limit
+
+**No end-to-end `mem-report` on a linked image.** The pool's size is a compile-time
+constant in a `static` array, so the table above is exact for the pool itself —
+but it is not the same evidence as a linked `.bss` delta, and this note should not
+be read as if it were. What a linked image adds is whether `--gc-sections` drops
+the pool in an image that creates no cffi subscription, which is a real question
+and is unanswered here.
