@@ -543,9 +543,32 @@ template <typename A> class Server {
     /// Check if the action server is initialized and valid.
     bool is_valid() const { return initialized_; }
 
-    /// Destructor — releases action server resources.
+    /// Destructor — ABANDONS the arena entry, and detaches it from `storage_`.
+    ///
+    /// Issue 1496 — "releases action server resources" is what this comment used
+    /// to say and it was not true of either call. The action's five RMW entities
+    /// (three service servers, the feedback and status publishers), its goal
+    /// table and its result slab live in an `ActionServerRawArenaEntry` in the
+    /// executor arena; the arena is a BUMP ALLOCATOR with no removal path, so
+    /// they stay live and the action stays advertised for the executor's
+    /// lifetime. `nros_cpp_action_server_destroy` is a `drop_in_place` over a
+    /// struct of `Copy` fields and runs no destructor at all. Nothing here can
+    /// change that — a free list for the arena is resolution 2 of issue 1496.
+    ///
+    /// What the detach DOES fix is the one arm with memory-safety
+    /// consequences: the arena entry's callback `context` is `storage_`, so a
+    /// `send_goal` arriving after this destructor returned would dispatch the
+    /// goal trampoline against freed C++ storage. After
+    /// `nros_cpp_action_server_detach` the entry carries context-free stubs —
+    /// a late goal is rejected, a late cancel is accepted inside the core —
+    /// and `storage_` is no longer named by anything.
+    ///
+    /// Every in-tree C++ action server holds its server for the whole program,
+    /// which is why this was never observed; the fix does not depend on that
+    /// staying true.
     ~Server() {
         if (initialized_) {
+            nros_cpp_action_server_detach(storage_, executor_);
             nros_cpp_action_server_destroy(storage_);
             initialized_ = false;
         }
@@ -575,6 +598,10 @@ template <typename A> class Server {
     Server& operator=(Server&& other) {
         if (this != &other) {
             if (initialized_) {
+                // issue 1496 — same pairing as `~Server()`: detach the arena
+                // entry from this storage before the storage is overwritten by
+                // the relocate below.
+                nros_cpp_action_server_detach(storage_, executor_);
                 nros_cpp_action_server_destroy(storage_);
             }
             executor_ = other.executor_;

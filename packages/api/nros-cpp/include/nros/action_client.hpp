@@ -518,7 +518,22 @@ template <typename A> class Client {
     /// Check if the action client is initialized and valid.
     bool is_valid() const { return initialized_; }
 
-    /// Destructor — releases action client resources.
+    /// Destructor — DETACHES the arena entry, and abandons it.
+    ///
+    /// Issue 1496 — this said "releases action client resources" and released
+    /// nothing. The `ActionClientCore` with its three service clients and its
+    /// feedback subscription lives in an `ActionClientRawArenaEntry` in the
+    /// executor arena, which is a BUMP ALLOCATOR with no removal path, so those
+    /// entities stay live and the arena slot is never reclaimed for the
+    /// executor's lifetime; `nros_cpp_action_client_destroy` is a
+    /// `drop_in_place` over a struct of `Copy` fields and runs no destructor.
+    /// Giving the arena a free list is resolution 2 of that issue.
+    ///
+    /// What that call now does — it needs no extra argument, because
+    /// `CppActionClient` keeps its own executor pointer and entry index — is
+    /// clear the arena entry's three callbacks and null its `context`, which is
+    /// `storage_`. Without that, a goal reply, feedback sample or result
+    /// arriving after this destructor returned would read freed C++ storage.
     ~Client() {
         if (initialized_) {
             nros_cpp_action_client_destroy(storage_);
@@ -530,6 +545,15 @@ template <typename A> class Client {
     // Move semantics (non-copyable). Relocation goes through the
     // `nros_cpp_action_client_relocate` runtime call (Phase 84.C1).
     // The feedback stream is rebound to the new storage afterwards.
+    //
+    // issue 1496 — UNFIXED here, and recorded rather than papered over: the
+    // arena entry's callback `context` is the storage address it was created
+    // with, so after a move it still names the MOVED-FROM `storage_`. `Server`
+    // re-points its own context by calling `install_callbacks()` after the
+    // relocate; the client tier has no FFI that can re-point one, so a moved-from
+    // client whose storage then dies (a temporary) leaves the arena entry
+    // pointing at dead bytes. Destruction is handled (see `~Client()`); the move
+    // path is not.
     Client(Client&& other)
         : executor_(other.executor_), initialized_(other.initialized_), action_name_{} {
         ::memcpy(action_name_, other.action_name_, sizeof(action_name_));

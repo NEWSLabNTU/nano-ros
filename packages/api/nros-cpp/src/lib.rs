@@ -167,6 +167,11 @@ mod timer;
 // ── Action module (alloc-free — caller provides inline storage) ──
 #[cfg(feature = "rmw-cffi")]
 mod action;
+// issue 1496 — which `nros_cpp_*_destroy` releases something and which is a
+// no-op over an arena entry, asserted against `needs_drop`. Read by
+// `check-cpp-destroy-shape`, which holds every destroy function to a row.
+#[cfg(feature = "rmw-cffi")]
+mod destroy_shape;
 
 // Phase 115.D — runtime-pluggable custom transport. Always-on (no
 // rmw-* gate) because the registration is platform-side, not RMW-side.
