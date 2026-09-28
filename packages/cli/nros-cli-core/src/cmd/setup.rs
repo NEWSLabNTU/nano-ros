@@ -1121,7 +1121,14 @@ pub fn ensure_tools(board: &str, workspace: Option<&Path>) -> Result<Vec<PathBuf
     if std::env::var_os("NROS_NO_AUTO_SETUP").is_some() {
         return Ok(Vec::new());
     }
-    let Some(index_path) = locate_index(workspace) else {
+    ensure_tools_from(board, locate_index(workspace))
+}
+
+/// [`ensure_tools`] with the index already located. The lookup reads host state
+/// (the store's cached copy), so a test that means "no index" says so here
+/// instead of hoping the host has never run `nros setup`.
+fn ensure_tools_from(board: &str, index_path: Option<PathBuf>) -> Result<Vec<PathBuf>> {
+    let Some(index_path) = index_path else {
         return Ok(Vec::new());
     };
     let index = SdkIndex::load(&index_path)?;
@@ -1202,6 +1209,18 @@ pub fn activate_store_path(dirs: &[PathBuf]) {
 /// build sees whatever `nros setup` already warmed, and the shipped copy
 /// otherwise.
 pub(crate) fn locate_index(workspace: Option<&Path>) -> Option<PathBuf> {
+    locate_index_with(workspace, || {
+        store_index(/* fetch */ false).ok().map(|(p, _)| p)
+    })
+}
+
+/// [`locate_index`] with the store rung supplied by the caller. The store is
+/// `~/.nros` on a developer host and absent on CI, so a test that reads it
+/// asserts a fact about the machine rather than about the ladder.
+fn locate_index_with(
+    workspace: Option<&Path>,
+    store: impl FnOnce() -> Option<PathBuf>,
+) -> Option<PathBuf> {
     let cwd = PathBuf::from(INDEX_FILE);
     if cwd.is_file() {
         return Some(cwd);
@@ -1211,7 +1230,7 @@ pub(crate) fn locate_index(workspace: Option<&Path>) -> Option<PathBuf> {
         .or_else(|| std::env::var_os("NROS_WORKSPACE").map(PathBuf::from));
     ws.map(|w| w.join(INDEX_FILE))
         .filter(|p| p.is_file())
-        .or_else(|| store_index(/* fetch */ false).ok().map(|(p, _)| p))
+        .or_else(store)
 }
 
 /// The one spelling of the index's file name.
@@ -4024,22 +4043,36 @@ mod tests {
     fn locate_index_falls_back_to_workspace() {
         let ws = crate::test_support::scratch_dir("idx");
         std::fs::create_dir_all(&ws).unwrap();
-        // No index in the workspace yet → None (cwd has none under `cargo test`).
-        assert_eq!(locate_index(Some(&ws)), None);
-        // With one present → resolves to the workspace copy.
+        // The store rung is injected: on a host that has run `nros setup` the
+        // real one answers `~/.nros/fetch/nros-sdk-index.toml`, and this test
+        // asserted `None` against it (red on every such host, green on CI).
+        let store = ws.join("store-copy.toml");
+        // No index in the workspace yet → the store rung answers (cwd has none
+        // under `cargo test`), and with no store either → None.
+        assert_eq!(locate_index_with(Some(&ws), || None), None);
+        assert_eq!(
+            locate_index_with(Some(&ws), || Some(store.clone())),
+            Some(store.clone())
+        );
+        // With one present → the workspace copy wins over the store.
         let idx = ws.join("nros-sdk-index.toml");
         std::fs::write(&idx, "[tool.qemu]\nversion=\"1\"\n").unwrap();
-        assert_eq!(locate_index(Some(&ws)), Some(idx));
+        assert_eq!(
+            locate_index_with(Some(&ws), || Some(store.clone())),
+            Some(idx)
+        );
         std::fs::remove_dir_all(&ws).ok();
     }
 
     #[test]
     fn ensure_tools_noop_without_index() {
-        // No index near a temp workspace ⇒ Ok no-op.
-        let ws = crate::test_support::scratch_dir("noidx");
-        std::fs::create_dir_all(&ws).unwrap();
-        assert!(ensure_tools("native", Some(&ws)).is_ok());
-        std::fs::remove_dir_all(&ws).ok();
+        // No index ⇒ Ok no-op. Stated, not arranged: a temp workspace with no
+        // index still reaches the STORE's copy on a host that has run `nros
+        // setup`, where `native` resolves `zenohd` and this "no-op" provisions.
+        assert_eq!(
+            ensure_tools_from("native", None).unwrap(),
+            Vec::<PathBuf>::new()
+        );
     }
 
     #[test]
