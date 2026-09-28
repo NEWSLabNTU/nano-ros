@@ -476,8 +476,7 @@ def else_arm_violations(path: str, src: str) -> list[str]:
 # ROS-less and runs plain `cargo test`, where a skip-panic is a failure), and
 # the two `nros-cli-core` unit tests return on a non-git / packaged tree. Those
 # ARE passes over nothing; converting them needs a decision about how the CLI
-# workspace spells a skip, which is issue 1544's open item, not a mechanical
-# edit.
+# workspace spells a skip, which is issue 1552, not a mechanical edit.
 ARM_RULE_BASELINE: dict[str, int] = {
     "packages/cli/nros-cli-core/src/orchestration/metadata_refresh.rs": 1,
     "packages/cli/nros-cli-core/src/source_stamp.rs": 1,
