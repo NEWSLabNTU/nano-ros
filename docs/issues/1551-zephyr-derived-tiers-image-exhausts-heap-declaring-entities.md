@@ -1,0 +1,339 @@
+---
+id: 1551
+title: "The Zephyr derived-tiers-cpp image runs out of its 64 KiB platform heap
+  in tier 1 of 4, and the failed Rust Box::new then SEGVs through the 0589
+  stdio recursion instead of reporting anything"
+status: open
+type: bug
+area: zephyr, memory
+severity: high
+found: 2026-09-28
+related: [issue-1508, issue-1537, issue-1426, issue-1425, issue-0589, phase-459]
+---
+
+# The Zephyr derived-tiers-cpp image runs out of heap declaring entities, then SEGVs
+
+The `native_sim/native/64` image of `examples/workspaces/derived-tiers-cpp`
+(the phase-459 W0 fixture's Zephyr entry, C++, zenoh) dies at boot in **every
+variant built**. It runs its platform heap dry while tier 1 of 4 declares its
+first entity, and the process then dies with SIGSEGV in `z_impl_k_mutex_lock`.
+The two 30 Hz tiers are never created.
+
+**This fixture has no `fixtures.toml` row, so no lane has ever booted it.** That
+nobody reported this says nothing about whether the image works. The agent
+fixing issue 1508 found it while reading tier priorities under gdb.
+
+There are two defects here, and they are separate bugs:
+
+1. **Sizing (configuration).** The image needs roughly twice the arena it gets.
+   Each tier takes a 23,928-byte executor out of the same 64 KiB arena, and
+   nothing at build time adds that up.
+2. **Failure mode (code).** When an allocation fails, the result is an anonymous
+   SIGSEGV instead of an error. An infallible `Box::new` in the RMW C adapter
+   calls std's OOM hook. The hook `eprintln!`s, and on native_sim that write is
+   the issue-0589 `zvfs_write` recursion. The SEGV is a **stack overflow**, not a
+   corrupted or half-built mutex.
+
+## Evidence base
+
+- **Images.** The three images built for issue 1508 are
+  `…/agent-a069fc07529ca0b1f/tmp/1508-zbuild-{default,np32,read100}`: Zephyr 3.7,
+  the `nano-ros-workspace` west tree, and the #1395 worktree as the module. They
+  were used read-only, and none was rebuilt.
+- **Router.** `rmw_zenohd`, resolved with `scripts/dev/zenohd.sh`
+  (`nros_zenohd_bin` gives `/opt/ros/humble/lib/rmw_zenoh_cpp/rmw_zenohd`) and
+  started with `nros_router_exec tcp/127.0.0.1:7447`.
+- **Run command.** `zephyr.exe --seed=1551 --stop_at=8`.
+- **What was re-run.** The run was repeated plain and under gdb. The plain
+  console output is **byte-identical** across `default`, `np32` and `read100`
+  (same md5), and every run exits 139. Those variants only change
+  `CONFIG_NUM_PREEMPT_PRIORITIES` and `CONFIG_NROS_ZENOH_READ_PRIORITY`, so this
+  is expected.
+
+## The failure, verbatim (plain run, `default`)
+
+```
+WARNING: Using a test - not safe - entropy source
+*** Booting Zephyr OS build v3.7.0 ***
+[nros] tier task entered
+nros: HEAP EXHAUSTED: request 48 bytes, arena 66048 bytes, caller 0x4266f9
+      (addr2line -f -e zephyr.elf 0x4266f9 to name it; raise CONFIG_NROS_ZEPHYR_HEAP_SIZE / NROS_ZEPHYR_HEAP_SIZE only once you know what asked)
+nros: HEAP EXHAUSTED: request 320 bytes, arena 66048 bytes, caller 0x426436
+      (…)
+nros: HEAP EXHAUSTED: request 320 bytes, arena 66048 bytes, caller 0x426436
+      (…)
+nros: HEAP EXHAUSTED: request 48 bytes, arena 66048 bytes, caller 0x4294c0
+      (…)
+zpico: z_liveliness_declare_token failed: -78 for '@ros2_lv/0/c40c0137f1e48f6cfee1f90b51ffd9aa/0/0/NN/%/%/mrm_handler'
+nros: HEAP EXHAUSTED: request 159 bytes, arena 66048 bytes, caller 0x426c9a
+      (…)
+zpico: z_liveliness_declare_token failed: -78 for '@ros2_lv/0/…/0/5/MP/%/%/mrm_handler/%system%fail_safe%mrm_state/std_msgs::msg::dds_::Int32_/TypeHashNotSupported/1:2:1,10:,:,:,,'
+nros: HEAP EXHAUSTED: request 472 bytes, arena 66048 bytes, caller 0x4a6397
+      (…)
+timeout: the monitored command dumped core
+```
+
+Under gdb:
+
+```
+Thread 11 "zephyr.exe" received signal SIGSEGV, Segmentation fault.
+z_impl_k_mutex_lock (mutex=mutex@entry=0x4f4450 <fdtable+112>, timeout=...) at zephyr/kernel/mutex.c:115
+```
+
+`-78` is `_Z_ERR_SYSTEM_OUT_OF_MEMORY` (zenoh-pico `utils/result.h:84`).
+
+## Which heap is 66,048 bytes (measured)
+
+The arena is **not** `CONFIG_HEAP_MEM_POOL_SIZE`, and it is **not** picolibc's
+`CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`.
+
+It is the rlsf `FreeListHeap` in `nros-platform/src/zephyr_heap.rs`. That arena
+sits behind `nros_platform_alloc` (`nros-platform-zephyr/src/platform.c`), and
+both zenoh-pico's `z_malloc` and Rust's `__rust_alloc` go through it. It has
+done so since phase-391 W3. Every failing allocation's backtrace passes through
+`nros_platform_alloc`, and that includes the Rust one:
+`nros_platform::global_allocator` → `nros_platform_cffi` → `nros_platform_alloc`.
+
+Its size is `CONFIG_NROS_ZEPHYR_HEAP_SIZE`, which is forwarded to cargo by
+`_nros_resolve_knob` in `zephyr/cmake/nros_cargo_build.cmake`:
+
+- `.config` holds `CONFIG_NROS_ZEPHYR_HEAP_SIZE=65536`. That is the **Kconfig
+  default**, because none of the four merged fragments sets it. The build log's
+  `Merged configuration` lines are `prj.conf`, `prj-zenoh.conf`,
+  `zephyr/native-sim-nsos.conf` and `extra_kconfig_options.conf`.
+- The printed `66048` is `capacity()` = `N + SLAB_REGION_SIZE`, which is
+  65,536 + 8 × 64 (`zpico-alloc/src/lib.rs:483`).
+- **No example in the tree sets `CONFIG_NROS_ZEPHYR_HEAP_SIZE`.** It appears
+  only in comments, in 12 `prj-xrce.conf` files. So every Zephyr image runs on
+  the 64 KiB default.
+
+The image's `prj-zenoh.conf` does size heaps, but they are the two that the
+failing allocations did not come from:
+
+```
+CONFIG_HEAP_MEM_POOL_SIZE=262144
+CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=1048576
+```
+
+That is 1.28 MiB set aside, while the arena that actually ran out stayed at
+64 KiB. `realtime-cpp/src/zephyr_entry/prj-zenoh.conf` carries the same two
+lines. Whether anything else in the image allocates from those two heaps was
+not measured.
+
+**CLAUDE.md is stale on this point.** Its pitfall-index line reads: "Zephyr Rust
+allocator is picolibc `malloc` — size `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` …
+NOT `CONFIG_HEAP_MEM_POOL_SIZE`". That line predates phase-391 W3 and now points
+a reader at the wrong knob. It should name `CONFIG_NROS_ZEPHYR_HEAP_SIZE`. It was
+not edited here, because this is a filing.
+
+## What allocates, and how far it gets (measured)
+
+The run used a gdb breakpoint on `nros_platform_alloc` that printed the request
+size, `nros_zephyr_heap_used()` before the call, and a short backtrace. It
+recorded 157 allocations up to the fatal one. `used` is the value before each
+call:
+
+| Phase | used before → after | Cost |
+| --- | --- | --- |
+| Boot executor storage (`nros_board_zephyr_run_tiers_ns`, 1 × `NROS_CPP_EXECUTOR_STORAGE_SIZE` = 23,928) | 0 → 23,952 | 23,952 |
+| Session open (zenoh config, 6 × 2,048-byte link/transport buffers, session, session liveliness, `Box<ZenohSession>` 496) | 23,952 → 34,272 | 10,320 |
+| Boot executor `assemble` (Arcs, `NodeWake`) | 34,272 → 34,512 | 240 |
+| **Tier 0** `MrmComfortableStopOperator`: 1 publisher + 1 timer, including the node `NN` token, the entity `MP` token, write-filter interest and `Box<ZenohPublisher>` 472. The timer allocated nothing here. | 34,512 → 38,272 | **3,760** |
+| **Tier 1 spawn** (`zephyr_spawn_next_tier`: executor storage 23,928 + ctx 104 + `assemble`) | 38,272 → 62,528 | **24,256** |
+| **Tier 1** `MrmHandler` publisher | 62,528 → exhausted at 64,256 | — |
+
+So:
+
+- **1 of 4 tiers** fully declared its entities.
+- Tier 1 opened its executor and then failed on its first publisher.
+- Tiers 2 and 3 (the two 30 Hz tiers, `derived-mrm_emergency_stop_operator` and
+  `derived-stop_mode_operator`) were never spawned.
+
+The table is `__nros_tiers[4]` in the generated entry TU, and the build log says
+`8 entities, 4 executor callback slots`.
+
+The failing request order was: zenoh-pico 48, 320, 320 and 48 for the node
+token, then 159 for the entity token, then Rust 472 for `Box<ZenohPublisher>`.
+The first failure happened at `used = 64,256` against 66,048 of capacity, so
+some fragmentation had already set in.
+
+**Inferred (arithmetic, not run).** The full image would need about
+`23,952 + 10,320 + 240 + 3 × 24,256 + 4 × 3,760 ≈ 122 KB`, which is about 1.9×
+the arena. Most of that is executor storage: **4 × 23,928 = 95,712 bytes, which
+on its own already exceeds 66,048.** No entity sizing can make this image fit
+the default.
+
+## Defect 1: nothing prices N tiers of executor storage against the arena
+
+`zephyr_run_tiers.c` takes `NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES` out of the
+platform heap:
+
+- once for the boot tier (`:633`);
+- once more for **every** further tier (`:477`).
+
+That size is `NROS_CPP_EXECUTOR_STORAGE_SIZE`, the per-build derived value.
+The one build-time check that relates an executor to this heap is the arena gate
+at `nros_cargo_build.cmake:1025-1066` (`arena + 24576 <= NROS_ZEPHYR_HEAP_SIZE`),
+and it misses this case in two ways:
+
+- it runs only when `NROS_EXECUTOR_ARENA_SIZE` is stated explicitly, and here the
+  value is derived;
+- it prices **one** executor.
+
+Nothing multiplies the storage by the tier count. The build knows all three
+numbers: the tier table, the storage size and the heap size. It still produced
+an image that cannot boot and said nothing.
+
+### Scope (read only, nothing built)
+
+- The laned sibling `realtime-cpp` (`workspace-zephyr-cpp-realtime`, two Zephyr
+  tiers) has the same conf shape. An **old** build of it
+  (`nano-ros-workspace/build-ws-cpp-realtime-entry-zenoh`, dated 2026-09-10)
+  records `NROS_CPP_EXECUTOR_STORAGE_SIZE 89992`. Run with a router on its
+  locator, it prints `HEAP EXHAUSTED: request 89992 bytes, arena 66048 bytes` as
+  its **first** allocation, before any tier exists. It then idles, reaches
+  `--stop_at`, and **exits 0**.
+- That build is a museum binary, so this says nothing about HEAD. It does show
+  that the same shape — per-tier storage from the fixed 64 KiB default — has
+  already produced an image that cannot start, and one that fails **silently**
+  when the NULL is handled.
+- **Not measured:** whether a fresh build of `realtime-cpp` or `realtime-c` fits.
+  The derived storage differs per image (23,928 here, 89,992 there). The
+  `realtime_tiers_e2e` `zephyr_cpp`/`zephyr_c` cells are where that answer
+  belongs.
+- **Any** Zephyr multi-tier C/C++ image is exposed, because the storage size
+  scales with the entity inventory and the arena does not. Single-executor
+  images pay the storage once.
+
+### Direction (not implemented)
+
+- Choose one of these:
+  - price the arena at configure time, where all three inputs exist:
+    `(1 + n_tiers_beyond_boot) × storage + session_floor + per-entity`, and
+    refuse to build below it (same shape as the existing gate);
+  - or derive `NROS_ZEPHYR_HEAP_SIZE` from that sum when Kconfig leaves it at
+    the default.
+- Alternatively, move tier executor storage out of the heap into
+  linker-visible `.bss`, as the Rust arm did (`EXECUTOR_BACKING`, RFC-0002
+  § 4.4b). Then `mem-report` can see it, and it cannot fail at run time. The
+  CLAUDE.md executor-arena entry says the same move applies here: subtract what
+  it removes from the heap, and never report the `.bss` growth alone.
+- Then give the fixture a `fixtures.toml` row and a `matrix::CELLS` cell, so a
+  lane boots it.
+- Drop or justify the dead-looking 256 KiB / 1 MiB heap lines in both
+  `prj-zenoh.conf` files, and fix the CLAUDE.md line above.
+
+## Defect 2: an allocation failure becomes a stack-overflow SEGV (measured)
+
+Full backtrace of the SEGV (outermost frames; the middle is ~104,730 copies of
+one frame):
+
+```
+#0       z_impl_k_mutex_lock (mutex=0x4f4450 <fdtable+112>) at kernel/mutex.c:115
+#1       k_mutex_lock
+#2       zvfs_write (fd=1, buf=0x4c0972, sz=21) at lib/os/fdtable.c:339
+#3 …     zvfs_write (fd=1, buf=0x4c0972, sz=21) at lib/os/fdtable.c:340   (repeats)
+#104738  zvfs_write (fd=2, buf=0x4c0972, sz=21) at lib/os/fdtable.c:340
+#104739  std::sys::fd::unix::FileDesc::write
+#104741  std::io::Write::write_all<Stderr>
+#104746  std::alloc::default_alloc_error_hook          (library/std/src/rt.rs:44)
+#104749  std::alloc::rust_oom
+#104752  alloc::alloc::handle_alloc_error
+#104754  Box::<ZenohPublisher>::new
+#104755  nros_rmw_cffi::rust_adapter::create_publisher_trampoline   (rust_adapter.rs:829)
+#104757  nros_cpp::publisher::nros_cpp_publisher_create           (publisher.rs:161)
+#104761  mrm_handler_pkg::MrmHandler::MrmHandler                   (MrmHandler.cpp:27)
+#104762  __nros_entry_setup_tier_1
+#104764  zephyr_tier_task                                          (zephyr_run_tiers.c:415)
+```
+
+At the fault:
+
+- `x/s 0x4c0972` gives `"memory allocation of \300\016 bytes failed\n"`. That is
+  std's OOM message, still unformatted.
+- `p *mutex` shows `owner = nros_tier_threads`, `lock_count = 104735`.
+
+This is **exactly issue 0589's recursion**: `stdinout_write_vmeth` re-enters
+`zvfs_write`, the recursive `k_mutex` never deadlocks, and the stack runs out.
+The only difference is the producer. 0589 was resolved by routing **our**
+`std::eprintln!` sites through `nros_log`, and `check-no-std-stdio` gates our
+sources. This write comes from **inside libstd** (`default_alloc_error_hook`),
+which neither the fix nor the gate can see. The class is "any libstd stdio on a
+native_sim image", and std's OOM hook is a member nobody swept.
+
+So the answer to "unchecked return, or partially constructed object?" is
+**neither**:
+
+- zenoh-pico's first four NULLs **were** checked. They came back as `-78`, and
+  `ensure_node_liveliness` treats a lost token as soft by design: it logs, and
+  the node is missing from `ros2 node list`.
+- The one allocation that was **not** fallible is Rust's `Box::new(pub_handle)`
+  at `rust_adapter.rs:829`. An infallible allocation cannot return NULL. It
+  calls `handle_alloc_error`, and in a `std` build that means "print, then
+  abort".
+- On native_sim the print kills the process before the abort does, so the one
+  line that would have named the failure never appears. The same infallible
+  `Box::new` shape is at `rust_adapter.rs:737`, `:933`, `:1150` and `:1308`
+  (session, subscriber, service server, service client).
+
+Also measured: `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL` is **off** in this image,
+because its default is `y if NROS_BOOT_REPORT` and the image does not set
+`NROS_BOOT_REPORT`. So the first `HEAP EXHAUSTED` returned NULL rather than
+halting through `nros_platform_panic`. With the knob on, the image would have
+stopped cleanly at the first 48-byte failure and never reached the `Box::new`.
+That is a mitigation for this image, not a fix for the class. This is the knob
+issue 1425 concerns.
+
+**Inferred, not measured:** on a real (non-native_sim) Zephyr target, the Rust
+side has no libstd, so `handle_alloc_error` goes to that target's panic or
+alloc-error path rather than to `zvfs_write`. The crash would look different,
+but it would still be a crash on a path whose C caller expects a return code.
+
+### Direction (not implemented)
+
+- Make the RMW adapter's handle boxes fallible:
+  - allocate through `alloc::alloc::alloc(Layout)`, check for NULL and return
+    `NROS_RMW_RET_BAD_ALLOC`;
+  - or add a `try_box` helper, because `Box::try_new` is unstable.
+- Sweep every `Box::new`, `Arc::new` and `Vec` growth on an entity-creation path
+  that a C caller reaches (`nros-node` `assemble` and `NodeWake` are in the trace
+  too), so an exhausted heap becomes a returned error that the C++ API already
+  has a code for.
+- Separately, route std's alloc-error output on Zephyr away from the fdtable.
+  `std::alloc::set_alloc_error_hook` is unstable. The practical lever is the
+  fallible adapter above, plus `NROS_HEAP_EXHAUSTION_IS_FATAL` so the platform
+  heap halts first.
+- Extend 0589's class note to say that libstd itself is a producer.
+
+## For the Rust `nros::main!` road + Zephyr boot-report work (the `related:` issue filed on PR #1395)
+
+- A Rust Zephyr native_sim image whose heap is exhausted at any infallible
+  allocation will die the same way: std OOM hook, then `zvfs_write` recursion,
+  then SIGSEGV, with no message.
+- Size `CONFIG_NROS_ZEPHYR_HEAP_SIZE` (not the two heaps above) before reading
+  anything from such a boot.
+- With `CONFIG_NROS_BOOT_REPORT=y`, `NROS_HEAP_EXHAUSTION_IS_FATAL` defaults on,
+  and the halt lands before the recursion can happen.
+
+## Not measured
+
+- The full demand of the image with a large enough arena. No rebuild was made,
+  so the ~122 KB figure is arithmetic.
+- Whether the tier-1 fragmentation, not the total, decided the exact failing
+  request.
+- Fresh builds of the laned `realtime-cpp` / `realtime-c` Zephyr entries.
+- Whether anything allocates from `HEAP_MEM_POOL` or picolibc's arena in this
+  image.
+- Why the `nros_log` "node declared no token" error line from
+  `ensure_node_liveliness` does not appear. The likely cause is that deferred
+  `CONFIG_LOG` never flushed before the crash, but that was not checked.
+
+## Acceptance
+
+- The derived-tiers-cpp Zephyr image boots all four tiers under a router, with a
+  lane that boots it: a `fixtures.toml` row plus a cell.
+- A build whose tiers cannot fit the platform heap fails at configure time with
+  the numbers, or the storage is no longer heap-allocated.
+- A failed allocation on an entity-creation path returns an error code to the
+  C/C++ caller. Negative control: `CONFIG_NROS_ZEPHYR_HEAP_SIZE` too small gives
+  a reported error, not SIGSEGV.
