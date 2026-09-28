@@ -4874,13 +4874,24 @@ west_id = "zephyr/native_sim/native/64/logging-smoke"
 # ---------------------------------------------------------------------------
 
 # phase-276 W1 (#128) — the PARAMETERISED Rust workspace Entry
-# (examples/workspaces/features/src/zephyr_rust_params_entry): the
+# (examples/workspaces/features, [image.zephyr_rust_params]): the
 # params-on-embedded coverage cell. Same native_sim/NSOS west path as the
 # base Rust workspace entry above; `system.toml [param_services]` + the
 # entry's `nros/param-services` feature make the (#128-fixed)
 # Framework::Zephyr emit register the six ROS 2 parameter services. Dials a
 # DISTINCT zenohd port (7470), so it does NOT serialize with the pubsub
 # fixtures. Consumed by tests/entry_e2e.rs (zephyr_rust_params cell).
+#
+# phase-470 W5.b1 (issue 1288) — MIGRATED. The row names its IMAGE instead of an
+# entry package: `src/zephyr_rust_params_entry` is deleted and `nros build`
+# generates the west application. `conf_files` went with it, and its absence is
+# the point — it reached west as `-DCONF_FILE=...`, which is a second spelling
+# of `[image.zephyr_rust_params] conf` AND suppresses Zephyr's own
+# `APPLICATION_CONFIG_DIR` discovery outright. The board/NSOS tail that key used
+# to append is not lost: it was a duplicate of the entry's own
+# `boards/native_sim_native_64.conf`, which moved to the bringup and is
+# discovered there. Measured: the merged `.config` is byte-identical to the
+# hand-written application's, 2028 lines.
 [[workspace_fixture]]
 id = "workspace-zephyr-rs-params"
 platform = "zephyr"
@@ -4888,21 +4899,23 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
-entry = "zephyr_rust_params_entry"
+image = "zephyr_rust_params"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
 west_build_name = "build-ws-rs-params-entry-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-params-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7470"
 skip_probe = true
 
 # phase-276 W3 (#128) — the MANAGED (lifecycle) Rust workspace Entry
-# (examples/workspaces/features/src/zephyr_rust_lifecycle_entry): the
+# (examples/workspaces/features, [image.zephyr_rust_lifecycle]): the
 # lifecycle-on-embedded coverage cell. `system.toml [lifecycle] autostart =
 # "active"` + the entry's `nros/lifecycle-services` feature make the
 # (#128-fixed) Framework::Zephyr emit register the five REP-2002 lifecycle
 # services + drive the boot autostart. Distinct zenohd port (7480). Consumed
 # by tests/entry_e2e.rs (zephyr_rust_lifecycle cell).
+#
+# phase-470 W5.b1 (issue 1288) — MIGRATED; see `workspace-zephyr-rs-params`
+# above for why `image` replaces `entry` and why `conf_files` is gone.
 [[workspace_fixture]]
 id = "workspace-zephyr-rs-lifecycle"
 platform = "zephyr"
@@ -4910,21 +4923,23 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
-entry = "zephyr_rust_lifecycle_entry"
+image = "zephyr_rust_lifecycle"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
 west_build_name = "build-ws-rs-lifecycle-entry-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-lifecycle-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7480"
 skip_probe = true
 
 # phase-276 W5 — the QOS-OVERRIDE Rust workspace Entry
-# (examples/workspaces/features/src/zephyr_rust_qos_entry): the
+# (examples/workspaces/features, [image.zephyr_rust_qos]): the
 # qos-on-embedded coverage cell. The QoS profiles are declared per-entity in
 # node code (RFC-0041, reliable + transient_local on /qos_chatter); the
 # in-image QoS-matched pair republishes its receive count on /qos_ok.
 # Distinct zenohd port (7460). Consumed by tests/entry_e2e.rs
 # (zephyr_rust_qos cell).
+#
+# phase-470 W5.b1 (issue 1288) — MIGRATED; see `workspace-zephyr-rs-params`
+# above for why `image` replaces `entry` and why `conf_files` is gone.
 [[workspace_fixture]]
 id = "workspace-zephyr-rs-qos"
 platform = "zephyr"
@@ -4932,9 +4947,8 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
-entry = "zephyr_rust_qos_entry"
+image = "zephyr_rust_qos"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
 west_build_name = "build-ws-rs-qos-entry-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-qos-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7460"

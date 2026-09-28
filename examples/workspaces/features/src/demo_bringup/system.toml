@@ -329,26 +329,39 @@ launch = "rust_qos.launch.xml"
 board = "native"
 launch = "rust_remap.launch.xml"
 
-# The Zephyr entries stay hand-written west applications, and their locators
-# live here — `nros::main!` reads the image that names the entry (phase-445
-# W5); they were the entries' `[package.metadata.nros.deploy.zephyr]` tables.
+# phase-470 W5.b1 (issue 1288) — MIGRATED, all three. The hand-written
+# `src/zephyr_rust_{lifecycle,params,qos}_entry` packages are gone; `nros build
+# <image>` generates the whole west application (`CMakeLists.txt`, `build.rs`,
+# the staticlib manifest and `src/lib.rs`) under `build/<coord>/<image>_entry/`.
+# Each row is now the only place its image is described, which is why none of
+# them names an `entry`: the application is found by CONSTRUCTION.
+#
+# Their Kconfig moved WITH them, to the SHARED
+# `<bringup>/boards/native_sim_native_64/` (RFC-0065 D4). Shared is safe and
+# measured, not assumed: the three packages' `prj.conf`, `prj-zenoh.conf` and
+# `boards/native_sim_native_64.conf` were byte-identical apart from one comment
+# line naming the entry directory — `diff` before the move, and a byte-identical
+# `.config` against each image's pre-migration baseline afterwards.
+#
+# `board = "zephyr"` is the descriptor id, and it projects to the west board
+# `native_sim/native/64` through `BoardDescriptor::west_build_board` — so this
+# and `examples/workspaces/rust`'s literal spelling reach the SAME `-b` and the
+# SAME `boards/<board>/` directory (W5.a fixed that descriptor; verified here
+# with `--dry-run` rather than assumed).
 [image.zephyr_rust_lifecycle]
 board = "zephyr"
-entry = "zephyr_rust_lifecycle_entry"
 conf = ["prj-zenoh.conf"]
 launch = "rust_lifecycle.launch.xml"
 locator = "tcp/10.0.2.2:7463"
 
 [image.zephyr_rust_params]
 board = "zephyr"
-entry = "zephyr_rust_params_entry"
 conf = ["prj-zenoh.conf"]
 launch = "rust_params.launch.xml"
 locator = "tcp/10.0.2.2:7461"
 
 [image.zephyr_rust_qos]
 board = "zephyr"
-entry = "zephyr_rust_qos_entry"
 conf = ["prj-zenoh.conf"]
 launch = "rust_qos.launch.xml"
 locator = "tcp/10.0.2.2:7465"

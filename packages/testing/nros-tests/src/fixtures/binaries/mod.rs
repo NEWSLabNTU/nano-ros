@@ -1808,7 +1808,9 @@ fn zephyr_staticlib_dep_file(build_root: &Path) -> Option<PathBuf> {
 /// the hole this closes.
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct ZephyrLeafSource<'a> {
-    /// Repo-relative leaf dir, e.g. `examples/workspaces/features/src/zephyr_rust_qos_entry`.
+    /// Repo-relative leaf dir, e.g. `examples/workspaces/features` (a workspace
+    /// whose west application `nros build` generates) or
+    /// `examples/workspaces/cpp/src/zephyr_entry` (a hand-written one).
     pub dir: &'a str,
     /// `"c"` / `"cpp"` / `"rust"`; `None` watches every core API crate (the
     /// mixed entry, which links all three).
@@ -4711,7 +4713,8 @@ pub fn build_zephyr_workspace_mixed_entry() -> TestResult<PathBuf> {
 }
 
 /// phase-276 W1 (#128) — the Zephyr (native_sim) PARAMETERISED Rust workspace Entry
-/// (`features/src/zephyr_rust_params_entry`): the param_talker node + the six ROS 2 parameter
+/// (`features`'s `[image.zephyr_rust_params]`, a GENERATED west application since
+/// phase-470 W5.b1): the param_talker node + the six ROS 2 parameter
 /// services (the #128 fix made the `Framework::Zephyr` macro arm emit that registration).
 /// Built by the west lane into `<zephyr-build-root>/build-ws-rs-params-entry-zenoh/zephyr/
 /// zephyr.exe`; consumed by `tests/entry_e2e.rs` (zephyr_rust_params cell).
@@ -4719,15 +4722,20 @@ pub fn build_zephyr_workspace_rust_params_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-rs-params-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
-        ZephyrLeafSource::zenoh(
-            "examples/workspaces/features/src/zephyr_rust_params_entry",
-            "rust",
-        ),
+        // phase-470 W5.b1 (issue 1288) — the leaf is the WHOLE
+        // `workspaces/features` tree, not `src/<id>_entry`: that package is
+        // deleted and `nros build` generates the application under
+        // `build/<coord>/`. Same correction `ZEPHYR_WORKSPACE_ENTRY_SRC_KEY`
+        // already carried for `workspaces/rust`, and it does not widen the
+        // watch set in practice — the entry pulls in sibling node packages from
+        // this workspace, so watching only its own directory under-watched.
+        ZephyrLeafSource::zenoh("examples/workspaces/features", "rust"),
     )
 }
 
 /// phase-276 W3 (#128) — the Zephyr (native_sim) MANAGED (lifecycle) Rust workspace Entry
-/// (`features/src/zephyr_rust_lifecycle_entry`): the talker node + the five REP-2002 lifecycle
+/// (`features`'s `[image.zephyr_rust_lifecycle]`, a GENERATED west application since
+/// phase-470 W5.b1): the talker node + the five REP-2002 lifecycle
 /// services with boot autostart (the #128 `Framework::Zephyr` `apply_lifecycle` emit).
 /// Built by the west lane into `<zephyr-build-root>/build-ws-rs-lifecycle-entry-zenoh/
 /// zephyr/zephyr.exe`; consumed by `tests/entry_e2e.rs` (zephyr_rust_lifecycle cell).
@@ -4736,15 +4744,15 @@ pub fn build_zephyr_workspace_rust_lifecycle_entry() -> TestResult<PathBuf> {
         zephyr_build_root().join("build-ws-rs-lifecycle-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
-        ZephyrLeafSource::zenoh(
-            "examples/workspaces/features/src/zephyr_rust_lifecycle_entry",
-            "rust",
-        ),
+        // The WORKSPACE, not `src/<id>_entry` — see
+        // `build_zephyr_workspace_rust_params_entry` above (phase-470 W5.b1).
+        ZephyrLeafSource::zenoh("examples/workspaces/features", "rust"),
     )
 }
 
 /// phase-276 W5 — the Zephyr (native_sim) QOS-OVERRIDE Rust workspace Entry
-/// (`features/src/zephyr_rust_qos_entry`): reliable_talker publishes `/qos_chatter` with a
+/// (`features`'s `[image.zephyr_rust_qos]`, a GENERATED west application since
+/// phase-470 W5.b1): reliable_talker publishes `/qos_chatter` with a
 /// non-default profile (reliable + transient_local) and qos_listener subscribes with the
 /// byte-identical profile, republishing the matched receive count on `/qos_ok`. Built by
 /// the west lane into `<zephyr-build-root>/build-ws-rs-qos-entry-zenoh/zephyr/zephyr.exe`;
@@ -4753,10 +4761,9 @@ pub fn build_zephyr_workspace_rust_qos_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-rs-qos-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
-        ZephyrLeafSource::zenoh(
-            "examples/workspaces/features/src/zephyr_rust_qos_entry",
-            "rust",
-        ),
+        // The WORKSPACE, not `src/<id>_entry` — see
+        // `build_zephyr_workspace_rust_params_entry` above (phase-470 W5.b1).
+        ZephyrLeafSource::zenoh("examples/workspaces/features", "rust"),
     )
 }
 

@@ -324,25 +324,20 @@ build-fixtures:
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null
           NROS_REPO_DIR="$nros_root" "$nros_cli" codegen-system --bringup src/demo_bringup --out build-fixtures/demo_bringup >/dev/null )
     fi
-    # phase-276 W1 (#128) — the parameterised workspace's Zephyr Entry. Pure-cargo
-    # `nros::main!` path: `nros sync` provisions generated/ + the patch table; NO
-    # codegen-system (the proc-macro bakes the system + the launch `<param>`
-    # initials, same as the native ws-params lane).
-    if [ -d examples/workspaces/features/src/zephyr_rust_params_entry ]; then
-        echo "  → ws-params workspace-entry prep (nros sync)"
-        ( cd examples/workspaces/features
-          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
-    fi
-    # phase-276 W3 (#128) — the managed (lifecycle) workspace's Zephyr Entry.
-    # Same pure-cargo `nros::main!` path as ws-params: `nros sync` only.
-    if [ -d examples/workspaces/features/src/zephyr_rust_lifecycle_entry ]; then
-        echo "  → ws-lifecycle workspace-entry prep (nros sync)"
-        ( cd examples/workspaces/features
-          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
-    fi
-    # phase-276 W5 — the QoS-override workspace's Zephyr Entry (nros sync only).
-    if [ -d examples/workspaces/features/src/zephyr_rust_qos_entry ]; then
-        echo "  → ws-qos workspace-entry prep (nros sync)"
+    # phase-276 W1/W3/W5 (#128) — the capability workspace's three Zephyr
+    # Entries (params, lifecycle, qos). Pure-cargo `nros::main!` path: `nros
+    # sync` provisions generated/ + the patch table; NO codegen-system (the
+    # proc-macro bakes the system + the launch `<param>` initials, same as the
+    # native lanes).
+    #
+    # phase-470 W5.b1 (issue 1288) — guarded on the WORKSPACE, not on an entry
+    # package, for the reason W5.a's correction above gives: all three
+    # applications are GENERATED now, so `src/zephyr_rust_*_entry` is gone and a
+    # guard naming one would silently stop preparing a workspace that still has
+    # three Zephyr images. ONE block, because the three it replaces ran the
+    # byte-identical `nros sync` on the byte-identical workspace three times.
+    if [ -d examples/workspaces/features ]; then
+        echo "  → features workspace-entry prep (nros sync)"
         ( cd examples/workspaces/features
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi

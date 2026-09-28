@@ -136,9 +136,18 @@ fn zephyr_prjconf_meets_backend_requirements() {
     // left naming the old directory would collect nothing there, the overall
     // `!overlays.is_empty()` assert would still pass on `examples/zephyr` alone,
     // and the coverage would be gone with no red — issue 0196's shape.
+    //
+    // phase-470 W5.b1 — `examples/workspaces/features` joins the list, and that
+    // is a WIDENING, not a follow-the-move: its three `zephyr_rust_*_entry`
+    // packages carried a `prj-zenoh.conf` this gate never read, so the rule
+    // ("every Zephyr `prj-<rmw>.conf` meets its backend's requirements") always
+    // reached further than the list did. Migrating them put that overlay in the
+    // very shape the line above already collects, so there is no reason left to
+    // leave it out.
     for base in [
         "examples/zephyr",
         "examples/workspaces/rust/src/demo_bringup/boards",
+        "examples/workspaces/features/src/demo_bringup/boards",
     ] {
         collect_overlays(&root.join(base), &mut overlays);
     }
