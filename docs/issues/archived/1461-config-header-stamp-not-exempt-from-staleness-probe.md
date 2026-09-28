@@ -4,11 +4,11 @@ title: "The staleness probe exempts a regenerated-in-place header but not the
   `.stamp` beside it, so a rebuild that changes nothing marks unrelated fixtures
   STALE — and the C pubsub coordinates have produced no runtime result for 18
   days behind that verdict"
-status: open
+status: resolved
 type: bug
 area: testing, build
 severity: medium
-related: [0442, 0445, 0196, 0834, 0088, 0222]
+related: [0442, 0445, 0196, 0834, 0088, 0222, 1530]
 ---
 
 ## Symptom
@@ -172,9 +172,11 @@ stat -c '%y %n' examples/native/c/talker/build-zenoh/c_talker \
   neither** — see "Which of the two" above. The header's content really changes
   and the binary's edges are correct; what was wrong is that TWO `nros-c`
   feature sets share the path, for no reason but a spelling.
-* The three C pubsub cases produce a runtime result.
+* The three C pubsub cases produce a runtime result. **Done, 2026-09-28** —
+  they ran, and the first result was a FAILURE, not a pass.
 * Whatever those cases have been hiding for 18 days is stated, because "it was
-  stale" is not a test result.
+  stale" is not a test result. **Done** — see below. It was a real defect on the
+  C path, on all three backends, filed as issue 1530 and fixed.
 
 ## Fix — 2026-09-25
 
@@ -213,11 +215,43 @@ all five sites; the first draft's pathspec globs matched `zephyr/**/*.txt` to
 nothing and reported only two, which is why its reach is now asserted
 (`REACH_MUST_HOLD`).
 
-## What the three C cases were hiding
+## What the three C cases were hiding — measured 2026-09-28
 
-Not known yet, and it cannot be known until they run — that is what an
-absorbing verdict costs. What is now known is the WINDOW: the coordinate's last
-runtime result predates the first of the eight verdicts, 18 days back, so any
-regression landing in `examples/native/c/talker`, the C pubsub path or the
-zenoh C road in that window has never been observed by this suite. The counter
-(issue 0445) said so on every run.
+**A real defect, and not a small one.** With the oscillating header gone, the
+three cases finally launched and failed in 0.2–0.6 s against a 25 s budget:
+
+```
+[c/zenoh] listener never saw 3 `I heard:` deliveries — native pubsub delivery did not work
+```
+
+Too fast for a delivery timeout, because nothing was ever published. Run by hand,
+every native C example — talker and listener, zenoh, cyclonedds and xrce — dies
+identically at init:
+
+```
+[nros] examples/native/c/listener/src/main.c:115 nros_support_init(...) -> -3
+```
+
+`-3` is `NROS_RET_INVALID_ARGUMENT`. The C++ and Rust arms pass on the same build
+in the same second, so the failure is specific to the C surface and blind to the
+backend.
+
+The cause is **issue 1530**: the census recorder self-registered into every
+native C and C++ image, which since issue 1050 makes a selector-less open
+`Ambiguous` — a hard refusal — and the C surface reads no baked RMW rung
+(`NROS_ENTRY_RMW` is on its own compile line and has only C++ consumers, issue
+1531). Removing the recorder's `.init_array` ctor restores a single-backend
+registry, and the three cases now PASS:
+
+```
+PASS case_8_c_xrce   PASS case_2_c_zenoh   PASS case_5_c_cyclone
+Summary: 3 tests run: 3 passed
+```
+
+**The window this issue named turned out to be the whole story.** The stale
+verdict began about 18 days before it was read; issue 1050 landed 2026-09-05, three
+weeks back. So every native C pubsub coordinate had been broken for essentially
+the entire absorbing window, and the absorbing verdict is the only reason it took
+this long — the suite reported a message about a `.stamp` file while the C API
+could not open a session at all. That is exactly the cost issue 0445 exists to
+make visible, and its consecutive-verdict counter said so on every run.
