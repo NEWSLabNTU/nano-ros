@@ -937,3 +937,9 @@ board-build-wiring:
 # repo has measured that drift three times in the safe-looking direction).
 build-wiring-roads:
     @python3 scripts/check-build-wiring-roads.py
+
+# phase-471 W3 — issue 1280's BUILD-SCRIPT half. `check-inherited-checkout-paths`
+# holds the shell exports to the re-root wrapper and names no `build.rs` at all;
+# that reach gap is how issue 1527's five sites drifted with every gate green.
+build-script-path-resolution:
+    @python3 scripts/check-build-script-path-resolution.py
