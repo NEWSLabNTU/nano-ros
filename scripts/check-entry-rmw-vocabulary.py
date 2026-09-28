@@ -22,7 +22,22 @@ side used to cost nothing; it now turns every image built for that backend into
 one that cannot open a session, at runtime, with a message about a selector the
 user never wrote.
 
-Buildless: both sides are read out of the sources.
+And a third rule, issue 1530: a name in `NOT_A_CMAKE_RMW` — a registry entry no
+entry can ever bake — must not SELF-REGISTER through `nros_rmw_register_backend!`.
+The exemption list says "no image selects this by name"; an `.init_array` ctor
+puts it in the registry of every image that links the crate anyway, and since
+issue 1050 a second registered name makes a selector-less open `Ambiguous`, i.e.
+a hard refusal. That is not hypothetical: the census recorder's ctor did exactly
+this to every native C and C++ image, and because the C surface reads no baked
+rung (issue 1531) every native C example failed `nros_support_init` with
+`NROS_RET_INVALID_ARGUMENT` for eighteen days behind an absorbing stale verdict.
+
+The rule lives HERE rather than in a gate of its own because this script already
+owns both vocabularies and the exemption list that distinguishes them. A second
+script would be a second answer to "which names can an entry name", which is the
+drift this one exists to prevent.
+
+Buildless: all three sides are read out of the sources.
 """
 
 from __future__ import annotations
@@ -45,8 +60,25 @@ PROVIDES_RE = re.compile(r'<nano_ros_provides\s+kind="rmw"\s+name="([^"]+)"\s*/?
 # Rust, and — cyclone — a named constant, which is why a bare literal scan is
 # not enough on its own. `(?<!fn )` drops the Rust/bindgen DECLARATIONS, whose
 # first parameter is spelled `name`.
+# Two spellings reach the registry, and reading only the first is how this gate
+# came to report "0 unbakeable names present" over a tree where `metadata` was
+# registered and self-registering (issue 1530, and issue 0196's shape):
+#
+#   * the C ABI entry point, `nros_rmw_cffi_register_named(...)` — every C/C++
+#     backend, and the Rust ones that call it directly;
+#   * the Rust adapter's associated function,
+#     `RustBackendAdapter::<T>::register_named(c"metadata".as_ptr())`, which is a
+#     wrapper over that same entry point.
+#
+# `(?<!fn )` drops the Rust/bindgen DECLARATIONS, whose first parameter is
+# spelled `name`. The turbofish is optional so a plain `Adapter::register_named`
+# is read too.
 CALL_RE = re.compile(
-    r"(?<!fn )nros_rmw_cffi_register_named\s*\(\s*"
+    # `(?<![A-Za-z0-9_])` is load-bearing beside `(?<!fn )`: without it the bare
+    # `register_named` alternative matches the TAIL of
+    # `nros_rmw_cffi_register_named` in a declaration and reads its `name`
+    # parameter as the backend's name.
+    r"(?<!fn )(?<![A-Za-z0-9_])(?:nros_rmw_cffi_register_named|register_named)\s*\(\s*"
     r"(?:c?\"(?P<lit>[A-Za-z0-9_\-]+)\"|(?P<ident>[A-Za-z_][A-Za-z0-9_]*))"
 )
 CONST_RE = re.compile(
@@ -69,6 +101,25 @@ class UnresolvedName(Exception):
     """
 
 
+# issue 1530 — the `.init_array` self-registration macro, at STATEMENT position.
+# A doc comment naming the macro is not an invocation (`section.rs` documents it
+# in a `///` block, and `nros-board-{nuttx,threadx}` discuss it in `//` prose), so
+# a line whose first non-space characters open a comment is not a site. Same
+# `strip`-before-match discipline as the other source-reading gates.
+SELF_REGISTER_RE = re.compile(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*nros_rmw_register_backend!")
+
+
+def self_registers(text: str) -> bool:
+    """Does this source file INVOKE the self-registration macro?"""
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith(("//", "/*", "*", "#")):
+            continue
+        if SELF_REGISTER_RE.match(line):
+            return True
+    return False
+
+
 def names_in(text: str) -> set[str]:
     """Every backend name registered by one source file."""
     consts = {m.group("name"): m.group("val") for m in CONST_RE.finditer(text)}
@@ -84,7 +135,11 @@ def names_in(text: str) -> set[str]:
     return found
 
 
-def compare(known: set[str], registered: dict[str, set[str]]) -> list[str]:
+def compare(
+    known: set[str],
+    registered: dict[str, set[str]],
+    self_registered: dict[str, set[str]] | None = None,
+) -> list[str]:
     """The rule. Returns one message per disagreement; empty means OK."""
     errors = []
     for name in sorted(known - set(registered)):
@@ -106,6 +161,21 @@ def compare(known: set[str], registered: dict[str, set[str]]) -> list[str]:
             f"to NOT_A_CMAKE_RMW in this script if it is a stub that ships in no "
             f"image."
         )
+    # issue 1530 — the third rule. An exempt name is one no entry can select;
+    # self-registering it contradicts the exemption and makes every image that
+    # links the crate ambiguous.
+    for name in sorted(set(self_registered or {}) & NOT_A_CMAKE_RMW):
+        where = ", ".join(sorted((self_registered or {})[name]))
+        errors.append(
+            f"'{name}' is in NOT_A_CMAKE_RMW — no entry can bake it — yet it "
+            f"SELF-REGISTERS via nros_rmw_register_backend! ({where}).\n"
+            f"      Since issue 1050 a second registered name makes a "
+            f"selector-less open `Ambiguous`, which is a hard refusal, so every "
+            f"image linking this crate can no longer open a session without "
+            f"naming a backend. Register it from the consumer that SELECTS it "
+            f"instead (issue 1530: `census_select_backend` registers the "
+            f"recorder and then sets $NROS_RMW), or make the name bakeable."
+        )
     return errors
 
 
@@ -123,6 +193,11 @@ def self_test() -> None:
         'constexpr const char *kId = "cyclonedds";\n'
         "return nros_rmw_cffi_register_named(kId, &kVtable);"
     ) == {"cyclonedds"}, "a name behind a same-file constant must resolve"
+    # issue 1530 — the Rust adapter's wrapper is the OTHER spelling that reaches
+    # the registry. Missing it is what made this gate blind to `metadata`.
+    assert names_in(
+        'nros_rmw_cffi::RustBackendAdapter::<MetadataRmw>::register_named(c"metadata".as_ptr())'
+    ) == {"metadata"}, "the adapter spelling must be read too"
     # A DECLARATION is not a registration — bindgen emits one whose first
     # parameter is `name`, and reading it as a call is what a naive scan does.
     assert names_in(
@@ -143,6 +218,30 @@ def self_test() -> None:
     assert len(fired) == 1 and "quux" in fired[0], "a registered-but-unbakeable name must fire"
     # The escape for the second direction is the exemption list, not a rename.
     assert compare({"zenoh"}, {"zenoh": {"a.rs"}, "default": {"b.rs"}}) == []
+
+    # -- issue 1530: the self-registration reader --
+    assert self_registers("nros_rmw_cffi::nros_rmw_register_backend! {\n    fn() {}\n}")
+    assert self_registers("nros_rmw_register_backend! { fn() {} }")
+    assert not self_registers(
+        "/// nros_rmw_cffi::nros_rmw_register_backend! {\n/// }\n"
+    ), "a doc comment naming the macro is not an invocation"
+    assert not self_registers(
+        "// The unified-RMW `nros_rmw_register_backend!` macro is a no-op on NuttX"
+    ), "prose about the macro is not an invocation"
+    assert not self_registers("let _ = nros_rmw_metadata_register();")
+
+    # -- issue 1530: the rule --
+    assert compare({"zenoh"}, {"zenoh": {"a.rs"}}, {"zenoh": {"a.rs"}}) == [], (
+        "a BAKEABLE name may self-register — that is how every real backend works"
+    )
+    fired = compare(
+        {"zenoh"}, {"zenoh": {"a.rs"}, "metadata": {"m.rs"}}, {"metadata": {"m.rs"}}
+    )
+    assert len(fired) == 1 and "metadata" in fired[0] and "m.rs" in fired[0], (
+        "an exempt name that self-registers must fire, and name its file"
+    )
+    # Registered-but-not-self-registered is the fixed state, and must be silent.
+    assert compare({"zenoh"}, {"zenoh": {"a.rs"}, "metadata": {"m.rs"}}, {}) == []
 
 
 def cmake_known() -> set[str]:
@@ -191,9 +290,10 @@ def cmake_known() -> set[str]:
     return known
 
 
-def registered_names() -> dict[str, set[str]]:
-    """Backend name -> the files that register it."""
+def registered_names() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """(backend name -> files that register it, backend name -> files that SELF-register it)."""
     found: dict[str, set[str]] = {}
+    self_reg: dict[str, set[str]] = {}
     # `git ls-files`, not `rglob` — issue 0844's rule, and `check-no-tracked-file-find`
     # enforces it: an index lookup instead of a walk, measured at 7m36s -> 0.8s
     # for the same 232 paths, and pruning does not help because `find` still
@@ -230,9 +330,16 @@ def registered_names() -> dict[str, set[str]]:
                 f"constant there — this gate has to be able to read it "
                 f"(issue 1050)."
             )
+        text = path.read_text(errors="replace")
         for name in names:
             found.setdefault(name, set()).add(rel)
-    return found
+        # issue 1530 — a file that both registers a name and invokes the macro
+        # self-registers that name. The two readers run over the same text so a
+        # crate cannot hide one from the other.
+        if self_registers(text):
+            for name in names:
+                self_reg.setdefault(name, set()).add(rel)
+    return found, self_reg
 
 
 def main() -> int:
@@ -244,17 +351,20 @@ def main() -> int:
         return 0
 
     known = cmake_known()
-    registered = registered_names()
-    errors = compare(known, registered)
+    registered, self_registered = registered_names()
+    errors = compare(known, registered, self_registered)
     if errors:
         print("check-entry-rmw-vocabulary: FAIL", file=sys.stderr)
         for e in errors:
             print(f"  - {e}", file=sys.stderr)
         return 1
 
+    exempt_registered = sorted(set(registered) & NOT_A_CMAKE_RMW)
     print(
         f"check-entry-rmw-vocabulary: OK "
-        f"({len(known)} bakeable name(s), each registered: {', '.join(sorted(known))})"
+        f"({len(known)} bakeable name(s), each registered: {', '.join(sorted(known))}; "
+        f"{len(exempt_registered)} unbakeable name(s) present and none "
+        f"self-registering: {', '.join(exempt_registered) or 'none'})"
     )
     return 0
 

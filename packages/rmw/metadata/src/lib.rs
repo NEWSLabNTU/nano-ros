@@ -262,15 +262,32 @@ pub extern "C" fn nros_rmw_metadata_register() -> nros_rmw_cffi::NrosRmwRet {
     }
 }
 
-// Hosted self-registration: the probe is a host binary, so the `.init_array`
-// ctor fires before `main` and the backend is present without the probe naming
-// it. Expands to nothing on `target_os = "none"` — which is also the reason
-// this crate can never accidentally register itself into firmware.
-nros_rmw_cffi::nros_rmw_register_backend! {
-    fn() {
-        let _ = nros_rmw_metadata_register();
-    }
-}
+// issue 1530 — there is deliberately NO `nros_rmw_register_backend!` here.
+//
+// This crate carried one, on the argument that "the probe is a host binary, so
+// the `.init_array` ctor fires before `main` and the backend is present without
+// the probe naming it". Both halves of that were wrong in the same direction.
+//
+// It was never SUFFICIENT: being an optional dep is not enough to reach the
+// image, so rustc's staticlib DCE dropped the `#[no_mangle]` export and the
+// ctor could not fire for code that was not there. `rmw_backend.rs` says so at
+// its own explicit call ("the `.init_array` ctor cannot fire for code that is
+// not in the image", phase-313), and every consumer registers by hand for that
+// reason: `nros-cpp`'s `rmw_backend.rs`, `metadata_hooks.rs`, the census funnel
+// in `lib.rs`, and the generated entry TU (`entry.cpp.jinja`).
+//
+// And it was HARMFUL wherever it did reach an image. `metadata-mode` is on for
+// the NATIVE C++ umbrella by design (phase-463 W2 — the census binary IS the
+// boot binary), so the ctor put a SECOND name in the registry of every native
+// C and C++ image. Since issue 1050 a nameless open with more than one
+// registered backend is `Ambiguous`, i.e. a hard refusal — which is exactly
+// what the doc comment on `nros_rmw_metadata_register` above predicts, and it
+// is what took every native C example's `nros_support_init` to
+// `NROS_RET_INVALID_ARGUMENT` for eighteen days.
+//
+// The one consumer that wants this backend SELECTED registers it and then names
+// it (`census_select_backend` sets `$NROS_RMW=metadata`), which is the whole
+// ladder rather than a ctor racing it.
 
 #[cfg(test)]
 mod tests {
