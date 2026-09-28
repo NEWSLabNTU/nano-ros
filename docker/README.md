@@ -6,15 +6,15 @@ network configuration (no `sudo`, no `setcap`, no manual veth setup).
 ## Quick Start
 
 ```bash
-just docker-build                          # Build the image (once)
-just docker-test test-freertos             # FreeRTOS QEMU E2E tests
-just docker-test test                      # All non-privileged tests
-just docker-test test-threadx-linux        # ThreadX Linux (see note below)
+just docker build                            # Build the image (once)
+just docker test "test freertos"             # FreeRTOS QEMU E2E tests
+just docker test                             # All non-privileged tests
+just docker test "test threadx_linux"        # ThreadX Linux (see note below)
 ```
 
 ## How It Works
 
-The `docker-test` recipe runs a container with:
+The `docker test` recipe runs a container with:
 
 1. **Root phase** (entrypoint): creates veth pairs, bridges, TAP devices
 2. **User phase** (tests): drops to `HOST_UID:HOST_GID` via `capsh` with

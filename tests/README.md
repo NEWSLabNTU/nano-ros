@@ -33,17 +33,17 @@ cargo test -p nros-tests --tests -- --nocapture
 ### Test Groups
 
 ```bash
-just test-unit          # Unit tests + Miri (no external deps)
-just test-qemu          # QEMU bare-metal tests (needs qemu-system-arm)
-just test-qemu-esp32    # ESP32-C3 QEMU tests (needs qemu-system-riscv32 + espflash)
-just test-integration   # All Rust integration tests (needs zenohd)
-just test-zephyr        # Zephyr E2E tests (needs west + Zephyr workspace)
-just test-ros2          # ROS 2 interop tests (needs ROS 2 + rmw_zenoh_cpp)
-just test-c             # C API tests (needs cmake + zenohd)
-just test-docker-qemu   # QEMU networked tests in Docker (needs docker)
-just test-xrce          # XRCE-DDS integration tests (needs XRCE Agent)
-just test-xrce-ros2     # XRCE ↔ ROS 2 DDS interop (needs XRCE Agent + ROS 2 + rmw_fastrtps)
-just test-c-xrce        # C XRCE API tests (needs cmake + XRCE Agent)
+just test-unit           # Unit tests + Miri (no external deps)
+just test qemu           # QEMU bare-metal tests (needs qemu-system-arm)
+just test esp32          # ESP32-C3 QEMU tests (needs qemu-system-riscv32 + espflash)
+just test-integration    # All Rust integration tests (needs zenohd)
+just test zephyr         # Zephyr E2E tests (needs west + Zephyr workspace)
+just native test-ros2    # ROS 2 interop tests (needs ROS 2 + rmw_zenoh_cpp)
+just native test-c       # C API tests (needs cmake + zenohd)
+just docker test-qemu    # QEMU networked tests in Docker (needs docker)
+just test xrce           # XRCE-DDS integration tests (needs XRCE Agent)
+just xrce test-ros2      # XRCE ↔ ROS 2 DDS interop (needs XRCE Agent + ROS 2 + rmw_fastrtps)
+just xrce test-c         # C XRCE API tests (needs cmake + XRCE Agent)
 ```
 
 ## Directory Structure
@@ -112,7 +112,7 @@ Tests on QEMU ESP32-C3 emulator (Espressif fork):
 For networked tests: zenohd (no TAP/sudo needed — uses slirp user-mode networking)
 
 ```bash
-just test-qemu-esp32    # Run all ESP32 QEMU tests
+just test esp32    # Run all ESP32 QEMU tests
 ```
 
 ### nano2nano
@@ -196,8 +196,8 @@ Tests XRCE-DDS backend via Micro-XRCE-DDS Agent (14 tests):
 **Requirements:** Micro-XRCE-DDS Agent (`just setup xrce`), `socat` (for serial tests)
 
 ```bash
-just test-xrce          # Run all XRCE tests
-just test-xrce verbose  # Verbose output
+just test xrce          # Run all XRCE tests
+just test xrce verbose  # Verbose output
 ```
 
 ### xrce_ros2_interop
@@ -220,8 +220,8 @@ Fast-DDS can have version-dependent issues.
 **Requirements:** Micro-XRCE-DDS Agent, ROS 2 Humble, `rmw_fastrtps_cpp`, `example_interfaces`
 
 ```bash
-just test-xrce-ros2          # Run XRCE ↔ ROS 2 interop tests
-just test-xrce-ros2 verbose  # Verbose output
+just xrce test-ros2          # Run XRCE ↔ ROS 2 interop tests
+just xrce test-ros2 verbose  # Verbose output
 ```
 
 ### c_xrce_api
@@ -235,8 +235,8 @@ Tests C API with XRCE-DDS backend using CMake-built examples (5 tests):
 **Requirements:** `cmake`, Micro-XRCE-DDS Agent
 
 ```bash
-just test-c-xrce          # Run C XRCE tests
-just test-c-xrce verbose  # Verbose output
+just xrce test-c          # Run C XRCE tests
+just xrce test-c verbose  # Verbose output
 ```
 
 ### zephyr (shell-based)
@@ -251,7 +251,7 @@ Tests Zephyr native_sim integration:
 ./zephyr/setup.sh
 
 # Run tests (native_sim uses NSOS on host loopback — no TAP bridge required)
-just test-zephyr
+just test zephyr
 ```
 
 ### c_api (Rust-managed)
@@ -263,8 +263,8 @@ Tests C API integration using CMake-built examples:
 **Requirements:** `cmake`, `zenohd`, Rust toolchain
 
 ```bash
-just test-c             # Run all C tests
-just test-c verbose     # Verbose output
+just native test-c          # Run all C tests
+just native test-c verbose  # Verbose output
 ```
 
 ## Requirements
@@ -467,16 +467,16 @@ ros2-interop-tests:
 | Test Suite | Command | Requirements |
 |------------|---------|--------------|
 | Unit tests | `just test-unit` | None |
-| QEMU ARM tests | `just test-qemu` | qemu-system-arm |
-| QEMU ESP32 tests | `just test-qemu-esp32` | qemu-system-riscv32 + espflash + zenohd |
+| QEMU ARM tests | `just test qemu` | qemu-system-arm |
+| QEMU ESP32 tests | `just test esp32` | qemu-system-riscv32 + espflash + zenohd |
 | Integration tests | `just test-integration` | zenohd |
-| XRCE-DDS tests | `just test-xrce` | XRCE Agent + socat |
-| XRCE ↔ ROS 2 interop | `just test-xrce-ros2` | XRCE Agent + ROS 2 + rmw_fastrtps |
-| Zephyr tests | `just test-zephyr` | west + zenohd |
-| ROS 2 zenoh interop | `just test-ros2` | ROS 2 + rmw_zenoh |
-| C API tests (zenoh) | `just test-c` | cmake + zenohd |
-| C API tests (XRCE) | `just test-c-xrce` | cmake + XRCE Agent |
-| Docker QEMU | `just test-docker-qemu` | docker |
+| XRCE-DDS tests | `just test xrce` | XRCE Agent + socat |
+| XRCE ↔ ROS 2 interop | `just xrce test-ros2` | XRCE Agent + ROS 2 + rmw_fastrtps |
+| Zephyr tests | `just test zephyr` | west + zenohd |
+| ROS 2 zenoh interop | `just native test-ros2` | ROS 2 + rmw_zenoh |
+| C API tests (zenoh) | `just native test-c` | cmake + zenohd |
+| C API tests (XRCE) | `just xrce test-c` | cmake + XRCE Agent |
+| Docker QEMU | `just docker test-qemu` | docker |
 
 Tests that require ROS 2 or XRCE Agent will gracefully skip if prerequisites are not met.
 

@@ -33,7 +33,7 @@ zenoh-pico and zenohd must be the same version. Symptoms:
 by `-73` (`_Z_ERR_SESSION_CLOSED`).
 
 The router is the one ROS ships: `ros2 run rmw_zenoh_cpp rmw_zenohd`.
-nano-ros vendors none (RFC-0075), and the old `just build-zenohd` recipe
+nano-ros vendors none (RFC-0075), and the old `build-zenohd` recipe
 was retired with the vendored copy.
 
 ## Build Issues

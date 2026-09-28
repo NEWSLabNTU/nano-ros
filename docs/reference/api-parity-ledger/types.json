@@ -111,7 +111,7 @@
   "rust:RclReturnCode": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "the `rcl_ret_t` numeric mirror rclrs's error carries. Was a `gap` here, on the reading that we had the type (nros-core/src/error.rs) and merely failed to export it. Issue 0783 settled it the other way and DELETED it, because exporting it would have shipped a type a user can name and never receive: nothing in the tree produced an `RclReturnCode`, its only appearance was as the `code` field of `NanoRosError` (see `rust:RclrsError`), and its numeric space is not ours -- our codes are `NROS_RET_*`, 0 and -1..-16, an independent negative space defined in nros-c/src/error.rs and reached only across the C/C++ ABI. The Rust user API matches a flat enum and carries no numeric code at any layer, which is the divergence `rust:RclrsError` records. Constraint: `no_std` (a code table is not the cost -- the absent thread-local error state it indexes into is)."
+    "why": "the `rcl_ret_t` numeric mirror rclrs's error carries. Was a `gap` here, on the reading that we had the type (in nros-core's `error` module) and merely failed to export it. Issue 0783 settled it the other way and DELETED it, because exporting it would have shipped a type a user can name and never receive: nothing in the tree produced an `RclReturnCode`, its only appearance was as the `code` field of `NanoRosError` (see `rust:RclrsError`), and its numeric space is not ours -- our codes are `NROS_RET_*`, 0 and -1..-16, an independent negative space defined in nros-c/src/error.rs and reached only across the C/C++ ABI. The Rust user API matches a flat enum and carries no numeric code at any layer, which is the divergence `rust:RclrsError` records. Constraint: `no_std` (a code table is not the cost -- the absent thread-local error state it indexes into is)."
   },
   "rust:RclrsError": {
     "verdict": "divergence",
@@ -125,7 +125,7 @@
   "rust:TakeFailedAsNone": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "rclrs/src/error.rs, not its action model -- this row previously said `part of its action/goal model, see rust:AcceptedGoal`, which was a mis-file: the trait turns a take that failed into `Ok(None)`. It exists because rclrs's take path reports an empty queue as an ERROR; ours reports emptiness as `Ok(false)` / `None` (issue 0757's audit), so there is nothing to convert back. Same decision and same reason as `rust:RclrsErrorFilter`. We DID carry a copy -- phase-16 cloned both traits into nros-core/src/error.rs against `NanoRosError` -- and issue 0783 deleted it with the error type it was written for: no fallible call in the user API ever returned that error, so the adapter had no `Result` to adapt."
+    "why": "rclrs/src/error.rs, not its action model -- this row previously said `part of its action/goal model, see rust:AcceptedGoal`, which was a mis-file: the trait turns a take that failed into `Ok(None)`. It exists because rclrs's take path reports an empty queue as an ERROR; ours reports emptiness as `Ok(false)` / `None` (issue 0757's audit), so there is nothing to convert back. Same decision and same reason as `rust:RclrsErrorFilter`. We DID carry a copy -- phase-16 cloned both traits into nros-core's `error` module against `NanoRosError` -- and issue 0783 deleted it with the error type it was written for: no fallible call in the user API ever returned that error, so the adapter had no `Result` to adapt."
   },
   "rust:TakeFailedAsNone::take_failed_as_none": {
     "verdict": "declined",

@@ -261,7 +261,7 @@ impl Platform {
 
     /// `Ok(())` when this platform can run an e2e test here, else the reason.
     ///
-    /// Issue 0982 — this returned `bool` and printed the reason with
+    /// Before 5ae49d068f this returned `bool` and printed the reason with
     /// `eprintln!`. nextest runs these lanes with `--failure-output never`, so
     /// stderr is suppressed and the CI log said only `require_e2e check failed
     /// for freertos`: the gate, never the missing tool. Five nightly cells

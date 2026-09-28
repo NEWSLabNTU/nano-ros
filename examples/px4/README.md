@@ -65,7 +65,6 @@ retired in phase-115.K.4); the companion path speaks XRCE-DDS to the
 ```sh
 just px4 build-examples       # SITL with EXTERNAL_MODULES_LOCATION=packages/testing/nros-px4-register-check
 just px4 build-fixtures       # px4-stub / companion XRCE fixtures (px4_msgs bindings)
-just px4 test                 # unit: nros-rmw-uorb + nros-px4
 just px4 test-sitl            # E2E: px4_xrce_e2e (Track B). Track A is build-only — see issue 0356
 ```
 

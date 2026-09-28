@@ -332,4 +332,4 @@ scope (the lint excludes the vendored submodule).
 - [phase-230](../roadmap/phase-230-platform-layer-split.md) — work breakdown.
 
 [platform-c-abi.md]: ../../book/src/internals/platform-c-abi.md
-[issue 0006]: ../issues/0006-rtos-dual-heap.md
+[issue 0006]: ../issues/archived/0006-rtos-dual-heap.md

@@ -4283,7 +4283,7 @@ setup-launch-resolve:
     # and stayed red — the artifact SHAPE was verified (`readelf -d` shows no
     # `libpython`) while the capability was not.
     #
-    # `--features extension-module,abi3` — two flags doing two jobs (issue 0915).
+    # `--features extension-module,abi3` — two flags doing two jobs (54163702fe).
     # `extension-module` is the half that must NOT link libpython:
     # its `Py_*` symbols stay undefined so they bind to whichever interpreter the
     # loader `dlopen`s with RTLD_GLOBAL. `abi3` is what makes those undefined
@@ -5407,9 +5407,9 @@ book:
     # comment linking those fails the build (2026-08-21 book red).
     # The crate + feature set is DATA, in scripts/build/rustdoc-set.sh, because
     # `just check rustdoc-links` builds the same set on every pull request
-    # (issue 1110). A gate documenting a different set from the one that
+    # (phase-431 W6). A gate documenting a different set from the one that
     # deploys can be green while the deploy is red, which is the state that
-    # issue records.
+    # phase recorded.
     source scripts/build/rustdoc-set.sh
     mapfile -t _nros_doc_pkgs < <(nros_rustdoc_package_args)
     cargo doc --no-deps \
