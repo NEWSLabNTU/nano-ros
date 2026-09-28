@@ -41,7 +41,8 @@ There are two defects here, and they are separate bugs:
   the `nano-ros-workspace` west tree, and the #1395 worktree as the module. They
   were used read-only, and none was rebuilt.
 - **Router.** `rmw_zenohd`, resolved with `scripts/dev/zenohd.sh`
-  (`nros_zenohd_bin` gives `/opt/ros/humble/lib/rmw_zenoh_cpp/rmw_zenohd`) and
+  (`nros_zenohd_bin` — the path is whatever the resolver's three steps pick on
+  this host, so it is deliberately not written here; issues 0653/0654) and
   started with `nros_router_exec tcp/127.0.0.1:7447`.
 - **Run command.** `zephyr.exe --seed=1551 --stop_at=8`.
 - **What was re-run.** The run was repeated plain and under gdb. The plain
