@@ -12,7 +12,9 @@ arena and give ~25 verbs arena-side entry points"; two of its three premises do
 not survive measurement (that struct is a size mirror, the entity is already in
 the arena, and the verb count mixed the dispatch and polling tiers), so the item
 is refused as written and split into **W3b-i**, which landed with that record,
-and **W3b-ii**, which is specified and refused for now on verification grounds.
+and **W3b-ii**, which is specified and REFUSED — originally on verification
+grounds, and since 2026-09-28 on the shape of the change itself (two of the three
+original reasons expired when issue 1496 landed; three new ones replaced them).
 Read W3b before acting on W3's action rows.
 
 ## The decision this implements
@@ -495,49 +497,117 @@ Four things follow, and each is a simplification rather than a trade:
   every C++ action server, three move-bookkeeping lines deleted, no FFI change,
   no new `unsafe`.
 
-  ### W3b-ii — the handle. REFUSED for now, with the price stated.
+  ### W3b-ii — the handle. REFUSED, and the refusal is now about the SHAPE.
 
-  The remaining change is *"the arena's callback record is the only one"*: delete
-  `goal_cb`/`cancel_cb`/`accepted_cb`/`cb_ctx` from `CppActionServer` and have
-  `nros_cpp_action_server_set_callbacks` write through the arena handle into the
-  entry's existing four fields, which removes the middle hop. It is the right
-  change and it is specified enough to start. It is not taken here for reasons
-  that are about verification, not design:
+  *Re-examined 2026-09-28, after issue 1496 landed. Two of the three original
+  reasons have expired and the change is still refused — on grounds that are
+  about the design rather than about what a worktree can run. The original text
+  is kept below the new finding, because the reasons that expired are the useful
+  part of the record.*
 
-  1. **It needs the arena entry's callback fields to be MUTABLE after build.**
-     They are set once, at entry construction — `action.rs` says so about
+  The proposal: delete `goal_cb`/`cancel_cb`/`accepted_cb`/`cb_ctx` from
+  `CppActionServer` and have `nros_cpp_action_server_set_callbacks` write through
+  the arena handle into the entry's existing four fields, so *"the arena's
+  callback record is the only one"*.
+
+  **Reason 1 has expired.** The claim was that the arena entry's callback fields
+  cannot be mutated after build, so a type-erased setter needs an eighth function
+  pointer on `ActionServerRawHandle` or a `#[repr(C)]` prefix at offset 0. That
+  is false as of issue 1496: `Executor::detach_action_server_raw_sized` writes
+  all four — `goal_callback`, `cancel_callback`, `accepted_callback`, `context` —
+  after build, with no eighth pointer and no reorder. It reads `meta.offset` out
+  of `self.entries[entry_index]` and casts `arena_ptr.add(offset)` to the fully
+  parameterised entry type, taking the const parameters from the caller. A setter
+  would use the same route. **No layout change is needed, and none of the
+  three-file `NROS_CPP_ACTION_SERVER_STORAGE_SIZE` work priced below applies to
+  the arena side.**
+
+  **Reason 3 has expired too, locally.** The change *can* be verified now: the
+  main checkout has the submodules and six native C++ action fixtures, and
+  `roundtrip_xprocess_e2e`'s `native_cpp_action` cell exercises the dispatch
+  path. It remains true of a worktree with no submodules, which is what the
+  original text was about.
+
+  **And the change is still refused, for three reasons that were not in the
+  original analysis and are each measured.**
+
+  1. **The "middle hop" is not a hop — it is an ABI translation, and the C/C++
+     callback types cannot express what the arena's slot requires.** Measured at
+     the typedefs:
+
+     | | arena slot (Rust) | `nros_cpp_*_callback_t` |
+     | --- | --- | --- |
+     | goal return | `GoalResponse`, `#[repr(i8)]` | `int32_t` |
+     | cancel params | `(goal_id, status, context)` — 3 | `(goal_id[16], ctx)` — 2 |
+
+     A goal callback installed directly would have C++ return four bytes where
+     the core reads one, and a cancel callback would be called with an argument
+     its type does not declare. `goal_callback_trampoline` also **reframes the
+     payload** — it strips `[CDR header][UUID]` and rewrites a CDR header into a
+     512-byte `GOAL_USER_BUF`, because the wire framing and the user framing
+     differ. That is real work in the right place, not an indirection to delete.
+     Making the two ABIs meet would mean changing a PUBLIC callback typedef that
+     `component.h` declares for the C tier as well.
+
+  2. **The four fields are the C tier's storage, not a C++-only hop.** Three
+     in-tree C action servers call `nros_cpp_action_server_set_callbacks` with
+     their own function pointers and their own context
+     (`examples/workspaces/c/src/action_server_pkg/src/FibServer.c`,
+     `examples/workspaces/mixed/src/c_fib_server_pkg/src/FibServer.c`,
+     `examples/zephyr/c/action-server/src/FibonacciServer.c`). For the C++ tier
+     the pair happens to be derivable — `goal_cb` is always the fixed
+     `&goal_trampoline` and `cb_ctx` is always `this` — but for a C caller both
+     are genuinely per-object and nothing can recover them.
+
+  3. **So the change RELOCATES four words into the arena entry rather than
+     removing them** — which is exactly the accounting W4 refused for publishers
+     (*"would relocate 872 bytes, not remove them"*), and it is worse here,
+     because the arena has no removal path at all (issue 1496) while a
+     `CppActionServer` field costs nothing after its owner dies.
+
+  *What would make it viable, stated so the next reader does not re-derive it.*
+  One of: the core grows a second callback vocabulary whose ABI matches the C
+  typedefs (an `i32`-returning goal callback and a two-argument cancel callback),
+  and the reframing moves into the core so every raw consumer sees user framing;
+  or the C tier gives up `set_callbacks` in favour of naming its callbacks at
+  registration, which is a public API break for three shipped examples. Neither
+  is worth a hop whose cost is one pointer load on a path that already does a
+  512-byte reframe.
+
+  *The original refusal, kept for the record.* It read as follows, and reasons 1
+  and 3 are the ones that expired:
+
+  1. It needs the arena entry's callback fields to be MUTABLE after build. They
+     are set once, at entry construction — `action.rs` said so about
      `accepted_callback`: *"The arena captures this pointer when the entry is
      built, so it cannot be added later."* The entry is generic over four const
      buffer sizes, so a type-erased setter needs either an eighth function
      pointer on `ActionServerRawHandle` or a `#[repr(C)]` prefix struct
-     (`{goal, cancel, accepted, context}`) moved to offset 0 of the entry so a
-     `*mut u8` cast is sound for every instantiation. The prefix is the cheaper
-     of the two — it costs no words — and is the recommended shape.
-  2. **It moves `NROS_CPP_ACTION_SERVER_STORAGE_SIZE`,** which is a THREE-file
+     (`{goal, cancel, accepted, context}`) moved to offset 0 so a `*mut u8` cast
+     is sound for every instantiation. **(EXPIRED — issue 1496 does it with
+     neither.)**
+  2. It moves `NROS_CPP_ACTION_SERVER_STORAGE_SIZE`, which is a THREE-file
      change, one of which is a committed snapshot: the layout mirror in
      `sizes.rs`, the hardcoded fallback in `nros-build-helpers/src/cpp.rs`, and
      `packages/api/nros-cpp/include/nros/nros_cpp_config_generated_nuttx.h`
      (CLAUDE.md's NuttX pitfall, and issue 0954). The `const _: () = assert!`
      pair in `action.rs` catches a mismatch, so this is tedious rather than
-     risky.
-  3. **It cannot be verified where it was written.** The change is on the
+     risky. **(Still true of the C++ side, and now moot: the change is refused.)**
+  3. It cannot be verified where it was written. The change is on the
      goal/cancel/accepted DISPATCH path — the one thing a `-fsyntax-only` probe
-     and a `cargo check` cannot exercise. There are five C++ action-server images
-     and one action-client image in the tree, plus four `component.hpp` sites
-     calling `nros_cpp_action_server_set_callbacks` by name, and a worktree with
-     no submodules can run none of them. Landing an unrunnable rewrite of the
-     dispatch path is how a green `just check` comes to mean less than it says.
+     and a `cargo check` cannot exercise. **(EXPIRED in the main checkout; still
+     true of a worktree with no submodules.)**
 
-  *And what it would buy, priced honestly.* The full handle form — C++ object
-  down to `{executor, handle_id}` — needs 9 typed callback words (72 bytes) and
-  256 bytes of name RELOCATED into the arena, against 488 removed from the C++
-  object: a net removal of about 160 bytes per action server, plus the hop. That
-  is better than W4's publisher accounting (*"would relocate 872 bytes, not
-  remove them"*) and far short of W2's subscription (an 888-byte object plus a
-  heap cell, removed). The 256 bytes are the hard part: `get_action_name()`
-  returns the name the CALLER passed, and the arena holds the name after
-  `resolve_entity_name`, so they are different strings and a handle cannot answer
-  with the one the accessor promises.
+  *And what it would have bought, priced honestly — an estimate that was itself
+  too generous.* The full handle form was priced at 9 typed callback words (72
+  bytes) and 256 bytes of name RELOCATED into the arena against 488 removed from
+  the C++ object: a net removal of about 160 bytes per action server, plus the
+  hop. That accounting assumed the arena could be the callbacks' ONLY record,
+  which reason 1 above shows it cannot be while the C tier exists — so the four
+  words are relocated too and the net is smaller still. The 256 bytes were
+  already the hard part: `get_action_name()` returns the name the CALLER passed
+  and the arena holds the name after `resolve_entity_name`, so they are different
+  strings and a handle cannot answer with the one the accessor promises.
 
   *Does W4's no-removal-path argument apply here? NO — and the reason is not
   reassuring.* W4 refused an arena slot for publishers because *"an arena
@@ -553,7 +623,10 @@ Four things follow, and each is a simplification rather than a trade:
   lifetime worse, because an action is already there and its destructor already
   does nothing. Filed as **issue 1496** so W4's argument stays usable: it is an
   argument about what a MOVE would create, and it says nothing either way about
-  an entity that was moved four phases ago.
+  an entity that was moved four phases ago. **Issue 1496 has since made the
+  destructor detach the entry's callbacks and context, so a goal arriving after
+  destruction is rejected instead of reading freed C++ storage; the arena still
+  has no removal path.**
 
 * **W4 [cpp] — publishers. DECIDED: `Owned<T>` stays, and an arena slot is
   refused.** No dispatch, so no arena slot exists today. `nros::Owned<T>` covers
