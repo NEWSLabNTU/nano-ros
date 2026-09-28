@@ -68,6 +68,9 @@ POOL_SIZES=(1 4 8)
 # NROS_ZEPHYR_STACK_SIZE defaults to it.
 STACK_BYTES=262144
 
+# CONFIG_NUM_PREEMPT_PRIORITIES is Zephyr KERNEL Kconfig, defined in every
+# real image (Zephyr's default 15 here); the issue-1537 boot report converts a
+# read-back POSIX priority to k_thread units with it.
 # CONFIG_PTHREAD is the gate on the whole thread-pool block. Everything left
 # unset here -- CONFIG_NET_SOCKETS, CONFIG_SMP, CONFIG_SCHED_CPU_MASK,
 # CONFIG_SCHED_DEADLINE, CONFIG_TRACING_CTF, CONFIG_NROS_SNTP_EPOCH -- removes
@@ -77,6 +80,7 @@ common_cflags() {
     printf '%s\n' \
         -std=c11 -Wall -Wextra -D_GNU_SOURCE \
         -DCONFIG_PTHREAD \
+        -DCONFIG_NUM_PREEMPT_PRIORITIES=15 \
         "-DCONFIG_MAIN_STACK_SIZE=${STACK_BYTES}" \
         "-DNROS_ZEPHYR_STACK_SIZE=${STACK_BYTES}" \
         "-DNROS_ZEPHYR_MAX_THREADS=${pool}" \

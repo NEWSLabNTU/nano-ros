@@ -439,6 +439,70 @@ impl PriorityPlan {
     }
 }
 
+/// What ONE Zephyr image's `.config` says about the plan its derived tiers
+/// allocate out of (issues 1508, 1537).
+#[derive(Debug)]
+pub enum ImagePlan {
+    /// The image's own plan: allocate out of it.
+    Resolved(PriorityPlan),
+    /// The image applies NO transport priority (`CONFIG_POSIX_PRIORITY_SCHEDULING`
+    /// or `CONFIG_PREEMPT_ENABLED` off), so its transport tasks inherit their
+    /// creator and there is no band to allocate below (RFC-0079 section 4.1
+    /// rule 2, "unapplied is not a band"). The caller keeps the defaults
+    /// projection - the allocation every such image has always had - and MUST
+    /// print the note, so the image is not read as having been checked.
+    Unapplied(String),
+}
+
+/// Resolve the plan of the Zephyr image whose `.config` text this is, given
+/// the transport bands that image states (read by the caller - RFC-0071 D2:
+/// `nros_entry_lower::zephyr_image::transport_bands` names the symbols).
+///
+/// The ONE classification both derivations that hold a `.config` share: the
+/// CMake roads' `nros codegen entry` / `codegen-system` (issue 1508) and the
+/// `nros::main!` proc-macro (issue 1537). `origin` names the file in every
+/// message. `Err` is a file that is not a Zephyr `.config` at all.
+pub fn zephyr_image_plan(
+    text: &str,
+    transport_bands: &[i64],
+    origin: &str,
+) -> Result<ImagePlan, String> {
+    match PriorityPlan::from_zephyr_dotconfig(text, transport_bands) {
+        Ok(mut plan) => {
+            plan.source = format!("the image's own .config ({origin}; RFC-0079 section 4.1)");
+            Ok(ImagePlan::Resolved(plan))
+        }
+        Err(PriorityPlanError::Unapplied) => Ok(ImagePlan::Unapplied(format!(
+            "{origin}: CONFIG_POSIX_PRIORITY_SCHEDULING and/or CONFIG_PREEMPT_ENABLED \
+             is off, so this image applies no transport priority and has no band to \
+             allocate below; the derived priorities keep the Kconfig DEFAULTS \
+             projection (pool.app [5, 14]) and are NOT judged against this image \
+             (issue 1508)"
+        ))),
+        Err(e @ PriorityPlanError::MissingKey { .. }) => Err(format!(
+            "{origin}: {e}. The derived tier priorities of a Zephyr image are \
+             allocated out of the pool its own Kconfig resolves (RFC-0079 section \
+             4.1, issue 1508), so this must be the image's `zephyr/.config`"
+        )),
+    }
+}
+
+impl PriorityPlan {
+    /// One line naming the plan a derivation allocated out of - the reserved
+    /// transport band and `pool.app` - so a build log says which image's
+    /// numbers a table came from (issues 1508, 1537).
+    pub fn describe_allocation(&self) -> String {
+        format!(
+            "transport {}, pool.app [{}, {}]",
+            self.reserved
+                .get("transport")
+                .map_or_else(|| "none".to_string(), |b| format!("[{}, {}]", b.lo, b.hi)),
+            self.app.lo,
+            self.app.hi,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

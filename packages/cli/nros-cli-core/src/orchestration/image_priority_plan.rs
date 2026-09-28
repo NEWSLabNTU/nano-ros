@@ -17,96 +17,45 @@
 //! CONFIGURE time inside the Zephyr build, after Kconfig has written the
 //! `.config` - `nano_ros_add_executable`'s `nros codegen entry` and the Zephyr
 //! module's `nros codegen-system` - so both are handed it (`--dotconfig`) and
-//! allocate out of the image's own plan.
+//! allocate out of the image's own plan. The third road, the `nros::main!`
+//! proc-macro, reads the same file through `$DOTCONFIG` (issue 1537).
 //!
-//! # Where the symbol names live
+//! # Where the pieces live
 //!
-//! `nros-orchestration-ir` is a core crate and receives the transport's bands
-//! as NUMBERS (RFC-0071 D2). This crate is the reader that turns an image's
-//! `.config` into those numbers, so the symbols are named here - the same two
-//! `scripts/lib/priority_plan.py:resolve_zephyr_plan` reads. The board
-//! descriptor (`packages/boards/zephyr/nros-board.toml`,
+//! This module is now the CLI's thin wrapper (eyre + the operator line). The
+//! pieces the macro needs too have ONE spelling each, in crates it can afford:
+//!
+//! * the transport-band SYMBOLS and their reader -
+//!   `nros_entry_lower::zephyr_image` (RFC-0071 D2 keeps them out of the core
+//!   crate; issue 0083 keeps the CLI out of the macro);
+//! * the classification (resolved / unapplied / not a `.config`) -
+//!   `nros_orchestration_ir::priority_plan::zephyr_image_plan`.
+//!
+//! The board descriptor (`packages/boards/zephyr/nros-board.toml`,
 //! `[board.priority_plan] inputs`) is the statement of what the plan depends
-//! on, and `the_band_symbols_are_the_descriptors_inputs` below holds this list
-//! to it, so a symbol added there cannot be silently missing here.
+//! on, and `the_band_symbols_are_the_descriptors_inputs` below holds the
+//! symbol list to it, so a symbol added there cannot be silently missing.
 
 use std::path::Path;
 
 use eyre::{Result, WrapErr, eyre};
-use nros_orchestration_ir::priority_plan::{
-    PriorityPlan, PriorityPlanError, ZEPHYR_TRANSPORT_BAND_DEFAULT,
+pub use nros_entry_lower::zephyr_image::{
+    ZEPHYR_KERNEL_PLAN_SYMBOLS, ZEPHYR_TRANSPORT_BAND_SYMBOLS,
 };
-
-/// The Kconfig symbols carrying the normalised band (0..255) each transport
-/// task is created at. An image that sets none of them runs the Kconfig
-/// default, [`ZEPHYR_TRANSPORT_BAND_DEFAULT`], which
-/// `check-tier-priority-plan-image.py --selftest` checks against
-/// `zephyr/Kconfig`.
-pub const ZEPHYR_TRANSPORT_BAND_SYMBOLS: [&str; 2] = [
-    "CONFIG_NROS_ZENOH_READ_PRIORITY",
-    "CONFIG_NROS_ZENOH_LEASE_PRIORITY",
-];
-
-/// The kernel half of the plan's inputs: Zephyr's own symbols, read by
-/// [`PriorityPlan::from_zephyr_dotconfig`] itself.
-pub const ZEPHYR_KERNEL_PLAN_SYMBOLS: [&str; 4] = [
-    "CONFIG_NUM_PREEMPT_PRIORITIES",
-    "CONFIG_NUM_COOP_PRIORITIES",
-    "CONFIG_POSIX_PRIORITY_SCHEDULING",
-    "CONFIG_PREEMPT_ENABLED",
-];
-
-/// What a `.config` says about the image's plan.
-#[derive(Debug)]
-pub enum ImagePlan {
-    /// The image's own plan: allocate out of it.
-    Resolved(PriorityPlan),
-    /// The image applies NO transport priority (`CONFIG_POSIX_PRIORITY_SCHEDULING`
-    /// or `CONFIG_PREEMPT_ENABLED` off), so its transport tasks inherit their
-    /// creator and there is no band to allocate below (RFC-0079 §4.1 rule 2,
-    /// "unapplied is not a band"). The caller keeps the defaults projection -
-    /// the allocation every such image has always had - and MUST print the
-    /// note, so the image is not read as having been checked.
-    Unapplied(String),
-}
+pub use nros_orchestration_ir::priority_plan::ImagePlan;
+use nros_orchestration_ir::priority_plan::{PriorityPlan, ZEPHYR_TRANSPORT_BAND_DEFAULT};
 
 /// The transport bands an image's `.config` states, in
 /// [`ZEPHYR_TRANSPORT_BAND_SYMBOLS`] order; an absent symbol is the Kconfig
 /// default, which is what the image runs with.
-pub fn transport_bands(dotconfig: &str) -> Vec<i64> {
-    ZEPHYR_TRANSPORT_BAND_SYMBOLS
-        .iter()
-        .map(|sym| {
-            dotconfig
-                .lines()
-                .filter_map(|l| l.trim().strip_prefix(sym)?.strip_prefix('='))
-                .filter_map(|v| v.trim().parse::<i64>().ok())
-                .next_back()
-                .unwrap_or(ZEPHYR_TRANSPORT_BAND_DEFAULT)
-        })
-        .collect()
+pub fn transport_bands(dotconfig: &str) -> [i64; 2] {
+    nros_entry_lower::zephyr_image::transport_bands(dotconfig, ZEPHYR_TRANSPORT_BAND_DEFAULT)
 }
 
 /// Resolve the plan of the image whose `.config` text this is.
 pub fn zephyr_image_plan_from_text(text: &str, origin: &str) -> Result<ImagePlan> {
-    match PriorityPlan::from_zephyr_dotconfig(text, &transport_bands(text)) {
-        Ok(mut plan) => {
-            plan.source = format!("the image's own .config ({origin}; RFC-0079 section 4.1)");
-            Ok(ImagePlan::Resolved(plan))
-        }
-        Err(PriorityPlanError::Unapplied) => Ok(ImagePlan::Unapplied(format!(
-            "{origin}: CONFIG_POSIX_PRIORITY_SCHEDULING and/or CONFIG_PREEMPT_ENABLED \
-             is off, so this image applies no transport priority and has no band to \
-             allocate below; the derived priorities keep the Kconfig DEFAULTS \
-             projection (pool.app [5, 14]) and are NOT judged against this image \
-             (issue 1508)"
-        ))),
-        Err(e @ PriorityPlanError::MissingKey { .. }) => Err(eyre!(
-            "--dotconfig {origin}: {e}. The derived tier priorities of a Zephyr image \
-             are allocated out of the pool its own Kconfig resolves (RFC-0079 section \
-             4.1, issue 1508), so this must be the image's `zephyr/.config`"
-        )),
-    }
+    nros_orchestration_ir::priority_plan::zephyr_image_plan(text, &transport_bands(text), origin)
+        .map_err(|e| eyre!("--dotconfig {e}"))
 }
 
 /// [`zephyr_image_plan_from_text`] over a file.
@@ -141,13 +90,8 @@ pub fn plan_for_image(
     match zephyr_image_plan(path)? {
         ImagePlan::Resolved(plan) => {
             eprintln!(
-                "{who}: derived tier priorities allocate out of this image's plan - \
-                 transport {}, pool.app [{}, {}] ({})",
-                plan.reserved
-                    .get("transport")
-                    .map_or_else(|| "none".to_string(), |b| format!("[{}, {}]", b.lo, b.hi)),
-                plan.app.lo,
-                plan.app.hi,
+                "{who}: derived tier priorities allocate out of this image's plan - {} ({})",
+                plan.describe_allocation(),
                 path.display()
             );
             Ok(Some(plan))

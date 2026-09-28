@@ -412,6 +412,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // can emit `include_bytes!` rebuild stamps below. Always
     // canonicalised so the paths survive cargo's relocation tricks.
     let mut tracked: Vec<PathBuf> = Vec::new();
+    // Issue 1537 - set when the expansion read `$DOTCONFIG`, so the emitted
+    // code names it through `option_env!` and rustc records it as an
+    // `env-dep` of this crate: cargo then rebuilds when the variable CHANGES
+    // (a different image, or none), not only when the file it names does.
+    let mut track_dotconfig_env = false;
 
     // phase-445 W5 — the bringup this entry boots. A workspace entry states no
     // deployment of its own; the bringup's `[image.<id>]` that claims it does
@@ -1057,11 +1062,35 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // pure-cargo Rust entry gets an identical `derived-<node>` table.
             // A tier-less, contract-less model derives nothing and stays
             // tier-less (byte-identical to before).
-            let derived = nros_orchestration_ir::derive::derive_tiers_from_contracts(
+            let mut derived = nros_orchestration_ir::derive::derive_tiers_from_contracts(
                 &model,
                 &rtos,
                 &node_groups,
             );
+            // Issue 1537 - `derive_tiers_from_contracts` allocates out of the
+            // tier key's projection, which for Zephyr is the Kconfig DEFAULTS
+            // (pool.app [5, 14]). An image with a different band gets a table
+            // above or inside its own transport (issue 0623's inversion), so a
+            // Zephyr expansion that can see the image's `.config` re-allocates
+            // out of THAT image's plan - the same classification the CMake
+            // roads use (issue 1508). Only when something was derived: an
+            // image that derives nothing must not start failing on its
+            // `.config`.
+            if !derived.tiers.is_empty() {
+                if let Some(plan) = zephyr_image_plan_from_env(
+                    &rtos,
+                    model_lit.span(),
+                    &mut tracked,
+                    &mut track_dotconfig_env,
+                )? {
+                    derived = nros_orchestration_ir::derive::derive_tiers_in_plan(
+                        &model,
+                        &rtos,
+                        &node_groups,
+                        &plan,
+                    );
+                }
+            }
             if !derived.tiers.is_empty() {
                 // Fail-loud: surface every recorded weakening at expansion time
                 // (build stderr) — the macro has no runtime channel for these.
@@ -1216,21 +1245,29 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     tracked.dedup();
 
     // --- Emit ---
-    let tracked_consts = tracked.iter().filter_map(|p| {
-        // Skip non-existent paths. The macro may have stuffed a
-        // path that the filesystem doesn't surface (e.g. a missing
-        // `package.xml` when build_pkg_index synthesised a dir).
-        // `include_bytes!` on a missing path is a hard compile
-        // error, so be defensive.
-        if !p.exists() {
-            return None;
-        }
-        let s = p.to_string_lossy().into_owned();
-        let lit = LitStr::new(&s, Span::call_site());
-        Some(quote! {
-            const _: &[u8] = ::core::include_bytes!(#lit);
+    let mut tracked_consts: Vec<proc_macro2::TokenStream> = tracked
+        .iter()
+        .filter_map(|p| {
+            // Skip non-existent paths. The macro may have stuffed a
+            // path that the filesystem doesn't surface (e.g. a missing
+            // `package.xml` when build_pkg_index synthesised a dir).
+            // `include_bytes!` on a missing path is a hard compile
+            // error, so be defensive.
+            if !p.exists() {
+                return None;
+            }
+            let s = p.to_string_lossy().into_owned();
+            let lit = LitStr::new(&s, Span::call_site());
+            Some(quote! {
+                const _: &[u8] = ::core::include_bytes!(#lit);
+            })
         })
-    });
+        .collect();
+    if track_dotconfig_env {
+        tracked_consts.push(quote! {
+            const _: ::core::option::Option<&str> = ::core::option_env!("DOTCONFIG");
+        });
+    }
 
     // phase-432 W2.4 — one `LoweredNode` per register call, whatever arm
     // produced the idents. The self-bringup arm has no launch facts, so its
@@ -3241,6 +3278,231 @@ fn read_register_types(bridge_toml: &Path) -> Vec<(String, String)> {
 // =============================================================================
 // Phase 228.G — per-tier resolution inputs (RFC-0032 §6)
 // =============================================================================
+
+/// Issue 1537 - the priority plan of the Zephyr image this expansion is FOR,
+/// read from the `.config` `$DOTCONFIG` names.
+///
+/// `Ok(None)` keeps the tier key's projection: not a Zephyr expansion, no
+/// `$DOTCONFIG` (a host `cargo check` of a Zephyr leaf), or an image that
+/// applies no transport priority. The last two print a note saying the table
+/// is NOT judged against an image, because "derived from the defaults" and
+/// "derived from this image" must not read alike.
+///
+/// **Reachability, measured** (native_sim/native/64, Zephyr 3.7):
+/// zephyr-lang-rust's `rust_cargo_application` runs cargo under
+/// `cmake -E env ... DOTCONFIG=<build>/zephyr/.config` AND writes the same
+/// `DOTCONFIG` into the leaf's generated `.cargo/config.toml` `[env]`, and
+/// cargo hands its environment to rustc - so the variable IS visible to a
+/// proc-macro at expansion. This is the one Kconfig value that does reach the
+/// Rust lane (issue 0460 is about the knobs cmake exports with `set(ENV)`).
+///
+/// **Freshness.** A proc-macro has no stable `tracked_path`, so the file goes
+/// on `tracked`, which the expansion emits as `include_bytes!` - rustc then
+/// lists the `.config` in the crate's dep-info and cargo re-expands after a
+/// Kconfig edit. `track_env` makes the expansion name `option_env!("DOTCONFIG")`
+/// so a changed or removed VARIABLE rebuilds too.
+///
+/// The transport-band symbols are read by `nros_entry_lower::zephyr_image`
+/// (RFC-0071 D2 keeps them out of this core crate) and classified by
+/// `nros_orchestration_ir::priority_plan::zephyr_image_plan` - the same two
+/// calls `nros codegen entry --dotconfig` makes, so the roads cannot drift.
+fn zephyr_image_plan_from_env(
+    rtos: &str,
+    span: Span,
+    tracked: &mut Vec<PathBuf>,
+    track_env: &mut bool,
+) -> syn::Result<Option<nros_orchestration_ir::priority_plan::PriorityPlan>> {
+    zephyr_image_plan_for(
+        rtos,
+        std::env::var_os("DOTCONFIG"),
+        span,
+        tracked,
+        track_env,
+    )
+}
+
+/// [`zephyr_image_plan_from_env`] with the variable's value passed in, so the
+/// tests need not mutate the process environment.
+fn zephyr_image_plan_for(
+    rtos: &str,
+    dotconfig: Option<std::ffi::OsString>,
+    span: Span,
+    tracked: &mut Vec<PathBuf>,
+    track_env: &mut bool,
+) -> syn::Result<Option<nros_orchestration_ir::priority_plan::PriorityPlan>> {
+    use nros_orchestration_ir::priority_plan::{
+        ImagePlan, ZEPHYR_TRANSPORT_BAND_DEFAULT, zephyr_image_plan,
+    };
+    if rtos != "zephyr" {
+        return Ok(None);
+    }
+    *track_env = true;
+    let Some(path) = dotconfig.filter(|p| !p.is_empty()) else {
+        eprintln!(
+            "nros::main!: note - no $DOTCONFIG, so the derived Zephyr tier priorities \
+             keep the Kconfig DEFAULTS projection (pool.app [5, 14]) and are NOT judged \
+             against any image; a west build sets it (issue 1537)"
+        );
+        return Ok(None);
+    };
+    let path = PathBuf::from(path);
+    let text = std::fs::read_to_string(&path).map_err(|e| {
+        syn::Error::new(
+            span,
+            format!(
+                "nros::main!: $DOTCONFIG names {} and it could not be read ({e}); the \
+                 derived Zephyr tier priorities are allocated out of that image's own \
+                 plan (issue 1537)",
+                path.display()
+            ),
+        )
+    })?;
+    tracked.push(path.clone());
+    let origin = path.display().to_string();
+    let bands =
+        nros_entry_lower::zephyr_image::transport_bands(&text, ZEPHYR_TRANSPORT_BAND_DEFAULT);
+    match zephyr_image_plan(&text, &bands, &origin)
+        .map_err(|e| syn::Error::new(span, format!("nros::main!: $DOTCONFIG {e}")))?
+    {
+        ImagePlan::Resolved(plan) => {
+            eprintln!(
+                "nros::main!: derived tier priorities allocate out of this image's plan - \
+                 {} ({origin})",
+                plan.describe_allocation()
+            );
+            Ok(Some(plan))
+        }
+        ImagePlan::Unapplied(note) => {
+            eprintln!("nros::main!: note - {note}");
+            Ok(None)
+        }
+    }
+}
+
+#[cfg(test)]
+mod image_plan_tests {
+    use super::*;
+    use nros_orchestration_ir::priority_plan::{Band, PriorityPlan};
+
+    const GATES: &str = "CONFIG_NUM_COOP_PRIORITIES=16\n\
+                         CONFIG_POSIX_PRIORITY_SCHEDULING=y\n\
+                         CONFIG_PREEMPT_ENABLED=y\n";
+
+    fn dotconfig(name: &str, body: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "nros_macros_image_plan_{name}_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join(".config");
+        std::fs::write(&p, body).unwrap();
+        p
+    }
+
+    fn plan_for(
+        rtos: &str,
+        cfg: Option<&Path>,
+    ) -> (syn::Result<Option<PriorityPlan>>, Vec<PathBuf>, bool) {
+        let mut tracked = Vec::new();
+        let mut env = false;
+        let r = zephyr_image_plan_for(
+            rtos,
+            cfg.map(|p| p.as_os_str().to_owned()),
+            Span::call_site(),
+            &mut tracked,
+            &mut env,
+        );
+        (r, tracked, env)
+    }
+
+    /// Issue 1537 - the two image shapes whose defaults-projection table sits
+    /// above / inside the transport. The expansion now allocates out of the
+    /// image's own plan, and the `.config` is TRACKED so an edit re-expands.
+    #[test]
+    fn a_zephyr_expansion_allocates_out_of_the_images_own_plan() {
+        let projection = PriorityPlan::for_target("zephyr");
+        assert_eq!(projection.app, Band::new(5, 14), "the defaults projection");
+        for (name, body, transport, app) in [
+            (
+                "np32",
+                format!("CONFIG_NUM_PREEMPT_PRIORITIES=32\n{GATES}"),
+                Band::new(7, 7),
+                Band::new(8, 31),
+            ),
+            (
+                "read100",
+                format!(
+                    "CONFIG_NUM_PREEMPT_PRIORITIES=15\n{GATES}\
+                     CONFIG_NROS_ZENOH_READ_PRIORITY=100\n"
+                ),
+                Band::new(4, 9),
+                Band::new(10, 14),
+            ),
+        ] {
+            let p = dotconfig(name, &body);
+            let (r, tracked, env) = plan_for("zephyr", Some(&p));
+            let plan = r.expect("resolves").expect("a zephyr image plan");
+            // The projection's most urgent address is inside/above this
+            // image's transport: the defect the re-allocation removes.
+            assert!(
+                projection.app.lo <= transport.hi,
+                "{name} no longer reproduces"
+            );
+            assert_eq!(plan.reserved["transport"], transport, "{name}");
+            assert_eq!(plan.app, app, "{name}");
+            assert_eq!(
+                tracked,
+                vec![p.clone()],
+                "{name}: the .config must be tracked"
+            );
+            assert!(env, "{name}: $DOTCONFIG must be tracked as an env-dep");
+        }
+    }
+
+    /// The negative direction: a default-band image resolves the projection's
+    /// plan exactly, so its derived table is unchanged (the derivation over
+    /// equal plans is pinned by `derive::the_default_image_derives_what_the_projection_does`).
+    #[test]
+    fn a_default_band_image_resolves_exactly_the_projection() {
+        let p = dotconfig(
+            "default",
+            &format!("CONFIG_NUM_PREEMPT_PRIORITIES=15\n{GATES}"),
+        );
+        let plan = plan_for("zephyr", Some(&p)).0.unwrap().unwrap();
+        let projection = PriorityPlan::for_target("zephyr");
+        assert_eq!(plan.reserved, projection.reserved);
+        assert_eq!(plan.app, projection.app);
+        assert_eq!(plan.range, projection.range);
+        assert_eq!(plan.direction, projection.direction);
+    }
+
+    #[test]
+    fn no_dotconfig_or_not_zephyr_keeps_the_projection() {
+        let (r, tracked, env) = plan_for("zephyr", None);
+        assert!(r.unwrap().is_none());
+        assert!(tracked.is_empty());
+        assert!(env, "an UNSET $DOTCONFIG must still be an env-dep");
+        let p = dotconfig("freertos", "CONFIG_NUM_PREEMPT_PRIORITIES=32\n");
+        let (r, tracked, env) = plan_for("freertos", Some(&p));
+        assert!(r.unwrap().is_none());
+        assert!(tracked.is_empty() && !env);
+    }
+
+    #[test]
+    fn an_unapplied_image_keeps_the_projection_and_a_bad_file_is_refused() {
+        let p = dotconfig("unapplied", "CONFIG_NUM_PREEMPT_PRIORITIES=15\n");
+        assert!(plan_for("zephyr", Some(&p)).0.unwrap().is_none());
+        let p = dotconfig("bogus", "FOO=1\n");
+        let err = plan_for("zephyr", Some(&p)).0.unwrap_err().to_string();
+        assert!(err.contains("CONFIG_NUM_PREEMPT_PRIORITIES"), "{err}");
+        let missing = p.with_file_name("absent");
+        let err = plan_for("zephyr", Some(&missing))
+            .0
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("could not be read"), "{err}");
+    }
+}
 
 /// The RTOS key `resolve_tiers` expects, which picks the
 /// `[tiers.<name>.<rtos>]` sub-table, for the board this entry resolved.

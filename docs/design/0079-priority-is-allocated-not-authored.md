@@ -297,8 +297,15 @@ so they take `--dotconfig ${DOTCONFIG}` and allocate from the image's own plan
 (`derive_tiers_in_plan`): 8 / 9 and 10 / 11 on those two images, measured on
 built native_sim images, and 5 / 6 unchanged on the default one. An image whose
 Kconfig applies no transport priority (rule 2 of §4.1) keeps the projection and
-is reported as not judged. The `nros::main!` road cannot yet read the transport
-bands and still uses the projection — issue 1537.
+is reported as not judged. The `nros::main!` road reads the same `.config`
+through `$DOTCONFIG`, which zephyr-lang-rust puts in cargo's (and so rustc's)
+environment, with the same two calls (issue 1537): 8 / 9, 10 / 11 and 5 / 6 on
+built Rust images, and a Kconfig edit re-expands incrementally because the macro
+tracks the file. Whatever road baked a table, a Zephyr tier image now also says
+so at BOOT when a tier meets or outranks the transport priorities the kernel
+actually gave it (`nros_zephyr_report_tier_vs_transport`, the twin of
+FreeRTOS's `report_tiers_above_transport`) — the one check that sees authored
+pins on the image.
 
 ### 6. Crossing into a reserved band requires naming it
 

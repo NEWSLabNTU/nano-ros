@@ -18,6 +18,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/random/random.h>
+#include <zephyr/sys/printk.h>
 
 /* ── Clock / sleep / random (no POSIX dependency) ───────────────────── */
 
@@ -361,6 +362,106 @@ ssize_t nros_zephyr_sendto(int fd, const void* buf, size_t len, int flags,
 
 #endif /* CONFIG_NET_SOCKETS */
 
+/* ── issue 1537 — boot report: tiers that meet the transport band ──────
+ *
+ * The Zephyr twin of FreeRTOS's `report_tiers_above_transport` (issue 0623).
+ * A tier more urgent than the transport that feeds it starves the RX drain;
+ * FreeRTOS says so at boot, Zephyr said nothing, so an inversion baked by any
+ * road (a derived table from the Kconfig DEFAULTS projection, an authored pin
+ * against the wrong image) was silent on the one artifact that runs.
+ *
+ * FreeRTOS compares against its CONFIG values. Here the transport side is
+ * READ BACK from the kernel instead: every task the platform creates at an
+ * explicit priority goes through `nros_zephyr_task_create_prio` below (the
+ * zenoh read and lease tasks — the band RFC-0079 calls `reserved.transport`),
+ * which records the priority the thread ACTUALLY got via
+ * `pthread_getschedparam`. So a refused policy, a clamp, or a mapping this
+ * file and `priority_plan.rs` both got wrong is reported as what the image
+ * runs, not as what Kconfig asked for. The one formula left is POSIX's own
+ * `POSIX_TO_ZEPHYR_PRIORITY` (Zephyr `lib/posix/options/pthread.c`), which
+ * the kernel applies to the value it returns.
+ *
+ * ONE implementation serving both tier arms — `entry_tiers.rs` (Rust) and
+ * `zephyr_run_tiers.c` (C/C++) call it per tier after their session is open
+ * and before any tier spawns — for the reason `nros_zephyr_epoch_acquire_
+ * configured` gives: two copies drift.
+ *
+ * A REPORT, not an error, as on FreeRTOS: a tier that must preempt transport
+ * is a legitimate design; choosing it by accident is not. And it says what it
+ * could NOT examine: an image whose transport runs at no explicit priority
+ * (CONFIG_POSIX_PRIORITY_SCHEDULING / CONFIG_PREEMPT_ENABLED off, or a
+ * transport that creates no task) has no band to compare against, and prints
+ * that instead of passing silently (issue 0196's rule). */
+#define NROS_ZEPHYR_RESERVED_TASK_RECORDS 8
+static struct {
+    const char* name;
+    int kprio;
+} nros_reserved_tasks[NROS_ZEPHYR_RESERVED_TASK_RECORDS];
+static int nros_reserved_task_count;
+static int nros_reserved_tasks_dropped;
+static int nros_tier_report_header_done;
+static int nros_tier_report_unchecked_done;
+
+static void nros_zephyr_record_reserved_task(const char* name, int kprio) {
+    if (nros_reserved_task_count >= NROS_ZEPHYR_RESERVED_TASK_RECORDS) {
+        nros_reserved_tasks_dropped++;
+        return;
+    }
+    nros_reserved_tasks[nros_reserved_task_count].name = name;
+    nros_reserved_tasks[nros_reserved_task_count].kprio = kprio;
+    nros_reserved_task_count++;
+}
+
+/* Judge ONE tier (`prio` is its RAW k_thread priority, smaller = more urgent,
+ * negative = cooperative) against the least urgent task of the reserved band.
+ * Returns 1 when the tier meets or outranks it, 0 when it is strictly less
+ * urgent, -1 when this image has no band to judge against. `tier` need not be
+ * NUL-terminated (a Rust `&str`); `tier_len` bounds it. */
+int nros_zephyr_report_tier_vs_transport(const char* tier, size_t tier_len, int32_t prio) {
+    if (nros_reserved_task_count == 0) {
+        if (!nros_tier_report_unchecked_done) {
+            nros_tier_report_unchecked_done = 1;
+            printk("nros: tier priorities NOT checked against the transport: no task "
+                   "in this image was created at an explicit priority (transport "
+                   "priority unapplied - CONFIG_POSIX_PRIORITY_SCHEDULING / "
+                   "CONFIG_PREEMPT_ENABLED off - or a transport with no task)\n");
+        }
+        return -1;
+    }
+    /* The band's FLOOR: the least urgent transport task is the first to be
+     * starved, so it decides whether transport makes progress at all. */
+    int floor = nros_reserved_tasks[0].kprio;
+    for (int i = 1; i < nros_reserved_task_count; i++) {
+        if (nros_reserved_tasks[i].kprio > floor) {
+            floor = nros_reserved_tasks[i].kprio;
+        }
+    }
+    if (prio > floor) {
+        return 0;
+    }
+    if (!nros_tier_report_header_done) {
+        nros_tier_report_header_done = 1;
+        printk("nros: tier priority meets the transport band (RAW Zephyr k_thread "
+               "units, smaller is more urgent):\n");
+        printk("  transport:");
+        for (int i = 0; i < nros_reserved_task_count; i++) {
+            printk(" %s %d%s",
+                   nros_reserved_tasks[i].name != NULL ? nros_reserved_tasks[i].name : "task",
+                   nros_reserved_tasks[i].kprio, i + 1 < nros_reserved_task_count ? "," : "");
+        }
+        printk(" (floor %d)%s\n", floor,
+               nros_reserved_tasks_dropped > 0 ? " - more tasks not recorded" : "");
+        printk("  Intended? then nothing to do. Both numbers are RAW Zephyr k_thread "
+               "priorities, the units a `[tiers.<name>.zephyr] priority` is written "
+               "in. If NOT intended: a tier at or above the transport starves the RX "
+               "drain (issues 0506, 0623); a derived tier is allocated below it out of "
+               "the image's own .config (issues 1508, 1537).\n");
+    }
+    printk("  tier `%.*s` at %d <= %d - this tier ties or PREEMPTS transport I/O\n", (int)tier_len,
+           tier != NULL ? tier : "?", (int)prio, floor);
+    return 1;
+}
+
 /* ── Thread creation with Zephyr-managed stacks ─────────────────────
  *
  * Requires CONFIG_POSIX_API (or equivalent CONFIG_PTHREAD).
@@ -567,6 +668,23 @@ int nros_zephyr_task_create_prio(pthread_t* thread, void* (*entry)(void*), void*
      * it is off, so there is no caller-side #ifdef to keep in step. */
     if (name != NULL) {
         (void)pthread_setname_np(*thread, name);
+    }
+
+    /* issue 1537 — record the priority this task ACTUALLY runs at, for the
+     * boot report above. Asked of the kernel, not taken from the request: a
+     * refused policy leaves the thread inherited, and that is what must be
+     * reported. `pthread_getschedparam` answers in POSIX units for the policy
+     * it returns; this is Zephyr's `POSIX_TO_ZEPHYR_PRIORITY` inverse. */
+    if (native_priority >= 0) {
+        int policy = 0;
+        struct sched_param got;
+        (void)memset(&got, 0, sizeof(got));
+        if (pthread_getschedparam(*thread, &policy, &got) == 0) {
+            int kprio = (policy == SCHED_FIFO)
+                            ? -(got.sched_priority + 1)
+                            : (CONFIG_NUM_PREEMPT_PRIORITIES - got.sched_priority - 1);
+            nros_zephyr_record_reserved_task(name, kprio);
+        }
     }
 
     nros_set_thread_slot_owner(slot, *thread);

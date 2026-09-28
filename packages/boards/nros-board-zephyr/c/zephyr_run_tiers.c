@@ -67,6 +67,10 @@ extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_
                                         const char* name, size_t stack_bytes,
                                         uint32_t core_plus1, int* pin_rc);
 extern void nros_zephyr_set_current_priority(int32_t priority);
+/* issue 1537 — judge one tier against the transport band the kernel actually
+ * gave this image's explicitly-prioritised tasks; prints the boot report (see
+ * `nros_platform_zephyr_shims.c`). Shared with the Rust arm. */
+extern int nros_zephyr_report_tier_vs_transport(const char* tier, size_t tier_len, int32_t prio);
 extern int32_t nros_zephyr_msleep(int32_t ms);
 /* Phase 110.D shim — pin the CALLING thread to a CPU (`k_thread_cpu_pin`).
  * Returns 0 on success, -ENOSYS when the image lacks CONFIG_SCHED_CPU_MASK,
@@ -646,6 +650,20 @@ int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
      * remains valid as long as boot_storage lives (it lives forever — the boot
      * spin loop never returns). */
     void* session_handle = nros_cpp_executor_session_handle(boot_storage);
+
+    /* issue 1537 — the session is open, so its transport tasks exist and their
+     * priorities are recorded; judge every tier against them before any tier
+     * runs. The Rust arm (`entry_tiers.rs`) calls the same function. */
+    for (size_t i = 0; i < n_tiers; i++) {
+        const char* tn = (tiers[i].name != NULL) ? tiers[i].name : "?";
+        int64_t rp = tiers[i].priority;
+        if (rp > (int64_t)INT32_MAX) {
+            rp = (int64_t)INT32_MAX;
+        } else if (rp < (int64_t)INT32_MIN) {
+            rp = (int64_t)INT32_MIN;
+        }
+        (void)nros_zephyr_report_tier_vs_transport(tn, strlen(tn), (int32_t)rp);
+    }
 
     /* --- Run boot tier (tiers[0]) setup on THIS thread FIRST --- */
     /* issue #144 — boot setup runs BEFORE any tier spawn: concurrent entity

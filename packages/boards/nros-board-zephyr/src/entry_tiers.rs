@@ -67,6 +67,33 @@ unsafe extern "C" {
     /// `NROS_ZEPHYR_CPU_UNKNOWN` when the image cannot say (no `CONFIG_SMP`;
     /// the posix arch does not provide `arch_proc_id` at all).
     fn nros_zephyr_current_cpu() -> u32;
+    /// issue 1537 — `zephyr/nros_platform_zephyr_shims.c`. Judges ONE tier's
+    /// RAW k_thread priority against the priorities the kernel actually gave
+    /// the platform's explicitly-prioritised tasks (the zenoh transport), and
+    /// prints the report on the first tier that meets or outranks them — or,
+    /// once, that the image has no band to judge against. Returns 1 / 0 / -1.
+    fn nros_zephyr_report_tier_vs_transport(
+        tier: *const core::ffi::c_char,
+        tier_len: usize,
+        prio: i32,
+    ) -> i32;
+}
+
+/// issue 1537 — the Zephyr twin of `nros_board_freertos`'s
+/// `report_tiers_above_transport` (issue 0623): a derived or authored tier at
+/// or above the transport is REPORTED at boot, whatever road baked it. The
+/// logic lives in C, shared with `zephyr_run_tiers.c`, so the two arms cannot
+/// disagree about what an inversion is.
+fn report_tiers_above_transport(tiers: &[TierSpec<'_>]) {
+    for tier in tiers {
+        unsafe {
+            nros_zephyr_report_tier_vs_transport(
+                tier.name.as_ptr().cast(),
+                tier.name.len(),
+                tier.priority.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+            );
+        }
+    }
 }
 
 /// Mirrors `NROS_ZEPHYR_CPU_UNKNOWN` in `nros_platform_zephyr_shims.c`.
@@ -418,6 +445,11 @@ impl ZephyrBoard {
             }
         };
         let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(boot_exec);
+
+        // issue 1537 — the session is open, so its transport tasks exist and
+        // their priorities are recorded; judge every tier against them before
+        // any tier runs. The same C function the C/C++ arm calls.
+        report_tiers_above_transport(tiers);
 
         // Boot-tier setup FIRST, tier spawn after: entity declares carry an
         // interest handshake (the zenoh-pico write filter opens only when the
