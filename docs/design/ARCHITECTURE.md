@@ -38,8 +38,10 @@ Every build is a point in a 3-axis space, compile-time mutually exclusive within
 never cross-implied:
 
 - **RMW**: `rmw-{zenoh,xrce,cyclonedds,uorb}` (uorb is the PX4 C++-only port; dust-dds retired).
-- **Platform**: `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx}` (plus an esp-idf
-  platform integration for ESP32 targets).
+- **Platform**: `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx}`. ESP32 is
+  `bare-metal` (esp-hal); the esp-idf platform integration was retired in
+  phase-468 W2 and its build road in RFC-0065 D3's 2026-09-28 amendment.
+  Remaining ESP-IDF claims in RFC-0003/0014/0072 are issue 1526.
 - **ROS edition**: `ros-{humble,iron,jazzy}` (`jazzy` is the delivered default —
   `just ros_editions ci`; `rolling` planned) — a per-distro **interop profile**
   (type hash, wire encoding/extensibility, interface set), RFC-0056. Unlike
