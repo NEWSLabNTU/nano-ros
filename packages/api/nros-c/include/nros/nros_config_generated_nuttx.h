@@ -3,30 +3,6 @@
 #define NROS_CONFIG_GENERATED_NUTTX_H
 #include <stdint.h>
 
-/* RFC-0090 / phase-429 W1 — the codegen version range, mirrored from
- * `nros_core::codegen_version`. Every generated C/C++ header now opens with
- *
- *     #include <nros/nros_config_generated.h>
- *     #ifndef NROS_CODEGEN_VERSION
- *     #error "nros: the generated config header did not define ..."
- *
- * and on NuttX that include lands HERE — `nros_config_generated.h`'s only
- * non-#error arm is `#include "nros/nros_config_generated_nuttx.h"`, because
- * the per-build mirror is not on the include path for codegen'd interface
- * targets. Phase-429 taught the two `.template`s and nros-build-helpers'
- * inline emitters to define these macros and did not reach this fourth
- * producer, so the fail-closed arm fired on EVERY generated message header and
- * took the nightly `nuttx` cell down from 2026-09-05 (phase-413 W2).
- *
- * Unlike every size macro below, these are EXACT rather than upper bounds: the
- * range belongs to the runtime, and a fallback that widened it would accept a
- * tree the runtime rejects — the opposite of what the guard is for.
- *
- * Fourth recurrence of this file's documented drift class (#167, #464, 0954
- * below are the others), and the first that is a hard compile error rather
- * than a silent under-size. Gated now: `check-nuttx-fallback-config-macros`. */
-#define NROS_CODEGEN_VERSION 8
-#define NROS_CODEGEN_VERSION_MIN 2
 /* #167 — safe upper bound (was 79296, stale): current codegen needs ~80704 on
  * rv-virt; too-small here overflows the executor storage buffer. Keep above the
  * largest per-build value; the per-build header supersedes this when mirrored. */
@@ -109,7 +85,14 @@
  * version range, and a snapshot that is merely "high enough" would accept a
  * tree the runtime rejects. Gated by `check-config-fallback-macros`, which
  * requires every macro a generated artifact reads to be defined here AND
- * requires these two to equal the Rust constants. */
+ * requires these two to equal the Rust constants, and by
+ * `check-config-header-producers`.
+ *
+ * DEFINED ONCE. Two same-day fixes for the same break (phase-413 W2 and issue
+ * 1115) each added this pair, in different hunks, so both landed; the file then
+ * carried it twice. Identical redefinitions are legal C and GCC keeps the LAST,
+ * while both gates read the FIRST — a bump that edited one copy would pass them
+ * and compile against the other. Both gates now refuse a second definition. */
 #define NROS_CODEGEN_VERSION 8
 #define NROS_CODEGEN_VERSION_MIN 2
 

@@ -45,7 +45,19 @@ WHAT THIS GATE CHECKS
    So `NROS_CODEGEN_VERSION` / `NROS_CODEGEN_VERSION_MIN` must equal the
    constants in `nros-core/src/codegen_version.rs`.
 
-3. NON-VACUITY. Zero fallbacks, zero packs, or zero required macros is a
+3. ONE DEFINITION PER MACRO. A fallback that defines a macro twice compiles
+   against the LAST definition, while every reader — this gate's value check
+   included, until it counted — finds the FIRST. The NuttX C snapshot carried
+   the version pair twice (two same-day fixes for one break each added it, in
+   different hunks), so a bump that edited the first copy alone passed this
+   gate and every NuttX image compiled against the second. A macro defined
+   more than once OUTSIDE a conditional arm is refused, whatever its value; a
+   definition inside `#if`/`#elif`/`#else` arms (the file's
+   `NROS__NUTTX_FALLBACK_ASSERT` selector) is one definition per arm and is
+   not counted. The include guard's own `#ifndef` is not an arm. And the
+   value check reads the LAST unconditional definition, the one that compiles.
+
+4. NON-VACUITY. Zero fallbacks, zero packs, or zero required macros is a
    FAILURE, not an OK — a scan that found nothing prints the same word as a scan
    that found nothing wrong (`check-reconfigure-stale`'s lesson). A fallback is
    also only counted when some stub actually dispatches to it, so a file nobody
@@ -107,9 +119,45 @@ def rust_codegen_versions(text: str) -> dict[str, int]:
     return out
 
 
+_DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*([a-z]+)\b[ \t]*(.*)$")
+
+
+def unconditional_defines(text: str) -> list[tuple[int, str, str | None]]:
+    """(line, name, value-or-None) for every `#define` not inside a conditional
+    arm. The outermost `#ifndef` is the include guard and does not count as an
+    arm, so a guarded header's body is depth 0. Function-like macros report
+    value None — only object-like values are compared."""
+    out: list[tuple[int, str, str | None]] = []
+    depth = 0
+    guard_open = False
+    for lineno, line in enumerate(text.split("\n"), 1):
+        m = _DIRECTIVE.match(line)
+        if not m:
+            continue
+        kw, rest = m.group(1), m.group(2)
+        if kw in ("if", "ifdef", "ifndef"):
+            if depth == 0 and not guard_open and kw == "ifndef" and not out:
+                guard_open = True  # the include guard: its body is top level
+                continue
+            depth += 1
+        elif kw == "endif":
+            if depth > 0:
+                depth -= 1
+            else:
+                guard_open = False
+        elif kw == "define" and depth == 0:
+            dm = re.match(r"([A-Za-z_][A-Za-z0-9_]*)(\()?[ \t]*(\S*)", rest)
+            if dm:
+                name = dm.group(1)
+                value = None if dm.group(2) else (dm.group(3) or "")
+                out.append((lineno, name, value))
+    return out
+
+
 def fallback_value(text: str, name: str) -> str | None:
-    m = re.search(rf"^[ \t]*#[ \t]*define[ \t]+{name}[ \t]+(\S+)[ \t]*$", text, re.M)
-    return m.group(1) if m else None
+    """The value the COMPILER sees: the last unconditional definition."""
+    vals = [v for _, n, v in unconditional_defines(text) if n == name]
+    return vals[-1] if vals else None
 
 
 def analyse(
@@ -166,6 +214,21 @@ def analyse(
                     "".join(f"        {m}\n" for m in missing),
                 )
             )
+
+    # --- (3) one definition per macro ----------------------------------------
+    for path, text in sorted(reachable.items()):
+        seen: dict[str, list[tuple[int, str | None]]] = {}
+        for lineno, name, value in unconditional_defines(text):
+            seen.setdefault(name, []).append((lineno, value))
+        for name, defs in sorted(seen.items()):
+            if len(defs) > 1:
+                where = ", ".join(f"line {ln} = {v}" for ln, v in defs)
+                problems.append(
+                    f"  {path} defines {name} {len(defs)} times ({where}).\n"
+                    f"      The compiler keeps the LAST; a reviewer and a gate find "
+                    f"the FIRST,\n      so a bump that edits one copy compiles "
+                    f"against the other. Define it once."
+                )
 
     # --- (2) exact values for the version pair -------------------------------
     expected = rust_codegen_versions(codegen_rs)
@@ -240,6 +303,25 @@ def self_test() -> None:
     orphan = dict(good)
     orphan["cfg_y.h"] = good["cfg_x.h"]
     assert "NO stub includes" in "".join(analyse(orphan, stubs, packs, rs))
+
+    # A duplicate FAILS even when the values agree, and when they do not, the
+    # value check judges the LAST copy — the one the compiler uses.
+    dup = {"cfg_x.h": good["cfg_x.h"] + "#define NROS_CODEGEN_VERSION 3\n"}
+    assert "2 times" in "".join(analyse(dup, stubs, packs, rs)), "a duplicate must FAIL"
+    half = {
+        "cfg_x.h": "#define NROS_CODEGEN_VERSION 3\n#define NROS_CODEGEN_VERSION_MIN 2\n"
+        "#define NROS_CODEGEN_VERSION 2\n"
+    }
+    assert "= 2, but" in "".join(analyse(half, stubs, packs, rs)), "the LAST copy is judged"
+    # Arms of one conditional are one definition each; the include guard is not an arm.
+    arms = {
+        "cfg_x.h": "#ifndef CFG_X_H\n#define CFG_X_H\n" + good["cfg_x.h"]
+        + "#if A\n#define SEL(c) 1\n#elif B\n#define SEL(c) 2\n#else\n#define SEL(c)\n#endif\n"
+        "#endif\n"
+    }
+    assert analyse(arms, stubs, packs, rs) == [], analyse(arms, stubs, packs, rs)
+    guarded_dup = {"cfg_x.h": "#ifndef CFG_X_H\n#define CFG_X_H\n" + dup["cfg_x.h"] + "#endif\n"}
+    assert "2 times" in "".join(analyse(guarded_dup, stubs, packs, rs)), "guard is not an arm"
 
     assert analyse(good, stubs, {}, rs), "no packs must FAIL, not pass vacuously"
     assert analyse({}, stubs, packs, rs), "no fallbacks must FAIL"
