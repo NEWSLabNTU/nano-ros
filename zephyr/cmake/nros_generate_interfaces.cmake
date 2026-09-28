@@ -3,6 +3,8 @@
 # at FILE scope so a function body never include()s inside its own frame.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCargoProfile.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosBoardFacts.cmake")
+# Issue 1547 — the one edition resolver, at FILE scope for the same reason.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosRosEdition.cmake")
 
 nros_generate_interfaces (Zephyr)
 ---------------------------------
@@ -129,9 +131,11 @@ function(nros_generate_interfaces target)
   # Zephyr emits directly to the `app` target — there's no install layout
   # — so the flag is recognised + silently ignored.
 
-  if(NOT DEFINED _ARG_ROS_EDITION OR _ARG_ROS_EDITION STREQUAL "")
-    set(_ARG_ROS_EDITION "humble")
-  endif()
+  # Issue 1547 — explicit ROS_EDITION > NANO_ROS_ROS_EDITION > the default,
+  # via the one resolver. The literal fallback here skipped the middle rung,
+  # the phase-405 W3 defect the canonical generator had already shed, and it
+  # also accepted an unknown edition silently where the resolver refuses it.
+  _nros_resolve_ros_edition("${_ARG_ROS_EDITION}" _ARG_ROS_EDITION)
 
   if(NOT DEFINED _ARG_LANGUAGE OR _ARG_LANGUAGE STREQUAL "")
     set(_ARG_LANGUAGE "C")

@@ -342,6 +342,24 @@ if(CONFIG_NROS_CPP_API)
     set(_nros_c_param_suffix ",alloc,param-services")
 endif()
 
+# Issue 1547 — the ROS edition cargo feature, resolved ONCE through the one
+# edition resolver (`cmake/NanoRosRosEdition.cmake`, pulled in by
+# NanoRosFeatureSet above). Every feature string below spelled the default
+# edition literally, so a `-DNANO_ROS_ROS_EDITION=jazzy` Zephyr image built
+# nros-c and nros-cpp for the default while its interface codegen resolved
+# jazzy — the RFC-0056 keyexpr/type_hash disagreement that builds cleanly and
+# fails on the wire. Precedence is the resolver's: `NANO_ROS_ROS_EDITION` (a
+# `-D` on the west command line, or set before `find_package(Zephyr)` like
+# `NROS_ENTRY_PANIC`), else `NANO_ROS_DEFAULT_ROS_EDITION` — so a default image
+# is unchanged.
+#
+# ONE variable for all nine strings, for the same reason as
+# `_nros_trace_suffix`: nros-c and nros-cpp are built in two cargo invocations
+# from one nros-node dep graph, and an edition that reached one and not the
+# other would be the 0135 unit split on top of the wire mismatch.
+_nros_resolve_ros_edition("" _nros_ros_edition)
+set(_nros_edition_feature "ros-${_nros_ros_edition}")
+
 # =============================================================================
 # C API path: build nros-c via Cargo and link it
 # =============================================================================
@@ -376,14 +394,14 @@ if(CONFIG_NROS_C_API)
     # (issues 1461, 1100). `cffi-zenoh-cffi = ["rmw-zenoh"]` resolves to the
     # same thing; the spelling is what splits the unit.
     if(CONFIG_NROS_RMW_ZENOH)
-        set(_nros_features "rmw-cffi,rmw-zenoh,platform-zephyr,ros-humble")
+        set(_nros_features "rmw-cffi,rmw-zenoh,platform-zephyr,${_nros_edition_feature}")
     elseif(CONFIG_NROS_RMW_XRCE)
         # Phase 115.K.2.5.1.3-zephyr — XRCE routes through the C
         # backend's cffi shim instead of the deleted Rust direct-impl.
         # `rmw-xrce` bundles that shim's rlib into the umbrella; its
         # `platform-zephyr` feature drops every POSIX TU and emits
         # `UCLIENT_PLATFORM_ZEPHYR` in the generated config.
-        set(_nros_features "rmw-cffi,rmw-xrce,platform-zephyr,ros-humble")
+        set(_nros_features "rmw-cffi,rmw-xrce,platform-zephyr,${_nros_edition_feature}")
     elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         # Phase 168.X gap 2.B — cyclonedds is now usable from the C
         # API too. The backend's `nros_rmw_cyclonedds_register`
@@ -393,7 +411,7 @@ if(CONFIG_NROS_C_API)
         # standalone C++ library compiled by the RMW backend block
         # above (lines 196+). nros-c just needs the generic cffi
         # runtime + Zephyr platform feature.
-        set(_nros_features "rmw-cffi,platform-zephyr,ros-humble")
+        set(_nros_features "rmw-cffi,platform-zephyr,${_nros_edition_feature}")
     endif()
 
     # native_sim targets run on Linux and support std (needed for panic handler)
@@ -636,7 +654,7 @@ if(CONFIG_NROS_CPP_API)
     # Select Cargo features based on RMW backend
     if(CONFIG_NROS_RMW_ZENOH)
         zephyr_compile_definitions(NROS_RMW_ZENOH_CFFI=1)
-        set(_nros_cpp_features "rmw-zenoh-cffi,platform-zephyr,ros-humble")
+        set(_nros_cpp_features "rmw-zenoh-cffi,platform-zephyr,${_nros_edition_feature}")
     elseif(CONFIG_NROS_RMW_XRCE)
         zephyr_compile_definitions(NROS_RMW_XRCE=1)
         # Phase 115.K.2.5.1.3-zephyr — same shape as the C path
@@ -654,7 +672,7 @@ if(CONFIG_NROS_CPP_API)
         # unlike nros-rmw-zenoh does NOT carry `alloc`. Reaching the capability
         # through whichever backend happens to depend on it is the shape that
         # produced the original bug; both sites now spell it.
-        set(_nros_cpp_features "rmw-cffi,rmw-xrce-cffi,alloc,platform-zephyr,ros-humble")
+        set(_nros_cpp_features "rmw-cffi,rmw-xrce-cffi,alloc,platform-zephyr,${_nros_edition_feature}")
     elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         # cyclonedds bypasses Cargo: the standalone nros-rmw-cyclonedds
         # C++ lib (compiled into the Zephyr app library by the RMW
@@ -673,7 +691,7 @@ if(CONFIG_NROS_CPP_API)
         # nros-rmw-zenoh's pinned nros-rmw-cffi/alloc; native_sim via
         # `,std`). NOTE: the xrce branch above needs it too — measured, see
         # its comment; this is not the only composition that lacked it.
-        set(_nros_cpp_features "rmw-cffi,alloc,platform-zephyr,ros-humble")
+        set(_nros_cpp_features "rmw-cffi,alloc,platform-zephyr,${_nros_edition_feature}")
     endif()
 
 
@@ -742,13 +760,13 @@ if(CONFIG_NROS_CPP_API)
             # `nros-cpp` forwards `nros-c/rmw-zenoh`; naming the same thing here
             # makes both cargo invocations resolve nros-c to the SAME feature
             # set, which is what the shared generated header needs.
-            set(_nros_c_for_cpp_features "rmw-cffi,rmw-zenoh,platform-zephyr,ros-humble")
+            set(_nros_c_for_cpp_features "rmw-cffi,rmw-zenoh,platform-zephyr,${_nros_edition_feature}")
         elseif(CONFIG_NROS_RMW_XRCE)
             # `rmw-xrce`, for the reason stated for zenoh above — the rule was
             # written for one branch and applied to one branch (issue 1461).
-            set(_nros_c_for_cpp_features "rmw-cffi,rmw-xrce,platform-zephyr,ros-humble")
+            set(_nros_c_for_cpp_features "rmw-cffi,rmw-xrce,platform-zephyr,${_nros_edition_feature}")
         elseif(CONFIG_NROS_RMW_CYCLONEDDS)
-            set(_nros_c_for_cpp_features "rmw-cffi,platform-zephyr,ros-humble")
+            set(_nros_c_for_cpp_features "rmw-cffi,platform-zephyr,${_nros_edition_feature}")
         endif()
         if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
             string(APPEND _nros_c_for_cpp_features ",std")
