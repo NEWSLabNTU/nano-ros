@@ -46,7 +46,7 @@
 //! matches on (`nros_board_link_app`'s `/main\.cpp$` MAIN_SOURCE rule) and the
 //! board-correct runner.
 
-use super::{Plan, PlanNode};
+use super::{Lang, Plan, PlanNode};
 
 /// One registered node's facts, exactly as `nano_ros_node_register()` knows
 /// them.
@@ -66,8 +66,14 @@ pub struct RegisteredNode {
     /// Sanitized package symbol (`@NROS_ENTRY_PKG_SYM@`) — the infix of the C
     /// component's `__nros_c_component_<pkg>_{create,configure}` seam.
     pub pkg_sym: String,
-    /// `"c"` or `"cpp"`.
-    pub language: String,
+    /// The component's language. phase-469 — the enum.
+    ///
+    /// It was a `String` that the one caller filled with
+    /// `language.as_str().to_string()` off an already-parsed [`Lang`], purely
+    /// so the plan carried the canonical spelling rather than the `--lang c++`
+    /// alias a downstream reader string-compared. Carrying the enum removes
+    /// both the round trip and the reason for it.
+    pub language: Lang,
     /// Fully-qualified component class (`@NROS_ENTRY_CLASS@`). C++ only.
     pub class: Option<String>,
     /// Header to include (`@NROS_ENTRY_CLASS_HEADER@`). C++ only.
@@ -107,7 +113,7 @@ impl RegisteredNode {
                 namespace: None,
                 class_name: self.class.clone(),
                 class_header: self.header.clone(),
-                lang: Some(self.language.clone()),
+                lang: Some(self.language),
                 shape: self.shape.clone(),
                 qos_overrides: Vec::new(),
                 params: Vec::new(),
@@ -154,7 +160,7 @@ mod tests {
             board: board.into(),
             node_name: "talker".into(),
             pkg_sym: "talker_pkg".into(),
-            language: "cpp".into(),
+            language: Lang::Cpp,
             class: Some("talker_pkg::Talker".into()),
             header: Some("talker_pkg/Talker.hpp".into()),
             shape: Some("configure".into()),
@@ -166,7 +172,7 @@ mod tests {
             board: board.into(),
             node_name: "listener".into(),
             pkg_sym: "listener_pkg".into(),
-            language: "c".into(),
+            language: Lang::C,
             class: None,
             header: None,
             shape: None,

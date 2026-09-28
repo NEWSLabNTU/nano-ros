@@ -13,14 +13,14 @@
 //! phase-257 Stage-3.
 
 use super::{
-    BootConfigView, DeclsView, ExecutorShape, Plan, QosRowView, SchedView, ServicesView, TierView,
-    boot_config_view, decls_view, qos_views, sanitize_pkg, services_view,
+    BootConfigView, DeclsView, ExecutorShape, Lang, Plan, QosRowView, SchedView, ServicesView,
+    TierView, boot_config_view, decls_view, qos_views, sanitize_pkg, services_view,
 };
 
-/// Phase 257 (W0-A) — a `lang == "c"` node is a `NROS_C_COMPONENT` typed
+/// Phase 257 (W0-A) — a [`Lang::C`] node is a `NROS_C_COMPONENT` typed
 /// component the C Entry installs via its `__nros_c_component_<pkg>_*` seam.
 fn is_c_node(n: &super::PlanNode) -> bool {
-    n.lang.as_deref() == Some("c")
+    n.lang == Some(Lang::C)
 }
 
 /// Phase 257 (W0-A, RFC-0043) — emit the **typed** C Entry TU: route each launch
@@ -188,7 +188,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                  a mixed C/C++/Rust workspace)",
                 n.pkg,
                 n.exec,
-                n.lang.as_deref().unwrap_or("<unset>")
+                n.lang.map_or("<unset>", Lang::as_str)
             ));
         }
     }
@@ -345,7 +345,7 @@ mod tests {
                     namespace: None,
                     class_name: None,
                     class_header: None,
-                    lang: Some("c".into()),
+                    lang: Some(Lang::C),
                     shape: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
@@ -490,7 +490,7 @@ mod tests {
     #[test]
     fn typed_emit_rejects_non_c_node() {
         let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
-        plan.nodes[0].lang = Some("cpp".into());
+        plan.nodes[0].lang = Some(Lang::Cpp);
         let err = emit_typed(&plan).unwrap_err();
         assert!(err.contains("not `c`"), "{err}");
         assert!(err.contains("talker_pkg"), "{err}");
@@ -765,7 +765,7 @@ mod tests {
                     namespace: None,
                     class_name: None,
                     class_header: None,
-                    lang: Some("c".into()),
+                    lang: Some(Lang::C),
                     shape: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
@@ -781,7 +781,7 @@ mod tests {
                     namespace: None,
                     class_name: None,
                     class_header: None,
-                    lang: Some("c".into()),
+                    lang: Some(Lang::C),
                     shape: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),

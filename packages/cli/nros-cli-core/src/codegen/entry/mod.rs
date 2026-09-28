@@ -146,11 +146,18 @@ pub struct PlanNode {
     /// (`"talker_pkg/Talker.hpp"`). Paired with `class_name`.
     pub class_header: Option<String>,
     /// Phase 240.4 (RFC-0043) — component implementation language from the
-    /// cmake metadata (`"c"` / `"cpp"` / `"rust"`). `None` for the launch-only
-    /// legacy path. The **typed** entry emitter branches on it: a `"c"` node is
-    /// constructed via its C-ABI factory + `configure(node_handle, self)` seam
-    /// (`NROS_C_COMPONENT`), a `"cpp"` node via its C++ class + `configure(node)`.
-    pub lang: Option<String>,
+    /// cmake metadata. `None` for the launch-only legacy path. The **typed**
+    /// entry emitter branches on it: a [`Lang::C`] node is constructed via its
+    /// C-ABI factory + `configure(node_handle, self)` seam (`NROS_C_COMPONENT`),
+    /// a [`Lang::Cpp`] node via its C++ class + `configure(node)`.
+    ///
+    /// phase-469 — the ENUM, not the string it is written as. Every consumer
+    /// asked `lang.as_deref() == Some("c")`, which is a decision the compiler
+    /// cannot see: a fourth language would have routed to the C++ arm by
+    /// falling off the comparison, silently, in generated code. The field
+    /// carries a `Language` now, so each of those is an `==` the compiler
+    /// checks and a new variant is a build error at every site that branches.
+    pub lang: Option<Lang>,
     /// Phase 242.4 (RFC-0044) — component *shape* from the cmake metadata:
     /// `"rclcpp"` (IS-A-node, ctor-wired — construct-with-handle) or `"configure"`
     /// (RFC-0043 default-construct + `configure(Node&)`). `None` ⇒ `"configure"`
@@ -1841,7 +1848,7 @@ contracts: {}
                     namespace: None,
                     class_name: None,
                     class_header: None,
-                    lang: Some("c".into()),
+                    lang: Some(Lang::C),
                     shape: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
@@ -1857,7 +1864,7 @@ contracts: {}
                     namespace: None,
                     class_name: None,
                     class_header: None,
-                    lang: Some("c".into()),
+                    lang: Some(Lang::C),
                     shape: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
@@ -1966,7 +1973,7 @@ contracts: {}
                     namespace: None,
                     class_name: None,
                     class_header: None,
-                    lang: Some("c".into()),
+                    lang: Some(Lang::C),
                     shape: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
@@ -1982,7 +1989,7 @@ contracts: {}
                     namespace: None,
                     class_name: None,
                     class_header: None,
-                    lang: Some("c".into()),
+                    lang: Some(Lang::C),
                     shape: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
@@ -2058,7 +2065,7 @@ contracts: {}
                     namespace: namespace.map(str::to_string),
                     class_name: None,
                     class_header: None,
-                    lang: Some("c".into()),
+                    lang: Some(Lang::C),
                     shape: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
@@ -2280,7 +2287,7 @@ contracts: {}
                 namespace: None,
                 class_name: None,
                 class_header: None,
-                lang: Some("c".into()),
+                lang: Some(Lang::C),
                 shape: None,
                 qos_overrides: Vec::new(),
                 params: Vec::new(),
@@ -2357,7 +2364,7 @@ contracts: {}
             namespace: namespace.map(str::to_string),
             class_name: None,
             class_header: None,
-            lang: Some("c".into()),
+            lang: Some(Lang::C),
             shape: None,
             qos_overrides: Vec::new(),
             params: Vec::new(),

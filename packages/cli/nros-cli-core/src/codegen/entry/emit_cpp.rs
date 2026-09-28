@@ -27,8 +27,8 @@
 //! `init → network-wait → register → spin → shutdown` lifecycle.
 
 use super::{
-    BootConfigView, DeclsView, ExecutorShape, Plan, QosRowView, ServicesView, boot_config_view,
-    decls_view, qos_views, sanitize_pkg, services_view,
+    BootConfigView, DeclsView, ExecutorShape, Lang, Plan, QosRowView, ServicesView,
+    boot_config_view, decls_view, qos_views, sanitize_pkg, services_view,
 };
 
 /// The C++ board class an entry calls.
@@ -135,8 +135,10 @@ pub struct ProbeExport {
     pub package: String,
     pub component: String,
     pub executable: String,
-    /// `"c"` or `"cpp"` — the sidecar's `language` field.
-    pub language: String,
+    /// The sidecar's `language` field. phase-469 — the enum; the STRING is
+    /// produced once, at the render site below, by [`Lang::as_str`]. The
+    /// sidecar's spelling is `Language`'s serde repr, so the two cannot drift.
+    pub language: Lang,
     /// Absolute path the probe writes the sidecar to.
     pub out_path: String,
 }
@@ -713,7 +715,8 @@ pub fn emit_typed_with_tail_monitored(
             package: e.package.clone(),
             component: e.component.clone(),
             executable: e.executable.clone(),
-            language: e.language.clone(),
+            // The one producer of the rendered spelling (phase-469).
+            language: e.language.as_str().to_string(),
             out_path: e.out_path.clone(),
         }),
         EntryTail::Board => None,
@@ -765,15 +768,15 @@ pub fn emit_typed_with_tail_monitored(
 }
 
 fn is_c_node(n: &super::PlanNode) -> bool {
-    n.lang.as_deref() == Some("c")
+    n.lang == Some(Lang::C)
 }
 
-/// Phase 257 (W0-B) — a `lang == "rust"` node is installed via the uniform
+/// Phase 257 (W0-B) — a [`Lang::Rust`] node is installed via the uniform
 /// `__nros_component_<pkg>_install` seam onto the shared executor; it self-creates
 /// its node (no entry-created `::rclcpp::Node`, no C++ class, no qos-override — D7
 /// Option C).
 fn is_rust_node(n: &super::PlanNode) -> bool {
-    n.lang.as_deref() == Some("rust")
+    n.lang == Some(Lang::Rust)
 }
 
 /// Phase 242.4 (RFC-0044) — an rclcpp-shape (IS-A-node, construct-with-handle)
@@ -839,7 +842,7 @@ mod tests {
                     namespace: None,
                     class_name: Some((*class).into()),
                     class_header: Some((*header).into()),
-                    lang: Some("cpp".into()),
+                    lang: Some(Lang::Cpp),
                     shape: Some("configure".into()),
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
@@ -889,7 +892,7 @@ mod tests {
             package: "talker_pkg".into(),
             component: "talker".into(),
             executable: "talker".into(),
-            language: "cpp".into(),
+            language: Lang::Cpp,
             out_path: "/ws/src/talker_pkg/metadata/talker.json".into(),
         };
         let src = emit_typed_probe(&plan, &export).expect("probe emit ok");
@@ -1314,7 +1317,7 @@ mod tests {
             "sensor_pkg::Sensor",
             "sensor_pkg/Sensor.hpp",
         )]);
-        plan.nodes[0].lang = Some("c".into());
+        plan.nodes[0].lang = Some(Lang::C);
         let src = emit_typed(&plan).expect("typed emit ok");
         // extern "C" factory + configure decls, mangled on pkg.
         assert!(src.contains("void* __nros_c_component_sensor_pkg_create(void);"));
@@ -1354,7 +1357,7 @@ mod tests {
                 "sensor_pkg/Sensor.hpp",
             ),
         ]);
-        plan.nodes[1].lang = Some("c".into()); // sensor is C
+        plan.nodes[1].lang = Some(Lang::C); // sensor is C
         let src = emit_typed(&plan).expect("typed emit ok");
         // C++ node: header + class + .configure.
         assert!(src.contains("#include \"talker_pkg/Talker.hpp\""));

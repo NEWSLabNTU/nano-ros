@@ -223,12 +223,25 @@ impl CmakeProbeOptions {
 
 /// The probe TU, from the SAME emitter that produces real entries.
 pub fn render_probe_main(o: &CmakeProbeOptions) -> Result<String> {
-    let plan = probe_plan(o);
+    // phase-469 — ONE parse, at the edge of this module, feeding both the plan
+    // and the sidecar export. The emitter and the plan are both enum-typed
+    // now; [`CmakeProbeOptions::language`] is still a string because its only
+    // producer is `metadata_refresh`, whose own `_ => "cpp"` wildcard is issue
+    // 1528 and is being fixed by a separate change. When that lands, this
+    // parse becomes the field's type and disappears.
+    let language = nros_lang::Language::parse(&o.language).map_err(|e| {
+        eyre::eyre!(
+            "metadata probe for `{}`: component language `{}` is not a language ({e})",
+            o.package,
+            o.language
+        )
+    })?;
+    let plan = probe_plan(o, language);
     let export = ProbeExport {
         package: o.package.clone(),
         component: o.component.clone(),
         executable: o.executable.clone(),
-        language: o.language.clone(),
+        language,
         out_path: o.output_path.display().to_string(),
     };
     emit_typed_probe(&plan, &export)
@@ -239,7 +252,7 @@ pub fn render_probe_main(o: &CmakeProbeOptions) -> Result<String> {
 ///
 /// `board = "native"` because the probe is a HOST binary — the same reason one
 /// probe covers every deploy target.
-fn probe_plan(o: &CmakeProbeOptions) -> Plan {
+fn probe_plan(o: &CmakeProbeOptions, language: nros_lang::Language) -> Plan {
     Plan {
         board: "native".into(),
         bringup: format!("{}_metadata_probe", o.package),
@@ -251,7 +264,7 @@ fn probe_plan(o: &CmakeProbeOptions) -> Plan {
             namespace: None,
             class_name: Some(o.class.clone()),
             class_header: Some(o.header.clone()),
-            lang: Some(o.language.clone()),
+            lang: Some(language),
             shape: Some(o.shape.clone()),
             qos_overrides: Vec::new(),
             params: Vec::new(),

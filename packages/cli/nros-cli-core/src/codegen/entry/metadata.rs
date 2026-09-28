@@ -32,8 +32,17 @@ struct ComponentMeta {
     class: String,
     #[serde(default)]
     class_header: Option<String>,
+    /// phase-469 — deserialized as the ENUM, not as a string.
+    ///
+    /// The wire format does not move: `Language`'s serde repr IS `c` / `cpp` /
+    /// `rust`, the three spellings `nano_ros_node_register()` writes — it
+    /// `string(TOLOWER)`s the keyword after refusing anything that is not
+    /// `C`, `CPP` or `RUST`, so the producer's range and this type's range are
+    /// the same set. What moves is the failure: a metadata file naming a
+    /// fourth language is now refused HERE, where the file is named, instead
+    /// of flowing to `is_c == false` and being emitted as C++.
     #[serde(default)]
-    lang: Option<String>,
+    lang: Option<super::Lang>,
     /// Phase 242.4 (RFC-0044) — component shape: `"rclcpp"` (construct-with-
     /// handle IS-A-node) or `"configure"` (RFC-0043 `configure(Node&)`). Absent
     /// ⇒ `"configure"` (back-compat: pre-242 metadata carries no shape).
@@ -57,7 +66,7 @@ struct MetadataDoc {
 struct ComponentFacts {
     class: String,
     class_header: Option<String>,
-    lang: Option<String>,
+    lang: Option<super::Lang>,
     shape: Option<String>,
     /// Phase 269 (W4) — callback group IDs from cmake metadata.
     callback_groups: Vec<String>,
@@ -102,7 +111,7 @@ impl ComponentIndex {
                 ComponentFacts {
                     class: c.class.clone(),
                     class_header: c.class_header.clone(),
-                    lang: c.lang.clone(),
+                    lang: c.lang,
                     shape: c.shape.clone(),
                     callback_groups: c.callback_groups.clone(),
                 },
@@ -135,7 +144,7 @@ pub fn enrich_plan(plan: &mut Plan, index: &ComponentIndex) -> Result<()> {
             );
         };
         n.class_name = Some(facts.class.clone());
-        n.lang = facts.lang.clone();
+        n.lang = facts.lang;
         // Phase 242.4 (RFC-0044) — component shape (construct-with-handle vs
         // configure). Absent in metadata ⇒ `"configure"` (back-compat).
         n.shape = Some(
@@ -149,7 +158,7 @@ pub fn enrich_plan(plan: &mut Plan, index: &ComponentIndex) -> Result<()> {
         // A C component is constructed via its C-ABI factory + configure seam
         // (mangled on pkg) — the entry never `#include`s a class header for it.
         // A C++ component needs its header to construct the class.
-        let is_c = facts.lang.as_deref() == Some("c");
+        let is_c = facts.lang == Some(super::Lang::C);
         if !is_c {
             let Some(header) = &facts.class_header else {
                 bail!(
