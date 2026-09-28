@@ -2771,6 +2771,9 @@ impl PlatformsTree {
         imply("drivers.phy", !serial, "NROS_DRIVER_PHY");
         imply("drivers.mdio", !serial, "NROS_DRIVER_MDIO");
         imply("net.ip_stack", !serial, "NROS_NET_IP_STACK");
+        // D9 (safety-island demo) -- a serial link does not carry the domain's
+        // liveliness history; the graph cache is the old default on IP.
+        imply("zenoh.graph_discovery", !serial, "ZPICO_GRAPH_DISCOVERY");
 
         Ok(ResolvedTransport {
             kind: Resolved {
@@ -3513,6 +3516,7 @@ serial = true
             "drivers.phy",
             "drivers.mdio",
             "net.ip_stack",
+            "zenoh.graph_discovery",
         ];
         for knob in off {
             let i = t.implied.iter().find(|i| i.knob == knob).expect(knob);

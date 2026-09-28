@@ -331,6 +331,18 @@ zephyr_compile_definitions(
 # copies it out through a caller-supplied buffer and never encodes its size, so
 # there is no second consumer to disagree with -- the issue-0135/0316 hazard the
 # NROS_RESOLVED_* indirection exists to prevent does not apply here.
+# D9 -- graph discovery, RESOLVED (not raw CONFIG_) because the environment
+# rung outranks Kconfig for it and `check-knob-delivery` holds the define to the
+# resolved value. Always 0 or 1: `zpico.c` defaults it to 1, so an empty value
+# here would compile the cache in under an image that asked for none.
+if(NOT DEFINED NROS_RESOLVED_ZPICO_GRAPH_DISCOVERY OR
+   "${NROS_RESOLVED_ZPICO_GRAPH_DISCOVERY}" STREQUAL "")
+    message(FATAL_ERROR
+        "nros: ZPICO_GRAPH_DISCOVERY was not resolved before nros_rmw_zenoh.cmake "
+        "ran; nros_resolve_knobs() must run first (zephyr/CMakeLists.txt)")
+endif()
+zephyr_compile_definitions(
+    ZPICO_GRAPH_DISCOVERY=${NROS_RESOLVED_ZPICO_GRAPH_DISCOVERY})
 zephyr_compile_definitions(
     ZPICO_GRAPH_CACHE_SIZE=${CONFIG_NROS_GRAPH_CACHE_SIZE}
     ZPICO_GET_REPLY_BUF_SIZE=${NROS_RESOLVED_ZPICO_GET_REPLY_BUF_SIZE}

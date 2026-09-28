@@ -222,6 +222,14 @@ pub struct ZenohSession {
     /// to answer four questions about the same graph.
     /// Whether the standing liveliness subscriber has been declared.
     graph_cache_started: bool,
+    /// Graph discovery is compiled OUT of this image (`ZPICO_GRAPH_DISCOVERY=0`,
+    /// Kconfig `NROS_ZENOH_GRAPH_DISCOVERY=n`): the C shim answered
+    /// `ZPICO_ERR_CONFIG` to the first start, so no later call asks again.
+    ///
+    /// Latched from the shim's answer rather than read from a second copy of
+    /// the knob: the cache lives entirely in `zpico.c`, and a Rust-side flag
+    /// would be a second consumer that can disagree with the one that decides.
+    graph_discovery_off: bool,
 }
 
 // ============================================================================
@@ -631,6 +639,7 @@ impl ZenohSession {
             entity_counter: portable_atomic::AtomicU32::new(1),
             domain_id: config.domain_id,
             graph_cache_started: false,
+            graph_discovery_off: false,
         };
 
         if !config.node_name.is_empty() {
@@ -884,6 +893,9 @@ impl ZenohSession {
         if self.graph_cache_started {
             return Ok(());
         }
+        if self.graph_discovery_off {
+            return Err(TransportError::Unsupported);
+        }
         let key = Ros2Liveliness::graph_keyexpr_wildcard::<256>(self.domain_id);
         #[cfg(feature = "std")]
         if std::env::var_os("NROS_GRAPH_DUMP").is_some() {
@@ -902,6 +914,22 @@ impl ZenohSession {
                 buf.as_ptr() as *const core::ffi::c_char,
             )
         };
+        if rc == crate::zpico::ZPICO_ERR_CONFIG {
+            // D9 (graph discovery off): this image declares its own tokens and
+            // asks nothing about anyone else's. Said ONCE, at INFO, because it
+            // is a configuration and not a fault -- but a graph query that
+            // answers `Unsupported` with no word about why is the silent
+            // outage issue 0283 forbids.
+            self.graph_discovery_off = true;
+            nros_log::log_info!(
+                nros_log::get_logger("nros_rmw_zenoh"),
+                "graph discovery is compiled out (ZPICO_GRAPH_DISCOVERY=0): no \
+                 liveliness subscriber and no graph cache. This image's own \
+                 tokens are still declared; graph queries answer Unsupported and \
+                 service clients call by key expression."
+            );
+            return Err(TransportError::Unsupported);
+        }
         if rc < 0 {
             return Err(TransportError::Unsupported);
         }
@@ -1325,6 +1353,12 @@ impl Session for ZenohSession {
         // A refusal is not fatal to the client — `service_is_ready` then
         // reports `Err(Unsupported)`, which every wait loop reads as "cannot
         // say" and waits on, rather than as "no".
+        //
+        // With graph discovery compiled out (`ZPICO_GRAPH_DISCOVERY=0`) this is
+        // the ONLY thing that changes for a client: the call itself was never a
+        // graph lookup. `send_request` is a `z_get` on the service key
+        // expression, which the router matches against the queryables it knows,
+        // so a caller that does not gate on `service_is_ready` works unchanged.
         if let Err(_e) = self.ensure_graph_cache() {
             #[cfg(feature = "std")]
             log::warn!("graph cache unavailable; service_is_ready will report Unsupported: {_e:?}");

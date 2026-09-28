@@ -57,6 +57,9 @@ C_DEFINE_KNOBS = {
     # second spelling of it in build.ninja is the issue-0135 ABI break, and
     # "one knob, two values" below is exactly the check it needs.
     "NROS_RMW_LOCAL_QUERYABLE": "Z_FEATURE_LOCAL_QUERYABLE",
+    # D9 (safety-island demo) -- a BOOL whose C fallback is 1, so an undelivered
+    # 0 does not fail to compile: it silently keeps the graph cache.
+    "ZPICO_GRAPH_DISCOVERY": "ZPICO_GRAPH_DISCOVERY",
 }
 
 # Knobs that are DERIVED and must not silently lose their derivation on the way
