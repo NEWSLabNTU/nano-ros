@@ -50,6 +50,42 @@ struct ComponentMeta {
     /// `Option<Vec<_>>` and not `#[serde(default)]`: the whole design turns on
     /// telling "declared nothing" from "did not declare", and a defaulted empty
     /// vector collapses exactly those two.
+    ///
+    /// **NO PRODUCTION PRODUCER WRITES THIS KEY, and it is still not dead
+    /// code.** Measured 2026-09-29 (issue 1555): every built
+    /// `nros-metadata.json` in a fully-populated checkout -- 255 of them,
+    /// across `zephyr-workspace/build-*`, the example leaf build dirs and the
+    /// workspace configures -- carries NO `entities` key, so this field is
+    /// `None` and the declaration is [`Declaration::Absent`] on every real
+    /// road. `_nros_metadata_emit()` lost the splice point in phase-454 W9 and
+    /// `check-knob-single-reader.py` keeps it out; the Cargo-manifest spelling
+    /// is refused by `orchestration::nros_config::refuse_retired_entities_key`;
+    /// a standalone leaf states its entities in `system.toml` and reaches the
+    /// pools through [`crate::cmd::entity_facts`], never through this file.
+    ///
+    /// What keeps the field alive is ONE consumer, and it is a test input:
+    /// `packages/api/nros-cpp/tests/compile/declared-qos-fixture/entities.json`
+    /// is the committed metadata document that
+    /// [`EntityInventory::to_declared_qos_header`] renders the compile
+    /// fixture's `nros_declared_qos_generated.h` from, which `just check c` and
+    /// `just check cpp` compile their declared-depth `_Static_assert` TUs
+    /// against (4 call sites in `just/check/lanes.just`), held to the emitter
+    /// by `the_committed_compile_fixture_is_what_this_emitter_renders` below.
+    ///
+    /// Deleting the field therefore needs the fixture to state its depths the
+    /// way a real image does -- through a contract sidecar and a resolved
+    /// SystemModel on `--model`. That model CANNOT simply be committed beside
+    /// the fixture: `check-no-tracked-models` bans a tracked
+    /// `*/system_model.yaml` outright (phase-330 W7.e), so the conversion is a
+    /// build-step fixture, not an edit. Issue 1555 carries it.
+    ///
+    /// Corollary worth knowing before trusting a comment near here: because
+    /// this is always `None` in production, the "metadata contributes the
+    /// timers the contract cannot express" half of
+    /// [`EntityInventory::merged_per_kind_max`] contributes NOTHING today. The
+    /// merge is still load-bearing -- `self.components` is the REGISTERED
+    /// component population that issue 1407 needs for the node table -- but the
+    /// entity terms come from the model alone.
     #[serde(default)]
     entities: Option<Vec<String>>,
 }
