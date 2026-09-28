@@ -592,14 +592,19 @@ pub fn interpolate(input: &str, ctx: &InterpContext<'_>) -> Result<String, Inter
         } else if token == "src" {
             ctx.src.display().to_string()
         } else if token == "nuttx_include" {
-            let dir = std::env::var("NUTTX_DIR")
-                .map_err(|_| InterpError::MissingEnv("NUTTX_DIR".to_string()))?;
+            // phase-471 W6 — `env_path`, so the same rule that picks the
+            // include ROOT also picks the checkout it is rooted in (issue
+            // 1280). A raw read here resolved against whichever nano-ros tree
+            // the parent shell had activated, which is the one thing
+            // `{nuttx_include}` exists to take out of the author's hands.
+            let dir = nros_build_paths::env_path("NUTTX_DIR")
+                .ok_or_else(|| InterpError::MissingEnv("NUTTX_DIR".to_string()))?;
             // `nros_build_paths` directly, not the board crate's re-export:
             // `nuttx_export::include_root` is a one-line delegator to exactly
             // this, and its own comment says the shared SPELLING is the point.
             // Calling the shared one is what lets this module live in a leaf
             // crate (phase-400 W6).
-            nros_build_paths::nuttx_include_root(Path::new(&dir))
+            nros_build_paths::nuttx_include_root(&dir)
                 .display()
                 .to_string()
         } else if let Some(var) = token.strip_prefix("env:") {

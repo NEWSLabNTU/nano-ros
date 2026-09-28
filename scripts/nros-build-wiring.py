@@ -205,6 +205,28 @@ REROOT_WRAPPER = "_NROS_REROOT"
 # `just`'s name for "the checkout this justfile is in".
 HERE_VAR = "_NROS_HERE"
 
+# A read whose VALUE is used. `env::var("X").is_err()` asks whether the variable
+# is set and never touches the path, so re-rooting it would change nothing —
+# counting it would report a crate that has no defect and hide the ones that do.
+RAW_ENV_READ = re.compile(
+    r'env::var(?:_os)?\(\s*"([A-Z_0-9]+)"\s*\)(?!\s*\.is_(?:err|ok)\(\))')
+
+# phase-471 W6 — the SECOND producer of a path-valued build-script variable.
+# `just/sdk-env.just` is what a `just` road exports; a BOARD DESCRIPTOR's
+# `cargo_config` `[env]` block is what the cargo and cmake roads export, and
+# `THREADX_EXTRA_INCLUDES` lives only there. The test is `${workspace}`-rooted,
+# which is precisely the class issue 1280 is about — a path INSIDE a checkout,
+# so a value carried in from another one is re-rootable and exact. A value
+# outside every checkout is KEPT by the rule anyway, so not deriving those costs
+# nothing. Derived, not authored, for `sdk_path_vars`'s reason.
+BOARD_ENV_PATH_ROW = re.compile(
+    r'^\s*([A-Z_][A-Z_0-9]*)\s*=\s*\{\s*value\s*=\s*"\$\{workspace\}', re.M)
+
+# A `path =` dependency inside a manifest section. Used to walk from a build
+# script to the in-repo crates that RUN as part of it.
+MANIFEST_SECTION = re.compile(r"^\[([^\]]+)\]\s*$", re.M)
+PATH_DEP = re.compile(r'^\s*([\w-]+)\s*=\s*\{[^}]*?\bpath\s*=\s*"([^"]+)"', re.M | re.S)
+
 
 def tracked(*patterns: str) -> list[str]:
     out = subprocess.run(
@@ -239,6 +261,54 @@ def sdk_path_vars() -> list[str]:
     )
 
 
+def board_env_path_vars() -> list[str]:
+    """Path-valued variables a BOARD DESCRIPTOR exports, READ from the descriptors.
+
+    A second SUBJECT, deliberately not folded into `sdk_path_vars`: that one is
+    paired with `check-inherited-checkout-paths` off one line of
+    `just/sdk-env.just`, and widening it would break the pairing rather than
+    extend it. This one has its own SSoT — the `cargo_config` `[env]` rows in
+    `nros-board.toml` — and its own reason to exist: `THREADX_EXTRA_INCLUDES`
+    is exported by a descriptor and by a cmake board file, never by `just`, so
+    no amount of reading `sdk-env.just` will ever find it (phase-471 W6).
+    """
+    names: set[str] = set()
+    for p in tracked("*nros-board.toml"):
+        names.update(BOARD_ENV_PATH_ROW.findall(read(p)))
+    return sorted(names)
+
+
+def path_vars() -> list[str]:
+    """Every path-valued build-script variable, from BOTH producers."""
+    return sorted(set(sdk_path_vars()) | set(board_env_path_vars()))
+
+
+def strip_line_comments(text: str) -> str:
+    """Path questions are asked of the CODE.
+
+    The best-written script in the tree
+    (`examples/mps2-an385-baremetal/c/talker`) explains in its doc comment why
+    it does NOT use `$NROS_REPO_DIR`, and a census that reads comments counted
+    that as a use.
+    """
+    return re.sub(r"^\s*//.*$", "", text, flags=re.M)
+
+
+def raw_reads_of(code: str, vars_: list[str] | set[str]) -> list[str]:
+    """The path variables this code resolves with a bare `env::var`."""
+    return sorted({m.group(1) for m in RAW_ENV_READ.finditer(code)
+                   if m.group(1) in vars_})
+
+
+def names_among(code: str, vars_: list[str] | set[str]) -> list[str]:
+    """The path variables this code NAMES at all.
+
+    `DEP_<NAME>` is the `links=` channel, not a read of `<NAME>`.
+    """
+    return sorted(v for v in vars_
+                  if re.search(rf"(?<!DEP_)\b{re.escape(v)}\b", code))
+
+
 def build_scripts() -> list[dict]:
     """One row per CARGO BUILD SCRIPT.
 
@@ -250,17 +320,13 @@ def build_scripts() -> list[dict]:
     doc comment. A census whose population is wrong answers every question
     wrong, quietly.
     """
-    path_vars = sdk_path_vars()
+    vars_ = path_vars()
     rows = []
     for p in tracked("*/build.rs"):
         if not (ROOT / p).parent.joinpath("Cargo.toml").is_file():
             continue
         text = read(p)
-        # Path questions are asked of the CODE. The best-written script in the
-        # tree (`examples/mps2-an385-baremetal/c/talker`) explains in its doc
-        # comment why it does NOT use `$NROS_REPO_DIR`, and a census that reads
-        # comments counted that as a use.
-        code = re.sub(r"^\s*//.*$", "", text, flags=re.M)
+        code = strip_line_comments(text)
         parts = p.split("/")
         category = parts[1] if parts[0] == "packages" else parts[0]
 
@@ -268,11 +334,7 @@ def build_scripts() -> list[dict]:
         ctx = {
             "board_deps": re.findall(
                 r"^(nros-board-[\w-]+)\s*=\s*\{[^}]*path\s*=", manifest, re.M),
-            # `DEP_<NAME>` is the `links=` channel, not a read of `<NAME>`.
-            "sdk_path_vars": sorted(
-                v for v in path_vars
-                if re.search(rf"(?<!DEP_)\b{re.escape(v)}\b", code)
-            ),
+            "sdk_path_vars": names_among(code, vars_),
         }
 
         role = next((name for name, _, rule, _ in ROLES if rule(text, ctx)), None)
@@ -303,17 +365,7 @@ def build_scripts() -> list[dict]:
             "board_deps": ctx["board_deps"],
             "sdk_path_vars": ctx["sdk_path_vars"],
             "routes_paths": bool(re.search(r"nros_build_paths::", code)),
-            # A read whose VALUE is used. `env::var("X").is_err()` asks whether
-            # the variable is set and never touches the path, so re-rooting it
-            # would change nothing — counting it would report a crate that has
-            # no defect and hide the ones that do.
-            "raw_path_reads": sorted({
-                m.group(1)
-                for m in re.finditer(
-                    r'env::var(?:_os)?\(\s*"([A-Z_0-9]+)"\s*\)(?!\s*\.is_(?:err|ok)\(\))',
-                    code)
-                if m.group(1) in path_vars
-            }),
+            "raw_path_reads": raw_reads_of(code, vars_),
             "private_path_helper": private_helper,
         })
 
@@ -334,6 +386,103 @@ def build_scripts() -> list[dict]:
             r["board_role"] = "overlay"
         else:
             r["board_role"] = "base"
+    return sorted(rows, key=lambda r: r["path"])
+
+
+BUILD_DEP_SECTIONS = ("build-dependencies",)
+LIB_DEP_SECTIONS = ("dependencies", "build-dependencies")
+
+
+def _manifest_path_deps(manifest_rel: str, sections: tuple[str, ...]) -> list[str]:
+    """In-repo `path =` deps of a manifest, as repo-relative crate dirs.
+
+    `sections` is what makes the walk mean something. From the crate cargo
+    compiles a `build.rs` for, only `[build-dependencies]` runs at build time —
+    its `[dependencies]` are the RUNTIME crate and its `[dev-dependencies]` are
+    tests, and walking either reaches most of the tree. From a build-script
+    LIBRARY, ordinary `[dependencies]` DO run at build time, because the library
+    itself is already running there.
+    """
+    text = read(manifest_rel)
+    base = Path(manifest_rel).parent
+    out: list[str] = []
+    # Split on section headers so a `[patch.*]` or `[package]` row cannot be
+    # mistaken for a dependency.
+    marks = [(m.start(), m.end(), m.group(1)) for m in MANIFEST_SECTION.finditer(text)]
+    for i, (_s, e, name) in enumerate(marks):
+        if name.rsplit(".", 1)[-1] not in sections:
+            continue
+        stop = marks[i + 1][0] if i + 1 < len(marks) else len(text)
+        for _dep, rel in PATH_DEP.findall(text[e:stop]):
+            resolved = (ROOT / base / rel).resolve()
+            try:
+                out.append(str(resolved.relative_to(ROOT)))
+            except ValueError:
+                continue  # outside the checkout — not ours to scan
+    return out
+
+
+def build_script_libs() -> list[dict]:
+    """One row per in-repo crate that RUNS as part of a build script.
+
+    phase-471 W6. `build_scripts()`'s population is deliberately narrow — W0
+    fixed it by narrowing — but the RULE it feeds ("a build script resolves a
+    path-valued SDK variable through `nros_build_paths`") is about code that
+    runs at build time, and `nros-board-common` is exactly that: a build-script
+    LIBRARY, reached from four board `build.rs` files through
+    `[build-dependencies]`. A raw read there is strictly worse than one in a
+    single board's own script, because it reaches every board that calls it —
+    and that is where issue 1527's remaining three `NUTTX_DIR` reads were,
+    invisible to a gate whose population was `build.rs`.
+
+    Derived by walking `[build-dependencies]` path deps out of the census's own
+    build scripts, then transitively through in-repo path deps. Nothing is
+    authored.
+
+    The ONE crate excluded is the one that DEFINES the rule (`pub fn
+    reroot_foreign`): its own `env_path` reads `env::var` of a `&str` parameter
+    and cannot be spelled `nros_build_paths::`, so including it would report the
+    rule as a violation of itself. Identified by what it defines, not by name.
+    """
+    vars_ = path_vars()
+    seen: set[str] = set()
+    frontier: list[str] = []
+    for r in build_scripts():
+        frontier.extend(_manifest_path_deps(
+            str(Path(r["path"]).parent / "Cargo.toml"), BUILD_DEP_SECTIONS))
+
+    while frontier:
+        crate_dir = frontier.pop()
+        if crate_dir in seen:
+            continue
+        manifest = f"{crate_dir}/Cargo.toml"
+        if not (ROOT / manifest).is_file():
+            continue
+        seen.add(crate_dir)
+        frontier.extend(_manifest_path_deps(manifest, LIB_DEP_SECTIONS))
+
+    rows = []
+    for crate_dir in sorted(seen):
+        files = tracked(f"{crate_dir}/src/*.rs")
+        if not files:
+            continue
+        crate_code = strip_line_comments("\n".join(read(f) for f in files))
+        if "pub fn reroot_foreign" in crate_code:
+            continue  # the crate that IS the rule
+        # One row per FILE: a failure has to name the file to edit, and an
+        # exemption is written at the site it excuses.
+        for f in files:
+            code = strip_line_comments(read(f))
+            named = names_among(code, vars_)
+            if not named:
+                continue
+            rows.append({
+                "path": f,
+                "crate": Path(crate_dir).name,
+                "sdk_path_vars": named,
+                "routes_paths": "nros_build_paths::" in code,
+                "raw_path_reads": raw_reads_of(code, vars_),
+            })
     return sorted(rows, key=lambda r: r["path"])
 
 
@@ -381,10 +530,11 @@ def inventory() -> dict:
         if r["role"]:
             by_role[r["role"]].append(r["path"])
 
+    libs = build_script_libs()
     unprotected = [
         r for r in scripts
         if (r["raw_path_reads"] or r["private_path_helper"]) and r["sdk_path_vars"]
-    ]
+    ] + [r for r in libs if r["raw_path_reads"]]
     return {
         "roads": ROADS,
         "build_scripts": {
@@ -413,14 +563,23 @@ def inventory() -> dict:
         },
         "path_resolution": {
             "sdk_path_vars": sdk_path_vars(),
+            "board_env_path_vars": board_env_path_vars(),
+            "path_vars": path_vars(),
             "scripts_naming_one": sum(1 for r in scripts if r["sdk_path_vars"]),
             "routed_through_nros_build_paths": sum(
                 1 for r in scripts if r["sdk_path_vars"] and r["routes_paths"]
             ),
+            # phase-471 W6 — the build-script LIBRARIES, a second population for
+            # the same rule. `nros-board-common` is reached from four board
+            # `build.rs` files, so a raw read there is worse than one in a single
+            # script; it was invisible while the population was `build.rs` alone.
+            "libs_naming_one": len(libs),
+            "libs_routed": sum(1 for r in libs if r["routes_paths"]),
+            "libs": [r["path"] for r in libs],
             "unprotected": [
                 {"path": r["path"],
                  "raw_reads": r["raw_path_reads"],
-                 "private_helper": r["private_path_helper"]}
+                 "private_helper": r.get("private_path_helper", False)}
                 for r in unprotected
             ],
         },
@@ -495,9 +654,16 @@ def main() -> int:
         print("PATH RESOLUTION — issue 1280's build-script half")
         print(f"    {len(pr['sdk_path_vars']):>4}  path-valued variables "
               "(read from just/sdk-env.just)")
+        only_board = sorted(set(pr["board_env_path_vars"]) - set(pr["sdk_path_vars"]))
+        print(f"    {len(only_board):>4}  MORE from board descriptors' cargo_config "
+              f"[env] — a second producer{', ' + ', '.join(only_board) if only_board else ''}")
         print(f"    {pr['scripts_naming_one']:>4}  build scripts naming at least one")
         print(f"    {pr['routed_through_nros_build_paths']:>4}  of those reaching "
               "nros_build_paths (the ONE three-valued rule)")
+        print(f"    {pr['libs_naming_one']:>4}  build-script LIBRARY files naming one "
+              f"({pr['libs_routed']} reaching nros_build_paths)")
+        for q in pr["libs"]:
+            print(f"          {q}")
         print(f"    {len(pr['unprotected']):>4}  resolving one WITHOUT it — "
               "an inherited value from another checkout would win")
         for u in pr["unprotected"]:
@@ -507,9 +673,11 @@ def main() -> int:
             print(f"          {u['path']}  ({how})")
         if not pr["unprotected"]:
             # A row nobody ever sees is a row nobody trusts. This line read 5
-            # on 2026-09-28 (issue 1527), so the zero is a measurement.
-            print("          (it read 5 before issue 1527; no gate covers this "
-                  "half of 1280 — phase-471 W3)")
+            # on 2026-09-28 (issue 1527) over build scripts alone, and 10 more
+            # in the library population phase-471 W6 added, so the zero is a
+            # measurement. Gate: `check-build-script-path-resolution`.
+            print("          (it read 5 before issue 1527 and 10 more before "
+                  "phase-471 W6 widened the population)")
         print()
 
     if want_all:
