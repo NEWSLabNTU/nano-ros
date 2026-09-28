@@ -29,6 +29,7 @@
 extern crate alloc;
 
 mod node;
+pub mod zephyr_image;
 
 pub use node::{LoweredEntry, LoweredNode, NodeIdentity, QosOverride, sanitize_pkg};
 
