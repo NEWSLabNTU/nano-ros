@@ -1623,13 +1623,12 @@ impl Session for ZenohSession {
     ///   node expires publishers the application believed it had kept alive.
     ///
     /// * `DURABILITY_TRANSIENT_LOCAL` is **added** by phase-455 W5 (issue
-    ///   1341), and it is the one bit here that is true of a SINGLE entity
-    ///   kind: `shim/publisher.rs::transient_local` serves it by
-    ///   query-on-match, a subscription still cannot query a peer's cache, and
-    ///   `shim/qos.rs::admit` refuses it for every kind but a publisher. The
-    ///   mask has no per-kind spelling, so an `rmw_zenoh_cpp` peer reading this
-    ///   sees a policy it can rely on us to OFFER; what it may not conclude is
-    ///   that we can REQUEST it.
+    ///   1341) for publishers, which serve it by query-on-match
+    ///   (`shim/publisher.rs::transient_local`), and phase-473 W2 extends it to
+    ///   subscriptions, which issue the `<keyexpr>/@adv/**` history query at
+    ///   creation (`shim/subscriber.rs`). `shim/qos.rs::admit` still refuses it
+    ///   for a service or a client, which have no history; the mask has no
+    ///   per-kind spelling, so the bit states what the topic entities serve.
     ///
     /// AVOID_ROS_NAMESPACE_CONVENTIONS stays absent: key generation always
     /// applies the ROS conventions and nothing reads the flag.

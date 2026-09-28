@@ -218,9 +218,12 @@ pub(super) fn admit(
     // through query-on-match (`shim/publisher.rs::transient_local`): the
     // publisher retains its last `TL_RETAIN_DEPTH` sample and declares a
     // queryable on `<keyexpr>/@adv/pub/<zid>/<eid>/_`, which is where a stock
-    // `ze_advanced_subscriber`'s history query lands. Refused for every other
-    // kind — the SUBSCRIBER half (querying a stock transient-local publisher on
-    // match, for a latched topic) is a real capability and is not built.
+    // `ze_advanced_subscriber`'s history query lands. Served by a SUBSCRIPTION
+    // (phase-473 W2) through the same convention from the other side: at
+    // creation it issues the one global history query a stock advanced
+    // subscriber issues, `<keyexpr>/@adv/**`, and the replies land in its ring
+    // beside the live samples (`zpico_subscriber_history_query`). Refused for a
+    // service or a client -- a queryable has no history to replay.
     //
     // phase-455 W5 / issue 1341 — this arm refused ALL FOUR kinds from
     // phase-428 W9 (2026-09-12) until now, and the one profile in the tree whose
@@ -234,14 +237,15 @@ pub(super) fn admit(
     // "goal terminated, client never saw it" failure of issue 0902.
     match requested.durability {
         QoSDurabilityPolicy::Volatile => {}
-        QoSDurabilityPolicy::TransientLocal if matches!(kind, EntityKind::Publisher) => {}
+        QoSDurabilityPolicy::TransientLocal
+            if matches!(kind, EntityKind::Publisher | EntityKind::Subscription) => {}
         QoSDurabilityPolicy::TransientLocal => {
             return Err(refuse(
                 kind,
                 name,
                 QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL,
-                "— the shim serves publisher-side retention only; \
-                 a subscription cannot query a peer's cache on match yet",
+                "-- a service or client has no history to replay; the shim serves \
+                 transient-local on publishers and subscriptions",
             ));
         }
         // See the history arm: an unresolved sentinel is the caller's bug.
@@ -482,19 +486,19 @@ mod tests {
         );
     }
 
-    /// phase-455 W5 / issue 1341 — the split is by ENTITY KIND, because the
-    /// publisher half is built and the subscriber half is not.
+    /// phase-455 W5 / issue 1341, phase-473 W2 -- the split is by ENTITY KIND:
+    /// a publisher retains, a subscription queries the retention on creation,
+    /// and a queryable has no history at all.
     #[test]
-    fn transient_local_is_served_on_a_publisher_and_refused_on_every_other_kind() {
+    fn transient_local_is_served_on_publishers_and_subscriptions_only() {
         let mut qos = base();
         qos.durability = QoSDurabilityPolicy::TransientLocal;
         let granted = admit(EntityKind::Publisher, "/t", &qos).expect("the publisher serves it");
         assert_eq!(granted.durability, QoSDurabilityPolicy::TransientLocal);
-        for kind in [
-            EntityKind::Subscription,
-            EntityKind::Service,
-            EntityKind::Client,
-        ] {
+        let granted =
+            admit(EntityKind::Subscription, "/t", &qos).expect("the subscription serves it");
+        assert_eq!(granted.durability, QoSDurabilityPolicy::TransientLocal);
+        for kind in [EntityKind::Service, EntityKind::Client] {
             assert_eq!(
                 admit(kind, "/t", &qos),
                 Err(TransportError::IncompatibleQos(

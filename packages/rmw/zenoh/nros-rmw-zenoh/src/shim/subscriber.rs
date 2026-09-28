@@ -916,6 +916,70 @@ pub fn overflow_drops_total() -> u32 {
 }
 
 // ============================================================================
+// Transient-local, the subscriber half (phase-473 W2)
+// ============================================================================
+
+/// How long the history query stays open. It closes sooner in the normal case
+/// (the router sends the final reply once every matching cache answered); this
+/// bounds the case where a cache never does. It also bounds the window in which
+/// the shim deduplicates live samples against cached ones, so it is not made
+/// longer than a join needs.
+pub(super) const TL_HISTORY_QUERY_TIMEOUT_MS: u32 = 5_000;
+
+/// Issue the history query of a transient-local subscription.
+///
+/// The key is `<subscription keyexpr>/@adv/**`: the GLOBAL query
+/// `rmw_zenoh_cpp` 0.1.9's `ze_advanced_subscriber` sends at creation, which
+/// intersects every advanced publisher's cache queryable at
+/// `<topic keyexpr>/@adv/pub/<zid>/<eid>/_` (measured from a router's debug
+/// log, issue 1341). A stock latched publisher (default_adapi's
+/// `/api/operation_mode/state`) answers with its last sample, attachment
+/// included, and so does a nano-ros one (`shim/publisher.rs`).
+///
+/// Not fatal when it cannot be sent: the subscription still receives every
+/// live sample, which is what it would have had as VOLATILE. It is said at
+/// ERROR, because a latched topic that never changes again is then never read,
+/// and a late joiner that sees nothing is exactly the silence this exists to
+/// remove. Per-publisher late-joiner detection (the `@adv` liveliness token a
+/// stock subscriber also watches) is not done: a publisher that appears after
+/// this subscription delivers its first sample live.
+fn query_history(context: &Context, handle: i32, key: &str, topic: &str) {
+    let mut buf = [0u8; KEYEXPR_BUFFER_SIZE];
+    let suffix = b"/@adv/**";
+    let bytes = key.as_bytes();
+    if bytes.len() + suffix.len() >= buf.len() {
+        nros_log::log_error!(
+            nros_log::get_logger("nros_rmw_zenoh"),
+            "transient-local '{}': the history keyexpr does not fit {} bytes, so \
+             no history query was sent -- this subscription reads live samples only.",
+            topic,
+            buf.len()
+        );
+        return;
+    }
+    buf[..bytes.len()].copy_from_slice(bytes);
+    buf[bytes.len()..bytes.len() + suffix.len()].copy_from_slice(suffix);
+    let rc = crate::zpico::ffi_guard(|| unsafe {
+        zpico_sys::zpico_subscriber_history_query(
+            context.handle(),
+            handle,
+            buf.as_ptr().cast(),
+            TL_HISTORY_QUERY_TIMEOUT_MS,
+        )
+    });
+    if rc < 0 {
+        nros_log::log_error!(
+            nros_log::get_logger("nros_rmw_zenoh"),
+            "transient-local '{}': the history query was not sent ({}) -- this \
+             subscription reads live samples only, so a latched value published \
+             before it joined is not seen until the publisher changes it.",
+            topic,
+            rc
+        );
+    }
+}
+
+// ============================================================================
 // ZenohSubscriber
 // ============================================================================
 
@@ -1171,6 +1235,14 @@ impl ZenohSubscriber {
                 }
             }
         };
+
+        // phase-473 W2 -- the SUBSCRIBER half of transient-local: one history
+        // query, now, on the key a stock advanced subscriber queries. Issued
+        // AFTER the subscriber is declared, so nothing published in between is
+        // missed: a sample that arrives both ways is deduplicated by the shim.
+        if qos.durability == nros_rmw::QoSDurabilityPolicy::TransientLocal {
+            query_history(context, subscriber.handle(), key.as_str(), topic.name);
+        }
 
         let now = now_ms();
         Ok(Self {

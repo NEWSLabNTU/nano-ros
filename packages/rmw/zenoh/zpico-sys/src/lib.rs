@@ -283,6 +283,21 @@ unsafe extern "C" {
         callback: ZpicoZeroCopyCallback,
         ctx: *mut c_void,
     ) -> i32;
+    /// Transient-local, the subscriber half: one history query on `keyexpr`
+    /// into ring subscription `handle`. See `c/zpico/zpico.c`.
+    pub fn zpico_subscriber_history_query(
+        session: *mut zpico_session_t,
+        handle: i32,
+        keyexpr: *const core::ffi::c_char,
+        timeout_ms: u32,
+    ) -> i32;
+    /// The history window's reply and drop counts; 1 while it is open.
+    pub fn zpico_subscriber_history_stats(
+        session: *mut zpico_session_t,
+        handle: i32,
+        out_replies: *mut u32,
+        out_dropped: *mut u32,
+    ) -> i32;
     pub fn zpico_undeclare_subscriber(session: *mut zpico_session_t, handle: i32) -> i32;
 
     // Liveliness
@@ -652,6 +667,88 @@ mod tests {
             read(0, 10, &mut out),
             ZPICO_ERR_BUFFER,
             "a short buffer must be refused rather than truncated"
+        );
+    }
+
+    /// phase-473 W2 -- the transient-local history window's dedup, through the
+    /// REAL C rule. The case it exists for: a latched topic's cache reply
+    /// arriving AFTER a newer live sample must not become the last value the
+    /// subscription reads.
+    #[test]
+    fn history_window_drops_what_is_not_newer_from_the_same_publisher() {
+        unsafe extern "C" {
+            fn zpico_history_admit_apply(
+                have: *mut bool,
+                gid: *mut u8,
+                seq: *mut i64,
+                dropped: *mut u32,
+                att: *const u8,
+                att_len: usize,
+            ) -> i32;
+        }
+        /// An rmw attachment: seq, timestamp, VLE 16, GID.
+        fn att(seq: i64, gid_byte: u8) -> [u8; 33] {
+            let mut a = [0u8; 33];
+            a[..8].copy_from_slice(&seq.to_le_bytes());
+            a[8..16].copy_from_slice(&1_000_i64.to_le_bytes());
+            a[16] = 16;
+            a[17..].fill(gid_byte);
+            a
+        }
+        struct W {
+            have: bool,
+            gid: [u8; 16],
+            seq: i64,
+            dropped: u32,
+        }
+        impl W {
+            fn admit(&mut self, a: &[u8]) -> i32 {
+                unsafe {
+                    zpico_history_admit_apply(
+                        &mut self.have,
+                        self.gid.as_mut_ptr(),
+                        &mut self.seq,
+                        &mut self.dropped,
+                        a.as_ptr(),
+                        a.len(),
+                    )
+                }
+            }
+        }
+        let mut w = W {
+            have: false,
+            gid: [0; 16],
+            seq: 0,
+            dropped: 0,
+        };
+        // Live sample 7 from publisher A lands first; A's cache then answers
+        // with 6 (stale), and with 7 (the same sample twice).
+        assert_eq!(w.admit(&att(7, 0xA)), 1, "the first sample is admitted");
+        assert_eq!(w.admit(&att(6, 0xA)), 0, "an older one from A is dropped");
+        assert_eq!(w.admit(&att(7, 0xA)), 0, "a duplicate from A is dropped");
+        assert_eq!(w.dropped, 2);
+        // A second publisher's latched value is its own history, not stale.
+        assert_eq!(w.admit(&att(3, 0xB)), 1, "another publisher is admitted");
+        assert_eq!(w.admit(&att(8, 0xB)), 1, "and so is its newer sample");
+        // An attachment the rule cannot read is never dropped on a guess.
+        assert_eq!(w.admit(&att(1, 0xB)[..20]), 1, "a short attachment passes");
+        assert_eq!(w.admit(&[]), 1, "no attachment passes");
+        let mut bad = att(1, 0xB);
+        bad[16] = 8;
+        assert_eq!(w.admit(&bad), 1, "a GID length other than 16 passes");
+        assert_eq!(w.dropped, 2, "none of those counted as a drop");
+        assert_eq!(
+            unsafe {
+                zpico_history_admit_apply(
+                    core::ptr::null_mut(),
+                    w.gid.as_mut_ptr(),
+                    &mut w.seq,
+                    &mut w.dropped,
+                    core::ptr::null(),
+                    0,
+                )
+            },
+            ZPICO_ERR_INVALID
         );
     }
 

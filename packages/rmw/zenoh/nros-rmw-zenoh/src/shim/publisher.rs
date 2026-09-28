@@ -48,10 +48,9 @@ use super::RMW_ATTACHMENT_SIZE_WITH_CRC;
 ///
 /// # What this does not do
 ///
-/// * **The subscriber half.** Querying a stock transient-local publisher on
-///   match, so a nano-ros subscription gets a latched topic's last value, is a
-///   real capability and is a separate item; `shim/qos.rs` still REFUSES
-///   TRANSIENT_LOCAL on a subscription rather than pretending.
+/// * **The subscriber half** is not here: it is `shim/subscriber.rs`'s history
+///   query at creation (phase-473 W2), which is how a nano-ros subscription
+///   gets a latched topic's last value from this cache or a stock one.
 /// * **A `@adv` liveliness token**, so a stock subscriber that existed BEFORE
 ///   this publisher does not detect it as a late joiner and does not query it
 ///   individually. It receives the live samples from that moment on, which is

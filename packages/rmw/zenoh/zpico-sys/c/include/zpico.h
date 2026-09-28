@@ -270,6 +270,13 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * Caller guarantees `data` outlives the call.
  */
 /**
+ * Transient-local, the subscriber half: one history query on `keyexpr`
+ * into ring subscription `handle`. See `c/zpico/zpico.c`.
+ */
+/**
+ * The history window's reply and drop counts; 1 while it is open.
+ */
+/**
  * Phase 237 — reply-slot index from the most recent query callback (the
  * deferred-reply seq); call from inside the synchronous query callback.
  */
@@ -637,6 +644,44 @@ int32_t zpico_declare_subscriber_ring(struct zpico_session_t *_session,
                                       struct zpico_ring_desc_t *_desc,
                                       ZpicoNotifyCallback _callback,
                                       void *_ctx);
+
+/**
+ * The SUBSCRIBER half of transient-local durability: one history query on
+ * `keyexpr` (`<subscription keyexpr>/@adv/**`) whose replies land in the
+ * ring subscription `handle` beside its live samples. Older-or-equal
+ * samples from the same publisher are dropped while the query is open.
+ *
+ * # Returns
+ * 0 once the query is sent, a negative error code otherwise.
+ */
+int32_t zpico_subscriber_history_query(struct zpico_session_t *_session,
+                                       int32_t _handle,
+                                       const char *_keyexpr,
+                                       uint32_t _timeout_ms);
+
+/**
+ * The pure dedup rule of a history window, over caller-owned state:
+ * 1 admits the sample whose rmw attachment is `att` (and records it as
+ * the newest), 0 drops it as not newer than one from the same publisher.
+ */
+int32_t zpico_history_admit_apply(bool *_have,
+                                  uint8_t *_gid,
+                                  int64_t *_seq,
+                                  uint32_t *_dropped,
+                                  const uint8_t *_att,
+                                  size_t _att_len);
+
+/**
+ * What subscription `handle`'s history window did: cached samples that
+ * arrived, and samples dropped as not newer than one already delivered.
+ *
+ * # Returns
+ * 1 while the window is open, 0 once it closed, negative on a bad handle.
+ */
+int32_t zpico_subscriber_history_stats(struct zpico_session_t *_session,
+                                       int32_t _handle,
+                                       uint32_t *_out_replies,
+                                       uint32_t *_out_dropped);
 
 /**
  * Declare a zero-copy subscriber for the given key expression.
