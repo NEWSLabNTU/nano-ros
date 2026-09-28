@@ -1301,3 +1301,67 @@ against `gate`'s numbers is inference, stated as such.
 Acceptance is unchanged. The remedy list is unchanged, and now has a direction:
 the arrival state is what moved, `packages/cli/target` is what moved it, and a
 fixed 6.7G reclaim against a disk arriving 94% full cannot hold.
+
+## The `live-peer` lane dies of this too, and its workspace mount had 65 G free (2026-09-28)
+
+Every section above measures `/__w`, because that is what `disk-report.sh`
+looks at and what the reclaim can act on. Two consecutive `live-peer
+regression` nights show a failure with this issue's signature where that
+measurement says there was nothing wrong.
+
+| run | job | step 9 `Build the fixtures those rows resolve` | job ended |
+| --- | --- | --- | --- |
+| 36293862264 (2026-09-27 04:17) | 108548946263 | started 04:24:54Z, **never completed** | 05:40:28Z |
+| 36377215634 (2026-09-28 04:19) | 108785391163 | started 04:27:13Z, **never completed** | 05:49:16Z |
+
+Both jobs conclude `failure` with **no failing step** — steps 10-13 and the
+post-checkout/stop-containers steps all carry a null conclusion — and both logs
+end mid-line inside `idlc` output with no `##[error]`. The verdict is only in
+the check-run annotation, and on both nights it is the same one:
+
+```
+Unhandled exception. System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20260928-041930-utc.log'
+```
+
+That is the runner AGENT failing to write its own diagnostic log, not a build
+step failing to write an artifact — which is why there is no step to attribute
+it to and why an `always()` upload cannot rescue it, the same reason the
+2026-09-24 section gives for splitting `gate`'s two uploads.
+
+The same annotation, with `Worker_20260928-021055-utc.log`, is what job
+**108760546805** carries — the scheduled `gate` run the section above measures.
+So the two lanes fail identically at the agent, whatever their build was doing.
+
+### What the live-peer transcript actually reports, and why it does not settle this
+
+`disk-transcript-live-peer-board` for run 36377215634 is three lines:
+
+```
+reclaiming    5.2G	/__t
+freed 5251 MB; 68816360 KB free
+```
+
+**65.6 GiB free**, taken before the SDK setup — roughly four times the 16.2 G
+the `gate` job had post-reclaim, on the lane that then died. Two readings fit:
+`/home/runner/actions-runner` is a different device from the `/__w` mount the
+transcript measures, or step 9 consumed all 65.6 G in the 82 minutes it ran.
+The transcript cannot separate them, because it reports once and only on the
+mounts inside the container; on the `gate` job `/dev/root` backs both `/__w`
+and `/`, which is evidence for neither reading here.
+
+That is the measurement this arm needs: a `df` of the runner host's own volume,
+or simply a second live-peer report after step 9, which would say whether the
+65.6 G survived. Until one exists, "reclaim more inside `/__w`" is not known to
+help this lane, and the direction the section above derived — prune
+`packages/cli/target` — is a claim about `gate`, not about this.
+
+What this is NOT: not issue 1364 (`tomllib`), and not issue 1474 — 1474 is real
+in the same run, but it fails the OTHER job (**108785696260**, "rows whose board
+is NOT this runner") with a verdict, `cargo-clippy ... is not applicable to the
+'stable-x86_64-unknown-linux-gnu' toolchain` under `run_rust_clippy`. A lane
+with one job dying at the agent and one failing on a named gate reports a single
+`failure`, and reading that as one cause is how the second one hides.
+
+Acceptance for this arm: a `live-peer` run whose step 9 reaches a conclusion,
+with a disk figure recorded after it.
