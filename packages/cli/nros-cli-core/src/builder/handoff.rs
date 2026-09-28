@@ -60,7 +60,7 @@ use std::{ffi::OsString, path::PathBuf};
 /// it, print it (`--dry-run`), assert on it in a test, and only then hand over.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Handoff {
-    /// Program to exec — `cargo`, `cmake`, `west`, `idf.py`. Resolved through
+    /// Program to exec — `cargo`, `cmake`, `west`. Resolved through
     /// `PATH` by `execvp`, deliberately: the user's activated environment is
     /// what should decide which `west` runs, not a path we baked at build time.
     pub program: OsString,

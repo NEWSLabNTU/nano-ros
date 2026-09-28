@@ -7,7 +7,7 @@
 //!   2. RESOLVE    the image: argument > default_images > list and fail
 //!   3. PREFLIGHT  toolchains / SDKs / sources present?
 //!   4. GENERATE   msg bindings + model + the ROOT BUILD FILE  (W3/W4)
-//!   5. EXEC       cargo / cmake / west / idf.py — stderr untouched
+//!   5. EXEC       cargo / cmake / west — stderr untouched
 //! ```
 //!
 //! Stage 4 is not wired yet. That is deliberate and shippable: RFC-0065 D3 says
@@ -373,11 +373,17 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 .map_err(|e| eyre::eyre!("{e}"))?;
         let platform = descriptor.platform.kebab().to_string();
         let board = image.board.clone().unwrap_or_default();
+        // A refusal here is RFC-0065 D3's third outcome, not an internal error:
+        // the board and the language mix together name a combination nano-ros
+        // has no road for, and the message says which. Bailing beats answering
+        // with a road that would fail one stage later for a reason about a tool
+        // rather than about the image.
         let driver = plan::driver_for_board(
             &platform,
             descriptor.entry_kind,
             image_has_non_rust(&image, &bringup_dir),
-        );
+        )
+        .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
 
         // ---- stage 3 ----------------------------------------------------
         // Before anything is generated or compiled: a missing prerequisite
@@ -748,7 +754,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                                         d.platform.kebab(),
                                         d.entry_kind,
                                         image_has_non_rust(img, bd),
-                                    ) == Driver::CMake
+                                    ) == Ok(Driver::CMake)
                                         && cmake_coordinate(d.platform.kebab(), img) == coord
                                 })
                                 .unwrap_or(false)
@@ -1069,7 +1075,6 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     None => h,
                 })
             }
-            _ => Some(native_handoff(driver, &root, &bringup_dir, &board, args)),
         };
 
         out.push(ResolvedBuild {
@@ -1413,8 +1418,8 @@ fn drive(
                  `{}` needs a generated root, so it cannot be built through \
                  `nros build` today. Until W3/W4 land, build it the existing \
                  way (cargo build / cmake --build).\n\
-                 Images on Zephyr and ESP32 boards work now - they need no \
-                 generated root (RFC-0065 D3).",
+                 Images on Zephyr boards work now - they need no generated \
+                 root (RFC-0065 D3).",
                 p.qualified
             );
         };
@@ -3108,45 +3113,16 @@ fn entry_dirs_where(
         let Some(deploy) = rust_entry_system(&pkg.dir, bringup_dirs).and_then(|l| l.board) else {
             continue;
         };
+        // A board with no road is not a framework entry — it is a board that
+        // cannot be built at all, and `plan_builds` says so with the reason.
+        // Silently excluding it here would strip that message one stage early.
         if let DeployResolution::Board(d) = catalog.resolve_deploy(&deploy)
-            && want(plan::driver_for_board(
-                d.platform.kebab(),
-                d.entry_kind,
-                false,
-            ))
+            && plan::driver_for_board(d.platform.kebab(), d.entry_kind, false).is_ok_and(&want)
         {
             out.insert(pkg.dir.clone());
         }
     }
     out
-}
-
-fn native_handoff(
-    driver: Driver,
-    root: &std::path::Path,
-    bringup_dir: &std::path::Path,
-    board: &str,
-    args: &Args,
-) -> Handoff {
-    match driver {
-        Driver::West => {
-            let mut a = vec!["build".to_string(), "-b".to_string(), board.to_string()];
-            a.push(bringup_dir.display().to_string());
-            a.extend(args.native_args.iter().cloned());
-            Handoff::new("west", a).in_dir(root)
-        }
-        Driver::IdfPy => {
-            let mut a = vec!["build".to_string()];
-            a.extend(args.native_args.iter().cloned());
-            Handoff::new("idf.py", a).in_dir(bringup_dir)
-        }
-        // Unreachable today — the caller bails before here for these two.
-        Driver::Cargo | Driver::CMake => {
-            let mut a = vec!["build".to_string()];
-            a.extend(args.native_args.iter().cloned());
-            Handoff::new(driver.program(), a).in_dir(root)
-        }
-    }
 }
 
 /// `(bringup name, bringup dir, its images)` per bringup — the shape every

@@ -168,7 +168,9 @@ pub fn resolve(leaf: &Path, nano_ros_root: &Path) -> Result<Option<LeafImage>> {
         );
     };
     let platform = d.platform.kebab().to_string();
-    if plan::driver_for_board(&platform, d.entry_kind, false) != Driver::Cargo {
+    // A board with no road is not a leaf image either, and the workspace road
+    // is where its refusal gets reported with the image named.
+    if plan::driver_for_board(&platform, d.entry_kind, false) != Ok(Driver::Cargo) {
         return Ok(None);
     }
     let image_id = decl.image.clone().unwrap_or_else(|| board.clone());

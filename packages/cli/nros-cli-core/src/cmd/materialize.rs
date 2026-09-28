@@ -133,7 +133,6 @@ fn entry_kind_token(driver: crate::builder::plan::Driver) -> &'static str {
     use crate::builder::plan::Driver;
     match driver {
         Driver::West => "zephyr-staticlib",
-        Driver::IdfPy => "board-run",
         Driver::Cargo | Driver::CMake => "hosted-main",
     }
 }
