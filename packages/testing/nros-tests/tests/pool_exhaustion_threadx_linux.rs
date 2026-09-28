@@ -29,17 +29,14 @@
 //! list, so the record was dropped before any console.
 
 use nros_tests::{
-    fixtures::{ManagedProcess, build_pool_exhaustion_threadx_linux},
+    fixtures::{ManagedProcess, RequireFixture, build_pool_exhaustion_threadx_linux},
     output::{POOL_EXHAUSTION_VERDICT, ZENOH_SESSION_POOL_EXHAUSTED},
 };
 use std::{process::Command, time::Duration};
 
 #[test]
 fn zenoh_pool_exhaustion_reports_full_and_says_why_on_firmware() {
-    let bin = match build_pool_exhaustion_threadx_linux() {
-        Ok(p) => p,
-        Err(e) => panic!("pool-exhaustion fixture not built: {e}"),
-    };
+    let bin = build_pool_exhaustion_threadx_linux().require("pool-exhaustion");
 
     let mut proc = ManagedProcess::spawn_command(Command::new(bin), "pool-exhaustion")
         .expect("spawn the pool-exhaustion image");

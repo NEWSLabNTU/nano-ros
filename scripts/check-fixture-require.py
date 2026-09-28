@@ -40,6 +40,7 @@ invalidates is a baseline nobody can move.
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,7 +52,6 @@ BASELINE = ROOT / ".config" / "fixture-require-baseline.txt"
 RESOLVER_DECL = re.compile(r"\bfn (build_[a-z0-9_]+)\s*\([^;{]*?\)\s*->\s*TestResult", re.S)
 # The handlers that make the decision at the call site instead of delegating.
 BYPASS = re.compile(r"\.(expect|unwrap_or_else|unwrap)\s*\(")
-LOOKAHEAD = 4
 
 
 def tracked_rs():
@@ -108,6 +108,54 @@ def statement_end(text, start):
     return len(text)
 
 
+# Issue 1544 — the SYNTACTIC bypasses. A resolver's `Err` decided by a `match`,
+# an `if let`/`while let`, or a `let … else` never names a method at all, so
+# BYPASS above cannot see it; 18 `match build_x() { Ok(p) => p, Err(e) =>
+# panic!(..) }` sites sat in the tree while the gate read green. Each is keyed on
+# the call being the scrutinee DIRECTLY — `match build_x().require(..)` is not
+# a bypass, and neither is a `match` on something the resolver's value fed.
+MATCH_BEFORE = re.compile(r"\bmatch\s*$")
+IF_LET_BEFORE = re.compile(r"\b(?:if|while)\s+let\b[^;{}]*=\s*$")
+LET_BEFORE = re.compile(r"\blet\b[^;{}]*=\s*$")
+BLOCK_AFTER = re.compile(r"\s*\{")
+ELSE_AFTER = re.compile(r"\s*else\s*\{")
+
+
+def call_close(text, open_paren):
+    """Index just past the `)` matching the `(` at `open_paren`."""
+    depth = 0
+    for i in range(open_paren, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+    return len(text)
+
+
+def syntactic_bypass(text, call_start, call_end):
+    """Is the call the scrutinee of a match / if-let / let-else?"""
+    s = max(text.rfind(";", 0, call_start), text.rfind("{", 0, call_start),
+            text.rfind("}", 0, call_start)) + 1
+    before = text[s:call_start]
+    after = text[call_end:call_end + 80]
+    if MATCH_BEFORE.search(before) and BLOCK_AFTER.match(after):
+        return "match"
+    if IF_LET_BEFORE.search(before) and BLOCK_AFTER.match(after):
+        return "if-let"
+    if LET_BEFORE.search(before) and not IF_LET_BEFORE.search(before) and ELSE_AFTER.match(after):
+        return "let-else"
+    return None
+
+
+def _rel(f):
+    try:
+        return f.relative_to(ROOT)
+    except ValueError:
+        return f
+
+
 def sites(files, names):
     """Call sites of a resolver whose `Err` is handled without the helper."""
     if not names:
@@ -128,8 +176,11 @@ def sites(files, names):
                 continue
             end = statement_end(text, m.end())
             stmt = text[m.start() : end]
-            if ".require(" not in stmt and BYPASS.search(stmt):
-                found.append(f"{f.relative_to(ROOT)}:{text[: m.start()].count(chr(10)) + 1}")
+            ce = call_close(text, m.end() - 1)
+            if syntactic_bypass(text, m.start(), ce) or (
+                ".require(" not in stmt and BYPASS.search(stmt)
+            ):
+                found.append(f"{_rel(f)}:{text[: m.start()].count(chr(10)) + 1}")
             pos = max(end, m.end())
     return sorted(found)
 
@@ -153,31 +204,38 @@ def read_baseline():
 
 
 def self_test():
-    """Negative controls: the matcher must answer BOTH ways."""
+    """Negative controls: the matcher must answer BOTH ways.
+
+    Through `sites()` itself, on real files — the first version of this ran a
+    private line-window copy of the matcher (issue 1544), so a change to the
+    statement-scoped scan the gate actually runs was never under test.
+    """
     cases = [
         ("build_native_talker()\n    .expect(\"x\")", True),
         ("build_native_talker()\n    .unwrap_or_else(|e| panic!(\"{e}\"))", True),
         ("build_native_talker().require(\"native talker\")", False),
         ("build_native_talker()?", False),
         ("some_other_call().expect(\"x\")", False),
+        # issue 1544 — the syntactic bypasses.
+        ("match build_native_talker() {\n    Ok(p) => p,\n    Err(e) => panic!(\"{e}\"),\n}", True),
+        ("if let Ok(p) = build_native_talker() {\n    run(p);\n}", True),
+        ("let Ok(p) = build_native_talker() else {\n    panic!(\"x\")\n}", True),
+        ("match build_native_talker().require(\"t\").extension() {\n    _ => {}\n}", False),
+        ("let p = build_native_talker().require(\"t\");\nlet Some(x) = p.parent() else {\n    panic!()\n}", False),
+        ("if let Some(x) = probe() {\n    let p = build_native_talker().require(\"t\");\n}", False),
+        # A statement-scoped scan must not reach past its own `;`.
+        ("let p = build_native_talker()?;\nCommand::new(p).output().expect(\"x\")", False),
     ]
     names = {"build_native_talker"}
-    call = re.compile(r"\b(" + "|".join(names) + r")\s*\(")
     bad = 0
-    for text, want in cases:
-        lines = text.split("\n")
-        got = False
-        for i, line in enumerate(lines):
-            if not call.search(line):
-                continue
-            window = "\n".join(lines[i : i + LOOKAHEAD])
-            if ".require(" in window:
-                continue
-            if BYPASS.search(window):
-                got = True
-        if got != want:
-            print(f"  self-test FAIL: {text!r} -> {got}, want {want}")
-            bad += 1
+    with tempfile.TemporaryDirectory() as td:
+        for k, (text, want) in enumerate(cases):
+            f = Path(td) / f"case{k}.rs"
+            f.write_text("fn t() {\n    " + text + ";\n}\n")
+            got = bool(sites([f], names))
+            if got != want:
+                print(f"  self-test FAIL: {text!r} -> {got}, want {want}")
+                bad += 1
     print(f"check-fixture-require self-test: {'OK' if not bad else 'FAILED'} "
           f"({len(cases)} cases)")
     return bad

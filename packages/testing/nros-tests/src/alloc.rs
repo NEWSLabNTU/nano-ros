@@ -189,8 +189,15 @@ mod tests {
     /// metadata, zephyr-fixture-leaves.sh, just/threadx-*.just) can be
     /// regenerated/diffed by eye:
     /// `cargo test -p nros-tests --lib alloc::tests::print_bake_table -- --nocapture`
+    ///
+    /// It asserts the one property a reader of the table relies on — that there
+    /// IS a table. A test whose effects are exhausted by printing passes on
+    /// every tree, including one where the `baked` filter selects nothing
+    /// (issue 1544; `check-no-vacuous-tests`).
     #[test]
     fn print_bake_table() {
+        let rows = CELLS.iter().filter(baked).count();
+        assert!(rows > 0, "no baked runtime cell — the bake table is empty");
         println!(
             "platform            lang   rmw         workload        kind       port   xrce  domain"
         );

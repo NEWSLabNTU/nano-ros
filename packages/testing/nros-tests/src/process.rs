@@ -438,9 +438,13 @@ mod group_ledger_tests {
         let _ = child.wait();
     }
 
+    /// LIVE members of `pgid`. A zombie keeps its pgid until its parent reaps
+    /// it, and in a `container:` job PID 1 never does (issue 0853) — so a
+    /// state-blind scan reads a killed group as alive forever, and the
+    /// "must not kill" assertion above would pass on a group that WAS killed.
     fn group_ledger_members_for_test(pgid: i32) -> Vec<i32> {
         let out = Command::new("ps")
-            .args(["-eo", "pid,pgid", "--no-headers"])
+            .args(["-eo", "pid=,pgid=,stat="])
             .output()
             .expect("ps");
         String::from_utf8_lossy(&out.stdout)
@@ -449,7 +453,8 @@ mod group_ledger_tests {
                 let mut f = l.split_whitespace();
                 let pid: i32 = f.next()?.parse().ok()?;
                 let pg: i32 = f.next()?.parse().ok()?;
-                (pg == pgid).then_some(pid)
+                let stat = f.next()?;
+                (pg == pgid && !stat.starts_with('Z')).then_some(pid)
             })
             .collect()
     }
@@ -1681,18 +1686,6 @@ pub fn require_docker_compose() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_zenohd_detection() {
-        let available = is_zenohd_available();
-        eprintln!("zenohd available: {}", available);
-    }
-
-    #[test]
-    fn test_cmake_detection() {
-        let available = is_cmake_available();
-        eprintln!("cmake available: {}", available);
-    }
 
     /// Spawn a shell that prints `text` and then either exits or sleeps.
     fn echoing(text: &str, then_sleep: bool) -> ManagedProcess {

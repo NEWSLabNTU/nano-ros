@@ -26,9 +26,38 @@
 # A single-pid lookup (`ps -o pgid= -p "$pid"`) is deliberately NOT covered: it
 # asks which group a KNOWN process is in, which is a different question, and a
 # zombie's answer to it is still correct.
+#
+# TWO SPELLINGS (issue 1544). The shell form is `ps -eo pid=,pgid=`. A Rust or
+# Python caller spells the same scan as an ARGV — `.args(["-eo", "pid,pgid",
+# "--no-headers"])` / `["ps", "-eo", "pid,pgid"]` — with no `ps -eo` substring
+# and no `pgid=` either, so the first version of this gate read `*.rs` and
+# `*.py` and could match neither. `nros-tests/src/process.rs` had one, feeding an
+# assertion that a group was still ALIVE. The argv form is matched on a quoted
+# `"-eo"` whose column list (same line or the next two) names `pgid` without
+# `stat`.
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# ONE matcher, used by the selftest AND the scan — a selftest that exercises a
+# copy is not a control on the thing that runs (phase-472 W9).
+#   shell spelling: a `ps -eo` line naming `pgid=` and not `stat=`.
+#   argv spelling:  a quoted "-eo"; the column list is the rest of that line
+#                   plus the next two, and must name pgid without stat.
+SCAN_AWK='
+function report(file, line, text) { print file ":" line ": " text; found = 1 }
+function flush() {
+    if (pending > 0 && win ~ /pgid/ && win !~ /stat/) report(sfile, start, stext)
+    pending = 0
+}
+FNR == 1 { flush() }
+/ps +-eo/ && /pgid=/ && !/stat=/ { report(FILENAME, FNR, $0) }
+pending > 0 {
+    win = win " " $0
+    if (--pending == 0 && win ~ /pgid/ && win !~ /stat/) report(sfile, start, stext)
+}
+/"-eo"/ { flush(); win = $0; start = FNR; stext = $0; sfile = FILENAME; pending = 2 }
+END { flush(); exit found ? 1 : 0 }'
 
 if [ "${1:-}" = "--selftest" ]; then
     tmp="$(mktemp -d)"
@@ -37,8 +66,12 @@ if [ "${1:-}" = "--selftest" ]; then
     printf 'ps -eo pid=,pgid= | awk "..."\n' > "$tmp/bad.sh"
     printf 'ps -eo pid=,pgid=,stat= | awk "$3 !~ /^Z/"\n' > "$tmp/good.sh"
     printf 'ps -o pgid= -p "$pid"\n' > "$tmp/lookup.sh"
+    printf 'Command::new("ps")\n    .args(["-eo", "pid,pgid", "--no-headers"])\n' > "$tmp/bad.rs"
+    printf 'Command::new("ps")\n    .args([\n        "-eo",\n        "pid,pgid",\n    ])\n' > "$tmp/bad-split.rs"
+    printf 'Command::new("ps")\n    .args(["-eo", "pid=,pgid=,stat="])\n' > "$tmp/good.rs"
+    printf 'subprocess.run(["ps", "-eo", "pid,comm"])\n' > "$tmp/nopgid.py"
     scan_file() {
-        awk '/ps +-eo/ && /pgid=/ && !/stat=/ { found = 1 } END { exit found ? 1 : 0 }' "$1"
+        awk "$SCAN_AWK" "$1" >/dev/null
     }
     if scan_file "$tmp/bad.sh"; then
         echo "  FAIL  a zombie-blind group scan was NOT detected"; fails=$((fails + 1))
@@ -55,6 +88,26 @@ if [ "${1:-}" = "--selftest" ]; then
     else
         echo "  FAIL  a single-pid lookup was flagged"; fails=$((fails + 1))
     fi
+    if scan_file "$tmp/bad.rs"; then
+        echo "  FAIL  a zombie-blind ARGV group scan (Rust) was NOT detected"; fails=$((fails + 1))
+    else
+        echo "  ok    a zombie-blind argv group scan is detected"
+    fi
+    if scan_file "$tmp/bad-split.rs"; then
+        echo "  FAIL  an argv scan split across lines was NOT detected"; fails=$((fails + 1))
+    else
+        echo "  ok    an argv scan split across lines is detected"
+    fi
+    if scan_file "$tmp/good.rs"; then
+        echo "  ok    an argv scan carrying stat= passes"
+    else
+        echo "  FAIL  an argv scan carrying stat= was flagged"; fails=$((fails + 1))
+    fi
+    if scan_file "$tmp/nopgid.py"; then
+        echo "  ok    an argv scan that enumerates no group is not covered"
+    else
+        echo "  FAIL  an argv scan with no pgid column was flagged"; fails=$((fails + 1))
+    fi
     [ "$fails" -eq 0 ] || { echo "selftest FAILED"; exit 1; }
     echo "check-ps-zombie-blind selftest: OK"
     exit 0
@@ -67,20 +120,17 @@ fi
     exit 1
 }
 
+# ONE awk over the whole population: a process per file cost minutes over the
+# ~2100 files the widened scan reads.
 bad=0
-scanned=0
-while IFS= read -r f; do
-    case "$f" in
-        scripts/check-ps-zombie-blind.sh) continue ;;
-    esac
-    scanned=$((scanned + 1))
-    if awk '/ps +-eo/ && /pgid=/ && !/stat=/ { print FILENAME ":" FNR ": " $0; found = 1 }
-            END { exit found ? 1 : 0 }' "$f"; then
-        :
-    else
-        bad=1
-    fi
-done < <(git ls-files '*.sh' '*.rs' '*.py' 'justfile' 'just/*.just')
+mapfile -d '' files < <(git ls-files -z '*.sh' '*.rs' '*.py' 'justfile' 'just/*.just' \
+    ':!scripts/check-ps-zombie-blind.sh')
+scanned=${#files[@]}
+if [ "$scanned" -eq 0 ]; then
+    echo "check-ps-zombie-blind: the scan found NO files — an empty scan reports OK" >&2
+    exit 1
+fi
+awk "$SCAN_AWK" "${files[@]}" || bad=1
 
 if [ "$bad" -ne 0 ]; then
     cat >&2 <<'MSG'
@@ -95,6 +145,7 @@ tell a running member from a zombie.
   reads as alive forever.
 
   Fix:  ps -eo pid=,pgid=,stat= | awk -v g="$pgid" '$2 == g && $3 !~ /^Z/ { print $1 }'
+        Rust: .args(["-eo", "pid=,pgid=,stat="]) and drop rows whose stat starts with Z
 
   A single-pid lookup (`ps -o pgid= -p "$pid"`) is a different question and is
   not covered by this rule.  -> issue 0853

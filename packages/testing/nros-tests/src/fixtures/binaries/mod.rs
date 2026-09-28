@@ -6322,18 +6322,9 @@ mod fixture_absence_class_tests {
 /// normally and counts as a real failure.
 #[rstest::fixture]
 pub fn xrce_large_msg_test_binary() -> PathBuf {
-    match build_xrce_large_msg_test() {
-        Ok(p) => p.to_path_buf(),
-        Err(crate::TestError::FixtureNotBuilt(msg)) => nros_tests_skip(msg),
-        Err(e) => panic!("Failed to build xrce-large-msg-test: {e:?}"),
-    }
-}
-
-/// Helper that panics with the `[SKIPPED]` prefix recognised by
-/// `justfile::_count-real-failures`. Kept local to this module
-/// so the macro's lexical scope doesn't need to escape.
-fn nros_tests_skip(msg: String) -> ! {
-    panic!("[SKIPPED] {msg}")
+    build_xrce_large_msg_test()
+        .require("xrce-large-msg-test")
+        .to_path_buf()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -6357,11 +6348,9 @@ pub fn build_zenoh_stress_test() -> TestResult<&'static Path> {
 /// rationale (Phase 150.F).
 #[rstest::fixture]
 pub fn zenoh_stress_test_binary() -> PathBuf {
-    match build_zenoh_stress_test() {
-        Ok(p) => p.to_path_buf(),
-        Err(crate::TestError::FixtureNotBuilt(msg)) => nros_tests_skip(msg),
-        Err(e) => panic!("Failed to build zenoh-stress-test: {e:?}"),
-    }
+    build_zenoh_stress_test()
+        .require("zenoh-stress-test")
+        .to_path_buf()
 }
 
 /// Build the zenoh-stress-test binary with large subscriber buffer (8192B, cached).
@@ -6405,11 +6394,9 @@ pub fn build_xrce_stress_test() -> TestResult<&'static Path> {
 /// rationale (Phase 150.F).
 #[rstest::fixture]
 pub fn xrce_stress_test_binary() -> PathBuf {
-    match build_xrce_stress_test() {
-        Ok(p) => p.to_path_buf(),
-        Err(crate::TestError::FixtureNotBuilt(msg)) => nros_tests_skip(msg),
-        Err(e) => panic!("Failed to build xrce-stress-test: {e:?}"),
-    }
+    build_xrce_stress_test()
+        .require("xrce-stress-test")
+        .to_path_buf()
 }
 
 /// Build the xrce-stress-test binary with a large receive ring (8192B, cached).
@@ -6436,11 +6423,9 @@ pub fn build_xrce_stress_test_large_buf() -> TestResult<&'static Path> {
 /// rstest fixture that provides the xrce-stress-test binary path (large receive ring).
 #[rstest::fixture]
 pub fn xrce_stress_test_large_buf_binary() -> PathBuf {
-    match build_xrce_stress_test_large_buf() {
-        Ok(p) => p.to_path_buf(),
-        Err(crate::TestError::FixtureNotBuilt(msg)) => nros_tests_skip(msg),
-        Err(e) => panic!("Failed to build xrce-stress-test (large-buf): {e:?}"),
-    }
+    build_xrce_stress_test_large_buf()
+        .require("xrce-stress-test (large-buf)")
+        .to_path_buf()
 }
 
 /// Build qemu-bsp-large-msg-test (cached).

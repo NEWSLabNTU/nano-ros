@@ -21,8 +21,8 @@
 
 use nros_tests::{
     fixtures::{
-        ManagedProcess, ZenohRouter, build_action_raw_goal_probe, c_action_server_binary,
-        require_zenohd, zenohd_unique,
+        ManagedProcess, RequireFixture, ZenohRouter, build_action_raw_goal_probe,
+        c_action_server_binary, require_zenohd, zenohd_unique,
     },
     output::{
         ACTION_GOAL_REQUEST_PREFIX, ACTION_SERVER_READY_MARKER, RAW_GOAL_DOUBLE_HEADER_ORDER,
@@ -47,10 +47,9 @@ fn action_raw_goal_ships_one_cdr_header(
         nros_tests::skip!("zenohd not found");
     }
 
-    let probe = match build_action_raw_goal_probe() {
-        Ok(p) => p.to_path_buf(),
-        Err(e) => panic!("raw-goal probe fixture unavailable: {e}"),
-    };
+    let probe = build_action_raw_goal_probe()
+        .require("raw-goal probe")
+        .to_path_buf();
 
     let locator = zenohd_unique.locator();
     // A NON-ZERO domain, deliberately. Issue 0656 — found by this very test —

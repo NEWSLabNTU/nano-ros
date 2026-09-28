@@ -195,6 +195,13 @@ def scan(paths) -> list[str]:
 
 
 def tracked_test_files() -> list[Path]:
+    """Every tracked `.rs` — `#[cfg(test)]` modules in `src/` are tests too.
+
+    Issue 1544: this read `*/tests/*.rs` only, and eleven print-only tests sat
+    in `nros-tests/src/` unit modules — ten of them the very `*_detection`
+    shape the 2026-08-21 cleanup set out to remove. `test_bodies` keys on the
+    test ATTRIBUTE, so the population is the file KIND, not a directory.
+    """
     root = Path(
         subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -204,13 +211,25 @@ def tracked_test_files() -> list[Path]:
         ).stdout.strip()
     )
     out = subprocess.run(
-        ["git", "ls-files", "*/tests/*.rs", "tests/*.rs"],
+        ["git", "ls-files", "*.rs"],
         capture_output=True,
         text=True,
         check=True,
         cwd=root,
     ).stdout.split()
     return [root / f for f in out]
+
+
+def scope_floor(files: list[Path]) -> list[str]:
+    """Refuse to report OK over a scan that no longer reaches `src/` tests."""
+    if not files:
+        return ["the scan found no .rs files at all — an empty scan reports OK"]
+    if not any("/src/" in f.as_posix() for f in files):
+        return [
+            "the scan reaches no `src/` file — unit-test modules are tests too "
+            "(issue 1544: 11 print-only tests lived there while this read OK)"
+        ]
+    return []
 
 
 SELF_TESTS = [
@@ -253,6 +272,13 @@ SELF_TESTS = [
         True,
     ),
     (
+        "a #[cfg(test)] unit module's print-only test -> flagged (issue 1544)",
+        "#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n"
+        "    fn test_west_detection() {\n        let available = is_west_available();\n"
+        '        eprintln!("west available: {}", available);\n    }\n}\n',
+        True,
+    ),
+    (
         "non-test fn that only prints -> ignored",
         "fn helper() {\n    eprintln!(\"a\");\n}\n",
         False,
@@ -276,7 +302,7 @@ SELF_TESTS = [
 ]
 
 
-def self_test() -> int:
+def self_test(quiet: bool = False) -> int:
     failures = 0
     with tempfile.TemporaryDirectory() as td:
         for name, src, expect_flag in SELF_TESTS:
@@ -284,14 +310,16 @@ def self_test() -> int:
             f.write_text(src)
             got = bool(scan([f]))
             ok = got == expect_flag
-            print(f"  [{'OK' if ok else 'FAIL'}] {name}")
+            if not quiet or not ok:
+                print(f"  [{'OK' if ok else 'FAIL'}] {name}")
             if not ok:
                 failures += 1
                 print(f"        expected flagged={expect_flag}, got {got}")
     if failures:
         print(f"\ncheck-no-vacuous-tests --self-test: {failures} case(s) FAILED")
         return 1
-    print(f"\ncheck-no-vacuous-tests --self-test: {len(SELF_TESTS)} case(s) OK")
+    if not quiet:
+        print(f"\ncheck-no-vacuous-tests --self-test: {len(SELF_TESTS)} case(s) OK")
     return 0
 
 
@@ -302,8 +330,12 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
+    # Always, not only behind the flag: a negative control that runs only when
+    # asked decays into a comment.
+    if self_test(quiet=True):
+        return 1
     files = tracked_test_files()
-    violations = scan(files)
+    violations = scope_floor(files) + scan(files)
     if violations:
         print("check-no-vacuous-tests: FAIL — tests that only print:\n")
         for v in violations:
@@ -315,7 +347,7 @@ def main() -> int:
             "See CLAUDE.md 'Tests must fail on unmet preconditions'."
         )
         return 1
-    print(f"check-no-vacuous-tests: OK ({len(files)} test files)")
+    print(f"check-no-vacuous-tests: OK ({len(files)} tracked .rs files)")
     return 0
 
 
