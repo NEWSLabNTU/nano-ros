@@ -103,6 +103,28 @@ constexpr int kGraphNodeFull = -2;    ///< every slot is taken
 void graph_init(GraphState* g, dds_entity_t participant);
 void graph_fini(GraphState* g);
 
+/// phase-467 Row 8 — create `graph_reader` if it does not exist yet.
+///
+/// Every graph QUERY already did this inline; the graph-CHANGE edge needs it
+/// too, because a session that installs a change callback and never issues a
+/// query would otherwise have no reader for `on_data_available` to fire on —
+/// the lazy creation that costs an embedded image nothing would silently cost
+/// this feature everything. Returns false when the graph is inactive or
+/// Cyclone refuses the reader, which is the same answer a query gives then.
+bool graph_ensure_reader(GraphState* g);
+
+/// phase-467 Row 8 — create one of the two DDS builtin-topic readers
+/// (`DCPSPublication` when `writers`, `DCPSSubscription` otherwise) if it does
+/// not exist yet. Defined in `graph_query.cpp`, where the by-topic queries
+/// that read them live.
+///
+/// The graph-CHANGE edge needs these to EXIST even when nothing queries them:
+/// a peer LEAVING republishes no `ros_discovery_info`, so the only sample that
+/// reaches this session is the builtin dispose. Without the readers the edge
+/// fires on arrivals and is silent on departures — which is worse than no
+/// edge, because half a notification reads as a working one.
+bool graph_ensure_builtin_reader(GraphState* g, dds_entity_t participant, bool writers);
+
 /// Find the record for `(name, ns)`, adding it if absent, and republish when a
 /// record is added. Returns the slot index, or `kGraphNodeInvalid` /
 /// `kGraphNodeFull`. A name is never truncated: two long names sharing a

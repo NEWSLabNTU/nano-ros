@@ -266,7 +266,7 @@ reason = "as above"
 [rmw_node_get_graph_guard_condition]
 where = "vtable"
 nano = "node_get_graph_guard_condition"
-status = "not-supported"
+reason = "the slot is FILLED and READ as of phase-467 Row 8, so the authored `status = \"not-supported\"` is gone and the status derives (`re-shaped`) like every other live slot. Upstream RETURNS a borrowed guard condition for a wait set; we have no wait set (RFC-0002 — one executor per RTOS task, `cpp:WaitSet` declined) and no allocator at this seam (RFC-0018/0019 — every entity is caller storage), so the slot is the `set_wake_callback` shape: register an EDGE, no payload. zenoh reads `zpico_graph_set_apply`'s change return, Cyclone discriminates on `on_data_available`'s reader against its three graph readers, and a backend with no graph answers UNSUPPORTED. Live acceptance is `graph_interop`'s `*_a_peer_leaving_fires_the_graph_change_guard` on both backends."
 
 [rmw_publish]
 where = "vtable"

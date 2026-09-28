@@ -162,12 +162,15 @@ INERT_FAMILIES = {
         "runtime gets publisher GID and timestamps from the attachment on the "
         "message it already took, so it has never needed the variant",
     ),
-    "graph-guard": Family(
-        ("node_get_graph_guard_condition",),
-        "a guard condition fired on graph change. Guard conditions here are a "
-        "platform primitive the executor owns, not something a backend hands out, "
-        "and nothing consumes graph change events",
-    ),
+    # The `graph-guard` family stood here and is DELETED, not reworded
+    # (phase-467 Row 8). Its reason had two clauses and the second stopped
+    # being true: `CffiSession::set_graph_change_callback` consumes the slot,
+    # so it classifies `produced` and a family entry for it would be the
+    # stale-claim shape this table checks for. The FIRST clause was never a
+    # reason for inertness and is still correct — a guard condition IS an
+    # executor primitive a backend never hands out, which is exactly why the
+    # entry point is upstream's NAME over `nros_node_create_guard_condition`'s
+    # SHAPE rather than upstream's returned handle.
     # The family below is a slot a backend FILLS. It became visible when
     # phase-428 W8 made consumption the first question; under the old ordering
     # a body was enough to read as covered.

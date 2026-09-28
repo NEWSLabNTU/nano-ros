@@ -453,7 +453,13 @@ const nros_rmw_vtable_t kVtable = {
     /*get_subscriptions_info_by_topic*/ graph_get_subscriptions_info_by_topic,
     /*count_publishers*/ graph_count_publishers,
     /*count_subscribers*/ graph_count_subscribers,
-    /*node_get_graph_guard_condition*/ nullptr,
+    /* phase-467 Row 8 — the twelfth graph slot, and the last one that was
+     * NULL. The phase-467 study priced it as a threading-model change because
+     * `graph.cpp` creates its reader with a `nullptr` listener; the listener
+     * that matters is on the PARTICIPANT and has been since issue 0889, so
+     * this is the discrimination `on_data_available` was already throwing
+     * away. Body in `session.cpp`. */
+    /*node_get_graph_guard_condition*/ session_node_get_graph_guard_condition,
     /* Issue 1269 — one `ros_discovery_info` NodeEntitiesInfo per node. NULL
      * here made every endpoint in the image belong to the session's one
      * record, so a four-node image showed a single `/node`. */

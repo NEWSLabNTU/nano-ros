@@ -124,10 +124,39 @@ Each divergence: **what ROS 2 does → what nano-ros does → why → owner**.
   **Cyclone answers the same eleven as of phase-444 W3** — the DDS builtin
   topics (`DCPSPublication` / `DCPSSubscription`) say which endpoints exist, on
   what topic, with what type and granted QoS, and `ros_discovery_info` says
-  which NODE owns each, which is the edge DDS itself does not have. The twelfth,
-  `node_get_graph_guard_condition`, is filled by NO backend and is classified
-  `inert`: it would have to fire from Cyclone's own receive thread, which is the
-  context the status-event slots decline for the same reason.
+  which NODE owns each, which is the edge DDS itself does not have.
+
+  **The twelfth is filled too, as of phase-467 Row 8, and the paragraph that
+  stood here was wrong about why it was not.** It read: "`node_get_graph_guard_
+  condition` is filled by NO backend and is classified `inert`: it would have
+  to fire from Cyclone's own receive thread, which is the context the
+  status-event slots decline for the same reason." The premise is false — the
+  wake path has fired from Cyclone's receive thread since issue 0889, through a
+  participant-level `data_available` listener, and `on_data_available` was
+  already being called for `ros_discovery_info` samples and discarding its
+  first parameter. The status-event slots decline that context because they
+  would need a buffer, a lock and a safe place to deliver INTO; a graph-change
+  edge needs none of the three, because it carries no payload. So the two are
+  not the same case, and citing one for the other is what kept this slot empty
+  for five phases.
+
+  What the slot answers is not a READ but a PUSH: a callback fired when the
+  graph this session can see changes. zenoh reads the change return of
+  `zpico_graph_set_apply`, which it had always computed and discarded; Cyclone
+  discriminates `on_data_available`'s reader against its three graph readers.
+  Each is one line. The expensive half was the plumbing the ABI slot never had
+  — a `Session` trait method, a `CffiSession` consumer, an adapter row, and an
+  executor-owned install/clear pair so the backend never holds a pointer to the
+  caller's guard condition (issue 1385's hazard, designed out).
+
+  The ENVELOPE is stated, not silent, and the ledger row carries it:
+  `rcl_node_get_graph_guard_condition` RETURNS a borrowed node-owned handle for
+  a wait set, and we have neither an allocator at that seam (RFC-0018/0019:
+  caller storage, status in the return) nor a wait set (RFC-0002: one executor
+  per RTOS task). `nros_node_get_graph_guard_condition` is therefore upstream's
+  NAME over `nros_node_create_guard_condition`'s SHAPE — `adopt-bounded`, not
+  `adopt`. A backend with no graph answers `UNSUPPORTED` before anything is
+  allocated, rather than handing back a guard condition nothing will ever fire.
 
   Three properties a caller must know, because they are what makes this
   honest rather than a claim of parity:

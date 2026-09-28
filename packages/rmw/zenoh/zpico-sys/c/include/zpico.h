@@ -1021,6 +1021,18 @@ int32_t zpico_liveliness_get_count(struct zpico_session_t *_session, int32_t _ha
 void zpico_set_reply_waker(struct zpico_session_t *_session, void (*_func)(int32_t, int32_t));
 
 /**
+ * phase-467 Row 8 — register the graph-CHANGE edge.
+ *
+ * A no-op, which is the honest stub rather than a convenient one: this
+ * build declares no liveliness subscriber, so there is no token set to
+ * change and nothing would ever fire. The CAPABILITY is not read from
+ * this call — `ZenohSession::set_graph_change_callback` asks
+ * `ensure_graph_cache` first, which already answers `Unsupported` here,
+ * so the refusal reaches the caller from the one place that knows.
+ */
+void zpico_set_graph_change_cb(struct zpico_session_t *_session, void (*_func)(int32_t));
+
+/**
  * Capture the current clock into an opaque 16-byte buffer.
  * Used by FFI reentrancy guard timeout decomposition.
  */

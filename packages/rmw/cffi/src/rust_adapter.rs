@@ -616,6 +616,15 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         ),
         get_publishers_info_by_topic: Some(get_publishers_info_by_topic_trampoline::<R>),
         get_subscriptions_info_by_topic: Some(get_subscriptions_info_by_topic_trampoline::<R>),
+        // phase-467 Row 8 — the graph-CHANGE edge, the twelfth graph slot and
+        // the last one that was empty. Unconditional for every
+        // `R: RustBackend`, like the eleven above and for the same reason: the
+        // trait default is `Unsupported`, so a backend with no graph answers
+        // "cannot tell you" rather than accepting a callback nothing will
+        // fire. That default is ALSO the capability probe the runtime makes
+        // before it consumes an executor handle slot, so this row being
+        // unconditional is what keeps the refusal reachable.
+        node_get_graph_guard_condition: Some(node_get_graph_guard_condition_trampoline::<R>),
         // RFC-0088 D4 / phase-421 W2 — every Rust backend answers with its own
         // `Session::SERIALIZATION_FORMAT`, so a bridge image can ask each
         // session rather than trusting one image-wide constant. The trait
@@ -1726,6 +1735,30 @@ unsafe extern "C" fn set_wake_callback_trampoline<R: RustBackend>(
     // lifetime contract to the Rust backend.
     unsafe { Session::set_wake_callback(s, cb, ctx) };
     NROS_RMW_RET_OK
+}
+
+/// phase-467 Row 8 — the graph-CHANGE edge for every Rust backend.
+///
+/// Unlike `set_wake_callback_trampoline` above, the STATUS is carried: a
+/// backend with no graph must be able to say `UNSUPPORTED`, because the
+/// runtime probes with a `NULL` clear before it consumes an executor handle
+/// slot, and a trampoline that always answered `OK` would hand back a guard
+/// condition nothing can trigger. That is precisely the silent difference this
+/// row exists to remove.
+unsafe extern "C" fn node_get_graph_guard_condition_trampoline<R: RustBackend>(
+    session: *mut NrosRmwSession,
+    callback: crate::generated::rmw_event_callback_t,
+    user_data: *const core::ffi::c_void,
+) -> NrosRmwRet {
+    let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: forwards the C ABI's callback/user_data lifetime contract to the
+    // Rust backend; the installer owes the matching clear.
+    match unsafe { Session::set_graph_change_callback(s, callback, user_data) } {
+        Ok(()) => NROS_RMW_RET_OK,
+        Err(e) => ret_from_error(&e),
+    }
 }
 
 unsafe extern "C" fn service_server_is_available_trampoline<R: RustBackend>(

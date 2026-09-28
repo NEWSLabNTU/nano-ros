@@ -321,6 +321,52 @@ void graph_publish(GraphState* g) {
     ddsrt_free(infos);
 }
 
+/// How many samples one graph read looks at, and the reader's history depth.
+///
+/// A participant republishes its FULL snapshot on every mutation, so the
+/// newest samples are the current view; this bounds how much of it is read at
+/// once rather than how much is retained (nothing is). File-scope since
+/// phase-467 Row 8 split the reader out of the read — the two must agree, and
+/// two constants that must agree is one constant.
+static constexpr uint32_t kMaxGraphSamples = 16;
+
+bool graph_ensure_reader(GraphState* g) {
+    if (g == nullptr || !g->active || g->topic <= 0) {
+        return false;
+    }
+    if (g->graph_reader > 0) {
+        return true;
+    }
+    // Created on FIRST USE, not at init: a node that never asks pays no
+    // reader, no history and no discovery traffic, which is most embedded
+    // images.
+    //
+    // Matches the writer's QoS deliberately — RELIABLE + TRANSIENT_LOCAL is
+    // what makes a late reader receive the snapshots participants latched
+    // before it existed, which is the whole reason the writer latches.
+    // KEEP_LAST(kMaxGraphSamples) rather than (1): the topic is KEYLESS, so
+    // one instance carries every participant's samples and a depth of 1 would
+    // hold whichever wrote last.
+    dds_qos_t* qos = dds_create_qos();
+    dds_qset_reliability(qos, DDS_RELIABILITY_RELIABLE, DDS_SECS(1));
+    dds_qset_durability(qos, DDS_DURABILITY_TRANSIENT_LOCAL);
+    dds_qset_history(qos, DDS_HISTORY_KEEP_LAST, static_cast<int32_t>(kMaxGraphSamples));
+    dds_entity_t r = dds_create_reader(dds_get_participant(g->topic), g->topic, qos, nullptr);
+    dds_delete_qos(qos);
+    if (r < 0) {
+        return false;
+    }
+    g->graph_reader = r;
+    // Nothing has been delivered on a reader created this instant, so the
+    // first call legitimately reports an empty graph and the next sees the
+    // latched snapshots. Same warm-up the zenoh side documents.
+    //
+    // The listener is on the PARTICIPANT, so a reader created here inherits
+    // it with no further wiring — which is what lets the graph-change edge
+    // work for a session that installs its callback before its first query.
+    return true;
+}
+
 namespace {
 
 /// phase-381 W5 — the READER half, and phase-444 W3's node ATTRIBUTION, over
@@ -335,36 +381,10 @@ template <typename F> bool visit_graph_records(GraphState* g, F&& on_node) {
         return false;
     }
 
-    // How many samples one query looks at, and the only storage this adds.
-    // A participant republishes its FULL snapshot on every mutation, so the
-    // newest samples are the current view; this bounds how much of it is read
-    // at once rather than how much is retained (nothing is).
-    constexpr uint32_t kMaxSamples = 16;
+    constexpr uint32_t kMaxSamples = kMaxGraphSamples;
 
-    if (g->graph_reader <= 0) {
-        // Created on FIRST USE, not at init: a node that never asks pays no
-        // reader, no history and no discovery traffic, which is most embedded
-        // images.
-        //
-        // Matches the writer's QoS deliberately — RELIABLE + TRANSIENT_LOCAL is
-        // what makes a late reader receive the snapshots participants latched
-        // before it existed, which is the whole reason the writer latches.
-        // KEEP_LAST(kMaxSamples) rather than (1): the topic is KEYLESS, so one
-        // instance carries every participant's samples and a depth of 1 would
-        // hold whichever wrote last.
-        dds_qos_t* qos = dds_create_qos();
-        dds_qset_reliability(qos, DDS_RELIABILITY_RELIABLE, DDS_SECS(1));
-        dds_qset_durability(qos, DDS_DURABILITY_TRANSIENT_LOCAL);
-        dds_qset_history(qos, DDS_HISTORY_KEEP_LAST, static_cast<int32_t>(kMaxSamples));
-        dds_entity_t r = dds_create_reader(dds_get_participant(g->topic), g->topic, qos, nullptr);
-        dds_delete_qos(qos);
-        if (r < 0) {
-            return false;
-        }
-        g->graph_reader = r;
-        // Nothing has been delivered on a reader created this instant, so the
-        // first call legitimately reports an empty graph and the next sees the
-        // latched snapshots. Same warm-up the zenoh side documents.
+    if (!graph_ensure_reader(g)) {
+        return false;
     }
 
     // issue 0927 — the one measurement that separates the two explanations for

@@ -1372,6 +1372,29 @@ pub struct GuardCondition {
 unsafe impl Send for GuardCondition {}
 unsafe impl Sync for GuardCondition {}
 
+/// phase-467 Row 8 — a SECOND handle to the same arena flag.
+///
+/// Sound by construction: every field is `Copy`, the flag is a `&'static`
+/// reference into an arena that outlives every handle, and `trigger()` is a
+/// store plus a wake — there is no ownership to duplicate and nothing to
+/// free. `is_triggered`/`clear` are already documented as racing an executor
+/// that dispatches, so a second handle adds no contract.
+///
+/// Written rather than derived so the reason is here: the graph-change edge
+/// needs one handle in the CALLER's `nros_guard_condition_t` and one the
+/// EXECUTOR owns for the backend to fire (issue 1385's shape). Not `Copy` —
+/// an implicit copy of a trigger handle reads as a value and behaves as an
+/// alias, which is exactly the confusion the 1385 fix is about.
+impl Clone for GuardCondition {
+    fn clone(&self) -> Self {
+        Self {
+            flag: self.flag,
+            wake_cb: self.wake_cb,
+            wake_ctx: self.wake_ctx,
+        }
+    }
+}
+
 impl GuardCondition {
     /// Create a handle from a raw pointer to an arena-allocated `AtomicBool`.
     ///

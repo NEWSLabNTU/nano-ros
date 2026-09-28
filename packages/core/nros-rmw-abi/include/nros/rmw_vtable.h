@@ -1158,7 +1158,26 @@ typedef struct nros_rmw_vtable_t {
      *  Named after upstream mechanically, per the campaign's rule, but the
      *  honest name for this shape would be set-on-graph-change-callback —
      *  flagged for W5 rather than decided quietly here. (Unticked: no such
-     *  slot exists, and a backtick in this header means it does.) */
+     *  slot exists, and a backtick in this header means it does.)
+     *
+     *  `callback == NULL` clears any previously installed edge; the backend
+     *  must drop the stored (callback, user_data) and never invoke it again
+     *  after this returns. A clear is also the runtime's CAPABILITY PROBE, so
+     *  it must be cheap and must answer the way a real install would:
+     *  `NROS_RMW_RET_OK` from a backend that has a graph,
+     *  `NROS_RMW_RET_UNSUPPORTED` from one that does not. Nullity of this
+     *  slot cannot serve as that probe on the Rust road, where the adapter
+     *  fills every slot for every backend.
+     *
+     *  NULL slot = backend has no graph-change edge (XRCE, uORB, and any
+     *  backend that discovers nothing). The runtime surfaces that as
+     *  UNSUPPORTED and declines to create the guard condition: handing back
+     *  one nothing will ever trigger is the silent difference RFC-0089 Part I
+     *  refuses. phase-467 Row 8 wrote this paragraph, because the slot had
+     *  carried no NULL sentence at all — unlike `set_wake_callback` two
+     *  hundred lines above — and `check-rmw-slot-producers.py` reads a
+     *  REACHABLE slot with neither a producer nor a documented NULL as
+     *  `unimplemented`. */
     rmw_ret_t (*node_get_graph_guard_condition)(rmw_session_t *session,
         rmw_event_callback_t callback, const void *user_data);
 
